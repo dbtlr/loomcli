@@ -172,6 +172,20 @@ test('a tab in a value expands from the start of the value before it wraps, so n
   expect(output).toBe(lines('first  b       c', '', '1 record'));
 });
 
+test('a tab after a wrapped break expands from the start of the value, not its output line', () => {
+  const output = render({
+    config: { identifier: 'first' },
+    rows: [{ first: 'aaa bbbbbb\tc' }],
+    view: 'records',
+    widths: [16],
+  });
+  for (const line of output.split('\n')) {
+    expect(line).not.toContain('\t');
+    expect(line.length).toBeLessThanOrEqual(16);
+  }
+  expect(output).toBe(lines('first  aaa', '       bbbbbb', '       c', '', '1 record'));
+});
+
 test('a tab stays a tab in piped records', () => {
   const rows = [{ first: 'b\tc' }];
   expect(render({ config: { identifier: 'first' }, rows, view: 'records', widths: [null] })).toBe(

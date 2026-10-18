@@ -87,6 +87,12 @@ test('a tab expands to spaces from the start of its message line, so every line 
   expect(output).toBe('⚠ aaaaaa  b\n  c\n');
 });
 
+test('a tab after a wrapped break expands from the start of its input line, not its output line', () => {
+  const output = lane('warn', 'aaa bbbbbb\tc', 11).stderr;
+  expectFits(output, 11);
+  expect(output).toBe('⚠ aaa\n  bbbbbb\n  c\n');
+});
+
 test('a tab inside nowrap or a style expands too, and the frame keeps its meaning', () => {
   const unbroken = lane('warn', [{ nowrap: 'aaaaaa\tb' }, ' c'], 11).stderr;
   expectFits(unbroken, 11);
