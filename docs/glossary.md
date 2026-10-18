@@ -551,7 +551,7 @@ The help page `--help` prints, for a reader who is learning the Command: the who
 _Avoid_: Long help, full help, man page
 
 **Details**:
-A Command's teaching prose, written in Markdown inline or brought in from a file with a text import, which extended help renders as a stated subset after the masthead, keeping the author's lines, and the manifest carries as written.
+A Command's teaching prose, written in Markdown inline or brought in from a file with a text import, which extended help renders as a stated subset after the masthead, keeping the author's lines off a terminal and reflowing its paragraphs to `columns` on one, and the manifest carries as written.
 _Avoid_: Long description, body, help text, Markdown asset
 
 **Completion**:
