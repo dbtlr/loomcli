@@ -5,7 +5,7 @@ import { parseMarkdown } from '../markdown/blocks.js';
 import type { Block, Item } from '../markdown/blocks.js';
 import type { Inline } from '../markdown/inline.js';
 import { wrapLines } from '../text-layout.js';
-import { onTerminal } from './layout.js';
+import { hangLines, onTerminal } from './layout.js';
 
 type Style = ViewContext['style'];
 interface Modifiers {
@@ -30,6 +30,7 @@ const markerSpaceWidth = 1;
 const emptyLength = 0;
 const pageIndent = '  ';
 const quotePrefixWidth = 2;
+const listIndent = 0;
 
 const ordinary: Modifiers = { bold: false, italic: false };
 
@@ -71,8 +72,27 @@ function reflow(lines: readonly string[], layout: Layout): string[] {
   if (layout.width === undefined) {
     return [...lines];
   }
-  const joined = lines.map((line) => expanded(line, layout)).join(' ');
-  return wrapLines(joined, layout.width, layout.context);
+  return wrapLines(joined(lines, layout), layout.width, layout.context);
+}
+
+/** Rendered authored lines as one text, joined with one space after each expands its tabs. */
+function joined(lines: readonly string[], layout: Layout): string {
+  return lines.map((line) => expanded(line, layout)).join(' ');
+}
+
+/** The rendered lines of a block that reflows, a paragraph or a heading, or none for another. */
+function reflowing(block: Block | undefined, layout: Layout): string[] | undefined {
+  if (block?.kind === 'paragraph') {
+    return block.lines.map((line) => inline(line, ordinary, layout));
+  }
+  return block?.kind === 'heading'
+    ? [inline(block.text, { bold: true, italic: false }, layout)]
+    : undefined;
+}
+
+/** The authored lines of table rows, which keep their lines on a terminal and off one. */
+function tableLines(block: Extract<Block, { kind: 'table' }>, layout: Layout): string[] {
+  return block.lines.map((line) => expanded(inline(line, ordinary, layout), layout));
 }
 
 /** Help keeps a code span's authored backtick run around its uninterpreted content. */
@@ -194,19 +214,50 @@ function listLines(block: Extract<Block, { kind: 'list' }>, layout: Layout): str
 
 /**
  * A marker's printed width, including its space, indents every subsequent content line, so a
- * wrapped line continues under the item's text.
+ * wrapped line continues under the item's text, unless the item's opening text cannot hang there.
  */
 function itemLines(marker: string, item: Item, layout: Layout): string[] {
   const indent = marker.length + markerSpaceWidth;
   const content = blockLines(item.blocks, within(layout, indent));
-  const first = content[firstElement];
+  const fallback = fallbackLines(item, indent, layout);
+  // A fallback stands in for the opening block's lines, and its continuation lines take no indent.
+  const [first, ...unindented] = fallback?.lines ?? content.slice(firstElement, continuationStart);
+  const later = content.slice(fallback?.replaces ?? continuationStart);
   const prefix = styled(marker, 'dim', { modifiers: ordinary, style: layout.context.style });
   return [
     prefix + (first === undefined || first === '' ? '' : ` ${first}`),
-    ...content
-      .slice(continuationStart)
-      .map((line) => (line === '' ? '' : ' '.repeat(indent) + line)),
+    ...unindented,
+    ...later.map((line) => (line === '' ? '' : ' '.repeat(indent) + line)),
   ];
+}
+
+/**
+ * An item's opening paragraph or heading when its hang after the marker cannot fit: its first line,
+ * then its continuation lines, which start at the list's own indent, where the marker starts, and
+ * the number of the item's lines they stand in for. Otherwise none, and every line of the item
+ * hangs under its text.
+ */
+function fallbackLines(
+  item: Item,
+  indent: number,
+  layout: Layout,
+): { lines: string[]; replaces: number } | undefined {
+  const [opening] = item.blocks;
+  const lines = reflowing(opening, layout);
+  if (opening === undefined || lines === undefined || layout.width === undefined) {
+    return undefined;
+  }
+  const hung = hangLines(
+    joined(lines, layout),
+    { base: listIndent, columns: layout.width, lead: indent },
+    layout.context,
+  );
+  return hung.indent === indent
+    ? undefined
+    : {
+        lines: [hung.first, ...hung.rest],
+        replaces: renderBlock(opening, within(layout, indent)).length,
+      };
 }
 
 /**
@@ -216,14 +267,12 @@ function itemLines(marker: string, item: Item, layout: Layout): string[] {
 function renderBlock(block: Block, layout: Layout): string[] {
   const { style } = layout.context;
   switch (block.kind) {
-    case 'paragraph': {
-      return reflow(
-        block.lines.map((line) => inline(line, ordinary, layout)),
-        layout,
-      );
-    }
+    case 'paragraph':
     case 'heading': {
-      return reflow([inline(block.text, { bold: true, italic: false }, layout)], layout);
+      return reflow(reflowing(block, layout) ?? [], layout);
+    }
+    case 'table': {
+      return tableLines(block, layout);
     }
     case 'code': {
       return codeLines(block.lines, layout);

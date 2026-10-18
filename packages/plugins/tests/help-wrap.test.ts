@@ -356,7 +356,8 @@ test('the version line stays one line on a narrow terminal', () => {
 
 test('a text with less than one column left for it prints unwrapped', () => {
   const app = { config: { description: 'Read values from somewhere.' }, name: 'application' };
-  expect(blocks(render({ app, columns: 14 }))[0]).toEqual([
+  // At 2 columns even the fallback indent of 2 leaves no column, so the description stays whole.
+  expect(blocks(render({ app, columns: 2 }))[0]).toEqual([
     'application · Read values from somewhere.',
   ]);
   expect(block(render({ app: children, columns: 6 }), 'COMMANDS')).toEqual([
@@ -513,6 +514,84 @@ test('the INPUT example stays whole, and the sentences keep their lines off a te
   ]);
   expect(blockStarting(piped, '  Use at most')).toEqual([
     '  Use at most one of --format-json, --format-yaml, and --format-toml.',
+  ]);
+});
+
+/** A paragraph followed directly by a pipe table, whose last row is wider than 24 columns. */
+const table = [
+  'The fields of a record are',
+  'listed below.',
+  '| Key | Value |   ',
+  '| --- | --- |',
+  '| name | the full name of the user |',
+].join('\n');
+
+test('table rows keep their lines on a terminal and interrupt the paragraph above them', () => {
+  expect(detailsAt(table, 24)).toEqual([
+    '  The fields of a record',
+    '  are listed below.',
+    '  | Key | Value |',
+    '  | --- | --- |',
+    '  | name | the full name of the user |',
+  ]);
+  expect(detailsAt(table, 200)).toEqual([
+    '  The fields of a record are listed below.',
+    '  | Key | Value |',
+    '  | --- | --- |',
+    '  | name | the full name of the user |',
+  ]);
+});
+
+test('table rows print one page line per authored line off a terminal, read inline per line', () => {
+  expect(detailsAt(table, null)).toEqual([
+    '  The fields of a record are',
+    '  listed below.',
+    '  | Key | Value |',
+    '  | --- | --- |',
+    '  | name | the full name of the user |',
+  ]);
+  const stdout = render({
+    app: details('| `a b` | *x* |\n| c | d |'),
+    columns: 200,
+    rendering: { color: 'never', modifiers: 'always' },
+  });
+  expect(blocks(stdout)[1]).toEqual(['  | `a b` | \u001b[3mx\u001b[23m |', '  | c | d |']);
+});
+
+test('a masthead description and a deprecation continue at indent 2 when their hang cannot fit', () => {
+  const app = {
+    commands: [
+      {
+        config: { deprecated: 'Use the configuration command.', description: 'Read.' },
+        name: 'old',
+      },
+    ],
+    config: { description: 'Read the configuration values.' },
+    name: 'application',
+  };
+  expect(blocks(render({ app, columns: 20 }))[0]).toEqual([
+    'application · Read',
+    '  the configuration',
+    '  values.',
+  ]);
+  expect(blocks(render({ app, argv: ['old', '--help'], columns: 24 }))[0]).toEqual([
+    'application old · Read.',
+    '  Deprecated: Use the',
+    '  configuration command.',
+  ]);
+});
+
+test("a list item continues at its marker's column when its hang cannot fit", () => {
+  expect(detailsAt('- Set configurationvalue now.', 20)).toEqual([
+    '  - Set',
+    '  configurationvalue',
+    '  now.',
+  ]);
+  expect(detailsAt('- outer\n  - Set configurationvalue now.', 20)).toEqual([
+    '  - outer',
+    '    - Set',
+    '    configurationvalue',
+    '    now.',
   ]);
 });
 

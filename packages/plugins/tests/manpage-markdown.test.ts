@@ -13,6 +13,11 @@ test.each<[string, string[], string[]]>([
   ['a paragraph keeps its lines as source lines, which man fills', ['one', 'two'], ['one', 'two']],
   ['a paragraph after another opens with .PP', ['one', '', 'two'], ['one', '.PP', 'two']],
   [
+    'table rows read as the paragraph text they follow and lead, which man fills',
+    ['intro', '| a | b |', '| c | d |', 'after', '', '| e |', '', '- item', '  | f |'],
+    ['intro', '| a | b |', '| c | d |', 'after', '.PP', '| e |', bullet, 'item', '| f |'],
+  ],
+  [
     'a heading at the top level is .SS with its inline constructs as plain text, and opens no .PP after it',
     ['intro', '', '# Read `x` *now* [here](https://x.org)', '', 'text'],
     ['intro', '.SS "Read x now here <https://x.org>"', 'text'],

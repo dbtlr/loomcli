@@ -31,6 +31,45 @@ const markerSpace = 1;
 const afterLast = 1;
 const notFound = -1;
 
+/** The position of a list's last block, counted from its end. */
+const lastBlock = -1;
+
+/** Whether a block is prose that man fills: a paragraph or a run of table rows. */
+function isFilledText(
+  block: Block | undefined,
+): block is Extract<Block, { kind: 'paragraph' | 'table' }> {
+  return block?.kind === 'paragraph' || block?.kind === 'table';
+}
+
+/**
+ * The blocks as the man page reads them. Man fills every paragraph, so a run of table rows reads
+ * as paragraph text, as it did before help kept table rows on their lines: rows join the paragraph
+ * they follow directly, with no blank line between, and so does a paragraph that follows them.
+ */
+function filled(blocks: readonly Block[]): Block[] {
+  const result: Block[] = [];
+  let afterTable = false;
+  for (const block of blocks) {
+    const previous = result.at(lastBlock);
+    if (
+      isFilledText(block) &&
+      isFilledText(previous) &&
+      !block.blankBefore &&
+      (afterTable || block.kind === 'table')
+    ) {
+      result.splice(lastBlock, afterLast, {
+        blankBefore: previous.blankBefore,
+        kind: 'paragraph',
+        lines: [...previous.lines, ...block.lines],
+      });
+    } else {
+      result.push(block.kind === 'table' ? { ...block, kind: 'paragraph' } : block);
+    }
+    afterTable = block.kind === 'table';
+  }
+  return result;
+}
+
 /** The font the modifiers combine to. */
 function fontOf({ bold, italic }: Modifiers): Font {
   if (bold && italic) {
@@ -151,7 +190,7 @@ function wrappedCode(lines: readonly string[]): string[] {
 /** The lines of blocks inside an `.RS`, where the first block writes no paragraph request. */
 function nestedLines(blocks: readonly Block[]): string[] {
   const nested: Container = { lines: [], preceded: false, topLevel: false };
-  for (const block of blocks) {
+  for (const block of filled(blocks)) {
     writeBlock(nested, block);
   }
   return nested.lines;
@@ -169,7 +208,7 @@ function indented(width: number, lines: readonly string[]): string[] {
  */
 function itemLines(item: Item, marker: string, width: number): string[] {
   const opening = `.IP ${marker} ${width}`;
-  const [first, ...rest] = item.blocks;
+  const [first, ...rest] = filled(item.blocks);
   if (first?.kind !== 'paragraph' && first?.kind !== 'heading') {
     return [opening, ...indented(width, nestedLines(item.blocks))];
   }
@@ -206,6 +245,13 @@ function blockLines(container: Container, block: Block): string[] {
   switch (block.kind) {
     case 'paragraph': {
       return [...paragraphBreak(container), ...leadLines(block)];
+    }
+    case 'table': {
+      // The filled blocks hold no table rows, which read as paragraph text in a man page.
+      return [
+        ...paragraphBreak(container),
+        ...block.lines.map((line) => inlineLine(line, regular)),
+      ];
     }
     case 'heading': {
       return container.topLevel
@@ -247,7 +293,7 @@ function writeBlock(container: Container, block: Block): void {
  */
 function detailsLines(source: string, { preceded }: { readonly preceded: boolean }): string[] {
   const container: Container = { lines: [], preceded, topLevel: true };
-  for (const block of parseMarkdown(source)) {
+  for (const block of filled(parseMarkdown(source))) {
     writeBlock(container, block);
   }
   return container.lines;

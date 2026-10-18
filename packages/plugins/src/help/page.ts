@@ -2,7 +2,7 @@ import { nowrap, reportedSpelling, readExtension } from '@loomcli/core';
 import type { CommandGraph, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
 import { visibleOptionGroups } from '../option-groups.js';
-import { indentLines, wrapLines } from '../text-layout.js';
+import { indentLines } from '../text-layout.js';
 import { argumentAccepts, optionAccepts } from './accepted.js';
 import {
   argumentFacts,
@@ -18,7 +18,7 @@ import {
 import type { Row, StringOption, UsageWriter } from './cells.js';
 import { renderDetails } from './details.js';
 import { helpCommand, helpInput } from './extension.js';
-import { onTerminal, prose } from './layout.js';
+import { hangLines, onTerminal, prose } from './layout.js';
 import { sectionBlocks } from './sections.js';
 import type { SectionMember } from './sections.js';
 import type { HelpPage, HelpVariant } from './views.js';
@@ -55,10 +55,14 @@ const deprecationLabel = 'Deprecated: ';
 /** The indent of the deprecation line. */
 const deprecationIndent = '  ';
 
+/** Where a masthead description continues when its hang after the path cannot fit. */
+const mastheadBase = 2;
+
 /**
  * The deprecation line under a masthead. On a terminal its message wraps and continues under its
- * first character, after the label. Each line is one warning value, so the first line's label and
- * message stay one value, as they are off a terminal.
+ * first character, after the label, or at the line's indent when that hang cannot fit. Each line
+ * is one warning value, so the first line's label and message stay one value, as they are off a
+ * terminal.
  */
 function deprecation(message: string, context: ViewContext): string[] {
   const { style } = context;
@@ -67,8 +71,12 @@ function deprecation(message: string, context: ViewContext): string[] {
   if (!onTerminal(context)) {
     return [`${deprecationIndent}${style.warning(label + text)}`];
   }
-  const indent = context.width(deprecationIndent) + context.width(label);
-  const [first = '', ...rest] = wrapLines(text, context.columns - indent, context);
+  const base = context.width(deprecationIndent);
+  const { first, indent, rest } = hangLines(
+    text,
+    { base, columns: context.columns, lead: base + context.width(label) },
+    context,
+  );
   return [
     `${deprecationIndent}${style.warning(label + first)}`,
     ...indentLines(
@@ -81,7 +89,8 @@ function deprecation(message: string, context: ViewContext): string[] {
 
 /**
  * `<path> · <description>`, or `<path>` alone when the node has no description. On a terminal the
- * description wraps and continues under its first character. A deprecated Command follows it with
+ * description wraps and continues under its first character, or at indent 2 when that hang cannot
+ * fit. A deprecated Command follows it with
  * its migration message on the next line of the same block.
  */
 function masthead(path: string, command: CommandNode, context: ViewContext): string[] {
@@ -91,7 +100,11 @@ function masthead(path: string, command: CommandNode, context: ViewContext): str
   const opening =
     description === undefined
       ? [name]
-      : prose(style.primary(style.escape(description)), `${name} ${style.dim('·')} `, context);
+      : prose(
+          style.primary(style.escape(description)),
+          { base: mastheadBase, lead: `${name} ${style.dim('·')} ` },
+          context,
+        );
   return deprecated === undefined ? opening : [...opening, ...deprecation(deprecated, context)];
 }
 
@@ -287,7 +300,7 @@ function exampleLines(name: string, example: Example, context: ViewContext): str
   ];
   if (example.note !== undefined) {
     const note = style.dim(style.escape(example.note));
-    lines.push(...prose(note, '    ', context));
+    lines.push(...prose(note, { lead: '    ' }, context));
   }
   return lines;
 }
@@ -305,7 +318,7 @@ function examples(graph: CommandGraph, command: CommandNode, context: ViewContex
 function hint(command: string, rest: string, context: ViewContext): string[] {
   const { style } = context;
   const named = onTerminal(context) ? nowrap(command) : command;
-  return prose(`${style.dim('Run')} ${named} ${style.dim(rest)}`, '', context);
+  return prose(`${style.dim('Run')} ${named} ${style.dim(rest)}`, { lead: '' }, context);
 }
 
 /**
@@ -364,14 +377,14 @@ function stdinInput(command: CommandNode, graph: CommandGraph, context: ViewCont
   const description =
     input.description === undefined
       ? []
-      : prose(style.primary(style.escape(input.description)), '  ', context);
+      : prose(style.primary(style.escape(input.description)), { lead: '  ' }, context);
   const sentence = style.primary(
     `${input.required ? 'Required.' : 'Optional.'} Reads piped or redirected stdin. Terminal input is not accepted.`,
   );
   return [
     style.dim('INPUT'),
     ...description,
-    ...prose(sentence, '  ', context),
+    ...prose(sentence, { lead: '  ' }, context),
     `  ${style.primary(style.escape(`Example: <producer> | ${pathOf(graph, command)}`))}`,
   ];
 }
@@ -405,7 +418,7 @@ function groupSentences(command: CommandNode, context: ViewContext): string[] {
       ? ' (piped stdin does not count)'
       : '';
     const sentence = context.style.primary(context.style.escape(`${rule}${caveat}.`));
-    return prose(sentence, '  ', context);
+    return prose(sentence, { lead: '  ' }, context);
   });
 }
 

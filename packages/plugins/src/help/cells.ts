@@ -416,7 +416,7 @@ function wrappedRows({ indent, leftWidth, rows }: RowSet, context: TerminalConte
   return rows.flatMap((row) =>
     row.right === ''
       ? [`${indent}${row.left}`]
-      : hanging(row.right, `${indent}${pad(row.left, leftWidth)}`, context),
+      : hanging(row.right, { lead: `${indent}${pad(row.left, leftWidth)}` }, context),
   );
 }
 
@@ -442,7 +442,7 @@ function stackedRows({ indent, rows }: RowSet, context: TerminalContext): string
   const lead = `${indent}${' '.repeat(furthest)}${stackedIndent}`;
   return rows.flatMap((row) => [
     `${indent}${row.left}`,
-    ...(row.right === '' ? [] : hanging(row.right, lead, context)),
+    ...(row.right === '' ? [] : hanging(row.right, { lead }, context)),
   ]);
 }
 
