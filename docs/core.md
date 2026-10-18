@@ -4149,7 +4149,7 @@ Help decides that its prose belongs in the [manifest](#manifest), and it supplie
 
 #### The help page
 
-The page rules below define the default content and layout. [Ordered help sections](#ordered-help-sections) replace the Command and option blocks when section fields are declared. The [help and version restyle](#help-and-version-restyle) adds semantic styles without changing that structure. Output is UTF-8, and no meaning depends on styling. The page reads the routed `CommandNode`, `graph.globals`, `graph.name`, and `graph.description`, plus the help extension values those nodes carry. It reads no host facts. Each rule applies to both [variants](#help-variants) unless it names one: Details and EXAMPLES print on the extended page alone, and the hints differ.
+The page rules below define the default content and layout. [Ordered help sections](#ordered-help-sections) replace the Command and option blocks when section fields are declared. The [help and version restyle](#help-and-version-restyle) adds semantic styles without changing that structure. Output is UTF-8, and no meaning depends on styling. The page reads the routed `CommandNode`, `graph.globals`, `graph.name`, and `graph.description`, plus the help extension values those nodes carry. It reads no host facts. On a terminal it lays the page out against its view context's `columns`, under [Help wraps to the destination's columns](#help-wraps-to-the-destinations-columns). Each rule applies to both [variants](#help-variants) unless it names one: Details and EXAMPLES print on the extended page alone, and the hints differ.
 
 The page is a sequence of blocks separated by one blank line, and no block holds a blank line of its own except Details, which keeps one blank line wherever the author separated two Markdown blocks, and the empty lines inside its code. A block that has nothing to show is omitted. Outer section titles are uppercase at the left margin. The default layout indents every other line two spaces, except hints. [Ordered help sections](#ordered-help-sections) add inner headings indented two spaces and inner rows indented four spaces. A line at the left margin is the masthead, an outer section title, or a hint and nothing else. `<name>` below is the application name, and `<path>` is the name followed by the routed path, space-separated: `jsonkit`, `jsonkit get`, or `store cache clear`. A member is visible when it is not hidden.
 
@@ -4165,9 +4165,9 @@ The page is a sequence of blocks separated by one blank line, and no block holds
 
 The right-cell rule: the description when the member has one, then, for an option or an argument that has them, its [accepted values](#accepted-values) as one sentence, then, when any fact applies, one parenthesis holding the facts that apply, comma-separated, in this order: `required`, or `required when not interactive` for an option that declares `required: 'non-interactive'`, `repeatable` for a multiple option, `default: <value>`, `implied: <value>` for an option with an [implied value](#implied-values), and `deprecated: <message>`. One space separates the description from the accepted-values sentence, and help prints both as written, adding no punctuation between them; two spaces separate the text before the parenthesis from it; a member with neither description nor accepted values has the parenthesis as its whole right cell, with no leading spaces; and a member with none of the three has no right cell. The parenthesis begins at the first `  (` that is followed by `required`, `repeatable`, `default: `, `implied: `, or `deprecated: `, and it ends at the closing `)` that ends the row, and `deprecated` is always the last fact, so a reader splits the earlier facts on the comma and reads the text between `deprecated: ` and that closing parenthesis as the message. The page is a rendering for a reader; a consumer that needs a fact exactly, whatever a description, an accepted-values sentence, or a default holds, reads it from `inspect()`, which is the machine surface, and that includes a deprecated message, which may itself hold a comma or a parenthesis. An implied value prints, and is escaped, exactly as a default that is a string does. A default value prints as it is when it is a string, as its elements separated by a space when it is an array of strings, as `JSON.stringify` renders it for any other value JSON can represent, and as `String(value)` renders it otherwise, or as Object's own spelling, such as `[object Array]`, where `String` throws; an explicit `undefined` default prints no default fact, and a line terminator inside a rendered default prints as its JSON escape, so a row stays one line.
 
-Within a section the rows are two columns: the left cell is padded to the longest left cell in that section plus two spaces, and a row with no right cell has no trailing padding. The view measures terminal columns with `context.width` and pads to the widest cell with core's `pad` from [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes). Markup contributes no width, and Unicode follows core's existing measurement rules. Nothing wraps, so a long row runs past the terminal width, and terminal width is not read.
+Within a section the rows are two columns: the left cell is padded to the longest left cell in that section plus two spaces, and a row with no right cell has no trailing padding. The view measures terminal columns with `context.width` and pads to the widest cell with core's `pad` from [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes). Markup contributes no width, and Unicode follows core's existing measurement rules. Off a terminal nothing wraps, so a long row is one line however long it is. On a terminal a right cell wraps under its column, and the rows under a heading that cannot fit stack, under [Help wraps to the destination's columns](#help-wraps-to-the-destinations-columns).
 
-The root of jsonkit has an action and ten children: the `doctor` Command the private `@loom/doctor` plugin attaches, the `completion` group the [completion](#completion) plugin attaches, the `mcp` Command the [MCP](#mcp) plugin attaches, and the `manpage` group the [manpage](#man-pages) plugin attaches, ahead of jsonkit's own in installation order, then six of its own, of which `fetch` is deprecated and `debug` and `paths` are hidden. It declares one local option, `--format`, which the [formatter](#formatter) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
+The root of jsonkit has an action and ten children: the `doctor` Command the private `@loom/doctor` plugin attaches, the `completion` group the [completion](#completion) plugin attaches, the `mcp` Command the [MCP](#mcp) plugin attaches, and the `manpage` group the [manpage](#man-pages) plugin attaches, ahead of jsonkit's own in installation order, then six of its own, of which `fetch` is deprecated and `debug` and `paths` are hidden. It declares two local options: `--file`, the [content input](#content-inputs) every jsonkit Command that reads the document declares, and `--format`, which the [formatter](#formatter) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
 
 ```text
 jsonkit · Read and reshape one JSON document.
@@ -4193,15 +4193,15 @@ COMMANDS
   manpage <command>     Write or install the man pages.
 
 OPTIONS
+  -f, --file <path>      The document to read. Omit it to read piped text.  (file or piped stdin; - selects stdin, required)
   -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
 
 GLOBAL OPTIONS
-  -f, --file <path>  The document to read. Omit it to read piped text.
-  -v, --verbose...   Name the document before reading it.
-  -h, --help         Show this help.
-  -V, --version      Print the version.
-  -M, --manifest     Print this command's manifest as JSON.
-  -e, --explain      Explain the selected command and exit.
+  -v, --verbose...  Name the document before reading it.
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
 
 EXAMPLES
   $ jsonkit -f doc.json
@@ -4210,7 +4210,7 @@ EXAMPLES
 Run jsonkit <command> --help for command details.
 ```
 
-`select` is a leaf with one required multiple option and no `details` or `examples`, so the restyled `jsonkit select --help` has this text with color and modifiers disabled:
+`select` is a leaf with the `--file` content input, one required multiple option, and no `details` or `examples`, so the restyled `jsonkit select --help` has this text with color and modifiers disabled:
 
 ```text
 jsonkit select · Keep the named fields of the document.
@@ -4219,15 +4219,15 @@ USAGE
   jsonkit select --field <field>... [options]
 
 OPTIONS
+  -f, --file <path>    The document to read. Omit it to read piped text.  (file or piped stdin; - selects stdin, required)
   -F, --field <field>  A field to keep. Repeat it for several.  (required, repeatable)
 
 GLOBAL OPTIONS
-  -f, --file <path>  The document to read. Omit it to read piped text.
-  -v, --verbose...   Name the document before reading it.
-  -h, --help         Show this help.
-  -V, --version      Print the version.
-  -M, --manifest     Print this command's manifest as JSON.
-  -e, --explain      Explain the selected command and exit.
+  -v, --verbose...  Name the document before reading it.
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
 ```
 
 textstat is one root Command with a variadic argument, four local options, of which `--timing` is hidden and `--min-bytes` carries the [alias](#option-aliases) `--minimum` that no page lists, a fifth local option `--format` that the [formatter](#formatter) declared on it because it declares a result, and no children, so its page folds the globals into OPTIONS. The restyled `textstat --help` has this text with color and modifiers disabled:
@@ -4235,13 +4235,13 @@ textstat is one root Command with a variadic argument, four local options, of wh
 ```text
 textstat · Count bytes, words, or lines across text sources.
 
-  With no files, textstat counts the text piped to it and names the source "stdin".
+  Textstat counts files and piped text in order. Use - to place stdin among the files.
 
 USAGE
   textstat [files...] [options]
 
 ARGUMENTS
-  files  The files to count. Omit them to read piped text.
+  files  The files and piped text to count. Use - to place stdin.  (files and piped stdin; - places stdin)
 
 COUNTING
   MEASURE
@@ -4273,7 +4273,7 @@ USAGE
   textstat [files...] [options]
 
 ARGUMENTS
-  files  The files to count. Omit them to read piped text.
+  files  The files and piped text to count. Use - to place stdin.  (files and piped stdin; - places stdin)
 
 COUNTING
   MEASURE
@@ -4318,15 +4318,15 @@ COMMANDS
   manpage <command>     Write or install the man pages.
 
 OPTIONS
+  -f, --file <path>      The document to read. Omit it to read piped text.  (file or piped stdin; - selects stdin, required)
   -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
 
 GLOBAL OPTIONS
-  -f, --file <path>  The document to read. Omit it to read piped text.
-  -v, --verbose...   Name the document before reading it.
-  -h, --help         Show this help.
-  -V, --version      Print the version.
-  -M, --manifest     Print this command's manifest as JSON.
-  -e, --explain      Explain the selected command and exit.
+  -v, --verbose...  Name the document before reading it.
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
 
 Run jsonkit <command> -h for command details.
 Run jsonkit --help for details and examples.
@@ -4495,7 +4495,7 @@ OPTIONS
 - **Scope.** It changes the default help and version views and the formatter's option description. The restyle itself adds no export, extension field, theme requirement, glyph, or rendering policy; the `accepts` field and `helpArgument` arrive with [accepted values](#accepted-values). The existing help and version takeover, output destination, invocation rules, and view override identities stay unchanged.
 - **Content.** The page keeps its masthead, details, usage forms, section order, filtering, row facts, examples, hint, indentation, blank lines, and final newline. The application path remains first in the masthead. Neither default view adds a framework logo or branding glyph. Available view names print as the `--format` row's [accepted values](#accepted-values), with no separate section.
 - **Escaping.** Graph strings, help extension strings, and rendered default values are literal data. The view escapes each raw fragment with `style.escape` before styling or measuring it. It never escapes the completed marked page or recovers semantic fields by parsing a rendered row. Authored markup in a description or example remains literal. Existing default serialization and line-terminator escaping remain unchanged. Embedded ANSI remains subject to core's separate rendering policy.
-- **Measurement.** The two-column rule uses destination-aware `context.width` and core's deferred `pad`. This replaces JavaScript string-length padding. It preserves ASCII spacing while aligning wide and combining characters under core's existing rules. Styling never changes which members or sections appear, and neither view wraps or reads terminal width.
+- **Measurement.** The two-column rule uses destination-aware `context.width` and core's deferred `pad`. This replaces JavaScript string-length padding. It preserves ASCII spacing while aligning wide and combining characters under core's existing rules. Styling never changes which members or sections appear. The version view neither wraps nor reads the width, and the help view wraps on a terminal under [Help wraps to the destination's columns](#help-wraps-to-the-destinations-columns).
 - **Policy.** Views return semantic marked strings. The installed theme and core's destination policy determine colors and modifiers. A missing theme leaves semantic colors unmapped, while explicit bold and italic still follow modifier policy. Under automatic policy, an ordinary pipe has no style escapes. At a capable terminal, `NO_COLOR` disables color but does not disable bold or italic. Explicit policy and `FORCE_COLOR` retain their existing precedence. The plain examples disable both colors and modifiers.
 - **Replacement.** `helpPage` keeps `{ graph, command }`, which [help variants](#help-variants) extend with `variant`. `versionLine` takes `VersionLine`, `{ graph, postfix }`, since the [version postfix](#version). Each override replaces the whole view through the existing registry. A replacement derives its own content and owns its layout, literal-data escaping, styles, and final newline. No public section model or builder is introduced.
 
@@ -4585,13 +4585,15 @@ USAGE
 ARGUMENTS
   path  Dot path to read.
 
+OPTIONS
+  -f, --file <path>  The document to read. Omit it to read piped text.  (file or piped stdin; - selects stdin, required)
+
 GLOBAL OPTIONS
-  -f, --file <path>  The document to read. Omit it to read piped text.
-  -v, --verbose...   Name the document before reading it.
-  -h, --help         Show this help.
-  -V, --version      Print the version.
-  -M, --manifest     Print this command's manifest as JSON.
-  -e, --explain      Explain the selected command and exit.
+  -v, --verbose...  Name the document before reading it.
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
 
 EXAMPLES
   $ jsonkit get name -f doc.json
@@ -4634,7 +4636,7 @@ Everything else prints as written, such as an HTML tag, an entity like `&amp;`, 
 The details block keeps its place after the masthead on the extended page alone. Every line of it that is not blank is indented two spaces, as before, and a blank line is empty.
 
 - **Blank lines are the author's.** One blank line separates two blocks, anywhere in the details, exactly where the author separated them with one or more blank lines, and nowhere else. A block that starts right after another, such as a list under the paragraph that introduces it or code inside a list item, prints right after it. The details block has no blank line at its start or end. Details that renders no line, such as an empty fence, is omitted, as a block with nothing to show is.
-- **A paragraph** prints each of its lines as one page line. Nothing wraps, and help reads no terminal width.
+- **A paragraph** prints each of its lines as one page line off a terminal. On a terminal its lines join and wrap to the width, under [Help wraps to the destination's columns](#help-wraps-to-the-destinations-columns).
 - **A heading** prints its text alone on one line, at any level.
 - **Code** prints each of its lines indented two more spaces, without the fence lines. It drops the blank lines at its start and end, and code with no other line prints nothing.
 - **A thematic break** prints as written, without its indentation.
@@ -4670,6 +4672,116 @@ Markdown details are proven when public APIs alone produce these results under N
 - **Lines.** CRLF, CR, NEL, and LINE SEPARATOR read as line breaks; a tab in leading indentation and a tab after a list marker expand to the next multiple of four columns; whitespace at both ends and a final terminator are accepted; details of whitespace alone is a declaration fault at the call on `helpCommand` and on `manifestCommand`; details that renders no line prints no block, and the compact page prints no pointer for it when the Command has no examples; and no page line ends in whitespace.
 - **Compatibility.** jsonkit's root and textstat's root, whose details use no Markdown syntax, print their pages unchanged, and so does a multi-line details value with no Markdown syntax and no whitespace at either end of a line.
 - **Styles and escaping.** Exact themed bytes pin each style above: a plain paragraph line as one `primary` value, a heading, nested emphasis, a code span inside a heading and inside strong emphasis, a link inside emphasis with its destination, a link and an autolink that print an address alone, and the list and quote markers. Style-wire marker characters inside a heading, a code span, a code line, and a link destination print literally. With modifiers disabled, emphasis and headings carry no escape.
+
+#### Help wraps to the destination's columns
+
+```ts
+// No export changes. The default helpPage view reads its context's columns and lays the page
+// out with the context's wrap and expandTabs and core's pad, splitLines, and nowrap.
+import type { DeclaredView, ViewContext } from '@loomcli/core';
+import type { HelpPage } from '@loomcli/plugins/help/views';
+
+declare const helpPage: DeclaredView<HelpPage>;
+declare const context: ViewContext; // context.columns: number | undefined
+```
+
+On a 60-column terminal, `jsonkit --help` has this text with color and modifiers disabled:
+
+```text
+jsonkit · Read and reshape one JSON document.
+
+  With no subcommand, jsonkit summarizes the document and
+  its top-level keys.
+
+USAGE
+  jsonkit [options]
+  jsonkit <command> [options]
+
+DOCUMENT COMMANDS
+  READ
+    get    Read one value at a path.
+    keys   List the keys at a path.
+    fetch  Read one value at a path.  (deprecated: Use get
+           instead.)
+  RESHAPE
+    select  Keep the named fields of the document.
+
+COMMANDS
+  doctor                Check the host this application runs
+                        on.
+  completion <command>  Print or install a shell completion
+                        script.
+  mcp                   Serve this application's tools to an
+                        MCP client over stdin and stdout.
+  manpage <command>     Write or install the man pages.
+
+OPTIONS
+  -f, --file <path>      The document to read. Omit it to
+                         read piped text.  (file or piped
+                         stdin; - selects stdin, required)
+  -o, --format <format>  Select the output format, records
+                         by default. One of: records, json,
+                         jsonl.
+
+GLOBAL OPTIONS
+  -v, --verbose...  Name the document before reading it.
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
+
+EXAMPLES
+  $ jsonkit -f doc.json
+  $ jsonkit get user.name -f doc.json
+
+Run jsonkit <command> --help for command details.
+```
+
+At 30 columns the COMMANDS rows stack, because their indent, their left column, and their floor, `application's`, need 2 + 22 + 13 = 37 columns:
+
+```text
+COMMANDS
+  doctor
+      Check the host this
+      application runs on.
+  completion <command>
+      Print or install a shell
+      completion script.
+  mcp
+      Serve this application's
+      tools to an MCP client
+      over stdin and stdout.
+  manpage <command>
+      Write or install the man
+      pages.
+```
+
+[ADR-0087](decisions/0087-help-wraps-its-prose-to-the-destinations-columns-and-keeps-its-literals-whole.md) records the decision.
+
+- **Where it applies.** The page lays out against its view context's [`columns`](#width-padding-and-multiline-lanes), the effective width of stdout, where help prints. When `columns` is `undefined`, as on a pipe, a file, an invocation by name, and an MCP tool call, every page is byte for byte the page the rules above print, tabs included. `COLUMNS` narrows the page as it narrows every view. The compact and extended variants follow the same rules. Help wraps at `columns` itself, with no maximum line length of its own.
+- **What wraps.** Prose wraps: the masthead description, the message of the `Deprecated:` line under a masthead, every right cell, which is its description, its accepted-values sentence, and its fact parenthesis, read as one text, every Details block except code and a thematic break, each example note, and each hint.
+- **What stays whole.** Literals never wrap: USAGE forms, outer section titles and inner headings, left cells, Details code and thematic breaks, and example commands with their `$`. One wider than the space left for it overflows, and the terminal soft-wraps it. Inside prose, a Details code span and the command a hint names, such as `jsonkit <command> --help`, sit in [`nowrap`](#width-padding-and-multiline-lanes), so each stays on one line. A link's destination holds no space, so it stays whole as any word does.
+- **Breaking.** Every wrap is `context.wrap` at the width left for its text, under its rules: greedy, breaking at U+0020 spaces alone, keeping a word wider than the width whole. Before the view measures, wraps, or indents an authored fragment, it expands the fragment's tabs with `context.expandTabs`, so the page holds no tab. Where the width left for a text is less than one column, the text prints unwrapped.
+- **Hanging indents.** A continuation line starts where its text's first line starts. The masthead description continues under its first character, after `<path> · `, and the deprecation message under its first character, after `Deprecated: `. A right cell continues under the right cell's column, a list item under its text after the marker, as an authored continuation is indented, and a quote after the `> ` that starts each of its lines. An example note continues at the note's indent, and a hint at the left margin.
+- **Two columns.** The rows under one heading, an outer heading or an inner one, share a left column, as they do off a terminal. It keeps its width, the longest left cell under that heading plus two spaces, and each right cell wraps at `columns` minus the rows' indent and that width.
+- **Stacked rows.** The floor of a heading's rows is the widest unit `wrap` keeps whole in any of their right cells, measured as a [table](#table) column's floor is. When the rows' indent, their left column, and their floor together exceed `columns`, the rows under that heading stack. Each prints its left cell on its own line at the rows' indent and its right cell on the lines below, four columns further in, wrapped at what remains. A row with no right cell prints its left cell alone, and no blank line separates stacked rows. The rows under every other heading on the page keep two columns.
+- **Details reflow.** A paragraph's lines join with one space, Markdown's soft line break, and the joined text wraps at the width left after the block's indent and its containers' markers and prefixes. A paragraph in a list item or a quote does the same, and so does a heading. Inline constructs are still read per authored line under [Markdown inline text](#markdown-inline-text), so joining changes no styling. Code never reflows or wraps, a thematic break prints as written, and the blank lines between blocks stay the author's. Off a terminal, each authored line stays one page line.
+- **What does not change.** `HelpPage`, the view's identity, replacement, styles, escaping, and every content rule above stand, and no page line ends in whitespace. The pack exports no layout helper and no parser. The man page and the manifest are unchanged. The version line neither wraps nor reads the width.
+
+Compared with the page rules before this section, the changed rules are: on a terminal, prose wraps at `columns` with hanging indents, the rows under a heading that cannot fit stack, and Details paragraphs reflow at soft line breaks. Off a terminal, nothing changes.
+
+#### Help wrapping acceptance
+
+Help wrapping is proven when public APIs alone produce these results under Node and Bun, through fixtures whose host reports a fixed stdout width and an `env` with no `COLUMNS`:
+
+- **Example pages.** `jsonkit --help` at 60 columns prints the page above, and its COMMANDS rows at 30 columns print the stacked block above, byte for byte with color and modifiers disabled. `jsonkit -h`, `jsonkit get --help`, `jsonkit select --help`, and `textstat --help` each fit 40 and 60 columns. Every example page and every help golden that runs off a terminal is unchanged.
+- **Width.** A page at a width it already fits prints its rows as before. `COLUMNS=60` over a real width of 100 lays the page out at 60, `COLUMNS=150` over 100 lays it out at 100, and `COLUMNS=60` on a pipe changes nothing.
+- **Right cells.** A description, an accepted-values sentence, and a fact parenthesis wrap as one text under the right column, under an outer heading and under an inner heading, whose indent narrows its width. A row with no right cell carries no padding.
+- **Stacking.** A heading's rows stack exactly when their indent, left column, and floor exceed `columns`, and the rows under the next heading keep two columns. A stacked right cell wraps at the indent four columns past its left cell, and a right cell whose unit is wider than that space overflows on its own line.
+- **Literals.** A USAGE form, a left cell, a code block line, and an example command wider than `columns` print whole. A Details code span holding spaces, and a hint's command, never break. A link destination wider than the width keeps its own line.
+- **Details.** A paragraph authored across several lines joins and wraps at 40 columns and joins into one line at 200. A list item's continuation hangs after its marker, nested two levels, and a quote's continuation carries `> `. A heading wraps. Code keeps every line as written, and an emphasis pair on one authored line stays styled after the join. Off a terminal, each authored line stays one page line.
+- **Narrow and tabs.** At a width that leaves less than one column for a text, that text prints unwrapped. A tab inside a description, a Details paragraph, and a code line expands on a terminal, and stays a tab off one.
+- **Styles.** Exact themed bytes pin a wrapped right cell whose style spans the break, a wrapped fact parenthesis, a wrapped deprecation message, and a stacked row.
 
 ### Formatter
 
@@ -7025,7 +7137,7 @@ The style tests and packed consumers cover these obligations:
 - Marked lanes: `info`, `success`, `warn`, and `error` wrap a long message at `columns` minus the measured glyph gutter where `columns` is defined and leave it unwrapped when no column remains after the gutter, continuation lines carry the gutter, authored line breaks keep their gutter, and `print` does not wrap.
 - Golden fixtures that run without a terminal are byte for byte unchanged, for every lane, the table, the records view, and the lanes of an invocation by name.
 - The update notice: on an 80-column stderr terminal the notice wraps with the info lane's gutter on its continuation line, and on a pipe it stays one line.
-- Failure text: core's default text for each failure class stays one line per sentence on a terminal narrower than the sentence and on a pipe, and an override that calls `context.wrap` wraps its own text. A failure view override receives `columns`, `wrap`, and `expandTabs`. Help pages stay unwrapped and read no width.
+- Failure text: core's default text for each failure class stays one line per sentence on a terminal narrower than the sentence and on a pipe, and an override that calls `context.wrap` wraps its own text. A failure view override receives `columns`, `wrap`, and `expandTabs`. Help pages wrap under [Help wrapping acceptance](#help-wrapping-acceptance).
 - The Developer Diagnostic's explanation breaks at stderr's effective width with the same line breaker as `context.wrap`, and a word wider than that width keeps its own line. On a 100-column stderr terminal the banner fills 100 columns and the explanation wraps at 100, and under `COLUMNS=60` they fill 60. With no width, they use 80, and so does a stderr that is not a terminal even when a host override reports a width. An explanation with wide characters wraps by display width, not by string length.
 
 Process fixtures run on Node and Bun. Captured Windows facts test glyph selection; these fixtures do not certify native Windows support. Named-theme whole-token replacement belongs to [Loom theme acceptance](#loom-theme-acceptance). Fallback-option coverage belongs to [Fallback acceptance](#fallback-acceptance).
