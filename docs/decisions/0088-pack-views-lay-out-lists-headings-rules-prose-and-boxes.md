@@ -29,11 +29,11 @@ The pack ships five pack views, each at its own subpath, `@loomcli/plugins/list`
 
 ### A box frames text or a view
 
-`box<Data = string>(config?)` takes an optional `content` view and returns a view over that view's data. It calls the content's view function with a context that matches its own except for `columns`, which it narrows by its frame, so a framed table shrinks or falls back to the records layout inside the box. The content is called as given, so a declared view's override does not apply inside a box, the rule a bare view follows under `out.render`. The config type requires `content` whenever `Data` is not a string, so a text box cannot be declared on a result whose value is something else.
+`box<Data = string>(config?)` takes an optional `content` view and returns a view over that view's data. It calls the content's view function with a context that matches its own except for `columns`, which it narrows by its frame, so a framed table shrinks or falls back to the records layout inside the box. The content is called as given, so a declared view's override does not apply inside a box, the rule a bare view follows under `out.render`. The parameter type requires a configuration with `content` whenever `Data` is not a string, so a text box cannot be declared on a result whose value is something else.
 
 ### The width rule
 
-On a terminal, a list, a heading, prose, and a box's text wrap to `columns`, a box is as wide as its content and never wider than `columns`, and a rule spans `columns`. A unit `wrap` keeps whole, and a box's title, may overflow, as a records label may. Off a terminal nothing wraps, tabs stay as written except inside a box's padded lines, and nothing is cut. The rule draws 80 off a terminal: a length of the rule's own, not a fallback width in the view context, which ADR-0086 leaves to each view.
+On a terminal, a list, a heading, prose, and a box's text wrap to `columns`, a box is as wide as its content and never wider than `columns`, and a rule spans `columns`. A unit `wrap` keeps whole, a box's title, and a content view that ignores `columns` may overflow, as a records label may. Off a terminal nothing wraps, tabs stay as written except inside a box's padded lines, and nothing is cut. The rule draws 80 off a terminal: a length of the rule's own, not a fallback width in the view context, which ADR-0086 leaves to each view.
 
 ### Printed form
 
@@ -48,6 +48,13 @@ Structure is `dim`: markers, underlines, rules, and box borders. A bullet is `gl
 - **A general composition view.** Calling `out.render` several times in a row already composes a heading, a table, and a rule.
 - **A label-only rule off a terminal.** It is honest about the unknown width, but a log or a file loses the visual break. Rich draws 80 off a terminal, and so does the rule.
 - **Bold or copper level 1 headings, or an indented level 2.** Headings are wayfinding, so both stay `dim`, and an underline separates the levels by shape, which reads the same with color and bold off.
+
+## Consequences
+
+- An application imports each view from its own subpath, so it bundles only the views it names, and the pack has five more entry points to publish and lint.
+- The private `@loom/doctor` plugin depends on `@loomcli/plugins` to render its report, so the example that teaches plugin Commands also shows a plugin rendering through pack views.
+- An override of a declared view does not reach it inside a box, so an application that replaces a declared view and frames it renders the original inside the frame. Framing the replacement means passing the replacement's view as `content`.
+- Help keeps its own heading and list forms for its Details Markdown: a `-` bullet, numbers that do not right-align, and headings in `primary` and `bold`.
 
 ## Status
 
