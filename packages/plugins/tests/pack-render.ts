@@ -26,12 +26,36 @@ function run(input: PackInput): ReturnType<typeof invoke> {
   return invoke(fixture, [JSON.stringify(input)]);
 }
 
-/** What the pack-views fixture printed to stdout for one input, after it exited cleanly. */
+/**
+ * Splits the widths into runs of one kind, terminal or pipe, in order.
+ * Core captures `isTTY` once per run, so a pipe render needs a process of its own.
+ */
+function destinations(widths: readonly (number | null)[]): (number | null)[][] {
+  const groups: (number | null)[][] = [];
+  for (const width of widths) {
+    const last = groups.at(-1);
+    if (last !== undefined && (last[0] === null) === (width === null)) {
+      last.push(width);
+    } else {
+      groups.push([width]);
+    }
+  }
+  return groups;
+}
+
+/**
+ * What the pack-views fixture printed to stdout for one input, after it exited cleanly.
+ * Terminal renders and pipe renders run in separate processes, joined by the fixture's separator.
+ */
 function render(input: PackInput): string {
-  const result = run(input);
-  expect(result.stderr).toBe('');
-  expect(result.status).toBe(0);
-  return result.stdout;
+  return destinations(input.widths)
+    .map((widths) => {
+      const result = run({ ...input, widths });
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      return result.stdout;
+    })
+    .join('--\n');
 }
 
 export { render, run };
