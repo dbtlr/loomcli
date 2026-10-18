@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0087 - Help wraps its prose to the destination's columns and keeps its literals whole
-description: On a terminal, the help page wraps its prose at the full columns of its view context with hanging indents, keeps usage, option spellings, code, and examples whole, stacks the rows under a heading whose right cells cannot fit, and reflows Details paragraphs at Markdown's soft line breaks. Off a terminal, every page keeps its bytes. This supersedes ADR-0077's clause that help neither wraps nor reads the terminal width.
+description: On a terminal, the help page wraps its prose at the full columns of its view context with hanging indents, keeps usage forms, left cells, code, and example commands whole, stacks the rows under a heading whose right cells cannot fit, and reflows Details paragraphs at Markdown's soft line breaks. Off a terminal, every page keeps its bytes. This supersedes ADR-0077's clause that help neither wraps nor reads the terminal width.
 status: proposed
 created: 2026-10-18
 modified: 2026-10-18
@@ -23,8 +23,8 @@ Some text on the page is copied or read as syntax rather than read as prose: a u
 - **The full width, with no cap.** Help wraps at `columns` itself. It adds no maximum line length such as clap's 100 or click's 80, so help follows the one width rule every Loom view follows, and an operator who wants narrower help sets `COLUMNS`.
 - **Prose wraps, and literals stay whole.** The masthead description, the deprecation message under a masthead, every right cell, Details paragraphs, headings, list items, and quotes, example notes, and hints wrap. Usage forms, section titles, inner headings, left cells, Details code and thematic breaks, and example commands never wrap, and one wider than its space overflows for the terminal to soft-wrap. Inside prose, a Details code span and the command a hint names sit in `nowrap`, so each stays on one line.
 - **Hanging indents.** Each continuation line starts where its text's first line started: a right cell under the right cell's column, the masthead description after `<path> · `, a list item after its marker, a quote after its `> `, and a hint at the left margin.
-- **Rows that cannot fit stack.** The rows under one heading, outer or inner, keep their shared left column. Their floor is the widest unit `wrap` keeps whole in any of their right cells, as a table column's floor is. When their indent, left column, and floor together exceed `columns`, the rows under that heading stack: each left cell prints on its own line and its right cell wraps on the lines below, four columns further in. The rows under every other heading keep two columns.
-- **Details reflow at soft line breaks.** On a terminal, the lines of a Details paragraph join with one space, which is what Markdown's soft line break means, and the joined text wraps to the width. List items, quotes, and headings do the same. Code never reflows. Inline constructs still read per authored line, so joining changes no styling. No hard-break syntax joins the subset, and the subset can still grow under ADR-0077's rule. Off a terminal, each authored line stays one page line.
+- **Rows that cannot fit stack.** The rows that share a left column, an outer heading's direct rows or one inner heading's rows, keep it. Their floor is the widest unit `wrap` keeps whole in any of their right cells, as a table column's floor is. When their indent, left column, and floor together exceed `columns`, the rows under that heading stack: each left cell prints on its own line and its right cell wraps on the lines below, four columns further in. The rows under every other heading keep two columns.
+- **Details reflow at soft line breaks.** On a terminal, the lines of a Details paragraph join with one space, which is what Markdown's soft line break means, and the joined text wraps to the width. List items, quotes, and a heading, which is one line, wraps as a paragraph does. Code never reflows. Inline constructs still read per authored line, so joining changes no styling. No hard-break syntax joins the subset, and the subset can still grow under ADR-0077's rule. Off a terminal, each authored line stays one page line.
 - **The rest of the page stands.** `HelpPage`, the view's identity, its replacement, its styles, its escaping, and every content rule are unchanged. The pack exports no layout helper and no parser. The version line neither wraps nor reads the width.
 
 The contract and its acceptance are in [Help wraps to the destination's columns](../core.md#help-wraps-to-the-destinations-columns).
@@ -50,7 +50,7 @@ This supersedes ADR-0077's clause that the page neither wraps nor reads the term
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships help wrapping. Tests prove the two-column wrap, the stacked group, Details reflow, the literals kept whole, and unchanged bytes off a terminal under Node and Bun.
+Proposed. It moves to accepted with the release that ships help wrapping. Tests prove the two-column wrap, the stacked rows, Details reflow, the literals kept whole, and unchanged bytes off a terminal under Node and Bun.
 
 ## Changelog
 
