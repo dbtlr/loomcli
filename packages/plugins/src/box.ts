@@ -1,9 +1,10 @@
 import { glyph, pad, splitLines } from '@loomcli/core';
 import type { View, ViewContext } from '@loomcli/core';
 
+import { NARROWEST, blank, terminalWrap } from './text-lines.js';
+
 /** The columns a frame takes from a line: a border and a space on each side. */
 const FRAME = 4;
-const NARROWEST = 1;
 const NO_TITLE = 0;
 /** The columns beside a content line's width that run between the corners: one space each side. */
 const SIDES = 2;
@@ -18,27 +19,25 @@ type BoxConfig<Data> = { readonly title?: string } & ([Data] extends [string]
 
 /**
  * The text a box with no content frames. On a terminal its tabs expand and it wraps at the columns
- * the box offers. A box takes no content only when its data is a string, so other data frames
- * nothing.
+ * the box offers. A box takes no content only when its data is a string, so other data fails the
+ * render with core's own sentence for a style helper handed something else.
  */
 const framedText: View<unknown> = {
   render: (data, context) => {
     if (typeof data !== 'string') {
-      return '';
+      throw new TypeError('Style helpers require a string.');
     }
-    return context.columns === undefined
-      ? data
-      : context.wrap(context.expandTabs(data), context.columns);
+    return terminalWrap(data, context, context.columns);
   },
 };
 
 /** The context a box hands its content: its own, with `columns` narrowed by the frame. */
 function innerContext(context: ViewContext): ViewContext {
   const { columns } = context;
-  return {
+  return Object.freeze({
     ...context,
     columns: columns === undefined ? undefined : Math.max(NARROWEST, columns - FRAME),
-  };
+  });
 }
 
 /** The top border, which carries the title, when there is one, styled `primary` and `bold`. */
@@ -67,11 +66,12 @@ function framed(
   rendered: string,
   { context, title }: { context: ViewContext; title: string | undefined },
 ): string {
-  const lines = splitLines(context.columns === undefined ? rendered : context.expandTabs(rendered));
-  let inner = title === undefined ? NO_TITLE : context.width(title) + TITLE_ROOM;
-  for (const line of lines) {
-    inner = Math.max(inner, context.width(line));
-  }
+  const laid = terminalWrap(rendered, context, undefined);
+  const lines = splitLines(laid);
+  const inner = Math.max(
+    title === undefined ? NO_TITLE : context.width(title) + TITLE_ROOM,
+    context.width(laid),
+  );
   const { dim } = context.style;
   const side = dim(glyph.lineVertical);
   const bottom = dim(
@@ -88,8 +88,9 @@ function framed(
  * A view that frames text, or the output of another view, in a rounded border with an optional
  * title in its top border. With no `content` it frames its text, wrapped on a terminal at
  * `columns` less the frame. With `content` it renders the content with `columns` narrowed by the
- * frame, so a framed table shrinks to fit inside it. The returned value is a bare pack view and
- * installs no plugin behavior.
+ * frame, so a framed table shrinks to fit inside it. Text, or content, that resolves to no
+ * character prints nothing. The returned value is a bare pack view and installs no plugin
+ * behavior.
  */
 function box<Data = string>(
   ...config: [Data] extends [string] ? [config?: BoxConfig<Data>] : [config: BoxConfig<Data>]
@@ -100,7 +101,7 @@ function box<Data = string>(
   return {
     render: (data, context) => {
       const rendered = content.render(data, innerContext(context));
-      return rendered === '' ? '' : framed(rendered, { context, title });
+      return blank(rendered, context) ? '' : framed(rendered, { context, title });
     },
   };
 }

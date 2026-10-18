@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { lines } from './fit-render.js';
-import { render } from './pack-render.js';
+import { render, run } from './pack-render.js';
 
 const line = '─';
 const passed = 'All three services passed their health checks.';
@@ -87,8 +87,15 @@ test.each([60, null])('a box frames a table, at %s columns', (width) => {
 
 test('a boxed table renders as the default view of a declared rows result', () => {
   const config = { content: { table: {} }, title: 'Pools' };
-  const output = render({ config, data: pools, declared: true, view: 'box', widths: [60] });
-  expect(output.split('\n')[0]).toBe('╭─ Pools ───────────────────╮');
+  expect(render({ config, data: pools, declared: true, view: 'box', widths: [60] })).toBe(
+    lines(
+      '╭─ Pools ───────────────────╮',
+      '│ pool   instances  status  │',
+      '│ blue   4          ready   │',
+      '│ green  4          warming │',
+      '╰───────────────────────────╯',
+    ),
+  );
 });
 
 test('a framed table shrinks to the columns the box leaves it', () => {
@@ -149,4 +156,49 @@ test('a text box over the empty string and a box whose content renders nothing p
   expect(render({ data: '', view: 'box', widths: [30, null] })).toBe(lines('--'));
   const config = { content: { table: {} } };
   expect(render({ config, data: [], view: 'box', widths: [30, null] })).toBe(lines('--'));
+});
+
+test.each(['@@red-empty@@', '@@nowrap-empty@@'])(
+  'a text box over %s, which resolves to no character, prints nothing',
+  (data) => {
+    expect(render({ data, view: 'box', widths: [30, null] })).toBe(lines('--'));
+  },
+);
+
+test('a box whose content renders a text that resolves to no character prints nothing', () => {
+  const config = { content: 'prose' };
+  expect(render({ config, data: '@@red-empty@@', view: 'box', widths: [30, null] })).toBe(
+    lines('--'),
+  );
+});
+
+test('a text box over a value that is not a string fails the run the ordinary way', () => {
+  const input = {
+    config: { title: 'Value' },
+    data: 5,
+    declared: true,
+    view: 'box',
+    widths: [40],
+  } as const;
+  expect(run(input)).toEqual({
+    status: 1,
+    stderr: 'pack-views: Something went wrong.\n',
+    stdout: '',
+  });
+  expect(run({ ...input, build: 'development' }).stderr).toContain(
+    '\n\nStyle helpers require a string.\n',
+  );
+});
+
+test('a box styles its borders dim and its title primary and bold', () => {
+  const rendering = { color: 'always', modifiers: 'always' } as const;
+  const config = { title: 'T' };
+  expect(render({ config, data: 'Hi', rendering, theme: true, view: 'box', widths: [40] })).toBe(
+    [
+      '\u001B[90m╭─ \u001B[36;1mT\u001B[90;22m ─╮\u001B[39m',
+      '\u001B[90m│\u001B[39m Hi  \u001B[90m│\u001B[39m',
+      '\u001B[90m╰─────╯\u001B[39m',
+      '',
+    ].join('\n'),
+  );
 });

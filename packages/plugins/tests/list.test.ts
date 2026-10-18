@@ -102,6 +102,17 @@ test('a tab in an item expands on a terminal and is kept when piped', () => {
   );
 });
 
+test('a list styles its markers dim and a default item primary', () => {
+  const rendering = { color: 'always', modifiers: 'always' } as const;
+  expect(render({ data: ['a', null], rendering, theme: true, view: 'list', widths: [40] })).toBe(
+    '\u001B[90m●\u001B[39m \u001B[36ma\u001B[39m\n\u001B[90m●\u001B[39m\n',
+  );
+  const config = { ordered: true };
+  expect(render({ config, data: ['a'], rendering, theme: true, view: 'list', widths: [40] })).toBe(
+    '\u001B[90m1.\u001B[39m \u001B[36ma\u001B[39m\n',
+  );
+});
+
 test('an empty sequence prints nothing, on a terminal and piped', () => {
   expect(render({ data: [], view: 'list', widths: [30, null] })).toBe(lines('--'));
 });

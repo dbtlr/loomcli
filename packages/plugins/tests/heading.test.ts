@@ -56,3 +56,18 @@ test('a heading that ends in a line break gains no empty line, and the empty str
   );
   expect(render({ data: '', view: 'heading', widths: [40, null] })).toBe(lines('--'));
 });
+
+test.each(['@@red-empty@@', '@@nowrap-empty@@'])(
+  'a heading over %s, which resolves to no character, prints nothing',
+  (data) => {
+    expect(render({ data, view: 'heading', widths: [30, null] })).toBe(lines('--'));
+  },
+);
+
+test('a heading styles its text and underline dim and keeps its author styling', () => {
+  const data = 'Hi ["style",[["foreground","red"]]]there';
+  const rendering = { color: 'always', modifiers: 'always' } as const;
+  expect(render({ data, rendering, theme: true, view: 'heading', widths: [40] })).toBe(
+    '\u001B[90mHi \u001B[31mthere\u001B[39m\n\u001B[90m────────\u001B[39m\n',
+  );
+});

@@ -55,6 +55,28 @@ test('a blank line inside a label carries no indent and stays empty, on a termin
   );
 });
 
+test.each(['@@red-empty@@', '@@nowrap-empty@@'])(
+  'a rule over %s, which resolves to no character, draws a bare line',
+  (data) => {
+    expect(render({ data, view: 'rule', widths: [30, null] })).toBe(
+      lines(line.repeat(30), '--', line.repeat(80)),
+    );
+  },
+);
+
+test('a blank last label line carries the line after it', () => {
+  expect(render({ data: 'a\n\n', view: 'rule', widths: [20] })).toBe(
+    lines('── a', `    ${line.repeat(16)}`),
+  );
+});
+
+test('a rule styles its lines dim and adds no style to its label', () => {
+  const rendering = { color: 'always', modifiers: 'always' } as const;
+  expect(render({ data: 'Hi', rendering, theme: true, view: 'rule', widths: [12] })).toBe(
+    '\u001B[90m── \u001B[39mHi\u001B[90m ──────\u001B[39m\n',
+  );
+});
+
 test('an invocation by name has no width, so the rule draws 80', () => {
   expect(render({ data: 'Checks', invoke: true, view: 'rule', widths: [null] })).toBe(
     lines(`── Checks ${line.repeat(70)}`),

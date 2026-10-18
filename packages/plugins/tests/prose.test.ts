@@ -51,6 +51,21 @@ test.each(['Done.', 'Done.\n'])('the text %j ends in exactly one line break', (d
   expect(render({ data, view: 'prose', widths: [30, null] })).toBe(lines('Done.', '--', 'Done.'));
 });
 
+test.each(['@@red-empty@@', '@@nowrap-empty@@'])(
+  'prose over %s, which resolves to no character, prints nothing',
+  (data) => {
+    expect(render({ data, view: 'prose', widths: [30, null] })).toBe(lines('--'));
+  },
+);
+
+test('prose adds no styling and keeps its author styling', () => {
+  const data = '["style",[["foreground","red"]]]Hi there';
+  const rendering = { color: 'always', modifiers: 'always' } as const;
+  expect(render({ data, rendering, theme: true, view: 'prose', widths: [40] })).toBe(
+    '\u001B[31mHi\u001B[39m there\n',
+  );
+});
+
 test('the empty string prints nothing', () => {
   expect(render({ data: '', view: 'prose', widths: [30, null] })).toBe(lines('--'));
 });
