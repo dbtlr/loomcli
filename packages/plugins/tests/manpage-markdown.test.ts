@@ -18,6 +18,21 @@ test.each<[string, string[], string[]]>([
     ['intro', '| a | b |', '| c | d |', 'after', '.PP', '| e |', bullet, 'item', '| f |'],
   ],
   [
+    'a line indented four spaces directly after table rows is paragraph text, which man fills',
+    ['Para.', '| a | b |', '    indented line after rows'],
+    ['Para.', '| a | b |', 'indented line after rows'],
+  ],
+  [
+    'a line indented four spaces directly after table rows that open details is paragraph text',
+    ['| a | b |', '    indented line after rows'],
+    ['| a | b |', 'indented line after rows'],
+  ],
+  [
+    'a line indented four spaces past an item directly after its table rows is paragraph text',
+    ['- item', '  | a | b |', '      deeper line'],
+    [bullet, 'item', '| a | b |', 'deeper line'],
+  ],
+  [
     'a heading at the top level is .SS with its inline constructs as plain text, and opens no .PP after it',
     ['intro', '', '# Read `x` *now* [here](https://x.org)', '', 'text'],
     ['intro', '.SS "Read x now here <https://x.org>"', 'text'],

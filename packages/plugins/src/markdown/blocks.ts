@@ -452,12 +452,21 @@ function followingItem(lines: readonly string[], start: number, identity: ListMa
     : undefined;
 }
 
-/** Reads code before all other markers, without interpreting its authored contents. */
-function codeBlock(lines: readonly string[], start: number): Parsed | undefined {
+/**
+ * Reads code before all other markers, without interpreting its authored contents. Indented code
+ * does not open directly after table rows: that line reads as paragraph text, as it did when the
+ * rows were paragraph text it continued.
+ */
+function codeBlock(
+  lines: readonly string[],
+  start: number,
+  afterRows: boolean,
+): Parsed | undefined {
   const line = lines[start] ?? '';
   const opening = fence(line);
   const content = opening === undefined ? undefined : fenced(lines, start, opening);
-  const code = content ?? (indentation(line) >= codeIndent ? indented(lines, start) : undefined);
+  const opensIndented = !afterRows && indentation(line) >= codeIndent;
+  const code = content ?? (opensIndented ? indented(lines, start) : undefined);
   return code === undefined
     ? undefined
     : { block: { kind: 'code', lines: code.lines }, index: code.index };
@@ -535,9 +544,9 @@ function paragraphBlock(lines: readonly string[], start: number): Parsed {
 }
 
 /** Marker precedence is shared by every nested container. */
-function blockAt(lines: readonly string[], start: number): Parsed {
+function blockAt(lines: readonly string[], start: number, afterRows: boolean): Parsed {
   return (
-    codeBlock(lines, start) ??
+    codeBlock(lines, start, afterRows) ??
     headingBlock(lines, start) ??
     quoteBlock(lines, start) ??
     breakBlock(lines, start) ??
@@ -556,7 +565,11 @@ function parseBlocks(lines: readonly string[]): Block[] {
     if (start >= lines.length) {
       break;
     }
-    const parsed = blockAt(lines, start);
+    const parsed = blockAt(
+      lines,
+      start,
+      start === index && blocks.at(lastElementOffset)?.kind === 'table',
+    );
     blocks.push({ blankBefore: start > index, ...parsed.block });
     index = parsed.index;
   }

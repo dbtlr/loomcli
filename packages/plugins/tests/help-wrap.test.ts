@@ -558,6 +558,23 @@ test('table rows print one page line per authored line off a terminal, read inli
   expect(blocks(stdout)[1]).toEqual(['  | `a b` | \u001b[3mx\u001b[23m |', '  | c | d |']);
 });
 
+test('a line indented four spaces directly after table rows reads as paragraph text, not code', () => {
+  expect(detailsAt('Para.\n| a | b |\n    indented line after rows', null)).toEqual([
+    '  Para.',
+    '  | a | b |',
+    '  indented line after rows',
+  ]);
+  expect(detailsAt('| a | b |\n    indented line after rows', null)).toEqual([
+    '  | a | b |',
+    '  indented line after rows',
+  ]);
+  expect(detailsAt('- item\n  | a | b |\n      deeper line', null)).toEqual([
+    '  - item',
+    '    | a | b |',
+    '    deeper line',
+  ]);
+});
+
 test('a masthead description and a deprecation continue at indent 2 when their hang cannot fit', () => {
   const app = {
     commands: [
