@@ -10,6 +10,7 @@
     }
   },
   "dependencies": {
-    "@loomcli/core": "workspace:*"
+    "@loomcli/core": "workspace:*",
+    "@loomcli/plugins": "workspace:*"
   }
 }

@@ -6,11 +6,24 @@ import { main } from './documents.js';
 
 // The private @loom/doctor plugin attaches one ordinary Command to the root, ahead of jsonkit's own.
 
+/** The report doctor prints off a terminal, through the pack's heading, list, rule, and box. */
+const pipedReport = [
+  'Host checks',
+  '───────────',
+  `● Platform: ${process.platform}`,
+  '● Output: not a terminal',
+  '─'.repeat(80),
+  '╭─ Result ───────────╮',
+  '│ All checks passed. │',
+  '╰────────────────────╯',
+  '',
+].join('\n');
+
 test('jsonkit doctor routes to the plugin Command and runs its action', () => {
   expect(invoke(main, ['doctor'])).toEqual({
     status: 0,
     stderr: '',
-    stdout: 'All checks passed.\n',
+    stdout: pipedReport,
   });
 });
 
@@ -18,7 +31,7 @@ test('jsonkit doctor runs at a terminal, because only the document Commands need
   expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal-doctor'])).toEqual({
     status: 0,
     stderr: '',
-    stdout: 'All checks passed.\n',
+    stdout: pipedReport,
   });
 });
 
