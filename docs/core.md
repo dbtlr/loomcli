@@ -2827,7 +2827,7 @@ import { table } from '@loomcli/plugins/table';
 });
 ```
 
-A pack view is a configured factory, and what it returns is a bare view: it carries no identity, nothing replaces it by reference, and two calls with one configuration are two views. Its configuration is typed from the row type. When the factory call is written inside a `views` record, the row type flows in by contextual typing and a column that names a field the rows do not carry is a compile error on that string. As the second argument of `out.render` the call's row type is inferred from the iterable and does not flow into the factory's configuration, so there, as in a call hoisted into its own constant, the factory states its row type, `table<Row>({…})`, or its cell callbacks go unchecked. A `columns` or `fields` list is an ordered list whose entries are a bare key or an object with `key` and the entry's own optional fields, where a bare key is `{ key }`, the list order is the column order, a key may appear twice, and `format` is a function that renders one cell. When the list is omitted every own key that appears in the rows is a column or a field in first-seen order and cells stringify with `String(value)`, and each factory's own section states what it writes over an empty sequence. A factory's return type names one shape, never a union of the two, so its value reaches both `out.render` overloads and a `views` record alike. A factory's configuration is plain data the view it returns holds, and no factory publishes it: core sees a bare view and has nothing to key such a fact on, and an application changes a result's layout by naming another view rather than by reaching for the one it has. Each factory's full configuration is its own contract: [Table](#table) states the table's, a whole view that measures every row, and [Records](#records) states the records list's, a row view that writes each record as it arrives.
+A pack view is a configured factory, and what it returns is a bare view: it carries no identity, nothing replaces it by reference, and two calls with one configuration are two views. Its configuration is typed from the row type. When the factory call is written inside a `views` record, the row type flows in by contextual typing and a column that names a field the rows do not carry is a compile error on that string. As the second argument of `out.render` the call's row type is inferred from the iterable and does not flow into the factory's configuration, so there, as in a call hoisted into its own constant, the factory states its row type, `table<Row>({…})`, or its cell callbacks go unchecked. A `columns` or `fields` list is an ordered list whose entries are a bare key or an object with `key` and the entry's own optional fields, where a bare key is `{ key }`, the list order is the column order, a key may appear twice, and `format` is a function that renders one cell. When the list is omitted every own key that appears in the rows is a column or a field in first-seen order and cells stringify with `String(value)`, and each factory's own section states what it writes over an empty sequence. A factory's return type names one shape, never a union of the two, so its value reaches both `out.render` overloads and a `views` record alike. A factory's configuration is plain data the view it returns holds, and no factory publishes it: core sees a bare view and has nothing to key such a fact on, and an application changes a result's layout by naming another view rather than by reaching for the one it has. Each factory's full configuration is its own contract: [Table](#table) states the table's, a whole view that measures every row, [Records](#records) states the records list's, a row view that writes each record as it arrives, and [List](#list) states the list's, a whole view that aligns its ordered markers. The heading, the rule, prose, and the box are [views over a string](#views-over-a-string), configured the same way and typed from the string they render or, for a box that frames another view, from that view's data.
 
 #### Declaring a result
 
@@ -3259,10 +3259,21 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
 import { Command, plugin } from '@loomcli/core';
 import type { Plugin } from '@loomcli/core';
 
+import { box } from '@loomcli/plugins/box';
+import { heading } from '@loomcli/plugins/heading';
+import { list } from '@loomcli/plugins/list';
+import { rule } from '@loomcli/plugins/rule';
+
 import { packageName } from './constants.js';
 
 const doctorCommand = new Command('doctor', { description: 'Check the host this application runs on.' }).action(
-  ({ out }) => out.print('All checks passed.'),
+  async ({ host, out }) => {
+    const output = host.terminal.stdout.isTTY ? 'a terminal' : 'not a terminal';
+    await out.render('Host checks', heading());
+    await out.render([`Platform: ${host.platform}`, `Output: ${output}`], list<string>());
+    await out.render('', rule());
+    await out.render('All checks passed.', box({ title: 'Result' }));
+  },
 );
 
 export function doctor(): Plugin {
@@ -3918,7 +3929,7 @@ The plugin increment is proven when both example applications install a plugin t
 
 ## First-party plugins
 
-`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${packageName}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [dotenv](#dotenv), [completion](#completion), [suggestions](#suggestions), [MCP](#mcp), the [logging plugin](#logging-plugin), [self-update](#self-update), the [service plugin](#service), the [skills plugin](#skills), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table` and `records` pack views of [Table](#table) and [Records](#records).
+`@loomcli/plugins` is the plugin pack: the one first-party package that ships every first-party plugin as its own subpath export, `@loomcli/plugins/<plugin>`. Each one is an ordinary plugin under the [contract above](#plugins): an entry module with the annotated factory at the subpath and the exported options type when it declares options, an extension module of declarations alone at `<subpath>/extension` when the plugin defines facts, a views module at `<subpath>/views` when it declares views, a middleware module the entry loads lazily when the plugin acts on an invocation, and a source module the entry loads lazily through `source.load` when the plugin declares a configuration source. A plugin's identity is `${packageName}/<plugin>`, the convention for a package that ships several, so the help plugin is `@loomcli/plugins/help` and its descriptors are `@loomcli/plugins/help/command` and `@loomcli/plugins/help/input`. A subpath imports nothing from a sibling subpath except the sibling's declarations module at `<subpath>/extension`, which it imports to supply values to a [collecting extension](#collecting-extensions) the sibling declares; it never imports a sibling's entry, middleware, or views module. The package has no root export, so an application that installs one plugin bundles one, plus the declarations of any collecting extension that plugin supplies, and importing the package installs nothing. The package lives at `packages/plugins` and is released at the one synchronized version every first-party library shares. The pack ships help, version, the formatter, the [manifest](#manifest), the [configuration plugin](#configuration), [dotenv](#dotenv), [completion](#completion), [suggestions](#suggestions), [MCP](#mcp), the [logging plugin](#logging-plugin), [self-update](#self-update), the [service plugin](#service), the [skills plugin](#skills), the bare `theme(mapping)` factory of [Theme plugins and typed names](#theme-plugins-and-typed-names), and the `table`, `records`, `list`, `heading`, `rule`, `prose`, and `box` pack views of [Table](#table), [Records](#records), [List](#list), and [Views over a string](#views-over-a-string).
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -5047,6 +5058,236 @@ The fit is proven under Node and Bun with a host override of plain numbers for t
 - **Tabs.** At 16 columns a table with cells `abcde` and `b\tc d` prints `abcde  b       c` and then `       d`, a records value `b\tc` under the key `first` prints `first  b       c`, and a header holding a tab expands as a cell does, so no line passes 16 columns and none holds a tab. A tab in a styled cell expands inside its style, and a tab in a `nowrap` cell expands while the cell stays whole. Piped, the table and the records value keep the tab.
 - **Embedded ANSI.** A `format` cell holding an OSC 8 hyperlink, wrapped at 20 columns beside an `owner` column, closes the link at the end of each line, so the link covers neither the gap nor `drew`, and a cell holding a raw SGR color colors no neighbor. A records value holding either wraps with a continuation indent that carries no link and no color. The views split each wrapped value with `splitLines`.
 - **Piped output.** A table and a records view rendered to a pipe, under `app.invoke`, and under an MCP tool call are byte for byte the natural-width output, `COLUMNS` set or not. This holds for a `format` cell that returns several lines, a records value with authored line breaks, and a cell or value holding a tab, because the per-line row layout and tab expansion apply only when `columns` is defined.
+
+### List
+
+The list is `@loomcli/plugins/list`. Its factory `list<Item>(config?)` returns a whole view over the collected items, `View<readonly Item[]>`, so the same value reaches a `views` record under `rows<Item>` and the second argument of `out.render`. Like the table it installs nothing and returns a bare pack view under [Row views](#row-views). It is a whole view because an ordered list right-aligns its numbers against the widest one among its siblings, which a row view cannot know, so a sequence rendered through it is buffered whatever its source. It takes one reading of the context's [`columns`](#width-padding-and-multiline-lanes) for the whole render. [ADR-0088](decisions/0088-pack-views-lay-out-lists-headings-rules-prose-and-boxes.md) records the list.
+
+```ts
+// @loomcli/plugins/list
+function list<Item>(config?: ListConfig<Item>): View<readonly Item[]>;
+
+interface ListConfig<Item> {
+  ordered?: boolean;
+  format?: (item: Item, index: number, context: ViewContext) => string;
+  children?: (item: Item) => readonly Item[] | undefined;
+}
+```
+
+```ts
+import { Command } from '@loomcli/core';
+import { list } from '@loomcli/plugins/list';
+
+import { listServices } from '../actions/list-services.js';
+
+interface Service {
+  name: string;
+  parts?: readonly Service[];
+}
+
+export const services = new Command('services')
+  .rows<Service>({
+    views: { list: list({ children: (service) => service.parts, format: (service) => service.name }) },
+  })
+  .action(listServices);
+```
+
+```text
+● api-gateway
+● billing
+  ● invoices
+  ● refunds
+● search
+```
+
+- **Configuration.** `ordered` numbers the items, and an omitted or `false` `ordered` gives them bullets. `format` renders one item's text from the item, its index among its siblings counting from 0, and the context. `children` names an item's nested items, and an item whose `children` returns `undefined` or an empty list has none. Every key is optional, so `list()` over `string[]` needs no configuration. The configuration is plain data the returned view holds, under [Row views](#row-views).
+- **Form.** One block per item in source order: the marker, one space, then the item's text, then its nested items. A bullet is `glyph.bullet`. An ordered marker is the item's position among its siblings counting from 1 and a `.`, right-aligned with `pad` to the widest marker among those siblings, so `9.` sits under `10.` as ` 9.`. Markers are `dim`. A nested list starts at its parent's text column, so it indents by the parent's marker width and one space, and a nested ordered list counts from 1 again. `ordered` applies at every depth. No blank line separates two items. Every line ends with `\n`, and the view owns every newline it writes.
+- **Text.** A default item's text is `String(item)` passed through `style.escape` and styled `primary`, and `null` and `undefined` print as the empty string, the table's cell rule. A `format` result replaces the default and is marked text its author owns, which the view neither escapes nor styles.
+- **Continuation lines.** Every line of an item's text after its first, authored or wrapped, starts at the item's text column, so it hangs under the text and not under the marker, on a terminal and off one. A blank line inside an item's text, one that resolves to no character, carries no indent and stays empty, the records rule.
+- **Wrapping.** On a terminal each item's text expands its tabs with [`expandTabs`](#width-padding-and-multiline-lanes), counted from the start of each input line of the text, then wraps with [`wrap`'s rules](#width-padding-and-multiline-lanes) at `columns` minus its text column, and at 1 when that leaves less, and each line is split with `splitLines`, so a style or a hyperlink never runs into the indent. A unit `wrap` keeps whole stays whole and overflows. Off a terminal, with `columns` undefined, the text is not wrapped and its tabs stay as written. At 30 columns a bulleted item whose text is long renders as:
+
+  ```text
+  ● refunds, whose retry policy
+    lands with this deploy
+  ```
+
+- **Empty.** An empty sequence prints nothing.
+- **Typing.** `format` and `children` are typed from `Item`. The contextual-typing rule is the table's: inside a `views` record the item type flows in, and hoisted or written as the second argument of `out.render` the factory states it, `list<Service>({…})`, or its callbacks go unchecked.
+
+### Views over a string
+
+The heading, the rule, prose, and the box are views over a string: each factory returns `View<string>`, so an action writes `out.render(text, prose())`, and a `result<string>()` names one in its `views` record. A box that frames another view takes that view's data type instead, under [Box](#box). Like the table each installs nothing and returns a bare pack view, and each takes one reading of the context's [`columns`](#width-padding-and-multiline-lanes) per render. [ADR-0088](decisions/0088-pack-views-lay-out-lists-headings-rules-prose-and-boxes.md) records the four.
+
+- **Marked text.** The string is marked text its author owns, as a [lane view](#output-and-failures)'s message is, so a styled word inside it keeps its style and the view does not escape it. Raw data goes through `style.escape` first, the rule of [Rendered output](#rendered-output).
+- **Lines.** Each view writes whole lines: every line it writes ends with `\n`, a text that ends in a line break gains no empty line, and the view owns every newline it writes. No view writes a blank line above or below itself, so the spacing between two renders is the action's.
+- **Empty.** The empty string renders the empty string, except under the rule, where it draws a bare line.
+- **Off a terminal.** With `columns` undefined nothing wraps, tabs stay as written except where a box pads a line, and nothing is cut. Only the rule needs a width there, under [Rule](#rule).
+
+### Heading
+
+The heading is `@loomcli/plugins/heading`. Its factory `heading(config?)` returns `View<string>`, a section heading over its text at one of two levels, the two levels the [help page](#the-help-page) shows. The heading is wayfinding, not content, so both levels are `dim`, and an underline tells level 1 from level 2.
+
+```ts
+// @loomcli/plugins/heading
+function heading(config?: HeadingConfig): View<string>;
+
+interface HeadingConfig {
+  level?: 1 | 2;
+}
+```
+
+```ts
+import { heading } from '@loomcli/plugins/heading';
+
+await out.render('Deployment summary', heading());
+await out.render('Services', heading({ level: 2 }));
+```
+
+```text
+Deployment summary
+──────────────────
+Services
+```
+
+- **Configuration.** `level` defaults to 1.
+- **Form.** The text, styled `dim`, then, at level 1, one line of `glyph.line` as wide as the widest line of the text, measured with `context.width`, also `dim`. Level 2 is the text alone. Neither level indents, and the text keeps its author's styling inside the `dim` frame.
+- **Wrapping.** On a terminal the text expands its tabs, wraps at `columns`, and is split with `splitLines`, and the underline matches the widest wrapped line, so it is wider than `columns` only when a unit `wrap` keeps whole is. Off a terminal the text is not wrapped, and the underline matches its widest line as written.
+
+### Rule
+
+The rule is `@loomcli/plugins/rule`. Its factory `rule()` returns `View<string>`, a horizontal line across the destination that carries its text as a label, so `out.render('', rule())` draws a bare line and `out.render('Checks', rule())` a labelled one.
+
+```ts
+// @loomcli/plugins/rule
+function rule(): View<string>;
+```
+
+```ts
+import { rule } from '@loomcli/plugins/rule';
+
+await out.render('Checks', rule());
+await out.render('', rule());
+```
+
+At 60 columns they print:
+
+```text
+── Checks ──────────────────────────────────────────────────
+────────────────────────────────────────────────────────────
+```
+
+- **Width.** The rule is `columns` wide on a terminal and 80 wide off one. The 80 is the rule's own length, the one view whose form needs a width where none is known, and the context still carries no fallback width under [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes).
+- **Bare.** The empty string draws `glyph.line` repeated to the rule's width, styled `dim`, and one `\n`.
+- **Labelled.** Any other text is the label: two `glyph.line` and a space, `dim`, then the label, then a space and `glyph.line` repeated to the rule's width, `dim`. The label keeps its author's styling and adds none. A label too long for one line wraps on a terminal at the rule's width minus five, and at 1 when that leaves less, the three columns before it and at least one space and one line after it, and is split with `splitLines`. Its lines after the first, authored or wrapped, start three spaces in, under the label, and only its last line carries the line after it, at least one `glyph.line` long, so the rule overflows only where a unit `wrap` keeps whole does. Off a terminal the label is not wrapped, and an authored line break in it takes the same layout.
+
+### Prose
+
+Prose is `@loomcli/plugins/prose`. Its factory `prose()` returns `View<string>`, paragraphs wrapped to the destination. It is the wrapped counterpart of `print`, which writes its text as it is under [ADR-0086](decisions/0086-renders-fit-the-destinations-live-columns-and-tables-shrink-to-fit.md).
+
+```ts
+// @loomcli/plugins/prose
+function prose(): View<string>;
+```
+
+```ts
+import { prose } from '@loomcli/plugins/prose';
+
+await out.render(
+  'Three services rolled out to the staging cluster. One health check is still warming up.',
+  prose(),
+);
+```
+
+At 34 columns it prints:
+
+```text
+Three services rolled out to the
+staging cluster. One health check
+is still warming up.
+```
+
+- **Form.** The text as its author wrote it, with no styling added. Authored line breaks and blank lines stay, so a blank line separates two paragraphs.
+- **Wrapping.** On a terminal the text expands its tabs, wraps at `columns` with [`wrap`'s rules](#width-padding-and-multiline-lanes), and is split with `splitLines`: an input line's leading spaces stay on its first line, and its continuation lines start at column 0. Off a terminal the text prints as written, with `\n` added when it does not end in a line break.
+
+### Box
+
+The box is `@loomcli/plugins/box`. Its factory `box(config?)` frames text, or the output of another view, in a border with an optional title. With no `content` it returns `View<string>` and frames its text. With `content` it returns a view over the content's data, renders the content inside the frame, and narrows the content's `columns` by the frame, so a table framed in a box shrinks to fit inside it, or falls back to the records layout, under [Table](#table).
+
+```ts
+// @loomcli/plugins/box
+function box<Data = string>(config?: BoxConfig<Data>): View<Data>;
+
+type BoxConfig<Data> = { title?: string } & ([Data] extends [string]
+  ? { content?: View<Data> }
+  : { content: View<Data> });
+```
+
+```ts
+import { Command } from '@loomcli/core';
+import { box } from '@loomcli/plugins/box';
+import { table } from '@loomcli/plugins/table';
+
+import { listPools } from '../actions/list-pools.js';
+
+interface Pool {
+  pool: string;
+  instances: number;
+  status: string;
+}
+
+await out.render('All three services passed their health checks.', box({ title: 'Totals' }));
+
+export const pools = new Command('pools')
+  .rows<Pool>({ views: { boxed: box({ content: table(), title: 'Pools' }), table: table() } })
+  .action(listPools);
+```
+
+```text
+╭─ Totals ───────────────────────────────────────╮
+│ All three services passed their health checks. │
+╰────────────────────────────────────────────────╯
+╭─ Pools ───────────────────╮
+│ pool   instances  status  │
+│ blue   4          ready   │
+│ green  4          warming │
+╰───────────────────────────╯
+```
+
+- **Configuration.** `title` is marked text its author owns, as a table's authored `header` is. `content` is a bare view or a declared view's value; inside a box nothing resolves an override for it, because the box calls the view it was given, the rule a bare view follows under `out.render`.
+- **Form.** A top border, one line per content line, and a bottom border, every border piece `dim`. The top border is `glyph.lineDownRightArc`, then `glyph.line` across, then `glyph.lineDownLeftArc`, and with a title it reads `glyph.lineDownRightArc`, `glyph.line`, a space, the title styled `primary` and `bold`, a space, then `glyph.line` to the corner. A content line is `glyph.lineVertical` and a space, the line padded with `pad` to the inner width, then a space and `glyph.lineVertical`. The bottom border is `glyph.lineUpRightArc`, `glyph.line` across, and `glyph.lineUpLeftArc`. The inner width is the widest content line, measured with `context.width`, or the title's width and two when that is wider, so the title always sits in the top border with at least one `glyph.line` after it.
+- **Text content.** With no `content` the box frames its text. On a terminal the text expands its tabs, wraps at `columns` minus 4, and at 1 when that leaves less, and is split with `splitLines`, so the box is as wide as its text and never wider than `columns` unless a unit `wrap` keeps whole, or the title, is. Off a terminal the text is not wrapped, and the box is as wide as its widest line.
+- **View content.** With `content` the box calls the content's view function with its data and a context that matches its own except for `columns`, which is `columns` minus 4, and 1 when that leaves less, on a terminal and stays `undefined` off one. The content's text is split with `splitLines`, so its trailing newline adds no line, and on a terminal its tabs expand before the box measures it. A content line wider than the space the box offers, which a content view that ignores `columns` writes, widens the box past `columns`, and nothing is cut.
+- **Tabs.** Off a terminal a tab in a content line expands inside the line's `pad` frame, counted from the line's start, so the right border stays in its column.
+- **Empty.** A text box over the empty string, and a box whose content renders the empty string, print nothing.
+- **Typing.** `Data` is inferred from `content`, and a box with no `content` is `View<string>`. Inside a `views` record the record's data type flows through the box into the content's factory, so `box({ content: table({ columns: ['nope'] }) })` under `rows<Pool>` is a compile error on `'nope'`, and a box with no `content` under a result whose value is not a string is a compile error that names the missing `content`. Hoisted, the content's factory states its type, `box({ content: table<Pool>() })`.
+
+#### List, heading, rule, prose, and box example coverage
+
+The increment is proven when jsonkit's `doctor` Command, which the private `@loom/doctor` plugin attaches, reports its checks through the pack views in place of its one `print` line. Its action renders `Host checks` through `heading()`, then a `list<string>()` of two checks, `Platform: <host.platform>` and `Output: a terminal` or `Output: not a terminal` from `host.terminal.stdout.isTTY`, then `''` through `rule()`, then `All checks passed.` through `box({ title: 'Result' })`. `@loom/doctor` depends on `@loomcli/plugins`, and the [plugin Commands](#plugin-commands) example and `jsonkit doctor`'s transcripts re-pin against the new output. Piped, it prints:
+
+```text
+Host checks
+───────────
+● Platform: linux
+● Output: not a terminal
+────────────────────────────────────────────────────────────────────────────────
+╭─ Result ───────────╮
+│ All checks passed. │
+╰────────────────────╯
+```
+
+#### List, heading, rule, prose, and box acceptance
+
+Each case runs under Node and Bun, at a fixed width through a host override of plain numbers and with `columns` undefined, and checks exact bytes. The acceptance tests cover:
+
+- **Each factory twice.** Each view as the second argument of `out.render`, and the list and the text views as entries of a declared result under `rows<Item>` and `result<string>()`.
+- **The list.** Bullets and ordered markers, ordered markers right-aligned from ` 9.` to `10.`, `null` and `undefined` items printing empty, a default item escaped beside a `format` item left unescaped, `format` receiving each item's index among its siblings, two levels of `children` with each level starting at its parent's text column and a nested ordered list counting from 1, a wrapped item hanging under its text at 30 columns, an authored line break hanging under its text piped, a blank line inside an item carrying no indent, a tab expanding on a terminal and kept piped, and an empty sequence printing nothing.
+- **The heading.** Level 1 and level 2, a level 1 underline as wide as a CJK text and as a styled text, a wrapped level 1 underline matching its widest wrapped line, and a word wider than `columns` keeping its line and widening its underline.
+- **The rule.** A bare and a labelled rule at 60 columns and piped at 80, a label wrapped at a narrow width with its continuation lines under the label and the line on its last line alone, and a label word too wide to fit overflowing with one `glyph.line` after it.
+- **Prose.** Paragraphs separated by a blank line, a leading indent kept on the first line, a tab expanding on a terminal and kept piped, a text with and without a trailing line break, and an OSC 8 hyperlink closing at each wrapped line's end.
+- **The box.** A text box with and without a title, a title wider than its text setting the inner width, text wrapped at `columns` minus 4, a table framed at a width where it shrinks and at one where it falls back to records, a content view that ignores `columns` widening the box, a declared view's override not applying inside a box, a tab in piped content keeping the right border in its column, and the empty string printing nothing.
+- **A resize.** Under a pty-backed host, one run renders a rule and a box at 100 columns, the window resizes to 60, and the next rule and box fit 60.
+- **Typing.** The negative type checks cover a list `format` whose item parameter is not `Item`, a `children` that returns another type, a heading `level` of 3, a box with no `content` under `result<Summary>()`, and a column the row does not carry inside a boxed table.
 
 ### Loom theme
 

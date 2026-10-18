@@ -344,7 +344,7 @@ The `render` function of a whole view, or the `row`, `head`, and `tail` function
 _Avoid_: Renderer, render callback
 
 **Pack view**:
-A view the plugin pack ships as a configured factory, such as `table({ columns })` or `records({ identifier })`. The factory's return is a bare view typed from the row type of the data it is written against. Its configuration is plain data the returned view holds and never publishes, and a pack view is replaced by name alone, through a result's `views()` and never through an override.
+A view the plugin pack ships as a configured factory, such as `table({ columns })`, `records({ identifier })`, `list({ ordered })`, or `heading({ level })`. The factory's return is a bare view typed from the data it is written against: the row type for the table, the records list, and the list, a string for the heading, the rule, prose, and a text box, and the framed view's data for a box with content. Its configuration is plain data the returned view holds and never publishes, and a pack view is replaced by name alone, through a result's `views()` and never through an override.
 _Avoid_: Built-in view, formatter (for a pack view), widget
 
 **Column**:
