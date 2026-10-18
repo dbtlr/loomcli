@@ -4,7 +4,8 @@ import type { ViewContext } from '@loomcli/core';
 import { parseMarkdown } from '../markdown/blocks.js';
 import type { Block, Item } from '../markdown/blocks.js';
 import type { Inline } from '../markdown/inline.js';
-import { proseLines } from './layout.js';
+import { wrapLines } from '../text-layout.js';
+import { onTerminal } from './layout.js';
 
 type Style = ViewContext['style'];
 interface Modifiers {
@@ -13,13 +14,12 @@ interface Modifiers {
 }
 
 /**
- * How a block renders: the page's style, the view context, and the columns left for the block's
- * text after the page indent and its containers' markers. The width is undefined off a terminal,
- * where nothing reflows and each authored line stays one page line.
+ * How a block renders: the view context, and the columns left for the block's text after the page
+ * indent and its containers' markers. The width is defined exactly on a terminal, and off one
+ * nothing reflows and each authored line stays one page line.
  */
 interface Layout {
   readonly context: ViewContext;
-  readonly style: Style;
   readonly width: number | undefined;
 }
 
@@ -60,7 +60,7 @@ function within(layout: Layout, used: number): Layout {
  * a terminal the line keeps its tabs.
  */
 function expanded(line: string, layout: Layout): string {
-  return layout.width === undefined ? line : layout.context.expandTabs(line);
+  return onTerminal(layout.context) ? layout.context.expandTabs(line) : line;
 }
 
 /**
@@ -72,7 +72,7 @@ function reflow(lines: readonly string[], layout: Layout): string[] {
     return [...lines];
   }
   const joined = lines.map((line) => expanded(line, layout)).join(' ');
-  return proseLines(joined, layout.width, layout.context);
+  return wrapLines(joined, layout.width, layout.context);
 }
 
 /** Help keeps a code span's authored backtick run around its uninterpreted content. */
@@ -105,8 +105,8 @@ function codeText(
   modifiers: Modifiers,
   layout: Layout,
 ): string {
-  const span = styled(codeSpan(node), 'highlight', { modifiers, style: layout.style });
-  return layout.width === undefined ? span : nowrap(span);
+  const span = styled(codeSpan(node), 'highlight', { modifiers, style: layout.context.style });
+  return onTerminal(layout.context) ? nowrap(span) : span;
 }
 
 /** Inline nodes inherit modifiers; code and destinations replace only the semantic color. */
@@ -116,7 +116,7 @@ function inline(nodes: readonly Inline[], modifiers: Modifiers, layout: Layout):
       switch (node.kind) {
         case 'text':
         case 'address': {
-          return styled(node.text, 'primary', { modifiers, style: layout.style });
+          return styled(node.text, 'primary', { modifiers, style: layout.context.style });
         }
         case 'code': {
           return codeText(node, modifiers, layout);
@@ -147,7 +147,7 @@ function link(
   modifiers: Modifiers,
   layout: Layout,
 ): string {
-  const { style } = layout;
+  const { style } = layout.context;
   if (plain(node.children) === node.destination) {
     return styled(node.destination, 'primary', { modifiers, style });
   }
@@ -176,7 +176,7 @@ function codeLines(lines: readonly string[], layout: Layout): string[] {
   return content.map((line) =>
     line === ''
       ? ''
-      : `  ${expanded(styled(line, 'highlight', { modifiers: ordinary, style: layout.style }), layout)}`,
+      : `  ${expanded(styled(line, 'highlight', { modifiers: ordinary, style: layout.context.style }), layout)}`,
   );
 }
 
@@ -200,7 +200,7 @@ function itemLines(marker: string, item: Item, layout: Layout): string[] {
   const indent = marker.length + markerSpaceWidth;
   const content = blockLines(item.blocks, within(layout, indent));
   const first = content[firstElement];
-  const prefix = styled(marker, 'dim', { modifiers: ordinary, style: layout.style });
+  const prefix = styled(marker, 'dim', { modifiers: ordinary, style: layout.context.style });
   return [
     prefix + (first === undefined || first === '' ? '' : ` ${first}`),
     ...content
@@ -214,7 +214,7 @@ function itemLines(marker: string, item: Item, layout: Layout): string[] {
  * paragraph and a heading reflow, and a quote's `> ` starts each of its lines, wrapped ones too.
  */
 function renderBlock(block: Block, layout: Layout): string[] {
-  const { style } = layout;
+  const { style } = layout.context;
   switch (block.kind) {
     case 'paragraph': {
       return reflow(
@@ -281,8 +281,7 @@ function appendBlock(
 function renderDetails(source: string, context: ViewContext): string[] {
   const layout: Layout = {
     context,
-    style: context.style,
-    width: context.columns === undefined ? undefined : context.columns - pageIndent.length,
+    width: onTerminal(context) ? context.columns - pageIndent.length : undefined,
   };
   return blockLines(parseMarkdown(source), layout).map((line) =>
     line === '' ? '' : `${pageIndent}${line}`,

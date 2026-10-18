@@ -368,18 +368,21 @@ test('a text with less than one column left for it prints unwrapped', () => {
   ]);
 });
 
-test('a tab in a description, a Details paragraph, and a code line expands on a terminal alone', () => {
+test('a tab in a description, Details, and an example command expands on a terminal alone', () => {
   const app = {
-    help: { details: 'A\tB\n\n```\nx\ty\n```' },
+    help: { details: 'A\tB\n\n```\nx\ty\n```', examples: [{ command: 'run\tfast' }] },
     options: [{ description: 'Name\tthe value.', name: 'name', type: 'string' }],
   };
   const terminal = render({ app, columns: 80 });
   expect(terminal).not.toContain('\t');
   expect(blocks(terminal).slice(1, 3)).toEqual([['  A       B'], ['    x       y']]);
   expect(block(terminal, 'OPTIONS')[1]).toBe('      --name <name>  Name    the value.');
+  // An example command is a literal, so its tab expands from the start of its page line.
+  expect(block(terminal, 'EXAMPLES')[1]).toBe('  $ app run     fast');
   const piped = render({ app, columns: null });
   expect(blocks(piped).slice(1, 3)).toEqual([['  A\tB'], ['    x\ty']]);
   expect(block(piped, 'OPTIONS')[1]).toBe('      --name <name>  Name\tthe value.');
+  expect(block(piped, 'EXAMPLES')[1]).toBe('  $ app run\tfast');
 });
 
 /** A root that reads stdin and declares an option group whose sentence is wide. */

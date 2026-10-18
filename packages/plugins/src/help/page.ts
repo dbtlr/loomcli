@@ -2,6 +2,7 @@ import { nowrap, reportedSpelling, readExtension } from '@loomcli/core';
 import type { CommandGraph, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
 import { visibleOptionGroups } from '../option-groups.js';
+import { indentLines, wrapLines } from '../text-layout.js';
 import { argumentAccepts, optionAccepts } from './accepted.js';
 import {
   argumentFacts,
@@ -17,7 +18,7 @@ import {
 import type { Row, StringOption, UsageWriter } from './cells.js';
 import { renderDetails } from './details.js';
 import { helpCommand, helpInput } from './extension.js';
-import { hang, onTerminal, prose, proseLines } from './layout.js';
+import { onTerminal, prose } from './layout.js';
 import { sectionBlocks } from './sections.js';
 import type { SectionMember } from './sections.js';
 import type { HelpPage, HelpVariant } from './views.js';
@@ -54,8 +55,6 @@ const deprecationLabel = 'Deprecated: ';
 /** The indent of the deprecation line. */
 const deprecationIndent = '  ';
 
-const firstLine = 0;
-
 /**
  * The deprecation line under a masthead. On a terminal its message wraps and continues under its
  * first character, after the label. Each line is one warning value, so the first line's label and
@@ -69,12 +68,15 @@ function deprecation(message: string, context: ViewContext): string[] {
     return [`${deprecationIndent}${style.warning(label + text)}`];
   }
   const indent = context.width(deprecationIndent) + context.width(label);
-  const lines = proseLines(text, context.columns - indent, context);
-  return hang(
-    lines.map((line, index) => style.warning(index === firstLine ? label + line : line)),
-    { indent, lead: deprecationIndent },
-    context,
-  );
+  const [first = '', ...rest] = wrapLines(text, context.columns - indent, context);
+  return [
+    `${deprecationIndent}${style.warning(label + first)}`,
+    ...indentLines(
+      rest.map((line) => style.warning(line)),
+      ' '.repeat(indent),
+      context,
+    ),
+  ];
 }
 
 /**

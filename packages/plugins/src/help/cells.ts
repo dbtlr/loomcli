@@ -3,7 +3,7 @@ import type { ArgumentNode, OptionNode, ViewContext } from '@loomcli/core';
 
 import { isStrings } from '../closed-set.js';
 import { terminators } from '../lines.js';
-import { unitWidth } from '../table-fit.js';
+import { unitWidth } from '../text-layout.js';
 import { helpInput } from './extension.js';
 import { hanging, onTerminal } from './layout.js';
 import type { TerminalContext } from './layout.js';
@@ -390,8 +390,11 @@ function argumentFacts(argument: ArgumentNode): Fact[] {
 interface RowSet {
   readonly indent: string;
   readonly rows: readonly Row[];
-  readonly width: number;
+  readonly leftWidth: number;
 }
+
+/** The indent of an outer heading's direct rows. */
+const rowIndent = '  ';
 
 /** How far a stacked right cell sits past its set's indent. */
 const stackedIndent = '    ';
@@ -405,15 +408,15 @@ function stacks(set: RowSet, context: TerminalContext): boolean {
   for (const row of set.rows) {
     floor = Math.max(floor, unitWidth(row.right, context));
   }
-  return context.width(set.indent) + set.width + floor > context.columns;
+  return context.width(set.indent) + set.leftWidth + floor > context.columns;
 }
 
 /** Two columns, each right cell wrapped under the right column. */
-function wrappedRows({ indent, rows, width }: RowSet, context: TerminalContext): string[] {
+function wrappedRows({ indent, leftWidth, rows }: RowSet, context: TerminalContext): string[] {
   return rows.flatMap((row) =>
     row.right === ''
       ? [`${indent}${row.left}`]
-      : hanging(row.right, `${indent}${pad(row.left, width)}`, context),
+      : hanging(row.right, `${indent}${pad(row.left, leftWidth)}`, context),
   );
 }
 
@@ -431,17 +434,17 @@ function stackedRows({ indent, rows }: RowSet, context: TerminalContext): string
  * row is one line however long it is. On a terminal each right cell's tabs expand once and it wraps
  * under the right column, and a set whose indent, left column, and floor exceed the columns stacks.
  */
-function column(rows: readonly Row[], context: ViewContext, indent = gutter): string[] {
-  const width = Math.max(...rows.map((row) => context.width(row.left))) + gutter.length;
+function column(rows: readonly Row[], context: ViewContext, indent = rowIndent): string[] {
+  const leftWidth = Math.max(...rows.map((row) => context.width(row.left))) + gutter.length;
   if (!onTerminal(context)) {
     return rows.map(
-      (row) => `${indent}${row.right === '' ? row.left : pad(row.left, width) + row.right}`,
+      (row) => `${indent}${row.right === '' ? row.left : pad(row.left, leftWidth) + row.right}`,
     );
   }
   const set: RowSet = {
     indent,
+    leftWidth,
     rows: rows.map((row) => ({ left: row.left, right: context.expandTabs(row.right) })),
-    width,
   };
   return stacks(set, context) ? stackedRows(set, context) : wrappedRows(set, context);
 }
