@@ -314,6 +314,12 @@ export interface ViewContext {
    * and reads `undefined` without one. A destination that is not a terminal reads `undefined`.
    */
   readonly columns: number | undefined;
+  /**
+   * Replaces each tab in marked text with the spaces that reach the next multiple of eight,
+   * counted from the start of its input line as `width` counts, so text placed after other text
+   * shows as it measures. A tab inside a `pad` frame is left to the frame, which expands it.
+   */
+  readonly expandTabs: (text: string) => string;
   /** Resolves marked text without styles or controls, keeping this destination's glyph forms. */
   readonly plain: (text: string) => string;
   readonly style: ContextualStyle;

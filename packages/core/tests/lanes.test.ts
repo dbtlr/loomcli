@@ -69,3 +69,36 @@ test('a style that spans a wrapped break continues across it, gutter included', 
     '⚠ \u001b[31maaa\n  bbb\u001b[39m\n',
   );
 });
+
+/** The two SGR commands a red span writes removed, so a line measures as the terminal shows it. */
+const unstyled = (text: string) => text.replaceAll('\u001b[31m', '').replaceAll('\u001b[39m', '');
+
+/** Each line holds no tab and is at most `columns` wide, as the terminal shows it. */
+function expectFits(output: string, columns: number): void {
+  for (const line of unstyled(output).split('\n')) {
+    expect(line).not.toContain('\t');
+    expect(line.length).toBeLessThanOrEqual(columns);
+  }
+}
+
+test('a tab expands to spaces from the start of its message line, so every line fits after the gutter', () => {
+  const output = lane('warn', 'aaaaaa\tb c', 11).stderr;
+  expectFits(output, 11);
+  expect(output).toBe('⚠ aaaaaa  b\n  c\n');
+});
+
+test('a tab inside nowrap or a style expands too, and the frame keeps its meaning', () => {
+  const unbroken = lane('warn', [{ nowrap: 'aaaaaa\tb' }, ' c'], 11).stderr;
+  expectFits(unbroken, 11);
+  expect(unbroken).toBe('⚠ aaaaaa  b\n  c\n');
+  const styled = lane('warn', [{ red: 'aaaaaa\tb c' }], 11, { rendering: { color: 'always' } });
+  expectFits(styled.stderr, 11);
+  expect(styled.stderr).toBe('⚠ \u001b[31maaaaaa  b\n  c\u001b[39m\n');
+});
+
+test('a tab stays a tab off a terminal and in print', () => {
+  expect(lane('warn', 'aaaaaa\tb c', null, { env: { COLUMNS: '11' } }).stderr).toBe(
+    '⚠ aaaaaa\tb c\n',
+  );
+  expect(lane('print', 'aaaaaa\tb c', 11).stdout).toBe('aaaaaa\tb c\n');
+});

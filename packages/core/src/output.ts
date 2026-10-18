@@ -12,7 +12,7 @@ import { writeSequence } from './sequence.js';
 import type { SequenceView } from './sequence.js';
 import { drawnRows, resolveText, width } from './style-resolve.js';
 import type { Palette } from './style-state.js';
-import { wrapMarked } from './style-wrap.js';
+import { expandTabsMarked, wrapMarked } from './style-wrap.js';
 import { createStyle, tokens } from './style.js';
 import type {
   ActionChannel,
@@ -380,6 +380,7 @@ export class Output {
     const { palette } = this;
     return Object.freeze({
       columns: columns(this.host, destination),
+      expandTabs: (text: string) => expandTabsMarked(text, { caps, palette }),
       plain: (text: string) =>
         resolveText(text, this.palette, {
           ...caps,

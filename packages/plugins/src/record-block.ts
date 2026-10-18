@@ -43,13 +43,15 @@ function alignLines(lines: readonly string[], align: ValueAlignment, context: Vi
 
 /**
  * One value's lines. Off a terminal the value is one unit with its authored breaks, as it always
- * was. On a terminal it wraps at `room` columns, when any are left, and every line is its own.
+ * was. On a terminal its tabs expand to spaces from the value's start, so the label column cannot
+ * move a tab stop, then it wraps at `room` columns, when any are left, and every line is its own.
  */
 function valueLines(entry: RecordEntry, room: number, context: ViewContext): readonly string[] {
   if (context.columns === undefined) {
     return [entry.value];
   }
-  const wrapped = room > EMPTY ? context.wrap(entry.value, room) : entry.value;
+  const value = context.expandTabs(entry.value);
+  const wrapped = room > EMPTY ? context.wrap(value, room) : value;
   return alignLines(splitLines(wrapped), entry.align ?? 'left', context);
 }
 

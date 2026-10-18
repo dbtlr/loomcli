@@ -133,3 +133,33 @@ test.each([0, -1, 1.5, 'NaN', 'Infinity', 2 ** 53])('wrap rejects the width %j',
 test('pad centers each line of a wrapped block', () => {
   expect(wrapped('aa bbbb', 6, { center: true })).toBe('  aa  \n bbbb ');
 });
+
+/** What `context.expandTabs(text)` returns once resolved for a stdout pipe. */
+function expanded(text: Part, options: Record<string, unknown> = {}) {
+  return wrapped(text, null, { expand: true, ...options });
+}
+
+test('expandTabs turns each tab into spaces to the next multiple of eight from its line start', () => {
+  expect(expanded('a\tb')).toBe('a       b');
+  expect(expanded('abcdefgh\tb\t')).toBe(`abcdefgh${' '.repeat(8)}b${' '.repeat(7)}`);
+  expect(expanded('ab\tc\r\nabcd\te')).toBe('ab      c\r\nabcd    e');
+  expect(expanded('no tab')).toBe('no tab');
+});
+
+test('expandTabs measures in the destination glyph forms and keeps every frame working', () => {
+  expect(expanded([{ glyph: 'radioOn' }, '\tb'])).toBe('◉       b');
+  expect(expanded([{ glyph: 'radioOn' }, '\tb'], { env: { TERM: 'linux' } })).toBe('(*)     b');
+  const styled: Part = [{ style: [['red'], 'a\tb'] }, { nowrap: 'c\td' }];
+  expect(expanded(styled, { rendering: { color: 'always' } })).toBe(
+    '\u001b[31ma       b\u001b[39mc      d',
+  );
+});
+
+test('expandTabs leaves a tab inside a pad frame to the frame, and an ANSI payload untouched', () => {
+  expect(expanded(['x', { pad: ['a\tb', 12] }, '\tc'])).toBe(`xa       b   ${' '.repeat(3)}c`);
+  const open = '\u001b]8;;https://example.com/a\tb\u001b\\';
+  const close = '\u001b]8;;\u001b\\';
+  expect(expanded([open, 'a\tb', close], { rendering: { hyperlinks: 'always' } })).toBe(
+    `${open}a       b${close}`,
+  );
+});

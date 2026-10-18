@@ -273,11 +273,14 @@ function table<Row>(config: TableConfig<Row> = {}): View<readonly Row[]> {
       if (columns.length === EMPTY) {
         return '';
       }
+      // On a terminal a tab becomes spaces from its cell's start, so fitting measures what shows.
+      const laid = (text: string) =>
+        context.columns === undefined ? text : context.expandTabs(text);
       const grid: Grid<Row> = {
-        cells: rows.map((row) => columns.map((column) => column.cell(row, context))),
+        cells: rows.map((row) => columns.map((column) => laid(column.cell(row, context)))),
         columns,
         context,
-        headers: columns.map((column) => column.header(context)),
+        headers: columns.map((column) => laid(column.header(context))),
       };
       const widths = fittedWidths(grid, rows.length);
       return widths === undefined

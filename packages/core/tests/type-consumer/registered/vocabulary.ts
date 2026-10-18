@@ -15,6 +15,7 @@ const action: ActionHandler<typeof get> = ({ options }) => {
     file: options.file,
     rendered: render.render(name, {
       columns: undefined,
+      expandTabs: (text) => text,
       plain: (text) => text,
       style,
       width: () => 0,
@@ -26,6 +27,7 @@ const action: ActionHandler<typeof get> = ({ options }) => {
 // @ts-expect-error TS2345: A view using the same registered vocabulary rejects unknown names.
 render.render('identifer', {
   columns: undefined,
+  expandTabs: (text) => text,
   plain: (text) => text,
   style,
   width: () => 0,

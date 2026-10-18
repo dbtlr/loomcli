@@ -208,6 +208,7 @@ test('a plain paragraph line is one primary value in the marked string', () => {
   expect(
     renderDetails('One plain line.', {
       columns: undefined,
+      expandTabs: (text) => text,
       plain: (text) => text,
       style,
       width: () => 0,

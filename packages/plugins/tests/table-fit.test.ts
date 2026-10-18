@@ -407,3 +407,66 @@ test.each([{ invoke: false }, { invoke: true }])(
     );
   },
 );
+
+/** The two SGR commands a red span writes removed, so a line measures as the terminal shows it. */
+const unstyled = (text: string) => text.replaceAll('\u001B[31m', '').replaceAll('\u001B[39m', '');
+
+/** Each line holds no tab and is at most `columns` wide, as the terminal shows it. */
+function expectFits(output: string, columns: number): void {
+  for (const line of unstyled(output).split('\n')) {
+    expect(line).not.toContain('\t');
+    expect(line.length).toBeLessThanOrEqual(columns);
+  }
+}
+
+test('a tab in a cell expands from the start of the cell before it fits, so no line overflows', () => {
+  const output = render({
+    config: {},
+    rows: [{ first: 'abcde', last: 'b\tc d' }],
+    view: 'table',
+    widths: [16],
+  });
+  expectFits(output, 16);
+  expect(output).toBe(lines('first  last', 'abcde  b       c', '       d'));
+});
+
+test('a tab in a styled cell expands inside its style', () => {
+  const rows = [{ first: 'abcde', last: 'b\tc d' }];
+  const config = {
+    columns: [
+      { header: 'f', key: 'first' },
+      { format: 'red', key: 'last' },
+    ],
+  };
+  const rendering = { color: 'always', modifiers: 'never' } as const;
+  const output = render({ config, rendering, rows, view: 'table', widths: [16] });
+  expectFits(output, 16);
+  expect(output.split('\n').slice(1)).toEqual([
+    'abcde  \u001B[31mb       c\u001B[39m',
+    '       \u001B[31md\u001B[39m',
+    '',
+  ]);
+});
+
+test('a tab inside a nowrap cell expands, and the cell stays whole', () => {
+  const rows = [{ first: 'abcde', last: 'b\tc d' }];
+  const config = { columns: ['first', { format: 'nowrap', key: 'last' }] };
+  const output = render({ config, rows, view: 'table', widths: [18] });
+  expectFits(output, 18);
+  expect(output).toBe(lines('first  last', 'abcde  b       c d'));
+});
+
+test('a tab in a header expands as a cell does', () => {
+  const rows = [{ first: 'abcde', last: 'x' }];
+  const config = { columns: ['first', { header: 'b\tc', key: 'last' }] };
+  const output = render({ config, rows, view: 'table', widths: [16] });
+  expectFits(output, 16);
+  expect(output).toBe(lines('first  b       c', 'abcde  x'));
+});
+
+test('a tab stays a tab in a piped table', () => {
+  const rows = [{ first: 'abcde', last: 'b\tc d' }];
+  expect(render({ config: {}, env: { COLUMNS: '16' }, rows, view: 'table', widths: [null] })).toBe(
+    lines('first  last', 'abcde  b\tc d'),
+  );
+});

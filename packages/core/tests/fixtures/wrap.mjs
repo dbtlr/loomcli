@@ -33,6 +33,9 @@ function build(part) {
 const app = new Application('wrap', { description: 'Wrap text.' }).action(({ out }) =>
   out.render(build(input.text), {
     render: (text, context) => {
+      if (input.expand) {
+        return context.expandTabs(text);
+      }
       try {
         const wrapped = context.wrap(text, columns);
         return input.center ? pad(wrapped, columns, { align: 'center' }) : wrapped;

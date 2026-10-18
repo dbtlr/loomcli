@@ -259,8 +259,29 @@ function* renderedUnits(block: Block): Generator<TextUnit> {
     yield* line.ending;
   }
 }
+/**
+ * The columns each tab leaf advances, in text order, with each line laid out from column zero.
+ * A tab inside a padding frame is no leaf here, because the frame has already expanded it.
+ */
+function tabAdvances(block: Block): number[] {
+  const advances: number[] = [];
+  for (const line of block.lines) {
+    if (!line.content.tabs) {
+      continue;
+    }
+    let column = 0;
+    for (const part of leaves(line.content)) {
+      const width = part.advance[column % 8] ?? 0;
+      if (part.tab) {
+        advances.push(width);
+      }
+      column += width;
+    }
+  }
+  return advances;
+}
 function blockWidth(block: Block): number {
   return block.lines.reduce((widest, line) => Math.max(widest, line.content.advance[0] ?? 0), 0);
 }
 
-export { blockWidth, layout, renderedUnits };
+export { blockWidth, layout, renderedUnits, tabAdvances };

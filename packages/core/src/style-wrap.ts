@@ -1,6 +1,6 @@
 import type { Capabilities } from './rendering.js';
 import { command, scanAnsi } from './style-ansi.js';
-import { blockWidth, layout } from './style-layout.js';
+import { blockWidth, layout, tabAdvances } from './style-layout.js';
 import { emptyAttributes } from './style-state.js';
 import type { Palette } from './style-state.js';
 import { parseText } from './style-wire.js';
@@ -228,6 +228,44 @@ function wrapMarked(
   );
 }
 
+/**
+ * Marked text with each tab replaced by the spaces that reach the next multiple of eight, counted
+ * from the start of its input line as `width()` counts it, so text placed at any offset shows as
+ * it measures. Frame headers, escapes, and ANSI commands keep their bytes, and a tab inside a
+ * style or no-wrap frame expands as any other. A tab inside a padding frame is left to the frame,
+ * which already resolves it to spaces from the frame's own start.
+ */
+function expandTabsMarked(
+  text: string,
+  { caps, palette }: { caps: Capabilities; palette: Palette },
+): string {
+  textOnly(text);
+  if (!text.includes('\t')) {
+    return text;
+  }
+  const trace: WireTrace = { origins: [], whole: [] };
+  const parsed = parseText(text, palette, { mainGlyphs: caps.mainGlyphs, trace });
+  const advances = tabAdvances(layout(scanAnsi(parsed, caps)));
+  const commands = commandCharacters(parsed.text);
+  const edits = new Map<number, string>();
+  let padding = 0;
+  let next = 0;
+  for (let index = 0; index < parsed.text.length; index += 1) {
+    for (const boundary of parsed.boundaries.get(index) ?? []) {
+      padding += boundary.kind === 'open' ? 1 : -1;
+    }
+    if (parsed.text[index] !== '\t' || commands[index] === true || padding > 0) {
+      continue;
+    }
+    const advance = advances[next];
+    next += 1;
+    if (advance !== undefined) {
+      edits.set(trace.origins[index] ?? index, ' '.repeat(advance));
+    }
+  }
+  return edited(text, edits);
+}
+
 /** The capabilities plain text is measured under: no glyph frame, style, or command applies. */
 const plainCaps: Capabilities = {
   color: false,
@@ -260,4 +298,4 @@ function wrapPlain(text: string, columns: number): string {
   return edited(text, breaks({ caps: plainCaps, commands, parsed, trace }, width));
 }
 
-export { plainCaps, wrapMarked, wrapPlain };
+export { expandTabsMarked, plainCaps, wrapMarked, wrapPlain };
