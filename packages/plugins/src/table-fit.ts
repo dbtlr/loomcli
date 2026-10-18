@@ -1,6 +1,19 @@
+import type { ViewContext } from '@loomcli/core';
+
 const EMPTY = 0;
 const HALVES = 2;
+const NARROWEST = 1;
 const NEXT = 1;
+
+/**
+ * The widest unit `wrap` keeps whole in a text: a word, with an input line's leading spaces on its
+ * first word and its trailing spaces on its last, or a `pad` or `nowrap` frame. It reads `wrap`
+ * itself at one column, so the floor and the wrap agree on every unit. A table column's floor and
+ * a help row set's floor both read it.
+ */
+function unitWidth(text: string, context: ViewContext): number {
+  return context.width(context.wrap(text, NARROWEST));
+}
 
 /** The sum of a list of widths. */
 function total(widths: readonly number[]): number {
@@ -62,4 +75,4 @@ function levelWidths(
   });
 }
 
-export { levelWidths, total };
+export { levelWidths, total, unitWidth };

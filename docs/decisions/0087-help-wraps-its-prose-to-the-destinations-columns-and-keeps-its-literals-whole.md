@@ -55,3 +55,4 @@ Proposed. It moves to accepted with the release that ships help wrapping. Tests 
 ## Changelog
 
 - 2026-10-18: Proposed with the help wrapping contract.
+- 2026-10-18: Implementation in the default help view, which wraps prose, stacks row sets whose floor cannot fit, and reflows Details on a terminal while every page off one keeps its bytes. Process fixtures under Node and Bun prove it, including jsonkit's 60-column page and its stacked 30-column COMMANDS block byte for byte.

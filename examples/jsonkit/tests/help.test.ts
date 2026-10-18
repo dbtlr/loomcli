@@ -331,3 +331,115 @@ test('a broken helpPage override reports one diagnostic on stderr and returns 1'
     stdout: '',
   });
 });
+
+/** The same application on a terminal whose stdout reports a fixed width and no `COLUMNS`. */
+const sized = new URL('fixtures/width.mjs', import.meta.url);
+
+/** One invocation on a terminal `columns` wide. */
+function at(columns: number, argv: string[]) {
+  return invoke(sized, [String(columns), ...argv]);
+}
+
+/** The lines of a page that run past `columns`. */
+function overflowing(stdout: string, columns: number): string[] {
+  return stdout.split('\n').filter((line) => line.length > columns);
+}
+
+test('jsonkit --help on a 60-column terminal wraps its prose and keeps its literals whole', () => {
+  expect(at(60, ['--help'])).toEqual(
+    page(
+      'jsonkit · Read and reshape one JSON document.',
+      '',
+      '  With no subcommand, jsonkit summarizes the document and',
+      '  its top-level keys.',
+      '',
+      'USAGE',
+      '  jsonkit [options]',
+      '  jsonkit <command> [options]',
+      '',
+      'DOCUMENT COMMANDS',
+      '  READ',
+      '    get    Read one value at a path.',
+      '    keys   List the keys at a path.',
+      '    fetch  Read one value at a path.  (deprecated: Use get',
+      '           instead.)',
+      '  RESHAPE',
+      '    select  Keep the named fields of the document.',
+      '',
+      'COMMANDS',
+      '  doctor                Check the host this application runs',
+      '                        on.',
+      '  completion <command>  Print or install a shell completion',
+      '                        script.',
+      "  mcp                   Serve this application's tools to an",
+      '                        MCP client over stdin and stdout.',
+      '  manpage <command>     Write or install the man pages.',
+      '',
+      'OPTIONS',
+      '  -f, --file <path>      The document to read. Omit it to',
+      '                         read piped text.  (file or piped',
+      '                         stdin; - selects stdin, required)',
+      '  -o, --format <format>  Select the output format, records',
+      '                         by default. One of: records, json,',
+      '                         jsonl.',
+      '',
+      'GLOBAL OPTIONS',
+      '  -v, --verbose...  Name the document before reading it.',
+      '  -h, --help        Show this help.',
+      '  -V, --version     Print the version.',
+      "  -M, --manifest    Print this command's manifest as JSON.",
+      '  -e, --explain     Explain the selected command and exit.',
+      '',
+      'EXAMPLES',
+      '  $ jsonkit -f doc.json',
+      '  $ jsonkit get user.name -f doc.json',
+      '',
+      'Run jsonkit <command> --help for command details.',
+    ),
+  );
+});
+
+test('jsonkit --help on a 30-column terminal stacks its COMMANDS rows', () => {
+  const blocks = at(30, ['--help']).stdout.split('\n\n');
+  expect(blocks.find((block) => block.startsWith('COMMANDS\n'))).toBe(
+    [
+      'COMMANDS',
+      '  doctor',
+      '      Check the host this',
+      '      application runs on.',
+      '  completion <command>',
+      '      Print or install a shell',
+      '      completion script.',
+      '  mcp',
+      "      Serve this application's",
+      '      tools to an MCP client',
+      '      over stdin and stdout.',
+      '  manpage <command>',
+      '      Write or install the man',
+      '      pages.',
+    ].join('\n'),
+  );
+});
+
+test.each([40, 60])('jsonkit -h fits a %i-column terminal', (columns) => {
+  const result = at(columns, ['-h']);
+  expect(result.status).toBe(0);
+  expect(overflowing(result.stdout, columns)).toEqual([]);
+});
+
+test('jsonkit get --help and select --help fit 60 columns, and at 40 only their literals overflow', () => {
+  for (const argv of [
+    ['get', '--help'],
+    ['select', '--help'],
+  ]) {
+    const result = at(60, argv);
+    expect(result.status).toBe(0);
+    expect(overflowing(result.stdout, 60)).toEqual([]);
+  }
+  expect(overflowing(at(40, ['get', '--help']).stdout, 40)).toEqual([
+    '  $ jsonkit get nested.deep.value -f doc.json',
+  ]);
+  expect(overflowing(at(40, ['select', '--help']).stdout, 40)).toEqual([
+    '  jsonkit select --field <field>... [options]',
+  ]);
+});

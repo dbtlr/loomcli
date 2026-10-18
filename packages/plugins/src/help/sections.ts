@@ -135,7 +135,13 @@ function orderedSections<Shown>(
   });
 }
 
-/** Direct members and each subsection measure their own columns within one outer block. */
+/** The indent of the rows under an inner heading, two spaces past the heading itself. */
+const innerIndent = '    ';
+
+/**
+ * Direct members and each subsection measure their own columns within one outer block, and each is
+ * a row set of its own, which wraps or stacks on its own.
+ */
 function block(section: OrderedSection<Row>, context: ViewContext): string[] {
   const lines = [
     context.style.dim(context.style.escape(section.heading)),
@@ -144,7 +150,7 @@ function block(section: OrderedSection<Row>, context: ViewContext): string[] {
   for (const { heading, rows } of section.subsections) {
     lines.push(
       `  ${context.style.dim(context.style.escape(heading))}`,
-      ...column(rows, context).map((line) => `  ${line}`),
+      ...column(rows, context, innerIndent),
     );
   }
   return lines;

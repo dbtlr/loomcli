@@ -3,7 +3,10 @@ import type { ArgumentNode, OptionNode, ViewContext } from '@loomcli/core';
 
 import { isStrings } from '../closed-set.js';
 import { terminators } from '../lines.js';
+import { unitWidth } from '../table-fit.js';
 import { helpInput } from './extension.js';
+import { hanging, onTerminal } from './layout.js';
+import type { TerminalContext } from './layout.js';
 
 /** One option that takes a value, the only kind the action form and the fact list ever narrow to. */
 type StringOption = Extract<OptionNode, { type: 'string' | 'content' }>;
@@ -383,15 +386,64 @@ function argumentFacts(argument: ArgumentNode): Fact[] {
   return [...contentFacts(argument, argument.variadic), ...defaultFacts(argument.default)];
 }
 
+/** One row set as a terminal lays it out: its indent, its rows, and its left column's width. */
+interface RowSet {
+  readonly indent: string;
+  readonly rows: readonly Row[];
+  readonly width: number;
+}
+
+/** How far a stacked right cell sits past its set's indent. */
+const stackedIndent = '    ';
+
 /**
- * One section's rows as page lines. The left cell is padded to the longest one in that section plus
- * two spaces, and a row with no right cell has no trailing padding. Nothing wraps.
+ * Whether a row set stacks: its indent, its left column, and its floor, the widest unit `wrap`
+ * keeps whole in any of its right cells, together exceed the columns.
  */
-function column(rows: readonly Row[], context: ViewContext): string[] {
-  const width = Math.max(...rows.map((row) => context.width(row.left))) + gutter.length;
-  return rows.map(
-    (row) => `${gutter}${row.right === '' ? row.left : pad(row.left, width) + row.right}`,
+function stacks(set: RowSet, context: TerminalContext): boolean {
+  let floor = 0;
+  for (const row of set.rows) {
+    floor = Math.max(floor, unitWidth(row.right, context));
+  }
+  return context.width(set.indent) + set.width + floor > context.columns;
+}
+
+/** Two columns, each right cell wrapped under the right column. */
+function wrappedRows({ indent, rows, width }: RowSet, context: TerminalContext): string[] {
+  return rows.flatMap((row) =>
+    row.right === ''
+      ? [`${indent}${row.left}`]
+      : hanging(row.right, `${indent}${pad(row.left, width)}`, context),
   );
+}
+
+/** Each left cell alone at the set's indent, its right cell on the lines below, further in. */
+function stackedRows({ indent, rows }: RowSet, context: TerminalContext): string[] {
+  return rows.flatMap((row) => [
+    `${indent}${row.left}`,
+    ...(row.right === '' ? [] : hanging(row.right, `${indent}${stackedIndent}`, context)),
+  ]);
+}
+
+/**
+ * One row set's lines at `indent`. The left cell is padded to the longest one in the set plus two
+ * spaces, and a row with no right cell has no trailing padding. Off a terminal nothing wraps, so a
+ * row is one line however long it is. On a terminal each right cell's tabs expand once and it wraps
+ * under the right column, and a set whose indent, left column, and floor exceed the columns stacks.
+ */
+function column(rows: readonly Row[], context: ViewContext, indent = gutter): string[] {
+  const width = Math.max(...rows.map((row) => context.width(row.left))) + gutter.length;
+  if (!onTerminal(context)) {
+    return rows.map(
+      (row) => `${indent}${row.right === '' ? row.left : pad(row.left, width) + row.right}`,
+    );
+  }
+  const set: RowSet = {
+    indent,
+    rows: rows.map((row) => ({ left: row.left, right: context.expandTabs(row.right) })),
+    width,
+  };
+  return stacks(set, context) ? stackedRows(set, context) : wrappedRows(set, context);
 }
 
 export type {
