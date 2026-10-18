@@ -15,6 +15,10 @@
   ],
   "type": "module",
   "exports": {
+    "./box": {
+      "types": "./dist/src/box.d.ts",
+      "import": "./dist/src/box.js"
+    },
     "./completion": {
       "types": "./dist/src/completion/plugin.d.ts",
       "import": "./dist/src/completion/plugin.js"
@@ -39,6 +43,10 @@
       "types": "./dist/src/format/views.d.ts",
       "import": "./dist/src/format/views.js"
     },
+    "./heading": {
+      "types": "./dist/src/heading.d.ts",
+      "import": "./dist/src/heading.js"
+    },
     "./help": {
       "types": "./dist/src/help/plugin.d.ts",
       "import": "./dist/src/help/plugin.js"
@@ -54,6 +62,10 @@
     "./interaction": {
       "types": "./dist/src/interaction/plugin.d.ts",
       "import": "./dist/src/interaction/plugin.js"
+    },
+    "./list": {
+      "types": "./dist/src/list.d.ts",
+      "import": "./dist/src/list.js"
     },
     "./logging": {
       "types": "./dist/src/logging/plugin.d.ts",
@@ -79,9 +91,17 @@
       "types": "./dist/src/mcp/extension.d.ts",
       "import": "./dist/src/mcp/extension.js"
     },
+    "./prose": {
+      "types": "./dist/src/prose.d.ts",
+      "import": "./dist/src/prose.js"
+    },
     "./records": {
       "types": "./dist/src/records.d.ts",
       "import": "./dist/src/records.js"
+    },
+    "./rule": {
+      "types": "./dist/src/rule.d.ts",
+      "import": "./dist/src/rule.js"
     },
     "./self-update": {
       "types": "./dist/src/self-update/plugin.d.ts",

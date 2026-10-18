@@ -1,0 +1,52 @@
+import { splitLines } from '@loomcli/core';
+import type { ViewContext } from '@loomcli/core';
+
+/** The narrowest width text wraps at, so a room that leaves less still breaks at every space. */
+const NARROWEST = 1;
+
+/** Whether a line resolves to no character at all, whatever frames it holds. */
+function blank(text: string, context: ViewContext): boolean {
+  return context.plain(text) === '';
+}
+
+/** A continuation line placed under the text it continues, except a blank one, which stays bare. */
+function continuation(text: string, indent: string, context: ViewContext): string {
+  return blank(text, context) ? text : `${indent}${text}`;
+}
+
+/**
+ * A data value as the pack's views print it by default: `String(value)` escaped and styled
+ * `primary`, with `null` and `undefined` printing as the empty string.
+ */
+function dataText(value: unknown, context: ViewContext): string {
+  // `String(value)` is the documented coercion, including Object's default spelling.
+  // oxlint-disable-next-line typescript/no-base-to-string
+  const text = value === null || value === undefined ? '' : String(value);
+  return context.style.primary(context.style.escape(text));
+}
+
+/**
+ * Marked text laid out for its destination. On a terminal its tabs expand from the start of each
+ * input line, then it wraps at `room` columns, and at 1 when that leaves less, or stays unwrapped
+ * when `room` is undefined. Off a terminal it comes back untouched, tabs and all.
+ */
+function terminalWrap(text: string, context: ViewContext, room: number | undefined): string {
+  if (context.columns === undefined) {
+    return text;
+  }
+  const expanded = context.expandTabs(text);
+  return room === undefined ? expanded : context.wrap(expanded, Math.max(NARROWEST, room));
+}
+
+/**
+ * A block of marked text as lines that each stand alone, laid out by `terminalWrap` at the
+ * context's columns less `inset`, the columns placed before it. It is split with `splitLines`
+ * on and off a terminal, so a style or a hyperlink never runs into what the caller places beside
+ * a line, and a trailing line break adds no line.
+ */
+function wrappedLines(text: string, context: ViewContext, inset: number): string[] {
+  const room = context.columns === undefined ? undefined : context.columns - inset;
+  return splitLines(terminalWrap(text, context, room));
+}
+
+export { NARROWEST, blank, continuation, dataText, terminalWrap, wrappedLines };

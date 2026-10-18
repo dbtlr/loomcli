@@ -1,6 +1,8 @@
 import { pad, splitLines } from '@loomcli/core';
 import type { ViewContext } from '@loomcli/core';
 
+import { blank, continuation, terminalWrap } from './text-lines.js';
+
 type ValueAlignment = 'center' | 'left' | 'right';
 
 /** One labelled value of a record: the label as plain marked text, and the value to lay out. */
@@ -14,11 +16,6 @@ const EMPTY = 0;
 const FIRST = 0;
 const GAP = '  ';
 const HALF = 2;
-
-/** Whether a line resolves to no character at all, whatever frames it holds. */
-function blank(text: string, context: ViewContext): boolean {
-  return context.plain(text) === '';
-}
 
 /**
  * A value's lines placed within their own widest line, with no padding after any line and none
@@ -50,14 +47,8 @@ function valueLines(entry: RecordEntry, room: number, context: ViewContext): rea
   if (context.columns === undefined) {
     return [entry.value];
   }
-  const value = context.expandTabs(entry.value);
-  const wrapped = room > EMPTY ? context.wrap(value, room) : value;
+  const wrapped = terminalWrap(entry.value, context, room > EMPTY ? room : undefined);
   return alignLines(splitLines(wrapped), entry.align ?? 'left', context);
-}
-
-/** A continuation line of a value, indented under it, except a blank one, which stays bare. */
-function continuation(text: string, indent: string, context: ViewContext): string {
-  return blank(text, context) ? text : `${indent}${text}`;
 }
 
 /**
