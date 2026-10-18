@@ -4,7 +4,7 @@ title: ADR-0077 - Help details are Markdown that help renders with its own subse
 description: A Command's details is always Markdown, a string the author writes inline or brings in with a text import, which loom build inlines for every target with no embedding seam. The extended help page renders a stated subset, paragraphs, headings, lists, code, quotes, emphasis, and links, with a parser the pack writes itself and loads with the page view, keeping every authored line break and one blank line wherever the author left one or more, and wrapping nothing. Text outside the subset, other than a thematic break, reads as paragraph text. The manifest carries the Markdown as written. This narrows ADR-0058's rule that no help block holds a blank line, for the Details block alone.
 status: accepted
 created: 2026-10-13
-modified: 2026-10-14
+modified: 2026-10-18
 ---
 
 # ADR-0077 - Help details are Markdown that help renders with its own subset parser
@@ -45,3 +45,4 @@ Accepted in 0.12.0.
 ## Changelog
 
 - 2026-10-13: Proposed with the Markdown details contract.
+- 2026-10-18: [ADR-0087](0087-help-wraps-its-prose-to-the-destinations-columns-and-keeps-its-literals-whole.md), proposed, supersedes this record's clause that the page neither wraps nor reads the terminal width, and reverses its rejection of soft-break wrapping, whose reason was that help read no width. On a terminal, help wraps its prose at its context's `columns`, and the lines of a Details paragraph, list item, quote, or heading join at soft line breaks and wrap. Off a terminal each authored line stays one page line. Every other clause stands. It binds when that record is accepted.

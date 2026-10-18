@@ -538,6 +538,10 @@ _Avoid_: Usage text, man page, help screen
 A named set of Command rows or option rows on a help page, under one heading or an outer and an inner heading. A section groups rows for the reader and does not define a routing Group.
 _Avoid_: Group (for help grouping), category, plane
 
+**Row set**:
+The help page rows that share one left column: an outer heading's direct rows, or the rows under one inner heading. On a terminal a row set whose indent, left column, and floor exceed `columns` stacks, each left cell on its own line with its right cell below it.
+_Avoid_: Column group, Group (for help rows)
+
 **Compact help**:
 The help page `-h` prints, for a reader who needs the syntax: the extended page without the details and the examples, ending with a pointer to `--help` when the extended page holds more.
 _Avoid_: Short help, summary, brief help
@@ -547,7 +551,7 @@ The help page `--help` prints, for a reader who is learning the Command: the who
 _Avoid_: Long help, full help, man page
 
 **Details**:
-A Command's teaching prose, written in Markdown inline or brought in from a file with a text import, which extended help renders as a stated subset after the masthead, keeping the author's lines, and the manifest carries as written.
+A Command's teaching prose, written in Markdown inline or brought in from a file with a text import, which extended help renders as a stated subset after the masthead, keeping the author's lines off a terminal and reflowing its paragraphs to `columns` on one, and the manifest carries as written.
 _Avoid_: Long description, body, help text, Markdown asset
 
 **Completion**:
