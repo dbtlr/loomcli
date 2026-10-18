@@ -39,6 +39,16 @@ process.exitCode = await app.run({
     env: scenario.env,
     platform: scenario.platform ?? 'linux',
     release: { build: 'distributed' },
+    // A scenario with `columns` runs on a terminal that wide, so lanes wrap.
+    ...(scenario.columns === undefined
+      ? {}
+      : {
+          terminal: {
+            stderr: { columns: scenario.columns, isTTY: true, rows: 24 },
+            stdin: { isTTY: false },
+            stdout: { columns: scenario.columns, isTTY: true, rows: 24 },
+          },
+        }),
   },
   signal: controller.signal,
 });

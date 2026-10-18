@@ -1,4 +1,4 @@
-import { Application, style, pad, glyph, plugin } from '@loomcli/core';
+import { Application, style, pad, glyph, nowrap, plugin } from '@loomcli/core';
 
 const input = JSON.parse(process.argv[2]);
 // A development build, so a broken color helper prints its Developer Diagnostic.
@@ -22,6 +22,15 @@ const app = new Application('resolve', {
   ),
   rendering: input.rendering,
 }).action(({ out }) => {
+  if (input.nowrapProbe) {
+    out.print(style.escape(nowrap('a b')));
+    try {
+      nowrap(1);
+    } catch (error) {
+      out.print(`${error.name}: ${error.message}`);
+    }
+    return;
+  }
   for (let text of input.texts ?? [input.text]) {
     if (input.repeat) {
       text = text.repeat(input.repeat);
@@ -43,6 +52,9 @@ const app = new Application('resolve', {
     }
     for (let index = 0; index < (input.escapeTimes ?? 0); index += 1) {
       text = style.escape(text);
+    }
+    if (input.nowrap) {
+      text = nowrap(text);
     }
     if (input.pad !== undefined) {
       text = pad(text, input.pad, { align: input.align });

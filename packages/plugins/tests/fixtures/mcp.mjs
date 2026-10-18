@@ -9,6 +9,8 @@ import {
 import { json, jsonl } from '@loomcli/plugins/format/views';
 import { mcp } from '@loomcli/plugins/mcp';
 import { mcpArgument, mcpCommand, mcpInput } from '@loomcli/plugins/mcp/extension';
+import { records } from '@loomcli/plugins/records';
+import { table } from '@loomcli/plugins/table';
 
 import { ruleText } from '../../../core/tests/fixtures/rule-text.mjs';
 
@@ -314,7 +316,62 @@ const faults = {
     ),
 };
 
-const scenarios = { calls, listing, ...faults };
+/**
+ * One tool that reports the columns its views read and warns at length, served from a process
+ * whose environment holds a narrow COLUMNS. A tool call is an invocation by name, with no terminal.
+ */
+function columns() {
+  process.env.COLUMNS = '20';
+  const measure = new Command('measure', {
+    description: 'Report the columns.',
+    extensions: [mcpCommand({})],
+  }).action(async ({ out }) => {
+    await out.render(null, { render: (_value, context) => `${String(context.columns)}\n` });
+    await out.warn('a warning long enough to wrap at twenty columns');
+  });
+  return new Application('columns', { description: 'Report columns.', plugins: [mcp()] }).command(
+    measure,
+  );
+}
+
+/** A format that adds a second line to its value. */
+const twoLines = (value) => `${String(value)}\nsecond line`;
+
+/**
+ * One tool that renders a table with a multi-line format cell and records with an authored line
+ * break, served from a process whose environment holds a narrow COLUMNS.
+ */
+function fitted() {
+  process.env.COLUMNS = '10';
+  const grid = new Command('grid', {
+    description: 'Render a table and records.',
+    extensions: [mcpCommand({})],
+  }).action(async ({ out }) => {
+    const rows = [
+      { left: 'x y z', right: 'hello world' },
+      { left: 'q', right: 'zz' },
+    ];
+    await out.render(
+      rows,
+      table({
+        columns: [
+          { header: 'A', key: 'left' },
+          { align: 'right', format: twoLines, key: 'right' },
+        ],
+      }),
+    );
+    await out.render(
+      [{ key: 'one', kind: 'first\nsecond words here' }],
+      records({ identifier: 'key' }),
+    );
+  });
+  return new Application('fitted', {
+    description: 'Render fitted views.',
+    plugins: [mcp()],
+  }).command(grid);
+}
+
+const scenarios = { calls, columns, fitted, listing, ...faults };
 
 const [name, ...argv] = process.argv.slice(2);
 

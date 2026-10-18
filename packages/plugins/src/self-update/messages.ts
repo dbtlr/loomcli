@@ -1,10 +1,13 @@
-import { escapeControlCharacters, FatalError } from '@loomcli/core';
+import { escapeControlCharacters, FatalError, nowrap } from '@loomcli/core';
 
 import { notFound } from './request.js';
 import type { RequestError } from './request.js';
 
 /** Every path, URL, and version a sentence repeats, escaped as a failure message quotes text. */
 const shown = escapeControlCharacters;
+
+/** A path or URL escaped as a failure message quotes text, and kept whole when a message wraps. */
+const shownPlace = (place: string): string => nowrap(shown(place));
 
 /** One failure the Command reports: its sentence and correction, the runtime's error kept as cause. */
 function fatal(sentence: string, cause?: unknown): FatalError {
@@ -18,14 +21,16 @@ const refusals = {
     ),
   changed: (name: string, path: string) =>
     fatal(
-      `${name} at ${shown(path)} changed since it was installed, so self-update will not replace it. Install it again with install.sh.`,
+      `${name} at ${shownPlace(path)} changed since it was installed, so self-update will not replace it. Install it again with install.sh.`,
     ),
   link: (name: string, path: string) =>
     fatal(
-      `${name} at ${shown(path)} is a symbolic link, so self-update will not replace what it points to. Install it again with install.sh.`,
+      `${name} at ${shownPlace(path)} is a symbolic link, so self-update will not replace what it points to. Install it again with install.sh.`,
     ),
   missing: (name: string, path: string) =>
-    fatal(`${name} cannot find its binary at ${shown(path)}. Install it again with install.sh.`),
+    fatal(
+      `${name} cannot find its binary at ${shownPlace(path)}. Install it again with install.sh.`,
+    ),
   notBuilt: (name: string) =>
     fatal(
       `${name} was not built as a release binary, so it cannot update itself. Update it the way you installed it.`,
@@ -40,14 +45,14 @@ const refusals = {
     ),
   unwritable: (name: string, directory: string, cause: unknown) =>
     fatal(
-      `${name} cannot write to ${shown(directory)}. Run self-update as the user who installed ${name}.`,
+      `${name} cannot write to ${shownPlace(directory)}. Run self-update as the user who installed ${name}.`,
       cause,
     ),
 };
 
 /** The sentence for a request that failed, with the correction a named version's 404 reads. */
 function requestFailed(name: string, failure: RequestError, named: string | undefined): FatalError {
-  const url = shown(failure.url);
+  const url = shownPlace(failure.url);
   if (failure.kind === 'insecure') {
     return fatal(
       `${name} was redirected away from HTTPS while downloading ${url}. Run self-update again later.`,
@@ -69,7 +74,7 @@ function requestFailed(name: string, failure: RequestError, named: string | unde
 const failures = {
   cache: (name: string, directory: string, cause: unknown) =>
     fatal(
-      `${name} could not write its update cache to ${shown(directory)}. Free space there or check its permissions, then run self-update --refresh-notice again.`,
+      `${name} could not write its update cache to ${shownPlace(directory)}. Free space there or check its permissions, then run self-update --refresh-notice again.`,
       cause,
     ),
   conflict: (asset: string, tag: string, repository: string) =>
@@ -95,7 +100,7 @@ const failures = {
     ),
   write: (name: string, directory: string, cause: unknown) =>
     fatal(
-      `${name} could not write the new binary to ${shown(directory)}. Free space there or check its permissions, then run self-update again.`,
+      `${name} could not write the new binary to ${shownPlace(directory)}. Free space there or check its permissions, then run self-update again.`,
       cause,
     ),
 };

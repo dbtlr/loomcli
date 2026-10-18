@@ -91,6 +91,7 @@ process.exitCode = await app.run({
     platform: scenario.platform,
     program: scenario.program,
     release: scenario.release,
+    ...(scenario.terminal === undefined ? {} : { terminal: scenario.terminal }),
   },
   signal: controller.signal,
 });

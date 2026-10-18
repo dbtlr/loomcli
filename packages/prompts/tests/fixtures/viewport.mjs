@@ -5,7 +5,8 @@ import { Application } from '@loomcli/core';
 import { select } from '../../dist/index.js';
 import { questionFrame } from '../../dist/views.js';
 
-const columns = Number(process.argv[2]);
+// A width of 'unreported' is a terminal that reports none. COLUMNS, when given, is the sixth argument.
+const columns = process.argv[2] === 'unreported' ? undefined : Number(process.argv[2]);
 const height = Number(process.argv[3]);
 let advanced = 0;
 let answer = undefined;
@@ -21,8 +22,10 @@ class Keyboard extends Readable {
     return this;
   }
 }
+let drawn = '';
 const sink = new Writable({
   write(chunk, encoding, done) {
+    drawn += String(chunk);
     done();
   },
 });
@@ -57,7 +60,6 @@ const app = new Application('viewport', { description: 'Render a bounded select 
         above: 3,
         below: 2,
         choices: ['choice-3', 'choice-4', 'choice-5', 'choice-6', 'choice-7'],
-        columns,
         highlighted: 0,
         issue: undefined,
         kind: 'select',
@@ -71,7 +73,7 @@ const app = new Application('viewport', { description: 'Render a bounded select 
 const code = await app.run({
   host: {
     argv: [],
-    env: {},
+    env: process.argv[6] === undefined ? {} : { COLUMNS: process.argv[6] },
     stderr: sink,
     stdin: new Keyboard(),
     terminal: {
@@ -81,4 +83,4 @@ const code = await app.run({
     },
   },
 });
-process.stdout.write(JSON.stringify({ advanced, answer, code }));
+process.stdout.write(JSON.stringify({ advanced, answer, code, drawn }));

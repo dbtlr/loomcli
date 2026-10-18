@@ -6,15 +6,17 @@ import { DeclarationError } from './errors.js';
 import type { InternalError } from './errors.js';
 import { sourceRoots } from './host.js';
 import type { ReportHost } from './host.js';
+import { columns } from './rendering.js';
 import type { ContextualStyle } from './style.js';
 
 /**
  * Where a development build's diagnostics print: the application name a finding's path opens with,
- * the stderr width, and the working directory and reader a defect's source comes through.
+ * the stderr terminal and the `COLUMNS` that narrows it, and the working directory and reader a
+ * defect's source comes through.
  */
 interface DeveloperScene {
   readonly application: string;
-  readonly host: Pick<ReportHost, 'cwd' | 'readSource' | 'terminal'>;
+  readonly host: Pick<ReportHost, 'cwd' | 'env' | 'readSource' | 'terminal'>;
 }
 
 /**
@@ -53,14 +55,17 @@ function anatomyOf(fault: DeclarationError | InternalError, host: DeveloperScene
   };
 }
 
-/** The banner and body of one fault's diagnostic, laid out for this run's stderr. */
+/**
+ * The banner and body of one fault's diagnostic, laid out for this run's stderr at its effective
+ * width read now, or at 80 columns when stderr is not a terminal or reports no width.
+ */
 function sections(
   fault: DeclarationError | InternalError,
   scene: DeveloperScene,
 ): { banner: string; body: string } {
   return diagnosticSections(anatomyOf(fault, scene.host), {
     application: scene.application,
-    width: scene.host.terminal.stderr.columns ?? messageWidth,
+    width: columns(scene.host, 'stderr') ?? messageWidth,
   });
 }
 

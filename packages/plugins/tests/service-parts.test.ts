@@ -1,4 +1,4 @@
-import { style } from '@loomcli/core';
+import { nowrap, style } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
 
 import { readPrinted } from '../src/service/launchd.js';
@@ -97,6 +97,17 @@ test.each([
   expect(readPrinted(stdout)).toEqual(reading);
 });
 
+test('the text view keeps the unit path whole for line breaking', () => {
+  const unit = '/Users/me/Library/Application Support/com.acme.notes.plist';
+  const state = stateOf(
+    { installed: true, label: 'com.acme.notes', unit },
+    { notes: [], running: false, state: 'not running' },
+  );
+  expect(statusText(statusOf(state, []), style)).toBe(
+    `com.acme.notes: not running\n  unit  ${nowrap(unit)}\n`,
+  );
+});
+
 test('the text view pads the names to the longest plus two, prints author rows as given, and escapes manager words and paths', () => {
   const state = stateOf(
     { installed: true, label: 'com.acme.notes', unit: '/units/a\nb.service' },
@@ -104,7 +115,7 @@ test('the text view pads the names to the longest plus two, prints author rows a
   );
   const status = statusOf(state, [{ name: 'connections', value: '3' }]);
   expect(statusText(status, style)).toBe(
-    'com.acme.notes: running (pid 9)\n  unit         /units/a\\u000ab.service\n  connections  3\n  note         A note.\n',
+    `com.acme.notes: running (pid 9)\n  unit         ${nowrap(String.raw`/units/a\u000ab.service`)}\n  connections  3\n  note         A note.\n`,
   );
   const unknown = statusOf(
     stateOf(
@@ -113,7 +124,9 @@ test('the text view pads the names to the longest plus two, prints author rows a
     ),
     [],
   );
-  expect(statusText(unknown, style)).toBe('com.acme.notes: odd\\u001bword\n  unit  /u\n');
+  expect(statusText(unknown, style)).toBe(
+    `com.acme.notes: odd\\u001bword\n  unit  ${nowrap('/u')}\n`,
+  );
   expect(
     statusText(
       statusOf(
@@ -125,7 +138,7 @@ test('the text view pads the names to the longest plus two, prints author rows a
       ),
       style,
     ),
-  ).toBe('com.acme.notes: running\n  unit  /u\n');
+  ).toBe(`com.acme.notes: running\n  unit  ${nowrap('/u')}\n`);
 });
 
 test('the status members keep the order the type lists them, with no pid when none is reported', () => {

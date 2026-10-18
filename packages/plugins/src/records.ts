@@ -1,5 +1,6 @@
-import { pad } from '@loomcli/core';
 import type { RowView, ViewContext } from '@loomcli/core';
+
+import { recordBlock } from './record-block.js';
 
 interface FieldDefinition<Row, Key extends keyof Row & string> {
   readonly key: Key;
@@ -71,7 +72,10 @@ function discoverFields<Row>(row: Readonly<Row>, identifier: string): PreparedFi
   return Object.keys(Object(row)).map((key) => prepareDiscoveredField(key, identifier));
 }
 
-/** One record, with its key lane sized from either the declared fields or this row's own keys. */
+/**
+ * One record, with its key lane sized from either the declared fields or this row's own keys. The
+ * layout of its lines, which wraps each value on a terminal, is the one the table's fallback uses.
+ */
 function renderRecord<Row>({
   context,
   fields,
@@ -83,17 +87,13 @@ function renderRecord<Row>({
   index: number;
   row: Readonly<Row>;
 }): string {
-  const keys = fields.map((field) => context.style.escape(field.key));
-  let width = EMPTY;
-  for (const key of keys) {
-    width = Math.max(width, context.width(key));
-  }
-  const lines = fields.map((field, fieldIndex) => {
-    const escapedKey = keys[fieldIndex] ?? context.style.escape(field.key);
-    const key = context.style.dim(pad(escapedKey, width));
-    return `${key}  ${field.value(row, context)}`;
-  });
-  const record = lines.length === EMPTY ? '' : `${lines.join('\n')}\n`;
+  const record = recordBlock(
+    fields.map((field) => ({
+      label: context.style.escape(field.key),
+      value: field.value(row, context),
+    })),
+    context,
+  );
   return index === FIRST ? record : `\n${record}`;
 }
 

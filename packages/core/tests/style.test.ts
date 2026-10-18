@@ -240,6 +240,33 @@ test('padding resolves compatibility glyphs and measures Unicode columns, tabs, 
   });
 });
 
+const unbroken = (body: string) => `\uE000["nowrap"]\uE001${body}\uE002`;
+
+test('a no-wrap frame resolves to its body byte for byte and measures as its body', () => {
+  const radio = '\uE000["glyph","radioOn"]\uE001\uE002';
+  const color = { rendering: { color: 'always' } };
+  expect(resolve(unbroken(redSpan(`a\tb ${radio}`)), color).stdout).toBe(
+    '\u001b[31ma\tb ◉\u001b[39m',
+  );
+  expect(resolve(redSpan(`A${unbroken('B')}C`), color).stdout).toBe('\u001b[31mABC\u001b[39m');
+  expect(resolve(unbroken(radio), { env: { TERM: 'linux' } }).stdout).toBe('(*)');
+  expect(resolve(padded(unbroken('ab'), 4)).stdout).toBe('ab  ');
+  expect(resolve(unbroken(padded('ab', 4))).stdout).toBe('ab  ');
+  expect(resolve(unbroken('a\tb'), { measure: true }).stdout).toBe('9');
+  expect(resolve(unbroken(unbroken('a b'))).stdout).toBe('a b');
+  const malformed = '\uE000["nowrap",1]\uE001X\uE002';
+  expect(resolve(malformed).stdout).toBe(malformed);
+});
+
+test('nowrap builds the no-wrap frame and rejects a value that is not a string', () => {
+  expect(resolve('/Users/a/Application Support', { nowrap: true }).stdout).toBe(
+    '/Users/a/Application Support',
+  );
+  expect(resolve('', { nowrapProbe: true }).stdout).toBe(
+    `${unbroken('a b')}\nTypeError: Style helpers require a string.\n`,
+  );
+});
+
 const namedColors = [
   ['black', 30],
   ['red', 31],

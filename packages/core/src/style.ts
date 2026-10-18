@@ -295,6 +295,14 @@ function pad(text: string, minimumWidth: number, options?: { align?: Alignment }
   return frame(['pad', minimumWidth, align], text);
 }
 
+/**
+ * Text that line breaking keeps whole, such as a path that holds spaces. The frame resolves to its
+ * body exactly and measures as its body; only the view context's `wrap` and `splitLines` read it.
+ */
+function nowrap(text: string): string {
+  return frame(['nowrap'], textOnly(text));
+}
+
 const style: Style = createStyle();
 
 export type {
@@ -324,9 +332,11 @@ export {
   headerEnd,
   isColorName,
   modifiers,
+  nowrap,
   open,
   pad,
   reservedStyleNames,
   style,
+  textOnly,
   tokens,
 };

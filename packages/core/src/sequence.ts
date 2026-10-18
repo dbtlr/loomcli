@@ -49,8 +49,8 @@ type SequenceView<Row> =
 
 /** What one sequence writes through, supplied by the output that reserved its place. */
 interface SequenceWriter<Row> {
-  /** The context of the destination the pieces reach. */
-  context: ViewContext;
+  /** A fresh context of the destination the pieces reach, built for each piece as it renders. */
+  context: () => ViewContext;
   /** Ends the reservation, so later output to that destination writes after this sequence. */
   close: () => void;
   /** Writes the incomplete-result line on stderr, before the fault's own report. */
@@ -185,7 +185,7 @@ async function writeHead<Row>(
   produce: ((context: ViewContext) => unknown) | undefined,
 ): Promise<void> {
   if (produce) {
-    await writer.piece(() => produce(writer.context));
+    await writer.piece(() => produce(writer.context()));
   }
 }
 
@@ -196,7 +196,7 @@ async function writeTail<Row>(
   count: number,
 ): Promise<void> {
   if (produce) {
-    await writer.piece(() => produce(count, writer.context));
+    await writer.piece(() => produce(count, writer.context()));
   }
 }
 
@@ -217,7 +217,7 @@ async function writeEachRow<Row>(
       return;
     }
     const index = reading.counts.yielded - 1;
-    await writer.piece(() => view.row(next.value, index, writer.context));
+    await writer.piece(() => view.row(next.value, index, writer.context()));
     reading.counts.written += 1;
   }
 }
@@ -247,7 +247,7 @@ async function writePieces<Row>(
   if (writer.view.kind === 'whole') {
     const { render } = writer.view;
     const collected = await collectRows(reading);
-    return () => writer.piece(() => render(collected, writer.context));
+    return () => writer.piece(() => render(collected, writer.context()));
   }
   const { view } = writer.view;
   await writeEachRow(writer, view, reading);

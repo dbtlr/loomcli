@@ -129,6 +129,30 @@ if (scenario === 'capture') {
       terminal,
     },
   });
+} else if (scenario === 'terminal-getter') {
+  let columns = 100;
+  const stdout = {
+    get columns() {
+      return columns;
+    },
+    isTTY: true,
+    rows: 30,
+  };
+  const terminal = {
+    stderr: { columns: 80, isTTY: true, rows: 30 },
+    stdin: { isTTY: false },
+    stdout,
+  };
+  await new Application('host')
+    .action(({ host, out }) => {
+      const reading = () =>
+        JSON.stringify({ columns: host.terminal.stdout.columns, rows: host.terminal.stdout.rows });
+      out.print(reading());
+      columns = 60;
+      stdout.rows = 10;
+      out.print(reading());
+    })
+    .run({ host: { argv: [], env: {}, release: { build: 'distributed' }, terminal } });
 } else if (scenario === 'build-output') {
   const chunks = [];
   const stderr = new Writable({

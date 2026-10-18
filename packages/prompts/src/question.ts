@@ -32,6 +32,10 @@ function backspace(text: string): string {
 
 const controls = { render: (text: string) => text };
 
+/** Most choices a select shows at once, and the rows its title, key help, and markers need. */
+const MAX_VISIBLE = 7;
+const FRAME_CHROME = 4;
+
 /** Draws and erases only the region a question owns, measuring the resolved override's rows. */
 function drawing<Options>(context: PromptContext<Options>, message: string) {
   let rows = 0;
@@ -132,13 +136,15 @@ async function askSelect<Options, Choice extends string>(
   const reader = openReader(context);
   const draw = drawing(context, settings.message);
   let answered: { value: string } | undefined = undefined;
-  const available = context.host.terminal.stderr.rows;
-  const count = Math.min(7, available && available > 0 ? Math.max(1, available - 4) : 7);
-  let start = Math.max(0, Math.min(selected[0] - count + 1, settings.choices.length - count));
+  let start = Math.max(0, selected[0] - MAX_VISIBLE + 1);
   const frame = () => {
-    if (selected[0] < start) {
-      start = selected[0];
-    }
+    // The window reads the rows when it draws, so a resize reaches the next frame.
+    const { rows } = context.host.terminal.stderr;
+    const count = Math.min(
+      MAX_VISIBLE,
+      rows && rows > 0 ? Math.max(1, rows - FRAME_CHROME) : MAX_VISIBLE,
+    );
+    start = Math.max(0, Math.min(start, selected[0], settings.choices.length - count));
     if (selected[0] >= start + count) {
       start = selected[0] - count + 1;
     }
@@ -147,12 +153,11 @@ async function askSelect<Options, Choice extends string>(
       above: start,
       below: settings.choices.length - start - choices.length,
       choices,
-      columns: context.host.terminal.stderr.columns,
       highlighted: selected[0] - start,
       issue: undefined,
       kind: 'select',
       message: settings.message,
-      rows: context.host.terminal.stderr.rows,
+      rows,
     });
   };
   try {
