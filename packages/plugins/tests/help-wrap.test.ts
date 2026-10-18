@@ -385,6 +385,86 @@ test('a tab in a description, Details, and an example command expands on a termi
   expect(block(piped, 'EXAMPLES')[1]).toBe('  $ app run\tfast');
 });
 
+/** A root whose options are `-o, --out <folder>`, then `--quiet` when it is long-only. */
+function outputs({ quiet, section }: { quiet: boolean; section?: readonly string[] }) {
+  const help = section === undefined ? {} : { section };
+  return {
+    options: [
+      {
+        description: 'The folder to write the pages into.',
+        help: { ...help, placeholder: 'folder' },
+        name: 'out',
+        short: 'o',
+        type: 'string',
+      },
+      ...(quiet ? [{ description: 'Print nothing.', help, name: 'quiet', type: 'boolean' }] : []),
+    ],
+  };
+}
+
+/**
+ * The columns where a stacked block's left cells start their text, and where its right cells do.
+ * A left cell is a line whose text opens with an option's dash.
+ */
+function starts(lines: readonly string[]) {
+  const left = new Set<number>();
+  const right = new Set<number>();
+  for (const line of lines.slice(1)) {
+    const column = line.search(/\S/u);
+    (line.trimStart().startsWith('-') ? left : right).add(column);
+  }
+  return { left, right };
+}
+
+test('a stacked set holding a long-only option starts its right cells past every spelling', () => {
+  const lines = block(render({ app: outputs({ quiet: true }), columns: 28 }), 'OPTIONS');
+  expect(lines).toEqual([
+    'OPTIONS',
+    '  -o, --out <folder>',
+    '          The folder to',
+    '          write the pages',
+    '          into.',
+    '      --quiet',
+    '          Print nothing.',
+    '  -h, --help',
+    '          Show this help.',
+    '  -V, --version',
+    '          Print the version.',
+  ]);
+  const { left, right } = starts(lines);
+  expect([...right].filter((column) => left.has(column))).toEqual([]);
+});
+
+test('a stacked set with no long-only option starts its right cells four columns in', () => {
+  expect(block(render({ app: outputs({ quiet: false }), columns: 28 }), 'OPTIONS')).toEqual([
+    'OPTIONS',
+    '  -o, --out <folder>',
+    '      The folder to write',
+    '      the pages into.',
+    '  -h, --help',
+    '      Show this help.',
+    '  -V, --version',
+    '      Print the version.',
+  ]);
+});
+
+test('a stacked set under an inner heading starts its right cells past every spelling', () => {
+  const app = outputs({ quiet: true, section: ['Output', 'Files'] });
+  const lines = block(render({ app, columns: 28 }), 'OUTPUT');
+  expect(lines).toEqual([
+    'OUTPUT',
+    '  FILES',
+    '    -o, --out <folder>',
+    '            The folder to',
+    '            write the pages',
+    '            into.',
+    '        --quiet',
+    '            Print nothing.',
+  ]);
+  const { left, right } = starts(lines.slice(1));
+  expect([...right].filter((column) => left.has(column))).toEqual([]);
+});
+
 /** A root that reads stdin and declares an option group whose sentence is wide. */
 const sentences = {
   groups: [{ kind: 'exclusive', options: ['format-json', 'format-yaml', 'format-toml'] }],

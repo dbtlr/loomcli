@@ -420,11 +420,29 @@ function wrappedRows({ indent, leftWidth, rows }: RowSet, context: TerminalConte
   );
 }
 
-/** Each left cell alone at the set's indent, its right cell on the lines below, further in. */
+/**
+ * The columns of spaces before a left cell's text, such as the four that align a long-only
+ * option's spelling under the long spellings.
+ */
+function leadingSpaces(left: string, context: ViewContext): number {
+  const text = context.plain(left);
+  return context.width(text) - context.width(text.trimStart());
+}
+
+/**
+ * Each left cell alone at the set's indent, its right cell on the lines below. Every right cell
+ * starts four columns past the furthest-in start of a left cell's text in the set, so a
+ * description never starts in the column of a long-only option's spelling.
+ */
 function stackedRows({ indent, rows }: RowSet, context: TerminalContext): string[] {
+  let furthest = 0;
+  for (const row of rows) {
+    furthest = Math.max(furthest, leadingSpaces(row.left, context));
+  }
+  const lead = `${indent}${' '.repeat(furthest)}${stackedIndent}`;
   return rows.flatMap((row) => [
     `${indent}${row.left}`,
-    ...(row.right === '' ? [] : hanging(row.right, `${indent}${stackedIndent}`, context)),
+    ...(row.right === '' ? [] : hanging(row.right, lead, context)),
   ]);
 }
 
