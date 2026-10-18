@@ -1,7 +1,8 @@
-import { reportedSpelling, readExtension } from '@loomcli/core';
+import { nowrap, reportedSpelling, readExtension } from '@loomcli/core';
 import type { CommandGraph, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
 import { visibleOptionGroups } from '../option-groups.js';
+import { continuation } from '../text-lines.js';
 import { argumentAccepts, optionAccepts } from './accepted.js';
 import {
   argumentFacts,
@@ -17,6 +18,7 @@ import {
 import type { Row, StringOption, UsageWriter } from './cells.js';
 import { renderDetails } from './details.js';
 import { helpCommand, helpInput } from './extension.js';
+import { hangLines, onTerminal, prose } from './layout.js';
 import { sectionBlocks } from './sections.js';
 import type { SectionMember } from './sections.js';
 import type { HelpPage, HelpVariant } from './views.js';
@@ -47,23 +49,65 @@ function pathOf(graph: CommandGraph, command: CommandNode): string {
   return [graph.name, ...command.path].join(' ');
 }
 
+/** The label of the line under a deprecated Command's masthead, ahead of its message. */
+const deprecationLabel = 'Deprecated: ';
+
+/** The indent of the deprecation line. */
+const deprecationIndent = '  ';
+
+/** Where a masthead description continues when its hang after the path cannot fit. */
+const mastheadBase = 2;
+
 /**
- * `<path> · <description>`, or `<path>` alone when the node has no description. A deprecated
- * Command follows it with its migration message on a second line of the same block.
+ * The deprecation line under a masthead. On a terminal its message wraps and continues under its
+ * first character, after the label, or at the line's indent when that hang cannot fit. Each line
+ * is one warning value, so the first line's label and message stay one value, as they are off a
+ * terminal.
  */
-function masthead(path: string, command: CommandNode, { style }: ViewContext): string[] {
+function deprecation(message: string, context: ViewContext): string[] {
+  const { style } = context;
+  const label = style.escape(deprecationLabel);
+  const text = style.escape(message);
+  if (!onTerminal(context)) {
+    return [`${deprecationIndent}${style.warning(label + text)}`];
+  }
+  const base = context.width(deprecationIndent);
+  const { first, indent, rest } = hangLines(
+    text,
+    { base, columns: context.columns, lead: base + context.width(label) },
+    context,
+  );
+  return [
+    `${deprecationIndent}${style.warning(label + first)}`,
+    ...rest.map((line) => continuation(style.warning(line), ' '.repeat(indent), context)),
+  ];
+}
+
+/**
+ * `<path> · <description>`, or `<path>` alone when the node has no description. On a terminal the
+ * description wraps and continues under its first character, or at indent 2 when that hang cannot
+ * fit. A deprecated Command follows it with
+ * its migration message on the next line of the same block.
+ */
+function masthead(path: string, command: CommandNode, context: ViewContext): string[] {
+  const { style } = context;
   const { deprecated, description } = command;
   const name = style.highlight.bold(style.escape(path));
   const opening =
     description === undefined
-      ? name
-      : `${name} ${style.dim('·')} ${style.primary(style.escape(description))}`;
-  return deprecated === undefined
-    ? [opening]
-    : [opening, `  ${style.warning(style.escape(`Deprecated: ${deprecated}`))}`];
+      ? [name]
+      : prose(
+          style.primary(style.escape(description)),
+          { base: mastheadBase, lead: `${name} ${style.dim('·')} ` },
+          context,
+        );
+  return deprecated === undefined ? opening : [...opening, ...deprecation(deprecated, context)];
 }
 
-/** The routed node's Markdown, rendered as authored lines in extended help. */
+/**
+ * The routed node's Markdown, rendered in extended help: as authored lines off a terminal, and
+ * reflowed to the width on one.
+ */
 function details(command: CommandNode, context: ViewContext): string[] {
   const source = commandHelp(command)?.details;
   return source === undefined ? [] : renderDetails(source, context);
@@ -241,13 +285,18 @@ function options(command: CommandNode, graph: CommandGraph, context: ViewContext
   );
 }
 
-/** One example: the invocation, then its note on the next line indented two more spaces. */
-function exampleLines(name: string, example: Example, { style }: ViewContext): string[] {
+/**
+ * One example: the invocation, which stays whole, then its note on the next line indented two more
+ * spaces. On a terminal the note wraps and continues at its indent.
+ */
+function exampleLines(name: string, example: Example, context: ViewContext): string[] {
+  const { style } = context;
   const lines = [
     `  ${style.dim('$')} ${style.highlight(style.escape(name))} ${style.primary(style.escape(example.command))}`,
   ];
   if (example.note !== undefined) {
-    lines.push(`    ${style.dim(style.escape(example.note))}`);
+    const note = style.dim(style.escape(example.note));
+    lines.push(...prose(note, { lead: '    ' }, context));
   }
   return lines;
 }
@@ -256,6 +305,16 @@ function examples(graph: CommandGraph, command: CommandNode, context: ViewContex
   const listed = commandHelp(command)?.examples ?? [];
   const lines = listed.flatMap((example) => exampleLines(graph.name, example, context));
   return isEmpty(lines) ? [] : [context.style.dim('EXAMPLES'), ...lines];
+}
+
+/**
+ * One hint: `Run`, the command it names, and what that command shows. On a terminal the hint wraps
+ * at the left margin, and the command sits in `nowrap`, so it stays on one line.
+ */
+function hint(command: string, rest: string, context: ViewContext): string[] {
+  const { style } = context;
+  const named = onTerminal(context) ? nowrap(command) : command;
+  return prose(`${style.dim('Run')} ${named} ${style.dim(rest)}`, { lead: '' }, context);
 }
 
 /**
@@ -275,18 +334,25 @@ function hints(
     path: string;
     variant: HelpVariant;
   },
-  { style }: ViewContext,
+  context: ViewContext,
 ): string[] {
-  const run = `${style.dim('Run')} ${style.highlight(style.escape(path))}`;
+  const { style } = context;
+  const name = style.highlight(style.escape(path));
   const lines: string[] = [];
   if (!isEmpty(children)) {
     const spelling = variant === 'compact' ? '-h' : '--help';
     lines.push(
-      `${run} ${style.dim.italic('<command>')} ${style.highlight(spelling)} ${style.dim('for command details.')}`,
+      ...hint(
+        `${name} ${style.dim.italic('<command>')} ${style.highlight(spelling)}`,
+        'for command details.',
+        context,
+      ),
     );
   }
   if (variant === 'compact' && omitted) {
-    lines.push(`${run} ${style.highlight('--help')} ${style.dim('for details and examples.')}`);
+    lines.push(
+      ...hint(`${name} ${style.highlight('--help')}`, 'for details and examples.', context),
+    );
   }
   return lines;
 }
@@ -297,17 +363,24 @@ function hints(
  * with nothing to show is omitted, and the page carries no line terminator of its own at either
  * end. The compact page omits Details and EXAMPLES.
  */
-function stdinInput(command: CommandNode, graph: CommandGraph, { style }: ViewContext): string[] {
+function stdinInput(command: CommandNode, graph: CommandGraph, context: ViewContext): string[] {
+  const { style } = context;
   const input = command.stdin;
   if (input === undefined) {
     return [];
   }
+  // The description and the stdin sentence are prose, and the example line is a literal.
   const description =
-    input.description === undefined ? [] : [`  ${style.primary(style.escape(input.description))}`];
+    input.description === undefined
+      ? []
+      : prose(style.primary(style.escape(input.description)), { lead: '  ' }, context);
+  const sentence = style.primary(
+    `${input.required ? 'Required.' : 'Optional.'} Reads piped or redirected stdin. Terminal input is not accepted.`,
+  );
   return [
     style.dim('INPUT'),
     ...description,
-    `  ${style.primary(`${input.required ? 'Required.' : 'Optional.'} Reads piped or redirected stdin. Terminal input is not accepted.`)}`,
+    ...prose(sentence, { lead: '  ' }, context),
     `  ${style.primary(style.escape(`Example: <producer> | ${pathOf(graph, command)}`))}`,
   ];
 }
@@ -316,9 +389,12 @@ const pairMembers = 2;
 const listStart = 0;
 const lastMember = -1;
 
-/** Rules speak about supplied options, independently of their defaults or prepared stdin. */
+/**
+ * Rules speak about supplied options, independently of their defaults or prepared stdin. Each
+ * sentence is prose, so on a terminal it wraps and continues at its indent.
+ */
 function groupSentences(command: CommandNode, context: ViewContext): string[] {
-  return visibleOptionGroups(command).map((group) => {
+  return visibleOptionGroups(command).flatMap((group) => {
     const nodes = command.options.filter((option) => group.options.includes(option.name));
     const names = group.options.map((name) => {
       const option = nodes.find((node) => node.name === name);
@@ -337,7 +413,8 @@ function groupSentences(command: CommandNode, context: ViewContext): string[] {
     const caveat = nodes.some((option) => option.type === 'content' && option.stdin)
       ? ' (piped stdin does not count)'
       : '';
-    return `  ${context.style.primary(context.style.escape(`${rule}${caveat}.`))}`;
+    const sentence = context.style.primary(context.style.escape(`${rule}${caveat}.`));
+    return prose(sentence, { lead: '  ' }, context);
   });
 }
 
@@ -350,7 +427,7 @@ function renderPage({ command, graph, variant }: HelpPage, context: ViewContext)
   const listed = examples(graph, command, context);
   const extended = variant === 'extended';
   const omitted = !extended && !(isEmpty(detailLines) && isEmpty(listed));
-  return [
+  const page = [
     masthead(path, command, context),
     extended ? detailLines : [],
     usage({ children, command, graph }, context),
@@ -365,6 +442,9 @@ function renderPage({ command, graph, variant }: HelpPage, context: ViewContext)
     .filter((block) => !isEmpty(block))
     .map((block) => block.join('\n'))
     .join('\n\n');
+  // On a terminal the page holds no tab, so a literal's tab expands from its line's start.
+  // Prose expanded its own tabs before it wrapped, so this pass reaches literals alone.
+  return onTerminal(context) ? context.expandTabs(page) : page;
 }
 
 export type { Example, UsageSubject };

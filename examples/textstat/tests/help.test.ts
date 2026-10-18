@@ -99,3 +99,12 @@ test.each(['--help', '--version'])(
     expect(invoke(main, ['missing-fixture.txt', spelling])).toEqual(expected);
   },
 );
+
+/** The same application on a terminal whose stdout reports a fixed width and no `COLUMNS`. */
+const sized = new URL('fixtures/width.mjs', import.meta.url);
+
+test.each([40, 60])('textstat --help fits a %i-column terminal', (columns) => {
+  const result = invoke(sized, [String(columns), '--help']);
+  expect(result.status).toBe(0);
+  expect(result.stdout.split('\n').filter((line) => line.length > columns)).toEqual([]);
+});

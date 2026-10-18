@@ -376,11 +376,20 @@ test('a detailed custom theme distinguishes every page token, including primary 
   });
 });
 
-test('a help page stays unwrapped on a terminal narrower than its rows', () => {
+/** The lines of a page wider than 20 columns. */
+function overflowing(stdout: string): string[] {
+  return stdout.split('\n').filter((line) => line.length > 20);
+}
+
+test('a help page wraps on a terminal narrower than its rows, where only its literals overflow', () => {
   const plain = { color: 'never', hyperlinks: 'never', modifiers: 'never' };
   const piped = run({ argv: ['--help'], rendering: plain });
   const narrow = run({ argv: ['--help'], columns: 20, rendering: plain, tty: true });
   expect(piped.status).toBe(0);
-  expect(piped.stdout.split('\n').some((line) => line.length > 20)).toBe(true);
-  expect(narrow).toEqual(piped);
+  expect(overflowing(piped.stdout)).toContain('  get  Read one.  (deprecated: Use read.)');
+  expect(narrow.status).toBe(0);
+  expect(overflowing(narrow.stdout)).toEqual([
+    '  app <command> [options]',
+    '  $ app get --raw «warning»',
+  ]);
 });

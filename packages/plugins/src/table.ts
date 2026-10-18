@@ -3,7 +3,7 @@ import type { View, ViewContext } from '@loomcli/core';
 
 import { recordBlock } from './record-block.js';
 import { levelWidths, total } from './table-fit.js';
-import { NARROWEST, dataText, terminalWrap } from './text-lines.js';
+import { dataText, terminalWrap, unitWidth } from './text-lines.js';
 
 type TableAlignment = 'center' | 'left' | 'right';
 
@@ -130,14 +130,14 @@ function naturalWidths<Row>({ cells, context, headers }: Grid<Row>): number[] {
 }
 
 /**
- * Each column's floor: the widest unit `wrap` keeps whole in its header or any cell, read from
- * `wrap` itself at one column, so a line's leading and trailing spaces count as `wrap` counts them.
+ * Each column's floor: the widest unit `wrap` keeps whole in its header or any cell, so a line's
+ * leading and trailing spaces count as `wrap` counts them.
  */
 function floorWidths<Row>(
   { cells, context, headers }: Grid<Row>,
   natural: readonly number[],
 ): number[] {
-  const unit = (text: string): number => context.width(context.wrap(text, NARROWEST));
+  const unit = (text: string): number => unitWidth(text, context);
   return headers.map((header, index) => {
     let width = unit(header);
     for (const row of cells) {

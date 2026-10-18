@@ -13,6 +13,26 @@ test.each<[string, string[], string[]]>([
   ['a paragraph keeps its lines as source lines, which man fills', ['one', 'two'], ['one', 'two']],
   ['a paragraph after another opens with .PP', ['one', '', 'two'], ['one', '.PP', 'two']],
   [
+    'table rows read as the paragraph text they follow and lead, which man fills',
+    ['intro', '| a | b |', '| c | d |', 'after', '', '| e |', '', '- item', '  | f |'],
+    ['intro', '| a | b |', '| c | d |', 'after', '.PP', '| e |', bullet, 'item', '| f |'],
+  ],
+  [
+    'a line indented four spaces directly after table rows is paragraph text, which man fills',
+    ['Para.', '| a | b |', '    indented line after rows'],
+    ['Para.', '| a | b |', 'indented line after rows'],
+  ],
+  [
+    'a line indented four spaces directly after table rows that open details is paragraph text',
+    ['| a | b |', '    indented line after rows'],
+    ['| a | b |', 'indented line after rows'],
+  ],
+  [
+    'a line indented four spaces past an item directly after its table rows is paragraph text',
+    ['- item', '  | a | b |', '      deeper line'],
+    [bullet, 'item', '| a | b |', 'deeper line'],
+  ],
+  [
     'a heading at the top level is .SS with its inline constructs as plain text, and opens no .PP after it',
     ['intro', '', '# Read `x` *now* [here](https://x.org)', '', 'text'],
     ['intro', '.SS "Read x now here <https://x.org>"', 'text'],

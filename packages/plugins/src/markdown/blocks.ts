@@ -12,6 +12,7 @@ const quoteMarkerWidth = 1;
 
 type BlockContent =
   | { readonly kind: 'paragraph'; readonly lines: readonly (readonly Inline[])[] }
+  | { readonly kind: 'table'; readonly lines: readonly (readonly Inline[])[] }
   | { readonly kind: 'heading'; readonly level: number; readonly text: readonly Inline[] }
   | { readonly kind: 'code'; readonly lines: readonly string[] }
   | { readonly kind: 'break'; readonly text: string }
@@ -110,6 +111,11 @@ function quote(line: string): string | undefined {
   return text?.startsWith('>') ? text.slice(quoteMarkerWidth).replace(/^ /u, '') : undefined;
 }
 
+/** A table row: a line whose text starts with `|`. The table is not parsed into cells. */
+function tableRow(line: string): boolean {
+  return markerText(line)?.startsWith('|') ?? false;
+}
+
 function thematic(line: string): boolean {
   const text = markerText(line);
   return (
@@ -152,6 +158,7 @@ function interrupts(line: string): boolean {
     heading(line) !== undefined ||
     quote(line) !== undefined ||
     thematic(line) ||
+    tableRow(line) ||
     listItem(line) !== undefined
   );
 }
@@ -226,9 +233,13 @@ function paragraphState(content = ''): ParagraphState {
   return state;
 }
 
-/** A lazy line belongs only to an open paragraph, never across a blank or an interrupting marker. */
+/**
+ * A lazy line belongs only to an open paragraph, never across a blank or an interrupting marker. A
+ * table row still continues an item lazily, as it did when it read as paragraph text, and the
+ * item's own blocks then hold it as table rows.
+ */
 function lazy(state: ParagraphState, line: string): boolean {
-  return state.open && !state.blank && !interrupts(line);
+  return state.open && !state.blank && (tableRow(line) || !interrupts(line));
 }
 
 /** Nested items use the same indentation and lazy rules as the item's actual container collector. */
@@ -441,12 +452,21 @@ function followingItem(lines: readonly string[], start: number, identity: ListMa
     : undefined;
 }
 
-/** Reads code before all other markers, without interpreting its authored contents. */
-function codeBlock(lines: readonly string[], start: number): Parsed | undefined {
+/**
+ * Reads code before all other markers, without interpreting its authored contents. Indented code
+ * does not open directly after table rows: that line reads as paragraph text, as it did when the
+ * rows were paragraph text it continued.
+ */
+function codeBlock(
+  lines: readonly string[],
+  start: number,
+  afterRows: boolean,
+): Parsed | undefined {
   const line = lines[start] ?? '';
   const opening = fence(line);
   const content = opening === undefined ? undefined : fenced(lines, start, opening);
-  const code = content ?? (indentation(line) >= codeIndent ? indented(lines, start) : undefined);
+  const opensIndented = !afterRows && indentation(line) >= codeIndent;
+  const code = content ?? (opensIndented ? indented(lines, start) : undefined);
   return code === undefined
     ? undefined
     : { block: { kind: 'code', lines: code.lines }, index: code.index };
@@ -496,6 +516,22 @@ function listBlock(lines: readonly string[], start: number): Parsed | undefined 
   };
 }
 
+/**
+ * Consecutive table rows form one block that keeps each authored line, read inline per line and
+ * without the whitespace at either end, as a paragraph's lines are.
+ */
+function tableBlock(lines: readonly string[], start: number): Parsed | undefined {
+  const content: (readonly Inline[])[] = [];
+  let index = start;
+  while (index < lines.length && tableRow(lines[index] ?? '')) {
+    content.push(parseInline((lines[index] ?? '').trim()));
+    index += indexIncrement;
+  }
+  return content.length === emptyLength
+    ? undefined
+    : { block: { kind: 'table', lines: content }, index };
+}
+
 /** Paragraphs preserve each authored line and end at a blank or a supported marker. */
 function paragraphBlock(lines: readonly string[], start: number): Parsed {
   const content = [parseInline((lines[start] ?? '').trim())];
@@ -508,13 +544,14 @@ function paragraphBlock(lines: readonly string[], start: number): Parsed {
 }
 
 /** Marker precedence is shared by every nested container. */
-function blockAt(lines: readonly string[], start: number): Parsed {
+function blockAt(lines: readonly string[], start: number, afterRows: boolean): Parsed {
   return (
-    codeBlock(lines, start) ??
+    codeBlock(lines, start, afterRows) ??
     headingBlock(lines, start) ??
     quoteBlock(lines, start) ??
     breakBlock(lines, start) ??
     listBlock(lines, start) ??
+    tableBlock(lines, start) ??
     paragraphBlock(lines, start)
   );
 }
@@ -528,7 +565,11 @@ function parseBlocks(lines: readonly string[]): Block[] {
     if (start >= lines.length) {
       break;
     }
-    const parsed = blockAt(lines, start);
+    const parsed = blockAt(
+      lines,
+      start,
+      start === index && blocks.at(lastElementOffset)?.kind === 'table',
+    );
     blocks.push({ blankBefore: start > index, ...parsed.block });
     index = parsed.index;
   }

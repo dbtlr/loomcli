@@ -1,6 +1,14 @@
 import { splitLines } from '@loomcli/core';
 import type { ViewContext } from '@loomcli/core';
 
+/**
+ * The line layout the pack's terminal views share: wrapping a text into lines that stand alone,
+ * placing the lines that continue it, and measuring the widest unit a wrap keeps whole. Help, the
+ * table, the records layout, the list, the heading, the rule, prose, and the box have to agree on
+ * how text wraps and continues, so each of them reads it from here. This module belongs to no
+ * subpath: help and the views each import it, and none imports another's.
+ */
+
 /** The narrowest width text wraps at, so a room that leaves less still breaks at every space. */
 const NARROWEST = 1;
 
@@ -12,6 +20,16 @@ function blank(text: string, context: ViewContext): boolean {
 /** A continuation line placed under the text it continues, except a blank one, which stays bare. */
 function continuation(text: string, indent: string, context: ViewContext): string {
   return blank(text, context) ? text : `${indent}${text}`;
+}
+
+/**
+ * The widest unit `wrap` keeps whole in a text: a word, with an input line's leading spaces on its
+ * first word and its trailing spaces on its last, or a `pad` or `nowrap` frame. It reads `wrap`
+ * itself at one column, so the floor and the wrap agree on every unit. A table column's floor and
+ * a help row set's floor both read it.
+ */
+function unitWidth(text: string, context: ViewContext): number {
+  return context.width(context.wrap(text, NARROWEST));
 }
 
 /**
@@ -49,4 +67,4 @@ function wrappedLines(text: string, context: ViewContext, inset: number): string
   return splitLines(terminalWrap(text, context, room));
 }
 
-export { NARROWEST, blank, continuation, dataText, terminalWrap, wrappedLines };
+export { NARROWEST, blank, continuation, dataText, terminalWrap, unitWidth, wrappedLines };
