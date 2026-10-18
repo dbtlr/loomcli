@@ -178,3 +178,37 @@ test('a tab stays a tab in piped records', () => {
     lines('first  b\tc', '', '1 record'),
   );
 });
+
+test.each([
+  {
+    expected: lines('id  one', 'to', '', '1 record'),
+    identifier: 'id',
+    row: { id: 'one', to: null },
+  },
+  {
+    expected: lines('key  one', 'to', '', '1 record'),
+    identifier: 'key',
+    row: { key: 'one', to: null },
+  },
+])(
+  'a label line with an empty value ends at its label on a terminal',
+  ({ expected, identifier, row }) => {
+    const output = render({ config: { identifier }, rows: [row], view: 'records', widths: [40] });
+    expect(output).toBe(expected);
+  },
+);
+
+test('an empty value keeps its label padding and gap on a pipe', () => {
+  const rows = [{ key: 'one', to: null }];
+  expect(render({ config: { identifier: 'key' }, rows, view: 'records', widths: [null] })).toBe(
+    lines('key  one', 'to   ', '', '1 record'),
+  );
+});
+
+test('a fallback line with an empty header and an empty value is an empty line', () => {
+  const rows = [{ name: 'abcdefghijkl', note: null }];
+  const config = { columns: ['name', { header: '', key: 'note' }] };
+  expect(render({ config, rows, view: 'table', widths: [12] })).toBe(
+    lines('name  abcdefghijkl', ''),
+  );
+});

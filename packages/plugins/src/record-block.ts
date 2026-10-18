@@ -61,10 +61,26 @@ function continuation(text: string, indent: string, context: ViewContext): strin
 }
 
 /**
+ * The first line of one entry: its label, padded to the label column, the gap, and the value's
+ * first line. On a terminal a value line that resolves to no character leaves the line ending at
+ * the label, unpadded and with no gap, so the line ends in no space.
+ */
+function labelLine(
+  entry: RecordEntry,
+  { context, labelWidth, text }: { context: ViewContext; labelWidth: number; text: string },
+): string {
+  if (context.columns !== undefined && blank(text, context)) {
+    return `${context.style.dim(entry.label)}${text}`;
+  }
+  return `${context.style.dim(pad(entry.label, labelWidth))}${GAP}${text}`;
+}
+
+/**
  * One record as a block of `LABEL  value` lines, ending with a newline, or the empty string when
  * it has no entry. The labels pad to the widest and style `dim`. On a terminal each value wraps at
- * the columns left after the label column and its gap, and every continuation line, authored or
- * wrapped, starts under the value. The records view and the table's fallback share this layout.
+ * the columns left after the label column and its gap, every continuation line, authored or
+ * wrapped, starts under the value, and a line whose value is empty ends at its label. The records
+ * view and the table's fallback share this layout.
  */
 function recordBlock(entries: readonly RecordEntry[], context: ViewContext): string {
   if (entries.length === EMPTY) {
@@ -76,12 +92,13 @@ function recordBlock(entries: readonly RecordEntry[], context: ViewContext): str
   }
   const indent = ' '.repeat(labelWidth + GAP.length);
   const room = (context.columns ?? EMPTY) - labelWidth - GAP.length;
-  const lines = entries.flatMap((entry) => {
-    const label = context.style.dim(pad(entry.label, labelWidth));
-    return valueLines(entry, room, context).map((text, index) =>
-      index === FIRST ? `${label}${GAP}${text}` : continuation(text, indent, context),
-    );
-  });
+  const lines = entries.flatMap((entry) =>
+    valueLines(entry, room, context).map((text, index) =>
+      index === FIRST
+        ? labelLine(entry, { context, labelWidth, text })
+        : continuation(text, indent, context),
+    ),
+  );
   return `${lines.join('\n')}\n`;
 }
 
