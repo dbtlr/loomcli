@@ -100,6 +100,7 @@ test('the inspected graph marks the control options and leaves the work options 
   const optionsOf = (name: string) =>
     graph.root.children.find((child) => child.name === name)?.options ?? [];
   expect(marks(graph.globals)).toEqual({
+    color: true,
     explain: true,
     help: true,
     manifest: true,

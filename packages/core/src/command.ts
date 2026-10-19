@@ -1,5 +1,6 @@
 import { checkEnvBinding, checkNoArgumentBinding } from './bindings.js';
 import { captureDeclaration, unreadableArgument } from './capture.js';
+import { checkColor } from './color.js';
 import {
   aliasWithoutNames,
   argumentDeclaredTwice,
@@ -88,6 +89,7 @@ import { graphMismatch, nodeAt, resultNode } from './inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
 import { checkInteraction } from './interaction.js';
 import type { Log, LogBinder } from './log.js';
+import { isMarked } from './marks.js';
 import { rememberInputNames } from './missing-input.js';
 import { declareGroup } from './option-groups.js';
 import type { OptionGroup } from './option-groups.js';
@@ -147,6 +149,7 @@ import type {
   View,
   StdinConfig,
   StdinContext,
+  Unmarked,
 } from './types.js';
 import {
   suppliedInputs,
@@ -927,6 +930,7 @@ export function declareOption<
   checkControl(site, input.config.control);
   checkEnvBinding(site, input.config);
   checkInteraction(input.config, site, false);
+  checkColor(input.config, site, false);
   const recorded = recordInput(state, input);
   checkLocalOptions(
     [...optionsOf(state.inputs), input],
@@ -2434,6 +2438,7 @@ function checkInputFacts(
       checkControl(site, input.config.control);
       checkEnvBinding(site, input.config);
       checkInteraction(input.config, site, false);
+      checkColor(input.config, site, false);
     }
     context.extensions.set(
       input,
@@ -2714,7 +2719,9 @@ export class CommandBuilder<
 
   option<const Name extends string, const Config extends OptionConfig>(
     name: Name,
-    config: Config & { interaction?: never } & NameConstraint<Name> &
+    config: Config &
+      Unmarked &
+      NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<ImpliedConstraint<Config>> &
@@ -3317,9 +3324,7 @@ export async function prepareDispatch(
   const ledger = new ValidationLedger();
   const preparation = { graph, interactive: false, invocation, ledger, routed };
   const { globals, scope, sources } = await fillScope(preparation, local);
-  const marked = graph.globals.inputs.find(
-    (input) => input.config.type === 'boolean' && input.config.interaction,
-  );
+  const marked = graph.globals.inputs.find((input) => isMarked(input.config, 'interaction'));
   preparation.interactive =
     invocation.host.terminal.stdin.isTTY &&
     invocation.host.terminal.stderr.isTTY &&

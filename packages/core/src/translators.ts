@@ -4,6 +4,7 @@ import {
   DeclarationError,
   InternalError,
   LoomError,
+  midSentence,
   quoted,
   reasonOf,
 } from './errors.js';
@@ -195,7 +196,7 @@ function readTranslations(site: FactSite, declared: unknown): TranslationContrib
   }
   return {
     byPrototype,
-    subject: `${sentence.slice(0, 1).toLowerCase()}${sentence.slice(1)}`,
+    subject: midSentence(sentence),
   };
 }
 

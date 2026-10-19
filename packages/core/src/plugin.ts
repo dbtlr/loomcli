@@ -1,6 +1,7 @@
 import { checkEnvBinding, claimVariables } from './bindings.js';
 import { captureDeclaration, elidedRead, unreadableArgument, unreadableFault } from './capture.js';
 import type { MiddlewareContext } from './chain.js';
+import { checkColor } from './color.js';
 import { notACommand } from './command-rules.js';
 import { attach, commandCode, commandNode } from './command.js';
 import type { AttachedChild, Command } from './command.js';
@@ -8,8 +9,14 @@ import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { readEncodings } from './encoders.js';
 import type { FailureEncoder, FailureEncoding } from './encoders.js';
-import { DeclarationError, InternalError, quoted, reasonOf } from './errors.js';
-import { appliesTo, buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
+import { DeclarationError, InternalError, midSentence, quoted, reasonOf } from './errors.js';
+import {
+  appliesTo,
+  buildExtensions,
+  carriesBinding,
+  isDescriptor,
+  registerDescriptor,
+} from './extension.js';
 import type { AdmittedDescriptor, AnyExtension, DescriptorRegistry } from './extension.js';
 import {
   checkDeprecated,
@@ -540,6 +547,7 @@ function checkPluginOption(
   // A plugin's options are global options, so they answer the global option's presence rule.
   checkNoPresenceRule(site, config);
   checkInteraction(config, site, true);
+  checkColor(config, site, true);
   checkDescription(site, config.description);
   checkHidden(site, config.hidden);
   checkDeprecated(site, config.deprecated);
@@ -593,7 +601,7 @@ function readOptions(
         descriptors: build.descriptors,
         site: { ...site, at: `${site.at}.extensions` },
         subject: {
-          phrase: `on ${sentence.slice(0, 1).toLowerCase()}${sentence.slice(1)}`,
+          phrase: `on ${midSentence(sentence)}`,
           sentence,
         },
         target: 'option',
@@ -995,7 +1003,7 @@ function readSource(
     });
   }
   const carrier = own.inputs.find((input) =>
-    Object.hasOwn(own.build.records.get(input) ?? {}, bindingIdentity),
+    carriesBinding(own.build.records.get(input), bindingIdentity),
   );
   if (carrier) {
     // The record prints each option's captured config, which is what its rules read.

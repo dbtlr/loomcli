@@ -73,6 +73,7 @@ const root = page(
   '  -V, --version     Print the version.',
   "  -M, --manifest    Print this command's manifest as JSON.",
   '  -e, --explain     Explain the selected command and exit.',
+  '      --[no-]color  Turn color on or off, overriding NO_COLOR.',
   '',
   'EXAMPLES',
   '  $ jsonkit -f doc.json',
@@ -98,6 +99,7 @@ const select = page(
   '  -V, --version     Print the version.',
   "  -M, --manifest    Print this command's manifest as JSON.",
   '  -e, --explain     Explain the selected command and exit.',
+  '      --[no-]color  Turn color on or off, overriding NO_COLOR.',
 );
 
 test('jsonkit --help prints the root page', () => {
@@ -164,6 +166,7 @@ test('jsonkit -h prints the compact root page, the child hint ahead of the point
       '  -V, --version     Print the version.',
       "  -M, --manifest    Print this command's manifest as JSON.",
       '  -e, --explain     Explain the selected command and exit.',
+      '      --[no-]color  Turn color on or off, overriding NO_COLOR.',
       '',
       'Run jsonkit <command> -h for command details.',
       'Run jsonkit --help for details and examples.',
@@ -216,6 +219,7 @@ test('jsonkit get --help renders while the required path is missing', () => {
       '  -V, --version     Print the version.',
       "  -M, --manifest    Print this command's manifest as JSON.",
       '  -e, --explain     Explain the selected command and exit.',
+      '      --[no-]color  Turn color on or off, overriding NO_COLOR.',
       '',
       'EXAMPLES',
       '  $ jsonkit get name -f doc.json',
@@ -244,6 +248,7 @@ test('jsonkit get -h omits Details and EXAMPLES and points to extended help', ()
       '  -V, --version     Print the version.',
       "  -M, --manifest    Print this command's manifest as JSON.",
       '  -e, --explain     Explain the selected command and exit.',
+      '      --[no-]color  Turn color on or off, overriding NO_COLOR.',
       '',
       'Run jsonkit get --help for details and examples.',
     ),
@@ -275,6 +280,7 @@ test('jsonkit fetch --help opens with the deprecation message under the masthead
       '  -V, --version     Print the version.',
       "  -M, --manifest    Print this command's manifest as JSON.",
       '  -e, --explain     Explain the selected command and exit.',
+      '      --[no-]color  Turn color on or off, overriding NO_COLOR.',
     ),
   );
 });
@@ -296,6 +302,7 @@ test('jsonkit debug --help prints the page of a Command no listing shows', () =>
       '  -V, --version     Print the version.',
       "  -M, --manifest    Print this command's manifest as JSON.",
       '  -e, --explain     Explain the selected command and exit.',
+      '      --[no-]color  Turn color on or off, overriding NO_COLOR.',
     ),
   );
 });
@@ -389,6 +396,8 @@ test('jsonkit --help on a 60-column terminal wraps its prose and keeps its liter
       '  -V, --version     Print the version.',
       "  -M, --manifest    Print this command's manifest as JSON.",
       '  -e, --explain     Explain the selected command and exit.',
+      '      --[no-]color  Turn color on or off, overriding',
+      '                    NO_COLOR.',
       '',
       'EXAMPLES',
       '  $ jsonkit -f doc.json',
@@ -442,4 +451,40 @@ test('jsonkit get --help and select --help fit 60 columns, and at 40 only their 
   expect(overflowing(at(40, ['select', '--help']).stdout, 40)).toEqual([
     '  jsonkit select --field <field>... [options]',
   ]);
+});
+
+/** The color plugin's run of jsonkit's help page, on a capable terminal or piped. */
+const colored = new URL('fixtures/color.mjs', import.meta.url);
+
+/** One SGR sequence and the parameters it carries. */
+const sgr = new RegExp(`${String.fromCodePoint(27)}\\[(?<parameters>[0-9;]*)m`, 'gu');
+
+/** Whether some SGR sequence in the text sets a foreground color. */
+function hasColor(text: string): boolean {
+  return [...text.matchAll(sgr)].some((match) =>
+    (match.groups?.parameters ?? '')
+      .split(';')
+      .some((parameter) => /^(?:3[0-8]|9[0-7])$/u.test(parameter)),
+  );
+}
+
+test('jsonkit --help --no-color prints no color on a capable terminal, even under FORCE_COLOR', () => {
+  const variables = { COLORTERM: undefined, NO_COLOR: undefined, TERM: 'xterm' };
+  const forced = { ...variables, FORCE_COLOR: '1' };
+  const colorful = invoke(colored, ['tty', '--help'], { env: forced });
+  expect(colorful.status).toBe(0);
+  expect(hasColor(colorful.stdout)).toBe(true);
+  const off = invoke(colored, ['tty', '--help', '--no-color'], { env: forced });
+  expect(off.status).toBe(0);
+  expect(off.stdout).toContain('--[no-]color');
+  expect(hasColor(off.stdout)).toBe(false);
+  const piped = invoke(colored, ['pipe', '--help'], {
+    env: { ...variables, FORCE_COLOR: undefined },
+  });
+  expect(hasColor(piped.stdout)).toBe(false);
+  const on = invoke(colored, ['pipe', '--help', '--color'], {
+    env: { ...variables, FORCE_COLOR: undefined },
+  });
+  expect(on.status).toBe(0);
+  expect(hasColor(on.stdout)).toBe(true);
 });

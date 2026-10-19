@@ -124,4 +124,8 @@ if (scenario === 'wedge') {
   // No file names the document, and content stdin is unavailable to an invocation by name.
   const outcome = await jsonkit.invoke(['get'], { args: { path: 'name' } });
   process.stdout.write(`${JSON.stringify(outcome)}\n`);
+} else if (scenario === 'color') {
+  // An invocation by name reads no color choice, so its help page stays plain whatever it names.
+  const outcome = await jsonkit.invoke([], { options: { color: true, help: true } });
+  process.stdout.write(`${JSON.stringify(outcome)}\n`);
 }

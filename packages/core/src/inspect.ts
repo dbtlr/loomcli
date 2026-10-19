@@ -104,6 +104,7 @@ type OptionNode =
       readonly negative: string | null;
       readonly aliases: readonly string[];
       readonly interaction: boolean;
+      readonly color: boolean;
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: InputSchema;
       readonly env: readonly string[];
@@ -353,6 +354,7 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
     case 'boolean': {
       return Object.freeze({
         ...shared,
+        color: config.color === true,
         interaction: config.interaction === true,
         negative,
         polarity: config.polarity ?? 'positive',

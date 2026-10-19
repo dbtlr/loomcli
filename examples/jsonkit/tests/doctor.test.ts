@@ -51,6 +51,7 @@ test('jsonkit doctor --help prints its page like any other Command', () => {
       '  -V, --version     Print the version.',
       "  -M, --manifest    Print this command's manifest as JSON.",
       '  -e, --explain     Explain the selected command and exit.',
+      '      --[no-]color  Turn color on or off, overriding NO_COLOR.',
       '',
     ].join('\n'),
   });

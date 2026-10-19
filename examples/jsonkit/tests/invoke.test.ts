@@ -129,3 +129,15 @@ test('an invocation by name requires a file because content stdin is unavailable
     status: 'failed',
   });
 });
+
+test('invoke() with the color plugin installed captures plain text under FORCE_COLOR, even naming color', () => {
+  const result = invoke(fixture, ['color'], { env: { FORCE_COLOR: '1' } });
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  const outcome: { output: string; status: string } = JSON.parse(result.stdout);
+  expect(outcome.status).toBe('completed');
+  expect(outcome.output).toContain(
+    '      --[no-]color  Turn color on or off, overriding NO_COLOR.\n',
+  );
+  expect(outcome.output).not.toContain('\u001b');
+});

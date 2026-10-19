@@ -1,5 +1,6 @@
 import { checkEnvBinding, claimVariables, envNames } from './bindings.js';
 import type { BoundOption } from './bindings.js';
+import { checkColor, color } from './color.js';
 import { DeclarationError, quoted } from './errors.js';
 import { buildExtensions } from './extension.js';
 import type { DescriptorRegistry } from './extension.js';
@@ -15,9 +16,10 @@ import {
 } from './facts.js';
 import type { FactSite, InputSite } from './facts.js';
 import { globalPresenceRule, optionDeclaredTwice, spellingTaken } from './input-rules.js';
-import { checkInteraction, interactionMark } from './interaction.js';
+import { checkInteraction, interaction } from './interaction.js';
+import { checkOneMark, isMarked } from './marks.js';
 import { checkOptionName, compileOptions, spellingMark, tableEntries } from './options.js';
-import type { CompileScope, SpellingOrigin, SpellingTable } from './options.js';
+import type { CompileScope, OptionSpelling, SpellingOrigin, SpellingTable } from './options.js';
 import { snapshot } from './plain.js';
 import type { BuiltPlugin } from './plugin.js';
 import type { OptionConfig } from './types.js';
@@ -251,6 +253,7 @@ function declareGlobalOption<Name extends string, Config extends OptionConfig>(
   const sentence = site.subject;
   checkNoPresenceRule(site, input.config);
   checkInteraction(input.config, site, true);
+  checkColor(input.config, site, true);
   checkDescription(site, input.config.description);
   checkHidden(site, input.config.hidden);
   checkDeprecated(site, input.config.deprecated);
@@ -291,19 +294,14 @@ function globalTable(inputs: readonly OptionInput[], plugins: readonly BuiltPlug
       options,
     });
   });
-  const marked = [...inputs, ...plugins.flatMap((entry) => entry.inputs)].filter(
-    (input) => input.config.type === 'boolean' && input.config.interaction,
-  );
-  if (marked.length > 1) {
-    const sites = marked.map((input) => ({
-      input,
-      site: names.get(input.name)?.site ?? globalSite(input),
-    }));
-    throw new DeclarationError(interactionMark, {
-      correction: 'Mark one option.',
-      findings: sites.map(({ site }) => siteFinding(site, `${site.at}.interaction`)),
-      sentence: `${sites.map(({ site }) => site.subject).join(' and ')} both declare interaction.`,
-    });
+  const all = [...inputs, ...plugins.flatMap((entry) => entry.inputs)];
+  for (const mark of [interaction, color]) {
+    checkOneMark(
+      all
+        .filter((input) => isMarked(input.config, mark.fact))
+        .map((input) => names.get(input.name)?.site ?? globalSite(input)),
+      mark,
+    );
   }
   const variables = claimVariables([
     ...boundOptions(inputs, (input) => ({
@@ -470,12 +468,34 @@ function join(
   }
 }
 
+/**
+ * The long spellings of the Application's color-marked option, each with the value it supplies,
+ * from the globals table every earlier call already proved, or `undefined` when no option carries
+ * the mark. A short alias never reaches the color choice, because the marked option declares none.
+ */
+function colorSpellings(
+  inputs: readonly OptionInput[],
+  plugins: readonly BuiltPlugin[],
+): ReadonlyMap<string, OptionSpelling> | undefined {
+  const marked = [...inputs, ...plugins.flatMap((installed) => installed.inputs)].find((input) =>
+    isMarked(input.config, 'color'),
+  );
+  if (marked === undefined) {
+    return undefined;
+  }
+  const { options } = globalTable(inputs, plugins);
+  return new Map(
+    [...options].filter(([, option]) => option.name === marked.name && option.role !== 'short'),
+  );
+}
+
 export type { BuiltGlobals, GlobalsState, GlobalTable, InputRecords, OptionOwner, TableEntry };
 export {
   boundOptions,
   buildGlobals,
   checkLocalOptions,
   checkNoPresenceRule,
+  colorSpellings,
   declareGlobalOption,
   emptyGlobals,
   frozenValues,
