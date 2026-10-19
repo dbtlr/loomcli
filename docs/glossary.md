@@ -240,6 +240,14 @@ _Avoid_: TTY check, interactive mode, host.interactive
 The `interaction: true` fact on the one Boolean global option whose value states the application's intent to ask questions. It can turn the interaction decision off and never on.
 _Avoid_: No-input flag (for the mark), interactive option
 
+**Color choice**:
+The operator's color setting for one run: the last spelling of the color-marked option among argv's words before the first bare `--`, read right after host capture so everything the run prints after capture follows it. A positive spelling turns color on and a negative one turns it off, over `NO_COLOR`, `FORCE_COLOR`, and the declared rendering policy, and modifiers and hyperlinks keep their own policy.
+_Avoid_: Color lane, color mode, color flag (for the choice)
+
+**Color mark**:
+The `color: true` fact on the one Boolean global option whose spellings carry the operator's color choice. The marked option binds no variable and no configuration key, because the environment speaks for color only through `NO_COLOR` and `FORCE_COLOR`.
+_Avoid_: No-color flag (for the mark), color option
+
 **Invocation**:
 One `run()` or `invoke()` call: host capture, graph build, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status. An action's `invoke()` captures no host and builds no graph: it takes its host fields and its graph from its own run.
 _Avoid_: Execution, call, request

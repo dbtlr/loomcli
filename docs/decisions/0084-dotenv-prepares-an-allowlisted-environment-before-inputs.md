@@ -4,7 +4,7 @@ title: ADR-0084 - Dotenv prepares an allowlisted environment before inputs
 description: A bounded onEnvironment hook returns environment additions before declared values and inputs validate. Core merges additions without replacing existing values and writes them to the process only for an argv run with neither cwd nor env overridden.
 status: accepted
 created: 2026-10-15
-modified: 2026-10-16
+modified: 2026-10-19
 ---
 
 # ADR-0084 - Dotenv prepares an allowlisted environment before inputs
@@ -161,3 +161,4 @@ Accepted in 0.13.0.
 ## Changelog
 
 - 2026-10-15: Proposed with the bounded environment preparation hook and dotenv plugin contract.
+- 2026-10-19: [ADR-0089](0089-an-operators-color-or-no-color-settles-the-runs-color-right-after-host-capture.md), proposed, narrows the statement that imported `NO_COLOR`, `FORCE_COLOR`, and `TERM` affect subsequent output: once an operator's `--color` or `--no-color` set the run's `color` field, an imported variable no longer turns color on or off, while `FORCE_COLOR` and `TERM` still affect automatic modifiers. Every other rule here stands. It binds when that record is accepted.

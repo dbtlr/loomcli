@@ -4,7 +4,7 @@ title: ADR-0032 - Environment and configuration map into options through one cor
 description: An option may name the environment variable that supplies it, and one installed plugin may declare the configuration source that answers for options carrying its binding. Core fills each unfilled option from argv, then the environment, then the configuration source, then the declared default, in one stage between local parsing and validation, so a filled value is supplied in every sense and everything downstream reads options.
 status: accepted
 created: 2026-09-24
-modified: 2026-10-15
+modified: 2026-10-19
 ---
 
 # ADR-0032 - Environment and configuration map into options through one core input-source stage
@@ -60,3 +60,4 @@ Accepted 2026-09-24 with the implementation. Core reads `env` on string, Boolean
 - 2026-10-15: [ADR-0082](0082-an-action-asks-through-the-prompts-library-and-one-interaction-decision-governs-questions-and-conditional-requiredness.md), proposed, narrows the clause that nothing publishes provenance and the considered option it rests on: the action context gains `supplied`, the validation context's record of raw supplied values, so an action can tell a supplied value from a default. It still cannot tell which tier supplied a value, and every other rule here stands. It binds when that record is accepted.
 
 - 2026-10-15: [ADR-0084](0084-dotenv-prepares-an-allowlisted-environment-before-inputs.md), proposed, prepares the environment before declared values or inputs validate. The environment tier reads that prepared map, with unchanged precedence, ordered names, empty-value behavior, and variable-only provenance. Dotenv adds no input-source tier. It binds when accepted.
+- 2026-10-19: [ADR-0089](0089-an-operators-color-or-no-color-settles-the-runs-color-right-after-host-capture.md), proposed, narrows the clause that local, global, and plugin options may bind, for the one option an Application marks with `color: true`: it binds no variable and no configuration key, because core reads it from argv before graph build and the environment speaks for color only through `NO_COLOR` and `FORCE_COLOR`. Each binding there is a declaration error under `@loomcli/core/color-mark`. Every other option binds as stated. It binds when that record is accepted.
