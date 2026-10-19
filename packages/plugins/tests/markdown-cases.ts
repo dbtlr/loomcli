@@ -19,12 +19,12 @@ const blockCases: [name: string, source: string, lines: string[]][] = [
   [
     'headings strip closing runs but preserve C# and seven markers',
     '# one ###\n###### six\n# C#\n####### seven\n#',
-    ['  one', '  six', '  C#', '  ####### seven'],
+    ['  one', '  ───', '  six', '  C#', '  ──', '  ####### seven'],
   ],
   [
     'quotes contain lists and code and end on an unmarked line',
     '> paragraph\n> - one\n>   ```\n>   **code**\n>   ```\n>\n> last\noutside',
-    ['  > paragraph', '  > - one', '  >     **code**', '  >', '  > last', '  outside'],
+    ['  > paragraph', '  > ● one', '  >     **code**', '  >', '  > last', '  outside'],
   ],
   [
     'thematic breaks win over lists and lose indentation',
@@ -36,40 +36,60 @@ const blockCases: [name: string, source: string, lines: string[]][] = [
     'intro\n- parent\n  - child\n    - grandchild\n      continued\n\n- next\nlazy\n+ another',
     [
       '  intro',
-      '  - parent',
-      '    - child',
-      '      - grandchild',
+      '  ● parent',
+      '    ● child',
+      '      ● grandchild',
       '        continued',
       '',
-      '  - next',
+      '  ● next',
       '    lazy',
-      '  - another',
+      '  ● another',
     ],
   ],
   [
-    'ordered lists count from three and preserve delimiters',
+    'ordered lists count from the authored start and always print a period',
     '3. first\n9. second\n   continued\n\n007) seven\n1) eight\n   later',
-    ['  3. first', '  4. second', '     continued', '', '  7) seven', '  8) eight', '     later'],
+    ['  3. first', '  4. second', '     continued', '', '  7. seven', '  8. eight', '     later'],
   ],
   [
     'ordered lists nest two levels and renumber each list independently',
     '3. parent\n   007) child\n        1. grandchild\n9. next',
-    ['  3. parent', '     7) child', '        1. grandchild', '  4. next'],
+    ['  3. parent', '     7. child', '        1. grandchild', '  4. next'],
+  ],
+  [
+    'ordered markers right-align against the widest, so 9. sits under 10.',
+    '9. nine\n9. ten\n   continued\n9. eleven',
+    ['   9. nine', '  10. ten', '      continued', '  11. eleven'],
+  ],
+  [
+    'an ordered list nests under a bullet at the bullet text column',
+    '- parent\n  1. one\n  2. two',
+    ['  ● parent', '    1. one', '    2. two'],
+  ],
+  [
+    'a level 1 heading is underlined as wide as its text, and levels 2 to 6 are not',
+    '# Level one\n## Level two\n###### Level six',
+    ['  Level one', '  ─────────', '  Level two', '  Level six'],
+  ],
+  [
+    'authored blank lines stay around underlined headings and between items',
+    'Intro.\n\n# Title\n\n- one\n\n- two\n\nEnd.',
+    ['  Intro.', '', '  Title', '  ─────', '', '  ● one', '', '  ● two', '', '  End.'],
   ],
   [
     'five marker spaces open code and empty marker lines take their next content',
     '-     code\n-\n  next\n  line',
-    ['  -   code', '  - next', '    line'],
+    ['  ●   code', '  ● next', '    line'],
   ],
   [
     'lists can start directly under a paragraph',
     'Intro\n- first\n- second',
-    ['  Intro', '  - first', '  - second'],
+    ['  Intro', '  ● first', '  ● second'],
   ],
   [
     'every marker block interrupts a paragraph without extra blanks',
     'a\n```\ncode\n```\nb\n# h\nc\n> q\nd\n---\ne\n1. item',
-    ['  a', '    code', '  b', '  h', '  c', '  > q', '  d', '  ---', '  e', '  1. item'],
+    ['  a', '    code', '  b', '  h', '  ─', '  c', '  > q', '  d', '  ---', '  e', '  1. item'],
   ],
   [
     'unsupported tables, setext underlines, references, HTML and entities stay text',
@@ -93,7 +113,7 @@ const blockCases: [name: string, source: string, lines: string[]][] = [
   [
     'tabs expand in leading indentation and after list and quote markers',
     '\tcode\n\n-\titem\n\tcontinued\n>\tquote',
-    ['    code', '', '  - item', '    continued', '  > quote'],
+    ['    code', '', '  ● item', '    continued', '  > quote'],
   ],
   [
     'blank lines collapse between blocks but stay inside code',

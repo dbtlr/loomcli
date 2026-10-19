@@ -1,7 +1,6 @@
-import { glyph } from '@loomcli/core';
 import type { View } from '@loomcli/core';
 
-import { blank, wrappedLines } from './text-lines.js';
+import { blank, headingLines, wrappedLines } from './text-lines.js';
 
 const NO_INSET = 0;
 const UNDERLINED = 1;
@@ -26,13 +25,8 @@ function heading(config: HeadingConfig = {}): View<string> {
       if (blank(text, context)) {
         return '';
       }
-      const lines = wrappedLines(text, context, NO_INSET);
-      const written = lines.map((line) => context.style.dim(line));
-      if (underlined) {
-        const widest = context.width(lines.join('\n'));
-        written.push(context.style.dim(glyph.line.repeat(widest)));
-      }
-      return `${written.join('\n')}\n`;
+      const lines = headingLines(wrappedLines(text, context, NO_INSET), underlined, context);
+      return `${lines.join('\n')}\n`;
     },
   };
 }

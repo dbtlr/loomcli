@@ -271,12 +271,46 @@ test('a list item continues after its marker, nested two levels, and a quote car
     '> A quoted line of text that runs long enough to wrap.',
   ].join('\n');
   expect(detailsAt(markdown, 30)).toEqual([
-    '  - A first item whose text',
+    '  ● A first item whose text',
     '    runs long enough to wrap.',
-    '    - A nested item whose text',
+    '    ● A nested item whose text',
     '      also runs long enough.',
     '  > A quoted line of text that',
     '  > runs long enough to wrap.',
+  ]);
+});
+
+test('ordered items right-align their markers and wrap under their text column', () => {
+  const markdown = Array.from({ length: 10 }, (_unused, index) =>
+    index === 0 ? '1. A first item whose text runs long.' : `${index + 1}. Item ${index + 1}`,
+  ).join('\n');
+  expect(detailsAt(markdown, 30).slice(0, 3)).toEqual([
+    '   1. A first item whose text',
+    '      runs long.',
+    '   2. Item 2',
+  ]);
+  expect(detailsAt(markdown, 30).slice(-2)).toEqual(['   9. Item 9', '  10. Item 10']);
+  expect(detailsAt('3) one\n3) two', null)).toEqual(['  3. one', '  4. two']);
+});
+
+test('a nested ordered list starts at its bullet parent text column and aligns on its own', () => {
+  expect(detailsAt('- parent\n  9. nine\n  9. ten', 30)).toEqual([
+    '  ● parent',
+    '     9. nine',
+    '    10. ten',
+  ]);
+});
+
+test('a level 1 heading underlines the widest wrapped line off a terminal and on one', () => {
+  expect(detailsAt('# A heading that is long enough to wrap', null)).toEqual([
+    '  A heading that is long enough to wrap',
+    '  ─────────────────────────────────────',
+  ]);
+  expect(detailsAt('# A heading that is long enough to wrap\n## Level two\n', 30)).toEqual([
+    '  A heading that is long',
+    '  enough to wrap',
+    '  ──────────────────────',
+    '  Level two',
   ]);
 });
 
@@ -292,6 +326,7 @@ test('a heading wraps and code keeps every line as written', () => {
   expect(detailsAt(markdown, 30)).toEqual([
     '  A heading that is long',
     '  enough to wrap',
+    '  ──────────────────────',
     '    first code line that is longer than thirty',
     '    second',
   ]);
@@ -569,7 +604,7 @@ test('a line indented four spaces directly after table rows reads as paragraph t
     '  indented line after rows',
   ]);
   expect(detailsAt('- item\n  | a | b |\n      deeper line', null)).toEqual([
-    '  - item',
+    '  ● item',
     '    | a | b |',
     '    deeper line',
   ]);
@@ -600,13 +635,13 @@ test('a masthead description and a deprecation continue at indent 2 when their h
 
 test("a list item continues at its marker's column when its hang cannot fit", () => {
   expect(detailsAt('- Set configurationvalue now.', 20)).toEqual([
-    '  - Set',
+    '  ● Set',
     '  configurationvalue',
     '  now.',
   ]);
   expect(detailsAt('- outer\n  - Set configurationvalue now.', 20)).toEqual([
-    '  - outer',
-    '    - Set',
+    '  ● outer',
+    '    ● Set',
     '    configurationvalue',
     '    now.',
   ]);

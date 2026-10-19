@@ -1,11 +1,9 @@
-import { glyph, pad } from '@loomcli/core';
 import type { View, ViewContext } from '@loomcli/core';
 
-import { blank, continuation, dataText, wrappedLines } from './text-lines.js';
+import { continuation, dataText, itemMarkers, markedLine, wrappedLines } from './text-lines.js';
 
 const EMPTY = 0;
 const FIRST_POSITION = 1;
-const MARKER_GAP = ' ';
 const TOP_LEVEL = 0;
 
 interface ListConfig<Item> {
@@ -20,13 +18,6 @@ interface ListLayout<Item> {
   readonly context: ViewContext;
 }
 
-/** Each sibling's marker: a bullet, or its position counting from 1 and a period. */
-function markersOf(count: number, ordered: boolean): string[] {
-  return Array.from({ length: count }, (_unused, index) =>
-    ordered ? `${String(index + FIRST_POSITION)}.` : glyph.bullet,
-  );
-}
-
 /**
  * One level of siblings as lines, each item's nested items after it. Markers right-align to the
  * widest among the siblings, and every line of an item's text after its first hangs at the text
@@ -38,18 +29,20 @@ function levelLines<Item>(
   layout: ListLayout<Item>,
 ): string[] {
   const { config, context } = layout;
-  const markers = markersOf(items.length, config.ordered === true);
-  const markerWidth = context.width(markers.join('\n'));
+  const { marks, textOffset } = itemMarkers(
+    items.length,
+    config.ordered === true ? FIRST_POSITION : undefined,
+    context,
+  );
   const margin = ' '.repeat(indent);
-  const textColumn = indent + markerWidth + MARKER_GAP.length;
+  const textColumn = indent + textOffset;
   const hang = ' '.repeat(textColumn);
   return items.flatMap((item, index) => {
     const text = config.format ? config.format(item, index, context) : dataText(item, context);
     const [first = '', ...rest] = wrappedLines(text, context, textColumn);
-    const marker = context.style.dim(pad(markers[index] ?? '', markerWidth, { align: 'right' }));
     const nested = config.children?.(item) ?? [];
     return [
-      blank(first, context) ? `${margin}${marker}` : `${margin}${marker}${MARKER_GAP}${first}`,
+      `${margin}${markedLine(marks[index] ?? '', first, context)}`,
       ...rest.map((line) => continuation(line, hang, context)),
       ...(nested.length === EMPTY ? [] : levelLines(nested, textColumn, layout)),
     ];

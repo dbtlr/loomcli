@@ -4,13 +4,15 @@ import type { ViewContext } from '@loomcli/core';
 import { parseMarkdown } from '../markdown/blocks.js';
 import type { Block, Item } from '../markdown/blocks.js';
 import type { Inline } from '../markdown/inline.js';
-import { terminalWrap } from '../text-lines.js';
+import { headingLines, itemMarkers, markedLine, terminalWrap } from '../text-lines.js';
 import { hangLines, onTerminal, proseRoom } from './layout.js';
 
 type Style = ViewContext['style'];
 interface Modifiers {
   bold: boolean;
   italic: boolean;
+  // Plain text takes no color of its own, so a heading's `dim` shows through it.
+  body: 'primary' | 'plain';
 }
 
 /**
@@ -26,21 +28,25 @@ interface Layout {
 const firstElement = 0;
 const lastLineOffset = -1;
 const continuationStart = 1;
-const markerSpaceWidth = 1;
 const emptyLength = 0;
 const pageIndent = '  ';
 const quotePrefixWidth = 2;
 const listIndent = 0;
 
-const ordinary: Modifiers = { bold: false, italic: false };
+const ordinary: Modifiers = { body: 'primary', bold: false, italic: false };
+const headingText: Modifiers = { body: 'plain', bold: false, italic: false };
+const underlinedLevel = 1;
 
 /** Applies semantic color and surrounding modifiers after escaping each authored fragment. */
 function styled(
   text: string,
-  token: 'primary' | 'highlight' | 'dim',
+  token: 'primary' | 'highlight' | 'dim' | 'plain',
   { modifiers, style }: { modifiers: Modifiers; style: Style },
 ): string {
   const value = style.escape(text);
+  if (token === 'plain') {
+    return plainText(value, modifiers, style);
+  }
   const color = style[token];
   if (modifiers.bold && modifiers.italic) {
     return color.bold.italic(value);
@@ -49,6 +55,17 @@ function styled(
     return color.bold(value);
   }
   return modifiers.italic ? color.italic(value) : color(value);
+}
+
+/** Escaped text with the surrounding modifiers and no color. */
+function plainText(value: string, modifiers: Modifiers, style: Style): string {
+  if (modifiers.bold && modifiers.italic) {
+    return style.bold.italic(value);
+  }
+  if (modifiers.bold) {
+    return style.bold(value);
+  }
+  return modifiers.italic ? style.italic(value) : value;
 }
 
 /** The layout of a container's content, which has `used` fewer columns than the container. */
@@ -85,9 +102,22 @@ function reflowing(block: Block | undefined, layout: Layout): string[] | undefin
   if (block?.kind === 'paragraph') {
     return block.lines.map((line) => inline(line, ordinary, layout));
   }
-  return block?.kind === 'heading'
-    ? [inline(block.text, { bold: true, italic: false }, layout)]
-    : undefined;
+  return block?.kind === 'heading' ? [inline(block.text, headingText, layout)] : undefined;
+}
+
+/** A paragraph's or a heading's reflowed lines as they print. */
+function reflowed(block: Block, layout: Layout): string[] {
+  return headed(block, reflow(reflowing(block, layout) ?? [], layout), layout.context);
+}
+
+/**
+ * A block's reflowed lines as they print. A heading prints as the Heading view does, `dim`, with an
+ * underline at level 1, and a paragraph's lines are as they are.
+ */
+function headed(block: Block, lines: readonly string[], context: ViewContext): string[] {
+  return block.kind === 'heading'
+    ? headingLines(lines, block.level === underlinedLevel, context)
+    : [...lines];
 }
 
 /** The authored lines of table rows, which keep their lines on a terminal and off one. */
@@ -136,7 +166,7 @@ function inline(nodes: readonly Inline[], modifiers: Modifiers, layout: Layout):
       switch (node.kind) {
         case 'text':
         case 'address': {
-          return styled(node.text, 'primary', { modifiers, style: layout.context.style });
+          return styled(node.text, modifiers.body, { modifiers, style: layout.context.style });
         }
         case 'code': {
           return codeText(node, modifiers, layout);
@@ -144,7 +174,11 @@ function inline(nodes: readonly Inline[], modifiers: Modifiers, layout: Layout):
         case 'emphasis': {
           return inline(
             node.children,
-            { bold: modifiers.bold || node.strong, italic: modifiers.italic || !node.strong },
+            {
+              body: modifiers.body,
+              bold: modifiers.bold || node.strong,
+              italic: modifiers.italic || !node.strong,
+            },
             layout,
           );
         }
@@ -169,7 +203,7 @@ function link(
 ): string {
   const { style } = layout.context;
   if (plain(node.children) === node.destination) {
-    return styled(node.destination, 'primary', { modifiers, style });
+    return styled(node.destination, modifiers.body, { modifiers, style });
   }
   const text = inline(node.children, modifiers, layout);
   const space = style.escape(' ');
@@ -200,15 +234,29 @@ function codeLines(lines: readonly string[], layout: Layout): string[] {
   );
 }
 
-/** Rendered marker widths, rather than source columns, indent item continuations. */
+/** One item's marker and the columns from its start to the item's text. */
+interface Marker {
+  readonly indent: number;
+  readonly mark: string;
+}
+
+/**
+ * A list's items with the markers the List view prints: bullets, or numbers counting from the
+ * authored start with a period. The widest marker, rather than a source column, indents item
+ * continuations.
+ */
 function listLines(block: Extract<Block, { kind: 'list' }>, layout: Layout): string[] {
+  const { marks, textOffset } = itemMarkers(
+    block.items.length,
+    block.marker.kind === 'ordered' ? block.marker.start : undefined,
+    layout.context,
+  );
   return block.items.flatMap((item, index) => {
-    const marker =
-      block.marker.kind === 'ordered'
-        ? `${block.marker.start + index}${block.marker.delimiter}`
-        : '-';
     const separator = item.blankBefore && index > firstElement ? [''] : [];
-    return [...separator, ...itemLines(marker, item, layout)];
+    return [
+      ...separator,
+      ...itemLines({ indent: textOffset, mark: marks[index] ?? '' }, item, layout),
+    ];
   });
 }
 
@@ -216,16 +264,14 @@ function listLines(block: Extract<Block, { kind: 'list' }>, layout: Layout): str
  * A marker's printed width, including its space, indents every subsequent content line, so a
  * wrapped line continues under the item's text, unless the item's opening text cannot hang there.
  */
-function itemLines(marker: string, item: Item, layout: Layout): string[] {
-  const indent = marker.length + markerSpaceWidth;
+function itemLines({ indent, mark }: Marker, item: Item, layout: Layout): string[] {
   const content = blockLines(item.blocks, within(layout, indent));
   const fallback = fallbackLines(item, indent, layout);
   // A fallback stands in for the opening block's lines, and its continuation lines take no indent.
   const [first, ...unindented] = fallback?.lines ?? content.slice(firstElement, continuationStart);
   const later = content.slice(fallback?.replaces ?? continuationStart);
-  const prefix = styled(marker, 'dim', { modifiers: ordinary, style: layout.context.style });
   return [
-    prefix + (first === undefined || first === '' ? '' : ` ${first}`),
+    markedLine(mark, first ?? '', layout.context),
     ...unindented,
     ...later.map((line) => (line === '' ? '' : ' '.repeat(indent) + line)),
   ];
@@ -255,7 +301,7 @@ function fallbackLines(
   return hung.indent === indent
     ? undefined
     : {
-        lines: [hung.first, ...hung.rest],
+        lines: headed(opening, [hung.first, ...hung.rest], layout.context),
         replaces: renderBlock(opening, within(layout, indent)).length,
       };
 }
@@ -269,7 +315,7 @@ function renderBlock(block: Block, layout: Layout): string[] {
   switch (block.kind) {
     case 'paragraph':
     case 'heading': {
-      return reflow(reflowing(block, layout) ?? [], layout);
+      return reflowed(block, layout);
     }
     case 'table': {
       return tableLines(block, layout);
