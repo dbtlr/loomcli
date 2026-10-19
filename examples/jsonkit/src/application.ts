@@ -3,6 +3,7 @@ import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
 import { Application, FatalError, override } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
+import { color } from '@loomcli/plugins/color';
 import { completion } from '@loomcli/plugins/completion';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
@@ -60,6 +61,7 @@ const configured = new Application('jsonkit', {
     manifest({ short: 'M' }),
     loomTheme(),
     explain(),
+    color(),
     doctor(),
     completion(),
     mcp(),

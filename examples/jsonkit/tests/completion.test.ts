@@ -16,7 +16,16 @@ const quotedPrograms: Record<Shell, string[]> = {
 const files = ['alpha.json', 'alpine.json', 'doc-a.json', 'doc-b.json'];
 
 /** The options in scope at every jsonkit Command: the global options, the application's and each plugin's. */
-const options = ['--explain', '--file', '--help', '--manifest', '--verbose', '--version'];
+const options = [
+  '--color',
+  '--explain',
+  '--file',
+  '--help',
+  '--manifest',
+  '--no-color',
+  '--verbose',
+  '--version',
+];
 
 /** The view names of the `paths` rows. */
 const views = ['json', 'jsonl', 'list', 'table'];

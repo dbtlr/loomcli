@@ -140,6 +140,7 @@ test("the inspected graph carries the plugin's option, the extension value, and 
     'version',
     'manifest',
     'explain',
+    'color',
   ]);
   // The two plugins define separate facts, so one declaration carries a value for each.
   // Help also supplies its value to the manifest's collecting extension, with no manifest installed.
