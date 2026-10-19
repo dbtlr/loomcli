@@ -299,8 +299,8 @@ export default defineConfig({
           'packages/core/tests/wrap-oracle.ts',
         ],
         // ANSI codes, palette indices, framing, and tab stops are protocol constants.
-        // Keep scanners and their ordered state transitions together. The wrap oracle is a copy
-        // Of the scanners' wrapping as it was.
+        // Keep scanners and their ordered state transitions together.
+        // The wrap oracle keeps a copy of the scanners' earlier wrapping.
         rules: {
           'eslint/max-statements': 'off',
           'eslint/no-continue': 'off',
