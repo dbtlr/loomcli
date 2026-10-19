@@ -24,8 +24,15 @@ interface Block {
   tabs: boolean;
 }
 const offsets = [0, 1, 2, 3, 4, 5, 6, 7];
+/** The advances of the narrow widths a single character has, shared rather than rebuilt per unit. */
+const sharedAdvances = Array.from({ length: 16 }, (_unused, width) => offsets.map(() => width));
+/** The advances of a unit that is the same width at every offset. */
+function constantAdvance(width: number): readonly number[] {
+  return sharedAdvances[width] ?? offsets.map(() => width);
+}
+const tabAdvance = offsets.map((offset) => 8 - offset);
 const empty: Rope = {
-  advance: offsets.map(() => 0),
+  advance: constantAdvance(0),
   children: [],
   kind: 'join',
   tabs: false,
@@ -34,7 +41,7 @@ const empty: Rope = {
 
 function leaf(unit: TextUnit, width: number, tab = false): Rope {
   return {
-    advance: offsets.map((offset) => (tab ? 8 - offset : width)),
+    advance: tab ? tabAdvance : constantAdvance(width),
     kind: 'leaf',
     tab,
     tabs: tab,
@@ -50,16 +57,20 @@ function join(children: readonly Rope[]): Rope {
   if (children.length === 1 && children[0]) {
     return children[0];
   }
-  const advance = offsets.map(
-    (offset) =>
-      children.reduce((column, child) => column + (child.advance[column % 8] ?? 0), offset) -
-      offset,
-  );
+  const tabs = children.some((child) => child.tabs);
+  // Without a tab, no child's advance depends on the column, so the join's does not either.
+  const advance = tabs
+    ? offsets.map(
+        (offset) =>
+          children.reduce((column, child) => column + (child.advance[column % 8] ?? 0), offset) -
+          offset,
+      )
+    : constantAdvance(children.reduce((total, child) => total + (child.advance[0] ?? 0), 0));
   return {
     advance,
     children,
     kind: 'join',
-    tabs: children.some((child) => child.tabs),
+    tabs,
     text: children.some((child) => child.text),
   };
 }
@@ -91,9 +102,10 @@ function textBlock(units: readonly TextUnit[]): Block {
     .filter((unit) => unit.kind === 'text')
     .map((unit) => unit.text)
     .join('');
-  const widths = new Map<number, number>();
+  // A cluster's width sits at the offset it starts at, and every other offset holds none.
+  const widths = new Int32Array(visible.length);
   for (const segment of graphemeWidths(visible)) {
-    widths.set(segment.start, segment.width);
+    widths[segment.start] = segment.width;
   }
   const lines: Line[] = [];
   let parts: Rope[] = [];
@@ -109,7 +121,7 @@ function textBlock(units: readonly TextUnit[]): Block {
     } else {
       let width = 0;
       for (let at = offset; at < offset + unit.text.length; at += 1) {
-        width += widths.get(at) ?? 0;
+        width += widths[at] ?? 0;
       }
       parts.push(leaf(unit, width, unit.text === '\t'));
     }
