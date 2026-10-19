@@ -16,6 +16,9 @@ const NARROWEST = 1;
 /** The space between a list marker and its item's text. */
 const MARKER_GAP = ' ';
 
+/** The heading level that carries an underline; every deeper level is its text alone. */
+const UNDERLINED_LEVEL = 1;
+
 /** Whether a line resolves to no character at all, whatever frames it holds. */
 function blank(text: string, context: ViewContext): boolean {
   return context.plain(text) === '';
@@ -74,7 +77,7 @@ function wrappedLines(text: string, context: ViewContext, inset: number): string
 /** The markers of one level of list siblings, and where their items' text starts. */
 interface ItemMarkers {
   /** Each item's marker, right-aligned to the widest marker and styled `dim`. */
-  readonly marks: readonly string[];
+  readonly markers: readonly string[];
   /** The columns from a marker's start to its item's text: the widest marker and the gap. */
   readonly textOffset: number;
 }
@@ -95,28 +98,27 @@ function itemMarkers(count: number, start: number | undefined, context: ViewCont
   const labels = markerLabels(count, start);
   const width = context.width(labels.join('\n'));
   return {
-    marks: labels.map((label) => context.style.dim(pad(label, width, { align: 'right' }))),
+    markers: labels.map((label) => context.style.dim(pad(label, width, { align: 'right' }))),
     textOffset: width + MARKER_GAP.length,
   };
 }
 
 /** An item's first line after its marker, or the marker alone when the line has no character. */
-function markedLine(mark: string, first: string, context: ViewContext): string {
-  return blank(first, context) ? mark : `${mark}${MARKER_GAP}${first}`;
+function itemLine(marker: string, first: string, context: ViewContext): string {
+  return blank(first, context) ? marker : `${marker}${MARKER_GAP}${first}`;
 }
 
 /**
- * A heading's wrapped lines styled `dim`. An underlined heading, level 1, adds a line of
- * `glyph.line` as wide as the widest of the lines, and any other heading is the lines alone.
+ * A heading's wrapped lines styled `dim`. Level 1 adds a line of `glyph.line` as wide as the
+ * widest of the lines, and any other level is the lines alone.
  */
-function headingLines(
-  lines: readonly string[],
-  underlined: boolean,
-  context: ViewContext,
-): string[] {
+function headingLines(lines: readonly string[], level: number, context: ViewContext): string[] {
   const written = lines.map((line) => context.style.dim(line));
+  if (level !== UNDERLINED_LEVEL) {
+    return written;
+  }
   const widest = context.width(lines.join('\n'));
-  return underlined ? [...written, context.style.dim(glyph.line.repeat(widest))] : written;
+  return [...written, context.style.dim(glyph.line.repeat(widest))];
 }
 
 export {
@@ -125,10 +127,9 @@ export {
   continuation,
   dataText,
   headingLines,
+  itemLine,
   itemMarkers,
-  markedLine,
   terminalWrap,
   unitWidth,
   wrappedLines,
 };
-export type { ItemMarkers };

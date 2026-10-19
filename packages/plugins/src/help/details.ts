@@ -4,7 +4,7 @@ import type { ViewContext } from '@loomcli/core';
 import { parseMarkdown } from '../markdown/blocks.js';
 import type { Block, Item } from '../markdown/blocks.js';
 import type { Inline } from '../markdown/inline.js';
-import { headingLines, itemMarkers, markedLine, terminalWrap } from '../text-lines.js';
+import { headingLines, itemLine, itemMarkers, terminalWrap } from '../text-lines.js';
 import { hangLines, onTerminal, proseRoom } from './layout.js';
 
 type Style = ViewContext['style'];
@@ -35,7 +35,6 @@ const listIndent = 0;
 
 const ordinary: Modifiers = { body: 'primary', bold: false, italic: false };
 const headingText: Modifiers = { body: 'plain', bold: false, italic: false };
-const underlinedLevel = 1;
 
 /** Applies semantic color and surrounding modifiers after escaping each authored fragment. */
 function styled(
@@ -115,9 +114,7 @@ function reflowed(block: Block, layout: Layout): string[] {
  * underline at level 1, and a paragraph's lines are as they are.
  */
 function headed(block: Block, lines: readonly string[], context: ViewContext): string[] {
-  return block.kind === 'heading'
-    ? headingLines(lines, block.level === underlinedLevel, context)
-    : [...lines];
+  return block.kind === 'heading' ? headingLines(lines, block.level, context) : [...lines];
 }
 
 /** The authored lines of table rows, which keep their lines on a terminal and off one. */
@@ -237,7 +234,7 @@ function codeLines(lines: readonly string[], layout: Layout): string[] {
 /** One item's marker and the columns from its start to the item's text. */
 interface Marker {
   readonly indent: number;
-  readonly mark: string;
+  readonly marker: string;
 }
 
 /**
@@ -246,7 +243,7 @@ interface Marker {
  * continuations.
  */
 function listLines(block: Extract<Block, { kind: 'list' }>, layout: Layout): string[] {
-  const { marks, textOffset } = itemMarkers(
+  const { markers, textOffset } = itemMarkers(
     block.items.length,
     block.marker.kind === 'ordered' ? block.marker.start : undefined,
     layout.context,
@@ -255,7 +252,7 @@ function listLines(block: Extract<Block, { kind: 'list' }>, layout: Layout): str
     const separator = item.blankBefore && index > firstElement ? [''] : [];
     return [
       ...separator,
-      ...itemLines({ indent: textOffset, mark: marks[index] ?? '' }, item, layout),
+      ...itemLines({ indent: textOffset, marker: markers[index] ?? '' }, item, layout),
     ];
   });
 }
@@ -264,14 +261,14 @@ function listLines(block: Extract<Block, { kind: 'list' }>, layout: Layout): str
  * A marker's printed width, including its space, indents every subsequent content line, so a
  * wrapped line continues under the item's text, unless the item's opening text cannot hang there.
  */
-function itemLines({ indent, mark }: Marker, item: Item, layout: Layout): string[] {
+function itemLines({ indent, marker }: Marker, item: Item, layout: Layout): string[] {
   const content = blockLines(item.blocks, within(layout, indent));
   const fallback = fallbackLines(item, indent, layout);
   // A fallback stands in for the opening block's lines, and its continuation lines take no indent.
   const [first, ...unindented] = fallback?.lines ?? content.slice(firstElement, continuationStart);
   const later = content.slice(fallback?.replaces ?? continuationStart);
   return [
-    markedLine(mark, first ?? '', layout.context),
+    itemLine(marker, first ?? '', layout.context),
     ...unindented,
     ...later.map((line) => (line === '' ? '' : ' '.repeat(indent) + line)),
   ];

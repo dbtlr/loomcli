@@ -3,7 +3,7 @@ import type { View } from '@loomcli/core';
 import { blank, headingLines, wrappedLines } from './text-lines.js';
 
 const NO_INSET = 0;
-const UNDERLINED = 1;
+const DEFAULT_LEVEL = 1;
 
 interface HeadingConfig {
   // The two levels are the contract's own literal type, which names no constant.
@@ -19,13 +19,13 @@ interface HeadingConfig {
  * installs no plugin behavior.
  */
 function heading(config: HeadingConfig = {}): View<string> {
-  const underlined = (config.level ?? UNDERLINED) === UNDERLINED;
+  const level = config.level ?? DEFAULT_LEVEL;
   return {
     render: (text, context) => {
       if (blank(text, context)) {
         return '';
       }
-      const lines = headingLines(wrappedLines(text, context, NO_INSET), underlined, context);
+      const lines = headingLines(wrappedLines(text, context, NO_INSET), level, context);
       return `${lines.join('\n')}\n`;
     },
   };

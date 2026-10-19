@@ -1,6 +1,6 @@
 import type { View, ViewContext } from '@loomcli/core';
 
-import { continuation, dataText, itemMarkers, markedLine, wrappedLines } from './text-lines.js';
+import { continuation, dataText, itemLine, itemMarkers, wrappedLines } from './text-lines.js';
 
 const EMPTY = 0;
 const FIRST_POSITION = 1;
@@ -29,7 +29,7 @@ function levelLines<Item>(
   layout: ListLayout<Item>,
 ): string[] {
   const { config, context } = layout;
-  const { marks, textOffset } = itemMarkers(
+  const { markers, textOffset } = itemMarkers(
     items.length,
     config.ordered === true ? FIRST_POSITION : undefined,
     context,
@@ -42,7 +42,7 @@ function levelLines<Item>(
     const [first = '', ...rest] = wrappedLines(text, context, textColumn);
     const nested = config.children?.(item) ?? [];
     return [
-      `${margin}${markedLine(marks[index] ?? '', first, context)}`,
+      `${margin}${itemLine(markers[index] ?? '', first, context)}`,
       ...rest.map((line) => continuation(line, hang, context)),
       ...(nested.length === EMPTY ? [] : levelLines(nested, textColumn, layout)),
     ];
