@@ -45,6 +45,13 @@ test.each(['local', 'string', 'twice'])(
   },
 );
 
+test('two interaction marks name each option as its own site does, in one sentence', () => {
+  const result = invoke(new URL('fixtures/interaction-policy.mjs', import.meta.url), ['twice']);
+  expect(JSON.parse(result.stdout).message).toContain(
+    'Global option "input" and global option "other" both declare interaction.',
+  );
+});
+
 test('draw preserves controls only on terminal stderr, reports wrapped rows, and keeps write order', () => {
   const result = invoke(new URL('fixtures/draw.mjs', import.meta.url));
   expect(result.status).toBe(0);

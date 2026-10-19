@@ -1,5 +1,7 @@
 import { checkEnvBinding, claimVariables, envNames } from './bindings.js';
 import type { BoundOption } from './bindings.js';
+import { checkColor, checkColorBinding, colorMark, isColorMarked } from './color.js';
+import type { DiagnosticRule } from './diagnostic-text.js';
 import { DeclarationError, quoted } from './errors.js';
 import { buildExtensions } from './extension.js';
 import type { DescriptorRegistry } from './extension.js';
@@ -17,7 +19,7 @@ import type { FactSite, InputSite } from './facts.js';
 import { globalPresenceRule, optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import { checkInteraction, interactionMark } from './interaction.js';
 import { checkOptionName, compileOptions, spellingMark, tableEntries } from './options.js';
-import type { CompileScope, SpellingOrigin, SpellingTable } from './options.js';
+import type { CompileScope, OptionSpelling, SpellingOrigin, SpellingTable } from './options.js';
 import { snapshot } from './plain.js';
 import type { BuiltPlugin } from './plugin.js';
 import type { OptionConfig } from './types.js';
@@ -251,6 +253,7 @@ function declareGlobalOption<Name extends string, Config extends OptionConfig>(
   const sentence = site.subject;
   checkNoPresenceRule(site, input.config);
   checkInteraction(input.config, site, true);
+  checkColor(input.config, site, true);
   checkDescription(site, input.config.description);
   checkHidden(site, input.config.hidden);
   checkDeprecated(site, input.config.deprecated);
@@ -274,6 +277,33 @@ function declareGlobalOption<Name extends string, Config extends OptionConfig>(
 }
 
 /**
+ * At most one option of an Application carries one run-wide mark. The fault names every marked
+ * option as its own site names it, the first leading the sentence, and marks the key on each.
+ */
+function checkOneMark(
+  marked: readonly OptionInput[],
+  mark: {
+    fact: 'color' | 'interaction';
+    names: ReadonlyMap<string, TableEntry>;
+    rule: DiagnosticRule;
+  },
+): void {
+  if (marked.length < 2) {
+    return;
+  }
+  const { fact, names, rule } = mark;
+  const sites = marked.map((input) => names.get(input.name)?.site ?? globalSite(input));
+  const subjects = sites.map(({ subject }, index) =>
+    index === 0 ? subject : `${subject.charAt(0).toLowerCase()}${subject.slice(1)}`,
+  );
+  throw new DeclarationError(rule, {
+    correction: 'Mark one option.',
+    findings: sites.map((site) => siteFinding(site, `${site.at}.${fact}`)),
+    sentence: `${subjects.join(' and ')} both declare ${fact}.`,
+  });
+}
+
+/**
  * The globals table: the application's global options in authoring order, then each installed
  * plugin's options in installation order. Every collision between the two scopes, by key or by
  * spelling, is reported here, so the parser meets a table with one owner per name.
@@ -291,20 +321,15 @@ function globalTable(inputs: readonly OptionInput[], plugins: readonly BuiltPlug
       options,
     });
   });
-  const marked = [...inputs, ...plugins.flatMap((entry) => entry.inputs)].filter(
-    (input) => input.config.type === 'boolean' && input.config.interaction,
+  const all = [...inputs, ...plugins.flatMap((entry) => entry.inputs)];
+  checkOneMark(
+    all.filter((input) => input.config.type === 'boolean' && input.config.interaction === true),
+    { fact: 'interaction', names, rule: interactionMark },
   );
-  if (marked.length > 1) {
-    const sites = marked.map((input) => ({
-      input,
-      site: names.get(input.name)?.site ?? globalSite(input),
-    }));
-    throw new DeclarationError(interactionMark, {
-      correction: 'Mark one option.',
-      findings: sites.map(({ site }) => siteFinding(site, `${site.at}.interaction`)),
-      sentence: `${sites.map(({ site }) => site.subject).join(' and ')} both declare interaction.`,
-    });
-  }
+  checkOneMark(
+    all.filter((input) => isColorMarked(input.config)),
+    { fact: 'color', names, rule: colorMark },
+  );
   const variables = claimVariables([
     ...boundOptions(inputs, (input) => ({
       phrase: `global option ${quoted(input.name)}`,
@@ -470,12 +495,57 @@ function join(
   }
 }
 
+/**
+ * The long spellings of the Application's color-marked option, each with the value it supplies,
+ * from the globals table every earlier call already proved, or `undefined` when no option carries
+ * the mark. A short alias never reaches the color choice, because the marked option declares none.
+ */
+function colorSpellings(
+  inputs: readonly OptionInput[],
+  plugins: readonly BuiltPlugin[],
+): ReadonlyMap<string, OptionSpelling> | undefined {
+  const marked = [...inputs, ...plugins.flatMap((installed) => installed.inputs)].find((input) =>
+    isColorMarked(input.config),
+  );
+  if (marked === undefined) {
+    return undefined;
+  }
+  const { options } = globalTable(inputs, plugins);
+  return new Map(
+    [...options].filter(([, option]) => option.name === marked.name && option.role !== 'short'),
+  );
+}
+
+/** The binding identity of the configuration source an Application installs, if it installs one. */
+function sourceBinding(plugins: readonly BuiltPlugin[]): string | undefined {
+  return plugins.find((installed) => installed.source !== undefined)?.source?.binding;
+}
+
+/**
+ * No plugin's color-marked option carries the installed source's binding. Only the constructor
+ * holds every plugin, so it judges each plugin's options against the source another one installs.
+ */
+function checkPluginColorBindings(plugins: readonly BuiltPlugin[]): void {
+  const binding = sourceBinding(plugins);
+  for (const installed of plugins) {
+    const siteOf = pluginSites(installed.identity, installed.inputs);
+    for (const input of installed.inputs) {
+      checkColorBinding(input.config, siteOf(input), {
+        binding,
+        record: installed.records.get(input),
+      });
+    }
+  }
+}
+
 export type { BuiltGlobals, GlobalsState, GlobalTable, InputRecords, OptionOwner, TableEntry };
 export {
   boundOptions,
   buildGlobals,
   checkLocalOptions,
   checkNoPresenceRule,
+  checkPluginColorBindings,
+  colorSpellings,
   declareGlobalOption,
   emptyGlobals,
   frozenValues,
@@ -483,4 +553,5 @@ export {
   globalTable,
   optionValues,
   pluginSites,
+  sourceBinding,
 };

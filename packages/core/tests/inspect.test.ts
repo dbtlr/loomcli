@@ -61,6 +61,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
       },
       {
         ...owned,
+        color: false,
         description: none,
         interaction: false,
         long: '--quiet',
@@ -206,6 +207,7 @@ test('reports the version and every declared description, and the root reports t
           options: [
             {
               ...owned,
+              color: false,
               description: 'Prints the value unquoted.',
               interaction: false,
               long: '--raw',
@@ -257,6 +259,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
       },
       {
         ...owned,
+        color: false,
         description: none,
         hidden: true,
         interaction: false,
@@ -386,6 +389,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
   expect(invokeInspect('polarity').root.options).toEqual([
     {
       ...owned,
+      color: false,
       description: none,
       interaction: false,
       long: '--total',
@@ -397,6 +401,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
     },
     {
       ...owned,
+      color: false,
       description: none,
       interaction: false,
       long: '--color',
@@ -408,6 +413,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
     },
     {
       ...owned,
+      color: false,
       description: none,
       interaction: false,
       long: null,
@@ -439,6 +445,7 @@ test('reads each spelling role from the table, including a name that begins with
   expect(invokeInspect('roles').root.options).toEqual([
     {
       ...owned,
+      color: false,
       description: none,
       interaction: false,
       long: '--no-color',

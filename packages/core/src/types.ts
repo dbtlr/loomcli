@@ -118,6 +118,28 @@ interface Controlled {
 interface OptionExtensions {
   extensions?: readonly ExtensionValue<'option'>[];
 }
+/** What every Boolean option declares, whichever of its three shapes it takes. */
+type BooleanFacts = Described &
+  Listed &
+  Controlled &
+  OptionExtensions & {
+    type: 'boolean';
+    interaction?: true;
+    validate?: never;
+    default?: never;
+    multiple?: never;
+    required?: never;
+    validateOmitted?: never;
+    implied?: never;
+  };
+/**
+ * A value-taking or counted option carries neither run-wide mark, because each mark belongs to one
+ * Boolean global option.
+ */
+interface Unmarked {
+  interaction?: never;
+  color?: never;
+}
 /** The same slot on an argument declaration, typed by the target its values must name. */
 interface ArgumentExtensions {
   extensions?: readonly ExtensionValue<'argument'>[];
@@ -404,7 +426,7 @@ export interface AttachedCommand {
    */
   readonly extensions: Readonly<Record<string, unknown>>;
   argument(name: string, config: ArgumentConfig): AttachedCommand;
-  option(name: string, config: OptionConfig & { interaction?: never }): AttachedCommand;
+  option(name: string, config: OptionConfig & Unmarked): AttachedCommand;
   exclusive(...names: [string, string, ...string[]]): AttachedCommand;
   oneRequired(...names: [string, string, ...string[]]): AttachedCommand;
   requiredTogether(...names: [string, string, ...string[]]): AttachedCommand;
@@ -550,7 +572,8 @@ export type StringOption = OptionSpelling &
   Described &
   Listed &
   Controlled &
-  OptionExtensions & {
+  OptionExtensions &
+  Unmarked & {
     type: 'string';
     polarity?: never;
     validate?: StandardSchemaV1;
@@ -574,7 +597,8 @@ export type ContentOption = ContentInput &
   Described &
   Listed &
   Controlled &
-  OptionExtensions & {
+  OptionExtensions &
+  Unmarked & {
     polarity?: never;
     implied?: never;
   } & (
@@ -676,41 +700,34 @@ export type ArgumentValue<Config extends ArgumentConfig> = Config extends { vari
       | (Config extends { required: true } | { default: unknown } | { validateOmitted: true }
           ? never
           : undefined);
+/**
+ * A Boolean option: one polarity with any spelling, both polarities with long forms, or the color
+ * mark, which the run reads from argv before short groups and binds no variable, so it declares
+ * no short alias and no `env`.
+ */
 export type BooleanOption =
   | (OptionSpelling &
-      Described &
-      Listed &
-      Controlled &
-      EnvBinding &
-      OptionExtensions & {
-        type: 'boolean';
-        interaction?: true;
-        validate?: never;
-        default?: never;
-        multiple?: never;
-        required?: never;
-        validateOmitted?: never;
-        implied?: never;
+      BooleanFacts &
+      EnvBinding & {
+        color?: never;
         polarity?: 'positive' | 'negative';
       })
-  | (Described &
-      Listed &
-      Controlled &
-      EnvBinding &
-      OptionExtensions & {
-        type: 'boolean';
-        interaction?: true;
-        validate?: never;
-        default?: never;
-        multiple?: never;
-        required?: never;
-        validateOmitted?: never;
-        implied?: never;
+  | (BooleanFacts &
+      EnvBinding & {
+        color?: never;
         polarity: 'both';
         short?: ShortAlias;
         shortOnly?: false;
         aliases?: readonly string[];
-      });
+      })
+  | (BooleanFacts & {
+      color: true;
+      polarity?: 'positive' | 'negative' | 'both';
+      short?: never;
+      shortOnly?: never;
+      aliases?: readonly string[];
+      env?: never;
+    });
 /**
  * A counted option takes no value and reads how many times it was supplied, across every spelling,
  * so it declares no validator, default, presence rule, collection, polarity, or implied value.
@@ -720,7 +737,8 @@ export type CountOption = OptionSpelling &
   Listed &
   Controlled &
   EnvBinding &
-  OptionExtensions & {
+  OptionExtensions &
+  Unmarked & {
     type: 'count';
     validate?: never;
     default?: never;
@@ -889,4 +907,4 @@ export type ActionArgs<Declaration> =
 export type ActionOptions<Declaration> =
   ActionArgument<Declaration> extends { options: infer Options } ? Options : never;
 
-export type { StdinContext };
+export type { StdinContext, Unmarked };

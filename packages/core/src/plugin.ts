@@ -1,6 +1,7 @@
 import { checkEnvBinding, claimVariables } from './bindings.js';
 import { captureDeclaration, elidedRead, unreadableArgument, unreadableFault } from './capture.js';
 import type { MiddlewareContext } from './chain.js';
+import { checkColor } from './color.js';
 import { notACommand } from './command-rules.js';
 import { attach, commandCode, commandNode } from './command.js';
 import type { AttachedChild, Command } from './command.js';
@@ -540,6 +541,7 @@ function checkPluginOption(
   // A plugin's options are global options, so they answer the global option's presence rule.
   checkNoPresenceRule(site, config);
   checkInteraction(config, site, true);
+  checkColor(config, site, true);
   checkDescription(site, config.description);
   checkHidden(site, config.hidden);
   checkDeprecated(site, config.deprecated);

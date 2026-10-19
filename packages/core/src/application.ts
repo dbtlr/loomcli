@@ -3,6 +3,8 @@ import type { Writable } from 'node:stream';
 import { captureDeclaration, unreadableArgument } from './capture.js';
 import { noSelection, runInvocation } from './chain.js';
 import type { FailureSelection, Invocation, StartingView } from './chain.js';
+import { checkColorBinding, chosenPolicy, colorChoice } from './color.js';
+import type { ColorChoice } from './color.js';
 import { portableName } from './command-rules.js';
 import {
   declareStdin,
@@ -68,7 +70,15 @@ import {
 import type { FactSite } from './facts.js';
 import { failureForm } from './form.js';
 import type { FailureForm } from './form.js';
-import { declareGlobalOption, emptyGlobals, globalSite, globalTable } from './globals.js';
+import {
+  checkPluginColorBindings,
+  colorSpellings,
+  declareGlobalOption,
+  emptyGlobals,
+  globalSite,
+  globalTable,
+  sourceBinding,
+} from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
 import { judgeGraph, judgesGraph } from './graph-hooks.js';
 import { brokenLogReport, destinationDefect, destinationReport, reportFailure } from './hints.js';
@@ -133,6 +143,7 @@ import type {
   RowViews,
   RunOptions,
   ValidateOmittedConstraint,
+  Unmarked,
 } from './types.js';
 import { undescribedFault } from './undescribed.js';
 import type { ArgumentInput, DeclaredValues, InputPlaces, OptionInput } from './validation.js';
@@ -398,7 +409,9 @@ class ApplicationBuilder<
 
   option<const Name extends string, const Config extends OptionConfig>(
     name: Name,
-    config: Config & { interaction?: never } & NameConstraint<Name> &
+    config: Config &
+      Unmarked &
+      NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<ImpliedConstraint<Config>> &
@@ -501,6 +514,10 @@ class ApplicationBuilder<
     );
     const root = { ...this.#root, descriptors };
     checkDeclaredOptions(root, globalTable(globals.inputs, this.#config.plugins));
+    checkColorBinding(captured.config, globalSite(captured), {
+      binding: sourceBinding(this.#config.plugins),
+      record: globals.records.get(captured),
+    });
     checkDeclarations([{ input: captured, site: globalSite(captured) }]);
     return new ApplicationBuilder<
       Args,
@@ -794,6 +811,8 @@ class ApplicationBuilder<
    * graph or reuses an action's run's, and whether it touches the process.
    */
   async #execute(door: RunDoor): Promise<RunEnd> {
+    // The color-marked option's spellings, known from the declarations before any graph builds.
+    const spellings = colorSpellings(this.#globals.inputs, this.#config.plugins);
     let stderr: Writable = door.stderr;
     let output: Output | undefined = undefined;
     let code: 0 | FailureExitCode = 0;
@@ -914,7 +933,9 @@ class ApplicationBuilder<
           throw capture.failure;
         }
         const { host } = capture;
-        const invocationOutput = door.output(host, controller.signal);
+        // The operator's color choice, read from argv before anything else prints.
+        const choice = spellings && colorChoice(host.argv, spellings);
+        const invocationOutput = door.output(host, controller.signal, choice);
         output = invocationOutput;
         // The constructor validated the declared policy, which the build hands over after the overrides.
         let policy: RenderingPolicy = {};
@@ -929,7 +950,7 @@ class ApplicationBuilder<
               );
             },
             rendering: (declared) => {
-              policy = door.rendering(declared);
+              policy = chosenPolicy(door.rendering(declared), choice);
               invocationOutput.configure(policy, new Map());
             },
             views: (value) => {
@@ -1018,7 +1039,12 @@ class ApplicationBuilder<
           const failure = toFailure(error);
           code = exitCodeOf(failure);
           decisive = failure;
-          output ??= door.output(reportingHost(), controller.signal);
+          // Output is unbuilt only when host capture failed, before the choice could be read.
+          output ??= door.output(
+            reportingHost(),
+            controller.signal,
+            spellings === undefined ? undefined : 'never',
+          );
           const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             // A broken failure view or onFailure hook forces 1 over the failure's own code.
@@ -1253,8 +1279,12 @@ interface RunDoor {
   enter: () => RunEntry;
   /** The host a report reads when the run failed before its own was captured. */
   fallback: (stderr: Writable) => ReportHost;
-  /** The run's output, before the build hands it the declared policy. */
-  output: (host: ReportHost, signal: AbortSignal) => Output;
+  /**
+   * The run's output, before the build hands it the declared policy. `color` is the color the
+   * output follows until then: the operator's choice, or `'never'` in a marked Application whose
+   * host capture failed before the choice could be read.
+   */
+  output: (host: ReportHost, signal: AbortSignal, color: ColorChoice | undefined) => Output;
   /**
    * Where the run's log events are delivered: the outermost run's destination, which this run's
    * host names under `run()` and an action's call takes from its parent.
@@ -1287,7 +1317,13 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
     },
     fallback: (stderr) => captureHost(application, undefined, stderr).report,
     invokedBy: 'argv',
-    output: (host, signal) => new Output(host, signal),
+    output: (host, signal, color) => {
+      const output = new Output(host, signal);
+      if (color !== undefined) {
+        output.configure({ color }, new Map());
+      }
+      return output;
+    },
     rendering: (declared) => {
       const rendering = options?.rendering;
       return { ...declared, ...renderingPolicy(rendering, runRendering(rendering)) };
@@ -1338,6 +1374,7 @@ function nameDoor<Mapped>(
     },
     fallback: () => host().report,
     invokedBy: 'name',
+    // A call's host.argv is empty, so it reads no choice, and its plain policy holds color off.
     output: (captured, signal) => {
       const output = new Output(captured, signal);
       // A malformed call's report must already render plain, so the policy applies before the call is read.
@@ -1540,6 +1577,7 @@ function declareApplication<Plugins extends readonly Plugin[]>(
     buildViews(pluginViews(entry.identity), entry.views, identities),
   );
   const table = globalTable([], plugins);
+  checkPluginColorBindings(plugins);
   const descriptors = installed.descriptors;
   const extensions = storeCommandLayers({
     descriptors,

@@ -1,5 +1,6 @@
 import { checkEnvBinding, checkNoArgumentBinding } from './bindings.js';
 import { captureDeclaration, unreadableArgument } from './capture.js';
+import { checkColor } from './color.js';
 import {
   aliasWithoutNames,
   argumentDeclaredTwice,
@@ -147,6 +148,7 @@ import type {
   View,
   StdinConfig,
   StdinContext,
+  Unmarked,
 } from './types.js';
 import {
   suppliedInputs,
@@ -927,6 +929,7 @@ export function declareOption<
   checkControl(site, input.config.control);
   checkEnvBinding(site, input.config);
   checkInteraction(input.config, site, false);
+  checkColor(input.config, site, false);
   const recorded = recordInput(state, input);
   checkLocalOptions(
     [...optionsOf(state.inputs), input],
@@ -2434,6 +2437,7 @@ function checkInputFacts(
       checkControl(site, input.config.control);
       checkEnvBinding(site, input.config);
       checkInteraction(input.config, site, false);
+      checkColor(input.config, site, false);
     }
     context.extensions.set(
       input,
@@ -2714,7 +2718,9 @@ export class CommandBuilder<
 
   option<const Name extends string, const Config extends OptionConfig>(
     name: Name,
-    config: Config & { interaction?: never } & NameConstraint<Name> &
+    config: Config &
+      Unmarked &
+      NameConstraint<Name> &
       GlobalNameConstraint<Name, Globals> &
       NoInfer<DefaultConstraint<Config>> &
       NoInfer<ImpliedConstraint<Config>> &
