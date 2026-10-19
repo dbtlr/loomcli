@@ -141,5 +141,5 @@ function prose(next: Next, length: number): string {
   return text;
 }
 
-export { chars, escape, joiner, mark, marked, prose, raw, seeded, selector, space };
+export { chars, escape, joiner, mark, marked, pieces, prose, raw, seeded, selector, space };
 export type { Next };
