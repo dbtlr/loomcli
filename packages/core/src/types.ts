@@ -483,7 +483,7 @@ export interface Out<Result = unknown> {
    * overload per shape, because the compiler fixes a factory call's type against the first overload
    * it tries, which left a row view's configuration typed from its own keys.
    */
-  render<const Data>(data: Data, view: RenderedView<Data>): Promise<void>;
+  render<Data>(data: Data, view: RenderedView<Data>): Promise<void>;
   /** Draws a view on stderr without a newline, preserving terminal controls at a terminal. */
   draw<Data>(data: Data, view: View<Data>): Promise<number>;
   /**

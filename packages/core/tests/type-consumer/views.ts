@@ -41,8 +41,12 @@ const lines: RowView<Row> = {
   row: (row, index) => `${String(index)}  ${String(row.count)}  ${row.source}\n`,
 };
 
-/** A row view over a literal union, which inline rows reach with their literal types intact. */
-const variants: RowView<{ variant: 'compact' | 'extended' }> = { row: (row) => `${row.variant}\n` };
+interface Variant {
+  variant: 'compact' | 'extended';
+}
+
+/** A row view over a literal union, which rows reach only when their type states the union. */
+const variants: RowView<Variant> = { row: (row) => `${row.variant}\n` };
 
 /** An asynchronous source, which a row view accepts beside a synchronous one. */
 async function* walk(): AsyncGenerator<Row> {
@@ -78,7 +82,10 @@ new Application('render').action(async ({ out }) => {
   await out.render(parsed, lines);
   // Data typed any takes a row view, as an untyped source's rows do.
   await out.render(fetched, lines);
-  // Inline rows keep their literal types, so a row view over a literal union reads them.
+  // The rows' type comes from the data alone, so inline rows over a literal union state it.
+  const compact: readonly Variant[] = [{ variant: 'compact' }];
+  await out.render(compact, variants);
+  // @ts-expect-error TS2379: An inline literal widens, and a row view does not narrow it back.
   await out.render([{ variant: 'compact' }], variants);
 });
 
