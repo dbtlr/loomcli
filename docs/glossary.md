@@ -249,7 +249,7 @@ The `color: true` fact on the one Boolean global option whose spellings carry th
 _Avoid_: No-color flag (for the mark), color option
 
 **Verbosity**:
-The run's one setting of which lanes write, settled right after graph build from argv with the parser's own word reader: the verbose-marked option's occurrences, read as 2 above 2, less the quiet-marked option's, read as 1 above 1. At 0, the default, `info`, `success`, `warn`, and `error` write; 1 adds `debug`, 2 adds `trace`, and -1 hides `info` and `success`. `print`, rendered output, results, warnings, errors, and failures write at every verbosity. An invocation by name settles its own from the values it lowers.
+The run's one setting of which lanes write, settled right after graph build from argv with the parser's own word reader: the verbose-marked option's occurrences, read as 2 above 2, less the quiet-marked option's, read as 1 above 1. At 0, the default, `info`, `success`, `warn`, and `error` write; 1 adds `debug`, 2 adds `trace`, and -1 hides `info` and `success`. `print`, rendered output, `draw`, results, warnings, errors, failures, and the incomplete-result line write at every verbosity. An invocation by name settles its own from the values it lowers.
 _Avoid_: Log level (a log level belongs to a log event), detail level, verbose mode, quiet mode
 
 **Verbose mark**:
