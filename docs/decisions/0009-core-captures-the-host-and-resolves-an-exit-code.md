@@ -4,7 +4,7 @@ title: ADR-0009 - Core captures the host itself, accepts whole-field overrides, 
 description: run() snapshots the process, replaces any supplied host field entirely, uses Node streams in its public contract, never calls process.exit, never rejects, and may run the same Application again.
 status: accepted
 created: 2026-09-07
-modified: 2026-10-15
+modified: 2026-10-19
 ---
 
 # ADR-0009 - Core captures the host itself, accepts whole-field overrides, and resolves an exit code
@@ -43,3 +43,4 @@ Application code owns file access and stdin reads. Tests drive a real Applicatio
 
 - 2026-10-15: [ADR-0084](0084-dotenv-prepares-an-allowlisted-environment-before-inputs.md), proposed, adds environment preparation after capture and graph build, before declared values validate. Core merges returned additions without replacing defined variables, including empty ones. Only argv runs given neither cwd nor env overrides copy additions to process.env. Whole-field overrides still replace the captured map; the rejected merge with the process remains rejected. Other captured facts remain unchanged. It binds when accepted.
 - 2026-10-17: [ADR-0086](0086-renders-fit-the-destinations-live-columns-and-tables-shrink-to-fit.md), proposed, supersedes this record's clauses that `run()` captures terminal facts at entry and that core copies them, for terminal width and height only. Process capture backs `host.terminal.stdout.columns`, `host.terminal.stdout.rows`, `host.terminal.stderr.columns`, and `host.terminal.stderr.rows` with a live read of the stream each time they are read, so a resize during a run reaches the next render. `isTTY` stays captured once, and a host override still supplies plain numbers that stay fixed, or its own getter. Every other clause here stands. It binds when that record is accepted.
+- 2026-10-19: [ADR-0089](0089-an-operators-color-or-no-color-settles-the-runs-color-right-after-host-capture.md), proposed, adds one read after host capture and its overrides and before graph build: in an Application that declares the color mark, core reads the operator's color choice from `host.argv`, the last spelling of the marked option before the first bare `--`, and sets the run's `color` policy field from it. A failure of host capture itself, which comes before that read, prints with the `color` field `'never'` in such an Application. Parsing still leaves `host.argv` intact, and capture, whole-field overrides, and exit-code resolution are unchanged. It binds when that record is accepted.

@@ -4,7 +4,7 @@ title: ADR-0022 - Renderers return marked strings, and a theme maps semantic nam
 description: Ordinary strings carry composable terminal styles, semantic tokens, glyphs, and deferred padding. Core resolves them under one rendering policy, and one optional theme plugin supplies concrete token mappings.
 status: accepted
 created: 2026-09-11
-modified: 2026-09-25
+modified: 2026-10-19
 ---
 
 # ADR-0022 - Renderers return marked strings, and a theme maps semantic names to concrete styles
@@ -73,3 +73,4 @@ The view registry and results lane remain separate increments under ADR-0021 and
 - 2026-09-25: ADR-0034 is accepted. The entry above binds as written.
 - 2026-10-15: [ADR-0082](0082-an-action-asks-through-the-prompts-library-and-one-interaction-decision-governs-questions-and-conditional-requiredness.md), proposed, narrows the one `terminalControls` policy: `out.draw` keeps the control sequences of its own call when stderr is a terminal, whatever the policy says, so a question can move the cursor and erase its frame. Every other write keeps the policy, and every other rule here stands. It binds when that record is accepted.
 - 2026-10-17: [ADR-0086](0086-renders-fit-the-destinations-live-columns-and-tables-shrink-to-fit.md), proposed, narrows the clause that the renderer context holds `style` and destination-aware `width()`: the view context also supplies the destination's `columns` and an eager `wrap(text, columns)`. `pad()` stays a deferred frame, and the wire gains one frame, `nowrap`, that line breaking keeps whole. Every other rule here stands. It binds when that record is accepted.
+- 2026-10-19: [ADR-0089](0089-an-operators-color-or-no-color-settles-the-runs-color-right-after-host-capture.md), proposed, narrows the clause that explicit policy takes precedence over environment defaults, for the `color` field alone: an operator's `--color` or `--no-color`, a spelling of the option an Application marks with `color: true`, sets that field to `'always'` or `'never'` over the Application's and `run()`'s `rendering.color` and over `FORCE_COLOR` and `NO_COLOR`. `modifiers`, `hyperlinks`, and `terminalControls` keep their own policy, as `NO_COLOR` concerns color alone. Without such a spelling every rule here stands. It binds when that record is accepted.
