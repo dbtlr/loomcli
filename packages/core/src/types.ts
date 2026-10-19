@@ -456,16 +456,26 @@ export type ResultViewsOf<Result> = Result extends { kind: 'value'; value: infer
     ? RowViews<Row>
     : never;
 
+/** The row an iterable or async iterable yields, which a row view over it renders. */
+export type SequenceRow<Data> =
+  Data extends Iterable<infer Row> ? Row : Data extends AsyncIterable<infer Row> ? Row : never;
+
+/** The views `out.render` accepts for its data: a whole view, or a row view over a sequence. */
+export type RenderedView<Data> = View<Data> | RowView<SequenceRow<Data>>;
+
 export interface Out<Result = unknown> {
   print(message: string): Promise<void>;
   info(message: string): Promise<void>;
   success(message: string): Promise<void>;
   warn(message: string): Promise<void>;
   error(message: string): Promise<void>;
-  /** The neutral view call: a rendered value has no purpose and no destination. */
-  render<Data>(data: Data, view: View<Data>): Promise<void>;
-  /** The same call over a sequence: core writes each row's text as the source yields it. */
-  render<Row>(rows: Iterable<Row> | AsyncIterable<Row>, view: RowView<Row>): Promise<void>;
+  /**
+   * The neutral view call: a rendered value has no purpose and no destination. A row view takes an
+   * iterable, and core writes each row's text as the source yields it. One signature rather than an
+   * overload per shape, because the compiler fixes a factory call's type against the first overload
+   * it tries, which left a row view's configuration typed from its own keys.
+   */
+  render<Data>(data: Data, view: RenderedView<Data>): Promise<void>;
   /** Draws a view on stderr without a newline, preserving terminal controls at a terminal. */
   draw<Data>(data: Data, view: View<Data>): Promise<number>;
   /**

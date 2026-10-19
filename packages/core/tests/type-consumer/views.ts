@@ -41,7 +41,7 @@ const lines: RowView<Row> = {
   row: (row, index) => `${String(index)}  ${String(row.count)}  ${row.source}\n`,
 };
 
-/** An asynchronous source, which the sequence overload accepts beside a synchronous one. */
+/** An asynchronous source, which a row view accepts beside a synchronous one. */
 async function* walk(): AsyncGenerator<Row> {
   yield { count: 6, source: 'one.txt' };
 }
@@ -52,17 +52,17 @@ new Application('render').action(async ({ out }) => {
   await out.render(rows.length, counts);
   // A declared view renders through the same call a bare view does.
   await out.render('ready', lanes.print);
-  // The second overload takes a row view over an iterable or an asynchronous iterable.
+  // The same call takes a row view over an iterable or an asynchronous iterable.
   await out.render(rows, lines);
   await out.render(walk(), lines);
   await out.render(rows, paths);
-  // @ts-expect-error TS2769: A view for another value type cannot read these rows.
+  // @ts-expect-error TS2345: A view for another value type cannot read these rows.
   await out.render(rows, counts);
-  // @ts-expect-error TS2769: A view returns the text core writes, never another value.
+  // @ts-expect-error TS2322: A view returns the text core writes, never another value.
   await out.render(rows, { render: (data) => data.length });
-  // @ts-expect-error TS2769: A view has one shape, so a value with render and row is neither.
+  // @ts-expect-error TS2345: A view has one shape, so a value with render and row is neither.
   await out.render(rows, { render: () => '', row: () => '' });
-  // @ts-expect-error TS2769: A row view for another row type cannot read these rows.
+  // @ts-expect-error TS2322: A row view for another row type cannot read these rows.
   await out.render(rows, { row: (row: { name: string }) => row.name });
 });
 
