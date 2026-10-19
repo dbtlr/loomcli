@@ -19,6 +19,7 @@ import type {
   FailureView,
   InputProblem,
   LoomError,
+  Out,
   ReplacementView,
   RowView,
   View,
@@ -44,6 +45,17 @@ const lines: RowView<Row> = {
 interface Variant {
   variant: 'compact' | 'extended';
 }
+
+/** A helper generic over its source reaches a row view, as the old row overload allowed. */
+async function forwardRows<Source extends AsyncIterable<Row> | Iterable<Row>>(
+  out: { render: Out['render'] },
+  source: Source,
+  rowView: RowView<Row>,
+): Promise<Source> {
+  await out.render(source, rowView);
+  return source;
+}
+void forwardRows;
 
 /** A row view over a literal union, which rows reach only when their type states the union. */
 const variants: RowView<Variant> = { row: (row) => `${row.variant}\n` };
@@ -74,18 +86,18 @@ new Application('render').action(async ({ out }) => {
   const maybe = rows.length > 0 ? rows : undefined;
   const parsed: unknown = JSON.parse('[]');
   const fetched: any = JSON.parse('[]');
-  // @ts-expect-error TS2379: A row view renders a sequence, so one row is not its data.
+  // @ts-expect-error TS2345: A row view renders a sequence, so one row is not its data.
   await out.render(rows[0], lines);
-  // @ts-expect-error TS2379: Rows that may be undefined are not a sequence either.
+  // @ts-expect-error TS2345: Rows that may be undefined are not a sequence either.
   await out.render(maybe, lines);
-  // @ts-expect-error TS2379: Nor is a value whose type is unknown.
+  // @ts-expect-error TS2345: Nor is a value whose type is unknown.
   await out.render(parsed, lines);
   // Data typed any takes a row view, as an untyped source's rows do.
   await out.render(fetched, lines);
   // The rows' type comes from the data alone, so inline rows over a literal union state it.
   const compact: readonly Variant[] = [{ variant: 'compact' }];
   await out.render(compact, variants);
-  // @ts-expect-error TS2379: An inline literal widens, and a row view does not narrow it back.
+  // @ts-expect-error TS2345: An inline literal widens, and a row view does not narrow it back.
   await out.render([{ variant: 'compact' }], variants);
 });
 

@@ -457,19 +457,13 @@ export type ResultViewsOf<Result> = Result extends { kind: 'value'; value: infer
     : never;
 
 /**
- * The row view `out.render` accepts for its data: one over the rows an iterable or async iterable
- * yields, none for data that yields no rows, and every row view for `any` data, which `never` rows
- * admit because a row function takes its row contravariantly. The check is not
- * distributive, so data that may be `undefined` or a single row takes no row view.
+ * The data `out.render` accepts: any value under a whole view, and under a row view a sequence of
+ * that view's rows. A row view states its row type and core reads it from there, so a generic
+ * sequence reaches it, and data that is not a sequence, one row or rows that may be `undefined`,
+ * does not.
  */
-export type SequenceView<Data> = 0 extends 1 & Data
-  ? RowView<never>
-  : [Data] extends [Iterable<infer Row> | AsyncIterable<infer Row>]
-    ? RowView<Row>
-    : never;
-
-/** The views `out.render` accepts for its data: a whole view, or a row view over a sequence. */
-export type RenderedView<Data> = View<Data> | SequenceView<Data>;
+export type RenderedData<Data, Row> = Data &
+  ([Row] extends [never] ? unknown : Iterable<Row> | AsyncIterable<Row>);
 
 export interface Out<Result = unknown> {
   print(message: string): Promise<void>;
@@ -483,7 +477,10 @@ export interface Out<Result = unknown> {
    * overload per shape, because the compiler fixes a factory call's type against the first overload
    * it tries, which left a row view's configuration typed from its own keys.
    */
-  render<Data>(data: Data, view: RenderedView<Data>): Promise<void>;
+  render<Data, Row = never>(
+    data: RenderedData<Data, Row>,
+    view: View<Data> | RowView<Row>,
+  ): Promise<void>;
   /** Draws a view on stderr without a newline, preserving terminal controls at a terminal. */
   draw<Data>(data: Data, view: View<Data>): Promise<number>;
   /**

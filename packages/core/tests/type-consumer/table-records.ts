@@ -128,7 +128,7 @@ const rendered = new Command('rendered').action(async ({ out }) => {
       identifier: 'source',
     }),
   );
-  // @ts-expect-error TS2740: A whole view renders a value, so a generator needs a row view.
+  // @ts-expect-error TS2345: A whole view renders a value, so a generator needs a row view.
   await out.render(generated(), table());
 });
 
