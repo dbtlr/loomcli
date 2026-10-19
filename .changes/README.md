@@ -39,11 +39,13 @@ Write links relative to the repository root, where the compiled entry will live.
 
 ## Explain a breaking change
 
-A change is breaking when an update forces a consumer application to change its code or its requirements, or when a new rule rejects a value that an earlier release accepted. Mark it with the filename prefix even when the change fixes a bug.
+A change is breaking when code an application author already wrote must change or now fails, when the application's requirements rise, or when a new rule rejects a value that an earlier release accepted. Judge it by how the author's code meets the changed surface: does the author call it, read it from an object core built, or build it and pass it to core? Mark it with the filename prefix even when the change fixes a bug.
 
-- A removed or renamed export, a required member added to a type that consumers implement, such as `Out`, and a raised minimum runtime version are breaking.
+- A removed or renamed export and a raised minimum runtime version are breaking.
+- A function or method the author calls, such as `out.info`, breaks when a call that worked before no longer satisfies its parameters, or when code that uses its result no longer compiles or runs. A new optional parameter is not breaking.
+- An object core constructs and passes to the author's code, such as `Out`, a view context, the action, middleware, and hook contexts, or the host, breaks when a member the author reads is removed or changes so that code reading it no longer compiles or runs. Adding a member is not breaking, because core owns construction and an application that builds one of these objects itself is outside the supported surface. The same holds for a node core produces: a required readonly field such as `schema` on `OptionNode` is not breaking.
+- Something the author builds and passes to core, such as a declaration, a view, a plugin, a validator, or a translator, breaks when it gains a required member.
 - A declaration rule that rejects a default an earlier release accepted is breaking, even though the application compiles unchanged.
-- A required readonly field added to a type that core produces and consumers only read, such as `schema` on `OptionNode`, is not breaking.
 - Expanding a produced type union or adding an opt-in authoring method is not breaking.
 - A change to a template's text is never breaking. When the help page's bytes or a description's wording change, no application has to change its code, so the fragment is a fix or a feature.
 
