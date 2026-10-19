@@ -458,12 +458,19 @@ export type ResultViewsOf<Result> = Result extends { kind: 'value'; value: infer
 
 /**
  * The data `out.render` accepts: any value under a whole view, and under a row view a sequence of
- * that view's rows. A row view states its row type and core reads it from there, so a generic
- * sequence reaches it, and data that is not a sequence, one row or rows that may be `undefined`,
- * does not.
+ * that view's rows. A stated row view's row type is read from the view, so a generic sequence
+ * reaches it, and data that is not a sequence, one row or rows that may be `undefined`, does not.
  */
 export type RenderedData<Data, Row> = Data &
-  ([Row] extends [never] ? unknown : Iterable<Row> | AsyncIterable<Row>);
+  ([Row] extends [never] ? unknown : Iterable<NoInfer<Row>> | AsyncIterable<NoInfer<Row>>);
+
+/**
+ * The row view over the rows `Data` yields, which types a pack view's factory from the data. The
+ * check is not distributive, so data that may be `undefined` or a single row has no such view.
+ */
+export type RowViewOver<Data> = [Data] extends [Iterable<infer Row> | AsyncIterable<infer Row>]
+  ? RowView<Row>
+  : never;
 
 export interface Out<Result = unknown> {
   print(message: string): Promise<void>;
@@ -479,7 +486,7 @@ export interface Out<Result = unknown> {
    */
   render<Data, Row = never>(
     data: RenderedData<Data, Row>,
-    view: View<Data> | RowView<Row>,
+    view: View<Data> | RowView<Row> | RowViewOver<Data>,
   ): Promise<void>;
   /** Draws a view on stderr without a newline, preserving terminal controls at a terminal. */
   draw<Data>(data: Data, view: View<Data>): Promise<number>;

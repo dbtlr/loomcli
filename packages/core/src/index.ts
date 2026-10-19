@@ -143,6 +143,7 @@ export type {
   ResultInput,
   ResultView,
   ResultViews,
+  RowViewOver,
   RunOptions,
   ScalarArgument,
   StringOption,

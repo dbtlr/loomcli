@@ -1,4 +1,5 @@
 import { Command } from '@loomcli/core';
+import type { Out } from '@loomcli/core';
 import { records } from '@loomcli/plugins/records';
 import { table } from '@loomcli/plugins/table';
 
@@ -128,9 +129,21 @@ const rendered = new Command('rendered').action(async ({ out }) => {
       identifier: 'source',
     }),
   );
-  // @ts-expect-error TS2345: A whole view renders a value, so a generator needs a row view.
+  // @ts-expect-error TS2740: A whole view renders a value, so a generator needs a row view.
   await out.render(generated(), table());
 });
 
+/** A source typed by a type parameter has no row type to flow in, so its factory states it. */
+async function generic<Source extends readonly Row[]>(
+  out: { render: Out['render'] },
+  source: Source,
+): Promise<Source> {
+  await out.render(source, records<Row>({ identifier: 'source' }));
+  // @ts-expect-error TS2322: Unstated, the factory's row type is unknown to the call.
+  await out.render(source, records({ identifier: 'source' }));
+  return source;
+}
+
 void valid;
 void rendered;
+void generic;

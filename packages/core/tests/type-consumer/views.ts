@@ -57,6 +57,20 @@ async function forwardRows<Source extends AsyncIterable<Row> | Iterable<Row>>(
 }
 void forwardRows;
 
+/** Whole views over data that may be absent, or one of two types, render it as they always did. */
+async function optionalData(
+  out: { render: Out['render'] },
+  name: string | undefined,
+  names: readonly string[] | null,
+  amount: number | string,
+): Promise<void> {
+  await out.render(name, { render: (value: string | undefined) => value ?? '' });
+  await out.render(name, { render: (value: unknown) => String(value) });
+  await out.render(names, { render: (value: readonly string[] | null) => value?.join(' ') ?? '' });
+  await out.render(amount, { render: (value: number | string) => String(value) });
+}
+void optionalData;
+
 /** A row view over a literal union, which rows reach only when their type states the union. */
 const variants: RowView<Variant> = { row: (row) => `${row.variant}\n` };
 
@@ -81,7 +95,7 @@ new Application('render').action(async ({ out }) => {
   await out.render(rows, { render: (data) => data.length });
   // @ts-expect-error TS2345: A view has one shape, so a value with render and row is neither.
   await out.render(rows, { render: () => '', row: () => '' });
-  // @ts-expect-error TS2322: A row view for another row type cannot read these rows.
+  // @ts-expect-error TS2345: A row view for another row type cannot read these rows.
   await out.render(rows, { row: (row: { name: string }) => row.name });
   const maybe = rows.length > 0 ? rows : undefined;
   const parsed: unknown = JSON.parse('[]');
