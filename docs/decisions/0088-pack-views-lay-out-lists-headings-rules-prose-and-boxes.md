@@ -54,8 +54,12 @@ Structure is `dim`: markers, underlines, rules, and box borders. A bullet is `gl
 - An application imports each view from its own subpath, so it bundles only the views it names, and the pack has five more entry points to publish and lint.
 - The private `@loom/doctor` plugin depends on `@loomcli/plugins` to render its report, so the example that teaches plugin Commands also shows a plugin rendering through pack views.
 - An override of a declared view does not reach it inside a box, so an application that replaces a declared view and frames it renders the original inside the frame. Framing the replacement means passing the replacement's view as `content`.
-- Help keeps its own heading and list forms for its Details Markdown: a `-` bullet, numbers that do not right-align, and headings in `primary` and `bold`.
+- Help's Details lists and headings print in these views' forms, through the marker layout and heading underline that `text-lines` shares with the list and the heading: a `dim` `glyph.bullet`, numbers that right-align against the widest sibling, and `dim` headings with an underline at level 1, on a terminal and off one. One look for lists and headings holds across Loom, and no second implementation exists.
 
 ## Status
 
 Proposed. It moves to accepted with the release that ships the five pack views. Tests prove each view as the second argument of `out.render` and in a declared result, the list's markers, nesting, and hanging lines, both heading levels and the underline, the rule bare and labelled at a fixed width and at 80 piped, prose paragraphs, a text box and a framed table that shrinks and falls back to records, the width read again after a resize, byte-identical piped output, and the negative type checks.
+
+## Changelog
+
+- 2026-10-19: Amended before acceptance: help's Details lists and headings print in the list and heading views' forms through the shared `text-lines` helpers, which replaces the consequence that help kept a `-` bullet, numbers that do not right-align, and `primary` `bold` headings.
