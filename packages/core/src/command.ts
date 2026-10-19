@@ -89,6 +89,7 @@ import { graphMismatch, nodeAt, resultNode } from './inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
 import { checkInteraction } from './interaction.js';
 import type { Log, LogBinder } from './log.js';
+import { isMarked } from './marks.js';
 import { rememberInputNames } from './missing-input.js';
 import { declareGroup } from './option-groups.js';
 import type { OptionGroup } from './option-groups.js';
@@ -3323,9 +3324,7 @@ export async function prepareDispatch(
   const ledger = new ValidationLedger();
   const preparation = { graph, interactive: false, invocation, ledger, routed };
   const { globals, scope, sources } = await fillScope(preparation, local);
-  const marked = graph.globals.inputs.find(
-    (input) => input.config.type === 'boolean' && input.config.interaction,
-  );
+  const marked = graph.globals.inputs.find((input) => isMarked(input.config, 'interaction'));
   preparation.interactive =
     invocation.host.terminal.stdin.isTTY &&
     invocation.host.terminal.stderr.isTTY &&

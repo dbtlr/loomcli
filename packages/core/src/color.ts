@@ -2,6 +2,8 @@ import { registerRule } from './diagnostic-text.js';
 import { quoted } from './errors.js';
 import { factFault } from './facts.js';
 import type { FactSite } from './facts.js';
+import { checkMarkPlacement, isMarked } from './marks.js';
+import type { Mark } from './marks.js';
 import type { OptionSpelling } from './options.js';
 import type { RenderingPolicy } from './rendering.js';
 import type { OptionConfig } from './types.js';
@@ -15,10 +17,8 @@ const colorMark = registerRule('@loomcli/core/color-mark', {
 /** The color an operator's spelling sets for the run: `'always'` or `'never'`. */
 type ColorChoice = 'always' | 'never';
 
-/** Whether one option carries the color mark: the key, on a Boolean option, holding `true`. */
-function isColorMarked(config: OptionConfig): boolean {
-  return config.type === 'boolean' && config.color === true;
-}
+/** The color mark, whose option the run reads from argv before anything else prints. */
+const color: Mark = { fact: 'color', rule: colorMark };
 
 /**
  * The mark belongs only to a Boolean global option with no short alias and no environment
@@ -29,36 +29,13 @@ function checkColor(config: OptionConfig, site: FactSite, global: boolean): void
   if (!('color' in config)) {
     return;
   }
-  checkPlacement(config, site, global);
+  checkMarkPlacement(config, site, { global, mark: color });
   checkOneSource(config, site);
 }
 
-/** The fault for one rule of the mark, marking the key it names. */
+/** The fault for one of the mark's own rules, marking the key it names. */
 function markFault(site: FactSite, fact: string, parts: { sentence: string; correction: string }) {
   return factFault(colorMark, site, { ...parts, fact });
-}
-
-/** The mark sits on a Boolean global option and holds `true`. */
-function checkPlacement(config: OptionConfig, site: FactSite, global: boolean): void {
-  if (!global) {
-    throw markFault(site, 'color', {
-      correction: 'Declare it with globalOption().',
-      sentence: `${site.subject} declares color but is not a global option.`,
-    });
-  }
-  if (config.type !== 'boolean') {
-    throw markFault(site, 'color', {
-      correction: 'Use type "boolean".',
-      sentence: `${site.subject} declares color but is not Boolean.`,
-    });
-  }
-  const mark: unknown = Reflect.get(config, 'color');
-  if (mark !== true) {
-    throw markFault(site, 'color', {
-      correction: 'Remove color or set it to true.',
-      sentence: `${site.subject} declares color that is not true.`,
-    });
-  }
 }
 
 /**
@@ -82,24 +59,20 @@ function checkOneSource(config: OptionConfig, site: FactSite): void {
 
 /**
  * A marked option carries no value of the installed configuration source's binding, because the
- * run reads its color before configuration. `binding` is the source's descriptor identity, or
- * `undefined` when the Application installs no source, and `record` the option's extension values.
+ * run reads its color before configuration. `carried` is the identity of the installed source's
+ * binding when the option's extension record carries it, and `undefined` otherwise.
  */
 function checkColorBinding(
   config: OptionConfig,
   site: FactSite,
-  carried: {
-    readonly binding: string | undefined;
-    readonly record: Readonly<Record<string, unknown>> | undefined;
-  },
+  carried: string | undefined,
 ): void {
-  const { binding, record } = carried;
-  if (!isColorMarked(config) || binding === undefined || !Object.hasOwn(record ?? {}, binding)) {
+  if (!isMarked(config, 'color') || carried === undefined) {
     return;
   }
   throw markFault(site, 'extensions', {
     correction: 'Remove the binding; the run reads its color before configuration.',
-    sentence: `${site.subject} declares color and carries configuration binding ${quoted(binding)}, a second source for the run's color.`,
+    sentence: `${site.subject} declares color and carries configuration binding ${quoted(carried)}, a second source for the run's color.`,
   });
 }
 
@@ -131,5 +104,14 @@ function chosenPolicy(policy: RenderingPolicy, choice: ColorChoice | undefined):
   return choice === undefined ? policy : { ...policy, color: choice };
 }
 
+/**
+ * The policy the output of a run whose host capture failed follows, before argv could be read: in
+ * a marked Application, color off, the safest reading of a choice core could not read, and in one
+ * with no mark, nothing, so it prints as it did before the mark existed.
+ */
+function uncapturedPolicy(marked: boolean): RenderingPolicy {
+  return marked ? { color: 'never' } : {};
+}
+
 export type { ColorChoice };
-export { checkColor, checkColorBinding, chosenPolicy, colorChoice, colorMark, isColorMarked };
+export { checkColor, checkColorBinding, chosenPolicy, color, colorChoice, uncapturedPolicy };

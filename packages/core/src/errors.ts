@@ -37,6 +37,11 @@ function resultMessage(kind: ResultFault, command: readonly string[]): string {
   return `${caller} called out.results() on ${routedSubject(command)}. Only the action emits a result.`;
 }
 
+/** A sentence's subject placed after its start, its first letter lowercased: `Plugin` reads `plugin`. */
+export function midSentence(text: string): string {
+  return `${text.slice(0, 1).toLowerCase()}${text.slice(1)}`;
+}
+
 /**
  * A value a sentence quotes: raw text an operator typed, or a name or identity an author declared.
  * Text is escaped, so a control character or a bidirectional control in it cannot reorder or break

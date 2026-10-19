@@ -9,7 +9,7 @@ import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { readEncodings } from './encoders.js';
 import type { FailureEncoder, FailureEncoding } from './encoders.js';
-import { DeclarationError, InternalError, quoted, reasonOf } from './errors.js';
+import { DeclarationError, InternalError, midSentence, quoted, reasonOf } from './errors.js';
 import { appliesTo, buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
 import type { AdmittedDescriptor, AnyExtension, DescriptorRegistry } from './extension.js';
 import {
@@ -595,7 +595,7 @@ function readOptions(
         descriptors: build.descriptors,
         site: { ...site, at: `${site.at}.extensions` },
         subject: {
-          phrase: `on ${sentence.slice(0, 1).toLowerCase()}${sentence.slice(1)}`,
+          phrase: `on ${midSentence(sentence)}`,
           sentence,
         },
         target: 'option',

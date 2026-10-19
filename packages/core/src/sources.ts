@@ -380,6 +380,24 @@ function fillFromEnvironment(
   return { labels, rejected };
 }
 
+/** The one installed plugin that declares a configuration source, or none. */
+function installedSource(
+  plugins: readonly BuiltPlugin[],
+): (BuiltPlugin & { source: BuiltSource }) | undefined {
+  return plugins.find(
+    (installed): installed is BuiltPlugin & { source: BuiltSource } =>
+      installed.source !== undefined,
+  );
+}
+
+/** Whether one option's extension record carries a value of the source's binding. */
+function carriesBinding(
+  record: Readonly<Record<string, unknown>> | undefined,
+  binding: string,
+): boolean {
+  return Object.hasOwn(record ?? {}, binding);
+}
+
 /**
  * The options the configuration source is asked about: those still unfilled that carry its
  * binding and hold no environment fault, the globals table first and then the routed Command's own,
@@ -396,7 +414,7 @@ function requestedOf(
         (input) =>
           !isSupplied(scope.values, input.name) &&
           !excluded.has(input.name) &&
-          Object.hasOwn(bound.extensions.get(input) ?? {}, bound.binding),
+          carriesBinding(bound.extensions.get(input), bound.binding),
       )
       .map((input) => ({ input, scope })),
   );
@@ -413,10 +431,7 @@ function requestedOf(
 async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
   const scopes = stage.locals ? [stage.globals, stage.locals] : [stage.globals];
   const { labels, rejected } = fillFromEnvironment(scopes, stage.host.env);
-  const owner = stage.plugins.find(
-    (installed): installed is BuiltPlugin & { source: BuiltSource } =>
-      installed.source !== undefined,
-  );
+  const owner = installedSource(stage.plugins);
   const requested = owner
     ? requestedOf(scopes, rejected, { binding: owner.source.binding, extensions: stage.extensions })
     : [];
@@ -449,4 +464,4 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
 }
 
 export type { SourceOutcome, SourceStage, StageScope };
-export { fillInputs };
+export { carriesBinding, fillInputs, installedSource };

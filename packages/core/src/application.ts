@@ -3,8 +3,7 @@ import type { Writable } from 'node:stream';
 import { captureDeclaration, unreadableArgument } from './capture.js';
 import { noSelection, runInvocation } from './chain.js';
 import type { FailureSelection, Invocation, StartingView } from './chain.js';
-import { checkColorBinding, chosenPolicy, colorChoice } from './color.js';
-import type { ColorChoice } from './color.js';
+import { checkColorBinding, chosenPolicy, colorChoice, uncapturedPolicy } from './color.js';
 import { portableName } from './command-rules.js';
 import {
   declareStdin,
@@ -71,13 +70,12 @@ import type { FactSite } from './facts.js';
 import { failureForm } from './form.js';
 import type { FailureForm } from './form.js';
 import {
-  checkPluginColorBindings,
   colorSpellings,
   declareGlobalOption,
   emptyGlobals,
   globalSite,
   globalTable,
-  sourceBinding,
+  pluginSites,
 } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
 import { judgeGraph, judgesGraph } from './graph-hooks.js';
@@ -101,6 +99,7 @@ import { coreViews } from './lanes.js';
 import { brokenLogHookDefect, RunLog } from './log.js';
 import type { LogDestination } from './log.js';
 import { lowerInvocation } from './lower.js';
+import type { OptionSpelling } from './options.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
 import { parseInvocation } from './parse.js';
@@ -115,6 +114,7 @@ import type { RenderingPolicy } from './rendering.js';
 import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
 import { bracketCall, bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
 import type { CancellationCode, ParentRun, SignalBracket } from './signals.js';
+import { carriesBinding, installedSource } from './sources.js';
 import { readTranslations, translateThrow } from './translators.js';
 import type { Translation, TranslatorRegistry } from './translators.js';
 import type {
@@ -349,6 +349,12 @@ class ApplicationBuilder<
   readonly #root: CommandState<Args, Options, Globals>;
   readonly #globals: GlobalsState;
   readonly #config: ApplicationConfig;
+  /**
+   * The color-marked option's spellings, read from the declarations the first time a run needs
+   * them. The holder keeps an Application with no mark from reading them again.
+   */
+  #colorSpellings: { readonly value: ReadonlyMap<string, OptionSpelling> | undefined } | undefined =
+    undefined;
 
   constructor(
     name: string,
@@ -514,10 +520,11 @@ class ApplicationBuilder<
     );
     const root = { ...this.#root, descriptors };
     checkDeclaredOptions(root, globalTable(globals.inputs, this.#config.plugins));
-    checkColorBinding(captured.config, globalSite(captured), {
-      binding: sourceBinding(this.#config.plugins),
-      record: globals.records.get(captured),
-    });
+    checkColorBinding(
+      captured.config,
+      globalSite(captured),
+      carriedBinding(globals.records.get(captured), this.#config.plugins),
+    );
     checkDeclarations([{ input: captured, site: globalSite(captured) }]);
     return new ApplicationBuilder<
       Args,
@@ -812,7 +819,8 @@ class ApplicationBuilder<
    */
   async #execute(door: RunDoor): Promise<RunEnd> {
     // The color-marked option's spellings, known from the declarations before any graph builds.
-    const spellings = colorSpellings(this.#globals.inputs, this.#config.plugins);
+    this.#colorSpellings ??= { value: colorSpellings(this.#globals.inputs, this.#config.plugins) };
+    const spellings = this.#colorSpellings.value;
     let stderr: Writable = door.stderr;
     let output: Output | undefined = undefined;
     let code: 0 | FailureExitCode = 0;
@@ -935,7 +943,7 @@ class ApplicationBuilder<
         const { host } = capture;
         // The operator's color choice, read from argv before anything else prints.
         const choice = spellings && colorChoice(host.argv, spellings);
-        const invocationOutput = door.output(host, controller.signal, choice);
+        const invocationOutput = door.output(host, controller.signal, chosenPolicy({}, choice));
         output = invocationOutput;
         // The constructor validated the declared policy, which the build hands over after the overrides.
         let policy: RenderingPolicy = {};
@@ -1043,7 +1051,7 @@ class ApplicationBuilder<
           output ??= door.output(
             reportingHost(),
             controller.signal,
-            spellings === undefined ? undefined : 'never',
+            uncapturedPolicy(spellings !== undefined),
           );
           const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
@@ -1280,11 +1288,11 @@ interface RunDoor {
   /** The host a report reads when the run failed before its own was captured. */
   fallback: (stderr: Writable) => ReportHost;
   /**
-   * The run's output, before the build hands it the declared policy. `color` is the color the
-   * output follows until then: the operator's choice, or `'never'` in a marked Application whose
-   * host capture failed before the choice could be read.
+   * The run's output, before the build hands it the declared policy. `early` is the policy the
+   * output follows until then: the operator's color choice, or color off in a marked Application
+   * whose host capture failed before the choice could be read.
    */
-  output: (host: ReportHost, signal: AbortSignal, color: ColorChoice | undefined) => Output;
+  output: (host: ReportHost, signal: AbortSignal, early: RenderingPolicy) => Output;
   /**
    * Where the run's log events are delivered: the outermost run's destination, which this run's
    * host names under `run()` and an action's call takes from its parent.
@@ -1317,11 +1325,9 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
     },
     fallback: (stderr) => captureHost(application, undefined, stderr).report,
     invokedBy: 'argv',
-    output: (host, signal, color) => {
+    output: (host, signal, early) => {
       const output = new Output(host, signal);
-      if (color !== undefined) {
-        output.configure({ color }, new Map());
-      }
+      output.configure(early, new Map());
       return output;
     },
     rendering: (declared) => {
@@ -1533,6 +1539,29 @@ function captureOptions(name: string, options: unknown): Record<string, unknown>
       ),
     },
   );
+}
+
+/** The installed configuration source's binding, when one option's extension record carries it. */
+function carriedBinding(
+  record: Readonly<Record<string, unknown>> | undefined,
+  plugins: readonly BuiltPlugin[],
+): string | undefined {
+  const binding = installedSource(plugins)?.source.binding;
+  return binding !== undefined && carriesBinding(record, binding) ? binding : undefined;
+}
+
+/**
+ * No plugin's color-marked option carries the installed source's binding. Only the constructor
+ * holds every plugin, so it judges each plugin's options against the source another one installs.
+ */
+function checkPluginColorBindings(plugins: readonly BuiltPlugin[]): void {
+  for (const installed of plugins) {
+    const siteOf = pluginSites(installed.identity, installed.inputs);
+    for (const input of installed.inputs) {
+      const bound = carriedBinding(installed.records.get(input), plugins);
+      checkColorBinding(input.config, siteOf(input), bound);
+    }
+  }
 }
 
 /**
