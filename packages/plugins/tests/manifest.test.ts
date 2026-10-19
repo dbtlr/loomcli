@@ -77,6 +77,7 @@ function plugin(name: string, description: string, short: string | null) {
     negative: null,
     polarity: 'positive',
     interaction: false,
+    color: false,
     schema: null,
     env: [],
   };
@@ -149,6 +150,7 @@ const getDocument = {
         negative: '--no-raw',
         polarity: 'both',
         interaction: false,
+        color: false,
         schema: null,
         env: ['APP_RAW'],
       },

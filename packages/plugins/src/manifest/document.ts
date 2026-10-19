@@ -95,6 +95,7 @@ type ManifestOption =
       readonly short: string | null;
       readonly negative: string | null;
       readonly interaction: boolean;
+      readonly color: boolean;
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly env: readonly string[];
@@ -163,6 +164,7 @@ function optionEntry(node: OptionNode): ManifestOption {
         negative: node.negative,
         polarity: node.polarity,
         interaction: node.interaction,
+        color: node.color,
         schema: node.schema,
         env: node.env,
       };
