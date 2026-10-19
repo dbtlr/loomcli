@@ -63,6 +63,9 @@ function styled(length, seed) {
     .join(' ');
 }
 
+/** A time in milliseconds to one decimal place. */
+const tenths = (milliseconds) => Math.round(milliseconds * 10) / 10;
+
 const cells = (count, make) => Array.from({ length: count }, (_unused, index) => make(index));
 
 /** What a case produces from its value: every text wrapped, or the table view's own text. */
@@ -140,7 +143,7 @@ for (const name of requested) {
       for (let attempt = 0; attempt < attempts; attempt += 1) {
         const started = performance.now();
         produced = text(given, context);
-        timings.push(Math.round(performance.now() - started));
+        timings.push(performance.now() - started);
       }
       return '';
     },
@@ -150,20 +153,21 @@ for (const name of requested) {
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       const started = performance.now();
       ({ output: produced, status } = await run(input, { render: text }));
-      timings.push(Math.round(performance.now() - started));
+      timings.push(performance.now() - started);
     }
   } else {
     ({ status } = await run(input, timed));
   }
+  const warm = Math.min(...timings);
   console.log(
     JSON.stringify({
       case: name,
-      elapsedMs: timings[0],
+      elapsedMs: tenths(timings[0]),
       inputUnits: JSON.stringify(input).length,
       outputBytes: Buffer.byteLength(produced),
       outputDigest: createHash('sha256').update(produced).digest('hex').slice(0, 16),
       status,
-      warmMs: Math.min(...timings),
+      warmMs: tenths(warm),
     }),
   );
 }

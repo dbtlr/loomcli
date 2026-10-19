@@ -1,1 +1,1 @@
-- Speed up `context.wrap`, `context.width`, `context.plain`, `splitLines`, and the table view on long text. Wrapping a long paragraph or a table of long cells takes a fraction of the time it did, and the output is unchanged.
+- Speed up `ViewContext.width`, `ViewContext.plain`, and `@loomcli/plugins/table` on long text. Output is unchanged.
