@@ -248,6 +248,18 @@ _Avoid_: Color lane, color mode, color flag (for the choice)
 The `color: true` fact on the one Boolean global option whose spellings carry the operator's color choice. The marked option binds no variable and no configuration key, because the environment speaks for color only through `NO_COLOR` and `FORCE_COLOR`.
 _Avoid_: No-color flag (for the mark), color option
 
+**Verbosity**:
+The run's one setting of which lanes write, settled right after graph build from argv with the parser's own word reader: the verbose-marked option's occurrences, read as 2 above 2, less the quiet-marked option's, read as 1 above 1. At 0, the default, `info`, `success`, `warn`, and `error` write; 1 adds `debug`, 2 adds `trace`, and -1 hides `info` and `success`. `print`, rendered output, results, warnings, errors, and failures write at every verbosity. An invocation by name settles its own from the values it lowers.
+_Avoid_: Log level (a log level belongs to a log event), detail level, verbose mode, quiet mode
+
+**Verbose mark**:
+The `verbose: true` fact on the one counted global option whose occurrences raise the verbosity. The marked option binds no variable and no configuration key, because the verbosity settles before the environment and configuration are read.
+_Avoid_: Verbosity flag (for the mark), verbose option
+
+**Quiet mark**:
+The `quiet: true` fact on the one counted global option whose occurrence lowers the verbosity by one step, which hides `info` and `success`; a further occurrence adds nothing. It binds no variable and no configuration key, as the verbose mark does.
+_Avoid_: Silent flag, quiet option (for the mark)
+
 **Invocation**:
 One `run()` or `invoke()` call: host capture, graph build, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status. An action's `invoke()` captures no host and builds no graph: it takes its host fields and its graph from its own run.
 _Avoid_: Execution, call, request
@@ -328,11 +340,11 @@ _Avoid_: Signal handler plugin, interrupt plugin
 View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, View name, and `ResultError` follow the [results contract](core.md#results), which is implemented under accepted ADR-0023. Column, Field, and Identifier follow the [table](core.md#table) and [records](core.md#records) contracts.
 
 **Out**:
-The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the draw call that renders a live region on stderr, the result call, and the fatal path. On a Command that declares a result, the action's `print`, `info`, `success`, `warn`, `error`, and `render` write to stderr, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
+The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the draw call that renders a live region on stderr, the result call, and the fatal path. On a Command that declares a result, the action's `print` and `render` move to stderr beside `info`, `success`, `warn`, `error`, `debug`, and `trace`, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
-A message written through one of the five purpose-named methods: `print`, `info`, `success`, `warn`, and `error`. Each has a fixed default destination and appends one newline.
+A message written through one of the seven purpose-named methods: `print`, `info`, `success`, `warn`, `error`, `debug`, and `trace`. Each has a fixed default destination and appends one newline. The run's verbosity decides whether `info`, `success`, `debug`, and `trace` write.
 _Avoid_: Log level (a log level belongs to a log event), styled output
 
 **Rendered output**:
@@ -380,7 +392,7 @@ The pairing of a key, a declared view or a failure class, with a replacement vie
 _Avoid_: Failure renderer, registration, hook
 
 **Lane view**:
-The declared view behind one of the five semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the newline the method appends is outside the view. The bare word lane also names an output area of core, as in the results lane.
+The declared view behind one of the seven semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the newline the method appends is outside the view. The bare word lane also names an output area of core, as in the results lane.
 _Avoid_: Channel, log level (a log level belongs to a log event), stream (for the lane view)
 
 **Columns**:
