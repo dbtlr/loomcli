@@ -145,7 +145,7 @@ export type {
   ResultViews,
   RunOptions,
   ScalarArgument,
-  SequenceRow,
+  SequenceView,
   StringOption,
   SuppliedInputs,
   RowView,

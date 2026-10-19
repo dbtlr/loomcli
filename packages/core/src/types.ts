@@ -456,12 +456,20 @@ export type ResultViewsOf<Result> = Result extends { kind: 'value'; value: infer
     ? RowViews<Row>
     : never;
 
-/** The row an iterable or async iterable yields, which a row view over it renders. */
-export type SequenceRow<Data> =
-  Data extends Iterable<infer Row> ? Row : Data extends AsyncIterable<infer Row> ? Row : never;
+/**
+ * The row view `out.render` accepts for its data: one over the rows an iterable or async iterable
+ * yields, none for data that yields no rows, and every row view for `any` data, which `never` rows
+ * admit because a row function takes its row contravariantly. The check is not
+ * distributive, so data that may be `undefined` or a single row takes no row view.
+ */
+export type SequenceView<Data> = 0 extends 1 & Data
+  ? RowView<never>
+  : [Data] extends [Iterable<infer Row> | AsyncIterable<infer Row>]
+    ? RowView<Row>
+    : never;
 
 /** The views `out.render` accepts for its data: a whole view, or a row view over a sequence. */
-export type RenderedView<Data> = View<Data> | RowView<SequenceRow<Data>>;
+export type RenderedView<Data> = View<Data> | SequenceView<Data>;
 
 export interface Out<Result = unknown> {
   print(message: string): Promise<void>;
@@ -475,7 +483,7 @@ export interface Out<Result = unknown> {
    * overload per shape, because the compiler fixes a factory call's type against the first overload
    * it tries, which left a row view's configuration typed from its own keys.
    */
-  render<Data>(data: Data, view: RenderedView<Data>): Promise<void>;
+  render<const Data>(data: Data, view: RenderedView<Data>): Promise<void>;
   /** Draws a view on stderr without a newline, preserving terminal controls at a terminal. */
   draw<Data>(data: Data, view: View<Data>): Promise<number>;
   /**

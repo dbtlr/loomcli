@@ -41,6 +41,9 @@ const lines: RowView<Row> = {
   row: (row, index) => `${String(index)}  ${String(row.count)}  ${row.source}\n`,
 };
 
+/** A row view over a literal union, which inline rows reach with their literal types intact. */
+const variants: RowView<{ variant: 'compact' | 'extended' }> = { row: (row) => `${row.variant}\n` };
+
 /** An asynchronous source, which a row view accepts beside a synchronous one. */
 async function* walk(): AsyncGenerator<Row> {
   yield { count: 6, source: 'one.txt' };
@@ -64,6 +67,19 @@ new Application('render').action(async ({ out }) => {
   await out.render(rows, { render: () => '', row: () => '' });
   // @ts-expect-error TS2322: A row view for another row type cannot read these rows.
   await out.render(rows, { row: (row: { name: string }) => row.name });
+  const maybe = rows.length > 0 ? rows : undefined;
+  const parsed: unknown = JSON.parse('[]');
+  const fetched: any = JSON.parse('[]');
+  // @ts-expect-error TS2379: A row view renders a sequence, so one row is not its data.
+  await out.render(rows[0], lines);
+  // @ts-expect-error TS2379: Rows that may be undefined are not a sequence either.
+  await out.render(maybe, lines);
+  // @ts-expect-error TS2379: Nor is a value whose type is unknown.
+  await out.render(parsed, lines);
+  // Data typed any takes a row view, as an untyped source's rows do.
+  await out.render(fetched, lines);
+  // Inline rows keep their literal types, so a row view over a literal union reads them.
+  await out.render([{ variant: 'compact' }], variants);
 });
 
 /** A declared view of the application's own data, named by reference wherever it is used. */
