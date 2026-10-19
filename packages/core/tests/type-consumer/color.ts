@@ -3,14 +3,26 @@ import { Application, Command, plugin } from '@loomcli/core';
 import { color } from '@loomcli/plugins/color';
 import type { ColorOptions } from '@loomcli/plugins/color';
 
-/** The application's own marked option, in each polarity, with an alias. */
-const notes = new Application('notes', { plugins: [color()] })
+/** The plugin's marked option, whose value the action reads typed. */
+const notes = new Application('notes', { plugins: [color()] }).action(({ options }) => {
+  const chosen: boolean = options.color;
+  return { chosen };
+});
+
+/** An application's own marked option with both polarities and an alias. */
+const painted = new Application('painted')
   .globalOption('paint', { aliases: ['tint'], color: true, polarity: 'both', type: 'boolean' })
+  .action(({ options }) => {
+    const own: boolean = options.paint;
+    return { own };
+  });
+
+/** An application's own marked option with the positive polarity alone. */
+const dark = new Application('dark')
   .globalOption('dark', { color: true, type: 'boolean' })
   .action(({ options }) => {
-    const chosen: boolean = options.color;
-    const own: boolean = options.paint;
-    return { chosen, own };
+    const own: boolean = options.dark;
+    return { own };
   });
 
 /** The plugin's option record is its exported type. */
@@ -59,4 +71,4 @@ plugin('@fixture/bad', {
   options: { input: { interaction: true, type: 'string' } },
 });
 
-export { declared, marking, notes };
+export { dark, declared, marking, notes, painted };

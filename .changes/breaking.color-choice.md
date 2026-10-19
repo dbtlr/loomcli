@@ -21,12 +21,18 @@ After, the key removed, or the color choice declared on a Boolean global option:
 
 ```ts
 app.option('theme', { type: 'string' });
-app.globalOption('color', { type: 'boolean', polarity: 'both', color: true, control: true });
+app.globalOption('color', {
+  type: 'boolean',
+  polarity: 'both',
+  color: true,
+  control: true,
+  description: 'Turn color on or off, overriding NO_COLOR.',
+});
 ```
 
 **Steps.**
 
 1. Pin the first-party packages together at the same exact version.
-2. Search the application's option declarations for a `color` key. Remove each one, or keep it on one Boolean global option with no `short` or `env`, or install `color()` from `@loomcli/plugins/color` in place of the application's own option.
+2. Search the application's option declarations for a `color` key. Remove each one, or keep it on one Boolean global option with no `short`, `env`, or configuration binding, or install `color()` from `@loomcli/plugins/color` in place of the application's own option.
 
 **Validation.** Run `pnpm exec tsc --noEmit`, which reports a misplaced `color` key, and run the application once with `--help`, which throws any declaration fault the types cannot see.
