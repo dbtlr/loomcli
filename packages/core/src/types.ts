@@ -486,7 +486,7 @@ export interface Out<Result = unknown> {
    */
   render<Data, Row = never>(
     data: RenderedData<Data, Row>,
-    view: View<Data> | RowView<Row> | RowViewOver<Data>,
+    view: View<Data> | ([Row] extends [never] ? RowViewOver<Data> : RowView<Row>),
   ): Promise<void>;
   /** Draws a view on stderr without a newline, preserving terminal controls at a terminal. */
   draw<Data>(data: Data, view: View<Data>): Promise<number>;

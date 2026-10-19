@@ -71,6 +71,23 @@ async function optionalData(
 }
 void optionalData;
 
+/** A row view written in the call reads its rows' type from the data, over each kind of source. */
+async function inlineRowViews(
+  out: { render: Out['render'] },
+  rows: readonly Row[],
+  source: AsyncIterable<Row>,
+): Promise<void> {
+  await out.render(rows, { row: (row) => `${row.source}\n` });
+  await out.render(source, {
+    head: () => '',
+    row: (row) => `${row.source}\n`,
+    tail: (count) => String(count),
+  });
+  // @ts-expect-error TS2339: Its callbacks read only members the rows carry.
+  await out.render(rows, { row: (row) => row.missing });
+}
+void inlineRowViews;
+
 /** A row view over a literal union, which rows reach only when their type states the union. */
 const variants: RowView<Variant> = { row: (row) => `${row.variant}\n` };
 
