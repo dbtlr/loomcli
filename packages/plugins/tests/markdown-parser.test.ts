@@ -159,16 +159,30 @@ test('themed bytes pin blocks, nested modifiers, code, destinations, addresses a
   ).resolves.toBe(
     themedPage([
       '  \u001b[32mPlain line.\u001b[39m',
-      '  \u001b[32;1mHeading \u001b[36m`code`\u001b[39;22m',
+      '  \u001b[35mHeading \u001b[36m`code`\u001b[39m',
+      '  \u001b[35m──────────────\u001b[39m',
       '  \u001b[32;1mbold \u001b[3mnested\u001b[39;22;23m',
       '  \u001b[36;1m`code`\u001b[39;22m',
       '  \u001b[32;3mlink\u001b[39m \u001b[35m(url)\u001b[39;23m',
       '  \u001b[32murl https://a\u001b[39m',
-      '  \u001b[35m-\u001b[39m \u001b[32mitem\u001b[39m',
+      '  \u001b[35m●\u001b[39m \u001b[32mitem\u001b[39m',
       '  \u001b[35m>\u001b[39m \u001b[32mquote\u001b[39m',
       '  \u001b[32m---\u001b[39m',
       '    \u001b[36m  code\u001b[39m',
     ]),
+  );
+});
+
+test('themed bytes pin a level 2 heading and right-aligned ordered markers as dim', async () => {
+  await expect(render('## Sub\n9. nine\n9. ten', { themed: true })).resolves.toBe(
+    themedPage(
+      [
+        '  \u001b[35mSub\u001b[39m',
+        '  \u001b[35m 9.\u001b[39m \u001b[32mnine\u001b[39m',
+        '  \u001b[35m10.\u001b[39m \u001b[32mten\u001b[39m',
+      ],
+      false,
+    ),
   );
 });
 
@@ -180,7 +194,8 @@ test('marker characters in headings, spans, code and destinations print literall
     ),
   ).resolves.toBe(
     themedPage([
-      '  \u001b[32;1mHeading \uE001red\uE002\u001b[39;22m',
+      '  \u001b[35mHeading \uE001red\uE002\u001b[39m',
+      '  \u001b[35m─────────────\u001b[39m',
       '  \u001b[36m`\uE003`\u001b[39m',
       '    \u001b[36m\uE001code\uE002\u001b[39m',
       '  \u001b[32mtext\u001b[39m \u001b[35m(\uE001url\uE002)\u001b[39m',
@@ -190,10 +205,17 @@ test('marker characters in headings, spans, code and destinations print literall
 
 test('disabled modifiers add no escapes for emphasis or headings', async () => {
   await expect(render('# Heading\n**bold** _italic_', { themed: true })).resolves.toBe(
-    themedPage(['  \u001b[32mHeading\u001b[39m', '  \u001b[32mbold italic\u001b[39m'], false),
+    themedPage(
+      [
+        '  \u001b[35mHeading\u001b[39m',
+        '  \u001b[35m───────\u001b[39m',
+        '  \u001b[32mbold italic\u001b[39m',
+      ],
+      false,
+    ),
   );
   await expect(render('# Heading\n**bold** _italic_')).resolves.toBe(
-    page(['  Heading', '  bold italic']),
+    page(['  Heading', '  ───────', '  bold italic']),
   );
 });
 
@@ -236,9 +258,9 @@ test('a depth-three item retains all 200 lazy paragraph lines', async () => {
   const source = `- outer\n  - middle\n    - inner\n${'wrapped line\n'.repeat(200)}`;
   await expect(render(source)).resolves.toBe(
     page([
-      '  - outer',
-      '    - middle',
-      '      - inner',
+      '  ● outer',
+      '    ● middle',
+      '      ● inner',
       ...Array.from({ length: 200 }, () => '        wrapped line'),
     ]),
   );
@@ -246,8 +268,8 @@ test('a depth-three item retains all 200 lazy paragraph lines', async () => {
 
 test.each([
   ['# ###', []],
-  ['- first\n  - nested\nlazy', ['  - first', '    - nested', '      lazy']],
-  ['- ```\n  code\noutside', ['  -   code', '  outside']],
+  ['- first\n  - nested\nlazy', ['  ● first', '    ● nested', '      lazy']],
+  ['- ```\n  code\noutside', ['  ●   code', '  outside']],
 ])('container edge %j follows the stated block rules', async (source, lines) => {
   await expect(render(source)).resolves.toBe(page(lines));
 });
@@ -272,7 +294,7 @@ test('an autolink protects its address brackets inside link text', async () => {
 
 test('code inside a list keeps every interior empty line', async () => {
   await expect(render('- ```\n  code\n\n\n  last\n  ```')).resolves.toBe(
-    page(['  -   code', '', '', '      last']),
+    page(['  ●   code', '', '', '      last']),
   );
 });
 
