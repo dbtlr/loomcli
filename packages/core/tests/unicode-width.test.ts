@@ -59,3 +59,48 @@ test.each([
 ])('core measures %s as the pinned uucode release does', (_name, text) => {
   expect(segments(graphemeWidths(text))).toEqual(segments(upstreamWidths(text)));
 });
+
+/** Code points that join, pair, or carry break state, drawn from every grapheme break property. */
+const stateful = [
+  0x20, 0x61, 0x07, 0x0d, 0x0a, 0x6_00, 0x9_03, 0x11_00, 0x11_60, 0x11_a8, 0xac_00, 0xac_01,
+  0x20_0c, 0x20_0d, 0x27_64, 0xfe_0f, 0x3_01, 0x9_15, 0x9_37, 0x9_4d, 0xd_15, 0xd_4d, 0x4f_60,
+  0x1_f6_00, 0x1_f4_4d, 0x1_f3_fd, 0x1_f1_fa, 0x1_f1_f8, 0x1_f1_ec,
+];
+
+/** Texts of one to ten of those code points, from a seeded generator. */
+function* statefulTexts() {
+  let state = 17;
+  const next = (below: number) => {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    return state % below;
+  };
+  for (let count = 0; count < 20_000; count += 1) {
+    yield String.fromCodePoint(
+      ...Array.from({ length: 1 + next(10) }, () => stateful[next(stateful.length)] ?? 0),
+    );
+  }
+}
+
+/** Each text whose fresh clusters do not start a reading that gives the same clusters after them. */
+function disagreements() {
+  const found: string[] = [];
+  for (const text of statefulTexts()) {
+    const whole = [...graphemeWidths(text)];
+    for (const cluster of whole.filter((each) => each.fresh)) {
+      const after = segments(whole.filter((each) => each.start >= cluster.start)).map(
+        ([start = 0, end = 0, width]) => [start - cluster.start, end - cluster.start, width],
+      );
+      if (
+        JSON.stringify(segments(graphemeWidths(text.slice(cluster.start)))) !==
+        JSON.stringify(after)
+      ) {
+        found.push(text);
+      }
+    }
+  }
+  return found;
+}
+
+test('a cluster read as fresh starts a reading that gives the same clusters from there on', () => {
+  expect(disagreements()).toEqual([]);
+});

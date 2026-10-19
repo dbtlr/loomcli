@@ -5,11 +5,17 @@ in licenses/uucode-LICENSE.md of @loomcli/core.
 */
 import { graphemeTable, widthTable } from './unicode.generated.js';
 
-/** One grapheme cluster of a string: where it starts and ends, and the columns it occupies. */
+/**
+ * One grapheme cluster of a string: where it starts and ends, and the columns it occupies. It is
+ * `fresh` when reading the string from its start alone, as a new cursor would, gives this cluster
+ * and every one after it as they are given here, which holds exactly when the cursor carries no
+ * break state into it.
+ */
 interface GraphemeWidth {
   start: number;
   end: number;
   width: number;
+  fresh: boolean;
 }
 
 /** The break state after a regional indicator, which pairs with the next one into a flag. */
@@ -190,14 +196,16 @@ export function* graphemeWidths(text: string): Generator<GraphemeWidth> {
   let start = 0;
   while (start < text.length) {
     if (asciiAlone(text, start)) {
-      yield { end: start + 1, start, width: 1 };
+      yield { end: start + 1, fresh: true, start, width: 1 };
       start += 1;
       continue;
     }
     const at = cursor(text, start);
     do {
+      // The cursor's break state is all a cluster inherits from the clusters before it.
+      const fresh = at.state === 0;
       const width = clusterWidth(at);
-      yield { end: at.index, start, width };
+      yield { end: at.index, fresh, start, width };
       start = at.index;
     } while (start < text.length && !asciiAlone(text, start));
   }
