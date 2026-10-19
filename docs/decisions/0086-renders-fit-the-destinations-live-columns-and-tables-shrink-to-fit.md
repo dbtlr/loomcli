@@ -129,7 +129,7 @@ The select `questionFrame` data no longer carries `columns`. It keeps `rows`. Th
 
 ## Consequences
 
-The view context gains three required members. An existing view function keeps compiling, because it reads the context core passes. A `ViewContext` object built by hand, such as one in a test harness, and a wrapper that rebuilds the context must supply all three, so adding them is a breaking change for core, as adding `plain` was. A wrapper keeps the runtime context's `columns`, `wrap`, and `expandTabs`, and a hand-built context supplies all three. `@loomcli/core` also gains the `nowrap` and `splitLines` exports.
+The view context gains three members. An existing view function keeps compiling, because it reads the context core passes. Core constructs the view context, so adding members to it is not a breaking change. A wrapper keeps the runtime context's `columns`, `wrap`, and `expandTabs`. `@loomcli/core` also gains the `nowrap` and `splitLines` exports.
 
 Output at a terminal changes. A long lane message wraps, a wide table shrinks or becomes records blocks, and a long records value wraps. The self-update notice is one `out.info` message. The example notice is 91 columns, and the shortest possible notice is 83, so every notice is wider than the 78 columns an 80-column terminal leaves after the info gutter and wraps there. A pipe, an invocation by name, and an MCP tool call see no change, which keeps golden fixtures that run without a terminal byte for byte stable, tables and records included.
 
