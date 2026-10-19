@@ -456,16 +456,38 @@ export type ResultViewsOf<Result> = Result extends { kind: 'value'; value: infer
     ? RowViews<Row>
     : never;
 
+/**
+ * The data `out.render` accepts: any value under a whole view, and under a row view a sequence of
+ * that view's rows. A stated row view's row type is read from the view, so a generic sequence
+ * reaches it, and data that is not a sequence, one row or rows that may be `undefined`, does not.
+ */
+export type RenderedData<Data, Row> = Data &
+  ([Row] extends [never] ? unknown : Iterable<NoInfer<Row>> | AsyncIterable<NoInfer<Row>>);
+
+/**
+ * The row view over the rows `Data` yields, which types a pack view's factory from the data. The
+ * check is not distributive, so data that may be `undefined` or a single row has no such view.
+ */
+export type RowViewOver<Data> = [Data] extends [Iterable<infer Row> | AsyncIterable<infer Row>]
+  ? RowView<Row>
+  : never;
+
 export interface Out<Result = unknown> {
   print(message: string): Promise<void>;
   info(message: string): Promise<void>;
   success(message: string): Promise<void>;
   warn(message: string): Promise<void>;
   error(message: string): Promise<void>;
-  /** The neutral view call: a rendered value has no purpose and no destination. */
-  render<Data>(data: Data, view: View<Data>): Promise<void>;
-  /** The same call over a sequence: core writes each row's text as the source yields it. */
-  render<Row>(rows: Iterable<Row> | AsyncIterable<Row>, view: RowView<Row>): Promise<void>;
+  /**
+   * The neutral view call: a rendered value has no purpose and no destination. A row view takes an
+   * iterable, and core writes each row's text as the source yields it. One signature rather than an
+   * overload per shape, because the compiler fixes a factory call's type against the first overload
+   * it tries, which left a row view's configuration typed from its own keys.
+   */
+  render<Data, Row = never>(
+    data: RenderedData<Data, Row>,
+    view: View<Data> | ([Row] extends [never] ? RowViewOver<Data> : RowView<Row>),
+  ): Promise<void>;
   /** Draws a view on stderr without a newline, preserving terminal controls at a terminal. */
   draw<Data>(data: Data, view: View<Data>): Promise<number>;
   /**

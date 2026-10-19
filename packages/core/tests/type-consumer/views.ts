@@ -19,6 +19,7 @@ import type {
   FailureView,
   InputProblem,
   LoomError,
+  Out,
   ReplacementView,
   RowView,
   View,
@@ -41,7 +42,56 @@ const lines: RowView<Row> = {
   row: (row, index) => `${String(index)}  ${String(row.count)}  ${row.source}\n`,
 };
 
-/** An asynchronous source, which the sequence overload accepts beside a synchronous one. */
+interface Variant {
+  variant: 'compact' | 'extended';
+}
+
+/** A helper generic over its source reaches a row view, as the old row overload allowed. */
+async function forwardRows<Source extends AsyncIterable<Row> | Iterable<Row>>(
+  out: { render: Out['render'] },
+  source: Source,
+  rowView: RowView<Row>,
+): Promise<Source> {
+  await out.render(source, rowView);
+  return source;
+}
+void forwardRows;
+
+/** Whole views over data that may be absent, or one of two types, render it as they always did. */
+async function optionalData(
+  out: { render: Out['render'] },
+  name: string | undefined,
+  names: readonly string[] | null,
+  amount: number | string,
+): Promise<void> {
+  await out.render(name, { render: (value: string | undefined) => value ?? '' });
+  await out.render(name, { render: (value: unknown) => String(value) });
+  await out.render(names, { render: (value: readonly string[] | null) => value?.join(' ') ?? '' });
+  await out.render(amount, { render: (value: number | string) => String(value) });
+}
+void optionalData;
+
+/** A row view written in the call reads its rows' type from the data, over each kind of source. */
+async function inlineRowViews(
+  out: { render: Out['render'] },
+  rows: readonly Row[],
+  source: AsyncIterable<Row>,
+): Promise<void> {
+  await out.render(rows, { row: (row) => `${row.source}\n` });
+  await out.render(source, {
+    head: () => '',
+    row: (row) => `${row.source}\n`,
+    tail: (count) => String(count),
+  });
+  // @ts-expect-error TS2339: Its callbacks read only members the rows carry.
+  await out.render(rows, { row: (row) => row.missing });
+}
+void inlineRowViews;
+
+/** A row view over a literal union, which rows reach only when their type states the union. */
+const variants: RowView<Variant> = { row: (row) => `${row.variant}\n` };
+
+/** An asynchronous source, which a row view accepts beside a synchronous one. */
 async function* walk(): AsyncGenerator<Row> {
   yield { count: 6, source: 'one.txt' };
 }
@@ -52,18 +102,34 @@ new Application('render').action(async ({ out }) => {
   await out.render(rows.length, counts);
   // A declared view renders through the same call a bare view does.
   await out.render('ready', lanes.print);
-  // The second overload takes a row view over an iterable or an asynchronous iterable.
+  // The same call takes a row view over an iterable or an asynchronous iterable.
   await out.render(rows, lines);
   await out.render(walk(), lines);
   await out.render(rows, paths);
-  // @ts-expect-error TS2769: A view for another value type cannot read these rows.
+  // @ts-expect-error TS2345: A view for another value type cannot read these rows.
   await out.render(rows, counts);
-  // @ts-expect-error TS2769: A view returns the text core writes, never another value.
+  // @ts-expect-error TS2322: A view returns the text core writes, never another value.
   await out.render(rows, { render: (data) => data.length });
-  // @ts-expect-error TS2769: A view has one shape, so a value with render and row is neither.
+  // @ts-expect-error TS2345: A view has one shape, so a value with render and row is neither.
   await out.render(rows, { render: () => '', row: () => '' });
-  // @ts-expect-error TS2769: A row view for another row type cannot read these rows.
+  // @ts-expect-error TS2345: A row view for another row type cannot read these rows.
   await out.render(rows, { row: (row: { name: string }) => row.name });
+  const maybe = rows.length > 0 ? rows : undefined;
+  const parsed: unknown = JSON.parse('[]');
+  const fetched: any = JSON.parse('[]');
+  // @ts-expect-error TS2345: A row view renders a sequence, so one row is not its data.
+  await out.render(rows[0], lines);
+  // @ts-expect-error TS2345: Rows that may be undefined are not a sequence either.
+  await out.render(maybe, lines);
+  // @ts-expect-error TS2345: Nor is a value whose type is unknown.
+  await out.render(parsed, lines);
+  // Data typed any takes a row view, as an untyped source's rows do.
+  await out.render(fetched, lines);
+  // The rows' type comes from the data alone, so inline rows over a literal union state it.
+  const compact: readonly Variant[] = [{ variant: 'compact' }];
+  await out.render(compact, variants);
+  // @ts-expect-error TS2345: An inline literal widens, and a row view does not narrow it back.
+  await out.render([{ variant: 'compact' }], variants);
 });
 
 /** A declared view of the application's own data, named by reference wherever it is used. */

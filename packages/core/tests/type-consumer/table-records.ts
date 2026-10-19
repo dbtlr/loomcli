@@ -1,4 +1,5 @@
 import { Command } from '@loomcli/core';
+import type { Out } from '@loomcli/core';
 import { records } from '@loomcli/plugins/records';
 import { table } from '@loomcli/plugins/table';
 
@@ -75,4 +76,74 @@ new Command('wrong-format').rows<Row>({
   },
 });
 
+// As the second argument of out.render, the type flows in from the data under each shape and source.
+const rendered = new Command('rendered').action(async ({ out }) => {
+  const array: readonly Row[] = [];
+  function* generated(): Generator<Row> {
+    yield* array;
+  }
+  async function* streamed(): AsyncGenerator<Row> {
+    yield* array;
+  }
+  await out.render(
+    array,
+    table({ columns: ['source', { format: (value) => value.toFixed(1), key: 'count' }] }),
+  );
+  await out.render(
+    generated(),
+    records({
+      fields: [{ format: (value) => value.toFixed(1), key: 'count' }],
+      identifier: 'source',
+    }),
+  );
+  await out.render(streamed(), records({ identifier: 'source' }));
+  // @ts-expect-error TS2322: A table column must name a key the rows carry.
+  await out.render(array, table({ columns: ['missing'] }));
+  // @ts-expect-error TS2322: A records identifier must name a key the rows carry.
+  await out.render(generated(), records({ identifier: 'missing' }));
+  // @ts-expect-error TS2322: A records field must name a key the rows carry.
+  await out.render(streamed(), records({ fields: ['missing'], identifier: 'source' }));
+  await out.render(
+    array,
+    records({
+      fields: [
+        {
+          // @ts-expect-error TS2322: A records formatter receives the value type of its own key.
+          format: (value: string) => value,
+          key: 'count',
+        },
+      ],
+      identifier: 'source',
+    }),
+  );
+  await out.render(
+    generated(),
+    records({
+      fields: [
+        {
+          // @ts-expect-error TS2322: Over a generator the formatter receives the same value type.
+          format: (value: string) => value,
+          key: 'count',
+        },
+      ],
+      identifier: 'source',
+    }),
+  );
+  // @ts-expect-error TS2740: A whole view renders a value, so a generator needs a row view.
+  await out.render(generated(), table());
+});
+
+/** A source typed by a type parameter has no row type to flow in, so its factory states it. */
+async function generic<Source extends readonly Row[]>(
+  out: { render: Out['render'] },
+  source: Source,
+): Promise<Source> {
+  await out.render(source, records<Row>({ identifier: 'source' }));
+  // @ts-expect-error TS2322: Unstated, the factory's row type is unknown to the call.
+  await out.render(source, records({ identifier: 'source' }));
+  return source;
+}
+
 void valid;
+void rendered;
+void generic;
