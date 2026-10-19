@@ -173,6 +173,9 @@ function parseHeader(text: string, names: TokenCheck): Header | undefined {
   return { kind: 'style', operations };
 }
 
+/** The code units that open a frame, close one, or start an escape: where literal text may end. */
+const frameBytes = new Set([open, close, escape].map((byte) => byte.charCodeAt(0)));
+
 /**
  * Decodes framing once. Rejected headers are opaque, and nesting uses an explicit stack. A trace,
  * when supplied, records where each decoded character came from. With `anyToken`, a style header
@@ -292,8 +295,13 @@ function parseText(
       cursor += 5;
       continue;
     }
-    append(character ?? '', cursor, 'literal');
-    cursor += 1;
+    // The literal characters that follow are literal too, up to the next byte a frame may start at.
+    let end = cursor + 1;
+    while (end < input.length && !frameBytes.has(input.charCodeAt(end))) {
+      end += 1;
+    }
+    append(input.slice(cursor, end), cursor, 'literal');
+    cursor = end;
   }
   // The input ends every frame still open, with no close character of its own.
   while (stack.length > 0) {
@@ -302,5 +310,26 @@ function parseText(
   return { boundaries, palette, root, scopes, text: pieces.join('') };
 }
 
+/**
+ * Whether decoded text is flat: no padding frame lays it out, and it holds nothing but characters
+ * and line endings, LF and CRLF. It has no ANSI command, no lone CR, and no tab, so it is lines of
+ * characters, and a style frame is all it can carry. Such a text measures as the sum of its
+ * clusters, and with no color or modifier to write it resolves to its characters alone.
+ */
+function isFlat(parsed: ParsedText): boolean {
+  if (parsed.boundaries.size > 0) {
+    return false;
+  }
+  const { text } = parsed;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    const lineEnding = code === 0x0a || (code === 0x0d && text.charCodeAt(index + 1) === 0x0a);
+    if ((code < 0x20 && !lineEnding) || (code >= 0x7f && code <= 0x9f)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export type { Alignment, Boundary, FrameMark, Padding, ParsedText, StyleScope, WireTrace };
-export { parseText };
+export { isFlat, parseText };

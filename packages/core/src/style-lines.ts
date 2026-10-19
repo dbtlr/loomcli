@@ -1,6 +1,6 @@
 import { command, hyperlinkOpens, scanAnsi } from './style-ansi.js';
 import { layout } from './style-layout.js';
-import { parseText } from './style-wire.js';
+import { isFlat, parseText } from './style-wire.js';
 import type { FrameMark, WireTrace } from './style-wire.js';
 import { plainCaps } from './style-wrap.js';
 import { close, escapeText, frame, textOnly } from './style.js';
@@ -65,6 +65,9 @@ function finished(state: State, { opening, body }: { opening: string; body: stri
 
 /** Whether the last line of decoded text resolves to any character, as padding counts lines. */
 function lastLineHasText(parsed: ReturnType<typeof parseText>): boolean {
+  if (isFlat(parsed)) {
+    return parsed.text.length > 0 && !parsed.text.endsWith('\n');
+  }
   return layout(scanAnsi(parsed, plainCaps)).lines.at(-1)?.content.text === true;
 }
 
@@ -127,4 +130,4 @@ function splitLines(text: string): string[] {
   return lines;
 }
 
-export { splitLines };
+export { lastLineHasText, splitLines };
