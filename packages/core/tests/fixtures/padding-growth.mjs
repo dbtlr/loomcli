@@ -22,9 +22,9 @@ for (const depth of depths) {
       callback();
     },
   });
-  const app = new Application('padding-growth').action(({ out }) =>
-    out.render(input, { render: (value) => value }),
-  );
+  const app = new Application('padding-growth', {
+    description: 'Resolve nested padding frames.',
+  }).action(({ out }) => out.render(input, { render: (value) => value }));
   const started = performance.now();
   const status = await app.run({ host: { argv: [], env: {}, stdout } });
   const elapsedMs = Math.round(performance.now() - started);

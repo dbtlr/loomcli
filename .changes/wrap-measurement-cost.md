@@ -1,0 +1,1 @@
+- Speed up `ViewContext.width`, `ViewContext.plain`, and `@loomcli/plugins/table` on long text. Output is unchanged.

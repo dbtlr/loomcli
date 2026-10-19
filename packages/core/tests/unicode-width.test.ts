@@ -2,6 +2,7 @@ import { graphemeWidths as upstreamWidths } from '@rockorager/uucode/width';
 import { expect, test } from 'vite-plus/test';
 
 import { graphemeWidths } from '../src/style-width.js';
+import { graphemeTable } from '../src/unicode.generated.js';
 
 /** The highest Unicode code point. */
 const lastCodePoint = 0x10_ff_ff;
@@ -58,4 +59,21 @@ test.each([
   ['an empty string', ''],
 ])('core measures %s as the pinned uucode release does', (_name, text) => {
   expect(segments(graphemeWidths(text))).toEqual(segments(upstreamWidths(text)));
+});
+
+/** The grapheme break property of a space, and of every other character with no special rule. */
+const other = 0;
+
+test('after a character with the break property Other, the break table carries no state', () => {
+  const { breakStateCount, breakTable, graphemeBreakPropertyCount: count } = graphemeTable;
+  const carried: string[] = [];
+  for (let state = 0; state < breakStateCount; state += 1) {
+    for (let after = 0; after < count; after += 1) {
+      const packed = breakTable[(state * count + other) * count + after] ?? 0;
+      if (packed >> 1 !== 0) {
+        carried.push(`state ${String(state)} then property ${String(after)}`);
+      }
+    }
+  }
+  expect(carried).toEqual([]);
 });

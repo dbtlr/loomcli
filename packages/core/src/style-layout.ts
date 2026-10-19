@@ -1,7 +1,8 @@
+import { isControl } from './style-ansi.js';
 import type { TextUnit, Unit } from './style-ansi.js';
 import type { Attributes } from './style-state.js';
-import { graphemeWidths } from './style-width.js';
-import type { Padding } from './style-wire.js';
+import { clusterColumns } from './style-width.js';
+import type { Padding, ParsedText } from './style-wire.js';
 
 /** Width at each tab-stop offset composes without rescanning nested text. */
 interface Metrics {
@@ -24,8 +25,15 @@ interface Block {
   tabs: boolean;
 }
 const offsets = [0, 1, 2, 3, 4, 5, 6, 7];
+/** The advances of the narrow widths, shared rather than rebuilt for every leaf and every join. */
+const sharedAdvances = Array.from({ length: 16 }, (_unused, width) => offsets.map(() => width));
+/** The advances of a unit that is the same width at every offset. */
+function constantAdvance(width: number): readonly number[] {
+  return sharedAdvances[width] ?? offsets.map(() => width);
+}
+const tabAdvance = offsets.map((offset) => 8 - offset);
 const empty: Rope = {
-  advance: offsets.map(() => 0),
+  advance: constantAdvance(0),
   children: [],
   kind: 'join',
   tabs: false,
@@ -34,7 +42,7 @@ const empty: Rope = {
 
 function leaf(unit: TextUnit, width: number, tab = false): Rope {
   return {
-    advance: offsets.map((offset) => (tab ? 8 - offset : width)),
+    advance: tab ? tabAdvance : constantAdvance(width),
     kind: 'leaf',
     tab,
     tabs: tab,
@@ -50,16 +58,20 @@ function join(children: readonly Rope[]): Rope {
   if (children.length === 1 && children[0]) {
     return children[0];
   }
-  const advance = offsets.map(
-    (offset) =>
-      children.reduce((column, child) => column + (child.advance[column % 8] ?? 0), offset) -
-      offset,
-  );
+  const tabs = children.some((child) => child.tabs);
+  // Without a tab, no child's advance depends on the column, so the join's does not either.
+  const advance = tabs
+    ? offsets.map(
+        (offset) =>
+          children.reduce((column, child) => column + (child.advance[column % 8] ?? 0), offset) -
+          offset,
+      )
+    : constantAdvance(children.reduce((total, child) => total + (child.advance[0] ?? 0), 0));
   return {
     advance,
     children,
     kind: 'join',
-    tabs: children.some((child) => child.tabs),
+    tabs,
     text: children.some((child) => child.text),
   };
 }
@@ -91,10 +103,7 @@ function textBlock(units: readonly TextUnit[]): Block {
     .filter((unit) => unit.kind === 'text')
     .map((unit) => unit.text)
     .join('');
-  const widths = new Map<number, number>();
-  for (const segment of graphemeWidths(visible)) {
-    widths.set(segment.start, segment.width);
-  }
+  const { before } = clusterColumns(visible);
   const lines: Line[] = [];
   let parts: Rope[] = [];
   let offset = 0;
@@ -107,10 +116,7 @@ function textBlock(units: readonly TextUnit[]): Block {
       lines.push({ content: join(parts), ending: [unit] });
       parts = [];
     } else {
-      let width = 0;
-      for (let at = offset; at < offset + unit.text.length; at += 1) {
-        width += widths.get(at) ?? 0;
-      }
+      const width = (before[offset + unit.text.length] ?? 0) - (before[offset] ?? 0);
       parts.push(leaf(unit, width, unit.text === '\t'));
     }
     offset += unit.text.length;
@@ -280,8 +286,28 @@ function tabAdvances(block: Block): number[] {
   }
   return advances;
 }
+/**
+ * Whether decoded text is flat: no padding frame lays it out, and it holds nothing but characters
+ * and line endings, LF and CRLF. It has no ANSI command, no lone CR, and no tab, so it is lines of
+ * characters, and a style frame is all it can carry. Such a text measures as the sum of its
+ * clusters, and with no color or modifier to write it resolves to its characters alone.
+ */
+function isFlat(parsed: ParsedText): boolean {
+  if (parsed.boundaries.size > 0) {
+    return false;
+  }
+  const { text } = parsed;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    const lineEnding = code === 0x0a || (code === 0x0d && text.charCodeAt(index + 1) === 0x0a);
+    if (isControl(code) && !lineEnding) {
+      return false;
+    }
+  }
+  return true;
+}
 function blockWidth(block: Block): number {
   return block.lines.reduce((widest, line) => Math.max(widest, line.content.advance[0] ?? 0), 0);
 }
 
-export { blockWidth, layout, renderedUnits, tabAdvances };
+export { blockWidth, isFlat, layout, renderedUnits, tabAdvances };

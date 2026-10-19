@@ -173,6 +173,9 @@ function parseHeader(text: string, names: TokenCheck): Header | undefined {
   return { kind: 'style', operations };
 }
 
+/** The code units that open a frame, close one, or start an escape: where literal text may end. */
+const frameBytes = new Set([open, close, escape].map((byte) => byte.charCodeAt(0)));
+
 /**
  * Decodes framing once. Rejected headers are opaque, and nesting uses an explicit stack. A trace,
  * when supplied, records where each decoded character came from. With `anyToken`, a style header
@@ -292,8 +295,13 @@ function parseText(
       cursor += 5;
       continue;
     }
-    append(character ?? '', cursor, 'literal');
-    cursor += 1;
+    // The literal characters that follow are literal too, up to the next byte a frame may start at.
+    let end = cursor + 1;
+    while (end < input.length && !frameBytes.has(input.charCodeAt(end))) {
+      end += 1;
+    }
+    append(input.slice(cursor, end), cursor, 'literal');
+    cursor = end;
   }
   // The input ends every frame still open, with no close character of its own.
   while (stack.length > 0) {
