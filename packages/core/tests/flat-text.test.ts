@@ -2,11 +2,11 @@ import { expect, test } from 'vite-plus/test';
 
 import type { Capabilities } from '../src/rendering.js';
 import { scanAnsi } from '../src/style-ansi.js';
-import { blockWidth, layout, renderedUnits } from '../src/style-layout.js';
+import { blockWidth, isFlat, layout, renderedUnits } from '../src/style-layout.js';
 import { lastLineHasText } from '../src/style-lines.js';
 import { resolveText, width } from '../src/style-resolve.js';
 import { emptyAttributes, transition } from '../src/style-state.js';
-import { isFlat, parseText } from '../src/style-wire.js';
+import { parseText } from '../src/style-wire.js';
 import { plainCaps } from '../src/style-wrap.js';
 import { marked, raw, seeded } from './text-corpus.js';
 

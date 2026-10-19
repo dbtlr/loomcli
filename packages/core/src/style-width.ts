@@ -5,17 +5,11 @@ in licenses/uucode-LICENSE.md of @loomcli/core.
 */
 import { graphemeTable, widthTable } from './unicode.generated.js';
 
-/**
- * One grapheme cluster of a string: where it starts and ends, and the columns it occupies. It is
- * `fresh` when reading the string from its start alone, as a new cursor would, gives this cluster
- * and every one after it as they are given here, which holds exactly when the cursor carries no
- * break state into it.
- */
+/** One grapheme cluster of a string: where it starts and ends, and the columns it occupies. */
 interface GraphemeWidth {
   start: number;
   end: number;
   width: number;
-  fresh: boolean;
 }
 
 /** The break state after a regional indicator, which pairs with the next one into a flag. */
@@ -192,21 +186,52 @@ function asciiAlone(text: string, index: number): boolean {
  * non-ASCII character follows is its own one-column cluster. Any other run of clusters is read by
  * one cursor, which starts at the run and carries the break state from cluster to cluster.
  */
-export function* graphemeWidths(text: string): Generator<GraphemeWidth> {
+function* graphemeWidths(text: string): Generator<GraphemeWidth> {
   let start = 0;
   while (start < text.length) {
     if (asciiAlone(text, start)) {
-      yield { end: start + 1, fresh: true, start, width: 1 };
+      yield { end: start + 1, start, width: 1 };
       start += 1;
       continue;
     }
     const at = cursor(text, start);
     do {
-      // The cursor's break state is all a cluster inherits from the clusters before it.
-      const fresh = at.state === 0;
       const width = clusterWidth(at);
-      yield { end: at.index, fresh, start, width };
+      yield { end: at.index, start, width };
       start = at.index;
     } while (start < text.length && !asciiAlone(text, start));
   }
 }
+
+/** The columns of a string's clusters, read once. */
+interface ClusterColumns {
+  /** At each offset, and one past the last, the columns of the clusters that start before it. */
+  before: Int32Array;
+  /** Whether each offset, and one past the last, is where a cluster starts or the string ends. */
+  boundary: Uint8Array;
+}
+
+/**
+ * The cumulative columns of a string's clusters. The columns between two offsets are the
+ * difference of `before` there, which counts a cluster at the offset it starts. It is the one
+ * reader of cluster widths that measuring text uses: a text's width, a unit's, and a span's.
+ */
+function clusterColumns(text: string): ClusterColumns {
+  const before = new Int32Array(text.length + 1);
+  const boundary = new Uint8Array(text.length + 1);
+  let total = 0;
+  for (const cluster of graphemeWidths(text)) {
+    before[cluster.start] = total;
+    boundary[cluster.start] = 1;
+    total += cluster.width;
+    if (cluster.end === cluster.start + 1) {
+      before[cluster.end] = total;
+    } else {
+      before.fill(total, cluster.start + 1, cluster.end + 1);
+    }
+  }
+  boundary[text.length] = 1;
+  return { before, boundary };
+}
+
+export { clusterColumns, graphemeWidths };

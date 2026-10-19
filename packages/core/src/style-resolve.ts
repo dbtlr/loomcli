@@ -1,28 +1,25 @@
 import type { Capabilities } from './rendering.js';
 import { scanAnsi } from './style-ansi.js';
-import { blockWidth, layout, renderedUnits } from './style-layout.js';
+import { blockWidth, isFlat, layout, renderedUnits } from './style-layout.js';
 import { emptyAttributes, transition } from './style-state.js';
 import type { Palette } from './style-state.js';
-import { graphemeWidths } from './style-width.js';
-import { isFlat, parseText } from './style-wire.js';
+import { clusterColumns, graphemeWidths } from './style-width.js';
+import { parseText } from './style-wire.js';
 
 /**
- * The width of a flat text: its widest line, each line the sum of its clusters. A line ending
- * ends a line and adds no columns.
+ * The width of a flat text: its widest line, each line the columns of the clusters between its
+ * start and its line ending, which adds none.
  */
 function flatWidth(text: string): number {
+  const { before } = clusterColumns(text);
   let widest = 0;
-  let line = 0;
-  for (const cluster of graphemeWidths(text)) {
-    const code = text.charCodeAt(cluster.start);
-    if (code === 0x0a || code === 0x0d) {
-      widest = Math.max(widest, line);
-      line = 0;
-    } else {
-      line += cluster.width;
-    }
+  let start = 0;
+  for (let feed = text.indexOf('\n'); feed !== -1; feed = text.indexOf('\n', start)) {
+    const end = text.charCodeAt(feed - 1) === 0x0d ? feed - 1 : feed;
+    widest = Math.max(widest, (before[end] ?? 0) - (before[start] ?? 0));
+    start = feed + 1;
   }
-  return Math.max(widest, line);
+  return Math.max(widest, (before[text.length] ?? 0) - (before[start] ?? 0));
 }
 
 /** A complete string is one state boundary; no terminal attributes survive the call. */

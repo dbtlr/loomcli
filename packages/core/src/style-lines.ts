@@ -1,6 +1,6 @@
 import { command, hyperlinkOpens, scanAnsi } from './style-ansi.js';
-import { layout } from './style-layout.js';
-import { isFlat, parseText } from './style-wire.js';
+import { isFlat, layout } from './style-layout.js';
+import { parseText } from './style-wire.js';
 import type { FrameMark, WireTrace } from './style-wire.js';
 import { plainCaps } from './style-wrap.js';
 import { close, escapeText, frame, textOnly } from './style.js';

@@ -46,6 +46,10 @@ function csi(text: string, start: number): AnsiCommand {
   }
   return { body: '', end: text.length, kind: 'incomplete' };
 }
+/** Whether a code unit is a C0 control, DEL, or a C1 control: the set the scanner reads as commands. */
+function isControl(code: number): boolean {
+  return code < 32 || (code >= 127 && code <= 159);
+}
 function command(text: string, cursor: number): AnsiCommand | undefined {
   const code = text.charCodeAt(cursor);
   if (code === 27) {
@@ -79,10 +83,8 @@ function command(text: string, cursor: number): AnsiCommand | undefined {
   if (code === 144 || code === 152 || code === 158 || code === 159) {
     return controlString(text, cursor + 1, false);
   }
-  if (
-    (code < 32 && code !== 9 && code !== 10 && !(code === 13 && text[cursor + 1] === '\n')) ||
-    (code >= 127 && code <= 159)
-  ) {
+  // Tab and line endings are text; every other control character is a command of one unit.
+  if (isControl(code) && code !== 9 && code !== 10 && !(code === 13 && text[cursor + 1] === '\n')) {
     return { body: '', end: cursor + 1, kind: 'control' };
   }
   return undefined;
@@ -344,4 +346,4 @@ function scanAnsi(parsed: ParsedText, caps: Capabilities): Unit[] {
 }
 
 export type { AnsiCommand, TextUnit, Unit };
-export { command, hyperlinkOpens, scanAnsi };
+export { command, hyperlinkOpens, isControl, scanAnsi };

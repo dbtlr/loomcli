@@ -3,7 +3,7 @@ import { command, scanAnsi } from './style-ansi.js';
 import { blockWidth, layout, tabAdvances } from './style-layout.js';
 import { emptyAttributes } from './style-state.js';
 import type { Palette } from './style-state.js';
-import { graphemeWidths } from './style-width.js';
+import { clusterColumns } from './style-width.js';
 import { parseText } from './style-wire.js';
 import type { Boundary, ParsedText, WireTrace } from './style-wire.js';
 import { textOnly } from './style.js';
@@ -32,6 +32,7 @@ interface Breakable {
 
 /** Each decoded character inside an ANSI command, found the way the ANSI scanner finds them. */
 function commandCharacters(text: string): boolean[] {
+  // Setting the length and filling is several times faster than building the array element by element.
   const inside: boolean[] = [];
   inside.length = text.length;
   inside.fill(false);
@@ -121,7 +122,7 @@ interface Span {
 /**
  * The width of decoded characters `start` to `end` laid out as one line, as `width()` measures
  * them. The padding frames `enclosing` names reopen at `start`, and any still open close at `end`.
- * It lays the span out afresh, so it reads every character of it. `Measurer` reads a span of a
+ * It lays the span out afresh, so it reads every character of it. `measurerFor` reads a span of a
  * plain line from one reading of the whole line instead.
  */
 function measure(text: Breakable, { start, end, enclosing }: Span): number {
@@ -181,86 +182,35 @@ function visibleOf({ parsed, commands }: Breakable): Visible {
   return { before, text: pieces.length === 1 ? parsed.text : pieces.join('') };
 }
 
-/** How a visible position relates to the clusters of its line. */
-const withinCluster = 0;
-const atBoundary = 1;
-const atFreshBoundary = 2;
-
-/**
- * The clusters of one line's visible characters, read once. `columns[position]` is the width of
- * every cluster before a boundary, and `marks[position]` says whether the position is inside a
- * cluster, a boundary between clusters, or a boundary at which a reading begun there agrees with
- * this one from there on.
- */
-interface Clusters {
-  columns: Int32Array;
-  marks: Uint8Array;
-}
-
-function clustersOf(visible: string): Clusters {
-  const columns = new Int32Array(visible.length + 1);
-  const marks = new Uint8Array(visible.length + 1);
-  let total = 0;
-  for (const cluster of graphemeWidths(visible)) {
-    columns[cluster.start] = total;
-    marks[cluster.start] = cluster.fresh ? atFreshBoundary : atBoundary;
-    total += cluster.width;
-  }
-  columns[visible.length] = total;
-  marks[visible.length] = atBoundary;
-  return { columns, marks };
-}
-
-/** Whether a sorted list holds a number from `low` to `high`, both included. */
-function holdsBetween(sorted: readonly number[], low: number, high: number): boolean {
-  let start = 0;
-  let end = sorted.length;
-  while (start < end) {
-    const middle = (start + end) >> 1;
-    if ((sorted[middle] ?? 0) < low) {
-      start = middle + 1;
-    } else {
-      end = middle;
-    }
-  }
-  const found = sorted[start];
-  return found !== undefined && found <= high;
-}
-
 /** The widths of the spans of one line, which `breaks` asks for one word at a time. */
 type Measurer = (span: Span) => number;
 
 /**
- * A measurer for one line. A line with no padding frame at, within, or around it and no tab
- * measures as the sum of the widths of its clusters, so its measurer reads the line once and
- * answers a span from those widths. That holds for a span whose start and end are cluster
- * boundaries and whose start is one a reading begun there agrees with the whole reading from. A
- * span of any other kind, and any other line, is laid out as `measure` does.
+ * A measurer for one line. A text with no padding frame and a line with no tab measure as the
+ * sum of the widths of their clusters, so the measurer reads the line's clusters once and answers
+ * a span from those widths, for a span that starts and ends at cluster boundaries. `measure` lays
+ * a span out afresh, so a cluster state carried into the span's first cluster would split the
+ * two readings. None is carried: a span starts at a line start, where a reading begins, or after
+ * a U+0020, which has the break property Other, and the break table gives state 0 after Other on
+ * the left, whatever state came before. A span that starts or ends inside a cluster, a space and a
+ * combining mark or a Prepend character before a space, and any other line, is laid out as
+ * `measure` does.
  */
-function measurerFor(
-  text: Breakable,
-  line: Line,
-  {
-    enclosing,
-    frames,
-    visible,
-  }: { enclosing: readonly Boundary[]; frames: readonly number[]; visible: Visible },
-): Measurer {
+function measurerFor(text: Breakable, line: Line, visible: Visible): Measurer {
   const exact: Measurer = (span) => measure(text, span);
   const first = visible.before[line.start] ?? 0;
-  const last = visible.before[line.end] ?? 0;
-  const own = visible.text.slice(first, last);
-  if (enclosing.length > 0 || holdsBetween(frames, line.start, line.end) || own.includes('\t')) {
+  const own = visible.text.slice(first, visible.before[line.end] ?? 0);
+  if (text.parsed.boundaries.size > 0 || own.includes('\t')) {
     return exact;
   }
-  const { columns, marks } = clustersOf(own);
+  const { before, boundary } = clusterColumns(own);
   return (span) => {
     const from = (visible.before[span.start] ?? 0) - first;
     const to = (visible.before[span.end] ?? 0) - first;
-    if (marks[from] !== atFreshBoundary || marks[to] === withinCluster) {
+    if (boundary[from] !== 1 || boundary[to] !== 1) {
       return exact(span);
     }
-    return (columns[to] ?? 0) - (columns[from] ?? 0);
+    return (before[to] ?? 0) - (before[from] ?? 0);
   };
 }
 
@@ -271,8 +221,6 @@ function measurerFor(
 function breaks(text: Breakable, columns: number): Map<number, string> {
   const edits = new Map<number, string>();
   const enclosingPads = padTracker(text.parsed);
-  // Decoding adds a boundary at the end of the text so far, so the keys arrive in ascending order.
-  const frames = [...text.parsed.boundaries.keys()];
   let visible: Visible | undefined = undefined;
   for (const line of linesOf(text)) {
     const runs = runsOf(text, line);
@@ -281,7 +229,7 @@ function breaks(text: Breakable, columns: number): Map<number, string> {
     }
     const enclosing = enclosingPads(line.start);
     visible ??= visibleOf(text);
-    const widthOf = measurerFor(text, line, { enclosing, frames, visible });
+    const widthOf = measurerFor(text, line, visible);
     if (widthOf({ enclosing, end: line.end, start: line.start }) <= columns) {
       continue;
     }
@@ -328,6 +276,16 @@ function wrapWidth(columns: number): number {
   return columns;
 }
 
+/** Marked text as line breaking reads it: decoded for the destination, and traced to its input. */
+function breakableMarked(
+  text: string,
+  { caps, palette }: { caps: Capabilities; palette: Palette },
+): Breakable {
+  const trace: WireTrace = { origins: [], whole: [] };
+  const parsed = parseText(text, palette, { mainGlyphs: caps.mainGlyphs, trace });
+  return { caps, commands: commandCharacters(parsed.text), parsed, trace };
+}
+
 /**
  * Marked text with line breaks inserted so each line fits `columns`, measured with the
  * destination's glyph forms as `width()` measures. Breaks fall at U+0020 alone, a word wider than
@@ -344,12 +302,7 @@ function wrapMarked(
     return text;
   }
   const width = wrapWidth(columns);
-  const trace: WireTrace = { origins: [], whole: [] };
-  const parsed = parseText(text, palette, { mainGlyphs: caps.mainGlyphs, trace });
-  return edited(
-    text,
-    breaks({ caps, commands: commandCharacters(parsed.text), parsed, trace }, width),
-  );
+  return edited(text, breaks(breakableMarked(text, { caps, palette }), width));
 }
 
 /**
@@ -400,12 +353,8 @@ const plainCaps: Capabilities = {
   terminalControls: false,
 };
 
-/**
- * Plain text, read as literal characters rather than marked text, with line breaks inserted by
- * the same rules as `wrapMarked`, measured in terminal display columns.
- */
-function wrapPlain(text: string, columns: number): string {
-  const width = wrapWidth(columns);
+/** Plain text as line breaking reads it: literal characters, each traced to itself. */
+function breakablePlain(text: string): Breakable {
   const root = { attributes: emptyAttributes, operations: [], parent: undefined };
   const parsed: ParsedText = {
     boundaries: new Map(),
@@ -418,8 +367,30 @@ function wrapPlain(text: string, columns: number): string {
     origins: Array.from({ length: text.length }, (_unit, index) => index),
     whole: Array.from({ length: text.length }, () => false),
   };
-  const commands = commandCharacters(text);
-  return edited(text, breaks({ caps: plainCaps, commands, parsed, trace }, width));
+  return { caps: plainCaps, commands: commandCharacters(text), parsed, trace };
 }
 
-export { expandTabsMarked, plainCaps, wrapMarked, wrapPlain };
+/**
+ * Plain text, read as literal characters rather than marked text, with line breaks inserted by
+ * the same rules as `wrapMarked`, measured in terminal display columns.
+ */
+function wrapPlain(text: string, columns: number): string {
+  const width = wrapWidth(columns);
+  return edited(text, breaks(breakablePlain(text), width));
+}
+
+export {
+  breakableMarked,
+  breakablePlain,
+  expandTabsMarked,
+  linesOf,
+  measure,
+  measurerFor,
+  padTracker,
+  plainCaps,
+  runsOf,
+  visibleOf,
+  wrapMarked,
+  wrapPlain,
+};
+export type { Breakable, Line };
