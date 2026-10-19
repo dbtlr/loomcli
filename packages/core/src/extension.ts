@@ -751,6 +751,14 @@ function storeCommandLayers(
   return store;
 }
 
+/** Whether one option's extension record carries a value of the source's binding. */
+function carriesBinding(
+  record: Readonly<Record<string, unknown>> | undefined,
+  binding: string,
+): boolean {
+  return Object.hasOwn(record ?? {}, binding);
+}
+
 export type {
   AdmittedDescriptor,
   AnyExtension,
@@ -767,6 +775,7 @@ export type {
 export {
   appliesTo,
   buildExtensions,
+  carriesBinding,
   extendStore,
   extension,
   isDescriptor,

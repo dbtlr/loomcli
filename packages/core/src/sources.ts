@@ -8,6 +8,7 @@ import {
   reasonOf,
 } from './errors.js';
 import type { InvokedBy } from './errors.js';
+import { carriesBinding } from './extension.js';
 import type { ExtensionRecords } from './extension.js';
 import { isProseLine } from './facts.js';
 import { frozenValues } from './globals.js';
@@ -390,14 +391,6 @@ function installedSource(
   );
 }
 
-/** Whether one option's extension record carries a value of the source's binding. */
-function carriesBinding(
-  record: Readonly<Record<string, unknown>> | undefined,
-  binding: string,
-): boolean {
-  return Object.hasOwn(record ?? {}, binding);
-}
-
 /**
  * The options the configuration source is asked about: those still unfilled that carry its
  * binding and hold no environment fault, the globals table first and then the routed Command's own,
@@ -464,4 +457,4 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
 }
 
 export type { SourceOutcome, SourceStage, StageScope };
-export { carriesBinding, fillInputs, installedSource };
+export { fillInputs, installedSource };

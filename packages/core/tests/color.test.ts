@@ -278,6 +278,7 @@ test('a build that bakes malformed release facts prints its diagnostic as it did
     expect(marked.stderr).toContain(
       'The release facts baked into __LOOM_RELEASE__ hold build "staging".',
     );
+    expect(styles(marked.stderr).color).toBe(false);
     expect(marked).toEqual(read(runtime, 'capture-unmarked'));
   }
 });

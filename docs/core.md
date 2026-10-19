@@ -1646,7 +1646,7 @@ The color choice is proven when public APIs alone produce these results under No
 - **A faulting word.** `--color=x` fails with the usage failure above, exit 2, and the line follows the declared policy: in color on a capable terminal, with no color escape piped, and with none under `NO_COLOR=1`.
 - **The option.** `options.color` reads `true`, `false`, and the absent value for a positive spelling, a negative spelling, and neither.
 - **Declarations.** Each row above throws its sentence under `@loomcli/core/color-mark` from the moment the row names, and the negative type checks reject the rules the types state.
-- **By name.** `jsonkit.invoke` with the plugin installed captures plain text under `FORCE_COLOR=1` and `rendering: { color: 'always' }`.
+- **By name.** `jsonkit.invoke` with the plugin installed captures plain text under `FORCE_COLOR=1` with `color` supplied as `true`, and a fixture Application's invocation by name captures plain text under `FORCE_COLOR=1` and `rendering: { color: 'always' }`.
 
 ## Host
 

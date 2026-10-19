@@ -57,7 +57,7 @@ import {
 } from './errors.js';
 import type { InvokedBy, LoomError } from './errors.js';
 import type { FailureExitCode } from './exit-codes.js';
-import { storeCommandLayers } from './extension.js';
+import { carriesBinding, storeCommandLayers } from './extension.js';
 import type { ExtensionValue } from './extension.js';
 import {
   checkDescription,
@@ -114,7 +114,7 @@ import type { RenderingPolicy } from './rendering.js';
 import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
 import { bracketCall, bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
 import type { CancellationCode, ParentRun, SignalBracket } from './signals.js';
-import { carriesBinding, installedSource } from './sources.js';
+import { installedSource } from './sources.js';
 import { readTranslations, translateThrow } from './translators.js';
 import type { Translation, TranslatorRegistry } from './translators.js';
 import type {

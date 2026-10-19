@@ -10,7 +10,13 @@ import type { Finding } from './diagnostic-text.js';
 import { readEncodings } from './encoders.js';
 import type { FailureEncoder, FailureEncoding } from './encoders.js';
 import { DeclarationError, InternalError, midSentence, quoted, reasonOf } from './errors.js';
-import { appliesTo, buildExtensions, isDescriptor, registerDescriptor } from './extension.js';
+import {
+  appliesTo,
+  buildExtensions,
+  carriesBinding,
+  isDescriptor,
+  registerDescriptor,
+} from './extension.js';
 import type { AdmittedDescriptor, AnyExtension, DescriptorRegistry } from './extension.js';
 import {
   checkDeprecated,
@@ -997,7 +1003,7 @@ function readSource(
     });
   }
   const carrier = own.inputs.find((input) =>
-    Object.hasOwn(own.build.records.get(input) ?? {}, bindingIdentity),
+    carriesBinding(own.build.records.get(input), bindingIdentity),
   );
   if (carrier) {
     // The record prints each option's captured config, which is what its rules read.
