@@ -1,10 +1,12 @@
 ---
-description: The public contract of the loom command, which acts on one package directory to build an application with its release facts, check its declarations, cut its version from its changelog fragments, and scaffold it.
+description: The public contract of the loom command, which acts on one package directory to build an application with its release facts, cut its version from its changelog fragments, and scaffold it.
 ---
 
 # Toolchain reference
 
-`@loomcli/loom` is the Loom toolchain. An application installs it as a development dependency, and its `loom` bin builds, checks, versions, and scaffolds that application, and the installer script rendered by `loom init` installs its release binary. The runtime the application ships depends on `@loomcli/core` alone. [ADR-0066](decisions/0066-the-toolchain-acts-on-one-package-directory.md), [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md), [ADR-0068](decisions/0068-init-writes-scaffold-files-once-and-owns-managed-files.md), and [ADR-0072](decisions/0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md) record the decisions, and the [release facts](core.md#release-facts) a build bakes in are core's contract.
+`@loomcli/loom` is the Loom toolchain. An application installs it as a development dependency, and its `loom` bin builds, versions, and scaffolds that application, and the installer script rendered by `loom init` installs its release binary. The runtime the application ships depends on `@loomcli/core` alone. [ADR-0066](decisions/0066-the-toolchain-acts-on-one-package-directory.md), [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md), [ADR-0068](decisions/0068-init-writes-scaffold-files-once-and-owns-managed-files.md), and [ADR-0072](decisions/0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md) record the decisions, and the [release facts](core.md#release-facts) a build bakes in are core's contract.
+
+[ADR-0099](decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md), proposed, retires `loom check` for an assembly check from `@loomcli/testing`, and [ADR-0100](decisions/0100-acceptance-plans-live-beside-the-tests.md), proposed, removes the `win32` default target and the `bun-windows-*` targets of `loom build`. This page's rules state those targets. Until each record's implementing phase ships, the code keeps the earlier behavior, and the acceptance lists on this page, [loom check acceptance](#loom-check-acceptance) and the drift and host-target cases included, describe that code.
 
 ## One package directory
 
@@ -12,7 +14,6 @@ description: The public contract of the loom command, which acts on one package 
 loom build [--target <target>] [--out <path>] [--entry <module>] [--application <module>]
            [--build development|distributed] [--watch]
            [--release [--repository <owner/name>] [--name <name>]] [--facts | --define]
-loom check [--application <module>]
 loom changelog check
 loom changelog write [--date YYYY-MM-DD] [--narrative FILE] [--dry-run]
 loom init [--only <piece>]... [--force]
@@ -20,7 +21,7 @@ loom init [--only <piece>]... [--force]
 
 ```sh
 cd packages/notes
-loom check && loom build --target node
+pnpm check && loom build --target node
 ```
 
 Every `loom` command acts on one package: the package whose directory it runs in.
@@ -29,8 +30,8 @@ Every `loom` command acts on one package: the package whose directory it runs in
 - **One package, never a set.** Loom never acts on a repository root as a set of packages and holds no list of the packages a repository ships. In a monorepo, the monorepo's own tool runs a command in each package, or the author runs it in each one. A command run at a monorepo root acts on the root's own `package.json`.
 - **No configuration file.** Every value is a command option, a convention, or a standard `package.json` field, such as `version`, `bin`, or `repository`. An option overrides the convention.
 - **Paths.** A path an option names resolves against the working directory, as any command-line path does. A conventional path, such as `src/main.ts`, resolves against the package directory.
-- **Bun.** `loom build` and `loom check` do their work under Bun, whichever runtime runs `loom`, so Bun must be on the `PATH`. A missing Bun fails the command with exit 1 and names Bun.
-- **Exit codes.** 0 is success. 1 is a failed build, a failed check, invalid content, or an operational failure, reported on stderr. 2 is a command or option error, as in every Loom application.
+- **Bun.** `loom build` does its work under Bun, whichever runtime runs `loom`, so Bun must be on the `PATH`. A missing Bun fails the command with exit 1 and names Bun.
+- **Exit codes.** 0 is success. 1 is a failed build, a failed changelog check, invalid content, or an operational failure, reported on stderr. 2 is a command or option error, as in every Loom application.
 - **Out of this contract.** Release orchestration stays with each repository: PR guards, publishing to npm or GitHub, prerelease channels, release workflows, and cuts across several packages. The [installer script](#the-installer-script) reads the [release shape](#the-release-shape) those workflows publish.
 
 ### One package directory acceptance
@@ -62,12 +63,12 @@ bun build src/main.ts src/application.ts --outdir dist --splitting --target node
 
 `loom build` builds the package's application for one target and bakes its [release facts](core.md#release-facts) into the artifact through the define `__LOOM_RELEASE__`.
 
-- **One target per call.** `--target` takes `node`, `bun`, or a Bun compile target, `bun-<os>-<arch>` for `linux`, `darwin`, or `windows` on `x64` or `arm64`, then `-musl` on Linux and `-baseline` or `-modern` on x64, such as `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-arm64`, `bun-windows-x64`, `bun-linux-x64-musl`, or `bun-linux-x64-musl-baseline`. Any other value is an option error that names the targets, `--facts` and `--define` included. The default is the compile target Bun names for the host. `node` and `bun` write a JavaScript bundle for that runtime, and a compile target compiles a single binary. `browser` is refused, because a Loom application runs as a command. Several targets take several calls, and cross-compiling and building on each platform are both valid.
+- **One target per call.** `--target` takes `node`, `bun`, or a Bun compile target, `bun-<os>-<arch>` for `linux` or `darwin` on `x64` or `arm64`, then `-musl` on Linux and `-baseline` or `-modern` on x64, such as `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-arm64`, `bun-linux-x64-musl`, or `bun-linux-x64-musl-baseline`. No `bun-windows-*` target is offered, under [ADR-0100](decisions/0100-acceptance-plans-live-beside-the-tests.md); an author who wants a Windows binary calls `bun build --compile` directly. Any other value is an option error that names the targets, `--facts` and `--define` included. The default is the compile target Bun names for a Linux or macOS host. On Windows `--target` has no default, so a run without one is the option error that names the targets, under [ADR-0100](decisions/0100-acceptance-plans-live-beside-the-tests.md). `node` and `bun` write a JavaScript bundle for that runtime, and a compile target compiles a single binary. `browser` is refused, because a Loom application runs as a command. Several targets take several calls, and cross-compiling and building on each platform are both valid.
 - **The entry.** `--entry` names the module that calls `run()`. The default is `src/main.ts`.
-- **The application module.** `--application` names the module that exports the Application, with the default [`loom check`](#loom-check) reads, `src/application.ts`. A `node` or `bun` bundle carries it as a second bundle entry point beside the entry, so an embedded caller or a test imports the built Application with its baked facts. Each entry point's file is named for its module alone, whatever directory the module lives in, such as `main.js` and `application.js`, beside the chunks they share. An entry and an application module with the same base name, such as `src/cli/application.ts` beside `src/application.ts`, would build to one file, so the build fails before it starts, names both modules, and says to rename one of them or name another module with `--entry` or `--application`. A bundle splits, so each plugin's lazily loaded middleware stays in a chunk of its own. When `src/application.ts` does not exist, the bundle carries the entry alone, and a module `--application` names that does not exist fails the build and names it. A compile target compiles the entry alone, so `--application` with a compile target is an option error that says it applies to a `node` or `bun` bundle.
+- **The application module.** `--application` names the module that exports the Application, by default `src/application.ts`, the module a test imports for the assembly check. A `node` or `bun` bundle carries it as a second bundle entry point beside the entry, so an embedded caller or a test imports the built Application with its baked facts. Each entry point's file is named for its module alone, whatever directory the module lives in, such as `main.js` and `application.js`, beside the chunks they share. An entry and an application module with the same base name, such as `src/cli/application.ts` beside `src/application.ts`, would build to one file, so the build fails before it starts, names both modules, and says to rename one of them or name another module with `--entry` or `--application`. A bundle splits, so each plugin's lazily loaded middleware stays in a chunk of its own. When `src/application.ts` does not exist, the bundle carries the entry alone, and a module `--application` names that does not exist fails the build and names it. A compile target compiles the entry alone, so `--application` with a compile target is an option error that says it applies to a `node` or `bun` bundle.
 - **The package's Bun configuration.** Bun reads the package's `bunfig.toml`, when it holds one, from any working directory, so a setting such as a `[loader]` applies to the build and to `--watch`.
 - **The dependencies.** `loom build` bundles the package's dependencies, `@loomcli/core` included, so the define reaches core and the artifact reads the facts it bakes.
-- **The output.** `--out` names a binary's file, by default `dist/<name>`, or a bundle's directory, by default `dist/`. A `bun-windows-*` target's output and asset names end in `.exe`, such as `dist/notes.exe` and `notes-windows-x64.exe`. A binary's output that is an existing directory fails the build before anything builds and names `--out`.
+- **The output.** `--out` names a binary's file, by default `dist/<name>`, or a bundle's directory, by default `dist/`. A binary's output that is an existing directory fails the build before anything builds and names `--out`.
 - **The name.** A binary's default path and its asset name read the application's name from `package.json` `bin`: a string `bin` gives the package name without its scope, and an object `bin` with one key gives that key. `--name` overrides it. With no `bin`, or a `bin` with several keys, and no `--name`, a build that needs the name fails and names `--name`.
 - **The build.** `--build` takes `development` or `distributed`, and the default is `distributed`. Those are the `build` values the artifact reads.
 - **Watching.** `--watch` runs `bun build --watch` for the target and passes the facts with `--define`, with `build` set to `development`. It rebuilds on each change until it is stopped, and it writes as `bun build --watch` writes. Bun runs in the package directory, so it follows a source file that an atomic save or a checkout replaces. When the watch ends, a stopped watch included, `loom` removes each output directory it created that nothing filled, and for a compile target the `.bun-build` files that appeared in the package directory while it watched, where Bun writes a binary's temporary file. `--watch` with `--build distributed` is an option error.
@@ -90,27 +91,7 @@ bun build src/main.ts src/application.ts --outdir dist --splitting --target node
 
 ## loom check
 
-```text
-loom check [--application <module>]
-```
-
-```text
-$ loom check
--- MISSING DESCRIPTION ------------------------------- @loomcli/core/undescribed
-
-1 declaration has no description.
-...
-warning: .changes/README.md differs from what loom init wrote. Run loom init --force to restore it, or delete its header to keep your edits.
-```
-
-`loom check` reports every fault the package's application and code hold before anything runs, except a declared default or implied value its validator rejects, which only a run reports.
-
-- **The application module.** `--application` names the module that exports the Application. The default is `src/application.ts`. `loom check` imports it and finds the exported value that is an Application, whatever its export name. No Application, or more than one, fails the check and names the module. It never imports the entry, because the entry calls `run()`.
-- **The type pass.** It runs the package's own installed TypeScript, the `typescript` development dependency, against the package's `tsconfig.json`, emitting nothing, and prints what the compiler reports. Any compiler error fails the check. The compiler resolves from the package directory, so a `typescript` hoisted to a monorepo root counts as installed. When no compiler resolves or the package holds no `tsconfig.json`, the type pass is skipped with a one-line note, and the graph checks still run.
-- **The graph checks.** It reads no release facts, so the import is a source run, and it calls the Application's [`check()`](core.md#checking-the-declarations), which builds the graph with nothing run and returns every fault a development run reports before routing, except a declared default or implied value its validator rejects. A `DeclarationError` thrown while the module loads, at an authoring call or an attach, is a fault too, and so is any other throw while it loads, which reports under `@loomcli/loom/application-load-failed`. The check runs under Bun in the package directory, so the package's `bunfig.toml` applies from any working directory, and it ends once it has read the faults, whatever the module left running when it loaded.
-- **Output.** Each fault prints as its [Developer Diagnostic](core.md#developer-diagnostics) on stderr, one blank line between faults. Any fault exits 1, and no fault exits 0.
-- **Drift.** A [managed file](#managed-files) whose content no longer matches its header draws one warning line naming the file. A warning never fails the check.
-- **Not yet.** A finding names no file or line. A later contract adds them.
+`loom check` retires under [ADR-0099](decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md). A package checks its types with `tsc --noEmit`, its source with the linter, and its assembly with a test that passes the Application to the assembly check from `@loomcli/testing`, which throws an `Error` whose message is the [Developer Diagnostic](core.md#developer-diagnostics) of each fault [`check()`](core.md#checking-the-declarations) returns. `loom init` warns about a drifted [managed file](#managed-files). The acceptance below covers the command until the phase that removes it.
 
 ### loom check acceptance
 
@@ -181,7 +162,7 @@ loom init [--only <piece>]... [--force]
 mkdir notes && cd notes
 bunx @loomcli/loom init   # a new application: package.json, src/, tsconfig.json, .changes/README.md, and the skill
 pnpm install
-loom check
+pnpm check
 ```
 
 In an empty directory nothing is installed yet, so the first run goes through the package runner. Inside a package that already depends on `@loomcli/loom`, the bin is `loom`, as the rest of this page writes it.
@@ -195,8 +176,8 @@ In an empty directory nothing is installed yet, so the first run goes through th
 
 ### Scaffold files
 
-- **The files.** `src/application.ts` exports an Application named with the application's name, with a description and one described action, so a new scaffold passes `loom check`. `src/main.ts` imports it and calls `run()`, and it opens with `#!/usr/bin/env node`, which the bundle keeps. `tsconfig.json` is a strict configuration for a Node ESM application that emits nothing, because `loom build` bundles it, so `loom check` runs its type pass against it.
-- **The `package.json` keys.** `bin` maps the application's name to `dist/main.js`. `scripts` gains `build`, `loom build --target node`, and `check`, `loom check`. `dependencies` gains `@loomcli/core`, and `devDependencies` gains `@loomcli/loom`, each at the exact version of the running `loom`. `devDependencies` also gains `typescript`, at the compiler range `@loomcli/loom` declares as its optional peer dependency. A dependency the package already declares in any of `dependencies`, `devDependencies`, `peerDependencies`, or `optionalDependencies` is left where it is and not added again. In an empty directory, init first writes a `package.json` whose `name` is the directory's name, `version` is `0.0.0`, and `type` is `module`.
+- **The files.** `src/application.ts` exports an Application named with the application's name, with a description and one described action, so a new scaffold passes its own `check` script. `src/main.ts` imports it and calls `run()`, and it opens with `#!/usr/bin/env node`, which the bundle keeps. `tsconfig.json` is a strict configuration for a Node ESM application that emits nothing, because `loom build` bundles it, so `tsc --noEmit` checks it. Init also writes a test that imports the application module and passes the Application to the `@loomcli/testing` assembly check, with a comment that says to keep the test, because it is the check that the whole application assembles; its path is settled when that package ships, and init wires the lint configuration under [ADR-0098](decisions/0098-lint-is-the-author-guidance-lane.md).
+- **The `package.json` keys.** `bin` maps the application's name to `dist/main.js`. `scripts` gains `build`, `loom build --target node`, and `check`, which runs `tsc --noEmit`, the linter, and the test runner. `dependencies` gains `@loomcli/core`, and `devDependencies` gains `@loomcli/loom`, each at the exact version of the running `loom`. `devDependencies` also gains `typescript`, at the compiler range `@loomcli/loom` declares as its optional peer dependency. A dependency the package already declares in any of `dependencies`, `devDependencies`, `peerDependencies`, or `optionalDependencies` is left where it is and not added again. In an empty directory, init first writes a `package.json` whose `name` is the directory's name, `version` is `0.0.0`, and `type` is `module`.
 - **The application's name.** It is the `bin` key when `bin` is an object with one key, else the package name without its scope.
 - **Written once.** Init writes a scaffold file or key only when it is missing. It never overwrites an existing file or key and never tracks one afterward, because each is the author's code from the moment it is written.
 
@@ -211,8 +192,8 @@ In an empty directory nothing is installed yet, so the first run goes through th
 - **The files.** `.changes/README.md` is the fragment guide, covering the three kinds. The changelog skill teaches an agent to keep the package's changelog and is written to `.agents/skills/loom-changelog/SKILL.md` in the package directory. `install.sh` is the [installer script](#the-installer-script), written only when the package names a GitHub repository.
 - **The header.** Each managed file carries a header that holds a checksum of the file's content without the header: a Markdown comment on the first line, or, in a skill, on the first non-blank line after its frontmatter, and in `install.sh` a `#` comment on the line after its `#!` line.
 - **Re-running init.** Init re-renders a managed file whose checksum matches, so an unedited file follows the running toolchain. A file whose content no longer matches its checksum has drifted. Init warns about it and leaves it alone, and `--force` re-renders it. `--force` never touches a scaffold file.
-- **Leaving management.** Deleting the header releases a file from management. Init then treats it as the author's file and never writes it again, and `loom check` stops checking it.
-- **Drift is a warning.** `loom check` warns about a drifted managed file and never fails for one.
+- **Leaving management.** Deleting the header releases a file from management. Init then treats it as the author's file and never writes it again, and never warns about it.
+- **Drift is a warning.** `loom init` warns about a drifted managed file and never fails for one. No other command checks managed files.
 
 ### loom init acceptance
 

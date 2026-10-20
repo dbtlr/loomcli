@@ -4,7 +4,7 @@ title: ADR-0028 - Plugins run code at lifecycle hooks, and middleware reads the 
 description: A plugin definition carries lifecycle hooks named on<Event> that core calls at named points, beginning with onCommandAttach at graph build. Local parsing and validation run ahead of the middleware chain with the fault held until the dispatch boundary, so a middleware reads the request and selects a result's view by name. The formatter is the proof.
 status: accepted
 created: 2026-09-15
-modified: 2026-10-15
+modified: 2026-10-20
 ---
 
 # ADR-0028 - Plugins run code at lifecycle hooks, and middleware reads the request
@@ -63,3 +63,5 @@ Accepted. The formatter increment proves it: both example applications install `
 - 2026-10-10: [ADR-0069](0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md), proposed, defines the `onLog` hook this record named: `onLog(event, destination)` runs inside the `log` call or failure report that created the event, observes, returns `undefined`, and receives no other hook's return. It runs during a run, not at build, so the record's sentence that a hook runs at build holds for `onCommandAttach` and `onGraphBuilt` alone. It binds when accepted.
 
 - 2026-10-15: [ADR-0084](0084-dotenv-prepares-an-allowlisted-environment-before-inputs.md), proposed, adds the bounded onEnvironment hook after graph build and before declared/default and invocation validation. It returns environment additions in installation order; core applies them first-in-wins. It exposes no input resolution or general lifecycle participation. It binds when accepted.
+- 2026-10-20: [ADR-0097](0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md), proposed, replaces the 2026-10-05 failure-precedence entry. A middleware that fails before the chain reaches dispatch still reports its failure while the held fault stays unraised. Core no longer records the held fault dispatch raises: a middleware that catches its rejection, or the rejection of any failure the rest of the chain raised, decides the outcome. A throw during unwinding is that middleware's own failure, and the rules for cancellation stand. It binds when that record is accepted.
+- 2026-10-20: [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md), proposed, removes core's `checkShortSetting`, which the 2026-10-03 entry has `format()` call on its `short` setting. The `short` setting itself is unchanged, and its type takes one ASCII letter. It also removes the lineage check on what an `onCommandAttach` hook returns. It binds when that record is accepted.

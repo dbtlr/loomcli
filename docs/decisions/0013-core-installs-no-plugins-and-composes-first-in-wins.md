@@ -4,7 +4,7 @@ title: ADR-0013 - Core installs no plugins by default, and contributions compose
 description: Every capability beyond core, first-party included, is an ordinary plugin an Application installs explicitly. There is no deregistration. Composable contributions resolve first-in-wins in installation order with core defaults last, and a second claim on a single-owner slot fails compilation.
 status: accepted
 created: 2026-09-07
-modified: 2026-10-15
+modified: 2026-10-20
 ---
 
 # ADR-0013 - Core installs no plugins by default, and contributions compose first-in-wins with single-owner slots
@@ -49,3 +49,4 @@ An application that wants help output installs the help plugin. Core stays small
 - 2026-10-10: [ADR-0069](0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md), proposed, adds `onLog`, an observing hook: core calls every installed plugin's hook with the same frozen log event, and none receives what another returned, as [ADR-0046](0046-a-failure-view-reads-where-the-run-was-and-plugins-add-hint-lines.md) and [ADR-0060](0060-ongraphbuilt-judges-the-built-graph-and-never-contributes.md) already narrowed the sequential composition for `onFailure` and `onGraphBuilt`. Core gains `log`, which creates and delivers events and writes no record, so writing stays a plugin's capability. It binds when accepted.
 
 - 2026-10-15: [ADR-0084](0084-dotenv-prepares-an-allowlisted-environment-before-inputs.md), proposed, narrows the blanket hook-composition clause for `onEnvironment`. Hooks run in installation order and receive the environment including earlier additions. Core fills only missing variables, so later hooks cannot replace earlier contributions. It claims no single-owner slot and binds when accepted.
+- 2026-10-20: [ADR-0096](0096-the-identity-grammar-is-a-naming-convention.md), proposed, returns the identity rule in the 2026-09-30 entries to a convention: `plugin()` no longer checks an identity against the grammar, and `@loomcli/core/invalid-identity` goes. An identity installed twice stays a declaration fault, and the convention for which name a plugin takes stands. It binds when that record is accepted.

@@ -35,7 +35,7 @@ The unnamed Command an Application owns. It is the entry point of routing and fo
 _Avoid_: Main command, default command
 
 **Child** and **Parent**:
-A Command attached under another Command by a `command()` call, and the Command it is attached to. A Command value is a child at one point in one Application's graph, and a Command path reaches at most two levels below the root.
+A Command attached under another Command by a `command()` call, and the Command it is attached to. A Command value is a child at one point in one Application's graph, and a Command path may reach any depth below the root.
 
 **Attach**:
 The operation that places a finished Command under a parent: `command()` on a Command or on the Application, or a plugin's `commands` list, which the Application constructor attaches to the root. An attached Command is final, so attach checks it as a finished Command and against its new siblings. When a subtree joins an Application, the Application checks it once against its globals, its plugins, and the nodes it already holds.
@@ -350,7 +350,7 @@ _Avoid_: Production, release mode, shipped mode
 The status `run()` resolves and sets on the process. It reports whether the invocation succeeded and, if not, which category of failure, which failure class, or which cancellation ended it. 0 is success, 1 and 2 are core's failure categories, 3 through 125 appear only as declared exit codes, which may also be 1 or 2, 130 is a cancellation by `SIGINT`, by the caller, or by the action's `cancel()`, and 143 is a cancellation by `SIGTERM`.
 
 **Declared exit code**:
-The exit code a failure class states as its static `exitCode`, read from the nearest ancestor that declares one and captured at the class's first construction, so every failure of one class exits with one code. It is a whole number from 1 through 125; 0 and 126 and above are reserved.
+The exit code a failure class states as its static `exitCode`, read from the nearest ancestor that declares one, so every failure of one class exits with one code. Its type is a whole number from 1 through 125; 0 and 126 and above are reserved.
 _Avoid_: Custom exit code, error code, status override
 
 **Run signal**:
@@ -513,7 +513,7 @@ _Avoid_: Stack trace, error page, debug output, verbose error
 
 **Diagnostic rule**:
 One reason a declaration can be wrong, or one kind of defect, declared once with `diagnosticRule` and shared by every site that raises it. Its identity is the declaring package's name and any kebab-case subpath segments that name the part of the package that owns it, which together form an identity, then a kebab-case rule name, joined by `/`, such as `@loomcli/core/spelling-taken` or `@loomcli/plugins/manifest/failure-code-conflict`, and it carries the headline, the explanation, and an optional docs link.
-_Avoid_: Error code (for a rule), lint rule, check
+_Avoid_: Error code (for a rule), check
 
 **Operator message**:
 Any message that runs after the application is built and shipped, read by the operator who ran it and cannot change its code. Every operator message Loom ships says what went wrong and what to do instead.
@@ -528,7 +528,7 @@ The view core declares for one failure class, keyed by the class, whose function
 _Avoid_: Failure renderer, error handler, error formatter, catch
 
 **Failure code**:
-The kebab-case name a failure class declares as its static `code`, such as `unknown-option` or `path-not-found`, read from the nearest ancestor that declares one and captured at the class's first construction, so a machine reader tells failures apart where many share an exit code. Every defect and declaration fault reads `internal`, in both builds.
+The kebab-case name a failure class declares as its static `code`, such as `unknown-option` or `path-not-found`, read from the nearest ancestor that declares one, so a machine reader tells failures apart where many share an exit code. Every defect and declaration fault reads `internal`, in both builds.
 _Avoid_: Error code, failure name, exit name, rule identity (for a failure)
 
 **Failure form**:
@@ -673,7 +673,7 @@ A frozen, explicitly installed value with a fixed identity that contributes opti
 _Avoid_: Extension (for the whole plugin), addon, bundled plugin
 
 **Identity**:
-The string that names a plugin, an extension, or a declared view, fixed at the `plugin()`, `extension()`, or `view()` call that declares it and checked there against one grammar: an npm package name, scoped or unscoped and at most 214 characters, then zero or more kebab-case subpath segments joined by `/`, such as `help`, `@acme/config`, or `@loomcli/plugins/help/page`. It keys contributions and prefixes the declaring package's diagnostic rule identities, which add a rule name.
+The string that names a plugin, an extension, or a declared view, fixed at the `plugin()`, `extension()`, or `view()` call that declares it. By convention it is an npm package name, scoped or unscoped, then zero or more kebab-case subpath segments joined by `/`, such as `help`, `@acme/config`, or `@loomcli/plugins/help/page`. It keys contributions and prefixes the declaring package's diagnostic rule identities, which add a rule name.
 _Avoid_: Name (when the key is meant), id (in prose)
 
 **Plugin identity**:
@@ -697,7 +697,7 @@ The one optional `source` a plugin definition declares, which answers for config
 _Avoid_: Config loader, config provider, settings store
 
 **Dotenv file**:
-The `.env` file in the working directory from which the dotenv plugin imports only the variables the application explicitly lists. It adds variables before inputs are read and leaves existing values, including empty values, unchanged.
+The `.env` file in the working directory from which the dotenv plugin imports every variable the process has not set, unless an allow list or a deny list narrows the import. It adds variables before inputs are read and leaves existing values, including empty values, unchanged.
 _Avoid_: Configuration file (for this file), env source, input-source tier
 
 **Configuration file**:
@@ -813,11 +813,11 @@ The directory of the nearest `package.json` at or above where a `loom` command r
 _Avoid_: Project root, workspace, repository root
 
 **Entry**:
-The module that calls `run()`, by default `src/main.ts`. `loom build` bundles from it, and `loom check` never imports it, because importing it runs the application.
+The module that calls `run()`, by default `src/main.ts`. `loom build` bundles from it, and a test never imports it, because importing it runs the application.
 _Avoid_: Main file, bin script
 
 **Application module**:
-The module that exports the Application, by default `src/application.ts`. `loom check` imports it to read every fault, and a `node` or `bun` bundle carries it beside the entry, so a caller imports the built Application with its baked release facts.
+The module that exports the Application, by default `src/application.ts`. A test imports it and passes the Application to the assembly check, which reads every fault, and a `node` or `bun` bundle carries it beside the entry, so a caller imports the built Application with its baked release facts.
 _Avoid_: App file, application entry
 
 **Scaffold file**:
@@ -831,3 +831,11 @@ _Avoid_: Generated file, owned file, vendored file
 **Installer script**:
 The managed `install.sh` that `loom init` renders for an application with a GitHub repository. Under POSIX `sh` on Linux and macOS it installs the platform's release asset, verified against the release's `SHA256SUMS`, and writes `install.json` in the installation record with the method `script`, so self-update may later replace the binary.
 _Avoid_: Installer (alone), bootstrap script, setup script
+
+**Lint rule**:
+A check over an application's source, shipped in Loom's lint plugin for ESLint and oxlint, that guides an author where a type cannot express the rule, in the editor and in CI. Unlike a diagnostic rule, it reports source before anything runs, and adding one is a contract change.
+_Avoid_: Diagnostic rule (for a lint rule), `loom check`
+
+**Assembly check**:
+The check from `@loomcli/testing` that a test runs to prove an Application assembles: it applies every build rule except the validation of declared defaults and implied values, and fails the test with each fault's Developer Diagnostic.
+_Avoid_: `loom check`, smoke test, health check

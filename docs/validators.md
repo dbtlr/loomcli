@@ -1,5 +1,7 @@
 # Validators reference
 
+The 0.15.0 rescope is recorded in [ADR-0093](decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md) through [ADR-0102](decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md). Where a rule below states what one of them decides, such as `path()` resolving with the running process's `node:path`, it states the target, and the code keeps enforcing the earlier rule until that record's implementing phase ships.
+
 File-or-stdin inputs use core's [content input type](core.md#content-inputs), which prepares lazy handles and declares the Command's stdin target. It is separate from this validator catalog.
 
 `@loomcli/validators` ships the validator catalog: factories that return ordinary [Standard Schema](https://standardschema.dev/) values for the input shapes a command-line author would otherwise need a schema library for. [ADR-0037](decisions/0037-validators-ship-in-their-own-package-as-standard-schema-values.md) records the decision. Core cannot tell a catalog validator from a Zod schema, so an input that needs more than the catalog offers passes a schema library's value in the same `validate` slot.
@@ -213,7 +215,7 @@ duration(options?: { min?: string; max?: string }): Validator<number>
 path(options?: { access?: 'read' | 'write'; kind?: 'file' | 'directory' | 'any' }): Validator<string>
 ```
 
-- **Resolves** a nonempty token against `host.cwd` under the path rules of `host.platform`, and normalizes it. It does not resolve symbolic links. The empty string and a token containing the NUL character are rejected before any probe.
+- **Resolves** a nonempty token against `host.cwd` under the running process's `node:path` rules, and normalizes it, under [ADR-0100](decisions/0100-acceptance-plans-live-beside-the-tests.md). It does not resolve symbolic links. The empty string and a token containing the NUL character are rejected before any probe.
 - **Output** is the absolute, normalized path.
 - **Checks.** With no `access`, nothing on the filesystem is read. `kind` defaults to `'file'` when `access` is set.
 
@@ -226,7 +228,7 @@ path(options?: { access?: 'read' | 'write'; kind?: 'file' | 'directory' | 'any' 
 - **The checks are advisory.** The filesystem can change between validation and the action, so the action still handles its own I/O failures. An existing file passes a `'write'` check: whether to replace it is the application's decision.
 - **Verdicts and faults.** A probe that fails with `ENOENT`, `ENOTDIR`, `EACCES`, `EPERM`, `ELOOP`, `ENAMETOOLONG`, or `EINVAL` is a verdict about the operator's token, and the token is rejected with the configuration's message. A probe that fails any other way, such as `EIO`, throws, and core reports it as a validator failure under [Issues and validator failures](core.md#issues-and-validator-failures).
 - **Defaults.** A default beside `access` is probed on every run, like every default, so a missing default file fails every run, even one that supplies another path. Resolve a fallback path in the action instead of declaring one as the default.
-- **The context.** `path` reads `host.cwd` and `host.platform` from the [validation context](core.md#validation-context), so it runs only inside a Loom run.
+- **The context.** `path` reads `host.cwd` from the [validation context](core.md#validation-context), so it runs only inside a Loom run.
 - **Publishes** `{ type: 'string', minLength: 1 }`. Existence, kind, and access are runtime state, not a shape of the token, so none is published.
 - **Message.** One sentence per configuration: `Expected a nonempty path with no NUL character.`, `Expected a readable file that exists.`, `Expected a readable directory that exists.`, `Expected a readable file or directory that exists.`, `Expected a writable file, or a new file in a writable directory.`, `Expected a writable directory, or a new directory in a writable directory.`, and `Expected a writable path, or a new path in a writable directory.`
 - **Faults.** `kind` without `access`, and an `access` or `kind` outside its set.
