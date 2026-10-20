@@ -158,7 +158,7 @@ A secret's `typed` field is always the empty string. The default views use core'
 
 ## Leaving a question
 
-A question asks only when interaction is on, and it enters raw mode through `host.stdin.setRawMode`, which a terminal stream has. An embedding host that reports a terminal on stdin supplies a stream with that method, and a question that finds none fails as a defect, exit 1. Before it enters raw mode, it adds a synchronous listener to `context.signal` that leaves raw mode, so the terminal is cooked again at the moment of the abort. Every path out of a question leaves raw mode, pauses `host.stdin` and removes the listeners the question added, so stdin never holds the process open after the run, and draws the last line, answered or cancelled, with the sequence that shows the cursor, after every frame the question queued.
+A question asks only when interaction is on, and it enters raw mode through `host.stdin.setRawMode`, which a terminal stream has. An embedding host that reports a terminal on stdin supplies a stream with that method, and a question that finds none fails as a defect, exit 1. Before it enters raw mode, it adds a synchronous listener to `context.signal` that leaves raw mode, so the terminal is cooked again at the moment of the abort. A question enters raw mode before its first frame, so a key typed while that frame is written, Ctrl-C included, reaches it as a key, and raw mode holds while any question of the run is open, so a question waiting its turn never leaves a key to a cooked terminal. Every path out of the run's last open question leaves raw mode, pauses `host.stdin` and removes the listeners the questions added, so stdin never holds the process open after the run. Every path out of a question draws the last line, answered or cancelled, with the sequence that shows the cursor, after every frame the question queued.
 
 - **Ctrl-C** calls `context.cancel()`, then the question draws its cancelled line and throws `context.signal.reason`. Core reads the throw as a silent cancellation, and the run resolves 130.
 - **End of input** while a question is active, stdin closing or Ctrl-D with nothing typed, takes the same path. It neither accepts a default nor submits an empty answer.
@@ -287,12 +287,15 @@ export const app = new Application('fetchit', {
 
 | Setting                                              | Sentence                                                                                                      |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| A label that is not a string                         | `The progress line received a label that is not a string. Supply a string label.`                              |
+| A label, an update's label, or an end message that is not a string | `The progress line received a label that is not a string. Supply a string label.`                |
 | A `total` or `completed` that is not a finite number of 0 or more | `The progress line "Fetching records" received a total that is not a finite number of 0 or more. Supply a finite number of 0 or more.` |
 | A spinner with no frames                             | `The progress spinner has no frames. Supply at least one frame.`                                               |
 | A frame that is not a string                         | `The progress spinner frame 2 is not a string. Supply each frame as a string.`                                 |
 | An interval that is not a finite number above 0      | `The progress spinner interval is not a finite number above 0. Supply the milliseconds between frames.`        |
 | A bar cell that is not a nonempty string             | `The progress bar's complete cell is not a nonempty string. Supply the text of one cell.`, naming the incomplete cell for `incomplete` |
+| An update that is not an object                      | `The progress line "Fetching records" received an update that is not an object. Supply an object, such as { completed: 3 }.` |
+| A `done` or `failed` that is neither a string nor a function | `The progress line "Fetching records" received a done message that is neither a string nor a function. Supply a string, or a function that returns one.`, naming `failed` for `failed` |
+| `progressStyle()` settings that are not an object    | `The progress style received settings that are not an object. Supply an object, such as { spinner }.`         |
 
 ### Progress view
 

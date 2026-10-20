@@ -1,0 +1,494 @@
+import { InternalError } from './errors.js';
+import type { ProgressLedger, RegionReports } from './progress-events.js';
+import { regionCall } from './rules.js';
+import type { ProgressReport, Region, RegionCloser, RegionOptions, View } from './types.js';
+
+/*
+ * The live regions of one run: the handles `out.region()` returns, and the screen model that keeps
+ * every open region at the bottom of stderr. A handle's calls decide what happens in call order;
+ * the screen decides the bytes when each write reaches stderr, so what it erases is always what
+ * that stream last showed.
+ */
+
+const escape = '\u001b';
+const bell = '\u0007';
+
+/** Every terminal control sequence, which moves no cursor column a reader counts as text. */
+const controlSequences = new RegExp(
+  `${escape}(?:\\[[0-?]*[ -/]*[@-~]|\\][^${bell}${escape}]*(?:${bell}|${escape}\\\\)|[@-Z\\\\-_])`,
+  'gu',
+);
+
+/** The text a terminal shows, without its control sequences. */
+function visible(text: string): string {
+  return text.replaceAll(controlSequences, '');
+}
+
+/** Whether the cursor sits partway along a row after `text`, given whether it did before. */
+function leavesRowOpen(open: boolean, text: string): boolean {
+  const shown = visible(text);
+  const cut = Math.max(shown.lastIndexOf('\n'), shown.lastIndexOf('\r'));
+  return cut === -1 ? open || shown !== '' : cut < shown.length - 1;
+}
+
+/** One rendered frame: the marked text core counts rows in, and the resolved text it writes. */
+interface Frame {
+  readonly marked: string;
+  readonly text: string;
+}
+
+/** Whether a frame's text ends with a line break of its own. */
+function endsLine(frame: Frame): boolean {
+  return visible(frame.text).endsWith('\n');
+}
+
+/** What one region shows on the screen and the frame it last drew. */
+interface Slot {
+  readonly input: boolean;
+  shown: Frame | undefined;
+  latest: Frame | undefined;
+  closed: boolean;
+}
+
+/** The text a closed region leaves in scrollback: its last frame, ending with a line break. */
+function scrollback(frame: Frame | undefined): string {
+  if (frame === undefined || frame.text === '') {
+    return '';
+  }
+  return endsLine(frame) ? frame.text : `${frame.text}\n`;
+}
+
+/**
+ * The stack of open regions at the bottom of stderr, as the terminal shows it. Each method answers
+ * the bytes that move the terminal from what it shows to what it should show, and updates the model
+ * to match, so a caller writes those bytes in the order it asked for them.
+ */
+class Screen {
+  readonly #slots: Slot[] = [];
+  readonly #closedMeanwhile: Slot[] = [];
+  /** Whether the last write above the stack ended partway along a row. */
+  #rowOpen = false;
+
+  /** Counts the rows a marked text moves the cursor down, at the terminal's current width. */
+  constructor(private readonly rows: (marked: string) => number) {}
+
+  /** Whether any region is open on the screen. */
+  get holding(): boolean {
+    return this.#slots.length > 0;
+  }
+
+  /** Whether an input region is open, which holds every other region's frame still. */
+  get #frozen(): boolean {
+    return this.#slots.some((slot) => slot.input && !slot.closed);
+  }
+
+  /** The frames the terminal shows, top to bottom, each starting on a row of its own. */
+  #stack(): { marked: string; text: string } | undefined {
+    const frames = this.#slots.flatMap(({ shown }) =>
+      shown === undefined || shown.text === '' ? [] : [shown],
+    );
+    if (frames.length === 0) {
+      return undefined;
+    }
+    const marked: string[] = [];
+    const text: string[] = [];
+    frames.forEach((frame, index) => {
+      const previous = frames[index - 1];
+      const separator = previous !== undefined && !endsLine(previous) ? '\n' : '';
+      marked.push(separator, frame.marked);
+      text.push(separator, frame.text);
+    });
+    return { marked: marked.join(''), text: text.join('') };
+  }
+
+  /** Returns the cursor to the stack's first row and erases to the end of the screen. */
+  #erase(): string {
+    const stack = this.#stack();
+    if (stack === undefined) {
+      return '';
+    }
+    const rows = this.rows(stack.marked);
+    return `\r${rows > 0 ? `${escape}[${String(rows)}A` : ''}${escape}[J`;
+  }
+
+  /** Draws the stack below whatever is above it, on the next row when that ended partway along one. */
+  #draw(): string {
+    const stack = this.#stack();
+    if (stack === undefined) {
+      return '';
+    }
+    const opener = this.#rowOpen ? '\n' : '';
+    this.#rowOpen = false;
+    return opener + stack.text;
+  }
+
+  /** Text written to the terminal above the stack: what to write before it and after it. */
+  around(text: string): { before: string; after: string } {
+    const before = this.#erase();
+    this.#rowOpen = leavesRowOpen(this.#rowOpen, text);
+    return { after: this.#draw(), before };
+  }
+
+  /**
+   * Whether a closing region's last frame is already the whole stack, so it can stay where it is:
+   * it shows its latest frame, no other region shows one, and no region closed while it held them.
+   */
+  #settled(slot: Slot): boolean {
+    return (
+      slot.shown === slot.latest &&
+      this.#closedMeanwhile.length === 0 &&
+      this.#slots.every(
+        (other) =>
+          other === slot ||
+          ((other.shown === undefined || other.shown.text === '') && other.latest === other.shown),
+      )
+    );
+  }
+
+  /** A region that opened, which takes no rows until it draws. */
+  open(slot: Slot): void {
+    this.#slots.push(slot);
+  }
+
+  /** A region's new frame, which a frozen region keeps without drawing. */
+  draw(slot: Slot, frame: Frame): string {
+    if (!this.#slots.includes(slot)) {
+      return '';
+    }
+    slot.latest = frame;
+    if (this.#frozen && !slot.input) {
+      return '';
+    }
+    const before = this.#erase();
+    slot.shown = frame;
+    return before + this.#draw();
+  }
+
+  /**
+   * A region that closed: its last frame moves into scrollback and the regions below close the
+   * gap. A region that closes while an input region holds it still stays as it was shown until the
+   * input region closes, when each such last frame moves into scrollback in the order the regions
+   * closed, above the input region's own, and every open region draws its latest frame once.
+   */
+  close(slot: Slot): string {
+    if (!this.#slots.includes(slot)) {
+      return '';
+    }
+    if (this.#frozen && !slot.input) {
+      slot.closed = true;
+      this.#closedMeanwhile.push(slot);
+      return '';
+    }
+    if (this.#settled(slot)) {
+      // The last frame is already the bottom of the screen, so it stays where it is.
+      this.#slots.splice(this.#slots.indexOf(slot), 1);
+      return slot.shown === undefined || slot.shown.text === '' || endsLine(slot.shown) ? '' : '\n';
+    }
+    const before = this.#erase();
+    const leaving = slot.input ? [...this.#closedMeanwhile.splice(0), slot] : [slot];
+    for (const left of leaving) {
+      this.#slots.splice(this.#slots.indexOf(left), 1);
+    }
+    if (slot.input) {
+      for (const open of this.#slots) {
+        open.shown = open.latest;
+      }
+    }
+    let text = leaving.map(({ latest }) => scrollback(latest)).join('');
+    if (text !== '') {
+      text = (this.#rowOpen ? '\n' : '') + text;
+      this.#rowOpen = false;
+    }
+    return before + text + this.#draw();
+  }
+}
+
+/** The defect one malformed region call raises, thrown from the call. */
+function callFault(sentence: string, correction: string): InternalError {
+  return new InternalError(regionCall, { cause: undefined, correction, sentence });
+}
+
+/** Whether a value is an object a caller wrote as `{ ... }`. */
+function isPlainObject(value: unknown): value is Readonly<Record<string, unknown>> {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/** Whether an `input` option was asked for, checking the options `out.region()` received. */
+function readInput(options: unknown): boolean {
+  if (options === undefined) {
+    return false;
+  }
+  if (!isPlainObject(options)) {
+    throw callFault(
+      'out.region() received options that are not a plain object.',
+      'Supply an options object, such as { input: true }.',
+    );
+  }
+  const { input } = options;
+  if (input !== undefined && typeof input !== 'boolean') {
+    throw callFault(
+      'out.region() received an input that is not a Boolean.',
+      'Supply true or false.',
+    );
+  }
+  return input === true;
+}
+
+/** Whether a count is a finite number of 0 or more. */
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+/** The report a region received, checked field by field. */
+function readReport(progress: unknown): ProgressReport {
+  if (!isPlainObject(progress)) {
+    throw callFault(
+      'report() received a progress report that is not a plain object.',
+      'Supply an object, such as { completed: 3 }.',
+    );
+  }
+  const { completed, label, total } = progress;
+  for (const [name, value] of [
+    ['completed', completed],
+    ['total', total],
+  ] as const) {
+    if (value !== undefined && !isCount(value)) {
+      throw callFault(
+        `report() received a ${name} that is not a finite number of 0 or more.`,
+        'Supply a finite number of 0 or more.',
+      );
+    }
+  }
+  if (label !== undefined && typeof label !== 'string') {
+    throw callFault('report() received a label that is not a string.', 'Supply a string.');
+  }
+  return {
+    ...(isCount(completed) ? { completed } : {}),
+    ...(typeof label === 'string' ? { label } : {}),
+    ...(isCount(total) ? { total } : {}),
+  };
+}
+
+/** The end state a region's `end()` received, checked. */
+function readEndState(state: unknown): 'ended' | 'failed' {
+  if (state === undefined || state === 'ended' || state === 'failed') {
+    return state ?? 'ended';
+  }
+  throw callFault(
+    'end() received a state other than "ended" or "failed".',
+    'Supply "ended", "failed", or nothing.',
+  );
+}
+
+/** What the run's regions need from the output that owns them. */
+interface RegionHost {
+  /** Whether a region opened now is live: stderr is a terminal, and it takes input or the run is not quiet. */
+  live: (input: boolean) => boolean;
+  /** Renders one frame through its view, or answers the rejection a broken view raised. */
+  frame: (data: unknown, view: View<never>) => Frame | { failed: Promise<void> };
+  /** Writes what `compose` answers once every earlier write to stderr has reached the stream. */
+  write: (compose: () => string) => Promise<void>;
+  /** The run's progress events. */
+  ledger: ProgressLedger;
+  /** Whether the run has been cancelled already. */
+  cancelled: () => boolean;
+}
+
+/** A promise whose rejection the caller may leave unobserved without an unhandled rejection. */
+function observed(pending: Promise<void>): Promise<void> {
+  void pending.catch(() => undefined);
+  return pending;
+}
+
+/** One region a run opened, as its handle answers and as the run closes it. */
+class LiveRegion implements Region {
+  readonly live: boolean;
+  readonly slot: Slot;
+  /** Whether the region has opened; a live input region waits while another one is open. */
+  opened = false;
+  /** Draw promises a waiting region resolves once it opens and its frame is written. */
+  readonly waiters: (() => void)[] = [];
+  /** The latest frame a waiting region drew, which it draws once it opens. */
+  pending: Frame | undefined = undefined;
+  readonly #controller = new AbortController();
+  #closedBy: RegionCloser | undefined = undefined;
+  /** Whether the close has run its abort listeners, after which the region takes no frame. */
+  #finished = false;
+
+  readonly input: boolean;
+  readonly reports: RegionReports;
+  readonly #regions: Regions;
+
+  constructor(regions: Regions, facts: { input: boolean; live: boolean; reports: RegionReports }) {
+    this.#regions = regions;
+    this.input = facts.input;
+    this.live = facts.live;
+    this.reports = facts.reports;
+    this.slot = { closed: false, input: facts.input, latest: undefined, shown: undefined };
+  }
+
+  get signal(): AbortSignal {
+    return this.#controller.signal;
+  }
+
+  get closedBy(): RegionCloser | undefined {
+    return this.#closedBy;
+  }
+
+  draw<Data>(data: Data, view: View<Data>): Promise<void> {
+    if (this.#finished || !this.live) {
+      return Promise.resolve();
+    }
+    return this.#regions.draw(this, data, view);
+  }
+
+  end(state?: 'ended' | 'failed'): Promise<void> {
+    const checked = readEndState(state);
+    return this.close('end', checked);
+  }
+
+  report(progress: ProgressReport): void {
+    const checked = readReport(progress);
+    if (this.#closedBy === undefined) {
+      this.reports.report(checked);
+    }
+  }
+
+  /**
+   * Closes the region once, whatever closes it: `closedBy` is set, the signal aborts and its
+   * listeners run, a frame one of them draws is the last frame, and then the region leaves the
+   * stack. The close resolves once that is written, and a later close resolves at once.
+   */
+  close(closer: RegionCloser, state: 'ended' | 'failed'): Promise<void> {
+    if (this.#closedBy !== undefined) {
+      return Promise.resolve();
+    }
+    this.#closedBy = closer;
+    this.#controller.abort();
+    this.#finished = true;
+    this.reports.close(closer, state);
+    return observed(this.#regions.release(this));
+  }
+}
+
+/**
+ * The regions one run opened: the ones still open in the order they opened, the one input region
+ * that is open, and the input regions waiting for it to close.
+ */
+class Regions {
+  readonly #open = new Set<LiveRegion>();
+  readonly #waiting: LiveRegion[] = [];
+  #inputOwner: LiveRegion | undefined = undefined;
+
+  constructor(
+    private readonly host: RegionHost,
+    readonly screen: Screen,
+  ) {}
+
+  /**
+   * Opens one region for `out.region(options)`, which `owner` collects when the opener closes the
+   * regions it left open. A region opened after the run's cancellation closes at once.
+   */
+  open(options: RegionOptions | undefined, owner?: Set<LiveRegion>): Region {
+    const input = readInput(options);
+    const region = new LiveRegion(this, {
+      input,
+      live: this.host.live(input),
+      reports: this.host.ledger.region(),
+    });
+    this.#open.add(region);
+    owner?.add(region);
+    if (region.live && input && this.#inputOwner !== undefined) {
+      this.#waiting.push(region);
+    } else {
+      this.#start(region);
+    }
+    if (this.host.cancelled()) {
+      void region.close('cancellation', 'ended');
+    }
+    return region;
+  }
+
+  /** Closes every region still open, or waiting to open, among `only` when it is given. */
+  closeAll(closer: RegionCloser, only?: ReadonlySet<LiveRegion>): void {
+    const targets = [...this.#open].filter((region) => only === undefined || only.has(region));
+    // A waiting region closes first, so the input region that closes after it promotes none.
+    targets.sort((left, right) => Number(left.opened) - Number(right.opened));
+    for (const region of targets) {
+      void region.close(closer, 'ended');
+    }
+  }
+
+  /** One frame of a live region that has not finished. */
+  draw(region: LiveRegion, data: unknown, view: View<never>): Promise<void> {
+    const frame = this.host.frame(data, view);
+    if ('failed' in frame) {
+      return frame.failed;
+    }
+    if (!region.opened) {
+      region.pending = frame;
+      return new Promise((resolve) => {
+        region.waiters.push(resolve);
+      });
+    }
+    return observed(this.host.write(() => this.screen.draw(region.slot, frame)));
+  }
+
+  /** A region that closed leaves the stack, and the next waiting input region opens. */
+  release(region: LiveRegion): Promise<void> {
+    this.#open.delete(region);
+    if (!region.opened) {
+      this.#waiting.splice(this.#waiting.indexOf(region), 1);
+      for (const resolve of region.waiters.splice(0)) {
+        resolve();
+      }
+      return Promise.resolve();
+    }
+    const closing = region.live
+      ? this.host.write(() => this.screen.close(region.slot))
+      : Promise.resolve();
+    if (region === this.#inputOwner) {
+      this.#inputOwner = undefined;
+      const next = this.#waiting.shift();
+      if (next !== undefined) {
+        this.#start(next);
+      }
+    }
+    return closing;
+  }
+
+  /** A region that opens now: an input region holds the input until it closes. */
+  #start(region: LiveRegion): void {
+    region.opened = true;
+    if (!region.live) {
+      return;
+    }
+    if (region.input) {
+      this.#inputOwner = region;
+    }
+    const { pending, slot } = region;
+    const opened = this.host.write(() => {
+      this.screen.open(slot);
+      return pending === undefined ? '' : this.screen.draw(slot, pending);
+    });
+    // A waiting draw resolves once the region has opened, whether or not its write succeeded.
+    const release = async (): Promise<void> => {
+      try {
+        await opened;
+      } catch {
+        // The write's failure is stderr's, recorded where it was queued.
+      }
+      for (const resolve of region.waiters.splice(0)) {
+        resolve();
+      }
+    };
+    void release();
+  }
+}
+
+export { Regions, Screen };
+export type { Frame, LiveRegion, RegionHost };

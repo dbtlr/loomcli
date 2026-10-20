@@ -522,11 +522,58 @@ export interface Out<Result = unknown> {
   /** Draws a view on stderr without a newline, preserving terminal controls at a terminal. */
   draw<Data>(data: Data, view: View<Data>): Promise<number>;
   /**
+   * Opens a live region at the bottom of stderr and returns its handle at once. Core keeps every
+   * open region below every other write, in open order, and closes one left open when what opened
+   * it finishes.
+   */
+  region(options?: RegionOptions): Region;
+  /**
    * The Command's own result, emitted once. Property syntax keeps the parameter contravariant, so
    * a neutral `Out` never stands in for one that carries a declaration.
    */
   results: (value: ResultInput<Result>) => Promise<void>;
   fatal(message: string): never;
+}
+
+/** How `out.region()` opens a region. */
+export interface RegionOptions {
+  /** The region reads the operator's keys, as a question does. */
+  readonly input?: boolean;
+}
+
+/** What closed a region: its own `end()`, its opener finishing, a failure, or cancellation. */
+export type RegionCloser = 'end' | 'completion' | 'failure' | 'cancellation';
+
+/** One report of a region's progress; an omitted field keeps its last reported value. */
+export interface ProgressReport {
+  readonly completed?: number;
+  readonly total?: number;
+  readonly label?: string;
+}
+
+/** The handle `out.region()` returns. */
+export interface Region {
+  /** Whether core draws this region's frames: stderr is a terminal, and the region takes input or the run is not quiet. */
+  readonly live: boolean;
+  /** Aborted whenever the region closes, after `closedBy` is set. */
+  readonly signal: AbortSignal;
+  /** What closed the region, or `undefined` while it is open. */
+  readonly closedBy: RegionCloser | undefined;
+  /** Replaces the region's frame with a view's text, rendered as `out.draw` renders it. */
+  draw<Data>(data: Data, view: View<Data>): Promise<void>;
+  /** Closes the region, leaving its last frame in scrollback; `'failed'` makes its end event read failed. */
+  end(state?: 'ended' | 'failed'): Promise<void>;
+  /** Builds a typed progress event for whoever observes the run, and draws nothing. */
+  report(progress: ProgressReport): void;
+}
+
+/** The typed value a region's report builds, which a program reads without reading a frame. */
+export interface ProgressEvent {
+  readonly id: number;
+  readonly label: string;
+  readonly state: 'started' | 'updated' | 'ended' | 'failed' | 'cancelled';
+  readonly completed?: number;
+  readonly total?: number;
 }
 
 /**
@@ -566,6 +613,8 @@ export interface ActionChannel {
    * so a sequence it never awaited is stopped rather than drained.
    */
   stop: () => void;
+  /** Closes every region the action opened that is still open, because the action returned. */
+  complete: () => void;
 }
 export type StringOption = OptionSpelling &
   (

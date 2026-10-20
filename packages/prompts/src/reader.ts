@@ -66,9 +66,22 @@ function feed(queue: InputQueue, chunk: Buffer | string): void {
   }
 }
 
-/** Brackets raw mode and listeners; abort restores cooked mode synchronously. */
-export function openReader<Options>(context: PromptContext<Options>) {
-  context.signal.throwIfAborted();
+/**
+ * One run's hold on stdin while any of its questions is open: raw mode, the listeners that feed
+ * the run's key queue, and the one read waiting for a key. Two questions open at once share it, so
+ * every chunk is fed once, and the question whose input region is open reads its keys in order.
+ */
+interface Session {
+  queue: InputQueue;
+  readers: number;
+  waiting: { resolve: (key: Key) => void; reject: (error: unknown) => void } | undefined;
+  failure: { error: unknown } | undefined;
+  release: () => void;
+}
+const sessions = new WeakMap<AbortSignal, Session>();
+
+/** Enters raw mode and feeds the run's queue until the last reader closes or the run aborts. */
+function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue): Session {
   const input = context.host.stdin;
   if (!('setRawMode' in input) || typeof input.setRawMode !== 'function') {
     invalid(
@@ -77,22 +90,29 @@ export function openReader<Options>(context: PromptContext<Options>) {
     );
   }
   const raw = input.setRawMode.bind(input);
-  const queue = queues.get(context.signal) ?? {
-    carriage: false,
-    decoder: new StringDecoder('utf8'),
-    keys: [],
-    pending: '',
+  let released = false;
+  const session: Session = {
+    failure: undefined,
+    queue,
+    readers: 0,
+    release: () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      sessions.delete(context.signal);
+      raw(false);
+      input.pause();
+      input.off('data', data).off('end', end).off('close', end).off('error', inputError);
+      context.signal.removeEventListener('abort', abort);
+    },
+    waiting: undefined,
   };
-  queues.set(context.signal, queue);
-  let waiting: { resolve: (key: Key) => void; reject: (error: unknown) => void } | undefined =
-    undefined;
-  let failure: { error: unknown } | undefined = undefined;
-  let closed = false;
   const settle = () => {
     const key = queue.keys.shift();
-    if (waiting && key) {
-      const current = waiting;
-      waiting = undefined;
+    if (session.waiting && key) {
+      const current = session.waiting;
+      session.waiting = undefined;
       current.resolve(key);
     } else if (key) {
       queue.keys.unshift(key);
@@ -109,27 +129,17 @@ export function openReader<Options>(context: PromptContext<Options>) {
     context.cancel();
   };
   const inputError = (cause: unknown) => {
-    failure = { error: cause };
-    const current = waiting;
-    waiting = undefined;
-    close();
+    session.failure = { error: cause };
+    const current = session.waiting;
+    session.waiting = undefined;
+    session.release();
     current?.reject(cause);
   };
-  const close = () => {
-    if (closed) {
-      return;
-    }
-    closed = true;
-    raw(false);
-    input.pause();
-    input.off('data', data).off('end', end).off('close', end).off('error', inputError);
-    context.signal.removeEventListener('abort', abort);
-  };
   const abort = () => {
-    close();
+    session.release();
     queues.delete(context.signal);
-    const current = waiting;
-    waiting = undefined;
+    const current = session.waiting;
+    session.waiting = undefined;
     current?.reject(context.signal.reason);
   };
   context.signal.addEventListener('abort', abort, { once: true });
@@ -141,22 +151,52 @@ export function openReader<Options>(context: PromptContext<Options>) {
       context.cancel();
     }
   } catch (error) {
-    close();
+    session.release();
     throw error;
   }
+  sessions.set(context.signal, session);
+  return session;
+}
+
+/**
+ * Brackets raw mode and listeners for one question; abort restores cooked mode synchronously.
+ * Raw mode holds while any question of the run is open, so a key typed for a question still
+ * waiting its turn never reaches a cooked terminal.
+ */
+export function openReader<Options>(context: PromptContext<Options>) {
+  context.signal.throwIfAborted();
+  const queue = queues.get(context.signal) ?? {
+    carriage: false,
+    decoder: new StringDecoder('utf8'),
+    keys: [],
+    pending: '',
+  };
+  queues.set(context.signal, queue);
+  const session = sessions.get(context.signal) ?? holdInput(context, queue);
+  session.readers += 1;
+  let closed = false;
   return {
-    close,
+    close() {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      session.readers -= 1;
+      if (session.readers === 0) {
+        session.release();
+      }
+    },
     async read(): Promise<Key> {
       context.signal.throwIfAborted();
-      if (failure) {
-        throw failure.error;
+      if (session.failure) {
+        throw session.failure.error;
       }
       const key = queue.keys.shift();
       if (key) {
         return key;
       }
       return new Promise<Key>((resolve, reject) => {
-        waiting = { reject, resolve };
+        session.waiting = { reject, resolve };
       });
     },
   };

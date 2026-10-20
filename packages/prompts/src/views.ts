@@ -174,5 +174,82 @@ const cancelledLine = view<CancelledLine>('@loomcli/prompts/cancelled-line', {
   render: ({ message }, { style }) => `${style.dim(`? ${message} · cancelled`)}\n`,
 });
 
-export { answeredLine, cancelledLine, questionFrame };
-export type { AnsweredLine, CancelledLine, QuestionFrame };
+/** What one progress line's view draws: its state, its counts, its spinner frame, and its time. */
+interface ProgressLine {
+  readonly state: 'running' | 'ended' | 'failed' | 'cancelled';
+  /** The label while the line runs, and the end message once it has ended or failed. */
+  readonly label: string;
+  readonly completed: number | undefined;
+  readonly total: number | undefined;
+  /** The spinner's current frame. */
+  readonly frame: string;
+  readonly bar: { readonly complete: string; readonly incomplete: string };
+  /** Milliseconds since `progress()` opened the line. */
+  readonly elapsed: number;
+}
+
+/** The cells of a progress bar, which the default view never widens. */
+const BAR_CELLS = 10;
+const SECOND = 1000;
+const MINUTE = 60 * SECOND;
+const HOUR = 60 * MINUTE;
+
+/** The complete cells of a bar: its share of 10, rounded down and held between 0 and 10. */
+function completeCells(completed: number, total: number): number {
+  if (total === 0) {
+    return BAR_CELLS;
+  }
+  return Math.min(BAR_CELLS, Math.max(0, Math.floor((BAR_CELLS * completed) / total)));
+}
+
+/** `completed/total` for whole numbers, and otherwise the percent, rounded down. */
+function counts(completed: number, total: number): string {
+  if (Number.isInteger(completed) && Number.isInteger(total)) {
+    return `${String(completed)}/${String(total)}`;
+  }
+  return total === 0 ? '100%' : `${String(Math.floor((100 * completed) / total))}%`;
+}
+
+/** Elapsed time, rounded down: `2.4s` under a minute, `1m 05s` under an hour, and `1h 02m` from one. */
+function elapsedTime(elapsed: number): string {
+  const whole = Math.max(0, Math.floor(elapsed));
+  if (whole < MINUTE) {
+    return `${(Math.floor(whole / 100) / 10).toFixed(1)}s`;
+  }
+  if (whole < HOUR) {
+    const seconds = Math.floor((whole % MINUTE) / SECOND);
+    return `${String(Math.floor(whole / MINUTE))}m ${String(seconds).padStart(2, '0')}s`;
+  }
+  const minutes = Math.floor((whole % HOUR) / MINUTE);
+  return `${String(Math.floor(whole / HOUR))}h ${String(minutes).padStart(2, '0')}m`;
+}
+
+const progressLine = view<ProgressLine>('@loomcli/prompts/progress', {
+  render: (data, { style }) => {
+    const time = `${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`;
+    if (data.state === 'cancelled') {
+      return style.dim(`${glyph.squareCenter} ${data.label} (cancelled)`);
+    }
+    if (data.state === 'ended') {
+      return `${style.success(glyph.success)} ${data.label} ${time}`;
+    }
+    if (data.state === 'failed') {
+      return `${style.error(glyph.error)} ${data.label} ${time}`;
+    }
+    const completed = data.completed ?? 0;
+    let measure = '';
+    if (data.total !== undefined) {
+      const complete = completeCells(completed, data.total);
+      const bar =
+        style.highlight(textStyle.escape(data.bar.complete.repeat(complete))) +
+        style.dim(textStyle.escape(data.bar.incomplete.repeat(BAR_CELLS - complete)));
+      measure = ` ${bar} ${counts(completed, data.total)}`;
+    } else if (data.completed !== undefined) {
+      measure = ` ${String(data.completed)}`;
+    }
+    return `${style.highlight(textStyle.escape(data.frame))} ${data.label}${measure} ${time}`;
+  },
+});
+
+export { answeredLine, cancelledLine, progressLine, questionFrame };
+export type { AnsweredLine, CancelledLine, ProgressLine, QuestionFrame };

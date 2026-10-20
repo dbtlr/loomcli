@@ -91,6 +91,8 @@ export default defineConfig({
         files: [
           'packages/core/src/application.ts',
           'packages/core/src/output.ts',
+          'packages/core/src/progress-events.ts',
+          'packages/core/src/region.ts',
           'packages/core/src/chain.ts',
           'packages/core/src/command.ts',
           'packages/core/src/extension.ts',

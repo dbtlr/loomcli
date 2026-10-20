@@ -1,7 +1,7 @@
 {
   "name": "@loomcli/prompts",
   "version": "0.13.0",
-  "description": "Action-owned terminal questions for Loom CLI applications.",
+  "description": "Action-owned terminal questions and progress lines for Loom CLI applications.",
   "license": "MIT",
   "repository": {
     "type": "git",
