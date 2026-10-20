@@ -1,3 +1,6 @@
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vite-plus/test';
 
 import { invoke, invokeFromRemovedDirectory } from '../../../scripts/test-process.js';
@@ -14,6 +17,7 @@ interface Report {
   modes: boolean[];
   paused: boolean;
   queried: number;
+  raised: { raw: boolean; self: boolean; signal: string }[];
   raw: boolean;
   seen: Record<string, string | null>;
   stderr: string;
@@ -80,11 +84,32 @@ describe('the answered path', () => {
     expect(report.stdinRead).toBe('abcde');
     expect(report.seen.action).toBe('dark');
   });
+});
 
-  it('writes to stdout when only stdout is a terminal whose color is on', () => {
-    const report = run({ replies: light, terminal: { stderr: false } });
-    expect(report.stderr).toBe('');
-    expect(report.stdout).toBe(`${query}${printed.light}`);
+describe('interrupt keys during the wait', () => {
+  const [ctrlC, ctrlBackslash, ctrlZ] = [3, 28, 26].map((code) => String.fromCodePoint(code));
+
+  it('leave the typeahead and are raised on the process in order once the mode is restored', () => {
+    const replies = `a${ctrlC}b${ctrlBackslash}${ctrlZ}${light}`;
+    const report = run({ kill: 'record', replies });
+    expect(report.raised).toEqual([
+      { raw: false, self: true, signal: 'SIGINT' },
+      { raw: false, self: true, signal: 'SIGQUIT' },
+      { raw: false, self: true, signal: 'SIGTSTP' },
+    ]);
+    expect(report.stdinRead).toBe('ab');
+    expect(report.seen.action).toBe('light');
+  });
+
+  it('Ctrl-C ends the run by SIGINT, which a shell reports as status 130', () => {
+    const scenario = JSON.stringify({ replies: `${ctrlC}${light}` });
+    const result = spawnSync(
+      process.env.LOOM_TEST_RUNTIME ?? 'node',
+      [fileURLToPath(fixture), scenario],
+      { encoding: 'utf8', timeout: 30_000 },
+    );
+    expect(result.signal).toBe('SIGINT');
+    expect(result.stdout).toBe('');
   });
 });
 
@@ -119,14 +144,22 @@ describe('the deadline', () => {
 });
 
 describe('the skips', () => {
+  it.each<[string, Record<string, boolean>]>([
+    ['stdout is piped, as in app | fzf, app | less, or app > file', { stdout: false }],
+    ['stdin is not a terminal', { stdin: false }],
+    ['stderr is not a terminal', { stderr: false }],
+    ['no stream is a terminal', { stderr: false, stdin: false, stdout: false }],
+  ])('%s: no byte written or read, and the background reads undefined', (_case, terminal) => {
+    const env = { ...terminalEnv, COLORFGBG: '0;15', FORCE_COLOR: '1' };
+    const report = run({ env, replies: light, terminal });
+    expect(report.queried).toBe(0);
+    expect(report.modes).toEqual([]);
+    expect(report.seen.action).toBeNull();
+  });
+
   it.each<[string, { env?: Record<string, string>; [key: string]: unknown }]>([
-    ['stdin is not a terminal', { terminal: { stdin: false } }],
     ['stdin has no raw mode', { raw: false }],
     ['stdin refuses raw mode', { raw: 'throws' }],
-    [
-      'no destination is a terminal',
-      { env: { ...terminalEnv, FORCE_COLOR: '1' }, terminal: { stderr: false, stdout: false } },
-    ],
     ['TERM is unset', { env: { COLORTERM: 'truecolor' } }],
     ['TERM is dumb', { env: { COLORTERM: 'truecolor', FORCE_COLOR: '1', TERM: 'dumb' } }],
     ['STY is set', { env: { ...terminalEnv, STY: '1234.pts-0.host' } }],

@@ -8,8 +8,9 @@ import { loomTheme } from '@loomcli/plugins/theme';
 
 /**
  * One run of an application that installs the Loom theme and the background plugin, on a scripted
- * terminal that answers the background query as light. The arguments are the command line, and
- * the action prints the highlight token and the settled background.
+ * terminal that answers the background query as light. The host states all three streams as
+ * terminals, because core queries only then; stdout is wide, so help never wraps. The arguments are
+ * the command line, and the action prints the highlight token and the settled background.
  */
 const argv = process.argv.slice(2);
 const plugins = [help(), manifest(), loomTheme(), background()];
@@ -58,7 +59,7 @@ await app.run({
     terminal: {
       stderr: { columns: 80, isTTY: true, rows: 24 },
       stdin: { isTTY: true },
-      stdout: { columns: 80, isTTY: false, rows: undefined },
+      stdout: { columns: 200, isTTY: true, rows: 24 },
     },
   },
   rendering: { color: 'always' },

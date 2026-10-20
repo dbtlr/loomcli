@@ -1416,8 +1416,11 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
               env: host.env,
               policy: policy.background,
               stated: statedBackground(host.terminal),
+              terminals: (['stdin', 'stdout', 'stderr'] as const).every(
+                (stream) => host.terminal[stream].isTTY,
+              ),
             },
-            () => askTerminal(host, policy, signal),
+            () => askTerminal(host, signal),
           ),
         bracket: (controller) => bracketRun(controller, checkSignal(options?.signal)),
         host: (stderr) => captureHost(application, overrides, stderr),

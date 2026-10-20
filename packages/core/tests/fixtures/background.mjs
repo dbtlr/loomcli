@@ -13,7 +13,8 @@ import { theme } from '@loomcli/plugins/theme';
  * a delay after which the caller aborts the run, `wait`, how long the action waits before it
  * reads stdin, `listen`, whether the action reads stdin through a bare data listener instead of
  * `read()`, `prepare`, variables an onEnvironment hook imports, `fail`, whether the action
- * fails, and `invoke`, whether the run is an invocation by name. It prints what happened as JSON.
+ * fails, `invoke`, whether the run is an invocation by name, and `kill: 'record'`, which records the
+ * signals core raises on the process instead of sending them. It prints what happened as JSON.
  */
 const scenario = JSON.parse(process.argv[2]);
 
@@ -76,6 +77,15 @@ if (scenario.raw === 'throws') {
 }
 if (scenario.before !== undefined) {
   stdin.push(decoded(scenario.before));
+}
+
+/** Each signal core raised on a process under `kill: 'record'`, which records instead of sending. */
+const raised = [];
+if (scenario.kill === 'record') {
+  process.kill = (pid, signal) => {
+    raised.push({ raw: stdin.isRaw, self: pid === process.pid, signal });
+    return true;
+  };
 }
 
 const query = decoded(String.raw`<ESC>]11;?<ESC>\<ESC>[?996n<ESC>[c`);
@@ -254,6 +264,7 @@ process.stdout.write(
     modes: stdin.modes,
     paused: stdin.isPaused(),
     queried,
+    raised,
     raw: stdin.isRaw,
     seen,
     stderr: stderr.text(),

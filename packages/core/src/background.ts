@@ -10,20 +10,27 @@ interface Replies {
   readonly answer: Background | undefined;
   /** Whether the DA1 reply, the sentinel, has arrived, which ends the read. */
   readonly ended: boolean;
-  /** Every byte that is not a reply, in arrival order, as a latin1 string. */
+  /** The signal each interrupt key read names, in arrival order. */
+  readonly signals: readonly InterruptSignal[];
+  /** Every byte that is neither a reply nor an interrupt key, in arrival order, as a latin1 string. */
   readonly typeahead: string;
 }
 
+/** A signal a terminal's interrupt key raises: Ctrl-C, Ctrl-\, or Ctrl-Z. */
+type InterruptSignal = 'SIGINT' | 'SIGQUIT' | 'SIGTSTP';
+
 /**
  * Where each source of the run's background stands when core settles it. `detects` says whether
- * the installed theme holds an adaptive entry or an option carries the background mark, and
- * `colored` whether the run's color is on for stdout or stderr after the color choice.
+ * the installed theme holds an adaptive entry or an option carries the background mark, `terminals`
+ * whether stdin, stdout, and stderr are all terminals, and `colored` whether the run's color is on
+ * for stdout or stderr after the color choice.
  */
 interface BackgroundSources {
   readonly choice: Background | undefined;
   readonly policy: 'auto' | Background | undefined;
   readonly stated: Background | undefined;
   readonly detects: boolean;
+  readonly terminals: boolean;
   readonly colored: boolean;
   readonly env: Readonly<Record<string, string | undefined>>;
 }
@@ -76,6 +83,25 @@ const lightIndices = new Set(['7', '15']);
 /** The color-scheme reply's modes. */
 const schemes: Readonly<Record<string, Background>> = { '1': 'dark', '2': 'light' };
 
+/**
+ * The code points of Ctrl-C, Ctrl-\, and Ctrl-Z, which raw mode delivers as bytes, and the signal
+ * each key raises at a terminal in its usual mode.
+ */
+const ctrlC = 3;
+const ctrlBackslash = 28;
+const ctrlZ = 26;
+const interrupts: ReadonlyMap<number, InterruptSignal> = new Map([
+  [ctrlC, 'SIGINT'],
+  [ctrlBackslash, 'SIGQUIT'],
+  [ctrlZ, 'SIGTSTP'],
+]);
+
+/** Any one interrupt key. */
+const interruptKey = new RegExp(
+  `[${[...interrupts.keys()].map((code) => String.fromCodePoint(code)).join('')}]`,
+  'gu',
+);
+
 /** One channel of an sRGB color, from 0 through 1, made linear. */
 function linear(channel: number): number {
   return channel <= linearLimit
@@ -111,7 +137,8 @@ function colorAnswer(payload: string): Background | undefined {
 /**
  * What the bytes read so far say, read as latin1: the read ends at the first DA1 reply, the
  * OSC 11 and color-scheme replies before it are removed and answer, an OSC 11 reply that parses
- * winning, and every other byte, before, between, or after the replies, is typeahead.
+ * winning, each interrupt key is removed and names its signal, and every other byte, before,
+ * between, or after the replies, is typeahead.
  */
 function readReplies(received: string): Replies {
   const sentinel = sentinelReply.exec(received);
@@ -130,7 +157,15 @@ function readReplies(received: string): Replies {
     });
   const answer =
     colors.find((color) => color !== undefined) ?? modes.find((mode) => mode !== undefined);
-  return { answer, ended: sentinel !== null, typeahead: remaining + after };
+  const signals: InterruptSignal[] = [];
+  const typeahead = (remaining + after).replaceAll(interruptKey, (key) => {
+    const signal = interrupts.get(key.codePointAt(0) ?? 0);
+    if (signal !== undefined) {
+      signals.push(signal);
+    }
+    return '';
+  });
+  return { answer, ended: sentinel !== null, signals, typeahead };
 }
 
 /**
@@ -164,16 +199,17 @@ function queryAllowed(
 
 /**
  * The run's background, from the first source that answers: the operator's choice, the author's
- * policy, a stated background, and, only when something reads it, `undefined` with color off,
- * dark on the Linux console, the terminal's answer to `query`, then `COLORFGBG`, then `undefined`.
+ * policy, a stated background, and, only when something reads it, `undefined` when stdin, stdout,
+ * or stderr is not a terminal or color is off, dark on the Linux console, the terminal's answer to
+ * `query`, then `COLORFGBG`, then `undefined`.
  */
 async function settleBackground(
   sources: BackgroundSources,
   query: () => Promise<Background | undefined>,
 ): Promise<Background | undefined> {
-  const { choice, colored, detects, env, policy, stated } = sources;
+  const { choice, colored, detects, env, policy, stated, terminals } = sources;
   const named = choice ?? (policy === 'auto' ? undefined : policy) ?? stated;
-  if (named !== undefined || !detects || !colored) {
+  if (named !== undefined || !detects || !terminals || !colored) {
     return named;
   }
   if (env.TERM === 'linux') {

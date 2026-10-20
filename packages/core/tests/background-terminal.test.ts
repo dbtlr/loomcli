@@ -93,6 +93,20 @@ test.skipIf(zsh === undefined)(
   },
 );
 
+test.skipIf(zsh === undefined)('Ctrl-C during the wait ends the run with status 130', () => {
+  const transcript = session([
+    'expect %',
+    String.raw`send <fixture>\n`,
+    'expect 996n',
+    String.raw`send \0003\0033]11;rgb:ffff/ffff/ffff\0007\0033[?62c`,
+    // The shell's next prompt, so the status line is typed at the shell rather than into the run.
+    'expect %',
+    ...status,
+  ]);
+  expect(transcript).toContain('status=130 done-42');
+  expect(transcript).not.toContain('background=');
+});
+
 test.skipIf(zsh === undefined)(
   'a run in a backgrounded job neither stops nor hangs, and writes no query',
   () => {

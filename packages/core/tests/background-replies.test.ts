@@ -35,6 +35,7 @@ describe('the reply parser', () => {
       expect(readReplies(`${osc11(payload, end)}${da1}`)).toEqual({
         answer,
         ended: true,
+        signals: [],
         typeahead: '',
       });
     }
@@ -42,13 +43,33 @@ describe('the reply parser', () => {
 
   it('garbage before, between, and after the replies passes through as typeahead', () => {
     const received = `ab${osc11('ffff/ffff/ffff')}c${escape}[?997;1nd${da1}ef`;
-    expect(readReplies(received)).toEqual({ answer: 'light', ended: true, typeahead: 'abcdef' });
+    expect(readReplies(received)).toEqual({
+      answer: 'light',
+      ended: true,
+      signals: [],
+      typeahead: 'abcdef',
+    });
   });
+
+  it(
+    String.raw`Ctrl-C, Ctrl-\, and Ctrl-Z leave the typeahead and name their signals in arrival order`,
+    () => {
+      const keys = [26, 3, 28, 3].map((code) => String.fromCodePoint(code));
+      const received = `a${keys[0]}${osc11('0/0/0')}b${keys[1]}${keys[2]}${da1}c${keys[3]}`;
+      expect(readReplies(received)).toEqual({
+        answer: 'dark',
+        ended: true,
+        signals: ['SIGTSTP', 'SIGINT', 'SIGQUIT', 'SIGINT'],
+        typeahead: 'abc',
+      });
+    },
+  );
 
   it('a DA1 reply that arrives first ends the read with no answer', () => {
     expect(readReplies(`${da1}${osc11('ffff/ffff/ffff')}`)).toEqual({
       answer: undefined,
       ended: true,
+      signals: [],
       typeahead: osc11('ffff/ffff/ffff'),
     });
   });
@@ -66,13 +87,19 @@ describe('the reply parser', () => {
 
   it('an OSC 11 reply that does not parse is removed and answers nothing', () => {
     const received = `${escape}]11;rgba:ffff/ffff/ffff/ffff${bell}${da1}`;
-    expect(readReplies(received)).toEqual({ answer: undefined, ended: true, typeahead: '' });
+    expect(readReplies(received)).toEqual({
+      answer: undefined,
+      ended: true,
+      signals: [],
+      typeahead: '',
+    });
   });
 
   it('replies read before the sentinel still answer, and the read is not ended', () => {
     expect(readReplies(`x${osc11('ffff/ffff/ffff')}`)).toEqual({
       answer: 'light',
       ended: false,
+      signals: [],
       typeahead: 'x',
     });
   });
@@ -125,6 +152,7 @@ const detecting: BackgroundSources = {
   env: { TERM: 'xterm-256color' },
   policy: undefined,
   stated: undefined,
+  terminals: true,
 };
 
 /** A query that answers `answer` and counts how often it was asked. */
@@ -146,6 +174,16 @@ describe('the precedence', () => {
     ["'auto' answers nothing", { policy: 'auto', stated: 'dark' }, 'dark'],
     ['a stated background beats color off', { colored: false, stated: 'light' }, 'light'],
     ['color off settles undefined', { colored: false }, undefined],
+    [
+      'a stream that is not a terminal settles undefined, whatever COLORFGBG names',
+      { env: { COLORFGBG: '0;15', TERM: 'xterm' }, terminals: false },
+      undefined,
+    ],
+    [
+      'a stated background beats a stream that is not a terminal',
+      { stated: 'light', terminals: false },
+      'light',
+    ],
     ['TERM=linux settles dark', { env: { COLORFGBG: '0;15', TERM: 'linux' } }, 'dark'],
   ])('%s, with no query', async (_case, sources, settled) => {
     const { calls, query } = asked('light');

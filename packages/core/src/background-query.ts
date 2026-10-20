@@ -5,8 +5,6 @@ import { ReadStream } from 'node:tty';
 
 import { backgroundQuery, queryAllowed, readReplies } from './background.js';
 import type { Background } from './background.js';
-import { capabilities } from './rendering.js';
-import type { RenderingPolicy } from './rendering.js';
 import type { Host } from './types.js';
 
 /**
@@ -77,19 +75,6 @@ function psIds(): JobIds | undefined {
 function foregroundJob(): boolean {
   const ids = procIds() ?? psIds();
   return ids !== undefined && ids.group === ids.foreground;
-}
-
-/**
- * The stream the query is written to: stderr when it is a terminal whose color is on, else stdout
- * when it is, else none.
- */
-function queryDestination(host: Host, policy: RenderingPolicy): Writable | undefined {
-  for (const name of ['stderr', 'stdout'] as const) {
-    if (host.terminal[name].isTTY && capabilities(host, name, policy).color) {
-      return host[name];
-    }
-  }
-  return undefined;
 }
 
 /**
@@ -205,44 +190,42 @@ async function exchange(terminal: {
 }
 
 /**
- * The answer the replies give, after every byte that is not a reply is pushed back onto the front
- * of stdin in arrival order, so keys typed ahead reach the action's own read.
+ * The answer the replies give, after every byte that is neither a reply nor an interrupt key is
+ * pushed back onto the front of stdin in arrival order, so keys typed ahead reach the action's own
+ * read. Raw mode turned each interrupt key into a byte, so once the mode is restored each one's
+ * signal is raised on the process in arrival order, as if the key had come a moment later.
  */
 async function readBackground(
   terminal: Parameters<typeof exchange>[0],
 ): Promise<Background | undefined> {
-  const { answer, typeahead } = readReplies(await exchange(terminal));
+  const { answer, signals, typeahead } = readReplies(await exchange(terminal));
   const { stdin } = terminal;
   if (typeahead !== '' && !stdin.readableEnded) {
     stdin.unshift(Buffer.from(typeahead, 'latin1'));
+  }
+  for (const signal of signals) {
+    process.kill(process.pid, signal);
   }
   return answer;
 }
 
 /**
- * The terminal's answer to the background query, or `undefined` when a skip applies: the run is
- * already cancelled, stdin is not a terminal or offers no raw mode, no destination is a terminal
- * whose color is on, the environment forbids the query, or the process is a background job of a
- * real terminal.
+ * The terminal's answer to the background query, written to stderr, or `undefined` when a skip
+ * applies: the run is already cancelled, stdin offers no raw mode, the environment forbids the
+ * query, or the process is a background job of a real terminal. Settlement asks only when stdin,
+ * stdout, and stderr are all terminals and color is on.
  */
-async function askTerminal(
-  host: Host,
-  policy: RenderingPolicy,
-  signal: AbortSignal,
-): Promise<Background | undefined> {
+async function askTerminal(host: Host, signal: AbortSignal): Promise<Background | undefined> {
   const raw = rawModeOf(host.stdin);
-  const destination = queryDestination(host, policy);
   if (
     signal.aborted ||
-    !host.terminal.stdin.isTTY ||
     raw === undefined ||
-    destination === undefined ||
     !queryAllowed(host.env, host.platform) ||
     (host.stdin instanceof ReadStream && !foregroundJob())
   ) {
     return undefined;
   }
-  return readBackground({ destination, raw, signal, stdin: host.stdin });
+  return readBackground({ destination: host.stderr, raw, signal, stdin: host.stdin });
 }
 
 export { askTerminal };
