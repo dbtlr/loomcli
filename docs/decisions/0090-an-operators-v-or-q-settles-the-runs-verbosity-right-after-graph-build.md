@@ -62,3 +62,4 @@ Proposed. It moves to accepted with the release that ships `out.debug`, `out.tra
 ## Changelog
 
 - 2026-10-19: Proposed with the debug and trace lanes, the verbose and quiet marks, the verbosity, and the verbose plugin contract.
+- 2026-10-19: [ADR-0091](0091-live-regions-stack-at-the-bottom-of-stderr-and-progress-reaches-invoke-callers-and-mcp-clients-as-typed-events.md), proposed, adds `out.region` to what the verbosity governs: at verbosity -1, core draws no live region opened without `input: true`, while a question's input region still draws. `out.draw` still draws at every verbosity, and the lanes each verbosity shows are unchanged. The debug and trace lines write above the open regions as every other stderr write does. It binds when that record is accepted.
