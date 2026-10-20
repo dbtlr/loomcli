@@ -4,7 +4,7 @@ title: ADR-0082 - An action asks through the prompts library, and one interactio
 description: A separate library, @loomcli/prompts, gives an action four question kinds, text, secret, confirm, and select, that it calls with its own context. Core computes one interaction decision per run before validation, on only when stdin and stderr are terminals and the option the application marks with interaction true has not turned it off, and both the questions and a local option's required non-interactive presence rule read it. A question may link a local option, whose raw supplied value prefills it and whose validated value answers it when the question is skipped. Core gains the supplied, interactive, and cancel members of the action context, out.draw, and missingInputError, and @loomcli/plugins gains the interaction plugin that adds --no-input.
 status: accepted
 created: 2026-10-15
-modified: 2026-10-16
+modified: 2026-10-19
 ---
 
 # ADR-0082 - An action asks through the prompts library, and one interaction decision governs questions and conditional requiredness
@@ -70,3 +70,4 @@ Accepted in 0.13.0.
 
 - 2026-10-15: Proposed with the prompts contract.
 - 2026-10-17: [ADR-0086](0086-renders-fit-the-destinations-live-columns-and-tables-shrink-to-fit.md), proposed, changes the select frame data that the prompts reference specifies under this record; no clause here changes. It binds when that record is accepted.
+- 2026-10-19: [ADR-0091](0091-live-regions-stack-at-the-bottom-of-stderr-and-progress-reaches-invoke-callers-and-mcp-clients-as-typed-events.md), proposed, narrows three clauses. A question draws in an input region that it opens with `out.region({ input: true })`, rather than through `out.draw`, and core erases and redraws it, so the library no longer erases by `out.draw`'s count; `out.draw` stays, keeps its count, and still carries the sequences that hide and show the cursor. The library, which needs no plugin for questions, gains `progress()` and an optional plugin, `progressStyle()`. And two questions asked at once take turns, because core opens one input region at a time. Every other rule here stands. It binds when that record is accepted.
