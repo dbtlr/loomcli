@@ -607,7 +607,7 @@ A Command's teaching prose, written in Markdown inline or brought in from a file
 _Avoid_: Long description, body, help text, Markdown asset
 
 **Help paging**:
-The help plugin's opt-in rule, `help({ paging: true })`, under which a help page that holds at least as many lines as the terminal has rows goes to the pager instead of straight to stdout, when stdout is a terminal and `TERM` is set and not `dumb`. Compact help and extended help page alike, a paged page holds the bytes help prints unpaged, and nothing else the application prints pages.
+The help plugin's opt-in rule, `help({ paging: true })`, under which a help page that holds at least as many lines as the terminal has rows goes to the pager instead of straight to stdout, when stdout is a terminal and `TERM` is set, not empty, and not `dumb`. Compact help and extended help page alike, a paged page holds the bytes help prints unpaged, and nothing else the application prints pages.
 _Avoid_: Pagination, paged output, more mode
 
 **Pager**:
