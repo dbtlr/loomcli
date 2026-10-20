@@ -2,7 +2,7 @@ import type { CommandGraph, CommandNode, OptionNode, WordPosition } from '@loomc
 
 import { closedSet } from '../closed-set.js';
 import type { Schema } from '../closed-set.js';
-import { terminator } from '../lines.js';
+import { singleLine } from '../lines.js';
 import { addsOccurrence, noOccurrence, oneOccurrence } from '../occurrences.js';
 
 /**
@@ -52,10 +52,12 @@ function isExact(word: string): boolean {
   );
 }
 
-/** A description as display text: its first line with every control character removed. */
+/**
+ * A description as display text: each line break read as a space, as help reads it, then every
+ * control character removed.
+ */
 function displayText(description: string | undefined): string {
-  const [first = ''] = (description ?? '').split(terminator);
-  return first.replaceAll(controls, '');
+  return singleLine(description ?? '').replaceAll(controls, '');
 }
 
 /** Whether a member is offered: hidden and deprecated members route but are never listed. */

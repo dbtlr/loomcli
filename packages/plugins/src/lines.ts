@@ -2,9 +2,10 @@ import { z } from 'zod';
 
 /**
  * The line terminators the pack recognizes, spelled once, and the text rules built on them.
- * Help's schema, help's page, the manifest, and MCP have to agree on which characters end a line,
- * so every other spelling below derives from the character class of the first. This module belongs
- * to no subpath: help, the manifest, and MCP each import it, and none imports another's.
+ * Help's schema, help's page, the manifest, MCP, man pages, completion, and the service unit have to
+ * agree on which characters end a line, so every other spelling below derives from the character
+ * class of the first. This module belongs to no subpath: each of those plugins imports it, and none
+ * imports another's.
  */
 
 /** One line terminator, wherever it appears. */
@@ -21,7 +22,7 @@ const allBreaks = new RegExp(breaks.source, 'gu');
 
 /**
  * A text with each line break turned into one space, so a description or a deprecation message an
- * author wrote across lines prints on the one line help, the manifest, and MCP give it.
+ * author wrote across lines prints on the one line every projection gives it.
  */
 function singleLine(text: string): string {
   return text.replaceAll(allBreaks, ' ');

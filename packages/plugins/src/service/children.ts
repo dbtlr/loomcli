@@ -7,6 +7,7 @@ import { digestOf, observe } from '../installation/disk.js';
 import { install, readRecorded, targetRefusals, uninstall } from '../installation/files.js';
 import type { Refusal } from '../installation/files.js';
 import type { CommittedFile } from '../installation/record.js';
+import { singleLineOf } from '../lines.js';
 import type { Backend, Service } from './backend.js';
 import { launchd } from './launchd.js';
 import { lines, refusals } from './messages.js';
@@ -159,10 +160,13 @@ function refuse(run: ChildRun, refused: readonly Refusal[]): void {
   }
 }
 
-/** The unit's text, or the refusal of a value the file cannot hold. */
+/**
+ * The unit's text, or the refusal of a value the file cannot hold. The description is read on one
+ * line first, as help reads it, so only a path or a character that form keeps is refused.
+ */
 function renderUnit(prepared: Prepared, words: readonly string[]): string {
   const { run, home } = prepared;
-  const description = run.description ?? run.name;
+  const description = singleLineOf(run.description) ?? run.name;
   const { program } = run.host;
   if ([...program, description, home].some(holdsControlCharacter)) {
     throw refusals.controlCharacter(run.name);

@@ -29,6 +29,7 @@ import {
 import type { Example } from '../help/page.js';
 import { orderedSections } from '../help/sections.js';
 import type { OrderedSection, SectionMember } from '../help/sections.js';
+import { singleLine, singleLineOf } from '../lines.js';
 import { detailsLines } from './markdown.js';
 import { findable, pageFile, pageName } from './pages.js';
 import { escapeText, inFont, request, textLine } from './roff.js';
@@ -123,7 +124,9 @@ function title({ command, graph }: Subject): string[] {
 function nameSection({ command, graph }: Subject): string[] {
   const name = escapeText(pageName(graph, command));
   const line =
-    command.description === undefined ? name : `${name} \\- ${escapeText(command.description)}`;
+    command.description === undefined
+      ? name
+      : `${name} \\- ${escapeText(singleLine(command.description))}`;
   return headed('NAME', [textLine(line)]);
 }
 
@@ -158,7 +161,7 @@ function description({ command }: Subject): string[] {
   const deprecation =
     command.deprecated === undefined
       ? []
-      : [textLine(escapeText(`Deprecated: ${command.deprecated}`))];
+      : [textLine(escapeText(`Deprecated: ${singleLine(command.deprecated)}`))];
   const source = commandHelp(command)?.details;
   const details =
     source === undefined ? [] : detailsLines(source, { preceded: !isEmpty(deprecation) });
@@ -188,8 +191,9 @@ function stdinSection({ command, graph }: Subject): string[] {
     return [];
   }
   const commandName = [graph.name, ...command.path].join(' ');
+  const summary = singleLineOf(input.description);
   return headed('INPUT', [
-    ...(input.description === undefined ? [] : [textLine(escapeText(input.description))]),
+    ...(summary === undefined ? [] : [textLine(escapeText(summary))]),
     textLine(
       escapeText(
         `${input.required ? 'Required.' : 'Optional.'} Reads piped or redirected stdin. Terminal input is not accepted.`,

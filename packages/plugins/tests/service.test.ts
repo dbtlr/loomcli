@@ -446,6 +446,19 @@ WantedBy=default.target
     expect(run(box, ['install'], { description: null }).status).toBe(0);
     expect(readFileSync(systemdPath(box), 'utf8')).toContain('\nDescription=notes\n');
   });
+
+  it.each(['\n', '\r\n'])(
+    'a description with the line break %j installs with a space in its place',
+    (lineBreak) => {
+      const box = sandbox();
+      expect(run(box, ['install'], { description: `Keep notes${lineBreak}in sync.` }).status).toBe(
+        0,
+      );
+      expect(readFileSync(systemdPath(box), 'utf8')).toContain(
+        '\nDescription=Keep notes in sync.\n',
+      );
+    },
+  );
 });
 
 describe('refusing', () => {
