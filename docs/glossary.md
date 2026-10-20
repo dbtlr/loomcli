@@ -260,6 +260,18 @@ _Avoid_: Verbosity flag (for the mark), verbose option
 The `quiet: true` fact on the one counted global option whose occurrence lowers the verbosity by one step, which hides `info` and `success`; a further occurrence adds nothing. It binds no variable and no configuration key, as the verbose mark does.
 _Avoid_: Silent flag, quiet option (for the mark)
 
+**Background**:
+The run's terminal background, `dark`, `light`, or `undefined` when no source knows it, which core settles once per run, right after the color choice and before environment preparation, from the first source that answers: the operator's background choice, the author's `rendering.background`, a background a host override states, and then, only when a theme entry is adaptive or an option carries the background mark, `undefined` when the run's color is off, dark when `TERM` is `linux`, a query to the terminal, `COLORFGBG`, and otherwise `undefined`. An adaptive style resolves against it, taking its dark side when it is `undefined`, and the host and every view context read it. An invocation by name reads `undefined`.
+_Avoid_: Theme mode, color scheme, appearance, dark mode (for the fact)
+
+**Background choice**:
+The operator's background for one run: the last occurrence of the background-marked option among argv's words before the first bare `--` whose value is `dark` or `light`, read right after host capture beside the color choice. It comes before every other source of the background.
+_Avoid_: Background flag, theme switch
+
+**Background mark**:
+The `background: true` fact on the one string global option whose value carries the operator's background choice. The marked option takes argv as its one source, so it binds no variable or configuration key and declares no default, implied value, or short alias.
+_Avoid_: Background option (for the mark), theme option
+
 **Invocation**:
 One `run()` or `invoke()` call: host capture, graph build, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status. An action's `invoke()` captures no host and builds no graph: it takes its host fields and its graph from its own run.
 _Avoid_: Execution, call, request
@@ -293,7 +305,7 @@ Handing the validated invocation to the selected Command's action.
 _Avoid_: Routing (for the handoff), execution
 
 **Host**:
-The facts of the process an invocation runs in: argument tokens, working directory, environment, the standard streams, terminal facts, and the release facts. Core copies the facts, except that it reads terminal width and height live, retains the streams, and lets a caller override fields. Core captures the other facts once per run, then installed environment hooks may add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
+The facts of the process an invocation runs in: argument tokens, working directory, environment, the standard streams, terminal facts, and the release facts. Core copies the facts, except that it reads terminal width and height live and settles the terminal's background rather than copying it, retains the streams, and lets a caller override fields. Core captures the other facts once per run, then installed environment hooks may add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Release facts**:
@@ -418,6 +430,10 @@ _Avoid_: Terminal width (for the view context member), screen width, line length
 **Token**:
 A semantic name for a theme-defined appearance, carried as markup until core resolves it for the destination. Core supplies seven names, and theme configuration introduces custom names in one Application vocabulary.
 _Avoid_: Color, style name, class
+
+**Adaptive style**:
+A theme entry, built by `style.adaptive({ dark, light })`, that holds one concrete style for each background, so core resolves its token to the side that matches the run's background each time it emits it. A plain entry looks the same on both backgrounds. An adaptive style styles no text itself.
+_Avoid_: Light palette (for the entry), dual style, theme variant
 
 **Glyph**:
 A named, unstyled mark from core's inventory with main and compatibility forms. Glyph identity is independent of theme appearance.
@@ -607,7 +623,7 @@ The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every
 _Avoid_: Format plugin, encoder (for the plugin), serializer, format (for the view), output mode
 
 **Theme**:
-The optional plugin that maps semantic tokens to concrete colors, modifiers, resets, or their combinations. A theme owns no glyphs, layout, or terminal policy, and an absent mapping inherits its surroundings.
+The optional plugin that maps semantic tokens to concrete colors, modifiers, resets, or their combinations, or to an adaptive style that holds one for each background. A theme owns no glyphs, layout, or terminal policy, and an absent mapping inherits its surroundings.
 _Avoid_: Color scheme, skin, style sheet, palette (for the plugin)
 
 **Plugin pack**:
