@@ -257,8 +257,8 @@ function converterFault(
 }
 
 /**
- * The input-side schema a declaration's validator publishes, snapshotted the way a declared
- * default is, or `null` where the graph holds no published shape: no validator, a validator with
+ * The input-side schema a declaration's validator publishes, copied into a frozen snapshot, or
+ * `null` where the graph holds no published shape: no validator, a validator with
  * no converter, or a converter that throws or returns anything but a plain object. A build that
  * checks converters reports that last case as a declaration fault first.
  */

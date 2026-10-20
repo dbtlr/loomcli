@@ -480,8 +480,8 @@ export class Output {
     const selected = binding.view ?? result.default;
     const view = result.views.get(selected);
     if (!view) {
-      // Build proved the default names a view the record holds.
-      // The boundary proved a selected name is one too, so this is core's own fault.
+      // The boundary proved a selected name is a view, but only the types tie the default to one,
+      // So an empty views record or a default no view matches fails here, as a broken view does.
       return this.renderFailed(new Error(`The view "${selected}" is not declared.`));
     }
     if (result.kind === 'rows') {
@@ -491,7 +491,7 @@ export class Output {
       });
     }
     if (typeof view.row === 'function') {
-      // The result() call rejects a row view on a value result, so reaching one here is core's own fault.
+      // Only the types reject a row view on a value result, so a JavaScript author reaches it here.
       return this.renderFailed(new Error(`The view "${selected}" renders rows, not a value.`));
     }
     return this.rendered(() => resolveView(bare, view)(erased(value), this.context('stdout')));
