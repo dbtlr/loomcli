@@ -46,6 +46,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
     globals: [
       {
         ...owned,
+        background: false,
         default: none,
         description: none,
         implied: null,
@@ -120,6 +121,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
           options: [
             {
               ...owned,
+              background: false,
               default: none,
               description: none,
               implied: null,
@@ -163,6 +165,7 @@ test('reports the version and every declared description, and the root reports t
     globals: [
       {
         ...owned,
+        background: false,
         default: none,
         description: 'The document to read.',
         implied: null,
@@ -243,6 +246,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
     globals: [
       {
         ...owned,
+        background: false,
         default: none,
         deprecated: 'Use --path instead.',
         description: none,
@@ -284,6 +288,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
           options: [
             {
               ...owned,
+              background: false,
               default: none,
               deprecated: 'Use --plain instead.',
               description: none,
@@ -425,6 +430,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
     },
     {
       ...owned,
+      background: false,
       default: none,
       description: none,
       implied: null,
@@ -457,6 +463,7 @@ test('reads each spelling role from the table, including a name that begins with
     },
     {
       ...owned,
+      background: false,
       default: none,
       description: none,
       implied: null,
@@ -478,6 +485,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
   expect(root.options).toEqual([
     {
       ...owned,
+      background: false,
       default: { value: '1' },
       description: none,
       implied: null,
@@ -493,6 +501,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
     },
     {
       ...owned,
+      background: false,
       default: { value: none },
       description: none,
       implied: null,
@@ -508,6 +517,7 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
     },
     {
       ...owned,
+      background: false,
       default: none,
       description: none,
       implied: null,
@@ -541,6 +551,7 @@ test('reports the option and the argument that validate their own omission', () 
   expect(root.options).toEqual([
     {
       ...owned,
+      background: false,
       default: none,
       description: none,
       implied: null,
@@ -556,6 +567,7 @@ test('reports the option and the argument that validate their own omission', () 
     },
     {
       ...owned,
+      background: false,
       default: none,
       description: none,
       implied: null,

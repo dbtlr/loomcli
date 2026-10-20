@@ -1,3 +1,4 @@
+import { checkBackground } from './background-mark.js';
 import { checkEnvBinding, claimVariables } from './bindings.js';
 import { captureDeclaration, elidedRead, unreadableArgument, unreadableFault } from './capture.js';
 import type { MiddlewareContext } from './chain.js';
@@ -64,9 +65,9 @@ import type { EnvironmentHook } from './prepare-environment.js';
 import { pluginLoaderFailed } from './rules.js';
 import { isProcessSignal } from './signals.js';
 import type { ProcessSignal } from './signals.js';
-import type { Palette } from './style-state.js';
 import type { ContextualStyle, ThemeConstraint, ThemeMapping } from './style.js';
 import { buildTheme } from './theme.js';
+import type { BuiltTheme } from './theme.js';
 import { readTranslations } from './translators.js';
 import type { Translation, TranslationContributor } from './translators.js';
 import type {
@@ -550,6 +551,7 @@ function checkPluginOption(
   checkInteraction(config, site, true);
   checkColor(config, site, true);
   checkVerbosity(config, site, true);
+  checkBackground(config, site, true);
   checkDescription(site, config.description);
   checkHidden(site, config.hidden);
   checkDeprecated(site, config.deprecated);
@@ -1021,7 +1023,7 @@ function readSource(
 
 /** One plugin's declarations, read once at its `plugin()` call. */
 interface BuiltPlugin {
-  theme: Palette | undefined;
+  theme: BuiltTheme | undefined;
   /** The hook core calls once per Command at graph build, or nothing where none is declared. */
   onCommandAttach: CommandAttachHook | undefined;
   /** The hook core calls once per graph build with the frozen graph, or nothing. */

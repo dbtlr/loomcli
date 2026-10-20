@@ -14,6 +14,7 @@ const action: ActionHandler<typeof get> = ({ options }) => {
   return {
     file: options.file,
     rendered: render.render(name, {
+      background: undefined,
       columns: undefined,
       expandTabs: (text) => text,
       plain: (text) => text,

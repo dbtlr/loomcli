@@ -229,6 +229,7 @@ test('a plain paragraph keeps its spaces inside one primary themed run', async (
 test('a plain paragraph line is one primary value in the marked string', () => {
   expect(
     renderDetails('One plain line.', {
+      background: undefined,
       columns: undefined,
       expandTabs: (text) => text,
       plain: (text) => text,

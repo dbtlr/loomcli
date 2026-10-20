@@ -1,3 +1,4 @@
+import { checkBackground } from './background-mark.js';
 import { checkEnvBinding, checkNoArgumentBinding } from './bindings.js';
 import { captureDeclaration, unreadableArgument } from './capture.js';
 import { checkColor } from './color.js';
@@ -933,6 +934,7 @@ export function declareOption<
   checkInteraction(input.config, site, false);
   checkColor(input.config, site, false);
   checkVerbosity(input.config, site, false);
+  checkBackground(input.config, site, false);
   const recorded = recordInput(state, input);
   checkLocalOptions(
     [...optionsOf(state.inputs), input],
@@ -2442,6 +2444,7 @@ function checkInputFacts(
       checkInteraction(input.config, site, false);
       checkColor(input.config, site, false);
       checkVerbosity(input.config, site, false);
+      checkBackground(input.config, site, false);
     }
     context.extensions.set(
       input,

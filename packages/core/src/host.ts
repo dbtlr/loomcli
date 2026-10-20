@@ -2,12 +2,13 @@ import { realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { Writable } from 'node:stream';
 
+import type { Background } from './background.js';
 import { WorkingDirectoryError } from './errors.js';
 import type { InternalError } from './errors.js';
 import { readSmallFile } from './files.js';
 import { captureRelease, isCompiled } from './release.js';
 import type { CapturedRelease } from './release.js';
-import type { Host, OutputTerminal, ReleaseFacts, RunOptions } from './types.js';
+import type { Host, HostTerminal, OutputTerminal, ReleaseFacts, RunOptions } from './types.js';
 
 // Process stream declarations assume a terminal, but pipes omit isTTY at runtime.
 function isTerminal(stream: { isTTY?: boolean }): boolean {
@@ -17,6 +18,15 @@ function isTerminal(stream: { isTTY?: boolean }): boolean {
 function dimension(value: number | undefined): number | undefined {
   return value === 0 ? undefined : value;
 }
+
+/**
+ * Each run's background, by the terminal facts it belongs to: the background an override stated,
+ * if any, and the settled one, written once at settlement.
+ */
+const settlements = new WeakMap<
+  HostTerminal,
+  { readonly stated: Background | undefined; value: Background | undefined }
+>();
 
 /** An output terminal whose width and height are read each time, and whose kind is fixed. */
 function outputTerminal(
@@ -243,19 +253,56 @@ export function captureHost(
       stderr,
       stdin: stdin ?? process.stdin,
       stdout: stdout ?? process.stdout,
-      terminal: terminal
-        ? {
-            stderr: suppliedTerminal(terminal.stderr),
-            stdin: { isTTY: terminal.stdin.isTTY },
-            stdout: suppliedTerminal(terminal.stdout),
-          }
-        : {
-            stderr: streamTerminal(process.stderr),
-            stdin: { isTTY: isTerminal(process.stdin) },
-            stdout: streamTerminal(process.stdout),
-          },
+      terminal: settlingTerminal(
+        terminal
+          ? {
+              background: terminal.background,
+              stderr: suppliedTerminal(terminal.stderr),
+              stdin: { isTTY: terminal.stdin.isTTY },
+              stdout: suppliedTerminal(terminal.stdout),
+            }
+          : {
+              stderr: streamTerminal(process.stderr),
+              stdin: { isTTY: isTerminal(process.stdin) },
+              stdout: streamTerminal(process.stdout),
+            },
+      ),
       timeZone: captureTimeZone(timeZone),
     },
     captured,
   );
+}
+
+/**
+ * A run's terminal facts around the streams' own, whose `background` reads `undefined` until
+ * `settleTerminal` writes the run's settled background, and reads that value from then on. A
+ * `background` the streams' facts state is kept apart, as the source `statedBackground` reads.
+ */
+export function settlingTerminal(
+  streams: Omit<HostTerminal, 'background'> & { readonly background?: Background | undefined },
+): HostTerminal {
+  const cell = { stated: streams.background, value: undefined };
+  const terminal: HostTerminal = {
+    get background() {
+      return cell.value;
+    },
+    stderr: streams.stderr,
+    stdin: streams.stdin,
+    stdout: streams.stdout,
+  };
+  settlements.set(terminal, cell);
+  return terminal;
+}
+
+/** The background a run's host override stated, a source of its settled background. */
+export function statedBackground(terminal: HostTerminal): Background | undefined {
+  return settlements.get(terminal)?.stated;
+}
+
+/** Writes a run's settled background, which its terminal facts read from then on. */
+export function settleTerminal(terminal: HostTerminal, background: Background | undefined): void {
+  const cell = settlements.get(terminal);
+  if (cell !== undefined) {
+    cell.value = background;
+  }
 }

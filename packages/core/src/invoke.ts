@@ -8,6 +8,7 @@ import {
   captureTimeZone,
   captureWorkingDirectory,
   readSourceFile,
+  settlingTerminal,
 } from './host.js';
 import type { CapturedFacts, HostCapture } from './host.js';
 import type { NamedCall } from './lower.js';
@@ -317,12 +318,16 @@ function captureSink(): { stream: Writable; text: () => string } {
   return { stream, text: () => Buffer.concat(chunks).toString('utf8') };
 }
 
-/** Every terminal fact of an invocation by name: not a TTY, with no width or height. */
-const noTerminal = (): Host['terminal'] => ({
-  stderr: { columns: undefined, isTTY: false, rows: undefined },
-  stdin: { isTTY: false },
-  stdout: { columns: undefined, isTTY: false, rows: undefined },
-});
+/**
+ * Every terminal fact of an invocation by name: not a TTY, with no width or height, and a
+ * background that never settles.
+ */
+const noTerminal = (): Host['terminal'] =>
+  settlingTerminal({
+    stderr: { columns: undefined, isTTY: false, rows: undefined },
+    stdin: { isTTY: false },
+    stdout: { columns: undefined, isTTY: false, rows: undefined },
+  });
 
 /**
  * The host an invocation by name runs on: the five fields it reads, capture sinks for stdout and

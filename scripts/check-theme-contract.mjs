@@ -16,7 +16,7 @@ const project = mkdtempSync(join(tmpdir(), 'loom-theme-contract-'));
 const coreNames = ['dim', 'primary', 'highlight', 'success', 'warning', 'error', 'info'];
 const text = `import { loomTheme } from '@loomcli/plugins/theme';
 import type { LoomThemeOverrides } from '@loomcli/plugins/theme';
-import type { ConcreteStyle, Plugin } from '@loomcli/core';
+import type { AdaptiveStyle, ConcreteStyle, Plugin } from '@loomcli/core';
 import { Application, style } from '@loomcli/core';
 import type { EnvironmentOf, View } from '@loomcli/core';
 
@@ -27,6 +27,10 @@ const empty = loomTheme({});
 const custom = loomTheme({ identifier: style.cyan, absent: undefined, highlight: undefined });
 const authored = { identifier: style.cyan, absent: undefined } satisfies LoomThemeOverrides;
 const authoredTheme = loomTheme(authored);
+const adaptiveTheme = loomTheme({
+  highlight: style.adaptive({ dark: style.yellow, light: style.red }),
+  identifier: style.adaptive({ dark: style.cyan, light: style.blue }),
+});
 const app = new Application('theme-contract', { plugins: [custom] });
 declare module '@loomcli/core' {
   interface Register { environment: EnvironmentOf<typeof app> }
@@ -49,7 +53,9 @@ type AuthoredKeys = Assert<Equal<keyof MappingOf<typeof authoredTheme>, CoreName
 type DefaultKeys = Assert<Equal<keyof MappingOf<typeof defaults>, CoreNames>>;
 type EmptyKeys = Assert<Equal<keyof MappingOf<typeof empty>, CoreNames>>;
 type CustomKeys = Assert<Equal<keyof MappingOf<typeof custom>, CoreNames | 'identifier' | 'absent'>>;
-type DefaultValue = Assert<Equal<MappingOf<typeof custom>['highlight'], ConcreteStyle>>;
+type DefaultValue = Assert<Equal<MappingOf<typeof custom>['highlight'], AdaptiveStyle>>;
+type PrimaryValue = Assert<Equal<MappingOf<typeof custom>['primary'], ConcreteStyle>>;
+type AdaptiveKeys = Assert<Equal<keyof MappingOf<typeof adaptiveTheme>, CoreNames | 'identifier'>>;
 type UndefinedCustomValue = Assert<Equal<MappingOf<typeof custom>['absent'], undefined>>;
 
 // @ts-expect-error Core mappings require concrete styles.

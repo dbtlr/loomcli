@@ -82,11 +82,13 @@ interface StringOptionNode {
   readonly env: readonly string[];
   readonly default: { readonly value: unknown } | undefined;
   readonly implied: string | null;
+  /** Whether the option carries the background mark, whose value the run reads as its background choice. */
+  readonly background: boolean;
   readonly extensions: Readonly<Record<string, unknown>>;
 }
 type OptionNode =
   | StringOptionNode
-  | (Omit<StringOptionNode, 'type'> & {
+  | (Omit<StringOptionNode, 'type' | 'background'> & {
       readonly type: 'content';
       readonly stdin: boolean;
       readonly min: number | undefined;
@@ -351,7 +353,7 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
             stdin: config.stdin === true,
             type: 'content',
           })
-        : Object.freeze({ ...value, type: 'string' });
+        : Object.freeze({ ...value, background: config.background === true, type: 'string' });
     }
     case 'boolean': {
       return Object.freeze({

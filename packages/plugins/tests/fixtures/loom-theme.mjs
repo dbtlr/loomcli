@@ -66,6 +66,7 @@ await app.run({
       stderr: { isTTY: false },
       stdin: { isTTY: false },
       stdout: { isTTY: input.tty ?? false },
+      ...(input.background === undefined ? {} : { background: input.background }),
     },
   },
   rendering: input.rendering,

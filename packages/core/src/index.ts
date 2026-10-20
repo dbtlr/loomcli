@@ -57,6 +57,7 @@ export { encodeFailure } from './encoders.js';
 export { glyph } from './glyphs.generated.js';
 export type { RenderingPolicy } from './rendering.js';
 export type { ViewContext } from './types.js';
+export type { Background } from './background.js';
 export { nowrap, pad, style } from './style.js';
 export { splitLines } from './style-lines.js';
 export { reportedSpelling } from './inspect.js';
@@ -129,6 +130,8 @@ export type {
   ExitCode,
   GraphBuiltHook,
   Host,
+  HostOverrides,
+  HostTerminal,
   InputIdentity,
   InputTerminal,
   InvocationOutcome,
@@ -168,6 +171,7 @@ export type {
 } from './environment.js';
 
 export type {
+  AdaptiveStyle,
   Ansi16Color,
   Ansi256Fallbacks,
   ColorFallbacks,

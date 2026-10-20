@@ -1,3 +1,4 @@
+import { background, checkBackground } from './background-mark.js';
 import { checkEnvBinding, claimVariables, envNames } from './bindings.js';
 import type { BoundOption } from './bindings.js';
 import { checkColor, color } from './color.js';
@@ -18,6 +19,7 @@ import type { FactSite, InputSite } from './facts.js';
 import { globalPresenceRule, optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import { checkInteraction, interaction } from './interaction.js';
 import { checkOneMark, isMarked } from './marks.js';
+import type { Mark } from './marks.js';
 import { checkOptionName, compileOptions, spellingMark, tableEntries } from './options.js';
 import type { CompileScope, OptionSpelling, SpellingOrigin, SpellingTable } from './options.js';
 import { snapshot } from './plain.js';
@@ -256,6 +258,7 @@ function declareGlobalOption<Name extends string, Config extends OptionConfig>(
   checkInteraction(input.config, site, true);
   checkColor(input.config, site, true);
   checkVerbosity(input.config, site, true);
+  checkBackground(input.config, site, true);
   checkDescription(site, input.config.description);
   checkHidden(site, input.config.hidden);
   checkDeprecated(site, input.config.deprecated);
@@ -297,7 +300,7 @@ function globalTable(inputs: readonly OptionInput[], plugins: readonly BuiltPlug
     });
   });
   const all = [...inputs, ...plugins.flatMap((entry) => entry.inputs)];
-  for (const mark of [interaction, color, verbose, quiet]) {
+  for (const mark of [interaction, color, verbose, quiet, background]) {
     checkOneMark(
       all
         .filter((input) => isMarked(input.config, mark))
@@ -471,16 +474,18 @@ function join(
 }
 
 /**
- * The long spellings of the Application's color-marked option, each with the value it supplies,
- * from the globals table every earlier call already proved, or `undefined` when no option carries
- * the mark. A short alias never reaches the color choice, because the marked option declares none.
+ * The long spellings of the Application's option that carries `mark`, the color mark or the
+ * background mark, each with the value it supplies, from the globals table every earlier call
+ * already proved, or `undefined` when no option carries the mark. A short alias never reaches the
+ * read of argv, because a marked option declares none.
  */
-function colorSpellings(
+function markedSpellings(
   inputs: readonly OptionInput[],
   plugins: readonly BuiltPlugin[],
+  mark: Mark,
 ): ReadonlyMap<string, OptionSpelling> | undefined {
   const marked = [...inputs, ...plugins.flatMap((installed) => installed.inputs)].find((input) =>
-    isMarked(input.config, color),
+    isMarked(input.config, mark),
   );
   if (marked === undefined) {
     return undefined;
@@ -497,12 +502,12 @@ export {
   buildGlobals,
   checkLocalOptions,
   checkNoPresenceRule,
-  colorSpellings,
   declareGlobalOption,
   emptyGlobals,
   frozenValues,
   globalSite,
   globalTable,
+  markedSpellings,
   optionValues,
   pluginSites,
 };

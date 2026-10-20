@@ -613,6 +613,14 @@ try {
     const unchosen = run(runtimes.get(name), [coloring], temporary);
     assert.equal(unchosen.output, 'red\n', `${name}: packed run without a choice`);
   }
+  // The packed background plugin's --background settles the run's background, and none leaves it unknown.
+  const shading = join(temporary, 'dist/background.js');
+  for (const name of selected) {
+    const chosen = run(runtimes.get(name), [shading, '--background=light'], temporary);
+    assert.equal(chosen.output, 'light\n', `${name}: packed --background=light`);
+    const unchosen = run(runtimes.get(name), [shading], temporary);
+    assert.equal(unchosen.output, 'undefined\n', `${name}: packed run without a background`);
+  }
   // The packed verbose plugin's -vv reveals the debug and trace lines, and -q hides info.
   const verbosity = join(temporary, 'dist/verbose.js');
   for (const name of selected) {
@@ -858,7 +866,7 @@ try {
     assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, @loomcli/prompts, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the five tarballs with publint and the declarations of core, plugins, validators, and prompts with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, a supplied linked prompt, declared option groups with structured failures, dotenv values in argv and named runs, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a color choice, a verbosity, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, @loomcli/prompts, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the five tarballs with publint and the declarations of core, plugins, validators, and prompts with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, a supplied linked prompt, declared option groups with structured failures, dotenv values in argv and named runs, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a color choice, a background choice, a verbosity, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

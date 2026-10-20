@@ -84,7 +84,31 @@ type EnvironmentStyle<Environment extends ApplicationEnvironment<unknown, readon
   Style<CoreToken | ThemeNames<Environment['plugins'][number]>>;
 type ContextualStyle = EnvironmentStyle<RegisteredEnvironment>;
 type ConcreteStyle = Style;
-type ThemeMapping = Readonly<Record<string, ConcreteStyle | undefined>>;
+
+/** The brand an adaptive style carries, which no export names, so only `style.adaptive` makes one. */
+const adaptiveStyle: unique symbol = Symbol('adaptiveStyle');
+
+/**
+ * A theme entry that holds one concrete style for each background. Core resolves it to the side
+ * that matches the run's background when it emits the token. It styles no text and chains no
+ * further, so it belongs in a theme mapping alone.
+ */
+interface AdaptiveStyle {
+  readonly [adaptiveStyle]: true;
+}
+
+/** The two sides `style.adaptive` takes: an unapplied concrete chain for each background. */
+interface AdaptiveSides {
+  readonly dark: ConcreteStyle;
+  readonly light: ConcreteStyle;
+}
+
+/** The exported style: the root chain, which alone carries `adaptive`. */
+type RootStyle = Style & {
+  readonly adaptive: (sides: AdaptiveSides) => AdaptiveStyle;
+};
+
+type ThemeMapping = Readonly<Record<string, ConcreteStyle | AdaptiveStyle | undefined>>;
 type ThemeConstraint<Mapping> = {
   readonly [Key in keyof Mapping]: Key extends
     | Exclude<keyof Style, CoreToken>
@@ -98,6 +122,12 @@ const headerEnd = '\uE001';
 const close = '\uE002';
 const escape = '\uE003';
 const chains = new WeakMap<object, readonly Operation[]>();
+
+/** The operations of each side of every adaptive style `style.adaptive` made, by its value. */
+const adaptives = new WeakMap<
+  object,
+  { readonly dark: readonly Operation[]; readonly light: readonly Operation[] }
+>();
 
 const reservedCallableNames = [
   'apply',
@@ -225,11 +255,57 @@ function hexColor(value: string, fallbacks?: ColorFallbacks): Color {
   ]);
 }
 
-/** Properties are generated from the same catalogs the wire parser validates. */
-function createStyle(names: ReadonlySet<string> = new Set(tokens)): ContextualStyle {
-  function chain(operations: readonly Operation[]): ContextualStyle {
+/**
+ * The operations of one unapplied concrete chain without semantic tokens, or `undefined` for any
+ * other value. A theme entry and each side of an adaptive style follow this one rule.
+ */
+function concreteOperations(value: unknown): readonly Operation[] | undefined {
+  const operations = typeof value === 'function' ? chains.get(value) : undefined;
+  return operations?.some((entry) => entry[0] === 'token') === false ? operations : undefined;
+}
+
+/** The one fault `style.adaptive` throws for every argument it rejects. */
+function adaptiveFault(): TypeError {
+  return new TypeError(
+    'Adaptive styles take an unapplied concrete style chain for dark and for light.',
+  );
+}
+
+/**
+ * An adaptive style over two unapplied concrete chains, checked when it is called. It keeps each
+ * side's operations, so a later change to the object passed changes nothing.
+ */
+function adaptive(sides: AdaptiveSides): AdaptiveStyle {
+  if (
+    !isPlainObject(sides) ||
+    Reflect.ownKeys(sides).some((key) => key !== 'dark' && key !== 'light')
+  ) {
+    throw adaptiveFault();
+  }
+  const dark = concreteOperations(sides.dark);
+  const light = concreteOperations(sides.light);
+  if (dark === undefined || light === undefined) {
+    throw adaptiveFault();
+  }
+  const value = Object.freeze({ [adaptiveStyle]: true as const });
+  adaptives.set(value, { dark, light });
+  return value;
+}
+
+/**
+ * A root chain whose properties are generated from the same catalogs the wire parser validates.
+ * `root` holds members of the root alone, which no chain built from it carries.
+ */
+function styleRoot<Root extends object>(
+  names: ReadonlySet<string>,
+  root: Root,
+): ContextualStyle & Root {
+  function chain<Members extends object>(
+    operations: readonly Operation[],
+    members: Members,
+  ): ContextualStyle & Members {
     const callable = (text: string) => frame(['style', operations], textOnly(text));
-    const next = (operation: Operation) => chain([...operations, operation]);
+    const next = (operation: Operation) => chain([...operations, operation], {});
     const helpers = {
       ansi256: (index: number, fallbacks?: Ansi256Fallbacks) =>
         next(['foreground', indexedColor(index, fallbacks)]),
@@ -263,6 +339,9 @@ function createStyle(names: ReadonlySet<string> = new Set(tokens)): ContextualSt
     for (const name of names) {
       properties.set(name, () => next(['token', name]));
     }
+    for (const [name, member] of Object.entries(members)) {
+      properties.set(name, () => member);
+    }
     const value = new Proxy(callable, {
       get: (target, property, receiver) =>
         typeof property === 'string' && properties.has(property)
@@ -272,11 +351,17 @@ function createStyle(names: ReadonlySet<string> = new Set(tokens)): ContextualSt
     chains.set(value, operations);
     Object.freeze(value);
     // Last resort: no typed path exists from runtime-generated callable properties to mapped keys.
-    // It holds because the catalogs above supply every declared helper and token; chains retain operations for validation.
+    // It holds because the catalogs above supply every declared helper and token, and members supplies its own keys.
+    // Chains retain operations for validation.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return value as ContextualStyle;
+    return value as ContextualStyle & Members;
   }
-  return chain([]);
+  return chain([], root);
+}
+
+/** A root chain over `names`, the tokens its chains carry, with no member of the root alone. */
+function createStyle(names: ReadonlySet<string> = new Set(tokens)): ContextualStyle {
+  return styleRoot(names, {});
 }
 
 function isColorName(value: unknown): value is ColorName {
@@ -303,9 +388,12 @@ function nowrap(text: string): string {
   return frame(['nowrap'], textOnly(text));
 }
 
-const style: Style = createStyle();
+/** The exported style, whose root alone carries `adaptive`, so a theme may name a token `adaptive`. */
+const style: RootStyle = styleRoot(new Set(tokens), { adaptive });
 
 export type {
+  AdaptiveSides,
+  AdaptiveStyle,
   Ansi16Color,
   Ansi256Fallbacks,
   ColorFallbacks,
@@ -321,7 +409,9 @@ export type {
   ThemeMapping,
 };
 export {
+  adaptives,
   colorFallbacks,
+  concreteOperations,
   chains,
   close,
   colors,

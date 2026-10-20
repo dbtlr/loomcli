@@ -74,7 +74,8 @@
       "schema": null,
       "env": [],
       "default": null,
-      "implied": null
+      "implied": null,
+      "background": false
     },
     {
       "type": "boolean",
@@ -167,7 +168,8 @@
         "default": {
           "value": "bytes"
         },
-        "implied": null
+        "implied": null,
+        "background": false
       },
       {
         "type": "string",
@@ -191,7 +193,8 @@
         "default": {
           "value": "0"
         },
-        "implied": null
+        "implied": null,
+        "background": false
       },
       {
         "type": "boolean",
@@ -232,7 +235,8 @@
         },
         "env": [],
         "default": null,
-        "implied": null
+        "implied": null,
+        "background": false
       }
     ],
     "children": []
