@@ -4,7 +4,7 @@ title: ADR-0053 - A declared default nests at most ten levels
 description: No path through a declared default may hold more than 10 arrays and plain objects, counted from the default itself, and a default that holds itself nests without end. The declaring call checks it while it takes its one copy and raises @loomcli/core/default-depth for a deeper default. The cap is an internal constant, so raising it later relaxes a rule and breaks no application.
 status: accepted
 created: 2026-10-02
-modified: 2026-10-03
+modified: 2026-10-20
 ---
 
 # ADR-0053 - A declared default nests at most ten levels
@@ -49,3 +49,4 @@ Accepted.
 - 2026-10-02: Proposed with the implementation. A declaring call takes its copy of the default through a walk that records how deep each filled container reaches and stops at the cap, and `plugin()` raises the same rule for an option it declares.
 - 2026-10-02: Review found that ending a path at a cycle let a cyclic default hide a path of any length. A default that holds itself now nests without end. The walk also answers an object it already reached with that first answer, so a proxy a default holds twice is judged once.
 - 2026-10-03: The implementation shipped in 0.7.0, published from `42b5222`. Accepted.
+- 2026-10-20: [ADR-0094](0094-core-sets-no-structural-limit-and-a-projection-reports-its-own-limits.md), proposed, supersedes this record when it is accepted. Core caps no declared default: `@loomcli/core/default-depth` goes, and a default that holds itself, or nests deeply enough to overflow a reader, fails with the platform's own error. This record binds as written until then, and its status moves to superseded when that record is accepted.

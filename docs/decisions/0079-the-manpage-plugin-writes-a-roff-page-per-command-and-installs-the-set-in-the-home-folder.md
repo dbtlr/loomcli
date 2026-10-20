@@ -4,7 +4,7 @@ title: ADR-0079 - The manpage plugin writes a roff page per Command and installs
 description: The manpage plugin contributes manpage generate, install, update, and uninstall. It writes one section-1 roff page for the root and each Command that is neither hidden nor under a hidden Command, named like git's pages, from the graph and the help and configuration values each Command carries, with no date and no host fact, so a graph gives the same bytes everywhere. Details render from help's Markdown parser in roff's own way, filled by man. generate writes the set to a folder for a packager and records nothing; install writes it to ~/.local/share/man/man1, which man finds when ~/.local/bin is on PATH, through the installation record under ADR-0071 as written, and advises on MANPATH when man will not find it. refreshManpages refreshes after a self-update.
 status: accepted
 created: 2026-10-13
-modified: 2026-10-14
+modified: 2026-10-20
 ---
 
 # ADR-0079 - The manpage plugin writes a roff page per Command and installs the set in the home folder
@@ -58,3 +58,4 @@ Accepted in 0.12.0.
 ## Changelog
 
 - 2026-10-13: Proposed with the man pages contract.
+- 2026-10-20: [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md), proposed, ends the declaration fault for two page names equal without ASCII case, which the plugin's `onGraphBuilt` hook throws, as a probe-only rule. A page name equal to another's exactly is not affected. It binds when that record is accepted.
