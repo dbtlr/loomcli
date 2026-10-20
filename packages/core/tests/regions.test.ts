@@ -242,12 +242,35 @@ test('with stdout a terminal too, unawaited print, info, and print calls land ab
   ]);
 });
 
-test('with stdout a terminal too, a print and an info line issued behind an unawaited row sequence land after its rows', async () => {
+test('with stdout a terminal too, a print issued behind an unawaited row sequence lands after its rows, and an info line issued then is not held behind them', async () => {
   await expect(screen(regions('orderedRows', 'both'), 'written')).resolves.toEqual([
+    'ℹ noted',
     'row one',
     'row two',
     'after rows',
-    'ℹ noted',
+    'frame',
+  ]);
+});
+
+test('with stdout a terminal too, a row source that awaits an info line ends its run while a print waits behind its rows', async () => {
+  const run = regions('reported', 'both');
+  expect(run.code).toBe(0);
+  await expect(screen(run, 'written')).resolves.toEqual([
+    'row one',
+    'ℹ fetching page two',
+    'row two',
+    'after rows',
+  ]);
+});
+
+test('with stdout a terminal too, a row source that awaits an info line above an open region ends its run while a print waits behind its rows', async () => {
+  const run = regions('reportedRegion', 'both');
+  expect(run.code).toBe(0);
+  await expect(screen(run, 'written')).resolves.toEqual([
+    'row one',
+    'ℹ fetching page two',
+    'row two',
+    'after rows',
     'frame',
   ]);
 });

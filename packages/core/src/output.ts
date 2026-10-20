@@ -101,10 +101,15 @@ class Destination {
   tail: Promise<void> = Promise.resolve();
   state: WriteState = { kind: 'ok' };
   passage: Passage | undefined = undefined;
-  /** The destination whose order this one's text writes join when they are issued, if any. */
-  order: Destination | undefined = undefined;
+  /**
+   * The destination whose order this one's text writes may join, if any, and whether a write issued
+   * now joins it.
+   */
+  order: { shared: Destination; joins: () => boolean } | undefined = undefined;
   /** The turn this destination's sends take with the other destination on the same terminal. */
   turn: Turn | undefined = undefined;
+  /** How many sequences hold a place in this destination's order and have not closed. */
+  #sequences = 0;
 
   constructor(readonly stream: Writable) {
     stream.on('error', this.onError);
@@ -121,7 +126,7 @@ class Destination {
    * destination's order, behind that one's too, which then waits for it in turn.
    */
   write(text: string): Promise<void> {
-    const { order } = this;
+    const order = this.joined();
     const previous = order === undefined ? this.tail : Promise.all([this.tail, order.tail]);
     const pending = previous.then(() => this.accept(text));
     // Keep the returned rejection observable, while accounting for calls without await.
@@ -130,6 +135,20 @@ class Destination {
       order.tail = this.tail;
     }
     return pending;
+  }
+
+  /**
+   * The other destination's order a text write issued now joins, if any. It joins none while a
+   * sequence holds a place in this destination's order. A write queued behind that place would
+   * otherwise hold the other stream behind the sequence too, and a sequence whose source awaits a
+   * write to the other stream would wait on itself.
+   */
+  private joined(): Destination | undefined {
+    const { order } = this;
+    if (order === undefined || this.#sequences > 0) {
+      return undefined;
+    }
+    return order.joins() ? order.shared : undefined;
   }
 
   /** One text queued behind whatever preceded it, on a destination that has not failed. */
@@ -195,10 +214,13 @@ class Destination {
       open = resolve;
     });
     this.tail = previous.then(() => gate);
+    this.#sequences += 1;
     // The sequence's own pieces queue on each other, ahead of the gate that holds its place.
     let pieces = previous;
     return {
+      // The sequence closes once, when it ends however it ends.
       close: () => {
+        this.#sequences -= 1;
         open(pieces);
       },
       write: (text) => {
@@ -540,10 +562,13 @@ export class Output {
 
   /**
    * At a terminal stderr, every text write erases the live regions before it and draws them after
-   * it. When stdout is a terminal too, a stdout write joins stderr's order when it is issued, so the
-   * two streams keep one call order, and it erases and redraws the regions as a stderr write does
-   * while one is open. The two streams take turns to send, so a row a sequence writes to stdout
-   * reaches the screen whole between stderr's writes. With no region open, a stdout write still moves
+   * it. When stdout is a terminal too, a stdout write issued while a region is open joins stderr's
+   * order, so the two streams keep one call order, and it erases and redraws the regions as a stderr
+   * write does. A stdout write issued while a sequence holds a place in stdout's order keeps
+   * stdout's order alone, so a stderr write, one the sequence's source makes included, never waits
+   * behind the sequence.
+   * The two streams take turns to send, so a row a sequence writes to stdout reaches the screen whole
+   * between stderr's writes. With no region open, a stdout write keeps its own order and still moves
    * the row the next stack starts on, because both streams show on one screen.
    */
   private coordinate(): void {
@@ -563,7 +588,7 @@ export class Output {
     const turn = new Turn();
     errors.turn = turn;
     output.turn = turn;
-    output.order = errors;
+    output.order = { joins: () => this.screen.holding, shared: errors };
     output.passage = async (text, send) => {
       if (!this.screen.holding) {
         this.screen.note(text);

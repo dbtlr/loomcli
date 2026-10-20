@@ -89,6 +89,21 @@ async function* streamed() {
   yield 'row two';
 }
 
+/** Two rows with an info line the source awaits between them. */
+async function* reporting(out) {
+  yield 'row one';
+  await out.info('fetching page two');
+  yield 'row two';
+}
+
+/** A row sequence whose source reports between rows, and a print issued behind it, both unawaited. */
+async function reported(out) {
+  const rows = out.render(reporting(out), { row: (row) => `${row}\n` });
+  const after = out.print('after rows');
+  await Promise.all([rows, after]);
+  mark('written');
+}
+
 /** A plugin whose onLog hook writes each record to its destination's stderr. */
 const hook = plugin('@fixture/hook', {
   onLog: (event, destination) => {
@@ -402,6 +417,19 @@ const scenarios = {
         rows = await out.draw(`frame ${String(step)} top\nframe ${String(step)} bottom`, text);
       }
       mark('redrawn');
+    },
+  },
+  /** A row source that awaits an info line between rows, with a print issued behind its sequence. */
+  reported: {
+    action: async ({ out }) => {
+      await reported(out);
+    },
+  },
+  /** The reported scenario while a region is drawn. */
+  reportedRegion: {
+    action: async ({ out }) => {
+      await out.region().draw('frame', text);
+      await reported(out);
     },
   },
   /** A two-row frame drawn at 80 columns, the terminal narrowed to 40, and a redraw. */
