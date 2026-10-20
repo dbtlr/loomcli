@@ -93,14 +93,31 @@ function queryDestination(host: Host, policy: RenderingPolicy): Writable | undef
 }
 
 /**
- * One chunk a stream's `read()` returned, as one latin1 character per byte: a Buffer's bytes, or a
- * decoded string's UTF-8 bytes. Anything else, which only an object-mode stream returns, adds nothing.
+ * One chunk a stream emitted, as one latin1 character per byte: a Buffer's bytes, or a decoded
+ * string's UTF-8 bytes. Anything else, which only an object-mode stream emits, adds nothing.
  */
 function bytesOf(chunk: unknown): string {
   if (Buffer.isBuffer(chunk)) {
     return chunk.toString('latin1');
   }
   return typeof chunk === 'string' ? Buffer.from(chunk).toString('latin1') : '';
+}
+
+/**
+ * Stops a stream the wait set flowing and returns it to the flowing state found. `pause()` from the
+ * flowing state emits `pause`, and only that event makes Node's and Bun's own stdin listener stop a
+ * terminal's handle reading, so stdin keeps no run alive. `pause()` leaves the state `false`, where
+ * a later `data` listener never starts the stream, so the state found is set back through the
+ * `readableFlowing` setter that both runtimes' `Readable` defines, and a stream found flowing
+ * resumes.
+ */
+function stopFlowing(stdin: Readable, found: boolean | null): void {
+  stdin.pause();
+  if (found === true) {
+    stdin.resume();
+  } else {
+    Reflect.set(stdin, 'readableFlowing', found);
+  }
 }
 
 /** A function that does nothing, which a wait's stop holds until the wait begins. */
@@ -115,12 +132,9 @@ interface ReplyWait {
 
 /**
  * Calls `ask` once stdin is read, then reads it until the DA1 reply, the deadline, an abort of
- * `signal`, or the end of stdin. It reads through a `readable` listener rather than a `data`
- * listener, because `resume()` and `pause()` would leave the stream's flowing state `false`, and a
- * stream in that state never starts flowing for a later `data` listener of the action's. The
- * deadline is one unreferenced timer, so it never keeps the process alive. `stop` clears it,
- * pauses stdin, which stops a terminal's handle reading, and removes every listener the wait added,
- * so the stream returns to the flowing state it was found in.
+ * `signal`, or the end of stdin. The deadline is one unreferenced timer, so it never keeps the
+ * process alive. `stop` clears it, removes every listener the wait added, and stops stdin flowing,
+ * so a terminal's handle stops reading and the stream returns to the flowing state it was found in.
  */
 function waitForReplies(stdin: Readable, signal: AbortSignal, ask: () => void): ReplyWait {
   let received = '';
@@ -131,23 +145,23 @@ function waitForReplies(stdin: Readable, signal: AbortSignal, ask: () => void): 
     };
     const timer = setTimeout(end, deadline);
     timer.unref();
-    const readable = () => {
-      for (let chunk: unknown = stdin.read(); chunk !== null; chunk = stdin.read()) {
-        received += bytesOf(chunk);
-      }
+    const data = (chunk: unknown) => {
+      received += bytesOf(chunk);
       if (readReplies(received).ended) {
         clearTimeout(timer);
         end();
       }
     };
+    const found = stdin.readableFlowing;
     stop = () => {
       clearTimeout(timer);
       signal.removeEventListener('abort', end);
-      stdin.pause();
-      stdin.off('readable', readable).off('end', end).off('close', end).off('error', end);
+      stdin.off('data', data).off('end', end).off('close', end).off('error', end);
+      stopFlowing(stdin, found);
     };
     signal.addEventListener('abort', end, { once: true });
-    stdin.on('readable', readable).once('end', end).once('close', end).once('error', end);
+    stdin.on('data', data).once('end', end).once('close', end).once('error', end);
+    stdin.resume();
     // A run already cancelled never reaches the wait, so only a later abort ends it.
     ask();
   });

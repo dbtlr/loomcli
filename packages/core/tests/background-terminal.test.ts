@@ -76,6 +76,24 @@ test.skipIf(zsh === undefined)(
 );
 
 test.skipIf(zsh === undefined)(
+  'a run whose action never reads stdin exits once the terminal answers, with no key pressed',
+  () => {
+    const transcript = session([
+      'expect %',
+      String.raw`send SHADE_STDIN=untouched <fixture>\n`,
+      'expect 996n',
+      String.raw`send \0033]11;rgb:ffff/ffff/ffff\0007\0033[?62c`,
+      'expect background=light',
+      // The shell's next prompt arrives before any key is sent, so the run ended on its own.
+      'expect %',
+      ...status,
+    ]);
+    expect(transcript).not.toContain('@@TIMEOUT@@');
+    expect(transcript).toContain('status=0 done-42');
+  },
+);
+
+test.skipIf(zsh === undefined)(
   'a run in a backgrounded job neither stops nor hangs, and writes no query',
   () => {
     const transcript = session([
