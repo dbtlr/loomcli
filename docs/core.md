@@ -3291,6 +3291,7 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
   onGraphBuilt?: GraphBuiltHook; // new: see Judging the built graph
   onFailure?: FailureHook;
   onLog?: LogHook; // new: see Observing log events
+  onEnvironment?: EnvironmentHook; // new: see Environment preparation
   extensions?: readonly AnyExtension[];
   views?: readonly ViewContribution[];
   translators?: readonly Translation[];
@@ -3509,6 +3510,7 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly next: () => Promise<ChainOutcome>;
 }
 interface Request {
+  readonly stdin?: Content | undefined;
   readonly args: Readonly<Record<string, unknown>>;
   readonly options: Readonly<Record<string, unknown>>;
   readonly passthrough: readonly string[];
