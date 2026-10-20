@@ -60,3 +60,4 @@ Proposed. It moves to accepted with the release that ships the color mark, the c
 ## Changelog
 
 - 2026-10-19: Proposed with the color mark, color choice, and color plugin contract.
+- 2026-10-19: [ADR-0090](0090-an-operators-v-or-q-settles-the-runs-verbosity-right-after-graph-build.md), proposed, reads a second run-wide setting from argv at another point: the run's verbosity settles right after graph build, with the parser's own word reader, because the common standard's `-v`, `-vv`, and `-vq` need short groups and an `onCommandAttach` hook can declare a local short option that only the built graph knows. The color choice keeps its read right after host capture and its ban on a short alias, because color governs the bytes graph build itself prints, while no lane writes before graph build ends. No clause of this record changes.

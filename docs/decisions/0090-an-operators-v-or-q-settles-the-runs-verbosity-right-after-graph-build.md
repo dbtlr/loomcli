@@ -1,0 +1,64 @@
+---
+type: adr
+title: ADR-0090 - An operator's -v or -q settles the run's verbosity right after graph build
+description: Out gains debug and trace beside info, warn, and error, and core settles each run's verbosity once, right after graph build and before environment preparation, by reading host.argv with the parser's own word reader against the built graph. The verbosity is the occurrences of the one verbose-marked counted global option, read as 2 above 2, less those of the one quiet-marked option, read as 1 above 1. Verbosity 1 shows debug, 2 shows trace too, and -1 hides info and success, while print, render, results, warn, error, and every failure always print. Each marked option binds no variable or configuration key, an invocation by name settles its own verbosity from the values it lowers, and @loomcli/plugins/verbose declares marked -v, --verbose and -q, --quiet as control options.
+status: proposed
+created: 2026-10-19
+modified: 2026-10-19
+---
+
+# ADR-0090 - An operator's -v or -q settles the run's verbosity right after graph build
+
+## Context
+
+An operator often wants a run to say more about what it is doing, or less. The common command-line standard, as cargo and clap-verbosity-flag read it, prints info, warnings, and errors by default, adds debug lines under `-v` and trace lines under `-vv`, and prints less under `-q`.
+
+Loom has no seam for it. `out` carries `print`, `info`, `success`, `warn`, and `error`, which always write. `log` carries `trace` and `debug`, but a log event is a machine record for a reader later, under [ADR-0069](0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md) and [ADR-0070](0070-the-logging-plugin-writes-one-json-record-per-event-to-a-size-rotated-file-or-stderr.md), and it never renders for the operator. jsonkit builds verbosity by hand: it declares a counted global `-v, --verbose`, and its document reader checks the count before it writes `Reading doc.json.` through `out.info`. Every application repeats that check, and a middleware or a configuration source has no count to read.
+
+Core already reads a mark on an option and lets a first-party plugin only declare the marked option: the interaction mark of [ADR-0082](0082-an-action-asks-through-the-prompts-library-and-one-interaction-decision-governs-questions-and-conditional-requiredness.md) and the color mark of [ADR-0089](0089-an-operators-color-or-no-color-settles-the-runs-color-right-after-host-capture.md).
+
+## Decision
+
+- **Two lanes.** `Out` gains `debug(message)` and `trace(message)`, semantic methods beside `info`, `warn`, and `error`, named as the log levels are. They write to stderr in every case, a Command that declares a result included, and render through two lane views core declares, `@loomcli/core/lanes/debug` and `@loomcli/core/lanes/trace`, exported as `lanes.debug` and `lanes.trace`. A call creates no log event: verbose output is not logging, and it never renders a log event.
+- **The verbosity.** Each run has one verbosity: its verbose count, read as 2 when it is higher, less its quiet count, read as 1 when it is higher. Verbosity 0 writes `info`, `success`, `warn`, and `error`. Verbosity 1 adds `debug`, and 2 adds `trace`. Verbosity -1 hides `info` and `success`. `print`, `render`, `draw`, `results`, `warn`, `error`, the failure report, and the incomplete-result line write at every verbosity.
+- **A hidden call.** A call the verbosity hides checks its message as every semantic method does, then calls no lane view and writes nothing.
+- **The marks.** `verbose: true` on one counted global option, the application's or a plugin's, marks the option whose occurrences make the verbose count, and `quiet: true` on another marks the one whose occurrences make the quiet count. An Application holds at most one of each, an option carries at most one, and an author may mark a verbose option alone. A marked option takes short aliases and aliases as any counted option does. A count is 0 when no option carries its mark, so an Application with neither mark runs at verbosity 0. `inspect()` publishes `verbose` and `quiet` on each counted option node, and the manifest copies both.
+- **Settled right after graph build.** After graph build, its `onGraphBuilt` hooks included, and before environment preparation, core reads `host.argv` against the built graph with the parser's own word reader, in the partial mode that [ADR-0042](0042-core-reads-a-partial-invocation-with-the-parsers-own-grammar.md)'s `locate` uses, and counts the marked options' occurrences. Every form reads as the ordinary parse reads it: repeated spellings, `-vv`, `-vq`, a short group that holds a Command's own letters, aliases, and occurrences on both sides of the Command name, up to the first bare `--`. An occurrence the parse faults counts nothing. A word list that names an unknown command settles verbosity 0, and that run writes only warnings and its failure, which every verbosity prints.
+- **Nothing writes a lane first.** Core builds `out` at the head of the run, and the verbosity settles before any surface that can write a lane runs: graph build's hooks receive no `out`, and the only output before the read is a host-capture failure or a declaration error from graph build, each a failure report that prints at every verbosity. A later release that gives a graph-build hook an `out` settles this ordering first.
+- **One source.** A marked option binds no environment variable and no configuration key, because the verbosity settles before environment preparation and before the input-source stage. Each binding is a declaration error under `@loomcli/core/verbose-mark` or `@loomcli/core/quiet-mark`, beside the mark faults that the interaction and color marks meet.
+- **The option still parses.** A marked option is an ordinary counted global option to routing, parsing, validation, and activation, so the action reads the count the operator typed, never capped, as [ADR-0057](0057-a-counted-option-counts-its-occurrences-and-an-implied-value-fills-a-bare-spelling.md) states.
+- **Every writer.** A middleware's `out` and a configuration source's `out` follow the run's verbosity, so a configuration source can name the file it read. An `onEnvironment` hook's `out` keeps `warn` alone.
+- **Invocations by name.** `app.invoke` and an action's `invoke` each settle their own verbosity from the values they lower, so `verbose: 2` reads as `-vv` does, and a call inherits nothing from its parent run. Debug and trace lines it shows land in `messages`.
+- **The lines.** A debug line opens with a `dim` `glyph.pointerSmall` and one space, and its message is `dim`. A trace line nests one step deeper, with two spaces, a `glyph.lineVerticalDashed0`, and one space, and its glyph and message are `dim.faint`, the `dim` token with the `faint` modifier, so it fades past a debug line. Both wrap at the columns right of their gutter as the other marked lanes do, and an application replaces either lane view through `views`.
+- **The verbose plugin.** `@loomcli/plugins/verbose` exports `verbose()`, which takes no settings and declares the counted global options `verbose`, spelled `-v, --verbose`, with the verbose mark and the description `Show more detail. Repeat it for more.`, and `quiet`, spelled `-q, --quiet`, with the quiet mark and the description `Hide info and success messages.` Both are control options under [ADR-0062](0062-a-control-option-is-marked-by-the-plugin-that-declares-it-and-core-never-reads-the-fact.md), so an MCP tool lists neither, and every MCP tool call runs at verbosity 0. It adds no middleware, Command, view, or hook, and claims no slot. An application that wants another spelling marks its own counted options.
+
+The contract and its acceptance are in [Verbosity](../core.md#verbosity) and [Verbose plugin](../core.md#verbose-plugin).
+
+## Considered options
+
+- **`out.detail(message, level)` with a `detail: true` mark.** Rejected. `debug` and `trace` are the level names the common standard and `log` already use, and a numeric level invites tiers past the two that the standard reads.
+- **Reading the verbosity at the head of the run, beside the color choice.** Rejected. An `onCommandAttach` hook runs during graph build and can declare a local option with a short spelling on any Command, so before graph build no table says what each letter of a short group such as `-vx` is. A read there would need a second parser, or a ban on short aliases as the color mark has, and the common standard's `-v`, `-vv`, and `-vq` need the short forms. Only the built graph reads a short group exactly, and nothing can write a lane before it is built.
+- **Settling the verbosity after the input-source stage, where the interaction decision is computed.** Rejected. A configuration source writes through `out` during that stage, and a source that names the file it read would run before the verbosity settled.
+- **Holding early lane writes in a buffer until the verbosity settles.** Rejected. It adds a buffer and a second path through the run for output that the read right after graph build already settles.
+- **An environment variable or configuration key for the verbosity.** Rejected. Either would arrive after the verbosity settled, and the common standard reads the arguments alone.
+- **Several quiet steps, so that `-qq` hides warnings.** Rejected. A warning or an error is what the operator must see, so one quiet step hides `info` and `success` alone, and a further `-q` adds nothing.
+- **A level for every further `-v`.** Rejected. Two lanes exist, so a verbose count above 2 reads 2, while the option's own count stays uncapped.
+- **Verbose output rendering log events.** Rejected. A log event is a machine record for a later reader, and `out` writes for the operator now.
+
+## Consequences
+
+`Out` gains `debug` and `trace`, `lanes` gains `debug` and `trace`, counted option configuration accepts `verbose` and `quiet`, `OptionNode`'s counted variant and the manifest's counted option entry gain `verbose` and `quiet`, and core gains the rules `@loomcli/core/verbose-mark` and `@loomcli/core/quiet-mark`. An Application that calls neither new method and marks no option sees no change in any byte. One that marks an option reads argv once more per run, after graph build.
+
+Every message an author writes through `out.info` or `out.success` can now be hidden by an operator's `-q`, in an Application that declares the quiet mark, so a message that must reach the operator goes through `warn`, `error`, or `print`.
+
+This narrows [ADR-0008](0008-rendered-output-is-a-neutral-call.md)'s five string-only semantic methods with fixed destinations to seven, and lets the verbosity hide a call to four of them. It narrows [ADR-0021](0021-every-rendered-byte-passes-through-one-registry-of-replaceable-views.md)'s lane views, which become seven, and a hidden call resolves no view. It narrows [ADR-0032](0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md)'s rule that any global option may bind a variable or a configuration key, for the two marked options alone. It reads argv at a different point from [ADR-0089](0089-an-operators-color-or-no-color-settles-the-runs-color-right-after-host-capture.md)'s color choice, which keeps its own read point and its ban on a short alias. ADR-0042's reader, ADR-0055's grammar, ADR-0057's counted option, ADR-0062's control mark, and ADR-0069's log events are unchanged. It settles the verbose mode that ADR-0070 defers a readable console rendering to, and that mode renders no log event, so ADR-0070's console destination stays JSON lines. ADR-0008, ADR-0021, ADR-0032, ADR-0070, and ADR-0089 carry dated entries.
+
+The glossary gains Verbosity, Verbose mark, and Quiet mark.
+
+## Status
+
+Proposed. It moves to accepted with the release that ships `out.debug`, `out.trace`, the two marks, the verbosity, and the verbose plugin. Tests prove each verbosity's lanes, every argv form the parse reads, a hook-declared short letter in a group beside `-v`, stderr under a result Command and with stdout piped, the lines on a terminal and piped, a hidden call's message check, a configuration source's debug line, capture by name and the default level under MCP, each declaration error, the help rows and manifest fields, jsonkit migrated onto the plugin, and a packed consumer of `@loomcli/plugins/verbose`, under Node and Bun.
+
+## Changelog
+
+- 2026-10-19: Proposed with the debug and trace lanes, the verbose and quiet marks, the verbosity, and the verbose plugin contract.

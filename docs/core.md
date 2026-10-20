@@ -1,5 +1,5 @@
 ---
-description: Public SDK, invocation phases, invocation by name, host capture and release facts, checking the declarations, the interaction decision and conditional requiredness, the operator's color choice, rendered, drawn, and semantic output, the view registry and media types, the failure classes, their codes, views, and failure form, failure encoders, log events, and the plugin contract for named commands with global, local, and control options, Standard Schema validation and the input schema fact, passthrough, middleware, lifecycle hooks, extensions, cancellation, and the first-party plugins, MCP included.
+description: Public SDK, invocation phases, invocation by name, host capture and release facts, checking the declarations, the interaction decision and conditional requiredness, the operator's color choice, the run's verbosity, rendered, drawn, and semantic output, the view registry and media types, the failure classes, their codes, views, and failure form, failure encoders, log events, and the plugin contract for named commands with global, local, and control options, Standard Schema validation and the input schema fact, passthrough, middleware, lifecycle hooks, extensions, cancellation, and the first-party plugins, MCP included.
 ---
 
 # Core reference
@@ -111,14 +111,14 @@ The call that receives a bad value throws, and so does a call that the receiver'
 - **Identities.** An identity outside the [identity grammar](#identity-and-installation), from `plugin()`, `extension()`, or `view()`, before any other rule on the call.
 - **Unreadable configuration.** An argument or option config, or the config object of one option a plugin declares, whose read throws while the call takes its one copy, such as a getter or a proxy trap that throws, at any depth the call reads of its default. For an argument or option it is judged after the name. The name of an option a plugin declares is judged later, by `plugin()` once it has read every option's config. Either way it comes before every other rule on the config.
 - **Default depth.** A default with a path through more than 10 arrays and plain objects, counted from the default itself, or one that holds itself, which nests without end. The call takes its copy of the default up to that limit and stops there, so it is judged with an unreadable read, before every other rule on the config.
-- **Option configuration.** A key or spelling the receiver's own options already hold, generated negative forms and [aliases](#option-aliases) included; an invalid type, polarity, or short-only combination; an `aliases` value that is not an array, an alias name that is not a valid option name, an alias that repeats its own option's name, another of its aliases, or a spelling the option already accepts, and `aliases` beside `shortOnly`; `multiple` on a Boolean or counted option, or a `multiple` value that is not Boolean; a default of the wrong raw shape without a validator, and a default that is not an array on a validated multiple option or variadic argument; `validate`, `default`, `required`, or `validateOmitted` on a Boolean or counted option; `polarity` on a counted option; `implied` on a Boolean or counted option, and an `implied` value that is not a string; `required` beside a default; a `required`, `variadic`, or `validateOmitted` value that is not Boolean, and `validateOmitted` on a declaration that already decides its own absence; a validator that is not a Standard Schema; an `env` name outside the grammar, `env` on a multiple option, and `env` on an argument; a variable another option of the receiver already binds; `interaction` on a local or non-Boolean option, and an `interaction` value other than `true`; and `color` on a local or non-Boolean option, a `color` value other than `true`, and `short` or `env` beside `color: true`; and, at `globalOption()`, an option that declares `interaction` or `color` when another option of the Application already does, and a configuration binding on the color-marked option.
+- **Option configuration.** A key or spelling the receiver's own options already hold, generated negative forms and [aliases](#option-aliases) included; an invalid type, polarity, or short-only combination; an `aliases` value that is not an array, an alias name that is not a valid option name, an alias that repeats its own option's name, another of its aliases, or a spelling the option already accepts, and `aliases` beside `shortOnly`; `multiple` on a Boolean or counted option, or a `multiple` value that is not Boolean; a default of the wrong raw shape without a validator, and a default that is not an array on a validated multiple option or variadic argument; `validate`, `default`, `required`, or `validateOmitted` on a Boolean or counted option; `polarity` on a counted option; `implied` on a Boolean or counted option, and an `implied` value that is not a string; `required` beside a default; a `required`, `variadic`, or `validateOmitted` value that is not Boolean, and `validateOmitted` on a declaration that already decides its own absence; a validator that is not a Standard Schema; an `env` name outside the grammar, `env` on a multiple option, and `env` on an argument; a variable another option of the receiver already binds; `interaction` on a local or non-Boolean option, and an `interaction` value other than `true`; and `color` on a local or non-Boolean option, a `color` value other than `true`, and `short` or `env` beside `color: true`; `verbose` or `quiet` on a local option or on an option that is not counted, a `verbose` or `quiet` value other than `true`, both on one option, and `env` beside either; and, at `globalOption()`, an option that declares `interaction`, `color`, `verbose`, or `quiet` when another option of the Application already does, and a configuration binding on the color-marked, verbose-marked, or quiet-marked option.
 - **Globals.** `option()` on the Application rejects a key or spelling that a global option holds, the application's or a plugin's, or a variable one of them binds. `globalOption()` rejects one that a root-local option, a plugin's option, or a local option on an attached Command holds, the plugins' Commands included, and a variable one of those options already binds. `globalOption()` rejects `required` and `validateOmitted`, whatever their value. `globalOption()` after `command()` or `action()` throws. The plugins' Commands, which the constructor attaches, do not close `globalOption()`; only the application's own `command()` or `action()` does.
 - **Core facts and options objects.** A description, deprecated message, version, `hidden` value, or `control` value of the wrong shape; `hidden` or `deprecated` on an argument or on the Application options, and `control` on an argument; an options argument that holds no plain object; the retired `globals`, `failures`, and `packet` Application options; and globals passed to a named Command.
 - **Order.** Every `argument()`, `option()`, `alias()`, `result()`, `rows()`, or `command()` call after `action()`, and a second `action()`; `argument()` on a Command that holds children, the root with plugin Commands included, and `command()` on one that declares arguments; a variadic argument that is not last, an argument after an optional one, and an optional argument before a required one; an alias that repeats its own Command's name or another of its aliases; and a value passed to `command()` that is not a Command.
 - **Results.** A second `result()` or `rows()`; a row view under `result()`; a views entry that is not a view or that carries both `render` and `row`; and `views()` on a declaration with no result.
 - **Extensions.** On a call that carries `extensions` and on `extend()`: an entry that is not an extension value, a value on the wrong target, two values of one extension in one layer, a descriptor with no schema or with a `collect` that is not a Boolean, a value its schema rejects, a schema that answers asynchronously, an output that is not plain data, and two distinct descriptors that share an identity within the receiver, the installed plugins' descriptors included for the Application.
 - **Plugins.** `plugin()` applies every rule on one definition: the identity, the definition's shape, the `options` record and each option declaration, an option with a presence rule, the `middleware` object with its activation and loader, an `onCommandAttach`, `onGraphBuilt`, or `onFailure` that is not a function, the `extensions`, `views`, `translators`, `failureEncoders`, `signals`, and `commands` lists and their entries, one key overridden twice, two [failure encoders](#failure-encoders) for one media type, a signal outside the closed set or claimed twice, every `source` rule, and the theme mapping rules. Each `commands` entry also meets the [attach](#at-attach) checks at `plugin()`, against the root it will join and the entries before it: a Command that is not finished, and two entries with one name or an alias that repeats a sibling's. The nesting cap needs no check here, because the entry's own `command()` calls already enforce it. A sibling diagnostic names the root Command, the parent the entries attach to.
-- **The Application.** `new Application(name, options)` applies every rule on its own options and on the installed set: a `views` entry that is not an override, a `translators` entry that is not a translation, two overrides for one key, two distinct declared-view objects that share an identity across the Application, its plugins, and core, a `plugins` value that is not an array or an entry that is not a plugin, an identity installed twice, a second claim on the signals slot, the theme slot, or the configuration source, two plugins that register a failure encoder for one media type, two plugins whose options share a key or a spelling or bind one variable, two distinct descriptors that share an identity across the plugins, two options that declare `interaction`, two options that declare `color`, and a configuration binding on a plugin's color-marked option.
+- **The Application.** `new Application(name, options)` applies every rule on its own options and on the installed set: a `views` entry that is not an override, a `translators` entry that is not a translation, two overrides for one key, two distinct declared-view objects that share an identity across the Application, its plugins, and core, a `plugins` value that is not an array or an entry that is not a plugin, an identity installed twice, a second claim on the signals slot, the theme slot, or the configuration source, two plugins that register a failure encoder for one media type, two plugins whose options share a key or a spelling or bind one variable, two distinct descriptors that share an identity across the plugins, two options that declare `interaction`, two options that declare `color`, two options that declare `verbose`, two options that declare `quiet`, and a configuration binding on a plugin's color-marked, verbose-marked, or quiet-marked option.
 - **Failure classes.** Constructing a failure whose class declares an exit code outside 1 through 125 throws from `LoomError`'s constructor, under [Declared exit codes](#declared-exit-codes), and so does constructing one whose class declares a failure code outside its grammar, under [Failure codes](#failure-codes). A failure is usually constructed inside a run, where the fault reports with code 1 like any run-time `DeclarationError`.
 
 ### At attach
@@ -542,14 +542,14 @@ A control option controls the invocation rather than feeding the Command's work:
 
 - **Options alone.** `control` applies to an option: a local option, a global option, an option a plugin declares, and an option a lifecycle hook declares, under one rule. An argument is always the Command's input, so `argument()` rejects `control` under `@loomcli/core/misplaced-listing-fact`, as it rejects `hidden` and `deprecated`. A value that is not a Boolean is the `@loomcli/core/flag-not-boolean` declaration error, and an omitted `control` reads `false`.
 - **Core never reads it.** Routing, parsing, the input-source stage, validation, activation, and dispatch behave as they would without it, as they do for `hidden`. [`invoke()`](#invocation-by-name) accepts a control option like any other, so an invocation by name still behaves as the argv that spells it.
-- **The declarer marks it.** The graph names no plugin as the source of an option under [ADR-0055](decisions/0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md), so a projection cannot tell a plugin's control option from an application's by origin. Help, version, the manifest, the formatter, the configuration plugin, the interaction plugin, and the color plugin set `control: true` on `--help`, `--version`, `--manifest`, `--format`, `--config`, `--no-input`, and `--[no-]color`, the private example plugin `@loom/explain` sets it on `--explain`, and an application sets it on an option of its own that does the same kind of job.
+- **The declarer marks it.** The graph names no plugin as the source of an option under [ADR-0055](decisions/0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md), so a projection cannot tell a plugin's control option from an application's by origin. Help, version, the manifest, the formatter, the configuration plugin, the interaction plugin, the color plugin, and the verbose plugin set `control: true` on `--help`, `--version`, `--manifest`, `--format`, `--config`, `--no-input`, `--[no-]color`, `--verbose`, and `--quiet`, the private example plugin `@loom/explain` sets it on `--explain`, and an application sets it on an option of its own that does the same kind of job.
 - **Its readers.** `inspect()` publishes `control` on every `OptionNode` variant, and the [manifest](#manifest) copies it into each option entry. The MCP plugin leaves a control option out of every tool's input schema. Help lists a control option as it lists any other option, so no help page changes.
 
 #### Control options acceptance
 
 Control options are proven when public APIs alone produce these results under Node and Bun:
 
-- **The first-party marks.** `inspect()` on jsonkit reports `control: true` on `--help`, `--version`, `--manifest`, `--explain`, `--color`, and the `--format` the formatter's hook declares on `paths`, and `control: false` on `--file`, `--verbose`, and `select`'s `--field`, and `inspect()` on textstat reports `control: true` on `--config`. Every help page the examples pin is unchanged byte for byte.
+- **The first-party marks.** `inspect()` on jsonkit reports `control: true` on `--help`, `--version`, `--manifest`, `--explain`, `--color`, `--verbose`, `--quiet`, and the `--format` the formatter's hook declares on `paths`, and `control: false` on `--file` and `select`'s `--field`, and `inspect()` on textstat reports `control: true` on `--config`. Every help page the examples pin is unchanged byte for byte.
 - **Every declarer.** A fixture marks a local option, a global option, a plugin's option, and an option a lifecycle hook declares, and each node reads `true`; an omitted `control` reads `false`.
 - **No effect at run time.** A fixture Command whose option is marked parses, validates, activates its plugin's middleware, and reaches the action exactly as the same option unmarked does.
 - **Faults.** `control: 'yes'` on an option throws `@loomcli/core/flag-not-boolean` from the declaring call, a plugin's option included, and `control` on an argument throws `@loomcli/core/misplaced-listing-fact`. The negative type checks reject both.
@@ -752,16 +752,16 @@ Local options on separate Commands can reuse names and spellings, with a differe
 
 ### Example coverage
 
-[jsonkit](../examples/jsonkit/src/application.ts) declares the application-owned global [counted option](#counted-options) `-v, --verbose`, with the description `Name the document before reading it.` Each document-reading Command, including the root action, declares its own required native content `--file` with `stdin: true`. Commands that read no document have no file option.
+[jsonkit](../examples/jsonkit/src/application.ts) installs the [verbose plugin](#verbose-plugin), which declares the global [counted options](#counted-options) `-v, --verbose` and `-q, --quiet`, and declares no verbose-marked or quiet-marked option of its own. Each document-reading Command, including the root action, declares its own required native content `--file` with `stdin: true`. Commands that read no document have no file option.
 
 The root summarizes a document. `get` has a required scalar `path`, `keys` has an optional scalar `path` and the alias `ls`, `select` reshapes top-level keys, and `paths` lists document paths. `fetch` is deprecated in favor of `get`, and `debug` is hidden. `jsonkit ls -f doc.json` lists keys exactly as `jsonkit keys -f doc.json` does. `jsonkit typo` offers `doctor, completion, mcp, manpage, get, keys, select`, omitting hidden and deprecated Commands. `select` declares `--field` as a required multiple option with the short alias `-F` and the catalog's `text()` validator. Its action receives `string[]` and prints the requested keys in supplied order, warning on stderr for missing keys. An omitted `keys` path lists the document root; a supplied path uses the resolver shared with `get`.
 
-Each action is a separate module typed with `ActionHandler`. All document actions call one shared reader with their prepared `Content` handle. Core selects the supplied file or available stdin before dispatch, and the reader calls the handle's `text()` method when the action needs the document. When `verbose` is at least 1, the reader first writes one `out.info` line: `Reading doc.json.` for a file or `Reading stdin.` for stdin. A higher count writes the same line, and no occurrence writes none. File names and runtime reasons print with control characters escaped, and the action's `style.escape` protects styled file names. Source presence and path errors belong to native preparation, as the [validation example coverage](#example-coverage-1) describes.
+Each action is a separate module typed with `ActionHandler`. All document actions call one shared reader with their prepared `Content` handle. Core selects the supplied file or available stdin before dispatch, and the reader calls the handle's `text()` method when the action needs the document. The reader first writes one `out.debug` line: `Reading doc.json.` for a file or `Reading stdin.` for stdin. The run's [verbosity](#verbosity) decides whether it prints, so `-v` and `-vv` print it, a run without `-v` or with `-v -q` prints none, and the reader reads no option to decide. File names and runtime reasons print with control characters escaped, and the action's `style.escape` protects styled file names. Source presence and path errors belong to native preparation, as the [validation example coverage](#example-coverage-1) describes.
 
 ## Input sources
 
 ```ts
-// `StringOption`, `BooleanOption`, `CountOption`, and `GlobalOptionConfig` accept `env`, except a multiple string option, so `{ multiple: true, env: 'FIELDS' }` fails to compile.
+// `StringOption`, `BooleanOption`, `CountOption`, and `GlobalOptionConfig` accept `env`, except a multiple string option and an option that carries the color, verbose, or quiet mark, so `{ multiple: true, env: 'FIELDS' }` and `{ type: 'count', verbose: true, env: 'V' }` fail to compile.
 // Core exports `SourceResolver`, `SourceContext`, `SourceAnswer`, and `ContextualStyle`, the type of an action's `style`.
 interface EnvBinding {
   env?: string | readonly [string, ...string[]]; // one name, or a non-empty list: AWS_REGION first, then AWS_DEFAULT_REGION
@@ -831,7 +831,7 @@ The environment and the configuration map into options, and everything downstrea
 
 - **Precedence.** For each option, the first tier that supplies a value wins: argv, then the environment, then the configuration source, then the declared default, which for a Boolean option is its polarity's absent value and for a counted option is `0`. The order is fixed and core owns it. No input and no plugin reorders it. A multiple option and a counted option are supplied by argv when they have at least one occurrence. An [implied value](#implied-values) is a value argv supplies, through a bare spelling, so no source supplies one.
 - **The stage.** Core fills options in one input-source stage, after parsing and before validation. The options in scope are the routed Command's local options and every global option. The stage fills the global options whatever was held, a structural fault on a global option and a group's missing-subcommand error included, so [activation](#activation) is identical to typing the flag. An occurrence that faulted supplies nothing, so the stage may fill its option. It fills the local options only when nothing is held, because the [request](#middleware) is `null` otherwise. An unknown command ends the run before the stage.
-- **Environment binding.** `env` names the variable that supplies the option, or a non-empty list of them, and binding is explicit only: core derives no name, adds no prefix, and accepts no `env: true`. A local option and a global option may bind, whoever declares it, and the author of the declaration names the variable, so a logger plugin that declares `--verbose` binds it with `env: 'VERBOSE'`. An argument cannot bind. A multiple string option cannot bind either, because its list comes from the configuration source. The name matches `[A-Za-z_][A-Za-z0-9_]*` and is read from `host.env` case-sensitively, with no rule about case. A list such as `env: ['AWS_REGION', 'AWS_DEFAULT_REGION']` lets an application migrate a variable name: the first name in list order that holds a non-empty value supplies the option, and the later names are read only when the earlier ones are unset or empty. Within one invocation's scope a variable binds at most one option, and a list claims every name it holds. Two Commands may bind one variable to their own local options, because only one of them runs.
+- **Environment binding.** `env` names the variable that supplies the option, or a non-empty list of them, and binding is explicit only: core derives no name, adds no prefix, and accepts no `env: true`. A local option and a global option may bind, whoever declares it, and the author of the declaration names the variable, so a logger plugin that declares `--log-level` binds it with `env: 'LOG_LEVEL'`. An argument cannot bind. A multiple string option cannot bind either, because its list comes from the configuration source. Nor can an option that carries the [color mark](#color), the [verbose mark, or the quiet mark](#verbosity), because the run reads each before environment preparation. The name matches `[A-Za-z_][A-Za-z0-9_]*` and is read from `host.env` case-sensitively, with no rule about case. A list such as `env: ['AWS_REGION', 'AWS_DEFAULT_REGION']` lets an application migrate a variable name: the first name in list order that holds a non-empty value supplies the option, and the later names are read only when the earlier ones are unset or empty. Within one invocation's scope a variable binds at most one option, and a list claims every name it holds. Two Commands may bind one variable to their own local options, because only one of them runs.
 - **Environment values.** An empty variable is unset and falls through to the next name of its list and then to the next tier, the rule `NO_COLOR` and `FORCE_COLOR` follow. A string option receives the variable's value as its raw string. A Boolean option reads the whole value, case-insensitive and untrimmed: `true` and `1` are true, and `false` and `0` are false. The value states the option's value, not a spelling, so `VERBOSE=false` means false under positive, negative, and both polarity. Any other value on the name that supplies the option is a usage failure naming that variable, and it never falls through to a later name of the list. The failure reads, `Option "--verbose" (from VERBOSE): Use true, false, 1, or 0.`, and it fills nothing: no lower tier fills the option, and it activates nothing. A [counted option](#counted-options) reads the whole value as a count when it is one or more ASCII decimal digits, so `0`, `3`, `007`, and `12` fill `0`, `3`, `7`, and `12`. Any other value, `-1`, `1.5`, ` 3`, and `three` included, is the same usage failure with the issue `Use a whole number of 0 or more.`, and it fills nothing in the same way. A variable fills a string option that declares an implied value with the string it holds, never with the implied value.
 - **Host conventions.** `NO_COLOR`, `FORCE_COLOR`, and `TERM` are core's [rendering policy](#rendering-policies), read by presence under ADR-0022. They are not environment bindings, and the Boolean grammar does not apply to them. An option may bind `NO_COLOR`, `FORCE_COLOR`, or `TERM`. Rendering policy still reads the variable by presence, and the binding reads it under the rules above. The option that carries the [color mark](#color) binds no variable and no configuration key.
 - **Configuration source.** A plugin definition may declare `source: { binding, load }`. `binding` is an option-target descriptor the plugin lists under its own `extensions`. An option that carries a value of it is configuration-bound, so core knows which options to ask about without knowing what the binding means, and core holds no store, file format, or path grammar. After argv and the environment, core collects the in-scope options that are still unfilled, configuration-bound, and hold no environment fault, the global options first and then the routed Command's own, each in declaration order. When there are none, core never loads the source. Otherwise it loads the source lazily, as it loads a middleware, and calls the resolver once and awaits it. The context holds the host, the plugin's own option values, the requests, which are the `OptionNode` of each collected option, and `graph`, the graph `inspect()` would return, which a run that calls a source builds as a run with a middleware chain does. Each request is the node itself inside `graph`, so `graph.globals.includes(request)` tells a global option from a local one. It also holds `out`, the channel object a middleware receives, and `style`, the contextual style an action receives, so a source warns through `out.warn` and the `lanes.warn` view, escaping raw data with `style.escape` first. A warning writes when the source runs, ahead of any takeover, so a source that warns under `--help` prints the warning on stderr before the page. `out.fatal()` in a source throws a `FatalError`, which core reports with its message and its class's code, 1, as it reports any failure from a source, and `out.results()` is the `out.results()` fault with `A configuration source` as its subject, and each call is reported after the outcome, a takeover included, as a middleware's call is, so it turns a would-be 0 into 1. The source's own options resolve from argv, the environment, and their defaults, and pass their validators, before the call, and they are never requested. When one is rejected, core never calls the source and reports the problem with the other validation problems, in their order; a rejected own option is not a source failure. An option the skipped source would have filled reports no missing value, and an absence rule never judges its omission, because the operator's configuration may hold it. A binding value on an option of an application that does not install the declaring plugin is inert, as every extension value of an uninstalled plugin is.
@@ -1256,6 +1256,8 @@ type OptionNode =
       readonly long: string | null;
       readonly short: string | null;
       readonly aliases: readonly string[];
+      readonly verbose: boolean; // new: see Verbosity
+      readonly quiet: boolean; // new: see Verbosity
       readonly schema: null;
       readonly env: readonly string[];
       readonly extensions: Readonly<Record<string, unknown>>;
@@ -1268,7 +1270,7 @@ type OptionNode =
 - The globals appear once on the graph and never inside a `CommandNode`. A help or manifest consumer combines the two sets for display.
 - Spellings are the accepted CLI forms, read from the table the parser reads. `long` is `'--dry-run'` for the declared name `dry-run` and `null` under `shortOnly`, `short` is `'-f'`, and `negative` is `'--no-total'` for `both` and `negative` polarity alone, and each reports the spelling the declared name derives, never an alias's. `aliases` holds the option's declared [aliases](#option-aliases) as bare names in declaration order, such as `['minimum']`, and `[]` when it declares none. Help, the manifest, and completion omit them, because an alias is unadvertised; parsing and `locate` resolve them. `env` holds the variables the option's [environment binding](#input-sources) names, in declaration order, and is `[]` when it declares none, whoever declared the option. A binding declared as one name publishes a one-element array.
 - `control` is the fact [Control options](#control-options) describes: `true` when the declaration marks the option as controlling the invocation, and `false` otherwise. Routing, parsing, and validation read it nowhere.
-- `type` is the option's kind. A string option's `implied` is the [implied value](#implied-values) a bare spelling supplies, or `null` when it declares none. A [counted option](#counted-options) has no negative spelling, no polarity, no default, and no validator, so its node carries none of those fields, and its `schema` is always `null`.
+- `type` is the option's kind. A string option's `implied` is the [implied value](#implied-values) a bare spelling supplies, or `null` when it declares none. A [counted option](#counted-options) has no negative spelling, no polarity, no default, and no validator, so its node carries none of those fields, and its `schema` is always `null`. Its `verbose` and `quiet` are the [verbose mark and the quiet mark](#verbosity), `true` on the option that carries one.
 - Validator objects stay private. `validated` says whether a validator exists, `validateOmitted` says whether the declaration sends its omission to that validator, and `schema` is the plain [input schema](#input-schema) that validator publishes through its converter, or `null` where the graph holds no published shape. `default` wraps the declared input value, so an explicit `default: undefined` reads apart from no default at all. The wrapped value is the snapshot the declaring call took: arrays and plain objects are copied and frozen, and no path through them holds more than 10 of them or leads back into one it passed, so a write through the graph fails and a later call reports the declared value again. Other objects are reported as they are. It is the one value every reader sees: a run passes that same frozen copy to the default's validator, and an array default still reaches the action as its own mutable copy.
 - `version` is the string the Application declares, or `0.0.0` when it declares none, so it is never `undefined`. Every `description` is the core fact the declaration carries, or `undefined` when omitted. The root `CommandNode` reports the Application's description, the value `CommandGraph.description` holds, so a projection that walks nodes never special-cases the root. The graph names no plugin as the source of anything: which plugin contributed an option is provenance, and a projection describes the built product alone. An extension key carries its defining plugin's identity because that identity is the fact's name, the way a package name is part of an import, not a record of who installed what.
 - `globals` holds every global option in one list: the application's declarations, then each plugin's in installation order. Nothing in an entry tells an application's global option from a plugin's, because the two are one kind under [ADR-0055](decisions/0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md), and the graph names no plugin as the source of anything. Every string entry reads `required: false` and `validateOmitted: false`, because a global option declares no presence rule, so a projection does not branch on them.
@@ -1391,7 +1393,7 @@ Codes 3 through 125 belong to the application: core raises none of them, and a f
 Each invocation follows this order:
 
 1. Capture host facts and apply overrides. A working directory that cannot be read fails the run here, under [An unreadable working directory](#an-unreadable-working-directory), and so does a malformed value the build baked into the [release facts](#release-facts). Then, in an Application that declares the [color mark](#color), read the operator's color choice from `host.argv`, which sets the run's `color` policy field before anything else prints.
-2. Build and validate the whole Command graph, including the global options, each Command's table, every installed plugin, every command name, alias, and spelling, then, in a [development build](#development-builds), every validated input's [schema converter](#input-schema) and then every [description](#undescribed-declarations), then every [`onGraphBuilt`](#judging-the-built-graph) hook over the frozen graph. Run [environment preparation](#environment-preparation), then validate every declared default and implied value. Then install the process listeners the validated [signals owner](#signals-and-cancellation) claimed; a build failure installs none.
+2. Build and validate the whole Command graph, including the global options, each Command's table, every installed plugin, every command name, alias, and spelling, then, in a [development build](#development-builds), every validated input's [schema converter](#input-schema) and then every [description](#undescribed-declarations), then every [`onGraphBuilt`](#judging-the-built-graph) hook over the frozen graph. Then settle the run's [verbosity](#verbosity) from `host.argv`, read with the parser's own word reader against the built graph, before anything that can write a lane runs. Run [environment preparation](#environment-preparation), then validate every declared default and implied value. Then install the process listeners the validated [signals owner](#signals-and-cancellation) claimed; a build failure installs none.
 3. Copy invocation tokens for input processing.
 4. Route from the root, reading option words against the global options and the own options of each Command with an action and children that routing passes through, under [Global consumption and routing](#global-consumption-and-routing). An unknown command is raised here, before the chain.
 5. Parse the routed Command's remaining words against its table, up to the first bare `--`. Hold the first structural fault in word order, raising nothing yet, and keep reading so every global option is found. A routed Command that is a group holds the missing-subcommand error behind any structural fault.
@@ -1511,7 +1513,7 @@ export const report = new Command('report').action(async ({ invoke, out, style }
   A value no row covers is unlowerable: `null`, an object, a nested array, an array on a scalar input, a Boolean on an argument, on a counted option, or on a string option without an implied value, `false` on a string option with one, a number that is not finite, a number on a Boolean option, and a number on a counted option that is not a whole number of 0 or more. An unlowerable value supplies nothing, so an input source may still fill the option. It is an `invalid` problem of the run's `InputError`, in authoring order with the validation phase, with exit 2, and its one issue says what the input takes: `Use a string or a number.`, `Use a string, a number, or a list of them.` on a multiple option or a variadic argument, `Use true or false.` on a Boolean option, `Use a string, a number, or true.` on a string option with an implied value, `Use a string, a number, true, or a list of strings and numbers.` on a multiple option with an implied value, and `Use a whole number of 0 or more.` on a counted option. Three cases follow from the equivalence. `false` on a `positive` option is absence, so an environment binding or the configuration file may still fill it, as it fills an option a command line omits. An empty array on a required multiple option is the missing-input problem. A number on a string option with no validator reaches the action as the string `String(value)`.
 - **Unknown names.** A key of `options` that the routed Command's table does not hold is an `UnknownOptionError`, and a key of `args` the routed Command does not declare is an `UnexpectedArgumentError` whose `extra` holds the name and whose `accepted` holds the number of arguments the Command declares. Each is a structural fault, held as argv's are, and the first held is the first in the order `options` keys and then `args` keys, each record in its own key order. It ranks after an unknown command and ahead of a group's missing subcommand and the validation phase, and a middleware takes it over as it takes over any held fault.
 - **Reported by name.** An invocation by name types no spelling, so every problem core reports names an input by its declared name, the key the caller wrote, in place of the [reported spelling](#failure-classes) and of the spelling a parser fault names. `InputProblem.spelling` and `UnknownOptionError.spelling` hold that name. The sentences read `Option "file": Use a string or a number.`, `Option "depth" is required. Supply a value.`, `Option "min-bytes" (from TEXTSTAT_MIN_BYTES): Expected a whole number of at least 0.`, `Unknown option "verbos". Supply the name of a declared option.`, and `Command "get" declares no argument "pth". Supply the name of a declared argument.` An argument already reports under its name. A [configuration source](#input-sources) reads `invokedBy` on its context and names a problem's option the same way.
-- **Capture.** The run's stdout and stderr are capture sinks. `output` holds every byte the run wrote to stdout, decoded as UTF-8: the rendered result on a Command that declares one, and `out.print` and `out.render` text on one that does not. `messages` holds every byte the run wrote to stderr: the semantic lanes, the action's `print` and `render` on a result Command, a failure's diagnostic and its hints, and the [incomplete-result](#a-sequence-that-stops-early) line. Stdin is an empty stream, `host.argv` is `[]`, and every terminal fact reads not a TTY, with no width or height, so a view's [`columns`](#width-padding-and-multiline-lanes) reads `undefined`. The captured text is plain: core resolves it as for a destination that supports no color, modifier, or hyperlink, whatever the rendering policy or `FORCE_COLOR` says, and `terminalControls` keeps the Application's setting.
+- **Capture.** The run's stdout and stderr are capture sinks. `output` holds every byte the run wrote to stdout, decoded as UTF-8: the rendered result on a Command that declares one, and `out.print` and `out.render` text on one that does not. `messages` holds every byte the run wrote to stderr: the semantic lanes its [verbosity](#verbosity) shows, the action's `print` and `render` on a result Command, a failure's diagnostic and its hints, and the [incomplete-result](#a-sequence-that-stops-early) line. Stdin is an empty stream, `host.argv` is `[]`, and every terminal fact reads not a TTY, with no width or height, so a view's [`columns`](#width-padding-and-multiline-lanes) reads `undefined`. The captured text is plain: core resolves it as for a destination that supports no color, modifier, or hyperlink, whatever the rendering policy or `FORCE_COLOR` says, and `terminalControls` keeps the Application's setting.
 - **The view.** `view` is the starting selection: the name a middleware's `view` reads before any assignment, in place of the declaration's default. A later assignment still wins, and the [formatter](#formatter) assigns only when `--format` was supplied. A name the routed Command's result does not hold, a value that is not a string, and a `view` on a Command that declares no result are the view-selection defect at the dispatch boundary, exit 1, under `@loomcli/core/view-selection`, with `invoke()` named in the plugin's place: `invoke() selected view "yaml", which Command "count" does not name.`, `invoke() selected a view that is not a string on Command "count".`, and `invoke() selected view "json" on Command "get", which declares no result.` A takeover or a cancellation leaves it unobserved, as it leaves a middleware's.
 - **The outcome.** `completed` is a run that would resolve 0, a takeover included. `failed` is a run that would resolve a failure code: `exitCode` is that code, `output` and `messages` hold everything the run wrote, the failure's report included, and `failure` holds what the caller's handler returned, or the failure itself when the caller passed no handler, and `form` holds that failure's [failure form](#the-failure-form). `cancelled` is a cancelled run, and `exitCode` is the code of the cause that aborted it; its captured text is discarded. `invoke` never rejects, except with a throw from the caller's handler. `Mapped` is inferred from the handler, and without one it is `LoomError`.
 - **The failure path.** A failure takes `run()`'s path. A foreign throw is offered to the translators, each `onFailure` hook adds its [hints](#failure-hints), and the failure's view renders, by build, into `messages`: a defect in a [distributed build](#development-builds) writes the generic defect message there, and a broken failure view or hook reports through the plain fallback path there and forces 1. Then core calls the caller's `failure` handler once, for the primary failure, or, when the primary outcome succeeded and a fault reported after it set the code, such as a plugin's `next()` fault, for the first such fault, with the failure as the run caught it, the translated failure and never the raw throw, and a context that holds `application`, `path`, the outcome's `exitCode`, and the failure's [failure form](#the-failure-form). The handler adds structure and never replaces the text: `messages` holds the same report `run()` writes to stderr when no [failure encoder](#failure-encoders) answers. It receives no style, because the form's hints are plain text, and no graph, which a failure raised at build lacks, under [ADR-0046](decisions/0046-a-failure-view-reads-where-the-run-was-and-plugins-add-hint-lines.md). It receives the failure in both builds, its `cause` included, so what it exposes is the caller's decision. A handler that throws makes `invoke` reject with that throw, and the run's captured text is discarded. A cancellation never reaches it.
@@ -1524,6 +1526,7 @@ export const report = new Command('report').action(async ({ invoke, out, style }
 - **Concurrency.** Calls may overlap, from one action or from many. Each is its own run and shares nothing mutable with another, and Loom adds no queue, limit, or timer. An application whose actions cannot overlap serializes the calls itself.
 - **Nesting.** An invoked action may call `invoke` itself, under these rules, and its call's signal derives from its own run.
 - **Not interactive.** An invocation by name has an empty stdin and no terminal, so its [interaction decision](#interaction) is off: a local option that declares `required: 'non-interactive'` is required, and a question resolves without asking.
+- **Its own verbosity.** Each call settles its own [verbosity](#verbosity) from the values it lowers, so `options: { verbose: 2 }` reads as `-vv` does and the debug and trace lines it reveals land in `messages`. A call inherits nothing from its parent run's verbosity, because it behaves as the argv that spells its values.
 - **Actions alone.** A middleware's context carries no `invoke`. A Command that serves other Commands by name does so in its own action, as the [MCP](#mcp) plugin's `mcp` Command does.
 - **The call's shape.** The types reject a malformed call, and a JavaScript caller meets one rule before the graph is built. The rule covers a `path` that is not an array of strings, `values` that are not a plain object or that hold a key other than `args`, `options`, and `passthrough`, an `args` or `options` that is not a plain object, a `passthrough` that is not an array of strings, a `signal` that is not an `AbortSignal`, a `failure` that is not a function, and a `host` that holds a field other than the five. Each is a defect under `@loomcli/core/invoke-options`, whose sentence names the slot, such as `invoke() received a signal that is not an AbortSignal.` or `invoke() received a path that is not an array of Command names.`, and whose correction says what the slot takes, such as `Supply the signal of an AbortController.` or `Supply the path as an array of Command names, [] for the root.` It renders by build into `messages`, and the outcome is `failed` with exit 1.
 - **Names.** `InvocationValues`, `InvokeOptions`, and `InvocationOutcome` are exported from `@loomcli/core`, and `ActionContext` gains `invoke`.
@@ -1648,6 +1651,134 @@ The color choice is proven when public APIs alone produce these results under No
 - **Declarations.** Each row above throws its sentence under `@loomcli/core/color-mark` from the moment the row names, and the negative type checks reject the rules the types state.
 - **By name.** `jsonkit.invoke` with the plugin installed captures plain text under `FORCE_COLOR=1` with `color` supplied as `true`, and a fixture Application's invocation by name captures plain text under `FORCE_COLOR=1` and `rendering: { color: 'always' }`.
 
+## Verbosity
+
+An operator asks a run for more detail with `-v` or `-vv`, and for less with `-q`, as cargo and clap-verbosity-flag read them. An action writes that detail through `out.debug` and `out.trace`, beside `info`, `warn`, and `error`. Core settles the run's verbosity once, right after graph build, and every lane write after that follows it. [ADR-0090](decisions/0090-an-operators-v-or-q-settles-the-runs-verbosity-right-after-graph-build.md) records the decision.
+
+```ts
+interface Out<Result = unknown> {
+  // ...the members under Output and failures...
+  debug(message: string): Promise<void>; // new: written from verbosity 1
+  trace(message: string): Promise<void>; // new: written from verbosity 2
+}
+interface Unmarked {
+  interaction?: never;
+  color?: never;
+  verbose?: never; // new: so option() and a hook's option() reject the mark
+  quiet?: never; // new
+}
+// BooleanOption declares verbose?: never and quiet?: never too, and StringOption and ContentOption
+// reject both through Unmarked, so only a counted option carries the verbose or quiet mark.
+type CountOption = OptionSpelling &
+  Described &
+  Listed &
+  Controlled &
+  OptionExtensions & {
+    type: 'count';
+    interaction?: never;
+    color?: never;
+    // ...validate, default, multiple, required, validateOmitted, polarity, and implied stay never...
+  } & (
+    | ({ verbose?: never; quiet?: never } & EnvBinding)
+    | { verbose: true; quiet?: never; env?: never } // new
+    | { quiet: true; verbose?: never; env?: never } // new
+  );
+type OptionNode =
+  // ...the string, content, and Boolean variants under Graph inspection...
+  | {
+      readonly type: 'count';
+      readonly verbose: boolean; // new
+      readonly quiet: boolean; // new
+      // ...the other fields under Graph inspection...
+    };
+declare const lanes: Readonly<
+  Record<'print' | 'info' | 'success' | 'warn' | 'error' | 'debug' | 'trace', DeclaredView<string>>
+>; // new: debug and trace
+```
+
+```ts
+import { Application } from '@loomcli/core';
+
+const app = new Application('fetchit')
+  .globalOption('verbose', {
+    type: 'count',
+    short: 'v',
+    verbose: true,
+    control: true,
+    description: 'Show more detail. Repeat it for more.',
+  })
+  .globalOption('quiet', {
+    type: 'count',
+    short: 'q',
+    quiet: true,
+    control: true,
+    description: 'Hide info and success messages.',
+  })
+  .argument('url', { required: true })
+  .action(async ({ args, out }) => {
+    await out.debug(`GET ${args.url}`); // fetchit -v and fetchit -vv
+    await out.trace('Reusing the open connection.'); // fetchit -vv
+    await out.info('Fetched 3 records.'); // hidden under fetchit -q
+    await out.warn('The cache is stale.'); // printed at every verbosity
+  });
+```
+
+- **Two lanes.** `out.debug(message)` and `out.trace(message)` are semantic methods, as `info` is: they take a marked string, write to stderr in every case, a Command that declares a [result](#results) included, append one newline, and render through their lane views, `lanes.debug` and `lanes.trace`. Their names are the log level names, and they are not logging: a call creates no [log event](#logging) and reaches no `onLog` hook. `log.debug` records for a reader later, and `out.debug` writes for the operator now.
+- **The verbosity.** The run's verbosity is its verbose count less its quiet count, where a verbose count above 2 reads 2 and a quiet count above 1 reads 1, so higher counts change nothing and one quiet step is the only one. The count of each is the occurrences of the option that carries its mark, and 0 when no option carries it.
+
+  | Verbosity | Spellings | Lanes that write |
+  | --- | --- | --- |
+  | -1 | `-q`, `-qq` | `warn`, `error` |
+  | 0 | none, `-v -q` | `info`, `success`, `warn`, `error` |
+  | 1 | `-v`, `-vv -q`, `-vvvq` | `debug`, `info`, `success`, `warn`, `error` |
+  | 2 | `-vv`, `-vvv` | `trace`, `debug`, `info`, `success`, `warn`, `error` |
+
+  `print`, `render`, `draw`, `results`, the failure report, and the [incomplete-result](#a-sequence-that-stops-early) line write at every verbosity, so `-q` hides `info` and `success` alone, and help, a result, a warning, and a failure always print.
+- **A hidden call.** A call the verbosity hides checks its message, as every semantic method does, so a message that is not a string is still rejected. Then it calls no lane view, writes nothing, and its promise resolves.
+- **Settled after graph build.** Right after graph build, its `onGraphBuilt` hooks included, and before [environment preparation](#environment-preparation), core settles the run's verbosity from `host.argv`, read against the built graph with the parser's own word reader, in the partial mode [`locate`](#locating-a-word) reads an unfinished invocation with. Every form reads as the ordinary parse reads it: `-v -v`, `-vv`, `--verbose -v`, `-vq`, a short group that holds a Command's own letters, such as `-vF name`, an [alias](#option-aliases), and occurrences on both sides of the Command name, up to the first bare `--`. An occurrence the parse faults, such as `--verbose=2`, counts nothing. A word list that names an unknown command settles verbosity 0. That run fails in routing, and everything it writes, an `onEnvironment` warning and its failure, prints at every verbosity.
+- **Why after graph build.** An `onCommandAttach` hook can declare a local option with a short spelling on any Command, so only the built graph says what each letter of a short group is. Core builds `out` at the head of the run, and nothing can write a lane before the verbosity settles: graph build's hooks receive no `out`, and the only output before it is a host-capture failure or a declaration error from graph build, which is a failure report and prints at every verbosity. A later release that gives a graph-build hook an `out` settles this ordering first.
+- **No mark.** An Application whose options carry neither mark settles verbosity 0, so `out.debug` and `out.trace` write nothing, and every other byte is unchanged.
+- **The marks.** `verbose: true` on a counted global option, the application's or a plugin's, marks the option whose occurrences raise the verbosity, and `quiet: true` on another marks the one whose occurrence lowers it. An Application holds at most one option with each mark, and an option carries at most one of them. An author may mark a verbose option alone, and the run then has no quiet step. A marked option takes a short alias, aliases, and `shortOnly` as any counted option does. `inspect()` publishes `verbose` and `quiet` on each counted option node, `true` on the marked one, and the manifest copies both. The [verbose plugin](#verbose-plugin) declares marked `-v, --verbose` and `-q, --quiet`.
+- **One source.** A marked option binds no environment variable and no configuration key, because the verbosity settles before environment preparation and before the [input-source stage](#input-sources). A binding is a second source for one value that would arrive after the verbosity settled, so each is a declaration error below.
+- **The options still parse.** A marked option is an ordinary counted global option to routing, parsing, validation, and [activation](#activation), so `options.verbose` reads the count the operator typed: `3` for `-vvv`, never capped, as [ADR-0057](decisions/0057-a-counted-option-counts-its-occurrences-and-an-implied-value-fills-a-bare-spelling.md) states, while the verbosity reads 2.
+- **Every writer.** A middleware's `out` and a [configuration source](#input-sources)'s `out` follow the run's verbosity as the action's does, so a configuration source names the file it read through `out.debug`. An [`onEnvironment`](#environment-preparation) hook's `out` keeps `warn` alone.
+- **Invocations by name.** `app.invoke` and an action's `invoke` each settle their own verbosity from the values they lower: `options: { verbose: 2 }` lowers to two occurrences, read as `-vv` is, and a value the call cannot lower counts nothing. A call inherits nothing from its parent run. Both marked options of the [verbose plugin](#verbose-plugin) are [control options](#control-options), so an [MCP](#mcp) tool lists neither and a tool call that names one is rejected, and under the plugin every MCP tool call runs at verbosity 0.
+- **The lines.** `lanes.debug` and `lanes.trace` are the two lane views core adds, `@loomcli/core/lanes/debug` and `@loomcli/core/lanes/trace`, and an application replaces either through `views`, as it replaces any [lane view](#views). Their defaults follow [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes). A debug line opens with `glyph.pointerSmall` and one space, and its glyph and message are `dim`. A trace line nests one step deeper: two spaces, then `glyph.lineVerticalDashed0` and one space, and its glyph and message are `dim.faint`, the `dim` token with the `faint` modifier, so a trace line fades past a debug line. Under `NO_COLOR` on a terminal the `dim` color drops and `faint` stays, and piped both lines are plain and the gutters tell them apart. At `-vv` on a terminal, the example prints this on stderr:
+
+  ```text
+  › GET https://example.com/records
+    ┆ Reusing the open connection.
+  ℹ Fetched 3 records.
+  ⚠ The cache is stale.
+  ```
+
+| Rejected declaration | Diagnostic | Rule |
+| --- | --- | --- |
+| `verbose` on a local option | `Option "verbose" declares verbose but is not a global option. Declare it with globalOption().` | `@loomcli/core/verbose-mark` |
+| `verbose` on a string, content, or Boolean option | `Option "verbose" declares verbose but is not a counted option. Use type "count".` | `@loomcli/core/verbose-mark` |
+| A `verbose` value other than `true` | `Option "verbose" declares verbose that is not true. Remove verbose or set it to true.` | `@loomcli/core/verbose-mark` |
+| `verbose` and `quiet` on one option | `Option "verbose" declares verbose and quiet. Mark one; declare a second counted option for the other.` It reports under the verbose mark's rule. | `@loomcli/core/verbose-mark` |
+| Two verbose-marked options in one Application | `Global option "loud" and plugin "@loomcli/plugins/verbose" option "verbose" both declare verbose. Mark one option.` Each option is named as [Input declaration errors](#input-declaration-errors) names it, and the fault throws from the call that brings the second mark into the Application, as a [spelling collision](#declaration-and-invocation-errors) does. | `@loomcli/core/verbose-mark` |
+| An `env` binding on the verbose-marked option | `Option "verbose" declares verbose and env, a second source for the run's verbosity. Remove env; the run settles its verbosity before it reads the environment.` It throws from the call that declares the option, `globalOption()` or `plugin()`. | `@loomcli/core/verbose-mark` |
+| A configuration binding on the verbose-marked option | `Option "verbose" declares verbose and carries configuration binding "@loomcli/plugins/config/input", a second source for the run's verbosity. Remove the binding; the run settles its verbosity before configuration.` It throws at the moment the color mark's configuration binding throws: from `globalOption()` for an application's option and from the constructor for a plugin's option. | `@loomcli/core/verbose-mark` |
+
+The quiet mark's rows read the same with `quiet` in place of `verbose`, under `@loomcli/core/quiet-mark`, such as `Option "quiet" declares quiet but is not a counted option. Use type "count".` The types reject `verbose` and `quiet` on `option()`, on a hook's `option()`, and on every option type but `count`, both marks on one option, and `env` beside either. A configuration binding is an ordinary extension value to the types, so that rule reaches the runtime check alone.
+
+#### Verbosity acceptance
+
+The verbosity is proven when public APIs alone produce these results under Node and Bun, through a fixture Application that marks its own options and through jsonkit with the [verbose plugin](#verbose-plugin):
+
+- **The lanes.** A fixture action that writes every lane prints `info`, `success`, `warn`, and `error` and no debug or trace line with no spelling, adds the debug line under `-v`, adds the trace line under `-vv`, and prints the same under `-vvv` as under `-vv`. Under `-q` and `-qq` it prints `warn` and `error` alone, and `print`, `render`, `draw`, a result, the incomplete-result line of a sequence that stops early, and a failure print at every verbosity. `-v -q` prints what no spelling prints, and `-vv -q` what `-v` prints.
+- **Every form.** `-vq`, `-qv`, `--verbose -v`, a short group with a Command's own letter, a letter an `onCommandAttach` hook declared on the routed Command beside `-v` in one group, an alias, a `shortOnly` marked option's letter, occurrences on both sides of the Command name, and a spelling after the bare `--`, which counts nothing, each settle what the ordinary parse reads.
+- **Destinations.** Debug and trace lines reach stderr with stdout piped and on a Command that declares a result, whose stdout holds the result alone. Piped, with neither color variable set, each line is its gutter and its message, unwrapped and with no escape. On a capable terminal the gutters and styles match the lines above, a long message wraps at the columns right of its gutter with every continuation line under the message, and `NO_COLOR=1` keeps `faint` on a trace line.
+- **Not logging.** Under `-vv`, a fixture plugin's `onLog` hook receives no event for an `out.debug` or `out.trace` call, and the logging plugin's console destination writes no record for one.
+- **Hidden calls.** A hidden `out.debug(42)` from JavaScript rejects as `out.info(42)` does, and a hidden call calls no override of its lane view.
+- **Before the chain.** A configuration source's `out.debug` line prints under `-v` and not without it, and a dotenv warning prints under `-q`. A fixture middleware's `out.debug` line prints under `-v` and not without it, and its `out.info` line prints without a spelling and not under `-q`. A declaration error from graph build prints under `-q`, and `jsonkit -q nope` prints its unknown-command failure.
+- **By name.** `invoke` with `verbose: 2` captures the debug and trace lines in `messages`, a call without it captures neither inside a parent run started with `-vv`, and `verbose: 1.5` fails with its counted-option issue and exit 2. An MCP tool call that names `verbose` is rejected, and a tool call writes no debug line.
+- **No mark.** An Application with neither mark writes no debug or trace line under any argv, and every other byte is unchanged.
+- **The options.** `options.verbose` reads `3` under `-vvv` and `options.quiet` reads `2` under `-qq`.
+- **Declarations.** Each row above, and each quiet row, throws its sentence under its rule from the moment the row names, and the negative type checks reject the rules the types state.
+
 ## Host
 
 `run({ host: partialHost })` overrides selected host fields. Omitted fields use process capture at invocation entry, before graph build, except that terminal width and height are read live. `run({ signal })` supplies a caller-owned `AbortSignal` that cancels the run, as [Signals and cancellation](#signals-and-cancellation) describes; it is the path for an embedding host or a test, and it composes with an installed signals owner. A `signal` slot holding a value that is not an `AbortSignal` is a defect reported before the graph is built, under `@loomcli/core/run-options`, whose sentence is `run() received a signal that is not an AbortSignal.` and whose correction is `Supply the signal of an AbortController.`, rendered by build under [Development builds](#development-builds), and the run returns 1.
@@ -1731,12 +1862,14 @@ An unreadable working directory is proven when public APIs alone produce these r
 | `out.success(message)`       | stderr              | `Promise<void>` |
 | `out.warn(message)`          | stderr              | `Promise<void>` |
 | `out.error(message)`         | stderr              | `Promise<void>` |
+| `out.debug(message)`         | stderr              | `Promise<void>` |
+| `out.trace(message)`         | stderr              | `Promise<void>` |
 | `out.render(data, view)`     | stdout              | `Promise<void>` |
 | `out.draw(data, view)`       | stderr              | `Promise<number>` |
 | `out.results(value)`         | stdout              | `Promise<void>` |
 | `out.fatal(message)`         | Failure path        | `never`         |
 
-The `results` row holds on a Command that declares a result, where the action's `print` and `render` move to stderr as [Results](#results) describes; on every other Command `results` takes a `never` argument and the other rows hold as written. Messages are marked strings. The five semantic methods render through core's lane views, described under [Views](#views), and append one newline. `print` has no prefix. By default the other methods add their matching glyph and one space, and indent continuation lines by the selected glyph width plus one, without repeating the glyph; that gutter belongs to the lane view, which an application can override. Those four lanes also wrap the message at the destination's `columns`, as [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes) states. Semantic method identity remains distinct inside core. `out.render` is the neutral render call, and [Rendered output](#rendered-output) describes it.
+The `results` row holds on a Command that declares a result, where the action's `print` and `render` move to stderr as [Results](#results) describes; on every other Command `results` takes a `never` argument and the other rows hold as written. Messages are marked strings. The seven semantic methods render through core's lane views, described under [Views](#views), and append one newline. `print` has no prefix. By default the other methods add their matching glyph and one space, `debug` and `trace` their gutters under [Verbosity](#verbosity), and indent continuation lines by the measured gutter, without repeating the glyph; that gutter belongs to the lane view, which an application can override. Those six lanes also wrap the message at the destination's `columns`, as [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes) states. The run's [verbosity](#verbosity) decides whether `info`, `success`, `debug`, and `trace` write, and `print`, `warn`, and `error` write at every verbosity. Semantic method identity remains distinct inside core. `out.render` is the neutral render call, and [Rendered output](#rendered-output) describes it.
 
 Nonfatal labels do not change success. Calls can omit `await`; core still accounts for their output and failures before completion. Awaiting a call observes its write completion or rejection. Catching that rejection does not make the invocation successful.
 
@@ -1783,7 +1916,7 @@ const app = new Application('counts')
   });
 ```
 
-A rendered value has no semantic identity: no purpose parameter and no destination parameter. The five semantic methods keep their string-only signatures and their own destinations.
+A rendered value has no semantic identity: no purpose parameter and no destination parameter. The seven semantic methods keep their string-only signatures and their own destinations.
 
 Core calls a whole view's function synchronously inside the `out.render` call, then queues its text on the destination; a row view's functions run as the iterable yields, under [Row views](#row-views). Call order within a destination holds across both forms, so a rendered table and a plain `print` write in the order the action issued them. The optional-await contract is unchanged: the returned promise resolves on write completion and rejects on a view or write failure, and catching that rejection changes the caller's control flow, not the invocation result.
 
@@ -1848,7 +1981,7 @@ export const jsonkit = new Application('jsonkit', {
 
 Resolution is one walk over one list of contributors: the application's overrides first, then each installed plugin's overrides in installation order, then the default function of the view that was declared. A declared-view key matches by reference. A failure-class key matches the thrown failure's prototype chain, most derived first, and the chain is walked in full at each contributor before the next contributor is consulted, so an application's override for `UsageError` beats a plugin's override for `InputError`. This is a deliberate correction to the 0.2.0 resolver, which merged every contributor's registrations into one class-keyed table before walking the chain, so that a plugin's more specific class won over the application's base class; the application owns its diagnostics, and installation order breaks ties among plugins alone. The write site decides the destination and a view carries none: `out.render` writes stdout, or stderr from the action of a Command that declares a [result](#results), a lane writes its own destination, and a failure writes stderr directly, never through a lane. A result's own views are reached by view name and carry no identity, so this walk never touches them.
 
-Core declares the five lane views and exports them as `lanes`, one `DeclaredView<string>` per semantic method, declared as `view<string>(…)`. Each receives the original message string, line breaks and authored styles included, under the rules in [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes), with the view context of the write site that called it: stderr under `out.warn`, stdout under `out.print`, and stdout under `out.render` whichever lane view it was handed, or stderr under both from the action of a Command that declares a [result](#results), so capability detection and glyph selection follow the stream the bytes reach. The default for `lanes.print` returns its message unchanged. A lane view is an ordinary declared view, so `out.render(message, lanes.print)` is legal and writes the message with no newline; the semantic method is the write site that appends one. The other four add their matching glyph and one space and indent continuation lines by the measured gutter; that gutter is the default, not a rule outside the view, so an application that overrides `lanes.warn` owns it for every `out.warn` call in the run. Those four lanes also wrap the message at the view context's `columns` minus the measured gutter, as [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes) states, and an override owns the wrapping as well. The semantic method appends its one newline after the view, so a lane view returns none, and an override that returns the empty string still writes one newline. The semantic method checks its argument before calling the lane view, so a non-string message is still rejected as today.
+Core declares the seven lane views and exports them as `lanes`, one `DeclaredView<string>` per semantic method, declared as `view<string>(…)`. Each receives the original message string, line breaks and authored styles included, under the rules in [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes), with the view context of the write site that called it: stderr under `out.warn`, stdout under `out.print`, and stdout under `out.render` whichever lane view it was handed, or stderr under both from the action of a Command that declares a [result](#results), so capability detection and glyph selection follow the stream the bytes reach. The default for `lanes.print` returns its message unchanged. A lane view is an ordinary declared view, so `out.render(message, lanes.print)` is legal and writes the message with no newline; the semantic method is the write site that appends one. The other six add their gutter, the matching glyph and one space for the four that existed first and the gutters under [Verbosity](#verbosity) for `debug` and `trace`, and indent continuation lines by the measured gutter; that gutter is the default, not a rule outside the view, so an application that overrides `lanes.warn` owns it for every `out.warn` call in the run. Those six lanes also wrap the message at the view context's `columns` minus the measured gutter, as [Width, padding, and multiline lanes](#width-padding-and-multiline-lanes) states, and an override owns the wrapping as well. The semantic method appends its one newline after the view, so a lane view returns none, and an override that returns the empty string still writes one newline. The semantic method checks its argument before calling the lane view, so a non-string message is still rejected as today, and a call the run's [verbosity](#verbosity) hides calls no lane view after that check.
 
 ```ts
 import { Application, lanes, override } from '@loomcli/core';
@@ -3022,7 +3155,7 @@ The root Command is named by that phrase rather than by a name, capitalized wher
 
 #### Stdout belongs to the result
 
-On a Command that declares a result, nothing the action writes but the result reaches stdout. The action's `out` is its own channel object: `print` and `render` keep their signatures and write to stderr, decided at graph build from the declaration and never at run time from the selected view, so a script that captures stdout receives the result and nothing else the action wrote whichever view ran. The redirect moves the destination and the view context together, so capability detection and glyph selection follow the stream the bytes reach, `out.render(message, lanes.print)` included. `info`, `success`, `warn`, and `error` already write to stderr, and `fatal` still throws without writing. No method is removed, because an author denied a lane works around the framework rather than through it. On a Command with no declared result every method keeps the destination the table in [Output and failures](#output-and-failures) states. A middleware's `out` keeps those default destinations on every Command, so a help page rendered for a result Command still reaches stdout, and a middleware that prints to stdout after `next()` on a result Command owns what its consumer then reads.
+On a Command that declares a result, nothing the action writes but the result reaches stdout. The action's `out` is its own channel object: `print` and `render` keep their signatures and write to stderr, decided at graph build from the declaration and never at run time from the selected view, so a script that captures stdout receives the result and nothing else the action wrote whichever view ran. The redirect moves the destination and the view context together, so capability detection and glyph selection follow the stream the bytes reach, `out.render(message, lanes.print)` included. `info`, `success`, `warn`, `error`, `debug`, and `trace` already write to stderr, and `fatal` still throws without writing. No method is removed, because an author denied a lane works around the framework rather than through it. On a Command with no declared result every method keeps the destination the table in [Output and failures](#output-and-failures) states. A middleware's `out` keeps those default destinations on every Command, so a help page rendered for a result Command still reaches stdout, and a middleware that prints to stdout after `next()` on a result Command owns what its consumer then reads.
 
 #### A sequence that stops early
 
@@ -3288,7 +3421,7 @@ function isProseLine(value: unknown): value is string;
 
 #### First-party and example short spellings
 
-Help and version have fixed short spellings. Configuration, the formatter, and the manifest let the application choose theirs through `short` and have none by default. The example applications choose these spellings without collisions:
+Help, version, and verbose have fixed short spellings. Configuration, the formatter, and the manifest let the application choose theirs through `short` and have none by default. The example applications choose these spellings without collisions:
 
 | Declaration | Long spelling | Short spelling | Rule |
 | ----------- | ------------- | -------------- | ---- |
@@ -3298,12 +3431,13 @@ Help and version have fixed short spellings. Configuration, the formatter, and t
 | Formatter | `--format` | None by default; textstat chooses `-f`, jsonkit chooses `-o`. | Keeps jsonkit's `-f` for its document. |
 | Manifest | `--manifest` | None by default; both examples choose `-M`. | Keeps textstat's `-m` for its metric. |
 | Private example plugin | `--explain` | `-e` | Fixed in the example plugin. |
+| Verbose | `--verbose` | `-v` | Fixed; jsonkit installs it. |
+| Verbose | `--quiet` | `-q` | Fixed; jsonkit installs it. |
 | textstat | `--metric` | `-m` | Selects bytes, words, or lines. |
 | textstat | `--min-bytes` | `-b` | Selects the byte threshold; `--minimum` remains an unadvertised alias. |
 | textstat | `--total` | `-t` | Adds the total row. |
 | textstat | `--timing` | None | Hidden diagnostic option, kept long-only. |
 | jsonkit | `--file` | `-f` | Global document option. |
-| jsonkit | `--verbose` | `-v` | Global counted option. |
 | jsonkit select | `--field` | `-F` | Local multiple option; lowercase `-f` belongs to the document. |
 
 ### Plugin Commands
@@ -4144,8 +4278,8 @@ export const helpArgument = extension(`${packageName}/help/argument`, {
 import { Application, Command } from '@loomcli/core';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 
-export const configured = new Application('jsonkit').globalOption('verbose', {
-  description: 'Name the document before reading it.',
+export const configured = new Application('fetchit').globalOption('verbose', {
+  description: 'Show more detail. Repeat it for more.',
   short: 'v',
   type: 'count',
 });
@@ -4272,12 +4406,13 @@ OPTIONS
   -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
 
 GLOBAL OPTIONS
-  -v, --verbose...  Name the document before reading it.
   -h, --help        Show this help.
   -V, --version     Print the version.
   -M, --manifest    Print this command's manifest as JSON.
   -e, --explain     Explain the selected command and exit.
       --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet...    Hide info and success messages.
 
 EXAMPLES
   $ jsonkit -f doc.json
@@ -4299,12 +4434,13 @@ OPTIONS
   -F, --field <field>  A field to keep. Repeat it for several.  (required, repeatable)
 
 GLOBAL OPTIONS
-  -v, --verbose...  Name the document before reading it.
   -h, --help        Show this help.
   -V, --version     Print the version.
   -M, --manifest    Print this command's manifest as JSON.
   -e, --explain     Explain the selected command and exit.
       --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet...    Hide info and success messages.
 ```
 
 textstat is one root Command with a variadic argument, four local options, of which `--timing` is hidden and `--min-bytes` carries the [alias](#option-aliases) `--minimum` that no page lists, a fifth local option `--format` that the [formatter](#formatter) declared on it because it declares a result, and no children, so its page folds the globals into OPTIONS. The restyled `textstat --help` has this text with color and modifiers disabled:
@@ -4399,12 +4535,13 @@ OPTIONS
   -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
 
 GLOBAL OPTIONS
-  -v, --verbose...  Name the document before reading it.
   -h, --help        Show this help.
   -V, --version     Print the version.
   -M, --manifest    Print this command's manifest as JSON.
   -e, --explain     Explain the selected command and exit.
       --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet...    Hide info and success messages.
 
 Run jsonkit <command> -h for command details.
 Run jsonkit --help for details and examples.
@@ -4667,12 +4804,13 @@ OPTIONS
   -f, --file <path>  The document to read. Omit it to read piped text.  (file or piped stdin; - selects stdin, required)
 
 GLOBAL OPTIONS
-  -v, --verbose...  Name the document before reading it.
   -h, --help        Show this help.
   -V, --version     Print the version.
   -M, --manifest    Print this command's manifest as JSON.
   -e, --explain     Explain the selected command and exit.
       --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet...    Hide info and success messages.
 
 EXAMPLES
   $ jsonkit get name -f doc.json
@@ -4805,13 +4943,14 @@ OPTIONS
                          jsonl.
 
 GLOBAL OPTIONS
-  -v, --verbose...  Name the document before reading it.
   -h, --help        Show this help.
   -V, --version     Print the version.
   -M, --manifest    Print this command's manifest as JSON.
   -e, --explain     Explain the selected command and exit.
       --[no-]color  Turn color on or off, overriding
                     NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet...    Hide info and success messages.
 
 EXAMPLES
   $ jsonkit -f doc.json
@@ -5524,12 +5663,14 @@ type ManifestOption =
       readonly control: boolean;
       readonly long: string | null;
       readonly short: string | null;
+      readonly verbose: boolean; // new: see Verbosity
+      readonly quiet: boolean; // new: see Verbosity
       readonly schema: null;
       readonly env: readonly string[];
     };
 ```
 
-`jsonkit get --manifest` prints the document below, abridged here to its first global; the full `globals` list continues with `--verbose`, `--help`, `--version`, `--manifest`, `--explain`, and `--color`.
+`jsonkit get --manifest` prints the document below, abridged here to its first global; the full `globals` list continues with `--help`, `--version`, `--manifest`, `--explain`, `--color`, `--verbose`, and `--quiet`.
 
 ```json
 {
@@ -6367,7 +6508,7 @@ The protocol package is proven when its own conformance tests, which import noth
 
 The plugin is proven when jsonkit installs `mcp()` and opts in its root, `get`, `keys`, and `select`, each with `annotations: { openWorld: false, readOnly: true }`, and leaves `fetch`, `debug`, and `paths` out, and public APIs alone produce these results under Node and Bun:
 
-- **A real session.** A process test launches the built `jsonkit mcp` under Node and under Bun and drives a session over stdio: `server/discover` names `jsonkit`, its version, and its description; `tools/list` lists `jsonkit`, `get`, `keys`, and `select` in that order with the schemas above, `file` and `verbose` among each tool's properties, and no `help`, `version`, `manifest`, `format`, or `explain` property; and a call of each tool against a document file answers as below. Closing stdin ends the process with exit 0.
+- **A real session.** A process test launches the built `jsonkit mcp` under Node and under Bun and drives a session over stdio: `server/discover` names `jsonkit`, its version, and its description; `tools/list` lists `jsonkit`, `get`, `keys`, and `select` in that order with the schemas above, `file` among each tool's properties, and no `help`, `version`, `manifest`, `format`, `explain`, `color`, `verbose`, or `quiet` property; and a call of each tool against a document file answers as below. Closing stdin ends the process with exit 0.
 - **Results.** `get` answers the value as text with no `structuredContent`; `jsonkit` answers the root's members as text and as `structuredContent`, the array its `json` view prints; `select` with an absent field answers the fields as text and the warning as a second text item; and a missing path answers `isError: true` with `Path not found: "missing". Run jsonkit keys to list the keys at the root.` and `structuredContent` `{ exitCode: 65, failure: { code: 'path-not-found', exitCode: 65, message: 'Path not found: "missing". Run jsonkit keys to list the keys at the root.', hints: [] } }`.
 - **Errors.** An unknown tool and non-object arguments answer `-32602`. A key outside the schema answers the plugin's tool execution error. A value of the wrong shape and a missing required argument answer `isError: true` with the by-name sentence, no help hint, and a form whose code is `invalid-input`, and a malformed document answers 65 with the code `invalid-json`. A fixture tool whose action throws a `TypeError` answers the form `internal` with `Something went wrong.` from a bundle.
 - **Cancellation and concurrency.** A fixture tool that waits on its signal is cancelled by `notifications/cancelled` and answers nothing while a second call answers. Two overlapping calls answer by their own ids. A run cancelled through a caller signal aborts both calls in flight.
@@ -6649,7 +6790,7 @@ Update notices tell an operator at a terminal that a newer release exists on the
   6. `host.release` holds a release group with an `asset` and an `installation` whose method is `script`. The middleware does not hash the binary.
   7. `applicationDirectory('cache', name, host)` answers a path.
 - **The cache.** `update.json` in that directory is one line: `{"format":1,"checked":"<time>","repository":"<repository>","channel":"<channel>","latest":<version>}` and a newline, the members in that order, where `<time>` is a UTC time in the `toISOString()` form, `<repository>` is `host.release.repository` as the release facts hold it, `<channel>` the channel looked on, and `<version>` the newest version found as a JSON string, or `null` when the channel had none. A reader passes over every other member, in any order. The cache is stale when it is not a regular file holding that object, when its `format` is not `1`, when its `repository` or `channel` differ from the running binary's, and when its `checked` is not a time, is 24 hours or more before now, or is after now.
-- **The notice.** When the cache is not stale for its repository and channel and its `latest` is a version newer than `host.release.version` by SemVer precedence, the middleware prints `notes 1.5.1 is available on the stable channel. Run notes self-update to update from 1.5.0.` through `out.info`, naming the graph's name, the cached version, the channel, and the running version, each passed through [`escapeControlCharacters`](#strings-and-composition). The notice is one `out.info` message. The example notice is 91 columns, and the shortest possible notice, for a one-character name on the `stable` channel between versions `0.0.0` and `0.0.1`, is 83, so every notice is wider than the 78 columns an 80-column terminal leaves after the info gutter. The info lane wraps it there, with its gutter on each continuation line, and on any terminal whose `columns` is narrower than the notice plus the gutter. A cache whose only fault is its `checked`, too old, after now, or not a time, still names its `latest` for the notice. The notice prints on every run that qualifies until the binary is updated, and the run's own output comes first.
+- **The notice.** When the cache is not stale for its repository and channel and its `latest` is a version newer than `host.release.version` by SemVer precedence, the middleware prints `notes 1.5.1 is available on the stable channel. Run notes self-update to update from 1.5.0.` through `out.info`, naming the graph's name, the cached version, the channel, and the running version, each passed through [`escapeControlCharacters`](#strings-and-composition). The notice is one `out.info` message. The example notice is 91 columns, and the shortest possible notice, for a one-character name on the `stable` channel between versions `0.0.0` and `0.0.1`, is 83, so every notice is wider than the 78 columns an 80-column terminal leaves after the info gutter. The info lane wraps it there, with its gutter on each continuation line, and on any terminal whose `columns` is narrower than the notice plus the gutter. A cache whose only fault is its `checked`, too old, after now, or not a time, still names its `latest` for the notice. The notice prints on every run that qualifies until the binary is updated, unless the run's [verbosity](#verbosity) hides `info`, as `-q` does, and the run's own output comes first.
 - **The refresh.** After the notice, when the cache is stale, the middleware writes the current time to `checked`, with the running binary's repository and channel, and the cached `latest` when the cache's only fault is its `checked` or `null` otherwise, creating the directory and its missing parents, through a staging file in the directory and a rename. Then it starts `[...host.program, 'self-update', '--refresh-notice']` with `host.env`, the cache directory as its working directory, every stream ignored, detached from the run's process group, hidden from the Windows taskbar, and released, so the run neither waits for it nor keeps the process alive for it. Writing `checked` first means a run that starts while the child is looking up, or after it failed, finds the cache fresh, so a slow or failing network costs one lookup a day.
 - **Silent faults.** A cache that cannot be read or does not parse is stale. A `checked` that cannot be written starts no child. A child that cannot start, at the call or through its `error` event, is passed over. None is reported, logged, or allowed to change the run's exit code. Writing the notice follows [Output and failures](#output-and-failures), as every `out.info` does, and the middleware lets no rejection of that write escape, so core's output contract alone reports it.
 - **`--refresh-notice`.** `self-update --refresh-notice` takes no version, `--channel`, or `--check`; beside any of them it is an `InputError` the action throws, `Option "--refresh-notice" cannot be given with other inputs. Leave out the other inputs.`, with exit 2. It fails with the first refusal of [Self-update](#self-update) when the run has no release group with an `asset`, and fails with exit 1 when the cache directory does not resolve: `notes cannot find its cache directory because HOME is not an absolute path. Set HOME to an absolute path.`, naming the variable. It reads no installation and hashes nothing. It resolves the newest release on `host.release.channel` by the rules of [The release channel](#self-update), under its Requests, fetching only what resolving the channel needs and no asset, then writes `update.json` as above, with `checked` the time it finished, `latest` the version found, or `null` for a channel with no release, which is not a failure here. It then prints nothing and exits 0. A write that fails exits 1 with `notes could not write its update cache to /home/me/.cache/notes. Free space there or check its permissions, then run self-update --refresh-notice again.` A request that fails writes nothing and fails as Requests states, so `checked` keeps the time the run that started it wrote.
@@ -6664,6 +6805,7 @@ Update notices are proven when process tests under Node and Bun produce these re
 - **The refresh.** A missing cache, one whose `checked` is 25 hours old, one dated an hour ahead, one for another channel, and one holding `{` each start one child, which finds the run's `checked` already in `update.json` when it starts; the run exits before the child, whose GitHub responses the fake holds until the run's process has exited, and the child then writes the pinned line with the latest version. A compiled fixture binary built with `--release` starts its child from `[execPath]` alone, with the same result. A cache naming `1.5.1` whose `checked` is 25 hours old, an hour ahead, or not a time prints the notice and starts a child, and the run's `checked` keeps `1.5.1` as `latest`. A fresh cache starts none. A `503` from the fake makes the child exit 1 and write nothing, leaving the run's `checked` in place, and a second run then starts no child.
 - **The child.** `self-update --refresh-notice` resolves `stable` through `releases/latest` and a `next` binary through the feed, passing over a tag whose `SHA256SUMS` answers `404`, requests no asset, writes the pinned line, prints nothing, and exits 0; a channel with no release writes `null`. Beside a version, `--channel`, or `--check` it exits 2 with the pinned sentence. With no asset it exits 1 with the first refusal, and under a relative `HOME` with no `XDG_CACHE_HOME` with the pinned cache-directory sentence. A cache directory it cannot write exits 1 with the pinned write sentence. It is listed by no help page and offered by no completion.
 - **Left out.** A run whose action fails, a run cancelled during its action, `--help` under the help plugin, `self-update` itself, stderr that is not a terminal, stdout that is not a terminal while stderr is one, `CI=1`, `NO_UPDATE_NOTIFIER=1`, the author's `env` set to `1`, a source build, a release with no asset, an installation with the method `npm`, no installation, and a relative `HOME` with no `XDG_CACHE_HOME` each print no notice, write no cache, and start no child, with the cache naming `1.5.1` on the running channel. `NO_UPDATE_NOTIFIER` set to the empty string does not turn notices off. `selfUpdate({ notices: false })` declares no middleware.
+- **Quiet.** Under the verbose plugin's `-q`, a qualifying run prints no notice and still refreshes a stale cache.
 - **Silent faults.** A cache directory that cannot be written, and a `program` naming a missing file, each exit 0 with the Command's line alone on stderr and nothing on stdout.
 - **Settings.** `notices: 1`, `notices: []`, and `notices: { env: '1X' }` each throw their pinned diagnostic at the call.
 - **Packaging.** `pnpm check:packed` compiles a consumer that passes `NoticeSettings` against the emitted declarations.
@@ -7051,10 +7193,58 @@ const app = new Application('jsonkit', { plugins: [color()] });
 
 #### Color plugin acceptance
 
-- jsonkit installs `color()` after its example plugin, and `jsonkit --help` lists `--[no-]color` with its description as the last global option, in the pages [The help page](#the-help-page) pins. The manifest marks it `control` and `color`, and every other Boolean option node reads `color: false`.
+- jsonkit installs `color()` after its example plugin, and `jsonkit --help` lists `--[no-]color` with its description after `--explain` among the global options, in the pages [The help page](#the-help-page) pins. The manifest marks it `control` and `color`, and every other Boolean option node reads `color: false`.
 - On a capable terminal with `FORCE_COLOR=1`, `jsonkit --help --no-color` prints the page with no color escape, and piped, `jsonkit --help --color` prints it with color escapes.
 - An application that marks its own option and installs the plugin fails with the two-marks error.
 - A consumer installs the packed pack, imports `@loomcli/plugins/color`, compiles against its declarations, and `pnpm check:packed` resolves the subpath from the packed tarball under Node and Bun.
+
+### Verbose plugin
+
+```ts
+// @loomcli/plugins/verbose
+import type { Plugin, PluginOptions } from '@loomcli/core';
+
+const options = {
+  verbose: {
+    control: true,
+    description: 'Show more detail. Repeat it for more.',
+    short: 'v',
+    type: 'count',
+    verbose: true,
+  },
+  quiet: {
+    control: true,
+    description: 'Hide info and success messages.',
+    quiet: true,
+    short: 'q',
+    type: 'count',
+  },
+} satisfies PluginOptions;
+export type VerboseOptions = typeof options;
+export declare function verbose(): Plugin<VerboseOptions>;
+```
+
+```ts
+import { Application } from '@loomcli/core';
+import { verbose } from '@loomcli/plugins/verbose';
+
+const app = new Application('jsonkit', { plugins: [verbose()] });
+// jsonkit -v keys -f doc.json writes "› Reading doc.json." on stderr and the keys on stdout.
+```
+
+`@loomcli/plugins/verbose` gives the operator the spellings that set the run's [verbosity](#verbosity). `verbose()` declares two global counted options: `verbose`, spelled `-v, --verbose`, with the description `Show more detail. Repeat it for more.` and the mark `verbose: true`, and then `quiet`, spelled `-q, --quiet`, with the description `Hide info and success messages.` and the mark `quiet: true`. Both carry `control: true`. It adds no middleware, no Command, no view, and no hook, and it claims no slot. Core settles the verbosity and applies it; the plugin only gives the operator the spellings.
+
+- **No settings.** `verbose()` declares no parameter, as `color()` does, so TypeScript rejects an argument and the factory reads none. `-v` and `-q` are the common standard's spellings, and the marks reject an `env` binding, so there is nothing to set.
+- **Its readers.** Help lists `-v, --verbose...` and `-q, --quiet...` with their descriptions among the global options, as it lists any counted option. The [manifest](#manifest) marks `verbose` with `control` and `verbose`, and `quiet` with `control` and `quiet`, and the [MCP](#mcp) plugin leaves both out of every tool's input schema, as it leaves out every control option.
+- **Another spelling.** An application that wants another spelling, such as `--loud`, or a verbose option without a quiet one, leaves the plugin out and marks its own counted global options. Installing the plugin beside another option with either mark is that mark's two-marks declaration error, and beside an option of its own named `verbose` or `quiet`, or spelled `-v` or `-q`, it is the existing key or spelling collision under [Plugin declaration errors](#plugin-declaration-errors).
+- **Names.** `verbose` and `VerboseOptions`, the type of its options record, are exported from `@loomcli/plugins/verbose`.
+
+#### Verbose plugin acceptance
+
+- jsonkit installs `verbose()` after `color()` and declares no verbose-marked or quiet-marked option of its own, and `jsonkit --help` lists `-v, --verbose...` and `-q, --quiet...` with their descriptions after `--[no-]color`, in the pages [The help page](#the-help-page) pins. The manifest marks them `control` with `verbose` and with `quiet`, and a fixture's unmarked counted option reads `false` for both.
+- `jsonkit -v keys -f doc.json` and `jsonkit -vv keys -f doc.json` write the `Reading doc.json.` debug line on stderr, `jsonkit keys -f doc.json` and `jsonkit -v -q keys -f doc.json` write none, and `jsonkit -q keys -f doc.json` writes the keys on stdout and nothing on stderr. Piped, the line is `› Reading doc.json.`.
+- An application that marks its own verbose option and installs the plugin fails with the two-marks error, and so does one that marks its own quiet option.
+- A consumer installs the packed pack, imports `@loomcli/plugins/verbose`, compiles against its declarations, and `pnpm check:packed` resolves the subpath from the packed tarball under Node and Bun.
 
 ### Example coverage
 
@@ -7437,7 +7627,7 @@ splitLines(style.red('one\ntwo'));
 // [style.red('one'), style.red('two')]
 ```
 
-Lane views receive the original message string, including line breaks and authored styles. Core does not split it into a new data structure or infer that later lines are details. A lane view owns its glyph gutter and continuation indentation. It measures the selected glyph form rather than assuming one column. The built-in `info`, `success`, `warn`, and `error` lanes prefix the first line with the matching glyph and one space. Continuation lines use spaces for that gutter without repeating the glyph. Those four lanes also wrap the message with `wrap` at `columns` minus the measured gutter, which fits the message in the columns right of the gutter, and every continuation line carries the gutter, whether the break is authored or wrapped. When `columns` is defined, before they wrap, they expand each tab in the message to spaces with `expandTabs`, counted from the start of its own line of the message, inside style and `nowrap` frames too, so the gutter moves no tab stop and lane output on a terminal holds no tab. With `columns` undefined, as on a pipe or under an invocation by name, lane output is byte for byte what it would be without wrapping, tabs included. With no column left after the gutter, the message is not wrapped, and its tabs still expand. `print` remains prefix-free and never wraps. An application that wants unwrapped lanes replaces the lane view, as it can replace any lane view. The semantic methods retain their string-only call shape and newline contract. Each lane is a declared view core exports under `lanes`, and an application replaces its function through `views` as [Views](#views) describes; the newline the semantic method appends is outside the view and survives any override.
+Lane views receive the original message string, including line breaks and authored styles. Core does not split it into a new data structure or infer that later lines are details. A lane view owns its glyph gutter and continuation indentation. It measures the selected glyph form rather than assuming one column. The built-in `info`, `success`, `warn`, and `error` lanes prefix the first line with the matching glyph and one space. The `debug` lane prefixes it with `glyph.pointerSmall` and one space, and the `trace` lane with two spaces, `glyph.lineVerticalDashed0`, and one space, so a trace line's gutter measures the glyph plus three. The `debug` lane styles its glyph and the message `dim` and the `trace` lane styles them `dim.faint`, the spaces of either gutter unstyled, and the message keeps its author's styles inside that frame. Continuation lines use spaces for that gutter without repeating the glyph. Those six lanes also wrap the message with `wrap` at `columns` minus the measured gutter, which fits the message in the columns right of the gutter, and every continuation line carries the gutter, whether the break is authored or wrapped. When `columns` is defined, before they wrap, they expand each tab in the message to spaces with `expandTabs`, counted from the start of its own line of the message, inside style and `nowrap` frames too, so the gutter moves no tab stop and lane output on a terminal holds no tab. With `columns` undefined, as on a pipe or under an invocation by name, lane output is byte for byte what it would be without wrapping, tabs included. With no column left after the gutter, the message is not wrapped, and its tabs still expand. `print` remains prefix-free and never wraps. An application that wants unwrapped lanes replaces the lane view, as it can replace any lane view. The semantic methods retain their string-only call shape and newline contract. Each lane is a declared view core exports under `lanes`, and an application replaces its function through `views` as [Views](#views) describes; the newline the semantic method appends is outside the view and survives any override.
 
 ### Implementation acceptance
 
@@ -7477,7 +7667,7 @@ The style tests and packed consumers cover these obligations:
 - Glyph measurement per destination: a message with a marked glyph whose main and compatibility forms differ in width breaks at different points for a destination that selects main forms and one that selects compatibility forms.
 - Text without spaces, such as Chinese, Japanese, and Thai prose, comes back unbroken at any `columns`.
 - `wrap` rejects `0`, a negative number, a fraction, `NaN`, `Infinity`, and an unsafe integer with `RangeError` and the sentence `Wrap width must be a positive safe integer.`, and `pad(wrap(text, n), n, { align: 'center' })` centers each line.
-- Marked lanes: `info`, `success`, `warn`, and `error` wrap a long message at `columns` minus the measured glyph gutter where `columns` is defined and leave it unwrapped when no column remains after the gutter, continuation lines carry the gutter, authored line breaks keep their gutter, and `print` does not wrap.
+- Marked lanes: `info`, `success`, `warn`, `error`, `debug`, and `trace` wrap a long message at `columns` minus the measured glyph gutter where `columns` is defined and leave it unwrapped when no column remains after the gutter, continuation lines carry the gutter, authored line breaks keep their gutter, and `print` does not wrap.
 - Golden fixtures that run without a terminal are byte for byte unchanged, for every lane, the table, the records view, and the lanes of an invocation by name.
 - The update notice: on an 80-column stderr terminal the notice wraps with the info lane's gutter on its continuation line, and on a pipe it stays one line.
 - Failure text: core's default text for each failure class stays one line per sentence on a terminal narrower than the sentence and on a pipe, and an override that calls `context.wrap` wraps its own text. A failure view override receives `columns`, `wrap`, and `expandTabs`. Help pages wrap under [Help wrapping acceptance](#help-wrapping-acceptance).
