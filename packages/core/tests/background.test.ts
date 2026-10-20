@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke, invokeFromRemovedDirectory } from '../../../scripts/test-process.js';
 
 const fixture = new URL('fixtures/background.mjs', import.meta.url);
 
@@ -9,6 +9,7 @@ interface Report {
   code: number | string;
   deadline: { cleared: boolean; clearedSoon: boolean; referenced: boolean }[];
   elapsed: 'deadline' | 'prompt';
+  flowing: boolean | null;
   listeners: number;
   modes: boolean[];
   paused: boolean;
@@ -60,10 +61,17 @@ describe('the answered path', () => {
     expect(report.elapsed).toBe('prompt');
   });
 
-  it('leaves stdin paused with no listener core added', () => {
+  it('leaves stdin in the flowing state it found, with no listener core added', () => {
     const report = run({ replies: light });
+    expect(report.flowing).toBeNull();
     expect(report.paused).toBe(true);
     expect(report.listeners).toBe(0);
+  });
+
+  it('a bare data listener in the action receives the typeahead and later keys', () => {
+    const report = run({ listen: true, replies: `a<ESC>]11;rgb:0/0/0<BEL>${da1}` });
+    expect(report.seen.action).toBe('dark');
+    expect(report.stdinRead).toBe('az');
   });
 
   it('typeahead before, between, and after the replies reaches the action in order', () => {
@@ -183,6 +191,14 @@ describe('readers', () => {
     expect(run({ fail: true, replies: light }).seen.failure).toBe('light');
   });
 
+  it('a failed host capture fails the run before settlement and writes no query', () => {
+    const result = invokeFromRemovedDirectory(fixture, [JSON.stringify({ replies: light })]);
+    const report: Report = JSON.parse(result.stdout);
+    expect(report.code).toBe(1);
+    expect(report.queried).toBe(0);
+    expect(report.modes).toEqual([]);
+  });
+
   it('an invocation by name reads undefined under a light policy', () => {
     const report = run({ declared: { background: 'light' }, invoke: true });
     expect(report.seen).toMatchObject({ action: null, view: null });
@@ -226,6 +242,11 @@ describe('the choice', () => {
     const { seen } = run({ argv, reader: 'both', stated: 'dark' });
     // A run whose parse fails reads its background in the failure view instead of the action.
     expect(seen.action === 'unread' ? seen.failure : seen.action).toBe(settled);
+  });
+
+  it("an alias spelling of the application's own marked option settles the run", () => {
+    const { seen } = run({ argv: ['--tint=light'], reader: 'own', stated: 'dark' });
+    expect(seen.action).toBe('light');
   });
 
   it('--background=blue supplies nothing and fails validation with exit 2', () => {

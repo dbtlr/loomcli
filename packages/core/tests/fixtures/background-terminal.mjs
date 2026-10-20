@@ -11,6 +11,7 @@ const app = new Application('shade', {
   plugins: [theme({ accent })],
 }).action(async ({ host, out }) => {
   // Only typeahead the query pushed back is read, so the action never waits on the terminal.
+  // A bare data listener with no resume() call receives it, because the query leaves stdin's flowing state as it found it.
   const typeahead =
     host.stdin.readableLength === 0
       ? ''
@@ -19,7 +20,6 @@ const app = new Application('shade', {
             host.stdin.pause();
             resolve(String(chunk));
           });
-          host.stdin.resume();
         });
   await out.print(`background=${host.terminal.background ?? 'undefined'} typeahead=[${typeahead}]`);
 });

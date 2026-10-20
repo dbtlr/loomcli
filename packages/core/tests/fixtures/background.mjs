@@ -7,11 +7,12 @@ import { theme } from '@loomcli/plugins/theme';
 /**
  * One run of an application on a scripted fake terminal. argv[2] holds the scenario as JSON:
  * `argv`, `env`, `platform`, the `rendering` policy of `run()` and `declared`, the Application's,
- * the `terminal` kinds, a `stated` background, `reader`, which theme and plugins the Application
- * installs, the scripted `replies` and the `delay` before the terminal sends them, `before`,
+ * the `terminal` kinds, a `stated` background, `reader`, which theme, plugins, and own marked
+ * option the Application installs, the scripted `replies` and the `delay` before the terminal sends them, `before`,
  * typeahead already waiting on stdin, `raw`, whether stdin offers raw mode, `startRaw`, `abort`,
  * a delay after which the caller aborts the run, `wait`, how long the action waits before it
- * reads stdin, `prepare`, variables an onEnvironment hook imports, `fail`, whether the action
+ * reads stdin, `listen`, whether the action reads stdin through a bare data listener instead of
+ * `read()`, `prepare`, variables an onEnvironment hook imports, `fail`, whether the action
  * fails, and `invoke`, whether the run is an invocation by name. It prints what happened as JSON.
  */
 const scenario = JSON.parse(process.argv[2]);
@@ -153,13 +154,19 @@ const failureLine = {
 };
 
 let stdinRead = undefined;
-const app = new Application('notes', {
+const declared = new Application('notes', {
   plugins,
   rendering: scenario.declared,
   views: [override(LoomError, failureLine)],
-}).action(async ({ host, out, style: contextual, options }) => {
+});
+// The `own` reader marks the application's own option, spelled --shade or by its alias --tint.
+const app = (
+  reader === 'own'
+    ? declared.globalOption('shade', { aliases: ['tint'], background: true, type: 'string' })
+    : declared
+).action(async ({ host, out, style: contextual, options }) => {
   seen.action = host.terminal.background ?? null;
-  seen.option = options.background ?? null;
+  seen.option = options.background ?? options.shade ?? null;
   await out.render('', {
     render: (_data, context) => {
       seen.view = context.background ?? null;
@@ -174,8 +181,20 @@ const app = new Application('notes', {
   if (scenario.wait !== undefined) {
     await new Promise((resolve) => realSetTimeout(resolve, scenario.wait));
   }
-  const chunk = host.stdin.read();
-  stdinRead = chunk === null ? null : encoded(String(chunk));
+  if (scenario.listen) {
+    // A bare data listener that never calls resume(), then a key typed after the listener attaches.
+    const chunks = [];
+    const collect = (chunk) => chunks.push(String(chunk));
+    host.stdin.on('data', collect);
+    realSetTimeout(() => stdin.push('z'), 10);
+    await new Promise((resolve) => realSetTimeout(resolve, 50));
+    host.stdin.off('data', collect);
+    host.stdin.pause();
+    stdinRead = encoded(chunks.join(''));
+  } else {
+    const chunk = host.stdin.read();
+    stdinRead = chunk === null ? null : encoded(String(chunk));
+  }
   if (scenario.fail) {
     throw new LoomError('Failed.');
   }
@@ -227,8 +246,11 @@ process.stdout.write(
       referenced: timer.hasRef(),
     })),
     elapsed: elapsed >= 1000 ? 'deadline' : 'prompt',
-    listeners:
-      stdin.listenerCount('data') + stdin.listenerCount('end') + stdin.listenerCount('close'),
+    flowing: stdin.readableFlowing,
+    listeners: ['close', 'data', 'end', 'error', 'readable'].reduce(
+      (count, event) => count + stdin.listenerCount(event),
+      0,
+    ),
     modes: stdin.modes,
     paused: stdin.isPaused(),
     queried,

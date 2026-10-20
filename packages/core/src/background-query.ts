@@ -92,6 +92,17 @@ function queryDestination(host: Host, policy: RenderingPolicy): Writable | undef
   return undefined;
 }
 
+/**
+ * One chunk a stream's `read()` returned, as one latin1 character per byte: a Buffer's bytes, or a
+ * decoded string's UTF-8 bytes. Anything else, which only an object-mode stream returns, adds nothing.
+ */
+function bytesOf(chunk: unknown): string {
+  if (Buffer.isBuffer(chunk)) {
+    return chunk.toString('latin1');
+  }
+  return typeof chunk === 'string' ? Buffer.from(chunk).toString('latin1') : '';
+}
+
 /** A function that does nothing, which a wait's stop holds until the wait begins. */
 const nothing = (): void => undefined;
 
@@ -104,8 +115,12 @@ interface ReplyWait {
 
 /**
  * Calls `ask` once stdin is read, then reads it until the DA1 reply, the deadline, an abort of
- * `signal`, or the end of stdin. The deadline is one unreferenced timer, so it never keeps the
- * process alive. `stop` clears it, removes every listener the wait added, and leaves stdin paused.
+ * `signal`, or the end of stdin. It reads through a `readable` listener rather than a `data`
+ * listener, because `resume()` and `pause()` would leave the stream's flowing state `false`, and a
+ * stream in that state never starts flowing for a later `data` listener of the action's. The
+ * deadline is one unreferenced timer, so it never keeps the process alive. `stop` clears it,
+ * pauses stdin, which stops a terminal's handle reading, and removes every listener the wait added,
+ * so the stream returns to the flowing state it was found in.
  */
 function waitForReplies(stdin: Readable, signal: AbortSignal, ask: () => void): ReplyWait {
   let received = '';
@@ -116,8 +131,10 @@ function waitForReplies(stdin: Readable, signal: AbortSignal, ask: () => void): 
     };
     const timer = setTimeout(end, deadline);
     timer.unref();
-    const data = (chunk: Buffer | string) => {
-      received += Buffer.from(chunk).toString('latin1');
+    const readable = () => {
+      for (let chunk: unknown = stdin.read(); chunk !== null; chunk = stdin.read()) {
+        received += bytesOf(chunk);
+      }
       if (readReplies(received).ended) {
         clearTimeout(timer);
         end();
@@ -126,12 +143,11 @@ function waitForReplies(stdin: Readable, signal: AbortSignal, ask: () => void): 
     stop = () => {
       clearTimeout(timer);
       signal.removeEventListener('abort', end);
-      stdin.off('data', data).off('end', end).off('close', end).off('error', end);
       stdin.pause();
+      stdin.off('readable', readable).off('end', end).off('close', end).off('error', end);
     };
     signal.addEventListener('abort', end, { once: true });
-    stdin.on('data', data).once('end', end).once('close', end).once('error', end);
-    stdin.resume();
+    stdin.on('readable', readable).once('end', end).once('close', end).once('error', end);
     // A run already cancelled never reaches the wait, so only a later abort ends it.
     ask();
   });
@@ -151,7 +167,7 @@ function enterRaw(raw: (mode: boolean) => unknown): boolean {
 /**
  * Writes the background query in raw mode and returns every byte read until the wait ends, or
  * nothing when the stream refuses raw mode. The mode found is restored in a `finally`, and stdin is
- * left paused with no listener of core's.
+ * left in the flowing state it was found in, with no listener of core's.
  */
 async function exchange(terminal: {
   readonly destination: Writable;

@@ -80,6 +80,8 @@ const marking2 = { background: true, type: 'string' } satisfies OptionConfig;
 new Command('bad').option('shade', marking2);
 // @ts-expect-error TS2345: Only a string option carries the background mark.
 new Application('bad').globalOption('shade', { background: true, type: 'boolean' });
+// @ts-expect-error TS2322: A content option carries no background mark.
+new Command('bad').option('shade', { background: true, type: 'content' });
 // @ts-expect-error TS2345: A counted option carries no background mark.
 new Application('bad').globalOption('shade', { background: true, type: 'count' });
 // @ts-expect-error TS2322: The marked option takes no short alias.
