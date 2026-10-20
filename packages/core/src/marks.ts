@@ -4,40 +4,56 @@ import { factFault, siteFinding } from './facts.js';
 import type { FactSite } from './facts.js';
 import type { OptionConfig } from './types.js';
 
-/** A run-wide mark: the key one Boolean global option carries, and the rule that guards it. */
+/**
+ * A run-wide mark: the key one global option carries, the option type that may carry it, and the
+ * rule that guards it. The interaction and color marks sit on a Boolean option, and the verbose and
+ * quiet marks on a counted one.
+ */
 interface Mark {
-  readonly fact: 'color' | 'interaction';
+  readonly fact: 'color' | 'interaction' | 'quiet' | 'verbose';
+  readonly type: 'boolean' | 'count';
   readonly rule: DiagnosticRule;
 }
 
-/** Whether one option carries a mark: the key, on a Boolean option, holding `true`. */
-function isMarked(config: OptionConfig, fact: Mark['fact']): boolean {
-  return config.type === 'boolean' && config[fact] === true;
+/** Whether one option carries a mark: the key, on an option of the mark's type, holding `true`. */
+function isMarked(config: OptionConfig, mark: Mark): boolean {
+  return config.type === mark.type && config[mark.fact] === true;
+}
+
+/** The sentence and fix one option of the wrong type reports for a mark. */
+function wrongType(subject: string, mark: Mark): { sentence: string; correction: string } {
+  return mark.type === 'boolean'
+    ? {
+        correction: 'Use type "boolean".',
+        sentence: `${subject} declares ${mark.fact} but is not Boolean.`,
+      }
+    : {
+        correction: 'Use type "count".',
+        sentence: `${subject} declares ${mark.fact} but is not a counted option.`,
+      };
 }
 
 /**
  * The sentence and fix of the first placement rule one marked config breaks, or `undefined` when
- * it sits on a Boolean global option and holds `true`.
+ * it sits on a global option of the mark's type and holds `true`.
  */
 function misplaced(
   config: OptionConfig,
   subject: string,
-  scope: { readonly global: boolean; readonly fact: Mark['fact'] },
+  scope: { readonly global: boolean; readonly mark: Mark },
 ): { sentence: string; correction: string } | undefined {
-  const { fact, global } = scope;
+  const { global, mark } = scope;
+  const { fact } = mark;
   if (!global) {
     return {
       correction: 'Declare it with globalOption().',
       sentence: `${subject} declares ${fact} but is not a global option.`,
     };
   }
-  if (config.type !== 'boolean') {
-    return {
-      correction: 'Use type "boolean".',
-      sentence: `${subject} declares ${fact} but is not Boolean.`,
-    };
+  if (config.type !== mark.type) {
+    return wrongType(subject, mark);
   }
-  const value: unknown = Reflect.get(config, fact);
+  const value: unknown = config[fact];
   return value === true
     ? undefined
     : {
@@ -47,7 +63,7 @@ function misplaced(
 }
 
 /**
- * A mark belongs only to a Boolean global option and holds `true`, judged at the call that
+ * A mark belongs only to a global option of its type and holds `true`, judged at the call that
  * declares the option. A config without the key declares no mark and passes.
  */
 function checkMarkPlacement(
@@ -59,7 +75,7 @@ function checkMarkPlacement(
   if (!(fact in config)) {
     return;
   }
-  const fault = misplaced(config, site.subject, { fact, global: scope.global });
+  const fault = misplaced(config, site.subject, scope);
   if (fault !== undefined) {
     throw factFault(rule, site, { ...fault, fact });
   }

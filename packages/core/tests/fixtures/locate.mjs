@@ -57,7 +57,9 @@ function reduce(graph, position) {
   if (position.kind === 'none') {
     return position;
   }
-  const { argument, command, option, ...rest } = position;
+  // This graph declares no counted option, so an option position's counts are always empty.
+  // Counted-options.test.ts reads them against a graph that declares one.
+  const { argument, command, counts: _counts, option, ...rest } = position;
   const node = nodeAt(graph, command.path);
   let own = node === command;
   const reduced = { ...rest, command: command.path };

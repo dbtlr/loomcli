@@ -3,6 +3,7 @@ import type { CommandGraph, CommandNode, OptionNode, WordPosition } from '@loomc
 import { closedSet } from '../closed-set.js';
 import type { Schema } from '../closed-set.js';
 import { terminator } from '../lines.js';
+import { addsOccurrence, noOccurrence, oneOccurrence } from '../occurrences.js';
 
 /**
  * Cobra's directive numbers, of which the answer writes three: `0` leaves the shell its default,
@@ -72,20 +73,20 @@ function childOffers(command: CommandNode): Offer[] {
 }
 
 /**
- * Whether an option may be given again: a multiple string option collects another occurrence, and
- * a counted option adds one.
+ * How many times the earlier words gave an option: a counted option's count, and for any other
+ * option 1 when they supplied it, which is all a repeat is judged against.
  */
-function repeats(option: OptionNode): boolean {
-  return (
-    option.type === 'count' ||
-    ((option.type === 'string' || option.type === 'content') && option.multiple)
-  );
+function given(option: OptionNode, position: Extract<WordPosition, { kind: 'option' }>): number {
+  if (option.type === 'count') {
+    return position.counts.get(option.name) ?? noOccurrence;
+  }
+  return position.supplied.includes(option.name) ? oneOccurrence : noOccurrence;
 }
 
 /**
  * The spellings of the options in scope that the word may still name: each long spelling, a
- * Boolean's negative spelling, and the short spelling when the word is exactly `-`. An option
- * already supplied is left out unless it repeats.
+ * Boolean's negative spelling, and the short spelling when the word is exactly `-`. An option the
+ * earlier words gave is left out unless another occurrence still adds anything.
  */
 function optionOffers(
   graph: CommandGraph,
@@ -103,7 +104,7 @@ function optionOffers(
   );
   return scope
     .filter((option) => isListed(option) && !excluded.has(option.name))
-    .filter((option) => repeats(option) || !position.supplied.includes(option.name))
+    .filter((option) => addsOccurrence(option, given(option, position)))
     .flatMap((option) => {
       const spellings = [
         option.long,

@@ -87,7 +87,7 @@ import { buildGlobals, checkLocalOptions, frozenValues } from './globals.js';
 import { nameSharedAcrossKinds, optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import { graphMismatch, nodeAt, resultNode } from './inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
-import { checkInteraction } from './interaction.js';
+import { checkInteraction, interaction } from './interaction.js';
 import type { Log, LogBinder } from './log.js';
 import { isMarked } from './marks.js';
 import { rememberInputNames } from './missing-input.js';
@@ -172,6 +172,7 @@ import type {
   ValidatedInputs,
   Validation,
 } from './validation.js';
+import { checkVerbosity } from './verbosity.js';
 
 /** One positional slot: the declaration it fills and whether it takes the remaining tokens. */
 export interface ArgumentSlot {
@@ -931,6 +932,7 @@ export function declareOption<
   checkEnvBinding(site, input.config);
   checkInteraction(input.config, site, false);
   checkColor(input.config, site, false);
+  checkVerbosity(input.config, site, false);
   const recorded = recordInput(state, input);
   checkLocalOptions(
     [...optionsOf(state.inputs), input],
@@ -2439,6 +2441,7 @@ function checkInputFacts(
       checkEnvBinding(site, input.config);
       checkInteraction(input.config, site, false);
       checkColor(input.config, site, false);
+      checkVerbosity(input.config, site, false);
     }
     context.extensions.set(
       input,
@@ -3324,7 +3327,7 @@ export async function prepareDispatch(
   const ledger = new ValidationLedger();
   const preparation = { graph, interactive: false, invocation, ledger, routed };
   const { globals, scope, sources } = await fillScope(preparation, local);
-  const marked = graph.globals.inputs.find((input) => isMarked(input.config, 'interaction'));
+  const marked = graph.globals.inputs.find((input) => isMarked(input.config, interaction));
   preparation.interactive =
     invocation.host.terminal.stdin.isTTY &&
     invocation.host.terminal.stderr.isTTY &&

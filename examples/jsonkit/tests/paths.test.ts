@@ -104,7 +104,8 @@ test('the inspected graph marks the control options and leaves the work options 
     explain: true,
     help: true,
     manifest: true,
-    verbose: false,
+    quiet: true,
+    verbose: true,
     version: true,
   });
   expect(marks(optionsOf('paths'))).toEqual({ file: false, format: true });

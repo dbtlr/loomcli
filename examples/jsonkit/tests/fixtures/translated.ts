@@ -24,7 +24,7 @@ const application = new Application('jsonkit', {
     type: 'content',
   })
   .action(async ({ options, out, style }) => {
-    await readJson({ options: { file: options.file, verbose: 0 }, out, style });
+    await readJson({ options: { file: options.file }, out, style });
   });
 
 process.exitCode = await application.run();

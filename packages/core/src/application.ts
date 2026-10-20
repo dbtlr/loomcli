@@ -148,6 +148,7 @@ import type {
 import { undescribedFault } from './undescribed.js';
 import type { ArgumentInput, DeclaredValues, InputPlaces, OptionInput } from './validation.js';
 import { checkDeclarations, prepareDeclaredValues } from './validation.js';
+import { argvVerbosity, checkVerbosityBinding, namedVerbosity } from './verbosity.js';
 import { buildViews, viewIdentities } from './view.js';
 import type { ViewContributions, ViewOverride, ViewRegistry } from './view.js';
 
@@ -520,7 +521,7 @@ class ApplicationBuilder<
     );
     const root = { ...this.#root, descriptors };
     checkDeclaredOptions(root, globalTable(globals.inputs, this.#config.plugins));
-    checkColorBinding(
+    checkMarkBindings(
       captured.config,
       globalSite(captured),
       carriedBinding(globals.records.get(captured), this.#config.plugins),
@@ -970,6 +971,8 @@ class ApplicationBuilder<
           bound,
         );
         const { graph, inspected } = built;
+        // Nothing has written a lane yet: graph build's hooks receive no out.
+        invocationOutput.useVerbosity(entered.verbosity(graph, host));
         reached = { inspected, plugins: built.plugins };
         if (door.encodes) {
           encoders = encoderRegistry(built.plugins);
@@ -1267,6 +1270,8 @@ interface RunEntry {
   bracket: (controller: AbortController) => SignalBracket;
   /** Reads the run's inputs against the built graph. */
   read: (host: Host) => Invocation['read'];
+  /** The run's verbosity, settled against the built graph from what the run reads its inputs from. */
+  verbosity: (graph: BuiltGraph, host: Host) => number;
   /** The view the run starts from, which an invocation by name's caller may select. */
   start: StartingView | undefined;
 }
@@ -1321,6 +1326,7 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
         read: (host) => (graph, walked) => parseInvocation(graph, host.argv, walked),
         start: undefined,
         stderr: overrides?.stderr,
+        verbosity: (graph, host) => argvVerbosity(graph, host.argv),
       };
     },
     fallback: (stderr) => captureHost(application, undefined, stderr).report,
@@ -1376,6 +1382,8 @@ function nameDoor<Mapped>(
         read: () => (graph, walked) => lowerInvocation(graph, call.named, walked),
         start: call.view,
         stderr: undefined,
+        // A call settles its own verbosity from the values it lowers, and inherits none.
+        verbosity: (graph) => namedVerbosity(graph, call.named),
       };
     },
     fallback: () => host().report,
@@ -1551,15 +1559,29 @@ function carriedBinding(
 }
 
 /**
- * No plugin's color-marked option carries the installed source's binding. Only the constructor
- * holds every plugin, so it judges each plugin's options against the source another one installs.
+ * An option that carries a mark read before configuration, the color mark or a verbosity mark,
+ * carries no value of the installed source's binding. `binding` is that binding when it does.
  */
-function checkPluginColorBindings(plugins: readonly BuiltPlugin[]): void {
+function checkMarkBindings(
+  config: OptionConfig,
+  site: FactSite,
+  binding: string | undefined,
+): void {
+  checkColorBinding(config, site, binding);
+  checkVerbosityBinding(config, site, binding);
+}
+
+/**
+ * No plugin's option that carries a mark read before configuration carries the installed source's
+ * binding. Only the constructor holds every plugin, so it judges each plugin's options against the
+ * source another one installs.
+ */
+function checkPluginMarkBindings(plugins: readonly BuiltPlugin[]): void {
   for (const installed of plugins) {
     const siteOf = pluginSites(installed.identity, installed.inputs);
     for (const input of installed.inputs) {
       const bound = carriedBinding(installed.records.get(input), plugins);
-      checkColorBinding(input.config, siteOf(input), bound);
+      checkMarkBindings(input.config, siteOf(input), bound);
     }
   }
 }
@@ -1606,7 +1628,7 @@ function declareApplication<Plugins extends readonly Plugin[]>(
     buildViews(pluginViews(entry.identity), entry.views, identities),
   );
   const table = globalTable([], plugins);
-  checkPluginColorBindings(plugins);
+  checkPluginMarkBindings(plugins);
   const descriptors = installed.descriptors;
   const extensions = storeCommandLayers({
     descriptors,

@@ -36,11 +36,6 @@ const serverInfo = {
   },
 };
 
-/** The global work option a tool call may supply. */
-const globals = {
-  verbose: { description: 'Name the document before reading it.', minimum: 0, type: 'integer' },
-};
-
 /** Content input paths are supplied by name; MCP transport stdin cannot fill them. */
 const file = {
   description: 'The document to read. Omit it to read piped text.',
@@ -119,7 +114,7 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
           description: 'Read and reshape one JSON document.',
           inputSchema: {
             additionalProperties: false,
-            properties: { file, ...globals },
+            properties: { file },
             required: ['file'],
             type: 'object',
           },
@@ -133,7 +128,6 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
             properties: {
               file,
               path: { description: 'Dot path to read.', type: 'string' },
-              ...globals,
             },
             required: ['path', 'file'],
             type: 'object',
@@ -148,7 +142,6 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
             properties: {
               file,
               path: { description: 'Dot path to list. Omit it for the root.', type: 'string' },
-              ...globals,
             },
             required: ['file'],
             type: 'object',
@@ -167,7 +160,6 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
                 type: 'array',
               },
               file,
-              ...globals,
             },
             required: ['file', 'field'],
             type: 'object',

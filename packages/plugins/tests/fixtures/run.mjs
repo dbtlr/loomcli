@@ -2,6 +2,7 @@ import { Application, Command, override } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { helpPage } from '@loomcli/plugins/help/views';
+import { verbose } from '@loomcli/plugins/verbose';
 import { version } from '@loomcli/plugins/version';
 import { versionLine } from '@loomcli/plugins/version/views';
 import { z } from 'zod';
@@ -435,6 +436,12 @@ const scenarios = {
         render: ({ command, variant }) => `${command.name ?? 'root'}:${variant}\n`,
       }),
     ]),
+  verbose: () =>
+    new Application('fetchit', {
+      description: 'Fetch records.',
+      plugins: [...plugins, verbose()],
+      version: '1.2.0',
+    }).action(dispatch),
   version: () => versioned({ version: '1.2.0' }),
   'version-empty': () => versioned({ version: '1.2.0' }, [help(), version({})]),
   'version-omitted': () => versioned({}),

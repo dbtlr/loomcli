@@ -79,6 +79,7 @@ import type {
 } from './types.js';
 import { captureConfig, checkDeclarations, defaultDepthFault } from './validation.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
+import { checkVerbosity } from './verbosity.js';
 import { buildViews, viewIdentities } from './view.js';
 import type { ViewContribution, ViewSubject } from './view.js';
 
@@ -548,6 +549,7 @@ function checkPluginOption(
   checkNoPresenceRule(site, config);
   checkInteraction(config, site, true);
   checkColor(config, site, true);
+  checkVerbosity(config, site, true);
   checkDescription(site, config.description);
   checkHidden(site, config.hidden);
   checkDeprecated(site, config.deprecated);

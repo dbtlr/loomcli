@@ -11,7 +11,7 @@ const interactionMark = registerRule('@loomcli/core/interaction-mark', {
 });
 
 /** The interaction mark, which carries no rule beyond where a mark sits. */
-const interaction: Mark = { fact: 'interaction', rule: interactionMark };
+const interaction: Mark = { fact: 'interaction', rule: interactionMark, type: 'boolean' };
 
 /** The mark belongs only to a Boolean global option, at the earliest informed declaration. */
 function checkInteraction(config: OptionConfig, site: FactSite, global: boolean): void {

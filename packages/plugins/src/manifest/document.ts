@@ -108,6 +108,8 @@ type ManifestOption =
       readonly control: boolean;
       readonly long: string | null;
       readonly short: string | null;
+      readonly verbose: boolean;
+      readonly quiet: boolean;
       readonly schema: null;
       readonly env: readonly string[];
     };
@@ -170,7 +172,14 @@ function optionEntry(node: OptionNode): ManifestOption {
       };
     }
     case 'count': {
-      return { type: 'count', ...common, schema: node.schema, env: node.env };
+      return {
+        type: 'count',
+        ...common,
+        verbose: node.verbose,
+        quiet: node.quiet,
+        schema: node.schema,
+        env: node.env,
+      };
     }
     case 'content':
     case 'string': {

@@ -25,6 +25,7 @@ import type { BuiltPlugin } from './plugin.js';
 import type { OptionConfig } from './types.js';
 import { captureInputConfig, configUnread } from './validation.js';
 import type { InputDeclaration, OptionInput, ValidatedInputs } from './validation.js';
+import { checkVerbosity, quiet, verbose } from './verbosity.js';
 
 const globalSubject = 'the global options';
 
@@ -254,6 +255,7 @@ function declareGlobalOption<Name extends string, Config extends OptionConfig>(
   checkNoPresenceRule(site, input.config);
   checkInteraction(input.config, site, true);
   checkColor(input.config, site, true);
+  checkVerbosity(input.config, site, true);
   checkDescription(site, input.config.description);
   checkHidden(site, input.config.hidden);
   checkDeprecated(site, input.config.deprecated);
@@ -295,10 +297,10 @@ function globalTable(inputs: readonly OptionInput[], plugins: readonly BuiltPlug
     });
   });
   const all = [...inputs, ...plugins.flatMap((entry) => entry.inputs)];
-  for (const mark of [interaction, color]) {
+  for (const mark of [interaction, color, verbose, quiet]) {
     checkOneMark(
       all
-        .filter((input) => isMarked(input.config, mark.fact))
+        .filter((input) => isMarked(input.config, mark))
         .map((input) => names.get(input.name)?.site ?? globalSite(input)),
       mark,
     );
@@ -478,7 +480,7 @@ function colorSpellings(
   plugins: readonly BuiltPlugin[],
 ): ReadonlyMap<string, OptionSpelling> | undefined {
   const marked = [...inputs, ...plugins.flatMap((installed) => installed.inputs)].find((input) =>
-    isMarked(input.config, 'color'),
+    isMarked(input.config, color),
   );
   if (marked === undefined) {
     return undefined;

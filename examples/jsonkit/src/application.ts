@@ -16,6 +16,7 @@ import { mcpCommand } from '@loomcli/plugins/mcp/extension';
 import { records } from '@loomcli/plugins/records';
 import { suggestions } from '@loomcli/plugins/suggestions';
 import { loomTheme } from '@loomcli/plugins/theme';
+import { verbose } from '@loomcli/plugins/verbose';
 import { version } from '@loomcli/plugins/version';
 
 import Package from '../package.json' with { type: 'json' };
@@ -62,6 +63,7 @@ const configured = new Application('jsonkit', {
     loomTheme(),
     explain(),
     color(),
+    verbose(),
     doctor(),
     completion(),
     mcp(),
@@ -70,13 +72,7 @@ const configured = new Application('jsonkit', {
   translators: [invalidJson],
   version: Package.version,
   views: [override(FatalError, fatalError)],
-})
-  .option('file', documentInput)
-  .globalOption('verbose', {
-    description: 'Name the document before reading it.',
-    short: 'v',
-    type: 'count',
-  });
+}).option('file', documentInput);
 
 declare module '@loomcli/core' {
   interface Register {

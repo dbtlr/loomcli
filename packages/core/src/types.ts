@@ -125,6 +125,8 @@ type BooleanFacts = Described &
   OptionExtensions & {
     type: 'boolean';
     interaction?: true;
+    verbose?: never;
+    quiet?: never;
     validate?: never;
     default?: never;
     multiple?: never;
@@ -133,12 +135,15 @@ type BooleanFacts = Described &
     implied?: never;
   };
 /**
- * A value-taking or counted option carries neither run-wide mark, because each mark belongs to one
- * Boolean global option.
+ * A value-taking option carries no run-wide mark: the interaction and color marks belong to one
+ * Boolean global option each, and the verbose and quiet marks to one counted global option each.
+ * A local option's declaration carries none of them either.
  */
 interface Unmarked {
   interaction?: never;
   color?: never;
+  verbose?: never;
+  quiet?: never;
 }
 /** The same slot on an argument declaration, typed by the target its values must name. */
 interface ArgumentExtensions {
@@ -500,6 +505,10 @@ export interface Out<Result = unknown> {
   success(message: string): Promise<void>;
   warn(message: string): Promise<void>;
   error(message: string): Promise<void>;
+  /** A debug line on stderr, written from verbosity 1, as an operator's `-v` asks. */
+  debug(message: string): Promise<void>;
+  /** A trace line on stderr, finer than a debug line, written from verbosity 2, as an operator's `-vv` asks. */
+  trace(message: string): Promise<void>;
   /**
    * The neutral view call: a rendered value has no purpose and no destination. A row view takes an
    * iterable, and core writes each row's text as the source yields it. One signature rather than an
@@ -730,16 +739,18 @@ export type BooleanOption =
     });
 /**
  * A counted option takes no value and reads how many times it was supplied, across every spelling,
- * so it declares no validator, default, presence rule, collection, polarity, or implied value.
+ * so it declares no validator, default, presence rule, collection, polarity, or implied value. It
+ * may carry the verbose mark or the quiet mark, never both, and a marked option binds no variable,
+ * because the run settles its verbosity before it reads the environment.
  */
 export type CountOption = OptionSpelling &
   Described &
   Listed &
   Controlled &
-  EnvBinding &
-  OptionExtensions &
-  Unmarked & {
+  OptionExtensions & {
     type: 'count';
+    interaction?: never;
+    color?: never;
     validate?: never;
     default?: never;
     multiple?: never;
@@ -747,7 +758,11 @@ export type CountOption = OptionSpelling &
     validateOmitted?: never;
     polarity?: never;
     implied?: never;
-  };
+  } & (
+    | ({ verbose?: never; quiet?: never } & EnvBinding)
+    | { verbose: true; quiet?: never; env?: never }
+    | { quiet: true; verbose?: never; env?: never }
+  );
 export type OptionConfig = StringOption | BooleanOption | CountOption | ContentOption;
 /**
  * The configuration of a global option a plugin declares: everything `option()` takes except the

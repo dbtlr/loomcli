@@ -36,7 +36,8 @@ function describe(found: WordPosition): string {
     }
     case 'option': {
       const supplied: readonly string[] = found.supplied;
-      return supplied.join(',');
+      const counts: ReadonlyMap<string, number> = found.counts;
+      return `${supplied.join(',')}${counts.size}`;
     }
     case 'command':
     case 'passthrough': {

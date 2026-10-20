@@ -11,34 +11,27 @@ function explain(error: unknown, fallback: string): string {
   return reason.endsWith('.') ? reason : `${reason}.`;
 }
 
-/** The count of `--verbose` from which the reader names its source before reading it. */
-const namingCount = 1;
-
-/**
- * The prepared document handle, the verbosity count, and the output that names the source.
- */
+/** The prepared document handle and the output that names the source. */
 export interface DocumentReading {
-  readonly options: { readonly file: Content; readonly verbose: number };
-  readonly out: Pick<Out, 'info'>;
+  readonly options: { readonly file: Content };
+  readonly out: Pick<Out, 'debug'>;
   readonly style: Pick<ContextualStyle, 'escape'>;
 }
 
 /**
- * Every action reads its document here, so a read failure reads the same everywhere. With
- * `--verbose` it first names the source on one info line, whatever the count, with its control
+ * Every action reads its document here, so a read failure reads the same everywhere. It first
+ * names the source on one debug line, which the operator's `-v` reveals, with its control
  * characters escaped as every other operator-supplied name jsonkit prints. A malformed document
  * throws the `SyntaxError` `JSON.parse` raises, which the application's translator turns into its
  * `InvalidJsonError`.
  */
 export async function readJson({ options, out, style }: DocumentReading): Promise<unknown> {
-  const { file, verbose } = options;
-  if (verbose >= namingCount) {
-    await out.info(
-      file.kind === 'stdin'
-        ? 'Reading stdin.'
-        : `Reading ${style.escape(escapeControlCharacters(file.name))}.`,
-    );
-  }
+  const { file } = options;
+  await out.debug(
+    file.kind === 'stdin'
+      ? 'Reading stdin.'
+      : `Reading ${style.escape(escapeControlCharacters(file.name))}.`,
+  );
   const subject = file.kind === 'stdin' ? 'stdin' : `file: ${escapeControlCharacters(file.name)}`;
   const contents = await file.text().catch((error: unknown) => {
     throw new FatalError(

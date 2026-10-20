@@ -23,6 +23,7 @@ const options = [
   '--help',
   '--manifest',
   '--no-color',
+  '--quiet',
   '--verbose',
   '--version',
 ];
@@ -75,7 +76,7 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       it('jsonkit paths -<Tab> lists long and short spellings', async () => {
         const { listed } = await complete('jsonkit paths -');
         expect(counts(listed)).toEqual(
-          counts([...options, '--format', '-e', '-f', '-h', '-M', '-o', '-v', '-V']),
+          counts([...options, '--format', '-e', '-f', '-h', '-M', '-o', '-q', '-v', '-V']),
         );
       });
 
@@ -90,8 +91,18 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       });
 
       it('the counted --verbose is listed again after it was given', async () => {
-        const { listed } = await complete('jsonkit -v keys -v --');
+        const { listed } = await complete('jsonkit -v keys --');
         expect(counts(listed)).toEqual(counts(options));
+      });
+
+      it('--verbose is not listed once -vv is given, because the verbosity stops at 2', async () => {
+        const { listed } = await complete('jsonkit -v keys -v --');
+        expect(counts(listed)).toEqual(counts(options.filter((word) => word !== '--verbose')));
+      });
+
+      it('--quiet is not listed once -q is given, because a further -q adds nothing', async () => {
+        const { listed } = await complete('jsonkit -q keys --');
+        expect(counts(listed)).toEqual(counts(options.filter((word) => word !== '--quiet')));
       });
 
       it("select's multiple --field is listed again after it was given", async () => {
