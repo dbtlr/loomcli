@@ -611,7 +611,7 @@ The help plugin's opt-in rule, `help({ paging: true })`, under which a help page
 _Avoid_: Pagination, paged output, more mode
 
 **Pager**:
-The program the operator's `PAGER` names, `less` when it is unset, which help runs through the platform shell with the page on its standard input and the terminal's stdout and stderr as its own, ignoring every exit code but the shell's could-not-start codes, 126, 127, and 9009, which print the page unpaged. Ctrl-C cancels the run and ends the pager with it. An empty `PAGER` or `cat` turns help paging off.
+The program the operator's `PAGER` names, `less` when it is unset, which help runs through the platform shell with the page on its standard input and the terminal's stdout and stderr as its own, ignoring every exit code but the shell's could-not-start codes, 126, 127, and 9009, which print the page unpaged. Ctrl-C cancels the run and ends the pager with it. A `PAGER` that is empty, holds only whitespace, or holds `cat` with surrounding whitespace alone turns help paging off.
 _Avoid_: Viewer, scroller, less (for the pager in general)
 
 **Completion**:
