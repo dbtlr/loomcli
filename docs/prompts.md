@@ -1,10 +1,10 @@
 ---
-description: The @loomcli/prompts reference. The four question kinds an action asks, text, secret, confirm, and select, how a question links a local option, how the run's interaction decision resolves it, what each kind draws and accepts, and how a question leaves the terminal.
+description: The @loomcli/prompts reference. The four question kinds an action asks, text, secret, confirm, and select, how a question links a local option, how the run's interaction decision resolves it, what each kind draws and accepts, and how a question leaves the terminal, and the progress lines an action shows around its work, their style plugin, their view, and their plain lines off a terminal.
 ---
 
 # Prompts reference
 
-`@loomcli/prompts` is a library an action imports to ask an operator a question at a terminal. It is not a plugin: an application installs nothing, and the library registers no option. [ADR-0082](decisions/0082-an-action-asks-through-the-prompts-library-and-one-interaction-decision-governs-questions-and-conditional-requiredness.md) records the decision. Core supplies what a question reads, the run's [interaction decision](core.md#interaction), the [`supplied`](core.md#interaction) record, `out.draw`, and `cancel()`, and the library owns the key reader and the frames.
+`@loomcli/prompts` is a library an action imports to ask an operator a question at a terminal and to show [progress](#progress) around its work. Questions and progress lines need no plugin: an application installs nothing to use them, and the library registers no option. The one plugin it ships, `progressStyle()`, is optional and sets how progress lines look across the application. [ADR-0082](decisions/0082-an-action-asks-through-the-prompts-library-and-one-interaction-decision-governs-questions-and-conditional-requiredness.md) records the questions, and [ADR-0091](decisions/0091-live-regions-stack-at-the-bottom-of-stderr-and-progress-reaches-invoke-callers-and-mcp-clients-as-typed-events.md) the regions both draw in and the progress lines. Core supplies what a question reads, the run's [interaction decision](core.md#interaction), the [`supplied`](core.md#interaction) record, [`out.region`](core.md#live-region), and `cancel()`, and the library owns the key reader, the frames, and the progress timer.
 
 ```ts
 import { Application, Command } from '@loomcli/core';
@@ -134,7 +134,7 @@ Each kind reads keys from stdin in raw mode. A key a kind does not list is ignor
 
 ## Frames and views
 
-A question draws through `out.draw` on stderr and never writes to stdout. Each frame renders through a declared view the library exports from `@loomcli/prompts/views`, so an application restyles one with [`override`](core.md#views) as it restyles a lane.
+A question draws in an input region, which it opens with `out.region({ input: true })` on stderr, and never writes to stdout. Each frame renders through a declared view the library exports from `@loomcli/prompts/views`, so an application restyles one with [`override`](core.md#views) as it restyles a lane.
 
 | View            | Data                                                                                      | Default rendering                                      |
 | --------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------ |
@@ -154,7 +154,7 @@ A secret's `typed` field is always the empty string. The default views use core'
 | Answered                 | A dim `?`, the message, a dim `·`, and the answer in `highlight`; a secret ends at the message                 |
 | Cancelled                | A dim `?`, the message, and a dim `· cancelled`                                                               |
 
-`?`, `›`, and `·` are plain text, and `✘` and `❯` are the [glyphs](core.md#glyphs) `cross` and `pointer`, so a terminal that takes compat forms reads `×` and `>`. A question hides the terminal cursor while it asks and draws its own, so the view decides where the cursor sits. The library writes its cursor movement, erasure, and the sequences that hide and show the cursor through `out.draw` with a bare view of its own, which nothing overrides. Before each redraw it returns the cursor to column 0, moves up the rows the previous frame's `out.draw` reported, and erases to the end of the screen, so an overridden view that takes more or fewer rows redraws in place. An active frame has no trailing newline, so its hidden terminal cursor stays on the last drawn row. The answered or cancelled line replaces the frame, shows the cursor again, and stays in the scrollback.
+`?`, `›`, and `·` are plain text, and `✘` and `❯` are the [glyphs](core.md#glyphs) `cross` and `pointer`, so a terminal that takes compat forms reads `×` and `>`. A question hides the terminal cursor while it asks and draws its own, so the view decides where the cursor sits. The library writes the sequences that hide and show the cursor through `out.draw` with a bare view of its own, which nothing overrides. Core erases and redraws the region, so an overridden view that takes more or fewer rows redraws in place, and a lane message written while the question asks lands above the frame without breaking it. An active frame has no trailing newline, so its hidden terminal cursor stays on the last drawn row. The answered or cancelled line is the region's last frame: it replaces the frame, the cursor shows again, and the line stays in the scrollback when the region closes.
 
 ## Leaving a question
 
@@ -162,15 +162,183 @@ A question asks only when interaction is on, and it enters raw mode through `hos
 
 - **Ctrl-C** calls `context.cancel()`, then the question draws its cancelled line and throws `context.signal.reason`. Core reads the throw as a silent cancellation, and the run resolves 130.
 - **End of input** while a question is active, stdin closing or Ctrl-D with nothing typed, takes the same path. It neither accepts a default nor submits an empty answer.
-- **A run signal that aborts** while a question waits, from a caller or the signals owner, ends the question the same way, with the code the first cause fixed.
+- **A run signal that aborts** while a question waits, from a caller or the signals owner, ends the question the same way, with the code the first cause fixed. Core closes the question's region for the cancellation, and the question draws its cancelled line in the region's abort.
 - **A signal already aborted** at the call ends the question before it draws anything.
 
-A question waits as long as the operator takes. The library adds no timeout and no guard against two questions at once.
+A question waits as long as the operator takes, and the library adds no timeout. Two questions asked at once take turns, because core opens one input region at a time: the second draws and reads keys once the first is answered or cancelled. While a question asks, every progress line's frame holds still, and each catches up once when the question closes.
+
+## Progress
+
+```ts
+import type { ActionContext, Out, Plugin } from '@loomcli/core';
+
+interface Spinner {
+  readonly frames: readonly string[]; // drawn in turn, one each interval
+  readonly interval: number; // milliseconds between frames
+}
+interface ProgressSettings {
+  readonly label: string;
+  readonly total?: number; // a bar with counts; without it, a spinner
+  readonly spinner?: Spinner; // this line's own spinner, over the application's style
+}
+interface ProgressUpdate {
+  readonly completed?: number;
+  readonly total?: number;
+  readonly label?: string;
+}
+interface TrackMessages<Value> {
+  readonly done?: string | ((value: Value) => string);
+  readonly failed?: string | ((error: unknown) => string);
+}
+interface Progress {
+  update(update: ProgressUpdate): void;
+  end(message?: string): Promise<void>;
+  fail(message?: string): Promise<void>;
+  track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value>;
+}
+type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
+  readonly out: Pick<Out, 'region' | 'info' | 'success' | 'error'>;
+};
+interface ProgressStyleSettings {
+  readonly spinner?: Spinner;
+  readonly bar?: { readonly complete: string; readonly incomplete: string };
+}
+
+declare function progress(context: ProgressContext, settings: ProgressSettings): Progress;
+declare function progressStyle(settings?: ProgressStyleSettings): Plugin;
+```
+
+```ts
+import { Application } from '@loomcli/core';
+import { progress } from '@loomcli/prompts';
+
+import { buildIndex, fetchRecord } from './records.js';
+
+export const app = new Application('fetchit')
+  .argument('urls', { required: true, variadic: true })
+  .action(async (context) => {
+    const { urls } = context.args;
+    const fetching = progress(context, { label: 'Fetching records', total: urls.length });
+    for (const [index, url] of urls.entries()) {
+      await fetchRecord(url);
+      fetching.update({ completed: index + 1 });
+    }
+    await fetching.end(`Fetched ${String(urls.length)} records`);
+    await progress(context, { label: 'Building the index' }).track(buildIndex(), {
+      done: (count) => `Indexed ${String(count)} records`,
+    });
+  });
+```
+
+At a terminal, the first line reads, partway through:
+
+```text
+◓ Fetching records ▰▰▰▰▰▰▱▱▱▱ 6/10 · 2.4s
+```
+
+and the run leaves:
+
+```text
+✔ Fetched 10 records · 4.1s
+✔ Indexed 812 records · 1.9s
+```
+
+With stderr piped, the same run writes:
+
+```text
+ℹ Fetching records
+✔ Fetched 10 records
+ℹ Building the index
+✔ Indexed 812 records
+```
+
+A progress line shows an operator that work is under way: a spinner while the work has no known size, and a bar with counts once it has a total. `progress(context, settings)` draws one in a [live region](core.md#live-region), animates it on its own timer, and reports it as [progress events](core.md#progress-events), so an invocation by name and an MCP client read the same progress a terminal shows.
+
+- **A line in a region.** `progress()` opens one region through `context.out.region()`, reports `{ label, total, completed: 0 }` with a total and `{ label }` without one, draws its first frame, and returns the line's handle at once. Several lines stack in the order they started, and a question asked meanwhile draws below them. An action, a middleware, and a configuration source each call it with their own context.
+- **Updates.** `update({ completed?, total?, label? })` changes what the line shows, reports the change, and draws the next frame, and an omitted field keeps its value. A `total` turns a spinner into a bar. It returns nothing, because the frame queues in call order. After the line has closed it does nothing.
+- **The frame timer.** While the line is live, the library redraws it every spinner `interval` from its own `setInterval`, advancing the spinner frame and the elapsed time. The timer is unref'd, so it never keeps a process alive, and the library clears it when the region's signal aborts, whatever closed the region. It cancels and limits nothing. A line that is not live runs no timer.
+- **Ending.** `end(message?)` draws the line's success line, with the message or else the label, and closes its region. `fail(message?)` draws its failure line and closes the region with `end('failed')`, so its last progress event reads `failed`. Each resolves once its line is written. After the line has ended, failed, or been cancelled, `end` and `fail` do nothing and resolve.
+- **Tracking work.** `track(work, { done?, failed? })` awaits `work`. When it resolves, the line ends with `done`, and `track` returns the value. When it rejects, the line fails with `failed`, and `track` rejects with the same rejection, unchanged. `done` is a string or a function of the resolved value, and `failed` a string or a function of the rejection, so either message can say what happened, and each defaults to the label. When the line has already closed, `track` only returns the value or rethrows.
+- **Cancellation.** The handle has no cancel method. When the run is cancelled, core closes the line's region for the cancellation, and the line draws its cancelled line in the region's abort.
+- **A failing run.** When the run fails with a line still open, core closes the line's region for the failure before it renders the failure report, and the line draws its failure line with its label in the abort, so the report follows every line. A line the action leaves open draws its success line with its label when the action returns. A line a middleware or a configuration source leaves open stays open through the action, so a middleware can show a line around the whole run, and draws its success line with its label once the middleware chain has unwound.
+- **Off a terminal.** When the region is not live, because stderr is not a terminal, the run is an [invocation by name](core.md#invocation-by-name), or the run's [verbosity](core.md#verbosity) is -1, the line draws nothing. `progress()` writes its label once through `context.out.info`. `end` and a resolved `track` write the end message through `context.out.success`, and `fail`, a rejected `track`, and a failing run write it through `context.out.error`. An update and a cancellation write nothing, and no line carries the elapsed time. So under `-q` the start and success lines hide with their lanes and a failure line prints, and under an invocation by name the lines land in `messages`. The library reads the region's `live` and never the verbosity.
+- **Reports.** The line reports at its start, at each update, and when it closes, so an [`onProgress`](core.md#invocation-by-name) observer and an [MCP](core.md#mcp) client read `started`, `updated`, and `ended`, `failed`, or `cancelled`, whether or not the line draws.
+- **The values.** `label`, an update's `label`, and the end messages are marked strings, as a lane message is, so an author escapes raw data with `style.escape` first. `total` and `completed` are finite numbers of 0 or more, and `completed` may pass `total`.
+- **No limit.** A line shows until its work ends. The library adds no timeout and no stall check.
+
+### Progress style
+
+```ts
+import { Application } from '@loomcli/core';
+import { progressStyle } from '@loomcli/prompts';
+import spinners from 'cli-spinners';
+
+export const app = new Application('fetchit', {
+  plugins: [progressStyle({ spinner: spinners.dots, bar: { complete: '█', incomplete: '░' } })],
+});
+```
+
+`progressStyle(settings?)` sets how every progress line of the application looks. It is an ordinary [plugin](core.md#plugins) whose identity is `@loomcli/prompts`, and an application that leaves it out draws the defaults.
+
+- **One value.** The plugin declares no option, middleware, Command, view, or slot. It lists one Command-target [extension](core.md#extensions), `@loomcli/prompts/progress-style`, whose value its `onCommandAttach` hook adds to the root Command alone, and `progress()` reads it from `context.graph.root` with `readExtension`. The package does not export the descriptor.
+- **The spinner shape.** A spinner is `{ frames, interval }`, the shape every entry of [cli-spinners](https://github.com/sindresorhus/cli-spinners) has, so any entry drops in. One call's `spinner` setting wins over the style for its line.
+- **Defaults.** Without the plugin, and for each setting it omits, a line draws cli-spinners' `circleHalves` frames, `◐ ◓ ◑ ◒`, every 80 milliseconds, and a bar of `▰` complete cells and `▱` incomplete cells.
+- **Checked at the call.** `progressStyle()`, `progress()`, and `update()` check their settings at the call, as a question checks its own, and throw a `DeclarationError` under the rule `@loomcli/prompts/progress`, which a run reports with exit 1:
+
+| Setting                                              | Sentence                                                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| A label that is not a string                         | `The progress line received a label that is not a string. Supply a string label.`                              |
+| A `total` or `completed` that is not a finite number of 0 or more | `The progress line "Fetching records" received a total that is not a finite number of 0 or more. Supply a finite number of 0 or more.` |
+| A spinner with no frames                             | `The progress spinner has no frames. Supply at least one frame.`                                               |
+| A frame that is not a string                         | `The progress spinner frame 2 is not a string. Supply each frame as a string.`                                 |
+| An interval that is not a finite number above 0      | `The progress spinner interval is not a finite number above 0. Supply the milliseconds between frames.`        |
+| A bar cell that is not a nonempty string             | `The progress bar's complete cell is not a nonempty string. Supply the text of one cell.`                      |
+
+### Progress view
+
+```ts
+interface ProgressLine {
+  readonly state: 'running' | 'ended' | 'failed' | 'cancelled';
+  readonly label: string; // the end message once the line has ended or failed
+  readonly completed: number | undefined;
+  readonly total: number | undefined;
+  readonly frame: string; // the spinner's current frame
+  readonly bar: { readonly complete: string; readonly incomplete: string };
+  readonly elapsed: number; // milliseconds since progress() opened the line
+}
+```
+
+`progressLine` is the declared view `@loomcli/prompts/progress`, exported from `@loomcli/prompts/views`, so an application restyles every progress line with [`override`](core.md#views), as it restyles a question frame. The default view renders one line with no trailing newline, through core's style tokens and glyphs:
+
+| Line                                   | Rendering                                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Running, no total                      | The frame in `highlight`, the label, then a dim `·` and the elapsed time, dim: `◐ Building the index · 0.8s`                    |
+| Running, with a total                  | The frame, the label, a bar of 10 cells, complete cells in `highlight` and incomplete cells dim, the counts, the dim `·`, and the elapsed time: `◓ Fetching records ▰▰▰▰▰▰▱▱▱▱ 6/10 · 2.4s` |
+| Running, `completed` without a total   | The frame, the label, the count, the dim `·`, and the elapsed time: `◑ Reading rows 1204 · 3.0s`                                |
+| Ended                                  | The glyph `success` in `success`, the message, the dim `·`, and the elapsed time: `✔ Fetched 10 records · 4.1s`               |
+| Failed                                 | Core's glyph `error` in `error`, the message, the dim `·`, and the elapsed time: `✘ Fetching records · 2.6s`, and `× Fetching records · 2.6s` where the terminal takes compat forms |
+| Cancelled                              | The glyph `squareCenter`, the label, and `(cancelled)`, all dim: `■ Fetching records (cancelled)`                              |
+
+- **The bar.** The complete cells number 10 × `completed` ÷ `total`, rounded down and held between 0 and 10, and a total of 0 fills the bar. The counts read `completed/total` when both are whole numbers, and otherwise the percent, 100 × `completed` ÷ `total` rounded down and followed by `%`, which a total of 0 reads as `100%`. An absent `completed` reads 0.
+- **Elapsed time.** Under a minute it reads seconds with one decimal, `2.4s`; under an hour, minutes and two-digit seconds, `1m 05s`; and from an hour, hours and two-digit minutes, `1h 02m`. Each rounds down.
+- **Plain text.** The spinner frames and the bar cells are plain text, not glyphs, so a terminal that takes compat forms draws them as the style gives them. The view neither wraps nor clips a long label: the terminal wraps it, and core counts the rows it takes.
+
+### Progress acceptance
+
+- **The look.** Against a headless terminal emulator, a fixture's counted line and spinner line read as the table above, with color and with `NO_COLOR`, the spinner advancing one frame each interval, and each success, failure, and cancelled line replacing its frame and staying in scrollback. On a host that takes compat glyph forms, the failure line opens with `×`. Two lines stack in start order, a lane message written between their frames lands above both, and a question asked while they run holds them still and lets each catch up once when it is answered.
+- **Counts and time.** The default view, rendered directly, draws 3 complete cells for 1/3, 10 for 12/10, and 10 for 0/0, reads `33%` for 1.5 of 4.5 and `0/5` for an absent `completed` of 5, and reads `59.9s` at 59 999 ms, `1m 05s` at 65 999 ms, and `1h 02m` at 3 779 999 ms.
+- **Tracking.** `track` returns the work's value and ends with `done` from a function of it, and a rejection fails with `failed` from a function of the rejection and rethrows the same object. A line closed before its work settles draws nothing more.
+- **Failing and returning.** An action that throws with two lines open writes both failure lines above the failure report, and one that returns with a line open writes its success line. A line a middleware opens before `next()` and leaves open is still running after the action returns and writes its success line once the chain has unwound.
+- **Cancellation.** `SIGINT` under a signals owner writes each open line's cancelled line, exits 130, and leaves no timer that holds the process open.
+- **Off a terminal.** With stderr piped, the run writes exactly the plain lines above. Under `-q` with the [verbose plugin](core.md#verbose-plugin), it writes only failure lines. Under `app.invoke`, the lines land in `messages`, and the observer reads every progress event in order.
+- **Style.** `progressStyle({ spinner: spinners.dots })` draws the dots frames at their interval, a call's own spinner wins for its line, the defaults hold without the plugin, and each malformed setting throws its sentence at the call.
+- **View.** An override of `progressLine` changes every line's frame, and its data carries the state, counts, frame, bar cells, and elapsed time above.
+- **Packed.** `check:packed` installs the packed library, imports `progress` and `progressStyle` from `@loomcli/prompts` and `progressLine` from `@loomcli/prompts/views`, and compiles against their declarations under Node and Bun.
 
 ## Package
 
-- The root export holds `text`, `secret`, `confirm`, `select`, `InteractionUnavailableError`, and the settings types. `@loomcli/prompts/views` exports `questionFrame`, `answeredLine`, and `cancelledLine` and their data types. The package has no plugin.
-- `@loomcli/core` is a peer dependency. The package reads the action context, `DeclarationError`, `FatalError`, `missingInputError`, the Standard Schema types, `glyph`, and `view` from core, and adds no runtime dependency of its own.
+- The root export holds `text`, `secret`, `confirm`, `select`, `InteractionUnavailableError`, `progress`, `progressStyle`, and the settings types, `ProgressSettings`, `ProgressUpdate`, `TrackMessages`, `Progress`, `ProgressContext`, `Spinner`, and `ProgressStyleSettings` included. `@loomcli/prompts/views` exports `questionFrame`, `answeredLine`, `cancelledLine`, and `progressLine` and their data types. Its one plugin is `progressStyle()`, whose identity is `@loomcli/prompts`.
+- `@loomcli/core` is a peer dependency. The package reads the action context, `DeclarationError`, `FatalError`, `missingInputError`, `extension`, `plugin`, `readExtension`, the Standard Schema types, `glyph`, and `view` from core, and adds no runtime dependency of its own. Its style schema is a hand-written Standard Schema value.
 - The package joins the synchronized release set the way `@loomcli/validators` did under [ADR-0037](decisions/0037-validators-ship-in-their-own-package-as-standard-schema-values.md): it lands with `private: true`, the maintainer publishes a `0.0.0` placeholder and binds the trusted publisher, an ordinary pull request removes `private`, and the next release cut publishes it. The root `build` script, `scripts/clean.mjs`, the packed-consumer check, and the runtime consumers list it.
 
 ## Acceptance
@@ -184,10 +352,12 @@ A question waits as long as the operator takes. The library adds no timeout and 
 - **Types.** `option` rejects a key the action's `options` lacks, secret rejects `default`, a select's `default` must be a choice, and the return types of each kind, linked and unlinked, match [Calling a question](#calling-a-question).
 - **Views.** An application's override of each view changes its frame, and a secret's typed text never reaches a view.
 - **Width.** The select frame clips at `context.columns`, including under `COLUMNS=60` on a terminal and in the first frame drawn after a resize, and at 80 columns when `columns` is `undefined`, where the window’s height estimate assumes no wrapping. Its frame data carries `rows` and no `columns`, and an override of `questionFrame` reads `context.columns`.
+- **Regions.** Each question draws in an input region and writes no frame through `out.draw`. A lane message written from a timer while a question asks lands above the frame, and the frame stays whole. Two questions started at once ask one after the other, and every key typed for the first reaches the first.
 
 ## Not in this release
 
 - A Command that declares it needs a terminal.
 - Multiple-choice selection, autocompletion, an editor question, and cursor movement inside a typed answer.
 - A default, a prefill, or "Enter keeps the current value" for secret.
-- Redrawing when the terminal is resized while a question asks.
+- Redrawing when the terminal is resized while a question asks. The next frame after a resize erases the whole region, because core recounts its last frame at the current width.
+- A progress line drawn as a multi-step tree, a progress line with a rate or an estimated time left, and a progress line on stdout.

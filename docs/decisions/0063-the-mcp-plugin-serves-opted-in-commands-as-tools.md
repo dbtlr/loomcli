@@ -4,7 +4,7 @@ title: ADR-0063 - The MCP plugin serves opted-in Commands as tools
 description: '@loomcli/plugins/mcp installs a plugin Command, app mcp, whose action serves every Command that carries an mcpCommand value as one MCP tool over stdio, each call run through invoke. Tool names flatten the path, annotations are hints the author owns and Loom never infers, and the protocol is written in a private workspace package pinned to revision 2026-07-28 and compiled into the plugin pack.'
 status: accepted
 created: 2026-10-05
-modified: 2026-10-15
+modified: 2026-10-19
 ---
 
 # ADR-0063 - The MCP plugin serves opted-in Commands as tools
@@ -58,3 +58,4 @@ Accepted in 0.9.0.
 - 2026-10-15: [ADR-0082](0082-an-action-asks-through-the-prompts-library-and-one-interaction-decision-governs-questions-and-conditional-requiredness.md), proposed, lists a local option that declares `required: 'non-interactive'` in a tool's `required` list, because a tool call runs by name with no terminal and so is never interactive. Every other rule here stands. It binds when that record is accepted.
 
 - 2026-10-15: [ADR-0084](0084-dotenv-prepares-an-allowlisted-environment-before-inputs.md), proposed, permits warnings from an installed dotenv plugin on the mcp run's stderr before inputs are read. MCP tool calls inherit the mcp run's prepared environment without repeating file reads or warnings, and never write process.env. It binds when accepted.
+- 2026-10-19: [ADR-0091](0091-live-regions-stack-at-the-bottom-of-stderr-and-progress-reaches-invoke-callers-and-mcp-clients-as-typed-events.md), proposed, sends `notifications/progress` for a tool call whose request carries a progress token: each progress event of the call becomes one notification on that token, `progress` always a per-call counter that every event increments, so every event is sent and `progress` always increases, no `total`, and `message` the label, the counts, and the state, such as `Fetching packages 3/8 (updated)`. The protocol package writes none after the call is answered or cancelled. A call without a token receives none, the progress lines' start and end lines stay in the captured text the result carries, and the protocol stays pinned to 2026-07-28. Every other rule here stands. It binds when that record is accepted.

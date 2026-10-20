@@ -340,7 +340,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, View name, and `ResultError` follow the [results contract](core.md#results), which is implemented under accepted ADR-0023. Column, Field, and Identifier follow the [table](core.md#table) and [records](core.md#records) contracts.
 
 **Out**:
-The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the draw call that renders a live region on stderr, the result call, and the fatal path. On a Command that declares a result, the action's `print` and `render` move to stderr beside `info`, `success`, `warn`, `error`, `debug`, and `trace`, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
+The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the region call that opens a live region on stderr, the draw call that draws one frame there, the result call, and the fatal path. On a Command that declares a result, the action's `print` and `render` move to stderr beside `info`, `success`, `warn`, `error`, `debug`, and `trace`, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
@@ -350,6 +350,22 @@ _Avoid_: Log level (a log level belongs to a log event), styled output
 **Rendered output**:
 Text a view produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and from an action it goes to stderr on a Command that declares a result.
 _Avoid_: Formatted output, verbatim output
+
+**Live region**:
+An area at the bottom of stderr that core redraws in place while it is open, which `out.region()` opens and whose handle draws frames into it. Open regions stack in the order they opened, below every other write, which core writes above them, and a closing region's last frame stays in scrollback. Core draws one only when stderr is a terminal and, unless it is an input region, the run is not quiet, and core closes one left open when what opened it finishes: the action's return for the action's regions, and the middleware chain's unwinding for a middleware's or a configuration source's. `out.draw` is a region of one frame that core writes above the open regions, as it writes every other write, at every verbosity.
+_Avoid_: Status area, live area, spinner area, region broker, sticky footer
+
+**Frame**:
+The text one draw of a live region renders through a view. Core keeps a region's latest frame, redraws it after every other write, and recounts its rows at the current width before it erases it.
+_Avoid_: Screen, snapshot, render (for the text)
+
+**Input region**:
+A live region opened with `input: true`, which reads the operator's keys, as a question does. While it is open, core draws no frame of any other region and draws each latest frame once when it closes, and one input region is open at a time. It draws at every verbosity.
+_Avoid_: Prompt region, modal, focus
+
+**Progress event**:
+The typed value a live region's report builds, `{ id, label, state, completed?, total? }`, whose state is `started`, `updated`, `ended`, `failed`, or `cancelled`. An invocation by name delivers each one to its `onProgress` observer, and the MCP plugin sends each one as `notifications/progress`. It is not a log event.
+_Avoid_: Progress notification (for the event; the MCP message is one), log event, progress log
 
 **View**:
 A pure, synchronous value whose view functions turn typed data and the supplied view context into the marked text core resolves and writes, in one of two shapes: a whole view renders one value through `render`, and a row view renders a sequence one row at a time through `row`. The write site decides whether the view owns its trailing newline. A bare view is chosen at the call site or named in a result's views. A declared view also carries an identity, is named by reference, and is the unit an override replaces.
@@ -599,12 +615,20 @@ The one first-party package that ships every first-party plugin as its own separ
 _Avoid_: Bundle, standard library, batteries, default set
 
 **Question**:
-One prompt an action asks through `@loomcli/prompts`, of the kind text, secret, confirm, or select, drawn on stderr and answered from stdin while the interaction decision is on. It is part of the action, never a run stage or an input source.
+One prompt an action asks through `@loomcli/prompts`, of the kind text, secret, confirm, or select, drawn in an input region on stderr and answered from stdin while the interaction decision is on. It is part of the action, never a run stage or an input source.
 _Avoid_: Prompt (for one question; the package is prompts), wizard step, input source
 
 **Linked option**:
 The local option a question names with `option`. Its raw supplied value prefills the question, and its validated value answers the question when the question is skipped.
 _Avoid_: Bound option, backing option
+
+**Progress line**:
+One line of work in flight that an action shows through `progress()` from `@loomcli/prompts`, drawn in its own live region: a spinner while the work has no total, and a bar with counts once it has one. It ends as a success line, a failure line, or a cancelled line that stays in scrollback, and when its region is not live it writes one start line and, unless it is cancelled, one end line through the semantic lanes. It reports each change as a progress event.
+_Avoid_: Spinner (for the whole line), progress bar (for the whole line), task, step
+
+**Progress style**:
+The spinner frames, their interval, and the bar cells every progress line of an application draws with, set by the optional `progressStyle()` plugin in the shape of a cli-spinners entry, `{ frames, interval }`. One call may pass its own spinner, and without the plugin the library's defaults apply.
+_Avoid_: Theme (for the style), spinner theme, progress theme
 
 **Manifest**:
 The projection that describes the accepted built product to a machine consumer: how to construct inputs and what outputs and failures to expect. The first-party manifest plugin prints it for the routed Command as a self-contained slice. It lists no alias or hidden member, though a hidden Command routed to directly prints its own slice, and it excludes authoring provenance, diagnostics, and implementation history, and nothing depends on it: no projection or plugin reads a fact from it, because a fact a consumer needs enters the Command graph and reaches the manifest from there. A plugin that wants its own facts in the manifest supplies them through the manifest's collecting extension.

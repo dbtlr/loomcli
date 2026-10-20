@@ -4,7 +4,7 @@ title: ADR-0069 - Core hands log events to onLog hooks and writes no log record
 description: The action, middleware, source, and onFailure contexts gain a log with five levels. Each call becomes a frozen log event, shaped to the OpenTelemetry log record, that core hands to every installed plugin's onLog hook with the outermost run's destination. Core logs each failure it reports, a defect at fatal with its stack in both builds, and writes no log record itself.
 status: accepted
 created: 2026-10-10
-modified: 2026-10-13
+modified: 2026-10-19
 ---
 
 # ADR-0069 - Core hands log events to onLog hooks and writes no log record
@@ -49,3 +49,4 @@ Accepted in 0.11.0.
 ## Changelog
 
 - 2026-10-10: Proposed with the contract.
+- 2026-10-19: [ADR-0091](0091-live-regions-stack-at-the-bottom-of-stderr-and-progress-reaches-invoke-callers-and-mcp-clients-as-typed-events.md), proposed, coordinates the destination's `stderr` with the open live regions: the stream an `onLog` hook receives under `run()` is core's own write path to the outermost run's stderr, so while a region is drawn core erases the regions before a hook's write, writes it, and redraws them below it, and a hook's line lands above the stack. The destination's fields, the `null` stderr under `app.invoke`, and the hook's contract are unchanged. A progress event is not a log event and reaches no `onLog` hook. It binds when that record is accepted.

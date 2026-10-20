@@ -4,7 +4,7 @@ title: ADR-0086 - Renders fit the destination's live columns, and tables shrink 
 description: Core reads the destination's real width at the moment of each render and passes it to the view as columns, narrowed by POSIX COLUMNS and undefined off a terminal. The view context also gains wrap, an eager line breaker that breaks at spaces and never splits a word, and expandTabs, which turns tabs into spaces so text placed at an offset shows as it measures. Marked lanes wrap with the gutter, the table view shrinks its widest columns to fit and falls back to the records layout, and the records view wraps its values. Core's failure text, print, and help do not wrap.
 status: proposed
 created: 2026-10-17
-modified: 2026-10-18
+modified: 2026-10-19
 ---
 
 # ADR-0086 - Renders fit the destination's live columns, and tables shrink to fit
@@ -152,3 +152,4 @@ Proposed. It moves to accepted with the release that ships live terminal width, 
 - 2026-10-18: Amended before acceptance: the view context gains `expandTabs`, and on a terminal the marked lanes, the table, and the records layout expand tabs before they measure, fit, or wrap, so a tab placed at an offset no longer overflows a line.
 - 2026-10-18: Amended before acceptance: on a terminal a records or fallback line whose value is empty ends at its label, with no padding or gap after it.
 - 2026-10-18: [ADR-0087](0087-help-wraps-its-prose-to-the-destinations-columns-and-keeps-its-literals-whole.md), proposed, makes help wrap on a terminal, so this record's statement that help is unchanged, and that ADR-0077 stands, no longer holds once ADR-0087 is accepted. Help reuses `columns`, `wrap`, `expandTabs`, `splitLines`, `nowrap`, and the table's floor rule. It binds when that record is accepted.
+- 2026-10-19: [ADR-0091](0091-live-regions-stack-at-the-bottom-of-stderr-and-progress-reaches-invoke-callers-and-mcp-clients-as-typed-events.md), proposed, adds each live region's `draw` to the render calls that build a fresh context, and has core redraw a region's kept frame text below every other write without rendering it again. It binds when that record is accepted.
