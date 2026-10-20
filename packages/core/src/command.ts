@@ -1,30 +1,13 @@
 import {
-  aliasWithoutNames,
   argumentDeclaredTwice,
   argumentsBesideChildren,
   commandAttachedTwice,
-  commandGlobals,
   commandWithoutAction,
-  declaredAfterAction,
   declaredName,
-  groupOption,
-  multipleActions,
-  multipleResults,
-  nestingDepth,
-  notACommand,
   optionalArgumentLast,
   portableName,
-  repeatedAlias,
-  resultWithoutAction,
-  resultWithoutViews,
-  rowViewOnValue,
   siblingNameTaken,
-  unknownDefaultView,
   variadicArgumentLast,
-  viewMediaType,
-  viewName,
-  viewShape,
-  viewsWithoutResult,
 } from './command-rules.js';
 import { stdinClaimedTwice } from './content-rules.js';
 import type { Content } from './content.js';
@@ -59,13 +42,7 @@ import type {
   ExtensionSubject,
   ExtensionValue,
 } from './extension.js';
-import {
-  checkNoControl,
-  checkNoListingFacts,
-  declarerNote,
-  siteFinding,
-  callSite,
-} from './facts.js';
+import { declarerNote, siteFinding, callSite } from './facts.js';
 import type { FactSite, InputSite } from './facts.js';
 import type {
   BuiltGlobals,
@@ -94,14 +71,13 @@ import {
   isDeclaredName,
   isSupplied,
   mergeValues,
-  repeatedAliasText,
   spellingMark,
   tableEntries,
 } from './options.js';
 import type { CompileScope, OptionValues, SpellingOrigin, SpellingTable } from './options.js';
 import { candidatesOf } from './parse.js';
 import type { ParsedInvocation } from './parse.js';
-import { isPlainObject, snapshot } from './plain.js';
+import { snapshot } from './plain.js';
 import { brokenAttachHook } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
 import { fillInputs } from './sources.js';
@@ -134,10 +110,8 @@ import type {
   ResultView,
   ResultViews,
   ResultViewsOf,
-  RowView,
   RowViews,
   ValidateOmittedConstraint,
-  View,
   StdinConfig,
   StdinContext,
   Unmarked,
@@ -253,7 +227,7 @@ export declare const commandValue: unique symbol;
 /**
  * The input, alias, child, and action calls a Command can publish. Its type state is a subset,
  * and each call removes the names it invalidates. `command()` belongs to every Command and to the
- * unnamed root alike, and attach bounds how deep the children it adds may nest.
+ * unnamed root alike, at any depth.
  */
 export type CommandMethod =
   | 'action'
@@ -279,20 +253,6 @@ export type AfterResult<State> = Exclude<State, 'result' | 'rows'>;
 
 /** Registering the action closes input, alias, child, and further action declarations. */
 export type AfterAction = never;
-
-/**
- * The deepest level below the root a Command may sit at, and the word its diagnostic spells it with.
- * A child of the root sits at level 1. Raising the cap relaxes a rule and breaks no application.
- */
-const nestingCap = { depth: 2, words: 'two' };
-
-/**
- * The shallowest level a parent can sit at: the root is level 0, and a named Command is attached
- * somewhere below it, so it sits at level 1 or deeper.
- */
-function parentLevel(name: string | null): number {
-  return name === null ? 0 : 1;
-}
 
 /**
  * The private handle one graph node is reached through, without its inferred declaration types:
@@ -367,7 +327,7 @@ function pathOf(name: string | null): readonly string[] {
 }
 
 /** A call's arguments as its author wrote them: the trailing ones left undefined are dropped. */
-export function callArguments(...values: readonly unknown[]): readonly unknown[] {
+function callArguments(...values: readonly unknown[]): readonly unknown[] {
   let length = values.length;
   while (length > 0 && values[length - 1] === undefined) {
     length -= 1;
@@ -388,17 +348,6 @@ export function commandPlacement(path: readonly string[], child: string): Findin
 /** The finding for one `new Command()` call, which carries the name and the options slot. */
 function constructorFinding(name: unknown, options: unknown, mark: string): Finding {
   return { arguments: callArguments(name, options), call: 'new Command', mark };
-}
-
-/** A named Command's options never carry the retired globals wiring. */
-function checkCommandOptions(name: string, options: CommandOptions): void {
-  if ('globals' in options) {
-    throw new DeclarationError(commandGlobals, {
-      correction: 'Declare globals on the Application and register its environment.',
-      findings: [constructorFinding(name, options, '1.globals')],
-      sentence: `${commandSentence(name)} declares globals.`,
-    });
-  }
 }
 
 /**
@@ -442,23 +391,22 @@ function aliasFinding(
 }
 
 /**
- * One call of the results lane, in the order it was made, with the arguments a finding rebuilds it
- * from. A `result()` or `rows()` call declares the unit, and a `views()` call reshapes the views of
- * whichever declaration it follows.
+ * One call of the results lane, in the order it was made. A `result()` or `rows()` call declares
+ * the unit, and a `views()` call reshapes the views of whichever declaration it follows.
  */
-export type ResultCall = { arguments: readonly unknown[]; entries: readonly ViewEntry[] } & (
+export type ResultCall = { entries: readonly ViewEntry[] } & (
   | { kind: 'value' | 'rows' }
-  | { default: unknown; kind: 'views' }
+  | { default: string | undefined; kind: 'views' }
 );
 
 /**
- * One entry of a call's `views` record as the call read it, once: the view name, the value, and
- * the media type the value declared, so a later write to the view object changes no fact.
+ * One entry of a call's `views` record as the call read it, once: the view name, the view, and the
+ * media type the view declared, so a later write to the view object changes no fact.
  */
 interface ViewEntry {
   key: string;
-  entry: unknown;
-  mediaType: unknown;
+  view: ResultView;
+  mediaType: string | null;
 }
 
 /** The core facts a named Command declares, which its constructor checked. The root carries none. */
@@ -547,8 +495,8 @@ export function freshState<Globals>(declaration: {
 }
 
 /**
- * A named Command's own declaration, checked before the value exists: the name, then the options
- * slot, its core facts, and the extension values it carries.
+ * A named Command's own declaration, checked before the value exists: the name, then the extension
+ * values its options carry.
  */
 function namedState<Globals>(
   name: string,
@@ -563,9 +511,6 @@ function namedState<Globals>(
       ],
       sentence: `Command name ${quoted(name)} is invalid.`,
     });
-  }
-  if (options !== undefined) {
-    checkCommandOptions(name, options);
   }
   const site: FactSite = {
     at: '1',
@@ -593,34 +538,6 @@ function namedState<Globals>(
     }),
   };
 }
-
-/**
- * A declaration call after `action()` is an order fault the receiver's own earlier call makes
- * certain. The types remove the call for a TypeScript author; a JavaScript author meets it here.
- */
-function checkOpen(
-  state: { readonly action: unknown; readonly name: string | null },
-  late: { clause: string; remedy: string; call: string; arguments: readonly unknown[] },
-): void {
-  if (state.action !== undefined) {
-    throw new DeclarationError(declaredAfterAction, {
-      correction: late.remedy,
-      findings: [
-        {
-          arguments: late.arguments,
-          call: late.call,
-          mark: '0',
-          note: 'after action()',
-          path: pathOf(state.name),
-        },
-      ],
-      sentence: `${commandSentence(state.name)} ${late.clause} after its action.`,
-    });
-  }
-}
-
-/** The remedy a late argument or option earns. */
-const inputRemedy = 'Declare arguments and options before action().';
 
 /** Where one input was declared: the call on the Command at `path` that declared it. */
 function inputSite(
@@ -745,14 +662,15 @@ function recordInput(
       phrase: `on ${commandSubject(name)} ${input.kind} "${input.name}"`,
       sentence: `${commandSentence(name)} ${input.kind} "${input.name}"`,
     },
-    target: input.kind,
   });
   return { descriptors, records: new Map([...state.records, [input, record]]) };
 }
 
 /**
  * Every rule one argument answers at its own call: its name, a repeated name, children beside it,
- * its place after the arguments before it, its own facts, and its declaration rules.
+ * and its place after the arguments before it. The types keep a named Command's own `argument()`
+ * and `command()` apart, so a child beside an argument reaches this call at the root, where a
+ * plugin's Commands attached before the author declared the argument.
  */
 function checkArgument(state: Declared, input: ArgumentInput): void {
   const { name } = state;
@@ -768,9 +686,6 @@ function checkArgument(state: Declared, input: ArgumentInput): void {
   if (previous) {
     checkSlotOrder(slotOf(previous), slotOf(input), command);
   }
-  const site = inputSite(name, path, input);
-  checkNoListingFacts(site, input.config);
-  checkNoControl(site, input.config);
 }
 
 /** One argument's name answers the declared-name rule and names no argument declared before it. */
@@ -815,12 +730,6 @@ export function declareArgument<
   const { name } = state;
   checkArgumentName({ name, path: pathOf(name), subject: commandSubject(name) }, [], declared);
   const input = { ...declared, config: { ...declared.config } };
-  checkOpen(state, {
-    arguments: [input.name, input.config],
-    call: 'argument',
-    clause: `declares argument ${quoted(input.name)}`,
-    remedy: inputRemedy,
-  });
   checkArgument(state, input);
   checkStdinClaims([...state.inputs, input], { path: pathOf(state.name), stdin: state.stdin });
   const recorded = recordInput(state, input);
@@ -859,12 +768,6 @@ export function declareOption<
   const path = pathOf(state.name);
   checkOptionName(declared.name, configUnread(inputSite(state.name, path, declared)));
   const input = { ...declared, config: { ...declared.config } };
-  checkOpen(state, {
-    arguments: [input.name, input.config],
-    call: 'option',
-    clause: `declares option ${quoted(input.name)}`,
-    remedy: inputRemedy,
-  });
   const recorded = recordInput(state, input);
   checkLocalOptions(
     [...optionsOf(state.inputs), input],
@@ -890,12 +793,6 @@ export function declareOptionGroup<Args, Options, Globals>(
   kind: OptionGroup['kind'],
   names: readonly string[],
 ): CommandState<Args, Options, Globals> {
-  checkOpen(state, {
-    arguments: names,
-    call: kind,
-    clause: `declares an option group with ${kind}()`,
-    remedy: 'Declare option groups before action().',
-  });
   const group = declareGroup({
     groups: state.optionGroups,
     inputs: state.inputs,
@@ -907,49 +804,20 @@ export function declareOptionGroup<Args, Options, Globals>(
 }
 
 /**
- * One call's names join the Command's aliases. A call that names none, which the types reject and
- * a JavaScript author can still write, reports as the call it is.
+ * One call's names join the Command's aliases. An alias that repeats the Command's own name or an
+ * alias it already holds adds no name, so it is skipped.
  */
 export function declareAlias<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
   names: readonly string[],
 ): CommandState<Args, Options, Globals> {
   const { name } = state;
-  const path = pathOf(name);
-  const first = names[0];
-  if (first === undefined) {
-    throw new DeclarationError(aliasWithoutNames, {
-      correction: 'Supply at least one name.',
-      findings: [{ arguments: [], call: 'alias', path }],
-      sentence: `${commandSentence(name)} declares an alias with no names.`,
-    });
-  }
-  // The call's own input is judged before the receiver's state.
-  // A non-string name then reports as an alias name instead of failing to print in the order diagnostic.
   checkAliasNames(name, names);
-  checkOpen(state, {
-    arguments: names,
-    call: 'alias',
-    clause: `declares alias "${first}"`,
-    remedy: 'Declare aliases before action().',
-  });
   const aliases = [...state.aliases];
-  for (const [index, alias] of names.entries()) {
-    const repeated = { arguments: names, call: 'alias', mark: String(index), path };
-    const text = repeatedAliasText(commandSentence(name), alias);
-    if (alias === name) {
-      throw new DeclarationError(repeatedAlias, {
-        ...text.own,
-        findings: [{ ...repeated, note: 'its own name' }],
-      });
+  for (const alias of names) {
+    if (alias !== name && !aliases.includes(alias)) {
+      aliases.push(alias);
     }
-    if (aliases.includes(alias)) {
-      throw new DeclarationError(repeatedAlias, {
-        ...text.twice,
-        findings: [{ ...repeated, note: 'already an alias' }],
-      });
-    }
-    aliases.push(alias);
   }
   return { ...state, aliases };
 }
@@ -968,7 +836,6 @@ export function declareExtensions<Args, Options, Globals>(
     descriptors,
     site: { at: '', declaration: { arguments: values, call: 'extend', path: pathOf(state.name) } },
     subject: layerOf(state.name),
-    target: 'command',
   });
   return { ...state, descriptors, extensions: extendStore(state.extensions, layer) };
 }
@@ -991,21 +858,6 @@ export function declareAction<Args, Options, Globals, Result, Stdin extends Stdi
   handler: Action<Args, Globals & Options, Result, Stdin>,
   stdinBind: (source: Content | undefined) => Stdin,
 ): CommandState<Args, Options, Globals> {
-  if (state.action !== undefined) {
-    throw new DeclarationError(multipleActions, {
-      correction: 'Register one action.',
-      findings: [
-        {
-          arguments: [handler],
-          call: 'action',
-          mark: '0',
-          note: 'the second action',
-          path: pathOf(state.name),
-        },
-      ],
-      sentence: `${commandSentence(state.name)} has multiple actions.`,
-    });
-  }
   // The graph and the routed node stay getters, because a spread would build the graph on every run.
   const stored = (context: ActionContext<Args, Globals & Options, OpenResult>): unknown =>
     handler({
@@ -1032,75 +884,31 @@ export function declareAction<Args, Options, Globals, Result, Stdin extends Stdi
   return { ...state, action: stored };
 }
 
-/**
- * The result declaration, which closes both result calls. Every rule its own call can judge throws
- * here; the empty record and the default wait for attach, because `views()` can still add keys.
- */
+/** The result declaration, which closes both result calls. */
 export function declareResult<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
   kind: 'value' | 'rows',
-  declaration: unknown,
+  declaration: { readonly views: Readonly<Record<string, ResultView>> },
 ): CommandState<Args, Options, Globals> {
-  const call: ResultCall = {
-    arguments: callArguments(declaration),
-    entries: viewEntries(recordOf(declaration, 'views')),
-    kind,
-  };
-  checkOpen(state, {
-    arguments: call.arguments,
-    call: resultCallName(call),
-    clause: 'declares its result',
-    remedy: 'Declare result() or rows() before action().',
-  });
-  const results = [...state.results, call];
-  mergeResult({ name: state.name, path: pathOf(state.name) }, results);
-  return { ...state, results };
+  const call: ResultCall = { entries: viewEntries(declaration.views), kind };
+  return { ...state, results: [...state.results, call] };
 }
 
-/** A `views()` call reshapes views and closes nothing, so it is never a late declaration. */
+/** A `views()` call reshapes views and closes nothing. */
 export function declareResultViews<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
-  replacements: unknown,
-  options: unknown,
+  replacements: Readonly<Record<string, ResultView>>,
+  options: { readonly default?: string | undefined } | undefined,
 ): CommandState<Args, Options, Globals> {
-  const results: readonly ResultCall[] = [...state.results, viewsCall(replacements, options)];
-  mergeResult({ name: state.name, path: pathOf(state.name) }, results);
-  return { ...state, results };
+  return { ...state, results: [...state.results, viewsCall(replacements, options)] };
 }
 
 /** One `views()` call as the results lane records it. */
-function viewsCall(replacements: unknown, options: unknown): ResultCall {
-  return {
-    arguments: callArguments(replacements, options),
-    default: recordOf(options, 'default'),
-    entries: viewEntries(replacements),
-    kind: 'views',
-  };
-}
-
-/** One property of an authoring argument, read defensively: the rules report whatever it holds. */
-function recordOf(declaration: unknown, key: 'default' | 'views'): unknown {
-  return isPlainObject(declaration) ? declaration[key] : undefined;
-}
-
-/** The authoring call one results-lane call was made through. */
-function resultCallName(call: ResultCall): string {
-  return call.kind === 'value' ? 'result' : call.kind;
-}
-
-/** The finding for one results-lane call on the Command at `path`, marking one of its arguments. */
-function resultFinding(
-  path: readonly string[],
-  call: ResultCall,
-  mark: { at: string; note?: string },
-): Finding {
-  const finding = { arguments: call.arguments, call: resultCallName(call), mark: mark.at, path };
-  return mark.note === undefined ? finding : { ...finding, note: mark.note };
-}
-
-/** Where one views entry sits among its call's arguments: in `views` for a declaration, or first. */
-function entryMark(call: ResultCall, key: string): string {
-  return call.kind === 'views' ? `0.${key}` : `0.views.${key}`;
+function viewsCall(
+  replacements: Readonly<Record<string, ResultView>>,
+  options: { readonly default?: string | undefined } | undefined,
+): ResultCall {
+  return { default: options?.default, entries: viewEntries(replacements), kind: 'views' };
 }
 
 /** One Command a rule judges: the name its sentence reads, and the path its findings open with. */
@@ -1109,23 +917,14 @@ interface CommandPlace {
   path: readonly string[];
 }
 
-/** The parent one attach reads: its place, the children it holds, and the calls that close it. */
+/** The parent one attach reads: its place and the children it holds. */
 interface AttachParent extends CommandPlace {
-  /** The first argument the parent declares, which no child may sit beside. */
-  argument: InputDeclaration | undefined;
   children: readonly AttachedChild[];
-  hasAction: boolean;
 }
 
 /** The parent a declaration is, as attach reads it. */
-function parentOf(state: Declared & { readonly action: unknown }): AttachParent {
-  return {
-    argument: state.inputs.find((input) => input.kind === 'argument'),
-    children: state.children,
-    hasAction: state.action !== undefined,
-    name: state.name,
-    path: pathOf(state.name),
-  };
+function parentOf(state: Declared): AttachParent {
+  return { children: state.children, name: state.name, path: pathOf(state.name) };
 }
 
 /** The path one child sits at under its parent. */
@@ -1198,20 +997,6 @@ function checkSiblings(parent: AttachParent, child: AttachedChild): void {
 }
 
 /**
- * A child at the cap holds no children. Attach reads the child at the shallowest level its parent
- * can sit at, and the Application's join reads every node at its level below the root.
- */
-function checkNesting(parent: string | null, child: AttachedChild, level: number): void {
-  if (level >= nestingCap.depth && child.node.declared.children.length > 0) {
-    throw new DeclarationError(nestingDepth, {
-      correction: `Nest Commands at most ${nestingCap.words} levels below the root.`,
-      findings: [{ ...child.placement, note: 'has children of its own' }],
-      sentence: `${commandSentence(parent)} attaches child "${child.name}", which has children of its own.`,
-    });
-  }
-}
-
-/**
  * Where a finished Command is judged: its path, and the call that attached it, which build has none
  * of for the root.
  */
@@ -1222,8 +1007,8 @@ interface FinishedPlace {
 
 /**
  * A Command without an action is a group, and routing sends an invocation on to one of its
- * children. A group with no children receives an invocation no handler can answer, and a local
- * option on a group reaches no handler either, because locals never inherit.
+ * children. A group with no children receives an invocation no handler can answer, and stdin on a
+ * group reaches no handler either.
  */
 function checkGroup(state: Declared, place: FinishedPlace): void {
   const { name } = state;
@@ -1243,19 +1028,10 @@ function checkGroup(state: Declared, place: FinishedPlace): void {
       sentence: `${commandSentence(name)} declares stdin but registers no action to receive it.`,
     });
   }
-  const option = state.inputs.find((input) => input.kind === 'option');
-  if (option) {
-    throw new DeclarationError(groupOption, {
-      correction: 'Register an action or remove the option.',
-      findings: [inputFinding(place.path, option, 'no action reads it')],
-      sentence: `${commandSentence(name)} declares option ${quoted(option.name)} but registers no action to receive it.`,
-    });
-  }
 }
 
 /**
  * The rules a finished Command answers, which attach applies to a child and build to the root: a
- * result needs an action, its merged views record names at least one view and its default, and a
  * Command without an action is a group. It answers with the resolved result.
  */
 function checkFinished(
@@ -1263,19 +1039,17 @@ function checkFinished(
   hasAction: boolean,
   place: FinishedPlace,
 ): DeclaredResult | undefined {
-  const result = buildResult(declared, hasAction, place.path);
   if (!hasAction) {
     checkGroup(declared, place);
   }
-  return result;
+  return buildResult(declared.results);
 }
 
 /**
  * The one attach operation `Command.command()`, `Application.command()`, and a plugin's
  * `commands` list share. A Command is an immutable value, so the child is final here: it is checked
- * as a finished Command, against the parent's current children, and against the nesting cap from
- * the shallowest level the parent can sit at. The placement is the call that attached it, which a
- * finding about the child as a whole marks.
+ * as a finished Command and against the parent's current children, at any depth. The placement is
+ * the call that attached it, which a finding about the child as a whole marks.
  */
 export function attach(
   parent: AttachParent,
@@ -1284,31 +1058,16 @@ export function attach(
 ): AttachedChild {
   const { name } = node;
   const child: AttachedChild = { name, node, placement };
-  if (parent.hasAction) {
-    throw new DeclarationError(declaredAfterAction, {
-      correction: 'Attach children before action().',
-      findings: [{ ...placement, note: 'after action()' }],
-      sentence: `${commandSentence(parent.name)} attaches child "${name}" after its action.`,
-    });
-  }
-  if (parent.argument !== undefined) {
-    throw placementFault(parent, parent.argument, child);
-  }
   checkFinished(node.declared, node.hasAction, { path: childPath(parent, name), placement });
   checkSiblings(parent, child);
-  checkNesting(parent.name, child, parentLevel(parent.name) + 1);
   return child;
 }
 
-/** The handle behind the value one `command()` call received; anything else is a declaration error. */
-export function childNode(parent: string | null, child: unknown): CommandNodeHandle {
+/** The handle behind a Command value, which the registry of authored Commands holds. */
+export function childNode(child: unknown): CommandNodeHandle {
   const node = commandNode(child);
   if (!node) {
-    throw new DeclarationError(notACommand, {
-      correction: 'Attach the value returned by new Command(name).',
-      findings: [{ arguments: [child], call: 'command', mark: '0', path: pathOf(parent) }],
-      sentence: `${commandSentence(parent)} attaches a value that is not a Command.`,
-    });
+    throw new TypeError('Expected a value returned by new Command(name).');
   }
   return node;
 }
@@ -1318,7 +1077,7 @@ function attachChild<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
   child: unknown,
 ): CommandState<Args, Options, Globals> {
-  const node = childNode(state.name, child);
+  const node = childNode(child);
   const attached = attach(parentOf(state), node, commandPlacement(pathOf(state.name), node.name));
   return { ...state, children: [...state.children, attached] };
 }
@@ -1339,19 +1098,12 @@ interface JoinScope {
 
 /**
  * Walks one subtree joining an Application, once, for the rules only the Application can judge: one
- * Command value reached through two paths, two distinct descriptors under one identity, a local
- * option that meets a global option's key, spelling, or variable, and the nesting cap
- * measured from the root. A claim is by node identity, and the name serves the diagnostic alone.
- * At a cap of two a named parent's `command()` already rejects every deeper tree, so the depth check
- * here fires only once the cap rises: attach reads one level, and only this walk knows each level.
+ * Command value reached through two paths, two distinct descriptors under one identity, and a local
+ * option that meets a global option's key, spelling, or variable. A claim is by node identity, and
+ * the name serves the diagnostic alone.
  */
-function joinSubtree(
-  scope: JoinScope,
-  child: AttachedChild,
-  { level, parent }: { level: number; parent: CommandPlace },
-): void {
+function joinSubtree(scope: JoinScope, child: AttachedChild, parent: CommandPlace): void {
   const { name, node, placement } = child;
-  checkNesting(parent.name, child, level);
   const owner = scope.owners.get(node);
   if (owner) {
     throw new DeclarationError(commandAttachedTwice, {
@@ -1371,7 +1123,7 @@ function joinSubtree(
   checkLocalOptions(optionsOf(node.declared.inputs), scope.table, localScope(name, path));
   for (const entry of node.declared.children) {
     const rooted = { ...entry, placement: rootedPlacement({ name, path }, entry) };
-    joinSubtree(scope, rooted, { level: level + 1, parent: { name, path } });
+    joinSubtree(scope, rooted, { name, path });
   }
 }
 
@@ -1386,7 +1138,7 @@ export function attachToRoot<Args, Options, Globals>(
 ): CommandState<Args, Options, Globals> {
   const parent = parentOf(state);
   const attached = attach(parent, child.node, child.placement);
-  joinSubtree(scope, attached, { level: parentLevel(state.name) + 1, parent });
+  joinSubtree(scope, attached, parent);
   return { ...state, children: [...state.children, attached], descriptors: scope.descriptors };
 }
 
@@ -1413,7 +1165,11 @@ export function checkDeclaredOptions(state: Declared, table: GlobalTable): void 
   checkAttachedOptions(table, place, state.children);
 }
 
-/** A variadic or optional slot ends the positional list, so nothing may follow either one. */
+/**
+ * A variadic slot ends the positional list, so nothing may follow it, and a required slot never
+ * follows an optional one. Optional slots may follow each other, and bare words fill them left to
+ * right.
+ */
 function checkSlotOrder(
   slot: ArgumentSlot,
   next: ArgumentSlot,
@@ -1428,22 +1184,12 @@ function checkSlotOrder(
       sentence: `Argument "${slot.input.name}" is variadic and precedes argument "${next.input.name}" on ${subject}.`,
     });
   }
-  if (!slot.required) {
-    const findings = [inputFinding(path, slot.input, 'the optional argument'), after];
-    throw new DeclarationError(
-      optionalArgumentLast,
-      next.required
-        ? {
-            correction: 'Declare optional arguments after required ones.',
-            findings,
-            sentence: `Argument "${slot.input.name}" is optional and precedes required argument "${next.input.name}" on ${subject}.`,
-          }
-        : {
-            correction: 'Declare an optional argument last.',
-            findings,
-            sentence: `Argument "${next.input.name}" follows optional argument "${slot.input.name}" on ${subject}.`,
-          },
-    );
+  if (!slot.required && next.required) {
+    throw new DeclarationError(optionalArgumentLast, {
+      correction: 'Declare optional arguments after required ones.',
+      findings: [inputFinding(path, slot.input, 'the optional argument'), after],
+      sentence: `Argument "${slot.input.name}" is optional and precedes required argument "${next.input.name}" on ${subject}.`,
+    });
   }
 }
 
@@ -1470,236 +1216,42 @@ function collectArguments(state: Declared, command: CommandPlace): ArgumentSlot[
   return slots;
 }
 
-/**
- * A view name is a bare token the way an argument or option name is, and never an array index,
- * because an integer-like key does not keep the position the author gave it.
- */
-function isViewName(name: string): boolean {
-  return isDeclaredName(name) && !/^(?:0|[1-9]\d*)$/u.test(name);
-}
-
-/** One entry read back as the whole view its own `render` function names. */
-function isWholeView(entry: unknown): entry is View<never> {
-  return (
-    typeof entry === 'object' &&
-    entry !== null &&
-    'render' in entry &&
-    typeof entry.render === 'function'
-  );
-}
-
-/** The same reading for the row shape, which core feeds one row at a time. */
-function isRowView(entry: unknown): entry is RowView<never> {
-  return (
-    typeof entry === 'object' && entry !== null && 'row' in entry && typeof entry.row === 'function'
-  );
-}
-
-/**
- * The key one `views()` call selected, spelled the way its own diagnostic names it. A call that
- * names none keeps whichever key an earlier call named.
- */
-function selectedKey(value: unknown): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  return typeof value === 'string' ? value : (JSON.stringify(value) ?? 'undefined');
-}
-
-/**
- * The entries one authored `views` record holds, in record order, each with the media type its
- * value declares; anything else holds none. The rules judge the media type where they judge the
- * entry, so a value that is no view reports its shape first.
- */
-function viewEntries(record: unknown): readonly ViewEntry[] {
-  const entries = isPlainObject(record) ? Object.entries(record) : [];
-  return entries.map(([key, entry]) => ({
-    entry,
+/** The entries one `views` record holds, in record order, each with the media type it declares. */
+function viewEntries(record: Readonly<Record<string, ResultView>>): readonly ViewEntry[] {
+  return Object.entries(record).map(([key, view]) => ({
     key,
-    mediaType:
-      typeof entry === 'object' && entry !== null && 'mediaType' in entry
-        ? entry.mediaType
-        : undefined,
+    mediaType: view.mediaType ?? null,
+    view,
   }));
 }
 
-/** Where one views entry was declared: the Command's sentence and path, the call, and the key. */
-interface EntrySite {
-  sentence: string;
-  path: readonly string[];
-  call: ResultCall;
-  key: string;
-}
-
 /**
- * One `views` entry under the unit its declaration named, read back as the shape its own functions
- * name. The two shapes are exclusive, and a row view answers a rows declaration alone.
+ * The finished result: the results lane's calls read as one declaration. A later `views()` call
+ * replaces a key in place and appends a new one, so each name keeps the position the call that
+ * first named it gave it. A `default` once named persists through later calls that name none, and
+ * the first key answers until one is named. A default no view answers fails where the result
+ * renders, as a views record that names no view does.
  */
-function resultView(kind: 'value' | 'rows', site: EntrySite, entry: unknown): ResultView {
-  const { call, key, path, sentence } = site;
-  const findings = [resultFinding(path, call, { at: entryMark(call, key) })];
-  const whole = isWholeView(entry);
-  const row = isRowView(entry);
-  if (whole && row) {
-    throw new DeclarationError(viewShape, {
-      correction: 'Supply one of the two.',
-      findings,
-      sentence: `${sentence} names view ${quoted(key)} with render and row.`,
-    });
-  }
-  if (row) {
-    if (kind === 'value') {
-      throw new DeclarationError(rowViewOnValue, {
-        correction: 'Supply a view with render, or declare the result with rows().',
-        findings,
-        sentence: `${sentence} names row view ${quoted(key)} on a value result.`,
-      });
-    }
-    return entry;
-  }
-  if (whole) {
-    return entry;
-  }
-  throw new DeclarationError(viewShape, {
-    correction: 'Supply a view with render or a row view with row.',
-    findings,
-    sentence: `${sentence} names view ${quoted(key)} with a value that is not a view.`,
-  });
-}
-
-/**
- * The media type one entry declared: the string as declared, or `null` for none. Core holds no
- * grammar of media types, so the one rule is that the value is a string.
- */
-function entryMediaType(site: EntrySite, mediaType: unknown): string | null {
-  if (mediaType === undefined) {
-    return null;
-  }
-  if (typeof mediaType !== 'string') {
-    const { call, key, path, sentence } = site;
-    throw new DeclarationError(viewMediaType, {
-      correction: 'Supply a media type such as "text/csv", or omit mediaType.',
-      findings: [resultFinding(path, call, { at: `${entryMark(call, key)}.mediaType` })],
-      sentence: `${sentence} names view ${quoted(key)} with a media type that is not a string.`,
-    });
-  }
-  return mediaType;
-}
-
-/**
- * The results lane's calls read as one declaration: its unit, its views with their media types,
- * and its selected key, with the call that declared the unit and the one that selected the key,
- * which a finding marks.
- */
-interface MergedResult {
-  declaration: ResultCall;
-  kind: 'value' | 'rows';
-  selected: { key: string; call: ResultCall } | undefined;
-  views: Map<string, ResultView>;
-  mediaTypes: Map<string, string | null>;
-}
-
-/**
- * Every rule a results-lane call can judge on its own, applied to one Command's calls in the order
- * it made them. The merged record is what the rules read: a later `views()` call replaces a key in
- * place and appends a new one, so each name keeps the position the call that first named it gave
- * it. A `default` once named persists through later calls that name none.
- */
-function mergeResult(
-  command: CommandPlace,
-  results: readonly ResultCall[],
-): MergedResult | undefined {
-  const { path } = command;
-  const sentence = commandSentence(command.name);
-  const declarations = results.filter((call) => call.kind !== 'views');
-  const [declaration, second] = declarations;
-  if (declaration && second) {
-    throw new DeclarationError(multipleResults, {
-      correction: 'Declare one result() or rows() call.',
-      findings: [
-        resultFinding(path, declaration, { at: '0', note: 'the first result' }),
-        resultFinding(path, second, { at: '0', note: 'the second result' }),
-      ],
-      sentence: `${sentence} declares two results.`,
-    });
-  }
-  // A `views()` call reshapes a result's views, so one with no result reshapes nothing.
-  // The types publish the call where a result is carried, so this reaches a JavaScript author.
+function buildResult(results: readonly ResultCall[]): DeclaredResult | undefined {
+  const declaration = results.find((call) => call.kind !== 'views');
   if (!declaration) {
-    const [reshape] = results;
-    if (reshape) {
-      throw new DeclarationError(viewsWithoutResult, {
-        correction: 'Declare result() or rows() before action().',
-        findings: [resultFinding(path, reshape, { at: '0' })],
-        sentence: `${sentence} reshapes its views and declares no result.`,
-      });
-    }
     return undefined;
   }
   const views = new Map<string, ResultView>();
   const mediaTypes = new Map<string, string | null>();
-  let selected: MergedResult['selected'] = undefined;
+  let selected: string | undefined = undefined;
   for (const call of results) {
-    for (const { entry, key, mediaType } of call.entries) {
-      const site = { call, key, path, sentence };
-      const view = resultView(declaration.kind, site, entry);
-      if (!isViewName(key)) {
-        throw new DeclarationError(viewName, {
-          correction:
-            'Use a nonempty name without whitespace, a leading hyphen, or "=", and not a number.',
-          findings: [resultFinding(path, call, { at: entryMark(call, key) })],
-          sentence: `${sentence} names view ${quoted(key)}.`,
-        });
-      }
+    for (const { key, mediaType, view } of call.entries) {
       views.set(key, view);
-      mediaTypes.set(key, entryMediaType(site, mediaType));
+      mediaTypes.set(key, mediaType);
     }
-    const key = call.kind === 'views' ? selectedKey(call.default) : undefined;
-    if (key !== undefined) {
-      selected = { call, key };
+    if (call.kind === 'views' && call.default !== undefined) {
+      selected = call.default;
     }
-  }
-  return { declaration, kind: declaration.kind, mediaTypes, selected, views };
-}
-
-/**
- * The finished result: the merged record, which needs an action, at least one view, and a default
- * that names one of them. The first key answers until one is named.
- */
-function buildResult(
-  declared: Pick<Declared, 'name' | 'results'>,
-  hasAction: boolean,
-  path: readonly string[],
-): DeclaredResult | undefined {
-  const merged = mergeResult({ name: declared.name, path }, declared.results);
-  if (!merged) {
-    return undefined;
-  }
-  const sentence = commandSentence(declared.name);
-  const { declaration, mediaTypes, selected, views } = merged;
-  if (!hasAction) {
-    throw new DeclarationError(resultWithoutAction, {
-      correction: 'Register an action or remove the result.',
-      findings: [resultFinding(path, declaration, { at: '0' })],
-      sentence: `${sentence} declares a result and no action.`,
-    });
   }
   const first = views.keys().next();
-  if (first.done === true) {
-    throw new DeclarationError(resultWithoutViews, {
-      correction: 'Name at least one view.',
-      findings: [resultFinding(path, declaration, { at: '0.views' })],
-      sentence: `${sentence} declares a result with no views.`,
-    });
-  }
-  if (selected !== undefined && !views.has(selected.key)) {
-    throw new DeclarationError(unknownDefaultView, {
-      correction: 'Name the view or select a named one.',
-      findings: [resultFinding(path, selected.call, { at: '1.default' })],
-      sentence: `${sentence} selects default view ${quoted(selected.key)}, which it does not name.`,
-    });
-  }
-  return { default: selected?.key ?? first.value, kind: merged.kind, mediaTypes, views };
+  const fallback = first.done === true ? '' : first.value;
+  return { default: selected ?? fallback, kind: declaration.kind, mediaTypes, views };
 }
 
 /** One call a hook made, in the order it made it, which the declaration reads back afterwards. */
@@ -1760,7 +1312,7 @@ class AttachedCommandValue implements AttachedCommand {
 
   constructor(state: AttachState) {
     this.#state = state;
-    this.#result = resultNode(buildResult(state.declared, state.hasAction, state.path));
+    this.#result = resultNode(buildResult(state.declared.results));
     attachments.set(this, state);
     Object.freeze(this);
   }
@@ -1829,9 +1381,9 @@ class AttachedCommandValue implements AttachedCommand {
     );
   }
 
-  views(
-    replacements: Readonly<Record<string, ResultView>>,
-    options?: { default?: string },
+  views<const Replacements extends Readonly<Record<string, ResultView>>>(
+    replacements: Replacements,
+    options?: { default?: keyof Replacements & string },
   ): AttachedCommand {
     const call = viewsCall(replacements, options);
     const { declared } = this.#state;
@@ -1853,7 +1405,6 @@ class AttachedCommandValue implements AttachedCommand {
       descriptors: registry,
       site: { at: '', declaration: { arguments: values, call: 'extend', path: state.path } },
       subject: state.subject,
-      target: 'command',
     });
     return new AttachedCommandValue({
       ...state,
@@ -2347,8 +1898,8 @@ function bindDispatch<Args, Options, Globals>(
 }
 
 /**
- * The placement facts and extension values of each input a lifecycle hook declared, which the calls
- * that declared the author's inputs already checked.
+ * The extension values of each input a lifecycle hook declared, which the calls that declared the
+ * author's inputs already validated.
  */
 function checkInputFacts(
   inputs: readonly InputDeclaration[],
@@ -2359,10 +1910,6 @@ function checkInputFacts(
   for (const input of inputs) {
     const site = inputSite(name, context.path, input);
     const sentence = site.subject;
-    if (input.kind === 'argument') {
-      checkNoListingFacts(site, input.config);
-      checkNoControl(site, input.config);
-    }
     context.extensions.set(
       input,
       buildExtensions({
@@ -2370,7 +1917,6 @@ function checkInputFacts(
         descriptors: context.descriptors,
         site: { ...site, at: '1.extensions' },
         subject: { phrase: `on ${subject} ${input.kind} "${input.name}"`, sentence },
-        target: input.kind,
       }),
     );
   }
@@ -2531,12 +2077,6 @@ export function declareStdin<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
   config: StdinConfig,
 ): CommandState<Args, Options, Globals> {
-  checkOpen(state, {
-    arguments: [config],
-    call: 'stdin',
-    clause: 'declares stdin',
-    remedy: inputRemedy,
-  });
   const site = callSite('Stdin', {
     arguments: [config],
     call: 'stdin',
@@ -2702,11 +2242,12 @@ export class CommandBuilder<
 
   /**
    * Views after the fact. It merges by key, so an existing name is replaced in place and a new one
-   * is appended, and `default` names the key core renders when nothing selects another.
+   * is appended, and `default` names the key core renders when nothing selects another, one of the
+   * keys this call supplies.
    */
-  views(
-    replacements: ResultViewsOf<Result>,
-    options?: { default?: string },
+  views<const Replacements extends ResultViewsOf<Result>>(
+    replacements: Replacements,
+    options?: { default?: keyof Replacements & string },
   ): Command<Args, Options, Globals, State, Result, Stdin> {
     return this.#derive(declareResultViews(this.#state, replacements, options));
   }

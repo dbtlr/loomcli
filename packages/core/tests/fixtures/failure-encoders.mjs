@@ -226,11 +226,6 @@ const scenarios = {
       `${JSON.stringify({ encoded, form: outcome.form, messages: outcome.messages })}\n`,
     );
   },
-  'foreign-entry': () =>
-    declare(() => plugin('@fixture/odd', { failureEncoders: [{ mediaType: 'application/json' }] })),
-  'media-type': () => declare(() => encodeFailure(5, errorLine)),
-  'not-a-function': () => declare(() => encodeFailure('application/json', 'line')),
-  'not-a-list': () => declare(() => plugin('@fixture/odd', { failureEncoders: 'line' })),
   run: async () => {
     const stdout = process.env.FIXTURE_STDOUT === 'epipe' ? brokenPipe() : undefined;
     const code = await application().run({

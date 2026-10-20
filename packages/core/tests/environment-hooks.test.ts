@@ -38,12 +38,6 @@ test.each(['not-record', 'bad-value', 'bad-name', 'nul'])(
   },
 );
 
-test('a nonfunction environment hook fails at declaration', () => {
-  const result = invoke(fixture, ['not-function']);
-  expect(result.status).toBe(1);
-  expect(result.stderr).toContain('@loomcli/core/not-a-function');
-});
-
 test('inspection and checking do not prepare an environment', () => {
   expect(invoke(fixture, ['inspect'])).toMatchObject({ status: 0, stderr: '', stdout: '[]\n' });
 });

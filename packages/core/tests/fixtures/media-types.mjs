@@ -1,4 +1,4 @@
-import { Application, Command, DeclarationError, plugin, view } from '@loomcli/core';
+import { Application, Command, plugin, view } from '@loomcli/core';
 
 const scenario = process.argv[2];
 
@@ -64,24 +64,4 @@ if (scenario === 'stores') {
     .result({ views: { json: { mediaType: 'application/json', render: () => 'not json\n' } } })
     .action(({ out }) => out.results({}))
     .run({ host: { argv: [], release: { build: 'distributed' } } });
-} else if (scenario === 'faults') {
-  const faults = {};
-  const attempts = {
-    declared: () => view('@fixture/page', { mediaType: 5, render }),
-    result: () => new Command('count').result({ views: { csv: { mediaType: 5, render } } }),
-    views: () =>
-      new Command('count')
-        .result({ views: { csv: { render } } })
-        .views({ tsv: { mediaType: true, render } }),
-  };
-  for (const [kind, attempt] of Object.entries(attempts)) {
-    try {
-      attempt();
-      faults[kind] = 'returned';
-    } catch (error) {
-      faults[kind] =
-        error instanceof DeclarationError ? error.rule?.identity : 'threw something else';
-    }
-  }
-  print(faults);
 }

@@ -35,11 +35,3 @@ test("a views() call that replaces a key replaces that view's media type in plac
 test('core never checks a media type against the text its view writes', () => {
   expect(report('unchecked')).toBe('not json\n');
 });
-
-test('a media type that is not a string is rejected at the call that stores the view', () => {
-  expect(JSON.parse(report('faults'))).toEqual({
-    declared: '@loomcli/core/media-type',
-    result: '@loomcli/core/media-type',
-    views: '@loomcli/core/media-type',
-  });
-});

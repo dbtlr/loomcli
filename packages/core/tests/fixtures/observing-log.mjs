@@ -123,7 +123,6 @@ const scenarios = {
         const outcome = await invoke(['inner'], {});
         printed.push({ messages: outcome.messages, output: outcome.output });
       }),
-  'not-function': () => plugin('@acme/stacks', { onLog: 'stacks' }),
   // Two plugins receive each event in installation order, the same frozen object.
   order: () =>
     new Application('probe', {

@@ -77,33 +77,36 @@ test('a required argument binds before an optional one', () => {
   expect(extra.stderr).toContain('accepts 2 arguments. Remove the extra values.');
 });
 
-test.each([
-  [
-    'optional-first',
-    'Argument "path" is optional and precedes required argument "name" on Command "keys".',
-    'Declare optional arguments after required ones.',
-  ],
-  [
-    'after-optional',
-    'Argument "extra" follows optional argument "path" on the root Command.',
-    'Declare an optional argument last.',
-  ],
-])(
-  '%s throws from the declaring call while the module evaluates',
-  (scenario, sentence, correction) => {
-    const result = optional(scenario, ['one', 'two']);
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).not.toContain('Invalid declaration:');
-    expect(result.stderr).toContain('@loomcli/core/optional-argument-last');
-    expect(result.stderr).toContain(`
-${sentence}
+test('bare words fill optional arguments left to right, and one that receives none is omitted', () => {
+  expect(optional('two-optional')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"args":{},"passthrough":[]}\n',
+  });
+  expect(optional('two-optional', ['one'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"args":{"path":"one"},"passthrough":[]}\n',
+  });
+  expect(optional('two-optional', ['one', 'two'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"args":{"path":"one","extra":"two"},"passthrough":[]}\n',
+  });
+});
+
+test('a required argument after an optional one throws from the declaring call', () => {
+  const result = optional('optional-first', ['one', 'two']);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain('@loomcli/core/optional-argument-last');
+  expect(result.stderr).toContain(`
+Argument "path" is optional and precedes required argument "name" on Command "keys".
 `);
-    expect(result.stderr).toContain(`
-${correction}
+  expect(result.stderr).toContain(`
+Declare optional arguments after required ones.
 `);
-  },
-);
+});
 
 test('an omitted optional variadic argument calls no validator and gives the action an empty array', () => {
   expect(optional('tail')).toEqual({

@@ -65,14 +65,6 @@ const scenarios = {
     input.note = 'written';
     return { input, stored };
   },
-  'proto-identity': () => {
-    try {
-      extension('__proto__', { schema: schemaOf(output({ note: 'read' })), target: 'command' });
-      return 'returned';
-    } catch (error) {
-      return error.rule?.identity;
-    }
-  },
   'proto-key': () => {
     const { graph, stored } = inspected(
       output(JSON.parse('{"__proto__":{"polluted":true},"a":1}')),

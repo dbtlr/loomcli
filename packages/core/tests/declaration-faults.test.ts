@@ -45,12 +45,6 @@ test('a Command value publishes its authoring calls and no declared state', () =
   });
 });
 
-test('a named parent throws at its own command() call for a child that has children', () => {
-  expect(calls('named-parent')).toEqual([
-    'thrown: Command "store" attaches child "cache", which has children of its own. Nest Commands at most two levels below the root.',
-  ]);
-});
-
 const collision =
   'thrown: Option "g" is declared as a global option and as a local option on Command "bad". Rename the local option.';
 

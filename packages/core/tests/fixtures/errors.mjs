@@ -20,12 +20,6 @@ function build() {
         .argument('extras', { required: true, variadic: true });
       break;
     }
-    case 'multiple-actions': {
-      app = app.action(() => {
-        throw new Error('Dispatched the first action.');
-      });
-      break;
-    }
     case 'required': {
       app = app.argument('files', { required: true, variadic: true });
       break;

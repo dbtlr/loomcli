@@ -7,9 +7,8 @@ const dispatch = ({ out }) => out.print('dispatched');
 
 const load = () => import('./source.mjs');
 
-/** The binding every source row declares, and a Command-target descriptor under the same name. */
+/** The binding every source row declares. */
 const configKey = extension('@acme/config/key', { schema: z.string(), target: 'option' });
-const commandKey = extension('@acme/config/key', { schema: z.string(), target: 'command' });
 const yamlKey = extension('@acme/yaml/key', { schema: z.string(), target: 'option' });
 
 /** A configuration plugin whose source declaration each row replaces. */
@@ -23,19 +22,6 @@ function withPlugins(...plugins) {
 }
 
 const scenarios = {
-  'binding-not-listed': () =>
-    withPlugins(plugin('@acme/config', { source: { binding: configKey, load } })),
-  'binding-own-option': () =>
-    withPlugins(
-      config(
-        { binding: configKey, load },
-        { options: { config: { extensions: [configKey('config')], type: 'string' } } },
-      ),
-    ),
-  'binding-wrong-target': () =>
-    withPlugins(
-      plugin('@acme/config', { extensions: [commandKey], source: { binding: commandKey, load } }),
-    ),
   'env-list-repeat': () =>
     new Application('app')
       .globalOption('limit', { env: ['LIMIT', 'MAX', 'LIMIT'], type: 'string' })
@@ -75,7 +61,6 @@ const scenarios = {
       )
       .command(new Command('sum').option('cap', { env: 'SHARED', type: 'string' }).action(dispatch))
       .action(dispatch),
-  'source-no-load': () => withPlugins(config({ binding: configKey })),
   'variable-local-twice': () =>
     new Application('app')
       .command(

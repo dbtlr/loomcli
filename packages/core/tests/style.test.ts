@@ -202,25 +202,6 @@ test.each([
   expect(resolve('', { env, glyph: 'info', platform: 'win32' }).stdout).toBe(expected);
 });
 
-test.each([null, 'always', [], 12])(
-  'invalid Application rendering policy %j is rejected',
-  (rendering) => {
-    const result = resolve('X', { rendering });
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('rendering');
-  },
-);
-
-test.each(['prototype', 'caller', 'arguments', 'valueOf', 'toLocaleString'])(
-  'reserved theme name %s is a declaration error',
-  (name) => {
-    const result = resolve('X', { themes: [{ [name]: ['red'] }] });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain('built-in style member');
-  },
-);
-
 test('padding resolves compatibility glyphs and measures Unicode columns, tabs, and lines', () => {
   const radio = '\uE000["glyph","radioOn"]\uE001\uE002';
   expect(resolve(padded(padded(radio, 5), 8, 'center'), { env: { TERM: 'linux' } })).toEqual({
@@ -479,13 +460,11 @@ test('literal escaping decodes once while malformed frames retain their data', (
   ).toBe('\u001b[31mX\u001b[39m');
 });
 
-test('themes reject semantic chains, reserved names, and competing owners', () => {
-  for (const themes of [[{ highlight: ['info', 'bold'] }], [{ red: ['blue'] }], [{}, {}]]) {
-    const result = resolve('X', { themes });
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toMatch(/concrete style chain|built-in style member|theme slot/u);
-  }
+test('two plugins that claim the theme slot are a fault, and one theme resolves its entries', () => {
+  const result = resolve('X', { themes: [{}, {}] });
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toMatch(/theme slot/u);
   expect(resolve('X', { contextKey: 'identifier', themes: [{ identifier: null }] }).stdout).toBe(
     'X',
   );

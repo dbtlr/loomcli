@@ -53,14 +53,6 @@ test('a binding of a source the Application does not install is inert beside the
   expect(outcome('binding-inert')).toBe('ok');
 });
 
-test('a rendering background other than auto, dark, or light is a rendering policy fault', () => {
-  expect(outcome('rendering-application')).toEqual({
-    rule: '@loomcli/core/rendering-policy',
-    text: 'Rendering background is not auto, dark, or light. Supply one of the three, or omit background.',
-    threw: 'new Application',
-  });
-});
-
 test('inspect() publishes background on each string option node, true on the marked one', () => {
   // A Boolean option's node carries no background fact, so it reads undefined, which JSON prints as null.
   expect(outcome('inspect')).toEqual([
@@ -88,12 +80,4 @@ test('style.adaptive takes an unapplied concrete chain for dark and for light, a
 test('a bare theme() accepts an adaptive entry and a custom token named adaptive', () => {
   expect(outcome('adaptive-entry')).toBe('ok');
   expect(outcome('adaptive-name')).toBe('ok');
-});
-
-test('a look-alike of an adaptive style is not a theme entry', () => {
-  expect(outcome('look-alike')).toEqual({
-    rule: '@loomcli/core/theme-mapping',
-    text: 'Plugin "@loomcli/plugins/theme" theme mapping "highlight" is not an unapplied concrete style chain without semantic tokens. Map the name to a concrete chain such as style.cyan.bold, without calling it or naming a semantic style.',
-    threw: 'plugin',
-  });
 });

@@ -12,7 +12,6 @@ import {
   declareStdin,
   requiredStdinContext,
   attachToRoot,
-  callArguments,
   childNode,
   buildGraph,
   checkDeclaredOptions,
@@ -61,7 +60,7 @@ import type { InvokedBy, LoomError } from './errors.js';
 import type { FailureExitCode } from './exit-codes.js';
 import { carriesBinding, storeCommandLayers } from './extension.js';
 import type { ExtensionValue } from './extension.js';
-import { checkNoListingFacts, partFinding, slotSite } from './facts.js';
+import { slotSite } from './facts.js';
 import type { FactSite } from './facts.js';
 import { failureForm } from './form.js';
 import type { FailureForm } from './form.js';
@@ -99,7 +98,6 @@ import type { OptionSpelling } from './options.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
 import { parseInvocation } from './parse.js';
-import { retiredApplicationOption } from './plugin-rules.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, InstalledOptionValues, Plugin } from './plugin.js';
 import { prepareEnvironment } from './prepare-environment.js';
@@ -548,7 +546,7 @@ class ApplicationBuilder<
       owners: new Map(this.#config.owners),
       table: this.table(),
     };
-    const node = childNode(null, child);
+    const node = childNode(child);
     const root = attachToRoot(
       this.#root,
       { node, placement: commandPlacement([], node.name) },
@@ -595,9 +593,9 @@ class ApplicationBuilder<
   }
 
   /** Views after the fact, merged by key, as it is on a Command. */
-  views(
-    replacements: ResultViewsOf<Result>,
-    options?: { default?: string },
+  views<const Replacements extends ResultViewsOf<Result>>(
+    replacements: Replacements,
+    options?: { default?: keyof Replacements & string },
   ): Application<Args, Options, Globals, State, Plugins, Result, Stdin> {
     return this.derive(declareResultViews(this.#root, replacements, options));
   }
@@ -1413,7 +1411,7 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
     },
     rendering: (declared) => {
       const rendering = options?.rendering;
-      return { ...declared, ...renderingPolicy(rendering, runRendering(rendering)) };
+      return { ...declared, ...renderingPolicy(rendering) };
     },
     settle: (code) => {
       process.exitCode = code;
@@ -1538,54 +1536,14 @@ interface ApplicationFacts {
   version: string;
 }
 
-/** The retired Application options, in the order they are rejected, each with its fix. */
-const retired = [
-  ['globals', 'Declare them with globalOption(name, config).'],
-  ['failures', 'Declare view overrides under views with override(key, view).'],
-  ['packet', 'Remove it; core reads the build from the release facts loom build bakes in.'],
-] as const;
-
 /** Where one Application option sits, rebuilt as `new Application(name, { key })`. */
 function optionSite(name: string, key: string, value: unknown): FactSite {
   return slotSite({ call: 'new Application', named: name, subject: 'The Application' }, key, value);
 }
 
-/** Where `run()`'s own rendering policy sits: the options object of the call on the Application. */
-function runRendering(rendering: unknown): FactSite {
-  return {
-    at: '0.rendering',
-    declaration: { arguments: [{ rendering }], call: 'run', path: [] },
-    subject: 'The run',
-  };
-}
-
-/**
- * Reject obsolete wiring before silently losing options that invocations depend on. `options` is
- * `undefined` for an Application declared without options.
- */
-function checkOptions(name: string, options: ApplicationOptions | undefined): ApplicationFacts {
-  const site: FactSite = {
-    at: '1',
-    declaration: { arguments: callArguments(name, options), call: 'new Application' },
-    subject: 'The Application',
-  };
-  if (options === undefined) {
-    return { description: undefined, version: '0.0.0' };
-  }
-  for (const [key, correction] of retired) {
-    if (key in options) {
-      const retiredSite = optionSite(name, key, Reflect.get(options, key));
-      throw new DeclarationError(retiredApplicationOption, {
-        correction,
-        findings: [partFinding(retiredSite, [])],
-        sentence: `The Application options contain ${key}.`,
-      });
-    }
-  }
-  // The root is every page's entry point, so it carries neither listing fact.
-  // A key that may not be there is a fault of the slot, so it answers with the slot's shape.
-  checkNoListingFacts(site, options);
-  return { description: options.description, version: options.version ?? '0.0.0' };
+/** The facts the Application's options declare. `options` is `undefined` for none. */
+function applicationFacts(options: ApplicationOptions | undefined): ApplicationFacts {
+  return { description: options?.description, version: options?.version ?? '0.0.0' };
 }
 
 /** The installed configuration source's binding, when one option's extension record carries it. */
@@ -1629,8 +1587,8 @@ function checkPluginMarkBindings(plugins: readonly BuiltPlugin[]): void {
 
 /**
  * Every rule `new Application(name, options)` applies, in the order it reads the slot: the
- * application's own view overrides, its translations, the rendering policy, the options slot and
- * its facts, the installed list and every rule between two plugins, the root's extension values,
+ * application's own view overrides, its translations, the installed list and every rule between
+ * two plugins, the root's extension values,
  * and then each plugin's Commands, which attach to the root first, in installation order and list
  * order. The root's globals are the option values the declared `plugins` tuple contributes.
  */
@@ -1646,7 +1604,6 @@ function declareApplication<Plugins extends readonly Plugin[]>(
   const identities = viewIdentities(coreViews);
   const views = buildViews(
     {
-      declares: false,
       owner: { call: 'new Application', named: name },
       sentence: 'The Application',
     },
@@ -1657,11 +1614,8 @@ function declareApplication<Plugins extends readonly Plugin[]>(
     optionSite(name, 'translators', slot?.translators),
     slot?.translators,
   );
-  const rendering = renderingPolicy(
-    slot?.rendering,
-    optionSite(name, 'rendering', slot?.rendering),
-  );
-  const facts = checkOptions(name, slot);
+  const rendering = renderingPolicy(slot?.rendering);
+  const facts = applicationFacts(slot);
   const installed = installPlugins(name, slot?.plugins ?? []);
   const { plugins } = installed;
   const contributors = plugins.map((entry) =>

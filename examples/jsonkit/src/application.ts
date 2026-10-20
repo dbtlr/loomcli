@@ -27,6 +27,7 @@ import { get } from './commands/get.js';
 import { keys } from './commands/keys.js';
 import { paths } from './commands/paths.js';
 import { select } from './commands/select.js';
+import { stats } from './commands/stats.js';
 import { documentInput } from './document-input.js';
 import { readFailures } from './failures.js';
 import type { Member } from './member.js';
@@ -84,6 +85,7 @@ export const jsonkit = configured
   .command(get)
   .command(keys)
   .command(select)
+  .command(stats)
   .command(fetch)
   .command(debug)
   .command(paths)

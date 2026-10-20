@@ -59,15 +59,6 @@ const scenarios = {
     ],
     ['new Application', (shade) => new Application('notes', { plugins: [config(), shade] })],
   ],
-  'look-alike': [
-    [
-      'plugin',
-      () => theme({ highlight: { dark: style.hex('#C97B36'), light: style.hex('#9C5A1E') } }),
-    ],
-  ],
-  'rendering-application': [
-    ['new Application', () => new Application('notes', { rendering: { background: 'blue' } })],
-  ],
   string: [['globalOption', () => new Application('notes').globalOption('background', marked)]],
   'two-global': [
     ['new Application', () => new Application('notes', { plugins: [background()] })],

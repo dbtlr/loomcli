@@ -27,15 +27,16 @@ test('an imported-style completed Command accepts immutable whole-value extensio
   });
 });
 
+test('a second value of one extension in one call replaces the first whole', () => {
+  expect(JSON.parse(run('duplicate'))).toEqual({ details: 'Two.' });
+});
+
 test.each([
-  ['duplicate', 'holds extension "test/help" twice'],
   ['invalid', 'holds an invalid "test/help" value'],
   [
     'twin',
     'Extension "test/help" is defined twice. Install one copy of the package that defines it.',
   ],
-  ['target', 'which applies to options'],
-  ['late', 'declares option "extra" after its action'],
 ])('extension layering rejects %s', (scenario, message) => {
   expect(run(scenario)).toContain(message);
 });

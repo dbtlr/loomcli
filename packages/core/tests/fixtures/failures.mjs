@@ -189,9 +189,6 @@ function build() {
     case 'duplicate': {
       return routed([override(InputError, brand('one')), override(InputError, brand('two'))]);
     }
-    case 'foreign': {
-      return routed([{}]);
-    }
     case 'fatal': {
       return ending([override(ConfigError, brand('config'))], () => {
         throw new ConfigError('Config is unreadable.');

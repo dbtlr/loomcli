@@ -5,12 +5,9 @@ import {
   diagnosticRule,
   extension,
   plugin,
-  view,
 } from '@loomcli/core';
 
 const act = () => undefined;
-const render = () => '';
-const row = () => '';
 
 /** A value that would forge a banner, reorder the line, and end it, were a sentence to hold it raw. */
 const forged = 'x\n\n-- FAKE BANNER ---- @loomcli/core/other\u202e\u0085\n';
@@ -46,23 +43,6 @@ function handBuilt(fields) {
 }
 
 /**
- * A hand-built descriptor whose identity getter answers `@acme/a` and `@acme/b` in turn, so a
- * build that reads the identity twice sees two identities.
- */
-function alternating() {
-  let reads = 0;
-  const descriptor = handBuilt({});
-  Object.defineProperty(descriptor, 'identity', {
-    enumerable: true,
-    get: () => {
-      reads += 1;
-      return reads % 2 === 1 ? '@acme/a' : '@acme/b';
-    },
-  });
-  return descriptor;
-}
-
-/**
  * One declaration per scenario whose author-supplied value is `forged` or `bare`. Each throws a
  * declaration fault, and the fixture reports its rule and sentence, or the class of any other throw.
  */
@@ -73,20 +53,7 @@ const scenarios = {
   'argument-bare': () => new Command('get').argument(bare, {}),
   'argument-config-bare': () => new Command('get').argument(bare, 'text'),
   'command-bare': () => new Command(bare),
-  'default-view': () =>
-    new Command('store').command(
-      new Command('get')
-        .result({ views: { plain: { render } } })
-        .views({}, { default: forged })
-        .action(act),
-    ),
-  'extension-alternating': () =>
-    plugin('@acme/notes', { extensions: [alternating(), alternating()] }),
-  'extension-bare': () => extension(bare, { schema: accepting, target: 'command' }),
   'extension-copies': () => plugin('@acme/notes', { extensions: [handBuilt({}), handBuilt({})] }),
-  'extension-forged': () => extension(forged, { schema: accepting, target: 'command' }),
-  'extension-hand-built': () =>
-    plugin('@acme/notes', { extensions: [handBuilt({ identity: forged })] }),
   'extension-issue': () =>
     new Command('get').extend(
       extension('@acme/limit/command', { schema: rejecting, target: 'command' })('x'),
@@ -106,20 +73,7 @@ const scenarios = {
   'option-after-action': () => new Command('get').action(act).option(forged, { type: 'string' }),
   'option-bare': () => new Command('get').option(bare, { type: 'string' }),
   'option-config-bare': () => new Command('get').option(bare, undefined),
-  'plugin-bare': () => plugin(bare, {}),
-  'plugin-forged': () => plugin(forged, {}),
-  'result-view': () => new Command('get').result({ views: { [forged]: { render, row } } }),
   'rule-bare': () => diagnosticRule(bare, { explanation: 'e', headline: 'h' }),
-  'signal-bare': () => plugin('@acme/signals', { signals: [bare] }),
-  'source-binding': () => {
-    const binding = handBuilt({});
-    return plugin('@acme/config', {
-      extensions: [binding],
-      source: { binding, load: () => Promise.resolve({ default: act }) },
-    });
-  },
-  'view-bare': () => view(bare, { render }),
-  'view-forged': () => view(forged, { render }),
 };
 
 const report = {};

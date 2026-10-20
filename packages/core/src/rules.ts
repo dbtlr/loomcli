@@ -201,20 +201,6 @@ const ruleIdentity = registerRule('@loomcli/core/rule-identity', {
   headline: 'Invalid rule identity',
 });
 
-/** A diagnostic rule whose headline or explanation holds no prose. */
-const ruleProse = registerRule('@loomcli/core/rule-prose', {
-  explanation:
-    "A rule's banner prints its headline, and its explanation teaches why the rule exists, so each holds prose.",
-  headline: 'Empty rule text',
-});
-
-/** A diagnostic rule whose docs value is not a web address. */
-const ruleDocs = registerRule('@loomcli/core/rule-docs', {
-  explanation:
-    "A diagnostic prints a rule's docs as a link the author follows, so it is an absolute http or https URL.",
-  headline: 'Invalid rule docs',
-});
-
 /** An environment preparation hook that threw or returned malformed additions. */
 const brokenEnvironmentHook = registerRule('@loomcli/core/broken-environment-hook', {
   explanation:
@@ -246,9 +232,7 @@ export {
   pluginLoaderFailed,
   regionCall,
   resultContract,
-  ruleDocs,
   ruleIdentity,
-  ruleProse,
   runOptions,
   sourceAnswers,
   sourceAnswersCorrection,

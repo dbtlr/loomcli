@@ -256,10 +256,6 @@ test.each([
 
 test.each([
   [
-    'arguments-and-children',
-    'The root Command declares argument "files" and attaches child "get". Move the argument into a child Command or remove the children.',
-  ],
-  [
     'duplicate-children',
     'The root Command attaches two children named "get". Rename or remove one.',
   ],
@@ -341,22 +337,6 @@ test.each([
     'Command "get" declares an argument named 1. Use a nonempty name without a leading hyphen, whitespace, or "=".',
   ],
   [
-    'foreign-child',
-    'The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).',
-  ],
-  [
-    'foreign-globals-value',
-    'The Application options contain globals. Declare them with globalOption(name, config).',
-  ],
-  [
-    'null-globals',
-    'The Application options contain globals. Declare them with globalOption(name, config).',
-  ],
-  [
-    'foreign-globals',
-    'Command "get" declares globals. Declare globals on the Application and register its environment.',
-  ],
-  [
     'shared-option-key',
     'Option "file" is declared as a global option and as a local option on Command "get". Rename the local option.',
   ],
@@ -373,7 +353,6 @@ test.each([
     'Option spelling "--no-total" is used by the global option "total" and the local option "no-total" on Command "get". Change one declaration.',
   ],
   ['child-actionless', 'Command "get" has no action. Register an action.'],
-  ['child-multiple-actions', 'Command "get" has multiple actions. Register one action.'],
   [
     'child-duplicate-argument',
     'Argument "path" is declared more than once on Command "get". Remove or rename the duplicate.',
@@ -383,40 +362,8 @@ test.each([
     'Argument "paths" is variadic and precedes argument "path" on Command "get". Declare the variadic argument last.',
   ],
   [
-    'late-argument',
-    'Command "get" declares argument "path" after its action. Declare arguments and options before action().',
-  ],
-  [
-    'late-option',
-    'Command "get" declares option "raw" after its action. Declare arguments and options before action().',
-  ],
-  [
-    'late-root-argument',
-    'The root Command declares argument "files" after its action. Declare arguments and options before action().',
-  ],
-  [
-    'late-root-option',
-    'The root Command declares option "pretty" after its action. Declare arguments and options before action().',
-  ],
-  [
-    'late-root-child',
-    'The root Command attaches child "get" after its action. Attach children before action().',
-  ],
-  [
-    'late-two-options',
-    'Command "get" declares option "raw" after its action. Declare arguments and options before action().',
-  ],
-  [
-    'late-child-beside-argument',
-    'The root Command attaches child "get" after its action. Attach children before action().',
-  ],
-  [
     'late-child-invalid-name',
     'Command name "-get" is invalid. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
-  ],
-  [
-    'late-child-foreign',
-    'The root Command attaches a value that is not a Command. Attach the value returned by new Command(name).',
   ],
 ] satisfies [string, string][])(
   'the call that makes the %s graph wrong throws before any build',

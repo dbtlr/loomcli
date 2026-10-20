@@ -1,4 +1,3 @@
-import { misplacedListingFact } from './command-rules.js';
 import type { DiagnosticRule, Finding } from './diagnostic-text.js';
 import { DeclarationError, quoted } from './errors.js';
 
@@ -130,37 +129,4 @@ export function pluginOptionSite(
  */
 export function isProseLine(value: unknown): value is string {
   return typeof value === 'string' && prose.test(value) && !lineTerminator.test(value);
-}
-
-/**
- * The declarations that carry neither listing fact: an argument, which cannot leave the grammar it
- * sits in, and the root, which is every page's entry point. The types remove both keys there, and
- * a JavaScript author, or a TypeScript author whose argument config is inferred from a value,
- * reaches this rule instead.
- */
-export function checkNoListingFacts(site: FactSite, declared: object): void {
-  for (const fact of ['hidden', 'deprecated'] as const) {
-    if (fact in declared) {
-      throw factFault(misplacedListingFact, site, {
-        correction: 'Remove it.',
-        fact,
-        sentence: `${site.subject} declares ${fact}, which applies to named Commands and options alone.`,
-      });
-    }
-  }
-}
-
-/**
- * An argument carries no `control` mark, because it is always the Command's input. The type
- * removes the key, and a JavaScript author, or one whose argument config is held in a variable,
- * reaches this rule instead.
- */
-export function checkNoControl(site: FactSite, declared: object): void {
-  if ('control' in declared) {
-    throw factFault(misplacedListingFact, site, {
-      correction: 'Remove it.',
-      fact: 'control',
-      sentence: `${site.subject} declares control, which applies to options alone.`,
-    });
-  }
 }

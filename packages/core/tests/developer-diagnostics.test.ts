@@ -160,24 +160,6 @@ test.each([
     'Diagnostic rule "@acme/retry/backoff/" has no package part, or a subpath or rule name that is not kebab-case.',
     identityFix,
   ],
-  [
-    'empty-headline',
-    'rule-prose',
-    'Diagnostic rule "@acme/retry/retry-limit" declares an empty headline.',
-    'Supply a short noun phrase.',
-  ],
-  [
-    'empty-explanation',
-    'rule-prose',
-    'Diagnostic rule "@acme/retry/retry-limit" declares an empty explanation.',
-    'Supply prose that says why the rule exists.',
-  ],
-  [
-    'bad-docs',
-    'rule-docs',
-    'Diagnostic rule "@acme/retry/retry-limit" declares docs that are not a URL.',
-    'Supply an absolute https URL, or omit docs.',
-  ],
 ])('diagnosticRule() rejects %s', (scenario, rule, sentence, correction) => {
   const text = diagnostics(scenario);
   expect(text).toContain(' @loomcli/core/rule-');

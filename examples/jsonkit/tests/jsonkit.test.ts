@@ -34,6 +34,21 @@ function kindLine(kind: string): string {
   return `ℹ ${kind}\n`;
 }
 
+test('jsonkit stats depth max, three levels below the root, prints how deeply a path nests', () => {
+  withDocuments({ 'doc.json': document }, (cwd) => {
+    expect(invoke(main, ['stats', 'depth', 'max', '-f', 'doc.json'], { cwd })).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: '3\n',
+    });
+    expect(invoke(main, ['stats', 'depth', 'max', 'nested', '-f', 'doc.json'], { cwd })).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: '2\n',
+    });
+  });
+});
+
 test('jsonkit preserves JSON strings that resemble recognized style markup', () => {
   const literal = '\uE000["style",[["foreground","red"]]]\uE001data\uE002';
   const contents = JSON.stringify({ value: literal });
@@ -322,7 +337,7 @@ test.each(['summary', 'typo'])(
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, ['--file', 'doc.json', name], { cwd })).toEqual({
         status: 2,
-        stderr: `jsonkit: Unknown command "${name}". Use one of: doctor, completion, mcp, manpage, get, keys, select.\nRun "jsonkit --help" to see the usage.\n`,
+        stderr: `jsonkit: Unknown command "${name}". Use one of: doctor, completion, mcp, manpage, get, keys, select, stats.\nRun "jsonkit --help" to see the usage.\n`,
         stdout: '',
       });
     });
@@ -367,7 +382,7 @@ test.each(['lss', 'fetc'])(
     withDocuments({ 'doc.json': document }, (cwd) => {
       expect(invoke(main, [name, '-f', 'doc.json'], { cwd })).toEqual({
         status: 2,
-        stderr: `jsonkit: Unknown command "${name}". Use one of: doctor, completion, mcp, manpage, get, keys, select.\nRun "jsonkit --help" to see the usage.\n`,
+        stderr: `jsonkit: Unknown command "${name}". Use one of: doctor, completion, mcp, manpage, get, keys, select, stats.\nRun "jsonkit --help" to see the usage.\n`,
         stdout: '',
       });
     });

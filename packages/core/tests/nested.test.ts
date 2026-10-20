@@ -83,22 +83,8 @@ test.each([
   },
 );
 
-function invokeNestedGraph(scenario: string, argv: string[] = []) {
-  const result = invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [scenario, ...argv]);
-  expect(result.stderr).toBe('');
-  return JSON.parse(result.stdout);
-}
-
 test.each([
-  [
-    'group-option',
-    'Command "cache" declares option "verbose" but registers no action to receive it. Register an action or remove the option.',
-  ],
   ['leaf-actionless', 'Command "clear" has no action. Register an action.'],
-  [
-    'nested-foreign-globals',
-    'Command "clear" declares globals. Declare globals on the Application and register its environment.',
-  ],
   [
     'duplicate-nested-children',
     'Command "cache" attaches two children named "clear". Rename or remove one.',
@@ -106,10 +92,6 @@ test.each([
   [
     'invalid-nested-child-name',
     'Command name "bad name" is invalid. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
-  ],
-  [
-    'late-nested-child',
-    'Command "cache" attaches child "clear" after its action. Attach children before action().',
   ],
   [
     'nested-shared-option-key',
@@ -127,11 +109,6 @@ test.each([
     'alias-sibling-alias',
     'The root Command attaches child "keys" with alias "ls", which is also an alias of child "select". Rename or remove one.',
   ],
-  [
-    'alias-own-name',
-    'Command "keys" declares alias "keys", which is its own name. Remove the alias.',
-  ],
-  ['repeated-alias', 'Command "keys" declares alias "ls" twice. Remove the repeated alias.'],
   [
     'invalid-alias-name',
     'Command "keys" declares an alias named "bad name". Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
@@ -156,11 +133,6 @@ test.each([
     'symbol-alias-name',
     'Command "keys" declares an alias named Symbol(ls). Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
   ],
-  ['empty-alias', 'Command "keys" declares an alias with no names. Supply at least one name.'],
-  [
-    'late-alias',
-    'Command "keys" declares alias "ls" after its action. Declare aliases before action().',
-  ],
   [
     'nested-alias-sibling-name',
     'Command "cache" attaches child "list" with alias "clear", which is also the name of child "clear". Rename or remove one.',
@@ -168,10 +140,6 @@ test.each([
   [
     'shared-child',
     'The root Command attaches child "clear", which Command "cache" also attaches. Attach a Command value at one point; create a new Command for each placement.',
-  ],
-  [
-    'nested-too-deep',
-    'Command "store" attaches child "cache", which has children of its own. Nest Commands at most two levels below the root.',
   ],
 ] satisfies [string, string][])(
   'the call or attach that makes the %s graph wrong throws at its depth',
@@ -185,21 +153,25 @@ test.each([
 test.each([
   ['portable-alias-name', '_Ls.v2-all'],
   ['digit-alias-name', '9Go_x'],
-] satisfies [string, string][])(
-  'the %s alias of portable filename characters routes to its Command',
-  (scenario, alias) => {
-    expect(
-      invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [scenario, alias]),
-    ).toEqual({ status: 0, stderr: '', stdout: 'dispatched\n{"chunks":[],"code":0}\n' });
-  },
-);
-
-// The root is never attached, so build is the first point at which a root group is final.
-test('a root group that declares a local option is rejected at build', () => {
-  expect(invokeNestedGraph('root-group-option', ['clear'])).toEqual({
-    chunks: ['nested-graph: Something went wrong.\n'],
-    code: 1,
+  ['repeated-alias', 'ls'],
+  ['alias-own-name', 'keys'],
+] satisfies [string, string][])('the %s alias routes to its Command', (scenario, alias) => {
+  expect(invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [scenario, alias])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'dispatched\n{"chunks":[],"code":0}\n',
   });
+});
+
+test('a Command three levels below the root routes and runs', () => {
+  expect(
+    invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [
+      'three-levels',
+      'store',
+      'cache',
+      'clear',
+    ]),
+  ).toEqual({ status: 0, stderr: '', stdout: 'dispatched\n{"chunks":[],"code":0}\n' });
 });
 
 test.each([

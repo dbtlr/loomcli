@@ -71,6 +71,8 @@ const branded = count.views({ wide }, { default: 'wide' });
 const brandedRows = paths.views({ collected });
 const relisted = paths.views({ list }, { default: 'list' });
 const brandedRoot = valueRoot.views({ wide });
+// @ts-expect-error TS2322: The default names one of the views the call supplies.
+count.views({ wide }, { default: 'wdie' });
 
 // A neutral annotation and an attachment accept a declaration that carries a result.
 const neutral: Command = count;

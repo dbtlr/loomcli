@@ -59,10 +59,6 @@ const scenarios = {
     ];
   },
   // A named parent receives a child that has children, outside any Application.
-  'named-parent': () => {
-    const cache = new Command('cache').command(leaf('clear'));
-    return [attempt(() => new Command('store').command(cache))];
-  },
   // A join that throws claims no node, so the value it walked attaches at another point after it.
   'owners-after-fault': () => {
     const base = new Application('app').globalOption('g', { type: 'string' });

@@ -1,4 +1,3 @@
-import { viewMediaType, viewShape } from './command-rules.js';
 import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { DeclarationError, defaultText, notTextReason, quoted, reasonOf } from './errors.js';
@@ -6,15 +5,7 @@ import type { LoomError } from './errors.js';
 import { partFinding, slotSite } from './facts.js';
 import type { FactSite } from './facts.js';
 import { markedSentence } from './form.js';
-import { checkIdentity } from './identity.js';
-import {
-  foreignValue,
-  notAList,
-  overrideKey,
-  overrideTwice,
-  twoPackageCopies,
-} from './plugin-rules.js';
-import { prototypeChain } from './prototypes.js';
+import { foreignValue, foreignValueCorrection, twoPackageCopies } from './plugin-rules.js';
 import type { RowView, View, ViewContext } from './types.js';
 
 /** Phantom key. It brands a declared view and holds no runtime value. */
@@ -187,66 +178,31 @@ function shapeOf(value: { render?: unknown; row?: unknown } | null | undefined):
 }
 
 /**
- * The media type one declared view states, read once, so a later write to the definition changes
- * nothing the declaration holds. Core holds no grammar of media types, so the one rule is that the
- * value is a string.
- */
-function declaredMediaType(
-  identity: string,
-  definition: View<never> | RowView<never>,
-): string | undefined {
-  const mediaType: unknown = definition.mediaType;
-  if (mediaType !== undefined && typeof mediaType !== 'string') {
-    throw new DeclarationError(viewMediaType, {
-      correction: 'Supply a media type such as "text/plain", or omit mediaType.',
-      findings: [{ arguments: [identity, definition], call: 'view', mark: '1.mediaType' }],
-      sentence: `View ${quoted(identity)} declares a media type that is not a string.`,
-    });
-  }
-  return mediaType;
-}
-
-/**
  * One declared view of either shape: an identity and its default functions. The data type is
  * inferred from the function's first parameter when that parameter is an object type or a
  * `readonly` array, and is stated for a primitive or a union, because inference runs through
- * `Readonly<Data>`. The two shapes are told apart by the function present, and a definition that
- * carries both or neither is rejected here rather than guessed at.
+ * `Readonly<Data>`. A definition whose `row` is a function is a row view, and any other is a whole
+ * view. The media type is read once, so a later write to the definition changes nothing the
+ * declaration holds.
  */
 function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data>;
 function view<Row>(identity: string, definition: RowView<Row>): DeclaredRowView<Row>;
 function view(identity: string, definition: View<never> | RowView<never>): AnyDeclaredView {
-  checkIdentity('view', identity);
-  const shape = shapeOf(definition);
-  const findings = [{ arguments: [identity, definition], call: 'view', mark: '1' }];
-  if (shape === 'both') {
-    throw new DeclarationError(viewShape, {
-      correction: 'Supply one of the two.',
-      findings,
-      sentence: `View ${quoted(identity)} carries render and row.`,
-    });
-  }
-  if (shape === 'neither') {
-    throw new DeclarationError(viewShape, {
-      correction: 'Supply a view with render or a row view with row.',
-      findings,
-      sentence: `View ${quoted(identity)} carries neither render nor row.`,
-    });
-  }
-  const mediaType = declaredMediaType(identity, definition);
+  const { mediaType } = definition;
   return typeof definition.row === 'function'
     ? new RowViewDeclaration<never>(identity, definition, mediaType)
     : new ViewDeclaration<never>(identity, definition, mediaType);
 }
 
 /**
- * What one override replaces: a declared view, a failure class read as its prototype, or a value
- * that is neither, which the list that holds it reports as its entry fault.
+ * What one override replaces: a declared view, a failure class read as its prototype, or a
+ * declared view another installed copy of `@loomcli/core` built, which this copy's registry misses
+ * and the list that holds the override reports as its entry fault.
  */
 type OverrideKey =
   | { kind: 'view'; view: AnyDeclaredView }
-  | { kind: 'failure'; name: string; prototype: object }
-  | { kind: 'invalid' };
+  | { kind: 'failure'; name: string; prototype: unknown }
+  | { kind: 'foreign' };
 
 /** One override: the key it answers and the view value that supersedes the default. */
 interface OverrideRecord {
@@ -308,29 +264,23 @@ function override<Key extends AnyOverrideKey>(
     row: supplied.row,
     tail: supplied.tail,
   };
-  const declared = declarations.get(key);
-  if (declared) {
-    return new OverrideDeclaration({ key: { kind: 'view', view: declared }, replacement: stored });
-  }
-  return new OverrideDeclaration({ key: failureKey(key), replacement: stored });
+  return new OverrideDeclaration({ key: overrideKey(key), replacement: stored });
 }
 
 /**
- * The key one failure-class override answers. A class is a function whose `prototype` is the
- * object a thrown failure's chain holds, so anything else is no key at all and the list that holds
- * it reports it as its entry fault, rather than colliding with every other such value.
+ * The key one override answers: a declared view this copy made, or a failure class, read as the
+ * prototype a thrown failure's chain holds.
  */
-function failureKey(key: object): OverrideKey {
-  if (typeof key !== 'function' || !('prototype' in key)) {
-    return { kind: 'invalid' };
+function overrideKey(key: AnyOverrideKey): OverrideKey {
+  const declared = declarations.get(key);
+  if (declared) {
+    return { kind: 'view', view: declared };
+  }
+  if (typeof key !== 'function') {
+    return { kind: 'foreign' };
   }
   const prototype: unknown = key.prototype;
-  if (typeof prototype !== 'object' || prototype === null) {
-    return { kind: 'invalid' };
-  }
-  const name =
-    'name' in key && typeof key.name === 'string' && key.name !== '' ? key.name : 'a failure class';
-  return { kind: 'failure', name, prototype };
+  return { kind: 'failure', name: key.name, prototype };
 }
 
 /** One contributor's overrides, read once per build and consulted in contributor order. */
@@ -349,12 +299,10 @@ type ViewRegistry = readonly ViewContributions[];
 type ViewIdentities = Map<string, AnyDeclaredView>;
 
 /**
- * How one contributor's diagnostics name it, whether its list may declare a view, and the call
- * that declared the list, `plugin(identity, …)` or `new Application(name, …)`, which a fault marks.
+ * How one contributor's diagnostics name it, and the call that declared the list,
+ * `plugin(identity, …)` or `new Application(name, …)`, which a fault marks.
  */
 interface ViewSubject {
-  /** A plugin declares views beside its overrides; an application overrides alone. */
-  declares: boolean;
   sentence: string;
   owner: { call: string; named: unknown };
 }
@@ -404,10 +352,7 @@ function keyCode(key: OverrideKey): string {
  * One list entry as a finding prints it: a declared view as the `view()` call that made it, an
  * override as its `override()` call, and any other value as it is.
  */
-function entryCode(entry: unknown): unknown {
-  if (typeof entry !== 'object' || entry === null) {
-    return entry;
-  }
+function entryCode(entry: object): unknown {
   const listed = declarations.get(entry);
   if (listed) {
     return spelled(`view(${quoteString(listed.identity)}, ${elided})`);
@@ -417,42 +362,18 @@ function entryCode(entry: unknown): unknown {
 }
 
 /** Where one contributor's `views` list sits, with each entry printed as the call that made it. */
-function listSite(subject: ViewSubject, declared: unknown): FactSite {
-  const views = Array.isArray(declared) ? Array.from(declared, entryCode) : declared;
+function listSite(subject: ViewSubject, declared: readonly object[] | undefined): FactSite {
+  const views = declared?.map(entryCode);
   return slotSite({ ...subject.owner, subject: subject.sentence }, 'views', views);
 }
 
-/** The fault of one list entry that is not a value this contributor's list may hold. */
+/** The fault of one list entry another installed copy of `@loomcli/core` built. */
 function entryFault(subject: ViewSubject, place: Finding): DeclarationError {
-  return subject.declares
-    ? new DeclarationError(foreignValue, {
-        correction:
-          'Supply the value returned by view(identity, definition) or override(key, view).',
-        findings: [place],
-        sentence: `${subject.sentence} holds a value that is not a view.`,
-      })
-    : new DeclarationError(foreignValue, {
-        correction: 'Supply the value returned by override(key, view).',
-        findings: [place],
-        sentence: `${subject.sentence} holds a value that is not a view override.`,
-      });
-}
-
-/** A `views` slot holds a list, so anything else is the same declaration fault. */
-function readContributions(subject: ViewSubject, declared: unknown): readonly unknown[] {
-  if (declared === undefined) {
-    return [];
-  }
-  if (!Array.isArray(declared)) {
-    throw new DeclarationError(notAList, {
-      correction: subject.declares
-        ? 'Supply a list of declared views and override values.'
-        : 'Supply a list of override values.',
-      findings: [partFinding(listSite(subject, declared), [])],
-      sentence: `${subject.sentence} declares views that are not an array.`,
-    });
-  }
-  return declared;
+  return new DeclarationError(foreignValue, {
+    correction: foreignValueCorrection,
+    findings: [place],
+    sentence: `${subject.sentence} holds a view or override another installed copy of @loomcli/core built.`,
+  });
 }
 
 /** One contributor's build in progress: what it is filling, and how its diagnostics name it. */
@@ -462,77 +383,50 @@ interface ViewBuild {
   subject: ViewSubject;
   /** The list the contributor declared, printed, which each fault marks an entry of. */
   site: FactSite;
-  /** The entry that first overrode each key, so a second override marks both. */
-  positions: Map<unknown, number>;
 }
 
 /**
- * The entry a key's first override sits at, recording this one's when it is the first. One key
- * answers to one override inside one contributor, so a second override marks both entries.
- */
-function claimKey(build: ViewBuild, key: ValidKey, index: number): void {
-  const slot = key.kind === 'failure' ? key.prototype : key.view;
-  const first = build.positions.get(slot);
-  if (first === undefined) {
-    build.positions.set(slot, index);
-    return;
-  }
-  const clause =
-    key.kind === 'failure'
-      ? `the view for ${quoted(key.name)}`
-      : `view ${quoted(key.view.identity)}`;
-  throw new DeclarationError(overrideTwice, {
-    correction: 'Remove one override.',
-    findings: [
-      partFinding(build.site, [first], 'the first override'),
-      partFinding(build.site, [index], 'the second override'),
-    ],
-    sentence: `${build.subject.sentence} overrides ${clause} twice.`,
-  });
-}
-
-/** The keys an override answers to: a declared view or a failure class. */
-type ValidKey = Exclude<OverrideKey, { kind: 'invalid' }>;
-
-/**
- * One override recorded under the key it answers. The same key overridden by two contributors
- * resolves first-in-wins. A key that is neither a declared view nor a failure class is a fault of
- * the list that holds it, reported here rather than at the `override()` call.
+ * One override recorded under the key it answers. The same key overridden twice resolves
+ * first-in-wins, inside one contributor as across contributors. A key another installed copy of
+ * `@loomcli/core` built is a fault of the list that holds it, reported here rather than at the
+ * `override()` call.
  */
 function recordOverride(
   build: ViewBuild,
   { key, replacement }: OverrideRecord,
   index: number,
 ): void {
-  if (key.kind === 'invalid') {
-    throw new DeclarationError(overrideKey, {
-      correction:
-        'Key the override on a value view(identity, definition) returned, or on a failure class.',
-      findings: [partFinding(build.site, [index])],
-      sentence: `${build.subject.sentence} overrides a key that is neither a declared view nor a failure class.`,
-    });
+  const place = partFinding(build.site, [index]);
+  if (key.kind === 'foreign') {
+    throw entryFault(build.subject, place);
   }
-  claimKey(build, key, index);
+  const { failures, views } = build.contributions;
   if (key.kind === 'failure') {
-    build.contributions.failures.set(key.prototype, replacement);
+    keepFirst(failures, key.prototype, replacement);
     return;
   }
   // Naming a declared view as a key registers its identity, as listing the declaration does.
-  registerIdentity(build.identities, key.view, partFinding(build.site, [index]));
-  build.contributions.views.set(key.view, replacement);
+  registerIdentity(build.identities, key.view, place);
+  keepFirst(views, key.view, replacement);
+}
+
+/** Records one value under a key no earlier value holds, so the first one stays. */
+function keepFirst<Key>(map: Map<Key, StoredView>, key: Key, value: StoredView): void {
+  if (!map.has(key)) {
+    map.set(key, value);
+  }
 }
 
 /**
- * One entry of a contributor's list: a declared view, which only a plugin may list, or an
- * override. Any other value is the list's entry fault.
+ * One entry of a contributor's list: a declared view or an override. A value another installed copy
+ * of `@loomcli/core` built misses both registries and is the list's entry fault.
  */
-function recordEntry(build: ViewBuild, entry: unknown, index: number): void {
+function recordEntry(build: ViewBuild, entry: object, index: number): void {
   const { identities, site, subject } = build;
   const place = partFinding(site, [index]);
-  const object = typeof entry === 'object' && entry !== null ? entry : undefined;
-  const listed = object === undefined ? undefined : declarations.get(object);
-  const record = object === undefined ? undefined : overrides.get(object);
-  if (listed && subject.declares) {
+  const listed = declarations.get(entry);
+  const record = overrides.get(entry);
+  if (listed) {
     registerIdentity(identities, listed, place);
   } else if (record) {
     recordOverride(build, record, index);
@@ -543,18 +437,17 @@ function recordEntry(build: ViewBuild, entry: unknown, index: number): void {
 
 /**
  * One contributor's own overrides, with the identity of every declared view it lists or names as a
- * key registered. Listing a declared view is what puts its identity on the graph; an application
- * lists overrides alone, so a declaration in its list is the same fault as any other value.
+ * key registered. Listing a declared view is what puts its identity on the graph.
  */
 function buildViews(
   subject: ViewSubject,
-  declared: unknown,
+  declared: readonly ViewContribution[] | undefined,
   identities: ViewIdentities,
 ): ViewContributions {
   const contributions: ViewContributions = { failures: new Map(), views: new Map() };
   const site = listSite(subject, declared);
-  const build: ViewBuild = { contributions, identities, positions: new Map(), site, subject };
-  for (const [index, entry] of readContributions(subject, declared).entries()) {
+  const build: ViewBuild = { contributions, identities, site, subject };
+  for (const [index, entry] of (declared ?? []).entries()) {
     recordEntry(build, entry, index);
   }
   return contributions;
@@ -650,10 +543,12 @@ function resolveRowView<Row>(registry: ViewRegistry, value: RowView<Row>): Resol
  * for a base class beats a plugin's override for a subclass.
  */
 function resolveFailure(registry: ViewRegistry, failure: LoomError): StoredView | undefined {
-  // A failure core reports has a readable chain, so the empty fallback only keeps the walk total.
-  const chain = prototypeChain(failure) ?? [];
   for (const contributor of registry) {
-    for (const prototype of chain) {
+    for (
+      let prototype = Reflect.getPrototypeOf(failure);
+      prototype !== null;
+      prototype = Reflect.getPrototypeOf(prototype)
+    ) {
       const replacement = contributor.failures.get(prototype);
       if (replacement) {
         return replacement;

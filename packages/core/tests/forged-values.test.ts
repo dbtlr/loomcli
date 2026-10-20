@@ -14,12 +14,7 @@ const rules = {
   'argument-bare': 'declared-name',
   'argument-config-bare': 'declared-name',
   'command-bare': 'portable-name',
-  'default-view': 'unknown-default-view',
-  'extension-alternating': 'two-package-copies',
-  'extension-bare': 'invalid-identity',
   'extension-copies': 'two-package-copies',
-  'extension-forged': 'invalid-identity',
-  'extension-hand-built': 'invalid-identity',
   'extension-issue': 'invalid-extension-value',
   'global-option-bare': 'declared-name',
   'global-option-config-bare': 'declared-name',
@@ -27,14 +22,7 @@ const rules = {
   'option-after-action': 'declared-name',
   'option-bare': 'declared-name',
   'option-config-bare': 'declared-name',
-  'plugin-bare': 'invalid-identity',
-  'plugin-forged': 'invalid-identity',
-  'result-view': 'view-shape',
   'rule-bare': 'rule-identity',
-  'signal-bare': 'unknown-signal',
-  'source-binding': 'source-binding',
-  'view-bare': 'invalid-identity',
-  'view-forged': 'invalid-identity',
 };
 
 /** A control character, a line or paragraph separator, or a bidirectional control. */

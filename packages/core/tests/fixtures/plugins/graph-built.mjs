@@ -194,15 +194,6 @@ if (scenario === 'order') {
     ],
   }).action(() => undefined);
   print({ quiet, seen, unguarded: await runCaptured(unguarded, []) });
-} else if (scenario === 'not-a-function') {
-  try {
-    plugin('@fixture/judge', { onGraphBuilt: 'judge' });
-    process.stdout.write('returned\n');
-  } catch (error) {
-    process.stdout.write(
-      error instanceof DeclarationError ? error.message : 'threw something else',
-    );
-  }
 }
 
 // Each run above set the process's exit status; the report itself succeeded.

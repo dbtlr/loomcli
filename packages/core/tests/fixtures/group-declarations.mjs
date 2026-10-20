@@ -5,7 +5,6 @@ const base = new Command('export')
   .option('a', { type: 'boolean' })
   .option('b', { type: 'boolean' });
 const cases = {
-  'after-action': () => base.action(() => {}).exclusive('a', 'b'),
   argument: () => base.argument('file', {}).oneRequired('a', 'file'),
   conditional: () =>
     new Command('export')

@@ -217,12 +217,6 @@ test('a broken hook beside a broken view writes the default text without hints, 
   expect(result.stdout.split('\n').at(-2)).toBe('resolved:1');
 });
 
-test('plugin() rejects an onFailure that is not a function', () => {
-  expect(run('not-function').stdout).toBe(
-    'thrown:1: Plugin "@acme/suggest" declares onFailure that is not a function. Supply a function of the failure and its context.\n',
-  );
-});
-
 test('a broken hook in a cancelled run whose failure still renders returns 130 and writes its line', () => {
   expect(run('cancelled-broken')).toEqual({
     status: 130,

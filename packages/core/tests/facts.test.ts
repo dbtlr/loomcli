@@ -60,25 +60,3 @@ test.each(
     stdout: 'assembled\ninspected\n',
   });
 });
-
-/** The declarations that carry neither fact: the root, which is every page's entry point, and an argument. */
-const rejected = [
-  ['application', 'hidden', 'The Application'],
-  ['application', 'deprecated', 'The Application'],
-  ['argument', 'hidden', 'The root Command argument "files"'],
-  ['argument', 'deprecated', 'The root Command argument "files"'],
-  ['command-argument', 'hidden', 'Command "get" argument "path"'],
-  ['command-argument', 'deprecated', 'Command "get" argument "path"'],
-] satisfies [string, string, string][];
-
-test.each(rejected)(
-  'a %s that declares %s is thrown by the call that declares it',
-  (target, fact, subject) => {
-    const reason = `${subject} declares ${fact}, which applies to named Commands and options alone. Remove it.`;
-    expect(withFact(target, fact, 'true')).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: `thrown:1: ${reason}\n`,
-    });
-  },
-);

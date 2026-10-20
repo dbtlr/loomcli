@@ -234,21 +234,11 @@ test('a view failure inside the action is reported through the registry with its
   });
 });
 
-test('two overrides for one class throw from the Application constructor', () => {
+test('two overrides for one class in one contributor resolve to the first', () => {
   expect(failures('duplicate', ['get'])).toEqual({
-    status: 0,
-    stderr: '',
-    stdout:
-      'thrown:1: The Application overrides the view for "InputError" twice. Remove one override.\n',
-  });
-});
-
-test('a value that is not an override throws from the Application constructor', () => {
-  expect(failures('foreign', ['get'])).toEqual({
-    status: 0,
-    stderr: '',
-    stdout:
-      'thrown:1: The Application holds a value that is not a view override. Supply the value returned by override(key, view).\n',
+    status: 2,
+    stderr: 'one: Argument "path" requires a value. Supply a value for "path".\n',
+    stdout: 'resolved:2\n',
   });
 });
 

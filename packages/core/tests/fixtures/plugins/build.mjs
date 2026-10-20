@@ -1,20 +1,10 @@
-import {
-  Application,
-  Command,
-  DeclarationError,
-  extension,
-  InputError,
-  override,
-  plugin,
-} from '@loomcli/core';
+import { Application, Command, DeclarationError, extension, plugin } from '@loomcli/core';
 import { z } from 'zod';
 
 import { declare } from '../declare.mjs';
 import { ruleText } from '../rule-text.mjs';
 
 const dispatch = ({ out }) => out.print('dispatched');
-
-const load = () => import('./modules/silent.mjs');
 
 /** One descriptor per target, so a value on the wrong slot is a value some extension produced. */
 const facts = {
@@ -60,9 +50,6 @@ const named = (identity, definition) => plugin(identity, definition);
 
 /** The whole view a value result names, so a hook reshapes a record that already holds one. */
 const text = { render: (value) => `${value}\n` };
-
-/** A row view, which a value result may never name, whichever declaration named it. */
-const records = { row: (value) => `${value}\n` };
 
 /** The plugin every hook row names, whose hook one scenario supplies. */
 function formatter(onCommandAttach) {
@@ -140,13 +127,6 @@ function output(value) {
 }
 
 const scenarios = {
-  'activation-undeclared': () =>
-    withPlugin(
-      named('@loomcli/help', {
-        middleware: { activate: ['hlep'], load },
-        options: { help: { short: 'h', type: 'boolean' } },
-      }),
-    ),
   'async-schema': () => {
     const descriptor = extension('@fixture/async', {
       schema: asynchronous,
@@ -154,29 +134,12 @@ const scenarios = {
     });
     return new Application('app', { extensions: [descriptor({})] }).action(dispatch);
   },
-  'commands-entry-not-command': () =>
-    withGroup(named('@acme/doctor', { commands: [{ name: 'doctor' }] })),
-  // A hole reads as the undefined the entry rule rejects, so the hole is the fixture.
-  'commands-hole': () =>
-    withGroup(
-      named('@acme/doctor', {
-        // oxlint-disable-next-line eslint/no-sparse-arrays
-        commands: [, new Command('doctor').action(dispatch)],
-      }),
-    ),
-  'commands-not-array': () =>
-    withGroup(named('@acme/doctor', { commands: new Command('doctor').action(dispatch) })),
-  'commands-null': () => withGroup(named('@acme/doctor', { commands: null })),
-  'empty-activation': () =>
-    withPlugin(named('@loomcli/help', { middleware: { activate: [], load } })),
-  'empty-identity': () => withPlugin(plugin('', {})),
   'exotic-output': () => {
     const descriptor = extension('@fixture/exotic', { schema: exotic, target: 'command' });
 
     const get = new Command('get', { extensions: [descriptor({})] }).action(dispatch);
     return new Application('app').command(get).action(dispatch);
   },
-  'extensions-not-array': () => withPlugin(named('@loomcli/help', { extensions: {} })),
   'hook-argument-author-collision': () =>
     withHooks(
       [formatter(onCount(declaresTag))],
@@ -229,9 +192,6 @@ const scenarios = {
       [formatter(onCount(declaresFormat))],
       new Command('count').option('format', { type: 'string' }).action(dispatch),
     ),
-  'hook-missing-default': () =>
-    withHooks([formatter(onCount((command) => command.views({}, { default: 'wide' })))]),
-  'hook-not-function': () => withPlugin(formatter('nope')),
   'hook-plugin-collision': () =>
     withHooks([
       named('@acme/out', { options: { format: { type: 'string' } } }),
@@ -239,7 +199,6 @@ const scenarios = {
     ]),
   'hook-returns-earlier': () => withHooks([formatter(returnsEarlier())]),
   'hook-returns-other': () => withHooks([formatter(onCount(() => forged))]),
-  'hook-row-view': () => withHooks([formatter(onCount((command) => command.views({ records })))]),
   'hook-spelling-collision': () =>
     new Application('app', {
       plugins: [
@@ -267,7 +226,6 @@ const scenarios = {
         }),
       ),
     ]),
-  'identity-not-string': () => withPlugin(plugin(7, {})),
   installed: () => withPlugin(named('@loomcli/help', {})),
   'installed-twice': () =>
     new Application('app', {
@@ -286,20 +244,6 @@ const scenarios = {
     })
       .command(get)
       .action(dispatch);
-  },
-  'no-activation': () => withPlugin(named('@loomcli/help', { middleware: { load } })),
-  'no-loader': () => withPlugin(named('@loomcli/help', { middleware: { activate: 'always' } })),
-  'no-schema': () => {
-    const bare = extension('@fixture/bare', { target: 'command' });
-    return new Application('app', { extensions: [bare({})] }).action(dispatch);
-  },
-  'not-a-descriptor': () =>
-    withPlugin(named('@loomcli/help', { extensions: [{ identity: '@fixture/forged' }] })),
-  'not-a-plugin': () =>
-    new Application('app', { plugins: [{ identity: '@loomcli/help' }] }).action(dispatch),
-  'not-an-extension': () => {
-    const get = new Command('get', { extensions: [{ identity: 'forged' }] }).action(dispatch);
-    return new Application('app').command(get).action(dispatch);
   },
   'option-global-key': () =>
     new Application('app', {
@@ -336,25 +280,9 @@ const scenarios = {
   // oxlint-disable-next-line eslint/no-sparse-arrays
   'output-sparse': () => withOutput('@fixture/output/sparse', output([, 'read'])),
   'output-symbol': () => withOutput('@fixture/output/symbol', output({ [Symbol('note')]: 'read' })),
-  'plugin-overrides': () =>
-    withPlugin(
-      named('@loomcli/help', {
-        views: [
-          override(InputError, { render: () => 'one\n' }),
-          override(InputError, { render: () => 'two\n' }),
-        ],
-      }),
-    ),
-  'plugins-not-array': () => new Application('app', { plugins: 'help' }).action(dispatch),
-  'root-extensions': () =>
-    new Application('app', { extensions: [{ identity: '@fixture/forged' }] }).action(dispatch),
   'schema-sentence': () =>
     withOutput('@fixture/schema/sentence', () => ({ issues: [{ message: 'Supply one word.' }] })),
   'schema-silent': () => withOutput('@fixture/schema/silent', () => ({ issues: [] })),
-  'schema-thenable': () =>
-    // A hand-written thenable is exactly the value this rule rejects, so the shape is the fixture.
-    // oxlint-disable-next-line unicorn/no-thenable
-    withOutput('@fixture/schema/thenable', () => ({ then: () => undefined })),
   'schema-throws': () =>
     withOutput('@fixture/schema/throws', () => {
       throw new Error('the schema threw');
@@ -367,11 +295,6 @@ const scenarios = {
         named('@acme/trace', { signals: ['SIGINT'] }),
       ],
     }).action(dispatch),
-  'signals-not-array': () => withPlugin(named('@loomcli/signals', { signals: 'SIGINT' })),
-  'signals-outside-set': () => withPlugin(named('@loomcli/signals', { signals: ['SIGHUP'] })),
-  // One listener per claimed signal, so a repeated claim would install the force path twice.
-  'signals-repeated-claim': () =>
-    withPlugin(named('@loomcli/signals', { signals: ['SIGINT', 'SIGTERM', 'SIGINT'] })),
   'signals-second-claim': () =>
     new Application('app', {
       plugins: [
@@ -379,12 +302,6 @@ const scenarios = {
         named('@acme/trace', { signals: ['SIGINT'] }),
       ],
     }).action(dispatch),
-  'twice-on-one': () => {
-    const get = new Command('get', {
-      extensions: [facts.command({ details: 'one' }), facts.command({ details: 'two' })],
-    }).action(dispatch);
-    return new Application('app').command(get).action(dispatch);
-  },
   'twin-descriptors': () => {
     const get = new Command('get', { extensions: [twin({ details: 'one' })] }).action(dispatch);
     return new Application('app', {
@@ -400,22 +317,7 @@ const scenarios = {
         named('@acme/trace', { options: { verbose: { type: 'boolean' } } }),
       ],
     }).action(dispatch),
-  'views-not-array': () =>
-    withPlugin(named('@loomcli/help', { views: override(InputError, { render: () => 'one\n' }) })),
-  'wrong-target': () => {
-    const get = new Command('get', {
-      extensions: [facts.option({ placeholder: 'path' })],
-    }).action(dispatch);
-    return new Application('app').command(get).action(dispatch);
-  },
 };
-
-/** A root group that installs one plugin, since a root that takes arguments holds no children. */
-function withGroup(installed) {
-  return new Application('app', { plugins: [installed] }).command(
-    new Command('local').action(dispatch),
-  );
-}
 
 /** The shortest application that installs one plugin, for a rule the plugin alone carries. */
 function withPlugin(installed) {

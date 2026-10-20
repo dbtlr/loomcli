@@ -45,13 +45,23 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       it('jsonkit <Tab> lists the visible root children and never a deprecated, hidden, or alias name', async () => {
         const { listed } = await complete('jsonkit ');
         expect(counts(listed)).toEqual(
-          counts(['completion', 'doctor', 'get', 'keys', 'manpage', 'mcp', 'select']),
+          counts(['completion', 'doctor', 'get', 'keys', 'manpage', 'mcp', 'select', 'stats']),
         );
       });
 
       it('jsonkit ls --<Tab> lists the options in scope at keys, global and plugin options included', async () => {
         const { listed } = await complete('jsonkit ls --');
         expect(counts(listed)).toEqual(counts(options));
+      });
+
+      it('jsonkit stats depth m<Tab> inserts max, three levels below the root', async () => {
+        const { line } = await complete('jsonkit stats depth m');
+        expect(line.trimEnd()).toBe('jsonkit stats depth max');
+      });
+
+      it('jsonkit stats depth max --fi<Tab> inserts the option of the Command three levels down', async () => {
+        const { line } = await complete('jsonkit stats depth max --fi');
+        expect(line.trimEnd()).toBe('jsonkit stats depth max --file');
       });
 
       it('jsonkit completion <Tab> lists its children and never __complete', async () => {

@@ -58,17 +58,3 @@ test.each(
     stdout: 'assembled\ninspected\n',
   });
 });
-
-test.each([
-  ['argument', 'The root Command argument "files"'],
-  ['command-argument', 'Command "get" argument "path"'],
-])(
-  'an argument that declares control on %s is thrown by the call that declares it',
-  (target, subject) => {
-    expect(withFact(target, 'control', 'true')).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: `thrown:1: ${subject} declares control, which applies to options alone. Remove it.\n`,
-    });
-  },
-);

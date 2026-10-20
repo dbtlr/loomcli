@@ -90,11 +90,9 @@ test.each([
   ['cancelled', [], 130],
   ['cancelled-name', [], 130],
   ['closing-proxy', [], 1],
-  ['cycle', [], 1],
   ['fatal', [], 1],
   ['hook', [], 1],
   ['loader', [], 1],
-  ['long-chain', [], 1],
   ['null-prototype', [], 1],
   ['render', [], 1],
   ['answers', [], 1],
@@ -256,75 +254,6 @@ test('a failure a deferred row source throws is never offered and returns 1', ()
 
 test('a destination write failure the action lets propagate is answered by its translator', () => {
   expect(run('destination')).toEqual(translated('application', ['application:PipeError']));
-});
-
-test.each([
-  [
-    'fault-key',
-    'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
-  ],
-  [
-    'fault-key-get',
-    'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
-  ],
-  [
-    'fault-key-has',
-    'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
-  ],
-  [
-    'fault-key-chain',
-    'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
-  ],
-  [
-    'fault-key-failure',
-    'translate() received a failure class as its key. Key the translation on the foreign class it replaces.',
-  ],
-  [
-    'fault-key-fatal',
-    'translate() received a failure class as its key. Key the translation on the foreign class it replaces.',
-  ],
-  [
-    'fault-key-subclass',
-    'translate() received a failure class as its key. Key the translation on the foreign class it replaces.',
-  ],
-  [
-    'fault-translator',
-    'translate() received a translator that is not a function. Supply a function that returns a failure or undefined.',
-  ],
-  [
-    'fault-application',
-    'The Application holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
-  ],
-  [
-    'fault-application-list',
-    'The Application declares translators that are not an array. Supply a list of values returned by translate(ErrorClass, translator).',
-  ],
-  [
-    'fault-application-hole',
-    'The Application holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
-  ],
-  [
-    'fault-plugin',
-    'Plugin "@acme/http" holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
-  ],
-  [
-    'fault-plugin-hole',
-    'Plugin "@acme/http" holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
-  ],
-  [
-    'fault-plugin-list',
-    'Plugin "@acme/http" declares translators that are not an array. Supply a list of values returned by translate(ErrorClass, translator).',
-  ],
-])('%s throws its DeclarationError', (scenario, message) => {
-  expect(run(scenario)).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: `thrown:DeclarationError: ${message}\n`,
-  });
-});
-
-test('translate() accepts a class whose name cannot be read', () => {
-  expect(run('key-name')).toEqual({ status: 0, stderr: '', stdout: 'constructed\n' });
 });
 
 test('the failure classes an author constructs accept the platform ErrorOptions', () => {

@@ -164,20 +164,6 @@ export function isDeclaredName(name: unknown): name is string {
 export const declaredNameCorrection =
   'Use a nonempty name without a leading hyphen, whitespace, or "=".';
 
-/** The sentence and correction of each repeated-alias fault, for the Command or option `subject` names. */
-export function repeatedAliasText(subject: string, alias: string) {
-  return {
-    own: {
-      correction: 'Remove the alias.',
-      sentence: `${subject} declares alias ${quoted(alias)}, which is its own name.`,
-    },
-    twice: {
-      correction: 'Remove the repeated alias.',
-      sentence: `${subject} declares alias ${quoted(alias)} twice.`,
-    },
-  };
-}
-
 /** Each alias answers the declared-name rule, because an operator types it as a long spelling. */
 function checkAliases(config: OptionConfig, site: InputSite, name: string): void {
   for (const [index, alias] of (config.aliases ?? []).entries()) {

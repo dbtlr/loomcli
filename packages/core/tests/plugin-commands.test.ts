@@ -85,10 +85,6 @@ const rejected = [
     'plugin-repeated-name',
     'The root Command attaches two children named "doctor". Rename or remove one.',
   ],
-  [
-    'plugin-deep-group',
-    'Command "kit" attaches child "tools", which has children of its own. Nest Commands at most two levels below the root.',
-  ],
 ] satisfies [string, string][];
 
 test.each(rejected)('the call that makes the %s declaration wrong throws', (scenario, message) => {

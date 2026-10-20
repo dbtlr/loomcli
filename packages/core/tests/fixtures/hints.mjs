@@ -400,7 +400,6 @@ const scenarios = {
     routed({
       plugins: [hinting('fixture/one', () => undefined), hinting('fixture/two', () => [])],
     }).action(dispatch),
-  'not-function': () => plugin('@acme/suggest', { onFailure: 'suggest' }),
   'override-hints': () =>
     routed({
       plugins: [hinting('fixture/one', () => ['first', 'second'])],

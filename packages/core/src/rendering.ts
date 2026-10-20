@@ -1,9 +1,4 @@
 import type { Background } from './background.js';
-import { DeclarationError } from './errors.js';
-import { partFinding } from './facts.js';
-import type { FactSite } from './facts.js';
-import { isPlainObject } from './plain.js';
-import { renderingPolicyRule } from './plugin-rules.js';
 import type { Host } from './types.js';
 
 type SwitchPolicy = 'auto' | 'always' | 'never';
@@ -25,62 +20,19 @@ interface Capabilities {
 }
 
 /**
- * One declared rendering policy, checked against its closed sets. `site` is where it was declared,
- * the Application's `rendering` option or `run()`'s, which a fault marks.
+ * One declared rendering policy, the Application's `rendering` option or `run()`'s, with each
+ * setting it leaves undefined dropped, so a later policy spread over an earlier one keeps the
+ * earlier setting.
  */
-function renderingPolicy(value: unknown, site: FactSite): RenderingPolicy {
-  if (value === undefined) {
-    return {};
-  }
-  if (!isPlainObject(value)) {
-    throw new DeclarationError(renderingPolicyRule, {
-      correction: 'Supply an object, or omit rendering.',
-      findings: [partFinding(site, [])],
-      sentence: 'The rendering policy is not an object.',
-    });
-  }
-  const result: RenderingPolicy = {};
-  for (const field of ['color', 'modifiers', 'hyperlinks'] as const) {
-    const policy = value[field];
-    if (policy !== undefined && policy !== 'auto' && policy !== 'always' && policy !== 'never') {
-      throw new DeclarationError(renderingPolicyRule, {
-        correction: `Supply one of the three, or omit ${field}.`,
-        findings: [partFinding(site, [field])],
-        sentence: `Rendering ${field} is not auto, always, or never.`,
-      });
-    }
-    if (policy !== undefined) {
-      result[field] = policy;
-    }
-  }
-  const controls = value.terminalControls;
-  if (controls !== undefined && controls !== 'strip' && controls !== 'preserve') {
-    throw new DeclarationError(renderingPolicyRule, {
-      correction: 'Supply strip or preserve, or omit terminalControls.',
-      findings: [partFinding(site, ['terminalControls'])],
-      sentence: 'Rendering terminalControls is not strip or preserve.',
-    });
-  }
-  if (controls !== undefined) {
-    result.terminalControls = controls;
-  }
-  const { background } = value;
-  if (
-    background !== undefined &&
-    background !== 'auto' &&
-    background !== 'dark' &&
-    background !== 'light'
-  ) {
-    throw new DeclarationError(renderingPolicyRule, {
-      correction: 'Supply one of the three, or omit background.',
-      findings: [partFinding(site, ['background'])],
-      sentence: 'Rendering background is not auto, dark, or light.',
-    });
-  }
-  if (background !== undefined) {
-    result.background = background;
-  }
-  return result;
+function renderingPolicy(value: RenderingPolicy | undefined): RenderingPolicy {
+  const { background, color, hyperlinks, modifiers, terminalControls } = value ?? {};
+  return {
+    ...(background === undefined ? {} : { background }),
+    ...(color === undefined ? {} : { color }),
+    ...(hyperlinks === undefined ? {} : { hyperlinks }),
+    ...(modifiers === undefined ? {} : { modifiers }),
+    ...(terminalControls === undefined ? {} : { terminalControls }),
+  };
 }
 
 function colorDepth(env: Host['env']): Capabilities['depth'] {

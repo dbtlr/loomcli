@@ -27,7 +27,7 @@ test.each([
   ],
   [
     ['typo', '-f', 'doc.json'],
-    'jsonkit: Unknown command "typo". Use one of: doctor, completion, mcp, manpage, get, keys, select.\nRun "jsonkit --help" to see the usage.\n',
+    'jsonkit: Unknown command "typo". Use one of: doctor, completion, mcp, manpage, get, keys, select, stats.\nRun "jsonkit --help" to see the usage.\n',
   ],
   [
     ['gte', '-f', 'doc.json'],

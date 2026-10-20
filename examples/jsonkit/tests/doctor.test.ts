@@ -72,6 +72,7 @@ test('inspect() lists the plugin Command as the root first child, with nothing m
     'get',
     'keys',
     'select',
+    'stats',
     'fetch',
     'debug',
     'paths',

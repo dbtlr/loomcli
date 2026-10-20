@@ -71,10 +71,13 @@ const contextFile = {
 /** The validator the source's own option takes, chosen by the test. */
 const configFile = { 1: countedFile, context: contextFile }[process.env.FIXTURE_CONFIG_COUNT ?? ''];
 
-/** The configuration plugin: one own option, and the source that answers for `configKey`. */
+/**
+ * The configuration plugin: one own option, and the source that answers for `configKey`. Under
+ * `FIXTURE_UNLISTED` it leaves the binding out of its `extensions` list.
+ */
 const config = () =>
   plugin('@fixture/config', {
-    extensions: [configKey],
+    extensions: process.env.FIXTURE_UNLISTED === '1' ? [] : [configKey],
     options: {
       config: {
         default: 'fixture.json',

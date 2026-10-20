@@ -65,7 +65,7 @@ switch (scenario) {
     app = new Application('optional', development).command(keys).action(report);
     break;
   }
-  case 'after-optional': {
+  case 'two-optional': {
     app = new Application('optional', development)
       .argument('path', { description: 'The path argument.' })
       .argument('extra', { description: 'The extra argument.' })

@@ -53,7 +53,6 @@ test.each([
     'competing',
     'Argument "files" is variadic and precedes argument "extras" on the root Command. Declare the variadic argument last.',
   ],
-  ['multiple-actions', 'The root Command has multiple actions. Register one action.'],
 ] satisfies [string, string][])(
   'the %s declaration throws from the call that makes it',
   (scenario, message) => {

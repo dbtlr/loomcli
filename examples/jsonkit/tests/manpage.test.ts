@@ -110,7 +110,7 @@ describe('jsonkit manpage', () => {
     expect(pagesIn(folder)).toEqual(first);
   });
 
-  it('the set holds the root, each visible child, fetch, and each visible plugin Command, and no hidden Command or alias', () => {
+  it('the set holds the root, each visible Command at every depth, fetch, and each visible plugin Command, and no hidden Command or alias', () => {
     const { root } = sandbox();
     const pages = generated(join(root, 'man'));
     expect(new Set(pages.keys())).toEqual(
@@ -119,6 +119,9 @@ describe('jsonkit manpage', () => {
         'jsonkit-get.1',
         'jsonkit-keys.1',
         'jsonkit-select.1',
+        'jsonkit-stats.1',
+        'jsonkit-stats-depth.1',
+        'jsonkit-stats-depth-max.1',
         'jsonkit-fetch.1',
         'jsonkit-doctor.1',
         'jsonkit-completion.1',
@@ -149,6 +152,7 @@ describe('jsonkit manpage', () => {
     expect(pages.get('jsonkit-fetch.1')).toContain(
       ['.SH "DESCRIPTION"', 'Deprecated: Use get instead.'].join('\n'),
     );
+    expect(pages.get('jsonkit-stats-depth-max.1')).toContain('jsonkit stats depth max');
   });
 
   it.skipIf(findOnPath('groff') === undefined)('groff reads every page with no warning', () => {

@@ -225,7 +225,6 @@ function declareGlobalOption<Name extends string, Config extends OptionConfig>(
     descriptors,
     site: { ...site, at: '1.extensions' },
     subject: { phrase: `on the global option ${quoted(input.name)}`, sentence },
-    target: 'option',
   });
   // The caller validates the input this state stores, so both read one config.
   return {

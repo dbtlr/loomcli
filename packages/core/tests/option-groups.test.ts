@@ -102,7 +102,6 @@ test.each([
   'global',
   'repeat',
   'short',
-  'after-action',
   'required',
   'conditional',
   'content',
@@ -113,8 +112,7 @@ test.each([
   const result = invoke(declarations, [scenario]);
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout)).toMatchObject({ name: 'DeclarationError' });
-  const rule = scenario === 'after-action' ? 'declared-after-action' : 'option-group';
-  expect(JSON.parse(result.stdout).message).toContain(`@loomcli/core/${rule}`);
+  expect(JSON.parse(result.stdout).message).toContain('@loomcli/core/option-group');
 });
 
 test('redundancy and required members in oneRequired remain valid', () => {

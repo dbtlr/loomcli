@@ -14,8 +14,6 @@ import {
 } from '@loomcli/core';
 import { z } from 'zod';
 
-import { ruleText } from './rule-text.mjs';
-
 const [scenario, ...argv] = process.argv.slice(2);
 
 // A test that reads a defect's own diagnostic runs the fixture as a development build.
@@ -153,26 +151,6 @@ const brokenTranslators = {
   'broken-unconstructed': () => Object.create(FatalError.prototype),
 };
 
-/** A thrown proxy whose prototype trap answers itself `repeats` times, and then `Object.prototype`. */
-function selfReferencing(repeats) {
-  let reads = 0;
-  const proxy = new Proxy(
-    {},
-    { getPrototypeOf: () => (++reads > repeats ? Object.prototype : proxy) },
-  );
-  return proxy;
-}
-
-/** A chain of `links` distinct proxies that ends at `Object.prototype`. */
-function longChain(links) {
-  let link = Object.prototype;
-  for (let index = 0; index < links; index += 1) {
-    const next = link;
-    link = new Proxy({}, { getPrototypeOf: () => next });
-  }
-  return link;
-}
-
 /** A thrown `SyntaxError` whose prototype trap throws on every read after its first. */
 function closingProxy() {
   let reads = 0;
@@ -241,13 +219,6 @@ const unreached = {
       },
       { translators: [catchAll] },
     ),
-  cycle: () =>
-    ending(
-      () => {
-        throw selfReferencing(3);
-      },
-      { translators: [catchAll] },
-    ),
   fatal: () =>
     ending(
       () => {
@@ -283,13 +254,6 @@ const unreached = {
       ],
       translators: [catchAll],
     }),
-  'long-chain': () =>
-    ending(
-      () => {
-        throw longChain(2000);
-      },
-      { translators: [catchAll] },
-    ),
   'null-prototype': () =>
     ending(
       () => {
@@ -650,14 +614,6 @@ function build() {
   }
 }
 
-/** A `translators` list that holds `before`, then a hole, then `after`. */
-function holey(before, after) {
-  const list = [...before];
-  list.length += 1;
-  list.push(...after);
-  return list;
-}
-
 /** A class whose static `name` getter throws. */
 class NamelessKeyError extends Error {
   constructor(message) {
@@ -671,70 +627,7 @@ Object.defineProperty(NamelessKeyError, 'name', {
   },
 });
 
-/** An error class whose `prototype` cannot be read, through the trap the case names. */
-function unreadablePrototypeKey(trap) {
-  return new Proxy(class extends Error {}, {
-    [trap](target, key, ...rest) {
-      if (key === 'prototype') {
-        throw new Error('The prototype trap failed.');
-      }
-      return Reflect[trap](target, key, ...rest);
-    },
-  });
-}
-
-/** A constructor whose prototype's chain cannot be read, because the proxy's getPrototypeOf trap throws. */
-function ChainKeyError() {}
-ChainKeyError.prototype = new Proxy(Object.create(Error.prototype), {
-  getPrototypeOf() {
-    throw new Error('The chain trap failed.');
-  },
-});
-
-/** Each declaration fault, which a case constructs outside a run. */
-const faults = {
-  'fault-application': () =>
-    new Application('translators', {
-      description: 'The translators application.',
-      translators: ['text'],
-    }),
-  'fault-application-hole': () =>
-    new Application('translators', {
-      description: 'The translators application.',
-      translators: holey([], []),
-    }),
-  'fault-application-list': () =>
-    new Application('translators', {
-      description: 'The translators application.',
-      translators: 'text',
-    }),
-  'fault-key': () =>
-    translate(
-      () => undefined,
-      () => undefined,
-    ),
-  'fault-key-chain': () => translate(ChainKeyError, () => undefined),
-  'fault-key-failure': () => translate(LoomError, () => undefined),
-  'fault-key-fatal': () => translate(FatalError, () => undefined),
-  'fault-key-get': () => translate(unreadablePrototypeKey('get'), () => undefined),
-  'fault-key-has': () => translate(unreadablePrototypeKey('has'), () => undefined),
-  'fault-key-subclass': () => translate(UnavailableError, () => undefined),
-  'fault-plugin': () => plugin('@acme/http', { translators: ['text'] }),
-  'fault-plugin-hole': () => plugin('@acme/http', { translators: holey([catchAll], [catchAll]) }),
-  'fault-plugin-list': () => plugin('@acme/http', { translators: 'text' }),
-  'fault-translator': () => translate(SyntaxError, 'text'),
-  'key-name': () => translate(NamelessKeyError, () => undefined),
-};
-
-if (scenario in faults) {
-  try {
-    faults[scenario]();
-    process.stdout.write('constructed\n');
-  } catch (error) {
-    const kind = error instanceof DeclarationError ? 'DeclarationError' : 'other';
-    process.stdout.write(`thrown:${kind}: ${ruleText(error)}\n`);
-  }
-} else if (scenario === 'error-options') {
+if (scenario === 'error-options') {
   // The failure classes an author constructs keep a cause only when one is passed.
   const cause = new SyntaxError('Unexpected token.');
   class DocumentError extends LoomError {

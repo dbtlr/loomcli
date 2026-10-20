@@ -31,10 +31,6 @@ const targets = {
     const get = new Command('get', { ...facts }).action(dispatch);
     return new Application('facts').command(get).action(dispatch);
   },
-  'command-argument': (facts) => {
-    const get = new Command('get').argument('path', facts).action(dispatch);
-    return new Application('facts').command(get).action(dispatch);
-  },
   'count-option': (facts) => {
     const get = new Command('get').option('verbose', { ...facts, type: 'count' }).action(dispatch);
     return new Application('facts').command(get).action(dispatch);

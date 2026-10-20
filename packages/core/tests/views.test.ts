@@ -14,23 +14,6 @@ function rendered(stdout: string) {
 /** One invocation a declaration rule rejected, which a distributed build reports generically. */
 const rejected = { status: 1, stderr: 'views: Something went wrong.\n', stdout: 'resolved:1\n' };
 
-test.each([
-  ['probe/both', 'View "probe/both" carries render and row. Supply one of the two.'],
-  [
-    'probe/none',
-    'View "probe/none" carries neither render nor row. Supply a view with render or a row view with row.',
-  ],
-] satisfies [string, string][])(
-  'view() rejects the %s definition at the call',
-  (scenario, message) => {
-    expect(views(scenario)).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: `declaration:1: ${message}\n`,
-    });
-  },
-);
-
 test('a declared view with no override renders through its own default function', () => {
   expect(views('declared-default')).toEqual(rendered('page: one\nresolved:0\n'));
 });
@@ -41,6 +24,10 @@ test("a plugin's override of the view it declares supersedes that default", () =
 
 test('one key overridden by the application and by a plugin resolves to the application', () => {
   expect(views('shared-key')).toEqual(rendered('app: one\nresolved:0\n'));
+});
+
+test('one key overridden twice in one contributor resolves to the first override', () => {
+  expect(views('app-duplicate-view')).toEqual(rendered('one: one\nresolved:0\n'));
 });
 
 test("a declared row view in a plugin's list resolves through its own default functions", () => {
@@ -97,22 +84,6 @@ function thrown(message: string) {
 }
 
 test.each([
-  [
-    'plugin-twice',
-    'Plugin "@fixture/twice" overrides the view for "InputError" twice. Remove one override.',
-  ],
-  [
-    'plugins-not-array',
-    'The Application declares plugins that are not an array. Supply a list of plugin values.',
-  ],
-  [
-    'rendering-not-object',
-    'The rendering policy is not an object. Supply an object, or omit rendering.',
-  ],
-  [
-    'retired-globals',
-    'The Application options contain globals. Declare them with globalOption(name, config).',
-  ],
   [
     'global-name',
     'Option name "-file" is invalid. Use a nonempty name without a leading hyphen, whitespace, or "=".',
@@ -172,34 +143,6 @@ test.each([
   [
     'duplicate-declaration',
     'View "@fixture/page" is declared by two distinct objects. Install one copy of the package that declares it.',
-  ],
-  [
-    'app-duplicate-view',
-    'The Application overrides view "@fixture/page" twice. Remove one override.',
-  ],
-  [
-    'plugin-duplicate-view',
-    'Plugin "@fixture/pages" overrides view "@fixture/page" twice. Remove one override.',
-  ],
-  [
-    'app-declares',
-    'The Application holds a value that is not a view override. Supply the value returned by override(key, view).',
-  ],
-  [
-    'plugin-foreign',
-    'Plugin "@fixture/pages" holds a value that is not a view. Supply the value returned by view(identity, definition) or override(key, view).',
-  ],
-  [
-    'retired',
-    'The Application options contain failures. Declare view overrides under views with override(key, view).',
-  ],
-  [
-    'app-junk-key',
-    'The Application overrides a key that is neither a declared view nor a failure class. Key the override on a value view(identity, definition) returned, or on a failure class.',
-  ],
-  [
-    'app-junk-keys',
-    'The Application overrides a key that is neither a declared view nor a failure class. Key the override on a value view(identity, definition) returned, or on a failure class.',
   ],
 ] satisfies [string, string][])(
   'the call that declares the %s views throws',
