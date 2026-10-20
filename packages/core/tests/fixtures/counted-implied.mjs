@@ -223,8 +223,9 @@ if (mode === 'inspect') {
   process.stdout.write(`${JSON.stringify(options)}\n`);
 } else if (mode === 'locate') {
   const position = locate(app.inspect(), argv);
+  const counts = position.counts && Object.fromEntries(position.counts);
   process.stdout.write(
-    `${JSON.stringify({ kind: position.kind, lead: position.lead, option: position.option?.name, prefix: position.prefix, supplied: position.supplied })}\n`,
+    `${JSON.stringify({ counts, kind: position.kind, lead: position.lead, option: position.option?.name, prefix: position.prefix, supplied: position.supplied })}\n`,
   );
 } else {
   // Copyit and rejected describe every member, so they run as the source does; the others leave

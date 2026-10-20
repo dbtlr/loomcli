@@ -16,6 +16,7 @@ type WordPosition =
       readonly command: CommandNode;
       readonly prefix: string;
       readonly supplied: readonly string[];
+      readonly counts: ReadonlyMap<string, number>;
     }
   | {
       readonly kind: 'value';
@@ -111,19 +112,27 @@ function carriedValue(scope: Scope, last: string): WordPosition | undefined {
 }
 
 /**
+ * The option position of a last word: the names the earlier words supplied, and how many times they
+ * supplied each counted option, a global's and a bound own option's alike.
+ */
+function optionPosition(scope: Scope, last: string): WordPosition {
+  const { globals, locals } = scope.earlier.values;
+  return {
+    command: scope.command,
+    counts: new Map([...globals.counts, ...locals.counts]),
+    kind: 'option',
+    prefix: last,
+    supplied: scope.earlier.supplied,
+  };
+}
+
+/**
  * An option word. A long spelling without `=` is still being typed, so it is an option spelling
  * whatever it names; any other word is read by the walk.
  */
 function optionWord(scope: Scope, last: string): WordPosition {
   const typing = last.startsWith('--') && !last.includes('=');
-  return (
-    (typing ? undefined : carriedValue(scope, last)) ?? {
-      command: scope.command,
-      kind: 'option',
-      prefix: last,
-      supplied: scope.earlier.supplied,
-    }
-  );
+  return (typing ? undefined : carriedValue(scope, last)) ?? optionPosition(scope, last);
 }
 
 /** The last word, read as the parser would read the next word. */
@@ -136,7 +145,7 @@ function lastWord(scope: Scope, last: string): WordPosition {
     return awaitedValue(scope, earlier.awaiting, last);
   }
   if (last === '-' || last === '--') {
-    return { command, kind: 'option', prefix: last, supplied: earlier.supplied };
+    return optionPosition(scope, last);
   }
   return isOptionWord(last) ? optionWord(scope, last) : plainWord(scope, last);
 }

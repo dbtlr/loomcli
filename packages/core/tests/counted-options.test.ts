@@ -185,6 +185,15 @@ test('locate reads a counted spelling as an option word, never awaiting a value'
   expect(located(['-v', '-v', '-t'])).toMatchObject({ kind: 'option', prefix: '-t' });
 });
 
+test("an option position counts each counted option's earlier occurrences across every spelling", () => {
+  expect(located(['-v', '-vv', '--chatty', '-t', '--'])).toMatchObject({
+    counts: { verbose: 4 },
+    kind: 'option',
+    supplied: ['verbose', 'total'],
+  });
+  expect(located(['--'])).toMatchObject({ counts: {}, kind: 'option' });
+});
+
 test('a held fault names the counted spelling', () => {
   expect(held('copyit', ['-vv=1'])).toMatchObject({
     name: 'UnexpectedValueError',

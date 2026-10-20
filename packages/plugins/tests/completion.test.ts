@@ -16,6 +16,7 @@ import { powershellScript } from '../src/completion/powershell.js';
 import { zshInstalledScript, zshScript } from '../src/completion/zsh.js';
 import { format } from '../src/format/plugin.js';
 import { help } from '../src/help/plugin.js';
+import { verbose } from '../src/verbose/plugin.js';
 
 const fixture = new URL('fixtures/completion.mjs', import.meta.url);
 
@@ -199,6 +200,22 @@ describe('the answer', () => {
     expect(complete('backups', '-vv', '--verbose', '--v')).toBe(
       framed(['--verbose\tSay more.'], 4),
     );
+  });
+
+  it('the quiet-marked option is not offered again once given, because a further -q adds nothing', () => {
+    const graph = new Application('kit', { plugins: [verbose()] }).action(() => {}).inspect();
+    expect(answer(graph, locate(graph, ['--q']))).toBe(
+      framed(['--quiet\tHide info and success messages.'], 4),
+    );
+    expect(answer(graph, locate(graph, ['-q', '--q']))).toBe(framed([], 4));
+  });
+
+  it('the verbose-marked option is offered until it is given twice, because the verbosity stops at 2', () => {
+    const graph = new Application('kit', { plugins: [verbose()] }).action(() => {}).inspect();
+    const offered = framed(['--verbose\tShow more detail. Repeat it for more.'], 4);
+    expect(answer(graph, locate(graph, ['-v', '--v']))).toBe(offered);
+    expect(answer(graph, locate(graph, ['-vv', '--v']))).toBe(framed([], 4));
+    expect(answer(graph, locate(graph, ['-v', '--verbose', '--v']))).toBe(framed([], 4));
   });
 
   it('a string option with an implied value offers its values only when they are attached', () => {
