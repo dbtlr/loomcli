@@ -45,7 +45,7 @@ and compiler escapes, and checks each comment.
 ## Judging review findings
 
 A review seat, a bot, or a probe reports what it can break, which is wider than what is a defect.
-A finding is a defect only when it passes both tests, which apply principles 1 and 7:
+A finding is a defect only when it passes both tests, which apply principles 1 and 8:
 
 1. **Loom produces it.** The bad value comes from something Loom ships (core, `@loomcli/plugins`,
    `@loomcli/validators`, the configuration plugin's files) or from operator input that reaches core
