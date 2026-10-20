@@ -29,7 +29,7 @@ This record supersedes ADR-0066 whole. Every provision of ADR-0066 other than `l
 
 - the `loom` bin acts on the package whose directory it runs in, never on a repository as a set of packages;
 - it reads no configuration file;
-- `loom build` builds one target per call and bakes the release facts, with `--target`, `--build`, `--watch`, `--release`, and `--application`, and carries the application module as a second bundle entry for `node` and `bun`;
+- `loom build` builds one target per call and bakes the release facts, without the `bun-windows-*` targets [ADR-0100](0100-acceptance-plans-live-beside-the-tests.md) removes, with `--target`, `--build`, `--watch`, `--release`, and `--application`, and carries the application module as a second bundle entry for `node` and `bun`;
 - `--facts` and `--define` print the facts for a custom build;
 - `Application.check()` is published in every authoring state, as `inspect()` is;
 - release orchestration is out of scope, except the installer scripts [ADR-0072](0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md) adds to `loom init`;
