@@ -66,5 +66,9 @@ A finding where either test is uncertain is held: once the task has settled, bri
 with what it is and the reason it is uncertain, and decide together whether to fix it, file it, or
 dismiss it.
 
+A finding that a lint rule could catch is not a review fix. A new lint rule is a contract change:
+the controlling agent brings it to the user as a proposal, and it goes through the same contract
+process as any other change to Loom's public surface.
+
 Brief every review seat with both tests, and aim it at what Loom ships and what an operator can
 reach, not at values only an author's code can construct.
