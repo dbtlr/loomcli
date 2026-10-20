@@ -6,6 +6,20 @@ description: The Loom CLI domain model. Canonical names for the concepts an Appl
 
 Loom CLI is a framework for defining a typed command application once and serving human operators, agents, and automation from that one definition. This glossary names the concepts the definition is built from. Use these names in code, documentation, diagnostics, and reviews, and challenge language that drifts from them.
 
+## People
+
+**Author**:
+The developer who builds and ships an application with Loom. The author owns the application's code and every value that code creates, and Loom trusts it.
+_Avoid_: User, developer (for the role)
+
+**Operator**:
+The person or agent who runs a built application and cannot change its code. Every operator message Loom ships is addressed to the operator.
+_Avoid_: User, end user
+
+**Reach**:
+Who can supply a value or set off a behavior: an operator through what Loom ships, only the author's own code, or only a construction built to break the code. Reach sets how deeply Loom specifies, tests, and reviews the behavior.
+_Avoid_: Attack surface, threat model, exposure
+
 ## Authoring
 
 **Application**:
