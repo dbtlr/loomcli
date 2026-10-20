@@ -407,6 +407,7 @@ if (scenario === 'lowering') {
     args: [[], { args: [] }, { host: { release } }],
     failure: [[], {}, { failure: 'not a function', host: { release } }],
     host: [[], {}, { host: { argv: ['x'], release } }],
+    onProgress: [[], {}, { host: { release }, onProgress: 'not a function' }],
     options: [[], { options: 'verbose' }, { host: { release } }],
     passthrough: [[], { passthrough: [1] }, { host: { release } }],
     path: ['get', {}, { host: { release } }],

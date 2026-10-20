@@ -188,6 +188,27 @@ test('under app.invoke the lines land in messages', () => {
   );
 });
 
+test('under app.invoke the observer reads every progress event of every line in order', () => {
+  const progress = [Object(lines('plain', 'invoke').notes.progress)].flat();
+  const counted = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((completed) => [1, 'updated', completed]);
+  expect(progress.map(({ completed, id, state }) => [id, state, completed])).toEqual([
+    [1, 'started', 0],
+    ...counted,
+    [1, 'ended', 10],
+    [2, 'started', undefined],
+    [2, 'ended', undefined],
+    [3, 'started', undefined],
+    [3, 'failed', undefined],
+  ]);
+  expect(progress.map(({ label }) => label)).toEqual([
+    ...Array.from({ length: 12 }, () => 'Fetching records'),
+    'Building the index',
+    'Building the index',
+    'Uploading',
+    'Uploading',
+  ]);
+});
+
 test.skipIf(process.platform === 'win32')(
   "SIGINT under a signals owner writes the line's cancelled line, exits 130, and leaves no timer",
   async () => {

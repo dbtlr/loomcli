@@ -16,6 +16,11 @@ const tools = [
   { inputSchema: { type: 'object' }, name: 'wait' },
 ];
 
+/** Whether a call received a progress function, as the handler reports it on stderr. */
+function received(progress) {
+  process.stderr.write(`progress ${typeof progress === 'function' ? 'received' : 'absent'}\n`);
+}
+
 /** The tool handlers, keyed by tool name. */
 const calls = {
   echo: ({ name, arguments: input }) => ({
@@ -23,6 +28,22 @@ const calls = {
     isError: false,
     structuredContent: { arguments: input, name },
   }),
+  /** Answers at once, then sends progress once the answer is written. */
+  late: ({ progress }) => {
+    setTimeout(() => {
+      progress?.({ progress: 1 });
+      process.stderr.write('sent late\n');
+    }, 20);
+    return { content: [{ text: 'answered', type: 'text' }], isError: false };
+  },
+  /** Sends each update its arguments list through the progress function, then answers. */
+  progress: ({ arguments: input, progress }) => {
+    received(progress);
+    for (const update of input.updates) {
+      progress?.(update);
+    }
+    return { content: [{ text: 'reported', type: 'text' }], isError: false };
+  },
   refuse: () => {
     throw new ProtocolError(errorCodes.invalidParams, 'Refused.', { reason: 'fixture' });
   },
@@ -39,6 +60,16 @@ const calls = {
       signal.addEventListener('abort', () => {
         process.stderr.write(`aborted ${input.label}\n`);
         resolve({ content: [{ text: `aborted ${input.label}`, type: 'text' }], isError: true });
+      });
+    }),
+  /** Waits for its signal, and sends progress inside the abort. */
+  'wait-progress': ({ progress, signal }) =>
+    new Promise((resolve) => {
+      process.stderr.write('started\n');
+      signal.addEventListener('abort', () => {
+        progress?.({ message: 'after the abort', progress: 1 });
+        process.stderr.write('aborted\n');
+        resolve({ content: [{ text: 'aborted', type: 'text' }], isError: true });
       });
     }),
 };

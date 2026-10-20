@@ -400,7 +400,16 @@ const stderr = new Writable({
 });
 let code = 0;
 if (terminal === 'invoke') {
-  const outcome = await app.invoke([], {});
+  notes.progress = [];
+  const outcome = await app.invoke(
+    [],
+    {},
+    {
+      onProgress: (event) => {
+        notes.progress.push(event);
+      },
+    },
+  );
   code = outcome.status;
   messages = outcome.messages;
 } else {

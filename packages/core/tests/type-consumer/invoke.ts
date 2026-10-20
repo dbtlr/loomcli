@@ -7,6 +7,7 @@ import type {
   LoomError,
   Middleware,
   Plugin,
+  ProgressEvent,
 } from '@loomcli/core';
 
 const get = new Command('get').argument('path', { required: true }).action(() => undefined);
@@ -75,6 +76,17 @@ const caller = new Command('caller').action(async ({ invoke }) => {
 // The options type is exported, with the failure handler typed by what it returns.
 const options: InvokeOptions<number> = { failure: () => 1, signal: new AbortController().signal };
 
+// The progress observer reads each typed event, from `app.invoke` and from an action's call.
+const observed = app.invoke([], {}, { onProgress: (event: ProgressEvent) => void event.state });
+const relay = new Command('relay').action(async ({ invoke }) => {
+  const states: ProgressEvent['state'][] = [];
+  await invoke(['get'], {}, { onProgress: ({ state }) => states.push(state) });
+  return states;
+});
+
+// @ts-expect-error TS2322: The progress observer is a function of the event.
+const unobserved = app.invoke([], {}, { onProgress: 'log' });
+
 // A middleware's context carries no `invoke`.
 const middleware: Middleware<Plugin> = async (context) => {
   // @ts-expect-error TS2339: A middleware wraps one invocation and runs no other.
@@ -92,3 +104,6 @@ void argv;
 void caller;
 void options;
 void middleware;
+void observed;
+void relay;
+void unobserved;

@@ -852,7 +852,7 @@ export interface InvocationValues {
 
 /**
  * How one invocation by name runs: the starting view selection, the handler that maps a failure
- * into the outcome, and a signal that cancels the call.
+ * into the outcome, a signal that cancels the call, and the observer of its progress events.
  */
 export interface InvokeOptions<Mapped = LoomError> {
   /** The starting view selection, as a middleware's `view` assignment. */
@@ -869,6 +869,11 @@ export interface InvokeOptions<Mapped = LoomError> {
   ) => Mapped;
   /** Composed with the parent run's signal when an action calls `invoke`. */
   readonly signal?: AbortSignal;
+  /**
+   * Receives each progress event of the call's run, in order, inside the report or the region close
+   * that built it. A throw stops it, and `invoke` rejects with that throw once the run settles.
+   */
+  readonly onProgress?: (event: ProgressEvent) => void;
 }
 
 /**

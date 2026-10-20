@@ -511,6 +511,120 @@ describe('cancellation and concurrency', () => {
   });
 });
 
+/** A tools/call request whose `_meta` carries a progress token. */
+function tracked(id: number, token: number | string, name: string) {
+  return {
+    id,
+    jsonrpc: '2.0',
+    method: 'tools/call',
+    params: { _meta: { ...meta, progressToken: token }, arguments: {}, name },
+  };
+}
+
+/** The messages a session wrote before the answer to `id`, and that answer. */
+async function untilAnswer(session: ReturnType<typeof serve>, id: number) {
+  const before: Message[] = [];
+  for (;;) {
+    const message = await session.next();
+    if (message.id === id) {
+      return { answer: message, before };
+    }
+    before.push(message);
+  }
+}
+
+/** One progress notification on a token. */
+function progressNote(progressToken: number | string, progress: number, message: string) {
+  return {
+    jsonrpc: '2.0',
+    method: 'notifications/progress',
+    params: { message, progress, progressToken },
+  };
+}
+
+describe('progress', () => {
+  it("sends one notifications/progress per event of a counted line, counting every event, before the call's result", async () => {
+    const session = serve('progress');
+    session.send(tracked(1, 'records', 'counted'));
+    const { answer, before } = await untilAnswer(session, 1);
+    await session.close();
+    expect(before).toEqual([
+      progressNote('records', 1, 'Fetching records 0/3 (started)'),
+      progressNote('records', 2, 'Fetching records 1/3 (updated)'),
+      progressNote('records', 3, 'Fetching records 2/3 (updated)'),
+      progressNote('records', 4, 'Fetching records 3/3 (updated)'),
+      progressNote('records', 5, 'Fetching records 3/3 (ended)'),
+    ]);
+    const [content] = Object(answer.result).content;
+    expect(content.text.split('\n')).toEqual([
+      expect.stringMatching(/ Fetching records$/u),
+      expect.stringMatching(/ Fetching records$/u),
+      '',
+    ]);
+  });
+
+  it('a spinner line whose label changes once sends progress 1, 2, and 3', async () => {
+    const session = serve('progress');
+    session.send(tracked(1, 7, 'spinner'));
+    const { before } = await untilAnswer(session, 1);
+    await session.close();
+    expect(before).toEqual([
+      progressNote(7, 1, 'Building the index (started)'),
+      progressNote(7, 2, 'Writing the index (updated)'),
+      progressNote(7, 3, 'Writing the index (ended)'),
+    ]);
+  });
+
+  it('two lines in one call share the token and one counter, in the order their events were delivered', async () => {
+    const session = serve('progress');
+    session.send(tracked(1, 'pair', 'pair'));
+    const { before } = await untilAnswer(session, 1);
+    await session.close();
+    expect(before).toEqual([
+      progressNote('pair', 1, 'First (started)'),
+      progressNote('pair', 2, 'Second (started)'),
+      progressNote('pair', 3, 'First (ended)'),
+      progressNote('pair', 4, 'Second (ended)'),
+    ]);
+  });
+
+  it('a region with no label sends its counts and state alone, and one with neither sends the state', async () => {
+    const session = serve('progress');
+    session.send(tracked(1, 'bare', 'bare'));
+    const { before } = await untilAnswer(session, 1);
+    await session.close();
+    expect(before.slice(0, 2)).toEqual([
+      progressNote('bare', 1, '1 (started)'),
+      progressNote('bare', 2, '(started)'),
+    ]);
+  });
+
+  it('a call without a token sends no notification', async () => {
+    const session = serve('progress');
+    session.send(request(1, 'tools/call', { arguments: {}, name: 'counted' }));
+    const { before } = await untilAnswer(session, 1);
+    await session.close();
+    expect(before).toEqual([]);
+  });
+
+  it('a call the client cancels sends no notification after its cancellation', async () => {
+    const session = serve('progress');
+    session.send(tracked(1, 'waiting', 'waiting'));
+    await session.observed('started waiting');
+    session.send({
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: { _meta: meta, requestId: 1 },
+    });
+    await session.observed('aborted waiting');
+    session.send(request(2, 'server/discover'));
+    const { before } = await untilAnswer(session, 2);
+    const ending = await session.close();
+    expect(before).toEqual([progressNote('waiting', 1, 'Waiting (started)')]);
+    expect(ending.messages).toHaveLength(2);
+  });
+});
+
 /** Each rule's headline as its banner prints it, and its explanation as an 80-column diagnostic wraps it. */
 const rules = {
   'property-name-taken': {

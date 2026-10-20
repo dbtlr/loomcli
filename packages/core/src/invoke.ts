@@ -14,7 +14,7 @@ import type { NamedCall } from './lower.js';
 import { isPlainObject } from './plain.js';
 import { captureRelease } from './release.js';
 import { invokeOptions } from './rules.js';
-import type { Host, InvokeOptions } from './types.js';
+import type { Host, InvokeOptions, ProgressEvent } from './types.js';
 
 /** The host fields an invocation by name reads, which `app.invoke` replaces whole. */
 type InvocationFields = Required<Pick<Host, 'cwd' | 'env' | 'platform' | 'release'>> &
@@ -127,6 +127,14 @@ function readSignal(signal: unknown): AbortSignal | undefined {
   return signal;
 }
 
+/** A slot of the call that takes a function: the value as given, or the defect naming the slot. */
+function readFunction<Slot>(value: Slot, sentence: string, correction: string): Slot {
+  if (value !== undefined && typeof value !== 'function') {
+    throw callFault(sentence, correction);
+  }
+  return value;
+}
+
 /**
  * The host overrides `app.invoke` reads: whole replacements of the five fields, and nothing else.
  * The types state each field's kind, and the call's rule covers a field outside the five.
@@ -156,12 +164,14 @@ interface InvokeCall<Mapped> {
   view: { name: unknown } | undefined;
   failure: InvokeOptions<Mapped>['failure'];
   signal: AbortSignal | undefined;
+  onProgress: InvokeOptions<Mapped>['onProgress'];
 }
 
 /**
  * Reads the slots of one `invoke()` call after its host, in the order they are listed: the path,
- * the values and each record they hold, the signal, and the failure handler. A malformed slot
- * throws the `invoke-options` defect, which the run reports before it builds the graph.
+ * the values and each record they hold, the signal, the failure handler, and the progress
+ * observer. A malformed slot throws the `invoke-options` defect, which the run reports before it
+ * builds the graph.
  */
 function readInvokeCall<Mapped>(call: {
   path: unknown;
@@ -171,16 +181,61 @@ function readInvokeCall<Mapped>(call: {
   const { options } = call;
   const named = readValues(readPath(call.path), call.values);
   const signal = readSignal(options?.signal);
-  const failure = options?.failure;
-  const handler: unknown = failure;
-  if (handler !== undefined && typeof handler !== 'function') {
-    throw callFault(
-      'invoke() received a failure handler that is not a function.',
-      'Supply the failure handler as a function.',
-    );
-  }
+  const failure = readFunction(
+    options?.failure,
+    'invoke() received a failure handler that is not a function.',
+    'Supply the failure handler as a function.',
+  );
+  const onProgress = readFunction(
+    options?.onProgress,
+    'invoke() received an onProgress that is not a function.',
+    'Supply onProgress as a function that receives each progress event.',
+  );
   const view: unknown = options?.view;
-  return { failure, named, signal, view: view === undefined ? undefined : { name: view } };
+  return {
+    failure,
+    named,
+    onProgress,
+    signal,
+    view: view === undefined ? undefined : { name: view },
+  };
+}
+
+/** A call's progress observer as its run calls it, and the step that ends the call once it settles. */
+interface GuardedObserver {
+  /** Hands one event to the caller's observer, unless an earlier event made it throw. */
+  observe: ((event: ProgressEvent) => void) | undefined;
+  /** Throws what the observer threw, once the run has settled, so `invoke` rejects with it. */
+  settle: () => void;
+}
+
+/**
+ * The caller's progress observer, guarded so a throw never reaches the run: the observer is
+ * called no more, and the call rejects with the throw once its run settles. No observer leaves the
+ * run with none, so it collects nothing.
+ */
+function guardedObserver(onProgress: InvokeOptions['onProgress']): GuardedObserver {
+  if (onProgress === undefined) {
+    return { observe: undefined, settle: () => undefined };
+  }
+  let broken: { thrown: unknown } | undefined = undefined;
+  return {
+    observe: (event) => {
+      if (broken !== undefined) {
+        return;
+      }
+      try {
+        onProgress(event);
+      } catch (error) {
+        broken = { thrown: error };
+      }
+    },
+    settle: () => {
+      if (broken !== undefined) {
+        throw broken.thrown;
+      }
+    },
+  };
 }
 
 /**
@@ -317,4 +372,12 @@ function mappedFailure<Mapped>(
 }
 
 export type { CapturedFields, InvocationFields, InvokeCall, ReadCall };
-export { captureSink, fieldsOf, invocationHost, mappedFailure, processFields, readCall };
+export {
+  captureSink,
+  fieldsOf,
+  guardedObserver,
+  invocationHost,
+  mappedFailure,
+  processFields,
+  readCall,
+};

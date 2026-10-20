@@ -411,6 +411,7 @@ test.each([
   ['passthrough', 'invoke() received a passthrough that is not an array of strings.'],
   ['signal', 'invoke() received a signal that is not an AbortSignal.'],
   ['failure', 'invoke() received a failure handler that is not a function.'],
+  ['onProgress', 'invoke() received an onProgress that is not a function.'],
 ])(
   'a malformed %s reports invoke-options with exit 1, rendered by the build the call names',
   (slot, sentence) => {

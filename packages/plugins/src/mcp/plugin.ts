@@ -14,6 +14,7 @@ import { packageName } from '../constants.js';
 import { isRecord } from '../plain-data.js';
 import { mcpArgument, mcpCommand, mcpInput } from './extension.js';
 import { judgeTools } from './faults.js';
+import { progressRelay } from './progress.js';
 import { listedTool, propertiesOf, toolEntries } from './tools.js';
 import type { ListedTool, Property, ToolEntry } from './tools.js';
 
@@ -145,7 +146,8 @@ function unlistedKey(
 
 /**
  * Runs one tool call through `invoke`, as the Command's own run, and answers its result. A key the
- * input schema does not list answers a tool execution error, and no run starts.
+ * input schema does not list answers a tool execution error, and no run starts. A call that carries
+ * a progress token receives each progress event of the run as a notification.
  */
 async function callTool(
   context: ServeContext,
@@ -159,10 +161,12 @@ async function callTool(
     return refused;
   }
   const view = jsonView(entry.command);
+  // A call whose request carries a progress token relays each progress event of its run.
   const outcome = await context.invoke(entry.command.path, invocationValues(received, properties), {
     failure: (_failure, { exitCode, form }): FailedCall => ({ exitCode, failure: { ...form } }),
     signal: call.signal,
     ...(view === undefined ? {} : { view }),
+    ...(call.progress === undefined ? {} : { onProgress: progressRelay(call.progress) }),
   });
   return callResult(outcome, view);
 }

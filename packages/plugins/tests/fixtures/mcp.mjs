@@ -11,6 +11,7 @@ import { mcp } from '@loomcli/plugins/mcp';
 import { mcpArgument, mcpCommand, mcpInput } from '@loomcli/plugins/mcp/extension';
 import { records } from '@loomcli/plugins/records';
 import { table } from '@loomcli/plugins/table';
+import { progress as progressLine } from '@loomcli/prompts';
 
 import { ruleText } from '../../../core/tests/fixtures/rule-text.mjs';
 
@@ -249,6 +250,53 @@ function calls() {
     .command(wait);
 }
 
+/** Tools whose actions report progress, through progress lines and through regions drawn by hand. */
+function progress() {
+  const opted = { extensions: [mcpCommand({})] };
+  const counted = new Command('counted', { description: 'Count three records.', ...opted }).action(
+    async (context) => {
+      const line = progressLine(context, { label: 'Fetching records', total: 3 });
+      for (const completed of [1, 2, 3]) {
+        line.update({ completed });
+      }
+      await line.end();
+    },
+  );
+  const spinner = new Command('spinner', { description: 'Spin once.', ...opted }).action(
+    async (context) => {
+      const line = progressLine(context, { label: 'Building the index' });
+      line.update({ label: 'Writing the index' });
+      await line.end();
+    },
+  );
+  const pair = new Command('pair', { description: 'Run two lines.', ...opted }).action(
+    async (context) => {
+      const first = progressLine(context, { label: 'First' });
+      const second = progressLine(context, { label: 'Second' });
+      await first.end();
+      await second.end();
+    },
+  );
+  const bare = new Command('bare', { description: 'Report by hand.', ...opted }).action(
+    ({ out }) => {
+      out.region().report({ completed: 1 });
+      out.region().report({});
+    },
+  );
+  const waiting = new Command('waiting', { description: 'Wait with a line.', ...opted }).action(
+    (context) => {
+      progressLine(context, { label: 'Waiting' });
+      return waitForAbort({ args: { label: 'waiting' }, signal: context.signal });
+    },
+  );
+  return new Application('progress', { plugins: [mcp()], version: '1.0.0' })
+    .command(counted)
+    .command(spinner)
+    .command(pair)
+    .command(bare)
+    .command(waiting);
+}
+
 /** One application for each build fault the plugin's hook raises. */
 /** The options every fault's application shares: the build, a description, and the plugin. */
 const faulty = { description: 'A faulty fixture.', plugins: [mcp()] };
@@ -371,7 +419,7 @@ function fitted() {
   }).command(grid);
 }
 
-const scenarios = { calls, columns, fitted, listing, ...faults };
+const scenarios = { calls, columns, fitted, listing, progress, ...faults };
 
 const [name, ...argv] = process.argv.slice(2);
 

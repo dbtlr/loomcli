@@ -89,6 +89,7 @@ import type { CommandGraph } from './inspect.js';
 import {
   captureSink,
   fieldsOf,
+  guardedObserver,
   invocationHost,
   mappedFailure,
   processFields,
@@ -138,6 +139,7 @@ import type {
   InvokeOptions,
   OptionConfig,
   OptionValue,
+  ProgressEvent,
   ResultViews,
   ResultViewsOf,
   RowViews,
@@ -786,14 +788,18 @@ class ApplicationBuilder<
     const sinks = { stderr: captureSink(), stdout: captureSink() };
     const streams = { stderr: sinks.stderr.stream, stdout: sinks.stdout.stream };
     const overrides = read.host;
+    const progress = guardedObserver('call' in read ? read.call.onProgress : undefined);
     const end = await this.#execute(
       nameDoor(read, {
         action,
         declared: this.#config.rendering,
         fields: () => action?.fields ?? processFields(this.#name, overrides),
+        observe: progress.observe,
         streams,
       }),
     );
+    // An observer that threw makes the call reject once its run has settled, discarding its text.
+    progress.settle();
     if (end.kind === 'cancelled') {
       return { exitCode: end.exitCode, status: 'cancelled' };
     }
@@ -1370,6 +1376,8 @@ function nameDoor<Mapped>(
     action: ActionCall | undefined;
     declared: RenderingPolicy;
     fields: () => CapturedFields;
+    /** The caller's progress observer, which the run's output hands each event to. */
+    observe: ((event: ProgressEvent) => void) | undefined;
     streams: { stderr: Writable; stdout: Writable };
   },
 ): RunDoor {
@@ -1405,6 +1413,9 @@ function nameDoor<Mapped>(
       const output = new Output(captured, signal);
       // A malformed call's report must already render plain, so the policy applies before the call is read.
       output.configure(plainPolicy(declared), new Map());
+      if (setup.observe !== undefined) {
+        output.observeProgress(setup.observe);
+      }
       return output;
     },
     rendering: plainPolicy,

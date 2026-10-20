@@ -11,7 +11,7 @@ import {
   resultMessage,
 } from './json-rpc.js';
 import type { RequestId } from './json-rpc.js';
-import type { CallToolResult, ServerIdentity, Tool, ToolCall } from './protocol.js';
+import type { CallToolResult, ProgressUpdate, ServerIdentity, Tool, ToolCall } from './protocol.js';
 import { protocolRevision } from './revision.js';
 
 /** What a server serves: its identity, its tool listing, and the call of one tool. */
@@ -179,6 +179,15 @@ interface Pending {
 }
 
 /**
+ * What a request's handler receives beside its params: the signal that aborts it, and, for a call
+ * that carries a progress token, the function that sends progress.
+ */
+interface Handling {
+  readonly signal: AbortSignal;
+  readonly progress: ((update: ProgressUpdate) => void) | undefined;
+}
+
+/**
  * One run of a server over one pair of streams: the requests in flight, the open subscriptions,
  * and the writes not yet flushed.
  */
@@ -317,7 +326,8 @@ class Session {
   #start(id: RequestId, method: string, params: Record<string, unknown>) {
     const pending = { call: method === 'tools/call', controller: new AbortController() };
     this.#inFlight.set(id, pending);
-    const outcome = this.#outcome(method, params, pending.controller.signal);
+    const progress = pending.call ? this.#progress(id, pending, params) : undefined;
+    const outcome = this.#outcome(method, params, { progress, signal: pending.controller.signal });
     const settling = this.#answer(id, pending, outcome);
     this.#settling.add(settling);
     void settling.finally(() => this.#settling.delete(settling));
@@ -342,10 +352,41 @@ class Session {
     );
   }
 
+  /**
+   * The function a call sends progress through, when its request's `params._meta` carries a
+   * progress token. Each call writes one `notifications/progress` on the token, passing `progress`
+   * on as given, until the call is answered, cancelled by the client, or aborted.
+   */
+  #progress(
+    id: RequestId,
+    pending: Pending,
+    params: Record<string, unknown>,
+  ): ((update: ProgressUpdate) => void) | undefined {
+    const meta = params._meta;
+    const token = isRecord(meta) ? meta.progressToken : undefined;
+    // A progress token is a string or a number, as a request id is.
+    if (!isRequestId(token)) {
+      return undefined;
+    }
+    return ({ message, progress, total }) => {
+      if (this.#inFlight.get(id) !== pending || pending.controller.signal.aborted) {
+        return;
+      }
+      this.#send(
+        notificationMessage('notifications/progress', {
+          progressToken: token,
+          progress,
+          ...(total === undefined ? {} : { total }),
+          ...(message === undefined ? {} : { message }),
+        }),
+      );
+    };
+  }
+
   /** A request's stamped result, or the error to answer it with. A handler's own throw is internal. */
-  async #outcome(method: string, params: Record<string, unknown>, signal: AbortSignal) {
+  async #outcome(method: string, params: Record<string, unknown>, handling: Handling) {
     try {
-      return this.#stamp(await this.#dispatch(method, params, signal));
+      return this.#stamp(await this.#dispatch(method, params, handling));
     } catch (error) {
       return error instanceof ProtocolError
         ? error
@@ -359,7 +400,7 @@ class Session {
   async #dispatch(
     method: string,
     params: Record<string, unknown>,
-    signal: AbortSignal,
+    handling: Handling,
   ): Promise<object> {
     if (method === 'server/discover') {
       return {
@@ -379,7 +420,9 @@ class Session {
         "The tools/call request names no tool. Send the tool's name as params.name.",
       );
     }
-    return this.#options.callTool({ name, arguments: params.arguments, signal });
+    const { progress, signal } = handling;
+    const call: ToolCall = { name, arguments: params.arguments, signal };
+    return this.#options.callTool(progress === undefined ? call : { ...call, progress });
   }
 
   /** The tool listing: one page, which no client caches. */
