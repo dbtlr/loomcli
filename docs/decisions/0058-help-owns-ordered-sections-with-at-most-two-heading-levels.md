@@ -4,7 +4,7 @@ title: ADR-0058 - Help owns ordered sections with at most two heading levels
 description: Commands and options declare help section membership as one or two heading strings. Each page owns separate partial orders for Command sections and option sections, and named option sections combine local and global members. The help plugin owns every field and both help variants use the same layout.
 status: accepted
 created: 2026-10-05
-modified: 2026-10-18
+modified: 2026-10-19
 ---
 
 # ADR-0058 - Help owns ordered sections with at most two heading levels
@@ -51,3 +51,4 @@ Accepted in 0.8.0.
 - 2026-10-05: Implementation adds the descriptor fields and shared section renderer. textstat groups its counting options, and jsonkit groups its document Commands. Runtime fixtures and packed consumers cover both help variants, combined named option sections, and unchanged unsectioned pages. The record stays proposed until the release PR accepts it.
 - 2026-10-13: [ADR-0077](0077-help-details-are-markdown-that-help-renders-with-its-own-subset-parser.md) narrows the one-layout rule that no blank line sits inside a block: the Details block renders Markdown and keeps one blank line wherever the author separated two blocks, and the empty lines inside its code. Every other block keeps the rule.
 - 2026-10-18: [ADR-0087](0087-help-wraps-its-prose-to-the-destinations-columns-and-keeps-its-literals-whole.md), proposed, narrows the one-layout rule for indentation on a terminal: a wrapped right cell continues under its column, and the rows under a heading that cannot fit stack, with each right cell four columns past its left cell. Off a terminal the layout is unchanged. It binds when that record is accepted.
+- 2026-10-19: [ADR-0093](0093-help-pages-a-long-page-through-the-operators-pager-on-opt-in.md), proposed, gives the help plugin one factory setting, `paging`: with it on, a page that holds at least the terminal's rows of lines goes to the operator's pager instead of straight to stdout. The sections, their order, the one layout, and the page's bytes are unchanged, and only where a long page goes on a terminal changes. It binds when that record is accepted.
