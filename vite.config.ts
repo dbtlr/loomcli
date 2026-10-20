@@ -165,6 +165,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/plugins/src/verbose/plugin.ts'],
+        rules: {
+          // The plugin declares verbose before quiet, the order help and the manifest list them in.
+          'eslint/sort-keys': 'off',
+        },
+      },
+      {
         files: ['packages/core/src/form.ts'],
         rules: {
           // The failure form's key order is part of its contract: code, exitCode, message, hints.

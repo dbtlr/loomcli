@@ -18,7 +18,7 @@ const colorMark = registerRule('@loomcli/core/color-mark', {
 type ColorChoice = 'always' | 'never';
 
 /** The color mark, whose option the run reads from argv before anything else prints. */
-const color: Mark = { fact: 'color', rule: colorMark };
+const color: Mark = { fact: 'color', rule: colorMark, type: 'boolean' };
 
 /**
  * The mark belongs only to a Boolean global option with no short alias and no environment
@@ -67,7 +67,7 @@ function checkColorBinding(
   site: FactSite,
   carried: string | undefined,
 ): void {
-  if (!isMarked(config, 'color') || carried === undefined) {
+  if (!isMarked(config, color) || carried === undefined) {
     return;
   }
   throw markFault(site, 'extensions', {

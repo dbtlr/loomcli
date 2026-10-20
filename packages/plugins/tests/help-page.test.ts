@@ -157,6 +157,23 @@ test('a counted option ends its spellings with an ellipsis, and an implied value
   );
 });
 
+test('the quiet-marked option prints no ellipsis, because a further -q adds nothing', () => {
+  expect(run('verbose', ['--help'])).toEqual(
+    page(
+      'fetchit · Fetch records.',
+      '',
+      'USAGE',
+      '  fetchit [options]',
+      '',
+      'OPTIONS',
+      '  -h, --help        Show this help.',
+      '  -V, --version     Print the version.',
+      '  -v, --verbose...  Show more detail. Repeat it for more.',
+      '  -q, --quiet       Hide info and success messages.',
+    ),
+  );
+});
+
 test('a default JSON cannot render prints as String renders it', () => {
   const result = run('unencodable', ['--help']);
   expect(result).toMatchObject({ status: 0, stderr: '' });

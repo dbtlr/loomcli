@@ -198,6 +198,8 @@ const getDocument = {
         control: false,
         long: '--verbose',
         short: '-v',
+        verbose: false,
+        quiet: false,
         schema: null,
         env: ['APP_VERBOSE'],
       },

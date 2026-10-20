@@ -80,8 +80,9 @@ function valueText(parts: ValueParts): string {
 /**
  * What one option row's left cell shows before a projection styles it: the short spelling, the
  * published long spelling, the value parts of an option that takes a value, and whether the option
- * counts, whose spellings end with `...` because each occurrence adds one. A Boolean option takes no
- * value, so it shows no placeholder.
+ * counts, whose spellings end with `...` because each occurrence adds one. The quiet-marked option
+ * counts too, but a further occurrence of it adds nothing, so it shows no `...`. A Boolean option
+ * takes no value, so it shows no placeholder.
  */
 interface OptionCellParts {
   readonly short: string | null;
@@ -93,7 +94,7 @@ interface OptionCellParts {
 /** The parts of one option row's left cell. */
 function optionCellParts(option: OptionNode): OptionCellParts {
   return {
-    counted: option.type === 'count',
+    counted: option.type === 'count' && !option.quiet,
     long: longSpelling(option),
     short: option.short,
     value:

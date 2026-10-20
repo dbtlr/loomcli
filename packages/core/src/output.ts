@@ -42,6 +42,23 @@ type Purpose = Lane;
 /** The two streams every write site names. */
 type Stream = 'stdout' | 'stderr';
 
+/** The threshold of a lane that writes at every verbosity. */
+const always = Number.NEGATIVE_INFINITY;
+
+/**
+ * The lowest verbosity at which each lane writes: `info` and `success` from the default, so one
+ * quiet step hides them, `debug` from `-v`, `trace` from `-vv`, and the rest at every verbosity.
+ */
+const shownFrom: Readonly<Record<Lane, number>> = {
+  debug: 1,
+  error: always,
+  info: 0,
+  print: always,
+  success: 0,
+  trace: 2,
+  warn: always,
+};
+
 /** The opener a reservation holds until its own gate publishes the real one. */
 const unopened = (): void => undefined;
 
@@ -231,6 +248,8 @@ export class Output {
   private readonly heldIncomplete: IncompleteResult[] = [];
   // The contributors this invocation resolves a declared view through, published once they build.
   private registry: ViewRegistry = [];
+  // The run's verbosity, settled right after graph build, before anything can write a lane.
+  private verbosity = 0;
   style = createStyle();
 
   constructor(
@@ -238,6 +257,7 @@ export class Output {
     private readonly signal: AbortSignal,
   ) {
     this.out = {
+      debug: (message) => this.emit('debug', message, 'stderr'),
       draw: (data: never, value: View<never>) => {
         const drawn = this.draw(data, value);
         // The row-count promise is a new boundary over the destination's observed write promise.
@@ -258,6 +278,7 @@ export class Output {
       // Only the action emits a result, so this call is the middleware fault whatever was declared.
       results: () => this.resultFault('middleware'),
       success: (message) => this.emit('success', message, 'stderr'),
+      trace: (message) => this.emit('trace', message, 'stderr'),
       warn: (message) => this.emit('warn', message, 'stderr'),
     };
     // A configuration source writes through the same channel, and its results call names it.
@@ -348,6 +369,11 @@ export class Output {
     this.registry = registry;
   }
 
+  /** The run's verbosity, which decides which lanes write from here on. */
+  useVerbosity(verbosity: number): void {
+    this.verbosity = verbosity;
+  }
+
   /** The path routing walked, updated as each name routes, which an incomplete sequence names. */
   useRoute(path: readonly string[]): void {
     this.route = path;
@@ -398,9 +424,13 @@ export class Output {
   /**
    * A semantic message is one line on its destination; only `print` writes to stdout. The message
    * is checked before the lane view runs, and this call appends the one newline after it, so a
-   * lane view returns none and an override that returns the empty string still writes one.
+   * lane view returns none and an override that returns the empty string still writes one. A call
+   * the run's verbosity hides is checked the same way, then calls no lane view and writes nothing.
    */
   emit(kind: Purpose, message: string, destination: Stream): Promise<void> {
+    if (typeof message === 'string' && this.verbosity < shownFrom[kind]) {
+      return Promise.resolve();
+    }
     return this.rendered(() => {
       if (typeof message !== 'string') {
         throw new TypeError('Output messages must be strings.');

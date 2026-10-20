@@ -135,12 +135,13 @@ test("the inspected graph carries the plugin's option, the extension value, and 
   const graph = inspected.parse(JSON.parse(result.stdout));
   expect(graph.version).toBe(manifest.version);
   expect(graph.globals.map((option) => option.name)).toEqual([
-    'verbose',
     'help',
     'version',
     'manifest',
     'explain',
     'color',
+    'verbose',
+    'quiet',
   ]);
   // The two plugins define separate facts, so one declaration carries a value for each.
   // Help also supplies its value to the manifest's collecting extension, with no manifest installed.

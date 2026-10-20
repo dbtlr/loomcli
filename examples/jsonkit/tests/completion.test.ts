@@ -23,6 +23,7 @@ const options = [
   '--help',
   '--manifest',
   '--no-color',
+  '--quiet',
   '--verbose',
   '--version',
 ];
@@ -75,7 +76,7 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       it('jsonkit paths -<Tab> lists long and short spellings', async () => {
         const { listed } = await complete('jsonkit paths -');
         expect(counts(listed)).toEqual(
-          counts([...options, '--format', '-e', '-f', '-h', '-M', '-o', '-v', '-V']),
+          counts([...options, '--format', '-e', '-f', '-h', '-M', '-o', '-q', '-v', '-V']),
         );
       });
 

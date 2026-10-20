@@ -17,17 +17,6 @@
   },
   "globals": [
     {
-      "type": "count",
-      "name": "verbose",
-      "description": "Name the document before reading it.",
-      "deprecated": null,
-      "control": false,
-      "long": "--verbose",
-      "short": "-v",
-      "schema": null,
-      "env": []
-    },
-    {
       "type": "boolean",
       "name": "help",
       "description": "Show this help.",
@@ -99,6 +88,32 @@
       "polarity": "both",
       "interaction": false,
       "color": true,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "count",
+      "name": "verbose",
+      "description": "Show more detail. Repeat it for more.",
+      "deprecated": null,
+      "control": true,
+      "long": "--verbose",
+      "short": "-v",
+      "verbose": true,
+      "quiet": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "count",
+      "name": "quiet",
+      "description": "Hide info and success messages.",
+      "deprecated": null,
+      "control": true,
+      "long": "--quiet",
+      "short": "-q",
+      "verbose": false,
+      "quiet": true,
       "schema": null,
       "env": []
     }

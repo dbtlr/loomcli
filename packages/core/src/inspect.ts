@@ -120,6 +120,8 @@ type OptionNode =
       readonly long: string | null;
       readonly short: string | null;
       readonly aliases: readonly string[];
+      readonly verbose: boolean;
+      readonly quiet: boolean;
       readonly schema: null;
       readonly env: readonly string[];
       readonly extensions: Readonly<Record<string, unknown>>;
@@ -363,7 +365,13 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
       });
     }
     case 'count': {
-      return Object.freeze({ ...shared, schema: null, type: 'count' });
+      return Object.freeze({
+        ...shared,
+        quiet: config.quiet === true,
+        schema: null,
+        type: 'count',
+        verbose: config.verbose === true,
+      });
     }
     default: {
       const exhaustive: never = config;

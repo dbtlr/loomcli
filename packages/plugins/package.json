@@ -131,6 +131,10 @@
       "types": "./dist/src/theme/plugin.d.ts",
       "import": "./dist/src/theme/plugin.js"
     },
+    "./verbose": {
+      "types": "./dist/src/verbose/plugin.d.ts",
+      "import": "./dist/src/verbose/plugin.js"
+    },
     "./version": {
       "types": "./dist/src/version/plugin.d.ts",
       "import": "./dist/src/version/plugin.js"

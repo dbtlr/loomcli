@@ -4,7 +4,7 @@ title: ADR-0057 - A counted option counts its occurrences and an implied value f
 description: An option declares type count to read how many times it was supplied, as a number that is 0 when absent, with no value, validator, default, or presence rule. A string option declares implied to name the value a bare spelling supplies, so an explicit value is attached and the next word is never taken. Both are ordinary options on every declarer, and a parent's own option rebinds to a child's only when both read words the same way.
 status: accepted
 created: 2026-10-04
-modified: 2026-10-05
+modified: 2026-10-19
 ---
 
 # ADR-0057 - A counted option counts its occurrences and an implied value fills a bare spelling
@@ -54,3 +54,4 @@ Accepted in 0.8.0.
 
 - 2026-10-04: Proposed with the contract.
 - 2026-10-04: Consequences record the widened option types as a breaking change for TypeScript consumers.
+- 2026-10-19: [ADR-0090](0090-an-operators-v-or-q-settles-the-runs-verbosity-right-after-graph-build.md), proposed, prints the quiet-marked counted option in help as `-q, --quiet`, with no `...`, because its further occurrences add nothing to the run's verbosity. Every other counted option keeps `-v, --verbose...`, and its count stays uncapped.

@@ -163,9 +163,11 @@ test('inspection publishes a counted option as a count node with no value facts'
     hidden: false,
     long: '--verbose',
     name: 'verbose',
+    quiet: false,
     schema: null,
     short: '-v',
     type: 'count',
+    verbose: false,
   });
   expect(Object.keys(quietNode).toSorted()).toEqual(Object.keys(verboseNode).toSorted());
   expect(depthNode).toMatchObject({ long: '--depth', name: 'depth', short: '-d', type: 'count' });
