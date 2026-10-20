@@ -1,8 +1,15 @@
 ---
-description: Project conventions for the domain glossary, decision records, TypeScript assertions, and pull request changelog decisions.
+description: Project principles, plus conventions for the domain glossary, decision records, TypeScript assertions, review findings, and pull request changelog decisions.
 ---
 
 # Loom CLI
+
+## Principles
+
+Loom is a toolkit, not the application: the author ships the application. Read the
+[principles](docs/principles.md) before you design a change, write a test, or judge a review
+finding. They rank above the decision records and the core reference, and they set how deep a
+solution goes by its reach.
 
 ## Glossary and decision records
 
@@ -38,44 +45,30 @@ and compiler escapes, and checks each comment.
 ## Judging review findings
 
 A review seat, a bot, or a probe reports what it can break, which is wider than what is a defect.
-A finding is a defect only when it passes both tests:
+A finding is a defect only when it passes both tests, which apply principles 1 and 8:
 
 1. **Loom produces it.** The bad value comes from something Loom ships (core, `@loomcli/plugins`,
    `@loomcli/validators`, the configuration plugin's files) or from operator input that reaches core
    through one of them. A value the author's own code creates, such as a hand-written validator's
-   output, a declared default, or an action's result, belongs to the author, and its failure is a
-   defect in their application that core already reports as one. A failure is a failure: when the
-   author's code is wrong, such as a middleware that throws or an action that omits its declared
-   result, the run fails through the ordinary failure path, and Loom adds no special rule for
-   that author's mistake. Loom does not protect authors from their own code. Loom deliberately ships no JSON
-   validator, because a command-line application has no reason to parse JSON from arguments or
-   options.
-2. **It plausibly happens.** The input fits how a command-line application is used. Command-line
-   length bounds what an operator types, and an author declares ordinary values for a command-line
-   interface. A construction built only to break the code, such as a default of a million shared
-   paths, is a probe result.
+   output, a declared default, or an action's result, belongs to the author. When the author's code
+   is wrong, the run fails through the ordinary failure path, and a finding that asks Loom for a
+   guard, a limit, a timer, or a special rule fails this test.
+2. **It plausibly happens.** The input fits how a command-line application is used. A construction
+   built only to break the code, such as a default of a million shared paths, is a probe result.
 
-Loom is a general-purpose framework, so it does not decide how an application behaves. An action
-may stream a response from a service, or run a terminal interface that an operator works in for
-twelve hours. Loom cannot know which, and it does not guess. Core adds no time limit, no size limit,
-and no guard on how long an author's code runs, what it does, or what values it creates, throws, or
-hands back, and a finding that asks for one fails test 1. An application that needs a timeout or a
-limit gets it from its author, in the author's own action. Brief review seats to probe what Loom
-ships and what an operator can reach, not values only an author's code can construct.
-
-An author chooses Loom and is free to write good or bad code. A framework that is protective or
-prescriptive in ways that stop an author from building the application they want is frustrating to
-use, and the author works around it or chooses another one; an action can always call `console.log`
-and do what it likes. The controlling agent is therefore the gate between a review and the board.
-A review seat, a fix round, or a bot never creates a task or a seed. The controlling agent judges
-each finding first, separating unsafe behavior in what Loom ships from the author's freedom to write
-their own code, and only a finding that passes is fixed or filed.
-
-A finding that passes both tests is fixed, or filed as a task. A finding that fails either is dismissed
-with that reason in the review record, and the review record is where it ends. A seed records an
-ask someone made or a defect someone hit; a question an agent imagines, such as whether a
+The controlling agent is the gate between a review and the board. A review seat, a fix round, or a
+bot never creates a task or a seed. The controlling agent judges each finding first, and only a
+finding that passes both tests is fixed, or filed as a task. A finding that fails either is
+dismissed with that reason in the review record, and the review record is where it ends. A seed
+records an ask someone made or a defect someone hit; a question an agent imagines, such as whether a
 middleware should ever emit a result, is a finding and passes both tests before it becomes a seed.
 A finding where either test is uncertain is held: once the task has settled, bring it to the user
 with what it is and the reason it is uncertain, and decide together whether to fix it, file it, or
-dismiss it. Brief every review seat with both tests, and triage each finding against them before
-acting on it.
+dismiss it.
+
+A finding that a lint rule could catch is not a review fix. A new lint rule is a contract change:
+the controlling agent brings it to the user as a proposal, and it goes through the same contract
+process as any other change to Loom's public surface.
+
+Brief every review seat with both tests, and aim it at what Loom ships and what an operator can
+reach, not at values only an author's code can construct.
