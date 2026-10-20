@@ -6,6 +6,253 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.14.0 - 2026-10-20
+
+0.14.0 fits terminal output to the operator's screen and gives the operator control over it. Every render reads the destination's live width, so the semantic lanes, tables, records, and the help page wrap on a terminal, and a table that cannot fit shrinks its widest columns or falls back to one block per row. The pack adds list, heading, rule, prose, and box views. Optional plugins add `--color` and `--no-color`; `-v`, which shows the new `out.debug` and `out.trace` lines, and `-q`, which hides info and success messages; and `--background`. A theme entry can adapt to a light terminal's background, which core settles once per run. Actions can keep live regions at the bottom of stderr, where `@loomcli/prompts` now draws its questions and new progress lines, and progress events reach `invoke` callers and MCP clients. Off a terminal nothing wraps, tables and records keep their layout, help changes only its Details lists and headings, which now print as the list and heading views do, and each manifest option entry gains its `color`, `verbose`, `quiet`, or `background` field.
+
+Pin the first-party packages together at exactly 0.14.0. The color, verbose, quiet, and background marks give meaning to option keys that earlier releases ignored, so remove any such stray key or move it to the one option that carries it. Run the application's type check: `out.render` now types a records view's formatters from the rows, and data that carries no row type, such as `any` or a helper's type parameter, must state one; an explicit row type argument such as `out.render<Row>(rows, view)` now names the data; a host override annotated `Partial<Host>` moves to `HostOverrides`, and a terminal annotated `Host['terminal']` to `NonNullable<HostOverrides['terminal']>`; and a select `questionFrame` override reads `context.columns`. The migration sections below give each step.
+
+### Breaking Changes
+
+- Remove `columns` from the select `questionFrame` data, which keeps `rows`. The default select view measures its height at the view context's `columns`, stderr's width narrowed by a valid `COLUMNS`, and its compact frame clips at that width, or at 80 columns when `columns` is `undefined`. The select window's visible count and `rows` are read when each frame draws, so a resize reaches the next frame.
+
+### Migration
+
+**Affected surface.** An override of `questionFrame` from `@loomcli/prompts/views` that reads `data.columns` for a select frame, and code that builds select frame data by hand with a `columns` member.
+
+**Why.** A view now reads the width of its destination from `context.columns`, so the frame data no longer carries a second, stale copy of it.
+
+**Before and after.** `clip` stands for the override's own clipping helper.
+
+Before:
+
+```ts
+override(questionFrame, {
+  render: (data, context) =>
+    data.kind === 'select' ? clip(data.message, data.columns ?? 80) : questionFrame.render(data, context),
+});
+```
+
+After:
+
+```ts
+override(questionFrame, {
+  render: (data, context) =>
+    data.kind === 'select' ? clip(data.message, context.columns ?? 80) : questionFrame.render(data, context),
+});
+```
+
+**Steps.**
+
+1. Pin the first-party packages together at the same exact version.
+2. Replace `data.columns` with `context.columns` in every `questionFrame` override, keeping any fallback width you want for `undefined`.
+3. Remove the `columns` member from select frame data your code builds by hand.
+
+**Validation.** Run `pnpm exec tsc --noEmit` and the application's test command. Ask a select question on a terminal narrower than its message, with and without `COLUMNS` set, and check that the frame fits the width.
+
+- Change `out.render` to type a records view written as its second argument from the rows it renders, as a table and `json()` already were and as the new list view is. A `format` callback under `records({…})` received `any` for its value, so a callback that misread its field compiled; it now receives the field's own type over an array, a generator, or an async generator, and a key the rows do not carry is reported on that key. `Out.render` is one signature over both view shapes, `render<Data, Row = never>(data: RenderedData<Data, Row>, view: View<Data> | ([Row] extends [never] ? RowViewOver<Data> : RowView<Row>))`, with `RenderedData` and `RowViewOver` exported from `@loomcli/core`.
+
+### Migration
+
+**Affected surface.** An action or middleware that calls `out.render(rows, records({…}))` with a `format` callback whose parameter type, or whose use of its value, does not match the field's type in the rows. Calls that already typed their callbacks correctly, and calls that state `records<Row>({…})`, are unaffected. Also affected: a call whose data carries no row type, where an unstated `records({…})` or another pack view factory, or a row view written in the call, no longer reads one: data typed `any`, such as the result of `JSON.parse`; data whose type is a helper's type parameter, `<Source extends readonly Row[]>`; and inline literal rows under a row view whose row type is a literal union, such as `out.render([{ variant: 'compact' }], variants)` under a `RowView<{ variant: 'compact' | 'extended' }>`, where the literal widens to `string`. Also affected: a call that passes the row type as `out.render`'s type argument, `out.render<Row>(rows, view)`, which matched the earlier overload over rows; the type argument now names the data.
+
+**Why.** The callback's value was `any`, so the mismatch was a latent bug the compiler could not see. The compiler now checks it, which takes one signature for both view shapes.
+
+**Before and after.**
+
+Before, with `count: number` on each row, this compiled:
+
+```ts
+await out.render(rows, records({ identifier: 'source', fields: [{ key: 'count', format: (value: string) => value.padStart(6) }] }));
+```
+
+After, the callback takes the field's type:
+
+```ts
+await out.render(rows, records({ identifier: 'source', fields: [{ key: 'count', format: (value) => String(value).padStart(6) }] }));
+```
+
+**Steps.**
+
+1. Run the application's type check.
+2. For each error under a `records({…})` call, correct the callback's parameter type or its use of the value to match the field's type.
+3. For each error where the data carries no row type, state it: a factory's type argument, `records<Row>({…})`, a typed row view, `const view: RowView<Row> = { row: … }`, or, for inline literal rows, the array's type, `const rows: readonly Variant[] = [{ variant: 'compact' }]`.
+4. For each call written `out.render<Row>(rows, view)`, drop the type argument, or name the data, `out.render<readonly Row[]>(rows, view)`.
+
+**Validation.** Run the application's type check until it reports no error, then run its tests to confirm each records view prints as before.
+
+- Add the color mark, `color: true` on one Boolean global option of an Application. Core reads the operator's color choice from argv right after host capture: the last spelling of the marked option before the first bare `--` sets the run's `color` policy field to `'always'` for a positive spelling and `'never'` for a negative one, over `NO_COLOR`, `FORCE_COLOR`, and the declared `rendering.color` from the Application and from `run()`. Modifiers, hyperlinks, and terminal controls keep their own policy, so `--no-color` on a terminal keeps bold. Everything the run prints after host capture follows the choice, including graph build's declaration errors, environment and configuration warnings, an unknown command, help, results, and failures. An invocation by name reads no choice and stays plain, and in an Application with no marked option the color choice changes no byte; only its `inspect()` and manifest output gain the `color` fact below. See [Color](docs/core.md#color).
+- Reject a misplaced color mark under `@loomcli/core/color-mark`: `color` on a local or non-Boolean option, a value other than `true`, a short alias or an `env` binding beside the mark, a configuration binding of the installed source on the marked option, and a second marked option in one Application. The types reject each rule except the configuration binding and a second marked option, which depend on what joins the Application and are checked when the `globalOption()` call or the `new Application()` that brings them together runs, and they now also reject `interaction` on string and counted global options, which the runtime already rejected.
+- Publish `color` on each Boolean `OptionNode` from `inspect()`, `true` on the marked option, and copy it into each Boolean option entry of the `@loomcli/plugins/manifest` document.
+- Add `@loomcli/plugins/color`. `color()` takes no settings and declares the global Boolean option `--[no-]color`, described as `Turn color on or off, overriding NO_COLOR.`, marked `control` and with the color mark, so the operator turns color on or off for one run. Help lists it among the global options, the manifest marks it `control` and `color`, and MCP tool schemas leave it out. See [Color plugin](docs/core.md#color-plugin).
+
+### Migration
+
+**Affected surface.** An option declaration that carries a `color` key, which earlier releases ignored. A `color` key on a local option, on a string, content, or counted option, with a value other than `true`, beside `short` or `env`, on an option with a configuration binding, or on a second option of one Application now throws a `DeclarationError` under `@loomcli/core/color-mark`. An application that declares no `color` key needs no change.
+
+**Why.** `color: true` now marks the one Boolean global option whose spellings carry the operator's color choice, so core reads the key and rejects a declaration that cannot carry it.
+
+**Before and after.**
+
+Before, a key core ignored:
+
+```ts
+new Application('app').option('theme', { type: 'string', color: true });
+```
+
+After, the key removed, or the color choice declared on a Boolean global option:
+
+```ts
+new Application('app').option('theme', { type: 'string' }).globalOption('color', {
+  type: 'boolean',
+  polarity: 'both',
+  color: true,
+  control: true,
+  description: 'Turn color on or off, overriding NO_COLOR.',
+});
+```
+
+**Steps.**
+
+1. Pin the first-party packages together at the same exact version.
+2. Search the application's option declarations for a `color` key. Remove each one, or keep it on one Boolean global option with no `short`, `env`, or configuration binding, or install `color()` from `@loomcli/plugins/color` in place of the application's own option.
+
+**Validation.** Run `pnpm exec tsc --noEmit`, which reports a misplaced `color` key, and run the application once with `--help`, which throws any declaration fault the types cannot see.
+
+- Add `out.debug(message)` and `out.trace(message)`, two semantic methods beside `info`, `warn`, and `error` that write a debug line and a trace line to stderr, a Command that declares a result included. They render through the new lane views `lanes.debug` (`@loomcli/core/lanes/debug`), a dim `›` gutter and a dim message, and `lanes.trace` (`@loomcli/core/lanes/trace`), nested two spaces deeper behind a `┆` gutter and fainter, and both wrap at the columns right of their gutter. A call creates no log event. See [Verbosity](docs/core.md#verbosity).
+- Add the run's verbosity, which core settles right after graph build from argv, read against the built graph with the parser's own word reader, so `-vv`, `-vq`, a short group that holds a Command's own letters, aliases, and occurrences on both sides of the Command name read as the ordinary parse reads them. The verbosity is the verbose-marked option's count, read as 2 above 2, less the quiet-marked option's count, read as 1 above 1. Verbosity 1 writes `debug`, 2 writes `trace` too, and -1 hides `info` and `success`, while `print`, `render`, `draw`, results, `warn`, `error`, the failure report, and the incomplete-result line write at every verbosity. A hidden call still rejects a message that is not a string, and calls no lane view. A middleware's and a configuration source's `out` follow the verbosity, and `app.invoke` and an action's `invoke` settle their own from the values they lower, so `options: { verbose: 2 }` reads as `-vv` does. An Application with neither mark runs at verbosity 0, so `debug` and `trace` write nothing and the verbosity changes no other byte.
+- Add the verbose mark and the quiet mark, `verbose: true` and `quiet: true` on one counted global option each, an application's or a plugin's. Reject a misplaced mark under `@loomcli/core/verbose-mark` and `@loomcli/core/quiet-mark`: a mark on a local option or on a string, content, or Boolean option, a value other than `true`, both marks on one option, a second option with one mark in an Application, and an `env` or configuration binding on a marked option. The types reject each rule except the configuration binding and a second marked option, which depend on what joins the Application. Help and man pages print a quiet-marked option with no `...` after its spellings, as `-q, --quiet`, because a further occurrence adds nothing. Shell completion reads the same rule: it no longer offers the quiet-marked option once given, or the verbose-marked option once given twice, while every other counted option is still offered again.
+- Add `counts` to the `option` position `locate` returns, a `ReadonlyMap` from each counted option the earlier words gave to how many times they gave it, so `locate(graph, ['-v', '-vv', '--'])` holds `verbose` at 3.
+- Publish `verbose` and `quiet` on each counted `OptionNode` from `inspect()`, `true` on the marked option, and copy both into each counted option entry of the `@loomcli/plugins/manifest` document.
+- Add `@loomcli/plugins/verbose`. `verbose()` takes no settings and declares the counted global options `-v, --verbose`, described as `Show more detail. Repeat it for more.`, with the verbose mark, and `-q, --quiet`, described as `Hide info and success messages.`, with the quiet mark, both marked `control`, so MCP tool schemas leave them out. See [Verbose plugin](docs/core.md#verbose-plugin).
+
+### Migration
+
+**Affected surface.** An option declaration that carries a `verbose` or `quiet` key, which earlier releases ignored. Such a key on a local option, on a string, content, or Boolean option, with a value other than `true`, both keys on one option, either key beside `env` or a configuration binding, or a second option of one Application with the same key now throws a `DeclarationError` under `@loomcli/core/verbose-mark` or `@loomcli/core/quiet-mark`. An application that declares neither key needs no change.
+
+**Why.** `verbose: true` and `quiet: true` now mark the counted global options whose occurrences set the run's verbosity, so core reads both keys and rejects a declaration that cannot carry them.
+
+**Before and after.**
+
+Before, a key core ignored, and a count the action checked by hand:
+
+```ts
+new Application('app')
+  .globalOption('level', { type: 'count', short: 'v' })
+  .option('loud', { type: 'boolean', verbose: true })
+  .action(async ({ options, out }) => {
+    if (options.level > 0) {
+      await out.info('Reading doc.json.');
+    }
+  });
+```
+
+After, the key removed, the hand-counted option dropped, and the debug line written through `out.debug` under the verbose plugin's `-v`:
+
+```ts
+import { verbose } from '@loomcli/plugins/verbose';
+
+new Application('app', { plugins: [verbose()] })
+  .option('loud', { type: 'boolean' })
+  .action(async ({ out }) => {
+    await out.debug('Reading doc.json.');
+  });
+```
+
+**Steps.**
+
+1. Pin the first-party packages together at the same exact version.
+2. Search the application's option declarations for a `verbose` or `quiet` key. Remove each one, or keep it on one counted global option with no `env` or configuration binding, or install `verbose()` from `@loomcli/plugins/verbose` in place of the application's own options. `verbose()` declares the global options `verbose`, spelled `-v`, and `quiet`, spelled `-q`, so an application that installs it renames or removes its own option with either key or either spelling.
+3. Move a message that only an operator's `-v` should reveal from a hand-written count check to `out.debug` or `out.trace`.
+
+**Validation.** Run `pnpm exec tsc --noEmit`, which reports a misplaced `verbose` or `quiet` key, and run the application once with `--help`, which throws any declaration fault the types cannot see. Run it with `-v` and check that its debug lines reach stderr.
+
+- Add adaptive theme entries. `style.adaptive({ dark, light })` returns a theme entry that holds one unapplied concrete chain for each background, each with its own fallbacks, and core resolves its token to the side that matches the run's background at every color depth, taking the dark side when the background is unknown. A theme mapping may hold adaptive entries beside plain ones, and only the exported `style` carries `adaptive`, so a theme may still name a token `adaptive`. `style.adaptive` checks its argument when it is called and throws `TypeError('Adaptive styles take an unapplied concrete style chain for dark and for light.')` for anything else. See [Background](docs/core.md#background).
+- Add the run's background, `'dark'`, `'light'`, or `undefined`, which core settles once per run, right after the color choice and before graph build, from the first source that answers: the operator's background choice, the author's new `rendering.background` (`'auto'`, `'dark'`, or `'light'`), a background a `run({ host: { terminal } })` override states, and then, only when an installed theme entry is adaptive or an option carries the background mark, `undefined` when stdin, stdout, or stderr is not a terminal, as in `app | fzf` or `app > file`, or with color off on both streams, dark when `TERM` is `linux`, the terminal's answer to a background query, `COLORFGBG`, and `undefined`. Actions, middleware, and hooks read it as `host.terminal.background`, and every view reads it as the view context's `background`. An invocation by name reads `undefined`.
+- Add the background query. When settlement reaches the query and stdin, stdout, and stderr are all terminals, core writes OSC 11, `CSI ? 996 n`, and DA1 in one write to stderr, reads the replies in raw mode until the DA1 reply or one unreferenced one-second deadline, restores the mode it found, and pushes every byte that is not a reply back onto stdin, so typeahead reaches the action. A `Ctrl-C`, `Ctrl-\`, or `Ctrl-Z` read during the wait stays out of the typeahead, and core raises SIGINT, SIGQUIT, or SIGTSTP for it once the mode is restored, so `Ctrl-C` still ends the run. It writes nothing and reads nothing when stdin has no raw mode, when `TERM` is unset, empty, or `dumb`, when `STY` or `INSIDE_EMACS` is set, on Windows, and when the run is a background job of its terminal, which raw mode would stop.
+- Add the background mark, `background: true` on one string global option, whose `dark` or `light` value core reads from argv beside the color choice. Reject a misplaced mark under `@loomcli/core/background-mark`: the mark on a local option or on a Boolean, content, or counted option, a value other than `true`, a second marked option, and a short alias, `env`, default, implied value, `multiple`, or configuration binding on the marked option. Reject a `rendering.background` other than `'auto'`, `'dark'`, or `'light'` under `@loomcli/core/rendering-policy`.
+- Publish `background` on each string `OptionNode` from `inspect()`, `true` on the marked option, and copy it last into each string option entry of the `@loomcli/plugins/manifest` document.
+- Add `@loomcli/plugins/background`. `background()` takes no settings and declares the global string option `--background`, validated to `dark` or `light` with the issue `Supply dark or light.`, marked `control` and `background`. Its mark also turns background detection on for a theme that does not adapt. See [Background plugin](docs/core.md#background-plugin).
+- Change `loomTheme()` so its six colored tokens adapt: on a light background `dim` is `#5F6B7A`, `highlight` `#9C5A1E`, `success` `#4E6B50`, `warning` `#8A6D0E`, `error` `#C04532`, and `info` `#4A6B91`, with the 256-color fallbacks 243, 130, 65, 94, 131, and 60 and the dark side's 16-color names. A plain override stays one value on both backgrounds. See [Loom theme](docs/core.md#loom-theme).
+- Export the types `Background`, `AdaptiveStyle`, `HostTerminal`, and `HostOverrides` from `@loomcli/core`. `RunOptions.host` takes `HostOverrides`, whose `terminal` may omit `background`.
+
+### Migration
+
+**Affected surface.** An option declaration that carries a `background` key, and a `rendering` policy that carries a `background` field, both of which earlier releases ignored. Such a key on a local option, on a Boolean, content, or counted option, with a value other than `true`, beside a short alias, `env`, a default, an implied value, `multiple: true`, or a configuration binding, or on a second option of one Application now throws a `DeclarationError` under `@loomcli/core/background-mark`, and a `rendering.background` other than `'auto'`, `'dark'`, or `'light'` throws under `@loomcli/core/rendering-policy`. A host override annotated `Partial<Host>`, the type `RunOptions.host` had before, whose `terminal` is stated, and a terminal annotated `Host['terminal']`, no longer compile, because `Host['terminal']` is now `HostTerminal`, which requires `background`. An application that declares neither and annotates no override `Partial<Host>` and no terminal `Host['terminal']` needs no change.
+
+**Why.** `background: true` now marks the string global option whose value sets the run's background, and `rendering.background` states the author's background, so core reads both and rejects a declaration that cannot carry them.
+
+**Before and after.**
+
+Before, a key core ignored, and a background the action guessed from the environment:
+
+```ts
+new Application('app', { plugins: [loomTheme()] })
+  .globalOption('background', { type: 'string', short: 'b', background: true })
+  .action(({ host, out }) =>
+    out.print(host.env.COLORFGBG?.endsWith(';15') === true ? 'light' : 'dark'),
+  );
+```
+
+After, the plugin's `--background` in place of the application's own option, and the settled background read from the host:
+
+```ts
+import { background } from '@loomcli/plugins/background';
+
+new Application('app', { plugins: [loomTheme(), background()] }).action(({ host, out }) =>
+  out.print(host.terminal.background ?? 'unknown'),
+);
+```
+
+**Steps.**
+
+1. Pin the first-party packages together at the same exact version.
+2. Search the application's option declarations for a `background` key. Remove it, or keep `background: true` on one string global option with no short alias, `env`, default, implied value, `multiple`, or configuration binding, or install `background()` from `@loomcli/plugins/background` in place of the application's own option. `background()` declares the global option `background`, so an application that installs it renames or removes its own option of that name.
+3. Search the application's and `run()`'s `rendering` policies for a `background` field, and set it to `'auto'`, `'dark'`, or `'light'`, or remove it.
+4. Search tests and harnesses for a host override annotated `Partial<Host>` and a terminal annotated `Host['terminal']`. Retype the override as `HostOverrides`, exported from `@loomcli/core`, and the terminal as `NonNullable<HostOverrides['terminal']>`, or add `background: undefined` to the terminal.
+5. Replace code that reads `COLORFGBG` or guesses the terminal's background with a read of `host.terminal.background`, or of a view context's `background`. Core detects the background only when an installed theme entry adapts, as `loomTheme()`'s entries do, or an option carries the background mark, so an application with neither installs `background()` from `@loomcli/plugins/background`, whose mark turns detection on.
+
+**Validation.** Run `pnpm exec tsc --noEmit`, which reports a misplaced `background` key, a `rendering.background` outside the three values, and a `Partial<Host>` terminal that lacks `background`, and run the application once with `--help`, which throws any declaration fault the types cannot see. On a light terminal, run a command that prints themed text and check that `host.terminal.background` reads `'light'`.
+
+### Features
+
+- Fit `@loomcli/plugins/table` to the terminal. When the natural width exceeds `columns`, the widest columns shrink by levelling from the top, down to the widest unit `wrap` keeps whole in each column, and cells and headers wrap inside their columns with every line keeping the column's alignment. On a terminal each line ends at its rightmost cell that has text, with no padding or gap after it. A table whose columns cannot fit at those floors prints one `HEADER  value` block per row instead, and an empty sequence prints its header line at the fitted widths. On a terminal a tab in a cell or a header expands to spaces from the start of the cell before the table measures it, so no line overflows. Off a terminal the output is unchanged, a multi-line `format` cell and a tab included. See [Table](docs/core.md#table).
+- Wrap each value of `@loomcli/plugins/records` at the width left after its key column, with every continuation line indented under the value and a blank line left bare. On a terminal a line whose value is empty, in the records view and in the table's fallback blocks, ends at its key with no trailing spaces. On a terminal a value's tabs expand to spaces from the start of the value before it wraps. Each streamed row reads its own width, and off a terminal the output is unchanged, tabs included. See [Records](docs/core.md#records).
+- Keep each filesystem path and URL in the first-party completion, manpage, skills, service, self-update, and configuration messages whole when a lane wraps, with `nowrap`. The message text is unchanged, so a path that holds spaces copies exactly and pipes the same bytes.
+
+- Add `@loomcli/plugins/list`, a whole view over items for `rows<Item>()` and `out.render`. Items print with `●` bullets or with numbers right-aligned against the widest sibling, `format` renders an item's text, and `children` nests items under their parent's text. On a terminal each item wraps with its continuation lines hanging under its text. See [List](docs/core.md#list).
+- Add `@loomcli/plugins/heading`, `@loomcli/plugins/rule`, and `@loomcli/plugins/prose`, views over a string. `heading()` prints a `dim` section heading, underlined at level 1. `rule()` draws a horizontal line across the terminal, or 80 columns off one, with the text as its label. `prose()` wraps paragraphs to the terminal and prints them as written off one. See [Views over a string](docs/core.md#views-over-a-string).
+- Add `@loomcli/plugins/box`, which frames text, or the output of another view passed as `content`, in a rounded border with an optional title. A framed view renders with `columns` narrowed by the frame, so a boxed table shrinks to fit inside it or falls back to the records layout. See [Box](docs/core.md#box).
+
+- Wrap the `@loomcli/plugins/help` page to the terminal's `columns`. The masthead description, a deprecation message, every right cell, Details text, the INPUT block's sentences, option-group sentences, example notes, and hints wrap with hanging indents, and a right cell continues under the right column. When a hanging text's continuation indent and its widest unbreakable word cannot fit, its continuation lines start at its block's indent instead. Usage forms, section titles and inner headings, left cells, Details code and table rows, the INPUT example line, and example commands stay whole, and a Details code span and a hint's command never break. See [Help wraps to the destination's columns](docs/core.md#help-wraps-to-the-destinations-columns).
+- Stack the rows under one help heading when their indent, left column, and widest unbreakable word cannot fit `columns`: each left cell prints on its own line and its right cell wraps on the lines below, four columns past the furthest-in start of a left cell's text, so a long-only option's description never starts in its spelling's column. The rows under every other heading keep two columns.
+- Reflow a help Details paragraph on a terminal: its authored lines join with one space and wrap to the width, in lists and quotes too, while code keeps every line. Consecutive Details lines that start with `|` form table rows that keep their lines on a terminal and off one, and they print as before off a terminal. On a terminal, tabs on the help page expand to spaces before it wraps. Off a terminal, as on a pipe, under `app.invoke`, and in an MCP tool call, nothing on the help page wraps or reflows and its tabs stay tabs, so the page prints as before apart from the Details lists and headings, which now print as the list and heading views do.
+
+- Add `columns` and `wrap(text, columns)` to `ViewContext`, and so to `FailureViewContext`. `columns` is the effective width of the destination the view writes to, read just before each render call: the terminal's real width, or `undefined` on a pipe, a redirect, an invocation by name, and an MCP tool call. `wrap` breaks marked text at spaces so each line fits, measured as `width` measures, keeps a word wider than the width whole on its own line, and returns the text unchanged when `columns` is `undefined`. The idiom is `context.wrap(text, context.columns)`. See [width, padding, and multiline lanes](docs/core.md#width-padding-and-multiline-lanes).
+- Add `expandTabs(text)` to `ViewContext`, and so to `FailureViewContext`. It replaces each tab in marked text with the spaces that reach the next multiple of eight, counted from the start of its input line as `width` counts, so text a view places after a gutter, a label, or another column shows as it measured. Frames, escapes, and ANSI commands keep their bytes, and a tab inside `pad` is left to the frame.
+- Read `host.terminal.stdout` and `host.terminal.stderr` `columns` and `rows` live, so a window resized during a run reaches the next render. A host override's plain numbers stay fixed, and a getter it supplies is read each time. `isTTY` is still read once.
+- Narrow `columns` on a terminal by a valid POSIX `COLUMNS` variable, a positive integer, which never widens it past the terminal's real width. A terminal that reports no width takes `COLUMNS` alone, and a destination that is not a terminal ignores it. `host.terminal` keeps the real reading.
+- Wrap the `info`, `success`, `warn`, and `error` lanes at the columns right of their glyph gutter, with the gutter on every continuation line. On a terminal they expand the message's tabs to spaces first, so a tab after the gutter no longer pushes a line past the width. Off a terminal their output is unchanged, tabs included, and `print` never wraps. A long self-update notice now wraps on an 80-column terminal.
+- Add `nowrap(text)`, which keeps text such as a path that holds spaces whole when a line wraps. It adds no bytes to the printed text: ``out.info(`Wrote ${nowrap(path)}`)``.
+- Add `splitLines(text)`, which splits marked text at its line breaks into lines that each stand alone. A style, a `pad` or `nowrap` frame, an embedded SGR color, or an OSC 8 hyperlink that spans a break closes at the line's end and opens again on the next, so a view can place wrapped lines side by side: `splitLines(context.wrap(text, width))`.
+- Fill the Developer Diagnostic's banner and wrap its explanation at stderr's effective width, narrowed by `COLUMNS`, measured in terminal display columns. It keeps 80 columns off a terminal and in a thrown error's message.
+
+- Add `out.region()`, which opens a live region at the bottom of stderr and returns its handle at once, with `draw`, `end`, `signal`, `report`, `live`, and `closedBy`. Core keeps every open region below every other write, in the order the regions opened, and redraws them after each write. It erases a region whole after a terminal resize rewraps it, holds the other regions still while an input region is open, and draws no region without input under `-q`. It closes a region left open when the action that opened it returns, or, for a region a middleware or a configuration source opened, once the middleware chain has unwound, and it closes every region before a failure report and on cancellation, aborting the region's signal first. `@loomcli/core` exports `Region`, `RegionOptions`, `RegionCloser`, `ProgressReport`, and `ProgressEvent`. The [core reference](docs/core.md#live-region) describes the region.
+- Add `progress(context, { label, total?, spinner? })` to `@loomcli/prompts`. It draws a spinner, or a bar with counts, in its own live region, and its handle has `update`, `end`, `fail`, and `track`. Off a terminal and under an invocation by name, it writes one start line and one end line through the semantic lanes, and under `-q` only its failure line. The optional `progressStyle()` plugin sets the default spinner of every line, in the cli-spinners shape, which a line's own `spinner` overrides, and its bar cells, and `@loomcli/prompts/views` exports the `progressLine` view. The [prompts reference](docs/prompts.md#progress) describes the lines.
+- Change `@loomcli/prompts` questions to draw in input regions. A lane message written while a question asks lands above its frame, a frame that a terminal rewrapped after a resize is erased whole, and two questions asked at once take turns. A question whose region core closes for a failure, such as work beside it in `Promise.all` that rejects, or for the return of what asked it, draws its cancelled line, leaves raw mode, shows the cursor, and rejects, so stdin no longer holds the process open after the run.
+
+- Add `onProgress` to `InvokeOptions`. An invocation by name, from `app.invoke` or an action's `invoke`, hands it each progress event of the call's run, `{ id, label, state, completed?, total? }`, in order and inside the `report` or region close that built it. A region ended with `end(state, label)` carries that label on its end event, and a progress line passes its `end`, `fail`, and `track` messages there, so the observer reads the end text the terminal shows. A call inherits no observer from its parent run. An observer that throws is called no more, and `invoke` rejects with its throw once the run settles. The [core reference](docs/core.md#invocation-by-name) describes the observer.
+- Add MCP progress notifications. A `tools/call` request whose `params._meta` carries a `progressToken` receives one `notifications/progress` for each progress event of its run, with `progress` counting every event the call has sent and `message` holding the label, the counts, and the state, such as `Fetching records 1/3 (updated)`. A call without a token receives none, and the server sends none after the call's answer or cancellation. The [core reference](docs/core.md#mcp) describes the notifications.
+
+### Fixes
+
+- Change the help page's Details lists to print as the list view does, on a terminal and off one. A bullet item starts with a `dim` `●` instead of `-`, and an ordered item counts up from the author's first number with a `.` whatever delimiter the author wrote, so `3)` prints `3.`, and its markers right-align against the widest in the list, so ` 9.` lines up with the `10.` below it.
+- Change the help page's Details headings to print as the heading view does. A level 1 heading is `dim` text with a `dim` underline as wide as its widest wrapped line, a heading at levels 2 to 6 is `dim` text alone, and neither is `primary` and `bold` as before.
+
+- Speed up `ViewContext.width`, `ViewContext.plain`, and `@loomcli/plugins/table` on long text. Output is unchanged.
+
+- Fix `loom pr check` and `loom release plan`, which failed with `spawnSync git ENOBUFS` when a file they read at a commit was larger than 1 MiB. A release check copies every tracked file at the base, so one large document failed every release PR.
+
 ## v0.13.0 - 2026-10-16
 
 0.13.0 gives applications more ways to collect input. Native content inputs prepare lazy file or stdin handles, dotenv imports an explicit environment allowlist before input validation, and declared option groups check relationships between supplied options. Actions can ask text, secret, confirm, and select questions through the separately published `@loomcli/prompts` library. Linked questions can reuse supplied answers, and the interaction plugin adds `--no-input` for runs that must not ask.

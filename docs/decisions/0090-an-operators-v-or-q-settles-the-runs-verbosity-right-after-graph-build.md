@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0090 - An operator's -v or -q settles the run's verbosity right after graph build
 description: Out gains debug and trace beside info, warn, and error, and core settles each run's verbosity once, right after graph build and before environment preparation, by reading host.argv with the parser's own word reader against the built graph. The verbosity is the occurrences of the one verbose-marked counted global option, read as 2 above 2, less those of the one quiet-marked option, read as 1 above 1. Verbosity 1 shows debug, 2 shows trace too, and -1 hides info and success, while print, render, results, warn, error, and every failure always print. Each marked option binds no variable or configuration key, an invocation by name settles its own verbosity from the values it lowers, and @loomcli/plugins/verbose declares marked -v, --verbose and -q, --quiet as control options.
-status: proposed
+status: accepted
 created: 2026-10-19
-modified: 2026-10-19
+modified: 2026-10-20
 ---
 
 # ADR-0090 - An operator's -v or -q settles the run's verbosity right after graph build
@@ -58,7 +58,7 @@ The glossary gains Verbosity, Verbose mark, and Quiet mark.
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships `out.debug`, `out.trace`, the two marks, the verbosity, and the verbose plugin. Tests prove each verbosity's lanes, every argv form the parse reads, a hook-declared short letter in a group beside `-v`, stderr under a result Command and with stdout piped, the lines on a terminal and piped, a hidden call's message check, a configuration source's debug line, capture by name and the default level under MCP, each declaration error, the help rows and manifest fields, jsonkit migrated onto the plugin, and a packed consumer of `@loomcli/plugins/verbose`, under Node and Bun.
+Accepted in 0.14.0.
 
 ## Changelog
 

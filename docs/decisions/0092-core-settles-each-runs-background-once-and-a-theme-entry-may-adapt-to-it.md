@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0092 - Core settles each run's background once, and a theme entry may adapt to it
 description: A theme entry may be style.adaptive({ dark, light }), which core resolves against the run's background. Core settles that background once per run, right after the color choice and before graph build, from the operator's background choice, the author's rendering.background, a background a host override states, and, only when a theme entry is adaptive or an option carries the background mark, undefined when stdin, stdout, or stderr is not a terminal or color is off, dark when TERM is linux, a query to the terminal of OSC 11 and the color-scheme query behind a DA1 sentinel with one unref'd one-second deadline, then COLORFGBG, then undefined. The background reads as host.terminal.background and as the view context's background, undefined when no source settled it, and an adaptive entry takes its dark side then. The plugin pack adds @loomcli/plugins/background, which declares a background-marked --background, and loomTheme() makes its six colored tokens adaptive with a light palette.
-status: proposed
+status: accepted
 created: 2026-10-19
 modified: 2026-10-20
 ---
@@ -66,7 +66,7 @@ The glossary gains Background, Background choice, Background mark, and Adaptive 
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships adaptive entries, the settled background, the background mark, the background plugin, and the light palette. Pure tests prove the reply parser and every precedence step; a run-lane test with a scripted terminal proves each skip, one query and a restored mode on the answered path, typeahead reaching the action, the deadline falling through with its timer unref'd and cleared, an OSC 11 reply settling the run when DA1 never comes, interrupt keys raised on the process once the mode is restored, and a color change during preparation leaving the background as settled; and a themed token resolves to each side across truecolor, 256, and 16 colors, under Node and Bun. Before the implementation merges, an executable check proves that a run in a backgrounded job under Node and Bun neither hangs nor stops, and records whether Windows Terminal's reply reaches stdin. If a backgrounded run would stop or hang, the implementation adds the skip that prevents it, and if Windows Terminal's reply does not reach stdin, the query is skipped on `win32`; either change adds a dated entry here.
+Accepted in 0.14.0.
 
 ## Changelog
 
