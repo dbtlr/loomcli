@@ -813,11 +813,11 @@ The directory of the nearest `package.json` at or above where a `loom` command r
 _Avoid_: Project root, workspace, repository root
 
 **Entry**:
-The module that calls `run()`, by default `src/main.ts`. `loom build` bundles from it, and the assembly check never imports it, because importing it runs the application.
+The module that calls `run()`, by default `src/main.ts`. `loom build` bundles from it, and a test never imports it, because importing it runs the application.
 _Avoid_: Main file, bin script
 
 **Application module**:
-The module that exports the Application, by default `src/application.ts`. The assembly check imports it to read every fault, and a `node` or `bun` bundle carries it beside the entry, so a caller imports the built Application with its baked release facts.
+The module that exports the Application, by default `src/application.ts`. A test imports it and passes the Application to the assembly check, which reads every fault, and a `node` or `bun` bundle carries it beside the entry, so a caller imports the built Application with its baked release facts.
 _Avoid_: App file, application entry
 
 **Scaffold file**:
