@@ -1,13 +1,13 @@
 import { Writable } from 'node:stream';
 
-import { Application, extension, FatalError, plugin } from '@loomcli/core';
+import { Application, Command, extension, FatalError, plugin } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 
 /**
  * One run of an application that opens live regions. argv[2] names the scenario, and argv[3] the
  * terminal: `tty` (the default) for a stderr that reports a terminal of 40 columns, `both` for a
- * stdout that is the same terminal, `pipe` for a stderr that is not a terminal, or `invoke` for an
- * invocation by name. Every write that reaches the terminal, and every resize, is recorded in order
+ * stdout that is the same terminal, `pipe` for a stderr that is not a terminal, `invoke` for an
+ * invocation by name, or `nested` for an action at a terminal that invokes the scenario by name. Every write that reaches the terminal, and every resize, is recorded in order
  * as an event a headless terminal emulator replays; `mark` records a named point in that order.
  * The rest of argv is the command line. The fixture prints { code, events, notes, stdout, messages }.
  */
@@ -80,8 +80,32 @@ function around(body) {
 
 const caller = new AbortController();
 
+/** A plugin whose onLog hook writes each record to its destination's stderr. */
+const hook = plugin('@fixture/hook', {
+  onLog: (event, destination) => {
+    destination.stderr?.write(`hook ${event.message}\n`);
+  },
+});
+
 /** Each scenario: the plugins it installs, and its action. */
 const scenarios = {
+  /** Three records logged at once, then a lane line, while a region is drawn. */
+  burst: {
+    action: async ({ log, out }) => {
+      const region = out.region();
+      await region.draw('frame', text);
+      log.info('one');
+      log.info('two');
+      log.info('three');
+      await out.info('lane');
+      // The fixture waits for any record the stream still holds to reach the terminal.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 20);
+      });
+      mark('logged');
+    },
+    plugins: [hook],
+  },
   /** The run's cancellation with an open region and a second input region still waiting. */
   cancel: {
     action: async ({ out }) => {
@@ -180,6 +204,14 @@ const scenarios = {
       const call = argv[0];
       const region = out.region();
       const calls = {
+        closedLabel: async () => {
+          await region.end();
+          region.report({ label: 3 });
+        },
+        closedState: async () => {
+          await region.end();
+          await region.end('done');
+        },
         completed: () => region.report({ completed: -1 }),
         input: () => out.region({ input: 'yes' }),
         label: () => region.report({ label: 3 }),
@@ -206,13 +238,7 @@ const scenarios = {
       await region.draw('frame again', text);
       mark('logged');
     },
-    plugins: [
-      plugin('@fixture/hook', {
-        onLog: (event, destination) => {
-          destination.stderr?.write(`hook ${event.message}\n`);
-        },
-      }),
-    ],
+    plugins: [hook],
   },
   /** A region redrawn while an input region is open, and one that closes meanwhile. */
   input: {
@@ -292,6 +318,25 @@ const scenarios = {
   partial: {
     action: async ({ out }) => {
       await out.draw('partial', text);
+      await out.region().draw('frame', text);
+      mark('drawn');
+    },
+  },
+  /** A partial line rendered to stdout before the first region draws, and a redraw. */
+  partialStdout: {
+    action: async ({ out }) => {
+      await out.render('partial', text);
+      const region = out.region();
+      await region.draw('frame one', text);
+      await region.draw('frame two', text);
+      mark('drawn');
+    },
+  },
+  /** A partial line drawn on stderr, a whole line printed to stdout, then the first region. */
+  printedAfterPartial: {
+    action: async ({ out }) => {
+      await out.draw('partial', text);
+      await out.print('printed');
       await out.region().draw('frame', text);
       mark('drawn');
     },
@@ -387,11 +432,19 @@ if (chosen.tagged) {
     type: 'string',
   });
 }
-app = app.action(chosen.action);
+// Under `nested`, the scenario runs as a Command the action invokes by name, at a terminal.
+app =
+  terminal === 'nested'
+    ? app
+        .command(new Command('inner', { description: 'Run the scenario.' }).action(chosen.action))
+        .action(async ({ invoke }) => {
+          await invoke(['inner'], {});
+        })
+    : app.action(chosen.action);
 
 const stderr = screenStream();
 const stdout = terminal === 'both' ? screenStream() : piped;
-const tty = terminal === 'tty' || terminal === 'both';
+const tty = terminal === 'tty' || terminal === 'both' || terminal === 'nested';
 let code = 0;
 let messages = undefined;
 if (terminal === 'invoke') {

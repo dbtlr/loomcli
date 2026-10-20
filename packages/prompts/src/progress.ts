@@ -243,7 +243,8 @@ interface LineState {
  * One progress line in its own live region: a spinner while the work has no total, and a bar with
  * counts once it has one. While the region is live the line animates on its own unref'd timer,
  * which it clears when the region's signal aborts, and draws its success, failure, or cancelled
- * line as the region's last frame. Off a terminal it writes one start line through `info` and one
+ * line as the region's last frame. A line whose region closed as it opened draws nothing, writes
+ * nothing, and runs no timer. Off a terminal it writes one start line through `info` and one
  * end line through `success` or `error`. It reports at its start, at each update, and at its close.
  */
 function progress(context: ProgressContext, settings: ProgressSettings): Progress {
@@ -275,7 +276,10 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
   });
   region.report(total === undefined ? { label } : { completed: 0, label, total });
   let timer: ReturnType<typeof setInterval> | undefined = undefined;
-  if (region.live) {
+  if (region.closedBy !== undefined) {
+    // A region opened after the run's cancellation closed as it opened, so the line starts closed.
+    line.state = closedState[region.closedBy];
+  } else if (region.live) {
     void region.draw(frame(), progressLine);
     timer = setInterval(() => {
       line.tick += 1;

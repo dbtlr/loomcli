@@ -1,6 +1,6 @@
 import { Readable, Writable } from 'node:stream';
 
-import { Application } from '@loomcli/core';
+import { Application, FatalError } from '@loomcli/core';
 
 import { confirm, secret, select, text } from '../../dist/index.js';
 import { questionFrame } from '../../dist/views.js';
@@ -31,7 +31,8 @@ function resize(width) {
 
 class Keyboard extends Readable {
   _read() {}
-  setRawMode() {
+  setRawMode(mode) {
+    notes.raw = mode;
     return this;
   }
 }
@@ -115,6 +116,14 @@ const scenarios = {
     ];
     notes.drawn = [...new Set(drawn)];
   },
+  /** A question beside work that fails once the question's first frame is drawn. */
+  sibling: async (context) => {
+    const lookup = Promise.withResolvers();
+    const out = observed(context.out, () => {
+      lookup.reject(new FatalError('The lookup failed.'));
+    });
+    await Promise.all([text({ ...context, out }, { message: 'Name?' }), lookup.promise]);
+  },
   /** A lane message a timer writes while a question asks. */
   timer: async (context) => {
     const out = observed(context.out, (frames) => {
@@ -181,4 +190,5 @@ const code = await app.run({
     },
   },
 });
+notes.dataListeners = keyboard.listenerCount('data');
 process.stdout.write(JSON.stringify({ answers, code, events, notes }));

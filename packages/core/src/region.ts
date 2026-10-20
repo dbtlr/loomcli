@@ -1,4 +1,5 @@
 import { InternalError } from './errors.js';
+import { isPlainObject } from './plain.js';
 import type { ProgressLedger, RegionReports } from './progress-events.js';
 import { regionCall } from './rules.js';
 import type { ProgressReport, Region, RegionCloser, RegionOptions, View } from './types.js';
@@ -125,8 +126,13 @@ class Screen {
   /** Text written to the terminal above the stack: what to write before it and after it. */
   around(text: string): { before: string; after: string } {
     const before = this.#erase();
-    this.#rowOpen = leavesRowOpen(this.#rowOpen, text);
+    this.note(text);
     return { after: this.#draw(), before };
+  }
+
+  /** Text written to the terminal while no region is open, which moves the row the stack starts on. */
+  note(text: string): void {
+    this.#rowOpen = leavesRowOpen(this.#rowOpen, text);
   }
 
   /**
@@ -206,15 +212,6 @@ class Screen {
 /** The defect one malformed region call raises, thrown from the call. */
 function callFault(sentence: string, correction: string): InternalError {
   return new InternalError(regionCall, { cause: undefined, correction, sentence });
-}
-
-/** Whether a value is an object a caller wrote as `{ ... }`. */
-function isPlainObject(value: unknown): value is Readonly<Record<string, unknown>> {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  const prototype: unknown = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
 }
 
 /** Whether an `input` option was asked for, checking the options `out.region()` received. */

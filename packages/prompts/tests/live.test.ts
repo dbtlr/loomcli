@@ -1,12 +1,10 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { replay } from '../../../scripts/test-screen.js';
-import type { ScreenEvent } from '../../../scripts/test-screen.js';
+import { replay, until } from '../../../scripts/test-screen.js';
+import type { Recorded } from '../../../scripts/test-screen.js';
 
 const fixture = new URL('fixtures/live.mjs', import.meta.url);
-
-type Recorded = ScreenEvent | { readonly mark: string };
 
 interface Run {
   answers: unknown[];
@@ -25,16 +23,9 @@ function live(scenario: string, ending = 'enter'): Run {
 }
 
 /** The rows the emulator shows once it has taken every event up to the mark, or all of them. */
-async function lines(run: Run, until?: string): Promise<readonly string[]> {
-  const end =
-    until === undefined
-      ? run.events.length
-      : run.events.findIndex((event) => 'mark' in event && event.mark === until);
-  expect(end).toBeGreaterThanOrEqual(0);
-  const events = run.events
-    .slice(0, end)
-    .filter((event): event is ScreenEvent => !('mark' in event));
-  const first = events.find((event): event is { resize: number } => 'resize' in event);
+async function lines(run: Run, mark?: string): Promise<readonly string[]> {
+  const events = until(run.events, mark);
+  const first = events.find((event): event is { readonly resize: number } => 'resize' in event);
   const shown = await replay(events, { columns: first?.resize ?? 40 });
   return shown.lines;
 }
@@ -65,6 +56,15 @@ test('a lane message a timer writes while a question asks lands above the whole 
   const run = live('timer');
   await expect(lines(run, 'timer')).resolves.toEqual(['ℹ from a timer', '? Port ›']);
   await expect(lines(run)).resolves.toEqual(['ℹ from a timer', '? Port · 8080']);
+});
+
+test('a question whose region a failure closes leaves raw mode, removes its listener, and shows the cursor after its cancelled line', async () => {
+  const run = live('sibling');
+  expect(run.code).toBe(1);
+  expect(run.notes).toMatchObject({ dataListeners: 0, raw: false });
+  const written = run.events.map((event) => ('write' in event ? event.write : '')).join('');
+  expect(written.lastIndexOf('\u001b[?25h')).toBeGreaterThan(written.indexOf('· cancelled'));
+  await expect(lines(run)).resolves.toEqual(['? Name? · cancelled', 'The lookup failed.']);
 });
 
 test('two questions started at once ask one after the other, each with its own keys', async () => {

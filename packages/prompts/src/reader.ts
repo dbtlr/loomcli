@@ -175,7 +175,23 @@ export function openReader<Options>(context: PromptContext<Options>) {
   const session = sessions.get(context.signal) ?? holdInput(context, queue);
   session.readers += 1;
   let closed = false;
+  let abandoned: { reason: unknown } | undefined = undefined;
+  let mine: Session['waiting'] = undefined;
   return {
+    /**
+     * Ends this question's reading with `reason`: its pending read rejects, and so does every later
+     * one, so the question leaves through its own path out and closes the reader there.
+     */
+    abandon(reason: unknown) {
+      if (closed || abandoned !== undefined) {
+        return;
+      }
+      abandoned = { reason };
+      if (mine !== undefined && session.waiting === mine) {
+        session.waiting = undefined;
+        mine.reject(reason);
+      }
+    },
     close() {
       if (closed) {
         return;
@@ -188,6 +204,9 @@ export function openReader<Options>(context: PromptContext<Options>) {
     },
     async read(): Promise<Key> {
       context.signal.throwIfAborted();
+      if (abandoned !== undefined) {
+        throw abandoned.reason;
+      }
       if (session.failure) {
         throw session.failure.error;
       }
@@ -196,7 +215,8 @@ export function openReader<Options>(context: PromptContext<Options>) {
         return key;
       }
       return new Promise<Key>((resolve, reject) => {
-        session.waiting = { reject, resolve };
+        mine = { reject, resolve };
+        session.waiting = mine;
       });
     },
   };

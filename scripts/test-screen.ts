@@ -6,6 +6,21 @@ import xterm from '@xterm/headless';
  */
 export type ScreenEvent = { readonly write: string } | { readonly resize: number };
 
+/** A screen event, or a named point a fixture marked in their order. */
+export type Recorded = ScreenEvent | { readonly mark: string };
+
+/** The events before the first mark of that name, or all of them, without the marks. */
+export function until(events: readonly Recorded[], mark?: string): ScreenEvent[] {
+  const end =
+    mark === undefined
+      ? events.length
+      : events.findIndex((event) => 'mark' in event && event.mark === mark);
+  if (end === -1) {
+    throw new Error(`The events hold no mark named "${String(mark)}".`);
+  }
+  return events.slice(0, end).filter((event): event is ScreenEvent => !('mark' in event));
+}
+
 /** What a headless terminal emulator shows once it has taken every event. */
 export interface Screen {
   /** Every row the emulator holds, scrollback first, each trimmed on the right, with trailing blank rows dropped. */
@@ -17,10 +32,10 @@ export interface Screen {
 /**
  * Feeds the events to a headless terminal emulator of the given size and reads its screen back, so
  * a test asserts what an operator sees rather than the bytes that drew it. A resize reflows the
- * rows the emulator holds, as a terminal emulator does.
+ * rows the emulator holds, as a terminal emulator does, and a mark is skipped.
  */
 export async function replay(
-  events: readonly ScreenEvent[],
+  events: readonly Recorded[],
   size: { readonly columns: number; readonly rows?: number },
 ): Promise<Screen> {
   const rows = size.rows ?? 24;
@@ -38,7 +53,7 @@ export async function replay(
     for (const event of events) {
       if ('resize' in event) {
         terminal.resize(event.resize, rows);
-      } else {
+      } else if ('write' in event) {
         await new Promise<void>((resolve) => {
           terminal.write(event.write, resolve);
         });

@@ -1,13 +1,10 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { replay } from '../../../scripts/test-screen.js';
-import type { ScreenEvent } from '../../../scripts/test-screen.js';
+import { replay, until } from '../../../scripts/test-screen.js';
+import type { Recorded } from '../../../scripts/test-screen.js';
 
 const fixture = new URL('fixtures/regions.mjs', import.meta.url);
-
-/** One recorded event: a write, a resize, or a named point in their order. */
-type Recorded = ScreenEvent | { readonly mark: string };
 
 interface Run {
   code: number | string;
@@ -26,19 +23,9 @@ function regions(scenario: string, terminal = 'tty', argv: string[] = []): Run {
   return JSON.parse(result.stdout);
 }
 
-/** The events up to the mark, or all of them, without the marks. */
-function until(run: Run, mark?: string): ScreenEvent[] {
-  const end =
-    mark === undefined
-      ? run.events.length
-      : run.events.findIndex((event) => 'mark' in event && event.mark === mark);
-  expect(end).toBeGreaterThanOrEqual(0);
-  return run.events.slice(0, end).filter((event): event is ScreenEvent => !('mark' in event));
-}
-
 /** The rows the emulator shows once it has taken every event up to the mark, or all of them. */
 async function screen(run: Run, mark?: string): Promise<readonly string[]> {
-  const shown = await replay(until(run, mark), { columns: 40 });
+  const shown = await replay(until(run.events, mark), { columns: 40 });
   return shown.lines;
 }
 
@@ -78,7 +65,7 @@ test('closing the top region moves its last frame into scrollback above the othe
 });
 
 test('a region whose last frame is empty leaves no row when it closes', async () => {
-  const shown = await replay(until(regions('close'), 'empty closed'), { columns: 40 });
+  const shown = await replay(until(regions('close').events, 'empty closed'), { columns: 40 });
   expect(shown.lines).toEqual(['first frame', 'second frame']);
   expect(shown.cursor).toEqual({ column: 'second frame'.length, row: 1 });
 });
@@ -94,6 +81,20 @@ test('with stdout a terminal too, a printed line lands above the region', async 
   ]);
 });
 
+test('with stdout a terminal too, a partial line rendered to stdout before the first region draws stays on its own row', async () => {
+  await expect(screen(regions('partialStdout', 'both'), 'drawn')).resolves.toEqual([
+    'partial',
+    'frame two',
+  ]);
+});
+
+test('with stdout a terminal too, a whole line printed after a partial stderr line leaves no blank row above the first region', async () => {
+  await expect(screen(regions('printedAfterPartial', 'both'), 'drawn')).resolves.toEqual([
+    'partialprinted',
+    'frame',
+  ]);
+});
+
 test('with stdout piped, stdout holds the printed line alone and the region is untouched', async () => {
   const run = regions('stdout', 'tty');
   expect(run.stdout).toBe('printed\n');
@@ -102,6 +103,16 @@ test('with stdout piped, stdout holds the printed line alone and the region is u
 
 test("an onLog hook's write to its destination's stderr lands above the region", async () => {
   await expect(screen(regions('hook'), 'logged')).resolves.toEqual(['hook heard', 'frame again']);
+});
+
+test('records an onLog hook writes at once land above a lane line written after them, in call order', async () => {
+  await expect(screen(regions('burst'), 'logged')).resolves.toEqual([
+    'hook one',
+    'hook two',
+    'hook three',
+    'ℹ lane',
+    'frame',
+  ]);
 });
 
 test('an input region holds the other regions still while it is open', async () => {
@@ -175,6 +186,7 @@ test('a region a configuration source opens closes with completion after --help 
 test.each([
   ['a stderr that is not a terminal', 'pipe', []],
   ['an invocation by name', 'invoke', []],
+  ["an action's invoke at a terminal", 'nested', []],
 ])('a region is not live under %s, and its draw calls no view', (_case, terminal, argv) => {
   const run = regions('live', terminal, argv);
   expect(run.notes).toEqual({ calls: 0, inputLive: false, live: false });
@@ -188,7 +200,7 @@ test('at verbosity -1 a region without input is not live, and an input region st
 });
 
 test('a reflowing resize leaves no stale row when the region redraws', async () => {
-  const shown = await replay(until(regions('resize')), { columns: 80 });
+  const shown = await replay(until(regions('resize').events), { columns: 80 });
   expect(shown.lines).toEqual(['after']);
 });
 
@@ -231,6 +243,11 @@ test.each([
   ['label', 'report() received a label that is not a string. Supply a string.'],
   [
     'state',
+    'end() received a state other than "ended" or "failed". Supply "ended", "failed", or nothing.',
+  ],
+  ['closedLabel', 'report() received a label that is not a string. Supply a string.'],
+  [
+    'closedState',
     'end() received a state other than "ended" or "failed". Supply "ended", "failed", or nothing.',
   ],
 ])(

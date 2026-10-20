@@ -315,13 +315,7 @@ export class Output {
     readonly host: ReportHost,
     private readonly signal: AbortSignal,
   ) {
-    this.screen = new Screen((marked) =>
-      drawnRows(marked, {
-        caps: this.drawCaps(),
-        columns: this.host.terminal.stderr.columns,
-        palette: this.palette,
-      }),
-    );
+    this.screen = new Screen((marked) => this.frameRows(marked));
     this.regions = new Regions(
       {
         cancelled: () => this.signal.aborted,
@@ -484,24 +478,20 @@ export class Output {
 
   /**
    * The destination an `onLog` hook writes to, with its stderr carried through this run's stderr
-   * order when that stream is a terminal, so a hook's line lands above the open regions.
+   * order when that stream is a terminal, so a hook's line lands above the open regions. Each
+   * chunk joins stderr's order when the hook writes it and is acknowledged at once, so records a
+   * hook writes together stay together, ahead of any write core queues after them.
    */
   logDestination(destination: LogDestination): LogDestination {
     const { stderr } = destination;
     if (stderr !== this.host.stderr || !this.host.terminal.stderr.isTTY) {
       return destination;
     }
-    const carry = async (text: string, done: () => void): Promise<void> => {
-      try {
-        await this.write(stderr, text);
-      } catch {
-        // The stream's own failure is the run's, recorded where the write was queued.
-      }
-      done();
-    };
     const carried = new Writable({
       write: (chunk: unknown, _encoding, done) => {
-        void carry(String(chunk), done);
+        // The stream's own failure is the run's, recorded where the write was queued.
+        void this.write(stderr, String(chunk)).catch(() => undefined);
+        done();
       },
     });
     return Object.freeze({ ...destination, stderr: carried });
@@ -510,7 +500,8 @@ export class Output {
   /**
    * At a terminal stderr, every text write erases the live regions before it and draws them after
    * it. When stdout is a terminal too, a stdout write does the same, through stderr's order, while
-   * a region is open, so the two streams share one order there.
+   * a region is open, so the two streams share one order there. With no region open, a stdout write
+   * still moves the row the next stack starts on, because both streams show on one screen.
    */
   private coordinate(): void {
     const { stderr, stdout, terminal } = this.host;
@@ -527,6 +518,7 @@ export class Output {
     }
     this.destination(stdout).passage = async (text, send) => {
       if (!this.screen.holding) {
+        this.screen.note(text);
         return send(text);
       }
       const sent: { failure?: { error: unknown } } = {};
@@ -545,6 +537,15 @@ export class Output {
     };
   }
 
+  /** The rows a frame's marked text takes at stderr's current width, counted as it resolves. */
+  private frameRows(marked: string): number {
+    return drawnRows(marked, {
+      caps: this.drawCaps(),
+      columns: this.host.terminal.stderr.columns,
+      palette: this.palette,
+    });
+  }
+
   /** The capabilities a drawn frame resolves under: stderr's, with its controls kept at a terminal. */
   private drawCaps() {
     const caps = capabilities(this.host, 'stderr', this.policy);
@@ -553,9 +554,9 @@ export class Output {
   }
 
   /**
-   * One region frame, rendered as `out.draw` renders: the view runs inside the call with stderr's
-   * context, its marked text is kept so the region's rows can be recounted at a later width, and a
-   * view of the wrong shape or one that breaks is this call's output-view fault.
+   * One frame of a region or of `out.draw`: the view runs inside the call with stderr's context,
+   * its marked text is kept so the frame's rows can be counted now and recounted at a later width,
+   * and a view of the wrong shape or one that breaks is this call's output-view fault.
    */
   private frame(data: unknown, value: View<never>): Frame | { failed: Promise<void> } {
     const shape = shapeOf(value);
@@ -691,41 +692,25 @@ export class Output {
   }
 
   /**
+   * One `out.draw` call: a region of one frame, rendered as a region's frame is, written in
+   * stderr's order, and resolving the rows it took at stderr's width when it rendered.
+   */
+  private async draw(data: unknown, value: View<never>): Promise<number> {
+    const frame = this.frame(data, value);
+    if ('failed' in frame) {
+      await frame.failed;
+      return 0;
+    }
+    const rows = this.frameRows(frame.marked);
+    await this.write(this.host.stderr, frame.text);
+    return rows;
+  }
+
+  /**
    * One `out.render` call, dispatched on the shape of the view it was handed. The two shapes are
    * exclusive, so a JavaScript author's value that carries both, or neither, is the output-view
    * fault of this call and nothing is written for it.
    */
-  private async draw<Data>(data: Data, value: View<Data>): Promise<number> {
-    const shape = shapeOf(value);
-    if (shape !== 'render') {
-      await this.renderFailed(
-        new Error(
-          shape === 'row'
-            ? 'The view carries row. Supply a view with render.'
-            : shapeReason(shape === 'both'),
-        ),
-      );
-      return 0;
-    }
-    const caps = this.drawCaps();
-    let rows = 0;
-    const rendered = renderText(() => {
-      const text = stringValue(resolveView(this.registry, value)(data, this.context('stderr')));
-      rows = drawnRows(text, {
-        caps,
-        columns: this.host.terminal.stderr.columns,
-        palette: this.palette,
-      });
-      return resolveText(text, this.palette, caps);
-    });
-    if (!('text' in rendered)) {
-      await this.renderFailed(rendered.failed);
-      return 0;
-    }
-    await this.write(this.host.stderr, rendered.text);
-    return rows;
-  }
-
   private renderValue(
     data: never,
     value: View<never> | RowView<never>,

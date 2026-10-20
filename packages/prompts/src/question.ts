@@ -42,16 +42,25 @@ const FRAME_CHROME = 4;
 /**
  * The input region one question draws in. Core erases and redraws it around every other write and
  * opens one input region at a time, so the first frame resolves once this question's turn has
- * come. When core closes the region, for a cancellation, a failure, or the action's return, the
- * question draws its cancelled line as the region's last frame.
+ * come. When core closes the region, for a cancellation, a failure, or the return of what opened
+ * it, the question draws its cancelled line as the region's last frame, and its reading ends: the
+ * run's signal ends it for a cancellation, and the region's signal for a failure or a return.
  */
-function asking<Options>(context: PromptContext<Options>, message: string) {
+function asking<Options>(
+  context: PromptContext<Options>,
+  message: string,
+  reader: { abandon: (reason: unknown) => void },
+) {
   const region = context.out.region({ input: true });
   region.signal.addEventListener(
     'abort',
     () => {
-      if (region.closedBy !== 'end') {
-        void region.draw({ message }, cancelledLine);
+      if (region.closedBy === 'end') {
+        return;
+      }
+      void region.draw({ message }, cancelledLine);
+      if (region.closedBy !== 'cancellation') {
+        reader.abandon(region.signal.reason);
       }
     },
     { once: true },
@@ -94,7 +103,7 @@ async function askText<Options, Output>(
 ): Promise<string | Output> {
   // Raw mode holds from here, and the first frame resolves once this question's turn has come.
   const reader = openReader(context);
-  const draw = asking(context, settings.message);
+  const draw = asking(context, settings.message, reader);
   let typed = '';
   let issue: string | undefined = undefined;
   let answered: { value: string | undefined } | undefined = undefined;
@@ -158,7 +167,7 @@ async function askSelect<Options, Choice extends string>(
   let selected = entries.find(([, value]) => value === settings.prefill) ?? first;
   // Raw mode holds from here, and the first frame resolves once this question's turn has come.
   const reader = openReader(context);
-  const draw = asking(context, settings.message);
+  const draw = asking(context, settings.message, reader);
   let answered: { value: string } | undefined = undefined;
   let start = Math.max(0, selected[0] - MAX_VISIBLE + 1);
   const frame = () => {

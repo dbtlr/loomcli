@@ -1,12 +1,10 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke, start } from '../../../scripts/test-process.js';
-import { replay } from '../../../scripts/test-screen.js';
-import type { ScreenEvent } from '../../../scripts/test-screen.js';
+import { replay, until } from '../../../scripts/test-screen.js';
+import type { Recorded } from '../../../scripts/test-screen.js';
 
 const fixture = new URL('fixtures/progress.mjs', import.meta.url);
-
-type Recorded = ScreenEvent | { readonly mark: string };
 
 interface Run {
   code: number | string;
@@ -32,16 +30,8 @@ function lines(
 }
 
 /** The rows the emulator shows once it has taken every event up to the mark, or all of them. */
-async function screen(run: Run, until?: string): Promise<readonly string[]> {
-  const end =
-    until === undefined
-      ? run.events.length
-      : run.events.findIndex((event) => 'mark' in event && event.mark === until);
-  expect(end).toBeGreaterThanOrEqual(0);
-  const events = run.events
-    .slice(0, end)
-    .filter((event): event is ScreenEvent => !('mark' in event));
-  const shown = await replay(events, { columns: 60 });
+async function screen(run: Run, mark?: string): Promise<readonly string[]> {
+  const shown = await replay(until(run.events, mark), { columns: 60 });
   return shown.lines;
 }
 
@@ -81,6 +71,12 @@ test('a line open when the run is cancelled draws its cancelled line and writes 
   const run = lines('cancel');
   expect(run.code).toBe(130);
   await expect(screen(run)).resolves.toEqual(['ℹ started', '■ Waiting (cancelled)']);
+});
+
+test("a line opened after the run's cancellation draws no frame and starts no frame timer", () => {
+  const run = lines('late');
+  expect(run.code).toBe(130);
+  expect(run.notes).toEqual({ draws: 0 });
 });
 
 test('the spinner advances one frame each interval, in order', () => {
@@ -225,6 +221,27 @@ test.each([
   [
     'bar',
     "The progress bar's complete cell is not a nonempty string. Supply the text of one cell.",
+  ],
+  [
+    'incomplete',
+    "The progress bar's incomplete cell is not a nonempty string. Supply the text of one cell.",
+  ],
+  [
+    'update',
+    'The progress line "Fetching records" received an update that is not an object. Supply an object, such as { completed: 3 }.',
+  ],
+  ['end', 'The progress line received a label that is not a string. Supply a string label.'],
+  [
+    'done',
+    'The progress line "Fetching records" received a done message that is neither a string nor a function. Supply a string, or a function that returns one.',
+  ],
+  [
+    'failed',
+    'The progress line "Fetching records" received a failed message that is neither a string nor a function. Supply a string, or a function that returns one.',
+  ],
+  [
+    'settings',
+    'The progress style received settings that are not an object. Supply an object, such as { spinner }.',
   ],
 ])('a malformed %s throws its sentence at the call', (setting, message) => {
   expect(lines('fault', 'tty', [setting]).notes).toEqual({

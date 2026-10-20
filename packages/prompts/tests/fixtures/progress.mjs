@@ -19,6 +19,8 @@ const events = [];
 const notes = {};
 let stderrText = '';
 let messages = undefined;
+/** What a scenario still runs after the run resolves, which the fixture awaits before it prints. */
+let lingering = Promise.resolve();
 
 /** Records a named point in the event order. */
 function mark(name) {
@@ -112,8 +114,14 @@ const scenarios = {
         completed: () => progress(context, { label: 'Fetching records' }).update({ completed: -1 }),
         done: () =>
           progress(context, { label: 'Fetching records' }).track(Promise.resolve(1), { done: 1 }),
+        end: () => progress(context, { label: 'Fetching records' }).end(3),
+        failed: () =>
+          progress(context, { label: 'Fetching records' }).track(Promise.resolve(1), {
+            failed: 1,
+          }),
         frame: () => progressStyle({ spinner: { frames: ['a', 2], interval: 80 } }),
         frames: () => progress(context, { label: 'Spin', spinner: { frames: [], interval: 80 } }),
+        incomplete: () => progressStyle({ bar: { complete: '#', incomplete: '' } }),
         interval: () => progressStyle({ spinner: { frames: ['a'], interval: 0 } }),
         label: () => progress(context, { label: 3 }),
         settings: () => progressStyle('dots'),
@@ -127,6 +135,41 @@ const scenarios = {
         notes.rule = error.rule?.identity;
         notes.message = `${error.sentence} ${error.correction}`;
       }
+    },
+  },
+  /** A line opened after the run's cancellation, with every draw call on its region counted. */
+  late: {
+    action: async (context) => {
+      const { out } = context;
+      notes.draws = 0;
+      const counted = {
+        ...context,
+        out: {
+          ...out,
+          region: (options) => {
+            const region = out.region(options);
+            return {
+              get closedBy() {
+                return region.closedBy;
+              },
+              draw: (data, view) => {
+                notes.draws += 1;
+                return region.draw(data, view);
+              },
+              end: (state) => region.end(state),
+              get live() {
+                return region.live;
+              },
+              report: (report) => region.report(report),
+              signal: region.signal,
+            };
+          },
+        },
+      };
+      caller.abort();
+      progress(counted, { label: 'Late', spinner: { frames: ['a', 'b'], interval: 10 } });
+      // The fixture prints once the line has had time for several frames.
+      lingering = after(100);
     },
   },
   /** A counted line and a spinner line, a lane line between their frames, then each end. */
@@ -376,4 +419,5 @@ if (terminal === 'invoke') {
     signal: caller.signal,
   });
 }
+await lingering;
 process.stdout.write(`${JSON.stringify({ code, events, messages, notes, stderr: stderrText })}\n`);

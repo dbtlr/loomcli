@@ -32,8 +32,14 @@ const drawn = new Application('drawn').action(async ({ out }) => {
   await region.end('done');
   // @ts-expect-error TS2322: A report's completed is a number.
   region.report({ completed: '3' });
+  // @ts-expect-error TS2322: A report's total is a number.
+  region.report({ total: '3' });
+  // @ts-expect-error TS2322: A report's label is a string.
+  region.report({ label: 3 });
   // @ts-expect-error TS2322: A region's input is a Boolean.
   out.region({ input: 'yes' });
+  // @ts-expect-error TS2559: A region's options are an object.
+  out.region(3);
   return { closedBy, live, signal };
 });
 
