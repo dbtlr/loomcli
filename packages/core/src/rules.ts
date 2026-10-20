@@ -138,6 +138,13 @@ const invokeOptions = registerRule('@loomcli/core/invoke-options', {
   headline: 'Invalid invoke options',
 });
 
+/** A region call that holds a value of the wrong kind. */
+const regionCall = registerRule('@loomcli/core/region-call', {
+  explanation:
+    'out.region() takes an optional options object whose input is a Boolean. A region reports a plain object whose completed and total are finite numbers of 0 or more and whose label is a string, and its end takes "ended", "failed", or nothing. A value of the wrong kind leaves the region nothing to act on.',
+  headline: 'Invalid region call',
+});
+
 /** A configuration source whose answers break the answers rule. */
 const sourceAnswers = registerRule('@loomcli/core/source-answers', {
   explanation:
@@ -237,6 +244,7 @@ export {
   logInLogHook,
   nextMisuse,
   pluginLoaderFailed,
+  regionCall,
   resultContract,
   ruleDocs,
   ruleIdentity,

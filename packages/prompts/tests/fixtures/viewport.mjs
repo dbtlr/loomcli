@@ -38,12 +38,26 @@ const app = new Application('viewport', { description: 'Render a bounded select 
           ...context,
           out: {
             ...out,
-            draw: async (data, view) => {
-              const count = await out.draw(data, view);
-              if (view === questionFrame) {
-                advanced = Math.max(advanced, count);
-              }
-              return count;
+            region: (options) => {
+              const region = out.region(options);
+              return {
+                get closedBy() {
+                  return region.closedBy;
+                },
+                draw: async (data, view) => {
+                  await region.draw(data, view);
+                  if (view === questionFrame) {
+                    // The rows the frame moves down, counted by drawing it once more and erasing that copy.
+                    const count = await out.draw(data, { render: questionFrame.render });
+                    advanced = Math.max(advanced, count);
+                    await out.draw(`\r\u001b[${count}A\u001b[J`, { render: (value) => value });
+                  }
+                },
+                end: (state) => region.end(state),
+                live: region.live,
+                report: (progress) => region.report(progress),
+                signal: region.signal,
+              };
             },
           },
         },

@@ -129,6 +129,16 @@ function confirmDefault(value: boolean | undefined): string | undefined {
 }
 
 export { InteractionUnavailableError } from './link.js';
+export { progress, progressStyle } from './progress.js';
+export type {
+  Progress,
+  ProgressContext,
+  ProgressSettings,
+  ProgressStyleSettings,
+  ProgressUpdate,
+  Spinner,
+  TrackMessages,
+} from './progress.js';
 export type {
   Answer,
   ConfirmSettings,

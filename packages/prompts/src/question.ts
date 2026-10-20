@@ -30,31 +30,62 @@ function backspace(text: string): string {
   return text.slice(0, end);
 }
 
+/** The bare view the cursor sequences draw through, which nothing overrides. */
 const controls = { render: (text: string) => text };
+const hideCursor = '\u001b[?25l';
+const showCursor = '\u001b[?25h';
 
 /** Most choices a select shows at once, and the rows its title, key help, and markers need. */
 const MAX_VISIBLE = 7;
 const FRAME_CHROME = 4;
 
-/** Draws and erases only the region a question owns, measuring the resolved override's rows. */
-function drawing<Options>(context: PromptContext<Options>, message: string) {
-  let rows = 0;
-  const clear = () => context.out.draw(`\r${rows > 0 ? `\u001b[${rows}A` : ''}\u001b[J`, controls);
+/**
+ * The input region one question draws in. Core erases and redraws it around every other write and
+ * opens one input region at a time, so the first frame resolves once this question's turn has
+ * come. When core closes the region, for a cancellation, a failure, or the return of what opened
+ * it, the question draws its cancelled line as the region's last frame, and its reading ends: the
+ * run's signal ends it for a cancellation, and the region's signal for a failure or a return.
+ */
+function asking<Options>(
+  context: PromptContext<Options>,
+  message: string,
+  reader: { abandon: (reason: unknown) => void },
+) {
+  const region = context.out.region({ input: true });
+  region.signal.addEventListener(
+    'abort',
+    () => {
+      if (region.closedBy === 'end') {
+        return;
+      }
+      void region.draw({ message }, cancelledLine);
+      if (region.closedBy !== 'cancellation') {
+        reader.abandon(region.signal.reason);
+      }
+    },
+    { once: true },
+  );
+  let hidden = false;
   return {
+    /** The answered or cancelled line, then the region's close and the cursor shown again. */
     async finish(answer: { value: string | undefined } | undefined) {
-      await clear();
       try {
-        await (answer
-          ? context.out.draw({ answer: answer.value, message }, answeredLine)
-          : context.out.draw({ message }, cancelledLine));
+        if (region.closedBy === undefined) {
+          await (answer
+            ? region.draw({ answer: answer.value, message }, answeredLine)
+            : region.draw({ message }, cancelledLine));
+          await region.end();
+        }
       } finally {
-        await context.out.draw('\u001b[?25h', controls);
+        await context.out.draw(showCursor, controls);
       }
     },
     async frame(data: QuestionFrame) {
-      await clear();
-      await context.out.draw('\u001b[?25l', controls);
-      rows = await context.out.draw(data, questionFrame);
+      await region.draw(data, questionFrame);
+      if (!hidden) {
+        hidden = true;
+        await context.out.draw(hideCursor, controls);
+      }
     },
   };
 }
@@ -70,8 +101,9 @@ async function askText<Options, Output>(
     option?: string;
   },
 ): Promise<string | Output> {
+  // Raw mode holds from here, and the first frame resolves once this question's turn has come.
   const reader = openReader(context);
-  const draw = drawing(context, settings.message);
+  const draw = asking(context, settings.message, reader);
   let typed = '';
   let issue: string | undefined = undefined;
   let answered: { value: string | undefined } | undefined = undefined;
@@ -133,8 +165,9 @@ async function askSelect<Options, Choice extends string>(
     throw new Error('A select question needs choices.');
   }
   let selected = entries.find(([, value]) => value === settings.prefill) ?? first;
+  // Raw mode holds from here, and the first frame resolves once this question's turn has come.
   const reader = openReader(context);
-  const draw = drawing(context, settings.message);
+  const draw = asking(context, settings.message, reader);
   let answered: { value: string } | undefined = undefined;
   let start = Math.max(0, selected[0] - MAX_VISIBLE + 1);
   const frame = () => {

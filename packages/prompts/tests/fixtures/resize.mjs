@@ -46,19 +46,30 @@ const app = new Application('resize', { description: 'Ask a select across resize
         ...context,
         out: {
           ...out,
-          draw: async (data, view) => {
-            const count = await out.draw(data, view);
-            if (view === questionFrame) {
-              shown.push({ above: data.above, choices: data.choices.length, rows: data.rows });
-              const next = steps.shift();
-              if (next === undefined) {
-                keyboard.push('\r');
-              } else {
-                rows = next.rows ?? rows;
-                keyboard.push(keys[next.key]);
-              }
-            }
-            return count;
+          region: (options) => {
+            const region = out.region(options);
+            return {
+              get closedBy() {
+                return region.closedBy;
+              },
+              draw: async (data, view) => {
+                await region.draw(data, view);
+                if (view === questionFrame) {
+                  shown.push({ above: data.above, choices: data.choices.length, rows: data.rows });
+                  const next = steps.shift();
+                  if (next === undefined) {
+                    keyboard.push('\r');
+                  } else {
+                    rows = next.rows ?? rows;
+                    keyboard.push(keys[next.key]);
+                  }
+                }
+              },
+              end: (state) => region.end(state),
+              live: region.live,
+              report: (progress) => region.report(progress),
+              signal: region.signal,
+            };
           },
         },
       },

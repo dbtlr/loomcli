@@ -1,4 +1,4 @@
-import type { Writable } from 'node:stream';
+import { Writable } from 'node:stream';
 import { setImmediate } from 'node:timers/promises';
 
 import { FatalError, notTextReason, ResultError } from './errors.js';
@@ -6,11 +6,15 @@ import type { ResultFault } from './errors.js';
 import type { ReportHost } from './host.js';
 import { incompleteResult, lanes } from './lanes.js';
 import type { IncompleteResult, Lane } from './lanes.js';
+import type { LogDestination } from './log.js';
+import { ProgressLedger } from './progress-events.js';
+import { Regions, Screen } from './region.js';
+import type { Frame, LiveRegion } from './region.js';
 import { capabilities, columns, plainPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { writeSequence } from './sequence.js';
 import type { SequenceView } from './sequence.js';
-import { drawnRows, resolveText, width } from './style-resolve.js';
+import { drawnRows, nextColumn, resolveText, width } from './style-resolve.js';
 import type { Palette } from './style-state.js';
 import { expandTabsMarked, wrapMarked } from './style-wrap.js';
 import { createStyle, tokens } from './style.js';
@@ -18,6 +22,8 @@ import type {
   ActionChannel,
   OpenResult,
   Out,
+  ProgressEvent,
+  RegionCloser,
   ResultBinding,
   ResultView,
   RowView,
@@ -68,9 +74,42 @@ interface Reservation {
   close: () => void;
 }
 
+/**
+ * How a destination sends one text write once it reaches the stream: a terminal stderr erases the
+ * live regions before it and draws them after it, and a terminal stdout does the same while a
+ * region is open.
+ */
+type Passage = (text: string, send: (text: string) => Promise<void>) => Promise<void>;
+
+/**
+ * The turn the destinations on one terminal take to send. One send, with the region erase and
+ * redraw around it, reaches the screen before the next one begins. A send waits only for sends
+ * that have already begun, never for writes still queued, so a write held behind an open sequence
+ * holds no other stream's send.
+ */
+class Turn {
+  #last: Promise<void> = Promise.resolve();
+
+  take(send: () => Promise<void>): Promise<void> {
+    const pending = this.#last.then(send);
+    this.#last = pending.catch(() => undefined);
+    return pending;
+  }
+}
+
 class Destination {
   tail: Promise<void> = Promise.resolve();
   state: WriteState = { kind: 'ok' };
+  passage: Passage | undefined = undefined;
+  /**
+   * The destination whose order this one's text writes may join, if any, and whether a write issued
+   * now joins it.
+   */
+  order: { shared: Destination; joins: () => boolean } | undefined = undefined;
+  /** The turn this destination's sends take with the other destination on the same terminal. */
+  turn: Turn | undefined = undefined;
+  /** How many sequences hold a place in this destination's order and have not closed. */
+  #sequences = 0;
 
   constructor(readonly stream: Writable) {
     stream.on('error', this.onError);
@@ -82,11 +121,34 @@ class Destination {
     }
   };
 
+  /**
+   * One text queued behind this destination's earlier writes and, when it joins another
+   * destination's order, behind that one's too, which then waits for it in turn.
+   */
   write(text: string): Promise<void> {
-    const pending = this.tail.then(() => this.accept(text));
+    const order = this.joined();
+    const previous = order === undefined ? this.tail : Promise.all([this.tail, order.tail]);
+    const pending = previous.then(() => this.accept(text));
     // Keep the returned rejection observable, while accounting for calls without await.
     this.tail = pending.catch(this.onError);
+    if (order !== undefined) {
+      order.tail = this.tail;
+    }
     return pending;
+  }
+
+  /**
+   * The other destination's order a text write issued now joins, if any. It joins none while a
+   * sequence holds a place in this destination's order. A write queued behind that place would
+   * otherwise hold the other stream behind the sequence too, and a sequence whose source awaits a
+   * write to the other stream would wait on itself.
+   */
+  private joined(): Destination | undefined {
+    const { order } = this;
+    if (order === undefined || this.#sequences > 0) {
+      return undefined;
+    }
+    return order.joins() ? order.shared : undefined;
   }
 
   /** One text queued behind whatever preceded it, on a destination that has not failed. */
@@ -94,7 +156,49 @@ class Destination {
     if (this.state.kind === 'failed') {
       throw this.state.error;
     }
-    return this.writeText(text);
+    return this.send(() =>
+      this.passage ? this.passage(text, (sent) => this.writeText(sent)) : this.writeText(text),
+    );
+  }
+
+  /** Sends now, or once the terminal's turn reaches it when another destination shares the screen. */
+  private send(operation: () => Promise<void>): Promise<void> {
+    return this.turn === undefined ? operation() : this.turn.take(operation);
+  }
+
+  /** One operation queued in this destination's order, which handles its own writes' failures. */
+  run(operation: () => Promise<void>): Promise<void> {
+    const pending = this.tail.then(operation);
+    this.tail = pending.catch(this.onError);
+    return pending;
+  }
+
+  /**
+   * Text composed once it reaches the stream, so it reads the state every earlier write left, and
+   * sent as it is, outside the passage. Nothing is sent for the empty string.
+   */
+  compose(produce: () => string): Promise<void> {
+    return this.run(() => {
+      if (this.state.kind === 'failed') {
+        throw this.state.error;
+      }
+      return this.send(() => {
+        const text = produce();
+        return text === '' ? Promise.resolve() : this.writeText(text);
+      });
+    });
+  }
+
+  /** Sends text now, inside an operation this destination is running, recording any failure. */
+  async sendQuietly(text: string): Promise<void> {
+    if (text === '' || this.state.kind === 'failed') {
+      return;
+    }
+    try {
+      await this.writeText(text);
+    } catch (error) {
+      this.onError(error);
+    }
   }
 
   /**
@@ -110,10 +214,13 @@ class Destination {
       open = resolve;
     });
     this.tail = previous.then(() => gate);
+    this.#sequences += 1;
     // The sequence's own pieces queue on each other, ahead of the gate that holds its place.
     let pieces = previous;
     return {
+      // The sequence closes once, when it ends however it ends.
       close: () => {
+        this.#sequences -= 1;
         open(pieces);
       },
       write: (text) => {
@@ -215,6 +322,8 @@ type LiveSequences = Set<() => void>;
 interface Emission {
   calls: number;
   live: LiveSequences;
+  /** The regions the action opened, which close when it returns. */
+  regions: Set<LiveRegion>;
 }
 
 /** Where one write goes, and the channel whose failure stops a sequence written there. */
@@ -251,11 +360,42 @@ export class Output {
   // The run's verbosity, settled right after graph build, before anything can write a lane.
   private verbosity = 0;
   style = createStyle();
+  // Whoever observes the run's progress events; nothing does under run().
+  private progressObserver: ((event: ProgressEvent) => void) | undefined = undefined;
+  // The stack of open live regions as stderr shows it.
+  private readonly screen: Screen;
+  // The live regions this run opened.
+  private readonly regions: Regions;
+  // Closes every region at once when the run's signal aborts.
+  private readonly onCancel = (): void => {
+    this.regions.closeAll('cancellation');
+  };
 
   constructor(
     readonly host: ReportHost,
     private readonly signal: AbortSignal,
   ) {
+    this.screen = new Screen({
+      column: (shown, column) => nextColumn(shown, this.host.terminal.stderr.columns, column),
+      rows: (marked) => this.frameRows(marked),
+    });
+    this.regions = new Regions(
+      {
+        cancelled: () => this.signal.aborted,
+        frame: (data, view) => this.frame(data, view),
+        ledger: new ProgressLedger({
+          deliver: (event) => {
+            this.progressObserver?.(event);
+          },
+          plain: (text) => this.context('stderr').plain(text),
+        }),
+        live: (input) => this.host.terminal.stderr.isTTY && (input || this.verbosity >= 0),
+        write: (compose) => this.destination(this.host.stderr).compose(compose),
+      },
+      this.screen,
+    );
+    this.coordinate();
+    signal.addEventListener('abort', this.onCancel, { once: true });
     this.out = {
       debug: (message) => this.emit('debug', message, 'stderr'),
       draw: (data: never, value: View<never>) => {
@@ -270,6 +410,8 @@ export class Output {
       },
       info: (message) => this.emit('info', message, 'stderr'),
       print: (message) => this.emit('print', message, 'stdout'),
+      // A region a middleware or a source opens closes once the chain has unwound.
+      region: (options) => this.regions.open(options),
       // The data type is erased here, as it is in the registry.
       // One call dispatches on the shape of the view it was handed.
       // Every view function reads its data back through its own key.
@@ -293,13 +435,17 @@ export class Output {
    */
   channel(binding: ResultBinding): ActionChannel {
     const destination: Stream = binding.result ? 'stderr' : 'stdout';
-    const emission: Emission = { calls: 0, live: new Set() };
+    const emission: Emission = { calls: 0, live: new Set(), regions: new Set() };
     const target: Target = { destination, live: emission.live };
     return {
+      complete: () => {
+        this.regions.closeAll('completion', emission.regions);
+      },
       emitted: () => emission.calls > 0,
       out: {
         ...this.out,
         print: (message) => this.emit('print', message, destination),
+        region: (options) => this.regions.open(options, emission.regions),
         // The data type is erased here, as it is in the registry.
         // One call dispatches on the shape of the view it was handed.
         // Every view function reads its data back through its own key.
@@ -377,6 +523,130 @@ export class Output {
   /** The path routing walked, updated as each name routes, which an incomplete sequence names. */
   useRoute(path: readonly string[]): void {
     this.route = path;
+  }
+
+  /** Whoever observes this run's progress events, each delivered inside the call that built it. */
+  observeProgress(observer: (event: ProgressEvent) => void): void {
+    this.progressObserver = observer;
+  }
+
+  /**
+   * Closes every live region still open, or waiting to open: with `'completion'` once the
+   * middleware chain has unwound, and with `'failure'` before any failure report renders, so each
+   * region's last frame is written above it.
+   */
+  closeRegions(closer: RegionCloser): void {
+    this.regions.closeAll(closer);
+  }
+
+  /**
+   * The destination an `onLog` hook writes to, with its stderr carried through this run's stderr
+   * order when that stream is a terminal, so a hook's line lands above the open regions. Each
+   * chunk joins stderr's order when the hook writes it and is acknowledged at once, so records a
+   * hook writes together stay together, ahead of any write core queues after them.
+   */
+  logDestination(destination: LogDestination): LogDestination {
+    const { stderr } = destination;
+    if (stderr !== this.host.stderr || !this.host.terminal.stderr.isTTY) {
+      return destination;
+    }
+    const carried = new Writable({
+      write: (chunk: unknown, _encoding, done) => {
+        // The stream's own failure is the run's, recorded where the write was queued.
+        void this.write(stderr, String(chunk)).catch(() => undefined);
+        done();
+      },
+    });
+    return Object.freeze({ ...destination, stderr: carried });
+  }
+
+  /**
+   * At a terminal stderr, every text write erases the live regions before it and draws them after
+   * it. When stdout is a terminal too, a stdout write issued while a region is open joins stderr's
+   * order, so the two streams keep one call order, and it erases and redraws the regions as a stderr
+   * write does. A stdout write issued while a sequence holds a place in stdout's order keeps
+   * stdout's order alone, so a stderr write, one the sequence's source makes included, never waits
+   * behind the sequence.
+   * The two streams take turns to send, so a row a sequence writes to stdout reaches the screen whole
+   * between stderr's writes. With no region open, a stdout write keeps its own order and still moves
+   * the row the next stack starts on, because both streams show on one screen.
+   */
+  private coordinate(): void {
+    const { stderr, stdout, terminal } = this.host;
+    if (!terminal.stderr.isTTY) {
+      return;
+    }
+    const errors = this.destination(stderr);
+    errors.passage = (text, send) => {
+      const { after, before } = this.screen.around(text);
+      return send(before + text + after);
+    };
+    if (!terminal.stdout.isTTY || stdout === stderr) {
+      return;
+    }
+    const output = this.destination(stdout);
+    const turn = new Turn();
+    errors.turn = turn;
+    output.turn = turn;
+    output.order = { joins: () => this.screen.holding, shared: errors };
+    output.passage = async (text, send) => {
+      if (!this.screen.holding) {
+        this.screen.note(text);
+        return send(text);
+      }
+      const { after, before } = this.screen.around(text);
+      await errors.sendQuietly(before);
+      try {
+        await send(text);
+      } finally {
+        await errors.sendQuietly(after);
+      }
+      return undefined;
+    };
+  }
+
+  /** The rows a frame's marked text takes at stderr's current width, counted as it resolves. */
+  private frameRows(marked: string): number {
+    return drawnRows(marked, {
+      caps: this.drawCaps(),
+      columns: this.host.terminal.stderr.columns,
+      palette: this.palette,
+    });
+  }
+
+  /** The capabilities a drawn frame resolves under: stderr's, with its controls kept at a terminal. */
+  private drawCaps() {
+    const caps = capabilities(this.host, 'stderr', this.policy);
+    caps.terminalControls ||= this.host.terminal.stderr.isTTY;
+    return caps;
+  }
+
+  /**
+   * One frame of a region or of `out.draw`: the view runs inside the call with stderr's context,
+   * its marked text is kept so the frame's rows can be counted now and recounted at a later width,
+   * and a view of the wrong shape or one that breaks is this call's output-view fault.
+   */
+  private frame(data: unknown, value: View<never>): Frame | { failed: Promise<void> } {
+    const shape = shapeOf(value);
+    if (shape !== 'render') {
+      return {
+        failed: this.renderFailed(
+          new Error(
+            shape === 'row'
+              ? 'The view carries row. Supply a view with render.'
+              : shapeReason(shape === 'both'),
+          ),
+        ),
+      };
+    }
+    try {
+      const marked = stringValue(
+        resolveView(this.registry, value)(erased(data), this.context('stderr')),
+      );
+      return { marked, text: resolveText(marked, this.palette, this.drawCaps()) };
+    } catch (error) {
+      return { failed: this.renderFailed(error) };
+    }
   }
 
   /** What this invocation's output raised beside its calls, in the order it was raised. */
@@ -490,42 +760,25 @@ export class Output {
   }
 
   /**
+   * One `out.draw` call: a region of one frame, rendered as a region's frame is, written in
+   * stderr's order, and resolving the rows it took at stderr's width when it rendered.
+   */
+  private async draw(data: unknown, value: View<never>): Promise<number> {
+    const frame = this.frame(data, value);
+    if ('failed' in frame) {
+      await frame.failed;
+      return 0;
+    }
+    const rows = this.frameRows(frame.marked);
+    await this.write(this.host.stderr, frame.text);
+    return rows;
+  }
+
+  /**
    * One `out.render` call, dispatched on the shape of the view it was handed. The two shapes are
    * exclusive, so a JavaScript author's value that carries both, or neither, is the output-view
    * fault of this call and nothing is written for it.
    */
-  private async draw<Data>(data: Data, value: View<Data>): Promise<number> {
-    const shape = shapeOf(value);
-    if (shape !== 'render') {
-      await this.renderFailed(
-        new Error(
-          shape === 'row'
-            ? 'The view carries row. Supply a view with render.'
-            : shapeReason(shape === 'both'),
-        ),
-      );
-      return 0;
-    }
-    const caps = capabilities(this.host, 'stderr', this.policy);
-    caps.terminalControls ||= this.host.terminal.stderr.isTTY;
-    let rows = 0;
-    const rendered = renderText(() => {
-      const text = stringValue(resolveView(this.registry, value)(data, this.context('stderr')));
-      rows = drawnRows(text, {
-        caps,
-        columns: this.host.terminal.stderr.columns,
-        palette: this.palette,
-      });
-      return resolveText(text, this.palette, caps);
-    });
-    if (!('text' in rendered)) {
-      await this.renderFailed(rendered.failed);
-      return 0;
-    }
-    await this.write(this.host.stderr, rendered.text);
-    return rows;
-  }
-
   private renderValue(
     data: never,
     value: View<never> | RowView<never>,
@@ -690,6 +943,7 @@ export class Output {
   }
 
   dispose(): void {
+    this.signal.removeEventListener('abort', this.onCancel);
     for (const destination of this.destinations.values()) {
       destination.dispose();
     }

@@ -3287,6 +3287,8 @@ function readyDispatch(
           supplied,
           values,
         });
+        // The action returned, so each region it left open closes for its completion.
+        channel.complete();
         /**
          * A declared result is a promise the Command makes, so an action that returned normally
          * without emitting one broke it. A failure raised before the call is that failure, and a

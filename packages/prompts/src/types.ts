@@ -11,7 +11,7 @@ type PromptContext<Options> = Pick<
   | 'host'
   | 'signal'
   | 'cancel'
-> & { readonly out: Pick<Out, 'draw'> };
+> & { readonly out: Pick<Out, 'draw' | 'region'> };
 
 type LinkKey<Options> = keyof Options & string;
 type Answer<Options, Key, Output> = [Key] extends [never]

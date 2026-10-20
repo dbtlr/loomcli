@@ -874,6 +874,11 @@ class ApplicationBuilder<
      * outermost run's, which the door decides, and the path is the one routing published.
      */
     const logged: { current: RunLog | undefined } = { current: undefined };
+    // A hook's stderr follows the run's stderr order once the run's output exists.
+    const logDestination = (): LogDestination => {
+      const destination = door.destination(reportingHost());
+      return output?.logDestination(destination) ?? destination;
+    };
     const logs = (): RunLog => {
       logged.current ??= new RunLog(
         {
@@ -881,7 +886,7 @@ class ApplicationBuilder<
             name: this.#name,
             version: this.#config.facts.version,
           }),
-          destination: door.destination(reportingHost()),
+          destination: logDestination(),
           path: () => walked,
         },
         this.#config.plugins.flatMap(({ identity, onLog }) =>
@@ -1035,6 +1040,8 @@ class ApplicationBuilder<
             start: entered.start,
             style: output.style,
           });
+          // The chain has unwound, so every region a middleware or a source left open closes.
+          invocationOutput.closeRegions('completion');
         }
         // The fault check covers the same window the write accounting covers.
         // A render failure an unawaited helper raised is still this invocation's failure.
@@ -1046,6 +1053,8 @@ class ApplicationBuilder<
         }
       } catch (error) {
         primary = error;
+        // Each open region writes its last frame before the failure report, which comes last.
+        output?.closeRegions('failure');
         try {
           const failure = toFailure(error);
           code = exitCodeOf(failure);
@@ -1106,6 +1115,7 @@ class ApplicationBuilder<
       // It is reported the way the primary failure is, so an override answers its class.
       const reportFault = async (fault: LoomError): Promise<void> => {
         if (!silenced(fault, controller.signal, cancellation())) {
+          output?.closeRegions('failure');
           const own = deferred.has(fault) ? exitCodeOf(fault) : 1;
           // The first fault that sets the code after a primary outcome that succeeded decides it.
           decisive = code === 0 ? fault : decisive;
@@ -1145,6 +1155,8 @@ class ApplicationBuilder<
         await reportFault(brokenOutput(lineFault.cause));
       }
       if (output) {
+        // A region nothing closed yet, such as one a run whose stdout broke left open, closes here.
+        output.closeRegions(code === 0 ? 'completion' : 'failure');
         const writes = answeredWrite(await output.settle(), translatedFrom.get(primary));
         if (writes.kind === 'failed') {
           code = 1;
