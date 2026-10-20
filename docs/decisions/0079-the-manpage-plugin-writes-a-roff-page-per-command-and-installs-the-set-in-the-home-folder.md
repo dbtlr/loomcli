@@ -59,3 +59,4 @@ Accepted in 0.12.0.
 
 - 2026-10-13: Proposed with the man pages contract.
 - 2026-10-20: [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md), proposed, ends the declaration fault for two page names equal without ASCII case, which the plugin's `onGraphBuilt` hook throws, as a probe-only rule. A page name equal to another's exactly is not affected. It binds when that record is accepted.
+- 2026-10-20: [ADR-0100](0100-acceptance-plans-live-beside-the-tests.md), proposed, removes the `win32` refusal of `install` and the `win32` skips in `update` and `uninstall`, because no CI job runs Windows. Each child resolves its folder from `HOME` on every platform. It binds when that record is accepted.
