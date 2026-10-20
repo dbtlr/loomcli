@@ -200,12 +200,27 @@ test('under app.invoke the observer reads every progress event of every line in 
     [3, 'started', undefined],
     [3, 'failed', undefined],
   ]);
+});
+
+test("under app.invoke a line's end and track's done message is its end event's label, and a fail with no message keeps the label", () => {
+  const progress = [Object(lines('plain', 'invoke').notes.progress)].flat();
   expect(progress.map(({ label }) => label)).toEqual([
-    ...Array.from({ length: 12 }, () => 'Fetching records'),
+    ...Array.from({ length: 11 }, () => 'Fetching records'),
+    'Fetched 10 records',
     'Building the index',
-    'Building the index',
+    'Indexed 812 records',
     'Uploading',
     'Uploading',
+  ]);
+});
+
+test("under app.invoke a line's fail and track's failed message is its failed event's label", () => {
+  const progress = [Object(lines('failMessages', 'invoke').notes.progress)].flat();
+  expect(progress.map(({ id, label, state }) => [id, state, label])).toEqual([
+    [1, 'started', 'Uploading'],
+    [1, 'failed', 'Upload refused'],
+    [2, 'started', 'Syncing'],
+    [2, 'failed', 'Sync failed: offline'],
   ]);
 });
 

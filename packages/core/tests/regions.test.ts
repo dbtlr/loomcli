@@ -310,6 +310,7 @@ test.each([
     'state',
     'end() received a state other than "ended" or "failed". Supply "ended", "failed", or nothing.',
   ],
+  ['endLabel', 'end() received a label that is not a string. Supply a string.'],
   ['closedLabel', 'report() received a label that is not a string. Supply a string.'],
   [
     'closedState',

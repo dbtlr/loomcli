@@ -33,6 +33,17 @@ test('three reports and an end build started, updated, updated, and ended with t
   ]);
 });
 
+test("an end label replaces the region's label on its end event alone, read as plain text", () => {
+  const { events, ledger: run } = ledger();
+  const region = run.region();
+  region.report({ completed: 3, label: 'Fetching', total: 3 });
+  region.close('end', 'failed', '*Fetch* refused.');
+  expect(events).toStrictEqual([
+    { completed: 3, id: 1, label: 'Fetching', state: 'started', total: 3 },
+    { completed: 3, id: 1, label: 'Fetch refused.', state: 'failed', total: 3 },
+  ]);
+});
+
 test('regions number from 1 in the order each first reports', () => {
   const { events, ledger: run } = ledger();
   const first = run.region();

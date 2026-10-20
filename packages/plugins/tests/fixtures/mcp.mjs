@@ -269,6 +269,11 @@ function progress() {
       await line.end();
     },
   );
+  const finished = new Command('finished', { description: 'End with a message.', ...opted }).action(
+    async (context) => {
+      await progressLine(context, { label: 'Fetching records' }).end('Fetched 3 records.');
+    },
+  );
   const pair = new Command('pair', { description: 'Run two lines.', ...opted }).action(
     async (context) => {
       const first = progressLine(context, { label: 'First' });
@@ -292,6 +297,7 @@ function progress() {
   return new Application('progress', { plugins: [mcp()], version: '1.0.0' })
     .command(counted)
     .command(spinner)
+    .command(finished)
     .command(pair)
     .command(bare)
     .command(waiting);

@@ -575,6 +575,17 @@ describe('progress', () => {
     ]);
   });
 
+  it("a line that ends with a message sends that message as its end notification's label", async () => {
+    const session = serve('progress');
+    session.send(tracked(1, 'finished', 'finished'));
+    const { before } = await untilAnswer(session, 1);
+    await session.close();
+    expect(before).toEqual([
+      progressNote('finished', 1, 'Fetching records (started)'),
+      progressNote('finished', 2, 'Fetched 3 records. (ended)'),
+    ]);
+  });
+
   it('two lines in one call share the token and one counter, in the order their events were delivered', async () => {
     const session = serve('progress');
     session.send(tracked(1, 'pair', 'pair'));

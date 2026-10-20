@@ -561,8 +561,11 @@ export interface Region {
   readonly closedBy: RegionCloser | undefined;
   /** Replaces the region's frame with a view's text, rendered as `out.draw` renders it. */
   draw<Data>(data: Data, view: View<Data>): Promise<void>;
-  /** Closes the region, leaving its last frame in scrollback; `'failed'` makes its end event read failed. */
-  end(state?: 'ended' | 'failed'): Promise<void>;
+  /**
+   * Closes the region, leaving its last frame in scrollback; `'failed'` makes its end event read
+   * failed, and a `label` replaces the reported label on that event.
+   */
+  end(state?: 'ended' | 'failed', label?: string): Promise<void>;
   /** Builds a typed progress event for whoever observes the run, and draws nothing. */
   report(progress: ProgressReport): void;
 }
