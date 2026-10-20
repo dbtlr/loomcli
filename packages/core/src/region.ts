@@ -312,6 +312,14 @@ function readEndState(state: unknown): 'ended' | 'failed' {
   );
 }
 
+/** The end label a region's `end()` received, checked. */
+function readEndLabel(label: unknown): string | undefined {
+  if (label === undefined || typeof label === 'string') {
+    return label;
+  }
+  throw callFault('end() received a label that is not a string.', 'Supply a string.');
+}
+
 /** What the run's regions need from the output that owns them. */
 interface RegionHost {
   /** Whether a region opened now is live: stderr is a terminal, and it takes input or the run is not quiet. */
@@ -374,9 +382,9 @@ class LiveRegion implements Region {
     return this.#regions.draw(this, data, view);
   }
 
-  end(state?: 'ended' | 'failed'): Promise<void> {
+  end(state?: 'ended' | 'failed', label?: string): Promise<void> {
     const checked = readEndState(state);
-    return this.close('end', checked);
+    return this.close('end', checked, readEndLabel(label));
   }
 
   report(progress: ProgressReport): void {
@@ -389,16 +397,17 @@ class LiveRegion implements Region {
   /**
    * Closes the region once, whatever closes it: `closedBy` is set, the signal aborts and its
    * listeners run, a frame one of them draws is the last frame, and then the region leaves the
-   * stack. The close resolves once that is written, and a later close resolves at once.
+   * stack. The close resolves once that is written, and a later close resolves at once. A `label`
+   * from `end()` replaces the reported label on the end event.
    */
-  close(closer: RegionCloser, state: 'ended' | 'failed'): Promise<void> {
+  close(closer: RegionCloser, state: 'ended' | 'failed', label?: string): Promise<void> {
     if (this.#closedBy !== undefined) {
       return Promise.resolve();
     }
     this.#closedBy = closer;
     this.#controller.abort();
     this.#finished = true;
-    this.reports.close(closer, state);
+    this.reports.close(closer, state, label);
     return observed(this.#regions.release(this));
   }
 }

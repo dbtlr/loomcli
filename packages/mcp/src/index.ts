@@ -3,6 +3,7 @@ export type { RequestId } from './json-rpc.js';
 export type {
   CallToolResult,
   JsonValue,
+  ProgressUpdate,
   ServerIdentity,
   TextContent,
   Tool,

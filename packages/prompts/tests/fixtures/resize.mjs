@@ -65,7 +65,7 @@ const app = new Application('resize', { description: 'Ask a select across resize
                   }
                 }
               },
-              end: (state) => region.end(state),
+              end: (state, label) => region.end(state, label),
               live: region.live,
               report: (progress) => region.report(progress),
               signal: region.signal,

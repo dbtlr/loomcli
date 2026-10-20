@@ -188,6 +188,42 @@ test('under app.invoke the lines land in messages', () => {
   );
 });
 
+test('under app.invoke the observer reads every progress event of every line in order', () => {
+  const progress = [Object(lines('plain', 'invoke').notes.progress)].flat();
+  const counted = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((completed) => [1, 'updated', completed]);
+  expect(progress.map(({ completed, id, state }) => [id, state, completed])).toEqual([
+    [1, 'started', 0],
+    ...counted,
+    [1, 'ended', 10],
+    [2, 'started', undefined],
+    [2, 'ended', undefined],
+    [3, 'started', undefined],
+    [3, 'failed', undefined],
+  ]);
+});
+
+test("under app.invoke a line's end and track's done message is its end event's label, and a fail with no message keeps the label", () => {
+  const progress = [Object(lines('plain', 'invoke').notes.progress)].flat();
+  expect(progress.map(({ label }) => label)).toEqual([
+    ...Array.from({ length: 11 }, () => 'Fetching records'),
+    'Fetched 10 records',
+    'Building the index',
+    'Indexed 812 records',
+    'Uploading',
+    'Uploading',
+  ]);
+});
+
+test("under app.invoke a line's fail and track's failed message is its failed event's label", () => {
+  const progress = [Object(lines('failMessages', 'invoke').notes.progress)].flat();
+  expect(progress.map(({ id, label, state }) => [id, state, label])).toEqual([
+    [1, 'started', 'Uploading'],
+    [1, 'failed', 'Upload refused'],
+    [2, 'started', 'Syncing'],
+    [2, 'failed', 'Sync failed: offline'],
+  ]);
+});
+
 test.skipIf(process.platform === 'win32')(
   "SIGINT under a signals owner writes the line's cancelled line, exits 130, and leaves no timer",
   async () => {

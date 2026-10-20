@@ -61,7 +61,7 @@ function observed(out, onFrame) {
             await onFrame(frames);
           }
         },
-        end: (state) => region.end(state),
+        end: (state, label) => region.end(state, label),
         live: region.live,
         report: (progress) => region.report(progress),
         signal: region.signal,

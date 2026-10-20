@@ -561,8 +561,11 @@ export interface Region {
   readonly closedBy: RegionCloser | undefined;
   /** Replaces the region's frame with a view's text, rendered as `out.draw` renders it. */
   draw<Data>(data: Data, view: View<Data>): Promise<void>;
-  /** Closes the region, leaving its last frame in scrollback; `'failed'` makes its end event read failed. */
-  end(state?: 'ended' | 'failed'): Promise<void>;
+  /**
+   * Closes the region, leaving its last frame in scrollback; `'failed'` makes its end event read
+   * failed, and a `label` replaces the reported label on that event.
+   */
+  end(state?: 'ended' | 'failed', label?: string): Promise<void>;
   /** Builds a typed progress event for whoever observes the run, and draws nothing. */
   report(progress: ProgressReport): void;
 }
@@ -852,7 +855,7 @@ export interface InvocationValues {
 
 /**
  * How one invocation by name runs: the starting view selection, the handler that maps a failure
- * into the outcome, and a signal that cancels the call.
+ * into the outcome, a signal that cancels the call, and the observer of its progress events.
  */
 export interface InvokeOptions<Mapped = LoomError> {
   /** The starting view selection, as a middleware's `view` assignment. */
@@ -869,6 +872,11 @@ export interface InvokeOptions<Mapped = LoomError> {
   ) => Mapped;
   /** Composed with the parent run's signal when an action calls `invoke`. */
   readonly signal?: AbortSignal;
+  /**
+   * Receives each progress event of the call's run, in order, inside the report or the region close
+   * that built it. A throw stops it, and `invoke` rejects with that throw once the run settles.
+   */
+  readonly onProgress?: (event: ProgressEvent) => void;
 }
 
 /**

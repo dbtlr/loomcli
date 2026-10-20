@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
@@ -252,6 +252,23 @@ try {
       `The packed @loomcli/plugins must not list @loom/mcp under ${field}.`,
     );
   }
+  // No built file names the private package either, so no module or declaration imports it.
+  // The manifest keeps it as a development dependency, which no consumer installs.
+  const pluginsFiles = join(temporary, 'plugins-files');
+  await mkdir(pluginsFiles);
+  const unpacked = run('tar', ['-xzf', 'plugins.tgz', '-C', pluginsFiles], temporary);
+  assert.equal(unpacked.status, 0, unpacked.output);
+  const pluginsBuild = join(pluginsFiles, 'package/dist');
+  const builtFiles = await readdir(pluginsBuild, { recursive: true, withFileTypes: true });
+  const naming = [];
+  for (const entry of builtFiles.filter((file) => file.isFile())) {
+    const path = join(entry.parentPath, entry.name);
+    const text = await readFile(path, 'utf8');
+    if (text.includes('@loom/mcp')) {
+      naming.push(relative(pluginsBuild, path));
+    }
+  }
+  assert.deepEqual(naming, [], 'No built file of the packed @loomcli/plugins may name @loom/mcp.');
   await cp(source, temporary, { recursive: true });
   await writeFile(
     join(temporary, 'package.json'),

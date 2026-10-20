@@ -1,5 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
+import { invoke } from '../../../scripts/test-process.js';
 import { ProgressLedger } from '../src/progress-events.js';
 import type { ProgressEvent } from '../src/types.js';
 
@@ -29,6 +30,17 @@ test('three reports and an end build started, updated, updated, and ended with t
     { completed: 1, id: 1, label: 'Fetching', state: 'updated', total: 3 },
     { completed: 2, id: 1, label: 'Fetching more', state: 'updated', total: 3 },
     { completed: 2, id: 1, label: 'Fetching more', state: 'ended', total: 3 },
+  ]);
+});
+
+test("an end label replaces the region's label on its end event alone, read as plain text", () => {
+  const { events, ledger: run } = ledger();
+  const region = run.region();
+  region.report({ completed: 3, label: 'Fetching', total: 3 });
+  region.close('end', 'failed', '*Fetch* refused.');
+  expect(events).toStrictEqual([
+    { completed: 3, id: 1, label: 'Fetching', state: 'started', total: 3 },
+    { completed: 3, id: 1, label: 'Fetch refused.', state: 'failed', total: 3 },
   ]);
 });
 
@@ -75,4 +87,88 @@ test('a region that never reported builds no event when it closes', () => {
   const { events, ledger: run } = ledger();
   run.region().close('end', 'ended');
   expect(events).toEqual([]);
+});
+
+const fixture = new URL('fixtures/progress-events.mjs', import.meta.url);
+
+/** The fixture's JSON report for one scenario of observed invocations by name. */
+function observed(scenario: string): Record<string, unknown> {
+  const result = invoke(fixture, [scenario]);
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  return JSON.parse(result.stdout);
+}
+
+test("onProgress receives a region's started, updated, updated, and ended events in order, each before report returns", () => {
+  expect(observed('order')).toEqual({
+    events: [
+      { id: 1, label: 'Fetching', state: 'started', total: 3 },
+      { completed: 1, id: 1, label: 'Fetching', state: 'updated', total: 3 },
+      { completed: 2, id: 1, label: 'Fetching more', state: 'updated', total: 3 },
+      { completed: 2, id: 1, label: 'Fetching more', state: 'ended', total: 3 },
+    ],
+    frozen: [true, true, true, true],
+    notes: { receivedBeforeReturn: 1 },
+  });
+});
+
+test("onProgress numbers regions by first report, reads label '' before one is given, and reads a styled label plain", () => {
+  const events = [Object(observed('numbering').events)].flat();
+  expect(events.filter((event) => event.state === 'started')).toEqual([
+    { completed: 4, id: 1, label: '', state: 'started' },
+    { id: 2, label: 'x', state: 'started' },
+  ]);
+});
+
+/** The label and state of each event one observed call received. */
+function states(run: unknown): unknown {
+  return Object(run).events.map((event: { label: string; state: string }) => [
+    event.label,
+    event.state,
+  ]);
+}
+
+test('each way a region closes reaches onProgress as its end state, and a region that never reported delivers nothing', () => {
+  const ends = observed('ends');
+  expect(states(ends.endFailed)).toEqual([
+    ['end failed', 'started'],
+    ['end failed', 'failed'],
+  ]);
+  expect(states(ends.thrown)).toEqual([
+    ['thrown', 'started'],
+    ['thrown', 'failed'],
+  ]);
+  expect(states(ends.returned)).toEqual([
+    ['returned', 'started'],
+    ['returned', 'ended'],
+  ]);
+  expect(ends.cancelled).toEqual({
+    events: [
+      { id: 1, label: 'cancelled', state: 'started' },
+      { id: 1, label: 'cancelled', state: 'cancelled' },
+    ],
+    status: 'cancelled',
+  });
+  expect(ends.silent).toEqual({ events: [], status: 'completed' });
+});
+
+test('an onLog hook receives no event for any report', () => {
+  expect(observed('logging')).toEqual({ events: 3, heard: [] });
+});
+
+test("an action's call delivers its events to its own observer alone, and inherits none from its parent", () => {
+  expect(observed('nested')).toEqual({
+    inner: [
+      { id: 1, label: 'inner', state: 'started' },
+      { id: 1, label: 'inner', state: 'ended' },
+    ],
+    outer: [
+      { id: 1, label: 'outer', state: 'started' },
+      { id: 1, label: 'outer', state: 'ended' },
+    ],
+  });
+});
+
+test('an observer that throws is called no more, the run settles, and invoke rejects with its throw', () => {
+  expect(observed('throws')).toEqual({ calls: 1, finished: true, rejected: true });
 });

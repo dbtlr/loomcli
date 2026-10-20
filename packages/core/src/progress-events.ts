@@ -39,20 +39,21 @@ class RegionReports {
 
   /**
    * The end event of a region that reported: `failed` after `end('failed')` and after a failure,
-   * `cancelled` after cancellation, and `ended` otherwise. A region that never reported builds none.
+   * `cancelled` after cancellation, and `ended` otherwise. It carries the label `end()` received,
+   * and the last reported label without one. A region that never reported builds none.
    */
-  close(closer: RegionCloser, state: 'ended' | 'failed'): void {
+  close(closer: RegionCloser, state: 'ended' | 'failed', label?: string): void {
     if (this.#id !== undefined) {
-      this.#build(closer === 'end' && state === 'failed' ? 'failed' : builtBy[closer]);
+      this.#build(closer === 'end' && state === 'failed' ? 'failed' : builtBy[closer], label);
     }
   }
 
-  #build(state: ProgressEvent['state']): void {
+  #build(state: ProgressEvent['state'], label = this.#label): void {
     this.ledger.deliver(
       Object.freeze({
         ...(this.#completed === undefined ? {} : { completed: this.#completed }),
         id: this.#id ?? 0,
-        label: this.ledger.plain(this.#label),
+        label: this.ledger.plain(label),
         state,
         ...(this.#total === undefined ? {} : { total: this.#total }),
       }),

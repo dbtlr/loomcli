@@ -323,7 +323,7 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     } else {
       await context.out.error(line.label);
     }
-    await region.end(state);
+    await region.end(state, message);
   };
   return {
     end: (message) => finish('ended', message === undefined ? undefined : checkLabel(message)),

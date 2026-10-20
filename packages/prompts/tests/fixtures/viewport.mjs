@@ -53,7 +53,7 @@ const app = new Application('viewport', { description: 'Render a bounded select 
                     await out.draw(`\r\u001b[${count}A\u001b[J`, { render: (value) => value });
                   }
                 },
-                end: (state) => region.end(state),
+                end: (state, label) => region.end(state, label),
                 live: region.live,
                 report: (progress) => region.report(progress),
                 signal: region.signal,

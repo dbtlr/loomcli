@@ -92,6 +92,17 @@ const scenarios = {
     },
     plugins: [progressStyle({ spinner: still })],
   },
+  /** A line that fails with a message, and tracked work that rejects under a failed message. */
+  failMessages: {
+    action: async (context) => {
+      await progress(context, { label: 'Uploading' }).fail('Upload refused');
+      await progress(context, { label: 'Syncing' })
+        .track(Promise.reject(new Error('offline')), {
+          failed: (error) => `Sync failed: ${error.message}`,
+        })
+        .catch(() => undefined);
+    },
+  },
   /** Work that rejects, with a failed message from a function of the rejection. */
   failed: {
     action: async (context) => {
@@ -156,7 +167,7 @@ const scenarios = {
                 notes.draws += 1;
                 return region.draw(data, view);
               },
-              end: (state) => region.end(state),
+              end: (state, label) => region.end(state, label),
               get live() {
                 return region.live;
               },
@@ -270,7 +281,7 @@ const scenarios = {
                   keyboard.push('yes\r');
                 }
               },
-              end: (state) => region.end(state),
+              end: (state, label) => region.end(state, label),
               live: region.live,
               report: (report) => region.report(report),
               signal: region.signal,
@@ -400,7 +411,16 @@ const stderr = new Writable({
 });
 let code = 0;
 if (terminal === 'invoke') {
-  const outcome = await app.invoke([], {});
+  notes.progress = [];
+  const outcome = await app.invoke(
+    [],
+    {},
+    {
+      onProgress: (event) => {
+        notes.progress.push(event);
+      },
+    },
+  );
   code = outcome.status;
   messages = outcome.messages;
 } else {

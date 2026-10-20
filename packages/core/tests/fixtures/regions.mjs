@@ -237,6 +237,7 @@ const scenarios = {
           await region.end('done');
         },
         completed: () => region.report({ completed: -1 }),
+        endLabel: () => region.end('ended', 3),
         input: () => out.region({ input: 'yes' }),
         label: () => region.report({ label: 3 }),
         options: () => out.region([]),
