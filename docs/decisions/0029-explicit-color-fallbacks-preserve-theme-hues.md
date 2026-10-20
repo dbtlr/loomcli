@@ -4,7 +4,7 @@ title: ADR-0029 - Explicit color fallbacks preserve theme hues
 description: Extend concrete color helpers with optional depth-specific fallbacks while core retains capability detection, composition, and rendering policy.
 status: accepted
 created: 2026-09-17
-modified: 2026-09-17
+modified: 2026-10-19
 ---
 
 # ADR-0029 - Explicit color fallbacks preserve theme hues
@@ -49,3 +49,4 @@ Proposed. One implementation increment delivers the named palette and fallback h
 - 2026-09-17: Proposed explicit color fallbacks and the foreground-only named palette.
 
 - 2026-09-17: Accepted with the named palette and explicit fallbacks implemented together. Exact output, composition, validation, packed consumers, and Node and Bun process tests cover the shared gate. The built factory passes compiler and editor-completion checks.
+- 2026-10-19: [ADR-0092](0092-core-settles-each-runs-background-once-and-a-theme-entry-may-adapt-to-it.md), proposed, ends the deferral of light colors and automatic background detection. The named palette's six colored tokens become adaptive, and each side carries its own explicit fallbacks: the light side's 256-color fallbacks are its own, and its 16-color fallbacks keep the dark side's names, because a light terminal remaps its own sixteen colors. Fallback selection and every other rule here stand. It binds when that record is accepted.

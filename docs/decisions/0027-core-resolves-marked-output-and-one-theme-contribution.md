@@ -4,7 +4,7 @@ title: ADR-0027 - Core resolves marked output and one theme contribution
 description: Accept the implemented style seam independently of the proposed named Loom palette, replacing the affected renderer and plugin-slot clauses.
 status: accepted
 created: 2026-09-13
-modified: 2026-09-17
+modified: 2026-10-19
 ---
 
 # ADR-0027 - Core resolves marked output and one theme contribution
@@ -45,3 +45,4 @@ The named `loomTheme` palette remains proposed under ADR-0022. The view registry
 - 2026-09-17: [ADR-0029](0029-explicit-color-fallbacks-preserve-theme-hues.md) proposes an exception to the incorporated approximation rule: an explicit color fallback takes precedence at its named depth. Existing no-options behavior and every other constraint remain unchanged. This exception binds only when ADR-0029 is accepted with its implementation.
 - 2026-10-15: [ADR-0082](0082-an-action-asks-through-the-prompts-library-and-one-interaction-decision-governs-questions-and-conditional-requiredness.md), proposed, narrows the resolution of embedded ANSI under the Application's rendering policy for `out.draw` alone, which keeps the terminal controls of its own call when stderr is a terminal. Style spans, glyphs, padding, and color policy resolve as before. It binds when that record is accepted.
 - 2026-10-17: [ADR-0086](0086-renders-fit-the-destinations-live-columns-and-tables-shrink-to-fit.md), proposed, narrows two clauses. The renderer context of `style` and `width` also supplies the destination's `columns` and an eager `wrap`. The semantic methods' lane continuation now wraps: `info`, `success`, `warn`, and `error` wrap the message at the destination's columns minus the measured gutter when the destination's `columns` is defined, and `print` never wraps. A lane with no column left after the gutter leaves its message unwrapped. Without a terminal their output is unchanged. It binds when that record is accepted.
+- 2026-10-19: [ADR-0092](0092-core-settles-each-runs-background-once-and-a-theme-entry-may-adapt-to-it.md), proposed, narrows the clause that the one theme contribution maps semantic names to unapplied concrete styles: an entry may also be an adaptive style holding one concrete style for each background, and core resolves it against the run's settled background. The contribution is still one mapping from one plugin, and a second claimant is still a declaration error. The view context gains `background`. It binds when that record is accepted.
