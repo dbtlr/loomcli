@@ -1,4 +1,4 @@
-- Remove `columns` from the select `questionFrame` data, which keeps `rows`. The default select view clips at the view context's `columns`: stderr's width narrowed by a valid `COLUMNS`, or 80 columns when `columns` is `undefined`. The select window's visible count and `rows` are read when each frame draws, so a resize reaches the next frame.
+- Remove `columns` from the select `questionFrame` data, which keeps `rows`. The default select view measures its height at the view context's `columns`, stderr's width narrowed by a valid `COLUMNS`, and its compact frame clips at that width, or at 80 columns when `columns` is `undefined`. The select window's visible count and `rows` are read when each frame draws, so a resize reaches the next frame.
 
 ### Migration
 
@@ -6,7 +6,7 @@
 
 **Why.** A view now reads the width of its destination from `context.columns`, so the frame data no longer carries a second, stale copy of it.
 
-**Before and after.**
+**Before and after.** `clip` stands for the override's own clipping helper.
 
 Before:
 
