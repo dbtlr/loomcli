@@ -70,6 +70,8 @@ const scenarios = {
         plugin('@acme/wire', { failureEncoders: [encodeFailure('application/json', line)] }),
       ],
     }),
+  'encoding-entry': () =>
+    plugin('@acme/json', { failureEncoders: [{ mediaType: 'application/json' }] }),
   'extension-async': () =>
     new Command('get', {
       extensions: [
@@ -83,6 +85,7 @@ const scenarios = {
     const copy = extension('@acme/notes/command', { schema: accepting, target: 'command' });
     return plugin('@acme/notes', { extensions: [note, copy] });
   },
+  'extension-entry': () => new Command('count', { extensions: [{ identity: '@acme/notes' }] }),
   'extension-foreign-read': () => {
     const copy = extension('@acme/notes/command', { schema: accepting, target: 'command' });
     const graph = new Application('probe', { extensions: [note({ text: 'hi' })] })
@@ -221,10 +224,12 @@ const scenarios = {
         plugin('@acme/slate', { theme: { highlight: style.blue } }),
       ],
     }),
+  'translation-entry': () => plugin('@acme/http', { translators: [{ key: SyntaxError }] }),
   'view-copies': () =>
     plugin('@acme/brand', {
       views: [view('@acme/page', { render }), view('@acme/page', { render })],
     }),
+  'view-entry': () => plugin('@acme/brand', { views: [{ identity: '@acme/page' }] }),
 };
 
 const scenario = process.argv[2];

@@ -38,6 +38,14 @@ const cases: Record<string, RuleParts> = {
     sentence:
       'Plugin "@acme/wire" registers a failure encoder for "application/json", which plugin "@acme/json" already registers.',
   },
+  // A failure encoding another installed copy of core built misses this copy's registry as this value does.
+  'encoding-entry': {
+    correction:
+      'Install one copy of @loomcli/core, so the Application and every plugin package share it.',
+    rule: 'foreign-value',
+    sentence:
+      'Plugin "@acme/json" holds a failure encoding another installed copy of @loomcli/core built.',
+  },
   'extension-async': {
     correction: 'Supply a schema that answers synchronously.',
     rule: 'invalid-extension-value',
@@ -48,6 +56,14 @@ const cases: Record<string, RuleParts> = {
     correction: 'Install one copy of the package that defines it.',
     rule: 'two-package-copies',
     sentence: 'Extension "@acme/notes/command" is defined twice.',
+  },
+  // An extension value another installed copy of core built misses this copy's registry as this value does.
+  'extension-entry': {
+    correction:
+      'Install one copy of @loomcli/core, so the Application and every plugin package share it.',
+    rule: 'foreign-value',
+    sentence:
+      'Command "count" holds an extension value another installed copy of @loomcli/core built.',
   },
   'extension-foreign-read': {
     correction: 'Install one copy of the package that defines it.',
@@ -147,10 +163,26 @@ const cases: Record<string, RuleParts> = {
     sentence:
       'Plugin "@acme/slate" claims the theme slot, which plugin "@acme/copper" already holds.',
   },
+  // A translation another installed copy of core built misses this copy's registry as this value does.
+  'translation-entry': {
+    correction:
+      'Install one copy of @loomcli/core, so the Application and every plugin package share it.',
+    rule: 'foreign-value',
+    sentence:
+      'Plugin "@acme/http" holds a translation another installed copy of @loomcli/core built.',
+  },
   'view-copies': {
     correction: 'Install one copy of the package that declares it.',
     rule: 'two-package-copies',
     sentence: 'View "@acme/page" is declared by two distinct objects.',
+  },
+  // A declared view another installed copy of core built misses this copy's registry as this value does.
+  'view-entry': {
+    correction:
+      'Install one copy of @loomcli/core, so the Application and every plugin package share it.',
+    rule: 'foreign-value',
+    sentence:
+      'Plugin "@acme/brand" holds a view or override another installed copy of @loomcli/core built.',
   },
 };
 
