@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { coreRuleParts } from './rule-parts.js';
 
 function run(scenario: string, argv: string[] = [], env: Record<string, string> = {}) {
   return invoke(new URL('fixtures/translators.mjs', import.meta.url), [scenario, ...argv], { env });
@@ -17,15 +18,9 @@ const generic = 'translators: Something went wrong.\n';
 /** The banner of the broken-translator rule, 80 columns wide. */
 const brokenBanner = `-- BROKEN TRANSLATOR ${'-'.repeat(27)} @loomcli/core/broken-translator`;
 
-/** The explanation and correction every broken translator's diagnostic closes with. */
-const brokenClose = [
-  'A translator turns a foreign throw into a failure synchronously. A throw, or any',
-  'answer other than a failure or undefined, leaves core no failure to report, so',
-  'it consults no later translator.',
-  '',
-  'Return a failure, or undefined to pass, and throw nothing from the translator.',
-  '',
-].join('\n');
+/** The fix every broken translator's diagnostic closes with. */
+const brokenCorrection =
+  'Return a failure, or undefined to pass, and throw nothing from the translator.';
 
 /** A run whose foreign throw one translator answered with the fixture's 69 failure. */
 function translated(from: string, calls: readonly string[]) {
@@ -133,9 +128,11 @@ test.each([
   expect(run(scenario)).toEqual({ status: 1, stderr: generic, stdout: 'resolved:1\n' });
   const developed = develop(scenario);
   expect(developed).toMatchObject({ status: 1, stdout: 'resolved:1\n' });
-  const opening = `${brokenBanner}\n\nThe translator the Application registered for "SyntaxError" ${clause}\n\n`;
-  expect(developed.stderr.slice(0, opening.length)).toBe(opening);
-  expect(developed.stderr.slice(-brokenClose.length - 2)).toBe(`\n\n${brokenClose}`);
+  expect(coreRuleParts(developed.stderr)).toEqual({
+    correction: brokenCorrection,
+    rule: 'broken-translator',
+    sentence: `The translator the Application registered for "SyntaxError" ${clause}`,
+  });
 });
 
 test("a throwing translator's diagnostic shows the translator's own source, then its throw, then the original throw", () => {

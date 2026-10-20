@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { expectRuleParts } from './rule-parts.js';
+import { coreRuleParts } from './rule-parts.js';
 
 function diagnostics(scenario: string) {
   const result = invoke(new URL('fixtures/diagnostics.mjs', import.meta.url), [scenario]);
@@ -86,6 +86,99 @@ test('a fault between two declarations carries a finding for each, and a correct
   );
 });
 
+/*
+ * The layout goldens of core's own rules. Every other test of a core rule pins only its identity,
+ * sentence, and correction, and the registry test checks each explanation.
+ */
+
+test("a core declaration fault between two calls prints a finding for each, then the rule's explanation and correction", () => {
+  const result = invoke(new URL('fixtures/command-diagnostics.mjs', import.meta.url), [
+    'argument-twice',
+  ]);
+  expect(result).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: [
+      '-- ARGUMENT DECLARED TWICE --------------- @loomcli/core/argument-declared-twice',
+      '',
+      'Argument "path" is declared more than once on Command "get".',
+      '',
+      '    // get',
+      "    new Command('get')",
+      "      .argument('path', { required: true })",
+      '                ^^^^^^ the first declaration',
+      '',
+      '    // get',
+      "    new Command('get')",
+      "      .argument('path', {})",
+      '                ^^^^^^ the second declaration',
+      '',
+      'An action reads each argument under its name, so two arguments with one name',
+      'leave one of them unreadable.',
+      '',
+      'Remove or rename the duplicate.',
+      '',
+    ].join('\n'),
+  });
+});
+
+test('a core declaration fault no call declared reports from run() with no finding', () => {
+  const result = invoke(new URL('fixtures/command-diagnostics.mjs', import.meta.url), [
+    'root-without-action',
+  ]);
+  expect(result).toEqual({
+    status: 1,
+    stderr: [
+      '-- NOTHING TO RUN ------------------------- @loomcli/core/command-without-action',
+      '',
+      'The root Command has no action.',
+      '',
+      "Routing ends at a Command that runs its action, or passes on to one of a group's",
+      'children. A Command with neither leaves an invocation that reaches it nothing to',
+      'run.',
+      '',
+      'Register an action.',
+      '',
+    ].join('\n'),
+    stdout: '',
+  });
+});
+
+test("a defect prints its sentence, the thrown value's source and stack, then the rule's explanation and correction", () => {
+  const result = invoke(new URL('fixtures/translators.mjs', import.meta.url), ['broken-string'], {
+    env: { FIXTURE_BUILD: 'development' },
+  });
+  expect(result.status).toBe(1);
+  // Each stack frame names a path on the machine that ran the test, so the golden elides frames.
+  const stderr = result.stderr.replaceAll(/(?:^ {4}at .+\n)+/gmu, '    at …\n');
+  expect(stderr).toBe(
+    [
+      '-- BROKEN TRANSLATOR --------------------------- @loomcli/core/broken-translator',
+      '',
+      'The translator the Application registered for "SyntaxError" returned a string instead of a failure.',
+      '',
+      'packages/core/tests/fixtures/translators.mjs:67:9',
+      '',
+      '  65 |',
+      '  66 | const foreign = () => {',
+      "> 67 |   throw new SyntaxError('Unexpected token.');",
+      '     |         ^',
+      '  68 | };',
+      '  69 |',
+      '',
+      'SyntaxError: Unexpected token.',
+      '    at …',
+      '',
+      'A translator turns a foreign throw into a failure synchronously. A throw, or any',
+      'answer other than a failure or undefined, leaves core no failure to report, so',
+      'it consults no later translator.',
+      '',
+      'Return a failure, or undefined to pass, and throw nothing from the translator.',
+      '',
+    ].join('\n'),
+  );
+});
+
 test('a diagnostic escapes every control, line separator, and bidirectional control it repeats', () => {
   const text = diagnostics('escaped');
   // The author's own line break in a sentence stays a break; every other control is escaped.
@@ -163,7 +256,7 @@ test.each([
 ])('diagnosticRule() rejects %s', (scenario, rule, sentence, correction) => {
   const text = diagnostics(scenario);
   expect(text).toContain(' @loomcli/core/rule-');
-  expectRuleParts(text, { correction, rule, sentence });
+  expect(coreRuleParts(text)).toEqual({ correction, rule, sentence });
 });
 
 /** What a development run that meets the fault writes on stderr, on the terminal the test names. */

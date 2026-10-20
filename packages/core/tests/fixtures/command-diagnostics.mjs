@@ -25,7 +25,6 @@ const scenarios = {
   },
   'child-without-action': () => new Command('store').command(new Command('get')),
   'command-name': () => new Command('bad name'),
-  'command-name-with-options': () => new Command('bad name', { description: 'Read.' }),
   'optional-before-required': () =>
     new Command('keys').argument('path', {}).argument('name', { required: true }),
   'plugin-sibling': () =>

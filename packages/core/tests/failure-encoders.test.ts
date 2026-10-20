@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { expectRuleParts } from './rule-parts.js';
+import { coreRuleParts } from './rule-parts.js';
 
 const fixture = new URL('fixtures/failure-encoders.mjs', import.meta.url);
 
@@ -185,7 +185,7 @@ test.each(Object.entries(brokenReasons))(
     const developed = run(['wire'], { build: 'development', encoder });
     expect(developed.status).toBe(1);
     expect(developed.stderr.startsWith('Refused.\n\n-- BROKEN FAILURE ENCODER ')).toBe(true);
-    expectRuleParts(developed.stderr, {
+    expect(coreRuleParts(developed.stderr)).toEqual({
       correction: 'Return the encoded failure as a string, and throw nothing from the encoder.',
       rule: 'broken-failure-encoder',
       sentence: `Plugin "@fixture/encoding" failed to encode the failure as "application/json": ${reason}`,

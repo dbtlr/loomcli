@@ -2,6 +2,7 @@ import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { findingsOf, ruleParts } from '../../../scripts/test-rules.js';
 
 const fixture = new URL('fixtures/manifest-failures.mjs', import.meta.url);
 
@@ -111,16 +112,6 @@ function reports(argv: string[]) {
   };
 }
 
-/** The banner of the failure-code conflict, 80 columns wide. */
-const banner = `-- FAILURE CODE CONFLICT ${'-'.repeat(7)} @loomcli/plugins/manifest/failure-code-conflict`;
-
-/** The rule's explanation as an 80-column diagnostic wraps it. */
-const explanation = [
-  'The manifest lists each failure code once for the whole application, with one',
-  'exit code and one meaning, so a consumer reads one contract for each code. Two',
-  'declarations of one code that disagree leave it no single entry to list.',
-].join('\n');
-
 /** One declared failure as the graph holds it: its exit code and its meaning. */
 interface Declared {
   readonly exitCode: number;
@@ -140,22 +131,40 @@ function finding({ exitCode, meaning, on }: Declared, key: 'exitCode' | 'meaning
 }
 
 /**
+ * What one invocation reports in each build, with a development build's Developer Diagnostic read
+ * as the parts a conflict's test pins: its rule's parts and its findings.
+ */
+function conflictReports(argv: string[]) {
+  const { development, distributed } = reports(argv);
+  return {
+    development: {
+      findings: findingsOf(development.stderr),
+      parts: ruleParts(development.stderr),
+      status: development.status,
+      stdout: development.stdout,
+    },
+    distributed,
+  };
+}
+
+/**
  * The report one failure-code conflict produces in each build, whichever Command was routed: a
  * development build writes the rule's Developer Diagnostic, with a finding for each declaration,
  * and a distributed build writes the generic message.
  */
 function conflict(sentence: string, first: Declared, second: Declared) {
   const key = first.exitCode === second.exitCode ? 'meaning' : 'exitCode';
-  const sections = [
-    banner,
-    sentence,
-    finding(first, key),
-    finding(second, key),
-    explanation,
-    'Declare one exit code and one meaning for each failure code.',
-  ];
   return {
-    development: { status: 1, stderr: `${sections.join('\n\n')}\n`, stdout: '' },
+    development: {
+      findings: [finding(first, key), finding(second, key)],
+      parts: {
+        correction: 'Declare one exit code and one meaning for each failure code.',
+        identity: '@loomcli/plugins/manifest/failure-code-conflict',
+        sentence,
+      },
+      status: 1,
+      stdout: '',
+    },
     distributed: { status: 1, stderr: 'app: Something went wrong.\n', stdout: '' },
   };
 }
@@ -168,12 +177,12 @@ test('one failure code with two exit codes is a declaration error naming the cod
     { exitCode: 65, meaning: notJson, on: 'Command "get"' },
     { exitCode: 1, meaning: notJson, on: 'Command "select"' },
   );
-  expect(reports(['code-conflict', '--manifest'])).toEqual(report);
-  expect(reports(['code-conflict', 'get', '--manifest'])).toEqual(report);
+  expect(conflictReports(['code-conflict', '--manifest'])).toEqual(report);
+  expect(conflictReports(['code-conflict', 'get', '--manifest'])).toEqual(report);
 });
 
 test('one failure code with two meanings is a declaration error naming the code and both Commands', () => {
-  expect(reports(['meaning-conflict', 'select', '--manifest'])).toEqual(
+  expect(conflictReports(['meaning-conflict', 'select', '--manifest'])).toEqual(
     conflict(
       'Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "The document cannot be parsed." on Command "select".',
       { exitCode: 65, meaning: notJson, on: 'Command "get"' },
@@ -183,7 +192,7 @@ test('one failure code with two meanings is a declaration error naming the code 
 });
 
 test('a conflicting meaning is quoted with its control characters escaped', () => {
-  expect(reports(['meaning-conflict-controls', '--manifest'])).toEqual(
+  expect(conflictReports(['meaning-conflict-controls', '--manifest'])).toEqual(
     conflict(
       String.raw`Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "Bad \u202eevil\u009b" on "x" on Command "select".`,
       { exitCode: 65, meaning: notJson, on: 'Command "get"' },
@@ -193,7 +202,7 @@ test('a conflicting meaning is quoted with its control characters escaped', () =
 });
 
 test('one failure code with two exit codes on one Command is a declaration error naming that Command twice', () => {
-  expect(reports(['same-command-code-conflict', '--manifest'])).toEqual(
+  expect(conflictReports(['same-command-code-conflict', '--manifest'])).toEqual(
     conflict(
       'Failure "invalid-json" is declared with exit code 65 on Command "get" and exit code 1 on Command "get".',
       { exitCode: 65, meaning: notJson, on: 'Command "get"' },
@@ -203,7 +212,7 @@ test('one failure code with two exit codes on one Command is a declaration error
 });
 
 test('one failure code with two meanings on one Command is a declaration error naming that Command twice', () => {
-  expect(reports(['same-command-meaning-conflict', 'get', '--manifest'])).toEqual(
+  expect(conflictReports(['same-command-meaning-conflict', 'get', '--manifest'])).toEqual(
     conflict(
       'Failure "invalid-json" is declared with meaning "The document is not valid JSON." on Command "get" and meaning "The document cannot be parsed." on Command "get".',
       { exitCode: 65, meaning: notJson, on: 'Command "get"' },

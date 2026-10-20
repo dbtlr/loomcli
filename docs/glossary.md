@@ -156,7 +156,7 @@ An option that controls the invocation rather than feeding the Command's work, s
 _Avoid_: Meta option, system option, framework option, takeover option (for the mark)
 
 **Default**:
-The value a declaration supplies for an omitted optional input: one no token supplied and, for an option, no input source filled. A default is stated in the validator's input type, an array of such values for a multiple option or a variadic argument, and passes through the validator like a supplied value. Core snapshots it once, at the call that declares it: arrays and plain objects are copied and frozen, and other values are kept as they are. No path through a default holds more than 10 arrays and plain objects, and a default that holds itself nests without end, so every reader of a default stays far inside the call stack on every runtime. That copy is the value the graph publishes and the validator receives.
+The value a declaration supplies for an omitted optional input: one no token supplied and, for an option, no input source filled. A default is stated in the validator's input type, an array of such values for a multiple option or a variadic argument, and passes through the validator like a supplied value. The value the author declared is the value the graph publishes and the validator receives, nested as deep as the author writes it, and each invocation receives its own copy of an array default.
 
 **Implied value**:
 The value a string option takes when its spelling is supplied bare, with nothing attached. An explicit value is attached to the spelling, because a bare spelling never takes the next word; a default, by contrast, fills an option nothing supplied. Like a default, it passes through the option's validator before any token is read.

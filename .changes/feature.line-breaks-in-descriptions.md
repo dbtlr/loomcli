@@ -1,0 +1,1 @@
+- Allow a line break in a description or a deprecated message. Help, the manifest, and MCP print the text on one line and read each line break in it as a space, and a blank description prints as written. `@loomcli/core/not-one-line` goes.

@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { ruleParts } from '../../../scripts/test-rules.js';
 
 const fixture = new URL('fixtures/service-run.mjs', import.meta.url);
 const manager = fileURLToPath(new URL('fixtures/service-manager.mjs', import.meta.url));
@@ -1134,20 +1135,13 @@ describe('settings and the graph', () => {
     const result = invoke(graphFixture, ['["bogus"]', 'run'], {
       env: { FIXTURE_BUILD: 'development' },
     });
-    expect(result).toEqual({
-      status: 1,
-      stderr: `-- SERVICE RUN WORDS DO NOT ROUTE -------- @loomcli/plugins/service/run-unrouted
-
-Plugin "@loomcli/plugins/service" setting "run" does not route to a Command with an action: bogus.
-
-The service unit runs the application with the words in run, so they name a
-Command that has an action, with its options and arguments, as the application's
-command line takes them. Words that route nowhere would leave the manager
-restarting a process that fails at once.
-
-Name the words of a Command that has an action, as the application's command line takes them.
-`,
-      stdout: '',
+    expect(result).toMatchObject({ status: 1, stdout: '' });
+    expect(ruleParts(result.stderr)).toEqual({
+      correction:
+        "Name the words of a Command that has an action, as the application's command line takes them.",
+      identity: '@loomcli/plugins/service/run-unrouted',
+      sentence:
+        'Plugin "@loomcli/plugins/service" setting "run" does not route to a Command with an action: bogus.',
     });
   });
 

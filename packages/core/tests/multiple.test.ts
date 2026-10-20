@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { expectRuleParts } from './rule-parts.js';
+import { coreRuleParts } from './rule-parts.js';
 
 function multiple(scenario: string, argv: string[] = []) {
   return invoke(new URL('fixtures/multiple.mjs', import.meta.url), [scenario, ...argv]);
@@ -111,7 +111,7 @@ test('a rejected default value fails every run with its position', () => {
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   // The fixture is a development build, so the fault prints its Developer Diagnostic.
-  expectRuleParts(result.stderr, {
+  expect(coreRuleParts(result.stderr)).toEqual({
     correction: 'Fix the default or its validator.',
     rule: 'invalid-default',
     sentence: 'Option "field" has an invalid default.\nOption "field" at 1: Supply a field name.',

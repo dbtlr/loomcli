@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vite-plus/test';
 import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { ruleParts } from '../../../scripts/test-rules.js';
 import { findOnPath } from '../../../scripts/test-shell.js';
 import { configInput } from '../src/config/extension.js';
 import { helpCommand, helpInput } from '../src/help/extension.js';
@@ -392,24 +393,16 @@ describe('names that collide', () => {
     ],
   ])('the %s collision fails every run with the pinned diagnostic', (scenario, sentence) => {
     const collide = new URL('fixtures/manpage-collide.mjs', import.meta.url);
-    const diagnostic = [
-      '-- MAN PAGE NAME TAKEN ---------------- @loomcli/plugins/manpage/page-name-taken',
-      '',
-      sentence,
-      '',
-      'The manpage plugin writes one page for each Command an operator can find, named',
-      "by the application name and the Command's path joined with hyphens. Two names",
-      'that are equal when letters are compared without case would be one file on a',
-      "file system that ignores case, such as macOS's default, so one page would",
-      'replace the other.',
-      '',
-      'Rename one of them, or hide one.',
-      '',
-    ].join('\n');
     for (const argv of [['manpage', 'install'], ['--help']]) {
-      expect(
-        invoke(collide, [scenario, ...argv], { env: { FIXTURE_BUILD: 'development' } }),
-      ).toEqual({ status: 1, stderr: diagnostic, stdout: '' });
+      const developed = invoke(collide, [scenario, ...argv], {
+        env: { FIXTURE_BUILD: 'development' },
+      });
+      expect(developed).toMatchObject({ status: 1, stdout: '' });
+      expect(ruleParts(developed.stderr)).toEqual({
+        correction: 'Rename one of them, or hide one.',
+        identity: '@loomcli/plugins/manpage/page-name-taken',
+        sentence,
+      });
       expect(invoke(collide, [scenario, ...argv])).toEqual({
         status: 1,
         stderr: 'kit: Something went wrong.\n',
