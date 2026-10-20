@@ -1,0 +1,1 @@
+- Fix `loom pr check` and `loom release plan`, which failed with `spawnSync git ENOBUFS` when a file they read at a commit was larger than 1 MiB. A release check copies every tracked file at the base, so one large document failed every release PR.

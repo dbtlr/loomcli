@@ -22,9 +22,14 @@ const manifestSchema = z.looseObject({
  */
 const neutralSettings = ['-c', 'log.showSignature=false', '-c', 'log.follow=false'];
 
+/**
+ * Runs git and returns its whole output. A tracked file read at a commit can pass the 1 MiB default
+ * output limit, as a large reference document does, so the output is unbounded.
+ */
 function gitBytes(root: string, args: string[]) {
   const result = spawnSync('git', [...neutralSettings, '--literal-pathspecs', ...args], {
     cwd: root,
+    maxBuffer: Infinity,
   });
   if (result.error) {
     throw result.error;

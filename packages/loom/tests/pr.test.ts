@@ -92,6 +92,21 @@ test('a compiler-written release passes and unrelated code cannot enter the rele
   });
 });
 
+// The lockfile check copies every tracked file at the base, and a reference document can pass 1 MiB.
+test('a release check reads a tracked file larger than a mebibyte at the base', () => {
+  const { root } = repository();
+  put(root, 'docs/reference.md', 'A line of reference prose.\n'.repeat(80_000));
+  put(root, '.changes/fix.md', '- Fix output.\n');
+  const base = commit(root);
+  expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
+  commit(root);
+  expect(releaseCheck(root, base, '0.4.8')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
+  });
+});
+
 test('a feature-only explicit target passes admission with synchronized manifests and lockfile', () => {
   const { root } = repository('0.12.0');
   put(root, '.changes/feature.input.md', '- Add typed input.\n');
