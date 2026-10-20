@@ -1,17 +1,16 @@
-import { misplacedListingFact, notOneLine } from './command-rules.js';
+import { misplacedListingFact } from './command-rules.js';
 import type { DiagnosticRule, Finding } from './diagnostic-text.js';
 import { DeclarationError, quoted } from './errors.js';
-import { flagNotBoolean } from './input-rules.js';
 
 /**
- * One character outside Unicode `White_Space`, so a fact holds prose and not only spacing.
+ * One character outside Unicode `White_Space`, so a line holds prose and not only spacing.
  * The class covers the tab, the space, the line terminators, the no-break space, and every other
  * space separator. A format character such as the zero-width space is outside it, so it is prose.
  */
 const prose = /\P{White_Space}/u;
 
 /**
- * Every character that ends a line, so a fact a projection prints on one line holds none.
+ * Every character that ends a line, so a line of prose holds none.
  * The seven are LF, VT, FF, CR, NEL, LS, and PS, each of them `White_Space` too.
  */
 const lineTerminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
@@ -94,18 +93,6 @@ export function factFault(
 }
 
 /**
- * One yes-or-no declaration key that holds a value other than a Boolean, such as `required` or
- * `hidden`. Every such key reports under one rule, in one sentence and with one correction.
- */
-export function flagFault(site: FactSite, flag: string): DeclarationError {
-  return factFault(flagNotBoolean, site, {
-    correction: 'Use true or false.',
-    fact: flag,
-    sentence: `${site.subject} declares ${flag} that is not a Boolean.`,
-  });
-}
-
-/**
  * Where one input was declared: the site of its config object, and the dotted path to its declared
  * name, which a fault about the name or about the whole input marks.
  */
@@ -138,79 +125,11 @@ export function pluginOptionSite(
 
 /**
  * One line of prose: a string that holds a character other than whitespace and no line terminator.
- * Every one-line fact reads this rule, and so does the label a configuration source answers with.
+ * The label a configuration source answers with reads this rule, and a plugin whose setting prints
+ * inside one line may read it too.
  */
 export function isProseLine(value: unknown): value is string {
   return typeof value === 'string' && prose.test(value) && !lineTerminator.test(value);
-}
-
-/**
- * The `description` core fact: one line of prose every projection reads. A value that is not a
- * string fails the same way a blank one does, because the author reads one rule for one fact.
- * An omitted description is absent, not a fault, so it passes through as `undefined`.
- */
-export function checkDescription(site: FactSite, value: unknown): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!isProseLine(value)) {
-    throw factFault(notOneLine, site, {
-      correction: 'Supply a one-line summary.',
-      fact: 'description',
-      sentence: `${site.subject} description must hold a character other than whitespace and no line terminator.`,
-    });
-  }
-  return value;
-}
-
-/**
- * The `hidden` core fact: whether a listing omits this member. It is a Boolean, because a listing
- * asks one question of it, and an omitted declaration reads `false`. Routing selects and parsing
- * binds without reading it, so a hidden member behaves as any other.
- */
-export function checkHidden(site: FactSite, value: unknown): boolean {
-  if (value === undefined) {
-    return false;
-  }
-  if (typeof value !== 'boolean') {
-    throw flagFault(site, 'hidden');
-  }
-  return value;
-}
-
-/**
- * The `control` core fact: whether an option controls the invocation rather than feeding the
- * Command's work. It is a Boolean, because a projection that lists what a Command needs asks one
- * question of it, and an omitted declaration reads `false`. Core never reads it at run time.
- */
-export function checkControl(site: FactSite, value: unknown): boolean {
-  if (value === undefined) {
-    return false;
-  }
-  if (typeof value !== 'boolean') {
-    throw flagFault(site, 'control');
-  }
-  return value;
-}
-
-/**
- * The `deprecated` core fact: the one-line migration message a listing shows beside the member.
- * It answers the rule a description answers, because both are one line of prose a projection
- * prints. A bare `true` is rejected with every other value that is not prose: a deprecation with
- * no migration path leaves an operator or an agent with nothing to do.
- */
-export function checkDeprecated(site: FactSite, value: unknown): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!isProseLine(value)) {
-    throw factFault(notOneLine, site, {
-      correction: 'Supply a one-line migration path, such as "Use get instead.".',
-      fact: 'deprecated',
-      sentence: `${site.subject} deprecated message must hold a character other than whitespace and no line terminator.`,
-    });
-  }
-  return value;
 }
 
 /**
@@ -244,24 +163,4 @@ export function checkNoControl(site: FactSite, declared: object): void {
       sentence: `${site.subject} declares control, which applies to options alone.`,
     });
   }
-}
-
-/**
- * The `version` core fact, which the Application alone carries. Core reads it as an opaque string,
- * because the convention is the package manifest's own field and no scheme is imposed on it. An
- * omitted version is `0.0.0`, which means unversioned, and core keeps no record of which one the
- * author wrote.
- */
-export function checkVersion(site: FactSite, value: unknown): string {
-  if (value === undefined) {
-    return '0.0.0';
-  }
-  if (!isProseLine(value)) {
-    throw factFault(notOneLine, site, {
-      correction: 'Supply a string such as "1.2.0".',
-      fact: 'version',
-      sentence: `${site.subject} version must be a string that holds a character other than whitespace and no line terminator.`,
-    });
-  }
-  return value;
 }

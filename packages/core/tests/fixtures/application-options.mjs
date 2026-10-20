@@ -6,15 +6,9 @@ import { ruleText } from './rule-text.mjs';
 const scenario = process.argv[2];
 const mode = process.argv[3];
 
-const declared = new Application('example').globalOption('file', { short: 'f', type: 'string' });
-
-/** The second argument of each scenario: the options object, and the shapes it is mistaken for. */
+/** The second argument of each scenario: an options object. */
 const supplied = {
-  'application-value': declared,
-  'array-options': [],
-  'empty-application': new Application('example'),
   'options-object': { description: 'Example application.' },
-  'string-options': 'globals',
 };
 
 // The constructor checks the options slot, so a faulty one ends the fixture here.

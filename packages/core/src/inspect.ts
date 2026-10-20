@@ -8,7 +8,7 @@ import { partOf, siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
 import { schemaConverterFailed } from './input-rules.js';
 import type { OptionGroup } from './option-groups.js';
-import { reportedOf, spellingsOf } from './options.js';
+import { distinctAliases, reportedOf, spellingsOf } from './options.js';
 import type { OptionSpelling } from './options.js';
 import { isPlainObject, snapshotRecord } from './plain.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
@@ -191,8 +191,8 @@ export function reportedSpelling(option: OptionNode): string {
 
 /**
  * A declared default is wrapped, so `default: undefined` reads apart from no default at all. The
- * value is the frozen snapshot the declaring call took, the one a run validates, so inspection
- * copies nothing and every reader sees one value.
+ * value is the default as declared, the one a run validates, so inspection copies nothing and every
+ * reader sees one value.
  */
 function declaredDefault(config: ArgumentConfig | OptionConfig) {
   return 'default' in config ? Object.freeze({ value: config.default }) : undefined;
@@ -320,7 +320,7 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
   const { config, name } = input;
   const { long, negative, short } = spellingsOf(table, name);
   const shared = {
-    aliases: Object.freeze([...(config.aliases ?? [])]),
+    aliases: Object.freeze(distinctAliases(name, config).map(({ alias }) => alias)),
     control: config.control === true,
     deprecated: config.deprecated,
     description: config.description,

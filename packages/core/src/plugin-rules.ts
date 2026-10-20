@@ -9,29 +9,8 @@ import { registerRule } from './diagnostic-text.js';
 /** A slot that holds a list, such as `plugins` or `commands`, holding a value of another kind. */
 const notAList = registerRule('@loomcli/core/not-a-list', {
   explanation:
-    'Core reads plugins, commands, extensions, views, translators, failure encoders, signals, and aliases each as a list, in order. A value of any other kind has no entries to read.',
+    'Core reads plugins, commands, extensions, views, translators, failure encoders, and signals each as a list, in order. A value of any other kind has no entries to read.',
   headline: 'Not a list',
-});
-
-/**
- * A declaration core reads by its keys, such as a plugin's middleware or a constructor's options,
- * that is not an object.
- */
-const notAnObject = registerRule('@loomcli/core/not-an-object', {
-  explanation:
-    "Core reads the options of a Command and of the Application, a plugin's definition, its options record, each of its option declarations, its middleware, its source, the config of an argument or option, and the settings a plugin factory takes by their keys. A value of any other kind has no keys to read.",
-  headline: 'Not an object',
-});
-
-/**
- * A declaration whose read throws while core takes its one copy, such as a getter that throws or a
- * proxy whose trap throws: the config of an argument or option, a plugin's definition and each of
- * its option declarations, and the options of a Command or of the Application.
- */
-const unreadableDeclaration = registerRule('@loomcli/core/unreadable-declaration', {
-  explanation:
-    'Core reads a declaration by its keys, and each list in it by index, once, at the call that declares it, and checks and records the copy it takes. A read that throws, such as a throwing getter or proxy trap, leaves core nothing to check or record.',
-  headline: 'Declaration could not be read',
 });
 
 /** A list entry that its factory did not build, such as a hand-made plugin or translation. */
@@ -238,7 +217,6 @@ export {
   middlewareActivation,
   notAFunction,
   notAList,
-  notAnObject,
   overrideKey,
   overrideTwice,
   pluginInstalledTwice,
@@ -253,5 +231,4 @@ export {
   translationKey,
   twoPackageCopies,
   unknownSignal,
-  unreadableDeclaration,
 };

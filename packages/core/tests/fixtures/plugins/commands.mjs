@@ -29,11 +29,6 @@ const scenarios = {
       named('doctor'),
     ),
   // The application's own command() closes globalOption(), whatever the plugins attached.
-  'global-after-command': () =>
-    new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] })
-      .command(named('local'))
-      .globalOption('file', { type: 'string' }),
-  // The plugins' Commands attach at construction and leave globalOption() open.
   'global-after-plugin-commands': () =>
     new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] })
       .globalOption('file', { type: 'string' })

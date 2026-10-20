@@ -10,34 +10,12 @@ const mode = process.argv[5];
 
 const dispatch = ({ out }) => out.print('dispatched');
 
-/**
- * Every value a projection could not print as one line of prose, the one-line summary that it can,
- * and a value that is not a string at all, which a JavaScript author can still declare.
- * The Booleans belong to `hidden`, which is the one fact that reads them.
- */
+/** The values a fact takes: a one-line summary, a migration message, and the Booleans. */
 const values = {
-  blank: '',
-  'carriage-return': 'One line\rand another',
   false: false,
-  'form-feed': 'One line\fand another',
-  'line-feed': 'One line\nand another',
-  'line-separator': 'One line\u2028and another',
   migration: 'Use get instead.',
-  'next-line': '\u0085',
-  'next-line-inside': 'One line\u0085and another',
-  'no-break-space': '\u00a0',
-  'no-break-space-inside': 'One\u00a0line.',
-  null: null,
-  number: 42,
-  'paragraph-separator': 'One line\u2029and another',
-  spaces: '   ',
-  'string-object': new String('Reads one document.'),
   summary: 'Reads one document.',
-  tabs: '\t\t',
   true: true,
-  'vertical-tab': 'One line\vand another',
-  // A zero-width space is a format character, not whitespace, so it reads as prose.
-  'zero-width-space': '\u200b',
 };
 
 /** One target of a core fact per entry, each declared the way an author declares it. */

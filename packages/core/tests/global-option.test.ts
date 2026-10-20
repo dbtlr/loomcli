@@ -17,43 +17,11 @@ test('globalOption derives an Application without changing its receiver', () => 
   });
 });
 
-test.each(['after-action', 'after-command'])(
-  'globalOption() after %s throws from its call',
-  (scenario) => {
-    expect(invoke(fixture, [scenario])).toEqual({
-      status: 0,
-      stderr: '',
-      stdout:
-        'thrown:1: The Application declares global option "late" after command() or action(). Declare global options before attaching Commands or registering an action.\n',
-    });
-  },
-);
-
-test('globalOption() validates the config copy it stores, not the config it received', () => {
-  expect(invoke(fixture, ['default-captured'])).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: '{"limit":"kept"}\n',
-  });
-});
-
 test('a global declared after a colliding root-local option throws from globalOption()', () => {
   expect(invoke(fixture, ['local-first'])).toEqual({
     status: 0,
     stderr: '',
     stdout:
       'thrown:1: Option "quiet" is declared as a global option and as a local option on the root Command. Rename the local option.\n',
-  });
-});
-
-test.each([
-  ['required', 'required'],
-  ['required-false', 'required'],
-  ['validate-omitted', 'validateOmitted'],
-])('a global option declaring %s throws from globalOption()', (scenario, key) => {
-  expect(invoke(fixture, [scenario])).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: `thrown:1: Global option "file" declares ${key}. Remove ${key}, and check for the value in each Command that needs it.\n`,
   });
 });

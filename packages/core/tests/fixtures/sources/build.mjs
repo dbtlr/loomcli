@@ -23,10 +23,6 @@ function withPlugins(...plugins) {
 }
 
 const scenarios = {
-  'argument-env': () =>
-    new Application('app')
-      .command(new Command('get').argument('path', { env: 'PATH_TO' }).action(dispatch))
-      .action(dispatch),
   'binding-not-listed': () =>
     withPlugins(plugin('@acme/config', { source: { binding: configKey, load } })),
   'binding-own-option': () =>
@@ -40,16 +36,6 @@ const scenarios = {
     withPlugins(
       plugin('@acme/config', { extensions: [commandKey], source: { binding: commandKey, load } }),
     ),
-  'env-grammar': () =>
-    new Application('app')
-      .globalOption('limit', { env: '9LIMIT', type: 'string' })
-      .action(dispatch),
-  'env-list-bad-name': () =>
-    new Application('app')
-      .globalOption('limit', { env: ['LIMIT', '9LIMIT'], type: 'string' })
-      .action(dispatch),
-  'env-list-empty': () =>
-    new Application('app').globalOption('limit', { env: [], type: 'string' }).action(dispatch),
   'env-list-repeat': () =>
     new Application('app')
       .globalOption('limit', { env: ['LIMIT', 'MAX', 'LIMIT'], type: 'string' })
@@ -63,26 +49,6 @@ const scenarios = {
           .action(dispatch),
       )
       .action(dispatch),
-  'env-multiple': () =>
-    new Application('app')
-      .globalOption('field', { env: 'FIELDS', multiple: true, type: 'string' })
-      .action(dispatch),
-  'env-not-string': () =>
-    new Application('app').globalOption('limit', { env: 7, type: 'string' }).action(dispatch),
-  'local-env-grammar': () =>
-    new Application('app')
-      .command(
-        new Command('count').option('limit', { env: 'LIMIT-X', type: 'string' }).action(dispatch),
-      )
-      .action(dispatch),
-  'plugin-env-grammar': () =>
-    withPlugins(plugin('@loomcli/log', { options: { verbose: { env: '', type: 'boolean' } } })),
-  'plugin-env-multiple': () =>
-    withPlugins(
-      plugin('@loomcli/log', {
-        options: { tags: { env: 'TAGS', multiple: true, type: 'string' } },
-      }),
-    ),
   'root-variable-twice': () =>
     new Application('app')
       .globalOption('limit', { env: 'TEXTSTAT_LIMIT', type: 'string' })
@@ -110,7 +76,6 @@ const scenarios = {
       .command(new Command('sum').option('cap', { env: 'SHARED', type: 'string' }).action(dispatch))
       .action(dispatch),
   'source-no-load': () => withPlugins(config({ binding: configKey })),
-  'source-not-object': () => withPlugins(config('settings.json')),
   'variable-local-twice': () =>
     new Application('app')
       .command(

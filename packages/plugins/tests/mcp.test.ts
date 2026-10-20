@@ -189,6 +189,23 @@ describe('the listing', () => {
     });
   });
 
+  it('a line break in a core description or a deprecation message reads as one space', async () => {
+    expect(toolNamed(await toolsOf('multiline'), 'fetch')).toMatchObject({
+      description: 'Deprecated: Use get instead.\nRead one value at a path.',
+      inputSchema: {
+        properties: {
+          depth: { description: 'Deprecated: Use --level.\nHow deep to walk.' },
+          path: { description: 'The path.' },
+        },
+      },
+    });
+    const session = serve('multiline');
+    session.send(request(1, 'server/discover'));
+    const answer: Message = await session.next();
+    await session.close();
+    expect(JSON.stringify(answer.result)).toContain('"description":"A fixture kit."');
+  });
+
   it("the extension's description replaces the core one, and a tool with neither carries none", async () => {
     const tools = await toolsOf('listing');
     expect(toolNamed(tools, 'worded')).toMatchObject({

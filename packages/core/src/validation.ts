@@ -1,37 +1,21 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import { captureDeclaration, elidedRead, unreadableFault } from './capture.js';
-import type { CaptureFaults } from './capture.js';
-import { contentDeclaration } from './content-rules.js';
 import type { Content } from './content.js';
-import { minimumSources, prepareContent } from './content.js';
+import { prepareContent } from './content.js';
 import { schemaOptions } from './context.js';
 import { escapeControlCharacters } from './controls.js';
 import { elided, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { asSentence, DeclarationError, InputError, quoted, reasonOf } from './errors.js';
 import type { InputProblem } from './errors.js';
-import { callSite, factFault, flagFault, partOf, siteFinding } from './facts.js';
+import { callSite, partOf, siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
-import {
-  booleanOptionValueRule,
-  countOptionValueRule,
-  defaultDepth,
-  defaultLevels,
-  defaultShape,
-  invalidDefault,
-  invalidImplied,
-  notAValidator,
-  omissionAlreadyDecided,
-  omissionWithoutValidator,
-  requiredWithDefault,
-} from './input-rules.js';
+import { invalidDefault, invalidImplied } from './input-rules.js';
 import { groupReports } from './option-groups.js';
 import type { OptionGroup } from './option-groups.js';
 import { booleanValue, reportedOf, spellingsOf } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
-import { boundedSnapshot, defineEntry, NestedTooDeepError, shallowList } from './plain.js';
-import { notAnObject } from './plugin-rules.js';
+import { defineEntry } from './plain.js';
 import { validatorFailed } from './rules.js';
 import type {
   ArgumentConfig,
@@ -264,99 +248,6 @@ export class ValidationLedger {
   }
 }
 
-/** The faults a config's capture raises: those of every capture, and a default nested too deep. */
-export interface ConfigFaults extends CaptureFaults {
-  /** The default holds a path deeper than `defaultLevels`; the finding prints it elided. */
-  readonly tooDeep: () => DeclarationError;
-}
-
-/**
- * Authoring's one read of a config, through `captureDeclaration`: the prototype verdict, the copy of
- * every own string key, the copies of its `extensions` and `aliases` lists, and the snapshot of its
- * default, inside one try. Every later check, the registry entry, and every sentence read the copy
- * and never the author's object again, so a getter runs once and the caller's later changes reach
- * nothing. The default is copied and frozen to `defaultLevels` levels, cycles included, and that
- * copy is the value the graph publishes and a run validates; every other property is captured as
- * declared, because core clones no library object. A read that throws, from a getter or a proxy
- * trap, is the unreadable fault, named by the key it threw in, a default nested deeper is the
- * too-deep fault, and a value that is not a plain object is the not-an-object fault.
- */
-export function captureConfig<Config extends ArgumentConfig | OptionConfig | StdinConfig>(
-  config: Config,
-  faults: ConfigFaults,
-): Config {
-  const { notAnObject: notAnObjectFault, tooDeep, unreadable } = faults;
-  return captureDeclaration(
-    config,
-    (copy, read) => {
-      // Presence is the key, so a declared `default: undefined` stays a default.
-      read.nested(copy, 'default', (value) => boundedSnapshot(value, defaultLevels));
-      read.nested(copy, 'extensions', shallowList);
-      read.nested(copy, 'aliases', shallowList);
-    },
-    {
-      notAnObject: notAnObjectFault,
-      unreadable: (thrown, slot) =>
-        thrown instanceof NestedTooDeepError ? tooDeep() : unreadable(thrown, slot),
-    },
-  );
-}
-
-/** The fault of a default nested deeper than `defaultLevels`, declared by `subject`. */
-export function defaultDepthFault(subject: string, findings: readonly Finding[]): DeclarationError {
-  return new DeclarationError(defaultDepth, {
-    correction: `Nest a default at most ${String(defaultLevels)} levels deep.`,
-    findings,
-    sentence: `${subject} default nests deeper than ${String(defaultLevels)} levels.`,
-  });
-}
-
-/**
- * The config every `argument()`, `option()`, and `globalOption()` call, and every input a lifecycle
- * hook declares, reads through `captureConfig`. A call in JavaScript that supplies none, or a value
- * of another kind, reports a declaration fault and not a TypeError, and so does a config whose read
- * throws. Each fault marks the config on the call at `place`.
- */
-export function captureInputConfig<Config extends ArgumentConfig | OptionConfig | StdinConfig>(
-  declared: {
-    readonly config: Config;
-    readonly kind: InputDeclaration['kind'];
-    readonly name: string;
-  },
-  place: InputPlace,
-): Config {
-  const { config, kind, name } = declared;
-  const subject = `${kind === 'argument' ? 'Argument' : 'Option'} ${quoted(name)}`;
-  // The finding marks the config, or one key inside it, which `shown` stands for when the call prints.
-  const findings = (shown: unknown, keys: readonly string[] = []) => [
-    siteFinding(
-      callSite(subject, { arguments: [name, shown], ...place }),
-      ['1', ...keys].join('.'),
-    ),
-  ];
-  return captureConfig(config, {
-    notAnObject: () =>
-      new DeclarationError(notAnObject, {
-        correction: `Supply ${kind === 'argument' ? 'an argument' : 'an option'} config object, such as ${kind === 'argument' ? '{}' : "{ type: 'string' }"}.`,
-        findings: findings(config),
-        sentence: `${subject} declares a config that is not an object.`,
-      }),
-    // The default's walk stopped at the limit, so the finding prints it elided.
-    tooDeep: () => {
-      const { keys, shown } = elidedRead('default');
-      return defaultDepthFault(subject, findings(shown, keys));
-    },
-    // A part whose read threw is never read again, so the finding prints it elided.
-    unreadable: (thrown, slot) => {
-      const { keys, shown } = elidedRead(slot);
-      return unreadableFault(
-        { declared: 'config', findings: findings(shown, keys), subject },
-        thrown,
-      );
-    },
-  });
-}
-
 /**
  * A declaration error names the declaration, because the author reads the declaration to fix it.
  * An argument declares and reads under one name, so the two namings differ for options alone.
@@ -454,7 +345,7 @@ function collects(input: InputDeclaration) {
 
 /**
  * The declaration flag that sends an omitted value to its own validator. Every declaration reads it
- * here, and the declaration rules below reject it wherever another rule already decides absence.
+ * here, and the types allow it only where no other rule already decides absence.
  */
 export function validatesOmission(input: InputDeclaration) {
   const { config } = input;
@@ -469,204 +360,6 @@ function suppliedOption(options: OptionValues, name: string, collected: boolean)
 /** The copy a collected value is handed out as, because the parser's array is the action's. */
 function copied(value: string | string[] | undefined) {
   return Array.isArray(value) ? [...value] : value;
-}
-
-/**
- * Without a validator the raw shape is the declared default's only contract. With one, a default
- * of several values must still be an array, because each of its values passes the validator.
- */
-function holdsRawDefault(input: InputDeclaration) {
-  const value = input.config.default;
-  if (!collects(input)) {
-    return input.config.validate !== undefined || typeof value === 'string';
-  }
-  return (
-    Array.isArray(value) &&
-    (input.config.validate !== undefined ||
-      value.every((entry: unknown) => typeof entry === 'string'))
-  );
-}
-
-/**
- * `validateOmitted: true` is the one way an omitted scalar reaches its validator, so every other
- * rule that already decides absence rejects it, and the flag needs a validator to receive the
- * omission.
- */
-function checkOmissionValidation(input: InputDeclaration, site: InputSite, subject: string) {
-  const { config } = input;
-  const decided = (sentence: string, correction: string) =>
-    factFault(omissionAlreadyDecided, site, { correction, fact: 'validateOmitted', sentence });
-  if (config.required) {
-    throw decided(
-      `${subject} is required and declares validateOmitted.`,
-      'Remove validateOmitted or make the input optional.',
-    );
-  }
-  if (hasDefault(input)) {
-    throw decided(
-      `${subject} declares a default and validateOmitted.`,
-      'Remove one; the default already fills an omitted value.',
-    );
-  }
-  if (collects(input)) {
-    throw decided(
-      `${subject} takes several values and declares validateOmitted.`,
-      'Remove validateOmitted; with no values the action receives an empty array and no validator runs.',
-    );
-  }
-  if (config.validate === undefined) {
-    throw factFault(omissionWithoutValidator, site, {
-      correction: 'Add validate or remove validateOmitted.',
-      fact: 'validateOmitted',
-      sentence: `${subject} declares validateOmitted without a validator.`,
-    });
-  }
-}
-
-/** The value rules a Boolean or counted option may not declare, in the order a diagnostic names them. */
-const valueRules = ['validate', 'default', 'required', 'validateOmitted'] as const;
-
-/** Whether a `validate` value is a Standard Schema v1 object that core can call. */
-function isStandardSchema(validator: unknown): boolean {
-  if (validator === null || (typeof validator !== 'object' && typeof validator !== 'function')) {
-    return false;
-  }
-  const props: unknown = Reflect.get(validator, '~standard');
-  return (
-    typeof props === 'object' &&
-    props !== null &&
-    Reflect.get(props, 'version') === 1 &&
-    typeof Reflect.get(props, 'vendor') === 'string' &&
-    typeof Reflect.get(props, 'validate') === 'function'
-  );
-}
-
-/**
- * The value rules a Boolean or counted option declares, which take a value it never consumes. Each
- * kind names its own absent value in the correction.
- */
-function checkValueless(config: OptionConfig, site: InputSite, subject: string) {
-  const declared = valueRules.find((key) => key in config);
-  if (declared === undefined) {
-    return;
-  }
-  if (config.type === 'count') {
-    throw factFault(countOptionValueRule, site, {
-      correction: `Remove ${declared}; a counted option reads 0 when no occurrence supplies it.`,
-      fact: declared,
-      sentence: `${subject} is a counted option and declares ${declared}.`,
-    });
-  }
-  throw factFault(booleanOptionValueRule, site, {
-    correction: `Remove ${declared}; use polarity to control its absent value.`,
-    fact: declared,
-    sentence: `${subject} is Boolean and declares ${declared}.`,
-  });
-}
-
-function checkDeclaration(input: InputDeclaration, site: InputSite, subject: string) {
-  const { config } = input;
-  if (config.type === 'content') {
-    const invalid = (fact: string, sentence: string, correction: string) =>
-      factFault(contentDeclaration, site, { correction, fact, sentence });
-    if (site.declaration.call === 'globalOption' || site.declaration.call === 'plugin') {
-      throw invalid(
-        'type',
-        `${subject} declares a global content input.`,
-        'Declare content on the Command that reads it.',
-      );
-    }
-    for (const key of ['default', 'implied', 'validate', 'validateOmitted']) {
-      if (Object.hasOwn(config, key)) {
-        throw invalid(
-          key,
-          `${subject} is a content input and declares ${key}.`,
-          `Remove ${key}; content inputs use supplied paths or claimed stdin.`,
-        );
-      }
-    }
-    if (config.stdin !== undefined && typeof config.stdin !== 'boolean') {
-      throw flagFault(site, 'stdin');
-    }
-    for (const key of ['min', 'max']) {
-      const bound: unknown = Reflect.get(config, key);
-      if (
-        bound !== undefined &&
-        (!collects(input) || typeof bound !== 'number' || !Number.isSafeInteger(bound) || bound < 0)
-      ) {
-        throw invalid(
-          key,
-          `${subject} declares an invalid ${key} source count.`,
-          'Use a nonnegative safe integer on a content collection.',
-        );
-      }
-    }
-    if (config.max !== undefined && minimumSources(config) > config.max) {
-      throw invalid(
-        'max',
-        `${subject} declares a maximum below its minimum source count.`,
-        'Make max at least the minimum, including required.',
-      );
-    }
-  } else {
-    for (const key of ['stdin', 'min', 'max']) {
-      if (Object.hasOwn(config, key)) {
-        throw factFault(contentDeclaration, site, {
-          correction: 'Declare a content input or remove the content setting.',
-          fact: key,
-          sentence: `${subject} declares ${key} without type content.`,
-        });
-      }
-    }
-  }
-  if (
-    input.kind === 'option' &&
-    input.config.type !== 'string' &&
-    input.config.type !== 'content'
-  ) {
-    checkValueless(input.config, site, subject);
-    return;
-  }
-  if (
-    config.required !== undefined &&
-    typeof config.required !== 'boolean' &&
-    !(
-      input.kind === 'option' &&
-      input.config.type === 'string' &&
-      input.config.multiple !== true &&
-      config.required === 'non-interactive'
-    )
-  ) {
-    throw flagFault(site, 'required');
-  }
-  if (
-    input.kind === 'argument' &&
-    input.config.variadic !== undefined &&
-    typeof input.config.variadic !== 'boolean'
-  ) {
-    throw flagFault(site, 'variadic');
-  }
-  // The test reads presence, not truth, so a declared `undefined` is a declaration to reject.
-  if ('validateOmitted' in config && typeof config.validateOmitted !== 'boolean') {
-    throw flagFault(site, 'validateOmitted');
-  }
-  if (config.required && Object.hasOwn(config, 'default')) {
-    throw factFault(requiredWithDefault, site, {
-      correction: 'Remove the default or make the input optional.',
-      fact: 'default',
-      sentence: `${subject} is required and declares a default.`,
-    });
-  }
-  if (validatesOmission(input)) {
-    checkOmissionValidation(input, site, subject);
-  }
-  if (config.validate !== undefined && !isStandardSchema(config.validate)) {
-    throw factFault(notAValidator, site, {
-      correction: 'Supply a compatible validator.',
-      fact: 'validate',
-      sentence: `${subject} validate must be a Standard Schema v1 object.`,
-    });
-  }
 }
 
 /**
@@ -794,7 +487,7 @@ async function validateDeclared(
     return validate(input, raw, { context: context(), site });
   }
   if (!Array.isArray(raw)) {
-    // The parser, the input sources, and the declaration rules only ever supply an array here.
+    // The parser, the input sources, and a default the types shape only ever supply an array here.
     throw new TypeError(
       `${declarationSubject(input)} reached validation without an array of values.`,
     );
@@ -863,51 +556,9 @@ function messages(subject: string, issues: readonly StandardSchemaV1.Issue[]) {
   });
 }
 
-/** The fault a default of the wrong raw shape reports, by the shape its declaration expects. */
-function defaultShapeFault(input: InputDeclaration, site: InputSite, subject: string) {
-  const fault = (sentence: string, correction: string) =>
-    factFault(defaultShape, site, { correction, fact: 'default', sentence });
-  if (!collects(input)) {
-    return fault(
-      `${subject} default must be a string without a validator.`,
-      'Supply a string default.',
-    );
-  }
-  return input.config.validate === undefined
-    ? fault(
-        `${subject} default must be an array of strings without a validator.`,
-        'Supply a string array default.',
-      )
-    : fault(`${subject} default must be an array.`, 'Supply an array of values.');
-}
-
 /** A declared `default: undefined` is a default, so presence is the key, never the value. */
 function hasDefault(input: InputDeclaration) {
   return Object.hasOwn(input.config, 'default');
-}
-
-/** One declaration and where it was declared, which its faults' findings rebuild. */
-export interface SitedInput {
-  readonly input: InputDeclaration;
-  readonly site: InputSite;
-}
-
-/**
- * Every declaration rule that reads the declaration alone. It is synchronous, so the call that
- * declares an input applies it, and build applies it to an input a lifecycle hook declared; only
- * validating a default through its validator, which can be asynchronous, is left to `run()`. A
- * contributor that declares under its own name, such as a plugin, supplies the subject its
- * diagnostics read with; every other caller is named by the declaration itself.
- */
-export function checkDeclarations(inputs: readonly SitedInput[], named?: string): void {
-  for (const { input, site } of inputs) {
-    checkDeclaration(input, site, named ?? declarationSubject(input));
-  }
-  for (const { input, site } of inputs.filter((entry) => hasDefault(entry.input))) {
-    if (!holdsRawDefault(input)) {
-      throw defaultShapeFault(input, site, named ?? declarationSubject(input));
-    }
-  }
 }
 
 /**
@@ -1000,9 +651,9 @@ function impliedOf(input: InputDeclaration): string | undefined {
 /**
  * An array default or implied output reaches the action as its own mutable copy, so an action that
  * mutates its array rewrites neither the declaration nor the next invocation. One prepared declared
- * value serves every invocation of a run, and an unvalidated default is the frozen snapshot the
- * declaring call took, so each read copies it. The copy keeps a hole where the value has one, as
- * the graph's does. Every other output passes through unchanged.
+ * value serves every invocation of a run, and an unvalidated default is the value the author
+ * declared, so each read copies it. The copy keeps a hole where the value has one, as the graph's
+ * does. Every other output passes through unchanged.
  */
 function freshDeclaredValue(value: unknown) {
   // A spread reads a hole as `undefined`, and `slice` keeps it.

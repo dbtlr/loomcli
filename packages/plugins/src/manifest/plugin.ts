@@ -1,4 +1,4 @@
-import { checkShortSetting, plugin } from '@loomcli/core';
+import { plugin } from '@loomcli/core';
 import type { BooleanOption, Plugin, PluginOptions } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
@@ -29,7 +29,6 @@ export interface ManifestSettings {
  * middleware module `load` names.
  */
 export function manifest(settings?: ManifestSettings): Plugin<ManifestOptions> {
-  checkShortSetting(settings, { call: 'manifest', option: 'manifest', plugin: identity });
   const short = settings?.short;
   return plugin(identity, {
     extensions: [manifestCommand],

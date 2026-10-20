@@ -1,14 +1,10 @@
 import { interaction } from '@loomcli/plugins/interaction';
 
-import { Application, Command } from '../../dist/index.js';
+import { Application } from '../../dist/index.js';
 
 const scenario = process.argv[2];
 try {
-  if (scenario === 'local') {
-    new Command('setup').option('input', { interaction: true, type: 'boolean' });
-  } else if (scenario === 'string') {
-    new Application('setup').globalOption('input', { interaction: true, type: 'string' });
-  } else if (scenario === 'twice') {
+  if (scenario === 'twice') {
     new Application('setup')
       .globalOption('input', { interaction: true, type: 'boolean' })
       .globalOption('other', { interaction: true, type: 'boolean' });

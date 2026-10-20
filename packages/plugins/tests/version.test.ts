@@ -69,20 +69,6 @@ function settingsOutcome(settings: unknown): unknown {
   return JSON.parse(result.stdout);
 }
 
-test.each([['schema v1'], [5], [null], [['schema v1']]])(
-  'version(%j) rejects settings that are not an object at the factory call',
-  (settings) => {
-    expect(settingsOutcome(settings)).toEqual({
-      correction: 'Supply a settings object, or omit the settings.',
-      findings: [
-        { call: 'version', mark: '0', note: 'declared by plugin "@loomcli/plugins/version"' },
-      ],
-      rule: '@loomcli/core/not-an-object',
-      sentence: 'Plugin "@loomcli/plugins/version" declares settings that are not an object.',
-    });
-  },
-);
-
 test('version() with empty settings prints the standard line', () => {
   expect(settingsOutcome({})).toBe('returned');
   expect(run('version-empty', ['--version'])).toEqual({

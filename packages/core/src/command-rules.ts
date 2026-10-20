@@ -188,13 +188,6 @@ const unknownDefaultView = registerRule('@loomcli/core/unknown-default-view', {
   headline: 'Default view not declared',
 });
 
-/** A description, a deprecated message, or an Application version that is not one line of prose. */
-const notOneLine = registerRule('@loomcli/core/not-one-line', {
-  explanation:
-    'Help, --version, the manifest, and every other listing print a description, a deprecated message, and a version on one line beside what each names, so each holds prose and no line break. An operator or an agent follows a deprecated message to the replacement, so a bare true names none, and a version is a string as the package manifest spells it.',
-  headline: 'Text not one line',
-});
-
 /** `hidden` or `deprecated` on the Application or on an argument, or `control` on an argument. */
 const misplacedListingFact = registerRule('@loomcli/core/misplaced-listing-fact', {
   explanation:
@@ -223,7 +216,6 @@ export {
   multipleActions,
   multipleResults,
   nestingDepth,
-  notOneLine,
   notACommand,
   optionalArgumentLast,
   portableName,

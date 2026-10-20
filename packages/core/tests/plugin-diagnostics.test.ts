@@ -98,14 +98,8 @@ const explanations = {
   ],
   'not-a-list': [
     'Core reads plugins, commands, extensions, views, translators, failure encoders,',
-    'signals, and aliases each as a list, in order. A value of any other kind has no',
-    'entries to read.',
-  ],
-  'not-an-object': [
-    "Core reads the options of a Command and of the Application, a plugin's",
-    'definition, its options record, each of its option declarations, its middleware,',
-    'its source, the config of an argument or option, and the settings a plugin',
-    'factory takes by their keys. A value of any other kind has no keys to read.',
+    'and signals each as a list, in order. A value of any other kind has no entries',
+    'to read.',
   ],
   'override-key': [
     'An override replaces the view of a declared view or of a failure class, so its',
@@ -189,27 +183,10 @@ const explanations = {
     'Core installs listeners for SIGINT and SIGTERM alone, the two signals that ask a',
     'command-line program to stop, so a plugin claims one of those.',
   ],
-  'unreadable-declaration': [
-    'Core reads a declaration by its keys, and each list in it by index, once, at the',
-    'call that declares it, and checks and records the copy it takes. A read that',
-    'throws, such as a throwing getter or proxy trap, leaves core nothing to check or',
-    'record.',
-  ],
 };
 
 /** The rules of other families this family raises too. */
 const shared = {
-  'flag-not-boolean': [
-    'hidden, control, shortOnly, multiple, required, variadic, validateOmitted, and',
-    "an extension's collect each answer one yes-or-no question about a declaration,",
-    'so each holds true or false. A value such as the string "false" would read as',
-    'true.',
-  ],
-  'global-presence-rule': [
-    'A global option is validated on every Command, the Commands of plugins included,',
-    'so a rule that its value must exist would fail a Command that never reads it. An',
-    'omitted global option is absent.',
-  ],
   'media-type': [
     "A view's media type tells a reader how to parse the text the view writes, such",
     'as application/json, so it is a string. Core stores it as declared and never',
@@ -306,10 +283,6 @@ function onApplication(call: string, target: string, note?: string) {
 function bare(call: string, target: string, note?: string, nth = 0) {
   return marked(`    ${call}`, target, note, nth);
 }
-
-/** The correction every unreadable plugin definition carries. */
-const readableDefinition =
-  'Declare the definition as a plain object literal whose properties read without throwing.';
 
 const twoPlugins = (first: string, second: string) =>
   `new Application('probe', { plugins: [plugin('${first}', …), plugin('${second}', …)] })`;
@@ -424,20 +397,6 @@ const cases: Record<string, Expected> = {
     rule: 'not-a-list',
     sentence: 'Plugin "@acme/doctor" declares commands that are not an array.',
   },
-  'definition-prototype-unreadable': {
-    correction: readableDefinition,
-    findings: [bare("plugin('@acme/log', …)", '…')],
-    headline: 'DECLARATION COULD NOT BE READ',
-    rule: 'unreadable-declaration',
-    sentence: 'Plugin "@acme/log" definition could not be read: boom.',
-  },
-  'definition-unreadable': {
-    correction: readableDefinition,
-    findings: [bare("plugin('@acme/log', { views: … })", 'views: …')],
-    headline: 'DECLARATION COULD NOT BE READ',
-    rule: 'unreadable-declaration',
-    sentence: 'Plugin "@acme/log" definition could not be read: boom.',
-  },
   'encoder-taken': {
     correction: 'Register one.',
     findings: [
@@ -467,15 +426,6 @@ const cases: Record<string, Expected> = {
     headline: 'ASYNCHRONOUS EXTENSION SCHEMA',
     rule: 'async-extension-schema',
     sentence: 'Extension "@acme/slow/command" validates asynchronously.',
-  },
-  'extension-collect': {
-    correction: 'Use true or false.',
-    findings: [
-      bare("plugin('@acme/notes', { extensions: […] })", '…', 'extension "@acme/notes/list"'),
-    ],
-    headline: 'FLAG NOT A BOOLEAN',
-    rule: 'flag-not-boolean',
-    sentence: 'Extension "@acme/notes/list" declares collect that is not a Boolean.',
   },
   'extension-defined-twice': {
     correction: 'Install one copy of the package that defines it.',
@@ -718,13 +668,6 @@ const cases: Record<string, Expected> = {
     rule: 'not-a-function',
     sentence: 'Plugin "@acme/help" declares middleware with no load function.',
   },
-  'middleware-object': {
-    correction: 'Supply { activate, load }.',
-    findings: [bare("plugin('@acme/help', { middleware: 'help' })", "middleware: 'help'")],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'Plugin "@acme/help" declares middleware that is not an object.',
-  },
   'on-failure': {
     correction: 'Supply a function of the failure and its context.',
     findings: [bare("plugin('@acme/suggest', { onFailure: 'hint' })", "onFailure: 'hint'")],
@@ -738,52 +681,6 @@ const cases: Record<string, Expected> = {
     headline: 'NOT A FUNCTION',
     rule: 'not-a-function',
     sentence: 'Plugin "@acme/stacks" declares onLog that is not a function.',
-  },
-  'option-config': {
-    correction: 'Supply { type, ... }.',
-    findings: [bare("plugin('@acme/log', { options: { level: 'debug' } })", "level: 'debug'")],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'Plugin "@acme/log" option "level" is not an option declaration.',
-  },
-  'option-presence': {
-    correction: 'Remove required, and check for the value in each Command that needs it.',
-    findings: [
-      bare(
-        "plugin('@acme/log', { options: { level: { required: true, type: 'string' } } })",
-        'required: true',
-      ),
-    ],
-    headline: 'PRESENCE RULE ON A GLOBAL OPTION',
-    rule: 'global-presence-rule',
-    sentence: 'Plugin "@acme/log" option "level" declares required.',
-  },
-  'option-presence-sibling': {
-    correction: 'Remove validateOmitted, and check for the value in each Command that needs it.',
-    findings: [
-      bare(
-        "plugin('@acme/log', { options: { level: { type: 'string', validateOmitted: false }, trace: … } })",
-        'validateOmitted: false',
-      ),
-    ],
-    headline: 'PRESENCE RULE ON A GLOBAL OPTION',
-    rule: 'global-presence-rule',
-    sentence: 'Plugin "@acme/log" option "level" declares validateOmitted.',
-  },
-  'option-unreadable': {
-    correction:
-      'Declare the config as a plain object literal whose properties read without throwing.',
-    findings: [bare("plugin('@acme/log', { options: { level: { default: … } } })", 'default: …')],
-    headline: 'DECLARATION COULD NOT BE READ',
-    rule: 'unreadable-declaration',
-    sentence: 'Plugin "@acme/log" option "level" config could not be read: boom.',
-  },
-  'options-record': {
-    correction: 'Supply a record of option declarations.',
-    findings: [bare("plugin('@acme/log', { options: [] })", 'options: []')],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'Plugin "@acme/log" declares options that are not an object.',
   },
   'override-key': {
     correction:
@@ -812,13 +709,6 @@ const cases: Record<string, Expected> = {
     headline: 'KEY OVERRIDDEN TWICE',
     rule: 'override-twice',
     sentence: 'Plugin "@acme/brand" overrides the view for "InputError" twice.',
-  },
-  'plugin-definition': {
-    correction: 'Supply { options, middleware, extensions, views }.',
-    findings: [bare("plugin('@acme/log', 'debug')", "'debug'")],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'Plugin "@acme/log" declares a definition that is not an object.',
   },
   'plugin-empty-identity': identityCase('A plugin', "plugin('', …)", "''", '""'),
   'plugin-entry': {
@@ -993,13 +883,6 @@ const cases: Record<string, Expected> = {
     rule: 'not-a-function',
     sentence: 'Plugin "@acme/config" declares a source with no load function.',
   },
-  'source-object': {
-    correction: 'Supply { binding, load }.',
-    findings: [bare("plugin('@acme/config', { source: 'files' })", "source: 'files'")],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'Plugin "@acme/config" declares a source that is not an object.',
-  },
   'source-own-option': {
     correction: "Remove the value; the source's own options resolve before it loads.",
     findings: [
@@ -1164,17 +1047,6 @@ test('a plugin option name in a source-binding sentence is escaped as every quot
     stdout: `${String.raw`Plugin "@acme/config" option "\u001b[31m" carries its own source binding.`}\n`,
   });
 });
-
-test.each(['definition-prototype-unreadable', 'definition-unreadable', 'option-unreadable'])(
-  'the %s fault keeps the value the read threw as its cause',
-  (scenario) => {
-    expect(invoke(fixture, [scenario, 'cause'])).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: '{"cause":true}\n',
-    });
-  },
-);
 
 test.each([
   'extension-unscoped',

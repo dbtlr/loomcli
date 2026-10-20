@@ -1,4 +1,4 @@
-import { Application, Command, DeclarationError, plugin } from '@loomcli/core';
+import { Application, DeclarationError, plugin } from '@loomcli/core';
 import { color } from '@loomcli/plugins/color';
 import { config } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
@@ -46,41 +46,6 @@ const scenarios = {
     ['new Application', (paint) => new Application('notes', { plugins: [config(), paint] })],
   ],
   boolean: [['globalOption', () => new Application('notes').globalOption('color', marked)]],
-  count: [
-    [
-      'globalOption',
-      () => new Application('notes').globalOption('color', { color: true, type: 'count' }),
-    ],
-  ],
-  'env-global': [
-    [
-      'globalOption',
-      () => new Application('notes').globalOption('color', { ...marked, env: 'NOTES_COLOR' }),
-    ],
-  ],
-  'env-plugin': [['plugin', () => declaring({ color: { ...marked, env: 'NOTES_COLOR' } })]],
-  'local-application': [['option', () => new Application('notes').option('color', marked)]],
-  'local-command': [['option', () => new Command('paint').option('color', marked)]],
-  'not-true': [
-    [
-      'globalOption',
-      () => new Application('notes').globalOption('color', { color: 'yes', type: 'boolean' }),
-    ],
-  ],
-  'not-true-plugin': [['plugin', () => declaring({ color: { color: false, type: 'boolean' } })]],
-  short: [
-    [
-      'globalOption',
-      () => new Application('notes').globalOption('color', { ...marked, short: 'c' }),
-    ],
-  ],
-  'short-plugin': [['plugin', () => declaring({ color: { ...marked, short: 'c' } })]],
-  string: [
-    [
-      'globalOption',
-      () => new Application('notes').globalOption('color', { color: true, type: 'string' }),
-    ],
-  ],
   'two-global': [
     ['new Application', () => new Application('notes', { plugins: [color()] })],
     ['globalOption', (app) => app.globalOption('paint', marked)],

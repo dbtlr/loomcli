@@ -1,8 +1,5 @@
-import { checkBackground } from './background-mark.js';
-import { checkEnvBinding, claimVariables } from './bindings.js';
-import { captureDeclaration, elidedRead, unreadableArgument, unreadableFault } from './capture.js';
+import { claimVariables } from './bindings.js';
 import type { MiddlewareContext } from './chain.js';
-import { checkColor } from './color.js';
 import { notACommand } from './command-rules.js';
 import { attach, commandCode, commandNode } from './command.js';
 import type { AttachedChild, Command } from './command.js';
@@ -19,41 +16,23 @@ import {
   registerDescriptor,
 } from './extension.js';
 import type { AdmittedDescriptor, AnyExtension, DescriptorRegistry } from './extension.js';
-import {
-  checkDeprecated,
-  checkDescription,
-  checkControl,
-  checkHidden,
-  partFinding,
-  pluginOptionSite,
-  slotSite,
-} from './facts.js';
+import { partFinding, pluginOptionSite, slotSite } from './facts.js';
 import type { FactSite } from './facts.js';
-import { boundOptions, checkNoPresenceRule, pluginSites } from './globals.js';
+import { boundOptions, pluginSites } from './globals.js';
 import type { InputRecords } from './globals.js';
 import type { FailureHook } from './hints.js';
 import { checkIdentity } from './identity.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
-import { checkInteraction } from './interaction.js';
 import { coreViews } from './lanes.js';
 import type { Log, LogHook } from './log.js';
 import { compileOptions } from './options.js';
 import type { OptionValues } from './options.js';
-import {
-  copyOwnKeys,
-  decidePlain,
-  declaring,
-  isPlainObject,
-  shallowList,
-  shallowRecord,
-} from './plain.js';
 import {
   failureEncoderTaken,
   foreignValue,
   middlewareActivation,
   notAFunction,
   notAList,
-  notAnObject,
   pluginInstalledTwice,
   signalClaimedTwice,
   slotTaken,
@@ -78,16 +57,14 @@ import type {
   OptionValue,
   Out,
 } from './types.js';
-import { captureConfig, checkDeclarations, defaultDepthFault } from './validation.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
-import { checkVerbosity } from './verbosity.js';
 import { buildViews, viewIdentities } from './view.js';
 import type { ViewContribution, ViewSubject } from './view.js';
 
 /**
  * The declaration record a plugin contributes its global options under, keyed by option name. Each
  * entry takes the configuration `globalOption()` takes, so the config type publishes no presence
- * rule, and `plugin()` repeats the rule for a JavaScript author.
+ * rule.
  */
 type PluginOptions = Readonly<Record<string, GlobalOptionConfig>>;
 
@@ -113,15 +90,14 @@ declare const pluginOptions: unique symbol;
 declare const pluginTheme: unique symbol;
 
 /**
- * One plugin's declarations as `plugin()` receives them, with the generic parts erased. A
- * JavaScript author reaches the same slots with any value, so each slot but `options` is read as
- * `unknown` and no declaration is claimed to be well formed here. `options` keeps the record type
- * the signature declares, because each entry's config reaches the shared input rules under it.
+ * One plugin's declarations as `plugin()` receives them, with the generic parts erased. `options`
+ * keeps the record type the signature declares, and `middleware` and `source` are read as records
+ * of their keys. Every other slot is read as `unknown`.
  */
 interface DeclaredPlugin {
   theme?: unknown;
   options?: PluginOptions | undefined;
-  middleware?: unknown;
+  middleware?: Readonly<Record<string, unknown>> | undefined;
   onCommandAttach?: unknown;
   onGraphBuilt?: unknown;
   onFailure?: unknown;
@@ -132,19 +108,9 @@ interface DeclaredPlugin {
   translators?: unknown;
   failureEncoders?: unknown;
   signals?: unknown;
-  source?: unknown;
+  source?: Readonly<Record<string, unknown>> | undefined;
   commands?: unknown;
 }
-
-/** The slots of a definition that hold a list, each copied with its entries as they were built. */
-const definitionLists = [
-  'extensions',
-  'signals',
-  'commands',
-  'views',
-  'translators',
-  'failureEncoders',
-] as const;
 
 /** Authored values register here, so the public type publishes no state to reach or replace. */
 const nodes = new WeakMap<object, BuiltPlugin>();
@@ -287,53 +253,7 @@ function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMap
   identity: string,
   definition: PluginDefinition<Options, Theme>,
 ): Plugin<NoInfer<Options>, NoInfer<Theme>> {
-  return new PluginDeclaration<Options, Theme>(declaring(() => readPlugin(identity, definition)));
-}
-
-/**
- * The one copy of a definition that `plugin()` reads: the definition, its theme mapping, options
- * record, middleware with its activation list, and source, and each list it holds. An entry of a
- * list is what its factory built and is not copied, and each option's config is captured where its
- * own rules read it, so a fault about it names the option. A read that throws is the unreadable
- * fault of the definition, and a definition that is not a plain object is the not-an-object fault.
- */
-function captureDefinition(identity: string, definition: DeclaredPlugin): DeclaredPlugin {
-  return captureDeclaration(
-    definition,
-    (copy, read) => {
-      read.nested(copy, 'theme', shallowRecord);
-      read.nested(copy, 'options', shallowRecord);
-      read.nested(copy, 'middleware', copyMiddleware);
-      read.nested(copy, 'source', shallowRecord);
-      for (const list of definitionLists) {
-        read.nested(copy, list, shallowList);
-      }
-    },
-    {
-      notAnObject: () =>
-        new DeclarationError(notAnObject, {
-          correction: 'Supply { options, middleware, extensions, views }.',
-          findings: [{ arguments: [identity, definition], call: 'plugin', mark: '1' }],
-          sentence: `${pluginSentence(identity)} declares a definition that is not an object.`,
-        }),
-      unreadable: unreadableArgument(
-        { call: 'plugin', named: identity, subject: pluginSentence(identity) },
-        'definition',
-      ),
-    },
-  );
-}
-
-/** A middleware object's copy, its activation list copied too, or any other value as declared. */
-function copyMiddleware(middleware: unknown): unknown {
-  if (!decidePlain(middleware)) {
-    return middleware;
-  }
-  const copy = copyOwnKeys(middleware);
-  if (Object.hasOwn(copy, 'activate')) {
-    copy.activate = shallowList(copy.activate);
-  }
-  return copy;
+  return new PluginDeclaration<Options, Theme>(readPlugin(identity, definition));
 }
 
 /** How every plugin diagnostic names one plugin at the start of a sentence. */
@@ -514,52 +434,6 @@ function installPlugins(application: string, plugins: unknown): InstalledPlugins
 }
 
 /**
- * The rules a plugin's option answers before every rule an ordinary declaration carries, read from
- * the one copy of its config that `captureConfig` takes, which it answers with for every later read.
- * `siteOf` places the option with the value its entry prints as: the config as declared for a value
- * that is not one, elided for a config whose read threw, and the copy for every later rule.
- */
-function checkPluginOption(
-  siteOf: (shown: unknown) => FactSite,
-  declared: GlobalOptionConfig,
-): GlobalOptionConfig {
-  const sentence = siteOf(declared).subject;
-  const config = captureConfig(declared, {
-    notAnObject: () =>
-      new DeclarationError(notAnObject, {
-        correction: 'Supply { type, ... }.',
-        findings: [partFinding(siteOf(declared), [])],
-        sentence: `${sentence} is not an option declaration.`,
-      }),
-    // The default's walk stopped at the limit, so the finding prints it elided.
-    tooDeep: () => {
-      const { keys, shown } = elidedRead('default');
-      return defaultDepthFault(sentence, [partFinding(siteOf(shown), keys)]);
-    },
-    // A part whose read threw is never read again, so the finding prints it elided.
-    unreadable: (thrown, slot) => {
-      const { keys, shown } = elidedRead(slot);
-      return unreadableFault(
-        { declared: 'config', findings: [partFinding(siteOf(shown), keys)], subject: sentence },
-        thrown,
-      );
-    },
-  });
-  const site = siteOf(config);
-  // A plugin's options are global options, so they answer the global option's presence rule.
-  checkNoPresenceRule(site, config);
-  checkInteraction(config, site, true);
-  checkColor(config, site, true);
-  checkVerbosity(config, site, true);
-  checkBackground(config, site, true);
-  checkDescription(site, config.description);
-  checkHidden(site, config.hidden);
-  checkDeprecated(site, config.deprecated);
-  checkControl(site, config.control);
-  return config;
-}
-
-/**
  * One plugin's option declarations, in declaration order. They join the globals table, so the rules
  * that pair them with another scope's options belong to that table and not to this reading.
  */
@@ -568,15 +442,8 @@ function readOptions(
   declared: PluginOptions | undefined,
   build: PluginRegisters,
 ): readonly OptionInput[] {
-  if (declared !== undefined && !isPlainObject(declared)) {
-    throw new DeclarationError(notAnObject, {
-      correction: 'Supply a record of option declarations.',
-      findings: [partFinding(pluginSlot(identity, 'options', declared), [])],
-      sentence: `${pluginSentence(identity)} declares options that are not an object.`,
-    });
-  }
   const inputs: OptionInput[] = [];
-  // A finding prints each option's captured config once it is taken, and each later one elided.
+  // A finding prints each option's config once it is read, and each later one elided.
   const shown: Record<string, unknown> = Object.fromEntries(
     Object.keys(declared ?? {}).map((name) => [name, spelled(elided)]),
   );
@@ -585,7 +452,7 @@ function readOptions(
     // A computed key defines its own property even for `__proto__`, where assignment would not.
     const siteOf = (value: unknown) =>
       pluginOptionSite({ identity, options: { ...shown, [name]: value } }, name, sentence);
-    const config = checkPluginOption(siteOf, entry);
+    const config = { ...entry };
     // Defining the key keeps its place, and holds even for a key of `__proto__`.
     Object.defineProperty(shown, name, {
       configurable: true,
@@ -594,10 +461,7 @@ function readOptions(
       writable: true,
     });
     const site = siteOf(config);
-    checkEnvBinding(site, config);
     const input: OptionInput = { config, kind: 'option', name };
-    // The shared rules name the plugin and the option, so a fault reads with its contributor.
-    checkDeclarations([{ input, site }], sentence);
     build.records.set(
       input,
       buildExtensions({
@@ -722,20 +586,13 @@ interface BuiltMiddleware {
 /** One plugin's middleware, or `undefined` for a plugin that declares none. */
 function readMiddleware(
   identity: string,
-  declared: unknown,
+  declared: Readonly<Record<string, unknown>> | undefined,
   names: ReadonlySet<string>,
 ): BuiltMiddleware | undefined {
   if (declared === undefined) {
     return undefined;
   }
   const site = pluginSlot(identity, 'middleware', declared);
-  if (!isPlainObject(declared)) {
-    throw new DeclarationError(notAnObject, {
-      correction: 'Supply { activate, load }.',
-      findings: [partFinding(site, [])],
-      sentence: `${pluginSentence(identity)} declares middleware that is not an object.`,
-    });
-  }
   const activate = readActivation(site, declared, names);
   const { load } = declared;
   if (!isLoader(load)) {
@@ -971,13 +828,6 @@ function readSource(
   }
   const sentence = pluginSentence(identity);
   const site = pluginSlot(identity, 'source', declared);
-  if (!isPlainObject(declared)) {
-    throw new DeclarationError(notAnObject, {
-      correction: 'Supply { binding, load }.',
-      findings: [partFinding(site, [])],
-      sentence: `${sentence} declares a source that is not an object.`,
-    });
-  }
   const { binding, load } = declared;
   // A fault about one key marks the key, or the source itself when the key is absent.
   const keyFinding = (key: string) => partFinding(site, key in declared ? [key] : []);
@@ -1010,7 +860,7 @@ function readSource(
     carriesBinding(own.build.records.get(input), bindingIdentity),
   );
   if (carrier) {
-    // The record prints each option's captured config, which is what its rules read.
+    // The record prints each option's copied config, which is what its rules read.
     const option = pluginSites(identity, own.inputs)(carrier);
     throw new DeclarationError(sourceBoundOwnOption, {
       correction: "Remove the value; the source's own options resolve before it loads.",
@@ -1091,15 +941,15 @@ function defineExtensions(
 }
 
 /**
- * Every rule one definition carries on its own, in the order the definition's slots are read, each
- * from the one copy `captureDefinition` takes once the identity is judged. The plugin's own
- * extensions register before any declaration carries a value, so a duplicated package copy is
- * reported from the list that defines it. The views list is read against core's view identities,
- * and the Application reads the same copy again against every other contributor's.
+ * Every rule one definition carries on its own, in the order the definition's slots are read, once
+ * the identity is judged. The plugin's own extensions register before any declaration carries a
+ * value, so a duplicated package copy is reported from the list that defines it. The views list is
+ * read against core's view identities, and the Application reads it again against every other
+ * contributor's.
  */
 function readPlugin(named: unknown, definition: DeclaredPlugin): BuiltPlugin {
   checkIdentity('plugin', named);
-  const declaration = captureDefinition(named, definition);
+  const declaration = definition;
   const theme = declaration.theme === undefined ? undefined : buildTheme(declaration.theme, named);
   const build: PluginRegisters = { descriptors: new Map(), records: new Map() };
   defineExtensions(named, declaration, build);

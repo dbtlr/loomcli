@@ -1,4 +1,4 @@
-import { checkPluginSettings, plugin } from '@loomcli/core';
+import { plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
@@ -21,7 +21,6 @@ export type InteractionOptions = typeof options;
 
 /** Lets the operator lower the run interaction decision with --no-input or a named variable. */
 export function interaction(settings?: InteractionSettings): Plugin<InteractionOptions> {
-  checkPluginSettings(settings, { call: 'interaction', plugin: identity });
   return plugin(identity, {
     options: {
       input: { ...options.input, ...(settings?.env === undefined ? {} : { env: settings.env }) },

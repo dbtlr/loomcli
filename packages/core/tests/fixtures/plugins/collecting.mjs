@@ -123,34 +123,6 @@ const throwing = plugin('@fixture/throwing', {
   },
 });
 
-/** A plugin that lists a hand-built descriptor whose `collect` is the given value or absent. */
-function handBuilt(collect) {
-  const descriptor = Object.assign(() => undefined, {
-    identity: '@fixture/hand/command',
-    schema: noteSchema,
-    target: 'command',
-  });
-  if (collect !== 'absent') {
-    descriptor.collect = collect;
-  }
-  return plugin('@fixture/hand', { extensions: [descriptor] });
-}
-
-/** An application with nothing but the plugins it installs and a root action. */
-function bareApplication(plugins) {
-  return new Application('app', { plugins }).action(() => {});
-}
-
-/** A plugin that lists a factory-built descriptor whose `collect` is the given non-Boolean value. */
-function factoryBuilt(collect) {
-  const descriptor = extension('@fixture/factory/command', {
-    collect,
-    schema: noteSchema,
-    target: 'command',
-  });
-  return plugin('@fixture/factory', { extensions: [descriptor] });
-}
-
 /** A Command whose ordinary extension comes first, so a replacement that moved its key would show. */
 const ordered = () =>
   new Command('ordered', {
@@ -181,11 +153,6 @@ const scenarios = {
         }),
       ],
     }).command(new Command('get').action(({ out }) => out.print('get'))),
-  'factory-null': () => bareApplication([factoryBuilt(null)]),
-  'factory-yes': () => bareApplication([factoryBuilt('yes')]),
-  'hand-absent': () => bareApplication([handBuilt('absent')]),
-  'hand-false': () => bareApplication([handBuilt(false)]),
-  'hand-yes': () => bareApplication([handBuilt('yes')]),
   hooks: () =>
     new Application('app', {
       plugins: [

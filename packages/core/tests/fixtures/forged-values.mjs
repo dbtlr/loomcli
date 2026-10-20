@@ -83,7 +83,6 @@ const scenarios = {
   'extension-alternating': () =>
     plugin('@acme/notes', { extensions: [alternating(), alternating()] }),
   'extension-bare': () => extension(bare, { schema: accepting, target: 'command' }),
-  'extension-collect': () => plugin('@acme/notes', { extensions: [handBuilt({ collect: 'no' })] }),
   'extension-copies': () => plugin('@acme/notes', { extensions: [handBuilt({}), handBuilt({})] }),
   'extension-forged': () => extension(forged, { schema: accepting, target: 'command' }),
   'extension-hand-built': () =>
@@ -107,7 +106,6 @@ const scenarios = {
   'option-after-action': () => new Command('get').action(act).option(forged, { type: 'string' }),
   'option-bare': () => new Command('get').option(bare, { type: 'string' }),
   'option-config-bare': () => new Command('get').option(bare, undefined),
-  'option-config-forged': () => new Command('get').option('format', forged),
   'plugin-bare': () => plugin(bare, {}),
   'plugin-forged': () => plugin(forged, {}),
   'result-view': () => new Command('get').result({ views: { [forged]: { render, row } } }),

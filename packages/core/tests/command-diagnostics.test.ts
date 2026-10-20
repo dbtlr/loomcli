@@ -84,13 +84,6 @@ const explanations = {
     'A Command value carries the declaration that routing, parsing, and help read.',
     'Any other value carries none.',
   ],
-  'not-one-line': [
-    'Help, --version, the manifest, and every other listing print a description, a',
-    'deprecated message, and a version on one line beside what each names, so each',
-    'holds prose and no line break. An operator or an agent follows a deprecated',
-    'message to the replacement, so a bare true names none, and a version is a string',
-    'as the package manifest spells it.',
-  ],
   'optional-argument-last': [
     'Positional tokens fill the arguments in order, and an operator leaves out an',
     'optional argument from the end of the line. An argument after an optional one',
@@ -152,35 +145,10 @@ const explanations = {
   ],
 };
 
-/** The rules of other families this family raises too. */
-const shared = {
-  'flag-not-boolean': [
-    'hidden, control, shortOnly, multiple, required, variadic, validateOmitted, and',
-    "an extension's collect each answer one yes-or-no question about a declaration,",
-    'so each holds true or false. A value such as the string "false" would read as',
-    'true.',
-  ],
-  'not-an-object': [
-    "Core reads the options of a Command and of the Application, a plugin's",
-    'definition, its options record, each of its option declarations, its middleware,',
-    'its source, the config of an argument or option, and the settings a plugin',
-    'factory takes by their keys. A value of any other kind has no keys to read.',
-  ],
-  'unreadable-declaration': [
-    'Core reads a declaration by its keys, and each list in it by index, once, at the',
-    'call that declares it, and checks and records the copy it takes. A read that',
-    'throws, such as a throwing getter or proxy trap, leaves core nothing to check or',
-    'record.',
-  ],
-};
-
-type Rule = keyof typeof explanations | keyof typeof shared;
-
-/** Every explanation this family pins, its own and the shared ones, by rule. */
-const explanationsByRule: Record<Rule, readonly string[]> = { ...explanations, ...shared };
+type Rule = keyof typeof explanations;
 
 function explanationOf(rule: Rule): readonly string[] {
-  return explanationsByRule[rule];
+  return explanations[rule];
 }
 
 /** One rule's diagnostic: its banner, the sentence, each finding, the explanation, and the fix. */
@@ -212,39 +180,6 @@ function diagnostic({ correction, findings, headline, rule, sentence }: Expected
 
 const portable =
   'Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".';
-
-/** The correction every unreadable config carries. */
-const readable =
-  'Declare the config as a plain object literal whose properties read without throwing.';
-
-/**
- * The unreadable-config fault of one call, whose finding marks the key whose read threw, or the
- * whole config when no `slot` is given. `receiver` holds the lines above the call. A part whose
- * read threw is never read again, so it prints as an ellipsis.
- */
-function unreadable(
-  receiver: readonly string[],
-  parts: { call: string; subject: string; slot?: string },
-): Expected {
-  const { call, slot, subject } = parts;
-  const target = slot === undefined ? '…' : `${slot}: …`;
-  const line = slot === undefined ? `      .${call}, …)` : `      .${call}, { ${target} })`;
-  const start = line.lastIndexOf(target);
-  return {
-    correction: readable,
-    findings: [[...receiver, line, `${' '.repeat(start)}${'^'.repeat(target.length)}`]],
-    headline: 'DECLARATION COULD NOT BE READ',
-    rule: 'unreadable-declaration',
-    sentence: `${subject} config could not be read: boom.`,
-  };
-}
-
-/** The correction every unreadable options object carries. */
-const readableOptions =
-  'Declare the options as a plain object literal whose properties read without throwing.';
-
-/** The receiver lines of a call on the Command `get`. */
-const onGet = ['    // get', "    new Command('get')"];
 
 const cases: Record<string, Expected> = {
   'alias-after-action': {
@@ -296,45 +231,6 @@ const cases: Record<string, Expected> = {
     rule: 'alias-without-names',
     sentence: 'Command "keys" declares an alias with no names.',
   },
-  'app-option-config': {
-    correction: "Supply an option config object, such as { type: 'string' }.",
-    findings: [
-      [
-        '    new Application(…)',
-        "      .option('format', undefined)",
-        '                        ^^^^^^^^^',
-      ],
-    ],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'Option "format" declares a config that is not an object.',
-  },
-  'application-description': {
-    correction: 'Supply a one-line summary.',
-    findings: [
-      [
-        "    new Application('probe', { description: '  ' })",
-        '                               ^^^^^^^^^^^^^^^^^',
-      ],
-    ],
-    headline: 'TEXT NOT ONE LINE',
-    rule: 'not-one-line',
-    sentence:
-      'The Application description must hold a character other than whitespace and no line terminator.',
-  },
-  'application-description-read-once': {
-    correction: 'Supply a one-line summary.',
-    findings: [
-      [
-        "    new Application('probe', { description: '' })",
-        '                               ^^^^^^^^^^^^^^^',
-      ],
-    ],
-    headline: 'TEXT NOT ONE LINE',
-    rule: 'not-one-line',
-    sentence:
-      'The Application description must hold a character other than whitespace and no line terminator.',
-  },
   'application-hidden': {
     correction: 'Remove it.',
     findings: [
@@ -353,39 +249,6 @@ const cases: Record<string, Expected> = {
     headline: 'NAME NOT PORTABLE',
     rule: 'portable-name',
     sentence: 'Application name "bad name" is invalid.',
-  },
-  'application-options': {
-    correction: 'Supply an Application options object.',
-    findings: [["    new Application('probe', 'fast')", '                             ^^^^^^']],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'The Application declares options that are not an object.',
-  },
-  'application-options-prototype-unreadable': {
-    correction: readableOptions,
-    findings: [["    new Application('probe', …)", '                             ^']],
-    headline: 'DECLARATION COULD NOT BE READ',
-    rule: 'unreadable-declaration',
-    sentence: 'The Application options could not be read: boom.',
-  },
-  'application-options-unreadable': {
-    correction: readableOptions,
-    findings: [
-      ["    new Application('probe', { plugins: … })", '                               ^^^^^^^^^^'],
-    ],
-    headline: 'DECLARATION COULD NOT BE READ',
-    rule: 'unreadable-declaration',
-    sentence: 'The Application options could not be read: boom.',
-  },
-  'application-version': {
-    correction: 'Supply a string such as "1.2.0".',
-    findings: [
-      ["    new Application('probe', { version: 1 })", '                               ^^^^^^^^^^'],
-    ],
-    headline: 'TEXT NOT ONE LINE',
-    rule: 'not-one-line',
-    sentence:
-      'The Application version must be a string that holds a character other than whitespace and no line terminator.',
   },
   'argument-after-optional': {
     correction: 'Declare an optional argument last.',
@@ -427,20 +290,6 @@ const cases: Record<string, Expected> = {
     rule: 'arguments-beside-children',
     sentence: 'Command "store" declares argument "files" and attaches child "get".',
   },
-  'argument-config': {
-    correction: 'Supply an argument config object, such as {}.',
-    findings: [
-      [
-        '    // get',
-        "    new Command('get')",
-        "      .argument('path', 'text')",
-        '                        ^^^^^^',
-      ],
-    ],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'Argument "path" declares a config that is not an object.',
-  },
   'argument-hidden': {
     correction: 'Remove it.',
     findings: [
@@ -470,11 +319,6 @@ const cases: Record<string, Expected> = {
     rule: 'declared-name',
     sentence: 'Command "get" declares an argument named "-path".',
   },
-  'argument-read-once': unreadable(onGet, {
-    call: "argument('path'",
-    slot: 'default',
-    subject: 'Argument "path"',
-  }),
   'argument-twice': {
     correction: 'Remove or rename the duplicate.',
     findings: [
@@ -495,11 +339,6 @@ const cases: Record<string, Expected> = {
     rule: 'argument-declared-twice',
     sentence: 'Argument "path" is declared more than once on Command "get".',
   },
-  'argument-unreadable': unreadable(onGet, {
-    call: "argument('path'",
-    slot: 'default',
-    subject: 'Argument "path"',
-  }),
   'attached-twice': {
     correction: 'Attach a Command value at one point; create a new Command for each placement.',
     findings: [
@@ -567,57 +406,12 @@ const cases: Record<string, Expected> = {
     rule: 'command-without-action',
     sentence: 'Command "get" has no action.',
   },
-  'command-deprecated': {
-    correction: 'Supply a one-line migration path, such as "Use get instead.".',
-    findings: [
-      [
-        "    new Command('fetch', { deprecated: true })",
-        '                           ^^^^^^^^^^^^^^^^',
-      ],
-    ],
-    headline: 'TEXT NOT ONE LINE',
-    rule: 'not-one-line',
-    sentence:
-      'Command "fetch" deprecated message must hold a character other than whitespace and no line terminator.',
-  },
-  'command-description': {
-    correction: 'Supply a one-line summary.',
-    findings: [
-      [
-        String.raw`    new Command('get', { description: 'Read\u000aone value.' })`,
-        '                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^',
-      ],
-    ],
-    headline: 'TEXT NOT ONE LINE',
-    rule: 'not-one-line',
-    sentence:
-      'Command "get" description must hold a character other than whitespace and no line terminator.',
-  },
-  'command-description-read-once': {
-    correction: 'Supply a one-line summary.',
-    findings: [
-      ["    new Command('get', { description: '' })", '                         ^^^^^^^^^^^^^^^'],
-    ],
-    headline: 'TEXT NOT ONE LINE',
-    rule: 'not-one-line',
-    sentence:
-      'Command "get" description must hold a character other than whitespace and no line terminator.',
-  },
   'command-globals': {
     correction: 'Declare globals on the Application and register its environment.',
     findings: [["    new Command('get', { globals: {} })", '                         ^^^^^^^^^^^']],
     headline: 'GLOBALS ON A NAMED COMMAND',
     rule: 'command-globals',
     sentence: 'Command "get" declares globals.',
-  },
-  'command-hidden': {
-    correction: 'Use true or false.',
-    findings: [
-      ["    new Command('fetch', { hidden: 'yes' })", '                           ^^^^^^^^^^^^^'],
-    ],
-    headline: 'FLAG NOT A BOOLEAN',
-    rule: 'flag-not-boolean',
-    sentence: 'Command "fetch" declares hidden that is not a Boolean.',
   },
   'command-name': {
     correction: portable,
@@ -633,45 +427,6 @@ const cases: Record<string, Expected> = {
     rule: 'portable-name',
     sentence: 'Command name "bad name" is invalid.',
   },
-  'command-options': {
-    correction: 'Supply a Command options object.',
-    findings: [["    new Command('get', 'fast')", '                       ^^^^^^']],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'Command "get" declares options that are not an object.',
-  },
-  'command-options-unreadable': {
-    correction: readableOptions,
-    findings: [
-      ["    new Command('get', { extensions: … })", '                         ^^^^^^^^^^^^^'],
-    ],
-    headline: 'DECLARATION COULD NOT BE READ',
-    rule: 'unreadable-declaration',
-    sentence: 'Command "get" options could not be read: boom.',
-  },
-  'global-option-config': {
-    correction: "Supply an option config object, such as { type: 'string' }.",
-    findings: [
-      [
-        '    new Application(…)',
-        "      .globalOption('quiet', null)",
-        '                             ^^^^',
-      ],
-    ],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'Option "quiet" declares a config that is not an object.',
-  },
-  'global-option-read-once': unreadable(['    new Application(…)'], {
-    call: "globalOption('quiet'",
-    slot: 'default',
-    subject: 'Option "quiet"',
-  }),
-  'global-option-unreadable': unreadable(['    new Application(…)'], {
-    call: "globalOption('quiet'",
-    slot: 'default',
-    subject: 'Option "quiet"',
-  }),
   'group-option': {
     correction: 'Register an action or remove the option.',
     findings: [
@@ -686,39 +441,6 @@ const cases: Record<string, Expected> = {
     rule: 'group-option',
     sentence: 'Command "cache" declares option "verbose" but registers no action to receive it.',
   },
-  'hook-argument-config': {
-    correction: 'Supply an argument config object, such as {}.',
-    findings: [
-      [
-        '    // count',
-        "    new Command('count')",
-        "      .argument('path', undefined)",
-        '                        ^^^^^^^^^',
-      ],
-    ],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'Argument "path" declares a config that is not an object.',
-  },
-  'hook-option-config': {
-    correction: "Supply an option config object, such as { type: 'string' }.",
-    findings: [
-      [
-        '    // count',
-        "    new Command('count')",
-        "      .option('format', undefined)",
-        '                        ^^^^^^^^^',
-      ],
-    ],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'Option "format" declares a config that is not an object.',
-  },
-  'hook-option-unreadable': unreadable(['    // count', "    new Command('count')"], {
-    call: "option('format'",
-    slot: 'default',
-    subject: 'Option "format"',
-  }),
   'media-type': {
     correction: 'Supply a media type such as "text/csv", or omit mediaType.',
     findings: [
@@ -809,54 +531,6 @@ const cases: Record<string, Expected> = {
     rule: 'declared-after-action',
     sentence: 'Command "get" declares option "raw" after its action.',
   },
-  'option-config': {
-    correction: "Supply an option config object, such as { type: 'string' }.",
-    findings: [
-      [
-        '    // get',
-        "    new Command('get')",
-        "      .option('format', undefined)",
-        '                        ^^^^^^^^^',
-      ],
-    ],
-    headline: 'NOT AN OBJECT',
-    rule: 'not-an-object',
-    sentence: 'Option "format" declares a config that is not an object.',
-  },
-  'option-default-unreadable': unreadable(onGet, {
-    call: "option('format'",
-    slot: 'default',
-    subject: 'Option "format"',
-  }),
-  'option-description': {
-    correction: 'Supply a one-line summary.',
-    findings: [
-      [
-        '    // get',
-        "    new Command('get')",
-        "      .option('raw', { description: '', type: 'boolean' })",
-        '                       ^^^^^^^^^^^^^^^',
-      ],
-    ],
-    headline: 'TEXT NOT ONE LINE',
-    rule: 'not-one-line',
-    sentence:
-      'Command "get" option "raw" description must hold a character other than whitespace and no line terminator.',
-  },
-  'option-prototype-unreadable': unreadable(onGet, {
-    call: "option('format'",
-    subject: 'Option "format"',
-  }),
-  'option-read-once': unreadable(onGet, {
-    call: "option('format'",
-    slot: 'default',
-    subject: 'Option "format"',
-  }),
-  'option-unreadable': unreadable(onGet, {
-    call: "option('format'",
-    slot: 'default',
-    subject: 'Option "format"',
-  }),
   'optional-before-required': {
     correction: 'Declare optional arguments after required ones.',
     findings: [
@@ -877,19 +551,6 @@ const cases: Record<string, Expected> = {
     rule: 'optional-argument-last',
     sentence:
       'Argument "path" is optional and precedes required argument "name" on Command "keys".',
-  },
-  'plugin-option-description-read-once': {
-    correction: 'Supply a one-line summary.',
-    findings: [
-      [
-        "    plugin('@acme/log', { options: { level: { description: '', type: 'string' } } })",
-        '                                              ^^^^^^^^^^^^^^^',
-      ],
-    ],
-    headline: 'TEXT NOT ONE LINE',
-    rule: 'not-one-line',
-    sentence:
-      'Plugin "@acme/log" option "level" description must hold a character other than whitespace and no line terminator.',
   },
   'plugin-sibling': {
     correction: 'Rename or remove one.',
@@ -1152,30 +813,10 @@ test.each(Object.entries(cases))(
 test('every rule of the family has a pinned diagnostic', () => {
   // A gap in descriptions waits for a development run, so its pinned diagnostic is reported below.
   const pinned = new Set([...Object.values(cases).map((expected) => expected.rule), 'undescribed']);
-  expect([...pinned].toSorted()).toEqual(
-    [...Object.keys(explanations), ...Object.keys(shared)].toSorted(),
-  );
+  expect([...pinned].toSorted()).toEqual(Object.keys(explanations).toSorted());
   expect(declaredRules('command-rules.ts').toSorted()).toEqual(
     Object.keys(explanations).toSorted(),
   );
-});
-
-test.each([
-  'application-options-prototype-unreadable',
-  'application-options-unreadable',
-  'argument-unreadable',
-  'command-options-unreadable',
-  'global-option-unreadable',
-  'hook-option-unreadable',
-  'option-default-unreadable',
-  'option-prototype-unreadable',
-  'option-unreadable',
-])('the %s fault keeps the value the read threw as its cause', (scenario) => {
-  const result = invoke(new URL('fixtures/command-diagnostics.mjs', import.meta.url), [
-    scenario,
-    'cause',
-  ]);
-  expect(result).toEqual({ status: 0, stderr: '', stdout: '{"cause":true}\n' });
 });
 
 test('an option name in a group-option sentence is escaped as every quoted name is', () => {
@@ -1189,17 +830,6 @@ test('an option name in a group-option sentence is escaped as every quoted name 
     stdout: `${String.raw`Command "cache" declares option "\u001b[31m" but registers no action to receive it.`}\n`,
   });
 });
-
-test.each(['argument-read-once', 'global-option-read-once', 'option-read-once'])(
-  'the %s config whose read threw is never read again, so its diagnostic reads it once',
-  (scenario) => {
-    const result = invoke(new URL('fixtures/command-diagnostics.mjs', import.meta.url), [
-      scenario,
-      'reads',
-    ]);
-    expect(result).toEqual({ status: 0, stderr: '', stdout: '{"reads":1}\n' });
-  },
-);
 
 /** What run() writes for one root fault in a development build. */
 function reported(scenario: string) {

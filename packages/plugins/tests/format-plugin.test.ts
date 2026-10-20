@@ -174,47 +174,6 @@ function callFault(settings: unknown): Record<string, unknown> | 'returned' {
   return JSON.parse(result.stdout);
 }
 
-test.each([['fo'], ['-f'], ['1'], [''], ['é'], [5]])(
-  'format({ short: %j }) throws the short-alias fault at its own call, naming the plugin',
-  (short) => {
-    expect(callFault({ short })).toMatchObject({
-      correction: 'Supply one ASCII letter.',
-      findings: [
-        { call: 'format', mark: '0.short', note: 'declared by plugin "@loomcli/plugins/format"' },
-      ],
-      rule: '@loomcli/core/short-alias',
-      sentence: 'Option "format" declares a short alias that is not one ASCII letter.',
-    });
-  },
-);
-
-test("the short-alias fault's diagnostic quotes the format() call and marks short", () => {
-  const fault = callFault({ short: 'fo' });
-  expect(fault).not.toBe('returned');
-  const message = fault === 'returned' ? '' : String(fault.message);
-  expect(message).toContain(
-    [
-      "    format({ short: 'fo' })",
-      '             ^^^^^^^^^^^ declared by plugin "@loomcli/plugins/format"',
-    ].join('\n'),
-  );
-  expect(message).not.toContain('option(');
-});
-
-test.each([['f'], [5], [null], [['f']]])(
-  'format(%j) throws the not-an-object fault at its own call, naming the plugin',
-  (settings) => {
-    expect(callFault(settings)).toMatchObject({
-      correction: 'Supply a settings object, or omit the settings.',
-      findings: [
-        { call: 'format', mark: '0', note: 'declared by plugin "@loomcli/plugins/format"' },
-      ],
-      rule: '@loomcli/core/not-an-object',
-      sentence: 'Plugin "@loomcli/plugins/format" declares settings that are not an object.',
-    });
-  },
-);
-
 test('format() with no settings, empty settings, or one ASCII letter returns its plugin', () => {
   expect(callFault(undefined)).toBe('returned');
   expect(callFault({})).toBe('returned');

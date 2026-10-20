@@ -1,7 +1,3 @@
-import { checkBackground } from './background-mark.js';
-import { checkEnvBinding, checkNoArgumentBinding } from './bindings.js';
-import { captureDeclaration, unreadableArgument } from './capture.js';
-import { checkColor } from './color.js';
 import {
   aliasWithoutNames,
   argumentDeclaredTwice,
@@ -30,7 +26,7 @@ import {
   viewShape,
   viewsWithoutResult,
 } from './command-rules.js';
-import { contentDeclaration, stdinClaimedTwice } from './content-rules.js';
+import { stdinClaimedTwice } from './content-rules.js';
 import type { Content } from './content.js';
 import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { DiagnosticRule, Finding } from './diagnostic-text.js';
@@ -64,17 +60,11 @@ import type {
   ExtensionValue,
 } from './extension.js';
 import {
-  checkDeprecated,
-  checkDescription,
-  checkControl,
-  checkHidden,
   checkNoControl,
   checkNoListingFacts,
   declarerNote,
   siteFinding,
   callSite,
-  factFault,
-  flagFault,
 } from './facts.js';
 import type { FactSite, InputSite } from './facts.js';
 import type {
@@ -88,7 +78,7 @@ import { buildGlobals, checkLocalOptions, frozenValues } from './globals.js';
 import { nameSharedAcrossKinds, optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import { graphMismatch, nodeAt, resultNode } from './inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
-import { checkInteraction, interaction } from './interaction.js';
+import { interaction } from './interaction.js';
 import type { Log, LogBinder } from './log.js';
 import { isMarked } from './marks.js';
 import { rememberInputNames } from './missing-input.js';
@@ -111,8 +101,8 @@ import {
 import type { CompileScope, OptionValues, SpellingOrigin, SpellingTable } from './options.js';
 import { candidatesOf } from './parse.js';
 import type { ParsedInvocation } from './parse.js';
-import { declaring, isPlainObject, shallowList, snapshot } from './plain.js';
-import { brokenAttachHook, notAnObject } from './plugin-rules.js';
+import { isPlainObject, snapshot } from './plain.js';
+import { brokenAttachHook } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
 import { fillInputs } from './sources.js';
 import type { SourceOutcome } from './sources.js';
@@ -154,9 +144,7 @@ import type {
 } from './types.js';
 import {
   suppliedInputs,
-  captureInputConfig,
   configUnread,
-  checkDeclarations,
   declaringSite,
   inputPlace,
   rejectsGlobal,
@@ -173,7 +161,6 @@ import type {
   ValidatedInputs,
   Validation,
 } from './validation.js';
-import { checkVerbosity } from './verbosity.js';
 
 /** One positional slot: the declaration it fills and whether it takes the remaining tokens. */
 export interface ArgumentSlot {
@@ -403,41 +390,8 @@ function constructorFinding(name: unknown, options: unknown, mark: string): Find
   return { arguments: callArguments(name, options), call: 'new Command', mark };
 }
 
-/**
- * The one copy of the options that `new Command(name, options)` reads, taken once the name is
- * judged: the options object and its `extensions` list, whose entries are what their factory built
- * and are not copied. A read that throws is the unreadable fault of the options, a value that is not
- * a plain object is the not-an-object fault, and a Command declared without options has none.
- */
-function captureCommandOptions(
-  name: string,
-  options: unknown,
-): Record<string, unknown> | undefined {
-  if (options === undefined) {
-    return undefined;
-  }
-  return captureDeclaration(
-    options,
-    (copy, read) => {
-      read.nested(copy, 'extensions', shallowList);
-    },
-    {
-      notAnObject: () =>
-        new DeclarationError(notAnObject, {
-          correction: 'Supply a Command options object.',
-          findings: [constructorFinding(name, options, '1')],
-          sentence: `${commandSentence(name)} declares options that are not an object.`,
-        }),
-      unreadable: unreadableArgument(
-        { call: 'new Command', named: name, subject: commandSentence(name) },
-        'options',
-      ),
-    },
-  );
-}
-
 /** A named Command's options never carry the retired globals wiring. */
-function checkCommandOptions(name: string, options: Readonly<Record<string, unknown>>): void {
+function checkCommandOptions(name: string, options: CommandOptions): void {
   if ('globals' in options) {
     throw new DeclarationError(commandGlobals, {
       correction: 'Declare globals on the Application and register its environment.',
@@ -593,13 +547,12 @@ export function freshState<Globals>(declaration: {
 }
 
 /**
- * A named Command's own declaration, checked before the value exists: the name, then the one copy
- * of the options slot, its core facts, and the extension values it carries. A later change to the
- * options object the author passed changes nothing the declaration holds.
+ * A named Command's own declaration, checked before the value exists: the name, then the options
+ * slot, its core facts, and the extension values it carries.
  */
 function namedState<Globals>(
-  name: unknown,
-  options: unknown,
+  name: string,
+  options: CommandOptions | undefined,
 ): { name: string; state: CommandState<{}, {}, Globals> } {
   if (!isPortableName(name)) {
     // The options are read after the name is judged, so the name's finding prints them elided.
@@ -611,23 +564,18 @@ function namedState<Globals>(
       sentence: `Command name ${quoted(name)} is invalid.`,
     });
   }
-  const slot = captureCommandOptions(name, options);
-  if (slot !== undefined) {
-    checkCommandOptions(name, slot);
+  if (options !== undefined) {
+    checkCommandOptions(name, options);
   }
   const site: FactSite = {
     at: '1',
-    declaration: { arguments: [name, slot], call: 'new Command' },
+    declaration: { arguments: [name, options], call: 'new Command' },
     subject: commandSentence(name),
   };
-  // The facts are read in the order their diagnostics have always ranked.
-  const description = checkDescription(site, slot?.description);
-  const hidden = checkHidden(site, slot?.hidden);
-  const deprecated = checkDeprecated(site, slot?.deprecated);
   const descriptors: DescriptorRegistry = new Map();
   const extensions = storeCommandLayers({
     descriptors,
-    layers: [slot?.extensions],
+    layers: [options?.extensions],
     site: { ...site, at: '1.extensions' },
     subject: layerOf(name),
   });
@@ -636,7 +584,11 @@ function namedState<Globals>(
     state: freshState({
       descriptors,
       extensions,
-      facts: { deprecated, description, hidden },
+      facts: {
+        deprecated: options?.deprecated,
+        description: options?.description,
+        hidden: options?.hidden ?? false,
+      },
       name,
     }),
   };
@@ -817,11 +769,8 @@ function checkArgument(state: Declared, input: ArgumentInput): void {
     checkSlotOrder(slotOf(previous), slotOf(input), command);
   }
   const site = inputSite(name, path, input);
-  checkDescription(site, input.config.description);
   checkNoListingFacts(site, input.config);
   checkNoControl(site, input.config);
-  checkNoArgumentBinding(site, input.config);
-  checkDeclarations([{ input, site }]);
 }
 
 /** One argument's name answers the declared-name rule and names no argument declared before it. */
@@ -863,14 +812,9 @@ export function declareArgument<
   declared: ArgumentInput<Name, Config>,
 ): CommandState<Args & Record<Name, ArgumentValue<Config>>, Options, Globals> {
   // The call's own input is judged before the receiver's state, as alias() judges its names.
-  // A name of another kind then reports as a declared name instead of failing to print in the order diagnostic.
-  // The config is read once right after its name is judged, and every later check reads that copy.
   const { name } = state;
   checkArgumentName({ name, path: pathOf(name), subject: commandSubject(name) }, [], declared);
-  const input = {
-    ...declared,
-    config: captureInputConfig(declared, { call: 'argument', path: pathOf(name) }),
-  };
+  const input = { ...declared, config: { ...declared.config } };
   checkOpen(state, {
     arguments: [input.name, input.config],
     call: 'argument',
@@ -912,36 +856,21 @@ export function declareOption<
   table: GlobalTable = noGlobals,
 ): CommandState<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
   // The call's own input is judged before the receiver's state, as alias() judges its names.
-  // The config is read once right after its name is judged, and every later check reads that copy.
   const path = pathOf(state.name);
   checkOptionName(declared.name, configUnread(inputSite(state.name, path, declared)));
-  const input = {
-    ...declared,
-    config: captureInputConfig(declared, { call: 'option', path }),
-  };
-  const site = inputSite(state.name, path, input);
+  const input = { ...declared, config: { ...declared.config } };
   checkOpen(state, {
     arguments: [input.name, input.config],
     call: 'option',
     clause: `declares option ${quoted(input.name)}`,
     remedy: inputRemedy,
   });
-  checkDescription(site, input.config.description);
-  checkHidden(site, input.config.hidden);
-  checkDeprecated(site, input.config.deprecated);
-  checkControl(site, input.config.control);
-  checkEnvBinding(site, input.config);
-  checkInteraction(input.config, site, false);
-  checkColor(input.config, site, false);
-  checkVerbosity(input.config, site, false);
-  checkBackground(input.config, site, false);
   const recorded = recordInput(state, input);
   checkLocalOptions(
     [...optionsOf(state.inputs), input],
     table,
     localScope(state.name, pathOf(state.name)),
   );
-  checkDeclarations([{ input, site }]);
   checkStdinClaims([...state.inputs, input], { path: pathOf(state.name), stdin: state.stdin });
   const previous = state.bind;
   return {
@@ -1308,7 +1237,7 @@ function checkGroup(state: Declared, place: FinishedPlace): void {
     });
   }
   if (state.stdin !== undefined) {
-    throw new DeclarationError(contentDeclaration, {
+    throw new DeclarationError(commandWithoutAction, {
       correction: 'Declare stdin on the Command that reads it, or register an action.',
       findings: [stdinFinding(place.path, state.stdin)],
       sentence: `${commandSentence(name)} declares stdin but registers no action to receive it.`,
@@ -1944,12 +1873,11 @@ class AttachedCommandValue implements AttachedCommand {
     } else {
       checkOptionName(raw.name, configUnread(inputSite(declared.name, path, raw)));
     }
-    // Each kind captures its own config, so the input keeps the pairing its kind declares.
-    const place = { call: raw.kind, path };
+    // Each kind copies its own config, so the input keeps the pairing its kind declares.
     const input: InputDeclaration =
       raw.kind === 'argument'
-        ? { ...raw, config: captureInputConfig(raw, place) }
-        : { ...raw, config: captureInputConfig(raw, place) };
+        ? { ...raw, config: { ...raw.config } }
+        : { ...raw, config: { ...raw.config } };
     return this.#derive(
       { identity, input, kind: 'input' },
       { ...declared, inputs: [...declared.inputs, input] },
@@ -2419,8 +2347,8 @@ function bindDispatch<Args, Options, Globals>(
 }
 
 /**
- * The own facts and extension values of each input a lifecycle hook declared, which the calls that
- * declared the author's inputs already checked.
+ * The placement facts and extension values of each input a lifecycle hook declared, which the calls
+ * that declared the author's inputs already checked.
  */
 function checkInputFacts(
   inputs: readonly InputDeclaration[],
@@ -2431,20 +2359,9 @@ function checkInputFacts(
   for (const input of inputs) {
     const site = inputSite(name, context.path, input);
     const sentence = site.subject;
-    checkDescription(site, input.config.description);
     if (input.kind === 'argument') {
       checkNoListingFacts(site, input.config);
       checkNoControl(site, input.config);
-      checkNoArgumentBinding(site, input.config);
-    } else {
-      checkHidden(site, input.config.hidden);
-      checkDeprecated(site, input.config.deprecated);
-      checkControl(site, input.config.control);
-      checkEnvBinding(site, input.config);
-      checkInteraction(input.config, site, false);
-      checkColor(input.config, site, false);
-      checkVerbosity(input.config, site, false);
-      checkBackground(input.config, site, false);
     }
     context.extensions.set(
       input,
@@ -2532,10 +2449,6 @@ export function buildCommand<Args, Options, Globals>(
     localScope(name, context.path),
   );
   const table: SpellingTable = new Map([...tableEntries(options, false), ...globals.table]);
-  // A hook's erased calls answer the declaration rules an authored call answers at the call.
-  checkDeclarations(
-    hookInputs.map(({ input }) => ({ input, site: inputSite(name, context.path, input) })),
-  );
   const children = new Map<string, BuiltCommand>();
   const routes = new Map<string, RoutedChild>();
   for (const child of state.children) {
@@ -2624,32 +2537,11 @@ export function declareStdin<Args, Options, Globals>(
     clause: 'declares stdin',
     remedy: inputRemedy,
   });
-  const captured = captureInputConfig(
-    { config, kind: 'argument', name: 'stdin' },
-    { call: 'stdin', path: pathOf(state.name) },
-  );
   const site = callSite('Stdin', {
-    arguments: [captured],
+    arguments: [config],
     call: 'stdin',
     path: pathOf(state.name),
   });
-  checkDescription({ ...site, at: '0' }, captured.description);
-  if (captured.required !== undefined && typeof captured.required !== 'boolean') {
-    throw flagFault({ ...site, at: '0' }, 'required');
-  }
-  for (const key of Object.keys(captured)) {
-    if (!['description', 'required'].includes(key)) {
-      throw factFault(
-        contentDeclaration,
-        { ...site, at: '0' },
-        {
-          correction: 'Declare only description and required on stdin.',
-          fact: key,
-          sentence: `Stdin declares ${key}.`,
-        },
-      );
-    }
-  }
   if (state.stdin !== undefined) {
     throw new DeclarationError(stdinClaimedTwice, {
       correction: 'Keep one stdin declaration.',
@@ -2657,8 +2549,8 @@ export function declareStdin<Args, Options, Globals>(
       sentence: 'A Command declares stdin twice.',
     });
   }
-  checkStdinClaims(state.inputs, { path: pathOf(state.name), stdin: captured });
-  return { ...state, stdin: Object.freeze({ ...captured, position: state.inputs.length }) };
+  checkStdinClaims(state.inputs, { path: pathOf(state.name), stdin: config });
+  return { ...state, stdin: Object.freeze({ ...config, position: state.inputs.length }) };
 }
 
 export class CommandBuilder<
@@ -2904,7 +2796,7 @@ type CommandConstructor = new (
  */
 class CommandDeclaration extends CommandBuilder<{}, {}, RegisteredGlobals> {
   constructor(name: string, options?: CommandOptions) {
-    const declared = declaring(() => namedState<RegisteredGlobals>(name, options));
+    const declared = namedState<RegisteredGlobals>(name, options);
     super(declared.name, declared.state, (source) => ({ stdin: source }));
   }
 }

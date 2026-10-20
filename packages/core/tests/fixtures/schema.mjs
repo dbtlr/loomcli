@@ -186,38 +186,8 @@ switch (scenario) {
     });
     break;
   }
-  case 'required-default': {
-    app = app.option('size', {
-      default: '1',
-      description: 'The size option.',
-      required: true,
-      type: 'string',
-      validate: numberSchema,
-    });
-    break;
-  }
-  case 'boolean-schema': {
-    app = app.option('size', {
-      description: 'The size option.',
-      type: 'boolean',
-      validate: numberSchema,
-    });
-    break;
-  }
-  case 'invalid-schema': {
-    app = app.option('size', {
-      description: 'The size option.',
-      type: 'string',
-      validate: { '~standard': { version: 2 } },
-    });
-    break;
-  }
   case 'raw-default': {
     app = app.option('size', { default: 'raw', description: 'The size option.', type: 'string' });
-    break;
-  }
-  case 'nonstring-default': {
-    app = app.option('size', { default: 12, description: 'The size option.', type: 'string' });
     break;
   }
   case 'undefined-default': {

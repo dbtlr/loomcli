@@ -36,17 +36,10 @@ test('action cancellation is silent and resolves the normal cancellation status'
   expect(result.stderr).toBe('');
 });
 
-test.each(['local', 'string', 'twice'])(
-  'invalid interaction declarations fail at declaration: %s',
-  (scenario) => {
-    const result = invoke(new URL('fixtures/interaction-policy.mjs', import.meta.url), [scenario]);
-    expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({ name: 'DeclarationError' });
-  },
-);
-
-test('two interaction marks name each option as its own site does, in one sentence', () => {
+test('two interaction marks fail at declaration, naming each option as its own site does', () => {
   const result = invoke(new URL('fixtures/interaction-policy.mjs', import.meta.url), ['twice']);
+  expect(result.status).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({ name: 'DeclarationError' });
   expect(JSON.parse(result.stdout).message).toContain(
     'Global option "input" and global option "other" both declare interaction.',
   );

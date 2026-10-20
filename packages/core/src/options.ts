@@ -1,25 +1,8 @@
-import { declaredName, repeatedAlias } from './command-rules.js';
-import { valueCode } from './diagnostic-text.js';
+import { declaredName } from './command-rules.js';
 import { DeclarationError, quoted } from './errors.js';
-import { factFault, flagFault, siteFinding } from './facts.js';
+import { siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
-import {
-  booleanOptionMultiple,
-  countOptionMultiple,
-  impliedNotAString,
-  impliedOnBooleanOrCount,
-  optionDeclaredTwice,
-  optionPolarity,
-  optionType,
-  polarityOnCount,
-  polarityOnString,
-  shortAlias,
-  shortOnlyBothPolarities,
-  shortOnlyWithAliases,
-  shortOnlyWithoutShort,
-  spellingTaken,
-} from './input-rules.js';
-import { notAList } from './plugin-rules.js';
+import { optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import type { OptionConfig } from './types.js';
 
 export interface OptionDeclaration {
@@ -159,19 +142,11 @@ export function spellingMark(site: InputSite, origin: SpellingOrigin): string {
 }
 
 /** The declared name answers the declared-name rule an argument's name answers. */
-export function checkOptionName(name: unknown, site: InputSite): void {
-  const findings = [siteFinding(site, site.named)];
-  if (typeof name !== 'string') {
-    throw new DeclarationError(declaredName, {
-      correction: 'Supply a string name.',
-      findings,
-      sentence: `Option name ${valueCode(name)} is not a string.`,
-    });
-  }
+export function checkOptionName(name: string, site: InputSite): void {
   if (!isDeclaredName(name)) {
     throw new DeclarationError(declaredName, {
       correction: declaredNameCorrection,
-      findings,
+      findings: [siteFinding(site, site.named)],
       sentence: `Option name ${quoted(name)} is invalid.`,
     });
   }
@@ -203,206 +178,36 @@ export function repeatedAliasText(subject: string, alias: string) {
   };
 }
 
-/** Whether a declared short alias is one ASCII letter, the rule every short spelling answers. */
-export function isShortAlias(short: unknown): boolean {
-  return typeof short === 'string' && /^[A-Za-z]$/u.test(short);
-}
-
-/** The sentence and correction of the short-alias fault for the option `subject` names. */
-export function shortAliasText(subject: string): { sentence: string; correction: string } {
-  return {
-    correction: 'Supply one ASCII letter.',
-    sentence: `${subject} declares a short alias that is not one ASCII letter.`,
-  };
-}
-
-/** The short alias, and `shortOnly`, which leaves the option that alias alone. */
-function checkShortForms(config: OptionConfig, site: InputSite, subject: string): void {
-  if (config.short !== undefined && !isShortAlias(config.short)) {
-    throw factFault(shortAlias, site, { ...shortAliasText(subject), fact: 'short' });
-  }
-  if (config.shortOnly !== undefined && typeof config.shortOnly !== 'boolean') {
-    throw flagFault(site, 'shortOnly');
-  }
-  if (config.shortOnly && config.short === undefined) {
-    throw factFault(shortOnlyWithoutShort, site, {
-      correction: 'Add short or remove shortOnly.',
-      fact: 'shortOnly',
-      sentence: `${subject} declares shortOnly and no short alias.`,
-    });
-  }
-}
-
-/**
- * The aliases, each a name the declared-name rule accepts, none repeating the option's name or
- * another alias. `shortOnly` removes every long spelling, so it declares none.
- */
+/** Each alias answers the declared-name rule, because an operator types it as a long spelling. */
 function checkAliases(config: OptionConfig, site: InputSite, name: string): void {
-  const subject = `Option ${quoted(name)}`;
-  // The types reject the pair, so this reads `shortOnly` before `aliases` narrows it away.
-  if (config.shortOnly === true && config.aliases !== undefined) {
-    throw factFault(shortOnlyWithAliases, site, {
-      correction: 'Remove aliases or shortOnly.',
-      fact: 'aliases',
-      sentence: `${subject} declares aliases and shortOnly, which removes every long spelling.`,
-    });
-  }
-  const { aliases } = config;
-  if (aliases === undefined) {
-    return;
-  }
-  if (!Array.isArray(aliases)) {
-    throw factFault(notAList, site, {
-      correction: 'Supply a list of alias names.',
-      fact: 'aliases',
-      sentence: `${subject} declares aliases that are not an array.`,
-    });
-  }
-  const seen = new Set<string>();
-  for (const [index, alias] of aliases.entries()) {
-    const at = `${site.at}.aliases.${String(index)}`;
-    if (typeof alias !== 'string') {
-      throw new DeclarationError(declaredName, {
-        correction: 'Supply a string name.',
-        findings: [siteFinding(site, at)],
-        sentence: `${subject} declares an alias named ${valueCode(alias)}.`,
-      });
-    }
+  for (const [index, alias] of (config.aliases ?? []).entries()) {
     if (!isDeclaredName(alias)) {
       throw new DeclarationError(declaredName, {
         correction: declaredNameCorrection,
-        findings: [siteFinding(site, at)],
-        sentence: `${subject} declares an alias named ${quoted(alias)}.`,
+        findings: [siteFinding(site, `${site.at}.aliases.${String(index)}`)],
+        sentence: `Option ${quoted(name)} declares an alias named ${quoted(alias)}.`,
       });
     }
-    const repeated = repeatedAliasText(subject, alias);
-    if (alias === name) {
-      throw new DeclarationError(repeatedAlias, {
-        ...repeated.own,
-        findings: [siteFinding(site, at, 'its own name')],
-      });
-    }
-    if (seen.has(alias)) {
-      throw new DeclarationError(repeatedAlias, {
-        ...repeated.twice,
-        findings: [siteFinding(site, at, 'already an alias')],
-      });
-    }
-    seen.add(alias);
   }
 }
-
-/** A Boolean option's polarity, which a string option and a counted option do not declare. */
-function checkPolarity(config: OptionConfig, site: InputSite, subject: string): void {
-  // The type is read before the check below narrows the config to the kind the types allow.
-  const { type } = config;
-  if (config.polarity === undefined) {
-    return;
-  }
-  if (type === 'count') {
-    throw factFault(polarityOnCount, site, {
-      correction: 'Remove polarity or use type "boolean".',
-      fact: 'polarity',
-      sentence: `${subject} declares polarity but is a counted option.`,
-    });
-  }
-  if (type !== 'boolean') {
-    throw factFault(polarityOnString, site, {
-      correction: 'Remove polarity or use type "boolean".',
-      fact: 'polarity',
-      sentence: `${subject} declares polarity but is not Boolean.`,
-    });
-  }
-  if (!['positive', 'both', 'negative'].includes(config.polarity)) {
-    throw factFault(optionPolarity, site, {
-      correction: 'Use "positive", "both", or "negative".',
-      fact: 'polarity',
-      sentence: `${subject} has an invalid polarity.`,
-    });
-  }
-  if (config.polarity === 'both' && config.shortOnly) {
-    throw factFault(shortOnlyBothPolarities, site, {
-      correction: 'Enable long forms or select one polarity.',
-      fact: 'shortOnly',
-      sentence: `${subject} cannot express both polarities with shortOnly.`,
-    });
-  }
-}
-
-/** `multiple` belongs to a string option: a Boolean option has one value and a count counts. */
-function checkMultiple(config: OptionConfig, site: InputSite, subject: string): void {
-  // The type is read before the check below narrows the config to the kind the types allow.
-  const { type } = config;
-  if (config.multiple === undefined) {
-    return;
-  }
-  if (type === 'boolean') {
-    throw factFault(booleanOptionMultiple, site, {
-      correction: 'Remove multiple or declare a string option.',
-      fact: 'multiple',
-      sentence: `${subject} is a boolean option and declares multiple.`,
-    });
-  }
-  if (type === 'count') {
-    throw factFault(countOptionMultiple, site, {
-      correction: 'Remove multiple; a counted option already counts every occurrence.',
-      fact: 'multiple',
-      sentence: `${subject} is a counted option and declares multiple.`,
-    });
-  }
-  if (typeof config.multiple !== 'boolean') {
-    throw flagFault(site, 'multiple');
-  }
-}
-
-/** The kind each option type reads as in a sentence about a value it cannot take. */
-const valuelessKinds = {
-  boolean: 'a Boolean option',
-  content: 'a content option',
-  count: 'a counted option',
-} as const;
 
 /**
- * A string option's implied value, the string a bare spelling supplies. A Boolean option and a
- * counted option take no value, so neither declares one. Presence is the key, so a declared
- * `undefined` is a declaration the rule reads.
+ * The aliases one option declares, each with its place in `aliases`, without a repeat: an alias
+ * that names the option or an alias before it adds no spelling, so it is skipped.
  */
-function checkImplied(config: OptionConfig, site: InputSite, subject: string): void {
-  if (!('implied' in config)) {
-    return;
+export function distinctAliases(
+  name: string,
+  config: OptionConfig,
+): readonly { readonly alias: string; readonly index: number }[] {
+  const seen = new Set([name]);
+  const distinct: { alias: string; index: number }[] = [];
+  for (const [index, alias] of (config.aliases ?? []).entries()) {
+    if (!seen.has(alias)) {
+      seen.add(alias);
+      distinct.push({ alias, index });
+    }
   }
-  if (config.type !== 'string') {
-    throw factFault(impliedOnBooleanOrCount, site, {
-      correction: 'Remove implied or declare a string option.',
-      fact: 'implied',
-      sentence: `${subject} is ${valuelessKinds[config.type]} and declares implied.`,
-    });
-  }
-  if (typeof config.implied !== 'string') {
-    throw factFault(impliedNotAString, site, {
-      correction: 'Supply a string, the value a bare spelling supplies.',
-      fact: 'implied',
-      sentence: `${subject} declares implied that is not a string.`,
-    });
-  }
-}
-
-/** Every rule one option declaration answers alone, before the table meets it. */
-function validateDeclaration({ name, config }: OptionDeclaration, site: InputSite) {
-  checkOptionName(name, site);
-  const subject = `Option ${quoted(name)}`;
-  if (!['string', 'content', 'boolean', 'count'].includes(config.type)) {
-    throw factFault(optionType, site, {
-      correction: 'Use "string", "content", "boolean", or "count".',
-      fact: 'type',
-      sentence: `${subject} has an invalid type.`,
-    });
-  }
-  checkShortForms(config, site, subject);
-  checkAliases(config, site, name);
-  checkMultiple(config, site, subject);
-  checkPolarity(config, site, subject);
-  checkImplied(config, site, subject);
+  return distinct;
 }
 
 /**
@@ -461,17 +266,10 @@ function addLongForms(
     ]);
   }
   for (const [spelling, form] of forms) {
-    // The name's forms claim first, so a spelling the option already holds repeats it by an alias.
-    if (form.role === 'alias' && claims.get(spelling)?.option.name === positive.name) {
-      throw new DeclarationError(repeatedAlias, {
-        correction: 'Remove the alias.',
-        findings: [
-          siteFinding(site, spellingMark(site, form), 'a spelling the option already accepts'),
-        ],
-        sentence: `Option ${quoted(positive.name)} declares alias ${quoted(long.name)}, whose spelling ${quoted(spelling)} the option already accepts.`,
-      });
+    // The name's forms claim first, so an alias whose spelling the option already holds adds nothing.
+    if (form.role !== 'alias' || claims.get(spelling)?.option.name !== positive.name) {
+      addSpelling(claims, spelling, { option: form, site });
     }
-    addSpelling(claims, spelling, { option: form, site });
   }
 }
 
@@ -526,7 +324,8 @@ export function compileOptions<Declaration extends OptionDeclaration>(
   for (const declaration of declarations) {
     const { name, config } = declaration;
     const site = scope.siteOf(declaration);
-    validateDeclaration({ config, name }, site);
+    checkOptionName(name, site);
+    checkAliases(config, site, name);
     const first = names.get(name);
     if (first) {
       const earlier = scope.siteOf(first);
@@ -548,7 +347,7 @@ export function compileOptions<Declaration extends OptionDeclaration>(
         negative: { role: 'negative' },
         positive: { role: 'long' },
       });
-      for (const [index, alias] of (config.aliases ?? []).entries()) {
+      for (const { alias, index } of distinctAliases(name, config)) {
         const origin: SpellingOrigin = { index, role: 'alias' };
         addLongForms(claims, option, { name: alias, negative: origin, positive: origin });
       }

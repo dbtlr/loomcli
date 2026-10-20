@@ -278,37 +278,6 @@ function settingsOutcome(mode: string, value?: string): unknown {
   return JSON.parse(result.stdout);
 }
 
-test.each([['MM'], ['-M'], ['1'], [''], ['é'], [5]])(
-  'manifest({ short: %j }) throws the ordinary short-alias fault at the factory call',
-  (short) => {
-    expect(settingsOutcome('settings', JSON.stringify({ short }))).toMatchObject({
-      correction: 'Supply one ASCII letter.',
-      findings: [
-        {
-          call: 'manifest',
-          mark: '0.short',
-          note: 'declared by plugin "@loomcli/plugins/manifest"',
-        },
-      ],
-      rule: '@loomcli/core/short-alias',
-      sentence: 'Option "manifest" declares a short alias that is not one ASCII letter.',
-    });
-  },
-);
-
-test.each([['M'], [5], [null], [['M']]])(
-  'manifest(%j) rejects settings that are not an object at the factory call',
-  (settings) => {
-    expect(settingsOutcome('settings', JSON.stringify(settings))).toMatchObject({
-      findings: [
-        { call: 'manifest', mark: '0', note: 'declared by plugin "@loomcli/plugins/manifest"' },
-      ],
-      rule: '@loomcli/core/not-an-object',
-      sentence: 'Plugin "@loomcli/plugins/manifest" declares settings that are not an object.',
-    });
-  },
-);
-
 test('manifest accepts omitted or empty settings and either case of ASCII letter', () => {
   expect(settingsOutcome('settings')).toBe('returned');
   for (const settings of [{}, { short: 'm' }, { short: 'M' }]) {
@@ -412,6 +381,20 @@ test('a deprecated Command carries its message, and a value with no field adds n
   const document = documentOf(['--manifest']);
   expect(entryAt(document, ['old']).deprecated).toBe('Use get instead.');
   expect(entryAt(document, ['empty'])).toMatchObject({ details: [], examples: [] });
+});
+
+test('a line break in a description or a deprecation message prints as one space', () => {
+  const result = run('multiline', ['fetch', '--manifest']);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  const document = printedSchema.parse(JSON.parse(result.stdout));
+  expect(document.description).toBe('Do the work.');
+  const fetch = entryAt(document, []);
+  expect(fetch).toMatchObject({
+    arguments: [{ description: 'The path.', name: 'path' }],
+    deprecated: 'Use get instead.',
+    description: 'Read one value at a path.',
+    options: [{ deprecated: 'Use --level.', description: 'How deep to walk.', name: 'depth' }],
+  });
 });
 
 test('a hidden Command routed to directly prints its own slice, and a group prints its children', () => {
@@ -537,7 +520,7 @@ test('a declared default that is not plain JSON data fails the write, wherever t
   expect(unencodable('argument-nan')).toEqual(reportedAs('the default of argument "odd"'));
 });
 
-test('a null-prototype default prints as the plain object core copies it into, and an absent description reads null', () => {
+test('a null-prototype default prints as a plain object, and an absent description reads null', () => {
   const result = run('null-prototype', ['--manifest']);
   expect(result).toMatchObject({ status: 0, stderr: '' });
   const document = printedSchema.parse(JSON.parse(result.stdout));

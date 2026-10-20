@@ -73,34 +73,10 @@ test('catching FatalError prevents failure and eager printing', () => {
   });
 });
 
-/** The constructor checks the options slot, and a valid one reaches both build entry points. */
+/** A valid options slot reaches both build entry points. */
 function withOptions(scenario: string, mode: 'inspect' | 'run') {
   return invoke(new URL('fixtures/application-options.mjs', import.meta.url), [scenario, mode]);
 }
-
-test.each(['application-value', 'empty-application'])(
-  'an Application value (%s) used as an options object is thrown by the constructor',
-  (scenario) => {
-    expect(withOptions(scenario, 'inspect')).toEqual({
-      status: 0,
-      stderr: '',
-      stdout:
-        'thrown:1: The Application declares options that are not an object. Supply an Application options object.\n',
-    });
-  },
-);
-
-test.each(['string-options', 'array-options'])(
-  'options that are not an object (%s) are thrown by the constructor',
-  (scenario) => {
-    expect(withOptions(scenario, 'inspect')).toEqual({
-      status: 0,
-      stderr: '',
-      stdout:
-        'thrown:1: The Application declares options that are not an object. Supply an Application options object.\n',
-    });
-  },
-);
 
 test('an options object with core facts constructs, inspects, and runs the Application', () => {
   expect(withOptions('options-object', 'inspect')).toEqual({
@@ -115,34 +91,10 @@ test('an options object with core facts constructs, inspects, and runs the Appli
   });
 });
 
-/** A Command's constructor checks its own options slot under the same rules. */
+/** A Command's valid options slot reaches both build entry points too. */
 function withCommandOptions(scenario: string, mode: 'inspect' | 'run') {
   return invoke(new URL('fixtures/command-options.mjs', import.meta.url), [scenario, mode]);
 }
-
-test.each(['application-value', 'empty-application'])(
-  'an Application value (%s) used as an options object on a Command is thrown by the constructor',
-  (scenario) => {
-    expect(withCommandOptions(scenario, 'inspect')).toEqual({
-      status: 0,
-      stderr: '',
-      stdout:
-        'thrown:1: Command "get" declares options that are not an object. Supply a Command options object.\n',
-    });
-  },
-);
-
-test.each(['string-options', 'array-options'])(
-  'Command options that are not an object (%s) are thrown by the constructor',
-  (scenario) => {
-    expect(withCommandOptions(scenario, 'inspect')).toEqual({
-      status: 0,
-      stderr: '',
-      stdout:
-        'thrown:1: Command "get" declares options that are not an object. Supply a Command options object.\n',
-    });
-  },
-);
 
 test('an options object with core facts constructs, inspects, and runs the Command', () => {
   expect(withCommandOptions('options-object', 'inspect')).toEqual({

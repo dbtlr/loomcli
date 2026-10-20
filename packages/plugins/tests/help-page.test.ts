@@ -314,6 +314,43 @@ test('a deprecated Command carries its message on a second masthead line', () =>
   );
 });
 
+test('a line break in a description or a deprecation message prints as one space', () => {
+  expect(run('multiline', ['--help'])).toEqual(
+    page(
+      'app · Do the work.',
+      '',
+      'USAGE',
+      '  app [options]',
+      '  app <command> [options]',
+      '',
+      'COMMANDS',
+      '  fetch  Read one value at a path.  (deprecated: Use get instead.)',
+      '',
+      'GLOBAL OPTIONS',
+      '  -h, --help     Show this help.',
+      '  -V, --version  Print the version.',
+      '',
+      'Run app <command> --help for command details.',
+    ),
+  );
+  expect(run('multiline', ['fetch', '--help'])).toEqual(
+    page(
+      'app fetch · Read one value at a path.',
+      '  Deprecated: Use get instead.',
+      '',
+      'USAGE',
+      '  app fetch [options]',
+      '',
+      'OPTIONS',
+      '      --depth <depth>  How deep to walk.',
+      '',
+      'GLOBAL OPTIONS',
+      '  -h, --help     Show this help.',
+      '  -V, --version  Print the version.',
+    ),
+  );
+});
+
 test('a hidden Command routed to directly prints its own page like any other', () => {
   expect(run('children', ['debug', '--help'])).toEqual(
     page(

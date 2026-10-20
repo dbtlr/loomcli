@@ -188,20 +188,14 @@ test.skipIf(process.platform === 'win32')('argv content paths accept process sub
   expect(result).toEqual({ status: 0, stderr: '', stdout: 'source sentinel\n\n' });
 });
 
-test.each(['default', 'validate', 'validateOmitted', 'duplicate'])(
-  'content rejects the %s declaration',
-  (scenario) => {
-    const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [scenario]);
-    expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({
-      name: 'DeclarationError',
-      rule:
-        scenario === 'duplicate'
-          ? '@loomcli/core/stdin-claimed-twice'
-          : '@loomcli/core/content-declaration',
-    });
-  },
-);
+test('a second stdin declaration on one Command is a declaration fault', () => {
+  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['duplicate']);
+  expect(result.status).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    name: 'DeclarationError',
+    rule: '@loomcli/core/stdin-claimed-twice',
+  });
+});
 
 test('a stdin-only declaration hands the action a lazy stdin handle', () => {
   expect(
@@ -362,7 +356,7 @@ test('a group cannot declare a stdin input that no action receives', () => {
   const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['stdin-group']);
   expect(JSON.parse(result.stdout)).toMatchObject({
     name: 'DeclarationError',
-    rule: '@loomcli/core/content-declaration',
+    rule: '@loomcli/core/command-without-action',
   });
 });
 

@@ -1,6 +1,7 @@
 import { nowrap, reportedSpelling, readExtension } from '@loomcli/core';
 import type { CommandGraph, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
+import { singleLineOf } from '../lines.js';
 import { visibleOptionGroups } from '../option-groups.js';
 import { continuation } from '../text-lines.js';
 import { argumentAccepts, optionAccepts } from './accepted.js';
@@ -84,14 +85,16 @@ function deprecation(message: string, context: ViewContext): string[] {
 }
 
 /**
- * `<path> · <description>`, or `<path>` alone when the node has no description. On a terminal the
- * description wraps and continues under its first character, or at indent 2 when that hang cannot
- * fit. A deprecated Command follows it with
- * its migration message on the next line of the same block.
+ * `<path> · <description>`, or `<path>` alone when the node has no description. The description
+ * and the migration message each print as one line of prose, a line break the author wrote read as
+ * a space. On a terminal the description wraps and continues under its first character, or at
+ * indent 2 when that hang cannot fit. A deprecated Command follows it with its migration message on
+ * the next line of the same block.
  */
 function masthead(path: string, command: CommandNode, context: ViewContext): string[] {
   const { style } = context;
-  const { deprecated, description } = command;
+  const deprecated = singleLineOf(command.deprecated);
+  const description = singleLineOf(command.description);
   const name = style.highlight.bold(style.escape(path));
   const opening =
     description === undefined
@@ -370,10 +373,11 @@ function stdinInput(command: CommandNode, graph: CommandGraph, context: ViewCont
     return [];
   }
   // The description and the stdin sentence are prose, and the example line is a literal.
+  const summary = singleLineOf(input.description);
   const description =
-    input.description === undefined
+    summary === undefined
       ? []
-      : prose(style.primary(style.escape(input.description)), { lead: '  ' }, context);
+      : prose(style.primary(style.escape(summary)), { lead: '  ' }, context);
   const sentence = style.primary(
     `${input.required ? 'Required.' : 'Optional.'} Reads piped or redirected stdin. Terminal input is not accepted.`,
   );

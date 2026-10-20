@@ -1,4 +1,4 @@
-import { checkPluginSettings, plugin } from '@loomcli/core';
+import { plugin } from '@loomcli/core';
 import type { LogHook, Plugin } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
@@ -48,10 +48,9 @@ function hookOf(plan: LoggingPlan): LogHook {
 /**
  * A plugin that writes each log event as one JSON record, appended to a size-rotated file in the
  * platform's state or log directory, or written to stderr. It is an `onLog` hook and nothing else.
- * It judges the settings at the call, their shape under core's rules and then its own keys.
+ * It judges the settings' own keys at the call.
  */
 export function logging(settings?: LoggingSettings): Plugin {
-  checkPluginSettings(settings, { call: 'logging', plugin: identity });
   return plugin(identity, { onLog: hookOf(planOf(settings)) });
 }
 

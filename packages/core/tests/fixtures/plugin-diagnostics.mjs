@@ -22,9 +22,6 @@ const render = () => '';
 const row = () => '';
 const line = (form) => `${JSON.stringify({ error: form })}\n`;
 
-/** The value an unreadable config throws, so a test reads that the fault keeps it as its cause. */
-const boom = new Error('boom');
-
 /** A Standard Schema that answers each value with the verdict `answer` gives. */
 function schema(answer) {
   return { '~standard': { validate: answer, vendor: 'fixture', version: 1 } };
@@ -79,24 +76,6 @@ const scenarios = {
       .inspect(),
   'commands-entry': () => plugin('@acme/doctor', { commands: [leaf('check'), 'probe'] }),
   'commands-not-list': () => plugin('@acme/doctor', { commands: 'check' }),
-  'definition-prototype-unreadable': () =>
-    plugin(
-      '@acme/log',
-      new Proxy(
-        {},
-        {
-          getPrototypeOf() {
-            throw boom;
-          },
-        },
-      ),
-    ),
-  'definition-unreadable': () =>
-    plugin('@acme/log', {
-      get views() {
-        throw boom;
-      },
-    }),
   'encoder-taken': () =>
     plugin('@acme/json', {
       failureEncoders: [
@@ -120,15 +99,6 @@ const scenarios = {
         })(1),
       ],
     }),
-  'extension-collect': () => {
-    const descriptor = Object.assign(() => undefined, {
-      collect: 'yes',
-      identity: '@acme/notes/list',
-      schema: accepting,
-      target: 'command',
-    });
-    return plugin('@acme/notes', { extensions: [descriptor] });
-  },
   'extension-deep': () =>
     extension('@loomcli/plugins/help/page/input', { schema: accepting, target: 'option' }),
   'extension-defined-twice': () => {
@@ -278,36 +248,14 @@ const scenarios = {
       .command(new Command('count').option('file', { short: 'f', type: 'string' }).action(act))
       .inspect(),
   'middleware-load': () => plugin('@acme/help', { middleware: { activate: 'always' } }),
-  'middleware-object': () => plugin('@acme/help', { middleware: 'help' }),
   'on-failure': () => plugin('@acme/suggest', { onFailure: 'hint' }),
   'on-log': () => plugin('@acme/stacks', { onLog: 'stacks' }),
-  'option-config': () => plugin('@acme/log', { options: { level: 'debug' } }),
-  'option-presence': () =>
-    plugin('@acme/log', { options: { level: { required: true, type: 'string' } } }),
-  // A plugin's option is a global option, so the key is rejected whatever its value.
-  'option-presence-sibling': () =>
-    plugin('@acme/log', {
-      options: { level: { type: 'string', validateOmitted: false }, trace: { type: 'boolean' } },
-    }),
-  'option-unreadable': () =>
-    plugin('@acme/log', {
-      options: {
-        level: {
-          get default() {
-            throw boom;
-          },
-          type: 'string',
-        },
-      },
-    }),
-  'options-record': () => plugin('@acme/log', { options: [] }),
   'override-key': () => new Application('probe', { views: [override('InputError', render)] }),
   'override-twice': () =>
     plugin('@acme/brand', {
       views: [override(InputError, { render }), override(InputError, { render })],
     }),
   'plugin-deep': () => plugin('@loomcli/plugins/help/page', {}),
-  'plugin-definition': () => plugin('@acme/log', 'debug'),
   'plugin-empty-identity': () => plugin('', {}),
   'plugin-entry': () => new Application('probe', { plugins: [{ identity: '@acme/log' }] }),
   'plugin-identity': () => plugin('Help', {}),
@@ -343,7 +291,6 @@ const scenarios = {
     }),
   'source-binding': () => plugin('@acme/config', { source: { binding: tag, load } }),
   'source-load': () => plugin('@acme/config', { extensions: [tag], source: { binding: tag } }),
-  'source-object': () => plugin('@acme/config', { source: 'files' }),
   'source-own-option': () =>
     plugin('@acme/config', {
       extensions: [tag],
@@ -402,10 +349,8 @@ if (scenario === 'run-rendering') {
     if (!(error instanceof DeclarationError)) {
       throw error;
     }
-    // The cause mode reads whether the fault kept the thrown value itself.
     // The sentence mode reads the sentence the fault holds, before any rendering escapes it.
     const modes = {
-      cause: () => JSON.stringify({ cause: error.cause === boom }),
       sentence: () => error.sentence,
     };
     process.stdout.write(`${modes[process.argv[3]]?.() ?? error.message}\n`);

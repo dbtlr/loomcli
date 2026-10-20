@@ -182,20 +182,3 @@ test('an invalid author value is reported before a hook on that Command runs', (
       'Command "get" holds an invalid "@fixture/notes/command" value: Supply a note. Correct the value.',
   });
 });
-
-test('build rejects a descriptor whose collect is neither true nor false', () => {
-  const rejected = {
-    fault: 'DeclarationError',
-    message:
-      'Extension "@fixture/hand/command" declares collect that is not a Boolean. Use true or false.',
-  };
-  expect(facts('hand-yes', 'fault')[0]).toEqual(rejected);
-  expect(facts('hand-absent', 'fault')[0]).toEqual(rejected);
-  expect(facts('hand-false', 'fault')[0]).toEqual({ fault: null });
-  const factory = {
-    ...rejected,
-    message: rejected.message.replace('@fixture/hand/', '@fixture/factory/'),
-  };
-  expect(facts('factory-null', 'fault')[0]).toEqual(factory);
-  expect(facts('factory-yes', 'fault')[0]).toEqual(factory);
-});

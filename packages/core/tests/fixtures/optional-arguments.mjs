@@ -97,12 +97,6 @@ switch (scenario) {
       .action(report);
     break;
   }
-  case 'tail-raw-default': {
-    app = new Application('optional', development)
-      .argument('files', { default: 'a', description: 'The files argument.', variadic: true })
-      .action(report);
-    break;
-  }
   case 'tail-invalid-default': {
     app = new Application('optional', development)
       .argument('files', {

@@ -51,7 +51,6 @@ export { locate } from './locate.js';
 export { incompleteResult, lanes } from './lanes.js';
 export { override, view } from './view.js';
 export { plugin } from './plugin.js';
-export { checkPluginSettings, checkShortSetting } from './plugin-settings.js';
 export { translate } from './translators.js';
 export { encodeFailure } from './encoders.js';
 export { glyph } from './glyphs.generated.js';

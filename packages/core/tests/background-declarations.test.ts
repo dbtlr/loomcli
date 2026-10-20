@@ -21,31 +21,6 @@ test('a string global option carries the background mark, with aliases', () => {
 
 test.each([
   [
-    'local-application',
-    'option',
-    'The root Command option "background" declares background but is not a global option. Declare it with globalOption().',
-  ],
-  [
-    'local-command',
-    'option',
-    'Command "shade" option "background" declares background but is not a global option. Declare it with globalOption().',
-  ],
-  ...['boolean', 'content', 'count'].map((type) => [
-    type,
-    'globalOption',
-    'Global option "background" declares background but is not a string option. Use type "string".',
-  ]),
-  [
-    'not-true',
-    'globalOption',
-    'Global option "background" declares background that is not true. Remove background or set it to true.',
-  ],
-  [
-    'not-true-plugin',
-    'plugin',
-    'Plugin "@fixture/shade" option "background" declares background that is not true. Remove background or set it to true.',
-  ],
-  [
     'two-global',
     'globalOption',
     'Global option "shade" and plugin "@loomcli/plugins/background" option "background" both declare background. Mark one option.',
@@ -59,36 +34,6 @@ test.each([
     'two-plugins',
     'new Application',
     'Plugin "@fixture/shade" option "shade" and plugin "@loomcli/plugins/background" option "background" both declare background. Mark one option.',
-  ],
-  [
-    'short',
-    'globalOption',
-    'Global option "background" declares background and a short alias. Remove short; the run reads its background before it reads short groups.',
-  ],
-  [
-    'env-global',
-    'globalOption',
-    'Global option "background" declares background and env, a second source for the run\'s background. Remove env; COLORFGBG speaks for the environment.',
-  ],
-  [
-    'env-plugin',
-    'plugin',
-    'Plugin "@fixture/shade" option "background" declares background and env, a second source for the run\'s background. Remove env; COLORFGBG speaks for the environment.',
-  ],
-  [
-    'default',
-    'globalOption',
-    'Global option "background" declares background and a default, a second source for the run\'s background. Remove default; set rendering.background instead.',
-  ],
-  [
-    'implied',
-    'globalOption',
-    'Global option "background" declares background and an implied value. Remove implied; the operator names dark or light.',
-  ],
-  [
-    'multiple',
-    'globalOption',
-    'Global option "background" declares background and multiple. Remove multiple; a run has one background.',
   ],
   [
     'binding-global',

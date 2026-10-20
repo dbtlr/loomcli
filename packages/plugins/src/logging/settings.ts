@@ -146,9 +146,8 @@ function judgeKeys(settings: Readonly<Record<string, unknown>>): void {
 }
 
 /**
- * Judges the settings' own keys, after core's rules for any plugin's settings, and fills the
- * defaults. The keys are judged through an untyped view of the same object, so the typed reads
- * after it hold because the judgment passed.
+ * Judges the settings' own keys and fills the defaults. The keys are judged through an untyped view
+ * of the same object, so the typed reads after it hold because the judgment passed.
  */
 function planOf(settings: LoggingSettings | undefined): LoggingPlan {
   if (settings === undefined) {

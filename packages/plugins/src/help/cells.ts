@@ -2,7 +2,7 @@ import { pad, readExtension } from '@loomcli/core';
 import type { ArgumentNode, OptionNode, ViewContext } from '@loomcli/core';
 
 import { isStrings } from '../closed-set.js';
-import { terminators } from '../lines.js';
+import { singleLine, singleLineOf, terminators } from '../lines.js';
 import { addsOccurrence, oneOccurrence } from '../occurrences.js';
 import { unitWidth } from '../text-lines.js';
 import { helpInput } from './extension.js';
@@ -255,8 +255,8 @@ interface CellText {
 }
 
 /**
- * The right cell of one row: the description when the member has one, then its accepted-values
- * sentence, then the facts that apply in one parenthesis. One space separates the description from
+ * The right cell of one row: the description when the member has one, on one line, then its
+ * accepted-values sentence, then the facts that apply in one parenthesis. One space separates the description from
  * the sentence and two spaces separate the text from the parenthesis; a member with no text has the
  * parenthesis as its whole cell, and a member with none of the three has no right cell at all.
  */
@@ -264,7 +264,7 @@ function rightCellWith(text: CellText, facts: readonly Fact[], writer: CellWrite
   const parenthesis = isEmpty(facts)
     ? ''
     : `${writer.mark('(')}${facts.map((fact) => writer.fact(fact)).join(`${writer.mark(',')} `)}${writer.mark(')')}`;
-  const written = [text.description, text.accepts]
+  const written = [singleLineOf(text.description), text.accepts]
     .filter((part) => part !== undefined)
     .map((part) => writer.prose(part));
   if (isEmpty(written)) {
@@ -345,13 +345,13 @@ function booleanFacts(option: Extract<OptionNode, { type: 'boolean' }>): Fact[] 
 }
 
 /**
- * The fact a deprecated member contributes: its migration message. The right-cell rule prints it
- * last, so a reader takes everything after `deprecated: ` as the message.
+ * The fact a deprecated member contributes: its migration message, on one line. The right-cell rule
+ * prints it last, so a reader takes everything after `deprecated: ` as the message.
  */
 function deprecatedFacts(member: { readonly deprecated: string | undefined }): Fact[] {
   return member.deprecated === undefined
     ? []
-    : [{ text: `deprecated: ${member.deprecated}`, tone: 'warning' }];
+    : [{ text: `deprecated: ${singleLine(member.deprecated)}`, tone: 'warning' }];
 }
 
 /**

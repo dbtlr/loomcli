@@ -534,48 +534,8 @@ function build(scenario: string, mode: 'inspect' | 'run') {
 
 test.each([
   [
-    'env-grammar',
-    'Global option "limit" env "9LIMIT" is not a variable name. Use a letter or an underscore, then letters, digits, or underscores.',
-  ],
-  [
-    'env-not-string',
-    'Global option "limit" env is not a variable name. Use a letter or an underscore, then letters, digits, or underscores.',
-  ],
-  [
-    'local-env-grammar',
-    'Command "count" option "limit" env "LIMIT-X" is not a variable name. Use a letter or an underscore, then letters, digits, or underscores.',
-  ],
-  [
-    'plugin-env-grammar',
-    'Plugin "@loomcli/log" option "verbose" env "" is not a variable name. Use a letter or an underscore, then letters, digits, or underscores.',
-  ],
-  [
-    'env-list-empty',
-    'Global option "limit" env is an empty list. List at least one variable name, or remove env.',
-  ],
-  [
-    'env-list-repeat',
-    'Global option "limit" env names "LIMIT" more than once. Name each variable once.',
-  ],
-  [
-    'env-list-bad-name',
-    'Global option "limit" env "9LIMIT" is not a variable name. Use a letter or an underscore, then letters, digits, or underscores.',
-  ],
-  [
     'env-list-twice',
     'Variable "TEXTSTAT_MAX" is bound by global option "limit" and Command "count" option "max". Bind each variable to one option.',
-  ],
-  [
-    'env-multiple',
-    'Global option "field" is a multiple option and declares env. Remove env; a list comes from the configuration source.',
-  ],
-  [
-    'plugin-env-multiple',
-    'Plugin "@loomcli/log" option "tags" is a multiple option and declares env. Remove env; a list comes from the configuration source.',
-  ],
-  [
-    'argument-env',
-    'Command "get" argument "path" declares env, which applies to options alone. Remove it.',
   ],
   [
     'variable-twice',
@@ -596,10 +556,6 @@ test.each([
   [
     'second-source',
     'Plugin "@acme/yaml" declares a configuration source, which plugin "@acme/config" already declares. Install one source.',
-  ],
-  [
-    'source-not-object',
-    'Plugin "@acme/config" declares a source that is not an object. Supply { binding, load }.',
   ],
   [
     'binding-not-listed',
@@ -623,6 +579,10 @@ test.each([
     stderr: '',
     stdout: `thrown:1: ${message}\n`,
   });
+});
+
+test('a binding that names one variable twice binds it once', () => {
+  expect(build('env-list-repeat', 'inspect').stdout).toBe('inspected\n');
 });
 
 test('a list that shares a name across sibling Commands is accepted', () => {

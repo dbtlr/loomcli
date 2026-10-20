@@ -5,7 +5,7 @@ import { factFault } from './facts.js';
 import type { FactSite } from './facts.js';
 import { lowerInvocation } from './lower.js';
 import type { NamedCall } from './lower.js';
-import { checkMarkPlacement, isMarked } from './marks.js';
+import { isMarked } from './marks.js';
 import type { Mark } from './marks.js';
 import type { OptionValues } from './options.js';
 import { readWords } from './parse.js';
@@ -38,33 +38,6 @@ const verbosityMarks: readonly Mark[] = [verbose, quiet];
  */
 const loudest = 2;
 const quietest = 1;
-
-/**
- * Each mark belongs only to a counted global option, an option carries at most one of them, and a
- * marked option binds no variable, judged at the call that declares the option. The configuration
- * binding needs the installed source, so `checkVerbosityBinding` judges it where the Application
- * knows the source.
- */
-function checkVerbosity(config: OptionConfig, site: FactSite, global: boolean): void {
-  for (const mark of verbosityMarks) {
-    checkMarkPlacement(config, site, { global, mark });
-  }
-  if ('verbose' in config && 'quiet' in config) {
-    throw factFault(verboseMark, site, {
-      correction: 'Mark one; declare a second counted option for the other.',
-      fact: 'quiet',
-      sentence: `${site.subject} declares verbose and quiet.`,
-    });
-  }
-  const marked = verbosityMarks.find((mark) => isMarked(config, mark));
-  if (marked !== undefined && config.env !== undefined) {
-    throw factFault(marked.rule, site, {
-      correction: 'Remove env; the run settles its verbosity before it reads the environment.',
-      fact: 'env',
-      sentence: `${site.subject} declares ${marked.fact} and env, a second source for the run's verbosity.`,
-    });
-  }
-}
 
 /**
  * A marked option carries no value of the installed configuration source's binding, because the
@@ -147,4 +120,4 @@ function namedVerbosity(graph: BuiltGraph, call: NamedCall): number {
   return settleWith(graph, () => lowerInvocation(graph, call, () => undefined));
 }
 
-export { argvVerbosity, checkVerbosity, checkVerbosityBinding, namedVerbosity, quiet, verbose };
+export { argvVerbosity, checkVerbosityBinding, namedVerbosity, quiet, verbose };

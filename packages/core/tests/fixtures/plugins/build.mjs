@@ -167,7 +167,6 @@ const scenarios = {
   'commands-not-array': () =>
     withGroup(named('@acme/doctor', { commands: new Command('doctor').action(dispatch) })),
   'commands-null': () => withGroup(named('@acme/doctor', { commands: null })),
-  'definition-not-object': () => withPlugin(named('@loomcli/help', 'nope')),
   'empty-activation': () =>
     withPlugin(named('@loomcli/help', { middleware: { activate: [], load } })),
   'empty-identity': () => withPlugin(plugin('', {})),
@@ -223,8 +222,6 @@ const scenarios = {
       named('@acme/out', { onCommandAttach: onCount(declaresFormat) }),
       formatter(onCount(declaresFormat)),
     ]),
-  'hook-invalid-option': () =>
-    withHooks([formatter(onCount((command) => command.option('format', { type: 'nope' })))]),
   'hook-late-option': () =>
     withHooks([formatter(onCount(declaresFormat))], new Command('count').action(dispatch)),
   'hook-local-collision': () =>
@@ -290,7 +287,6 @@ const scenarios = {
       .command(get)
       .action(dispatch);
   },
-  'middleware-not-object': () => withPlugin(named('@loomcli/help', { middleware: null })),
   'no-activation': () => withPlugin(named('@loomcli/help', { middleware: { load } })),
   'no-loader': () => withPlugin(named('@loomcli/help', { middleware: { activate: 'always' } })),
   'no-schema': () => {
@@ -305,21 +301,12 @@ const scenarios = {
     const get = new Command('get', { extensions: [{ identity: 'forged' }] }).action(dispatch);
     return new Application('app').command(get).action(dispatch);
   },
-  'option-boolean-default': () =>
-    withPlugin(named('@loomcli/log', { options: { level: { default: 'warn', type: 'boolean' } } })),
   'option-global-key': () =>
     new Application('app', {
       plugins: [named('@loomcli/help', { options: { help: { type: 'boolean' } } })],
     })
       .globalOption('help', { type: 'boolean' })
       .action(dispatch),
-  'option-not-declaration': () => withPlugin(named('@loomcli/log', { options: { level: null } })),
-  'option-raw-default': () =>
-    withPlugin(named('@loomcli/log', { options: { level: { default: 7, type: 'string' } } })),
-  'option-required': () =>
-    withPlugin(named('@loomcli/log', { options: { level: { required: true, type: 'string' } } })),
-  'option-required-false': () =>
-    withPlugin(named('@loomcli/log', { options: { level: { required: false, type: 'string' } } })),
   'option-spelling': () =>
     new Application('app', {
       plugins: [named('@loomcli/help', { options: { help: { short: 'h', type: 'boolean' } } })],
@@ -327,19 +314,6 @@ const scenarios = {
       .globalOption('host', { short: 'h', type: 'string' })
       .action(dispatch),
   // A plugin's option meets every rule an option declaration meets, so its validator is a schema.
-  'option-validate': () =>
-    withPlugin(
-      named('@loomcli/log', {
-        options: { level: { type: 'string', validate: 'level' } },
-      }),
-    ),
-  'option-validate-omitted': () =>
-    withPlugin(
-      named('@loomcli/log', {
-        options: { level: { type: 'string', validateOmitted: true } },
-      }),
-    ),
-  'options-not-object': () => withPlugin(named('@loomcli/log', { options: 'level' })),
   'output-accessor': () =>
     withOutput(
       '@fixture/output/accessor',

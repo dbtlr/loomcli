@@ -1,6 +1,7 @@
 import { readExtension } from '@loomcli/core';
 import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from '@loomcli/core';
 
+import { singleLine, singleLineOf } from '../lines.js';
 import { isPlainJson } from '../plain-data.js';
 import { mcpArgument, mcpCommand, mcpInput } from './extension.js';
 import { groupSchemas } from './groups.js';
@@ -86,7 +87,8 @@ function propertiesOf(graph: CommandGraph, command: CommandNode): readonly Prope
 
 /**
  * A description for an agent, opened by a deprecation's migration message where there is one, then
- * a line break and the rest.
+ * a line break and the rest. The migration message is one line, a line break the author wrote read
+ * as a space, so the line break after it is the only one between the two.
  */
 function described(
   description: string | undefined,
@@ -95,7 +97,7 @@ function described(
   if (deprecated === undefined) {
     return description;
   }
-  const notice = `Deprecated: ${deprecated}`;
+  const notice = `Deprecated: ${singleLine(deprecated)}`;
   return description === undefined ? notice : `${notice}\n${description}`;
 }
 
@@ -134,13 +136,22 @@ function takesSeveral(property: Property): boolean {
   );
 }
 
-/** The input's description for an agent: its extension value's, or else its core description. */
+/**
+ * The input's description for an agent: its extension value's as written, or else its core
+ * description on one line, a line break the author wrote read as a space.
+ */
 function propertyDescription(property: Property): string | undefined {
   if (property.kind === 'argument') {
-    return readExtension(property.node, mcpArgument)?.description ?? property.node.description;
+    return (
+      readExtension(property.node, mcpArgument)?.description ??
+      singleLineOf(property.node.description)
+    );
   }
   const { node } = property;
-  return described(readExtension(node, mcpInput)?.description ?? node.description, node.deprecated);
+  return described(
+    readExtension(node, mcpInput)?.description ?? singleLineOf(node.description),
+    node.deprecated,
+  );
 }
 
 /** The input's declared default, when it is plain JSON data. */
@@ -228,7 +239,7 @@ function annotationsOf(command: CommandNode): ToolAnnotations | undefined {
 function listedTool(graph: CommandGraph, entry: ToolEntry): ListedTool {
   const { command, name } = entry;
   const description = described(
-    readExtension(command, mcpCommand)?.description ?? command.description,
+    readExtension(command, mcpCommand)?.description ?? singleLineOf(command.description),
     command.deprecated,
   );
   const annotations = annotationsOf(command);

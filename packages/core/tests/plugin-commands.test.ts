@@ -77,10 +77,6 @@ const rejected = [
     'Option "quiet" is declared as a global option and as a local option on Command "doctor". Rename the local option.',
   ],
   [
-    'global-after-command',
-    'The Application declares global option "file" after command() or action(). Declare global options before attaching Commands or registering an action.',
-  ],
-  [
     'root-arguments',
     'The root Command declares argument "files" and attaches child "doctor". Move the argument into a child Command or remove the children.',
   ],

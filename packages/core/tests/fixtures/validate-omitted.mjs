@@ -1,5 +1,4 @@
 import { Application, validationContext } from '@loomcli/core';
-import { z } from 'zod';
 
 const [scenario, ...argv] = process.argv.slice(2);
 const calls = [];
@@ -54,49 +53,6 @@ switch (scenario) {
       ),
       validateOmitted: true,
     });
-    break;
-  }
-  case 'required': {
-    app = app.option('file', {
-      required: true,
-      type: 'string',
-      validate: source(),
-      validateOmitted: true,
-    });
-    break;
-  }
-  case 'default': {
-    app = app.option('file', {
-      default: 'doc.json',
-      type: 'string',
-      validate: source(),
-      validateOmitted: true,
-    });
-    break;
-  }
-  case 'multiple': {
-    app = app.option('file', {
-      multiple: true,
-      type: 'string',
-      validate: z.string(),
-      validateOmitted: true,
-    });
-    break;
-  }
-  case 'variadic': {
-    app = app.argument('files', {
-      validate: z.string(),
-      validateOmitted: true,
-      variadic: true,
-    });
-    break;
-  }
-  case 'boolean': {
-    app = app.option('force', { type: 'boolean', validateOmitted: true });
-    break;
-  }
-  case 'unvalidated': {
-    app = app.option('file', { type: 'string', validateOmitted: true });
     break;
   }
   default: {

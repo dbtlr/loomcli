@@ -43,37 +43,11 @@ test('a marked option parses, validates, activates its middleware, and reaches t
   });
 });
 
-/** Each option declaration under the subject its diagnostic names. */
-const options = [
-  ['global-option', 'Global option "file"'],
-  ['option', 'Command "get" option "raw"'],
-  ['boolean-option', 'Command "get" option "quiet"'],
-  ['count-option', 'Command "get" option "verbose"'],
-  ['plugin-option', 'Plugin "@loomcli/log" option "level"'],
-] satisfies [string, string][];
-
-test.each(options)(
-  'a control that is not a Boolean on %s is thrown by the call that declares it',
-  (target, subject) => {
-    expect(withFact(target, 'control', 'summary')).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: `thrown:1: ${subject} declares control that is not a Boolean. Use true or false.\n`,
-    });
-  },
-);
-
-test('a control that is not a Boolean on a hook-declared option is thrown by the hook call at build', () => {
-  expect(withFact('hook-option', 'control', 'summary')).toEqual({
-    status: 0,
-    stderr: '',
-    stdout:
-      'assembled\ndeclaration:1: Command "get" option "trace" declares control that is not a Boolean. Use true or false.\n',
-  });
-});
+/** Each option declaration that carries a control mark. */
+const options = ['global-option', 'option', 'boolean-option', 'count-option', 'plugin-option'];
 
 test.each(
-  [...options.map(([target]) => target), 'hook-option'].flatMap((target) => [
+  [...options, 'hook-option'].flatMap((target) => [
     [target, 'true'],
     [target, 'false'],
   ]),

@@ -6,7 +6,6 @@ import { asSentence, DeclarationError, quoted, reasonOf } from './errors.js';
 import { partOf } from './facts.js';
 import type { FactSite } from './facts.js';
 import { checkIdentity, identityFault, isIdentity } from './identity.js';
-import { flagNotBoolean } from './input-rules.js';
 import type { ArgumentNode, CommandNode, OptionNode } from './inspect.js';
 import { isPlainObject } from './plain.js';
 import {
@@ -40,12 +39,13 @@ interface AnyExtension {
 }
 
 /**
- * What a value must show to be taken for a descriptor before admission checks its identity and its
- * `collect` flag. The identity stays unread here, so admission reads it once.
+ * What a value must show to be taken for a descriptor before admission checks its identity. The
+ * identity stays unread here, so admission reads it once.
  */
 interface DescriptorShape {
   readonly identity: unknown;
   readonly target: ExtensionTarget;
+  readonly collect: boolean;
 }
 
 /** One carried value: the input its author supplied and the descriptor that produced it. */
@@ -363,7 +363,7 @@ interface ExtensionSubject {
  * A descriptor admission accepted: its shape and a Boolean `collect` flag. Its identity is the key
  * a registry holds it under, so nothing reads it from the descriptor again.
  */
-type AdmittedDescriptor = DescriptorShape & { readonly collect: boolean };
+type AdmittedDescriptor = DescriptorShape;
 
 /** Every descriptor one build has met, so a second descriptor under one identity is visible. */
 type DescriptorRegistry = Map<string, AdmittedDescriptor>;
@@ -376,8 +376,8 @@ type DescriptorRegistry = Map<string, AdmittedDescriptor>;
 type ExtensionRecords = Map<object, Readonly<Record<string, unknown>>>;
 
 /**
- * Whether a value has a descriptor's shape: a callable object carrying an identity and a declared
- * target. Admission checks its identity and its `collect` flag where a build registers it.
+ * Whether a value has a descriptor's shape: a callable object carrying an identity, a declared
+ * target, and its `collect` flag. Admission checks its identity where a build registers it.
  */
 function isDescriptor(value: unknown): value is DescriptorShape {
   return (
@@ -385,13 +385,10 @@ function isDescriptor(value: unknown): value is DescriptorShape {
     (typeof value === 'object' || typeof value === 'function') &&
     'identity' in value &&
     'target' in value &&
-    (value.target === 'argument' || value.target === 'command' || value.target === 'option')
+    (value.target === 'argument' || value.target === 'command' || value.target === 'option') &&
+    'collect' in value &&
+    typeof value.collect === 'boolean'
   );
-}
-
-/** Whether a descriptor carries the `collect` flag every descriptor publishes, as a Boolean. */
-function hasCollectFlag(descriptor: DescriptorShape): descriptor is AdmittedDescriptor {
-  return 'collect' in descriptor && typeof descriptor.collect === 'boolean';
 }
 
 /** Whether one registered descriptor collects, so its values accumulate instead of replacing. */
@@ -417,10 +414,10 @@ interface Admission {
 /**
  * The descriptor a registry holds for one identity once this one is admitted, and that identity.
  * One identity means one descriptor, wherever on the graph that descriptor appears, and a
- * descriptor is checked when a build first meets it: its identity follows the identity grammar and
- * its `collect` flag is `true` or `false`, which the factory always ensures and a hand-built
- * descriptor may not. The identity is read once, so a getter cannot answer the check with one value
- * and the registry with another. It reads the registry and changes nothing.
+ * descriptor is checked when a build first meets it: its identity follows the identity grammar,
+ * which the factory always ensures and a hand-built descriptor may not. The identity is read once,
+ * so a getter cannot answer the check with one value and the registry with another. It reads the
+ * registry and changes nothing.
  */
 function admitDescriptor(
   descriptors: ReadonlyMap<string, AdmittedDescriptor>,
@@ -437,13 +434,6 @@ function admitDescriptor(
   }
   const known = descriptors.get(identity);
   if (known === undefined) {
-    if (!hasCollectFlag(descriptor)) {
-      throw new DeclarationError(flagNotBoolean, {
-        correction: 'Use true or false.',
-        findings: marking(place, `extension ${quoted(identity)}`),
-        sentence: `Extension ${quoted(identity)} declares collect that is not a Boolean.`,
-      });
-    }
     return { descriptor, identity };
   }
   if (known !== descriptor) {

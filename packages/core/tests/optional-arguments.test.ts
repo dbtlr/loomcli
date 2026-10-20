@@ -1,7 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { expectRuleParts } from './rule-parts.js';
 
 function optional(scenario: string, argv: string[] = []) {
   return invoke(new URL('fixtures/optional-arguments.mjs', import.meta.url), [scenario, ...argv]);
@@ -140,18 +139,6 @@ test('a required variadic argument still rejects an empty tail', () => {
     status: 0,
     stderr: '',
     stdout: '{"args":{"files":["one"]},"passthrough":[]}\n',
-  });
-});
-
-test('a raw default of the wrong shape throws from the declaring call', () => {
-  const result = optional('tail-raw-default', ['one']);
-  expect(result.status).toBe(1);
-  expect(result.stdout).toBe('');
-  expect(result.stderr).not.toContain('Invalid declaration:');
-  expectRuleParts(result.stderr, {
-    correction: 'Supply a string array default.',
-    rule: 'default-shape',
-    sentence: 'Argument "files" default must be an array of strings without a validator.',
   });
 });
 

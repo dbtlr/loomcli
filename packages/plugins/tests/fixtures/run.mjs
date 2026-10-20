@@ -394,6 +394,23 @@ function unencodable() {
     .action(dispatch);
 }
 
+/** Descriptions and a deprecation message an author wrote across several lines. */
+function multiline() {
+  const fetch = new Command('fetch', {
+    deprecated: 'Use get\ninstead.',
+    description: 'Read one value\r\nat a path.',
+  })
+    .option('depth', { description: 'How deep\nto walk.', type: 'string' })
+    .action(dispatch);
+  return new Application('app', {
+    description: 'Do the\nwork.',
+    plugins,
+    version: '1.2.0',
+  })
+    .command(fetch)
+    .action(dispatch);
+}
+
 const scenarios = {
   'branded-line': () =>
     branded([
@@ -423,6 +440,7 @@ const scenarios = {
   kinds,
   marked: () =>
     versioned({ description: 'A \uE001fixture\uE002 application.', version: '1.2.0\uE003' }),
+  multiline,
   nested,
   prose,
   scoped,

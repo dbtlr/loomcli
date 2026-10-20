@@ -68,40 +68,12 @@ const thrown = [
     'The Application declares plugins that are not an array. Supply a list of plugin values.',
   ],
   [
-    'definition-not-object',
-    'Plugin "@loomcli/help" declares a definition that is not an object. Supply { options, middleware, extensions, views }.',
-  ],
-  [
-    'options-not-object',
-    'Plugin "@loomcli/log" declares options that are not an object. Supply a record of option declarations.',
-  ],
-  [
-    'option-not-declaration',
-    'Plugin "@loomcli/log" option "level" is not an option declaration. Supply { type, ... }.',
-  ],
-  [
     'views-not-array',
     'Plugin "@loomcli/help" declares views that are not an array. Supply a list of declared views and override values.',
   ],
   [
     'extensions-not-array',
     'Plugin "@loomcli/help" declares extensions that are not an array. Supply a list of extension descriptors.',
-  ],
-  [
-    'option-validate',
-    'Plugin "@loomcli/log" option "level" validate must be a Standard Schema v1 object. Supply a compatible validator.',
-  ],
-  [
-    'option-validate-omitted',
-    'Plugin "@loomcli/log" option "level" declares validateOmitted. Remove validateOmitted, and check for the value in each Command that needs it.',
-  ],
-  [
-    'option-required',
-    'Plugin "@loomcli/log" option "level" declares required. Remove required, and check for the value in each Command that needs it.',
-  ],
-  [
-    'option-required-false',
-    'Plugin "@loomcli/log" option "level" declares required. Remove required, and check for the value in each Command that needs it.',
   ],
   [
     'option-global-key',
@@ -120,10 +92,6 @@ const thrown = [
     'Option spelling "-h" is used by plugin "@loomcli/help" option "help" and the global option "host". Change one declaration.',
   ],
   [
-    'middleware-not-object',
-    'Plugin "@loomcli/help" declares middleware that is not an object. Supply { activate, load }.',
-  ],
-  [
     'no-activation',
     `Plugin "@loomcli/help" declares middleware with no activation. Supply activate: 'always' or a list of the plugin's own option names.`,
   ],
@@ -138,14 +106,6 @@ const thrown = [
   [
     'no-loader',
     `Plugin "@loomcli/help" declares middleware with no load function. Supply load: () => import('./middleware.js').`,
-  ],
-  [
-    'option-boolean-default',
-    'Plugin "@loomcli/log" option "level" is Boolean and declares default. Remove default; use polarity to control its absent value.',
-  ],
-  [
-    'option-raw-default',
-    'Plugin "@loomcli/log" option "level" default must be a string without a validator. Supply a string default.',
   ],
   [
     'not-an-extension',
@@ -322,10 +282,6 @@ const rejected = [
   [
     'hook-missing-default',
     'Command "count" selects default view "wide", which it does not name. Name the view or select a named one.',
-  ],
-  [
-    'hook-invalid-option',
-    'Option "format" has an invalid type. Use "string", "content", "boolean", or "count".',
   ],
 ] satisfies [string, string][];
 

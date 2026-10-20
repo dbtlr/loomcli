@@ -8,18 +8,6 @@ const scenario = process.argv[2];
 function build() {
   let app = new Application('declarations');
   switch (scenario) {
-    case 'nonstring-name': {
-      app = app.option(1, { type: 'boolean' });
-      break;
-    }
-    case 'symbol-short': {
-      app = app.option('flag', { short: Symbol('f'), type: 'boolean' });
-      break;
-    }
-    case 'nonboolean-short-only': {
-      app = app.option('flag', { short: 'f', shortOnly: 'false', type: 'boolean' });
-      break;
-    }
     case 'duplicate-key': {
       app = app.option('total', { type: 'string' }).option('total', { type: 'boolean' });
       break;
@@ -36,32 +24,8 @@ function build() {
         .option('no-total', { type: 'string' });
       break;
     }
-    case 'missing-short': {
-      app = app.option('metric', { shortOnly: true, type: 'string' });
-      break;
-    }
-    case 'both-short-only': {
-      app = app.option('total', { polarity: 'both', short: 't', shortOnly: true, type: 'boolean' });
-      break;
-    }
-    case 'string-polarity': {
-      app = app.option('metric', { polarity: 'negative', type: 'string' });
-      break;
-    }
-    case 'invalid-short': {
-      app = app.option('metric', { short: 'mm', type: 'string' });
-      break;
-    }
     case 'invalid-name': {
       app = app.option('bad=name', { type: 'string' });
-      break;
-    }
-    case 'invalid-type': {
-      app = app.option('metric', { type: 'number' });
-      break;
-    }
-    case 'invalid-polarity': {
-      app = app.option('total', { polarity: 'unknown', type: 'boolean' });
       break;
     }
   }
