@@ -213,7 +213,7 @@ function optionTag(option: OptionNode): string {
     .filter((spelling) => spelling !== null)
     .map((spelling) => inFont(spelling, 'bold'))
     .join(', ');
-  if (parts.counted) {
+  if (parts.trailingEllipsis) {
     return `${spellings}...`;
   }
   if (parts.value === undefined) {

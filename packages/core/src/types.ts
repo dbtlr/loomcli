@@ -505,9 +505,9 @@ export interface Out<Result = unknown> {
   success(message: string): Promise<void>;
   warn(message: string): Promise<void>;
   error(message: string): Promise<void>;
-  /** A detail line on stderr, written from verbosity 1, as an operator's `-v` asks. */
+  /** A debug line on stderr, written from verbosity 1, as an operator's `-v` asks. */
   debug(message: string): Promise<void>;
-  /** A finer detail line on stderr, written from verbosity 2, as an operator's `-vv` asks. */
+  /** A trace line on stderr, finer than a debug line, written from verbosity 2, as an operator's `-vv` asks. */
   trace(message: string): Promise<void>;
   /**
    * The neutral view call: a rendered value has no purpose and no destination. A row view takes an

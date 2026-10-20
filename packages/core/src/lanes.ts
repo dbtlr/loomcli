@@ -43,19 +43,19 @@ function marked(mark: Mark): (message: string, context: ViewContext) => string {
   };
 }
 
-/** How one detail lane draws its gutter: the spaces before its glyph, the glyph, and its fade. */
-interface DetailGutter {
+/** How the debug or the trace lane draws its gutter: the spaces before its glyph, the glyph, and its fade. */
+interface VerbosityGutter {
   readonly indent: number;
   readonly glyph: 'lineVerticalDashed0' | 'pointerSmall';
   readonly fade: (style: ViewContext['style']) => (text: string) => string;
 }
 
 /**
- * The default function of a detail lane, debug or trace: the gutter's indent, its glyph, and one
+ * The default function of the debug or the trace lane: the gutter's indent, its glyph, and one
  * space before the first line, continuation lines indented under the message, and the glyph and
  * the message both in the gutter's fade, so the line reads quieter than info.
  */
-function detail(gutter: DetailGutter): (message: string, context: ViewContext) => string {
+function guttered(gutter: VerbosityGutter): (message: string, context: ViewContext) => string {
   return (message, context) => {
     const glyphText = glyph[gutter.glyph];
     const fade = gutter.fade(context.style);
@@ -75,14 +75,14 @@ function lane(name: Lane, render: (message: string, context: ViewContext) => str
  * supplies. A trace line nests one step under a debug line and fades past it, `faint` over `dim`.
  */
 const lanes: Readonly<Record<Lane, DeclaredView<string>>> = {
-  debug: lane('debug', detail({ fade: (style) => style.dim, glyph: 'pointerSmall', indent: 0 })),
+  debug: lane('debug', guttered({ fade: (style) => style.dim, glyph: 'pointerSmall', indent: 0 })),
   error: lane('error', marked('error')),
   info: lane('info', marked('info')),
   print: lane('print', (message) => message),
   success: lane('success', marked('success')),
   trace: lane(
     'trace',
-    detail({ fade: (style) => style.dim.faint, glyph: 'lineVerticalDashed0', indent: 2 }),
+    guttered({ fade: (style) => style.dim.faint, glyph: 'lineVerticalDashed0', indent: 2 }),
   ),
   warn: lane('warn', marked('warning')),
 };

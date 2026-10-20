@@ -54,4 +54,4 @@ Accepted in 0.8.0.
 
 - 2026-10-04: Proposed with the contract.
 - 2026-10-04: Consequences record the widened option types as a breaking change for TypeScript consumers.
-- 2026-10-19: [ADR-0090](0090-an-operators-v-or-q-settles-the-runs-verbosity-right-after-graph-build.md), proposed, prints the quiet-marked counted option in help as `-q, --quiet`, with no `...`, because its further occurrences add nothing to the run's verbosity. Every other counted option keeps `-v, --verbose...`, and its count stays uncapped.
+- 2026-10-19: [ADR-0090](0090-an-operators-v-or-q-settles-the-runs-verbosity-right-after-graph-build.md), proposed, prints the quiet-marked counted option in help as `-q, --quiet`, with no `...`, because its further occurrences add nothing to the run's verbosity. Every other counted option keeps `-v, --verbose...`, and its count stays uncapped. It binds when accepted.

@@ -9,6 +9,7 @@ import {
   plugin,
 } from '@loomcli/core';
 import { dotenv } from '@loomcli/plugins/dotenv';
+import { logging } from '@loomcli/plugins/logging';
 import { loomTheme } from '@loomcli/plugins/theme';
 
 /**
@@ -86,6 +87,8 @@ const plugins = {
       },
     }),
   ],
+  /** The logging plugin writing every level's records to the console. */
+  console: [logging({ level: 'trace', to: 'console' })],
   dotenv: [dotenv({ variables: ['FETCHIT_TOKEN'] })],
   /** A hook that rejects every graph, a declaration error graph build raises. */
   graph: [
@@ -170,6 +173,11 @@ async function* brokenRows() {
 
 /** The actions a variant swaps in for `get`'s own. */
 const actions = {
+  /** One log event beside every lane, so the console destination shows it writes records. */
+  console: async (context) => {
+    context.log.trace('logged');
+    await everyLane(context);
+  },
   hidden: ({ out }) => out.debug(42),
   info: ({ out }) => out.info(42),
   long: ({ out }) =>

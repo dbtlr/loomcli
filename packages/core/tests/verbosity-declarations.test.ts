@@ -32,6 +32,11 @@ function rows(mark: 'verbose' | 'quiet'): [string, string, string][] {
       `${subject('Global option')} declares ${mark} but is not a counted option. Use type "count".`,
     ],
     [
+      'content',
+      'globalOption',
+      `${subject('Global option')} declares ${mark} but is not a counted option. Use type "count".`,
+    ],
+    [
       'boolean',
       'globalOption',
       `${subject('Global option')} declares ${mark} but is not a counted option. Use type "count".`,

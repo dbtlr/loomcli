@@ -87,7 +87,7 @@ test('an occurrence the parse faults counts nothing', () => {
   expect(result.stderr).toContain('"--verbose"');
 });
 
-test('an unknown command settles verbosity 0 and its failure prints under -q', () => {
+test("an unknown command's failure prints under -q", () => {
   const result = fetchit('own', 'pipe', ['-q', 'nope']);
   expect(result.status).toBe(2);
   expect(result.stderr).toContain('"nope"');
@@ -144,6 +144,15 @@ test('a debug or trace call creates no log event', () => {
   expect(fetchit('logged', 'pipe', ['-vv', 'get', 'u']).stdout).toContain('heard []\n');
 });
 
+test("the logging plugin's console destination writes no record for a debug or trace call", () => {
+  // The action logs one event of its own, so the one record shows the destination writes.
+  const lines = fetchit('console', 'pipe', ['-vv', 'get', 'u']).stderr.split('\n');
+  const records = lines.filter((line) => line.startsWith('{'));
+  expect(records).toHaveLength(1);
+  expect(records[0]).toContain('"logged"');
+  expect(lines.filter((line) => !line.startsWith('{')).join('\n')).toBe(shown.trace);
+});
+
 test('a hidden out.debug(42) rejects as out.info(42) does', () => {
   const hidden = fetchit('hidden', 'pipe', ['get', 'u']);
   const shownCall = fetchit('info', 'pipe', ['get', 'u']);
@@ -162,7 +171,10 @@ test("a configuration source's debug line prints under -v and not without it", (
 });
 
 test('a dotenv warning prints under -q', () => {
-  expect(fetchit('dotenv', 'pipe', ['-q', 'get', 'u']).stderr).toContain('⚠ ');
+  // The show action writes no warning of its own, so the line can only come from dotenv.
+  expect(fetchit('dotenv', 'pipe', ['-q', 'show']).stderr).toBe(
+    '⚠ Skipped FETCHIT_TOKEN on line 1 of .env: the line is not a valid assignment. Correct the line, or remove it.\n',
+  );
 });
 
 test("a middleware's out follows the run's verbosity", () => {

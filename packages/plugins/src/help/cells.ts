@@ -79,24 +79,24 @@ function valueText(parts: ValueParts): string {
 
 /**
  * What one option row's left cell shows before a projection styles it: the short spelling, the
- * published long spelling, the value parts of an option that takes a value, and whether the option
- * counts, whose spellings end with `...` because each occurrence adds one. The quiet-marked option
- * counts too, but a further occurrence of it adds nothing, so it shows no `...`. A Boolean option
- * takes no value, so it shows no placeholder.
+ * published long spelling, the value parts of an option that takes a value, and whether the
+ * spellings end with `...`, as a counted option's do because each occurrence adds one. The
+ * quiet-marked option counts too, but a further occurrence of it adds nothing, so its spellings end
+ * without `...`. A Boolean option takes no value, so it shows no placeholder.
  */
 interface OptionCellParts {
   readonly short: string | null;
   readonly long: string | null;
   readonly value: ValueParts | undefined;
-  readonly counted: boolean;
+  readonly trailingEllipsis: boolean;
 }
 
 /** The parts of one option row's left cell. */
 function optionCellParts(option: OptionNode): OptionCellParts {
   return {
-    counted: option.type === 'count' && !option.quiet,
     long: longSpelling(option),
     short: option.short,
+    trailingEllipsis: option.type === 'count' && !option.quiet,
     value:
       option.type === 'string' || option.type === 'content'
         ? valueParts(option, option.long !== null)
@@ -123,7 +123,7 @@ function optionCell(option: OptionNode, context: ViewContext): string {
   const { style } = context;
   const parts = optionCellParts(option);
   const cell = spellings(parts, context);
-  if (parts.counted) {
+  if (parts.trailingEllipsis) {
     return `${cell}${style.dim.italic('...')}`;
   }
   if (parts.value === undefined) {

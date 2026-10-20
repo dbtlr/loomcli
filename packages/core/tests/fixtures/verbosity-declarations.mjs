@@ -54,6 +54,12 @@ function scenariosOf(mark) {
         () => new Application('notes').globalOption(mark, { [mark]: true, type: 'boolean' }),
       ],
     ],
+    content: [
+      [
+        'globalOption',
+        () => new Application('notes').globalOption(mark, { [mark]: true, type: 'content' }),
+      ],
+    ],
     count: [['globalOption', () => new Application('notes').globalOption(mark, marked)]],
     'env-global': [
       [
