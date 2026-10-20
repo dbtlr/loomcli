@@ -1,5 +1,13 @@
-import type { ProgressUpdate } from '@loom/mcp';
 import type { ProgressEvent } from '@loomcli/core';
+
+/**
+ * The update one notification sends, written here rather than imported so this module's
+ * declarations name no private package.
+ */
+interface ProgressNotice {
+  readonly message: string;
+  readonly progress: number;
+}
 
 /**
  * The counts an event's message carries: `completed/total` with a total, `completed` alone without
@@ -29,7 +37,7 @@ const eachEvent = 1;
  * event is sent and `progress` always increases, and no `total` is sent: the counts travel in the
  * message.
  */
-function progressRelay(send: (update: ProgressUpdate) => void): (event: ProgressEvent) => void {
+function progressRelay(send: (update: ProgressNotice) => void): (event: ProgressEvent) => void {
   let delivered = 0;
   return (event) => {
     delivered += eachEvent;

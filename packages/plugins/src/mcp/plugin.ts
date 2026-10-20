@@ -161,7 +161,6 @@ async function callTool(
     return refused;
   }
   const view = jsonView(entry.command);
-  // A call whose request carries a progress token relays each progress event of its run.
   const outcome = await context.invoke(entry.command.path, invocationValues(received, properties), {
     failure: (_failure, { exitCode, form }): FailedCall => ({ exitCode, failure: { ...form } }),
     signal: call.signal,

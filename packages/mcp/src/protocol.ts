@@ -64,8 +64,8 @@ export interface ProgressUpdate {
  * One `tools/call` request as a handler receives it. `arguments` is what the client sent, absent
  * or not, so the handler judges its shape. `signal` aborts when the client cancels the request or
  * the server shuts down. `progress` is present when the request's `params._meta` carries a
- * `progressToken`, and sends one notification on that token per call, until the call is answered,
- * cancelled, or aborted.
+ * `progressToken`, and each call of it sends one notification on that token, until the tool call is
+ * answered, cancelled, or aborted.
  */
 export interface ToolCall {
   readonly name: string;
