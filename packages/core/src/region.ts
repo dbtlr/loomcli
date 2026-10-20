@@ -25,13 +25,6 @@ function visible(text: string): string {
   return text.replaceAll(controlSequences, '');
 }
 
-/** Whether the cursor sits partway along a row after `text`, given whether it did before. */
-function leavesRowOpen(open: boolean, text: string): boolean {
-  const shown = visible(text);
-  const cut = Math.max(shown.lastIndexOf('\n'), shown.lastIndexOf('\r'));
-  return cut === -1 ? open || shown !== '' : cut < shown.length - 1;
-}
-
 /** One rendered frame: the marked text core counts rows in, and the resolved text it writes. */
 interface Frame {
   readonly marked: string;
@@ -59,6 +52,14 @@ function scrollback(frame: Frame | undefined): string {
   return endsLine(frame) ? frame.text : `${frame.text}\n`;
 }
 
+/** How the screen measures text at the terminal's current width. */
+interface Measure {
+  /** Counts the rows a marked text moves the cursor down. */
+  rows: (marked: string) => number;
+  /** The column the next character lands on after visible text written from `column`. */
+  column: (shown: string, column: number) => number;
+}
+
 /**
  * The stack of open regions at the bottom of stderr, as the terminal shows it. Each method answers
  * the bytes that move the terminal from what it shows to what it should show, and updates the model
@@ -67,11 +68,15 @@ function scrollback(frame: Frame | undefined): string {
 class Screen {
   readonly #slots: Slot[] = [];
   readonly #closedMeanwhile: Slot[] = [];
-  /** Whether the last write above the stack ended partway along a row. */
-  #rowOpen = false;
+  /** The column the last write above the stack left the cursor at, 0 when it ended a row. */
+  #column = 0;
+  /**
+   * The column the row above the stack ended at, when the stack opened on the next row because
+   * that write ended partway along it. Text written above the stack continues that row.
+   */
+  #opened: number | undefined = undefined;
 
-  /** Counts the rows a marked text moves the cursor down, at the terminal's current width. */
-  constructor(private readonly rows: (marked: string) => number) {}
+  constructor(private readonly measure: Measure) {}
 
   /** Whether any region is open on the screen. */
   get holding(): boolean {
@@ -108,8 +113,26 @@ class Screen {
     if (stack === undefined) {
       return '';
     }
-    const rows = this.rows(stack.marked);
+    const rows = this.measure.rows(stack.marked);
     return `\r${rows > 0 ? `${escape}[${String(rows)}A` : ''}${escape}[J`;
+  }
+
+  /**
+   * Erases the stack, which leaves the cursor on the stack's first row, and returns the cursor to
+   * the end of the partial row above it when the stack opened below one. Text written next then
+   * continues that row, and a caller that erases by `out.draw`'s count starts from where its frame
+   * ended, as it does with no region open. A row filled exactly counts as wrapped, because no
+   * control sequence restores a terminal's pending wrap.
+   */
+  #uncover(): string {
+    const erase = this.#erase();
+    const column = this.#opened;
+    if (column === undefined) {
+      return erase;
+    }
+    this.#opened = undefined;
+    this.#column = column;
+    return `${erase}${escape}[1A${escape}[${String(column + 1)}G`;
   }
 
   /** Draws the stack below whatever is above it, on the next row when that ended partway along one. */
@@ -118,21 +141,24 @@ class Screen {
     if (stack === undefined) {
       return '';
     }
-    const opener = this.#rowOpen ? '\n' : '';
-    this.#rowOpen = false;
-    return opener + stack.text;
+    if (this.#column === 0) {
+      return stack.text;
+    }
+    this.#opened = this.#column;
+    this.#column = 0;
+    return `\n${stack.text}`;
   }
 
   /** Text written to the terminal above the stack: what to write before it and after it. */
   around(text: string): { before: string; after: string } {
-    const before = this.#erase();
+    const before = this.#uncover();
     this.note(text);
     return { after: this.#draw(), before };
   }
 
   /** Text written to the terminal while no region is open, which moves the row the stack starts on. */
   note(text: string): void {
-    this.#rowOpen = leavesRowOpen(this.#rowOpen, text);
+    this.#column = this.measure.column(visible(text), this.#column);
   }
 
   /**
@@ -186,11 +212,16 @@ class Screen {
       return '';
     }
     if (this.#settled(slot)) {
-      // The last frame is already the bottom of the screen, so it stays where it is.
       this.#slots.splice(this.#slots.indexOf(slot), 1);
-      return slot.shown === undefined || slot.shown.text === '' || endsLine(slot.shown) ? '' : '\n';
+      if (slot.shown === undefined || slot.shown.text === '') {
+        // Nothing is drawn, so the cursor returns to where the text above ended.
+        return this.#uncover();
+      }
+      // The last frame is already the bottom of the screen, so it stays where it is.
+      this.#opened = undefined;
+      return endsLine(slot.shown) ? '' : '\n';
     }
-    const before = this.#erase();
+    const before = this.#uncover();
     const leaving = slot.input ? [...this.#closedMeanwhile.splice(0), slot] : [slot];
     for (const left of leaving) {
       this.#slots.splice(this.#slots.indexOf(left), 1);
@@ -202,8 +233,8 @@ class Screen {
     }
     let text = leaving.map(({ latest }) => scrollback(latest)).join('');
     if (text !== '') {
-      text = (this.#rowOpen ? '\n' : '') + text;
-      this.#rowOpen = false;
+      text = (this.#column === 0 ? '' : '\n') + text;
+      this.#column = 0;
     }
     return before + text + this.#draw();
   }

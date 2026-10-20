@@ -14,7 +14,7 @@ import { capabilities, columns, plainPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { writeSequence } from './sequence.js';
 import type { SequenceView } from './sequence.js';
-import { drawnRows, resolveText, width } from './style-resolve.js';
+import { drawnRows, nextColumn, resolveText, width } from './style-resolve.js';
 import type { Palette } from './style-state.js';
 import { expandTabsMarked, wrapMarked } from './style-wrap.js';
 import { createStyle, tokens } from './style.js';
@@ -76,15 +76,35 @@ interface Reservation {
 
 /**
  * How a destination sends one text write once it reaches the stream: a terminal stderr erases the
- * live regions before it and draws them after it, and a terminal stdout does the same through
- * stderr's order while a region is open.
+ * live regions before it and draws them after it, and a terminal stdout does the same while a
+ * region is open.
  */
 type Passage = (text: string, send: (text: string) => Promise<void>) => Promise<void>;
+
+/**
+ * The turn the destinations on one terminal take to send. One send, with the region erase and
+ * redraw around it, reaches the screen before the next one begins. A send waits only for sends
+ * that have already begun, never for writes still queued, so a write held behind an open sequence
+ * holds no other stream's send.
+ */
+class Turn {
+  #last: Promise<void> = Promise.resolve();
+
+  take(send: () => Promise<void>): Promise<void> {
+    const pending = this.#last.then(send);
+    this.#last = pending.catch(() => undefined);
+    return pending;
+  }
+}
 
 class Destination {
   tail: Promise<void> = Promise.resolve();
   state: WriteState = { kind: 'ok' };
   passage: Passage | undefined = undefined;
+  /** The destination whose order this one's text writes join when they are issued, if any. */
+  order: Destination | undefined = undefined;
+  /** The turn this destination's sends take with the other destination on the same terminal. */
+  turn: Turn | undefined = undefined;
 
   constructor(readonly stream: Writable) {
     stream.on('error', this.onError);
@@ -96,10 +116,19 @@ class Destination {
     }
   };
 
+  /**
+   * One text queued behind this destination's earlier writes and, when it joins another
+   * destination's order, behind that one's too, which then waits for it in turn.
+   */
   write(text: string): Promise<void> {
-    const pending = this.tail.then(() => this.accept(text));
+    const { order } = this;
+    const previous = order === undefined ? this.tail : Promise.all([this.tail, order.tail]);
+    const pending = previous.then(() => this.accept(text));
     // Keep the returned rejection observable, while accounting for calls without await.
     this.tail = pending.catch(this.onError);
+    if (order !== undefined) {
+      order.tail = this.tail;
+    }
     return pending;
   }
 
@@ -108,7 +137,14 @@ class Destination {
     if (this.state.kind === 'failed') {
       throw this.state.error;
     }
-    return this.passage ? this.passage(text, (sent) => this.writeText(sent)) : this.writeText(text);
+    return this.send(() =>
+      this.passage ? this.passage(text, (sent) => this.writeText(sent)) : this.writeText(text),
+    );
+  }
+
+  /** Sends now, or once the terminal's turn reaches it when another destination shares the screen. */
+  private send(operation: () => Promise<void>): Promise<void> {
+    return this.turn === undefined ? operation() : this.turn.take(operation);
   }
 
   /** One operation queued in this destination's order, which handles its own writes' failures. */
@@ -127,8 +163,10 @@ class Destination {
       if (this.state.kind === 'failed') {
         throw this.state.error;
       }
-      const text = produce();
-      return text === '' ? Promise.resolve() : this.writeText(text);
+      return this.send(() => {
+        const text = produce();
+        return text === '' ? Promise.resolve() : this.writeText(text);
+      });
     });
   }
 
@@ -315,7 +353,10 @@ export class Output {
     readonly host: ReportHost,
     private readonly signal: AbortSignal,
   ) {
-    this.screen = new Screen((marked) => this.frameRows(marked));
+    this.screen = new Screen({
+      column: (shown, column) => nextColumn(shown, this.host.terminal.stderr.columns, column),
+      rows: (marked) => this.frameRows(marked),
+    });
     this.regions = new Regions(
       {
         cancelled: () => this.signal.aborted,
@@ -499,9 +540,11 @@ export class Output {
 
   /**
    * At a terminal stderr, every text write erases the live regions before it and draws them after
-   * it. When stdout is a terminal too, a stdout write does the same, through stderr's order, while
-   * a region is open, so the two streams share one order there. With no region open, a stdout write
-   * still moves the row the next stack starts on, because both streams show on one screen.
+   * it. When stdout is a terminal too, a stdout write joins stderr's order when it is issued, so the
+   * two streams keep one call order, and it erases and redraws the regions as a stderr write does
+   * while one is open. The two streams take turns to send, so a row a sequence writes to stdout
+   * reaches the screen whole between stderr's writes. With no region open, a stdout write still moves
+   * the row the next stack starts on, because both streams show on one screen.
    */
   private coordinate(): void {
     const { stderr, stdout, terminal } = this.host;
@@ -516,22 +559,22 @@ export class Output {
     if (!terminal.stdout.isTTY || stdout === stderr) {
       return;
     }
-    this.destination(stdout).passage = async (text, send) => {
+    const output = this.destination(stdout);
+    const turn = new Turn();
+    errors.turn = turn;
+    output.turn = turn;
+    output.order = errors;
+    output.passage = async (text, send) => {
       if (!this.screen.holding) {
         this.screen.note(text);
         return send(text);
       }
-      const sent: { failure?: { error: unknown } } = {};
-      await errors.run(async () => {
-        const { after, before } = this.screen.around(text);
-        await errors.sendQuietly(before);
-        await send(text).catch((error: unknown) => {
-          sent.failure = { error };
-        });
+      const { after, before } = this.screen.around(text);
+      await errors.sendQuietly(before);
+      try {
+        await send(text);
+      } finally {
         await errors.sendQuietly(after);
-      });
-      if (sent.failure !== undefined) {
-        throw sent.failure.error;
       }
       return undefined;
     };

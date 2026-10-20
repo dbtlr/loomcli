@@ -80,6 +80,15 @@ function around(body) {
 
 const caller = new AbortController();
 
+/** Two rows with a pause between them, so the sequence is still open when later calls are issued. */
+async function* streamed() {
+  yield 'row one';
+  await new Promise((resolve) => {
+    setTimeout(resolve, 5);
+  });
+  yield 'row two';
+}
+
 /** A plugin whose onLog hook writes each record to its destination's stderr. */
 const hook = plugin('@fixture/hook', {
   onLog: (event, destination) => {
@@ -229,6 +238,15 @@ const scenarios = {
       }
     },
   },
+  /** An out.draw that fills the 40-column row exactly, then an info line, above an open region. */
+  fullInfo: {
+    action: async ({ out }) => {
+      await out.region().draw('frame', text);
+      await out.draw('x'.repeat(40), text);
+      await out.info('done');
+      mark('written');
+    },
+  },
   /** An onLog hook that writes to its destination's stderr while a region is drawn. */
   hook: {
     action: async ({ log, out }) => {
@@ -314,12 +332,43 @@ const scenarios = {
       }),
     ],
   },
+  /** Unawaited print, info, and print calls while a region is drawn. */
+  ordered: {
+    action: async ({ out }) => {
+      const region = out.region();
+      await region.draw('frame', text);
+      await Promise.all([out.print('first'), out.info('second'), out.print('third')]);
+      mark('written');
+    },
+  },
+  /** An unawaited row sequence on stdout, a print and an info line after it, while a region is drawn. */
+  orderedRows: {
+    action: async ({ out }) => {
+      const region = out.region();
+      await region.draw('frame', text);
+      await Promise.all([
+        out.render(streamed(), { row: (row) => `${row}\n` }),
+        out.print('after rows'),
+        out.info('noted'),
+      ]);
+      mark('written');
+    },
+  },
   /** A partial line drawn before the first region draws. */
   partial: {
     action: async ({ out }) => {
       await out.draw('partial', text);
       await out.region().draw('frame', text);
       mark('drawn');
+    },
+  },
+  /** A partial out.draw, then an info line, above an open region. */
+  partialInfo: {
+    action: async ({ out }) => {
+      await out.region().draw('frame', text);
+      await out.draw('partial', text);
+      await out.info('done');
+      mark('written');
     },
   },
   /** A partial line rendered to stdout before the first region draws, and a redraw. */
@@ -339,6 +388,20 @@ const scenarios = {
       await out.print('printed');
       await out.region().draw('frame', text);
       mark('drawn');
+    },
+  },
+  /** A two-row out.draw frame redrawn by its count three times above an open region. */
+  redraw: {
+    action: async ({ out }) => {
+      await out.region().draw('progress line', text);
+      let rows = 0;
+      for (const step of [1, 2, 3]) {
+        if (step > 1) {
+          await out.draw(`\r\u001b[${String(rows)}A\u001b[J`, text);
+        }
+        rows = await out.draw(`frame ${String(step)} top\nframe ${String(step)} bottom`, text);
+      }
+      mark('redrawn');
     },
   },
   /** A two-row frame drawn at 80 columns, the terminal narrowed to 40, and a redraw. */

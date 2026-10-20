@@ -210,6 +210,48 @@ test('out.draw lands above an open region and keeps its count', async () => {
   await expect(screen(run, 'drawn')).resolves.toEqual(['drawn', 'row', 'frame']);
 });
 
+test('a two-row out.draw frame redrawn by its count above an open region leaves only its last frame', async () => {
+  await expect(screen(regions('redraw'), 'redrawn')).resolves.toEqual([
+    'frame 3 top',
+    'frame 3 bottom',
+    'progress line',
+  ]);
+});
+
+test('an info line after a partial out.draw continues its row above an open region', async () => {
+  await expect(screen(regions('partialInfo'), 'written')).resolves.toEqual([
+    'partialℹ done',
+    'frame',
+  ]);
+});
+
+test('an info line after an out.draw that fills its row starts on the row below, above an open region', async () => {
+  await expect(screen(regions('fullInfo'), 'written')).resolves.toEqual([
+    'x'.repeat(40),
+    'ℹ done',
+    'frame',
+  ]);
+});
+
+test('with stdout a terminal too, unawaited print, info, and print calls land above the region in call order', async () => {
+  await expect(screen(regions('ordered', 'both'), 'written')).resolves.toEqual([
+    'first',
+    'ℹ second',
+    'third',
+    'frame',
+  ]);
+});
+
+test('with stdout a terminal too, a print and an info line issued behind an unawaited row sequence land after its rows', async () => {
+  await expect(screen(regions('orderedRows', 'both'), 'written')).resolves.toEqual([
+    'row one',
+    'row two',
+    'after rows',
+    'ℹ noted',
+    'frame',
+  ]);
+});
+
 test('out.draw draws at verbosity -1, where a region without input does not', async () => {
   const run = regions('draw', 'tty', ['-q']);
   expect(run.notes).toEqual({ count: 1 });

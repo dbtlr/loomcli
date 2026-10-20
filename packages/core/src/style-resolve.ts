@@ -55,21 +55,14 @@ function width(text: string, palette: Palette, caps: Capabilities): number {
   return blockWidth(layout(scanAnsi(parsed, caps)));
 }
 
-/** Counts cursor row advances, leaving a final partial line on its current row. */
-function drawnRows(
-  text: string,
-  { palette, caps, columns }: { palette: Palette; caps: Capabilities; columns: number | undefined },
-): number {
-  const block = layout(scanAnsi(parseText(text, palette, caps), caps));
-  if (columns === undefined || columns <= 0) {
-    return block.lines.length - 1;
-  }
-  const visible = [...renderedUnits(block)]
-    .filter((unit) => unit.kind === 'text' || (unit.kind === 'control' && unit.text === '\r'))
-    .map((unit) => unit.text)
-    .join('');
+/**
+ * Where the cursor ends after visible text written from `column` on a terminal `columns` wide: the
+ * rows it moved down, and its column. A row the text fills exactly leaves the column at `columns`,
+ * because the terminal wraps only when the next character arrives.
+ */
+function walk(visible: string, columns: number, from: number): { column: number; rows: number } {
   let rows = 0;
-  let column = 0;
+  let column = from;
   for (const grapheme of graphemeWidths(visible)) {
     const segmentText = visible.slice(grapheme.start, grapheme.end);
     if (segmentText.endsWith('\n')) {
@@ -91,7 +84,33 @@ function drawnRows(
     }
     column += cells;
   }
-  return rows;
+  return { column, rows };
 }
 
-export { drawnRows, resolveText, width };
+/** Counts cursor row advances, leaving a final partial line on its current row. */
+function drawnRows(
+  text: string,
+  { palette, caps, columns }: { palette: Palette; caps: Capabilities; columns: number | undefined },
+): number {
+  const block = layout(scanAnsi(parseText(text, palette, caps), caps));
+  if (columns === undefined || columns <= 0) {
+    return block.lines.length - 1;
+  }
+  const visible = [...renderedUnits(block)]
+    .filter((unit) => unit.kind === 'text' || (unit.kind === 'control' && unit.text === '\r'))
+    .map((unit) => unit.text)
+    .join('');
+  return walk(visible, columns, 0).rows;
+}
+
+/**
+ * The column the next character lands on after visible text written from `column`, on a terminal
+ * `columns` wide, measured as `drawnRows` measures. A row the text fills exactly answers 0, because
+ * the next character starts the row below. With no width, no row wraps.
+ */
+function nextColumn(visible: string, columns: number | undefined, column: number): number {
+  const reached = walk(visible, columns === undefined || columns <= 0 ? Infinity : columns, column);
+  return reached.column === columns ? 0 : reached.column;
+}
+
+export { drawnRows, nextColumn, resolveText, width };
