@@ -1407,7 +1407,7 @@ Error precedence follows these phases. An unknown command comes first and is rai
 
 An action receives `{ args, options, supplied, interactive, passthrough, graph, command, out, host, signal, cancel, style, invoke, log, stdin }`, where `log` records [log events](#logging), and `supplied`, `interactive`, and `cancel` are described under [Interaction](#interaction). Core attaches no input-source or token-spelling metadata to the action's input values. `graph` is the frozen graph [`inspect()`](#graph-inspection) returns, built for this run, and `command` is the routed node inside it: the same two values the run's [middleware](#middleware) receive, under [ADR-0041](decisions/0041-every-action-reads-the-frozen-graph-and-its-routed-command.md). An application's action and a plugin Command's action receive them alike, so a Command whose job is to project the graph, such as [completion](#completion), does it in its own action. The contextual `style` includes the installed theme's custom names. Its return value is ignored, including a resolved promise value. `run()` awaits action completion but does not render its return value. `signal` is the run's cancellation signal, which [Signals and cancellation](#signals-and-cancellation) describes; a caller signal, an installed signals owner, or the action's `cancel()` can abort it. `invoke` runs another Command of the same graph by name, under [Invocation by name](#invocation-by-name).
 
-The application can run again. Each call captures host facts and builds from its declarations. Core does not call `process.exit()` or track unrelated background work. During preparation it consumes no stdin but for one bounded read: the [background query](#background), which reads a terminal stdin until the terminal answers or one second passes, and pushes every byte that is not a reply back onto stdin, so the action reads what the operator typed. A declared content handle reads only when the action calls its read methods. It installs process signal listeners only on behalf of an installed signals owner, for the duration of one run, and it re-raises a repeated signal so that the default disposition ends the process when no other listener remains.
+The application can run again. Each call captures host facts and builds from its declarations. Core does not call `process.exit()` or track unrelated background work. Before the action runs, it consumes no stdin but for one bounded read: the [background query](#background), made before graph build and environment preparation, which reads a terminal stdin until the terminal answers or one second passes, and pushes every byte that is not a reply back onto stdin, so the action reads what the operator typed. A declared content handle reads only when the action calls its read methods. It installs process signal listeners only on behalf of an installed signals owner, for the duration of one run, and it re-raises a repeated signal so that the default disposition ends the process when no other listener remains.
 
 ### Validation lifecycle acceptance
 
@@ -1786,7 +1786,7 @@ The verbosity is proven when public APIs alone produce these results under Node 
 ## Background
 
 ```ts
-import type { ConcreteStyle, ExtensionValue, InputTerminal, OutputTerminal, StandardSchemaV1, Style } from '@loomcli/core';
+import type { ConcreteStyle, ExtensionValue, Host, InputTerminal, OutputTerminal, StandardSchemaV1, Style } from '@loomcli/core';
 
 type Background = 'dark' | 'light'; // new
 
@@ -1821,8 +1821,9 @@ type HostOverrides = Partial<Omit<Host, 'terminal'>> & { // new: what RunOptions
   terminal?: Omit<HostTerminal, 'background'> & { readonly background?: Background | undefined };
 };
 
-interface Unmarked { interaction?: never; color?: never; background?: never } // background is new: counted, content, and unmarked string options, and option()
+interface Unmarked { interaction?: never; color?: never; verbose?: never; quiet?: never; background?: never } // background is new: content and unmarked string options, and option()
 type BooleanFacts = /* today's facts */ & { background?: never }; // new
+// CountOption declares background?: never beside its interaction?: never and color?: never.
 
 type StringOption =
   | (UnmarkedStringOption & { background?: never }) // today's shapes, unchanged
@@ -1847,6 +1848,8 @@ type StringOption =
       polarity?: never;
       interaction?: never;
       color?: never;
+      verbose?: never;
+      quiet?: never;
     };
 ```
 
@@ -1882,7 +1885,7 @@ A themed color that reads well on a dark terminal can vanish on a light one. Cor
   1. The operator's background choice, below.
   2. The author's `rendering.background`, `'dark'` or `'light'`, with `run()`'s field over the Application's, as [Rendering policies](#rendering-policies) merges fields. `'auto'`, the default, answers nothing.
   3. A background a host override states as `host.terminal.background`, so a test settles it without a query.
-  4. `undefined`, when the run's color is off on both stdout and stderr after the color choice, as on a pipe, under `--no-color`, or under automatic `NO_COLOR`, so no query runs.
+  4. `undefined`, when the run's color is off on both stdout and stderr after the color choice, as on a pipe with no `FORCE_COLOR`, under `--no-color`, or under automatic `NO_COLOR`, so no query runs.
   5. Dark, when `TERM` is `linux`, the Linux console, whose background is black.
   6. The terminal's answer to the background query, below.
   7. `COLORFGBG`, when it is set and nonempty: light when its last `;`-separated field is `7` or `15`, the palette's white, and dark otherwise.
