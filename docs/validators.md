@@ -1,5 +1,7 @@
 # Validators reference
 
+The 0.15.0 rescope is recorded in [ADR-0093](decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md) through [ADR-0102](decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md). Where a rule below states what one of them decides, such as `path()` resolving with the running process's `node:path`, it states the target, and the code keeps enforcing the earlier rule until that record's implementing phase ships.
+
 File-or-stdin inputs use core's [content input type](core.md#content-inputs), which prepares lazy handles and declares the Command's stdin target. It is separate from this validator catalog.
 
 `@loomcli/validators` ships the validator catalog: factories that return ordinary [Standard Schema](https://standardschema.dev/) values for the input shapes a command-line author would otherwise need a schema library for. [ADR-0037](decisions/0037-validators-ship-in-their-own-package-as-standard-schema-values.md) records the decision. Core cannot tell a catalog validator from a Zod schema, so an input that needs more than the catalog offers passes a schema library's value in the same `validate` slot.
