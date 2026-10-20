@@ -15,6 +15,10 @@
   ],
   "type": "module",
   "exports": {
+    "./background": {
+      "types": "./dist/src/background/plugin.d.ts",
+      "import": "./dist/src/background/plugin.js"
+    },
     "./box": {
       "types": "./dist/src/box.d.ts",
       "import": "./dist/src/box.js"

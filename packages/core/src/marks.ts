@@ -6,14 +6,21 @@ import type { OptionConfig } from './types.js';
 
 /**
  * A run-wide mark: the key one global option carries, the option type that may carry it, and the
- * rule that guards it. The interaction and color marks sit on a Boolean option, and the verbose and
- * quiet marks on a counted one.
+ * rule that guards it. The interaction and color marks sit on a Boolean option, the verbose and
+ * quiet marks on a counted one, and the background mark on a string one.
  */
 interface Mark {
-  readonly fact: 'color' | 'interaction' | 'quiet' | 'verbose';
-  readonly type: 'boolean' | 'count';
+  readonly fact: 'background' | 'color' | 'interaction' | 'quiet' | 'verbose';
+  readonly type: 'boolean' | 'count' | 'string';
   readonly rule: DiagnosticRule;
 }
+
+/** The type each mark's option takes, as a fault names it and as its fix spells it. */
+const typeNames: Readonly<Record<Mark['type'], string>> = {
+  boolean: 'Boolean',
+  count: 'a counted option',
+  string: 'a string option',
+};
 
 /** Whether one option carries a mark: the key, on an option of the mark's type, holding `true`. */
 function isMarked(config: OptionConfig, mark: Mark): boolean {
@@ -22,15 +29,10 @@ function isMarked(config: OptionConfig, mark: Mark): boolean {
 
 /** The sentence and fix one option of the wrong type reports for a mark. */
 function wrongType(subject: string, mark: Mark): { sentence: string; correction: string } {
-  return mark.type === 'boolean'
-    ? {
-        correction: 'Use type "boolean".',
-        sentence: `${subject} declares ${mark.fact} but is not Boolean.`,
-      }
-    : {
-        correction: 'Use type "count".',
-        sentence: `${subject} declares ${mark.fact} but is not a counted option.`,
-      };
+  return {
+    correction: `Use type "${mark.type}".`,
+    sentence: `${subject} declares ${mark.fact} but is not ${typeNames[mark.type]}.`,
+  };
 }
 
 /**

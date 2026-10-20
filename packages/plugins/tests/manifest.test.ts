@@ -99,6 +99,7 @@ const globals = [
     env: [],
     default: null,
     implied: null,
+    background: false,
   },
   plugin('help', 'Show this help.', '-h'),
   plugin('version', 'Print the version.', '-V'),
@@ -173,6 +174,7 @@ const getDocument = {
         env: ['APP_LIMIT', 'APP_LIMIT_FALLBACK'],
         default: { value: '10' },
         implied: null,
+        background: false,
       },
       {
         type: 'string',
@@ -189,6 +191,7 @@ const getDocument = {
         env: [],
         default: null,
         implied: null,
+        background: false,
       },
       {
         type: 'count',
@@ -218,6 +221,7 @@ const getDocument = {
         env: [],
         default: { value: 'none' },
         implied: 'simple',
+        background: false,
       },
       {
         type: 'string',
@@ -234,6 +238,7 @@ const getDocument = {
         env: [],
         default: null,
         implied: null,
+        background: false,
       },
     ],
     children: [],
@@ -367,6 +372,7 @@ test('a result reads kind, views, default, and media types in order, and the for
   expect(Object.keys(Object(show.result))).toEqual(['kind', 'views', 'default', 'mediaTypes']);
   expect(show.options).toEqual([
     {
+      background: false,
       control: true,
       default: null,
       deprecated: null,
@@ -440,6 +446,7 @@ test('marker characters print exactly, C1 controls escape up to U+009F, and U+00
       env: [],
       default: { value: 'c\uE000\uE001\uE002\uE003d\uE003E000e' },
       implied: null,
+      background: false,
     },
   ]);
 });

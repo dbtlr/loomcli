@@ -84,6 +84,8 @@ type ManifestOption =
       readonly env: readonly string[];
       readonly default: { readonly value: unknown } | null;
       readonly implied: string | null;
+      /** The background mark, last on the string variant; a content option carries none. */
+      readonly background?: boolean;
     }
   | {
       readonly type: 'boolean';
@@ -194,6 +196,7 @@ function optionEntry(node: OptionNode): ManifestOption {
         env: node.env,
         default: defaultOf(node),
         implied: node.implied,
+        ...(node.type === 'string' ? { background: node.background } : {}),
       };
     }
     default: {

@@ -203,7 +203,8 @@
         },
         "env": [],
         "default": null,
-        "implied": null
+        "implied": null,
+        "background": false
       }
     ],
     "children": [
@@ -469,7 +470,8 @@
                 "schema": null,
                 "env": [],
                 "default": null,
-                "implied": null
+                "implied": null,
+                "background": false
               }
             ],
             "children": []
@@ -717,7 +719,8 @@
             },
             "env": [],
             "default": null,
-            "implied": null
+            "implied": null,
+            "background": false
           }
         ],
         "children": []

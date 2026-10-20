@@ -1,3 +1,4 @@
+import type { Background } from './background.js';
 import { DeclarationError } from './errors.js';
 import { partFinding } from './facts.js';
 import type { FactSite } from './facts.js';
@@ -11,6 +12,8 @@ interface RenderingPolicy {
   modifiers?: SwitchPolicy | undefined;
   hyperlinks?: SwitchPolicy | undefined;
   terminalControls?: 'strip' | 'preserve' | undefined;
+  /** The author's background: `'dark'` or `'light'` states it, and `'auto'`, the default, leaves it to detection. */
+  background?: 'auto' | Background | undefined;
 }
 interface Capabilities {
   color: boolean;
@@ -60,6 +63,22 @@ function renderingPolicy(value: unknown, site: FactSite): RenderingPolicy {
   }
   if (controls !== undefined) {
     result.terminalControls = controls;
+  }
+  const { background } = value;
+  if (
+    background !== undefined &&
+    background !== 'auto' &&
+    background !== 'dark' &&
+    background !== 'light'
+  ) {
+    throw new DeclarationError(renderingPolicyRule, {
+      correction: 'Supply one of the three, or omit background.',
+      findings: [partFinding(site, ['background'])],
+      sentence: 'Rendering background is not auto, dark, or light.',
+    });
+  }
+  if (background !== undefined) {
+    result.background = background;
   }
   return result;
 }

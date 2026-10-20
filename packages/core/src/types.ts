@@ -3,6 +3,7 @@ import type { Readable, Writable } from 'node:stream';
 
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import type { Background } from './background.js';
 import type { Content } from './content.js';
 import type { LoomError } from './errors.js';
 import type { FailureExitCode } from './exit-codes.js';
@@ -127,6 +128,7 @@ type BooleanFacts = Described &
     interaction?: true;
     verbose?: never;
     quiet?: never;
+    background?: never;
     validate?: never;
     default?: never;
     multiple?: never;
@@ -135,15 +137,17 @@ type BooleanFacts = Described &
     implied?: never;
   };
 /**
- * A value-taking option carries no run-wide mark: the interaction and color marks belong to one
- * Boolean global option each, and the verbose and quiet marks to one counted global option each.
- * A local option's declaration carries none of them either.
+ * A value-taking option carries no run-wide mark but the background mark, which the marked string
+ * shape declares: the interaction and color marks belong to one Boolean global option each, and
+ * the verbose and quiet marks to one counted global option each. A local option's declaration
+ * carries none of them either.
  */
 interface Unmarked {
   interaction?: never;
   color?: never;
   verbose?: never;
   quiet?: never;
+  background?: never;
 }
 /** The same slot on an argument declaration, typed by the target its values must name. */
 interface ArgumentExtensions {
@@ -213,6 +217,24 @@ export interface OutputTerminal extends InputTerminal {
   rows: number | undefined;
 }
 /**
+ * The run's terminal facts: each stream's kind, the output streams' live width and height, and the
+ * run's background, the one fact core settles rather than captures. It reads `undefined` until it
+ * settles, when no source settled it, and in an invocation by name.
+ */
+export interface HostTerminal {
+  stdin: InputTerminal;
+  stdout: OutputTerminal;
+  stderr: OutputTerminal;
+  readonly background: Background | undefined;
+}
+/**
+ * The host fields `run()` accepts in place of process capture. A terminal may omit `background`;
+ * one that states it supplies the run's background unless the operator or the author names one.
+ */
+export type HostOverrides = Partial<Omit<Host, 'terminal'>> & {
+  terminal?: Omit<HostTerminal, 'background'> & { readonly background?: Background | undefined };
+};
+/**
  * How the running application was built, released, and installed. The build bakes the build and
  * release facts into the artifact, core reads the installation from the installation record, and
  * core fills `host.release` from them for every run; a run of the source, with nothing baked in,
@@ -259,7 +281,7 @@ export interface Host {
    */
   timeZone: string;
   env: Record<string, string | undefined>;
-  terminal: { stdin: InputTerminal; stdout: OutputTerminal; stderr: OutputTerminal };
+  terminal: HostTerminal;
   stdin: Readable;
   stdout: Writable;
   stderr: Writable;
@@ -279,7 +301,7 @@ export interface Host {
 }
 export interface RunOptions {
   rendering?: RenderingPolicy;
-  host?: Partial<Host>;
+  host?: HostOverrides;
   /**
    * A caller-owned signal that cancels the run. Core subscribes to it at run entry and honors an
    * abort at every phase boundary; it composes with an installed signals owner.
@@ -335,6 +357,11 @@ export type ValidationContext =
     };
 /** Immutable authoring and measurement context for one view destination. */
 export interface ViewContext {
+  /**
+   * The run's background, `'dark'` or `'light'`, or `undefined` when no source settled it. It holds
+   * one value for the whole run.
+   */
+  readonly background: Background | undefined;
   /**
    * The destination's effective width, read just before this render call: the real terminal width
    * narrowed by a valid `COLUMNS`. A terminal that reports no width takes a valid `COLUMNS` alone,
@@ -619,7 +646,9 @@ export interface ActionChannel {
   /** Closes every region the action opened that is still open, because the action returned. */
   complete: () => void;
 }
-export type StringOption = OptionSpelling &
+export type StringOption = UnmarkedStringOption | BackgroundOption;
+/** A string option that carries no run-wide mark. */
+export type UnmarkedStringOption = OptionSpelling &
   (
     | (Presence & Multiplicity & Omission)
     | {
@@ -640,6 +669,33 @@ export type StringOption = OptionSpelling &
     validate?: StandardSchemaV1;
     /** The value a bare spelling supplies, so an explicit value is attached to the spelling. */
     implied?: string;
+  };
+/**
+ * The string global option that carries the background mark, whose value the run reads from argv
+ * beside the color choice. argv is its one source, so it declares no short alias, variable,
+ * default, implied value, or list.
+ */
+export type BackgroundOption = Described &
+  Listed &
+  Controlled &
+  OptionExtensions & {
+    type: 'string';
+    background: true;
+    aliases?: readonly string[];
+    validate?: StandardSchemaV1;
+    short?: never;
+    shortOnly?: never;
+    env?: never;
+    default?: never;
+    implied?: never;
+    multiple?: false;
+    required?: never;
+    validateOmitted?: never;
+    polarity?: never;
+    interaction?: never;
+    color?: never;
+    verbose?: never;
+    quiet?: never;
   };
 /** A variadic argument collects the remaining tokens, so it follows the multiple option rules. */
 export type VariadicArgument = Presence &
@@ -803,6 +859,7 @@ export type CountOption = OptionSpelling &
     type: 'count';
     interaction?: never;
     color?: never;
+    background?: never;
     validate?: never;
     default?: never;
     multiple?: never;

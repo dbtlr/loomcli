@@ -1,9 +1,13 @@
 import type { Writable } from 'node:stream';
 
+import { background, backgroundChoice, checkBackgroundBinding } from './background-mark.js';
+import { askTerminal } from './background-query.js';
+import { settleBackground } from './background.js';
+import type { Background } from './background.js';
 import { captureDeclaration, unreadableArgument } from './capture.js';
 import { noSelection, runInvocation } from './chain.js';
 import type { FailureSelection, Invocation, StartingView } from './chain.js';
-import { checkColorBinding, chosenPolicy, colorChoice, uncapturedPolicy } from './color.js';
+import { checkColorBinding, chosenPolicy, color, colorChoice, uncapturedPolicy } from './color.js';
 import { portableName } from './command-rules.js';
 import {
   declareStdin,
@@ -70,18 +74,18 @@ import type { FactSite } from './facts.js';
 import { failureForm } from './form.js';
 import type { FailureForm } from './form.js';
 import {
-  colorSpellings,
   declareGlobalOption,
   emptyGlobals,
   globalSite,
   globalTable,
+  markedSpellings,
   pluginSites,
 } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
 import { judgeGraph, judgesGraph } from './graph-hooks.js';
 import { brokenLogReport, destinationDefect, destinationReport, reportFailure } from './hints.js';
 import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
-import { captureHost } from './host.js';
+import { captureHost, settleTerminal, statedBackground } from './host.js';
 import type { HostCapture, ReportHost } from './host.js';
 import { globalOptionAfterCommand } from './input-rules.js';
 import { inspectGraph } from './inspect.js';
@@ -110,12 +114,14 @@ import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, InstalledOptionValues, Plugin } from './plugin.js';
 import { prepareEnvironment } from './prepare-environment.js';
 import { bakedFacts, isDevelopment } from './release.js';
-import { plainPolicy, renderingPolicy } from './rendering.js';
+import { capabilities, plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
 import { bracketCall, bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
 import type { CancellationCode, ParentRun, SignalBracket } from './signals.js';
 import { installedSource } from './sources.js';
+import { themeAdapts, themePalette } from './theme.js';
+import type { BuiltTheme } from './theme.js';
 import { readTranslations, translateThrow } from './translators.js';
 import type { Translation, TranslatorRegistry } from './translators.js';
 import type {
@@ -353,11 +359,16 @@ class ApplicationBuilder<
   readonly #globals: GlobalsState;
   readonly #config: ApplicationConfig;
   /**
-   * The color-marked option's spellings, read from the declarations the first time a run needs
-   * them. The holder keeps an Application with no mark from reading them again.
+   * The spellings of the options that carry the marks a run reads from argv before graph build,
+   * the color mark and the background mark, read from the declarations the first time a run needs
+   * them. The holder keeps an Application with neither mark from reading them again.
    */
-  #colorSpellings: { readonly value: ReadonlyMap<string, OptionSpelling> | undefined } | undefined =
-    undefined;
+  #markedSpellings:
+    | {
+        readonly color: ReadonlyMap<string, OptionSpelling> | undefined;
+        readonly background: ReadonlyMap<string, OptionSpelling> | undefined;
+      }
+    | undefined = undefined;
 
   constructor(
     name: string,
@@ -672,10 +683,33 @@ class ApplicationBuilder<
     inspected: () => CommandGraph;
     plugins: readonly BuiltPlugin[];
   } {
-    const { contributors, facts, plugins, rendering, views } = this.#config;
+    this.stage(stage);
+    return this.build(stage, checks, reuse);
+  }
+
+  /**
+   * The stages that pass before the graph builds: the application's own overrides, the declared
+   * rendering policy, and the built plugins, each published to `stage`.
+   */
+  private stage(stage: PrepareStage): void {
+    const { plugins, rendering, views } = this.#config;
     stage.views([views]);
     stage.rendering(rendering);
     stage.plugins(plugins);
+  }
+
+  /** The graph build after the stages `stage()` published, as `prepare()` states it. */
+  private build(
+    stage: PrepareStage,
+    checks: BuildChecks,
+    reuse?: Pick<BoundGraph, 'graph' | 'inspected'>,
+  ): {
+    facts: ApplicationFacts;
+    graph: BuiltGraph;
+    inspected: () => CommandGraph;
+    plugins: readonly BuiltPlugin[];
+  } {
+    const { contributors, facts, plugins, views } = this.#config;
     // An action's call reuses the graph its run built and judged, so no lifecycle hook runs again.
     if (reuse) {
       stage.views([views, ...contributors]);
@@ -825,9 +859,15 @@ class ApplicationBuilder<
    * graph or reuses an action's run's, and whether it touches the process.
    */
   async #execute(door: RunDoor): Promise<RunEnd> {
-    // The color-marked option's spellings, known from the declarations before any graph builds.
-    this.#colorSpellings ??= { value: colorSpellings(this.#globals.inputs, this.#config.plugins) };
-    const spellings = this.#colorSpellings.value;
+    // The marked options' spellings, known from the declarations before any graph builds.
+    const globalInputs = this.#globals.inputs;
+    const { plugins: installed } = this.#config;
+    this.#markedSpellings ??= {
+      background: markedSpellings(globalInputs, installed, background),
+      color: markedSpellings(globalInputs, installed, color),
+    };
+    const spellings = this.#markedSpellings.color;
+    const backgroundSpellings = this.#markedSpellings.background;
     let stderr: Writable = door.stderr;
     let output: Output | undefined = undefined;
     let code: 0 | FailureExitCode = 0;
@@ -959,25 +999,37 @@ class ApplicationBuilder<
         output = invocationOutput;
         // The constructor validated the declared policy, which the build hands over after the overrides.
         let policy: RenderingPolicy = {};
+        // The installed theme, which the run's background resolves to a palette once it settles.
+        let theme: BuiltTheme = new Map();
         signals = entered.bracket(controller);
         const { bound } = door;
-        const built = this.prepare(
-          {
-            plugins: (plugins) => {
-              invocationOutput.configure(
-                policy,
-                plugins.find((entry) => entry.theme !== undefined)?.theme ?? new Map(),
-              );
-            },
-            rendering: (declared) => {
-              policy = chosenPolicy(door.rendering(declared), choice);
-              invocationOutput.configure(policy, new Map());
-            },
-            views: (value) => {
-              registry = value;
-              invocationOutput.useViews(value);
-            },
+        const stage: PrepareStage = {
+          plugins: (plugins) => {
+            theme = plugins.find((entry) => entry.theme !== undefined)?.theme ?? new Map();
+            invocationOutput.configure(policy, themePalette(theme, undefined));
           },
+          rendering: (declared) => {
+            policy = chosenPolicy(door.rendering(declared), choice);
+            invocationOutput.configure(policy, new Map());
+          },
+          views: (value) => {
+            registry = value;
+            invocationOutput.useViews(value);
+          },
+        };
+        this.stage(stage);
+        // The run's background settles once, before graph build, so the first themed byte knows it.
+        const settled = await entered.background({
+          choice: backgroundSpellings && backgroundChoice(host.argv, backgroundSpellings),
+          detects: backgroundSpellings !== undefined || themeAdapts(theme),
+          host,
+          policy,
+          signal: controller.signal,
+        });
+        settleTerminal(host.terminal, settled);
+        invocationOutput.configure(policy, themePalette(theme, settled));
+        const built = this.build(
+          stage,
           { converters: build.development, descriptions: build.development, fault: raise },
           bound,
         );
@@ -1290,8 +1342,23 @@ interface RunEntry {
   read: (host: Host) => Invocation['read'];
   /** The run's verbosity, settled against the built graph from what the run reads its inputs from. */
   verbosity: (graph: BuiltGraph, host: Host) => number;
+  /** The run's background, settled once before graph build from what the run reads. */
+  background: (read: BackgroundRead) => Promise<Background | undefined>;
   /** The view the run starts from, which an invocation by name's caller may select. */
   start: StartingView | undefined;
+}
+
+/**
+ * What a run settles its background from: the operator's choice, whether anything reads the
+ * background, the host, the policy the color choice left, and the run's signal, which ends a
+ * query's wait.
+ */
+interface BackgroundRead {
+  choice: Background | undefined;
+  detects: boolean;
+  host: Host;
+  policy: RenderingPolicy;
+  signal: AbortSignal;
 }
 
 /**
@@ -1338,6 +1405,23 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
     enter: () => {
       const overrides = options?.host;
       return {
+        background: ({ choice, detects, host, policy, signal }) =>
+          settleBackground(
+            {
+              choice,
+              colored: (['stdout', 'stderr'] as const).some(
+                (destination) => capabilities(host, destination, policy).color,
+              ),
+              detects,
+              env: host.env,
+              policy: policy.background,
+              stated: statedBackground(host.terminal),
+              terminals: (['stdin', 'stdout', 'stderr'] as const).every(
+                (stream) => host.terminal[stream].isTTY,
+              ),
+            },
+            () => askTerminal(host, signal),
+          ),
         bracket: (controller) => bracketRun(controller, checkSignal(options?.signal)),
         host: (stderr) => captureHost(application, overrides, stderr),
         publishEnvironment: overrides?.cwd === undefined && overrides?.env === undefined,
@@ -1395,6 +1479,8 @@ function nameDoor<Mapped>(
       }
       const { call } = read;
       return {
+        // An invocation by name settles no background and writes no query.
+        background: async () => undefined,
         bracket: (controller) =>
           bracketCall(controller, { caller: call.signal, parent: action?.parent }),
         host,
@@ -1582,8 +1668,9 @@ function carriedBinding(
 }
 
 /**
- * An option that carries a mark read before configuration, the color mark or a verbosity mark,
- * carries no value of the installed source's binding. `binding` is that binding when it does.
+ * An option that carries a mark read before configuration, the color mark, a verbosity mark, or
+ * the background mark, carries no value of the installed source's binding. `binding` is that
+ * binding when it does.
  */
 function checkMarkBindings(
   config: OptionConfig,
@@ -1592,6 +1679,7 @@ function checkMarkBindings(
 ): void {
   checkColorBinding(config, site, binding);
   checkVerbosityBinding(config, site, binding);
+  checkBackgroundBinding(config, site, binding);
 }
 
 /**

@@ -675,6 +675,7 @@ export class Output {
     const caps = capabilities(this.host, destination, this.policy);
     const { palette } = this;
     return Object.freeze({
+      background: this.host.terminal.background,
       columns: columns(this.host, destination),
       expandTabs: (text: string) => expandTabsMarked(text, { caps, palette }),
       plain: (text: string) =>

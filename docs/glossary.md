@@ -261,7 +261,7 @@ The `quiet: true` fact on the one counted global option whose occurrence lowers 
 _Avoid_: Silent flag, quiet option (for the mark)
 
 **Background**:
-The run's terminal background, `dark`, `light`, or `undefined` when no source knows it, which core settles once per run, right after the color choice and before environment preparation, from the first source that answers: the operator's background choice, the author's `rendering.background`, a background a host override states, and then, only when a theme entry is adaptive or an option carries the background mark, `undefined` when the run's color is off, dark when `TERM` is `linux`, a query to the terminal, `COLORFGBG`, and otherwise `undefined`. An adaptive style resolves against it, taking its dark side when it is `undefined`, and the host and every view context read it. An invocation by name reads `undefined`.
+The run's terminal background, `dark`, `light`, or `undefined` when no source knows it, which core settles once per run, right after the color choice and before environment preparation, from the first source that answers: the operator's background choice, the author's `rendering.background`, a background a host override states, and then, only when a theme entry is adaptive or an option carries the background mark, `undefined` when stdin, stdout, or stderr is not a terminal or the run's color is off, dark when `TERM` is `linux`, a query to the terminal, `COLORFGBG`, and otherwise `undefined`. An adaptive style resolves against it, taking its dark side when it is `undefined`, and the host and every view context read it. An invocation by name reads `undefined`.
 _Avoid_: Theme mode, color scheme, appearance, dark mode (for the fact)
 
 **Background choice**:

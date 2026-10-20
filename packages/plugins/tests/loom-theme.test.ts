@@ -34,6 +34,46 @@ test.each([
   });
 });
 
+test.each([
+  [{}, ['90', '33', '32', '93', '31', '34']],
+  [
+    { TERM: 'xterm-256color' },
+    ['38;5;243', '38;5;130', '38;5;65', '38;5;94', '38;5;131', '38;5;60'],
+  ],
+  [
+    { COLORTERM: 'truecolor' },
+    [
+      '38;2;95;107;122',
+      '38;2;156;90;30',
+      '38;2;78;107;80',
+      '38;2;138;109;14',
+      '38;2;192;69;50',
+      '38;2;74;107;145',
+    ],
+  ],
+])('the Loom palette supplies its light foregrounds on a light background at %j', (env, colors) => {
+  const names = ['dim', 'highlight', 'success', 'warning', 'error', 'info'];
+  const rendering = { color: 'always', modifiers: 'always' };
+  expect(palette({ background: 'light', env, rendering })).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `primary|${names
+      .map((name, index) => `\u001b[${colors[index]}m${name}\u001b[39m`)
+      .join('|')}`,
+  });
+});
+
+test('a whole-token override is one value on both backgrounds', () => {
+  const options = {
+    overrides: { highlight: ['cyan'] },
+    rendering: { color: 'always', modifiers: 'always' },
+    tokens: ['highlight'],
+  };
+  const dark = palette({ ...options, background: 'dark' }).stdout;
+  expect(dark).toBe('\u001b[36mhighlight\u001b[39m');
+  expect(palette({ ...options, background: 'light' }).stdout).toBe(dark);
+});
+
 test('defaults change foregrounds while preserving enclosing backgrounds and modifiers', () => {
   expect(
     palette({

@@ -186,6 +186,7 @@ test("a plugin's option publishes the node an application's global option publis
   const graph = JSON.parse(invoke(fixture, ['validated', 'inspect']).stdout);
   expect(graph.globals[2]).toEqual({
     aliases: [],
+    background: false,
     control: false,
     default: { value: 'plain' },
     description: undefined,
