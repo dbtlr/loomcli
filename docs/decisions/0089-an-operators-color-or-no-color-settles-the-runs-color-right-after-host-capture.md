@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0089 - An operator's --color or --no-color settles the run's color right after host capture
 description: Core gains the color mark, color true on one Boolean global option, and reads the operator's color choice from argv right after host capture and before graph build, the last spelling of the marked option before the first bare --. A positive spelling sets the run's color policy field to always and a negative one to never, over NO_COLOR, FORCE_COLOR, and the declared rendering policy, while modifiers, hyperlinks, and terminal controls keep their own policy. The marked option binds no variable and no configuration key, takes no short alias, and still parses as an ordinary option. The plugin pack adds @loomcli/plugins/color, which declares a marked --[no-]color.
-status: proposed
+status: accepted
 created: 2026-10-19
-modified: 2026-10-19
+modified: 2026-10-20
 ---
 
 # ADR-0089 - An operator's --color or --no-color settles the run's color right after host capture
@@ -55,7 +55,7 @@ The glossary gains Color choice and Color mark.
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships the color mark, the color choice, and the color plugin. Tests prove the pair on a terminal and piped, the last word winning, the bare `--` boundary, an alias spelling, the choice over both variables and over the Application's and `run()`'s policy, unchanged bytes without a spelling, output before the chain following the choice, host-capture failures with color off in a marked Application, `--color=x` as the ordinary usage failure, each declaration error, the help row and manifest fields, plain capture by name, and a packed consumer of `@loomcli/plugins/color`, under Node and Bun.
+Accepted in 0.14.0.
 
 ## Changelog
 

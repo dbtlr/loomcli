@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0087 - Help wraps its prose to the destination's columns and keeps its literals whole
 description: On a terminal, the help page wraps its prose at the full columns of its view context with hanging indents, keeps usage forms, left cells, code, and example commands whole, stacks the rows under a heading whose right cells cannot fit, and reflows Details paragraphs at Markdown's soft line breaks. Off a terminal, every page keeps its bytes. This supersedes ADR-0077's clause that help neither wraps nor reads the terminal width.
-status: proposed
+status: accepted
 created: 2026-10-18
-modified: 2026-10-19
+modified: 2026-10-20
 ---
 
 # ADR-0087 - Help wraps its prose to the destination's columns and keeps its literals whole
@@ -50,7 +50,7 @@ This supersedes ADR-0077's clause that the page neither wraps nor reads the term
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships help wrapping. Tests prove the two-column wrap, the stacked rows, Details reflow, the literals kept whole, and unchanged bytes off a terminal under Node and Bun.
+Accepted in 0.14.0.
 
 ## Changelog
 

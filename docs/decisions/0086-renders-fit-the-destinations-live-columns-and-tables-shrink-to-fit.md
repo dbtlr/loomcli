@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0086 - Renders fit the destination's live columns, and tables shrink to fit
 description: Core reads the destination's real width at the moment of each render and passes it to the view as columns, narrowed by POSIX COLUMNS and undefined off a terminal. The view context also gains wrap, an eager line breaker that breaks at spaces and never splits a word, and expandTabs, which turns tabs into spaces so text placed at an offset shows as it measures. Marked lanes wrap with the gutter, the table view shrinks its widest columns to fit and falls back to the records layout, and the records view wraps its values. Core's failure text, print, and help do not wrap.
-status: proposed
+status: accepted
 created: 2026-10-17
-modified: 2026-10-19
+modified: 2026-10-20
 ---
 
 # ADR-0086 - Renders fit the destination's live columns, and tables shrink to fit
@@ -143,7 +143,7 @@ The glossary gains Columns.
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships live terminal width, `columns`, `wrap`, `expandTabs`, `nowrap`, the lane wrapping, the shrinking table and its records fallback, the wrapping records view, and the prompts change. Tests prove each destination's width, the pipe, invocation, and MCP cases, `COLUMNS` as a narrowing on a terminal with and without a reported width, two renders either side of a resize under a pty-backed host, a streamed records row after a resize, each wrap rule, `nowrap` bodies that never break and resolve to themselves, wrapped lanes with their gutter, tabs that expand on a terminal so no lane, table, or records line overflows and stay off one, the table at natural width, shrunk, and as records blocks, the records view wrapping, byte-identical piped output, unchanged failure text, and the select clip at `context.columns`.
+Accepted in 0.14.0.
 
 ## Changelog
 

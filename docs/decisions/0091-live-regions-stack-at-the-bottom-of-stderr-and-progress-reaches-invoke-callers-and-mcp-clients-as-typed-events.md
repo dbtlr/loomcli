@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0091 - Live regions stack at the bottom of stderr, and progress reaches invoke callers and MCP clients as typed events
 description: Out gains region(options?), one call that opens a live region at the bottom of stderr and returns a handle with draw, end, a signal core aborts whenever the region closes, and report. Core keeps every open region below every other write, in open order, erases them before any other write and redraws them after it, recounts each last frame at the current width before it erases, freezes the others while an input region is open and opens one input region at a time, draws no region without input at verbosity -1, and closes every open region before it renders a failure. out.draw stays as a region of one frame and keeps its row count. A report builds a typed progress event that InvokeOptions.onProgress receives and the MCP plugin sends as notifications/progress. @loomcli/prompts moves its questions onto input regions and adds progress(context, settings), its progress view, and the optional progressStyle() plugin. Core never uses a timer to cancel or limit work; a timer that animates a frame belongs to its author or library.
-status: proposed
+status: accepted
 created: 2026-10-19
 modified: 2026-10-20
 ---
@@ -66,7 +66,7 @@ The glossary gains Live region, Frame, Input region, Progress event, Progress li
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships `out.region`, the region stack, typed progress events, the MCP mapping, and the prompts library's progress lines. Tests prove, against a terminal emulator, the stack's order, writes above it on stderr and on a terminal stdout, the input freeze and its turn order, the signal and `closedBy` for each way a region closes, the failed lines above a failure report, the cancelled lines, nothing drawn off a terminal, under an invocation by name, and at verbosity -1 without input, the erase after a reflowing resize, `out.draw`'s count, the start and end lines off a terminal, each progress event in order through `onProgress`, the MCP notifications with and without a token, each fault, and a packed consumer of `@loomcli/prompts` that installs `progressStyle()`, under Node and Bun.
+Accepted in 0.14.0.
 
 ## Changelog
 

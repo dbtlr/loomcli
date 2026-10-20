@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0088 - Pack views lay out lists, headings, rules, prose, and boxes
 description: The plugin pack adds five pack views beside the table and records. The list is a whole view over items with nested children. The heading, the rule, prose, and the box are views over a string that take marked text their author owns. A box can frame another view, which it renders with columns narrowed by its frame. Off a terminal nothing wraps, and the rule alone draws a length of its own, 80.
-status: proposed
+status: accepted
 created: 2026-10-18
-modified: 2026-10-18
+modified: 2026-10-20
 ---
 
 # ADR-0088 - Pack views lay out lists, headings, rules, prose, and boxes
@@ -58,7 +58,7 @@ Structure is `dim`: markers, underlines, rules, and box borders. A bullet is `gl
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships the five pack views. Tests prove each view as the second argument of `out.render` and in a declared result, the list's markers, nesting, and hanging lines, both heading levels and the underline, the rule bare and labelled at a fixed width and at 80 piped, prose paragraphs, a text box and a framed table that shrinks and falls back to records, the width read again after a resize, byte-identical piped output, and the negative type checks.
+Accepted in 0.14.0.
 
 ## Changelog
 
