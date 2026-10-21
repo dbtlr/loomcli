@@ -70,9 +70,6 @@ function build() {
     case 'slash-application-name': {
       return new Application('bin/app').action(dispatch);
     }
-    case 'nonstring-application-name': {
-      return new Application(7).action(dispatch);
-    }
     case 'portable-application-name': {
       return new Application('App_.v2-x').command(child('get')).action(dispatch);
     }
@@ -87,9 +84,6 @@ function build() {
     }
     case 'hyphen-argument-name': {
       return app.argument('--file', { required: true }).action(dispatch);
-    }
-    case 'nonstring-argument-name': {
-      return app.command(new Command('get').argument(1, {}).action(dispatch)).action(dispatch);
     }
     case 'shared-option-key': {
       return app

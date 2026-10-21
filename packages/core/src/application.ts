@@ -1663,7 +1663,7 @@ function declareApplication<Plugins extends readonly Plugin[]>(
 }
 
 /** The application name is typed as a command at the prompt, so it answers to the portable rule. */
-function checkApplicationName(name: unknown): string {
+function checkApplicationName(name: string): string {
   if (!isPortableName(name)) {
     throw new DeclarationError(portableName, {
       correction: portableNameCorrection,

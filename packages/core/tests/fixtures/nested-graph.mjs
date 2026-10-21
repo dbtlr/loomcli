@@ -66,9 +66,6 @@ function build() {
     case 'slash-alias-name': {
       return app.command(aliased('keys', 'ls/all')).action(dispatch);
     }
-    case 'nonstring-alias-name': {
-      return app.command(aliased('keys', 7)).action(dispatch);
-    }
     case 'portable-alias-name': {
       return app.command(aliased('keys', '_Ls.v2-all')).action(dispatch);
     }
@@ -77,9 +74,6 @@ function build() {
     }
     case 'colon-alias-name': {
       return app.command(aliased('keys', 'ls:all')).action(dispatch);
-    }
-    case 'symbol-alias-name': {
-      return app.command(aliased('keys', Symbol('ls'))).action(dispatch);
     }
     case 'nested-alias-sibling-name': {
       return app

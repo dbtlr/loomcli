@@ -321,20 +321,12 @@ test.each([
     'Application name "bin/app" is invalid. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
   ],
   [
-    'nonstring-application-name',
-    'Application name 7 is invalid. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
-  ],
-  [
     'empty-argument-name',
     'The root Command declares an argument named "". Use a nonempty name without a leading hyphen, whitespace, or "=".',
   ],
   [
     'hyphen-argument-name',
     'The root Command declares an argument named "--file". Use a nonempty name without a leading hyphen, whitespace, or "=".',
-  ],
-  [
-    'nonstring-argument-name',
-    'Command "get" declares an argument named 1. Use a nonempty name without a leading hyphen, whitespace, or "=".',
   ],
   [
     'shared-option-key',

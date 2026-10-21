@@ -47,19 +47,12 @@ function handBuilt(fields) {
  * declaration fault, and the fixture reports its rule and sentence, or the class of any other throw.
  */
 const scenarios = {
-  'alias-bare': () => new Command('get').alias(bare),
-  'application-bare': () => new Application(bare),
   'argument-after-action': () => new Command('get').action(act).argument(forged, {}),
-  'argument-bare': () => new Command('get').argument(bare, {}),
-  'argument-config-bare': () => new Command('get').argument(bare, 'text'),
-  'command-bare': () => new Command(bare),
   'extension-copies': () => plugin('@acme/notes', { extensions: [handBuilt({}), handBuilt({})] }),
   'extension-issue': () =>
     new Command('get').extend(
       extension('@acme/limit/command', { schema: rejecting, target: 'command' })('x'),
     ),
-  'global-option-bare': () => new Application('probe').globalOption(bare, { type: 'string' }),
-  'global-option-config-bare': () => new Application('probe').globalOption(bare, null),
   'hook-option-name': () =>
     new Application('probe', {
       plugins: [
@@ -71,8 +64,6 @@ const scenarios = {
       .command(new Command('get').action(act))
       .inspect(),
   'option-after-action': () => new Command('get').action(act).option(forged, { type: 'string' }),
-  'option-bare': () => new Command('get').option(bare, { type: 'string' }),
-  'option-config-bare': () => new Command('get').option(bare, undefined),
   'rule-bare': () => diagnosticRule(bare, { explanation: 'e', headline: 'h' }),
 };
 

@@ -8,20 +8,11 @@ import { invoke } from '../../../scripts/test-process.js';
  * control, or a value that is not a string, reaches its sentence.
  */
 const rules = {
-  'alias-bare': 'portable-name',
-  'application-bare': 'portable-name',
   'argument-after-action': 'declared-name',
-  'argument-bare': 'declared-name',
-  'argument-config-bare': 'declared-name',
-  'command-bare': 'portable-name',
   'extension-copies': 'two-package-copies',
   'extension-issue': 'invalid-extension-value',
-  'global-option-bare': 'declared-name',
-  'global-option-config-bare': 'declared-name',
   'hook-option-name': 'declared-name',
   'option-after-action': 'declared-name',
-  'option-bare': 'declared-name',
-  'option-config-bare': 'declared-name',
   'rule-bare': 'rule-identity',
 };
 

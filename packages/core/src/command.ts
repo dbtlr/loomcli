@@ -356,8 +356,8 @@ function constructorFinding(name: unknown, options: unknown, mark: string): Find
  * filename set, and a name starts with neither `-`, which reads as an option, nor `.`, which a
  * shell hides.
  */
-export function isPortableName(name: unknown): name is string {
-  return typeof name === 'string' && /^[A-Za-z0-9_][A-Za-z0-9._-]*$/u.test(name);
+export function isPortableName(name: string): boolean {
+  return /^[A-Za-z0-9_][A-Za-z0-9._-]*$/u.test(name);
 }
 
 /** The one correction every portable name diagnostic ends with. */
@@ -365,7 +365,7 @@ export const portableNameCorrection =
   'Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".';
 
 /** An alias is typed at the prompt the way a Command name is, so it answers to the portable rule. */
-function checkAliasNames(command: string | null, names: readonly unknown[]): void {
+function checkAliasNames(command: string | null, names: readonly string[]): void {
   for (const [index, alias] of names.entries()) {
     if (!isPortableName(alias)) {
       throw new DeclarationError(portableName, {

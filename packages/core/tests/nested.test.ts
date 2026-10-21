@@ -122,16 +122,8 @@ test.each([
     'Command "keys" declares an alias named "ls/all". Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
   ],
   [
-    'nonstring-alias-name',
-    'Command "keys" declares an alias named 7. Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
-  ],
-  [
     'colon-alias-name',
     'Command "keys" declares an alias named "ls:all". Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
-  ],
-  [
-    'symbol-alias-name',
-    'Command "keys" declares an alias named Symbol(ls). Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
   ],
   [
     'nested-alias-sibling-name',

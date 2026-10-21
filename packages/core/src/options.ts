@@ -156,11 +156,11 @@ export function checkOptionName(name: string, site: InputSite): void {
  * The one name rule for an argument, option, alias of an option, or view name: a bare token the
  * parser can read, nonempty, with no leading hyphen, whitespace, or `=`, which it reads apart.
  */
-export function isDeclaredName(name: unknown): name is string {
-  return typeof name === 'string' && name !== '' && !name.startsWith('-') && !/[\s=]/u.test(name);
+export function isDeclaredName(name: string): boolean {
+  return name !== '' && !name.startsWith('-') && !/[\s=]/u.test(name);
 }
 
-/** The one correction every declared-name diagnostic for a string ends with. */
+/** The one correction every declared-name diagnostic ends with. */
 export const declaredNameCorrection =
   'Use a nonempty name without a leading hyphen, whitespace, or "=".';
 

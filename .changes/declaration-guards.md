@@ -5,3 +5,4 @@
 - Change a schema that does not answer synchronously to report `@loomcli/core/invalid-extension-value`, which replaces `@loomcli/core/async-extension-schema`.
 - Change a views record that names no view to fail where the result renders, in place of `@loomcli/core/result-without-views`.
 - Change `@loomcli/core/foreign-value` to report a plugin, extension value, view, override, translation, or failure encoding that another installed copy of `@loomcli/core` built, with a correction to install one copy.
+- Change `@loomcli/core/portable-name` and `@loomcli/core/declared-name` to judge a name that is a string. A name that is not a string, which the types reject, gets no rule.
