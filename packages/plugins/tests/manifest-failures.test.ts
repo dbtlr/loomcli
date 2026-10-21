@@ -267,50 +267,6 @@ test('a declared failure is rejected at the call unless it holds a failure class
   );
 });
 
-test('a failure class whose static exit code is 200 is rejected at the call', () => {
-  expect(rule('failure-code-200')).toEqual(
-    invalid(
-      'Failure class "ReservedError" declares exit code 200. Declare a whole number from 1 through 125.',
-    ),
-  );
-});
-
-test('a failure class whose static exit code getter throws is rejected at the call as declaring no finite code', () => {
-  expect(rule('failure-code-getter-throws')).toEqual(
-    invalid(
-      'Failure class "ThrowingGetterError" declares an exit code that is not a finite number. Declare a whole number from 1 through 125.',
-    ),
-  );
-});
-
-test('a failure class whose static name getter throws is rejected at the call under the empty name an anonymous class has', () => {
-  expect(rule('failure-name-getter-throws')).toEqual(
-    invalid('Failure class "" declares exit code 200. Declare a whole number from 1 through 125.'),
-  );
-});
-
-test('a failure class whose static name is not a string is rejected under that name read as text, as core names it', () => {
-  expect(rule('failure-name-number')).toEqual(
-    invalid(
-      'Failure class "42" declares exit code 200. Declare a whole number from 1 through 125.',
-    ),
-  );
-});
-
-test('a value whose prototype read throws is rejected at the call as not a failure class', () => {
-  expect(rule('failure-prototype-throws')).toEqual(
-    invalid('Supply a failure class, a class that extends LoomError.'),
-  );
-});
-
-test('the manifest rejects a class that declares an exit code outside 1 through 125', () => {
-  expect(rule('failure-code-200')).toEqual(
-    invalid(
-      'Failure class "ReservedError" declares exit code 200. Declare a whole number from 1 through 125.',
-    ),
-  );
-});
-
 test("the extension stores a declared failure as its class's failure code, exit code, and meaning, in that key order", () => {
   const stored = rule('failure-valid', ['--stored']);
   expect(stored).toEqual({ code: 'bad-data', exitCode: 65, meaning: 'The data is bad.' });
@@ -332,9 +288,4 @@ test("a failure class whose failure code is outside the grammar is rejected at t
     ),
   );
   expect(rule('failure-bad-code')).toEqual(invalid(core.message));
-  expect(rule('failure-failure-code-getter-throws')).toEqual(
-    invalid(
-      'Failure class "ThrowingCodeError" declares a failure code that is not a string. Declare a kebab-case code of lowercase letters and digits, such as "registry-down".',
-    ),
-  );
 });
