@@ -29,7 +29,7 @@ Core's extension descriptors, `extension(identity, { schema, target })`, already
 - **No per-call rewording.** A factory takes no message argument that replaces its sentence. `text()`'s `message` stays, because it is the author's description of the pattern, not a rewording, and it becomes required whenever `pattern` is given. The default `Expected a value that matches the required pattern.` goes. All other rewording goes through an `InputError` view override keyed on a code.
 - **Core's issues carry no code.** Core's own issues, the Boolean grammar `Use true, false, 1, or 0.` and `The validator rejected this value without an explanation.`, carry no code, and a missing input is a problem with no issue, which `InputProblem.reason` separates.
 
-The contract, the type block, and the catalog's codes are in [Issue codes](../validators.md#issue-codes).
+The contract, the type block, and the catalog's codes are in [Issue codes](../libs/validators.md#issue-codes).
 
 ## Considered options
 
@@ -42,7 +42,7 @@ The contract, the type block, and the catalog's codes are in [Issue codes](../va
 
 ## Consequences
 
-The catalog declares 23 codes, one per sentence, listed in [Issue codes](../validators.md#issue-codes). Each catalog rejection carries `code` and `params` beside its `message`, and the message text is unchanged except where ADR-0047's audit rewrites it.
+The catalog declares 23 codes, one per sentence, listed in [Issue codes](../libs/validators.md#issue-codes). Each catalog rejection carries `code` and `params` beside its `message`, and the message text is unchanged except where ADR-0047's audit rewrites it.
 
 Making `text()`'s `message` required beside `pattern` breaks a call that passes a pattern alone, which now throws a `DeclarationError` and fails to type-check, so the implementation's change fragment is breaking and states the migration. Declaring codes is additive for every other factory.
 
@@ -57,7 +57,7 @@ Proposed 2026-09-28. Accepted 2026-09-28 with the implementation: `@loomcli/vali
 ## Changelog
 
 - 2026-09-28: Proposed with the issue code contract.
-- 2026-09-28: Accepted; `issueCode`, the catalog's 23 codes, and the required `text()` message ship under Node.js and Bun. `issue` and `read` declare `this: void`, so either can be passed or destructured apart from its descriptor, as [Issue codes](../validators.md#issue-codes) shows.
+- 2026-09-28: Accepted; `issueCode`, the catalog's 23 codes, and the required `text()` message ship under Node.js and Bun. `issue` and `read` declare `this: void`, so either can be passed or destructured apart from its descriptor, as [Issue codes](../libs/validators.md#issue-codes) shows.
 - 2026-09-28: Under [ADR-0047](0047-an-operator-message-says-what-went-wrong-and-what-to-do-instead.md), core's issue for a validator that rejects with no issues now ends with its fix: `The validator rejected this value without an explanation. Supply a different value.` It still carries no code, so the "Core's issues carry no code" bullet holds with the longer sentence.
 - 2026-09-29: A code may carry subpath segments between the package name and the rule name, `<package>[/<subpath>...]/<rule-name>`, each segment kebab-case, so a code can name the part of the package that owns it. This is the grammar of a diagnostic rule's identity under [ADR-0051](0051-a-developer-diagnostic-teaches-the-author-what-broke-and-how-to-fix-it.md). A code with no subpath, such as `@loomcli/validators/integer-range`, reads as before, and the catalog's codes are unchanged.
 - 2026-10-21: [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md), proposed, ends the frozen descriptor, issue, and parameters, and the checks on an `issueCode()` config that its type already bounds. `issue()` and `read()` call the author's schema and read its result: a throw from the schema takes the ordinary failure path, and a schema that answers with a promise accepts no parameters, so `issue()` throws `@loomcli/validators/issue-parameters`. The `text()` pattern and message pairing stays a type requirement, with no run-time check.

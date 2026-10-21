@@ -25,7 +25,7 @@ modified: 2026-10-21
 - **Faults at the call.** A factory argument that can never work, such as `min` above `max` or an empty `oneOf` list, throws a `DeclarationError` from the factory call under [ADR-0034](0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md).
 - **The package.** The package declares `@loomcli/core` as a peer dependency and joins the synchronized release set of [ADR-0012](0012-synchronized-versions-from-manifests-and-owned-fragments.md). It is a library of values, not a plugin, so it is not a subpath of `@loomcli/plugins` under [ADR-0020](0020-first-party-plugins-ship-in-one-package-as-subpaths.md).
 
-The factory grammars, outputs, published schemas, and messages are the contract in the [validators reference](../validators.md).
+The factory grammars, outputs, published schemas, and messages are the contract in the [validators reference](../libs/validators.md).
 
 ## Considered options
 

@@ -24,7 +24,7 @@ An identity keys what a plugin contributes. Core finds a plugin installed twice 
 - **One rule.** A value that is not a string, an empty string, and a string outside the grammar report under one rule, `@loomcli/core/invalid-identity`, headlined `Invalid identity`, under ADR-0051's one rule per reason. The sentence names the declarer, `A plugin declares`, `An extension declares`, or `A view declares`, and quotes the identity escaped, and the finding marks the identity on the rebuilt call. The rule replaces `@loomcli/core/plugin-identity`. `@loomcli/core/rule-identity` stays a separate rule, because a rule identity also requires a rule name.
 - **A break.** The check rejects identities accepted since 0.2.0, so it ships as a breaking change with migration steps.
 
-The contract is in [Identity and installation](../core.md#identity-and-installation) and the row in [Plugin declaration errors](../core.md#plugin-declaration-errors).
+The contract is in [Identity and installation](../core/plugin-contract.md#identity-and-installation) and the row in [Plugin declaration errors](../core/plugin-contract.md#plugin-declaration-errors).
 
 ## Considered options
 

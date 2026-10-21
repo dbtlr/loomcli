@@ -6,7 +6,7 @@ description: Commands, version rules, inputs, and failure behavior for local cha
 
 The changelog compiler prepares this repository's synchronized release cut in the Loom CLI, `@loomcli/loom`, in `packages/loom`. Loom declares its commands and options, supplies the invocation context, and handles output and exit codes. The application owns its compiler modules, dependencies, and process tests. `@loomcli/loom` is published with the libraries, and its version moves with theirs. The fragment check is the public `loom changelog check`. The cut, `loom release cut`, is hidden, so no listing advertises it.
 
-This reference documents this repository's own release, and the [toolchain reference](toolchain.md) documents the public commands that act on one package directory.
+This reference documents this repository's own release, and the [toolchain reference](../toolchain/README.md) documents the public commands that act on one package directory.
 
 `pnpm build` compiles the library, examples, and local Loom CLI. Running `release cut` prepares release files.
 
@@ -22,7 +22,7 @@ pnpm loom release cut --dry-run --date 2026-09-07
 pnpm loom release cut --date 2026-09-07
 ```
 
-`changelog check` validates every entry in `.changes/`, except the regular file `README.md` and hidden entries whose names start with `.`, and names every invalid one. It accepts an empty set and does not require Git history. The [toolchain reference](toolchain.md#the-package-changelog) documents it, and the [fragment guide](../.changes/README.md) defines the Markdown grammar. Leading verbs, consumer relevance, and migration accuracy remain review judgments. Fragments and narratives cannot leave Markdown blocks open across generated release headings.
+`changelog check` validates every entry in `.changes/`, except the regular file `README.md` and hidden entries whose names start with `.`, and names every invalid one. It accepts an empty set and does not require Git history. The [toolchain reference](../toolchain/changelog.md) documents it, and the [fragment guide](../../.changes/README.md) defines the Markdown grammar. Leading verbs, consumer relevance, and migration accuracy remain review judgments. Fragments and narratives cannot leave Markdown blocks open across generated release headings.
 
 `release cut --dry-run` validates the fragments and prints one proposed release section. It does not change files. Fragments must have a recorded addition in the current branch's first-parent history. Existing fragments can contain local edits during a dry run.
 

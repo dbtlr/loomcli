@@ -19,7 +19,7 @@ Both shipped copies run the unit from home with no environment, so the applicati
 
 ## Decision
 
-- **A plugin Command group.** `service(settings)` from `@loomcli/plugins/service` contributes one [plugin Command](../core.md#plugin-commands), `service`, with the children `install`, `uninstall`, `start`, `stop`, `restart`, and `status`, and nothing else. An application installs it once, so it supervises one unit.
+- **A plugin Command group.** `service(settings)` from `@loomcli/plugins/service` contributes one [plugin Command](../core/plugin-contract.md#plugin-commands), `service`, with the children `install`, `uninstall`, `start`, `stop`, `restart`, and `status`, and nothing else. An application installs it once, so it supervises one unit.
 - **A required label.** The author names the unit with a reverse-DNS `label`, such as `com.acme.notes`, used as it is on both platforms: `<label>.service` under the systemd user directory, and the launchd `Label` and `<label>.plist` under `~/Library/LaunchAgents`. A label outside the grammar is a declaration error at the call.
 - **Argument words the graph routes.** The author declares what the unit runs as argument words, such as `run: ['serve', '--port', '8080']`. When the graph is built, words that do not route to a Command with an action are a declaration error, so a renamed or mistyped Command fails the build rather than a supervised daemon. The unit runs the running application itself with those words, from the home directory, and sets no environment.
 - **The program is a host fact.** The unit runs `host.program`, a new host fact holding the runtime and script prefix that `host.argv` omits: the binary alone for a compiled binary, and the runtime and the script otherwise. A compile target bakes `compiled: true` so core never guesses which, and a test overrides it as any host field. The plugin reads the program from the host and no process global for it; the user id alone comes from the process.
@@ -32,7 +32,7 @@ Both shipped copies run the unit from home with no environment, so the applicati
 - **No supervisor seam.** The plugin exports no supervisor interface, no backend setting, and no test fake. Loom's tests fake the service managers' programs.
 - **Linger stays the operator's.** The plugin never enables lingering or starts a login session; status notes when either is absent.
 
-The contract and its acceptance are in [Service](../core.md#service).
+The contract and its acceptance are in [Service](../plugins/service.md).
 
 ## Considered options
 

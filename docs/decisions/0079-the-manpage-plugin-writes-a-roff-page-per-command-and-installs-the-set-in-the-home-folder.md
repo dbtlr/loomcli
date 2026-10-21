@@ -31,7 +31,7 @@ Neither man-db, the `man` of most Linux distributions, nor macOS's `man` reads `
 - **ADR-0071 as written.** The set is recorded in `manpage.json`, every page a file with its digest. A file the record does not list, or a recorded page of the set someone changed, refuses an install, and there is no `--force`. A page the set no longer holds is removed when unchanged and kept when changed. `update` acts on the recorded folder alone and derives no page path from `HOME`, and `uninstall` removes unchanged pages and the plugin's file. Any build installs, because a page describes the graph, not the binary's path.
 - **`refreshManpages` refreshes after a self-update.** It runs the replaced binary's `manpage update` as a child, as `refreshSkills` and `refreshCompletion` do, and never fails the update.
 
-The contract and its acceptance are in [Man pages](../core.md#man-pages).
+The contract and its acceptance are in [Man pages](../plugins/manpage.md).
 
 ## Considered options
 

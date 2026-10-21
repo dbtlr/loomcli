@@ -27,7 +27,7 @@ View overrides already have a registry that the application and plugins contribu
 - **The cause is the author's.** `LoomError` and the failure classes an author constructs, `FatalError`, `InputError`, and `DeclarationError`, accept the standard `ErrorOptions` as their last constructor parameter, so a translator keeps the foreign throw with `{ cause: error }`. Core never sets a cause on a failure it did not construct.
 - **Synchronous.** A translator runs synchronously and receives the thrown value alone.
 
-The contract, the type block, and the acceptance are in [Translators](../core.md#translators).
+The contract, the type block, and the acceptance are in [Translators](../core/failures.md#translators).
 
 ## Considered options
 

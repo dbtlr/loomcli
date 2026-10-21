@@ -11,7 +11,7 @@ modified: 2026-10-20
 
 ## Context
 
-The [Loom theme](../core.md#loom-theme) has dark foreground defaults only. On a light terminal its dim `#8B93A3` and warning `#E2B93D` almost disappear. [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) makes a theme a palette of concrete styles, [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) gives a run one theme contribution, and neither knows the terminal's background. [ADR-0029](0029-explicit-color-fallbacks-preserve-theme-hues.md) deferred light colors and background detection.
+The [Loom theme](../plugins/theme.md) has dark foreground defaults only. On a light terminal its dim `#8B93A3` and warning `#E2B93D` almost disappear. [ADR-0022](0022-renderers-return-marked-strings-that-core-resolves-and-a-theme-is-a-palette.md) makes a theme a palette of concrete styles, [ADR-0027](0027-core-resolves-marked-output-and-one-theme-contribution.md) gives a run one theme contribution, and neither knows the terminal's background. [ADR-0029](0029-explicit-color-fallbacks-preserve-theme-hues.md) deferred light colors and background detection.
 
 A terminal can report its background. xterm's OSC 11 query asks for the background color, the color-scheme query `CSI ? 996 n` asks whether the scheme is dark or light, and nearly every terminal answers the Primary Device Attributes query, DA1, `CSI c`. A terminal answers in the order it was asked, so a DA1 reply sent after the other two marks the end: any other reply has arrived, or never will. Reading the replies needs stdin in raw mode before the action runs, which [ADR-0009](0009-core-captures-the-host-and-resolves-an-exit-code.md)'s statement that `run()` consumes no stdin does not allow. A pseudo-terminal with no emulator behind it, a stalled SSH link, or a terminal without DA1 never answers, so the wait needs a backstop.
 
@@ -35,7 +35,7 @@ A terminal can report its background. xterm's OSC 11 query asks for the backgrou
 - **The background plugin.** `@loomcli/plugins/background` exports `background()`, which takes no settings and declares the global string option `background`, validated to `dark` or `light`, with `control: true` and the mark. A theme plugin declares no options, so the spelling lives in its own plugin. Its mark also turns detection on, so an application whose own code reads the background installs it.
 - **The light palette.** `loomTheme()` makes its six colored tokens adaptive. The light side is dim `#5F6B7A`, highlight `#9C5A1E`, success `#4E6B50`, warning `#8A6D0E`, error `#C04532`, and info `#4A6B91`, each at least 4.5:1 on a cream background, with the 256-color fallbacks 243, 130, 65, 94, 131, and 60. The 16-color fallbacks keep the dark side's names, because a light terminal remaps its own sixteen colors. `primary` stays `style.resetForeground`. A whole-token override stays whole, so a plain override is one value on both backgrounds.
 
-The contract and its acceptance are in [Background](../core.md#background), [Background plugin](../core.md#background-plugin), and [Loom theme](../core.md#loom-theme).
+The contract and its acceptance are in [Background](../core/background.md), [Background plugin](../plugins/background.md), and [Loom theme](../plugins/theme.md).
 
 ## Considered options
 

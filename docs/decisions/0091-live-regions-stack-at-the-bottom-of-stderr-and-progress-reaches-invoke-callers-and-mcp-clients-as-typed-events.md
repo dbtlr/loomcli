@@ -36,7 +36,7 @@ Only core sees every write, so only core can keep a drawn frame intact. How an i
 - **The progress style.** `progressStyle({ spinner?, bar? })` is an optional plugin from `@loomcli/prompts` whose spinner has the cli-spinners shape, `{ frames, interval }`, so any cli-spinners entry drops in. It contributes one extension value that `progress()` reads from the context, and one call may pass its own spinner. The line renders through the library's declared view `@loomcli/prompts/progress`, which an application overrides through `views`.
 - **Questions on input regions.** Each question draws in an input region, and core erases and redraws it, so the library no longer erases by `out.draw`'s count.
 
-The contract and its acceptance are in [Live region](../core.md#live-region), [Progress events](../core.md#progress-events), [Invocation by name](../core.md#invocation-by-name), [MCP](../core.md#mcp), and the [prompts reference](../prompts.md#progress).
+The contract and its acceptance are in [Live region](../core/output.md#live-region), [Progress events](../core/output.md#progress-events), [Invocation by name](../core/invocation.md#invocation-by-name), [MCP](../plugins/mcp.md), and the [prompts reference](../libs/prompts.md#progress).
 
 ## Considered options
 

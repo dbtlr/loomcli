@@ -6,7 +6,7 @@ description: Loom's mission and the eight principles that decide how deep a solu
 
 Loom is a toolkit, not the application. The author ships the application, and Loom gives them type-safe lanes to assemble it simply, with sane defaults for the people and agents who run it, so no application rebuilds the same machinery. Loom is not paternalistic: it gives the author safe, predictable lanes and leaves the application's choices to them. An application assembles the way a TanStack Router route tree does: declarations compose into one typed tree, and inference carries each declaration's types to the code that reads them.
 
-These principles rank above the [decision records](decisions/README.md) and the [core reference](core.md). Check a design, a test, or a review finding against them first. When a record or a contract rule conflicts with a principle, a superseding record reworks it.
+These principles rank above the [decision records](decisions/README.md) and the [core reference](core/README.md). Check a design, a test, or a review finding against them first. When a record or a contract rule conflicts with a principle, a superseding record reworks it.
 
 ## 1. Loom owns what it ships; the author owns what they write
 

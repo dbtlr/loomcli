@@ -6,7 +6,7 @@ description: Local and CI checks for PR fragments, library versions, and normal 
 
 The Loom CLI, `@loomcli/loom`, validates committed PR content with the changelog compiler's parser, version calculation, renderer, and build-path policy.
 
-This reference documents this repository's own release, and the [toolchain reference](toolchain.md) documents the public commands that act on one package directory.
+This reference documents this repository's own release, and the [toolchain reference](../toolchain/README.md) documents the public commands that act on one package directory.
 
 The PR guard lives in `packages/loom/src/commands/pr/`, and the synchronized cut in `packages/loom/src/commands/release/cut.ts`. Both are hidden, so no listing advertises them. The public `loom changelog` commands live in `packages/loom/src/commands/changelog/`. All three use `packages/loom/src/helpers/` for shared release logic. Helpers do not import command code.
 
@@ -30,7 +30,7 @@ The comparison starts at the merge base of the supplied base and head. Changes m
 - Participating libraries must retain the synchronized stable `0.x` version from the comparison base. New libraries join that version.
 - A previously participating manifest cannot change its version by becoming private. Removed libraries need no retained manifest. Private packages and the root package do not participate.
 
-The [fragment guide](../.changes/README.md) governs consumer relevance and skip reasons. CI checks structure; review judges the content and migration instructions.
+The [fragment guide](../../.changes/README.md) governs consumer relevance and skip reasons. CI checks structure; review judges the content and migration instructions.
 
 ## Release PRs
 

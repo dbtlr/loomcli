@@ -24,7 +24,7 @@ Three facts shape how. The help page's view loads with the help plugin's entry o
 - **The text reads without styling.** Emphasis and heading markers are dropped and styles carry them, because stress and a heading's level are presentation. A code span keeps its backticks and a link prints its destination, because a literal token and an address are meaning the reader needs with styling off. Every authored fragment is escaped before styling, so a marker character prints literally.
 - **The manifest carries the Markdown as written.** Help supplies `details` to `manifestCommand` unchanged, so an agent reads the source, which it reads well, and a later projection that renders details another way parses the same text.
 
-The contract and its acceptance are in [Markdown details](../core.md#markdown-details).
+The contract and its acceptance are in [Markdown details](../plugins/help.md#markdown-details).
 
 ## Considered options
 

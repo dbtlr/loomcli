@@ -28,7 +28,7 @@ Established installers keep one record per installed thing, never separate recor
 - **No lock.** Two runs of one installer at once may each recover the other's pending file, so one can fail. Each target still holds whole content, the last commit wins, and the next run recovers.
 - **Core resolves, plugins write.** Core exports `applicationDirectory`, which resolves an application's installation or log directory from a run's `env` and `platform` alone, so core, the logging plugin, and every installer compute one path. The writer of installed files is an internal module of `@loomcli/plugins` that the first-party installers share. Core writes no file.
 
-The contract, the file formats, the shell recipe, and the acceptance are in [Installation record](../core.md#installation-record).
+The contract, the file formats, the shell recipe, and the acceptance are in [Installation record](../core/installation-record.md).
 
 ## Considered options
 

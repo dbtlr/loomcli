@@ -13,7 +13,7 @@ modified: 2026-10-20
 
 [ADR-0007](0007-failures-are-public-classes-with-class-keyed-renderers.md) makes the exit code a fact of the failure class. `LoomError` receives it as a constructor argument typed `1 | 2`, and each core class passes its own. An application's own failure extends `FatalError` and exits 1, so a script that runs `jsonkit get missing` cannot tell a path absent from the document from a broken pipe or a bug. BSD's `sysexits.h` names codes 64 through 78 for failures of this kind.
 
-A code passed to the constructor exists only on an instance. A projection such as the [manifest](../core.md#manifest) describes failures an agent should expect without raising one, so it cannot read a code that only a constructed failure holds. A constructor argument also lets two throws of one class exit with two codes, so a view and a script can no longer rely on the class.
+A code passed to the constructor exists only on an instance. A projection such as the [manifest](../plugins/manifest.md) describes failures an agent should expect without raising one, so it cannot read a code that only a constructed failure holds. A constructor argument also lets two throws of one class exit with two codes, so a view and a script can no longer rely on the class.
 
 A failure is raised from three places: an action, a middleware, and a configuration source. The first two report any `LoomError` with its class's code. [ADR-0038](0038-a-configuration-source-warns-and-reports-input-problems-through-the-ordinary-channels.md) lets only an `InputError` through from a source and wraps every other throw as a plugin fault with code 1, so an application's own class raised from a source loses its code.
 

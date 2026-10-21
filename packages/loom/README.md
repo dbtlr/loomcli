@@ -27,7 +27,7 @@ In an empty directory nothing is installed yet, so the first run goes through th
 - **The check script.** `scripts.check` runs `tsc --noEmit`, the linter, and the test runner. The test passes the Application to the assembly check of `@loomcli/testing`, so a fault only the assembled application reveals fails there.
 - **Options.** `--only <piece>` limits init to `application`, `entry`, `tsconfig`, `test`, `lint`, `package`, `changes`, `skill`, or `install`, and may repeat. `--linter oxlint|eslint` and `--test-runner bun|vitest` choose the tools, by default oxlint and Bun. A lint configuration or a `vitest` dependency the package holds selects its tool, and at a terminal init asks when nothing does. Init installs nothing, so run your package manager afterward.
 
-See [loom init](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md#loom-init) for the contract.
+See [loom init](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain/init.md) for the contract.
 
 ## Changelog
 
@@ -46,7 +46,7 @@ loom changelog write --date 2026-10-07
 - **`loom changelog check`** validates every fragment and names each invalid one. It needs no git history, so CI runs it.
 - **`loom changelog write`** computes the next version from the highest kind present, renders one section with `### Breaking Changes`, `### Features`, and `### Fixes`, prepends it to `CHANGELOG.md`, sets `version` in `package.json`, and deletes the consumed fragments. From `1.0.0`, breaking advances the major, feature the minor, and fix the patch; below it, breaking advances the minor and anything else the patch. It orders fragments by the commit that added them, so it needs full git history. `--date YYYY-MM-DD` dates the release, `--narrative FILE` copies prose above the entries, and `--dry-run` prints the section and the next version and writes nothing.
 
-`write` refreshes no lockfile; run your package manager after the cut. See [The package changelog](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md#the-package-changelog) for the contract.
+`write` refreshes no lockfile; run your package manager after the cut. See [The package changelog](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain/changelog.md) for the contract.
 
 ## Build
 
@@ -69,4 +69,4 @@ A custom build composes the same facts into its own bundler call:
 bun build src/main.ts --outdir dist --target node --define "$(loom build --target node --define)"
 ```
 
-`--facts` prints the facts JSON instead, for a bundler's `define` option. See [loom build](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md#loom-build) and [Release facts](https://github.com/dbtlr/loomcli/blob/main/docs/core.md#release-facts) for the contracts.
+`--facts` prints the facts JSON instead, for a bundler's `define` option. See [loom build](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain/build.md#loom-build) and [Release facts](https://github.com/dbtlr/loomcli/blob/main/docs/core/release-facts.md) for the contracts.

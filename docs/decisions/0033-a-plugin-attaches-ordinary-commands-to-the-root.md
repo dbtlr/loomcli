@@ -33,7 +33,7 @@ Some capabilities are Commands by nature: printing a shell completion script, or
 
 ## Status
 
-Accepted 2026-09-25 with the implementation. Core reads each plugin's `commands` list at plugin build, rejects a value that is not an array and an entry that is not a Command, and attaches the Commands to the root ahead of the application's own, where every existing Command rule reads them. The private `@loom/doctor` plugin attaches `doctor` to jsonkit's root, and the acceptance in [Plugin Commands](../core.md#plugin-commands) passes under Node and Bun.
+Accepted 2026-09-25 with the implementation. Core reads each plugin's `commands` list at plugin build, rejects a value that is not an array and an entry that is not a Command, and attaches the Commands to the root ahead of the application's own, where every existing Command rule reads them. The private `@loom/doctor` plugin attaches `doctor` to jsonkit's root, and the acceptance in [Plugin Commands](../core/plugin-contract.md#plugin-commands) passes under Node and Bun.
 
 ## Changelog
 

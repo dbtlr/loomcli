@@ -4,7 +4,7 @@ description: Internal marked-string framing and resolver invariants for style sp
 
 # Marked-string wire contract
 
-This is the internal representation behind the [style API](core.md#styles-and-rendering-policy).
+This is the internal representation behind the [style API](../core/styles.md).
 It is an implementation contract, not an authoring API or a format for persistent storage.
 SDK authors use the helpers and keep ordinary strings. They do not construct headers.
 
@@ -52,7 +52,7 @@ Operations retain their order. A token with no mapping contributes no operation.
 
 ## Explicit color fallbacks
 
-[ADR-0029](decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md) defines these additional color forms. The parser accepts them alongside the original tuples.
+[ADR-0029](../decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md) defines these additional color forms. The parser accepts them alongside the original tuples.
 
 | Color | Fields in the final object |
 | --- | --- |
@@ -95,7 +95,7 @@ First-party views escape raw data values they interpolate, but preserve a messag
 Each rendered string starts with an empty Loom style stack. State does not cross output calls.
 The resolver processes nested frames with an explicit stack rather than recursive calls proportional to input depth.
 It resolves glyph forms before measuring enclosing padding. Nested padding resolves from the inside outward.
-A `["nowrap"]` frame resolves to its body exactly. It adds no byte, expands no tab itself, and changes no measurement: the width helper measures its body as if the frame were absent. Style, glyph, padding, and no-wrap frames nest inside it and around it. Only the view context's `wrap` and core's `splitLines` read the frame. `wrap` keeps the body whole, and `splitLines` closes the frame at a line break and opens it again on the next line, as it does every frame, as the [core reference](core.md#width-padding-and-multiline-lanes) states.
+A `["nowrap"]` frame resolves to its body exactly. It adds no byte, expands no tab itself, and changes no measurement: the width helper measures its body as if the frame were absent. Style, glyph, padding, and no-wrap frames nest inside it and around it. Only the view context's `wrap` and core's `splitLines` read the frame. `wrap` keeps the body whole, and `splitLines` closes the frame at a line break and opens it again on the next line, as it does every frame, as the [core reference](../core/styles.md#width-padding-and-multiline-lanes) states.
 Escape decoding produces literal data before measurement; the resulting literal is never reparsed as a frame.
 The width helper, the output resolver, `wrap`, `expandTabs`, and `splitLines` share the same frame parser and ANSI recognizer, so no package reads the wire with rules of its own.
 
@@ -125,7 +125,7 @@ For separate output calls containing `'\x1b[3'` and `'1mX'`, the first emits not
 This boundary prevents separately emitted fragments from assembling a command that bypasses color, modifier, hyperlink, or terminal-control policy.
 
 Color removal happens after composition. It cannot remove the control codes needed to close styles that remain enabled.
-The resolver uses the [rendering policies](core.md#rendering-policies) for ANSI colors, modifiers, hyperlinks, and other terminal controls separately.
+The resolver uses the [rendering policies](../core/styles.md#rendering-policies) for ANSI colors, modifiers, hyperlinks, and other terminal controls separately.
 It treats CRLF as one line break. LF starts a new line; a lone CR is a cursor control rather than a newline.
 Tabs remain text except inside a padding frame, where they expand under the tab rule before alignment.
 

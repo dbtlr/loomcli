@@ -175,7 +175,10 @@ test.each([
 });
 
 test('every exported glyph matches the pinned main and compatibility catalog', () => {
-  const catalog = readFileSync(new URL('../../../docs/glyphs.md', import.meta.url), 'utf8');
+  const catalog = readFileSync(
+    new URL('../../../docs/maintaining/glyphs.md', import.meta.url),
+    'utf8',
+  );
   const rows = [
     ...catalog.matchAll(/^\| `[^`]+` \| `(?<main>[^`]+)` \| `(?<compat>[^`]+)` \|$/gmu),
   ];

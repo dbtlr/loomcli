@@ -32,7 +32,7 @@ afterEach(() => {
   removeRoots();
 });
 
-/** The SHA-256 digest of the four bytes `test`, the default fixture binary, as core.md pins it. */
+/** The SHA-256 digest of the four bytes `test`, the default fixture binary, as the installation record reference pins it. */
 const testDigest = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
 
 /** The default install directory under the sandbox's home. */
@@ -66,7 +66,7 @@ test('with no arguments the script installs the latest release into ~/.local/bin
   expect(entries(recordDirectory(box))).toEqual(['install.json']);
 });
 
-test('the rendered script holds both parts of the recipe in docs/core.md byte for byte', () => {
+test('the rendered script holds both parts of the recipe in docs/core/installation-record.md byte for byte', () => {
   const script = installerScript(app, repo);
   const { prepare, record } = installationRecipeParts();
   expect(script).toContain(prepare);

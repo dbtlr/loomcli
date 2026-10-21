@@ -25,7 +25,7 @@ A Loom application is one package, often past `1.0`, where a new feature and a f
 - **Left out.** The per-package command refreshes no lockfile, which is the package manager's job, and reports no material changes, synchronizes no versions, and checks no tags or PR titles.
 - **This repository.** ADR-0012 keeps governing this repository's synchronized release, its release cut, and its hidden commands. This record generalizes ADR-0012's fragment and manifest rules to any one package and adds the feature kind. This repository checks its fragments with `loom changelog check`, so its fragment guide admits `feature.`, and its synchronized cut runs through the hidden `loom release cut`, rendering the same three groups. Every package here is below `1.0.0`, where a feature advances the patch as a fix does, so a cut of this repository computes the same version under either record.
 
-The contract and the acceptance are in [The package changelog](../toolchain.md#the-package-changelog).
+The contract and the acceptance are in [The package changelog](../toolchain/changelog.md).
 
 ## Considered options
 
@@ -37,7 +37,7 @@ The contract and the acceptance are in [The package changelog](../toolchain.md#t
 
 ## Consequences
 
-For a package, `loom changelog write --dry-run` previews the cut. The fragment guide gains the `feature.` kind, and [`loom init`](../toolchain.md#loom-init) writes it into each package. This repository's guide admits `feature.` too, because the public `loom changelog check` validates its fragments. Its synchronized cut keeps ADR-0012's rule, where a feature fragment advances the patch as any fragment that is not breaking does, and renders it under `### Features`. The public command owns the `changelog` path, so the repository's hidden cut moved to `loom release cut`, and `loom release cut --dry-run` replaces its `changelog preview`.
+For a package, `loom changelog write --dry-run` previews the cut. The fragment guide gains the `feature.` kind, and [`loom init`](../toolchain/init.md) writes it into each package. This repository's guide admits `feature.` too, because the public `loom changelog check` validates its fragments. Its synchronized cut keeps ADR-0012's rule, where a feature fragment advances the patch as any fragment that is not breaking does, and renders it under `### Features`. The public command owns the `changelog` path, so the repository's hidden cut moved to `loom release cut`, and `loom release cut --dry-run` replaces its `changelog preview`.
 
 ## Status
 

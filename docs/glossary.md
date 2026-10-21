@@ -367,7 +367,7 @@ _Avoid_: Signal handler plugin, interrupt plugin
 
 ## Output
 
-View, Token, Glyph, and Theme follow the [style contract](core.md#styles-and-rendering-policy) and the [view registry contract](core.md#views). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, View name, and `ResultError` follow the [results contract](core.md#results), which is implemented under accepted ADR-0023. Column, Field, and Identifier follow the [table](core.md#table) and [records](core.md#records) contracts.
+View, Token, Glyph, and Theme follow the [style contract](core/styles.md) and the [view registry contract](core/views.md). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, View name, and `ResultError` follow the [results contract](core/results.md), which is implemented under accepted ADR-0023. Column, Field, and Identifier follow the [table](plugins/pack-views.md#table) and [records](plugins/pack-views.md#records) contracts.
 
 **Out**:
 The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the region call that opens a live region on stderr, the draw call that draws one frame there, the result call, and the fatal path. On a Command that declares a result, the action's `print` and `render` move to stderr beside `info`, `success`, `warn`, `error`, `debug`, and `trace`, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
@@ -442,7 +442,7 @@ The declared view behind one of the seven semantic methods, exported by core und
 _Avoid_: Channel, log level (a log level belongs to a log event), stream (for the lane view)
 
 **Columns**:
-The effective width of the destination a view's text reaches, read live at render time: just before each render call core takes the destination's real width and passes it to the view as the context's `columns` member. It is `undefined` when that destination is not a terminal, such as a pipe, a file, an invocation by name, or an MCP tool call. `COLUMNS` only narrows it, under [the rule in the core reference](core.md#width-padding-and-multiline-lanes): it never widens a layout past the width a terminal reports. The same context offers `wrap(text, columns)`, which breaks lines at spaces when the view runs and never splits a word, and `expandTabs(text)`, which turns each tab into the spaces that reach its stop, so text placed at an offset shows as it measures, and core's `nowrap(text)` marks a path or a URL that `wrap` and a table's floor keep whole, and `context.wrap(text, context.columns)` leaves the text alone when `columns` is `undefined`. `host.terminal` reports the real, live width and never reflects `COLUMNS`. A Column, one entry of a table view's `columns` list, is a separate term.
+The effective width of the destination a view's text reaches, read live at render time: just before each render call core takes the destination's real width and passes it to the view as the context's `columns` member. It is `undefined` when that destination is not a terminal, such as a pipe, a file, an invocation by name, or an MCP tool call. `COLUMNS` only narrows it, under [the rule in the core reference](core/styles.md#width-padding-and-multiline-lanes): it never widens a layout past the width a terminal reports. The same context offers `wrap(text, columns)`, which breaks lines at spaces when the view runs and never splits a word, and `expandTabs(text)`, which turns each tab into the spaces that reach its stop, so text placed at an offset shows as it measures, and core's `nowrap(text)` marks a path or a URL that `wrap` and a table's floor keep whole, and `context.wrap(text, context.columns)` leaves the text alone when `columns` is `undefined`. `host.terminal` reports the real, live width and never reflects `COLUMNS`. A Column, one entry of a table view's `columns` list, is a separate term.
 _Avoid_: Terminal width (for the view context member), screen width, line length, Column (a table view's entry)
 
 **Token**:
@@ -568,7 +568,7 @@ One entry in an input error: an omitted required input, a rejected value togethe
 
 ## Logging
 
-Log, Log event, and Log destination follow the [logging contract](core.md#logging) and the [`onLog` hook](core.md#observing-log-events); Log record follows the [logging plugin](core.md#logging-plugin).
+Log, Log event, and Log destination follow the [logging contract](core/logging.md) and the [`onLog` hook](core/lifecycle-hooks.md#observing-log-events); Log record follows the [logging plugin](plugins/logging.md).
 
 **Log**:
 The member of the action, middleware, source, and `onFailure` contexts that records what happened for a reader later, with the methods `trace`, `debug`, `info`, `warn`, and `error`. It writes nothing: each call becomes a log event, and with no `onLog` installed it does nothing. It is separate from Out, which renders for the person at the terminal.

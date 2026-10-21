@@ -22,7 +22,7 @@ A new Loom application needs an application module, an entry, the `package.json`
 - **Drift never fails a check.** `loom check` warns about a drifted managed file and never fails for one.
 - **Later pieces.** The release-cut skill, workflows, and installer scripts join init with the release orchestration design.
 
-The contract and the acceptance are in [loom init](../toolchain.md#loom-init).
+The contract and the acceptance are in [loom init](../toolchain/init.md).
 
 ## Considered options
 

@@ -40,7 +40,7 @@ Several facts in core shape the answer.
 - **Leaving a question.** The action context gains `cancel()`, which aborts the run signal with the reason `{ source: 'action' }`, so the run resolves 130 through ADR-0018's ordinary path. Before it enters raw mode, a question adds a synchronous listener to the run signal that leaves raw mode. Every path out of a question also pauses stdin, removes the question's listeners, and draws its last line with the cursor shown. Ctrl-C at a question calls `cancel()`, and the question throws the signal's reason, which core reads as a silent cancellation. Stdin ending, or Ctrl-D with nothing typed, while a question is active takes the same path, and neither accepts a default nor submits an empty answer. No question returns a cancellation value the action must check.
 - **No limit on the author's code.** A question waits as long as the operator takes. Loom adds no timeout, no guard against two questions at once, and no rule about where an action asks. `--yes`, follow-up questions that depend on earlier answers, and gating a destructive action stay the application's.
 
-The contract and its acceptance are in the [prompts reference](../prompts.md), [Interaction](../core.md#interaction), and [Interaction plugin](../core.md#interaction-plugin).
+The contract and its acceptance are in the [prompts reference](../libs/prompts.md), [Interaction](../core/interaction.md), and [Interaction plugin](../plugins/interaction.md).
 
 ## Considered options
 

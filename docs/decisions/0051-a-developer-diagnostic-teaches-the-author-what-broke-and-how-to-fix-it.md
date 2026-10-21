@@ -31,7 +31,7 @@ Core records no source location for a declaration, and `Host` holds no file acce
 - **A thrown fault carries it in its message.** A `DeclarationError` holds the whole diagnostic, as plain text, in `message`, and its parts on fields of their own. A fault thrown at a call or an attach still throws there and stops the module, so no code runs after it, and the runtime prints the diagnostic under its own source line in either build. The fault fires on every start, so a distributed application cannot ship with one.
 - **The docs link is optional.** A rule may name a page. Core's own rules name none until a Loom documentation site exists, and a third-party plugin may link its own.
 
-The contract, the type block, and the acceptance are in [Developer Diagnostics](../core.md#developer-diagnostics).
+The contract, the type block, and the acceptance are in [Developer Diagnostics](../core/declaration-faults.md#developer-diagnostics).
 
 ## Considered options
 
@@ -54,7 +54,7 @@ A declaration fault thrown before the Application exists shows its diagnostic wi
 
 ## Status
 
-Accepted 2026-09-29 with the implementation. Core renders the Developer Diagnostic for defects and declaration faults under the rules above, every declaration fault in core, `@loomcli/plugins`, and `@loomcli/validators` raises through a `diagnosticRule` descriptor with its explanation and, wherever a call declared it, findings, and the acceptance in [Developer Diagnostics](../core.md#developer-diagnostics) passes.
+Accepted 2026-09-29 with the implementation. Core renders the Developer Diagnostic for defects and declaration faults under the rules above, every declaration fault in core, `@loomcli/plugins`, and `@loomcli/validators` raises through a `diagnosticRule` descriptor with its explanation and, wherever a call declared it, findings, and the acceptance in [Developer Diagnostics](../core/declaration-faults.md#developer-diagnostics) passes.
 
 ## Changelog
 
