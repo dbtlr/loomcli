@@ -237,12 +237,3 @@ test.skipIf(process.platform === 'win32')(
     await expect(screen(run)).resolves.toEqual(['■ Waiting for SIGINT (cancelled)']);
   },
 );
-
-test('a spinner interval that is not a finite number above 0 throws its sentence at the call', () => {
-  expect(lines('fault', 'tty', ['interval']).notes).toEqual({
-    message:
-      'The progress spinner interval is not a finite number above 0. Supply the milliseconds between frames.',
-    name: 'DeclarationError',
-    rule: '@loomcli/prompts/progress',
-  });
-});

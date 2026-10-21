@@ -1,4 +1,4 @@
-import { DeclarationError, diagnosticRule, extension, plugin, readExtension } from '@loomcli/core';
+import { extension, plugin, readExtension } from '@loomcli/core';
 import type {
   ActionContext,
   Out,
@@ -55,29 +55,12 @@ interface ProgressStyleSettings {
   readonly bar?: { readonly complete: string; readonly incomplete: string };
 }
 
-const progressRule = diagnosticRule('@loomcli/prompts/progress', {
-  explanation:
-    "A spinner draws its next frame every interval milliseconds on a timer, and the runtime runs a timer whose delay is not a finite number above 0 every millisecond, so the spinner's interval is a finite number above 0.",
-  headline: 'Invalid progress spinner',
-});
-
 /** Cli-spinners' `circleHalves`, every 80 milliseconds. */
 const defaultSpinner: Spinner = Object.freeze({
   frames: Object.freeze(['◐', '◓', '◑', '◒']),
   interval: 80,
 });
 const defaultBar = Object.freeze({ complete: '▰', incomplete: '▱' });
-
-/** A spinner whose interval a timer can keep, judged at the call; its frames are the author's. */
-function checkSpinner(spinner: Spinner): Spinner {
-  if (!(Number.isFinite(spinner.interval) && spinner.interval > 0)) {
-    throw new DeclarationError(progressRule, {
-      correction: 'Supply the milliseconds between frames.',
-      sentence: 'The progress spinner interval is not a finite number above 0.',
-    });
-  }
-  return spinner;
-}
 
 /** The style one application sets, as plain data the root Command carries. */
 type StoredStyle = ProgressStyleSettings;
@@ -143,7 +126,7 @@ const progressStyleExtension = extension('@loomcli/prompts/progress-style', {
  */
 function progressStyle(settings?: ProgressStyleSettings): Plugin {
   const style: StoredStyle = {
-    ...(settings?.spinner === undefined ? {} : { spinner: checkSpinner(settings.spinner) }),
+    ...(settings?.spinner === undefined ? {} : { spinner: settings.spinner }),
     ...(settings?.bar === undefined ? {} : { bar: settings.bar }),
   };
   return plugin('@loomcli/prompts', {
@@ -199,7 +182,7 @@ interface LineState {
  */
 function progress(context: ProgressContext, settings: ProgressSettings): Progress {
   const { label, total } = settings;
-  const own = settings.spinner === undefined ? undefined : checkSpinner(settings.spinner);
+  const own = settings.spinner;
   const style = readExtension(context.graph.root, progressStyleExtension);
   const spinner = own ?? style?.spinner ?? defaultSpinner;
   const bar = style?.bar ?? defaultBar;

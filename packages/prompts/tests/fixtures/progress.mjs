@@ -117,21 +117,6 @@ const scenarios = {
     },
     plugins: [progressStyle({ spinner: still })],
   },
-  /** One malformed setting, named by argv[0]. */
-  fault: {
-    action: async () => {
-      const calls = {
-        interval: () => progressStyle({ spinner: { frames: ['a'], interval: 0 } }),
-      };
-      try {
-        await calls[argv[0]]();
-      } catch (error) {
-        notes.name = error.name;
-        notes.rule = error.rule?.identity;
-        notes.message = `${error.sentence} ${error.correction}`;
-      }
-    },
-  },
   /** A line opened after the run's cancellation, with every draw call on its region counted. */
   late: {
     action: async (context) => {
@@ -410,7 +395,7 @@ if (terminal === 'invoke') {
 } else {
   code = await app.run({
     host: {
-      argv: scenario === 'fault' || scenario === 'style' ? [] : argv,
+      argv: scenario === 'style' ? [] : argv,
       env: { NO_COLOR: process.env.NO_COLOR, TERM: process.env.TERM },
       stderr,
       stdin: keyboard,
