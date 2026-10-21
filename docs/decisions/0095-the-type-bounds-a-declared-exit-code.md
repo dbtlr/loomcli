@@ -37,4 +37,4 @@ Proposed. It moves to accepted with the release that removes the run-time range 
 ## Changelog
 
 - 2026-10-20: Proposed with the 0.15.0 rescope.
-- 2026-10-21: Corrected the `ExitCode` bullet in place to add 141, which a run resolves when the reader of its stdout closed the pipe, under ADR-0018's entry of this date. 141 is a reserved code, so no failure class declares it.
+- 2026-10-21: Corrected the `ExitCode` bullet in place to add 141, which a run resolves when the reader of its stdout closed the pipe, under [ADR-0104](0104-a-closed-reader-on-stdout-ends-the-run-with-141.md), proposed. 141 is a reserved code, so no failure class declares it.
