@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
-import { z } from 'zod';
+import { object, safeParse, string } from 'valibot';
 
 import { highestKind, insertSection, landedFragments, renderSection } from './changelog.js';
 import { withVersion } from './manifest.js';
@@ -24,11 +24,11 @@ function manifestVersion(source: string) {
   } catch (error) {
     throw new Error('package.json: expected valid JSON.', { cause: error });
   }
-  const parsed = z.object({ version: z.string() }).safeParse(document);
+  const parsed = safeParse(object({ version: string() }), document);
   if (!parsed.success) {
     throw new Error('package.json: expected a version string.');
   }
-  return parsed.data.version;
+  return parsed.output.version;
 }
 
 function packageVersion(source: string) {

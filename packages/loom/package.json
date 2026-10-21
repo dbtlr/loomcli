@@ -20,9 +20,10 @@
     "@loomcli/eslint-plugin": "workspace:*",
     "@loomcli/plugins": "workspace:*",
     "@loomcli/prompts": "workspace:*",
+    "@loomcli/validators": "workspace:*",
     "mdast-util-from-markdown": "^2.0.3",
-    "yaml": "^2.9.1",
-    "zod": "^4.6.5"
+    "valibot": "^1.5.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "pnpm": "12.8.1",

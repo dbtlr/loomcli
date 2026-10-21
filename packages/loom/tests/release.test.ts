@@ -819,3 +819,27 @@ test('a missing token fails before any read', async () => {
   expect(result.stderr).toContain('GH_TOKEN');
   await expect(endpoints.writes()).resolves.toEqual([]);
 });
+
+/** The plan file's own fields, so a test can overwrite some of them. */
+function planRecord(value: unknown) {
+  return z.record(z.string(), z.unknown()).parse(value);
+}
+
+test('a release plan with wrong values names each key and prints each problem on its own line', () => {
+  const { base, root } = recordRepository();
+  writePlan(root, base);
+  const written: unknown = JSON.parse(readFileSync(join(root, 'plan.json'), 'utf8'));
+  writeFileSync(
+    join(root, 'plan.json'),
+    JSON.stringify({ ...planRecord(written), publish: 'yes', tag: { commit: null, present: 3 } }),
+  );
+  const unreachable = { githubApi: 'http://127.0.0.1:9', registry: 'http://127.0.0.1:9' };
+  const result = record(root, unreachable);
+  expect(result.status).not.toBe(0);
+  expect(result.stderr.split('\n')).toEqual(
+    expect.arrayContaining([
+      'publish: Invalid type: Expected boolean but received "yes"',
+      'tag.present: Invalid type: Expected boolean but received 3',
+    ]),
+  );
+});

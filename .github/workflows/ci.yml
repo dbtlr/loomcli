@@ -169,8 +169,11 @@ jobs:
           brew install fish
           pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
 
-      - name: Build, check types, and run process tests
-        run: pnpm verify
+      # The test workers run on Bun, and so do the children a process test starts under
+      # LOOM_TEST_RUNTIME. The script runs vp's own file, because `bun --bun vp` would also make
+      # `node` on PATH start Bun, and a test that starts `node` by name needs Node.
+      - name: Build, check types, and run the tests under Bun
+        run: pnpm verify:bun
 
       - name: Run the packed consumer
         run: pnpm check:packed

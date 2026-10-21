@@ -1,4 +1,15 @@
-import { z } from 'zod';
+import {
+  boolean,
+  check,
+  forward,
+  minLength,
+  nullable,
+  object,
+  pipe,
+  string,
+  tupleWithRest,
+} from 'valibot';
+import type { InferOutput } from 'valibot';
 
 import { isUploadedAsset, readRelease, readTagCommit } from './github.js';
 import type { HttpPolicy } from './http.js';
@@ -16,15 +27,17 @@ import {
 
 type ReleaseAssets = NonNullable<Awaited<ReturnType<typeof readRelease>>>['assets'];
 
-const librarySchema = z.object({
-  directory: z.string().min(1),
-  name: z.string().min(1),
-  published: z.boolean(),
+const nonEmpty = pipe(string(), minLength(1));
+
+const librarySchema = object({
+  directory: nonEmpty,
+  name: nonEmpty,
+  published: boolean(),
 });
 
-const releaseFactsSchema = z.object({ present: z.boolean() });
+const releaseFactsSchema = object({ present: boolean() });
 
-const tagFactsSchema = z.object({ commit: z.string().nullable(), present: z.boolean() });
+const tagFactsSchema = object({ commit: nullable(string()), present: boolean() });
 
 // The manifests carry this version until the initial cut, and it is never published, tagged, or released.
 const unreleasedVersion = '0.0.0';
@@ -148,27 +161,31 @@ const sharedBuildInputs = [
   'tsconfig.json',
 ];
 
-export const planSchema = z
-  .object({
-    cutCommit: z.string().min(1),
-    head: z.string().min(1),
+export const planSchema = pipe(
+  object({
+    cutCommit: nonEmpty,
+    head: nonEmpty,
     // A release participates with at least one library, and the record command reads the first one.
-    libraries: z.tuple([librarySchema], librarySchema),
-    notes: z.string(),
-    provenanceCommit: z.string().min(1).nullable(),
-    publish: z.boolean(),
-    record: z.boolean(),
+    libraries: tupleWithRest([librarySchema], librarySchema),
+    notes: string(),
+    provenanceCommit: nullable(nonEmpty),
+    publish: boolean(),
+    record: boolean(),
     release: releaseFactsSchema,
     tag: tagFactsSchema,
-    version: z.string().min(1),
-  })
+    version: nonEmpty,
+  }),
   // The notes are the body of the Release, so only the unreleased version plans without them.
-  .refine((plan) => plan.notes !== '' || plan.version === unreleasedVersion, {
-    error: 'A plan for a released version carries notes.',
-    path: ['notes'],
-  });
+  forward(
+    check(
+      (plan) => plan.notes !== '' || plan.version === unreleasedVersion,
+      'A plan for a released version carries notes.',
+    ),
+    ['notes'],
+  ),
+);
 
-export type ReleasePlan = z.output<typeof planSchema>;
+export type ReleasePlan = InferOutput<typeof planSchema>;
 
 export interface PlanRequest {
   githubApi: string;

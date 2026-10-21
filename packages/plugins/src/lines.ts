@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { check, pipe, string } from 'valibot';
 
 /**
  * The line terminators the pack recognizes, spelled once, and the text rules built on them.
@@ -34,18 +34,30 @@ function singleLineOf(text: string | undefined): string | undefined {
 }
 
 /** One line that holds a character other than whitespace, such as an example's command. */
-const line = z.string().refine((value) => /\S/u.test(value) && !terminator.test(value), {
-  message: 'Supply one line that holds a character other than whitespace.',
-});
+const line = pipe(
+  string(),
+  check(
+    (value) => /\S/u.test(value) && !terminator.test(value),
+    'Supply one line that holds a character other than whitespace.',
+  ),
+);
 
 /** Prose whose every line holds a character other than whitespace, with its line breaks kept. */
-const prose = z.string().refine((value) => value.split(breaks).every((each) => /\S/u.test(each)), {
-  message: 'Supply prose whose every line holds a character other than whitespace.',
-});
+const prose = pipe(
+  string(),
+  check(
+    (value) => value.split(breaks).every((each) => /\S/u.test(each)),
+    'Supply prose whose every line holds a character other than whitespace.',
+  ),
+);
 
 /** Markdown may hold blank lines and a final terminator, but is never whitespace alone. */
-const markdown = z.string().refine((value) => /\S/u.test(value), {
-  message: 'Supply Markdown that holds a character other than whitespace.',
-});
+const markdown = pipe(
+  string(),
+  check(
+    (value) => /\S/u.test(value),
+    'Supply Markdown that holds a character other than whitespace.',
+  ),
+);
 
 export { breaks, line, markdown, prose, singleLine, singleLineOf, terminator, terminators };

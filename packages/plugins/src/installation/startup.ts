@@ -4,6 +4,7 @@
  * removes only lines equal to a recorded one, keeping every other byte.
  */
 import { appendFileSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 
 import { errorCode, permissionBits, publishFile, replaceFile } from './disk.js';
 
@@ -221,13 +222,21 @@ function edited(text: string, edit: LineEdit): string {
     .join('');
 }
 
-/** The real path of `path` through every symbolic link, or `path` itself when nothing is there. */
+/**
+ * The real path of `path` through every symbolic link, or `path` itself when nothing is there. Bun's
+ * `realpathSync` opens the file on macOS, which a file the process may not read refuses, so a file
+ * that is not a link resolves through its folder instead.
+ */
 function realPathOf(path: string): string {
   try {
     return realpathSync(path);
   } catch (error) {
-    if (errorCode(error) === 'ENOENT') {
+    const code = errorCode(error);
+    if (code === 'ENOENT') {
       return path;
+    }
+    if (code === 'EACCES' && !lstatSync(path).isSymbolicLink()) {
+      return join(realpathSync(dirname(path)), basename(path));
     }
     throw error;
   }

@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 
-import { z } from 'zod';
+import { object, string } from 'valibot';
+
+import { parseOrThrow } from './parse-or-throw.js';
 
 /**
  * The manifest of `@loomcli/loom`, read at run time because it sits outside the compiled `src`
@@ -9,12 +11,12 @@ import { z } from 'zod';
 const source = readFileSync(new URL('../../package.json', import.meta.url), 'utf8');
 
 /** The manifest fields the toolchain reads: its version and the TypeScript range it declares. */
-const manifest = z
-  .object({
-    peerDependencies: z.object({ typescript: z.string() }),
-    version: z.string(),
-  })
-  .parse(JSON.parse(source));
+const manifestSchema = object({
+  peerDependencies: object({ typescript: string() }),
+  version: string(),
+});
+
+const manifest = parseOrThrow(manifestSchema, JSON.parse(source));
 
 /** The running toolchain's version, which `--version` prints and `loom init` pins. */
 export const loomVersion = manifest.version;

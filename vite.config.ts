@@ -128,6 +128,10 @@ export default defineConfig({
       },
       {
         files: [
+          'packages/loom/src/commands/build/command.ts',
+          'packages/loom/src/commands/release/command.ts',
+          'packages/plugins/src/background/plugin.ts',
+          'packages/plugins/src/format/names.ts',
           'packages/plugins/src/manifest/document.ts',
           'packages/plugins/src/manifest/extension.ts',
           'packages/plugins/tests/manifest.test.ts',
@@ -136,6 +140,7 @@ export default defineConfig({
         ],
         rules: {
           // The manifest document's key order is its wire contract, so its objects keep that order.
+          // An input schema the document publishes keeps `type` first, then its keywords.
           'eslint/sort-keys': 'off',
         },
       },

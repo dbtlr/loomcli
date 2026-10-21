@@ -2,7 +2,7 @@ import { join } from 'node:path';
 
 import { applicationDirectory, Command, DeclarationError, InputError, plugin } from '@loomcli/core';
 import type { Host, Log, Plugin } from '@loomcli/core';
-import { z } from 'zod';
+import { createValidator } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
 import { digestOf, observe, removeStagingFiles, replaceFile } from '../installation/disk.js';
@@ -113,13 +113,23 @@ function judgeSettings(settings: SelfUpdateSettings | undefined): void {
   judgeNotices(settings);
 }
 
-const versionInput = z.string().refine((text) => versionOfArgument(text) !== undefined, {
-  error: 'Supply a semantic version, such as 1.4.0.',
-});
+/** A string input that `accepts` or the one-sentence `message`, published as a plain string. */
+function stringInput(accepts: (text: string) => boolean, message: string) {
+  return createValidator({
+    inputSchema: { type: 'string' },
+    parse: (raw) => (accepts(raw) ? { value: raw } : { issues: [{ message }] }),
+  });
+}
 
-const channelInput = z.string().refine(isChannelName, {
-  error: 'Supply stable or a prerelease identifier, such as next.',
-});
+const versionInput = stringInput(
+  (text) => versionOfArgument(text) !== undefined,
+  'Supply a semantic version, such as 1.4.0.',
+);
+
+const channelInput = stringInput(
+  isChannelName,
+  'Supply stable or a prerelease identifier, such as next.',
+);
 
 /** What a run checked before any request: the binary to replace and where its record lives. */
 interface Checked extends ReleaseBinary {

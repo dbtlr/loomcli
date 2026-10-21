@@ -313,3 +313,21 @@ test.each([
 ])('%s names no GitHub repository', (_case, repository) => {
   expect(githubRepository(withRepository(repository))).toBeUndefined();
 });
+
+test('a script named prototype and a dependency named constructor survive the rewrite', () => {
+  const source = JSON.stringify({
+    dependencies: { constructor: '^1.0.0' },
+    name: 'notes',
+    scripts: { prototype: 'vite --mode prototype' },
+  });
+  const result = JSON.parse(addMissingKeys(source, keys).text);
+  expect(result.scripts.prototype).toBe('vite --mode prototype');
+  expect(result.dependencies.constructor).toBe('^1.0.0');
+});
+
+test('a key named __proto__ stays an ordinary key of its object', () => {
+  const source = '{"name":"notes","scripts":{"__proto__":"echo kept"}}';
+  const result = JSON.parse(addMissingKeys(source, keys).text);
+  expect(Object.hasOwn(result.scripts, '__proto__')).toBe(true);
+  expect(Object.getPrototypeOf(result.scripts)).toBe(Object.prototype);
+});

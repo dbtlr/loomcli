@@ -1,23 +1,38 @@
 import { extension } from '@loomcli/core';
-import { z } from 'zod';
+import { array, object, optional, pipe, rawTransform, unknown } from 'valibot';
 
 import { packageName } from '../constants.js';
 import { line, markdown } from '../lines.js';
-import { failure } from './failures.js';
+import { readFailure } from './failures.js';
 
 /** One example invocation: the tokens after the application name, and an optional note. */
-const example = z.object({ command: line, note: line.optional() });
+const example = object({ command: line, note: optional(line) });
+
+const failureEntry = object({ failure: optional(unknown()), meaning: line });
 
 /**
  * One failure a Command can raise: its class and one line of meaning. It outputs the failure code
  * and the exit code the class declares, and the meaning, as plain data. A key the schema does not
- * name, such as the retired hand-written `name`, is dropped.
+ * name, such as the retired hand-written `name`, is dropped. The class is read after the entry, and
+ * an entry with no `failure` key reads as a value that is not a failure class.
  */
-const declaredFailure = z.object({ failure, meaning: line }).transform((entry) => ({
-  code: entry.failure.code,
-  exitCode: entry.failure.exitCode,
-  meaning: entry.meaning,
-}));
+const declaredFailure = pipe(
+  failureEntry,
+  rawTransform(({ addIssue, dataset, NEVER }) => {
+    const read = readFailure(dataset.value.failure);
+    if ('issue' in read) {
+      addIssue({ message: read.issue });
+      return NEVER;
+    }
+    return { code: read.code, exitCode: read.exitCode, meaning: dataset.value.meaning };
+  }),
+);
+
+const commandFacts = object({
+  details: optional(markdown),
+  examples: optional(array(example)),
+  failures: optional(array(declaredFailure)),
+});
 
 /**
  * The manifest's collecting extension on Commands, as declarations alone. The author and any
@@ -29,10 +44,6 @@ const declaredFailure = z.object({ failure, meaning: line }).transform((entry) =
  */
 export const manifestCommand = extension(`${packageName}/manifest/command`, {
   collect: true,
-  schema: z.object({
-    details: markdown.optional(),
-    examples: z.array(example).optional(),
-    failures: z.array(declaredFailure).optional(),
-  }),
+  schema: commandFacts,
   target: 'command',
 });

@@ -1,7 +1,8 @@
-import { z } from 'zod';
+import { object, string } from 'valibot';
 
 import { readFragments } from './fragments.js';
 import { isBuildAffectingPath } from './material.js';
+import { parseOrThrow } from './parse-or-throw.js';
 import { checkRelease } from './release-check.js';
 import { currentVersion, git, readLibraries, readRegularFile } from './repository.js';
 
@@ -59,9 +60,10 @@ export function checkPullRequest(
   }
   for (const library of previous) {
     if (git(root, ['ls-tree', head, '--', library.path])) {
-      const manifest = z
-        .object({ version: z.string() })
-        .parse(JSON.parse(readRegularFile(root, library.path, head)));
+      const manifest = parseOrThrow(
+        object({ version: string() }),
+        JSON.parse(readRegularFile(root, library.path, head)),
+      );
       if (manifest.version !== library.manifest.version) {
         throw new Error(`${library.path}: ordinary PR version must stay ${current.text}.`);
       }

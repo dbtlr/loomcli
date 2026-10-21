@@ -3,25 +3,27 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { z } from 'zod';
+import { array, boolean, object, string, union } from 'valibot';
+import type { InferOutput } from 'valibot';
 
 import { runBun } from './bun.js';
+import { parseOrThrow } from './parse-or-throw.js';
+
+/** The names a module exports its Application under. */
+const names = array(string());
 
 /**
  * What the read found: each name the module exports its one Application under, `default`
  * included; or the one sentence that says why no Application could be read, and whether the module
  * loaded before the read stopped.
  */
-const exportsResult = z.union([
-  z.object({ names: z.string().array() }),
-  z.object({ failure: z.string(), loaded: z.boolean() }),
-]);
+const exportsResult = union([object({ names }), object({ failure: string(), loaded: boolean() })]);
 
 /** The script the reading process runs, shipped beside this module in `dist`. */
 const script = fileURLToPath(new URL('../read-application.js', import.meta.url));
 
 /** One read of an application module, as the reading process writes it to its result file. */
-export type ApplicationExports = z.infer<typeof exportsResult>;
+export type ApplicationExports = InferOutput<typeof exportsResult>;
 
 /**
  * Reads the exports of one application module under Bun, in a process of its own in the package
@@ -47,7 +49,7 @@ export function readApplicationExports(options: {
     if (run.status !== 0 || !existsSync(resultFile)) {
       throw new Error(`${run.output.trim()}\n\nBun could not read ${options.module}.`.trim());
     }
-    return exportsResult.parse(JSON.parse(readFileSync(resultFile, 'utf8')));
+    return parseOrThrow(exportsResult, JSON.parse(readFileSync(resultFile, 'utf8')));
   } finally {
     rmSync(temporary, { force: true, recursive: true });
   }

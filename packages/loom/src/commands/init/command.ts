@@ -10,7 +10,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 
 import { Command } from '@loomcli/core';
 import { select } from '@loomcli/prompts';
-import { z } from 'zod';
+import { createValidator } from '@loomcli/validators';
 
 import { changelogSkill } from '../../content/changelog-skill.js';
 import { fragmentGuide } from '../../content/fragment-guide.js';
@@ -71,20 +71,31 @@ const pieces = [
 type Piece = (typeof pieces)[number];
 
 /**
- * One `--only` value. A multiple option validates each value as the string the operator typed, so
- * its validator must accept a string input, and the enum of pieces sits behind `z.string().pipe`.
+ * A validator for one value of a string option out of a fixed set. A multiple option validates each
+ * value as the string the operator typed, so the validator reads a string and publishes a plain
+ * string, and the match against the values decides it.
  */
-const pieceOption = z.string().pipe(
-  z.enum(pieces, {
-    error: 'Use application, entry, tsconfig, test, lint, package, changes, skill, or install.',
-  }),
+function choiceOption<const Value extends string>(values: readonly Value[], message: string) {
+  return createValidator({
+    inputSchema: { type: 'string' },
+    parse: (raw) => {
+      const match = values.find((each) => each === raw);
+      return match === undefined ? { issues: [{ message }] } : { value: match };
+    },
+  });
+}
+
+/** One `--only` value. */
+const pieceOption = choiceOption(
+  pieces,
+  'Use application, entry, tsconfig, test, lint, package, changes, skill, or install.',
 );
 
-/** One `--linter` value. A validator receives the string the operator typed, as `--only`'s does. */
-const linterOption = z.string().pipe(z.enum(linters, { error: 'Use oxlint or eslint.' }));
+/** One `--linter` value. */
+const linterOption = choiceOption(linters, 'Use oxlint or eslint.');
 
-/** One `--test-runner` value, read as `--linter` is. */
-const runnerOption = z.string().pipe(z.enum(testRunners, { error: 'Use bun or vitest.' }));
+/** One `--test-runner` value. */
+const runnerOption = choiceOption(testRunners, 'Use bun or vitest.');
 
 /** The application module, the entry, and the test, by their conventional paths in the package. */
 const applicationPath = 'src/application.ts';

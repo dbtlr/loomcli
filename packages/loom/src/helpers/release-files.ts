@@ -4,10 +4,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { number, object, string, union } from 'valibot';
 import { parseAllDocuments } from 'yaml';
-import { z } from 'zod';
 
 import { withVersion } from './manifest.js';
+import { parseOrThrow } from './parse-or-throw.js';
 import type { prepareRelease } from './release.js';
 import { git, readRegularFile, readRegularFileBytes } from './repository.js';
 
@@ -28,6 +29,10 @@ function pnpmManifestPath(
   }
 }
 
+const lockfile = object({ lockfileVersion: union([string(), number()]) });
+
+const pnpmManifest = object({ bin: object({ pnpm: string() }) });
+
 function updateLockfile(root: string) {
   const lock = join(root, 'pnpm-lock.yaml');
   if (existsSync(lock)) {
@@ -35,14 +40,12 @@ function updateLockfile(root: string) {
       if (document.errors.length > 0) {
         throw new Error('pnpm-lock.yaml is invalid YAML.');
       }
-      z.object({ lockfileVersion: z.union([z.string(), z.number()]) }).parse(document.toJS());
+      parseOrThrow(lockfile, document.toJS());
     }
   }
   const manifestPath = pnpmManifestPath();
   const manifestSource = readRegularFile(dirname(manifestPath), 'package.json');
-  const manifest = z
-    .object({ bin: z.object({ pnpm: z.string() }) })
-    .parse(JSON.parse(manifestSource));
+  const manifest = parseOrThrow(pnpmManifest, JSON.parse(manifestSource));
   const result = spawnSync(
     join(dirname(manifestPath), manifest.bin.pnpm),
     [
