@@ -5987,8 +5987,8 @@ const app = new Application('app', {
 });
 ```
 
-`dotenv()` takes no required setting. An allow list imports only the names it lists, and a deny list imports every name but the ones it lists. Their setting names are settled when the plugin's phase ships, under [ADR-0102](decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md).
-Names are case-sensitive and match `[A-Za-z_][A-Za-z0-9_]*`. A name the plugin does not import never appears in a warning.
+`dotenv()` takes no required setting. `dotenv({ only: ['API_TOKEN'] })` is an allow list that imports only the names it lists, and `dotenv({ except: ['PATH'] })` is a deny list that imports every name but the ones it lists, under [ADR-0102](decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md). The settings type is a union, so one call that gives both lists is a compile error.
+Names are case-sensitive and match `[A-Za-z_][A-Za-z0-9_]*`. A listed name of another form throws a `DeclarationError` of `@loomcli/plugins/dotenv/variable-name` at the call, because no assignment could match it. A name listed twice is listed once. A name the plugin does not import never appears in a warning.
 The lists govern imports by this plugin. A runtime or launcher that loads `.env` before application startup has already populated `process.env`.
 
 An existing defined variable wins, including an empty string.

@@ -72,6 +72,16 @@ function noticesFault(key: 'notices' | 'notices.env'): Expected {
   };
 }
 
+/** The fault a dotenv list raises for a name that is not an environment variable name. */
+function dotenvFault(key: 'except' | 'only'): Expected {
+  return {
+    correction:
+      'Name each variable with a letter or underscore followed by letters, digits, or underscores, such as API_TOKEN.',
+    rule: 'dotenv/variable-name',
+    sentence: `Plugin "@loomcli/plugins/dotenv" setting "${key}" lists a name that is not an environment variable name.`,
+  };
+}
+
 /** Each settings fault a pack factory throws at its call, by scenario. */
 const settingsCases: Record<string, Expected> = {
   'config-glob': {
@@ -92,12 +102,8 @@ const settingsCases: Record<string, Expected> = {
     rule: 'config/file-path',
     sentence: 'Plugin "@loomcli/plugins/config" file is not a relative path.',
   },
-  'dotenv-empty': {
-    correction:
-      'Supply a nonempty variables list of distinct names, each a letter or underscore followed by letters, digits, or underscores.',
-    rule: 'dotenv/variables',
-    sentence: 'Plugin "@loomcli/plugins/dotenv" declares an invalid variables allowlist.',
-  },
+  'dotenv-except': dotenvFault('except'),
+  'dotenv-only': dotenvFault('only'),
   'logging-console': {
     correction: 'Remove the setting, or set "to" to "file".',
     rule: 'logging/settings',

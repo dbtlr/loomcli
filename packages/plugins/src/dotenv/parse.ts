@@ -71,7 +71,7 @@ function quotedLine(text: string, from: number): { value: string; tail: string |
   return { tail: undefined, value };
 }
 
-/** Consume quoted regions even for unlisted names, so their contents never become assignments. */
+/** Consume quoted regions even for names the plugin does not import, so their contents never become assignments. */
 function doubleQuoted(lines: readonly string[], start: number, first: string): ParsedValue {
   let value = '';
   let line = start;
@@ -119,10 +119,10 @@ function assignmentAt(lines: readonly string[], line: number): ParsedAssignment 
 function recordAssignment(
   file: ParsedFile,
   parsed: ParsedAssignment,
-  variables: ReadonlySet<string>,
+  imports: (name: string) => boolean,
 ): void {
   const { line, name, value } = parsed;
-  if (name !== undefined && variables.has(name)) {
+  if (name !== undefined && imports(name)) {
     if (value === undefined || value.includes('\0')) {
       file.malformed.push({ line, name });
     } else {
@@ -131,8 +131,8 @@ function recordAssignment(
   }
 }
 
-/** The last valid assignment to each allowlisted variable, with secret-free warning locations. */
-export function parseDotenv(text: string, variables: ReadonlySet<string>) {
+/** The last valid assignment to each variable the plugin imports, with secret-free warning locations. */
+export function parseDotenv(text: string, imports: (name: string) => boolean) {
   const file: ParsedFile = { malformed: [], values: new Map() };
   const lines = text
     .replace(/^\uFEFF/u, '')
@@ -141,7 +141,7 @@ export function parseDotenv(text: string, variables: ReadonlySet<string>) {
   let line = firstCharacter;
   while (line < lines.length) {
     const parsed = assignmentAt(lines, line);
-    recordAssignment(file, parsed, variables);
+    recordAssignment(file, parsed, imports);
     line = parsed.next;
   }
   return { malformed: file.malformed, values: Object.fromEntries(file.values) };

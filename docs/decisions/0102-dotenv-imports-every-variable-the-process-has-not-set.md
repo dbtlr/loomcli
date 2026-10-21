@@ -50,3 +50,4 @@ Proposed. It moves to accepted with the release that ships the import-everything
 
 - 2026-10-20: Proposed with the 0.15.0 rescope.
 - 2026-10-21: The implementing phase of ADR-0097 removes every check on an `onEnvironment` hook's answer, so the hook's failure rules name none.
+- 2026-10-21: The implementing phase settles the setting names. `only` is the allow list and `except` is the deny list. The settings type is a union of the two, so one call that gives both is a compile error, with no run-time check. `variables` goes, and its migration is to rename it `only`. A listed name keeps the variable-name grammar, because no assignment could match a name of another form, and the check that the names are distinct goes.

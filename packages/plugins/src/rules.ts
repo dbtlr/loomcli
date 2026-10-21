@@ -106,15 +106,15 @@ const versionPostfix = diagnosticRule(`${packageName}/version/postfix`, {
   headline: 'Invalid version postfix',
 });
 
-/** A dotenv allowlist that is not a nonempty list of distinct environment variable names. */
-const dotenvVariables = diagnosticRule(`${packageName}/dotenv/variables`, {
+/** A dotenv `only` or `except` list that holds a name no assignment in `.env` gives. */
+const dotenvVariableName = diagnosticRule(`${packageName}/dotenv/variable-name`, {
   explanation:
-    'The dotenv plugin imports only variables explicitly named by the application. List at least one distinct name, each a letter or underscore followed by letters, digits, or underscores.',
-  headline: 'Invalid dotenv variables',
+    'The dotenv plugin compares each name an only or except list holds with the names the assignments in .env give, and an assignment names a variable with a letter or underscore followed by letters, digits, or underscores. A listed name of another form never matches, so the list would not do what it says.',
+  headline: 'Invalid dotenv variable name',
 });
 
 export {
-  dotenvVariables,
+  dotenvVariableName,
   configFilePath,
   configFilePattern,
   failureCodeConflict,
