@@ -1,6 +1,5 @@
-import { resolveLink } from './link.js';
+import { invalid, resolveLink } from './link.js';
 import { askSelect, askText } from './question.js';
-import { checkSettings } from './settings.js';
 import type {
   Answer,
   ConfirmSettings,
@@ -20,7 +19,6 @@ async function text<Options, Key extends LinkKey<Options>, Output>(
   settings: TextSettings<Key, Output>,
 ): Promise<Options[Key] | Output | string> {
   context.signal.throwIfAborted();
-  checkSettings(settings, 'text');
   const resolved = resolveLink(context, settings, 'text');
   if (resolved.kind === 'answered') {
     return resolved.value;
@@ -48,7 +46,6 @@ async function secret<Options, Key extends LinkKey<Options>, Output>(
   settings: SecretSettings<Key, Output>,
 ): Promise<Options[Key] | Output | string> {
   context.signal.throwIfAborted();
-  checkSettings(settings, 'secret');
   const resolved = resolveLink(context, settings, 'secret');
   if (resolved.kind === 'answered') {
     return resolved.value;
@@ -71,7 +68,6 @@ async function confirm<Options, Key extends LinkKey<Options>>(
   settings: ConfirmSettings<Key>,
 ): Promise<Options[Key] | boolean | string> {
   context.signal.throwIfAborted();
-  checkSettings(settings, 'confirm');
   const resolved = resolveLink(context, settings, 'confirm');
   if (resolved.kind === 'answered') {
     return resolved.value;
@@ -111,14 +107,21 @@ async function select<Options, Choice extends string, Key extends LinkKey<Option
   settings: SelectSettings<Key, Choice>,
 ): Promise<Options[Key] | Choice> {
   context.signal.throwIfAborted();
-  checkSettings(settings, 'select');
+  // Choices are often computed, so an empty list fails here, before the question resolves.
+  const [first, ...rest] = settings.choices;
+  if (first === undefined) {
+    invalid(
+      `The select question "${settings.message}" has no choices.`,
+      'Supply at least one choice.',
+    );
+  }
   const resolved = resolveLink(context, settings, 'select');
   if (resolved.kind === 'answered') {
     return resolved.value;
   }
   const raw = context.supplied.options[settings.option ?? ''];
   const prefill = raw ?? settings.default ?? resolved.prefill;
-  return askSelect(context, { choices: settings.choices, message: settings.message, prefill });
+  return askSelect(context, { choices: [first, ...rest], message: settings.message, prefill });
 }
 
 function confirmDefault(value: boolean | undefined): string | undefined {

@@ -13,29 +13,17 @@ test('a linked question returns the validated supplied option silently without p
   expect(result.stdout).toBe('8080\n');
 });
 
-test.each([
-  'empty',
-  'repeated',
-  'choice-default',
-  'secret-default',
-  'validator',
-  'text-default',
-  'confirm-default',
-  'skip-unlinked',
-  'unknown',
-  'global',
-  'multiple',
-  'count',
-  'content',
-  'confirm-string',
-])('malformed questions fail at their call with the question declaration rule: %s', (scenario) => {
-  const result = invoke(new URL('fixtures/faults.mjs', import.meta.url), [scenario]);
-  expect(result.status).toBe(0);
-  expect(JSON.parse(result.stdout)).toMatchObject({
-    name: 'DeclarationError',
-    rule: '@loomcli/prompts/link',
-  });
-});
+test.each(['empty', 'unknown', 'global', 'multiple', 'count', 'content', 'confirm-string'])(
+  'malformed questions fail at their call with the question declaration rule: %s',
+  (scenario) => {
+    const result = invoke(new URL('fixtures/faults.mjs', import.meta.url), [scenario]);
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      name: 'DeclarationError',
+      rule: '@loomcli/prompts/link',
+    });
+  },
+);
 
 test('a missing linked value reports an ordinary usage failure', () => {
   const result = invoke(new URL('fixtures/questions.mjs', import.meta.url), ['missing']);

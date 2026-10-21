@@ -1,6 +1,5 @@
 import { StringDecoder } from 'node:string_decoder';
 
-import { invalid } from './link.js';
 import type { PromptContext } from './types.js';
 
 type Key =
@@ -84,10 +83,7 @@ const sessions = new WeakMap<AbortSignal, Session>();
 function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue): Session {
   const input = context.host.stdin;
   if (!('setRawMode' in input) || typeof input.setRawMode !== 'function') {
-    invalid(
-      'Interactive stdin has no setRawMode method.',
-      'Supply a terminal stream with setRawMode.',
-    );
+    throw new TypeError('Interactive stdin has no setRawMode method.');
   }
   const raw = input.setRawMode.bind(input);
   let released = false;

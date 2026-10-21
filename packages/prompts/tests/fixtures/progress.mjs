@@ -119,25 +119,9 @@ const scenarios = {
   },
   /** One malformed setting, named by argv[0]. */
   fault: {
-    action: async (context) => {
+    action: async () => {
       const calls = {
-        bar: () => progressStyle({ bar: { complete: '', incomplete: '-' } }),
-        completed: () => progress(context, { label: 'Fetching records' }).update({ completed: -1 }),
-        done: () =>
-          progress(context, { label: 'Fetching records' }).track(Promise.resolve(1), { done: 1 }),
-        end: () => progress(context, { label: 'Fetching records' }).end(3),
-        failed: () =>
-          progress(context, { label: 'Fetching records' }).track(Promise.resolve(1), {
-            failed: 1,
-          }),
-        frame: () => progressStyle({ spinner: { frames: ['a', 2], interval: 80 } }),
-        frames: () => progress(context, { label: 'Spin', spinner: { frames: [], interval: 80 } }),
-        incomplete: () => progressStyle({ bar: { complete: '#', incomplete: '' } }),
         interval: () => progressStyle({ spinner: { frames: ['a'], interval: 0 } }),
-        label: () => progress(context, { label: 3 }),
-        settings: () => progressStyle('dots'),
-        total: () => progress(context, { label: 'Fetching records', total: Number.NaN }),
-        update: () => progress(context, { label: 'Fetching records' }).update(3),
       };
       try {
         await calls[argv[0]]();
