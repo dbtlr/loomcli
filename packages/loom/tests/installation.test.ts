@@ -1,3 +1,5 @@
+// @module-tag docs
+
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync, readFileSync, realpathSync, symlinkSync } from 'node:fs';

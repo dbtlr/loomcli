@@ -1,3 +1,5 @@
+// @module-tag docs
+
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
