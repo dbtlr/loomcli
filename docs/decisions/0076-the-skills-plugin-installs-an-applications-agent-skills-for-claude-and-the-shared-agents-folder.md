@@ -19,7 +19,7 @@ Coding agents read skills from two layouts. Claude Code reads `~/.claude/skills/
 
 ## Decision
 
-- **A plugin Command group.** `skills(settings)` from `@loomcli/plugins/skills` contributes one [plugin Command](../core.md#plugin-commands), `skills`, with the children `install`, `update`, and `uninstall`, and nothing else. Every child acts on every skill the application declares; none takes a skill name.
+- **A plugin Command group.** `skills(settings)` from `@loomcli/plugins/skills` contributes one [plugin Command](../core/plugin-contract.md#plugin-commands), `skills`, with the children `install`, `update`, and `uninstall`, and nothing else. Every child acts on every skill the application declares; none takes a skill name.
 - **Skills arrive through a loader.** The author declares each skill as a name and a function that returns its files, each a relative path and its content, string or bytes, optionally executable. The plugin calls the function only when a `skills` child runs, so every other run of the application loads no skill bytes. Where the files come from is the author's choice; the documented convention is a root `skills/<name>/` folder read through dynamic text imports, which `npx skills` also finds. `loom build` gains no embedding seam.
 - **Names and paths follow the Agent Skills grammar.** A skill name is lowercase letters, digits, and single hyphens, 64 characters at most, judged at the call. A file path is relative, uses `/`, and holds no empty, `.`, or `..` segment, and a skill lists `SKILL.md`; a loader that answers otherwise is a declaration fault reported when the files load, the earliest point that knows it under [ADR-0034](0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md).
 - **Two agent targets.** `--agent claude` writes `<home>/.claude/skills/<name>/`, or `$CLAUDE_CONFIG_DIR/skills/<name>/` when that variable is an absolute path, and `.claude/skills/<name>/` at project scope. `--agent agents` writes `<home>/.agents/skills/<name>/` and `.agents/skills/<name>/`. An install or uninstall with no `--agent` acts on both, and once when a link makes both skills directories one folder, as operators who share skills between agents arrange. The option is not named for a host, a term core already owns.
@@ -32,7 +32,7 @@ Coding agents read skills from two layouts. Claude Code reads `~/.claude/skills/
 - **A self-update refreshes through an exported function.** `refreshSkills` is an `afterReplace` function for `selfUpdate({ afterReplace: refreshSkills })`. It runs the replaced binary's path with `skills update` as a child process, because the replaced process holds the old skill, and passes the child's output through, so the child's own sentences tell the operator what was refreshed or what to do. A child that fails adds a `warn` log event and resolves, not a failure, because the binary update succeeded. An application that needs more after a replace calls it from its own callback.
 - **Any build installs.** A skill does not depend on the binary's path, so a source or development build installs as a distributed build does.
 
-The contract and its acceptance are in [Skills](../core.md#skills).
+The contract and its acceptance are in [Skills](../plugins/skills.md).
 
 ## Considered options
 

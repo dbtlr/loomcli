@@ -1,3 +1,57 @@
+/*
+ * Acceptance plan for the manifest plugin (docs/plugins/manifest.md).
+ *
+ * The manifest is proven when both example applications install `manifest({ short: 'M' })` after
+ * their formatter and ahead of the example plugin, and public APIs alone produce these results
+ * under Node and Bun:
+ *
+ * - Pinned documents. `textstat --manifest`, `jsonkit --manifest`, and `jsonkit get --manifest`
+ *   print documents compared byte for byte. `jsonkit get`'s `details` holds the author's value
+ *   ahead of help's. `jsonkit fetch --manifest` shows the deprecated Command's message. `jsonkit
+ *   debug --manifest` prints the hidden Command's own slice, and the root document omits it.
+ * - An agent-shaped run. A process test reads `textstat --manifest` alone, builds an invocation
+ *   from it by choosing `--metric` from its schema's enum and `--format json` from the result's
+ *   views, runs it, and parses stdout as the `json` encoding states.
+ * - Help pages. Every help page lists the `--manifest` row among its options, and the golden pages
+ *   are re-pinned for it.
+ * - Short spellings. `textstat -M`, `jsonkit -M`, and `jsonkit get -M` print the same documents as
+ *   their long forms. A fixture proves no short spelling by default, either case of an ASCII letter
+ *   accepted, and collisions with an application global, a local option, and another plugin
+ *   reported under the ordinary spelling-taken rule.
+ * - Takeover and precedence. `jsonkit get --manifest` without its required argument prints with
+ *   exit 0, and so does `--manifest` on a group in a fixture application. An unknown Command still
+ *   reports its routing error. `jsonkit --help --manifest` prints help and `jsonkit --version
+ *   --manifest` prints the version. A `--manifest` token after `--` is not read as the option.
+ * - Entries. Fixture applications cover: a hidden option and a hidden global omitted. An explicit
+ *   `default: undefined` reads `null`. Two `manifestCommand` values with `details` produce two
+ *   strings in collection order, and a value with neither field adds nothing. A U+009B inside a
+ *   description prints as `\u009b`. A declared `bigint`, `NaN`, or function default, and a
+ *   published schema holding `NaN`, fail the write. Keys follow the type block's order, `result`
+ *   included, and no version field appears.
+ * - Declared failures. jsonkit declares `invalid-json` on every Command that reads a document and
+ *   `path-not-found` on `get`, `keys`, and the deprecated `fetch`, which runs `get`'s action, all
+ *   65, and `jsonkit get --manifest` prints the document above byte for byte, with the `65` row
+ *   between `2` and `130`. A malformed document given to each Command that declares `invalid-json`
+ *   exits 65, the code its manifest lists. Fixture applications cover: a Command with no declared
+ *   failures reading `[]`; a class that declares no exit code listing 1 with no row added; a
+ *   `FatalError` subclass that declares no failure code listing `fatal`; one failure code declared
+ *   on two Commands with one exit code and meaning listed on both with one row; one failure code
+ *   with two exit codes, and with two meanings, reporting its `DeclarationError`; an author value
+ *   and a plugin's `onCommandAttach` value concatenated in collection order, with an identical pair
+ *   printed once; a hidden Command's code joining the table; a value holding a function that is not
+ *   a failure class and a meaning with a line break each rejected at the call; a stale `name`
+ *   dropped from the entry; and a failure class whose static `code` is `'Bad_Code'` rejected at the
+ *   call.
+ * - Control options and media types. Every option entry carries `control`, `true` on `--help`,
+ *   `--version`, `--manifest`, and `--format` and `false` on jsonkit's own options, and every
+ *   `result` carries `mediaTypes`. A fixture whose `json` key holds a view that declares no media
+ *   type, and whose `wire` key holds a mapped `json()`, reads its media types from the result, and
+ *   the pinned documents are re-pinned for both fields.
+ * - Packed consumers. A consumer installs the packed pack, imports `@loomcli/plugins/manifest` and
+ *   `@loomcli/plugins/manifest/extension`, compiles against their declarations, and runs its chosen
+ *   `-M`.
+ */
+
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 

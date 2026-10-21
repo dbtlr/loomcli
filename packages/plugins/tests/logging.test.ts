@@ -1,3 +1,32 @@
+/*
+ * Acceptance plan for the logging plugin (docs/plugins/logging.md#logging-plugin).
+ *
+ * The plugin is proven when process tests under Node and Bun, each with a temporary home and state
+ * directory, produce these results:
+ *
+ * - Records. An application that installs `logging()` and logs at each level appends one pinned
+ *   line per event at or above `info` to `$XDG_STATE_HOME/<app>/<app>.jsonl`, with the keys in the
+ *   record order, and, with `level: 'error'`, a defect's `fatal` record still written with its
+ *   stack.
+ * - The file. `file: 'collector.jsonl'` writes inside the default directory, an absolute `file`
+ *   writes where it names, `~/x.jsonl` resolves from the test's `HOME`, a missing directory is
+ *   created, and a `darwin` fixture resolves its table row from an overridden `env` and `platform`.
+ * - Rotation. With `maxBytes: 200` and `keep: 2`, writes past the size leave the file, `.1`, and
+ *   `.2`, the oldest copy deleted; a record larger than `maxBytes` lands whole in a new file; two
+ *   processes that take turns appending and rotating one file leave every record in the file or a
+ *   copy; and two that append and rotate one file at once leave every line whole and none written
+ *   twice.
+ * - The console. `to: 'console'` writes the same bytes to stderr and none to stdout, and an
+ *   `app.invoke` writes nothing to stderr while the file destination still writes.
+ * - A failed write. A read-only directory calls `onError` with `kind` `create-directory` or
+ *   `append` and the path for each record that fails, and an unset or relative `HOME` with
+ *   `unresolved-directory` and `variable` `HOME`; with no `onError`, each run exits with its own
+ *   code and writes nothing to stderr; a later record lands once the directory is writable; and an
+ *   `onError` that throws is reported as a hook's throw with exit 1.
+ * - Packaging. `pnpm check:packed` resolves `@loomcli/plugins/logging` from the packed tarball
+ *   under Node and Bun.
+ */
+
 import {
   chmodSync,
   existsSync,

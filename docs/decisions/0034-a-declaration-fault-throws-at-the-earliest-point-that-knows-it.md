@@ -37,7 +37,7 @@ This record supersedes the clause of ADR-0025, carried from ADR-0001, that graph
 
 A JavaScript author's bad authoring call throws when its module evaluates, usually at import, with a stack at the offending line, instead of being reported from `run()` or `inspect()`. A fault that throws before `run()` is an uncaught exception in the author's module: no failure view renders it and core sets no exit code. A build fault is reported as before, a diagnostic with exit 1 from `run()` and a thrown `DeclarationError` from `inspect()`.
 
-[Declaration faults](../core.md#declaration-faults) in the core reference names the moment of every rule, and the rule tables keep their diagnostics.
+[Declaration faults](../core/declaration-faults.md) in the core reference names the moment of every rule, and the rule tables keep their diagnostics.
 
 ## Status
 

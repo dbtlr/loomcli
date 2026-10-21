@@ -1,3 +1,24 @@
+/*
+ * Acceptance plan for the table and records views (docs/plugins/pack-views.md#table).
+ *
+ * The acceptance tests cover:
+ *
+ * - each factory as the second argument of `out.render` and as an entry of a declared result, a
+ *   column measured against a wide CJK cell and against a styled cell, a `null` and an `undefined`
+ *   cell under each factory, one key listed twice as two columns, a `format` cell that returns
+ *   styled text the view leaves unescaped beside a default cell in the same row that the view
+ *   escapes, the all-keys default in first-seen order under each factory, an empty sequence under
+ *   the table with `columns` printing the header line alone and without `columns` printing nothing,
+ *   an empty sequence under records printing `0 records`, a one-row sequence printing `1 record`,
+ *   and `tail` receiving the row count under `out.render` and under `out.results` alike.
+ * - The negative type checks cover a column that names a key the row does not carry, a records
+ *   field that carries `header`, an `identifier` that names a key the row does not carry, and a
+ *   `format` whose value parameter is typed as something other than the key's own value type, each
+ *   inside a `views` record and as the second argument of `out.render`, the records cases over an
+ *   array, a generator, and an async generator, and a table over a generator rejected because a
+ *   whole view renders a value. Each case runs under Node and Bun.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

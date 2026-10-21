@@ -1,3 +1,23 @@
+/*
+ * Acceptance plan for the plugin seam (docs/core/plugin-contract.md).
+ *
+ * The seam is proven when both example applications install a plugin through `plugins` and public
+ * APIs alone. The suites cover it with in-repository fixture plugins rather than a published
+ * package, each case under Node and Bun:
+ *
+ * - A plugin with option-activated middleware whose implementation module records its own
+ *   evaluation, so a test shows the module is never loaded on an invocation that does not supply
+ *   its option and never loaded when an earlier middleware takes over.
+ * - A plugin with always-on middleware that wraps `next()` and observes each outcome value.
+ * - A plugin whose loader is pending when a caller abort lands, so a test shows the run resolves
+ *   130 once the loader settles and the middleware never runs
+ *   (packages/core/tests/cancellation.test.ts).
+ * - A plugin that claims the signals slot, with a second claimant failing at construction and no
+ *   listener surviving a run (packages/core/tests/plugins.test.ts).
+ * - A plugin that defines an extension both examples attach to a Command
+ *   (packages/core/tests/extensions.test.ts).
+ */
+
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

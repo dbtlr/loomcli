@@ -1,5 +1,7 @@
 // @module-tag docs
 
+// Acceptance plan: see packages/plugins/tests/installed-files.test.ts.
+
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync, readFileSync, realpathSync, symlinkSync } from 'node:fs';

@@ -17,13 +17,13 @@ A theme must be able to preserve those hues without reading terminal facts or in
 
 ## Decision
 
-The existing `hex`, `rgb`, and `ansi256` helpers and their background counterparts accept optional fallback values. RGB and hex accept `ansi256` and `ansi16`. ANSI-256 helpers accept only `ansi16`. The [core reference](../core.md#explicit-color-fallbacks) defines the types, selection rules, and validation.
+The existing `hex`, `rgb`, and `ansi256` helpers and their background counterparts accept optional fallback values. RGB and hex accept `ansi256` and `ansi16`. ANSI-256 helpers accept only `ansi16`. The [core reference](../core/styles.md#explicit-color-fallbacks) defines the types, selection rules, and validation.
 
 Each fallback affects only its named depth. When a fallback is absent, core approximates the original color at that depth. Supplying a 256-color fallback never changes the 16-color result. Calls that omit the options argument retain their current output. Direct array callbacks also receive an index, so `values.map(style.hex)` must become `values.map((value) => style.hex(value))`. The index now occupies a validated options position.
 
 Fallbacks are part of the concrete color value. Replacing that foreground replaces all its alternatives. Nesting and embedded resets restore the enclosing color with its alternatives. Core's capability detection and color policy decide which value reaches the stream. Explicit fallbacks do not force color.
 
-The [Loom theme](../core.md#loom-theme) supplies the dark foreground palette with deliberate reduced-color values. It leaves terminal backgrounds and inherited modifiers unchanged. `primary` uses terminal default foreground. A view adds bold or other modifiers explicitly. Light colors and automatic background detection are deferred.
+The [Loom theme](../plugins/theme.md) supplies the dark foreground palette with deliberate reduced-color values. It leaves terminal backgrounds and inherited modifiers unchanged. `primary` uses terminal default foreground. A view adds bold or other modifiers explicitly. Light colors and automatic background detection are deferred.
 
 `loomTheme(overrides?)` supplies all seven defaults, accepts whole-token replacements and custom keys, and shares the bare factory's subpath and identity. Its type suggests the fixed keys while retaining inferred custom names. An omitted or undefined built-in override retains its default. The existing empty chain and scoped resets express inheritance and clearing without a new sentinel.
 
@@ -31,7 +31,7 @@ The [Loom theme](../core.md#loom-theme) supplies the dark foreground palette wit
 
 When accepted, this record supersedes only the unconditional approximation rule incorporated by ADR-0027 through the core reference. An explicit fallback takes precedence at its named depth. All other ADR-0027 constraints remain: core owns resolution, the theme is a static concrete mapping, and one optional plugin owns the theme slot. ADR-0022 continues to govern the proposed named palette and its acceptance gate.
 
-The new color forms are specified in the [wire contract](../style-wire.md#explicit-color-fallbacks). Existing forms remain valid. The wire remains internal and is not a persistent interchange format.
+The new color forms are specified in the [wire contract](../maintaining/style-wire.md#explicit-color-fallbacks). Existing forms remain valid. The wire remains internal and is not a persistent interchange format.
 
 ## Considered options
 

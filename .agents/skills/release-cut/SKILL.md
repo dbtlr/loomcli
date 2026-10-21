@@ -7,11 +7,11 @@ description: Prepare a Loom CLI library release pull request from pending change
 
 Produce one reviewable release commit and a ready-for-review PR. Use the existing compiler and version writer for every generated file.
 
-This procedure prepares a cut. Merging the release PR is the only authorization to publish; the [release workflow](../../../docs/release-workflow.md) then reconciles the registry, the version tag, and the GitHub Release with the merged manifest version. A successful local guard does not prove release readiness.
+This procedure prepares a cut. Merging the release PR is the only authorization to publish; the [release workflow](../../../docs/maintaining/release-workflow.md) then reconciles the registry, the version tag, and the GitHub Release with the merged manifest version. A successful local guard does not prove release readiness.
 
 ## Establish the release inputs
 
-Read the repository's [fragment guide](../../../.changes/README.md), [compiler reference](../../../docs/changelog-compiler.md), and [PR guard reference](../../../docs/pr-guards.md). Resolve these paths from the repository root if the skill is installed elsewhere.
+Read the repository's [fragment guide](../../../.changes/README.md), [compiler reference](../../../docs/maintaining/changelog-compiler.md), and [PR guard reference](../../../docs/maintaining/pr-guards.md). Resolve these paths from the repository root if the skill is installed elsewhere.
 
 1. Resolve the repository root, configured Git remote, and its GitHub repository identity. Use the intended upstream repository for all external checks.
 2. Fetch the current `main` and tags without overwriting conflicting local tags. Record the exact upstream `main` SHA as the cut base.
@@ -28,7 +28,7 @@ Confirm that the previous version, the one the manifests carry at the cut base, 
 
 Any other state, such as a published version without its tag or Release, stops the cut for maintainer reconciliation: dispatch the release workflow on `main` first. The initial cut has no previous release; it starts from synchronized `0.0.0` manifests and uses `--initial`, defaulting to `0.1.0`.
 
-Each package's trusted publisher on npmjs.com names the workflow file `release.yml` and the `release` environment. A package joining the release for the first time needs that publisher before its cut merges, and only the maintainer can see or set it. npm attaches a publisher only to a name that already exists on the registry, so the maintainer first publishes a placeholder `0.0.0` from outside the repository and configures the publisher on that record; the [release workflow reference](../../../docs/release-workflow.md) describes the step. The package's manifest also joins the participating set in an ordinary pull request at the current synchronized version before the cut, because the release guard rejects a cut that changes the participating set or any manifest field other than `version`.
+Each package's trusted publisher on npmjs.com names the workflow file `release.yml` and the `release` environment. A package joining the release for the first time needs that publisher before its cut merges, and only the maintainer can see or set it. npm attaches a publisher only to a name that already exists on the registry, so the maintainer first publishes a placeholder `0.0.0` from outside the repository and configures the publisher on that record; the [release workflow reference](../../../docs/maintaining/release-workflow.md) describes the step. The package's manifest also joins the participating set in an ordinary pull request at the current synchronized version before the cut, because the release guard rejects a cut that changes the participating set or any manifest field other than `version`.
 
 ## Review the cycle
 
@@ -94,6 +94,6 @@ The squash merge is the only publication step. Watch the `Release` workflow run 
 - The annotated tag `v<version>` exists at the commit the run published from.
 - The GitHub Release `v<version>` exists on that tag with the changelog section as its notes and one registry tarball per package as its assets.
 
-The `plan` and `record` jobs run the published Loom CLI that `.github/release-tool` pins, not the CLI in the cut. When the cycle changed `loom release plan` or `loom release record`, this release still ran the pinned version. Once the release is confirmed, move the pin to the new version through an ordinary PR, as the [release workflow reference](../../../docs/release-workflow.md#release-tool) describes; Dependabot also proposes it.
+The `plan` and `record` jobs run the published Loom CLI that `.github/release-tool` pins, not the CLI in the cut. When the cycle changed `loom release plan` or `loom release record`, this release still ran the pinned version. Once the release is confirmed, move the pin to the new version through an ordinary PR, as the [release workflow reference](../../../docs/maintaining/release-workflow.md#release-tool) describes; Dependabot also proposes it.
 
-If the run failed, follow the recovery order in the [release workflow reference](../../../docs/release-workflow.md): re-run the failed job, dispatch the workflow on `main` after fixing the workflow, or abandon the version unpublished and cut the next one. Never publish, tag, or create a Release by hand.
+If the run failed, follow the recovery order in the [release workflow reference](../../../docs/maintaining/release-workflow.md): re-run the failed job, dispatch the workflow on `main` after fixing the workflow, or abandon the version unpublished and cut the next one. Never publish, tag, or create a Release by hand.

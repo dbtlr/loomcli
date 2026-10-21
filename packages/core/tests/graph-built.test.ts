@@ -1,3 +1,21 @@
+/*
+ * Acceptance plan for judging the built graph (docs/core/lifecycle-hooks.md#judging-the-built-graph).
+ *
+ * The hook is proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - Order and reach. A fixture hook records each call: it runs once per `run()`, `inspect()`, and
+ *   `app.invoke()`, after every `onCommandAttach` and with the Commands and options those hooks
+ *   added, in installation order across two plugins, and never for an action's `invoke`.
+ * - Rejection. A hook that throws a `DeclarationError` fails `run()` with exit 1, its Developer
+ *   Diagnostic from source and the generic defect message from a bundle, makes `inspect()` throw
+ *   it, runs no `onFailure` hook, and stops later hooks.
+ * - Broken hooks. A hook that throws a `TypeError` reports `@loomcli/core/broken-graph-hook` with
+ *   exit 1, and the fault's `cause` is the `TypeError`.
+ * - Frozen. A hook that writes to the graph throws in strict mode, which reports as a foreign
+ *   throw, and the graph the action reads is unchanged.
+ * - Types. The negative type checks reject a hook that returns a value.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

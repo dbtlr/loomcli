@@ -1,3 +1,4 @@
+// Acceptance plan: see packages/mcp/tests/framing.test.ts.
 import { readdir, readFile } from 'node:fs/promises';
 
 import { expect, test } from 'vite-plus/test';

@@ -1,0 +1,111 @@
+---
+description: "Where an input reads a value besides argv: environment bindings, configuration sources, and the source resolver contract."
+---
+
+# Input sources
+
+This page states where an input reads a value besides argv: environment bindings and configuration sources. An author uses it to bind an option to a variable or a configuration key, and to write a configuration source.
+
+```ts
+// `StringOption`, `BooleanOption`, `CountOption`, and `GlobalOptionConfig` accept `env`, except a multiple string option and an option that carries the color, verbose, or quiet mark, so `{ multiple: true, env: 'FIELDS' }` and `{ type: 'count', verbose: true, env: 'V' }` fail to compile.
+// Core exports `SourceResolver`, `SourceContext`, `SourceAnswer`, and `ContextualStyle`, the type of an action's `style`.
+interface EnvBinding {
+  env?: string | readonly [string, ...string[]]; // one name, or a non-empty list: AWS_REGION first, then AWS_DEFAULT_REGION
+}
+
+interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
+  // ...
+  source?: {
+    binding: AnyExtension & { readonly target: 'option' };
+    load: () => Promise<{ default: SourceResolver<Plugin<Options>> }>;
+  };
+}
+type SourceResolver<P extends Plugin | ((...args: never[]) => Plugin)> = (
+  context: SourceContext<OptionsOf<P>>,
+) => Promise<Readonly<Record<string, SourceAnswer>>>;
+interface SourceContext<Options extends PluginOptions = PluginOptions> {
+  readonly host: Host;
+  readonly options: PluginOptionValues<Options>;
+  readonly requests: readonly OptionNode[];
+  readonly graph: CommandGraph;
+  readonly out: Out;
+  readonly style: ContextualStyle;
+  readonly invokedBy: 'argv' | 'name'; // see Invocation by name
+  readonly log: Log; // see Logging
+}
+interface SourceAnswer {
+  readonly value: string | boolean | number | readonly string[]; // a number for a counted option
+  readonly label: string;
+}
+```
+
+```ts
+// src/config/extension.ts: the binding names a key in the plugin's settings file.
+export const configKey = extension('@acme/config/key', { schema: z.string(), target: 'option' });
+
+// src/config/plugin.ts
+export function config(): Plugin<ConfigOptions> {
+  return plugin('@acme/config', {
+    extensions: [configKey],
+    options: { config: { description: 'Read settings from this file.', type: 'string' } },
+    source: { binding: configKey, load: () => import('./source.js') },
+  });
+}
+
+// src/config/source.ts, loaded only when an unfilled option carries configKey
+const source: SourceResolver<typeof config> = async ({ host, options, requests }) => {
+  const settings = await readSettings(options.config ?? join(host.cwd, '.acme.json'));
+  const answers: Record<string, SourceAnswer> = {};
+  for (const request of requests) {
+    const key = readExtension(request, configKey);
+    const value = key === undefined ? undefined : settings.values[key];
+    if (typeof value === 'string') {
+      answers[request.name] = { label: `${key} in ${settings.path}`, value };
+    }
+  }
+  return answers;
+};
+export default source;
+
+// The application binds --limit to a variable and to a configuration key.
+const app = new Application('textstat', { plugins: [config()] })
+  .option('limit', { env: 'TEXTSTAT_LIMIT', extensions: [configKey('limits.bytes')], type: 'string', validate: digits })
+  .action(count);
+```
+
+The environment and the configuration map into options, and everything downstream reads options. A value from either is an alternative to giving the option, in every way. [ADR-0032](../decisions/0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md) records the decision.
+
+- **Precedence.** For each option, the first tier that supplies a value wins: argv, then the environment, then the configuration source, then the declared default, which for a Boolean option is its polarity's absent value and for a counted option is `0`. The order is fixed and core owns it. No input and no plugin reorders it. A multiple option and a counted option are supplied by argv when they have at least one occurrence. An [implied value](options.md#implied-values) is a value argv supplies, through a bare spelling, so no source supplies one.
+- **The stage.** Core fills options in one input-source stage, after parsing and before validation. The options in scope are the routed Command's local options and every global option. The stage fills the global options whatever was held, a structural fault on a global option and a group's missing-subcommand error included, so [activation](plugin-contract.md#activation) is identical to typing the flag. An occurrence that faulted supplies nothing, so the stage may fill its option. It fills the local options only when nothing is held, because the [request](middleware.md) is `null` otherwise. An unknown command ends the run before the stage.
+- **Environment binding.** `env` names the variable that supplies the option, or a non-empty list of them, and binding is explicit only: core derives no name, adds no prefix, and accepts no `env: true`. A local option and a global option may bind, whoever declares it, and the author of the declaration names the variable, so a logger plugin that declares `--log-level` binds it with `env: 'LOG_LEVEL'`. An argument cannot bind. A multiple string option cannot bind either, because its list comes from the configuration source. Nor can an option that carries the [color mark](color.md), the [verbose mark, or the quiet mark](verbosity.md), because the run reads each before environment preparation. The types reject each of these bindings. The name is read from `host.env` case-sensitively, with no rule about case, so a name no shell sets, such as one that holds a hyphen, never fills the option. A list such as `env: ['AWS_REGION', 'AWS_DEFAULT_REGION']` lets an application migrate a variable name: the first name in list order that holds a non-empty value supplies the option, and the later names are read only when the earlier ones are unset or empty. Within one invocation's scope a variable binds at most one option, and a list claims every name it holds; a name the list repeats binds once. Two Commands may bind one variable to their own local options, because only one of them runs.
+- **Environment values.** An empty variable is unset and falls through to the next name of its list and then to the next tier, the rule `NO_COLOR` and `FORCE_COLOR` follow. A string option receives the variable's value as its raw string. A Boolean option reads the whole value, case-insensitive and untrimmed: `true` and `1` are true, and `false` and `0` are false. The value states the option's value, not a spelling, so `VERBOSE=false` means false under positive, negative, and both polarity. Any other value on the name that supplies the option is a usage failure naming that variable, and it never falls through to a later name of the list. The failure reads, `Option "--verbose" (from VERBOSE): Use true, false, 1, or 0.`, and it fills nothing: no lower tier fills the option, and it activates nothing. A [counted option](options.md#counted-options) reads the whole value as a count when it is one or more ASCII decimal digits, so `0`, `3`, `007`, and `12` fill `0`, `3`, `7`, and `12`. Any other value, `-1`, `1.5`, ` 3`, and `three` included, is the same usage failure with the issue `Use a whole number of 0 or more.`, and it fills nothing in the same way. A variable fills a string option that declares an implied value with the string it holds, never with the implied value.
+- **Host conventions.** `NO_COLOR`, `FORCE_COLOR`, and `TERM` are core's [rendering policy](styles.md#rendering-policies), read by presence under ADR-0022. They are not environment bindings, and the Boolean grammar does not apply to them. An option may bind `NO_COLOR`, `FORCE_COLOR`, or `TERM`. Rendering policy still reads the variable by presence, and the binding reads it under the rules above. The option that carries the [color mark](color.md) binds no variable and no configuration key, and neither does the option that carries the [background mark](background.md). `COLORFGBG`, `STY`, and `INSIDE_EMACS` are inputs to the run's [background](background.md), read by presence and value from the captured environment. They are not environment bindings either.
+- **Configuration source.** A plugin definition may declare `source: { binding, load }`. `binding` is an option-target descriptor the plugin lists under its own `extensions`. An option that carries a value of it is configuration-bound, so core knows which options to ask about without knowing what the binding means, and core holds no store, file format, or path grammar. After argv and the environment, core collects the in-scope options that are still unfilled, configuration-bound, and hold no environment fault, the global options first and then the routed Command's own, each in declaration order. When there are none, core never loads the source. Otherwise it loads the source lazily, as it loads a middleware, and calls the resolver once and awaits it. The context holds the host, the plugin's own option values, the requests, which are the `OptionNode` of each collected option, and `graph`, the graph `inspect()` would return, which a run that calls a source builds as a run with a middleware chain does. Each request is the node itself inside `graph`, so `graph.globals.includes(request)` tells a global option from a local one. It also holds `out`, the channel object a middleware receives, and `style`, the contextual style an action receives, so a source warns through `out.warn` and the `lanes.warn` view, escaping raw data with `style.escape` first. A warning writes when the source runs, ahead of any takeover, so a source that warns under `--help` prints the warning on stderr before the page. `out.fatal()` in a source throws a `FatalError`, which core reports with its message and its class's code, 1, as it reports any failure from a source, and `out.results()` takes a `never` argument, so a JavaScript call throws a plain `TypeError`, as a middleware's does. The source's own options resolve from argv, the environment, and their defaults, and pass their validators, before the call, and they are never requested. When one is rejected, core never calls the source and reports the problem with the other validation problems, in their order; a rejected own option is not a source failure. An option the skipped source would have filled reports no missing value, and an absence rule never judges its omission, because the operator's configuration may hold it. A binding value on an option of an application that does not install the declaring plugin is inert, as every extension value of an uninstalled plugin is.
+- **Answers.** The resolver returns a record keyed by declared name. An answer holds a value of the option's raw type, a string for a string option, a Boolean for a Boolean option, a whole number of 0 or more for a counted option, and a list of strings for a multiple option, which the configuration source may fill although the environment cannot. It also holds a label, one line that holds a character other than whitespace, which core prints in diagnostics. A requested option with no key in the record has no answer and falls through to its default. A configuration answer of an empty string or an empty list is a fill: it keeps the default from applying and activates, and only a missing key is no answer.
+- **One source.** An application has at most one configuration source. A second installed plugin that declares one is a declaration error from the Application constructor naming both plugins, as a second claim on the [signals slot](signals.md) is.
+- **Supplied in every sense.** A filled value satisfies `required`, and a list satisfies the at-least-one rule of a required multiple option by its length, so an empty list still reports the required message. A filled value never triggers `validateOmitted`, because the validator receives the filled value and not `undefined`. It appears in the [validation context](validation.md#validation-context)'s `supplied` record as the raw value. The action, the request, and the graph cannot tell which tier supplied a value. Provenance is internal to core's failure messages, and nothing publishes it, except that a [middleware](middleware.md) reads under `spellings` how its own plugin's options were typed, which a filled option never has.
+- **Diagnostics.** A failure on a filled value keeps the option as its subject, named by the spelling an operator would type under [Absence and defaults](validation.md#absence-and-defaults), and adds the source in parentheses after it: `Option "--limit" (from TEXTSTAT_LIMIT): Supply a whole number.`. An issue path follows the parenthesis, as in `Option "--field" (from fields in ./.acme.json) at 1: Supply a field name.`. The environment's label is the name of the variable that supplied the value, so `Option "--region" (from AWS_DEFAULT_REGION): ...` when the first name was unset, and the configuration source supplies the label of each answer, such as `limits.bytes in ./.acme.json`. A message about a value given in argv is unchanged. A fault on a filled value is an ordinary `InputProblem`, and `InputProblem` gains no field. A Boolean variable outside the grammar is an `invalid` problem whose one issue reads `Use true, false, 1, or 0.`, and a counted option's variable outside its grammar one whose issue reads `Use a whole number of 0 or more.`. The parenthesized source appears in core's default text alone, so a view that renders `problems` cannot print it.
+- **Held faults.** Every environment and configuration fault is held like any validation fault under [Invocation](invocation.md) and raised only at the dispatch boundary, so a takeover such as `--help` reports none. A Boolean or counted variable outside its grammar and an issue on a filled value are validation-phase problems, collected in authoring order with the rest, the globals first. A plugin fault or a failure from the source stops the stage, fills nothing more, and takes the place of every problem collected, as a validator's developer error does. A structural fault and the missing-subcommand error keep their rank ahead of all of them, and after either one core validates the global options alone. Under any of these faults core still validates each of a plugin's own options whose tokens parsed, for [`ownOptions`](middleware.md) alone, so `textstat --format json -c missing.json one.txt` writes the configuration failure as the formatter's JSON line, and the held fault stays the one raised. A run cancelled while a source call is in flight awaits it, as it awaits a validator, and starts nothing further.
+- **Projections.** `inspect()` publishes `env` on every [`OptionNode`](graph-inspection.md) variant, an array of the bound variables in declaration order, empty when the option binds none, and the [manifest](../plugins/manifest.md) copies it into each option entry. Help prints no environment binding on either [variant](../plugins/help.md#help-variants), because help teaches command-line syntax and a variable belongs to the documentation. A configuration binding is the declaring plugin's extension value, which `inspect()` already publishes under `extensions`, and core adds no fact for it.
+
+## Input source declaration errors
+
+Each rule below is a `DeclarationError` with code 1 that throws at the moment [Declaration faults](declaration-faults.md) assigns it. A diagnostic names the declaration as `Global option "limit"`, `Command "count" option "limit"` or `The root Command option "limit"` for a local option, and `Plugin "@loomcli/log" option "verbose"` for an option a plugin declares. The types reject `env` on a multiple option, on an argument, and with a value that is not a string.
+
+- **One variable per option.** Within one invocation's scope a variable binds one option, and a list claims every name it holds. The two sides name any pair of a global option and a local option, and an option a plugin declares against an application's is the same fault: [`@loomcli/core/variable-bound-twice`](diagnostics.md#loomclicorevariable-bound-twice).
+- **One configuration source.** An application installs one configuration source: [`@loomcli/core/slot-taken`](diagnostics.md#loomclicoreslot-taken).
+
+The types give a source a loader and an option-target binding. Core admits the binding's descriptor itself, so a binding the plugin does not also list under `extensions` works the same. A plugin's own options resolve before its source loads, so a value of the binding on one of them is never filled from that source.
+
+## When author code fails
+
+A source's loader or resolver that throws or rejects takes the [ordinary failure path](failures.md#the-ordinary-failure-path), and an author's catch is final, under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). The outcomes below differ from an action's, and each is held and raised at the dispatch boundary, as the held-faults rule above states.
+
+- **A `LoomError`.** A resolver that throws or rejects with a `LoomError` reports that failure with its class's code, as an action's failure reports, and an application's own failure class keeps its [declared code](failures.md#declared-exit-codes). Only the resolver's own throw or rejection reports this way: a failure thrown while core reads the answers, a `LoomError` included, is a plugin fault under **Any other throw**. [ADR-0038](../decisions/0038-a-configuration-source-warns-and-reports-input-problems-through-the-ordinary-channels.md) records the decision for an `InputError`, and [ADR-0045](../decisions/0045-a-failure-class-declares-its-exit-code.md) widens it to any `LoomError`.
+- **An `InputError`.** It is a usage failure with code 2, with the message and problems the source gave it, as under [ADR-0036](../decisions/0036-each-value-passes-the-same-validator.md). A source uses it for a mistake in the invocation that only it can see, such as a file the operator named that does not exist. A problem the source reports for a requested option names it by [`reportedSpelling(request)`](failures.md#failure-classes), the spelling core's own validation reports, so the source never derives it. In an [invocation by name](invocation.md#invocation-by-name), where `invokedBy` reads `'name'`, it names the option by its declared name, `request.name`, as core's own problems do there.
+- **Any other throw.** A resolver that throws or rejects with anything that is not a `LoomError` and that no [translator](failures.md#translators) answered is a defect of that plugin, an internal error with code 1: [`@loomcli/core/foreign-throw`](diagnostics.md#loomclicoreforeign-throw). A throw while core reads the source's answers, a getter on the record or on an answer included, is never offered to a translator. Both report as `Plugin "<id>" failed in its configuration source: <reason>.`
+- **A loader that fails.** A `load` that throws or rejects, or a module that exports no default source function, is a defect with code 1: [`@loomcli/core/plugin-loader-failed`](diagnostics.md#loomclicoreplugin-loader-failed).
+- **Answers outside the rule.** Answers that are not a record, an answer for an option core did not request, a value of the wrong type for its option, and an answer that is not `{ value, label }` or whose label is not one line that holds a character other than whitespace are defects with code 1, each with its own sentence: [`@loomcli/core/source-answers`](diagnostics.md#loomclicoresource-answers).
+- **A configuration file.** A missing or malformed configuration file is not a core fault: the configuration plugin decides how to treat one, and a source that answers nothing leaves every option to its default.
+
+A fault of either kind renders by build, as the Developer Diagnostic in a development build and the generic defect message in a distributed one, under [Development builds](release-facts.md#development-builds).

@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-
 import { expect } from 'vite-plus/test';
 
 /**
@@ -41,44 +39,6 @@ function findingsOf(text: string): string[] {
   return text.split('\n\n').filter((section) => section.startsWith('    '));
 }
 
-/** One rule as its registry's source declares it. */
-interface RegisteredRule {
-  readonly name: string;
-  readonly headline: string | undefined;
-  readonly explanation: string | undefined;
-}
-
-/** One string literal in any of the three quotes, its escapes kept as written. */
-const literal = /(?<quote>['"`])(?<text>(?:\\.|(?!\k<quote>)[^\\])*)\k<quote>/su;
-
-/** The text of the literal `key:` holds in one rule's definition, its escapes undone. */
-function definitionText(definition: string, key: string): string | undefined {
-  const start = definition.search(new RegExp(`\\b${key}:\\s*['"\`]`, 'u'));
-  if (start === -1) {
-    return undefined;
-  }
-  const text = literal.exec(definition.slice(start))?.groups?.text;
-  return text?.replaceAll(/\\(?<escaped>.)/gu, '$<escaped>');
-}
-
-/**
- * Every rule one registry source declares, read from its text. `call` matches the opening of each
- * declaring call and captures the rule's `name`; the headline and the explanation are the string
- * literals the definition that follows holds, up to the call's close.
- */
-function registeredRules(file: URL, call: RegExp): RegisteredRule[] {
-  const source = readFileSync(file, 'utf8');
-  return Array.from(source.matchAll(call), (match) => {
-    const start = match.index + match[0].length;
-    const definition = source.slice(start, source.indexOf('\n});', start));
-    return {
-      explanation: definitionText(definition, 'explanation'),
-      headline: definitionText(definition, 'headline'),
-      name: match.groups?.name ?? '',
-    };
-  });
-}
-
 /**
  * The registry's own contract for one rule's prose: a one-line headline without a closing period,
  * and an explanation of whole sentences on one line, which the diagnostic wraps to the terminal's
@@ -92,5 +52,7 @@ function ruleContract(name: string): object {
   };
 }
 
-export type { RegisteredRule, RuleParts };
-export { findingsOf, registeredRules, ruleContract, ruleParts };
+export type { RegisteredRule } from './rule-source.mjs';
+export { registeredRules } from './rule-source.mjs';
+export type { RuleParts };
+export { findingsOf, ruleContract, ruleParts };

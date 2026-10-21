@@ -1,3 +1,32 @@
+/*
+ * Acceptance plan for interaction (docs/core/interaction.md#interaction).
+ *
+ * - The decision. With stdin and stderr terminals and no mark, `interactive` is `true`. It is
+ *   `false` with stdin piped, with stderr redirected, under `--no-input` from the interaction
+ *   plugin, under its bound variable set to `false`, from the configuration source, under
+ *   `app.invoke`, under an action's `invoke`, and in an MCP tool call. A piped stdout leaves it
+ *   `true`, and a marked option that reads `true` with stdin piped leaves it `false`.
+ * - Conditional requiredness. With interaction off, an omitted `required: 'non-interactive'` option
+ *   fails with exit 2 before the action and the sentence the reference states, beside any other
+ *   input problem in authoring order, by declared name under `invoke` and in an MCP tool call, and
+ *   a supplied one validates and reaches the action. With interaction on, the omitted option
+ *   reaches the action as `undefined`. Each declaration error the reference lists throws from its
+ *   call, and help, the manifest, and the MCP schema print the facts the reference states.
+ * - `supplied` and `missingInputError`. `supplied` matches the validation context's record for
+ *   argv, environment, configuration, and by-name values, holds `undefined` for a defaulted option,
+ *   and rejects writes at every depth. `missingInputError` builds both sentences by spelling and by
+ *   name, and rejects a global option and an undeclared name.
+ *
+ * Acceptance plan for the interaction plugin (docs/plugins/interaction.md#interaction-plugin).
+ *
+ * - `mimir --help` lists `--no-input` with its description among the global options, the manifest
+ *   marks it `control` and `interaction`, and `mimir setup --no-input` with stdin and stderr
+ *   terminals runs with `interactive` false.
+ * - `MIMIR_INPUT=false`, and the configuration source's `false`, turn interaction off,
+ *   `MIMIR_INPUT=yes` fails with the environment grammar's usage failure, and an application that
+ *   marks its own option and installs the plugin fails with the two-marks error.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

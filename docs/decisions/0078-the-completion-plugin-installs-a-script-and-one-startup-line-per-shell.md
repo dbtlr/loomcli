@@ -32,7 +32,7 @@ Cobra and the tools built on it, such as kubectl, Helm, and gh, install nothing 
 - **A PowerShell script under ADR-0043.** The PowerShell script is ported from Cobra's, with its `Invoke-Expression` removed: it calls the program with an argument array and evaluates nothing typed, as the other scripts do. It quotes with every character PowerShell reads as a single quote doubled, U+2018 through U+201B included, and it calls no `.bat` or `.cmd` program, whose arguments `cmd.exe` reads again as commands.
 - **`update` and `refreshCompletion`.** `update` rewrites each recorded shell's script at its recorded path, and its line only when a new version changes the line's text, so a refresh run from another environment moves nothing. It touches no shell the record does not list, checks every shell before it writes any, and exits 0 when nothing is recorded. `refreshCompletion` is an `afterReplace` function for self-update that runs the replaced binary's `completion update` as a child process, as `refreshSkills` runs `skills update`, and never fails the update. An application with both composes them in its own `afterReplace`. A binary updated another way, by a package manager or the installer script, refreshes through `completion update`, and a stale script keeps working because it asks the binary at every Tab.
 
-The contract and its acceptance are in [Completion](../core.md#completion) and [Installed files](../core.md#installed-files).
+The contract and its acceptance are in [Completion](../plugins/completion.md) and [Installed files](../core/installation-record.md#installed-files).
 
 ## Considered options
 

@@ -1,3 +1,56 @@
+/*
+ * Acceptance plan for failure hints (docs/core/lifecycle-hooks.md#failure-hints).
+ *
+ * The private `@loom/explain` plugin, which both example applications install, proves the hook in
+ * the examples. Its `onFailure` answers an `UnknownOptionError` alone and returns `Run "<command
+ * line>" to explain this command.`, where the command line is `application`, then `path`, then
+ * `--explain`, joined by single spaces. Neither application overrides `UnknownOptionError`, so
+ * core's default text prints the hint under its sentence. Every unknown-option diagnostic the
+ * examples pin therefore gains the hint line: `jsonkit get --format json user.name -f doc.json`
+ * under Formatter, and `jsonkit get name -f doc.json --pretty`, which reads `Run "jsonkit get
+ * --explain" to explain this command.` under core's sentence. The tests that pin them,
+ * `examples/jsonkit/tests/format.test.ts` at line 53 and `examples/jsonkit/tests/jsonkit.test.ts`
+ * at line 303, move with the change; a change to diagnostic text is not breaking. Every other
+ * diagnostic the examples pin is unchanged, because the hook answers no other class. `jsonkit get
+ * --bogus -f doc.json` exits 2 and writes:
+ *
+ * ```text
+ * jsonkit: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".
+ * Run "jsonkit get --explain" to explain this command.
+ * ```
+ *
+ * `textstat --bogus` exits 2 with the same sentence and `Run "textstat --explain" to explain this
+ * command.`, because the fault is raised on the root and `path` is empty. Once help's failure hint
+ * lands, `Run "jsonkit get --help" to see the usage.` and `Run "textstat --help" to see the usage.`
+ * print above the explain line, because `help()` is installed first.
+ *
+ * The acceptance tests cover, through public APIs with fixture applications and fixture plugins: an
+ * override reading `application` and `path` for a structural fault on a global option before any
+ * child name, `[]`; for a local-option fault on a nested Command, its routed path; for an unknown
+ * Command under a group, the partial path to the group; and for a build fault, the application
+ * name, `[]`, and no hints; a declared default or implied value its validator rejects, for which
+ * the hook runs with `path` `[]` and `command` the root; a fault reported after the primary
+ * outcome, such as a view's throw in an `out.render` call the action never awaited, receiving hook
+ * calls of its own; two plugins' hints under core's default text in installation order, with a line
+ * both return printed twice; an override receiving the hints and printing them in its own form; a
+ * hook returning `undefined`, and one returning `[]`, beside which the default text is unchanged
+ * byte for byte; a hook that throws ahead of a working one, which then is not called, writing
+ * core's default text with no hint, then the generic line, and returning 1 for a usage error that
+ * carried 2; a hook whose reason holds a line break or control characters, and a broken failure
+ * view whose reason does, each writing one escaped line; a JavaScript hook assigning `exitCode`
+ * leaving the resolved code unchanged; a hook that throws beside a failure view that would break,
+ * writing core's default text and calling no view; a hook that throws in a run a caller cancelled
+ * whose failure still renders, returning 130; no hook call for a build fault, for a run a caller
+ * cancelled whose action rejects with the signal's reason, or for `--help` taking over a held
+ * unknown-option fault; the plain fallback under a broken failure view writing no hints; an issue
+ * with an extra `code` field on the second value of a variadic argument reaching an `InputError`
+ * override with `code` intact and `path` `[1]`, and the same on the second value of a multiple
+ * option; and a hook reading `graph` and `command`, which for an unknown option on a nested Command
+ * suggests a visible global or local spelling and never a hidden or deprecated one, and for an
+ * unknown Command under a group suggests a visible child by its canonical name and never an alias.
+ * Each case runs under Node and Bun.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

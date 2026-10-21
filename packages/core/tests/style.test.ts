@@ -1,5 +1,166 @@
 // @module-tag docs
 
+/*
+ * Acceptance plan for the marked-string wire contract (docs/maintaining/style-wire.md).
+ *
+ * Implementation acceptance includes these cases through both width measurement and final output:
+ *
+ * - Every delimiter as literal input, escaped once, escaped twice, and next to a valid frame.
+ * - Unknown tokens and glyphs, malformed JSON, truncated headers, extra closes, and unterminated
+ *   recognized frames.
+ * - A recognized glyph header with a nonempty body, preserving the malformed frame as literal text.
+ * - A known token without a mapping, a custom undefined mapping, and a literal string resembling a
+ *   complete registered frame.
+ * - Nested styles, reset variants, embedded ANSI resets, and an ANSI reset inside a padded frame.
+ * - A multi-character compatibility glyph inside nested padding and escaped delimiters inside a
+ *   measured value.
+ * - A no-wrap frame holding a style, a glyph, or a padding frame, and nested inside each, resolving
+ *   to its body byte for byte, and a `["nowrap", 1]` header kept as literal text.
+ * - Large malformed headers without quadratic header rescanning, and deep unchanged padding without
+ *   recursive-stack failure or repeated Unicode analysis.
+ * - Unclosed ANSI styling and hyperlinks followed by a separate output call, with no leaked
+ *   formatting.
+ * - Loom frame boundaries inside raw OSC payloads and raw ANSI commands split across Loom frames,
+ *   under disabled styling policies.
+ *
+ * Acceptance plan for explicit color fallbacks (docs/core/styles.md#explicit-color-fallbacks).
+ *
+ * The implementation verifies exact bytes for explicit and omitted fallbacks at all three depths,
+ * including `ansi256` source colors and background helpers. It verifies that an index passed by a
+ * direct array callback is rejected and an explicit one-argument wrapper succeeds. It covers
+ * partial and `undefined` options, invalid options at helper-call time, copied option values,
+ * whole-color replacement, nested restoration, embedded resets, and color suppression. Type checks
+ * reject invalid fields and names while preserving chain typing. The wire checks validate the new
+ * color forms and retain the existing forms, as specified in the wire contract
+ * (docs/maintaining/style-wire.md#explicit-color-fallbacks). Node and Bun process fixtures plus
+ * packed consumers prove the public API.
+ *
+ * Acceptance plan for styles and rendering policy (docs/core/styles.md).
+ *
+ * The style tests and packed consumers cover these obligations:
+ *
+ * - Chaining, nesting, each reset, no-theme inheritance, and rejection of token references in theme
+ *   mappings.
+ * - Every foreground, background, modifier, and custom-color helper, including invalid arguments
+ *   and capability degradation.
+ * - The complete pinned glyph catalog, semantic aliases, multi-character compatibility forms, and
+ *   independence from themes and ANSI policy.
+ * - Automatic custom-name inference in detached Commands and views after the registration
+ *   prerequisite, with typo and reserved-name rejection.
+ * - Every rendering-policy field, invocation override behavior, nonempty `"0"` environment values,
+ *   conflicting variables, and independent destinations under one policy.
+ * - Embedded ANSI colors and resets, separate hyperlink and terminal-control policies, and
+ *   malformed control strings.
+ * - Literal marker data, nested deferred padding, Unicode width, tabs, multiline strings, and the
+ *   adversarial cases in the wire contract.
+ * - Fresh host capture on repeated runs, no import-time capability capture, and equivalent output
+ *   under Node and Bun.
+ * - Columns per destination: a view rendered to stdout reads stdout's width and one rendered to
+ *   stderr reads stderr's, when the two streams report different widths and when only one is a
+ *   terminal.
+ * - Columns without a terminal: a pipe, a redirect to a file, `app.invoke`, and an MCP tool call
+ *   each read `columns` as `undefined`, with `COLUMNS=60` set as well, and `wrap` returns the text
+ *   unchanged.
+ * - Live width: under a pty-backed host, one run renders twice either side of a resize, and the
+ *   first render reads 100 columns and the second 60. The first render's text is not redrawn.
+ *   `host.terminal.stdout.columns` and `host.terminal.stderr.columns` read the new width after the
+ *   resize, and a reported 0 reads `undefined`.
+ * - `COLUMNS` only narrows on a terminal destination: `COLUMNS=60` over a real width of 100 gives
+ *   `columns` 60, `COLUMNS=150` over 100 gives 100, and `060` over 100 gives 60. `COLUMNS` set to
+ *   ` 60`, `+60`, `60 `, `6e1`, `0`, `abc`, `-5`, `60.5`, an empty string, or an integer beyond the
+ *   safe range leaves 100.
+ * - `COLUMNS` on a terminal that reports no width: it reads `COLUMNS=60` as 60 and reads
+ *   `undefined` without `COLUMNS`. `COLUMNS=60` on a pipe leaves `undefined`.
+ * - The host facts stay real: `host.terminal.stdout.columns` and `host.terminal.stderr.columns`
+ *   read the real width and never reflect `COLUMNS`. A host override of plain numbers stays fixed
+ *   across renders, and an override that supplies a getter is read each time. `isTTY` is captured
+ *   once.
+ * - `out.draw` resolves the row count for the real stderr width read at that draw, under
+ *   `COLUMNS=60` and after a resize alike.
+ * - Greedy fitting: each output line takes as many words as fit within `columns`, and a line
+ *   exactly `columns` wide stays on one line, while a line one column wider breaks.
+ * - Breaks at spaces only: a break only at U+0020, never at a tab, and runs of spaces inside a line
+ *   kept.
+ * - `expandTabs`: each tab becomes spaces to the next multiple of eight from the start of its input
+ *   line, each line of a CRLF or LF text counted alone, measured in the destination's glyph forms,
+ *   so a tab after `◉` takes seven spaces and after `(*)` five. A tab inside a style frame or a
+ *   `nowrap` frame expands and the frame resolves as before, a tab inside a `pad` frame is left to
+ *   the frame, and a tab inside an OSC 8 payload stays.
+ * - Tabs in a lane: on a terminal 11 columns wide, `out.warn('aaaaaa\tb c')` prints `⚠ aaaaaa  b`
+ *   and then `  c`, so no line passes 11 columns and none holds a tab, and the same holds for the
+ *   message inside `nowrap` and inside a style. Off a terminal, the lane keeps the tab, and `print`
+ *   keeps it everywhere.
+ * - Line breaks: LF and CRLF kept, with each input line wrapped alone, and an inserted break is LF,
+ *   or CRLF on an input line that ends in CRLF.
+ * - Leading spaces: an input line's leading spaces are never a break and stay with its first word,
+ *   so an indented path wider than `columns` keeps its indent on its own line.
+ * - Trailing spaces: spaces at the end of an input line are never a break, stay with its last word,
+ *   and count toward the fit, so `ab cd   ` at 5 columns breaks before `cd   `, and a records value
+ *   or a table cell whose trailing space would pass the width wraps instead of overflowing.
+ * - Dropped spaces: the spaces at a break are dropped, and continuation lines start at column 0.
+ * - A word wider than `columns` stays whole on its own line, for a URL, a token, a hash, a path
+ *   without spaces, and any text inside `nowrap`.
+ * - A `pad` frame or a `nowrap` frame is one unit: `wrap` measures a `pad` frame at its padded
+ *   width and a `nowrap` frame at its body's width, and never breaks inside either.
+ * - `nowrap`: a body never breaks at any `columns`, and it resolves byte for byte to its body, so a
+ *   printed `nowrap` path copies as the exact text. A lane message holding
+ *   `nowrap('/Users/a/Library/Application Support/x')` at a narrow width keeps the path on one
+ *   line, and the text around it wraps. A table cell in `nowrap` raises its column's floor to the
+ *   whole cell. A style or a glyph inside the frame, and the frame inside a `pad` frame, resolve as
+ *   without it. A non-string throws `TypeError('Style helpers require a string.')`, as `pad` does.
+ * - First-party messages: each filesystem path and URL a first-party message prints through a lane,
+ *   a view, or a `FatalError` is inside `nowrap`, the service status view's unit path included, and
+ *   the message text is byte for byte what it was. A `nowrap` frame in an `InputError`'s message
+ *   prints its delimiters on a pipe and on a terminal, while one in a `FatalError`'s message
+ *   resolves to its body on both, so the configuration plugin's named-file failure and a wrong
+ *   value's label print a path that holds spaces whole and unmarked.
+ * - `splitLines` frames: a style, a `pad` frame, and a `nowrap` frame that span a line break close
+ *   at the line's end and open again on the next line, nested frames in their order, and a frame
+ *   closed before the break stays closed. A style header that names a theme token splits like any
+ *   style, and an escaped delimiter or a glyph frame is text.
+ * - `splitLines` embedded ANSI: an embedded SGR color, set at the top level, inside a style, or
+ *   inside a `pad` frame, ends at each line's end and is set again on the next, and an embedded OSC
+ *   8 hyperlink closes at each line's end and opens again on the next.
+ * - `splitLines` breaks: LF and CRLF split alike and are dropped, a trailing line break adds no
+ *   empty line while a blank line inside the text stays, a `pad` frame after the last break is a
+ *   line, a line break inside a control string does not split, text without a break comes back
+ *   unchanged, and a non-string throws `TypeError('Style helpers require a string.')`.
+ * - A style and a hyperlink that span a break continue across it, with the break inside the
+ *   envelope as an authored line break sits, as a rendering with color and hyperlinks on shows, and
+ *   a lane's gutter on a continuation line carries the span.
+ * - Glyph measurement per destination: a message with a marked glyph whose main and compatibility
+ *   forms differ in width breaks at different points for a destination that selects main forms and
+ *   one that selects compatibility forms.
+ * - Text without spaces, such as Chinese, Japanese, and Thai prose, comes back unbroken at any
+ *   `columns`.
+ * - `wrap` rejects `0`, a negative number, a fraction, `NaN`, `Infinity`, and an unsafe integer
+ *   with `RangeError` and the sentence `Wrap width must be a positive safe integer.`, and
+ *   `pad(wrap(text, n), n, { align: 'center' })` centers each line.
+ * - Marked lanes: `info`, `success`, `warn`, `error`, `debug`, and `trace` wrap a long message at
+ *   `columns` minus the measured glyph gutter where `columns` is defined and leave it unwrapped
+ *   when no column remains after the gutter, continuation lines carry the gutter, authored line
+ *   breaks keep their gutter, and `print` does not wrap.
+ * - Golden fixtures that run without a terminal are byte for byte unchanged, for every lane, the
+ *   table, the records view, and the lanes of an invocation by name.
+ * - The update notice: on an 80-column stderr terminal the notice wraps with the info lane's gutter
+ *   on its continuation line, and on a pipe it stays one line.
+ * - Failure text: core's default text for each failure class stays one line per sentence on a
+ *   terminal narrower than the sentence and on a pipe, and an override that calls `context.wrap`
+ *   wraps its own text. A failure view override receives `columns`, `wrap`, and `expandTabs`. Help
+ *   pages wrap under Help wraps to the destination's columns
+ *   (docs/plugins/help-page.md#help-wraps-to-the-destinations-columns).
+ * - The Developer Diagnostic's explanation breaks at stderr's effective width with the same line
+ *   breaker as `context.wrap`, and a word wider than that width keeps its own line. On a 100-column
+ *   stderr terminal the banner fills 100 columns and the explanation wraps at 100, and under
+ *   `COLUMNS=60` they fill 60. With no width, they use 80, and so does a stderr that is not a
+ *   terminal even when a host override reports a width. An explanation with wide characters wraps
+ *   by display width, not by string length.
+ *
+ * Process fixtures run on Node and Bun. Named-theme whole-token replacement belongs to Loom theme
+ * (docs/plugins/theme.md). Fallback-option coverage belongs to the fallback acceptance plan in this
+ * file.
+ */
+
 import { readFileSync } from 'node:fs';
 
 import { expect, test } from 'vite-plus/test';
@@ -175,7 +336,10 @@ test.each([
 });
 
 test('every exported glyph matches the pinned main and compatibility catalog', () => {
-  const catalog = readFileSync(new URL('../../../docs/glyphs.md', import.meta.url), 'utf8');
+  const catalog = readFileSync(
+    new URL('../../../docs/maintaining/glyphs.md', import.meta.url),
+    'utf8',
+  );
   const rows = [
     ...catalog.matchAll(/^\| `[^`]+` \| `(?<main>[^`]+)` \| `(?<compat>[^`]+)` \|$/gmu),
   ];

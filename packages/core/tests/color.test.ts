@@ -1,3 +1,44 @@
+/*
+ * Acceptance plan for the color choice (docs/core/color.md#color).
+ *
+ * The color choice is proven when public APIs alone produce these results under Node and Bun,
+ * through a fixture Application that marks its own option and through jsonkit with the color
+ * plugin, with a host that reports a capable terminal where a case says so. Each case prints
+ * through text that carries both a color and `bold`: a fixture lane message styled with both, or
+ * the fixture's failure view override that styles its line with both. A build declaration error is
+ * read from a development build, whose Developer Diagnostic resolves through core's default styles.
+ * Through jsonkit, the cases read its help page:
+ *
+ * - The pair. On a capable terminal, `--no-color` prints no color escape and keeps bold, also with
+ *   `FORCE_COLOR=1`. Piped, `--color` prints color escapes and no bold. `--color --no-color` prints
+ *   its repetition failure with no color escape, and `--no-color --color` prints it in color. A
+ *   spelling after the bare `--` changes nothing, and an alias spelling, such as `--no-colour`,
+ *   works as the long spelling does.
+ * - The variables. With `NO_COLOR=1`, `--color` prints color, and with `FORCE_COLOR=1`,
+ *   `--no-color` prints none. With neither spelling, every byte is unchanged under each combination
+ *   of the two variables, on a terminal and piped.
+ * - The declared policy. `--no-color` beats `rendering: { color: 'always' }` on the Application and
+ *   on `run()`, and `--color` beats `'never'` on each.
+ * - Before the chain. An unknown command, a dotenv warning, a configuration source's warning, and a
+ *   declaration error an `onGraphBuilt` hook raises each print with no color escape under
+ *   `--no-color` on a capable terminal, and in color under `--color` piped.
+ * - Host capture. On a capable terminal, a build that bakes malformed release facts prints its
+ *   Developer Diagnostic with no color escape in an Application that marks an option, even under
+ *   `--color` and `FORCE_COLOR=1`, and one that marks none prints it as today. An unreadable
+ *   working directory's line holds no style and is unchanged byte for byte.
+ * - A faulting word. `--color=x` fails with the usage failure the reference states, exit 2, and the
+ *   line follows the declared policy: in color on a capable terminal, with no color escape piped,
+ *   and with none under `NO_COLOR=1`.
+ * - The option. `options.color` reads `true`, `false`, and the absent value for a positive
+ *   spelling, a negative spelling, and neither.
+ * - Declarations. Each rejected declaration the reference lists throws under
+ *   `@loomcli/core/color-mark` from the moment the reference names, and the negative type checks
+ *   reject the rules the types state.
+ * - By name. `jsonkit.invoke` with the plugin installed captures plain text under `FORCE_COLOR=1`
+ *   with `color` supplied as `true`, and a fixture Application's invocation by name captures plain
+ *   text under `FORCE_COLOR=1` and `rendering: { color: 'always' }`.
+ */
+
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

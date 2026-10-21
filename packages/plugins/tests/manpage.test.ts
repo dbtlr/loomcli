@@ -1,3 +1,92 @@
+/*
+ * Acceptance plan for the man pages plugin (docs/plugins/manpage.md#the-page-set).
+ *
+ * Man pages are proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - The page. jsonkit installs `manpage()`, and `jsonkit manpage generate --out <folder>` writes
+ *   `jsonkit-get.1` byte for byte as above, with jsonkit's version. Two runs, and a run under
+ *   another `HOME`, `TERM`, `COLUMNS`, and locale, write identical bytes, and `generate` and
+ *   `install` write identical pages. `groff -man -Tutf8 -ww -z` reads every page jsonkit writes
+ *   with no warning, and where `mandoc` is on `PATH`, `mandoc -T lint -W warning` reports
+ *   `missing date` for each page, which the empty date gives, and nothing else.
+ * - The set. jsonkit's set holds a page for the root, each visible child, the deprecated `fetch`,
+ *   and each visible plugin Command, and none for `debug`, `paths`, `__complete`, or the alias
+ *   `ls`. The root page lists `fetch` with its deprecated fact and neither `debug` nor `paths`, and
+ *   `jsonkit-fetch.1` opens its DESCRIPTION with `Deprecated: Use get instead.`
+ * - Sections. A fixture covers each section and its omission: a root page whose GLOBAL OPTIONS hold
+ *   jsonkit's globals and a child page that holds none and names `jsonkit(1)` under SEE ALSO;
+ *   authored outer and inner help sections as `.SH` and `.SS` in help's order; a hidden option on
+ *   neither OPTIONS nor ENVIRONMENT; an option with an environment binding and `configInput`, which
+ *   prints both lines and an ENVIRONMENT entry; a Boolean of each polarity, a long-only option, a
+ *   `shortOnly` option, a counted option, a string option with an implied value, and an option with
+ *   a closed set, each tag with the pinned fonts and each text as help prints its row, and each
+ *   ENVIRONMENT entry naming the pinned spelling; an example with a note and one without; a Command
+ *   with no description, whose NAME is the page name alone and whose parent's entry for it writes
+ *   its tag alone; and a root whose authored option section holds a global. An application that
+ *   installs neither help nor the configuration plugin still writes every page, reading the values
+ *   its Commands carry.
+ * - Markdown. A unit test renders each block and inline construct of Markdown details to the pinned
+ *   roff: a paragraph's lines filled, a heading at the top level and inside a list item, fenced and
+ *   indented code with blank lines at its ends, an empty line inside it, and a line ending in
+ *   spaces, a thematic break, nested bullet and ordered lists with `007.` numbering and an item
+ *   whose first block is code, a quote holding a list, a quote after a paragraph, an item with two
+ *   paragraphs, emphasis, strong emphasis, a code span inside emphasis, a link, a link whose text
+ *   is its destination, an image, and an autolink.
+ * - Escapes. A description, a details paragraph and heading, an authored help section heading, a
+ *   code line, an example, and a version each holding a leading `.`, a `'`, a `"`, a ``
+ *   ` ``, a `^`, a `~`, a `\`, `\fB`, a `-`, an escape character, and non-ASCII text such as `café
+ *   — 中` render under `groff -man
+ *   -Tutf8` as the characters written, the quote kept in a heading and the ASCII characters as ASCII, with the escape character shown as `\u001b`; a tab inside a code line renders as space up to a tab stop, and one in a description as a space. Every page is ASCII, and `groff
+ *   -man -Tutf8 -ww -z` reports nothing.
+ * - Names that collide. A fixture with a root child `foo-bar` beside `foo bar` fails every build
+ *   with the pinned diagnostic under `@loomcli/plugins/manpage/page-name-taken`, and the same graph
+ *   with one of the two hidden builds.
+ * - Generating. `generate` creates a missing folder and its parents with mode `755` and pages with
+ *   mode `644` under umask `077`, replaces a page of the same name and a symbolic link of that
+ *   name, leaves every other file, writes no installation record, and runs on a `win32` fixture
+ *   host. A `--out` that names a file fails with the pinned sentence and writes nothing, and a run
+ *   without `--out` exits 2.
+ * - Installing. Process tests set `HOME`, `XDG_STATE_HOME`, and the working directory to temporary
+ *   directories, and clear `MANPATH` and `SHELL` unless a case sets them:
+ *   - `install` writes the set under `<home>/.local/share/man/man1` with the modes above, records
+ *     it in `manpage.json`, and prints the pinned lines; a second `install` prints the unchanged
+ *     line and changes no byte. Where `man` is on `PATH`, `man -w jsonkit-get` with `MANPATH` unset
+ *     and `<home>/.local/bin` on `PATH` prints the installed page's path.
+ *   - With `PATH` lacking `<home>/.local/bin`, and with `MANPATH` set to a list without the folder
+ *     or an empty entry, `install` prints the pinned advice and the `export` line on stdout, and
+ *     that line, run by `bash -u` with `MANPATH` unset and set, leaves the folder first on
+ *     `MANPATH`; with `SHELL` ending in `fish`, it prints the Fish line, which a real Fish, where
+ *     one is on `PATH`, runs to the same `MANPATH`; with `MANPATH` ending in a colon and
+ *     `<home>/.local/bin` on `PATH`, it prints `Read them with man jsonkit.`
+ *   - A page `generate` wrote into the folder, a symbolic link at a page's path, and a recorded
+ *     page edited since, each refuse `install` and `update` with exit 1, print the refused line,
+ *     and change no byte. After an installed page is deleted, `install` writes it again and prints
+ *     the installed line. After an `install` killed once every page was written and before the
+ *     record was committed, the next `install` recovers the record and prints the installed line.
+ *   - On a `linux` host, after `HOME` changes with `XDG_STATE_HOME` held, `install` writes the set
+ *     under the new home and removes the unchanged pages under the old one, printing a removed line
+ *     for each. A record left with pages in both folders by an `install` killed while moving fails
+ *     `update` with the pinned sentence, `uninstall` removes both folders' pages with one removed
+ *     line for each folder, and the next `install` puts the set in one folder.
+ *   - After a Command is removed from the fixture, `install` and `update` remove its unchanged page
+ *     and keep an edited one with the left-in-place line. After a Command is added, `update` writes
+ *     its page into the recorded folder, and on a `linux` host it does so even with `HOME` changed
+ *     since and `XDG_STATE_HOME` held.
+ *   - With nothing recorded, `update` and `uninstall` print their nothing-to lines and exit 0, and
+ *     with every recorded page already deleted, `uninstall` prints its nothing-to-remove line,
+ *     deletes `manpage.json`, and exits 0. `uninstall` removes every unchanged page and each
+ *     created directory then empty, deletes `manpage.json`, keeps an edited page with the pinned
+ *     warning, and leaves a `man1` folder that held another file.
+ *   - A damaged `manpage.json` fails each child with the pinned sentence and writes nothing.
+ * - Refreshing. `refreshManpages`, given a fixture binary path, runs it with `manpage update`,
+ *   pipes its output into the host's streams, and resolves; a child that exits 1, and a path that
+ *   cannot start, each add the pinned `warn` log event and resolve. Installed as
+ *   `selfUpdate({ afterReplace: refreshManpages })` under the self-update fixture, an update
+ *   rewrites a recorded page to the replaced binary's version.
+ * - Packed consumers. A consumer installs the packed pack, imports `@loomcli/plugins/manpage`,
+ *   compiles against its declaration, and generates the pages.
+ */
+
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {

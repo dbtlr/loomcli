@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/plugins/tests/manpage.test.ts.
+
 import { expect, test } from 'vite-plus/test';
 
 import { detailsLines } from '../src/manpage/markdown.js';

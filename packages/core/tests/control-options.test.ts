@@ -1,3 +1,22 @@
+/*
+ * Acceptance plan for control options (docs/core/commands.md#control-options).
+ *
+ * Control options are proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - The first-party marks. `inspect()` on jsonkit reports `control: true` on `--help`, `--version`,
+ *   `--manifest`, `--explain`, `--color`, `--verbose`, `--quiet`, and the `--format` the
+ *   formatter's hook declares on `paths`, and `control: false` on `--file` and `select`'s
+ *   `--field`, and `inspect()` on textstat reports `control: true` on `--config`. Every help page
+ *   the examples pin is unchanged byte for byte.
+ * - Every declarer. A fixture marks a local option, a global option, a plugin's option, and an
+ *   option a lifecycle hook declares, and each node reads `true`; an omitted `control` reads
+ *   `false`.
+ * - No effect at run time. A fixture Command whose option is marked parses, validates, activates
+ *   its plugin's middleware, and reaches the action exactly as the same option unmarked does.
+ * - Faults. The negative type checks reject `control` on an argument and `control: 'yes'` on an
+ *   option.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

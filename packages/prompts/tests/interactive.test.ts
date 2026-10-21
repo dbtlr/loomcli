@@ -1,3 +1,49 @@
+/*
+ * Acceptance plan for questions (docs/libs/prompts.md#calling-a-question).
+ *
+ * - PTY. Through the `zpty` driver, a fixture application asks each kind and the screen reads the
+ *   frames the Frames and views section describes, with color and with `NO_COLOR`: the hint, typing
+ *   over it, clearing back to it, Enter on the hint, Enter with no prefill submitting the empty
+ *   string, a rejected answer whose issue stays until the next Enter, then an accepted one, the
+ *   answered line left in scrollback, secret's frame unchanged after typing, confirm's three hints,
+ *   `yes` and `NO` accepted and `x` answered with `Type y or n.`, and select's start on a matching
+ *   prefill, its stop at both ends, a window of seven with both marker lines, and its key help.
+ * - Linking. At a terminal, a supplied linked option prefills an asked question with the raw value
+ *   from argv, the environment, and the configuration source alike, and a question with
+ *   `skipIfSupplied` draws nothing and returns the validated value without calling the question's
+ *   validator. Prefill precedence holds across all four rungs, an accepted prefill passes through
+ *   the question's validator, an omitted Boolean does not prefill confirm, and a supplied secret
+ *   asks empty without `skipIfSupplied`.
+ * - Interaction off. Under `--no-input` with stdin and stderr terminals, with piped stdin, with
+ *   stderr redirected, under `app.invoke`, under an action's `invoke`, and as an MCP tool call: a
+ *   supplied linked option returns its validated value, an unsupplied one fails with the
+ *   missing-input sentence and exit 2, by declared name under an invocation by name, and an
+ *   unlinked question fails with `InteractionUnavailableError` and exit 1. A piped stdout with
+ *   stdin and stderr terminals still asks, and stdout holds no question byte.
+ * - Leaving. Ctrl-C at each kind exits 130 and leaves the terminal in cooked mode with the cursor
+ *   shown, with and without an installed signals owner, and stdin closing and Ctrl-D on empty input
+ *   at a question do the same. A caller's abort while a question waits resolves 130 and restores
+ *   the terminal. After every path, the process exits once the run resolves, with nothing left
+ *   reading stdin.
+ * - Typeahead. `8080` Enter `yes` Enter written in one chunk answers a text question and the
+ *   confirm after it, and a view override that draws more rows than the default redraws in place.
+ * - Faults. Each rule of Linking an option and an empty `choices` list throw their
+ *   `DeclarationError` at the call, and a run reports it with exit 1.
+ * - Types. `option` rejects a key the action's `options` lacks, secret rejects `default`, a
+ *   select's `default` must be a choice, and the return types of each kind, linked and unlinked,
+ *   match the types Calling a question shows.
+ * - Views. An application's override of each view changes its frame, and a secret's typed text
+ *   never reaches a view.
+ * - Width. The select frame clips at `context.columns`, including under `COLUMNS=60` on a terminal
+ *   and in the first frame drawn after a resize, and at 80 columns when `columns` is `undefined`,
+ *   where the window’s height estimate assumes no wrapping. Its frame data carries `rows` and no
+ *   `columns`, and an override of `questionFrame` reads `context.columns`.
+ * - Regions. Each question draws in an input region and writes no frame through `out.draw`. A lane
+ *   message written from a timer while a question asks lands above the frame, and the frame stays
+ *   whole. Two questions started at once ask one after the other, and every key typed for the first
+ *   reaches the first.
+ */
+
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

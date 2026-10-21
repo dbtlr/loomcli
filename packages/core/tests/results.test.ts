@@ -1,3 +1,45 @@
+/*
+ * Acceptance plan for results (docs/core/results.md).
+ *
+ * Results are proven when examples/textstat declares its table as a result with one whole view
+ * under the key `table` and prints the table bytes that packages/plugins/tests/table.test.ts pins,
+ * with its `--timing` line still on stderr. They are also proven when a hidden jsonkit Command
+ * declares `rows<Entry>` over the document's paths with a row view as its default and a whole view
+ * under a second key, writes each row as an async generator yields it, and leaves a partial list
+ * and the incomplete line behind when the generator throws. Each case runs under Node and Bun. The
+ * cases:
+ *
+ * - Rendering. Both shapes of `out.render` with a row view under a synchronous and an asynchronous
+ *   iterable. `out.results` under each declaration with an array, a generator, and an async
+ *   generator.
+ * - Back-pressure. Observed through a destination that delays its write callback and a source that
+ *   records each request, so no second request precedes the first callback. A later `print` to the
+ *   same destination lands after an unawaited sequence's last piece under a row view and under a
+ *   whole view. An invocation stays open while an unawaited sequence waits on a slow source and
+ *   completes after it.
+ * - Destinations. `print` and `render` reach stderr with stderr's capabilities on a result Command
+ *   and stdout on a plain one. A middleware's `print` keeps stdout on a result Command.
+ * - Result errors. Each `ResultError` kind with its exit code, its prefix, and an `undefined`
+ *   cause. An `InternalError` override reaching a `ResultError`. A cancelled run with an unemitted
+ *   result returns the signal's code and no missing-result diagnostic.
+ * - Early stops. Each early stop under a row view and under a whole view, with the incomplete line
+ *   carrying both counts before the report. A whole view that throws after a finite source ended. A
+ *   cancelled source that returns leaves the line alone. An override of `incompleteResult` silences
+ *   it, and one that throws leaves the primary report intact.
+ * - Empty sequences. An empty sequence under each view shape.
+ * - `views()`. It replaces a key in place, appends a key, moves the default, and keeps a moved
+ *   default through a later call. `inspect()` publishes the fact.
+ * - Build rules. Each build rule the reference lists.
+ * - Positive type checks. A declared row view in a plugin's `views` list, and a library's neutral
+ *   annotation and `command()` attachment of a declaration with a result.
+ * - Negative type checks. An iterable that is not the declared value passed under `result`, a value
+ *   passed under `rows`, `out.results` on a Command with no result and on a middleware's `out`, a
+ *   column that names a missing field through the declaration and through `out.render`, a value
+ *   with both `render` and `row` in a declaration and in `views()`, a row view under `result` in a
+ *   declaration and in `views()`, `result()` or `rows()` called after `action()`, and `views()` on
+ *   a declaration with no result.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

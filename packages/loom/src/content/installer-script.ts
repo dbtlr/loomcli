@@ -4,7 +4,7 @@ function shellWord(value: string) {
 }
 
 /**
- * The first part of the installation record's shell recipe in docs/core.md, byte for byte: it
+ * The first part of the installation record's shell recipe in docs/core/installation-record.md, byte for byte: it
  * checks `$target` and the environment, sets `record`, and creates the record's directory, writing
  * no file, so the script runs it before it downloads anything.
  */

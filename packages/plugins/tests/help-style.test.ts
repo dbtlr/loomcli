@@ -1,3 +1,41 @@
+/*
+ * Acceptance plan for the help and version restyle (docs/plugins/help.md#help-and-version-restyle).
+ *
+ * The implementation re-pins hand-written help pages and version lines against built processes
+ * under Node and Bun, including packed-consumer coverage. Plain and themed expectations are
+ * authored independently of the rendering helpers.
+ *
+ * - Root, leaf, group, and hybrid pages retain their content rules. Cover hidden-member filtering,
+ *   a directly requested hidden Command, a group with only hidden children, omitted empty sections,
+ *   and root-only folding of globals.
+ * - Compare complete plain text for jsonkit root, jsonkit select, and textstat against the examples
+ *   above. Check one final newline, no trailing row padding, required and variadic forms, Boolean
+ *   polarity, short-only options, and existing default serialization.
+ * - Pin exact themed bytes for the style mapping, including placeholders beside highlighted
+ *   spellings, the accepted-values sentence, dim fact punctuation around warning deprecation,
+ *   literal example flags, notes, the hint lines, and the version line. Cover deprecation on both a
+ *   row and a routed Command's masthead.
+ * - Cover the named theme at truecolor, 256 colors, and 16 colors, a custom token mapping, an
+ *   absent theme, an ordinary pipe, and a capable terminal with `NO_COLOR`. Check modifier policy
+ *   independently, including fully disabled styles. Neither view chooses a fallback color or adds a
+ *   glyph.
+ * - Use wide and combining characters in names and placeholders, plus literal style-marker data in
+ *   graph facts, defaults, and help extensions. Check alignment through core's measurement, literal
+ *   marker output, and no interpretation of authored example syntax.
+ * - Check formatter view order, custom and replaced view names, an unadvertised `ndjson` alias, and
+ *   a declared default other than a pack view. An earlier hook changing the default updates the
+ *   description. A later hook changing it leaves the description at its formatter-hook value. With
+ *   the formatter absent, help invents no selector or view list. Inspect the formatter description
+ *   and the absence of a parser default, and prove omission preserves an earlier middleware's
+ *   selected view.
+ * - Check version strings with a lowercase `v`, an uppercase `V`, an omitted version, and explicit
+ *   `0.0.0`. Root and routed invocations print the same application version text, and raw
+ *   marker-bearing strings stay literal.
+ * - Keep the existing help and version override, takeover, fault precedence, stdout, and exit-code
+ *   coverage. A replacement sees the same graph data, owns its newline, and can render its own
+ *   styles without installing a replacement plugin.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

@@ -1,3 +1,28 @@
+/*
+ * Acceptance plan for the formatter plugin (docs/plugins/format.md).
+ *
+ * The formatter is proven when textstat installs `format({ short: 'f' })` and jsonkit installs
+ * `format({ short: 'o' })`, after `help()` and `version()` and ahead of the example plugin, and
+ * public APIs alone produce the transcripts that examples/textstat/tests/format.test.ts and
+ * examples/jsonkit/tests/format.test.ts pin. This suite and format-views.test.ts cover the rest.
+ * Each case runs under Node and Bun. The cases:
+ *
+ * - Views. Both views under both units with an empty array and with a map, a `bigint` and a
+ *   top-level `undefined` as view faults, and U+009B and U+001B inside a string printed as escapes
+ *   under `color: 'never'` and `'always'` alike.
+ * - Declared views. An author-declared `json` kept with its map and position, and an
+ *   author-declared `ndjson` key that the alias no longer serves.
+ * - The option. `--format yaml`, `--format` on a no-result Command, `--format` twice and with no
+ *   value, an omitted `--format` leaving an earlier plugin's selection in place, and `--format yaml
+ *   --help` printing the page.
+ * - Collisions. The hook-collision error against a local, a global, and another plugin's `format`.
+ *   `format({ short: 'f' })` puts `-f` on the help row and selects a view through it, and its short
+ *   spelling collides with a local option's and with help's `-h`.
+ *
+ * The lifecycle cases live in packages/core/tests/request.test.ts, and the failure encoders' lines
+ * in packages/core/tests/failure-encoders.test.ts.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

@@ -1,3 +1,23 @@
+// Acceptance plan: see packages/loom/tests/build.test.ts.
+
+/*
+ * Acceptance plan for the package changelog (docs/toolchain/changelog.md).
+ *
+ * The package changelog is proven when process runs of the packed `loom` bin produce these results
+ * under Node and Bun, in fixture git repositories:
+ *
+ * - The bump table. Each row of the table cuts its next version from fixtures holding those kinds,
+ *   and a package at `1.2.0-next.1` fails the cut.
+ * - Ordering. Fragments added in three commits render in landing order within each group, breaking
+ *   entries first, and a fragment edited in a later commit keeps its first position.
+ * - `check`. A breaking fragment without its migration labels, a bare `feature.md`, and a fragment
+ *   in a subdirectory each fail `check` with exit 1 and their names.
+ * - `write`. A cut prepends the section, sets `version` with the rest of `package.json`
+ *   byte-identical, deletes the consumed fragments, and leaves `.changes/README.md`. A shallow
+ *   clone fails and changes no file. `--dry-run` prints the section and the version and leaves
+ *   every file byte-identical.
+ */
+
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';

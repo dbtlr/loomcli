@@ -4,7 +4,7 @@ description: Pull request rules and examples for fix, feature, and breaking libr
 
 # Change fragments
 
-This directory holds the pending entries for the root [changelog](../CHANGELOG.md). Run `pnpm loom changelog check` to validate the pending fragments. The [compiler reference](../docs/changelog-compiler.md) describes the synchronized release cut and its dry run. The [PR guard reference](../docs/pr-guards.md) describes automated fragment admission and version checks.
+This directory holds the pending entries for the root [changelog](../CHANGELOG.md). Run `pnpm loom changelog check` to validate the pending fragments. The [compiler reference](../docs/maintaining/changelog-compiler.md) describes the synchronized release cut and its dry run. The [PR guard reference](../docs/maintaining/pr-guards.md) describes automated fragment admission and version checks.
 
 ## Choose a fragment or a skip label
 
@@ -35,7 +35,7 @@ For example, a feature fragment named `feature.hidden-command-aliases.md` could 
 
 Fragments have no frontmatter, package attribution, or kind headings. This is an exception to the repository's ordinary Markdown frontmatter convention.
 
-Write links relative to the repository root, where the compiled entry will live. For example, use `[core reference](docs/core.md)` inside a fragment. The guide you are reading uses normal file-relative links.
+Write links relative to the repository root, where the compiled entry will live. For example, use `[core reference](docs/core/README.md)` inside a fragment. The guide you are reading uses normal file-relative links.
 
 ## Explain a breaking change
 

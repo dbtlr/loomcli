@@ -4,9 +4,9 @@ description: Trigger, jobs, commands, recovery modes, and repository settings fo
 
 # Release workflow
 
-`.github/workflows/release.yml` reconciles three records with the version in the participating manifests: the npm registry, the annotated tag `v<version>`, and the GitHub Release. Merging the guarded release PR is the only authorization. The workflow holds no registry secret, and every step reads before it writes, so a repeated run changes nothing. [ADR-0016](decisions/0016-a-release-merge-publishes-through-one-idempotent-workflow.md) records the design and the rejected alternatives.
+`.github/workflows/release.yml` reconciles three records with the version in the participating manifests: the npm registry, the annotated tag `v<version>`, and the GitHub Release. Merging the guarded release PR is the only authorization. The workflow holds no registry secret, and every step reads before it writes, so a repeated run changes nothing. [ADR-0016](../decisions/0016-a-release-merge-publishes-through-one-idempotent-workflow.md) records the design and the rejected alternatives.
 
-This reference documents this repository's own release, and the [toolchain reference](toolchain.md) documents the public commands that act on one package directory.
+This reference documents this repository's own release, and the [toolchain reference](../toolchain/README.md) documents the public commands that act on one package directory.
 
 The Loom CLI, `@loomcli/loom` in `packages/loom`, carries the logic. It participates in the release set like the libraries, and its release commands are hidden, so no listing advertises them. `packages/loom/src/commands/release/` holds `plan`, `record`, and the synchronized `cut`, and `packages/loom/src/helpers/` holds the registry, GitHub, plan, and record helpers they share. The workflow runs a published, pinned copy of the CLI, the [release tool](#release-tool), not the one in the checkout.
 
@@ -41,7 +41,7 @@ The packed consumer runs in CI on every pull request that changes code, on Linux
 
 ## Release tool
 
-The `plan` and `record` jobs run the published `@loomcli/loom` that `.github/release-tool` pins. [ADR-0075](decisions/0075-the-release-workflow-runs-a-pinned-published-loom-cli.md) records the design.
+The `plan` and `record` jobs run the published `@loomcli/loom` that `.github/release-tool` pins. [ADR-0075](../decisions/0075-the-release-workflow-runs-a-pinned-published-loom-cli.md) records the design.
 
 An explicit `release cut --target VERSION` is recorded in the synchronized manifests and changelog before merge. The PR guard builds the checkout's tool to validate that target. The pinned `plan` and `record` commands read the committed version, so target selection requires no new workflow option or release-tool bootstrap.
 

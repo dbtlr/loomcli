@@ -1,3 +1,5 @@
+// Acceptance plan: see examples/jsonkit/tests/completion.test.ts.
+
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

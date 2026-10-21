@@ -17,7 +17,7 @@ All publishable libraries under `packages/` share one exact stable `0.x` version
 
 Each PR with a consumer-visible effect owns one flat fragment in `.changes/`, and a `breaking.` prefix requires a structured migration section. A build-affecting PR without a fragment must carry the `skip-changelog` label with a stated reason. Ordinary PRs cannot change version fields. Only the release-cut PR runs the version writer, and a maintainer approves it; an ordinary merge never publishes.
 
-The [changelog compiler](../changelog-compiler.md), the [PR guards](../pr-guards.md), and the [fragment guide](../../.changes/README.md) implement and enforce this decision.
+The [changelog compiler](../maintaining/changelog-compiler.md), the [PR guards](../maintaining/pr-guards.md), and the [fragment guide](../../.changes/README.md) implement and enforce this decision.
 
 ## Considered options
 

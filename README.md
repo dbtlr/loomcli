@@ -8,7 +8,7 @@ Loom CLI is a TypeScript framework for command applications. The current increme
 
 ## Run textstat
 
-Install dependencies, build the packages, and bundle the examples. Bundling needs [Bun](https://bun.sh), because each example is bundled with [`loom build --target node`](docs/toolchain.md#loom-build), which runs `bun build` and bakes the [release facts](docs/core.md#release-facts) of a distributed build into the bundle through the `__LOOM_RELEASE__` define:
+Install dependencies, build the packages, and bundle the examples. Bundling needs [Bun](https://bun.sh), because each example is bundled with [`loom build --target node`](docs/toolchain/build.md#loom-build), which runs `bun build` and bakes the [release facts](docs/core/release-facts.md) of a distributed build into the bundle through the `__LOOM_RELEASE__` define:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -17,13 +17,13 @@ pnpm build:examples
 node examples/textstat/dist/main.js README.md
 ```
 
-The output is one table: a header naming the metric, then one line per source with a right-aligned count and the supplied file path. The example reads files in argument order. Bytes are the default metric.
+The output is one table: a `COUNT` and `SOURCE` header, then one line per source with a right-aligned count and the supplied file path. The example reads files in argument order. Bytes are the default metric.
 
 To count words and add a combined total:
 
 ```sh
-node examples/textstat/dist/main.js --metric words --total README.md docs/core.md
-node examples/textstat/dist/main.js -tm words README.md docs/core.md
+node examples/textstat/dist/main.js --metric words --total README.md docs/glossary.md
+node examples/textstat/dist/main.js -tm words README.md docs/glossary.md
 ```
 
 `--metric` accepts `bytes`, `words`, or `lines`. Bytes count file bytes. Words are runs of non-whitespace characters after UTF-8 decoding, using JavaScript whitespace rules. Lines count LF characters; an unterminated final line adds no LF. Empty files count as zero for every metric.
@@ -33,7 +33,7 @@ node examples/textstat/dist/main.js -tm words README.md docs/core.md
 To keep only files with at least 100 bytes:
 
 ```sh
-node examples/textstat/dist/main.js --min-bytes 100 --total README.md docs/core.md
+node examples/textstat/dist/main.js --min-bytes 100 --total README.md docs/glossary.md
 ```
 
 `--min-bytes` uses a schema to transform decimal digits into a non-negative safe integer. Its declared default is `'0'`, which becomes numeric `0`. Filtered files do not contribute to the total. Invalid inputs report all schema issues before the action reads any files.
@@ -54,7 +54,7 @@ The bundle is a distributed build, so a defect prints `textstat: Something went 
 bun examples/textstat/src/main.ts README.md
 ```
 
-The [example declaration](examples/textstat/src/application.ts) imports the built `@loomcli/core` package. It declares its options with validators from [`@loomcli/validators`](docs/validators.md), ordinary Standard Schema values that core calls with no Loom adapter, and installs the [shared example plugin](examples/explain/src/plugin.ts) that contributes `--explain`. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration, which declares its [table](examples/textstat/src/table.ts) as its result, and emits it through one `out.results` call.
+The [example declaration](examples/textstat/src/application.ts) imports the built `@loomcli/core` package. It declares its options with validators from [`@loomcli/validators`](docs/libs/validators.md), ordinary Standard Schema values that core calls with no Loom adapter, and installs the [shared example plugin](examples/explain/src/plugin.ts) that contributes `--explain`. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration, which declares its [table](examples/textstat/src/application.ts) as its result, and emits it through one `out.results` call.
 
 ## Run jsonkit
 
@@ -64,9 +64,9 @@ The second example reports the shape of one JSON document:
 node examples/jsonkit/dist/main.js --file package.json
 ```
 
-The first line names the kind of the root value: `object with N keys`, `array with N items`, `string`, `number`, `boolean`, or `null`. One member reads as `1 key` or `1 item`. For an object, one `key<TAB>kind` line per top-level key follows in JavaScript property order, which lists integer-like keys first in ascending order and every other key in document order. The `keys` command uses the same order.
+An info line on stderr names the kind of the root value: `object with N keys`, `array with N items`, `string`, `number`, `boolean`, or `null`. One member reads as `1 key` or `1 item`. For an object, stdout holds one record per top-level key, its `key` and its `kind`, in JavaScript property order, which lists integer-like keys first in ascending order and every other key in document order. The `keys` command uses the same order.
 
-`--file` is a global option, so it accepts a value before, between, or after the command name:
+`--file` accepts a value before, between, or after the command name:
 
 ```sh
 node examples/jsonkit/dist/main.js get name --file package.json
@@ -80,11 +80,11 @@ node examples/jsonkit/dist/main.js --file package.json get repository.url
 node examples/jsonkit/dist/main.js --file package.json get workspaces.1
 ```
 
-The result prints as JSON text. Objects and arrays use two-space indentation, and scalars stay compact, so a string prints quoted. An unresolved path exits 65, `EX_DATAERR`, and an unreadable file and invalid JSON each exit 1. `keys` prints the top-level keys of an object, one per line, and rejects a non-object root. An unknown command name exits 2 and lists the choices.
+The result prints as JSON text. Objects and arrays use two-space indentation, and scalars stay compact, so a string prints quoted. An unresolved path and invalid JSON each exit 65, `EX_DATAERR`, and an unreadable file exits 2. `keys` prints the top-level keys of an object, one per line, and rejects a non-object root. An unknown command name exits 2 and lists the choices.
 
 `--explain` prints the routed command's name, its description, and the details its declaration carries, then ends the invocation without reading a document, so it needs no `--file`.
 
-The [Application](examples/jsonkit/src/application.ts) declares global options with `globalOption()` and registers their types once for all [command modules](examples/jsonkit/src/commands), and each [action](examples/jsonkit/src/actions) derives its argument and option types from its own declaration. The application installs the same [shared example plugin](examples/explain/src/plugin.ts) that `textstat` does, and the private [doctor plugin](examples/doctor/src/plugin.ts), whose `doctor` Command leads the root's Commands, and lists its own [view overrides](examples/jsonkit/src/views.ts) for rejected inputs and unknown commands, so those two diagnostics read `jsonkit: ...`; every other failure keeps core's text.
+The [Application](examples/jsonkit/src/application.ts) declares global options with `globalOption()` and registers their types once for all [command modules](examples/jsonkit/src/commands), and each [action](examples/jsonkit/src/actions) derives its argument and option types from its own declaration. The application installs the same [shared example plugin](examples/explain/src/plugin.ts) that `textstat` does, and the private [doctor plugin](examples/doctor/src/plugin.ts), whose `doctor` Command leads the root's Commands, and overrides one failure view, the literal `FatalError` view, in [views.ts](examples/jsonkit/src/views.ts); every other failure keeps core's text.
 
 ## Verify the package
 
@@ -102,12 +102,12 @@ pnpm verify:bun
 
 CI tests Node 22.23.2 and Bun 1.4.0 on macOS and Linux. These versions define the compatibility baseline for this increment. Windows is not exercised in CI and is unverified. TypeScript 7.0.2 checks emitted declarations with strict NodeNext resolution. Earlier versions are unverified.
 
-The [core reference](docs/core.md) defines invocation, output, and failure behavior. The [glossary](docs/glossary.md) names the concepts it uses, and the [decision records](docs/decisions/README.md) explain why the core is shaped the way it is.
+The [documentation map](docs/README.md) lists every reference and who it is for. The [core reference](docs/core/README.md) defines invocation, output, and failure behavior. The [glossary](docs/glossary.md) names the concepts it uses, and the [decision records](docs/decisions/README.md) explain why the core is shaped the way it is.
 
 ## Contribute a change
 
 Read the [change fragment guide](.changes/README.md) before opening a pull request. The [changelog](CHANGELOG.md) records library releases and migration instructions.
 
-The [changelog compiler reference](docs/changelog-compiler.md) describes this repository's synchronized release cut, its dry run, and release-file preparation. The [toolchain reference](docs/toolchain.md#the-package-changelog) describes `loom changelog check`, which validates the fragments.
+The [changelog compiler reference](docs/maintaining/changelog-compiler.md) describes this repository's synchronized release cut, its dry run, and release-file preparation. The [toolchain reference](docs/toolchain/changelog.md) describes `loom changelog check`, which validates the fragments.
 
-Use the repository [release-cut skill](.agents/skills/release-cut/SKILL.md) to prepare a library release PR. It coordinates cycle review, isolated preparation, and PR validation. Merging the release PR is the only authorization to publish: the [release workflow](docs/release-workflow.md) reconciles npm, the version tag, and the GitHub Release with the manifest version on every push to `main`, without a stored credential.
+Use the repository [release-cut skill](.agents/skills/release-cut/SKILL.md) to prepare a library release PR. It coordinates cycle review, isolated preparation, and PR validation. Merging the release PR is the only authorization to publish: the [release workflow](docs/maintaining/release-workflow.md) reconciles npm, the version tag, and the GitHub Release with the manifest version on every push to `main`, without a stored credential.

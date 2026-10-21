@@ -1,3 +1,23 @@
+/*
+ * Acceptance plan for the verbose plugin (docs/plugins/verbose.md#verbose-plugin).
+ *
+ * - jsonkit installs `verbose()` after `color()` and declares no verbose-marked or quiet-marked
+ *   option of its own, and `jsonkit --help` lists `-v, --verbose...` and `-q, --quiet` with their
+ *   descriptions after `--[no-]color`, in the pages The help page pins. The manifest marks them
+ *   `control` with `verbose` and with `quiet`, and a fixture's unmarked counted option reads
+ *   `false` for both.
+ * - `jsonkit -v keys -f doc.json` and `jsonkit -vv keys -f doc.json` write the `Reading doc.json.`
+ *   debug line on stderr, `jsonkit keys -f doc.json` and `jsonkit -v -q keys -f doc.json` write
+ *   none, and `jsonkit -q keys -f doc.json` writes the keys on stdout and nothing on stderr. Piped,
+ *   the line is `› Reading doc.json.`.
+ * - An application that marks its own verbose option and installs the plugin fails with the
+ *   two-marks error, and so does one that marks its own quiet option.
+ * - A consumer installs the packed pack, imports `@loomcli/plugins/verbose`, compiles against its
+ *   declarations, and `pnpm check:packed` resolves the subpath from the packed tarball under Node
+ *   and Bun.
+ */
+
+// Acceptance plan: see packages/plugins/tests/suggestions.test.ts.
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

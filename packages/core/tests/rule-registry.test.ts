@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/core/tests/developer-diagnostics.test.ts.
+
 import { expect, test } from 'vite-plus/test';
 
 import { ruleContract } from '../../../scripts/test-rules.js';

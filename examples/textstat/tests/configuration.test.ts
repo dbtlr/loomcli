@@ -1,3 +1,54 @@
+/*
+ * Acceptance plan for the configuration plugin (docs/plugins/config.md#configuration-plugin).
+ *
+ * The configuration plugin is proven when textstat installs
+ * `config({ file: '.textstat.{toml,json}', short: 'c' })` and binds `--min-bytes` to `minBytes` and
+ * `--total` to `total`, and public APIs alone produce these results under Node and Bun, with `HOME`
+ * pointed at a temporary directory through `host.env`:
+ *
+ * - Lookup. textstat reads `minBytes` from `.textstat.toml` in `host.cwd`, from
+ *   `<HOME>/.textstat.toml` when the working directory holds no candidate, and from no file when
+ *   neither directory holds one. A file in the working directory hides the home file entirely, so a
+ *   key only the home file holds is not read, and a broken file in the working directory warns and
+ *   the home file answers. `config()` with no settings reads `.textstat.json`.
+ * - Precedence. `TEXTSTAT_MIN_BYTES` beats the file, and a flag beats both.
+ * - `--config`. `--config` and `-c` each name a file that answers alone, so a file in the working
+ *   directory is not read. A named file that does not exist, is not valid in its format, or holds
+ *   an array prints its failure with code 2, reports nothing under `--help`, and a run that fills
+ *   every bound option from argv reads no file and exits 0.
+ * - Discovered files. A missing file prints nothing. A directory in its place, an empty JSON file,
+ *   invalid JSON, and a top-level array each print one warning and the run exits 0, and a broken
+ *   home file under `--help` prints its warning before the page.
+ * - Formats. `.textstat.toml`, `.textstat.yaml`, an extensionless file, and `.textstat.conf` each
+ *   fill `--min-bytes` and `--total` under a `file` that names them, the last two as JSON, and a
+ *   `--config` file reads by its extension. With `.textstat.toml` and `.textstat.json` both in one
+ *   directory, the TOML file answers and the several-candidates warning prints once, and a run
+ *   whose file is JSON loads neither parser. A broken TOML file, a broken YAML file, an empty YAML
+ *   file, and a YAML file with a second document or a `!!binary` tag each print their warning when
+ *   discovered and fail with code 2 when named.
+ * - Values. A counted option in a fixture reads `3` as `3` and `0` as `0`, and `"3"`, `-1`, and
+ *   `1.5` print its wrong-value failure. `5` fills `--min-bytes` as `"5"`, a string for `--total`
+ *   and an object for `--min-bytes` print their wrong-value failures with code 2, and a multiple
+ *   option in a fixture reads an array, an empty array, and an array with an object at position 1.
+ *   A TOML date and a local time with one fractional digit fill their text as written, a TOML
+ *   integer beyond the safe range fills its exact digits, and a YAML `no` for `--total` is a wrong
+ *   value.
+ * - Paths. `"limits": 5` leaves `limits.bytes` unanswered, so the option takes its default, and
+ *   `configInput({ path: 'a..b' })` throws at the call.
+ * - Escaping. A `--config` path that holds U+001B prints it as `\u001b` in its failure and in the
+ *   label of a filled value a validator rejects, and a home directory that holds it prints it as
+ *   `\u001b` in its warning.
+ * - Edges. `config({ file: '/etc/textstat.json' })`, `config({ file: '*.json' })`, and
+ *   `config({ file: '.textstat.{toml,ini}' })` throw from `config()` under their rules, a file that
+ *   starts with a byte order mark reads, two wrong values print two lines in request order, each
+ *   opening with the application name, the home file's label shows its full path, the `problems` of
+ *   a source `InputError` reach an override of the `InputError` view, and a local structure fault
+ *   outranks a source `InputError`.
+ * - Packed consumers. A consumer installs the packed pack, imports `@loomcli/plugins/config` and
+ *   `@loomcli/plugins/config/extension`, compiles against their declarations, and reads a value
+ *   from a file.
+ */
+
 import {
   cpSync,
   mkdirSync,

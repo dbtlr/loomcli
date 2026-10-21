@@ -1,3 +1,75 @@
+/*
+ * Acceptance plan for the background (docs/core/background.md#background).
+ *
+ * The background is proven when public APIs alone produce these results under Node and Bun, through
+ * a fixture Application whose theme holds an adaptive entry and a plain one, and through the reply
+ * parser and the settlement as pure functions:
+ *
+ * - Replies. OSC 11 replies with 1, 2, 3, and 4 hex digits in each component, each ended by BEL and
+ *   by `ESC \`, parse to their colors; garbage before, between, and after the replies passes
+ *   through as typeahead; `Ctrl-C`, `Ctrl-\`, and `Ctrl-Z` anywhere in what was read leave the
+ *   typeahead and name SIGINT, SIGQUIT, and SIGTSTP in arrival order; a DA1 reply that arrives
+ *   first ends the read with no answer; a `997` reply answers alone, and an OSC 11 reply beside it
+ *   wins; and a luminance just above 0.5 answers light while exactly 0.5 answers dark.
+ * - Precedence. Each of the eight steps settles a fixture run, and each beats every later step,
+ *   `COLORFGBG` values `0;15`, `15;0`, `15;default;7`, and an empty value included; and a dotenv
+ *   hook that imports `COLORFGBG=0;15`, `TERM=linux`, or `STY=1` leaves the settled background and
+ *   the query unchanged.
+ * - Detection runs for a reader. On a scripted light terminal with `COLORFGBG=0;15`, an Application
+ *   whose theme holds no adaptive entry and that declares no background mark writes no query and
+ *   reads `undefined` in the action and in a view; the same Application with `background()`
+ *   installed writes the query and reads `'light'`; and with neither, `rendering: { background:
+ *   'light' }` and a host override that states `'light'` each still read `'light'`.
+ * - Settled once, before preparation. With `NO_COLOR=1` in the captured environment and a dotenv
+ *   hook that imports `FORCE_COLOR=1`, on a scripted light terminal, the run writes no query,
+ *   `host.terminal.background` reads `undefined`, and the colored output prints each adaptive
+ *   token's dark side.
+ * - The query on a scripted terminal. A host whose stdin is a scripted fake terminal shows: no byte
+ *   written and none read on each skip and at steps 1 through 5; a run whose stdout, stdin, or
+ *   stderr is not a terminal, or none of them, writes no query and reads `undefined` under
+ *   `COLORFGBG=0;15` and `FORCE_COLOR=1`; the three queries written once, to stderr; raw mode set
+ *   and restored to the mode found on the answered path and on the deadline path; typeahead before,
+ *   between, and after the replies reaching the action's `stdin` read in order; and a sentinel that
+ *   never comes falling through to step 7 after the deadline, with the timer unref'd, cleared at
+ *   once on the answered path, and an abort of the caller's signal ending the wait; after the read,
+ *   stdin is in the flowing state it was found in and holds no listener core added, and an action's
+ *   bare `data` listener, with no `resume()` call, receives the typeahead and later input; an OSC
+ *   11 reply with no DA1 reply settles the run from that reply at the deadline, without reaching
+ *   step 7; a reply that arrives after the deadline reaches the action's stdin read; `Ctrl-C`,
+ *   `Ctrl-\`, and `Ctrl-Z` read during the wait leave the action's typeahead and are raised on the
+ *   process in arrival order after the mode is restored; and `Ctrl-C` read during the wait ends the
+ *   process by SIGINT.
+ * - Themed tokens. An adaptive token resolves to its light side under a light background and to its
+ *   dark side under a dark one and under `undefined`, at truecolor, 256, and 16 colors, with each
+ *   side's own fallbacks, and a plain token resolves to the same bytes under both.
+ * - The choice. `--background=light`, `--background light`, an alias spelling, and the last of
+ *   several occurrences each settle the run; a spelling after the bare `--` changes nothing;
+ *   `--background=blue` supplies nothing and fails the plugin's validation with exit 2;
+ *   `options.background` reads `'light'`, `'dark'`, or `undefined`; and `--background --verbose`
+ *   and `--background --` supply no choice.
+ * - Where it reads. `host.terminal.background` and a view's `context.background` read the settled
+ *   value in the action, a middleware, and a failure view, a host override's stated value is
+ *   overruled by an operator's choice, an invocation by name reads `undefined` under `rendering: {
+ *   background: 'light' }`, a failure view rendering a failed host capture reads `undefined`, and a
+ *   piped run whose theme adapts reads `undefined`.
+ * - Declarations. Each rejected declaration the reference lists throws under its rule from the
+ *   moment the reference names, `style.adaptive` throws its `TypeError` for each bad argument, and
+ *   the negative type checks reject the rules the types state; mutating the object passed to
+ *   `style.adaptive` after the call changes no emitted byte; a bare `theme()` accepts an adaptive
+ *   entry and a custom token named `adaptive`; and a compiler check imports the four exported
+ *   types, compiles a `run({ host: { terminal } })` whose terminal omits `background`, and rejects
+ *   a write to `host.terminal.background`.
+ * - The terminal itself. A test drives an interactive zsh with job control on a real
+ *   pseudo-terminal under Node and Bun: a foreground run of an application whose theme adapts
+ *   writes the query, reads a scripted answer as light, and hands the typeahead before it to an
+ *   action that reads it with a bare `data` listener; a foreground run whose action never touches
+ *   stdin ends after the answer with status 0 and returns the shell's prompt with no key pressed; a
+ *   foreground run that reads `Ctrl-C` during the wait ends with status 130 and prints nothing of
+ *   its action; and the same run started as a background job writes no query, neither stops nor
+ *   hangs, and ends with status 0. A raw-mode switch in a background job stops the process under
+ *   both runtimes, which is why the foreground check exists, as ADR-0092 records.
+ */
+
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 

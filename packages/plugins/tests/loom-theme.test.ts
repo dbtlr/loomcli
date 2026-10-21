@@ -1,3 +1,35 @@
+/*
+ * Acceptance plan for the Loom theme (docs/plugins/theme.md).
+ *
+ * The implementation increment proves these cases through public APIs:
+ *
+ * - Packed consumers import both factories and `LoomThemeOverrides` from the same subpath. Neither
+ *   import installs a plugin. Installing either with another theme fails the existing identity or
+ *   theme-slot check.
+ * - Every default emits the exact foreground in the dark table at each depth under a dark
+ *   background, and in the light table under a light one, with no background or modifier operation.
+ *   A nested `primary` restores terminal foreground inside a colored span while preserving the
+ *   surrounding background and modifiers.
+ * - Omitted and `undefined` overrides retain defaults. A replacement chain discards the original
+ *   mapping, both of its sides, and their fallbacks, and emits the same bytes under both
+ *   backgrounds; an adaptive replacement emits its own sides. `style` inherits the enclosing style,
+ *   and `style.resetForeground` restores terminal foreground. Custom `undefined` keys remain valid
+ *   tokens.
+ * - Compiler checks cover literal custom names, an adaptive override and an adaptive custom key,
+ *   independent imported styles, invalid values, reserved names, and semantic references. An editor
+ *   completion check suggests all seven core keys and omits keys already supplied.
+ * - Both examples install `loomTheme()`. `textstat --total` uses the default highlight for its
+ *   total row on a color terminal. Under ordinary piping or automatic `NO_COLOR`, the same content
+ *   and layout contain no color escapes. Help and version restyling remains a separate increment.
+ * - Process fixtures run on Node and Bun against the built packages. Packed-consumer evidence
+ *   exercises the published declarations and the named palette at each color depth.
+ *
+ * `scripts/check-theme-contract.mjs` checks the built factory export against the compiler and
+ * editor. `check:types` runs it after the existing declaration checks, so `pnpm verify` and PR CI
+ * include it. It verifies compilation and editor completion, not palette merging or output
+ * behavior. For a standalone run, use `pnpm build && node scripts/check-theme-contract.mjs`.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

@@ -1,3 +1,59 @@
+/*
+ * Acceptance plan for the MCP plugin (docs/plugins/mcp.md).
+ *
+ * The plugin is proven when jsonkit installs `mcp()` and opts in its root, `get`, `keys`, and
+ * `select`, each with `annotations: { openWorld: false, readOnly: true }`, and leaves `fetch`,
+ * `debug`, and `paths` out, and public APIs alone produce these results under Node and Bun:
+ *
+ * - A real session. A process test launches the built `jsonkit mcp` under Node and under Bun and
+ *   drives a session over stdio: `server/discover` names `jsonkit`, its version, and its
+ *   description; `tools/list` lists `jsonkit`, `get`, `keys`, and `select` in that order with the
+ *   schemas above, `file` among each tool's properties, and no `help`, `version`, `manifest`,
+ *   `format`, `explain`, `color`, `verbose`, or `quiet` property; and a call of each tool against a
+ *   document file answers as below. Closing stdin ends the process with exit 0.
+ * - Results. `get` answers the value as text with no `structuredContent`; `jsonkit` answers the
+ *   root's members as text and as `structuredContent`, the array its `json` view prints; `select`
+ *   with an absent field answers the fields as text and the warning as a second text item; and a
+ *   missing path answers `isError: true` with `Path not found: "missing". Run jsonkit keys to list
+ *   the keys at the root.` and `structuredContent` `{ exitCode: 65, failure: { code:
+ *   'path-not-found', exitCode: 65, message: 'Path not found: "missing". Run jsonkit keys to list
+ *   the keys at the root.', hints: [] } }`.
+ * - Errors. An unknown tool and non-object arguments answer `-32602`. A key outside the schema
+ *   answers the plugin's tool execution error. A value of the wrong shape and a missing required
+ *   argument answer `isError: true` with the by-name sentence, no help hint, and a form whose code
+ *   is `invalid-input`, and a malformed document answers 65 with the code `invalid-json`. A fixture
+ *   tool whose action throws a `TypeError` answers the form `internal` with `Something went wrong.`
+ *   from a bundle.
+ * - Cancellation and concurrency. A fixture tool that waits on its signal is cancelled by
+ *   `notifications/cancelled` and answers nothing while a second call answers. Two overlapping
+ *   calls answer by their own ids. A run cancelled through a caller signal aborts both calls in
+ *   flight.
+ * - Progress. A fixture tool with a progress line of total 3 that updates to 1, 2, and 3 and ends,
+ *   called with a progress token, sends five `notifications/progress` with `progress` 1, 2, 3, 4,
+ *   and 5, none with a `total`, and the messages `Fetching records 0/3 (started)`, `Fetching
+ *   records 1/3 (updated)`, `Fetching records 2/3 (updated)`, `Fetching records 3/3 (updated)`, and
+ *   `Fetching records 3/3 (ended)`, before its result, whose text holds the start and end lines. A
+ *   spinner line that starts, changes its label once, and ends sends `progress` 1, 2, and 3. A
+ *   spinner line `Fetching records` that ends with the message `Fetched 3 records.` sends `Fetching
+ *   records (started)` and `Fetched 3 records. (ended)`. Two lines that each start and end in one
+ *   call share the token and one counter, so their four notifications read `progress` 1 to 4 in the
+ *   order their events were delivered, and none is left out. The same call without a token sends no
+ *   notification, and a call the client cancels sends none after its cancellation. A hand-drawn
+ *   region that reports `{ completed: 1 }` with no label sends the message `1 (started)`, and one
+ *   that reports `{}` sends `(started)`.
+ * - Fixtures. Fixture applications prove a hidden Command that opts in listed, a deprecated one
+ *   listed with its message opening the description, an alias never listed, a description and a
+ *   property description override, annotations projected and omitted, the three build faults with
+ *   their diagnostics in both builds, a property derived for each kind of input with a `null`
+ *   schema, an array property for a multiple option, a mapped `json` view under another key chosen
+ *   for `structuredContent`, a view under `application/json` whose text does not parse answering
+ *   text alone, and the install refused on a root that declares arguments.
+ * - Packed consumers. `check:packed` installs the packed pack, imports `@loomcli/plugins/mcp` and
+ *   `@loomcli/plugins/mcp/extension`, compiles against their declarations, finds no `@loom/mcp`
+ *   among the tarball's dependencies or in any of its built files, and serves an MCP session from a
+ *   fixture application under Node and Bun.
+ */
+
 import { describe, expect, it } from 'vite-plus/test';
 
 import { childEnvironment, invoke } from '../../../scripts/test-process.js';

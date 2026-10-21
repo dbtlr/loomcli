@@ -1,3 +1,48 @@
+/*
+ * Acceptance plan for ordered help sections (docs/plugins/help.md#ordered-help-sections).
+ *
+ * Public API fixtures prove the following rules under Node and Bun, including rendered output and
+ * packed-package checks.
+ *
+ * - Paths and storage. One-level and two-level membership compile and reach the frozen extension
+ *   values, whether help is installed or not. An empty path, a three-entry path, and a non-string
+ *   heading fail TypeScript checks and ordinary extension validation. A blank or multiline heading
+ *   fails the `line` rule. The same checks apply to entries in either order list. Membership paths
+ *   whose headings have the same uppercase form combine, order entries match that same form, and
+ *   title-case references such as `Global options` match default headings. Stored strings retain
+ *   their authored spelling.
+ * - Commands. A page with direct and nested sections, unsectioned children, interleaved order
+ *   entries, duplicate entries, unlisted sections, and an entry for an absent section pins the
+ *   heading and member order. A two-entry order path for an absent or entirely hidden subsection
+ *   does not position its visible outer heading. A parent-only order entry positions that outer
+ *   heading when another subsection is visible. A child page uses its own ordering, while that
+ *   child's membership affects only its row on the parent page. Plugin-attached Commands use the
+ *   same membership rules.
+ * - Options. `optionSections` orders local and global sections together, including GLOBAL OPTIONS
+ *   before OPTIONS when explicitly listed that way. Direct and nested option sections cover
+ *   partial, interleaved, repeated, parent-only, and absent order entries. A child's page uses its
+ *   own order for global and local members even when the root declares an option order. Every
+ *   option section remains after ARGUMENTS. A named section combines a local option and a global
+ *   option, with local members first. A childless root folds unsectioned globals into OPTIONS,
+ *   while a page with children retains the two default sections. A root with hidden children alone
+ *   retains GLOBAL OPTIONS as today. An authored default path joins the default section. Global
+ *   options declared by a plugin follow the same rules.
+ * - Filtering and layout. Hidden members create no headings and affect no widths. An outer heading
+ *   containing only visible subsections remains. Golden bytes pin two-space inner headings,
+ *   four-space inner rows, two-space direct rows, blank lines, and the final newline. Wide and
+ *   combining characters align using the existing width rules. Marker characters in headings print
+ *   literally under both plain and styled output.
+ * - Variants and other projections. Compact and extended pages have the same section layout, with
+ *   their existing differences in details, examples, and hints. Both variants retain the child hint
+ *   when every visible child uses an authored section and no COMMANDS heading prints. A whole-page
+ *   replacement can read section fields through `readExtension`. The manifest receives details and
+ *   examples alone, and its graph order and completion output are unchanged.
+ * - Compatibility and delivery. Unsectioned fixture pages remain byte-for-byte unchanged. Both
+ *   examples opt into authored sections through the public descriptors, and packed-package checks
+ *   exercise grouped help under Node and Bun. An ordinary change fragment describes the new fields
+ *   and layout. No version field changes in the implementation PR.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

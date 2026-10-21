@@ -1,3 +1,5 @@
+// Acceptance plan: see examples/jsonkit/tests/completion.test.ts.
+
 import { spawnSync } from 'node:child_process';
 import {
   appendFileSync,

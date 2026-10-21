@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/plugins/tests/manpage.test.ts.
+
 import { expect, test } from 'vite-plus/test';
 
 import { escapeText, inFont, request, textLine, writeRuns } from '../src/manpage/roff.js';

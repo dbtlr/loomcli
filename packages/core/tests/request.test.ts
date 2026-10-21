@@ -1,3 +1,35 @@
+/*
+ * Acceptance plan for the validation lifecycle
+ * (docs/core/invocation.md).
+ *
+ * The validation lifecycle is proven when public process fixtures establish these cases under Node
+ * and Bun, alongside the existing plugin example coverage:
+ *
+ * - A supplied value passes its validator, which produces an observable effect. Middleware then
+ *   takes over. The observed order is validation followed by takeover, and the action never runs.
+ * - A required argument is omitted, so core holds an input fault. Middleware throws before calling
+ *   `next()`. Only the middleware's failure determines the diagnostic and exit code, and the held
+ *   input fault stays unraised.
+ * - Plugin lifecycle, which the formatter plugin's hook also exercises. A fixture hook declares an
+ *   option the action reads at run time and `request` carries, and the hook receives the root.
+ *   `result` and `hasAction` read from a hook. Two plugins' hooks run in order, with the later
+ *   replacing a view. Each hook build error.
+ * - The request. `request` holds values on a valid invocation and `null` under a held fault and on
+ *   a group. `view` starts at the default and is `null` on a no-result Command. The last
+ *   assignment before the boundary wins across two middleware, and an assignment after the boundary
+ *   changes nothing. Each `view` fault is raised at the boundary and unobserved under a takeover.
+ * - Takeovers and wrappers. A takeover under a held fault and under a throwing validator exits 0
+ *   with no diagnostic. An always-on wrapper ahead of help reaches help's takeover. The held fault
+ *   is raised at the boundary with its code and rank, ahead of a bad `view`.
+ * - Cancellation. A run cancelled inside a validator and one cancelled mid-chain resolve the
+ *   signal's code.
+ * - Own options. A fixture middleware reads its own global and hook-declared options from
+ *   `ownOptions` under a held fault on another input, a validation problem, a validator that
+ *   throws, an unknown option, and a configuration source that fails alike. It finds an option
+ *   absent when its validator rejected the option's own value or when the option's own occurrence
+ *   faulted.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

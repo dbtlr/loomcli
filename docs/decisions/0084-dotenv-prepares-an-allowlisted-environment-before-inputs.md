@@ -152,7 +152,7 @@ It claims no single-owner slot.
 Existing accepted records retain their other rules and carry dated entries referencing this amendment.
 
 The public types are `EnvironmentContext` and `EnvironmentHook`.
-The contract and acceptance examples live in [Dotenv](../core.md#dotenv).
+The contract and acceptance examples live in [Dotenv](../plugins/dotenv.md).
 
 ## Status
 

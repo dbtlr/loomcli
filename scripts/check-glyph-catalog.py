@@ -10,8 +10,9 @@ from pathlib import Path
 
 REVISION = "a446ea9e273864a3653a26943f59b4fbe8003796"
 SOURCE = f"https://raw.githubusercontent.com/SBoudrias/Inquirer.js/{REVISION}/packages/figures/src/index.ts"
-TARGET = Path(__file__).resolve().parents[1] / "docs" / "glyphs.md"
-GENERATED = TARGET.parents[1] / "packages" / "core" / "src" / "glyphs.generated.ts"
+ROOT = Path(__file__).resolve().parents[1]
+TARGET = ROOT / "docs" / "maintaining" / "glyphs.md"
+GENERATED = ROOT / "packages" / "core" / "src" / "glyphs.generated.ts"
 SOCKET_TIMEOUT_SECONDS = 30
 
 
@@ -46,7 +47,7 @@ description: Complete core glyph inventory, with the pinned Inquirer main and co
 
 # Glyph reference
 
-This catalog belongs to the [style contract](core.md#styles-and-rendering-policy).
+This catalog belongs to the [style contract](../core/styles.md).
 Core exposes every name below as an unstyled marked string under `glyph`.
 Compatibility forms are not restricted to ASCII. Glyphs never select a theme token.
 

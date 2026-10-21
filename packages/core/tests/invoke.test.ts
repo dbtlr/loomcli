@@ -1,3 +1,62 @@
+/*
+ * Acceptance plan for invocation by name (docs/core/invocation.md#invocation-by-name).
+ *
+ * Invocation by name is proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - The equivalence wedge. For each jsonkit invocation below, `run()` with argv and a sink host,
+ *   and `invoke` with the same path and values, write identical stdout and stderr bytes and resolve
+ *   the same exit code: `get name -f doc.json`, `keys -f doc.json`, `select --field a --field b -f
+ *   doc.json`, `paths --format json -f doc.json` against `invoke(['paths'], …, { view: 'json' })`,
+ *   `get missing -f doc.json` with exit 65, `get name -f broken.json` with exit 65, and `select
+ *   --field '' -f doc.json` with exit 2. The bytes differ only where a problem names an input: by
+ *   its reported spelling under `run()` and by its declared name under `invoke`. Help's hint and
+ *   the explain hint print under `run()` alone.
+ * - Lowering. A fixture pins every row of the table and each unlowerable value's issue. `false` on
+ *   a positive option is absence, and a bound variable still fills it. An empty array on a required
+ *   multiple option is the missing-input problem. A number on an unvalidated string option reaches
+ *   the action as its `String` text. `true` on a string option with an implied value supplies it,
+ *   and `3` on a counted option reads `3`. `null`, an object, `NaN`, `1.5` on a counted option, and
+ *   `true` on an argument each report their sentence with exit 2.
+ * - Names. An unknown option name, an unknown argument name, and an unknown path element report
+ *   their by-name sentences with exit 2. `jsonkit.invoke(['nope'], {})` lists the root's children,
+ *   a path through an alias routes, and `invoke(['get'], { options: { help: true } })` completes
+ *   with help's extended page for `get` as `output`.
+ * - Capture. A fixture action that writes every lane and a result proves the split between `output`
+ *   and `messages`, reads `host.terminal` as not a TTY and `host.argv` as `[]`, and writes no ANSI
+ *   under `FORCE_COLOR=1` and under `rendering: { color: 'always' }`. `jsonkit.invoke(['get'], {
+ *   args: { path: 'name' } })` fails with a missing `file` input and exit 2 before the action.
+ * - Failures. A handler maps a failure into `failed.failure` and receives the translated failure,
+ *   never the foreign throw. With no handler `failed.failure` is the failure. `failed.form` and the
+ *   handler's `form` are one failure form, as The failure form builds it. A defect writes the
+ *   generic defect message into `messages` in a distributed build and its Developer Diagnostic in a
+ *   development one, while the handler receives the `InternalError`. A broken failure view resolves
+ *   `failed` with exit 1, and a handler that throws makes `invoke` reject with the same value.
+ * - The view. `view: 'json'` renders the JSON view, and a middleware's later assignment wins over
+ *   it. An unknown name, a non-string, and a view on a Command with no result each report their
+ *   `invoke()` sentence with exit 1.
+ * - Process isolation. A parent run with a sentinel host whose streams record every write calls
+ *   `invoke` from its action, with a signals owner installed. The process's listener counts,
+ *   `process.exitCode`, and real stdout and stderr are unchanged, and the parent's own streams
+ *   receive nothing from the call. `app.invoke` with a `host` override reads only the five fields.
+ * - Cancellation. A parent run cancelled by `SIGTERM` resolves a call in flight as `cancelled` with
+ *   143, and the call's own abort resolves 130. A pre-aborted signal runs no action, and a
+ *   cancelled call never reaches the handler.
+ * - Concurrency and nesting. Two overlapping calls from one action capture their own bytes with no
+ *   interleaving, and an invoked action that calls `invoke` resolves its inner outcome.
+ * - The graph. A fixture hook counts its calls: an action's `invoke` runs no hook again, and each
+ *   `app.invoke` runs every `onCommandAttach` and `onGraphBuilt` once.
+ * - Call shape. Each malformed slot reports `@loomcli/core/invoke-options` with exit 1.
+ * - Progress. An `onProgress` observer receives a fixture action's progress events in order, as the
+ *   progress events acceptance plan in packages/core/tests/progress-events.test.ts states, and
+ *   `messages` holds the progress line's start and end lines and no frame. An action's `invoke`
+ *   with an observer delivers none of the call's events to a parent call's observer. An observer
+ *   that throws is called once, and `invoke` rejects with its throw after the run settles.
+ * - Types. The outcome narrows on `status`, and `Mapped` is inferred from the handler. The negative
+ *   type checks reject a value outside the value union and a `host` field outside the five. Editor
+ *   latency on `ActionHandler` is measured against the baseline on `main` before the increment
+ *   merges, because the action context gains a member.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke, start } from '../../../scripts/test-process.js';

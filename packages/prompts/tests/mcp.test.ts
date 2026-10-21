@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/prompts/tests/interactive.test.ts.
+
 import { expect, test } from 'vite-plus/test';
 
 import { childEnvironment } from '../../../scripts/test-process.js';

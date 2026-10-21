@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/plugins/tests/manpage.test.ts.
+
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

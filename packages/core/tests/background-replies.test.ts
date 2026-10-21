@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/core/tests/background.test.ts.
+
 import { Writable } from 'node:stream';
 
 import { describe, expect, it } from 'vite-plus/test';

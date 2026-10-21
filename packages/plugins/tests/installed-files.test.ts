@@ -1,3 +1,70 @@
+/*
+ * Acceptance plan for the installation record (docs/core/installation-record.md#installation-record).
+ *
+ * The installation record is proven when public APIs, process runs, and the module's tests alone
+ * produce these results:
+ *
+ * - The directory. `applicationDirectory` gives each table cell from an overridden `env` and
+ *   `platform`, `$HOME/.local/state` for an `XDG_STATE_HOME` that is unset, empty, or relative,
+ *   `$HOME/.cache` for such an `XDG_CACHE_HOME`, and `{ variable: 'HOME' }` for a `HOME` that is
+ *   unset, empty, or relative whenever the cell needs it, while an absolute `XDG_STATE_HOME` or
+ *   `XDG_CACHE_HOME` needs no `HOME` for its kinds, with no file read or created.
+ * - The recipe. The shell recipe runs under `/bin/sh` on Linux and macOS against a fixture binary
+ *   in a temporary home and writes `install.json` with the pinned bytes. It refuses a target path
+ *   holding a quote, a backslash, or a newline, and a relative `HOME` whenever the directory needs
+ *   it, with exit 1 and nothing written. On Linux, an absolute `XDG_STATE_HOME` writes the file
+ *   with `HOME` unset.
+ * - Reading. A compiled fixture binary built with `--release` and recorded by the recipe prints its
+ *   `installation` under the temporary home. A symbolic link to the binary, and a recorded path
+ *   that is a symbolic link to it, read the same installation. The same binary prints none when
+ *   copied to another path, when `install.json` is missing, empty, not JSON, an array, `format`
+ *   `2`, an empty `method`, a relative `path`, or an uppercase `digest`, or a directory, and when
+ *   the directory's variable is unset; each run exits with its own code and writes nothing to
+ *   stderr. A bundle built for Node with `--release`, and the source run, print none and read no
+ *   file. `install.json` with an extra member and its members reordered reads the same
+ *   installation. `run({ host: { release } })` reads the override and no file.
+ * - Installing. Installing two files into a temporary directory writes both and a `committed` file
+ *   with their digests and the created directory. A second install with new content replaces both,
+ *   and one that lists only the first removes the second. An install over an unrecorded file, a
+ *   recorded file changed since, a symbolic link, or a directory refuses, writes nothing, and
+ *   reports the path, and so does an install whose plugin's file is damaged or holds an unknown
+ *   `format`. Installing a folder writes it whole and records its path; a second install whose
+ *   folder drops a file and moves another into a subfolder leaves exactly the new files, even after
+ *   someone edited and added files inside it; an install that no longer lists it removes it whole.
+ *   An install over an unrecorded folder, a file, or a symbolic link at a listed folder's path
+ *   refuses and writes nothing, and the force mode replaces each, removing a link without touching
+ *   its target. A process killed between moving the old folder aside and renaming the new one into
+ *   place leaves a `pending` file whose next install writes the folder and removes the leftovers.
+ * - Uninstalling. Uninstall removes unchanged files and the created directory, keeps and reports a
+ *   changed file, passes over a file already gone, and deletes the plugin's file.
+ * - Startup lines. Installing a line into a missing startup file creates it with mode `644` and
+ *   records the line; into a file that holds it, adds nothing and records nothing unless the
+ *   plugin's file already recorded that line; into a file that does not end with a line break, adds
+ *   one first; into a file with CRLF endings, adds a CRLF line; into a UTF-8 file with a byte order
+ *   mark before the line, finds it; and into a symbolic link or a file with a second hard link,
+ *   appends to the one file both name, keeping its inode, owner, and permission bits. Two installs
+ *   appending different lines to one file at once leave both. A link to a missing file and a
+ *   directory at the path refuse and write nothing. An install listing new text replaces the
+ *   recorded line where it stands, and one marked as an update adds no line the file no longer
+ *   holds. Uninstall removes every line equal to the recorded text and leaves every other byte,
+ *   reports a file that no longer holds it, and never removes the file. A released line is dropped
+ *   from the plugin's file and the startup file is neither read nor written. A process killed after
+ *   a first line is appended and before the commit leaves a `pending` file whose next run records
+ *   the line, and one killed before the append records none; one killed before the rename that
+ *   replaces a line records the prior line, and one killed after it records the new one.
+ * - Recovery. A process killed between two targets leaves a `pending` file, and the next install
+ *   finishes with both targets written and a `committed` file. A process killed before it creates a
+ *   listed directory leaves a `pending` file whose next install creates the directory and records
+ *   it. A pending path changed by hand before the next run is kept and no longer recorded. A
+ *   leftover staging file is removed. Two installs writing one target at once never rename one's
+ *   partial staging file into place.
+ * - Logging. The logging plugin's default directory follows the `logs` column, and a relative
+ *   `HOME`, for the default directory and for a `file` under `~/`, calls `onError` with
+ *   `unresolved-directory` and `variable` `HOME`.
+ * - Packaging. `pnpm check:packed` compiles a consumer that calls `applicationDirectory` against
+ *   core's emitted declarations and runs it under Node and Bun.
+ */
+
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,

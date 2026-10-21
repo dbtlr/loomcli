@@ -31,7 +31,7 @@ Loom has no seam for that argument. The policy is fixed when the run starts, bef
 - **Projections.** `inspect()` publishes `color` on each Boolean option node, `true` on the marked one, and the manifest copies it.
 - **The color plugin.** `@loomcli/plugins/color` exports `color()`, which takes no settings and declares the global Boolean option `color` with `polarity: 'both'`, `control: true`, the mark, and the description `Turn color on or off, overriding NO_COLOR.` It adds no middleware, Command, view, or hook, and claims no slot. An application that wants another spelling marks its own option.
 
-The contract and its acceptance are in [Color](../core.md#color) and [Color plugin](../core.md#color-plugin).
+The contract and its acceptance are in [Color](../core/color.md) and [Color plugin](../plugins/color.md).
 
 ## Considered options
 

@@ -1,3 +1,45 @@
+/*
+ * Acceptance plan for the MCP protocol package (docs/plugins/mcp.md).
+ *
+ * The protocol package is proven when its own conformance tests, which import nothing of Loom,
+ * produce these results under Node and Bun:
+ *
+ * - The constant. The package exports one revision, `2026-07-28`, and every version check and
+ *   answer reads it.
+ * - Framing. A message split across two reads parses once, two messages in one read parse in order,
+ *   a blank line is ignored, a line that is not JSON answers `-32700`, a batch and a JSON value
+ *   that is not a request answer `-32600`, and every line the server writes parses as one message
+ *   and holds no raw line break.
+ * - Discovery and versions. `server/discover` answers the fields above with `ttlMs` and
+ *   `cacheScope`. A request without `_meta`, or missing either required key, answers `-32602`, a
+ *   request for `2025-11-25` answers `-32022` naming `2026-07-28` and the requested version,
+ *   `initialize` answers `-32022` with the message above, and `ping` and an unknown method answer
+ *   `-32601`.
+ * - Tools. `tools/list` answers with `resultType`, `ttlMs`, `cacheScope`, and no `nextCursor`, a
+ *   cursor answers `-32602`, and `tools/call` reaches the handler it was given with the request's
+ *   name and arguments.
+ * - Request ids. A request reusing the id of a call or a subscription in flight answers `-32600`
+ *   naming the id, the first call runs on untouched, and the id serves again once its request
+ *   settles or is cancelled.
+ * - Cancellation. A cancelled request's handler sees its signal abort and no response is written,
+ *   and a cancellation for an unknown or settled id changes nothing.
+ * - Subscriptions and shutdown. `subscriptions/listen` is acknowledged first by
+ *   `notifications/subscriptions/acknowledged` with an empty filter and the subscription's id in
+ *   `_meta`, a client's cancellation ends it with no response, and closing stdin aborts calls in
+ *   flight, answers none of them, waits for each to settle, sends `notifications/cancelled` naming
+ *   the subscription, ends it with its closing result carrying its id in `_meta`, and resolves. A
+ *   client that stops reading before stdin ends leaves the run to resolve and the process to exit
+ *   0.
+ * - The run's signal. A signal already aborted resolves the run with nothing read or written, and a
+ *   signal that aborts while a call and a subscription are open aborts the call, writes nothing
+ *   more, and resolves with stdin still open, as it does after stdin has ended.
+ * - Progress. A call whose `_meta` carries a progress token, a string and a number each, receives a
+ *   progress function, and each call of it writes one `notifications/progress` with the token and
+ *   the given values, in call order. A `total` or `message` left out is absent from the params, and
+ *   nothing is written after the call's response, after its cancellation, or after shutdown. A call
+ *   without a token receives no function.
+ */
+
 import { setTimeout as after } from 'node:timers/promises';
 
 import { describe, expect, it } from 'vite-plus/test';

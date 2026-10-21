@@ -1,3 +1,45 @@
+/*
+ * Acceptance plan for the live region (docs/core/output.md#live-region).
+ *
+ * The live region is proven when public APIs alone produce these results under Node and Bun,
+ * against a headless terminal emulator fed what core writes to a host whose stderr reports a
+ * terminal:
+ *
+ * - The stack. Two regions draw, an `out.info` and an `out.debug` at verbosity 1 between their
+ *   frames land above both, and the screen holds both frames below them in open order. A frame that
+ *   grows by a row moves the region below it down. Closing the top region moves its last frame into
+ *   scrollback above the other region, and a region whose last frame is empty leaves no row. An
+ *   `out.draw` that writes `partial` with no line break before the first region draws leaves
+ *   `partial` on its own row above the frame.
+ * - Stdout. With stdout a terminal too, a result written while a region is drawn lands above the
+ *   stack. With stdout piped, stdout receives the result alone and stderr's stack is untouched.
+ * - Out of core. A fixture `onLog` hook that writes to its destination's `stderr` while a region is
+ *   drawn lands above the stack.
+ * - Input regions. A region redrawn on a timer stops changing while an input region is open and
+ *   shows its latest frame once when the input region closes, and a region that closed meanwhile is
+ *   in scrollback above the input region's last frame. A second input region's first draw resolves
+ *   only after the first input region closes.
+ * - The signal. `end()`, the action's return, a thrown failure, and the run's cancellation each
+ *   abort the signal with `closedBy` `'end'`, `'completion'`, `'failure'`, and `'cancellation'`,
+ *   and a frame an abort listener draws is the region's last frame. A failed run's report follows
+ *   every region's last frame, from an action, a middleware, and a configuration source. A
+ *   cancelled run writes no report. A second input region still waiting when the run is cancelled
+ *   reads `closedBy` `'cancellation'`. A region a middleware opens before `next()` is still open,
+ *   with `closedBy` `undefined`, after the action returns, and reads `'completion'` once the chain
+ *   has unwound; a region a middleware opens after `next()` reads `'completion'` too, and a region
+ *   a configuration source opens reads `closedBy` `'completion'` after `--help` takes over.
+ * - Not live. `live` reads `false` with stderr piped, under `app.invoke` and an action's `invoke`,
+ *   and at verbosity -1 for a region without `input: true`. Its `draw` calls no override of its
+ *   view and writes nothing. An input region at verbosity -1 on a terminal reads `true` and draws.
+ * - Resize. A two-row frame drawn at 80 columns, after the emulator is resized to 40 columns and
+ *   reflows, is erased whole by the next draw, and no stale row remains.
+ * - `out.draw`. Its count is unchanged for every frame the prompts acceptance once pinned, its text
+ *   lands above an open region, it draws at verbosity -1, and off a terminal its bytes are
+ *   unchanged.
+ * - After close. `draw`, `end`, and `report` on a closed region do nothing and resolve.
+ * - Faults. The negative type checks reject the calls the types forbid.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

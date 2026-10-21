@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/plugins/tests/manpage.test.ts.
+
 import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

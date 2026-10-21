@@ -1,3 +1,24 @@
+/*
+ * Acceptance plan for the failure form (docs/core/failures.md#the-failure-form).
+ *
+ * The failure form is proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - The example. The `invoke` above reads the form in its comment, and `jsonkit.invoke(['get'], {
+ *   args: { path: 'missing' }, options: { file: 'doc.json' } })` reads `{ code: 'path-not-found',
+ *   exitCode: 65, message: 'Path not found: "missing". Run jsonkit keys to list the keys at the
+ *   root.', hints: [] }`.
+ * - Two problems. An `InputError` with two problems reads both lines in `message`, with no
+ *   application name and no trailing newline.
+ * - Plain text. A `FatalError` whose message carries a style mark, and a hint that carries one,
+ *   read as plain text with no ANSI and no markup under `FORCE_COLOR=1`.
+ * - By build. A `TypeError` from an action reads `Something went wrong.` from a bundle and the
+ *   defect's sentence from source, and neither form holds a stack frame.
+ * - Hints. Two fixture plugins' hints read in installation order, and a build fault reads `[]`.
+ * - Exit codes. A usage error whose `onFailure` hook breaks reads `exitCode` 2 in the form and 1 on
+ *   the outcome.
+ * - Frozen. An assignment to a form's member throws in strict mode code.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/core/tests/style.test.ts.
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

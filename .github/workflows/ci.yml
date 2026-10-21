@@ -217,6 +217,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check that every Markdown link resolves
+        run: node scripts/check-links.mjs
+
+      - name: Check that the diagnostics reference is current
+        run: node scripts/generate-diagnostics.mjs --check
+
       - name: Build and run the tests that read docs
         run: pnpm run build && pnpm exec vp test --run --tagsFilter docs
 

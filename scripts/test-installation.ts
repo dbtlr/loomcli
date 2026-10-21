@@ -6,11 +6,14 @@ const splitPoint = '# Once the verified binary is at $target:\n';
 
 /**
  * The installer script's recipe for `install.json`, read from the contract's own block in
- * docs/core.md, so a test runs the bytes an installer author copies. The block sits in a list item,
+ * docs/core/installation-record.md, so a test runs the bytes an installer author copies. The block sits in a list item,
  * indented two spaces.
  */
 export function installationRecipe(): string {
-  const contract = readFileSync(new URL('../docs/core.md', import.meta.url), 'utf8');
+  const contract = readFileSync(
+    new URL('../docs/core/installation-record.md', import.meta.url),
+    'utf8',
+  );
   const block = /\n {2}```sh\n(?<body>(?: {2}.*\n|\n)*?) {2}```\n/gu;
   for (const match of contract.matchAll(block)) {
     const body = match.groups?.body ?? '';
@@ -18,7 +21,7 @@ export function installationRecipe(): string {
       return body.replaceAll(/^ {2}/gmu, '');
     }
   }
-  throw new Error('docs/core.md holds no install.json recipe.');
+  throw new Error('docs/core/installation-record.md holds no install.json recipe.');
 }
 
 /**
@@ -30,7 +33,9 @@ export function installationRecipeParts(): { prepare: string; record: string } {
   const recipe = installationRecipe();
   const split = recipe.indexOf(splitPoint);
   if (split === -1 || recipe.includes(splitPoint, split + 1)) {
-    throw new Error('The install.json recipe in docs/core.md holds no single split point.');
+    throw new Error(
+      'The install.json recipe in docs/core/installation-record.md holds no single split point.',
+    );
   }
   return { prepare: recipe.slice(0, split), record: recipe.slice(split) };
 }

@@ -4,7 +4,7 @@ description: Internal marked-string framing and resolver invariants for style sp
 
 # Marked-string wire contract
 
-This is the internal representation behind the [style API](core.md#styles-and-rendering-policy).
+This is the internal representation behind the [style API](../core/styles.md).
 It is an implementation contract, not an authoring API or a format for persistent storage.
 SDK authors use the helpers and keep ordinary strings. They do not construct headers.
 
@@ -52,7 +52,7 @@ Operations retain their order. A token with no mapping contributes no operation.
 
 ## Explicit color fallbacks
 
-[ADR-0029](decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md) defines these additional color forms. The parser accepts them alongside the original tuples.
+[ADR-0029](../decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md) defines these additional color forms. The parser accepts them alongside the original tuples.
 
 | Color | Fields in the final object |
 | --- | --- |
@@ -95,7 +95,7 @@ First-party views escape raw data values they interpolate, but preserve a messag
 Each rendered string starts with an empty Loom style stack. State does not cross output calls.
 The resolver processes nested frames with an explicit stack rather than recursive calls proportional to input depth.
 It resolves glyph forms before measuring enclosing padding. Nested padding resolves from the inside outward.
-A `["nowrap"]` frame resolves to its body exactly. It adds no byte, expands no tab itself, and changes no measurement: the width helper measures its body as if the frame were absent. Style, glyph, padding, and no-wrap frames nest inside it and around it. Only the view context's `wrap` and core's `splitLines` read the frame. `wrap` keeps the body whole, and `splitLines` closes the frame at a line break and opens it again on the next line, as it does every frame, as the [core reference](core.md#width-padding-and-multiline-lanes) states.
+A `["nowrap"]` frame resolves to its body exactly. It adds no byte, expands no tab itself, and changes no measurement: the width helper measures its body as if the frame were absent. Style, glyph, padding, and no-wrap frames nest inside it and around it. Only the view context's `wrap` and core's `splitLines` read the frame. `wrap` keeps the body whole, and `splitLines` closes the frame at a line break and opens it again on the next line, as it does every frame, as the [core reference](../core/styles.md#width-padding-and-multiline-lanes) states.
 Escape decoding produces literal data before measurement; the resulting literal is never reparsed as a frame.
 The width helper, the output resolver, `wrap`, `expandTabs`, and `splitLines` share the same frame parser and ANSI recognizer, so no package reads the wire with rules of its own.
 
@@ -125,32 +125,15 @@ For separate output calls containing `'\x1b[3'` and `'1mX'`, the first emits not
 This boundary prevents separately emitted fragments from assembling a command that bypasses color, modifier, hyperlink, or terminal-control policy.
 
 Color removal happens after composition. It cannot remove the control codes needed to close styles that remain enabled.
-The resolver uses the [rendering policies](core.md#rendering-policies) for ANSI colors, modifiers, hyperlinks, and other terminal controls separately.
+The resolver uses the [rendering policies](../core/styles.md#rendering-policies) for ANSI colors, modifiers, hyperlinks, and other terminal controls separately.
 It treats CRLF as one line break. LF starts a new line; a lone CR is a cursor control rather than a newline.
 Tabs remain text except inside a padding frame, where they expand under the tab rule before alignment.
 
 The parser scans each input segment once. A rejected header cannot trigger rescans from every embedded opening delimiter.
 Emitted output is proportional to input and requested padding, with no implicit small limit on valid strings.
 Deep padding around unchanged content reuses its Unicode analysis. Arbitrary nested padding that changes its content at every level can require quadratic measurement work and transient allocation, including repeated appends of combining marks.
-Eliminating that pathological cost is a separate performance increment. The current resolver does not promise linear work for every nested composition.
+The current resolver does not promise linear work for every nested composition.
 Run `node packages/core/tests/fixtures/padding-growth.mjs concatenated` after building to reproduce it; `unchanged` exercises cached wrappers.
 Line breaking does not share that cost. `wrap` reads each input line once and answers every candidate span from that reading, so its work is linear in the text. Three cases are the exception, and `wrap` lays out their spans afresh: a line that holds a tab, any line of a text that holds a padding frame, and a span that starts or ends inside a grapheme cluster. The width helper and `plain` likewise measure and resolve a text with no padding frame, command, or tab without laying it out. Run `node packages/core/tests/fixtures/wrap-cost.mjs` after building to time `wrap` over long cells and paragraphs, with styles and with wide characters, and the table view over long cells. Each line it prints names a case, its time, and a digest of its output.
 Numeric validation prevents negative, fractional, infinite, and unsafe widths before a padding frame is produced.
 Allocation failure follows the ordinary view failure path; core does not silently truncate output.
-
-## Required constructions
-
-Implementation acceptance includes these cases through both width measurement and final output:
-
-- Every delimiter as literal input, escaped once, escaped twice, and next to a valid frame.
-- Unknown tokens and glyphs, malformed JSON, truncated headers, extra closes, and unterminated recognized frames.
-- A recognized glyph header with a nonempty body, preserving the malformed frame as literal text.
-- A known token without a mapping, a custom undefined mapping, and a literal string resembling a complete registered frame.
-- Nested styles, reset variants, embedded ANSI resets, and an ANSI reset inside a padded frame.
-- A multi-character compatibility glyph inside nested padding and escaped delimiters inside a measured value.
-- A no-wrap frame holding a style, a glyph, or a padding frame, and nested inside each, resolving to its body byte for byte, and a `["nowrap", 1]` header kept as literal text.
-- Large malformed headers without quadratic header rescanning, and deep unchanged padding without recursive-stack failure or repeated Unicode analysis.
-- Unclosed ANSI styling and hyperlinks followed by a separate output call, with no leaked formatting.
-- Loom frame boundaries inside raw OSC payloads and raw ANSI commands split across Loom frames, under disabled styling policies.
-
-Public process fixtures in `packages/core/tests/style.test.ts` exercise these constructions on Node and Bun.

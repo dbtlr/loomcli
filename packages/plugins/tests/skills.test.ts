@@ -1,3 +1,68 @@
+/*
+ * Acceptance plan for the skills plugin (docs/plugins/skills.md#global-installs).
+ *
+ * The plugin is proven when process tests under Node and Bun produce these results. Each fixture
+ * sets `HOME`, `XDG_STATE_HOME`, and the working directory to temporary directories, clears
+ * `CLAUDE_CONFIG_DIR` unless a case sets it, and runs an application that installs `skills()` with
+ * fixture skills through `run({ host })`:
+ *
+ * - Installing globally. `skills install` writes every skill's folder to both global folders with
+ *   the pinned modes under umask `002` and `077`, records each target's folders in its own plugin's
+ *   file, and prints the pinned lines. `--agent claude` writes only the Claude folder and leaves
+ *   `skills.agents.json` and its folders as they were. A second install prints the unchanged lines
+ *   and writes nothing, and one after a file's mode changed, after the skill flips a file's
+ *   `executable`, or after someone added a file to the folder, replaces the folder whole. An
+ *   absolute `CLAUDE_CONFIG_DIR` moves the Claude folder under it, a relative one is ignored, and
+ *   `--agent claude` with an absolute `CLAUDE_CONFIG_DIR` installs under a relative `HOME` on Linux
+ *   when `XDG_STATE_HOME` is absolute. An `--agent` value outside the set exits 2.
+ * - Refusing. An unrecorded directory, a regular file, and a symbolic link at a skill folder's path
+ *   each fail `install` and `update` with exit 1, print the refused-folder line, and leave both
+ *   targets byte for byte, including the target that had nothing in the way. A damaged and an
+ *   unknown-format plugin's file each fail `install` and `uninstall` with the pinned sentence for
+ *   that child. A relative `HOME` fails every global child, and a relative `XDG_STATE_HOME` with a
+ *   relative `HOME` fails with the record sentence naming the variable the lookup answers.
+ * - Forcing. `install --force` over an unrecorded directory, a regular file, and a symbolic link to
+ *   the other target's folder, as `npx skills` leaves it, replaces each with the skill's folder,
+ *   records it, prints the replaced line, and leaves the link's target byte for byte.
+ *   `--force --project` installs as `--project` does.
+ * - Updating. After the fixture's skill drops a reference, moves another into a subfolder, and adds
+ *   a third, `update` leaves exactly the new files in the folder, including over a folder someone
+ *   edited and added files to, and prints the updated lines. After the application stops declaring
+ *   a skill, `update` removes that skill's folder whole. With nothing recorded it prints the
+ *   nothing-to-update line and exits 0. It leaves a project folder byte for byte.
+ * - Uninstalling. `uninstall` removes every recorded folder whole, including one someone edited,
+ *   and each parent directory it created that is then empty, deletes the plugin's file, leaves an
+ *   unrecorded folder in place, and prints the nothing-to-remove line on a second run. A recorded
+ *   folder already gone prints the already-gone line. A recorded Claude folder that is now a
+ *   symbolic link to the agents folder is removed as a link, and the agents folder and the link's
+ *   target stay byte for byte. `--agent agents` leaves the Claude folder and its record alone. With
+ *   `~/.claude/skills` a symbolic link to `~/.agents/skills`, `install` writes the folder once,
+ *   records it for claude alone, prints the same-folder line, and exits 0, and `uninstall` removes
+ *   it once. `uninstall` with a loader that throws calls no loader and succeeds.
+ * - Projects. `install --project` from a subdirectory of a fixture repository writes to the root
+ *   that holds `.git`, a directory or a file, and from a directory with no `.git` above it writes
+ *   to the start. `-C` starts the walk at its directory, a missing directory exits 2, and `-C`
+ *   without `--project` exits 2. Run from a home folder that holds `.git`, or from one with no
+ *   `.git` above it, it fails with the never-the-global-folder sentence and writes nothing, and so
+ *   does a repository whose `.claude` is a symbolic link to the home folder's `.claude`, leaving
+ *   the global folder byte for byte. A second project install over a folder holding a symbolic link
+ *   to a directory outside it removes the link and leaves that directory byte for byte. A second
+ *   install removes a file the skill no longer lists and a file someone added, replaces a symbolic
+ *   link at the folder without touching its target, and prints the replacing line. Nothing is
+ *   written to the installation record.
+ * - Loading. A run of any Command outside `skills` calls no loader. Each loader fault throws its
+ *   pinned diagnostic when a child runs and writes nothing, and a loader that throws exits 1.
+ * - Refreshing. `refreshSkills`, given a fixture binary path, runs it with `skills update`, pipes
+ *   its output into the host's streams, and resolves; a child that exits 1, and a path that cannot
+ *   start, each add the pinned `warn` log event and resolve, and the path that cannot start writes
+ *   the pinned line to `host.stderr`. A run aborted while the child runs ends it with `SIGTERM`,
+ *   and `refreshSkills` resolves. Installed as `selfUpdate({ afterReplace: refreshSkills })` under
+ *   the self-update fixture, an update refreshes a recorded skill to the replaced binary's version.
+ * - Settings. Each settings fault throws its pinned diagnostic at the call.
+ * - Packaging. `pnpm check:packed` resolves `@loomcli/plugins/skills` from the packed tarball under
+ *   Node and Bun.
+ */
+
 import {
   chmodSync,
   existsSync,

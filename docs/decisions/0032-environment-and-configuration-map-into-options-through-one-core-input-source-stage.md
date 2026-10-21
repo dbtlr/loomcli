@@ -44,7 +44,7 @@ The invocation order gains the input-source stage between local parsing and vali
 
 ## Status
 
-Accepted 2026-09-24 with the implementation. Core reads `env` on string, Boolean, and plugin options, applies the input source build rules in `inspect()` and `run()`, fills unfilled options in one stage between local parsing and validation, loads a declared configuration source only when an in-scope option is still unfilled, configuration-bound, and free of an environment fault, and publishes `env` through `inspect()` and the manifest. textstat binds `--min-bytes` to `TEXTSTAT_MIN_BYTES` and `--total` to `TEXTSTAT_TOTAL`, and the acceptance in [Input sources](../core.md#input-sources) passes under Node and Bun through a fixture configuration plugin.
+Accepted 2026-09-24 with the implementation. Core reads `env` on string, Boolean, and plugin options, applies the input source build rules in `inspect()` and `run()`, fills unfilled options in one stage between local parsing and validation, loads a declared configuration source only when an in-scope option is still unfilled, configuration-bound, and free of an environment fault, and publishes `env` through `inspect()` and the manifest. textstat binds `--min-bytes` to `TEXTSTAT_MIN_BYTES` and `--total` to `TEXTSTAT_TOTAL`, and the acceptance in [Input sources](../core/input-sources.md) passes under Node and Bun through a fixture configuration plugin.
 
 ## Changelog
 

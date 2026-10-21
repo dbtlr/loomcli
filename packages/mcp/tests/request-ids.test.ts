@@ -1,3 +1,4 @@
+// Acceptance plan: see packages/mcp/tests/framing.test.ts.
 import { describe, expect, it } from 'vite-plus/test';
 
 import { open, request } from './session.js';

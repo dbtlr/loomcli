@@ -1,3 +1,57 @@
+/*
+ * Acceptance plan for help wrapping (docs/plugins/help-page.md#help-wraps-to-the-destinations-columns).
+ *
+ * Help wrapping is proven when public APIs alone produce these results under Node and Bun, through
+ * fixtures whose host reports a fixed stdout width and an `env` with no `COLUMNS`:
+ *
+ * - Example pages. `jsonkit --help` at 60 columns prints the page above, and its COMMANDS row set
+ *   at 30 columns prints the stacked block above, byte for byte with color and modifiers disabled.
+ *   `jsonkit -h` and `textstat --help` each fit 40 and 60 columns. `jsonkit get --help` and
+ *   `jsonkit select --help` fit 60. At 40, only `get`'s second example command and `select`'s USAGE
+ *   form, which stay whole, run past it. Every example page and every help golden that runs off a
+ *   terminal is unchanged.
+ * - Width. A page at a width it already fits prints its rows as before. `COLUMNS=60` over a real
+ *   width of 100 lays the page out at 60, `COLUMNS=150` over 100 lays it out at 100, and
+ *   `COLUMNS=60` on a pipe changes nothing.
+ * - Right cells. A description, an accepted-values sentence, and a fact parenthesis wrap as one
+ *   text under the right column, in an outer heading's direct rows and under an inner heading,
+ *   whose indent narrows its width. A row with no right cell carries no padding.
+ * - Stacking. A row set stacks exactly when its indent, left column, and floor exceed `columns`,
+ *   and the next row set keeps two columns. An outer heading's direct rows and the rows under its
+ *   inner headings stack independently. A stacked right cell wraps at the indent four columns past
+ *   the furthest-in start of a left cell's text in its set, and a right cell whose unit is wider
+ *   than that space overflows on its own line. A stacked set that holds a long-only option starts
+ *   every right cell eight columns past its indent, in an outer heading's direct rows and under an
+ *   inner heading, so no description starts in a spelling's column, and a stacked set without one
+ *   starts them four columns in.
+ * - Literals. A USAGE form, a left cell, a code block line, and an example command wider than
+ *   `columns` print whole. A Details code span holding spaces, and a hint's command, never break. A
+ *   link destination wider than the width keeps its own line.
+ * - Details. A paragraph authored across several lines joins and wraps at 40 columns and joins into
+ *   one line at 200. A list item's continuation hangs after its marker, nested two levels, and a
+ *   quote's continuation carries `> `. A heading wraps. Code keeps every line as written, and an
+ *   emphasis pair on one authored line stays styled after the join. Off a terminal, each authored
+ *   line stays one page line.
+ * - Table rows. Consecutive Details lines that start with `|` print one page line each at 24 and at
+ *   200 columns, with no join and no wrap, even directly after a paragraph, whose lines still join,
+ *   and off a terminal every Details value that held a pipe table prints as it did before the rule,
+ *   a row that continues a list item lazily included.
+ * - Hanging indents. At 40 columns a masthead description continues after `<path> · `, a
+ *   deprecation message after `Deprecated: `, an example note at its indent, and a hint at the left
+ *   margin, and the version line stays one line. When a masthead description's hang cannot fit, as
+ *   for `jsonkit manpage generate --help` at 30 columns, its first line stays after the path and
+ *   the rest continues at indent 2, and so does a deprecation message, while a list item whose hang
+ *   cannot fit continues at its marker's column, nested too.
+ * - INPUT and option groups. At 40 columns the INPUT block's description and its stdin sentence
+ *   wrap at their two-space indent while its `Example:` line stays whole, an option-group sentence
+ *   wider than the width wraps at the same indent, and off a terminal each prints as one line.
+ * - Narrow and tabs. At a width that leaves less than one column for a text, that text prints
+ *   unwrapped. A tab inside a description, a Details paragraph, and a code line expands on a
+ *   terminal, and stays a tab off one.
+ * - Styles. Exact themed bytes pin a wrapped right cell whose style spans the break, a wrapped fact
+ *   parenthesis, a wrapped deprecation message, and a stacked row.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

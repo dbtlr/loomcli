@@ -43,7 +43,7 @@ The context carries no fallback width. A view that wants one, such as 80, suppli
 
 ### Wrap
 
-The view context gains a required member `readonly wrap: (text: string, columns: number | undefined) => string`. It breaks lines when the view runs. It measures with the destination's glyph forms exactly as `width()` does, ignores style and hyperlink envelopes, and returns marked text with real line breaks inserted. `wrap` itself is not a deferred wire frame. `pad` stays the deferred minimum-width composer, and the [style wire contract](../style-wire.md) gains one frame, `nowrap`, described below.
+The view context gains a required member `readonly wrap: (text: string, columns: number | undefined) => string`. It breaks lines when the view runs. It measures with the destination's glyph forms exactly as `width()` does, ignores style and hyperlink envelopes, and returns marked text with real line breaks inserted. `wrap` itself is not a deferred wire frame. `pad` stays the deferred minimum-width composer, and the [style wire contract](../maintaining/style-wire.md) gains one frame, `nowrap`, described below.
 
 The idiom is `context.wrap(text, context.columns)`. An undefined `columns` returns the text unchanged. Any other `columns` that is not a positive safe integer throws `RangeError('Wrap width must be a positive safe integer.')`.
 

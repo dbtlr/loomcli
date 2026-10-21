@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/core/tests/style.test.ts.
+
 import { graphemeWidths as upstreamWidths } from '@rockorager/uucode/width';
 import { expect, test } from 'vite-plus/test';
 

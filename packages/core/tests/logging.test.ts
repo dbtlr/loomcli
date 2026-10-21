@@ -1,3 +1,37 @@
+/*
+ * Acceptance plan for core's log events (docs/core/logging.md#logging).
+ *
+ * Core's log events are proven when public APIs alone, with fixture applications and a fixture
+ * plugin whose `onLog` collects events, produce these results under Node and Bun:
+ *
+ * - Reach. An action, a middleware, a configuration source, and an `onFailure` hook each log one
+ *   event, which the collector receives in call order: the middleware's, source's, and hook's name
+ *   the fixture plugin, and the action's, a plugin Command's action included, read `null`. The
+ *   negative type checks find no `log` in `onCommandAttach` or `onGraphBuilt`.
+ * - The copy. Fields holding a `Date`, an `Error` with a `cause`, a `bigint`, an object that holds
+ *   itself, `undefined`, a function, an array holding `undefined`, `NaN`, and a class instance each
+ *   read their pinned JSON; changing the caller's object after the call leaves the event unchanged,
+ *   and writing to the event throws in strict mode.
+ * - Facts. `time` matches the ISO 8601 UTC form with milliseconds. `run` is 32 lowercase hex
+ *   characters, equal across one run's events, and different across two runs, an action's `invoke`,
+ *   and an `app.invoke`. `path` reads `[]` for a structural fault before routing, the partial path
+ *   for an unknown Command under a group, and the routed path in an action. `application` reads the
+ *   graph's name and version, and `0.0.0` for an Application that declares none.
+ * - Failure events. An `InputError` logs at `error` with its form, exit code 2. An action that
+ *   throws a `TypeError` logs at `fatal` with `defect` holding its name, message, and stack from
+ *   source and from a bundle, while the bundle's stderr holds the generic defect message alone. A
+ *   fault reported after the outcome logs its own event, a stdout that fails a write logs its
+ *   `@loomcli/core/broken-destination` defect at `fatal` with the write error as `defect`, and a
+ *   failed action `invoke` logs its failure event. A run a caller cancels whose action rejects with
+ *   the signal's reason logs no failure event, a failure a cancelled run still renders logs one,
+ *   and a build fault logs none.
+ * - No listener. With no plugin that declares `onLog`, a call returns `undefined` and a getter on
+ *   its fields is never read.
+ * - Types. The negative type checks reject `log.fatal`, and the positive checks accept fields
+ *   holding a `Date`, a `bigint`, `undefined`, an `Error`, a class instance, and a value of an
+ *   interface type.
+ */
+
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

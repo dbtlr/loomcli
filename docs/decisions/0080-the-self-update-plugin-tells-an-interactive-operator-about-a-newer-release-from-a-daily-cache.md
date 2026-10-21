@@ -13,7 +13,7 @@ modified: 2026-10-20
 
 [ADR-0073](0073-the-self-update-plugin-replaces-a-script-installed-binary-with-a-verified-release.md) gives the self-update Command and leaves update notices out: an operator learns of a newer release only by running `self-update --check`. Tools that update themselves, such as npm's update-notifier and the GitHub CLI, tell the operator during an ordinary run instead.
 
-A notice needs a release lookup, and the lookup is a network request. Core adds no time limit to a run, so a lookup the run waits for holds a finished command open for as long as the network hangs, which a captive portal or a dropped connection makes plausible. A lookup that races the action and is abandoned when the action ends never completes for a command that finishes in milliseconds, which most do. The run can instead read an answer an earlier lookup left on disk and start a later lookup that it never waits for. [`host.program`](../core.md#host) already gives the words that start the application again, which the service plugin runs, and core supports hidden options.
+A notice needs a release lookup, and the lookup is a network request. Core adds no time limit to a run, so a lookup the run waits for holds a finished command open for as long as the network hangs, which a captive portal or a dropped connection makes plausible. A lookup that races the action and is abandoned when the action ends never completes for a command that finishes in milliseconds, which most do. The run can instead read an answer an earlier lookup left on disk and start a later lookup that it never waits for. [`host.program`](../core/host.md) already gives the words that start the application again, which the service plugin runs, and core supports hidden options.
 
 Core has no hook after an action that succeeds. A middleware with `'always'` activation reads the chain's outcome after `await next()`, which is the hook point the contract offers. `out.render` writes to stdout outside the action of a Command that declares a result, so a middleware reaches stderr only through `out.info`, `out.success`, `out.warn`, and `out.error`, and core's lane views.
 
@@ -29,7 +29,7 @@ Core has no hook after an action that succeeds. A middleware with `'always'` act
 - **Silent on its own faults.** A cache that cannot be read is stale, a time that cannot be written starts no child, and a child that cannot start is passed over. None is reported, and none changes the run's exit code.
 - **Opting out.** The author passes `selfUpdate({ notices: false })`, which installs no middleware, or names an extra variable with `notices: { env: 'NOTES_NO_UPDATE_NOTICE' }`. The operator sets `NO_UPDATE_NOTIFIER`, npm's update-notifier convention, or the author's variable, to any nonempty value. Each turns off the notice and the refresh, so an opted-out run starts no lookup. An operator who types the hidden `--refresh-notice` asks for one.
 
-The contract and its acceptance are in [Update notices](../core.md#update-notices).
+The contract and its acceptance are in [Update notices](../plugins/self-update.md#update-notices).
 
 ## Considered options
 

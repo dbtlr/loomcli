@@ -27,7 +27,7 @@ Some text on the page is copied or read as syntax rather than read as prose: a u
 - **Details reflow at soft line breaks.** On a terminal, the lines of a Details paragraph join with one space, which is what Markdown's soft line break means, and the joined text wraps to the width. List items, quotes, and a heading, which is one line, wraps as a paragraph does. Code never reflows. Inline constructs still read per authored line, so joining changes no styling. No hard-break syntax joins the subset, and the subset can still grow under ADR-0077's rule. Off a terminal, each authored line stays one page line.
 - **The rest of the page stands.** `HelpPage`, the view's identity, its replacement, its styles, its escaping, and every content rule are unchanged. The pack exports no layout helper and no parser. The version line neither wraps nor reads the width.
 
-The contract and its acceptance are in [Help wraps to the destination's columns](../core.md#help-wraps-to-the-destinations-columns).
+The contract and its acceptance are in [Help wraps to the destination's columns](../plugins/help-page.md#help-wraps-to-the-destinations-columns).
 
 ## Considered options
 

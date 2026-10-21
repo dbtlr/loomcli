@@ -1,5 +1,45 @@
 // @module-tag docs
 
+/*
+ * Acceptance plan for the installer script (docs/toolchain/install.md).
+ *
+ * The installer script is proven when process runs of a rendered `install.sh` under `/bin/sh` on
+ * Linux and macOS produce these results, with a fake `uname`, `sysctl`, `ldd`, `curl`, and `wget`
+ * first on `PATH` that serve a fixture release and record each URL they are asked for:
+ *
+ * - Installing. With no arguments, the script fetches `releases/latest/download/` URLs, writes a
+ *   binary with mode `755` and the fixture's bytes to `$HOME/.local/bin/<name>`, and writes
+ *   `install.json` with the bytes the recipe pins. `1.4.0`, `v1.4.0`, and `--dir` with an absolute
+ *   directory each fetch the `releases/download/v1.4.0/` URLs or install into that directory. A
+ *   second install replaces the binary and the record.
+ * - Refusing. A digest mismatch, an asset `SHA256SUMS` does not list or lists twice with different
+ *   digests, a failed download, an unknown operating system or architecture, and a directory at the
+ *   binary's path each exit 1. An unknown option, a relative `--dir`, a second version, and a
+ *   version holding `/` each exit 2. Each leaves the install directory as it was, or empty when the
+ *   script created it, writes no `install.json`, and leaves no staging file. With no `--dir`, a
+ *   relative `HOME` exits 1 with nothing downloaded, and so does an unset `HOME` with an absolute
+ *   `XDG_STATE_HOME`. A run ended by `SIGTERM` during the download leaves no staging file.
+ * - The platform. Each `uname` row fetches its asset. `sysctl.proc_translated` printing `1` on
+ *   `Darwin` `x86_64` fetches `darwin-arm64`, and a failing `sysctl` there fetches `darwin-x64`. An
+ *   `ldd --version` that mentions `musl` fetches the `-musl` asset, and a missing `ldd` fetches the
+ *   glibc asset.
+ * - Downloaders. With no `curl`, a `wget` whose `--version` names GNU Wget downloads with it. A
+ *   BusyBox `wget`, and no downloader at all, exit 1 and name `curl`. A `SHA256SUMS` request
+ *   answered with an HTTP error exits 1 with the script's download sentence.
+ * - PATH. An install directory that is not on `PATH` prints the `export` line. One that is on
+ *   `PATH` prints none, also when `--dir` was given with a trailing slash. Another file of the same
+ *   name earlier on `PATH` is named.
+ * - The record. For each case of the installation record directory acceptance, unset, empty,
+ *   relative, and absolute `XDG_STATE_HOME` and `HOME`, run with an absolute `--dir`, the directory
+ *   the script writes `install.json` into is the one `applicationDirectory('installation', name,
+ *   host)` gives for that `env` on the running platform, and a case the resolver answers with `{
+ *   variable }` exits 1 with nothing downloaded. The rendered script holds both parts of the recipe
+ *   in `docs/core/installation-record.md` byte for byte. A rendered script cut short at any line
+ *   runs nothing.
+ * - Init. The loom init acceptance plan in packages/loom/tests/init.test.ts covers rendering,
+ *   drift, and the missing repository.
+ */
+
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -32,7 +72,7 @@ afterEach(() => {
   removeRoots();
 });
 
-/** The SHA-256 digest of the four bytes `test`, the default fixture binary, as core.md pins it. */
+/** The SHA-256 digest of the four bytes `test`, the default fixture binary, as the installation record reference pins it. */
 const testDigest = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
 
 /** The default install directory under the sandbox's home. */
@@ -66,7 +106,7 @@ test('with no arguments the script installs the latest release into ~/.local/bin
   expect(entries(recordDirectory(box))).toEqual(['install.json']);
 });
 
-test('the rendered script holds both parts of the recipe in docs/core.md byte for byte', () => {
+test('the rendered script holds both parts of the recipe in docs/core/installation-record.md byte for byte', () => {
   const script = installerScript(app, repo);
   const { prepare, record } = installationRecipeParts();
   expect(script).toContain(prepare);

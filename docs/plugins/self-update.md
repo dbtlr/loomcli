@@ -1,0 +1,136 @@
+---
+description: "The self-update plugin: updating an installed application and update notices."
+---
+
+# Self-update plugin
+
+This page documents the self-update plugin, which replaces an installed application's binary with a verified release, and the update notices it can print. An author installs it so an operator can update the application in place.
+
+```ts
+// @loomcli/plugins/self-update
+import type { Host, Log, Plugin } from '@loomcli/core';
+
+export interface AfterReplaceContext {
+  readonly previous: string; // the version that was replaced
+  readonly current: string; // the version now at path
+  readonly path: string; // the recorded path, as install.json holds it
+  readonly host: Host; // the run's host, whose release facts still describe the replaced binary
+  readonly signal: AbortSignal; // the run signal
+  readonly log: Log; // the run's log
+}
+export interface NoticeSettings {
+  /** A variable that turns notices off when it is set and not empty, beside NO_UPDATE_NOTIFIER. */
+  readonly env?: string;
+}
+export interface SelfUpdateSettings {
+  /** Called once after the binary is replaced and the record rewritten. */
+  readonly afterReplace?: (context: AfterReplaceContext) => Promise<void> | void;
+  /** Update notices: on unless false. */
+  readonly notices?: boolean | NoticeSettings;
+}
+export declare function selfUpdate(settings?: SelfUpdateSettings): Plugin;
+```
+
+```ts
+import { Application } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
+import { selfUpdate } from '@loomcli/plugins/self-update';
+
+export const notes = new Application('notes', {
+  plugins: [help(), selfUpdate({ afterReplace: ({ path }) => restartService(path) })],
+});
+```
+
+```text
+$ notes self-update
+Downloading notes-linux-x64 from v1.5.0 of acme/notes.
+Updated notes from 1.4.2 to 1.5.0.
+$ notes self-update --check
+notes can update from 1.5.0 to 1.5.1 on the stable channel.
+$ notes self-update --channel next
+Downloading notes-linux-x64 from v1.6.0-next.2 of acme/notes.
+Updated notes from 1.5.0 to 1.6.0-next.2.
+$ notes self-update 1.5.0
+Downloading notes-linux-x64 from v1.5.0 of acme/notes.
+Updated notes from 1.6.0-next.2 to 1.5.0.
+```
+
+`selfUpdate()` is the self-update plugin. It replaces the running binary with a verified release from the application's GitHub repository, and only when the [installer script](../toolchain/install.md) placed the binary and nothing has changed it since. Its identity is `@loomcli/plugins/self-update`, and it contributes one [plugin Command](../core/plugin-contract.md#plugin-commands) and, unless the author turns them off, the middleware of [update notices](#update-notices). [ADR-0073](../decisions/0073-the-self-update-plugin-replaces-a-script-installed-binary-with-a-verified-release.md) records the decision.
+
+- **Settings.** The settings type bounds `afterReplace` and `notices`, and `selfUpdate()` judges only `notices.env` at the call, as [Update notices](#update-notices) states.
+- **The Command.** `self-update`, visible, with the description `Replace this application with another release.`, the optional argument `version`, `A release version to install, newer or older, such as 1.4.0.`, the string option `--channel`, `The release channel to follow, such as stable or next.`, the Boolean option `--check`, `Report what an update would do and replace nothing.`, and the hidden Boolean option `--refresh-notice`, `Refresh the update notices' cache.`, which [update notices](#update-notices) runs. It declares no result. A version may carry a leading `v` and must otherwise be a semantic version, and a channel must be `stable` or a SemVer prerelease identifier, the set a version's derived channel comes from; each is judged by its input's validator, so a malformed one is core's usage error for that input, with exit 2. `--channel` beside a version is an `InputError` the action throws, `Option "--channel" cannot be given with a version. Leave out --channel, or the version.`, with exit 2. A root that declares arguments cannot hold children, so such an application cannot install the plugin, the limit [completion](completion.md) has.
+- **Refusals.** Before any request, in this order, the Command fails with a `FatalError` and exit 1, replacing nothing and writing no record, when:
+
+  | The run | The sentence and correction |
+  | --- | --- |
+  | has no release group with an `asset` in `host.release` | `notes was not built as a release binary, so it cannot update itself. Update it the way you installed it.` |
+  | cannot resolve the installation record's directory, because `applicationDirectory` answers `{ variable }` | `notes cannot find its installation record because HOME is not an absolute path. Set HOME to an absolute path, then run self-update again.`, naming the variable the lookup answers |
+  | has no `installation`, or one whose method is not `script` | `notes was installed some other way, so self-update cannot replace it. Update it the way you installed it.` |
+  | finds nothing at the recorded path, or something other than a regular file or a symbolic link | `notes cannot find its binary at /home/me/.local/bin/notes. Install it again with install.sh.` |
+  | finds a symbolic link at the recorded path | `notes at /home/me/.local/bin/notes is a symbolic link, so self-update will not replace what it points to. Install it again with install.sh.` |
+  | finds a file whose SHA-256 digest differs from the recorded one | `notes at /home/me/.local/bin/notes changed since it was installed, so self-update will not replace it. Install it again with install.sh.` |
+  | cannot write to the recorded path's directory or the installation record's | `notes cannot write to /home/me/.local/bin. Run self-update as the user who installed notes.` |
+
+  The recorded path is `installation.path`, read without resolving a symbolic link at the path itself: the installer script always leaves a regular file there, so a link was put there by someone else and may point into another installer's files. A symbolic link among the path's parent directories is followed. Core never hashes the binary, so the Command hashes it on every run that passes its usage checks, `--check` included. Every path, URL, and version a message repeats passes through [`escapeControlCharacters`](../core/styles.md#strings-and-composition).
+- **Requests.** Every request starts at an HTTPS URL on `https://github.com/` and follows each redirect itself, at most 20 for one request, and only to a URL whose scheme is `https:`. The Command sends no token and calls no API. It adds no time limit and no size limit, and every request reads the run signal. These responses fail the run with exit 1:
+
+  | The response | The sentence and correction |
+  | --- | --- |
+  | a redirect to a scheme other than `https:` | `notes was redirected away from HTTPS while downloading https://github.com/acme/notes/releases/download/v1.5.0/notes-linux-x64. Run self-update again later.` |
+  | a 21st redirect | `notes was redirected too many times while downloading https://github.com/acme/notes/releases/download/v1.5.0/notes-linux-x64. Run self-update again later.` |
+  | a status other than `200` at the end of the redirects, or no response at all | `notes could not download https://github.com/acme/notes/releases/download/v1.5.0/notes-linux-x64 (503). Run self-update again later.`, with `(no response)` when none arrived or the body ended before it was whole, and for a `404` of a named version the correction `Check that release v1.4.0 exists, then run self-update again.` |
+
+  A rejection that carries the run signal's reason propagates as it is, so a cancelled run writes none of these sentences and resolves its cancellation code under [Signals and cancellation](../core/signals.md). The runtime's own error is kept as the failure's `cause` and never printed, under [failure message voice](../core/failures.md#failure-message-voice).
+- **The repository.** `<repository>` starts as `host.release.repository`. GitHub redirects a renamed or transferred repository, so the Command takes the repository from where a redirect on `https://github.com/` leads, and every later request uses it. Owners and names compare without regard to case, as GitHub's do.
+- **The release channel.** The running binary's channel is `host.release.channel`. With no version, the Command resolves the newest release on the channel `--channel` names, or else on the running binary's:
+  - `stable`: `https://github.com/<repository>/releases/latest`. Redirects that stay on `https://github.com/` and are not a tag page are followed, and the first that is `https://github.com/<owner>/<name>/releases/tag/v<version>` with a stable version names the release and is not requested. GitHub never resolves it to a draft or a prerelease. A redirect that leaves `https://github.com/`, a tag page whose version is not stable, or a `200` at the end of the redirects, such as `/releases` gives a repository with no release, means the channel has no release. The rows of Requests come first, so a redirect to `http:` and a 21st redirect fail as they state, and any other status fails there too.
+  - Any other channel: `https://github.com/<repository>/releases.atom`, read for each `href="https://github.com/<owner>/<name>/releases/tag/v<version>"` attribute whose `<owner>/<name>` is the repository. The feed lists GitHub's newest tags, and a tag need not have a release. The candidates are the versions whose channel is that channel or `stable`, highest first by SemVer precedence, and the release is the first whose `SHA256SUMS` answers `200`; one that answers `404` is passed over, and any other failure fails the run. A tag that is not `v` and a semantic version is passed over.
+
+  A channel with no release fails: `notes found no release on the next channel of acme/notes. Name a version to install, such as notes self-update 1.4.0.`
+- **Newer only.** A resolved release whose version is the running version prints `notes 1.5.0 is the newest release on the stable channel.` and one whose version is older prints `notes 1.5.0-next.2 is newer than the newest release on the stable channel, 1.4.2. Name that version to install it: notes self-update 1.4.2.` Both exit 0 and replace nothing. A named version is the release `v<version>`, installed whether it is newer or older, and one equal to the running version prints `notes 1.5.0 is already installed.` and replaces nothing.
+- **`--check`.** The Command resolves the release, fetches its `SHA256SUMS`, and checks it lists the asset under the rules of Verifying, then prints `notes can update from 1.5.0 to 1.5.1 on the stable channel.`, or for a named version `notes can install 1.4.0 in place of 1.5.0.`, or the newer-only or already-installed line, and exits 0. It downloads no binary, writes nothing, and never calls `afterReplace`.
+- **Downloading.** The asset is `host.release.asset`, the running binary's own, so the platform needs no detection. The Command fetches `https://github.com/<repository>/releases/download/v<version>/SHA256SUMS`, unless resolving the channel already did, then the asset beside it.
+- **Verifying.** The asset's digest comes from `SHA256SUMS` under [the release shape](../toolchain/install.md#the-release-shape). No line for the asset fails with `Release v1.5.0 of acme/notes has no notes-linux-x64 in its SHA256SUMS. Install a release that lists it, or ask its maintainers to publish one.`, and two lines for it with different digests with `Release v1.5.0 of acme/notes lists notes-linux-x64 twice in its SHA256SUMS with different digests. Run self-update again once the release is fixed.` A download whose SHA-256 digest differs fails with `notes-linux-x64 from v1.5.0 of acme/notes does not match its SHA256SUMS digest. Run self-update again later.`
+- **Placing.** Before it writes, the Command removes leftover staging files of an earlier run from the recorded path's directory: each `.<name>.<random>.loom-staging`, where `<random>` is 16 lowercase hexadecimal digits, as [Installed files](../core/installation-record.md#installed-files) names them, and nothing else. The verified bytes go to a staging file it creates exclusively there under such a name; it sets the replaced file's permission bits on it explicitly, whatever the umask, flushes it to disk, and renames it over the recorded path. A failure or cancellation before the rename removes the staging file and leaves the binary as it was. A staging write or rename that fails, such as on a full disk, fails with `notes could not write the new binary to /home/me/.local/bin. Free space there or check its permissions, then run self-update again.` The running process keeps running the old binary.
+- **Recording.** After the rename, the Command rewrites `install.json` in `applicationDirectory('installation', name, host)`, with the method `script`, the recorded path, and the digest of the bytes it placed, in the [installation record's](../core/installation-record.md) line format, with mode `600` as the installer script's `mktemp` leaves it, through a staging file in the same directory that it flushes to disk and renames, after removing leftover staging files of `install.json` there. From the rename to the end of the record the Command reads no signal. A record that cannot be written fails: `notes was updated to 1.5.0, but its installation record could not be written. Install it again with install.sh.`
+- **`afterReplace`.** Once the record is written, the Command prints `Updated notes from 1.4.2 to 1.5.0.`, then calls `afterReplace` with the replaced and new versions, the recorded path, and the run's host, signal, and log, and awaits it. It is called even when the signal aborted after the rename, so the hook reads `signal.aborted`, and the run then resolves its cancellation code. It runs in the process that replaced the binary, so it runs the old version's code, and anything that needs the new version runs `path`. A hook that throws or rejects takes the ordinary failure path, as [When author code fails](#when-author-code-fails) states.
+- **No copy, no lock.** The Command keeps no copy of the binary it replaced: a release that runs goes back with `self-update <version>`, and one that cannot start with `install.sh <version>`. Two runs at once each place whole, verified bytes, and the last rename wins the binary and, separately, the record; one run's removal of leftover staging files can remove the other's staging file, and that run then fails with the write sentence before its rename, leaving the binary whole. A record that then disagrees with the binary, as can also follow a process ended between the rename and the record, such as by a `SIGINT` in an application with no [signals owner](../core/signals.md), refuses the next run as changed until `install.sh` installs again.
+- **Output.** `Downloading notes-linux-x64 from v1.5.0 of acme/notes.` goes through `out.info`, and the update line, the `--check` line, and the newer-only and already-installed lines through `out.success`, so stdout stays empty. The examples above omit the glyph each lane view adds. Every other failure sentence above, a refusal, a failed request, a failed verification, a channel with no release, and a failed write or record, is a `FatalError` that exits 1; the `--channel` conflict is the `InputError` above.
+- **Names.** `selfUpdate`, `SelfUpdateSettings`, `AfterReplaceContext`, and `NoticeSettings` are exported from `@loomcli/plugins/self-update`.
+
+## Update notices
+
+```text
+$ notes add "Buy milk"
+✓ Added note 12.
+ℹ notes 1.5.1 is available on the stable channel. Run notes self-update to update from 1.5.0.
+```
+
+```ts
+// The author turns notices off, or names a variable of the application's own beside NO_UPDATE_NOTIFIER
+selfUpdate({ notices: false });
+selfUpdate({ notices: { env: 'NOTES_NO_UPDATE_NOTICE' } });
+```
+
+Update notices tell an operator at a terminal that a newer release exists on the running binary's release channel, after the action has run and no failure has reached the plugin's middleware. The run reads the answer from a cache file and never waits on the network: a detached copy of the application refreshes the cache about once a day. The notice is one `out.info` message, which the info lane wraps on a terminal whose `columns` is narrower than its line. [ADR-0080](../decisions/0080-the-self-update-plugin-tells-an-interactive-operator-about-a-newer-release-from-a-daily-cache.md) records the decision.
+
+- **Settings.** `notices` is `true`, `false`, or a plain object whose one key the plugin reads, `env`, is optional; an omitted `notices` reads as `true`. `selfUpdate()` throws a `DeclarationError` at the call for an `env` that does not match `[A-Za-z_][A-Za-z0-9_]*`, the name grammar of [Environment binding](../core/input-sources.md): [`@loomcli/plugins/self-update/settings`](../core/diagnostics.md#loomclipluginsself-updatesettings).
+- **The middleware.** With `notices` other than `false`, the plugin declares a middleware with `'always'` activation, and with `false` it declares none. The middleware calls `next()` first and does nothing else before it settles. It then acts only when every condition holds, checked in this order, and otherwise returns having read no file and started nothing:
+  1. `next()` resolved `'dispatched'`, and the run signal has not aborted. A rejection propagates unchanged. `'dispatched'` says the action ran, not that the run will exit 0, because output can still fail. A failure a later middleware caught is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md), so that run's outcome is what the middleware produced, and the notice follows it.
+  2. `NO_UPDATE_NOTIFIER`, and the author's `env` when there is one, are unset or empty in `host.env`.
+  3. `host.terminal.stdout.isTTY` and `host.terminal.stderr.isTTY` are both `true`, so a pipe, a command substitution such as `source <(notes completion bash)` in a startup file, a redirect, `app.invoke`, and the [MCP plugin](mcp.md) print nothing.
+  4. `CI` is unset or empty in `host.env`.
+  5. The routed Command is not the plugin's `self-update`.
+  6. `host.release` holds a release group with an `asset` and an `installation` whose method is `script`. The middleware does not hash the binary.
+  7. `applicationDirectory('cache', name, host)` answers a path.
+- **The cache.** `update.json` in that directory is one line: `{"format":1,"checked":"<time>","repository":"<repository>","channel":"<channel>","latest":<version>}` and a newline, the members in that order, where `<time>` is a UTC time in the `toISOString()` form, `<repository>` is `host.release.repository` as the release facts hold it, `<channel>` the channel looked on, and `<version>` the newest version found as a JSON string, or `null` when the channel had none. A reader passes over every other member, in any order. The cache is stale when it is not a regular file holding that object, when its `format` is not `1`, when its `repository` or `channel` differ from the running binary's, and when its `checked` is not a time, is 24 hours or more before now, or is after now.
+- **The notice.** When the cache is not stale for its repository and channel and its `latest` is a version newer than `host.release.version` by SemVer precedence, the middleware prints `notes 1.5.1 is available on the stable channel. Run notes self-update to update from 1.5.0.` through `out.info`, naming the graph's name, the cached version, the channel, and the running version, each passed through [`escapeControlCharacters`](../core/styles.md#strings-and-composition). The notice is one `out.info` message. The example notice is 91 columns, and the shortest possible notice, for a one-character name on the `stable` channel between versions `0.0.0` and `0.0.1`, is 83, so every notice is wider than the 78 columns an 80-column terminal leaves after the info gutter. The info lane wraps it there, with its gutter on each continuation line, and on any terminal whose `columns` is narrower than the notice plus the gutter. A cache whose only fault is its `checked`, too old, after now, or not a time, still names its `latest` for the notice. The notice prints on every run that qualifies until the binary is updated, unless the run's [verbosity](../core/verbosity.md) hides `info`, as `-q` does, and the run's own output comes first.
+- **The refresh.** After the notice, when the cache is stale, the middleware writes the current time to `checked`, with the running binary's repository and channel, and the cached `latest` when the cache's only fault is its `checked` or `null` otherwise, creating the directory and its missing parents, through a staging file in the directory and a rename. Then it starts `[...host.program, 'self-update', '--refresh-notice']` with `host.env`, the cache directory as its working directory, every stream ignored, detached from the run's process group, hidden from the Windows taskbar, and released, so the run neither waits for it nor keeps the process alive for it. Writing `checked` first means a run that starts while the child is looking up, or after it failed, finds the cache fresh, so a slow or failing network costs one lookup a day.
+- **Silent faults.** A cache that cannot be read or does not parse is stale. A `checked` that cannot be written starts no child. A child that cannot start, at the call or through its `error` event, is passed over. None is reported, logged, or allowed to change the run's exit code. Writing the notice follows [Output and failures](../core/output.md), as every `out.info` does, and the middleware lets no rejection of that write escape, so core's output contract alone reports it.
+- **`--refresh-notice`.** `self-update --refresh-notice` takes no version, `--channel`, or `--check`; beside any of them it is an `InputError` the action throws, `Option "--refresh-notice" cannot be given with other inputs. Leave out the other inputs.`, with exit 2. It fails with the first refusal of [Self-update](#self-update-plugin) when the run has no release group with an `asset`, and fails with exit 1 when the cache directory does not resolve: `notes cannot find its cache directory because HOME is not an absolute path. Set HOME to an absolute path.`, naming the variable. It reads no installation and hashes nothing. It resolves the newest release on `host.release.channel` by the rules of [The release channel](#self-update-plugin), under its Requests, fetching only what resolving the channel needs and no asset, then writes `update.json` as above, with `checked` the time it finished, `latest` the version found, or `null` for a channel with no release, which is not a failure here. It then prints nothing and exits 0. A write that fails exits 1 with `notes could not write its update cache to /home/me/.cache/notes. Free space there or check its permissions, then run self-update --refresh-notice again.` A request that fails writes nothing and fails as Requests states, so `checked` keeps the time the run that started it wrote.
+- **Opting out.** `notices: false`, `NO_UPDATE_NOTIFIER`, and the author's `env` stop the middleware's notice and refresh. They do not stop `self-update --refresh-notice` typed by hand, because typing it asks for the lookup.
+- **No lock.** Two runs that find the cache stale at once may each start a child, so concurrent runs can make more than one lookup in a day. Each writes a whole file through its own staging file and a rename, and the last rename wins.
+
+## When author code fails
+
+`afterReplace` is the one author function the plugin calls. A hook that throws or rejects takes the [ordinary failure path](../core/failures.md#the-ordinary-failure-path), and an author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). The run fails after the update line, and the new binary and record stay.

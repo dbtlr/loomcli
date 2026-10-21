@@ -1,3 +1,4 @@
+// Acceptance plan: see packages/plugins/tests/list.test.ts.
 import { fileURLToPath } from 'node:url';
 
 import { expect, test } from 'vite-plus/test';

@@ -1,3 +1,47 @@
+/*
+ * Acceptance plan for verbosity (docs/core/verbosity.md#verbosity).
+ *
+ * The verbosity is proven when public APIs alone produce these results under Node and Bun, through
+ * a fixture Application that marks its own options and through jsonkit with the verbose plugin:
+ *
+ * - The lanes. A fixture action that writes every lane prints `info`, `success`, `warn`, and
+ *   `error` and no debug or trace line with no spelling, adds the debug line under `-v`, adds the
+ *   trace line under `-vv`, and prints the same under `-vvv` as under `-vv`. Under `-q` and `-qq`
+ *   it prints `warn` and `error` alone, and `print`, `render`, `draw`, a result, the
+ *   incomplete-result line of a sequence that stops early, and a failure print at every verbosity.
+ *   `-v -q` prints what no spelling prints, and `-vv -q` what `-v` prints.
+ * - Every form. `-vq`, `-qv`, `--verbose -v`, a short group with a Command's own letter, a letter
+ *   an `onCommandAttach` hook declared on the routed Command beside `-v` in one group, an alias, a
+ *   `shortOnly` marked option's letter, occurrences on both sides of the Command name, and a
+ *   spelling after the bare `--`, which counts nothing, each settle what the ordinary parse reads.
+ * - Destinations. Debug and trace lines reach stderr with stdout piped and on a Command that
+ *   declares a result, whose stdout holds the result alone. Piped, with neither color variable set,
+ *   each line is its gutter and its message, unwrapped and with no escape. On a capable terminal
+ *   the gutters and styles match the lines the reference shows, a long message wraps at the columns
+ *   right of its gutter with every continuation line under the message, and `NO_COLOR=1` keeps
+ *   `faint` on a trace line.
+ * - Not logging. Under `-vv`, a fixture plugin's `onLog` hook receives no event for an `out.debug`
+ *   or `out.trace` call, and the logging plugin's console destination writes no record for one.
+ * - Hidden calls. A hidden `out.debug(42)` from JavaScript rejects as `out.info(42)` does, and a
+ *   hidden call calls no override of its lane view.
+ * - Before the chain. A configuration source's `out.debug` line prints under `-v` and not without
+ *   it, and a dotenv warning prints under `-q`. A fixture middleware's `out.debug` line prints
+ *   under `-v` and not without it, and its `out.info` line prints without a spelling and not under
+ *   `-q`. A declaration error from graph build prints under `-q`, and `jsonkit -q nope` prints its
+ *   unknown-command failure.
+ * - By name. `invoke` with `verbose: 2` captures the debug and trace lines in `messages`, a call
+ *   without it captures neither inside a parent run started with `-vv`, and `verbose: 1.5` fails
+ *   with its counted-option issue and exit 2. An MCP tool call that names `verbose` is rejected,
+ *   and a tool call writes no debug line.
+ * - No mark. An Application with neither mark writes no debug or trace line under any argv, and
+ *   every other byte is unchanged.
+ * - The options. `options.verbose` reads `3` under `-vvv` and `options.quiet` reads `2` under
+ *   `-qq`.
+ * - Declarations. Each rejected declaration the reference lists, for the verbose mark and the quiet
+ *   mark, throws under its rule from the moment the reference names, and the negative type checks
+ *   reject the rules the types state.
+ */
+
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
