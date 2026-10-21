@@ -66,6 +66,12 @@ tester.run('name-shape', nameShape, {
     },
     {
       code: `${coreImport}
+        new Application('tool', { description: 'D.' })
+          .globalOption('color', { description: 'D.', type: 'boolean', aliases: ['c', 'bad alias'] });`,
+      errors: [declared('Option alias', 'bad alias')],
+    },
+    {
+      code: `${coreImport}
         const base = new Command('base', { description: 'D.' });
         export default base.option('count', { description: 'D.', type: 'integer', aliases: ['n', 'bad alias', '--x'] });`,
       errors: [declared('Option alias', 'bad alias'), declared('Option alias', '--x')],

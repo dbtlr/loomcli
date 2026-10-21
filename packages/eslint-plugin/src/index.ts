@@ -36,7 +36,7 @@ const severity = 'error';
 
 /** Every rule at `error`, under the rule id a tool resolves for this plugin's namespace. */
 const enabledRules = Object.fromEntries(
-  Object.keys(rules).map((name) => [`${namespace}/${name}`, severity]),
+  Object.keys(rules).map((name): [string, typeof severity] => [`${namespace}/${name}`, severity]),
 );
 
 const meta = { name: packageName, version: manifestVersion() };

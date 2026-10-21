@@ -6,6 +6,7 @@ import {
   constructorOf,
   coreCalleeOf,
   literalString,
+  memberKey,
   positionalArguments,
   readProperty,
   unwrapped,
@@ -62,14 +63,6 @@ function subjectOf(kind: string, name: string | undefined): string {
   return name === undefined ? kind : `${kind} ${JSON.stringify(name)}`;
 }
 
-/** The name an object key spells, or `undefined` for a key the source does not spell out. */
-function propertyName(member: Property): string | undefined {
-  if (member.computed) {
-    return literalString(member.key);
-  }
-  return member.key.type === 'Identifier' ? member.key.name : literalString(member.key);
-}
-
 /** The options of a `plugin()` definition that are object literals, each with the key naming it. */
 function pluginOptions(definition: Node | undefined): readonly Property[] {
   if (definition?.type !== 'ObjectExpression') {
@@ -103,7 +96,7 @@ function reportPluginOptions(known: readonly Node[], report: Report): void {
   const [, definition] = known;
   for (const member of pluginOptions(definition)) {
     if (leavesOutDescription(unwrapped(member.value))) {
-      report(member.key, subjectOf('Plugin option', propertyName(member)));
+      report(member.key, subjectOf('Plugin option', memberKey(member)));
     }
   }
 }

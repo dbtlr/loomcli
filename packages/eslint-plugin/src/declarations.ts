@@ -300,6 +300,7 @@ export {
   constructorOf,
   coreCalleeOf,
   literalString,
+  memberKey,
   positionalArguments,
   readProperty,
   unwrapped,
