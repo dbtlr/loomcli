@@ -7,34 +7,27 @@ import { normalize } from 'node:path';
 
 import { recordDirectory, requiredHome } from '../application-folders.js';
 import { install } from '../installation/files.js';
-import type { InstalledLine, InstallOutcome, StartupLine } from '../installation/files.js';
+import type { InstallOutcome, StartupLine } from '../installation/files.js';
 import { lines, refusals } from './messages.js';
-import { askProfile, blocksProfile } from './profile.js';
+import { askProfile } from './profile.js';
 import {
   directoryMode,
   outcomeFailure,
   readShell,
   recordName,
   refuseInTheWay,
+  refuseWindows,
   removeNotice,
   reportWritten,
   scriptFile,
   scriptState,
   writeNotices,
 } from './run.js';
-import type { ChildRun, Notice, ShellRecord } from './run.js';
-import {
-  holdsControlCharacter,
-  isPowershell,
-  scriptContent,
-  scriptPath,
-  selectedShell,
-  startupLine,
-  startupPath,
-} from './shells.js';
+import type { ChildRun, ShellRecord } from './run.js';
+import { scriptContent, scriptPath, selectedShell, startupLine, startupPath } from './shells.js';
 import type { Shell } from './shells.js';
-import { judgeStartup, mustRelease } from './startup.js';
-import type { StartupJudgement } from './startup.js';
+import { judgeStartup, mustRelease, placeLine } from './startup.js';
+import type { LinePlacement, StartupJudgement } from './startup.js';
 
 /** Where a shell's script goes, and how its startup file is found. */
 type Place =
@@ -47,52 +40,36 @@ type Place =
     }
   | {
       readonly kind: 'profile';
-      readonly shell: 'powershell' | 'pwsh';
+      readonly shell: 'pwsh';
       readonly script: string;
       readonly home: string;
     };
 
-/** The place of a shell other than PowerShell's, which only Linux and macOS install. */
-function filePlace(run: ChildRun, shell: 'bash' | 'zsh' | 'fish'): Place {
-  const { host, name } = run;
-  if (host.platform === 'win32') {
-    throw refusals.notOnWindows(name, shell);
-  }
-  const script = scriptPath(shell, name, host);
-  if (shell === 'fish') {
-    return { kind: 'fish', script, shell };
-  }
-  return { kind: 'file', script, shell, startup: startupPath(shell, name, host) };
-}
-
-/** The place of PowerShell's script, which runs from the home folder to report its profile. */
-function profilePlace(run: ChildRun, shell: 'powershell' | 'pwsh'): Place {
-  const { host, name } = run;
-  const home = requiredHome(name, host);
-  return { home, kind: 'profile', script: scriptPath(shell, name, host), shell };
-}
-
 /**
- * The place of the shell: the `win32` refusal of any shell but PowerShell, the folders it needs
- * from the host's environment, and the refusal of a script path a startup line cannot carry.
+ * The place of the shell, from the folders it needs from the host's environment. PowerShell runs
+ * from the home folder to report its profile.
  */
 function placeOf(run: ChildRun, shell: Shell): Place {
-  const place = isPowershell(shell) ? profilePlace(run, shell) : filePlace(run, shell);
-  if (place.kind !== 'fish' && holdsControlCharacter(place.script)) {
-    throw refusals.controlCharacter(run.name, place.script);
+  const { host, name } = run;
+  switch (shell) {
+    case 'fish': {
+      return { kind: 'fish', script: scriptPath(shell, name, host), shell };
+    }
+    case 'pwsh': {
+      const home = requiredHome(name, host);
+      return { home, kind: 'profile', script: scriptPath(shell, name, host), shell };
+    }
+    default: {
+      const script = scriptPath(shell, name, host);
+      return { kind: 'file', script, shell, startup: startupPath(shell, name, host) };
+    }
   }
-  return place;
 }
 
-/**
- * The startup file and the line it would hold: the file the plugin computes, or the profile
- * PowerShell reports with the policy that keeps the line from loading, when it is one.
- */
+/** The startup file the plugin computes or PowerShell reports, and the line it would hold. */
 interface Startup {
   readonly path: string;
   readonly line: string;
-  readonly byteOrderMark: boolean;
-  readonly policy: string | undefined;
 }
 
 /** The startup file of the place, asking PowerShell for its profile; none for Fish. */
@@ -101,159 +78,39 @@ async function startupOf(run: ChildRun, place: Place): Promise<Startup | undefin
   if (place.kind === 'fish') {
     return undefined;
   }
-  const line = startupLine({
-    name,
-    platform: host.platform,
-    script: place.script,
-    shell: place.shell,
-  });
+  const line = startupLine({ name, script: place.script, shell: place.shell });
   if (place.kind === 'file') {
-    return { byteOrderMark: false, line, path: place.startup, policy: undefined };
+    return { line, path: place.startup };
   }
-  const profile = await askProfile({ home: place.home, host, name, shell: place.shell, signal });
-  return {
-    byteOrderMark: host.platform === 'win32',
-    line,
-    path: normalize(profile.path),
-    policy: blocksProfile(profile.policy) ? profile.policy : undefined,
-  };
+  const profile = await askProfile({ home: place.home, host, name, signal });
+  return { line, path: normalize(profile) };
 }
 
-/**
- * What an install does to startup lines: the line it lists or records only as held, the startup
- * files whose recorded lines it releases or keeps, the lines the operator changes by hand, and
- * whether the lines stay as recorded.
- */
-interface LinePlan {
-  readonly lines: readonly InstalledLine[];
-  readonly hold: readonly InstalledLine[];
-  readonly release: readonly string[];
-  readonly keep: readonly string[];
-  readonly notices: readonly Notice[];
-  readonly steady: boolean;
-}
+/** What an install does to startup lines, and whether the lines stay as recorded with no write. */
+type LinePlan = LinePlacement & { readonly steady: boolean };
 
 /** The count of an empty list. */
 const none = 0;
 
-/** The count of a list that holds one entry. */
-const sole = 1;
-
-/** The new startup file, judged for its line, and whether a recorded line there was released. */
-interface Target {
-  readonly startup: Startup;
-  readonly judgement: Exclude<StartupJudgement, { kind: 'not-file' }>;
-  readonly releasedHere: boolean;
-}
-
-/** Whether the new line is listed, and what the operator is told to add by hand when it is not. */
-function placeLine(
-  run: ChildRun,
-  { judgement, releasedHere, startup }: Target,
-): { readonly listed: boolean; readonly notices: readonly Notice[] } {
-  const { line, path, policy } = startup;
-  if (releasedHere) {
-    return { listed: false, notices: [{ line, sentence: lines.addInPlace(path) }] };
-  }
-  if (judgement.holds === true) {
-    return { listed: true, notices: [] };
-  }
-  if (policy !== undefined) {
-    return { listed: false, notices: [{ line, sentence: lines.policy(run.name, policy, path) }] };
-  }
-  if (judgement.kind === 'unchangeable') {
-    return { listed: false, notices: [{ line, sentence: lines.addYourself(run.name, path) }] };
-  }
-  return { listed: true, notices: [] };
-}
-
-/** Whether a recorded line is the one the install lists. */
-function isListed(entry: StartupLine, startup: Startup | undefined): boolean {
-  return entry.path === startup?.path && entry.line === startup.line;
-}
-
 /**
- * Each recorded line the install would replace or remove in a startup file it cannot change, which
- * it releases, with the notice of the line the operator removes by hand.
+ * Each recorded line in another startup file than the install's, which it no longer lists: in a
+ * file the plugin cannot change that holds it, or may hold it, released with the line the operator
+ * removes by hand, and in any other the module's to remove.
  */
-function releasedLines(
-  run: ChildRun,
-  startup: Startup | undefined,
-  recorded: readonly StartupLine[],
-): { readonly release: Set<string>; readonly removals: readonly Notice[] } {
-  const released = recorded.filter(
-    (entry) =>
-      !isListed(entry, startup) &&
-      mustRelease(judgeStartup(entry.path, entry.line, run.host.platform)),
-  );
+function otherLines(run: ChildRun, others: readonly StartupLine[]): LinePlacement {
+  const released = others.filter((entry) => mustRelease(judgeStartup(entry.path, entry.line)));
   return {
-    release: new Set(released.map(({ path }) => path)),
-    removals: released.map((entry) => removeNotice(run, entry)),
-  };
-}
-
-/** The new startup file, judged for its line, with the lines recorded before the install. */
-type NewLine = Omit<Target, 'releasedHere'> & { readonly recorded: readonly StartupLine[] };
-
-/**
- * The plan that leaves the new line's startup file unread or unwritten, or none: the new line held
- * in the place of a recorded line released from its startup file, which already holds the new line
- * because the operator added it, so a later uninstall prints it; or the recorded line equal to the
- * new one kept as recorded in a file the install cannot read, with nothing printed for it.
- */
-function planInPlace(
-  { judgement, recorded, startup }: NewLine,
-  { release, removals }: ReturnType<typeof releasedLines>,
-): LinePlan | undefined {
-  const { line, path } = startup;
-  if (release.has(path) && judgement.holds === true) {
-    // The held line releases the recorded line in its own file, so the module names that file once.
-    const others = [...release].filter((entry) => entry !== path);
-    const hold = [{ line, path }];
-    return { hold, keep: [], lines: [], notices: removals, release: others, steady: false };
-  }
-  if (judgement.holds === undefined && recorded.some((entry) => isListed(entry, startup))) {
-    const steady = recorded.length === sole;
-    return { hold: [], keep: [path], lines: [], notices: removals, release: [...release], steady };
-  }
-  return undefined;
-}
-
-/**
- * The plan for a new startup line: listed, held or kept in place, or printed for the operator to
- * add. A recorded line in a startup file the install cannot change and lists no line for is
- * released, so the module never writes that file.
- */
-function planNewLine(run: ChildRun, { judgement, recorded, startup }: NewLine): LinePlan {
-  const { release, removals } = releasedLines(run, startup, recorded);
-  const inPlace = planInPlace({ judgement, recorded, startup }, { release, removals });
-  if (inPlace !== undefined) {
-    return inPlace;
-  }
-  const placed = placeLine(run, { judgement, releasedHere: release.has(startup.path), startup });
-  const recordedHere = recorded.some(({ path }) => path === startup.path);
-  if (!placed.listed && judgement.kind === 'unchangeable' && recordedHere) {
-    release.add(startup.path);
-  }
-  const steady = placed.listed
-    ? judgement.holds === true &&
-      recorded.length === sole &&
-      recorded.every((entry) => isListed(entry, startup))
-    : recorded.length === none;
-  return {
-    hold: [],
-    keep: [],
-    lines: placed.listed ? [installedLine(startup)] : [],
-    notices: [...removals, ...placed.notices],
-    release: [...release],
-    steady,
+    lines: [],
+    loaded: [],
+    notices: released.map((entry) => removeNotice(run, entry)),
+    release: released.map(({ path }) => path),
   };
 }
 
 /**
  * The plan for the startup lines: the new startup file judged first, which fails as not a file,
- * then each recorded line the install would replace or remove, released with the line to remove
- * when its file cannot be changed, then the new line. Fish lists none.
+ * then each recorded line in another file, then the new line, written and recorded in a file the
+ * plugin may change, and printed with no line recorded in one it may not. Fish lists none.
  */
 function planLines(
   run: ChildRun,
@@ -261,27 +118,47 @@ function planLines(
   recorded: readonly StartupLine[],
 ): LinePlan {
   if (startup === undefined) {
-    const { release, removals } = releasedLines(run, startup, recorded);
-    return {
-      hold: [],
-      keep: [],
-      lines: [],
-      notices: removals,
-      release: [...release],
-      steady: recorded.length === none,
-    };
+    return { ...otherLines(run, recorded), steady: recorded.length === none };
   }
-  const judgement = judgeStartup(startup.path, startup.line, run.host.platform);
+  const judgement = judgeStartup(startup.path, startup.line);
   if (judgement.kind === 'not-file') {
     throw refusals.notAFile(run.name, startup.path);
   }
-  return planNewLine(run, { judgement, recorded, startup });
+  const others = recorded.filter(({ path }) => path !== startup.path);
+  const before = otherLines(run, others);
+  const placed = newLine(run, { judgement, recorded, startup });
+  return {
+    lines: placed.lines,
+    loaded: placed.loaded,
+    notices: [...before.notices, ...placed.notices],
+    release: [...before.release, ...placed.release],
+    steady: others.length === none && placed.steady,
+  };
 }
 
-/** The line the module lists for a startup file. */
-function installedLine(startup: Startup): InstalledLine {
-  const { byteOrderMark, line, path } = startup;
-  return byteOrderMark ? { byteOrderMark, line, path } : { line, path };
+/**
+ * The new line placed in its startup file, steady when the file it may change already holds the
+ * line recorded, or when it lists no line where none is recorded.
+ */
+function newLine(
+  run: ChildRun,
+  {
+    judgement,
+    recorded,
+    startup,
+  }: {
+    readonly startup: Startup;
+    readonly judgement: Exclude<StartupJudgement, { kind: 'not-file' }>;
+    readonly recorded: readonly StartupLine[];
+  },
+): LinePlan {
+  const here = recorded.find(({ path }) => path === startup.path)?.line;
+  const placed = placeLine(run, { ...startup, recorded: here, update: false }, judgement);
+  const steady =
+    placed.lines.length === none
+      ? here === undefined
+      : judgement.holds === true && here === startup.line;
+  return { ...placed, steady };
 }
 
 /** What an install writes for one shell, after every check. */
@@ -293,10 +170,10 @@ interface Writing {
   readonly plan: LinePlan;
 }
 
-/** States a script and line that are already in place, and the lines the operator adds by hand. */
+/** States a script and line that are already in place, and the line the operator adds by hand. */
 async function reportSteady(run: ChildRun, writing: Writing): Promise<void> {
   await run.info(lines.unchanged(writing.place.script));
-  for (const { path } of writing.plan.lines) {
+  for (const path of [...writing.plan.lines.map((entry) => entry.path), ...writing.plan.loaded]) {
     await run.info(lines.alreadyLoads(path));
   }
   await writeNotices(run, writing.plan.notices);
@@ -311,8 +188,6 @@ function installThrough(
   const outcome = install({
     directoryMode,
     files: [scriptFile(place.script, content)],
-    hold: plan.hold,
-    keep: plan.keep,
     lines: plan.lines,
     plugin: recordName(place.shell),
     record,
@@ -361,7 +236,7 @@ async function reportInstalled(
   await (scriptChanged
     ? run.success(lines.installed(place.shell, place.script))
     : run.info(lines.unchanged(place.script)));
-  await reportWritten(run, { held: true, notices: plan.notices, outcome });
+  await reportWritten(run, { held: true, loaded: plan.loaded, notices: plan.notices, outcome });
   if (changedAnything(scriptChanged, outcome)) {
     await run.info(lines.openShell);
   }
@@ -371,7 +246,7 @@ async function reportInstalled(
 async function write(run: ChildRun, writing: Writing): Promise<void> {
   const { content, place, plan, recorded } = writing;
   const state = scriptState(recorded, place.script, content);
-  if (state === 'steady' && plan.steady && plan.release.length === none) {
+  if (state === 'steady' && plan.steady) {
     await reportSteady(run, writing);
     return;
   }
@@ -380,11 +255,12 @@ async function write(run: ChildRun, writing: Writing): Promise<void> {
 }
 
 /**
- * `install`: the shell, the folders and the script's path, the record's directory, the shell's
- * plugin's file, the script, PowerShell's profile, and the startup files, each checked in that
- * order, then the script and line written and each change stated.
+ * `install`: the platform, the shell, the folders and the script's path, the record's directory,
+ * the shell's plugin's file, the script, PowerShell's profile, and the startup files, each checked
+ * in that order, then the script and line written and each change stated.
  */
 async function installShell(run: ChildRun, argument: Shell | undefined): Promise<void> {
+  refuseWindows(run, 'install', argument);
   const shell = selectedShell(run.name, run.host, argument);
   const place = placeOf(run, shell);
   const record = recordDirectory(run.name, run.host);

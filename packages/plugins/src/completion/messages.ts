@@ -34,10 +34,6 @@ function profileFault(shell: string, fault: ProfileFault): string {
 }
 
 const refusals = {
-  controlCharacter: (name: string, path: string) =>
-    fatal(
-      `The path ${shownPath(path)} holds a control character, so ${shown(name)} cannot write it into a startup line. Choose a data folder without one.`,
-    ),
   inTheWay: (name: string, verb: 'install' | 'update', shell: string) =>
     fatal(
       `${shown(name)} completion ${verb} changed nothing, because files it did not install are in the way. Remove them, then run ${shown(name)} completion install ${shell} again.`,
@@ -46,9 +42,9 @@ const refusals = {
     fatal(
       `${shownPath(startup)} is not a file, so ${shown(name)} cannot add its startup line. Remove it, then run ${shown(name)} completion install again.`,
     ),
-  notOnWindows: (name: string, shell: string) =>
+  notOnWindows: (name: string, verb: string, shell: string | undefined) =>
     fatal(
-      `${shown(name)} completion install installs bash, zsh, and fish completion on Linux and macOS. Print the script with ${shown(name)} completion ${shell} and load it yourself.`,
+      `${shown(name)} completion ${verb} works on Linux and macOS. On Windows, print the script with ${shown(name)} completion ${shell ?? 'bash, zsh, fish, or powershell'} and load it yourself.`,
     ),
   profile: (name: string, shell: string, fault: ProfileFault) =>
     fatal(
@@ -61,7 +57,7 @@ const refusals = {
   unknownShell: (name: string, login: string | undefined) => {
     const value = login === undefined ? '(unset)' : shown(login);
     return new InputError(
-      `${shown(name)} cannot tell your shell from SHELL (${value}). Name it: ${shown(name)} completion install bash, zsh, fish, powershell, or pwsh.`,
+      `${shown(name)} cannot tell your shell from SHELL (${value}). Name it: ${shown(name)} completion install bash, zsh, fish, or pwsh.`,
       [
         {
           input: { global: false, kind: 'argument', name: 'shell' },
@@ -96,8 +92,6 @@ const lines = {
   notInstalled: (name: string, script: string) =>
     `${shownPath(script)} was not installed by ${shown(name)} completion install.`,
   openShell: 'Open a new shell to use it.',
-  policy: (name: string, policy: string, startup: string) =>
-    `PowerShell's execution policy is ${shown(policy)}, so it runs no unsigned profile or script, and ${shown(name)} did not add its startup line. To use completion, allow local scripts, such as with Set-ExecutionPolicy -Scope CurrentUser RemoteSigned where no Group Policy sets the policy, then add this line to ${shownPath(startup)}:`,
   removeYourself: (name: string, startup: string) =>
     `${shown(name)} cannot change ${shownPath(startup)}, so remove this line from it yourself:`,
   removed: (path: string) => `Removed ${shownPath(path)}.`,

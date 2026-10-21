@@ -1,28 +1,10 @@
 /**
  * The two forms in which an application name enters a completion script, so the name reaches the
  * shell as data and never as source: a function identifier and a single-quoted string, in Bash and
- * Zsh, Fish, or PowerShell quoting. Each script takes only a portable name, which it checks at the
- * call.
+ * Zsh, Fish, or PowerShell quoting. Each script takes the Application's name, which core's
+ * portable name rule already keeps to the POSIX portable filename set, starting with neither `-`
+ * nor `.`, so no newline, quote, or leading `-` reaches a script.
  */
-
-/**
- * Core's portable name rule for an application name: the POSIX portable filename set, starting
- * with neither `-` nor `.`. `new Application()` enforces the same pattern.
- */
-const portableName = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/u;
-
-/**
- * The name a script is printed for, checked against the portable name rule, so a newline, a
- * quote, or a leading `-` never reaches the Zsh `#compdef` line or a registration call. The name
- * is the Application's, which `new Application()` already holds to the same rule, so a name
- * outside it is a defect in the pack and not a fault an author can make.
- */
-function scriptName(name: string): string {
-  if (!portableName.test(name)) {
-    throw new TypeError('A completion script needs the portable name the Application holds.');
-  }
-  return name;
-}
 
 /** The radix of the digits that encode one code point in an identifier. */
 const hexRadix = 16;
@@ -42,13 +24,9 @@ function hexDigits(character: string): string {
 /**
  * The name as the suffix of a shell function identifier. ASCII letters and digits stay, and every
  * other code point, `_` included, is written as `_`, its lowercase hexadecimal digits, and `_`, so
- * `git-lfs` gives `git_2d_lfs` and no two names give one identifier. An empty name throws, because
- * a script needs a name to complete.
+ * `git-lfs` gives `git_2d_lfs` and no two names give one identifier.
  */
 function identifier(name: string): string {
-  if (name === '') {
-    throw new TypeError('A completion script needs a nonempty application name.');
-  }
   return Array.from(name, (character) =>
     /^[A-Za-z0-9]$/u.test(character) ? character : `_${hexDigits(character)}_`,
   ).join('');
@@ -90,4 +68,4 @@ function powershellQuoted(text: string): string {
   return `'${doubled.join('')}'`;
 }
 
-export { fishQuoted, identifier, posixQuoted, powershellQuoted, scriptName };
+export { fishQuoted, identifier, posixQuoted, powershellQuoted };

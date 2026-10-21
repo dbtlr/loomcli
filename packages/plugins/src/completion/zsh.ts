@@ -1,11 +1,11 @@
-import { identifier, posixQuoted, scriptName } from './name.js';
+import { identifier, posixQuoted } from './name.js';
 
 /**
  * The script for a name, with the guard lines after its `#compdef` line and the function name its
  * file is autoloaded as, which runs the completion function.
  */
 function zshText(name: string, file: { guard: string; loadedAs: string }): string {
-  const id = identifier(scriptName(name));
+  const id = identifier(name);
   const quoted = posixQuoted(name);
   return `#compdef ${name}
 ${file.guard}compdef _loom_${id} ${quoted}
@@ -177,8 +177,8 @@ fi
  * package NOTICE records the attribution. The changes from Cobra:
  * - Every `eval` is removed: the request is an argument-array call, and no answer is run as source.
  * - The application name enters the script only as data: single-quoted in the shell's quoting, or
- *   encoded into function identifiers by `identifier()`, and only a portable name, which
- *   `scriptName()` checks at the call with a `TypeError`.
+ *   encoded into function identifiers by `identifier()`, and only the Application's portable
+ *   name.
  * - ActiveHelp handling is removed; the plugin never writes it and leaves out such words.
  * - The request carries every word, the last cut at the cursor, so no empty word is appended.
  * - Answer words under `value` already carry the option's lead, such as `--format=`, so the script
@@ -198,8 +198,8 @@ fi
  * - The completion function is `_loom_<id>` and the debug function `__loom_<id>_debug`, so no
  *   application name shadows a completion system function such as `_describe`, `_files`, or
  *   `_arguments`. The file still runs the function when compinit autoloads it as `_<name>`.
- * - The `#compdef` line and the autoload check carry the name as it is, because `scriptName()`
- *   accepts only a portable name.
+ * - The `#compdef` line and the autoload check carry the name as it is, because the Application's
+ *   name is a portable name.
  */
 export function zshScript(name: string): string {
   return zshText(name, { guard: '', loadedAs: `_${name}` });
@@ -216,5 +216,5 @@ export function zshInstalledScript(name: string): string {
 (( $+functions[compdef] )) || { autoload -Uz compinit && compinit -i }
 (( $+functions[compdef] )) || return 0
 `;
-  return zshText(name, { guard, loadedAs: `_loom_${identifier(scriptName(name))}` });
+  return zshText(name, { guard, loadedAs: `_loom_${identifier(name)}` });
 }

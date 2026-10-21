@@ -318,16 +318,18 @@ describe('installing Bash and Zsh', () => {
     const result = run(box, ['completion', 'install'], { env: { SHELL: shell } });
     expect(result.status).toBe(2);
     expect(lines(result.stderr)[0]).toBe(
-      `jsonkit: jsonkit cannot tell your shell from SHELL (${shown}). Name it: jsonkit completion install bash, zsh, fish, powershell, or pwsh.`,
+      `jsonkit: jsonkit cannot tell your shell from SHELL (${shown}). Name it: jsonkit completion install bash, zsh, fish, or pwsh.`,
     );
     expect(readdirSync(box.data)).toEqual([]);
     expect(readdirSync(box.state)).toEqual([]);
   });
 
-  it('exits 2 for a shell argument outside the five', () => {
+  it('exits 2 for a shell argument outside the four', () => {
     const box = sandbox();
-    expect(run(box, ['completion', 'install', 'tcsh']).status).toBe(2);
-    expect(run(box, ['completion', 'uninstall', 'tcsh']).status).toBe(2);
+    for (const shell of ['tcsh', 'powershell']) {
+      expect(run(box, ['completion', 'install', shell]).status).toBe(2);
+      expect(run(box, ['completion', 'uninstall', shell]).status).toBe(2);
+    }
   });
 
   it('puts Bash’s line in an existing .profile on darwin when neither .bash_profile nor .bash_login exists', () => {
@@ -472,28 +474,16 @@ describe('the startup line', () => {
     const doubled = curly.map((quote) => `${quote}${quote}`).join('');
     const script = `/home/o'neil/${curly.join('')}/jsonkit.ps1`;
     const quoted = `'/home/o''neil/${doubled}/jsonkit.ps1'`;
-    expect(startupLine({ name: 'jsonkit', platform: 'linux', script, shell: 'pwsh' })).toBe(
+    expect(startupLine({ name: 'jsonkit', script, shell: 'pwsh' })).toBe(
       `if (Test-Path -LiteralPath ${quoted}) { . ${quoted} } ${marker}`,
     );
-    expect(
-      startupLine({ name: 'jsonkit', platform: 'linux', script: "/o'n/x.bash", shell: 'bash' }),
-    ).toBe(
+    expect(startupLine({ name: 'jsonkit', script: "/o'n/x.bash", shell: 'bash' })).toBe(
       String.raw`if [ -n "${'$'}{BASH_VERSION-}" ] && [ -f '/o'\''n/x.bash' ]; then . '/o'\''n/x.bash'; fi ` +
         marker,
     );
-    expect(
-      startupLine({ name: 'jsonkit', platform: 'linux', script: "/o'n/z/_x", shell: 'zsh' }),
-    ).toBe(
+    expect(startupLine({ name: 'jsonkit', script: "/o'n/z/_x", shell: 'zsh' })).toBe(
       String.raw`fpath=('/o'\''n/z' $fpath); if [ -f '/o'\''n/z/_x' ]; then . '/o'\''n/z/_x'; fi ` +
         marker,
-    );
-  });
-
-  it('names the script through LOCALAPPDATA on win32, so the line is ASCII', () => {
-    const script = `C:/Users/${String.fromCodePoint(1046)}/AppData/Local/jsonkit/completion/jsonkit.pwsh.ps1`;
-    const path = String.raw`"$env:LOCALAPPDATA\jsonkit\completion\jsonkit.pwsh.ps1"`;
-    expect(startupLine({ name: 'jsonkit', platform: 'win32', script, shell: 'pwsh' })).toBe(
-      `if (Test-Path -LiteralPath ${path}) { . ${path} } ${marker}`,
     );
   });
 });
@@ -558,28 +548,38 @@ describe('checks', () => {
     expect(existsSync(join(zdotdir, '.zshrc'))).toBe(true);
   });
 
-  it('refuses a script path holding a control character', () => {
-    const box = sandbox();
-    const data = join(box.root, 'da\u0007ta');
-    const result = run(box, ['completion', 'install', 'bash'], { env: { XDG_DATA_HOME: data } });
-    expect(result.status).toBe(1);
-    const shown = join(box.root, String.raw`da\u0007ta`, 'jsonkit', 'completion', 'jsonkit.bash');
-    expect(lines(result.stderr)).toEqual([
-      `The path ${shown} holds a control character, so jsonkit cannot write it into a startup line. Choose a data folder without one.`,
-    ]);
-    expect(existsSync(data)).toBe(false);
-  });
+  it.each([
+    [['install', 'zsh'], 'install', 'jsonkit completion zsh'],
+    [['install', 'pwsh'], 'install', 'jsonkit completion powershell'],
+    [['install'], 'install', 'jsonkit completion bash, zsh, fish, or powershell'],
+    [['update'], 'update', 'jsonkit completion bash, zsh, fish, or powershell'],
+    [['uninstall', 'bash'], 'uninstall', 'jsonkit completion bash'],
+    [['uninstall'], 'uninstall', 'jsonkit completion bash, zsh, fish, or powershell'],
+  ])(
+    'refuses completion %j on win32 with exit 1, naming the print Command',
+    (words, verb, printer) => {
+      const box = sandbox();
+      const result = run(box, ['completion', ...words], {
+        env: { SHELL: undefined },
+        platform: 'win32',
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe('');
+      expect(lines(result.stderr)).toEqual([
+        `jsonkit completion ${verb} works on Linux and macOS. On Windows, print the script with ${printer} and load it yourself.`,
+      ]);
+      expect([readdirSync(box.data), readdirSync(box.state), readdirSync(box.home)]).toEqual([
+        [],
+        [],
+        [],
+      ]);
+    },
+  );
 
-  it('refuses every shell but PowerShell on win32', () => {
+  it('prints the PowerShell script on win32', () => {
     const box = sandbox();
-    const result = run(box, ['completion', 'install', 'zsh'], {
-      env: { LOCALAPPDATA: box.data, USERPROFILE: box.home },
-      platform: 'win32',
-    });
-    expect(result.status).toBe(1);
-    expect(lines(result.stderr)).toEqual([
-      'jsonkit completion install installs bash, zsh, and fish completion on Linux and macOS. Print the script with jsonkit completion zsh and load it yourself.',
-    ]);
+    const result = run(box, ['completion', 'powershell'], { platform: 'win32' });
+    expect(result).toEqual({ status: 0, stderr: '', stdout: printed(box, 'powershell') });
   });
 
   it('refuses a damaged plugin’s file on install, naming install', () => {
@@ -796,12 +796,10 @@ describe('a startup file the plugin cannot change', () => {
     ).toEqual([true, true, true, false]);
   });
 
-  it('judges a file owned by another user off win32 only', () => {
-    expect(ownedByAnother({ owner: 0, platform: 'linux', user: 501 })).toBe(true);
-    expect(ownedByAnother({ owner: 501, platform: 'linux', user: 501 })).toBe(false);
-    expect(ownedByAnother({ owner: 0, platform: 'darwin', user: 501 })).toBe(true);
-    expect(ownedByAnother({ owner: 0, platform: 'win32', user: 501 })).toBe(false);
-    expect(ownedByAnother({ owner: 0, platform: 'linux', user: undefined })).toBe(false);
+  it('judges a file owned by another user as one it cannot change', () => {
+    expect(ownedByAnother({ owner: 0, user: 501 })).toBe(true);
+    expect(ownedByAnother({ owner: 501, user: 501 })).toBe(false);
+    expect(ownedByAnother({ owner: 0, user: undefined })).toBe(false);
   });
 
   it('uninstalls after the startup file becomes read-only, printing the line to remove', () => {
@@ -850,6 +848,26 @@ describe('a startup file the plugin cannot change', () => {
 });
 
 describe('a recorded line in a startup file the plugin cannot change', () => {
+  it('drops the recorded line from a startup file that became read-only, which still loads the script', () => {
+    const box = sandbox();
+    const script = scripts.bash(box);
+    const startup = join(box.home, '.bashrc');
+    run(box, ['completion', 'install', 'bash']);
+    chmodSync(startup, 0o444);
+    const installing = run(box, ['completion', 'install', 'bash']);
+    expect(installing.status).toBe(0);
+    expect(lines(installing.stderr)).toEqual([
+      `${script} is unchanged.`,
+      `${startup} already loads it.`,
+    ]);
+    expect(installing.stdout).toBe('');
+    expect(recorded(box, 'bash').lines).toEqual([]);
+    const removing = run(box, ['completion', 'uninstall']);
+    expect(lines(removing.stderr)).toEqual([`Removed ${script}.`]);
+    expect(removing.stdout).toBe('');
+    expect(readFileSync(startup, 'utf8')).toBe(`${bashLine(script)}\n`);
+  });
+
   it('releases the old line and prints the new one in its place when install moves the script', () => {
     const box = sandbox();
     const startup = join(box.home, '.bashrc');
@@ -871,7 +889,7 @@ describe('a recorded line in a startup file the plugin cannot change', () => {
     expect(recorded(box, 'bash').lines).toEqual([]);
   });
 
-  it('records the new line the operator added as held when install moves the script, so update keeps it and uninstall prints it', () => {
+  it('records no line the operator added to a read-only file when install moves the script, so uninstall leaves it', () => {
     const box = sandbox();
     const old = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
@@ -893,19 +911,11 @@ describe('a recorded line in a startup file the plugin cannot change', () => {
       'Open a new shell to use it.',
     ]);
     expect(installing.stdout).toBe(`${bashLine(old)}\n`);
-    expect(recorded(box, 'bash').lines).toEqual([{ line: bashLine(script), path: startup }]);
-    const updating = run(box, ['completion', 'update']);
-    expect(updating.status).toBe(0);
-    expect(lines(updating.stderr)).toEqual([`${script} is unchanged.`]);
-    expect(updating.stdout).toBe('');
-    expect(recorded(box, 'bash').lines).toEqual([{ line: bashLine(script), path: startup }]);
+    expect(recorded(box, 'bash').lines).toEqual([]);
     const removing = run(box, ['completion', 'uninstall']);
     expect(removing.status).toBe(0);
-    expect(lines(removing.stderr)).toEqual([
-      `Removed ${script}.`,
-      `jsonkit cannot change ${startup}, so remove this line from it yourself:`,
-    ]);
-    expect(removing.stdout).toBe(`${bashLine(script)}\n`);
+    expect(lines(removing.stderr)).toEqual([`Removed ${script}.`]);
+    expect(removing.stdout).toBe('');
     expect(readFileSync(startup, 'utf8')).toBe(text);
   });
 
@@ -932,7 +942,7 @@ describe('a recorded line in a startup file the plugin cannot change', () => {
     expect(recorded(box, 'bash').lines).toEqual([]);
   });
 
-  it('keeps a line in a file whose encoding changed for update and install, and releases it on uninstall', () => {
+  it('drops a line from the record when its file changes to another encoding, so install prints it to add', () => {
     const box = sandbox();
     const script = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
@@ -946,42 +956,20 @@ describe('a recorded line in a startup file the plugin cannot change', () => {
     expect(updating.status).toBe(0);
     expect(lines(updating.stderr)).toEqual([`${script} is unchanged.`]);
     expect(updating.stdout).toBe('');
-    expect(recorded(box, 'bash').lines).toEqual([{ line: bashLine(script), path: startup }]);
+    expect(recorded(box, 'bash').lines).toEqual([]);
     const installing = run(box, ['completion', 'install', 'bash']);
     expect(installing.status).toBe(0);
-    expect(lines(installing.stderr)).toEqual([`${script} is unchanged.`]);
-    expect(installing.stdout).toBe('');
-    expect(recorded(box, 'bash').lines).toEqual([{ line: bashLine(script), path: startup }]);
-    expect(readFileSync(startup)).toEqual(bytes);
+    expect(lines(installing.stderr)).toEqual([
+      `${script} is unchanged.`,
+      `jsonkit cannot change ${startup}, so add this line to it yourself:`,
+    ]);
+    expect(installing.stdout).toBe(`${bashLine(script)}\n`);
+    expect(recorded(box, 'bash').lines).toEqual([]);
     const removing = run(box, ['completion', 'uninstall']);
     expect(removing.status).toBe(0);
-    expect(lines(removing.stderr)).toEqual([
-      `Removed ${script}.`,
-      `jsonkit cannot change ${startup}, so remove this line from it yourself:`,
-    ]);
-    expect(removing.stdout).toBe(`${bashLine(script)}\n`);
+    expect(lines(removing.stderr)).toEqual([`Removed ${script}.`]);
+    expect(removing.stdout).toBe('');
     expect(readFileSync(startup)).toEqual(bytes);
-  });
-
-  it('keeps the line in a file it cannot read when update rewrites the script', () => {
-    const box = sandbox();
-    const script = scripts.bash(box);
-    const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
-    writeFileSync(script, 'old bash\n');
-    editRecord(box, 'bash', (file) => {
-      file.files = [{ digest: digestOf('old bash\n'), path: script }];
-    });
-    const bytes = Buffer.concat([Buffer.from('# caf', 'latin1'), Buffer.from([0xe9, 0x0a])]);
-    writeFileSync(startup, Buffer.concat([Buffer.from(`${bashLine(script)}\n`), bytes]));
-    const result = run(box, ['completion', 'update']);
-    expect(result.status).toBe(0);
-    expect(lines(result.stderr)).toEqual([`Updated the bash completion script in ${script}.`]);
-    expect(result.stdout).toBe('');
-    expect(recorded(box, 'bash')).toMatchObject({
-      lines: [{ line: bashLine(script), path: startup }],
-      state: 'committed',
-    });
   });
 });
 
@@ -1079,7 +1067,7 @@ describe('update', () => {
     expect(recorded(box, 'bash').lines).toEqual([]);
   });
 
-  it('records the new line the operator added to a read-only startup file as held when it releases the changed one', () => {
+  it('drops a changed line from a read-only startup file that already holds the new one, printing the line to remove', () => {
     const box = sandbox();
     const script = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
@@ -1098,7 +1086,7 @@ describe('update', () => {
     ]);
     expect(result.stdout).toBe(`old line ${marker}\n`);
     expect(readFileSync(startup, 'utf8')).toBe(text);
-    expect(recorded(box, 'bash').lines).toEqual([{ line: bashLine(script), path: startup }]);
+    expect(recorded(box, 'bash').lines).toEqual([]);
   });
 
   it('prints the nothing-to lines with nothing recorded', () => {
@@ -1213,18 +1201,14 @@ describe('uninstall', () => {
     ['zsh', 'bash', 'bash', 'zsh'],
     ['bash', 'zsh', 'bash', 'zsh'],
     ['bash', 'zsh', 'zsh', 'bash'],
-    ['powershell', 'pwsh', 'powershell', 'pwsh'],
-    ['powershell', 'pwsh', 'pwsh', 'powershell'],
-    ['pwsh', 'powershell', 'pwsh', 'powershell'],
-    ['pwsh', 'powershell', 'powershell', 'pwsh'],
+    ['bash', 'pwsh', 'pwsh', 'bash'],
+    ['pwsh', 'bash', 'pwsh', 'bash'],
   ])(
     'after installing %s then %s, uninstalling %s then %s leaves no folder either created',
     (...order) => {
       const box = sandbox();
       const bin = join(box.root, 'bin');
-      for (const name of ['pwsh', 'powershell']) {
-        fakePwsh(bin, answerOf(join(box.home, 'profile.ps1'), 'RemoteSigned'), '', name);
-      }
+      fakePwsh(bin, answerOf(join(box.home, 'profile.ps1')));
       const env = pwshEnv(box, bin);
       for (const [index, shell] of order.entries()) {
         const verb = index < 2 ? 'install' : 'uninstall';
@@ -1293,9 +1277,9 @@ describe('uninstall', () => {
 });
 
 /** A fixture `pwsh`: a shell script that records how it ran and answers the given text. */
-function fakePwsh(folder: string, answer: string, extra = '', name = 'pwsh'): string {
+function fakePwsh(folder: string, answer: string, extra = ''): string {
   mkdirSync(folder, { recursive: true });
-  const program = join(folder, name);
+  const program = join(folder, 'pwsh');
   writeFileSync(
     program,
     `#!/bin/sh\nprintf '%s\\n' "$PWD" "$@" > "$PWSH_LOG"\n${extra}printf '%s\\n' '${answer}'\n`,
@@ -1304,9 +1288,9 @@ function fakePwsh(folder: string, answer: string, extra = '', name = 'pwsh'): st
   return program;
 }
 
-/** The answer PowerShell gives: its profile's path in Base64 of its UTF-8 bytes, and the policy. */
-function answerOf(profile: string, policy: string): string {
-  return `${Buffer.from(profile, 'utf8').toString('base64')} ${policy}`;
+/** The answer PowerShell gives: its profile's path in Base64 of its UTF-8 bytes. */
+function answerOf(profile: string): string {
+  return Buffer.from(profile, 'utf8').toString('base64');
 }
 
 /**
@@ -1329,7 +1313,7 @@ describe('PowerShell', () => {
     const box = sandbox();
     const profile = join(box.home, 'Документы', 'PowerShell', 'Profile.ps1');
     const bin = join(box.root, 'bin');
-    fakePwsh(bin, answerOf(profile, 'RemoteSigned'));
+    fakePwsh(bin, answerOf(profile));
     const script = scripts.pwsh(box);
     const result = run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
     expect(result.status).toBe(0);
@@ -1341,21 +1325,8 @@ describe('PowerShell', () => {
     expect(readFileSync(profile, 'utf8')).toBe(`${powershellLine(script)}\n`);
     expect(readFileSync(script, 'utf8')).toBe(printed(box, 'powershell'));
     expect(readFileSync(join(box.root, 'pwsh.log'), 'utf8')).toBe(
-      `${realpathSync(box.home)}\n-NoLogo\n-NoProfile\n-NonInteractive\n-Command\n[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($PROFILE)) + ' ' + (Get-ExecutionPolicy)\n`,
+      `${realpathSync(box.home)}\n-NoLogo\n-NoProfile\n-NonInteractive\n-Command\n[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($PROFILE))\n`,
     );
-  });
-
-  it('asks a program named powershell for install powershell', () => {
-    const box = sandbox();
-    const profile = join(box.home, 'profile.ps1');
-    const bin = join(box.root, 'bin');
-    fakePwsh(bin, answerOf(profile, 'Unrestricted'), '', 'powershell');
-    const script = join(box.data, 'jsonkit', 'completion', 'jsonkit.powershell.ps1');
-    const result = run(box, ['completion', 'install', 'powershell'], { env: pwshEnv(box, bin) });
-    expect(result.status).toBe(0);
-    expect(readFileSync(profile, 'utf8')).toBe(`${powershellLine(script)}\n`);
-    expect(readFileSync(script, 'utf8')).toBe(printed(box, 'powershell'));
-    expect(existsSync(recordPath(box, 'powershell'))).toBe(true);
   });
 
   it.each([
@@ -1377,9 +1348,9 @@ describe('PowerShell', () => {
     [
       'answers a relative path',
       (box: Box, bin: string) => {
-        fakePwsh(bin, answerOf('profile.ps1', 'RemoteSigned'));
+        fakePwsh(bin, answerOf('profile.ps1'));
       },
-      `jsonkit cannot find the profile of pwsh, because pwsh reported ${answerOf('profile.ps1', 'RemoteSigned')}. Check that pwsh -NoProfile -Command $PROFILE prints the path of your profile.`,
+      `jsonkit cannot find the profile of pwsh, because pwsh reported ${answerOf('profile.ps1')}. Check that pwsh -NoProfile -Command $PROFILE prints the path of your profile.`,
     ],
   ])('fails when the fixture %s, and writes nothing', (_case, prepare, sentence) => {
     const box = sandbox();
@@ -1395,29 +1366,22 @@ describe('PowerShell', () => {
   it.each([
     [
       'Base64 with its padding left off',
-      (box: Box) => answerOf(profileSized(box, 1), 'RemoteSigned').replace('==', ''),
+      (box: Box) => answerOf(profileSized(box, 1)).replace('==', ''),
     ],
     [
       'Base64 with more than two padding characters',
-      (box: Box) => {
-        const [encoded = ''] = answerOf(profileSized(box, 0), 'RemoteSigned').split(' ');
-        return `${encoded}==== RemoteSigned`;
-      },
+      (box: Box) => `${answerOf(profileSized(box, 0))}====`,
     ],
     [
       'Base64 of bytes that are not UTF-8',
       (box: Box) => {
         const bytes = Buffer.concat([Buffer.from(`${box.home}/`), Buffer.from([0xff, 0x70])]);
-        return `${bytes.toString('base64')} RemoteSigned`;
+        return bytes.toString('base64');
       },
     ],
     [
-      'a path holding a control character',
-      (box: Box) => answerOf(join(box.home, `a${String.fromCodePoint(7)}.ps1`), 'RemoteSigned'),
-    ],
-    [
-      'a policy holding a space',
-      (box: Box) => answerOf(join(box.home, 'profile.ps1'), 'Remote Signed'),
+      'Base64 and a second word',
+      (box: Box) => `${answerOf(join(box.home, 'profile.ps1'))} RemoteSigned`,
     ],
   ])('fails when the fixture answers %s, and writes nothing', (_case, answer) => {
     const box = sandbox();
@@ -1433,11 +1397,11 @@ describe('PowerShell', () => {
     expect(readdirSync(box.home)).toEqual([]);
   });
 
-  it('reads an answer that ends with a carriage return and a line feed, as PowerShell on win32 writes one', () => {
+  it('reads an answer that ends with a carriage return and a line feed', () => {
     const box = sandbox();
     const profile = join(box.home, 'profile.ps1');
     const bin = join(box.root, 'bin');
-    const answer = answerOf(profile, 'RemoteSigned');
+    const answer = answerOf(profile);
     fakePwsh(bin, answer, `printf '%s\\r\\n' '${answer}'\nexit 0\n`);
     const result = run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
     expect(result.status).toBe(0);
@@ -1480,50 +1444,11 @@ describe('PowerShell', () => {
     const earlier = join(box.root, 'earlier');
     prepare(earlier);
     const bin = join(box.root, 'bin');
-    fakePwsh(bin, answerOf(profile, 'RemoteSigned'));
+    fakePwsh(bin, answerOf(profile));
     const env = { ...pwshEnv(box, bin), PATH: `${earlier}:${bin}` };
     const result = run(box, ['completion', 'install', 'pwsh'], { env });
     expect(result.status).toBe(0);
     expect(readFileSync(profile, 'utf8')).toBe(`${powershellLine(scripts.pwsh(box))}\n`);
-  });
-
-  it.each(['Restricted', 'AllSigned'])(
-    'installs the script under %s, prints the policy sentence and the line, and records no line',
-    (policy) => {
-      const box = sandbox();
-      const profile = join(box.home, 'profile.ps1');
-      const bin = join(box.root, 'bin');
-      fakePwsh(bin, answerOf(profile, policy));
-      const script = scripts.pwsh(box);
-      const result = run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
-      expect(result.status).toBe(0);
-      expect(lines(result.stderr)).toEqual([
-        `Installed the pwsh completion script in ${script}.`,
-        `PowerShell's execution policy is ${policy}, so it runs no unsigned profile or script, and jsonkit did not add its startup line. To use completion, allow local scripts, such as with Set-ExecutionPolicy -Scope CurrentUser RemoteSigned where no Group Policy sets the policy, then add this line to ${profile}:`,
-        'Open a new shell to use it.',
-      ]);
-      expect(result.stdout).toBe(`${powershellLine(script)}\n`);
-      expect(existsSync(profile)).toBe(false);
-      expect(recorded(box, 'pwsh').lines).toEqual([]);
-    },
-  );
-
-  it('removes the line after the policy changes to Restricted, running no shell', () => {
-    const box = sandbox();
-    const profile = join(box.home, 'profile.ps1');
-    const bin = join(box.root, 'bin');
-    fakePwsh(bin, answerOf(profile, 'RemoteSigned'));
-    run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
-    fakePwsh(bin, answerOf(profile, 'Restricted'));
-    rmSync(join(box.root, 'pwsh.log'));
-    const result = run(box, ['completion', 'uninstall'], { env: pwshEnv(box, bin) });
-    expect(result.status).toBe(0);
-    expect(lines(result.stderr)).toEqual([
-      `Removed ${scripts.pwsh(box)}.`,
-      `Removed the line from ${profile}.`,
-    ]);
-    expect(readFileSync(profile, 'utf8')).toBe('');
-    expect(existsSync(join(box.root, 'pwsh.log'))).toBe(false);
   });
 
   // The absolute entry is an empty folder, so a real pwsh on the runner, such as /usr/bin/pwsh, is never found.
@@ -1546,7 +1471,7 @@ describe('PowerShell', () => {
     const empty = join(box.root, 'empty');
     mkdirSync(empty);
     const { PATH, folder } = place(box, empty);
-    fakePwsh(folder, answerOf(join(box.home, 'profile.ps1'), 'RemoteSigned'));
+    fakePwsh(folder, answerOf(join(box.home, 'profile.ps1')));
     const log = join(box.root, 'pwsh.log');
     const result = run(box, ['completion', 'install', 'pwsh'], {
       cwd: box.home,
@@ -1557,46 +1482,5 @@ describe('PowerShell', () => {
       'jsonkit cannot find the profile of pwsh, because pwsh could not start. Install pwsh, or name the shell you use.',
     ]);
     expect(existsSync(log)).toBe(false);
-  });
-
-  it.each([
-    [
-      String.raw`C:\Users\me\Documents\PowerShell\Modules;C:\Program Files\PowerShell\Modules`,
-      'pwsh',
-    ],
-    [
-      String.raw`C:\Users\me\Documents\WindowsPowerShell\Modules;C:\Windows\system32\WindowsPowerShell\v1.0\Modules`,
-      'powershell',
-    ],
-    [String.raw`c:\program files\powershell\modules`, 'pwsh'],
-    [String.raw`C:\Program Files\PowerShell\Modules\;C:\Windows\Modules`, 'pwsh'],
-  ])('selects the shell on win32 with SHELL unset from PSModulePath %s', (modulePath, shell) => {
-    const box = sandbox();
-    const result = run(box, ['completion', 'install'], {
-      env: { LOCALAPPDATA: box.data, PSModulePath: modulePath, USERPROFILE: box.home },
-      platform: 'win32',
-    });
-    expect(result.status).toBe(1);
-    expect(lines(result.stderr)).toEqual([
-      `jsonkit cannot find the profile of ${shell}, because ${shell} could not start. Install ${shell}, or name the shell you use.`,
-    ]);
-  });
-});
-
-describe('the shell SHELL names', () => {
-  it('reads the last segment of a SHELL split at backslashes', () => {
-    const box = sandbox();
-    const result = run(box, ['completion', 'install'], {
-      env: {
-        LOCALAPPDATA: box.data,
-        SHELL: String.raw`C:\Program Files\PowerShell\7\pwsh`,
-        USERPROFILE: box.home,
-      },
-      platform: 'win32',
-    });
-    expect(result.status).toBe(1);
-    expect(lines(result.stderr)).toEqual([
-      'jsonkit cannot find the profile of pwsh, because pwsh could not start. Install pwsh, or name the shell you use.',
-    ]);
   });
 });

@@ -15,15 +15,10 @@ import {
 } from './startup.js';
 import type { StartupText } from './startup.js';
 
-/**
- * One startup line an install lists: its startup file's absolute path, its text, and whether a
- * startup file the module creates for it starts with a UTF-8 byte order mark, as a PowerShell
- * profile on `win32` does.
- */
+/** One startup line an install lists: its startup file's absolute path and its text. */
 interface InstalledLine {
   readonly path: string;
   readonly line: string;
-  readonly byteOrderMark?: boolean;
 }
 
 /** What a run does to one startup file's line, with the text recorded before, `null` for none. */
@@ -49,18 +44,16 @@ type LineAction =
       readonly found: StartupText;
     }
   | { readonly kind: 'not-held'; readonly path: string; readonly prior: string }
-  | { readonly kind: 'release'; readonly path: string; readonly prior: string }
-  | { readonly kind: 'keep'; readonly path: string; readonly prior: string };
+  | { readonly kind: 'release'; readonly path: string; readonly prior: string };
 
 /**
  * What happened to the startup lines, each by its startup file's path and text: the new text for
- * a line added, already held, or replaced, and the recorded text for one kept, removed, no longer
- * held, or released.
+ * a line added, already held, or replaced, and the recorded text for one removed, no longer held,
+ * or released.
  */
 interface StartupLinesOutcome {
   readonly added: readonly StartupLine[];
   readonly held: readonly StartupLine[];
-  readonly kept: readonly StartupLine[];
   readonly replaced: readonly StartupLine[];
   readonly removed: readonly StartupLine[];
   readonly noLongerHeld: readonly StartupLine[];
@@ -74,14 +67,12 @@ interface LineRefusal {
 }
 
 /**
- * The startup lines a run lists, the lines it records only as held, the startup files whose
- * recorded lines it releases or keeps, and whether it is an update.
+ * The startup lines a run lists, the startup files whose recorded lines it releases because the
+ * plugin may not change them, and whether it is an update.
  */
 interface LineListing {
   readonly lines: readonly InstalledLine[];
-  readonly hold: readonly InstalledLine[];
   readonly release: ReadonlySet<string>;
-  readonly keep: ReadonlySet<string>;
   readonly update: boolean;
 }
 
@@ -149,22 +140,6 @@ function listedAction({ listed, prior, found }: ListedRead, update: boolean): Li
   return { found, kind: 'add', listed, prior };
 }
 
-/**
- * What an install does to a line it records only as held, in a startup file the plugin cannot
- * change: a recorded line of other text there is released, and the line is recorded as held when
- * the file holds it and is never added.
- */
-function heldActions({ listed, prior, found }: ListedRead): LineAction[] {
-  const released: LineAction[] =
-    prior === null || prior === listed.line ? [] : [{ kind: 'release', path: listed.path, prior }];
-  if (found === undefined || !holdsLine(found.text, listed.line)) {
-    return released;
-  }
-  // A released line leaves no prior text, so recovery never records it again.
-  const heldPrior = prior === listed.line ? prior : null;
-  return [...released, { kind: 'hold', listed, prior: heldPrior }];
-}
-
 /** What a run does to a recorded line it does not list: release it, remove it, or report it gone. */
 function unlistedAction(recorded: StartupLine, release: ReadonlySet<string>): LineAction {
   const { line: prior, path } = recorded;
@@ -188,47 +163,30 @@ interface NamedPlan {
 }
 
 /**
- * Reads the startup file of each named line, listed or held, and plans each line whose file is a
- * regular file or nothing with the text recorded for that file, `null` for none.
- */
-function planNamed(
-  lines: readonly InstalledLine[],
-  priors: ReadonlyMap<string, string>,
-  plan: (read: ListedRead) => readonly LineAction[],
-): NamedPlan {
-  const reads = lines.map((listed) => ({ found: foundText(listed.path), listed }));
-  return {
-    actions: reads.flatMap(({ found, listed }) =>
-      isRefusal(found) ? [] : plan({ found, listed, prior: priors.get(listed.path) ?? null }),
-    ),
-    refused: reads.flatMap(({ found }) => (isRefusal(found) ? [found] : [])),
-  };
-}
-
-/**
- * What a run does to every startup line it lists, holds, or the plugin's file records, and the
- * refusal of each listed or held startup file that is not a regular file or nothing, which refuses
- * the whole install. It reads each startup file it would change or hold a line in and none it
- * releases or keeps, and throws a TypeError for one in an encoding it does not read.
+ * What a run does to every startup line it lists or the plugin's file records, and the refusal of
+ * each listed startup file that is not a regular file or nothing, which refuses the whole install.
+ * It reads each startup file it would change and none it releases, and throws a TypeError for one
+ * in an encoding it does not read. Each listed line is planned with the text recorded for its file,
+ * `null` for none.
  */
 function planLines(listing: LineListing, recorded: readonly StartupLine[]): NamedPlan {
   const priors = new Map(recorded.map(({ line, path }) => [path, line]));
-  const listed = planNamed(listing.lines, priors, (read) => [listedAction(read, listing.update)]);
-  const held = planNamed(listing.hold, priors, heldActions);
-  const named = new Set([...listing.lines, ...listing.hold].map(({ path }) => path));
+  const reads = listing.lines.map((listed) => ({ found: foundText(listed.path), listed }));
+  const named = new Set(listing.lines.map(({ path }) => path));
   const unlisted = recorded.filter(({ path }) => !named.has(path));
-  const kept = unlisted
-    .filter(({ path }) => listing.keep.has(path))
-    .map(({ line, path }): LineAction => ({ kind: 'keep', path, prior: line }));
-  const changed = unlisted.filter(({ path }) => !listing.keep.has(path));
+  const listed = reads.flatMap(({ found, listed: line }) =>
+    isRefusal(found)
+      ? []
+      : [
+          listedAction(
+            { found, listed: line, prior: priors.get(line.path) ?? null },
+            listing.update,
+          ),
+        ],
+  );
   return {
-    actions: [
-      ...listed.actions,
-      ...held.actions,
-      ...kept,
-      ...unlistedActions(changed, listing.release),
-    ],
-    refused: [...listed.refused, ...held.refused],
+    actions: [...listed, ...unlistedActions(unlisted, listing.release)],
+    refused: reads.flatMap(({ found }) => (isRefusal(found) ? [found] : [])),
   };
 }
 
@@ -248,10 +206,7 @@ function pathOf(action: LineAction): string {
   return 'listed' in action ? action.listed.path : action.path;
 }
 
-/**
- * The pending entry of an action; a released line has none, so recovery never reads its file, and
- * a kept line keeps its recorded text wherever its file still holds it.
- */
+/** The pending entry of an action; a released line has none, so recovery never reads its file. */
 function pendingOf(action: LineAction): PendingLine[] {
   const path = pathOf(action);
   switch (action.kind) {
@@ -259,9 +214,6 @@ function pendingOf(action: LineAction): PendingLine[] {
     case 'hold':
     case 'replace': {
       return [{ intended: action.listed.line, path, prior: action.prior }];
-    }
-    case 'keep': {
-      return [{ intended: action.prior, path, prior: action.prior }];
     }
     case 'remove':
     case 'not-held': {
@@ -275,9 +227,6 @@ function pendingOf(action: LineAction): PendingLine[] {
 
 /** The line an action leaves recorded, if any. */
 function committedOf(action: LineAction): StartupLine[] {
-  if (action.kind === 'keep') {
-    return [{ line: action.prior, path: action.path }];
-  }
   return action.kind === 'add' || action.kind === 'hold' || action.kind === 'replace'
     ? [{ line: action.listed.line, path: action.listed.path }]
     : [];
@@ -300,7 +249,7 @@ function addLine(listed: InstalledLine, found: StartupText | undefined): void {
     appendLine(listed.path, found, listed.line);
     return;
   }
-  if (createStartupFile(listed.path, listed.line, listed.byteOrderMark === true)) {
+  if (createStartupFile(listed.path, listed.line)) {
     return;
   }
   const created = foundText(listed.path);
@@ -314,7 +263,7 @@ function addLine(listed: InstalledLine, found: StartupText | undefined): void {
 
 /**
  * Carries out one action: an append or a created file for an added line, and a rewrite for a
- * replaced or removed one. A held, kept, no longer held, or released line changes no startup file.
+ * replaced or removed one. A held, no longer held, or released line changes no startup file.
  */
 function applyLine(action: LineAction): void {
   if (action.kind === 'add') {
@@ -333,7 +282,6 @@ function applyLine(action: LineAction): void {
 const outcomeList: Readonly<Record<LineAction['kind'], keyof StartupLinesOutcome>> = {
   add: 'added',
   hold: 'held',
-  keep: 'kept',
   'not-held': 'noLongerHeld',
   release: 'released',
   remove: 'removed',
@@ -345,7 +293,6 @@ function outcomeOf(actions: readonly LineAction[]): StartupLinesOutcome {
   const lists: Record<keyof StartupLinesOutcome, StartupLine[]> = {
     added: [],
     held: [],
-    kept: [],
     noLongerHeld: [],
     released: [],
     removed: [],
@@ -360,16 +307,10 @@ function outcomeOf(actions: readonly LineAction[]): StartupLinesOutcome {
 
 /**
  * The line a pending startup line resolves to, read from its file without writing: the intended
- * text when the file holds it, else the prior text when it holds that, else no line. A kept line,
- * whose intended text is its prior text, stays recorded when its file is one the module cannot
- * read, since a run keeps a line without reading its file.
+ * text when the file holds it, else the prior text when it holds that, else no line.
  */
 function heldLine(entry: PendingLine): StartupLine[] {
   const read = readStartup(entry.path);
-  const kept = entry.prior !== null && entry.intended === entry.prior;
-  if (kept && (read.kind === 'unknown-encoding' || read.kind === 'unreadable')) {
-    return [{ line: entry.prior, path: entry.path }];
-  }
   if (read.kind !== 'text') {
     return [];
   }
