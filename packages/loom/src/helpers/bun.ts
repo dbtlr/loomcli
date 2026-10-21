@@ -48,10 +48,11 @@ export interface BunResult {
 /**
  * Runs Bun from the PATH with the arguments, in the directory, and waits for it. Its stdout and
  * stderr are collected together, so a failure reports them in the order Bun wrote them as nearly as
- * two pipes allow. A missing Bun fails with a sentence that names it.
+ * two pipes allow, and the output is unbounded, as git's is. A missing Bun fails with a sentence
+ * that names it.
  */
 export function runBun(args: readonly string[], cwd: string): BunResult {
-  const result = spawnSync('bun', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const result = spawnSync('bun', args, { cwd, encoding: 'utf8', maxBuffer: Infinity });
   if (isMissing(result.error)) {
     throw new Error(missingBun);
   }
