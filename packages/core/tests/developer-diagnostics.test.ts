@@ -150,7 +150,14 @@ test("a defect prints its sentence, the thrown value's source and stack, then th
   });
   expect(result.status).toBe(1);
   // Each stack frame names a path on the machine that ran the test, so the golden elides frames.
-  const stderr = result.stderr.replaceAll(/(?:^ {4}at .+\n)+/gmu, '    at …\n');
+  const framed = result.stderr.replaceAll(/(?:^ {4}at .+\n)+/gmu, '    at …\n');
+  // Node reports the throw's column at `new` and Bun at the class name, so the golden reads the
+  // Column the runtime reported and pins the caret beneath it.
+  const column = Number(/translators\.mjs:67:(?<column>\d+)$/mu.exec(framed)?.groups?.column);
+  expect(column).toBeGreaterThan(0);
+  const stderr = framed
+    .replace(`translators.mjs:67:${column}`, 'translators.mjs:67:9')
+    .replace(`     | ${' '.repeat(column - 1)}^\n`, `     | ${' '.repeat(8)}^\n`);
   expect(stderr).toBe(
     [
       '-- BROKEN TRANSLATOR --------------------------- @loomcli/core/broken-translator',
