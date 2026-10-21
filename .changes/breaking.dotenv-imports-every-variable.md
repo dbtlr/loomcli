@@ -7,7 +7,7 @@
 
 **Affected surface.** An application that calls `dotenv({ variables })` from `@loomcli/plugins/dotenv`, or that builds a `DotenvSettings` value with a `variables` key.
 
-**Why.** The allow list is optional now that the plugin imports every variable by default, and it takes the name `only` beside the deny list `except`.
+**Why.** The allow list is optional now that the plugin imports every variable by default, and it takes the name `only` beside the deny list `except`. A JavaScript application that keeps `dotenv({ variables })` gets no type error and no run-time fault: the plugin reads no `variables` key, so it now imports every variable `.env` defines.
 
 **Before and after.**
 
@@ -29,7 +29,8 @@ const app = new Application('notes', {
 
 **Steps.**
 
-1. Rename each `variables` setting passed to `dotenv()` to `only`.
-2. To import every variable `.env` defines, remove the setting and call `dotenv()`.
+1. Search every `dotenv(` call for a `variables` key, in TypeScript and JavaScript sources alike, because a JavaScript call that keeps one fails nowhere.
+2. Rename each `variables` setting passed to `dotenv()` to `only`.
+3. To import every variable `.env` defines, remove the setting and call `dotenv()`.
 
-**Validation.** Run the application's type check, which rejects a remaining `variables` key, and run a command that reads an imported variable from a `.env` file in the working directory.
+**Validation.** Run the application's type check, which rejects a remaining `variables` key in TypeScript, search the sources for `variables` beside `dotenv(` once more, and run a command that reads an imported variable from a `.env` file in the working directory.
