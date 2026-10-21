@@ -25,6 +25,17 @@ test.each(['empty', 'unknown', 'global', 'multiple', 'count', 'content', 'confir
   },
 );
 
+test('a select question with no choices states its fault and its correction', () => {
+  const result = invoke(new URL('fixtures/faults.mjs', import.meta.url), ['empty']);
+  expect(result.status).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual({
+    correction: 'Supply at least one choice.',
+    name: 'DeclarationError',
+    rule: '@loomcli/prompts/link',
+    sentence: 'The select question "Mode" has no choices.',
+  });
+});
+
 test('a missing linked value reports an ordinary usage failure', () => {
   const result = invoke(new URL('fixtures/questions.mjs', import.meta.url), ['missing']);
   expect(result.status).toBe(2);

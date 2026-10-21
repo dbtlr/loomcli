@@ -23,7 +23,14 @@ const app = new Application('faults', { description: 'Exercise malformed questio
       await cases[scenario](context);
       await context.out.print('accepted');
     } catch (error) {
-      await context.out.print(JSON.stringify({ name: error.name, rule: error.rule?.identity }));
+      await context.out.print(
+        JSON.stringify({
+          correction: error.correction,
+          name: error.name,
+          rule: error.rule?.identity,
+          sentence: error.sentence,
+        }),
+      );
     }
   });
 process.exitCode = await app.run({ host: { argv: [] } });

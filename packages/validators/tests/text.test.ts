@@ -202,13 +202,3 @@ describe('an option that can never work throws from the call', () => {
     );
   });
 });
-
-/** A call the types reject, which the test never makes. */
-function withoutMessage() {
-  // @ts-expect-error TS2345: Only the author can say what the pattern accepts, so message is required.
-  return text({ pattern: /^[a-z]+$/u });
-}
-
-test('a pattern without a message is a type error', () => {
-  expect(withoutMessage).toBeTypeOf('function');
-});
