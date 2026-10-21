@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/core/tests/color.test.ts.
+
 import { expect, test } from 'vite-plus/test';
 
 import { chosenPolicy, uncapturedPolicy } from '../src/color.js';

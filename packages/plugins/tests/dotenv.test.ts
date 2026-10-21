@@ -1,3 +1,12 @@
+/*
+ * Acceptance plan for the dotenv plugin (docs/plugins/dotenv.md#dotenv-plugin).
+ *
+ * Acceptance covers parser behavior, warning recovery, empty-value precedence, env-bound options,
+ * host isolation, child-process visibility, and named invocation capture. The packed consumer also
+ * proves the public subpath, emitted types, argv publication, and named isolation under Node and
+ * Bun.
+ */
+
 // Substitution syntax is intentional literal input: dotenv never expands variables.
 /* oxlint-disable eslint/no-template-curly-in-string */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';

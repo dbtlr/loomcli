@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/validators/tests/catalog.test.ts.
+
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

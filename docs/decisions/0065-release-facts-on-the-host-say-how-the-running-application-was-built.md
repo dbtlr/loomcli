@@ -29,7 +29,7 @@ A bundler `define` replaces an identifier with a value while it bundles. Verific
 - **A malformed value.** Core validates the baked value. A malformed one is a defect under `@loomcli/core/invalid-release-facts`, reported before the graph builds. The build step that baked it is the author's, so core reports it to the author as its Developer Diagnostic in every build. Core ignores members it does not know, so a later toolchain can bake more facts.
 - **Nothing to wire.** Authors never import a facts file and never pass anything. The Application's `packet` option, the `Packet` type, `loom.packet.json`, and `packet()` from `@loomcli/loom/build` are removed, and the word leaves the public vocabulary. The author-facing term is release facts. A JavaScript author who still passes `packet` meets the retired-option rule.
 
-The contract, the type block, and the acceptance are in [Release facts](../core/release-facts.md), and the build that bakes the facts is in [loom build](../toolchain/build.md#loom-build-1).
+The contract, the type block, and the acceptance are in [Release facts](../core/release-facts.md), and the build that bakes the facts is in [loom build](../toolchain/build.md#loom-build).
 
 ## Considered options
 

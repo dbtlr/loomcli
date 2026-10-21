@@ -1,3 +1,57 @@
+/*
+ * Acceptance plan for update notices (docs/plugins/self-update.md#update-notices).
+ *
+ * Update notices are proven when process tests under Node and Bun produce these results. Each
+ * fixture sets `HOME` and `XDG_CACHE_HOME` to temporary directories and runs an application that
+ * installs `selfUpdate()` and declares a Command that prints one line through `out.success`,
+ * through `run({ host: { release, terminal, program } })`, whose release group holds an asset and
+ * an installation with the method `script`, whose stdout and stderr terminals report `isTTY: true`
+ * and 80 columns, with an `env` that holds no `COLUMNS`, and whose `program` starts the same
+ * fixture with its scenario, so the child reads the same release facts and the fake GitHub of
+ * Self-update acceptance (packages/plugins/tests/self-update.test.ts):
+ *
+ * - The notice. A fresh cache naming `1.5.1` on the running `stable` channel prints the Command's
+ *   line and then the pinned notice on stderr, the notice through `lanes.info`, wrapped at the
+ *   fixture's 80 columns with the info gutter on its continuation line, starts no child, and exits
+ *   0; an override of `lanes.info` restyles it. A cache naming the running version, an older one,
+ *   `null`, or another channel or repository prints no notice. A fresh cache with an extra member
+ *   and its members reordered reads the same. A cache whose `format` is `2`, whose `checked` is not
+ *   a time, or that is a directory is stale.
+ * - The refresh. A missing cache, one whose `checked` is 25 hours old, one dated an hour ahead, one
+ *   for another channel, and one holding `{` each start one child, which finds the run's `checked`
+ *   already in `update.json` when it starts; the run exits before the child, whose GitHub responses
+ *   the fake holds until the run's process has exited, and the child then writes the pinned line
+ *   with the latest version. A compiled fixture binary built with `--release` starts its child from
+ *   `[execPath]` alone, with the same result. A cache naming `1.5.1` whose `checked` is 25 hours
+ *   old, an hour ahead, or not a time prints the notice and starts a child, and the run's `checked`
+ *   keeps `1.5.1` as `latest`. A fresh cache starts none. A `503` from the fake makes the child
+ *   exit 1 and write nothing, leaving the run's `checked` in place, and a second run then starts no
+ *   child.
+ * - The child. `self-update --refresh-notice` resolves `stable` through `releases/latest` and a
+ *   `next` binary through the feed, passing over a tag whose `SHA256SUMS` answers `404`, requests
+ *   no asset, writes the pinned line, prints nothing, and exits 0; a channel with no release writes
+ *   `null`. Beside a version, `--channel`, or `--check` it exits 2 with the pinned sentence. With
+ *   no asset it exits 1 with the first refusal, and under a relative `HOME` with no
+ *   `XDG_CACHE_HOME` with the pinned cache-directory sentence. A cache directory it cannot write
+ *   exits 1 with the pinned write sentence. It is listed by no help page and offered by no
+ *   completion.
+ * - Left out. A run whose action fails, a run cancelled during its action, `--help` under the help
+ *   plugin, `self-update` itself, stderr that is not a terminal, stdout that is not a terminal
+ *   while stderr is one, `CI=1`, `NO_UPDATE_NOTIFIER=1`, the author's `env` set to `1`, a source
+ *   build, a release with no asset, an installation with the method `npm`, no installation, and a
+ *   relative `HOME` with no `XDG_CACHE_HOME` each print no notice, write no cache, and start no
+ *   child, with the cache naming `1.5.1` on the running channel. `NO_UPDATE_NOTIFIER` set to the
+ *   empty string does not turn notices off. `selfUpdate({ notices: false })` declares no
+ *   middleware.
+ * - Quiet. Under the verbose plugin's `-q`, a qualifying run prints no notice and still refreshes a
+ *   stale cache.
+ * - Silent faults. A cache directory that cannot be written, and a `program` naming a missing file,
+ *   each exit 0 with the Command's line alone on stderr and nothing on stdout.
+ * - Settings. `notices: { env: '1X' }` throws its pinned diagnostic at the call.
+ * - Packaging. `pnpm check:packed` compiles a consumer that passes `NoticeSettings` against the
+ *   emitted declarations.
+ */
+
 import { createHash } from 'node:crypto';
 import {
   chmodSync,

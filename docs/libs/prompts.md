@@ -90,22 +90,21 @@ The type tests prove the generic plumbing against the action context's real para
 
 Question validation receives the captured Loom run context through the Standard Schema options channel, with `phase: 'question'`. A linked question identifies its local option; an unlinked question identifies its title with `kind: 'question'`. The host, route, passthrough tail, and supplied values come from the same run, with separate copies for each validator call. Shipped validators such as `path()` and `dateTime()` use the host's working directory and time zone. A skipped question never calls its question validator.
 
-Secret declares no `default` in this release, and its types reject one.
+Secret declares no `default`, and its types reject one.
 
 The return type is the question's own output: the validator's output for text and secret, or `string` without one, `boolean` for confirm, and the choice union for select. A linked question can also return the option's validated value, so `Answer` adds the option's action value, `undefined` included, because a validator may return `undefined` for a supplied value. The union collapses when the two agree, as `port()` on both the option and the question does.
 
 ## Linking an option
 
-`option` names a local option of the routed Command. Its type admits the keys of the action's `options`. At the call, the library checks the declaration through `context.command` and throws a `DeclarationError` under the rule `@loomcli/prompts/link` for each of these, which a run reports with exit 1:
+`option` names a local option of the routed Command. Its type admits the keys of the action's `options`. At the call, the library checks the declaration through `context.command` and throws a `DeclarationError` under the rule [`@loomcli/prompts/link`](../core/diagnostics.md#loomclipromptslink) for each of these, which a run reports with exit 1:
 
-| Link                                               | Sentence                                                                                                     |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| A key the routed Command does not declare          | `The question "Service port" links option "prot", which Command "setup" does not declare. Link a local option of the routed Command.` |
-| A global option                                    | `The question "Service port" links global option "verbose". Link a local option of the routed Command.`      |
-| A multiple, content, or counted option from text, secret, or select | `The question "Tags" links option "tag", which is not a string option that takes one value. Link a string option that takes one value.` |
-| Any option but a Boolean from confirm              | `The question "Install?" links option "install", which is not a Boolean option. Link a Boolean option.`     |
+- **A declared option.** The linked key is a local option the routed Command declares.
+- **A local option.** The linked option is not a global option.
+- **One string value.** A text, secret, or select question links a string option that takes one value, never a multiple, content, or counted option.
+- **A Boolean.** A confirm question links a Boolean option and no other.
+- **Choices.** A select question has at least one choice, which a computed `choices` list may lack before the question resolves.
 
-The same rule covers a select question whose `choices` list is empty, which a computed list can be, before the question resolves: `The select question "Database" has no choices. Supply at least one choice.` The types reject the other malformed settings, such as `skipIfSupplied` without `option`, a `default` that is not one of `choices`, a `default` on secret, and a `validate` that is not a Standard Schema value, so they get no rule. The root Command reads as `the root Command`.
+The types reject the other malformed settings, such as `skipIfSupplied` without `option`, a `default` that is not one of `choices`, a `default` on secret, and a `validate` that is not a Standard Schema value, so they get no rule. The root Command reads as `the root Command`.
 
 ## Resolving a question
 
@@ -118,7 +117,7 @@ A question first reads the run's interaction decision, `context.interactive`, an
 | No link                  | Asked                            | Asked                      | `InteractionUnavailableError`, exit 1 |
 
 - **Skipped.** The question draws nothing and returns `context.options[option]`, the option's validated value. The question's own validator does not run.
-- **Asked.** The prefill is the first that applies: the raw supplied value, the question's `default`, the linked option's declared default, or none. A Boolean option's implicit absent value is never a default. A select whose prefill matches no choice starts on the first choice. Secret takes no prefill in this release: asked, it starts empty even when its option was supplied, and only `skipIfSupplied` or interaction off answers it from the option. An accepted prefill is a submitted answer and passes through `validate` as a typed one does.
+- **Asked.** The prefill is the first that applies: the raw supplied value, the question's `default`, the linked option's declared default, or none. A Boolean option's implicit absent value is never a default. A select whose prefill matches no choice starts on the first choice. Secret takes no prefill: asked, it starts empty even when its option was supplied, and only `skipIfSupplied` or interaction off answers it from the option. An accepted prefill is a submitted answer and passes through `validate` as a typed one does.
 - **Missing input.** The question throws `missingInputError(context, option)`, core's ordinary `InputError` for that option: `Option "--database-url" is required when input is not interactive. Supply a value.`, named by declared name under an invocation by name. For argv, a confirm's Boolean option reads `Supply "--install" or "--no-install".` in place of `Supply a value.`, naming the spellings its polarity accepts. Under an invocation by name, the fix remains `Supply a value.` A default never answers here. An option that declares `required: 'non-interactive'` never reaches this row, because core reports it before the action.
 - **Interaction unavailable.** `InteractionUnavailableError` extends `FatalError` with the failure code `interaction-unavailable` and exit 1. Its sentence names the question and the routed Command: `The question "Install the background service?" needs an interactive terminal, and this run is not interactive. Run "mimir setup" at a terminal.`
 
@@ -314,38 +313,16 @@ interface ProgressLine {
 - **Elapsed time.** Under a minute it reads seconds with one decimal, `2.4s`; under an hour, minutes and two-digit seconds, `1m 05s`; and from an hour, hours and two-digit minutes, `1h 02m`. Each rounds down.
 - **Plain text.** The spinner frames and the bar cells are plain text, not glyphs, so a terminal that takes compat forms draws them as the style gives them. The view neither wraps nor clips a long label: the terminal wraps it, and core counts the rows it takes.
 
-### Progress acceptance
+## When author code fails
 
-- **The look.** Against a headless terminal emulator, a fixture's counted line and spinner line read as the table above, with color and with `NO_COLOR`, the spinner advancing one frame each interval, and each success, failure, and cancelled line replacing its frame and staying in scrollback. On a host that takes compat glyph forms, the failure line opens with `×`. Two lines stack in start order, a lane message written between their frames lands above both, and a question asked while they run holds them still and lets each catch up once when it is answered.
-- **Counts and time.** The default view, rendered directly, draws 3 complete cells for 1/3, 10 for 12/10, and 10 for 0/0, reads `33%` for 1.5 of 4.5 and `0/5` for an absent `completed` of 5, and reads `59.9s` at 59 999 ms, `1m 05s` at 65 999 ms, and `1h 02m` at 3 779 999 ms.
-- **Tracking.** `track` returns the work's value and ends with `done` from a function of it, and a rejection fails with `failed` from a function of the rejection and rethrows the same object. A line closed before its work settles draws nothing more.
-- **Failing and returning.** An action that throws with two lines open writes both failure lines above the failure report, and one that returns with a line open writes its success line. A line a middleware opens before `next()` and leaves open is still running after the action returns and writes its success line once the chain has unwound.
-- **Cancellation.** `SIGINT` under a signals owner writes each open line's cancelled line, exits 130, and leaves no timer that holds the process open.
-- **Off a terminal.** With stderr piped, the run writes exactly the plain lines above. Under `-q` with the [verbose plugin](../plugins/verbose.md), it writes only failure lines. Under `app.invoke`, the lines land in `messages`, and the observer reads every progress event in order. The end event of a line ended by `end`, `fail`, or `track` with a `done` or `failed` message carries that message as its label, and one ended with no message carries the line's last label.
-- **Style.** `progressStyle({ spinner: spinners.dots })` draws the dots frames at their interval, a call's own spinner wins for its line, and the defaults hold without the plugin.
-- **View.** An override of `progressLine` changes every line's frame, and its data carries the state, counts, frame, bar cells, and elapsed time above.
-- **Packed.** `check:packed` installs the packed library, imports `progress` and `progressStyle` from `@loomcli/prompts` and `progressLine` from `@loomcli/prompts/views`, and compiles against their declarations under Node and Bun.
+A question's `validate`, the `done` and `failed` message functions of `track`, the work `track` awaits, and an overridden prompts view are author code. Author code that throws or rejects takes the [ordinary failure path](../core/failures.md#the-ordinary-failure-path), and an author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). Two outcomes are the library's own. Work that rejects under `track` fails its line and rejects `track` with the same rejection, unchanged. A question or progress line still open when the run fails draws its cancelled or failure line before core renders the failure report, as [Leaving a question](#leaving-a-question) and the failing-run rule of [Progress](#progress) state.
 
 ## Package
 
 - The root export holds `text`, `secret`, `confirm`, `select`, `InteractionUnavailableError`, `progress`, `progressStyle`, and the settings types, `ProgressSettings`, `ProgressUpdate`, `TrackMessages`, `Progress`, `ProgressContext`, `Spinner`, and `ProgressStyleSettings` included. `@loomcli/prompts/views` exports `questionFrame`, `answeredLine`, `cancelledLine`, and `progressLine` and their data types. Its one plugin is `progressStyle()`, whose identity is `@loomcli/prompts`.
 - `@loomcli/core` is a peer dependency. The package reads the action context, `DeclarationError`, `FatalError`, `missingInputError`, `extension`, `plugin`, `readExtension`, the Standard Schema types, `glyph`, and `view` from core, and adds no runtime dependency of its own. Its style schema is a hand-written Standard Schema value.
-- The package joins the synchronized release set the way `@loomcli/validators` did under [ADR-0037](../decisions/0037-validators-ship-in-their-own-package-as-standard-schema-values.md): it lands with `private: true`, the maintainer publishes a `0.0.0` placeholder and binds the trusted publisher, an ordinary pull request removes `private`, and the next release cut publishes it. The root `build` script, `scripts/clean.mjs`, the packed-consumer check, and the runtime consumers list it.
 
-## Acceptance
-
-- **PTY.** Through the `zpty` driver, a fixture application asks each kind and the screen reads the frames above, with color and with `NO_COLOR`: the hint, typing over it, clearing back to it, Enter on the hint, Enter with no prefill submitting the empty string, a rejected answer whose issue stays until the next Enter, then an accepted one, the answered line left in scrollback, secret's frame unchanged after typing, confirm's three hints, `yes` and `NO` accepted and `x` answered with `Type y or n.`, and select's start on a matching prefill, its stop at both ends, a window of seven with both marker lines, and its key help.
-- **Linking.** At a terminal, a supplied linked option prefills an asked question with the raw value from argv, the environment, and the configuration source alike, and a question with `skipIfSupplied` draws nothing and returns the validated value without calling the question's validator. Prefill precedence holds across all four rungs, an accepted prefill passes through the question's validator, an omitted Boolean does not prefill confirm, and a supplied secret asks empty without `skipIfSupplied`.
-- **Interaction off.** Under `--no-input` with stdin and stderr terminals, with piped stdin, with stderr redirected, under `app.invoke`, under an action's `invoke`, and as an MCP tool call: a supplied linked option returns its validated value, an unsupplied one fails with the missing-input sentence and exit 2, by declared name under an invocation by name, and an unlinked question fails with `InteractionUnavailableError` and exit 1. A piped stdout with stdin and stderr terminals still asks, and stdout holds no question byte.
-- **Leaving.** Ctrl-C at each kind exits 130 and leaves the terminal in cooked mode with the cursor shown, with and without an installed signals owner, and stdin closing and Ctrl-D on empty input at a question do the same. A caller's abort while a question waits resolves 130 and restores the terminal. After every path, the process exits once the run resolves, with nothing left reading stdin.
-- **Typeahead.** `8080` Enter `yes` Enter written in one chunk answers a text question and the confirm after it, and a view override that draws more rows than the default redraws in place.
-- **Faults.** Each row of [Linking an option](#linking-an-option) and an empty `choices` list throw their `DeclarationError` at the call, and a run reports it with exit 1.
-- **Types.** `option` rejects a key the action's `options` lacks, secret rejects `default`, a select's `default` must be a choice, and the return types of each kind, linked and unlinked, match [Calling a question](#calling-a-question).
-- **Views.** An application's override of each view changes its frame, and a secret's typed text never reaches a view.
-- **Width.** The select frame clips at `context.columns`, including under `COLUMNS=60` on a terminal and in the first frame drawn after a resize, and at 80 columns when `columns` is `undefined`, where the window’s height estimate assumes no wrapping. Its frame data carries `rows` and no `columns`, and an override of `questionFrame` reads `context.columns`.
-- **Regions.** Each question draws in an input region and writes no frame through `out.draw`. A lane message written from a timer while a question asks lands above the frame, and the frame stays whole. Two questions started at once ask one after the other, and every key typed for the first reaches the first.
-
-## Not in this release
+## Not shipped
 
 - A Command that declares it needs a terminal.
 - Multiple-choice selection, autocompletion, an editor question, and cursor movement inside a typed answer.

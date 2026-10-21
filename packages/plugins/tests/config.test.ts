@@ -1,3 +1,5 @@
+// Acceptance plan: see examples/textstat/tests/configuration.test.ts.
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

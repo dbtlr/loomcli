@@ -1,3 +1,77 @@
+/*
+ * Acceptance plan for the table and records fit (docs/plugins/pack-views.md#table).
+ *
+ * The fit is proven under Node and Bun with a host override of plain numbers for the width, and
+ * again under a pty-backed host for the resize cases. The acceptance tests cover:
+ *
+ * - At natural width. A table whose natural width is less than `columns`, one exactly equal to it,
+ *   and one under `columns` undefined each print the natural-width bytes.
+ * - Shrunk. A table one column wider than `columns` shrinks levelling from the top: the widest
+ *   column narrows to tie the next widest, and then both narrow together. When the tied columns
+ *   cannot narrow by a whole column each, the leftover columns go one each to the tied columns from
+ *   left to right. Cells wrap inside their columns with every value complete, each line of a
+ *   wrapped cell keeps its column's alignment under `right` and `center`, each line ends at its
+ *   rightmost cell that has text, which carries no padding, so a middle cell taller than the last
+ *   ends its extra lines at its own text, with no gap or padding after it, a shorter cell to the
+ *   left of a cell with text adds a padded blank line, and the two-space gap counts toward the fit.
+ *   A `format` cell is measured and wrapped by its output.
+ * - The whole width. A shrunk table's fitted widths and gaps total exactly `columns`, and with a
+ *   last cell that fills its column, which a right-aligned last column and a full line of wrapped
+ *   text give, its widest line equals `columns`. The formula is checked with natural widths 40, 20,
+ *   and 6: 46 columns left for cells give 20, 20, and 6, 40 give 17, 17, and 6, and 39 give 17, 16,
+ *   and 6, with the remainder going from the left to the columns at exactly L whose natural width
+ *   exceeds L.
+ * - Headers. A header wider than every cell sets its column's natural width, a header word longer
+ *   than every cell word sets its floor, and a header wraps like a cell.
+ * - Floors. A column's floor is the widest unit `wrap` keeps whole: a word, with an input line's
+ *   leading spaces on its first word and its trailing spaces on its last, or a `pad` frame or a
+ *   `nowrap` frame, within one input line. A cell `Ada Lovelace ` whose trailing space would pass
+ *   its column wraps instead, so every line fits and the next column stays aligned, and a cell
+ *   `abcd      ` is one unit ten columns wide. A cell in `nowrap` raises its column's floor to the
+ *   whole cell. Columns held at their floors by a long word stay at the floor while the others
+ *   narrow.
+ * - An empty sequence. An empty sequence with a `columns` list configured prints its header line at
+ *   the fitted widths, levelled and wrapped like any header row, and never takes the records
+ *   fallback, however narrow `columns` is. When even the header floors exceed `columns`, every
+ *   column sits at its floor and the line overflows. With no `columns` list it prints nothing.
+ * - Records fallback. A table with rows whose floors do not fit `columns` prints one block per row
+ *   with the header text, or the key as written, as labels, no header line, wrapped values with
+ *   their column's styling and `format`, and one blank line between blocks. A right- or
+ *   center-aligned value aligns within its own widest wrapped line, no value line carries trailing
+ *   padding, and a blank line inside a value carries no alignment and no indent. A fallback line
+ *   with an empty header and an empty value is an empty line. Overflow happens only where a unit
+ *   `wrap` keeps whole, or a label, exceeds the space.
+ * - The records view. On a terminal each value wraps at the width left after the padded key column,
+ *   every continuation line of a value, authored or wrapped, is indented under the value, a blank
+ *   line inside a styled default value or a plain `format` value carries no indent, a line whose
+ *   value is `null` ends at its key with no padding or gap, so `{ id: 'one', to: null }` at 40
+ *   columns prints `to` alone and a key column three wide leaves no padding after `to`, while a
+ *   pipe keeps the padding and the gap, and the fallback's row blocks match the records view's row
+ *   blocks for the same labels and left-aligned values, while the fallback has no tail and
+ *   highlights no identifier. With no column left for the value, the value stays unwrapped.
+ * - A resize. Under a pty-backed host, one run renders a table at 100 columns, the window resizes
+ *   to 60, and the next render fits 60. A streamed records row after the resize wraps at 60, and
+ *   the rows before it keep their layout.
+ * - `COLUMNS`. `COLUMNS=60` over a real width of 100 narrows a table and a records value to 60,
+ *   `COLUMNS=150` over 100 changes nothing, `COLUMNS=60` on a terminal that reports no width fits
+ *   60, and `COLUMNS=60` on a pipe changes nothing.
+ * - Tabs. At 16 columns a table with cells `abcde` and `b\tc d` prints `abcde  b       c` and then
+ *   `       d`, a records value `b\tc` under the key `first` prints `first  b       c`, and a
+ *   header holding a tab expands as a cell does, so no line passes 16 columns and none holds a tab.
+ *   A tab in a styled cell expands inside its style, and a tab in a `nowrap` cell expands while the
+ *   cell stays whole. Piped, the table and the records value keep the tab.
+ * - Embedded ANSI. A `format` cell holding an OSC 8 hyperlink, wrapped at 20 columns beside an
+ *   `owner` column, closes the link at the end of each line, so the link covers neither the gap nor
+ *   `drew`, and a cell holding a raw SGR color colors no neighbor. A records value holding either
+ *   wraps with a continuation indent that carries no link and no color. The views split each
+ *   wrapped value with `splitLines`.
+ * - Piped output. A table and a records view rendered to a pipe, under `app.invoke`, and under an
+ *   MCP tool call are byte for byte the natural-width output, `COLUMNS` set or not. This holds for
+ *   a `format` cell that returns several lines, a records value with authored line breaks, and a
+ *   cell or value holding a tab, because the per-line row layout and tab expansion apply only when
+ *   `columns` is defined.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { levelWidths } from '../src/table-fit.js';

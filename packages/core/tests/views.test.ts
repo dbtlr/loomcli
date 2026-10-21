@@ -1,3 +1,30 @@
+/*
+ * Acceptance plan for the view registry (docs/core/views.md).
+ *
+ * The registry is proven when jsonkit's `FatalError` override produces the failure bytes that
+ * examples/jsonkit/tests pins, and when an override of `helpPage` in a test application changes
+ * `jsonkit --help` while `help()` stays installed. Each case runs under Node and Bun. The cases:
+ *
+ * - Resolution order. One application override and one plugin override for a shared key resolve to
+ *   the application's. An application override for `UsageError` beside a plugin override for
+ *   `InputError` resolves to the application's. An earlier plugin's `UsageError` override beside a
+ *   later plugin's `InputError` override resolves to the earlier plugin's.
+ * - Declared views. A declared-view key from a second copy of a package is rejected. An override
+ *   for a view no plugin declares is inert.
+ * - Lanes. An override of `lanes.warn` is observed through `out.warn` with one newline.
+ * - Bare views. A hand-built object with an `identity` field renders as a bare view.
+ * - Markers. A help page and a version line whose graph facts carry marker characters print them
+ *   literally.
+ * - Build rules. Each build rule the reference lists.
+ * - Broken views. A broken lane view, a broken `helpPage` override under `jsonkit --help` returning
+ *   1 with one diagnostic on stderr, an action that throws an `InputError` after an unawaited
+ *   broken `out.render` returning 2 with one diagnostic, and a broken failure view under the
+ *   fallback path.
+ * - Type checks. The negative type checks cover the invariance cases, a replacement that requires
+ *   data the key lacks and a declared view reassigned to another data type, and the retired
+ *   `Renderer` cases moved to `View`.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

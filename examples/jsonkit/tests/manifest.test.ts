@@ -1,3 +1,4 @@
+// Acceptance plan: see packages/plugins/tests/manifest.test.ts.
 import { readFileSync } from 'node:fs';
 
 import { expect, test } from 'vite-plus/test';

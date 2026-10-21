@@ -1,10 +1,10 @@
 ---
-description: "Reading the built command graph: locating a word and checking the declarations."
+description: "Reading the built command graph with inspect(), locating a word with locate(), and checking the declarations with check()."
 ---
 
 # Graph inspection
 
-`inspect()` returns the declared graph as plain data. It answers in every authoring state, as `run()` and `name` do, and it is synchronous. It applies every build rule `run()` applies before it reads a token, in the same order, except one: it does not pass a declared default or an implied value through its validator, because that call can be asynchronous. A fault an authoring call, a constructor, or an attach can detect, such as a Boolean option with `validate`, `required: true` beside a default, or a non-Boolean `required`, `variadic`, or `validateOmitted`, has already thrown from that call, under [Declaration faults](declaration-faults.md), so `inspect()` never meets it. A rejected build throws the exported `DeclarationError`, which a consumer catches by class. `run()` reports the same message as a diagnostic with exit code 1. A run reports a default or an implied value its validator rejects, which neither `inspect()` nor `check()` reports. In a development build a validator whose converter fails is a build fault from `inspect()` and `run()` alike under `@loomcli/core/schema-converter-failed`; a distributed build reads its schema as `null` under both, as [Input schema](validation.md#input-schema) states. `inspect()` captures no host and reads only the baked release facts, and it caches nothing: each call builds the graph anew. It learns its build from the facts the build baked in, as [Release facts](release-facts.md) states, so `inspect()` in a source run or a development build runs the converter check. Malformed baked facts make `inspect()` throw the `InternalError` of `@loomcli/core/invalid-release-facts`, as [Release facts](release-facts.md) states. [`check()`](#checking-the-declarations) returns every fault a development run reports before routing, except a declared default or implied value its validator rejects, instead of throwing the first.
+`inspect()` returns the declared graph as plain data. It answers in every authoring state, as `run()` and `name` do, and it is synchronous. It applies every build rule `run()` applies before it reads a token, in the same order, except one: it does not pass a declared default or an implied value through its validator, because that call can be asynchronous. A fault an authoring call, a constructor, or an attach can detect has already thrown from that call, under [Declaration faults](declaration-faults.md), so `inspect()` never meets it. A rejected build throws the exported `DeclarationError`, which a consumer catches by class. `run()` reports the same message as a diagnostic with exit code 1. A run reports a default or an implied value its validator rejects, which neither `inspect()` nor `check()` reports. In a development build a validator whose converter fails is a build fault from `inspect()` and `run()` alike under `@loomcli/core/schema-converter-failed`; a distributed build reads its schema as `null` under both, as [Input schema](validation.md#input-schema) states. `inspect()` captures no host and reads only the baked release facts, and it caches nothing: each call builds the graph anew. It learns its build from the facts the build baked in, as [Release facts](release-facts.md) states, so `inspect()` in a source run or a development build runs the converter check. Malformed baked facts make `inspect()` throw the `InternalError` of `@loomcli/core/invalid-release-facts`, as [Release facts](release-facts.md) states. [`check()`](#checking-the-declarations) returns every fault a development run reports before routing, except a declared default or implied value its validator rejects, instead of throwing the first.
 
 ```ts
 import { DeclarationError } from '@loomcli/core';
@@ -50,7 +50,7 @@ interface ResultNode {
   readonly kind: 'value' | 'rows';
   readonly views: readonly string[];
   readonly default: string;
-  readonly mediaTypes: Readonly<Record<string, string | null>>; // new: each view's media type, by view name
+  readonly mediaTypes: Readonly<Record<string, string | null>>; // each view's media type, by view name
 }
 interface ArgumentNode {
   readonly name: string;
@@ -70,12 +70,12 @@ type OptionNode =
       readonly description: string | undefined;
       readonly hidden: boolean;
       readonly deprecated: string | undefined;
-      readonly control: boolean; // new: see Control options
+      readonly control: boolean; // see Control options
       readonly long: string | null;
       readonly short: string | null;
       readonly aliases: readonly string[];
       readonly required: boolean;
-      readonly requiredWhen: 'non-interactive' | null; // new: see Interaction
+      readonly requiredWhen: 'non-interactive' | null; // see Interaction
       readonly multiple: boolean;
       readonly validated: boolean;
       readonly validateOmitted: boolean;
@@ -83,7 +83,7 @@ type OptionNode =
       readonly env: readonly string[];
       readonly default: { readonly value: unknown } | undefined;
       readonly implied: string | null;
-      readonly background: boolean; // new: see Background
+      readonly background: boolean; // see Background
       readonly extensions: Readonly<Record<string, unknown>>;
     }
   | {
@@ -92,14 +92,14 @@ type OptionNode =
       readonly description: string | undefined;
       readonly hidden: boolean;
       readonly deprecated: string | undefined;
-      readonly control: boolean; // new: see Control options
+      readonly control: boolean; // see Control options
       readonly long: string | null;
       readonly short: string | null;
       readonly negative: string | null;
       readonly aliases: readonly string[];
       readonly polarity: 'positive' | 'negative' | 'both';
-      readonly interaction: boolean; // new: see Interaction
-      readonly color: boolean; // new: see Color
+      readonly interaction: boolean; // see Interaction
+      readonly color: boolean; // see Color
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly env: readonly string[];
       readonly extensions: Readonly<Record<string, unknown>>;
@@ -110,12 +110,12 @@ type OptionNode =
       readonly description: string | undefined;
       readonly hidden: boolean;
       readonly deprecated: string | undefined;
-      readonly control: boolean; // new: see Control options
+      readonly control: boolean; // see Control options
       readonly long: string | null;
       readonly short: string | null;
       readonly aliases: readonly string[];
-      readonly verbose: boolean; // new: see Verbosity
-      readonly quiet: boolean; // new: see Verbosity
+      readonly verbose: boolean; // see Verbosity
+      readonly quiet: boolean; // see Verbosity
       readonly schema: null;
       readonly env: readonly string[];
       readonly extensions: Readonly<Record<string, unknown>>;
@@ -198,7 +198,7 @@ import type { DeclarationError } from '@loomcli/core';
 
 declare class Application {
   // ...the members under Application declarations; published in every state, as inspect() is...
-  check(): readonly DeclarationError[]; // new: every fault a development run reports before routing, except a rejected default, unthrown
+  check(): readonly DeclarationError[]; // every fault a development run reports before routing, except a rejected default, unthrown
 }
 ```
 
@@ -223,15 +223,8 @@ test('the application assembles', () => {
 - **Not the defaults.** It does not pass a declared default or an implied value through its validator, as `inspect()` does not. That call may be asynchronous, and its [validation context](validation.md#validation-context) carries the run's host, so its verdict belongs to the machine that runs the application. `run()` still reports a rejected default.
 - **Not a call or an attach.** A fault at an authoring call or an attach throws while the module loads, before any `check()` call, under [Declaration faults](declaration-faults.md). A tool that imports the module catches that throw itself.
 - **Nothing runs.** It routes no words, validates no value, and runs no middleware, input source, or action. It caches nothing, so each call builds the graph anew.
-- **The faults.** Each is the `DeclarationError` a run would report. Its `message` holds the whole [Developer Diagnostic](declaration-faults.md#developer-diagnostics) as plain text at 80 columns, and its `rule`, `sentence`, `findings`, and `correction` hold the parts. A finding holds no file or line yet; a later contract adds the source location of each declaring call.
+- **The faults.** Each is the `DeclarationError` a run would report. Its `message` holds the whole [Developer Diagnostic](declaration-faults.md#developer-diagnostics) as plain text at 80 columns, and its `rule`, `sentence`, `findings`, and `correction` hold the parts.
 
-### Checking the declarations acceptance
+## When author code fails
 
-`check()` is proven when public APIs and process runs alone produce these results under Node and Bun:
-
-- **Clean.** jsonkit and textstat each return an empty list.
-- **Every fault.** A fixture with two inputs whose converters throw and an `onGraphBuilt` hook that rejects the graph returns three faults, in that order, under `@loomcli/core/schema-converter-failed` twice and the hook's rule. `run()` from source reports the first alone, and `inspect()` throws it.
-- **A build fault.** A root with neither children nor an action returns one fault, the one `inspect()` throws, and no hook runs.
-- **Whatever the build.** The fixture bundled by `loom build`, which reads `distributed`, returns the same three faults.
-- **Not the defaults.** A fixture whose declared default its validator rejects returns an empty list, and `run()` reports the default.
-- **A broken hook.** An `onGraphBuilt` hook that throws a `TypeError` adds the `@loomcli/core/broken-graph-hook` fault, and `check()` returns.
+An [`onGraphBuilt`](lifecycle-hooks.md#judging-the-built-graph) hook and a validator's converter are author code, and one that throws takes the [ordinary failure path](failures.md#the-ordinary-failure-path) in a run, where an author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). A hook that throws anything but a `DeclarationError` is the build fault [`@loomcli/core/broken-graph-hook`](diagnostics.md#loomclicorebroken-graph-hook), and a converter that fails in a [development build](release-facts.md#development-builds) is the build fault [`@loomcli/core/schema-converter-failed`](diagnostics.md#loomclicoreschema-converter-failed). `inspect()` throws the first build fault and `run()` reports it, while `check()` returns every one as a value and continues past each.

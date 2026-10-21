@@ -1,3 +1,19 @@
+/*
+ * Acceptance plan for the color plugin (docs/plugins/color.md#color-plugin).
+ *
+ * - jsonkit installs `color()` after its example plugin, and `jsonkit --help` lists `--[no-]color`
+ *   with its description after `--explain` among the global options, in the pages The help page
+ *   pins. The manifest marks it `control` and `color`, and every other Boolean option node reads
+ *   `color: false`.
+ * - On a capable terminal with `FORCE_COLOR=1`, `jsonkit --help --no-color` prints the page with no
+ *   color escape, and piped, `jsonkit --help --color` prints it with color escapes.
+ * - An application that marks its own option and installs the plugin fails with the two-marks
+ *   error.
+ * - A consumer installs the packed pack, imports `@loomcli/plugins/color`, compiles against its
+ *   declarations, and `pnpm check:packed` resolves the subpath from the packed tarball under Node
+ *   and Bun.
+ */
+
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

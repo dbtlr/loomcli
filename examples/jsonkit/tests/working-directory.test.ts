@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/core/tests/working-directory.test.ts.
+
 import { join } from 'node:path';
 
 import { expect, test } from 'vite-plus/test';

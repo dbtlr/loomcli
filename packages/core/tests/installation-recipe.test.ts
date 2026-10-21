@@ -1,5 +1,7 @@
 // @module-tag docs
 
+// Acceptance plan: see packages/plugins/tests/installed-files.test.ts.
+
 import {
   existsSync,
   mkdirSync,

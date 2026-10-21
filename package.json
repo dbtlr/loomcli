@@ -13,7 +13,7 @@
   ],
   "type": "module",
   "scripts": {
-    "check": "pnpm run build && pnpm run build:examples && vp check && pnpm run check:types && node scripts/generate-unicode-tables.mjs --check && pnpm run loom changelog check",
+    "check": "pnpm run build && pnpm run build:examples && vp check && node scripts/check-links.mjs && pnpm run check:types && node scripts/generate-unicode-tables.mjs --check && node scripts/generate-diagnostics.mjs --check && pnpm run loom changelog check",
     "check:fix": "vp check --fix",
     "prepare": "vp config",
     "test": "pnpm run build && pnpm run build:examples && vp test --run",

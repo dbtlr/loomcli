@@ -1,5 +1,5 @@
 ---
-description: "The run's verbosity: the verbose and quiet marks, the debug and trace lanes, and when core settles them."
+description: "How an operator's -v and -q settle the run's verbosity right after graph build, and how the debug and trace lanes follow it."
 ---
 
 # Verbosity
@@ -9,14 +9,14 @@ An operator asks a run for more detail with `-v` or `-vv`, and for less with `-q
 ```ts
 interface Out<Result = unknown> {
   // ...the members under Output and failures...
-  debug(message: string): Promise<void>; // new: written from verbosity 1
-  trace(message: string): Promise<void>; // new: written from verbosity 2
+  debug(message: string): Promise<void>; // written from verbosity 1
+  trace(message: string): Promise<void>; // written from verbosity 2
 }
 interface Unmarked {
   interaction?: never;
   color?: never;
-  verbose?: never; // new: so option() and a hook's option() reject the mark
-  quiet?: never; // new
+  verbose?: never; // so option() and a hook's option() reject the mark
+  quiet?: never;
 }
 // BooleanOption declares verbose?: never and quiet?: never too, and StringOption and ContentOption
 // reject both through Unmarked, so only a counted option carries the verbose or quiet mark.
@@ -31,20 +31,20 @@ type CountOption = OptionSpelling &
     // ...validate, default, multiple, required, validateOmitted, polarity, and implied stay never...
   } & (
     | ({ verbose?: never; quiet?: never } & EnvBinding)
-    | { verbose: true; quiet?: never; env?: never } // new
-    | { quiet: true; verbose?: never; env?: never } // new
+    | { verbose: true; quiet?: never; env?: never }
+    | { quiet: true; verbose?: never; env?: never }
   );
 type OptionNode =
   // ...the string, content, and Boolean variants under Graph inspection...
   | {
       readonly type: 'count';
-      readonly verbose: boolean; // new
-      readonly quiet: boolean; // new
+      readonly verbose: boolean;
+      readonly quiet: boolean;
       // ...the other fields under Graph inspection...
     };
 declare const lanes: Readonly<
   Record<'print' | 'info' | 'success' | 'warn' | 'error' | 'debug' | 'trace', DeclaredView<string>>
->; // new: debug and trace
+>;
 ```
 
 ```ts
@@ -87,10 +87,10 @@ const app = new Application('fetchit')
   `print`, `render`, `draw`, `results`, the failure report, and the [incomplete-result](results.md#a-sequence-that-stops-early) line write at every verbosity, so `-q` hides `info` and `success` alone, and help, a result, a warning, and a failure always print. Of the writes to stderr, only a [live region](output.md#live-region) opened without `input: true` also follows the verbosity: at -1 core draws none.
 - **A hidden call.** A call the verbosity hides checks its message, as every semantic method does, so a message that is not a string is still rejected. Then it calls no lane view, writes nothing, and its promise resolves.
 - **Settled after graph build.** Right after graph build, its `onGraphBuilt` hooks included, and before [environment preparation](plugin-contract.md#environment-preparation), core settles the run's verbosity from `host.argv`, read against the built graph with the parser's own word reader, in the partial mode [`locate`](graph-inspection.md#locating-a-word) reads an unfinished invocation with. Every form reads as the ordinary parse reads it: `-v -v`, `-vv`, `--verbose -v`, `-vq`, a short group that holds a Command's own letters, such as `-vF name`, an [alias](options.md#option-aliases), and occurrences on both sides of the Command name, up to the first bare `--`. An occurrence the parse faults, such as `--verbose=2`, counts nothing. A word list that names an unknown command settles verbosity 0. That run fails in routing, and everything it writes, an `onEnvironment` warning and its failure, prints at every verbosity.
-- **Why after graph build.** An `onCommandAttach` hook can declare a local option with a short spelling on any Command, so only the built graph says what each letter of a short group is. Core builds `out` at the head of the run, and nothing can write a lane before the verbosity settles: graph build's hooks receive no `out`, and the only output before it is a host-capture failure or a declaration error from graph build, which is a failure report and prints at every verbosity. A later release that gives a graph-build hook an `out` settles this ordering first.
+- **Why after graph build.** An `onCommandAttach` hook can declare a local option with a short spelling on any Command, so only the built graph says what each letter of a short group is. Core builds `out` at the head of the run, and nothing can write a lane before the verbosity settles: graph build's hooks receive no `out`, and the only output before it is a host-capture failure or a declaration error from graph build, which is a failure report and prints at every verbosity.
 - **No mark.** An Application whose options carry neither mark settles verbosity 0, so `out.debug` and `out.trace` write nothing, and every other byte is unchanged.
 - **The marks.** `verbose: true` on a counted global option, the application's or a plugin's, marks the option whose occurrences raise the verbosity, and `quiet: true` on another marks the one whose occurrence lowers it. An Application holds at most one option with each mark, and an option carries at most one of them. An author may mark a verbose option alone, and the run then has no quiet step. A marked option takes a short alias, aliases, and `shortOnly` as any counted option does. `inspect()` publishes `verbose` and `quiet` on each counted option node, `true` on the marked one, and the manifest copies both. The [verbose plugin](../plugins/verbose.md) declares marked `-v, --verbose` and `-q, --quiet`.
-- **One source.** A marked option binds no environment variable and no configuration key, because the verbosity settles before environment preparation and before the [input-source stage](input-sources.md). A binding is a second source for one value that would arrive after the verbosity settled: the types reject `env` beside either mark, and a configuration binding is the declaration error below.
+- **One source.** A marked option binds no environment variable and no configuration key, because the verbosity settles before environment preparation and before the [input-source stage](input-sources.md). A binding is a second source for one value that would arrive after the verbosity settled: the types reject `env` beside either mark, and a configuration binding is a declaration error.
 - **The options still parse.** A marked option is an ordinary counted global option to routing, parsing, validation, and [activation](plugin-contract.md#activation), so `options.verbose` reads the count the operator typed: `3` for `-vvv`, never capped, as [ADR-0057](../decisions/0057-a-counted-option-counts-its-occurrences-and-an-implied-value-fills-a-bare-spelling.md) states, while the verbosity reads 2.
 - **Every writer.** A middleware's `out` and a [configuration source](input-sources.md)'s `out` follow the run's verbosity as the action's does, so a configuration source names the file it read through `out.debug`. An [`onEnvironment`](plugin-contract.md#environment-preparation) hook's `out` keeps `warn` alone.
 - **Invocations by name.** `app.invoke` and an action's `invoke` each settle their own verbosity from the values they lower: `options: { verbose: 2 }` lowers to two occurrences, read as `-vv` is, and a value the call cannot lower counts nothing. A call inherits nothing from its parent run. Both marked options of the [verbose plugin](../plugins/verbose.md) are [control options](commands.md#control-options), so an [MCP](../plugins/mcp.md) tool lists neither and a tool call that names one is rejected, and under the plugin every MCP tool call runs at verbosity 0.
@@ -103,24 +103,11 @@ const app = new Application('fetchit')
   ⚠ The cache is stale.
   ```
 
-| Rejected declaration | Diagnostic | Rule |
-| --- | --- | --- |
-| Two verbose-marked options in one Application | `Global option "loud" and plugin "@loomcli/plugins/verbose" option "verbose" both declare verbose. Mark one option.` Each option is named as [Input declaration errors](options.md#input-declaration-errors) names it, and the fault throws from the call that brings the second mark into the Application, as a [spelling collision](options.md#declaration-and-invocation-errors) does. | `@loomcli/core/verbose-mark` |
-| A configuration binding on the verbose-marked option | `Option "verbose" declares verbose and carries configuration binding "@loomcli/plugins/config/input", a second source for the run's verbosity. Remove the binding; the run settles its verbosity before configuration.` It throws at the moment the color mark's configuration binding throws: from `globalOption()` for an application's option and from the constructor for a plugin's option. | `@loomcli/core/verbose-mark` |
+- **One mark of each kind.** An Application declares one verbose-marked option and one quiet-marked option. The fault throws from the call that brings the second mark of a kind into the Application, as a [spelling collision](options.md#declaration-and-invocation-errors) does, and names each option as [Input declaration errors](options.md#input-declaration-errors) names it: [`@loomcli/core/verbose-mark`](diagnostics.md#loomclicoreverbose-mark) and [`@loomcli/core/quiet-mark`](diagnostics.md#loomclicorequiet-mark).
+- **No configuration binding.** A marked option carries no configuration binding, a second source for the run's verbosity, because the run settles its verbosity before configuration. The fault throws at the moment the color mark's configuration binding throws: from `globalOption()` for an application's option and from the constructor for a plugin's option: [`@loomcli/core/verbose-mark`](diagnostics.md#loomclicoreverbose-mark) and [`@loomcli/core/quiet-mark`](diagnostics.md#loomclicorequiet-mark).
 
-The quiet mark's rows read the same with `quiet` in place of `verbose`, under `@loomcli/core/quiet-mark`, such as `Global option "hush" and plugin "@loomcli/plugins/verbose" option "quiet" both declare quiet. Mark one option.` The types reject `verbose` and `quiet` on `option()`, on a hook's `option()`, and on every option type but `count`, both marks on one option, and `env` beside either. A configuration binding is an ordinary extension value to the types, so that rule reaches the runtime check alone.
+The types reject `verbose` and `quiet` on `option()`, on a hook's `option()`, and on every option type but `count`, both marks on one option, and `env` beside either. A configuration binding is an ordinary extension value to the types, so that rule reaches the runtime check alone.
 
-### Verbosity acceptance
+## When author code fails
 
-The verbosity is proven when public APIs alone produce these results under Node and Bun, through a fixture Application that marks its own options and through jsonkit with the [verbose plugin](../plugins/verbose.md):
-
-- **The lanes.** A fixture action that writes every lane prints `info`, `success`, `warn`, and `error` and no debug or trace line with no spelling, adds the debug line under `-v`, adds the trace line under `-vv`, and prints the same under `-vvv` as under `-vv`. Under `-q` and `-qq` it prints `warn` and `error` alone, and `print`, `render`, `draw`, a result, the incomplete-result line of a sequence that stops early, and a failure print at every verbosity. `-v -q` prints what no spelling prints, and `-vv -q` what `-v` prints.
-- **Every form.** `-vq`, `-qv`, `--verbose -v`, a short group with a Command's own letter, a letter an `onCommandAttach` hook declared on the routed Command beside `-v` in one group, an alias, a `shortOnly` marked option's letter, occurrences on both sides of the Command name, and a spelling after the bare `--`, which counts nothing, each settle what the ordinary parse reads.
-- **Destinations.** Debug and trace lines reach stderr with stdout piped and on a Command that declares a result, whose stdout holds the result alone. Piped, with neither color variable set, each line is its gutter and its message, unwrapped and with no escape. On a capable terminal the gutters and styles match the lines above, a long message wraps at the columns right of its gutter with every continuation line under the message, and `NO_COLOR=1` keeps `faint` on a trace line.
-- **Not logging.** Under `-vv`, a fixture plugin's `onLog` hook receives no event for an `out.debug` or `out.trace` call, and the logging plugin's console destination writes no record for one.
-- **Hidden calls.** A hidden `out.debug(42)` from JavaScript rejects as `out.info(42)` does, and a hidden call calls no override of its lane view.
-- **Before the chain.** A configuration source's `out.debug` line prints under `-v` and not without it, and a dotenv warning prints under `-q`. A fixture middleware's `out.debug` line prints under `-v` and not without it, and its `out.info` line prints without a spelling and not under `-q`. A declaration error from graph build prints under `-q`, and `jsonkit -q nope` prints its unknown-command failure.
-- **By name.** `invoke` with `verbose: 2` captures the debug and trace lines in `messages`, a call without it captures neither inside a parent run started with `-vv`, and `verbose: 1.5` fails with its counted-option issue and exit 2. An MCP tool call that names `verbose` is rejected, and a tool call writes no debug line.
-- **No mark.** An Application with neither mark writes no debug or trace line under any argv, and every other byte is unchanged.
-- **The options.** `options.verbose` reads `3` under `-vvv` and `options.quiet` reads `2` under `-qq`.
-- **Declarations.** Each row above, and each quiet row, throws its sentence under its rule from the moment the row names, and the negative type checks reject the rules the types state.
+A lane view that throws, whether the author replaced it or not, fails its `out.debug` or `out.trace` call as it fails any `out` call, and the error takes the [ordinary failure path](failures.md#the-ordinary-failure-path). An author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). A call the verbosity hides calls no lane view, so a view that would throw raises nothing there.

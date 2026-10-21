@@ -1,3 +1,31 @@
+/*
+ * Acceptance plan for declared exit codes (docs/core/failures.md#declared-exit-codes).
+ *
+ * Declared exit codes are proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - Declared. A `FatalError` subclass that declares `EX_UNAVAILABLE`, thrown from an action, exits
+ *   69 and renders through its own override, whose view reads `failure.exitCode` as 69.
+ * - Inherited. A subclass of that class that declares nothing exits 69, a `FatalError` subclass
+ *   that declares nothing exits 1, and `LoomError.exitCode`, `UsageError.exitCode`, and
+ *   `InputError.exitCode` read 1, 2, and 2 without an instance.
+ * - Reserved. A JavaScript class that declares 130 exits 130. The negative type checks reject 0,
+ *   126, and a plain `number` on the class line, a subclass property override of `exitCode`
+ *   (TS2610), and an assignment to it (TS2540).
+ * - Middleware. A middleware that throws the class before calling `next()` exits 69.
+ * - Configuration source. A resolver that throws or rejects with the class exits 69 and reports
+ *   nothing under `--help`; one that calls `out.fatal()` exits 1 with the message alone; a plain
+ *   `Error` that no translator answers stays the plugin fault with code 1; and the class thrown
+ *   from a getter on the answers record or from an answer's `value` getter stays the plugin fault
+ *   with code 1.
+ * - Cancellation. An action that throws the class after a caller abort resolves 130.
+ * - Broken view. An override of the class that throws writes the class's default text and the
+ *   internal-error line through the fallback path, and the run returns 1.
+ * - Exports. The fifteen constants hold their `sysexits.h` values, `EX_OK` is absent, and
+ *   `FailureExitCode` accepts 1 and 125 and rejects 0 and 126.
+ * - Example. `jsonkit get missing -f doc.json` and `jsonkit keys missing -f doc.json` exit 65, as
+ *   the failure example coverage pins.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

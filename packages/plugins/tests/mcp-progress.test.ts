@@ -1,3 +1,4 @@
+// Acceptance plan: see packages/plugins/tests/mcp.test.ts.
 import { expect, test } from 'vite-plus/test';
 
 import { progressMessage, progressRelay } from '../src/mcp/progress.js';

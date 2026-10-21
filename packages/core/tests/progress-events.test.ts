@@ -1,3 +1,20 @@
+/*
+ * Acceptance plan for progress events (docs/core/output.md#progress-events).
+ *
+ * - Order. Under `app.invoke` with `onProgress`, a fixture action whose region reports three times
+ *   and then ends delivers `started`, `updated`, `updated`, and `ended` in order, with the latest
+ *   label, `completed`, and `total` on each. Two regions number 1 and 2 by first report. A region
+ *   whose first report carries only `completed` delivers `label` `''`, each event is frozen, and
+ *   the observer has received the event before `report` returns. A label reported as
+ *   `style.highlight('x')` reaches the observer as `x`.
+ * - Ends. A region closed by `end('failed')` and by a thrown failure delivers `failed`, one closed
+ *   by the action's return delivers `ended`, and one closed by the call's cancellation delivers
+ *   `cancelled`. A region that never reported delivers nothing. A region ended with a label
+ *   delivers that label, plain, on its end event alone, and one ended with none keeps its last
+ *   reported label.
+ * - Not logging. A fixture `onLog` hook receives no event for any report.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

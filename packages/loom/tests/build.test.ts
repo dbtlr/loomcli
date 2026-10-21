@@ -1,3 +1,49 @@
+/*
+ * Acceptance plan for loom build (docs/toolchain/build.md#loom-build).
+ *
+ * `loom build` is proven when process runs of the packed `loom` bin produce these results under
+ * Node and Bun, with the artifacts run under both:
+ *
+ * - Targets. `--target node` and `--target bun` each write a bundle that reads `{ build:
+ *   'distributed' }`. The host's compile target, by default and by name, writes `dist/<name>`, a
+ *   binary that runs with no runtime installed. `--target browser` and an unknown target each exit
+ *   with an error that names the targets.
+ * - The application module. A `--target node` build of a package that holds `src/application.ts`
+ *   writes `dist/application.js`, which a caller imports to run the Application on the facts the
+ *   build baked, and a package without it writes the entry alone. `--application` naming a module
+ *   that does not exist exits 1 and names it.
+ * - The build. `--build development` writes an artifact that reads `development`, and `--watch`
+ *   rebuilds after a source change into an artifact that reads `development`.
+ * - A release. `--release` in a package at `1.1.0-next.3` whose `repository` is the `git+https://`
+ *   form reads version `1.1.0-next.3`, channel `next`, and repository `owner/name`, with an asset
+ *   only for a compile target. `--repository` overrides the field. A package with no `repository`
+ *   and no `--repository` exits 1 and names `--repository`. A compile target with no `bin` and no
+ *   `--name` exits 1 and names `--name`.
+ * - A compiled binary. `--facts` for a compile target prints `"compiled":true` with and without
+ *   `--release`, and for `node` and `bun` prints no `compiled` member. A compiled fixture binary
+ *   reads `host.program` as its own path alone, and a Node bundle reads `process.execPath` and the
+ *   bundle's path.
+ * - Composing. `--facts` prints the facts JSON and `--define` the pair, and neither writes a file.
+ *   A `bun build --define` with the printed pair, and a `Bun.build` call with the printed facts,
+ *   each write an artifact that reads the same facts `loom build` bakes.
+ * - A failed build. A syntax error in the entry exits 1, and the earlier output is byte-identical
+ *   afterward.
+ *
+ * Acceptance plan for one package directory (docs/toolchain/build.md#one-package-directory).
+ *
+ * The package directory is proven when process runs of the packed `loom` bin produce these results
+ * under Node and Bun:
+ *
+ * - The nearest package. `loom changelog check` run in a package's `src/` validates that package's
+ *   `.changes/`.
+ * - A monorepo root. In a fixture workspace whose root and two member packages each hold fragments,
+ *   `loom changelog check` at the root validates the root's fragments alone.
+ * - No package. `loom build` in a directory with no `package.json` at or above it exits 1 and says
+ *   to run it inside a package directory.
+ * - An option over the convention. `loom build --entry src/cli.ts` builds that module, and with no
+ *   `--entry` the build reads `src/main.ts`.
+ */
+
 import { spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,

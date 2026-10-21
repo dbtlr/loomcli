@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/validators/tests/catalog.test.ts.
+
 import type { StandardSchemaV1 } from '@loomcli/core';
 import { expect, expectTypeOf, test } from 'vite-plus/test';
 

@@ -1,5 +1,5 @@
 ---
-description: "What core reads from the host: the working directory, the environment, and the streams."
+description: "The facts core captures from the host for each run, how a caller overrides them, and the run that fails when the working directory cannot be read."
 ---
 
 # Host
@@ -66,12 +66,3 @@ A process whose working directory was removed cannot read it, and the platform's
 - **Where it reports.** It is raised before the graph builds, so its `path` is `[]`, no `onFailure` hook runs, and no view override applies, because overrides register at build: core's default text writes it. The [failure view context](failure-views.md#failure-view-context) reads `view` and `mediaType` as `undefined`, so no [failure encoder](failure-views.md#failure-encoders) answers it.
 - **No second capture.** The failure path writes through the streams and terminal facts the same capture read, or their overrides, and reads no host field from the process again, apart from process capture's live width and height behind `host.terminal`. `run()` resolves 1 and sets `process.exitCode` to 1. `app.invoke` resolves `failed` with exit 1, the failure, its [failure form](failures.md#the-failure-form), and the line in `messages`.
 - **Names.** `WorkingDirectoryError` is exported from `@loomcli/core`.
-
-### An unreadable working directory acceptance
-
-An unreadable working directory is proven when public APIs alone produce these results under Node and Bun:
-
-- **Both builds.** A process test removes its working directory and runs jsonkit's bundle and jsonkit's source with `keys -f <absolute path>`. Each writes exactly `jsonkit: The current working directory cannot be read. Change to a directory that exists and run the command again.` and one newline to stderr, writes nothing to stdout, prints no stack, and exits 1. The same run with `--format json` on `paths` writes the same text line.
-- **Embedding.** `jsonkit.invoke(['keys'], …)` from a removed directory resolves `failed` with exit 1, a `WorkingDirectoryError`, the form `{ code: 'working-directory-unreadable', exitCode: 1, message, hints: [] }`, and the line in `messages`, and never rejects.
-- **Overrides.** `run({ host: { cwd } })` and `app.invoke` with `host: { cwd }` from a removed directory complete, and an action's `invoke` in such a run completes with its run's `cwd`.
-- **The class.** `WorkingDirectoryError.code` reads `working-directory-unreadable` and `WorkingDirectoryError.exitCode` reads 1 without an instance.

@@ -6,7 +6,7 @@ description: Commands, version rules, inputs, and failure behavior for local cha
 
 The changelog compiler prepares this repository's synchronized release cut in the Loom CLI, `@loomcli/loom`, in `packages/loom`. Loom declares its commands and options, supplies the invocation context, and handles output and exit codes. The application owns its compiler modules, dependencies, and process tests. `@loomcli/loom` is published with the libraries, and its version moves with theirs. The fragment check is the public `loom changelog check`. The cut, `loom release cut`, is hidden, so no listing advertises it.
 
-This reference documents this repository's own release, and the [toolchain reference](../toolchain/README.md) documents the public commands that act on one package directory.
+This reference documents this repository's own release, and the [toolchain reference](../toolchain/README.md) documents the public commands that act on one package directory. The repository releases its packages together, at one synchronized version, under [ADR-0012](../decisions/0012-synchronized-versions-from-manifests-and-owned-fragments.md), and its [fragment guide](../../.changes/README.md) admits the three fragment kinds the public check reads. The synchronized cut, the PR guard `loom pr check`, and `loom release plan` and `loom release record` stay hidden until release orchestration is designed, and they are not part of the toolchain's contract.
 
 `pnpm build` compiles the library, examples, and local Loom CLI. Running `release cut` prepares release files.
 

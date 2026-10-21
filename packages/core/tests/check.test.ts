@@ -1,3 +1,24 @@
+/*
+ * Acceptance plan for check() (docs/core/graph-inspection.md#checking-the-declarations).
+ *
+ * `check()` is proven when public APIs and process runs alone produce these results under Node and
+ * Bun:
+ *
+ * - Clean. jsonkit and textstat each return an empty list.
+ * - Every fault. A fixture with two inputs whose converters throw and an `onGraphBuilt` hook that
+ *   rejects the graph returns three faults, in that order, under
+ *   `@loomcli/core/schema-converter-failed` twice and the hook's rule. `run()` from source reports
+ *   the first alone, and `inspect()` throws it.
+ * - A build fault. A root with neither children nor an action returns one fault, the one
+ *   `inspect()` throws, and no hook runs.
+ * - Whatever the build. The fixture bundled by `loom build`, which reads `distributed`, returns the
+ *   same three faults.
+ * - Not the defaults. A fixture whose declared default its validator rejects returns an empty list,
+ *   and `run()` reports the default.
+ * - A broken hook. An `onGraphBuilt` hook that throws a `TypeError` adds the
+ *   `@loomcli/core/broken-graph-hook` fault, and `check()` returns.
+ */
+
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

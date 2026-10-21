@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/validators/tests/catalog.test.ts.
+
 import { expect, expectTypeOf, test } from 'vite-plus/test';
 
 import { oneOf } from '../src/index.js';

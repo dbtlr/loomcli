@@ -1,10 +1,10 @@
 ---
-description: Marked strings, default styles and custom colors, color fallbacks, theme plugins, glyphs, rendering policies, and width, padding, and multiline lanes.
+description: How core resolves marked strings into styled output, covering style helpers, color fallbacks, theme plugins, glyphs, rendering policies, and the width, padding, and wrapping helpers a view receives.
 ---
 
 # Styles and rendering policy
 
-Core exports the style helpers, rendering context, and rendering policy described below. [ADR-0027](../decisions/0027-core-resolves-marked-output-and-one-theme-contribution.md) governs this seam. The named [Loom theme](../plugins/theme.md) and [explicit color fallbacks](#explicit-color-fallbacks) are implemented under ADR-0022 and ADR-0029.
+Core exports the style helpers, rendering context, and rendering policy described below. [ADR-0027](../decisions/0027-core-resolves-marked-output-and-one-theme-contribution.md) governs this seam.
 
 ## Strings and composition
 
@@ -25,7 +25,7 @@ For a `warning` token mapped to yellow and bold, `style.warning.red(text)` is re
 
 `style.escape(text)` returns a string that displays Loom's internal delimiters literally. Normal style calls preserve markup rather than escaping it. `String(value)` performs coercion and does not escape markup. The escape helper does not remove ANSI sequences; rendering policy governs them.
 
-`escapeControlCharacters(text)` returns the text with every control character and line separator, U+0000 through U+001F, U+007F through U+009F, U+2028, and U+2029, and every bidirectional control and mark, U+202A through U+202E, U+2066 through U+2069, U+200E, U+200F, and U+061C, replaced by its four-digit lowercase `\uXXXX` escape, so raw text stays on one line, writes no control character, and cannot reorder the rest of the line. Other format characters, such as a zero-width joiner or a soft hyphen, pass through. Results output never passes through it, under rule 5 of [Failure messages](failures.md#5-escape-everything-repeated). It escapes no markup, so text a view styles passes through `style.escape` as well. Core writes the reason of a broken failure view or `onFailure` hook through it, and every token, option spelling, short group, and issue path its failure sentences quote, while the failure's public fields keep the raw values. The [configuration plugin](../plugins/config.md) writes a file path through it.
+`escapeControlCharacters(text)` returns the text with every control character and line separator, U+0000 through U+001F, U+007F through U+009F, U+2028, and U+2029, and every bidirectional control and mark, U+202A through U+202E, U+2066 through U+2069, U+200E, U+200F, and U+061C, replaced by its four-digit lowercase `\uXXXX` escape, so raw text stays on one line, writes no control character, and cannot reorder the rest of the line. Other format characters, such as a zero-width joiner or a soft hyphen, pass through. Results output never passes through it, under rule 5 of [failure message voice](failures.md#failure-message-voice). It escapes no markup, so text a view styles passes through `style.escape` as well. Core writes the reason of a broken failure view or `onFailure` hook through it, and every token, option spelling, short group, and issue path its failure sentences quote, while the failure's public fields keep the raw values. The [configuration plugin](../plugins/config.md) writes a file path through it.
 
 First-party views escape raw data they interpolate, such as a filename taken from a data object. A string supplied to an `out.*` message method is already authored text and can contain deliberate styles. Lane views preserve that text, including its markup. Escaping a complete message would break ordinary composition.
 
@@ -75,6 +75,8 @@ Three scoped resets are chainable:
 
 ## Explicit color fallbacks
 
+An explicit fallback keeps a themed color's hue at a lower color depth. [ADR-0029](../decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md) records the decision, and core exports the three types below.
+
 ```ts
 import type { Style } from '@loomcli/core';
 
@@ -108,17 +110,12 @@ const indexedSage = style.ansi256(108, { ansi16: 'green' });
 sage.bold('Ready');
 ```
 
-- **Status.** These helper extensions and the three types exported by core are implemented under [ADR-0029](../decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md).
 - **Selection.** RGB and hex retain their original RGB value at truecolor depth. At 256 or 16 colors, the matching explicit fallback wins. An omitted or `undefined` fallback uses the existing approximation of the original color for that depth. A 256-color fallback never changes the 16-color result. `ansi256` retains its original index at truecolor and 256-color depth, and uses `ansi16` when supplied at 16-color depth.
 - **Values.** `ansi256` is an integer from 0 through 255. `ansi16` is one of the sixteen foreground color names, including for background helpers. Both options are optional. `undefined` options and an empty object behave as omission. The `ansi256` and `bgAnsi256` helpers accept only `ansi16`.
 - **Validation.** Helpers validate options when called and copy the accepted values into the chain. Later object mutation cannot change that chain. A non-plain options object, unknown option, or invalid color name throws `TypeError`. An invalid palette index throws `RangeError`. Existing hex and RGB validation remains unchanged. No value is coerced, rounded, or clamped.
 - **Composition.** Fallbacks belong to one color operation. A later foreground replaces the original foreground and all its fallbacks, so `sage.blue` uses named blue at every depth. A background operation leaves the foreground choice intact. Nesting and embedded ANSI resets restore enclosing colors with their fallbacks. All helpers retain the receiver's token names and semantic-chain restriction.
-- **Callbacks.** Helpers accept only their documented arguments. A callback such as `values.map(style.hex)` passes the array index as the options argument and now fails validation. Use `values.map((value) => style.hex(value))` so the helper receives only the color.
+- **Callbacks.** Helpers accept only their documented arguments. A callback such as `values.map(style.hex)` passes the array index as the options argument and fails validation. Use `values.map((value) => style.hex(value))` so the helper receives only the color.
 - **Policy.** Fallbacks do not change capability detection or force color. Color suppression removes them like other colors. Direct styles and theme mappings use the same rules. Calls that omit the options argument preserve their current behavior. Named terminal colors and raw ANSI colors gain no inferred fallback mapping.
-
-### Fallback acceptance
-
-The implementation verifies exact bytes for explicit and omitted fallbacks at all three depths, including `ansi256` source colors and background helpers. It verifies that an index passed by a direct array callback is rejected and an explicit one-argument wrapper succeeds. It covers partial and `undefined` options, invalid options at helper-call time, copied option values, whole-color replacement, nested restoration, embedded resets, and color suppression. Type checks reject invalid fields and names while preserving chain typing. The wire checks validate the new color forms and retain the existing forms, as specified in the [wire contract](../maintaining/style-wire.md#explicit-color-fallbacks). Node and Bun process fixtures plus packed consumers prove the public API.
 
 ## Theme plugins and typed names
 
@@ -167,7 +164,7 @@ export const dusk = () => plugin('@example/dusk', {
 
 The contribution retains its literal keys in the returned plugin type and through Application installation. A broad annotation must not erase the vocabulary along the framework's internal path. Theme declarations require no middleware and perform no output or capability detection during construction. They follow the same mapping validation and single-owner rule as the pack factories.
 
-One Application installs at most one theme plugin. A second claim on the theme slot is a `DeclarationError` under `@loomcli/core/slot-taken` from the Application constructor that names both claimants and marks both entries of `plugins`. Zero themes is valid. Without a mapping, semantic tokens inherit their enclosing style; direct colors and modifiers still work under rendering policy.
+One Application installs at most one theme plugin. A second claim on the theme slot is a `DeclarationError` under [`@loomcli/core/slot-taken`](diagnostics.md#loomclicoreslot-taken) from the Application constructor that names both claimants and marks both entries of `plugins`. Zero themes is valid. Without a mapping, semantic tokens inherit their enclosing style; direct colors and modifiers still work under rendering policy.
 
 In a bare theme, an omitted or undefined mapping contributes no style. An explicitly declared custom key with an undefined value still introduces that name.
 
@@ -208,7 +205,7 @@ export const item: View<Item> = {
 };
 ```
 
-This example belongs to the Application compilation context that declares `identifier`. The view context is immutable and supplies `style`, destination-aware `width(text)`, `plain(text)`, `columns`, `wrap(text, columns)`, `expandTabs(text)`, and the run's [`background`](background.md). Existing one-argument view functions can ignore it. A view remains pure and synchronous and receives no output handle. Under `out.render`, as here, it owns its trailing newline; a lane view returns none, as [Rendered output](output.md#rendered-output) states per write site. Core resolves its returned markup and ANSI policy before writing, so returned strings no longer promise exact output bytes.
+This example belongs to the Application compilation context that declares `identifier`. The view context is immutable and supplies `style`, destination-aware `width(text)`, `plain(text)`, `columns`, `wrap(text, columns)`, `expandTabs(text)`, and the run's [`background`](background.md). Existing one-argument view functions can ignore it. A view remains pure and synchronous and receives no output handle. Under `out.render`, as here, it owns its trailing newline; a lane view returns none, as [Rendered output](output.md#rendered-output) states per write site. Core resolves its returned markup and ANSI policy before writing, so a returned string promises no exact output bytes.
 
 ## Glyphs
 
@@ -273,7 +270,7 @@ When colors are enabled, core determines depth on each emission from the hints t
 | `TERM` ends in `-256` or `-256color`, case-insensitively | 256 |
 | No matching hint | 16 |
 
-The iTerm version field is `TERM_PROGRAM_VERSION`. These are a portable subset of [supports-color's detection rules](https://github.com/chalk/supports-color/blob/e2a4cd3c44eb384b075161ef32859cd29ce1aa7f/index.js), with enablement handled separately. Core does not read CLI flags or live process globals during resolution, and does not reuse upstream numeric forcing semantics. The [color choice](color.md) reads `host.argv` once, before resolution, for the marked option's spellings alone, unlike supports-color's scan of `process.argv`, and the [background choice](background.md) reads it once beside it for its own marked option. Forced color without a depth hint uses sixteen colors. A future detector update needs equivalent Node and Bun evidence.
+The iTerm version field is `TERM_PROGRAM_VERSION`. These are a portable subset of [supports-color's detection rules](https://github.com/chalk/supports-color/blob/e2a4cd3c44eb384b075161ef32859cd29ce1aa7f/index.js), with enablement handled separately. Core does not read CLI flags or live process globals during resolution, and does not reuse upstream numeric forcing semantics. The [color choice](color.md) reads `host.argv` once, before resolution, for the marked option's spellings alone, unlike supports-color's scan of `process.argv`, and the [background choice](background.md) reads it once beside it for its own marked option. Forced color without a depth hint uses sixteen colors.
 
 [Explicit fallbacks](#explicit-color-fallbacks) take precedence at their named depth. Without a matching fallback, the following approximation rule applies.
 
@@ -328,7 +325,7 @@ With `path` set to `/Users/a/Library/Application Support/x` and a lane that leav
   /Users/a/Library/Application Support/x
 ```
 
-The view context supplies `wrap(text, columns): string`, which breaks lines when the view runs. It measures with that destination's glyph forms exactly as `width()` does, ignores styling and hyperlink envelopes, and returns marked text with real line breaks inserted. It is not a deferred frame. `pad` stays the deferred minimum-width composer, and the [wire contract](../maintaining/style-wire.md) gains one frame for line breaking, `nowrap`, below. The idiom is `context.wrap(text, context.columns)`. With `columns` undefined, `wrap` returns the text unchanged, so the same view wraps at a terminal and passes the text through a pipe. Any other `columns` that is not a positive safe integer throws `RangeError('Wrap width must be a positive safe integer.')`.
+The view context supplies `wrap(text, columns): string`, which breaks lines when the view runs. It measures with that destination's glyph forms exactly as `width()` does, ignores styling and hyperlink envelopes, and returns marked text with real line breaks inserted. It is not a deferred frame. `pad` stays the deferred minimum-width composer, and the [wire contract](../maintaining/style-wire.md) carries one frame for line breaking, `nowrap`, below. The idiom is `context.wrap(text, context.columns)`. With `columns` undefined, `wrap` returns the text unchanged, so the same view wraps at a terminal and passes the text through a pipe. Any other `columns` that is not a positive safe integer throws `RangeError('Wrap width must be a positive safe integer.')`.
 
 - **Greedy.** Each output line takes as many words as fit within `columns`, and a line exactly `columns` wide fits.
 - **Breaks are at spaces only.** The only break opportunity is U+0020. Text without spaces, such as Chinese, Japanese, or Thai prose, does not wrap, however wide it is. `wrap` implements no Unicode line-breaking rules.
@@ -372,48 +369,6 @@ splitLines(style.red('one\ntwo'));
 
 Lane views receive the original message string, including line breaks and authored styles. Core does not split it into a new data structure or infer that later lines are details. A lane view owns its glyph gutter and continuation indentation. It measures the selected glyph form rather than assuming one column. The built-in `info`, `success`, `warn`, and `error` lanes prefix the first line with the matching glyph and one space. The `debug` lane prefixes it with `glyph.pointerSmall` and one space, and the `trace` lane with two spaces, `glyph.lineVerticalDashed0`, and one space, so a trace line's gutter measures the glyph plus three. The `debug` lane styles its glyph and the message `dim` and the `trace` lane styles them `dim.faint`, the spaces of either gutter unstyled, and the message keeps its author's styles inside that frame. Continuation lines use spaces for that gutter without repeating the glyph. Those six lanes also wrap the message with `wrap` at `columns` minus the measured gutter, which fits the message in the columns right of the gutter, and every continuation line carries the gutter, whether the break is authored or wrapped. When `columns` is defined, before they wrap, they expand each tab in the message to spaces with `expandTabs`, counted from the start of its own line of the message, inside style and `nowrap` frames too, so the gutter moves no tab stop and lane output on a terminal holds no tab. With `columns` undefined, as on a pipe or under an invocation by name, lane output is byte for byte what it would be without wrapping, tabs included. With no column left after the gutter, the message is not wrapped, and its tabs still expand. `print` remains prefix-free and never wraps. An application that wants unwrapped lanes replaces the lane view, as it can replace any lane view. The semantic methods retain their string-only call shape and newline contract. Each lane is a declared view core exports under `lanes`, and an application replaces its function through `views` as [Views](views.md) describes; the newline the semantic method appends is outside the view and survives any override.
 
-## Implementation acceptance
+## When author code fails
 
-The style tests and packed consumers cover these obligations:
-
-- Chaining, nesting, each reset, no-theme inheritance, and rejection of token references in theme mappings.
-- Every foreground, background, modifier, and custom-color helper, including invalid arguments and capability degradation.
-- The complete pinned glyph catalog, semantic aliases, multi-character compatibility forms, and independence from themes and ANSI policy.
-- Automatic custom-name inference in detached Commands and views after the registration prerequisite, with typo and reserved-name rejection.
-- Every rendering-policy field, invocation override behavior, nonempty `"0"` environment values, conflicting variables, and independent destinations under one policy.
-- Embedded ANSI colors and resets, separate hyperlink and terminal-control policies, and malformed control strings.
-- Literal marker data, nested deferred padding, Unicode width, tabs, multiline strings, and the adversarial cases in the wire contract.
-- Fresh host capture on repeated runs, no import-time capability capture, and equivalent output under Node and Bun.
-- Columns per destination: a view rendered to stdout reads stdout's width and one rendered to stderr reads stderr's, when the two streams report different widths and when only one is a terminal.
-- Columns without a terminal: a pipe, a redirect to a file, `app.invoke`, and an MCP tool call each read `columns` as `undefined`, with `COLUMNS=60` set as well, and `wrap` returns the text unchanged.
-- Live width: under a pty-backed host, one run renders twice either side of a resize, and the first render reads 100 columns and the second 60. The first render's text is not redrawn. `host.terminal.stdout.columns` and `host.terminal.stderr.columns` read the new width after the resize, and a reported 0 reads `undefined`.
-- `COLUMNS` only narrows on a terminal destination: `COLUMNS=60` over a real width of 100 gives `columns` 60, `COLUMNS=150` over 100 gives 100, and `060` over 100 gives 60. `COLUMNS` set to ` 60`, `+60`, `60 `, `6e1`, `0`, `abc`, `-5`, `60.5`, an empty string, or an integer beyond the safe range leaves 100.
-- `COLUMNS` on a terminal that reports no width: it reads `COLUMNS=60` as 60 and reads `undefined` without `COLUMNS`. `COLUMNS=60` on a pipe leaves `undefined`.
-- The host facts stay real: `host.terminal.stdout.columns` and `host.terminal.stderr.columns` read the real width and never reflect `COLUMNS`. A host override of plain numbers stays fixed across renders, and an override that supplies a getter is read each time. `isTTY` is captured once.
-- `out.draw` resolves the row count for the real stderr width read at that draw, under `COLUMNS=60` and after a resize alike.
-- Greedy fitting: each output line takes as many words as fit within `columns`, and a line exactly `columns` wide stays on one line, while a line one column wider breaks.
-- Breaks at spaces only: a break only at U+0020, never at a tab, and runs of spaces inside a line kept.
-- `expandTabs`: each tab becomes spaces to the next multiple of eight from the start of its input line, each line of a CRLF or LF text counted alone, measured in the destination's glyph forms, so a tab after `◉` takes seven spaces and after `(*)` five. A tab inside a style frame or a `nowrap` frame expands and the frame resolves as before, a tab inside a `pad` frame is left to the frame, and a tab inside an OSC 8 payload stays.
-- Tabs in a lane: on a terminal 11 columns wide, `out.warn('aaaaaa\tb c')` prints `⚠ aaaaaa  b` and then `  c`, so no line passes 11 columns and none holds a tab, and the same holds for the message inside `nowrap` and inside a style. Off a terminal, the lane keeps the tab, and `print` keeps it everywhere.
-- Line breaks: LF and CRLF kept, with each input line wrapped alone, and an inserted break is LF, or CRLF on an input line that ends in CRLF.
-- Leading spaces: an input line's leading spaces are never a break and stay with its first word, so an indented path wider than `columns` keeps its indent on its own line.
-- Trailing spaces: spaces at the end of an input line are never a break, stay with its last word, and count toward the fit, so `ab cd   ` at 5 columns breaks before `cd   `, and a records value or a table cell whose trailing space would pass the width wraps instead of overflowing.
-- Dropped spaces: the spaces at a break are dropped, and continuation lines start at column 0.
-- A word wider than `columns` stays whole on its own line, for a URL, a token, a hash, a path without spaces, and any text inside `nowrap`.
-- A `pad` frame or a `nowrap` frame is one unit: `wrap` measures a `pad` frame at its padded width and a `nowrap` frame at its body's width, and never breaks inside either.
-- `nowrap`: a body never breaks at any `columns`, and it resolves byte for byte to its body, so a printed `nowrap` path copies as the exact text. A lane message holding `nowrap('/Users/a/Library/Application Support/x')` at a narrow width keeps the path on one line, and the text around it wraps. A table cell in `nowrap` raises its column's floor to the whole cell. A style or a glyph inside the frame, and the frame inside a `pad` frame, resolve as without it. A non-string throws `TypeError('Style helpers require a string.')`, as `pad` does.
-- First-party messages: each filesystem path and URL a first-party message prints through a lane, a view, or a `FatalError` is inside `nowrap`, the service status view's unit path included, and the message text is byte for byte what it was. A `nowrap` frame in an `InputError`'s message prints its delimiters on a pipe and on a terminal, while one in a `FatalError`'s message resolves to its body on both, so the configuration plugin's named-file failure and a wrong value's label print a path that holds spaces whole and unmarked.
-- `splitLines` frames: a style, a `pad` frame, and a `nowrap` frame that span a line break close at the line's end and open again on the next line, nested frames in their order, and a frame closed before the break stays closed. A style header that names a theme token splits like any style, and an escaped delimiter or a glyph frame is text.
-- `splitLines` embedded ANSI: an embedded SGR color, set at the top level, inside a style, or inside a `pad` frame, ends at each line's end and is set again on the next, and an embedded OSC 8 hyperlink closes at each line's end and opens again on the next.
-- `splitLines` breaks: LF and CRLF split alike and are dropped, a trailing line break adds no empty line while a blank line inside the text stays, a `pad` frame after the last break is a line, a line break inside a control string does not split, text without a break comes back unchanged, and a non-string throws `TypeError('Style helpers require a string.')`.
-- A style and a hyperlink that span a break continue across it, with the break inside the envelope as an authored line break sits, as a rendering with color and hyperlinks on shows, and a lane's gutter on a continuation line carries the span.
-- Glyph measurement per destination: a message with a marked glyph whose main and compatibility forms differ in width breaks at different points for a destination that selects main forms and one that selects compatibility forms.
-- Text without spaces, such as Chinese, Japanese, and Thai prose, comes back unbroken at any `columns`.
-- `wrap` rejects `0`, a negative number, a fraction, `NaN`, `Infinity`, and an unsafe integer with `RangeError` and the sentence `Wrap width must be a positive safe integer.`, and `pad(wrap(text, n), n, { align: 'center' })` centers each line.
-- Marked lanes: `info`, `success`, `warn`, `error`, `debug`, and `trace` wrap a long message at `columns` minus the measured glyph gutter where `columns` is defined and leave it unwrapped when no column remains after the gutter, continuation lines carry the gutter, authored line breaks keep their gutter, and `print` does not wrap.
-- Golden fixtures that run without a terminal are byte for byte unchanged, for every lane, the table, the records view, and the lanes of an invocation by name.
-- The update notice: on an 80-column stderr terminal the notice wraps with the info lane's gutter on its continuation line, and on a pipe it stays one line.
-- Failure text: core's default text for each failure class stays one line per sentence on a terminal narrower than the sentence and on a pipe, and an override that calls `context.wrap` wraps its own text. A failure view override receives `columns`, `wrap`, and `expandTabs`. Help pages wrap under [Help wrapping acceptance](../plugins/help.md#help-wrapping-acceptance).
-- The Developer Diagnostic's explanation breaks at stderr's effective width with the same line breaker as `context.wrap`, and a word wider than that width keeps its own line. On a 100-column stderr terminal the banner fills 100 columns and the explanation wraps at 100, and under `COLUMNS=60` they fill 60. With no width, they use 80, and so does a stderr that is not a terminal even when a host override reports a width. An explanation with wide characters wraps by display width, not by string length.
-
-Process fixtures run on Node and Bun. Named-theme whole-token replacement belongs to [Loom theme acceptance](../plugins/theme.md#loom-theme-acceptance). Fallback-option coverage belongs to [Fallback acceptance](#fallback-acceptance).
+A view that calls `wrap`, `pad`, `nowrap`, `splitLines`, or a style helper with an argument the call rejects throws the call's `TypeError` or `RangeError` from the view, and a view function that throws takes the [ordinary failure path](failures.md#the-ordinary-failure-path), where an author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). Where the failure surfaces follows the write site, under [Views](views.md#when-author-code-fails). A theme mapping value that is neither an unapplied concrete chain nor an adaptive style throws from `plugin()`, as the mapping rules above state.

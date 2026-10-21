@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/validators/tests/catalog.test.ts.
+
 import { describe, expect, it, test } from 'vite-plus/test';
 
 import { url } from '../src/index.js';

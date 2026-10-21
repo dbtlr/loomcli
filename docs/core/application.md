@@ -74,3 +74,7 @@ Bare tokens before `--` retain their order as positional inputs. Local options c
 Application methods apply the same declaration transitions as a Command to the unnamed root's state. Build produces a graph with that root, and routing selects the Command for normal validation and dispatch. There is no separate root action runner. An action is lazy by definition: registering it runs nothing, and core calls it only when routing selects its Command and the invocation reaches the dispatch boundary, whether the application or a [plugin](plugin-contract.md#plugin-commands) attached that Command.
 
 `argument()` rejects an invalid or repeated argument name, a variadic argument that is not last, and a required argument that follows an optional one; optional arguments may follow each other, and bare words fill them left to right. The types close every declaration call after `action()`. Attach rejects a Command with neither children nor an action, and graph build applies the same rule to the root. [Declaration faults](declaration-faults.md) names the moment of every rule. No action runs after a declaration or input failure.
+
+## When author code fails
+
+An action that throws or rejects takes the [ordinary failure path](failures.md#the-ordinary-failure-path), and an author's catch is final, under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). Registering an action runs nothing, so a mistake in a declaration surfaces as a [declaration fault](declaration-faults.md) before any action runs.

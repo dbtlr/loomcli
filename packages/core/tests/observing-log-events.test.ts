@@ -1,3 +1,23 @@
+/*
+ * Acceptance plan for observing log events (docs/core/lifecycle-hooks.md#observing-log-events).
+ *
+ * The hook is proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - Order and reach. Two fixture plugins receive each event in installation order, the same frozen
+ *   object. Events of an action's `invoke` reach both with the parent run's destination, and the
+ *   nested run's captured `messages` hold nothing either wrote to `destination.stderr`. An
+ *   `app.invoke` passes `stderr` `null` and the `env` its `host` replaced, and a `run({ host: { env
+ *   } })` override reaches `destination.env`.
+ * - Broken hooks. A hook that throws a `TypeError` on every event is reported once, receives every
+ *   later event, the fatal event of its own report included, leaves a second plugin's hook
+ *   receiving every event, and makes a run that would exit 0 exit 1; such a hook in a run a caller
+ *   cancelled keeps 130. A hook that throws on core's `fatal` event alone is reported once, and its
+ *   throw on its own report's event is not.
+ * - Types. The negative type checks reject a hook that returns a value.
+ */
+
+// Acceptance plan: see packages/core/tests/logging.test.ts.
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

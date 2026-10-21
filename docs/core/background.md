@@ -1,5 +1,5 @@
 ---
-description: "The run's terminal background: how core settles it once and how a theme entry adapts to it."
+description: "How core settles the run's terminal background once, from the operator's choice through the terminal's own answer, and how an adaptive theme entry resolves to it."
 ---
 
 # Background
@@ -7,48 +7,48 @@ description: "The run's terminal background: how core settles it once and how a 
 ```ts
 import type { ConcreteStyle, ExtensionValue, Host, InputTerminal, OutputTerminal, StandardSchemaV1, Style } from '@loomcli/core';
 
-type Background = 'dark' | 'light'; // new
+type Background = 'dark' | 'light';
 
-interface AdaptiveStyle { // new: a theme entry holding one concrete style per background, opaque and branded
+interface AdaptiveStyle { // a theme entry holding one concrete style per background, opaque and branded
   readonly [adaptiveStyle]: true; // adaptiveStyle is an unexported unique symbol
 }
-declare const style: Style & { // the exported style gains one member; a chain and the contextual style do not
-  readonly adaptive: (sides: { readonly dark: ConcreteStyle; readonly light: ConcreteStyle }) => AdaptiveStyle; // new
+declare const style: Style & { // the exported style carries one member; a chain and the contextual style do not
+  readonly adaptive: (sides: { readonly dark: ConcreteStyle; readonly light: ConcreteStyle }) => AdaptiveStyle;
 };
-type ThemeMapping = Readonly<Record<string, ConcreteStyle | AdaptiveStyle | undefined>>; // AdaptiveStyle is new
+type ThemeMapping = Readonly<Record<string, ConcreteStyle | AdaptiveStyle | undefined>>;
 
 interface RenderingPolicy {
   color?: 'auto' | 'always' | 'never' | undefined;
   modifiers?: 'auto' | 'always' | 'never' | undefined;
   hyperlinks?: 'auto' | 'always' | 'never' | undefined;
   terminalControls?: 'strip' | 'preserve' | undefined;
-  background?: 'auto' | Background | undefined; // new
+  background?: 'auto' | Background | undefined;
 }
 
 interface ViewContext {
   // columns, expandTabs, plain, style, width, and wrap are unchanged
-  readonly background: Background | undefined; // new: undefined when nothing settled it
+  readonly background: Background | undefined; // undefined when nothing settled it
 }
 
-interface HostTerminal { // new name for the type of Host['terminal']
+interface HostTerminal { // the type of Host['terminal']
   stdin: InputTerminal;
   stdout: OutputTerminal;
   stderr: OutputTerminal;
-  readonly background: Background | undefined; // new: undefined when nothing settled it
+  readonly background: Background | undefined; // undefined when nothing settled it
 }
-type HostOverrides = Partial<Omit<Host, 'terminal'>> & { // new: what RunOptions.host accepts
+type HostOverrides = Partial<Omit<Host, 'terminal'>> & { // what RunOptions.host accepts
   terminal?: Omit<HostTerminal, 'background'> & { readonly background?: Background | undefined };
 };
 
-interface Unmarked { interaction?: never; color?: never; verbose?: never; quiet?: never; background?: never } // background is new: content and unmarked string options, and option()
-type BooleanFacts = /* today's facts */ & { background?: never }; // new
+interface Unmarked { interaction?: never; color?: never; verbose?: never; quiet?: never; background?: never } // content and unmarked string options, and option()
+type BooleanFacts = /* the existing facts */ & { background?: never };
 // CountOption declares background?: never beside its interaction?: never and color?: never.
 
 type StringOption =
-  | (UnmarkedStringOption & { background?: never }) // today's shapes, unchanged
+  | (UnmarkedStringOption & { background?: never }) // the existing shapes, unchanged
   | {
       type: 'string';
-      background: true; // new: the background mark
+      background: true; // the background mark
       aliases?: readonly string[];
       validate?: StandardSchemaV1;
       description?: string;
@@ -118,7 +118,7 @@ A themed color that reads well on a dark terminal can vanish on a light one. Cor
 - **The deadline.** One unref'd timer of 1 second backs the read, for a pseudo-terminal with no emulator behind it, a stalled SSH link, or a terminal without DA1. Core clears it as soon as the DA1 reply arrives. When it fires, core restores the mode and reads the replies that arrived before it as the answer above states, so an OSC 11 reply counts even when the DA1 reply never came. With no reply before it, the query has no answer, and settlement continues at step 7. An abort of the run signal ends the wait at once in the same way. The timer never keeps the process alive. It bounds core's own wait for the reply to a query core wrote, before any author code runs, and cancels and limits no work, so it keeps the timer rule [ADR-0091](../decisions/0091-live-regions-stack-at-the-bottom-of-stderr-and-progress-reaches-invoke-callers-and-mcp-clients-as-typed-events.md) states: "Core never uses a timer to cancel or limit work because it has run too long; that is the author's job, in the author's own action." A reply that arrives after the deadline is not read.
 - **Skipped.** At step 6, core writes no byte and reads none when the run signal is already aborted; when `host.stdin` has no `setRawMode`, or its `setRawMode(true)` throws; when `TERM` is unset, empty, or `dumb`; when `STY` or `INSIDE_EMACS` is set and nonempty, because GNU screen and Emacs do not pass the query through; and when `host.stdin` is a real terminal stream and the process is not in that terminal's foreground job. Settlement then continues at step 7. A run that settles at steps 1 through 5, and a run that detects nothing because no theme entry is adaptive and no option carries the background mark, writes no query either. A completion request a shell's completion script makes settles at step 4 and writes no query, because every script the [completion plugin](../plugins/completion.md) prints captures the request's stdout and discards its stderr, so neither is a terminal. Core sees no route before settlement, so a `__complete` request typed by hand at a terminal settles as any other run does.
 - **The foreground check.** A background job that switches its terminal to raw mode is stopped by SIGTTOU, and one that reads it by SIGTTIN, under Node and Bun alike. So before the query core compares its process group with its terminal's foreground process group, read from `/proc/self/stat` where it exists and otherwise from `ps -o tpgid=,pgid=` for its own process id, and skips the query unless the two match. A check that cannot tell skips the query. A `host.stdin` that is not a real terminal stream, such as a test's scripted one, is under no job control, so core skips the check for it.
-- **Where it reads.** `host.terminal.background` holds the settled background for the action, middleware, validators, and every hook that reads the host. The view context's `background` holds it for every view: core reads it just before each render call, as it reads `columns`, and it holds one value for the whole run. Both read `undefined` when no source settled the background, and until it settles, as in the report of a failed host capture, so an author's code can tell an unknown background from a dark one. `background` is the one terminal fact core settles rather than captures: a host override that states it supplies step 3, and the field reads the settled background either way. A `host.terminal` override that omits it leaves the run to settle as above, so a test host written before this section still compiles.
+- **Where it reads.** `host.terminal.background` holds the settled background for the action, middleware, validators, and every hook that reads the host. The view context's `background` holds it for every view: core reads it just before each render call, as it reads `columns`, and it holds one value for the whole run. Both read `undefined` when no source settled the background, and until it settles, as in the report of a failed host capture, so an author's code can tell an unknown background from a dark one. `background` is the one terminal fact core settles rather than captures: a host override that states it supplies step 3, and the field reads the settled background either way. A `host.terminal` override that omits it leaves the run to settle as above.
 - **Invocations by name.** `app.invoke`, an action's `invoke`, and so every [MCP](../plugins/mcp.md) tool call settle nothing and write no query. Their host has no terminal, their captured text is plain under [Invocation by name](invocation.md#invocation-by-name), and their `host.terminal.background` and view contexts read `undefined`.
 - **The background choice.** In an Application that declares the background mark, core reads the operator's background choice from `host.argv` alone, beside the color choice: among the words before the first bare `--`, the last occurrence of a marked spelling whose value is `dark` or `light`. The spellings are the option's long spelling and its aliases' long spellings. The value is attached, as in `--background=light`, or is the next word, as in `--background light`, unless that word is an option word or the bare `--`. An occurrence with any other value supplies nothing, so with no such occurrence the run has no choice and settles from step 2.
 - **Exact without parsing.** Under the grammar of [String values and token consumption](options.md#string-values-and-token-consumption), an option word is never a separate value, and a global option's spelling cannot be a local option's, so a word that equals a marked spelling is that option wherever it sits, and the word after it is its value exactly when the parse reads it so. The marked option declares no implied value, so a bare spelling takes the next word as any string option's does. A spelling whose value is not `dark` or `light`, such as `--background=blue`, supplies nothing, and the ordinary parse and validation still report it at their usual place. A repetition such as `--background=dark --background=light` sets `'light'`, and the parse still fails it as the repetition every option that is neither multiple nor counted meets.
@@ -126,25 +126,7 @@ A themed color that reads well on a dark terminal can vanish on a light one. Cor
 - **One source.** The marked option binds no environment variable and no configuration key, and takes no default, implied value, `multiple`, or short alias, so argv is its one source. `COLORFGBG` is the environment's standard input for the background, so no application-named variable joins it, the configuration source answers after parsing, too late for the output before it, and the author's own default is `rendering.background`.
 - **The mark.** `background: true` on a string global option, the application's or a plugin's, marks it. At most one option of an Application carries the mark. `inspect()` publishes `background` on each string option node, `true` on the marked one, and the [manifest](../plugins/manifest.md) copies it. The [background plugin](../plugins/background.md) declares a marked `--background`.
 - **Names.** `Background`, `AdaptiveStyle`, `HostTerminal`, and `HostOverrides` are exported from `@loomcli/core` as types.
-
-| Rejected declaration | Diagnostic | Rule |
-| --- | --- | --- |
-| Two marked options in one Application | `Global option "shade" and plugin "@loomcli/plugins/background" option "background" both declare background. Mark one option.` Each option is named as [Input declaration errors](options.md#input-declaration-errors) names it, and the fault throws from the call that brings the second mark into the Application, as a [spelling collision](options.md#declaration-and-invocation-errors) does. | `@loomcli/core/background-mark` |
-| A configuration binding on the marked option | `Option "background" declares background and carries configuration binding "@loomcli/plugins/config/input", a second source for the run's background. Remove the binding; the run reads its background before configuration.` It throws where the [color mark](color.md)'s binding fault does: from `globalOption()` for an application's option and from the constructor for a plugin's option. | `@loomcli/core/background-mark` |
+- **One mark.** An Application declares one marked option. The fault throws from the call that brings the second mark into the Application, as a [spelling collision](options.md#declaration-and-invocation-errors) does, and names each option as [Input declaration errors](options.md#input-declaration-errors) names it: [`@loomcli/core/background-mark`](diagnostics.md#loomclicorebackground-mark).
+- **No configuration binding.** The marked option carries no configuration binding, a second source for the run's background, because the run reads its background before configuration. The fault throws where the [color mark](color.md)'s binding fault does: from `globalOption()` for an application's option and from the constructor for a plugin's option: [`@loomcli/core/background-mark`](diagnostics.md#loomclicorebackground-mark).
 
 The types reject `background` on `option()` and on every option type but `string`, and `short`, `shortOnly`, `env`, `default`, `implied`, and `multiple: true` beside `background: true`. A configuration binding is an ordinary extension value to the types, so that rule reaches the runtime check alone.
-
-### Background acceptance
-
-The background is proven when public APIs alone produce these results under Node and Bun, through a fixture Application whose theme holds an adaptive entry and a plain one, and through the reply parser and the settlement as pure functions:
-
-- **Replies.** OSC 11 replies with 1, 2, 3, and 4 hex digits in each component, each ended by BEL and by `ESC \`, parse to their colors; garbage before, between, and after the replies passes through as typeahead; `Ctrl-C`, `Ctrl-\`, and `Ctrl-Z` anywhere in what was read leave the typeahead and name SIGINT, SIGQUIT, and SIGTSTP in arrival order; a DA1 reply that arrives first ends the read with no answer; a `997` reply answers alone, and an OSC 11 reply beside it wins; and a luminance just above 0.5 answers light while exactly 0.5 answers dark.
-- **Precedence.** Each of the eight steps settles a fixture run, and each beats every later step, `COLORFGBG` values `0;15`, `15;0`, `15;default;7`, and an empty value included; and a dotenv hook that imports `COLORFGBG=0;15`, `TERM=linux`, or `STY=1` leaves the settled background and the query unchanged.
-- **Detection runs for a reader.** On a scripted light terminal with `COLORFGBG=0;15`, an Application whose theme holds no adaptive entry and that declares no background mark writes no query and reads `undefined` in the action and in a view; the same Application with `background()` installed writes the query and reads `'light'`; and with neither, `rendering: { background: 'light' }` and a host override that states `'light'` each still read `'light'`.
-- **Settled once, before preparation.** With `NO_COLOR=1` in the captured environment and a dotenv hook that imports `FORCE_COLOR=1`, on a scripted light terminal, the run writes no query, `host.terminal.background` reads `undefined`, and the colored output prints each adaptive token's dark side.
-- **The query on a scripted terminal.** A host whose stdin is a scripted fake terminal shows: no byte written and none read on each skip and at steps 1 through 5; a run whose stdout, stdin, or stderr is not a terminal, or none of them, writes no query and reads `undefined` under `COLORFGBG=0;15` and `FORCE_COLOR=1`; the three queries written once, to stderr; raw mode set and restored to the mode found on the answered path and on the deadline path; typeahead before, between, and after the replies reaching the action's `stdin` read in order; and a sentinel that never comes falling through to step 7 after the deadline, with the timer unref'd, cleared at once on the answered path, and an abort of the caller's signal ending the wait; after the read, stdin is in the flowing state it was found in and holds no listener core added, and an action's bare `data` listener, with no `resume()` call, receives the typeahead and later input; an OSC 11 reply with no DA1 reply settles the run from that reply at the deadline, without reaching step 7; a reply that arrives after the deadline reaches the action's stdin read; `Ctrl-C`, `Ctrl-\`, and `Ctrl-Z` read during the wait leave the action's typeahead and are raised on the process in arrival order after the mode is restored; and `Ctrl-C` read during the wait ends the process by SIGINT.
-- **Themed tokens.** An adaptive token resolves to its light side under a light background and to its dark side under a dark one and under `undefined`, at truecolor, 256, and 16 colors, with each side's own fallbacks, and a plain token resolves to the same bytes under both.
-- **The choice.** `--background=light`, `--background light`, an alias spelling, and the last of several occurrences each settle the run; a spelling after the bare `--` changes nothing; `--background=blue` supplies nothing and fails the plugin's validation with exit 2; `options.background` reads `'light'`, `'dark'`, or `undefined`; and `--background --verbose` and `--background --` supply no choice.
-- **Where it reads.** `host.terminal.background` and a view's `context.background` read the settled value in the action, a middleware, and a failure view, a host override's stated value is overruled by an operator's choice, an invocation by name reads `undefined` under `rendering: { background: 'light' }`, a failure view rendering a failed host capture reads `undefined`, and a piped run whose theme adapts reads `undefined`.
-- **Declarations.** Each row above throws its sentence under its rule from the moment the row names, `style.adaptive` throws its `TypeError` for each bad argument, and the negative type checks reject the rules the types state; mutating the object passed to `style.adaptive` after the call changes no emitted byte; a bare `theme()` accepts an adaptive entry and a custom token named `adaptive`; and a compiler check imports the four exported types, compiles a `run({ host: { terminal } })` whose terminal omits `background`, and rejects a write to `host.terminal.background`.
-- **The terminal itself.** A test drives an interactive zsh with job control on a real pseudo-terminal under Node and Bun: a foreground run of an application whose theme adapts writes the query, reads a scripted answer as light, and hands the typeahead before it to an action that reads it with a bare `data` listener; a foreground run whose action never touches stdin ends after the answer with status 0 and returns the shell's prompt with no key pressed; a foreground run that reads `Ctrl-C` during the wait ends with status 130 and prints nothing of its action; and the same run started as a background job writes no query, neither stops nor hangs, and ends with status 0. A raw-mode switch in a background job stops the process under both runtimes, which is why the foreground check exists, as ADR-0092 records.

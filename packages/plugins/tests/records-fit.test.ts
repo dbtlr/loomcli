@@ -1,3 +1,4 @@
+// Acceptance plan: see packages/plugins/tests/table-fit.test.ts.
 import { expect, test } from 'vite-plus/test';
 
 import { lines, render } from './fit-render.js';

@@ -1,3 +1,45 @@
+/*
+ * Acceptance plan for the list, heading, rule, prose, and box views (docs/plugins/pack-views.md#list).
+ *
+ * Each case runs under Node and Bun, at a fixed width through a host override of plain numbers and
+ * with `columns` undefined, and checks exact bytes. The acceptance tests cover:
+ *
+ * - Each factory twice. Each view as the second argument of `out.render`, and the list and the text
+ *   views as entries of a declared result under `rows<Item>` and `result<string>()`.
+ * - The list. Bullets and ordered markers, ordered markers right-aligned from ` 9.` to `10.`,
+ *   `null` and `undefined` items printing empty, a default item escaped beside a `format` item left
+ *   unescaped, `format` receiving each item's index among its siblings, two levels of `children`
+ *   with each level starting at its parent's text column and a nested ordered list counting from 1,
+ *   a wrapped item hanging under its text at 30 columns, an authored line break hanging under its
+ *   text piped, a blank line inside an item carrying no indent, a tab expanding on a terminal and
+ *   kept piped, and an empty sequence printing nothing.
+ * - The heading. Level 1 and level 2, a level 1 underline as wide as a CJK text and as a styled
+ *   text, a wrapped level 1 underline matching its widest wrapped line, and a word wider than
+ *   `columns` keeping its line and widening its underline.
+ * - The rule. A bare and a labelled rule at 60 columns and piped at 80, a label wrapped at a narrow
+ *   width with its continuation lines under the label and the line on its last line alone, a blank
+ *   label line printing empty and a blank last label line carrying the line after it, and a label
+ *   word too wide to fit overflowing with one `glyph.line` after it.
+ * - Prose. Paragraphs separated by a blank line, a leading indent kept on the first line, a tab
+ *   expanding on a terminal and kept piped, a text with and without a trailing line break, and an
+ *   OSC 8 hyperlink closing at each wrapped line's end.
+ * - The box. A text box with and without a title, a title wider than its text setting the inner
+ *   width, text wrapped at `columns` minus 4, a table framed at a width where it shrinks and at one
+ *   where it falls back to records, a content view that ignores `columns` widening the box, a
+ *   declared view's override not applying inside a box, a tab in piped content keeping the right
+ *   border in its column, and the empty string printing nothing.
+ * - Empty text. Under each view over a string, the empty string, a style frame around nothing such
+ *   as `style.dim('')`, and a `nowrap` frame around nothing each render the empty string, on a
+ *   terminal and piped, except that the rule draws its bare line, a box with a title over such a
+ *   text prints nothing, and a box whose `content` view renders such a text prints nothing, titled
+ *   and untitled.
+ * - A resize. Under a pty-backed host, one run renders a rule and a box at 100 columns, the window
+ *   resizes to 60, and the next rule and box fit 60.
+ * - Typing. The negative type checks cover a list `format` whose item parameter is not `Item`, a
+ *   `children` that returns another type, a heading `level` of 3, a box with no `content` under
+ *   `result<Summary>()`, and a column the row does not carry inside a boxed table.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { lines } from './fit-render.js';

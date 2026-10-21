@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/plugins/tests/logging.test.ts.
+
 import { mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

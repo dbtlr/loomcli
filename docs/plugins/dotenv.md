@@ -16,7 +16,7 @@ const app = new Application('app', {
 ```
 
 `dotenv()` takes no required setting. `dotenv({ only: ['API_TOKEN'] })` is an allow list that imports only the names it lists, and `dotenv({ except: ['PATH'] })` is a deny list that imports every name but the ones it lists, under [ADR-0102](../decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md). The settings type is a union, so one call that gives both lists is a compile error.
-Names are case-sensitive and match `[A-Za-z_][A-Za-z0-9_]*`. A listed name of another form throws a `DeclarationError` of `@loomcli/plugins/dotenv/variable-name` at the call, because no assignment could match it. A name listed twice is listed once. A name the plugin does not import never appears in a warning.
+Names are case-sensitive and match `[A-Za-z_][A-Za-z0-9_]*`. A listed name of another form throws a `DeclarationError` at the call, because no assignment could match it: [`@loomcli/plugins/dotenv/variable-name`](../core/diagnostics.md#loomclipluginsdotenvvariable-name). A name listed twice is listed once. A name the plugin does not import never appears in a warning.
 The lists govern imports by this plugin. A runtime or launcher that loads `.env` before application startup has already populated `process.env`.
 
 An existing defined variable wins, including an empty string.
@@ -53,6 +53,3 @@ A malformed assignment the plugin would not import stays silent. Quoted regions 
 An unterminated quote of either kind consumes the rest of the file and warns once for its starting line.
 These rules and the exact warning-name boundaries are specified in [ADR-0084](../decisions/0084-dotenv-prepares-an-allowlisted-environment-before-inputs.md), and [ADR-0102](../decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md) carries them forward.
 Warnings do not change the exit code and are captured in a named invocation's `messages`.
-
-Acceptance covers parser behavior, warning recovery, empty-value precedence, env-bound options, host isolation, child-process visibility, and named invocation capture.
-The packed consumer also proves the public subpath, emitted types, argv publication, and named isolation under Node and Bun.

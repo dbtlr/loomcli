@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/core/tests/style.test.ts.
+
 import { nowrap, pad, splitLines, style } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
 

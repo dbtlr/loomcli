@@ -1,3 +1,27 @@
+/*
+ * Acceptance plan for help variants (docs/plugins/help.md#help-variants).
+ *
+ * Help variants are proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - Example pages. `textstat --help`, `textstat -h`, `jsonkit -h`, and `jsonkit select -h` print
+ *   the pages above, byte for byte, with color and modifiers disabled, and `jsonkit --help` and
+ *   `jsonkit select --help` print their pages unchanged. The example applications' help goldens are
+ *   re-pinned to these pages.
+ * - Selection. `-h` prints the compact page, `-Vh` the compact page, and `-h --help` the compact
+ *   page, because the earlier `-h` stands when the repeated option is held.
+ * - Spellings. A fixture plugin's middleware reads `--flag`, `-f`, and `--no-flag` for its typed
+ *   options, `--name` for `--name=value`, the grouped letter as `-f`, and the last spelling of a
+ *   multiple string option given as `-n a --name b`. An option filled from the environment or the
+ *   configuration source, a defaulted option, and an option not supplied have no entry, another
+ *   plugin's options and the application's options never appear, and the record is frozen.
+ * - Hints. A compact leaf page whose only extended block is Details prints the pointer, a compact
+ *   leaf with neither Details nor EXAMPLES prints none, and a compact group page prints the child
+ *   hint with `-h` ahead of the pointer.
+ * - Replacement. An `override(helpPage, …)` receives `variant` as `compact` under `-h` and
+ *   `extended` under `--help`.
+ * - Styles. A themed compact page styles both hint lines under the restyle mapping.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

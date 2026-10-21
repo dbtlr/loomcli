@@ -2,7 +2,7 @@
 description: "loom build: one package directory and the build that bundles an application."
 ---
 
-# loom build
+# Build reference
 ## One package directory
 
 ```text
@@ -28,15 +28,6 @@ Every `loom` command acts on one package: the package whose directory it runs in
 - **Bun.** `loom build` does its work under Bun, whichever runtime runs `loom`, so Bun must be on the `PATH`. A missing Bun fails the command with exit 1 and names Bun.
 - **Exit codes.** 0 is success. 1 is a failed build, a failed changelog check, invalid content, or an operational failure, reported on stderr. 2 is a command or option error, as in every Loom application.
 - **Out of this contract.** Release orchestration stays with each repository: PR guards, publishing to npm or GitHub, prerelease channels, release workflows, and cuts across several packages. The [installer script](install.md) reads the [release shape](install.md#the-release-shape) those workflows publish.
-
-### One package directory acceptance
-
-The package directory is proven when process runs of the packed `loom` bin produce these results under Node and Bun:
-
-- **The nearest package.** `loom changelog check` run in a package's `src/` validates that package's `.changes/`.
-- **A monorepo root.** In a fixture workspace whose root and two member packages each hold fragments, `loom changelog check` at the root validates the root's fragments alone.
-- **No package.** `loom build` in a directory with no `package.json` at or above it exits 1 and says to run it inside a package directory.
-- **An option over the convention.** `loom build --entry src/cli.ts` builds that module, and with no `--entry` the build reads `src/main.ts`.
 
 ## loom build
 
@@ -71,15 +62,3 @@ bun build src/main.ts src/application.ts --outdir dist --splitting --target node
 - **A compiled binary.** A compile target bakes `compiled: true`, with or without `--release`, and `node` and `bun` bake no `compiled` member, so core knows a binary is the whole program when it captures [`host.program`](../core/host.md).
 - **Composing a custom build.** `--facts` prints the facts JSON, and `--define` prints the define pair, `__LOOM_RELEASE__=<json>`. Each reads the same options a build reads, prints one line to stdout, and builds nothing, and they exclude each other. `loom build` computes its own facts with the same code, so an author who needs a bundler option `loom build` does not offer composes the same facts into that bundler's define.
 - **A failed build changes nothing.** A build writes into a temporary directory beside the output and moves each file into place only after the whole build succeeds, replacing the file of the same name. A failed build leaves any earlier output in place, and files the build does not write are left alone. `loom` holds SIGINT and SIGTERM from before it creates anything until the build has finished or been undone. A signal reaches Bun while Bun runs. One that arrives before the files move into place cleans up as a failed build does, including each output directory the build created that nothing else has filled, and one that arrives while they move lets every file move, so output is never partly replaced. Either way `loom` then ends with the signal, so its shell reads 130 or 143. Bun runs in the temporary directory, so the file a compile writes into Bun's working directory lands there, and builds that run at once in one package, such as one call per target, each have their own. The build never writes into the source tree.
-
-### loom build acceptance
-
-`loom build` is proven when process runs of the packed `loom` bin produce these results under Node and Bun, with the artifacts run under both:
-
-- **Targets.** `--target node` and `--target bun` each write a bundle that reads `{ build: 'distributed' }`. The host's compile target, by default and by name, writes `dist/<name>`, a binary that runs with no runtime installed. `--target browser` and an unknown target each exit with an error that names the targets.
-- **The application module.** A `--target node` build of a package that holds `src/application.ts` writes `dist/application.js`, which a caller imports to run the Application on the facts the build baked, and a package without it writes the entry alone. `--application` naming a module that does not exist exits 1 and names it.
-- **The build.** `--build development` writes an artifact that reads `development`, and `--watch` rebuilds after a source change into an artifact that reads `development`.
-- **A release.** `--release` in a package at `1.1.0-next.3` whose `repository` is the `git+https://` form reads version `1.1.0-next.3`, channel `next`, and repository `owner/name`, with an asset only for a compile target. `--repository` overrides the field. A package with no `repository` and no `--repository` exits 1 and names `--repository`. A compile target with no `bin` and no `--name` exits 1 and names `--name`.
-- **A compiled binary.** `--facts` for a compile target prints `"compiled":true` with and without `--release`, and for `node` and `bun` prints no `compiled` member. A compiled fixture binary reads `host.program` as its own path alone, and a Node bundle reads `process.execPath` and the bundle's path.
-- **Composing.** `--facts` prints the facts JSON and `--define` the pair, and neither writes a file. A `bun build --define` with the printed pair, and a `Bun.build` call with the printed facts, each write an artifact that reads the same facts `loom build` bakes.
-- **A failed build.** A syntax error in the entry exits 1, and the earlier output is byte-identical afterward.

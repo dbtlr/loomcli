@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/core/tests/developer-diagnostics.test.ts.
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

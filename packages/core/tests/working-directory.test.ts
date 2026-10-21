@@ -1,3 +1,24 @@
+/*
+ * Acceptance plan for an unreadable working directory
+ * (docs/core/host.md#an-unreadable-working-directory).
+ *
+ * An unreadable working directory is proven when public APIs alone produce these results under Node
+ * and Bun:
+ *
+ * - Both builds. A process test removes its working directory and runs jsonkit's bundle and
+ *   jsonkit's source with `keys -f <absolute path>`. Each writes exactly `jsonkit: The current
+ *   working directory cannot be read. Change to a directory that exists and run the command again.`
+ *   and one newline to stderr, writes nothing to stdout, prints no stack, and exits 1. The same run
+ *   with `--format json` on `paths` writes the same text line.
+ * - Embedding. `jsonkit.invoke(['keys'], …)` from a removed directory resolves `failed` with exit
+ *   1, a `WorkingDirectoryError`, the form `{ code: 'working-directory-unreadable', exitCode: 1,
+ *   message, hints: [] }`, and the line in `messages`, and never rejects.
+ * - Overrides. `run({ host: { cwd } })` and `app.invoke` with `host: { cwd }` from a removed
+ *   directory complete, and an action's `invoke` in such a run completes with its run's `cwd`.
+ * - The class. `WorkingDirectoryError.code` reads `working-directory-unreadable` and
+ *   `WorkingDirectoryError.exitCode` reads 1 without an instance.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

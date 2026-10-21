@@ -1,3 +1,37 @@
+/*
+ * Acceptance plan for the validators reference (docs/libs/validators.md).
+ *
+ * - Soundness. For each factory, a table of accepted tokens validates, under Ajv's draft 2020-12
+ *   validator with `ajv-formats` in full mode and `unicodeRegExp` on, the value the token stands
+ *   for against the published schema: the number for `integer`, `number`, and `port`, and the token
+ *   for every other factory. A test fails when any accepted token breaks the schema. The table
+ *   includes each factory's edges: code points outside the Basic Multilingual Plane for `text`,
+ *   `-0`, leading zeros, and safe-integer limits for the numbers, the leap day for `date`,
+ *   including `0000-02-29` accepted and `0100-02-29` rejected, since a `Date.UTC` check maps years
+ *   below 100 to the 1900s, mixed case for `uuid` and a `protocols` scheme, a `protocols` scheme
+ *   containing `+`, `-`, or `.`, and for `url` the tokens RFC 3986 rejects and the WHATWG parser
+ *   repairs.
+ * - Rejection. For each factory, a table of rejected tokens pins the one message and shows the
+ *   token is absent from it.
+ * - Issue codes. Each rejected token's issue carries the code and parameters the table under Issue
+ *   codes names, and the code's `read` returns those parameters for it and `undefined` for every
+ *   other code's issue, a Zod issue, and an issue whose parameters fail the schema. An `InputError`
+ *   override that reads `integerRangeIssue` rewrites that sentence through `run()` and leaves every
+ *   other issue's sentence as the catalog wrote it. Each listed `issueCode` fault throws a
+ *   `DeclarationError`, and `text({ pattern })` without `message` is a type error.
+ * - Faults. Each listed fault throws `DeclarationError` from the factory call, under the rule
+ *   Shared rules names, and each rule pins its rendered Developer Diagnostic.
+ * - Context. A context-free factory validates when called directly; `path` called directly throws
+ *   the context sentence; `path` inside a run resolves against a host override's `cwd`, using
+ *   temporary directories for the `read` and `write` checks.
+ * - Multiple options and variadic arguments. Core runs the validator once per value, reports each
+ *   issue at its position, validates each default value, publishes the validator's schema
+ *   unchanged, and calls nothing when no value is supplied, under ADR-0036. Core's multiple.test.ts
+ *   and input-sources.test.ts prove this bullet.
+ * - Help. A `oneOf` input of at most eight values prints `One of: ...` with no authored `accepts`,
+ *   under help's limit of eight. The plugins' help-accepted.test.ts proves this bullet.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 const catalog = await import('../src/index.js');

@@ -1,3 +1,63 @@
+/*
+ * Acceptance plan for the service plugin (docs/plugins/service.md#the-children).
+ *
+ * The plugin is proven when process tests under Node and Bun produce these results. Each fixture
+ * sets `HOME`, `XDG_CONFIG_HOME`, and `XDG_STATE_HOME` to temporary directories, puts fake
+ * `systemctl`, `loginctl`, and `launchctl` programs first on `PATH` that answer from a scenario
+ * file and record each call, and runs an application that installs `service()` through
+ * `run({ host: { platform, program, release } })`, so both backends run on either CI platform:
+ *
+ * - Installing. A distributed run on `linux` writes the pinned unit, records it in `service.json`,
+ *   and calls `daemon-reload`, `enable`, and `restart` in that order; a second install calls no
+ *   `daemon-reload` and prints the unchanged line. On `darwin` it writes the pinned plist and calls
+ *   `enable` and `bootstrap`; a second install with the agent loaded unloads it, polls until
+ *   `print` exits 113, and calls `bootstrap`, and an install after an earlier one failed between
+ *   its write and `bootstrap` prints the unchanged line and loads the plist on disk, and one whose
+ *   text changed writes the plist, calls `enable`, unloads the agent, polls until `print` exits
+ *   113, then calls `bootstrap`. A `program` of an interpreter and a script, a `run` word holding a
+ *   space, `"`, `$`, and `%`, and a description holding `&` and `<` each render with the pinned
+ *   quoting. An install after the label changed stops and disables the earlier unit and removes its
+ *   file. An application with no description renders its name as the description. Every child but
+ *   `status` leaves stdout empty. Under umask `002`, the unit and the plist are written with mode
+ *   `644`.
+ * - Refusing. A source build and a development build each exit 1 with the pinned sentence and call
+ *   nothing. An unrecorded file, a recorded file changed since, a symbolic link, and a directory at
+ *   the unit's path each exit 1, write nothing, and call nothing after the refusal. `win32` exits 1
+ *   from every child, and a relative `HOME` exits 1 from every child. A file with the rendered text
+ *   that `service.json` does not list refuses as unrecorded, and on `darwin` every refusal calls no
+ *   `launchctl`. A `program` word holding a newline exits 1 with nothing written. A damaged and an
+ *   unknown-format `service.json` each fail `install` and `uninstall` with the pinned sentence and
+ *   call nothing.
+ * - Children. `start`, `stop`, and `restart` call the pinned commands on each backend, and exit 1
+ *   with the not-installed sentence when no file is at the path. On launchd, `stop` leaves the
+ *   plist. `uninstall` disables, removes, and reloads on systemd, unloads and removes on launchd,
+ *   keeps a changed unit with the kept line, refuses an unrecorded unit, and prints the
+ *   nothing-to-remove line and exits 0 when nothing is installed. A recorded unit whose file is
+ *   gone calls `stop` on systemd and `bootout` on launchd, prints the already-gone line, and clears
+ *   the record. After the label changed with no reinstall, `uninstall` stops the earlier unit,
+ *   removes its file, and clears the record.
+ * - Managers. A fake `systemctl` that exits 1 fails `restart` with the pinned sentence and prints
+ *   none of its output. A `PATH` with no `systemctl` fails with the cannot-find sentence. On
+ *   launchd, a `bootout` that exits 3, 36, or 113 is no failure. On `linux`, an environment with no
+ *   `XDG_RUNTIME_DIR` passes `/run/user/<uid>` to every call.
+ * - Status. Each `ActiveState` of `active`, `inactive`, `failed`, and `activating`, and each
+ *   launchd `print` of a running agent, a loaded agent with no process, and an agent that is not
+ *   loaded, gives the pinned text and JSON. A unit with no file and no loaded job reads
+ *   `not installed` and exits 0, and one with no file whose job the manager reports running reads
+ *   that state and its pid. A `show` that exits 1 gives `unknown` with its note and exits 0.
+ *   `Linger=no` and a `print gui/<uid>` that exits 113 add their notes. A probe's rows print under
+ *   `unit`, and the probe receives the state and an `invoke` that runs the application's own
+ *   Command; a probe that throws exits 1.
+ * - Waiting. A run aborted while launchd's unload is polled, and one aborted during a manager call,
+ *   exit 130 and leave the record as the module left it.
+ * - Settings and the graph. Each settings fault throws its pinned diagnostic at the call. `run`
+ *   words naming an unknown Command, a group, an unknown option, a misplaced option, an unexpected
+ *   argument, and an option with no value each fail the build with `run-unrouted`, and `check()`
+ *   reports it. `run` words that end in passthrough words after `--` pass.
+ * - Packaging. `pnpm check:packed` resolves `@loomcli/plugins/service` from the packed tarball
+ *   under Node and Bun.
+ */
+
 import { createHash } from 'node:crypto';
 import {
   chmodSync,

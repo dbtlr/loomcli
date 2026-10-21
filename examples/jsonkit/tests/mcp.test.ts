@@ -1,3 +1,4 @@
+// Acceptance plan: see packages/plugins/tests/mcp.test.ts.
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

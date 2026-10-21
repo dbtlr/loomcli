@@ -1,3 +1,41 @@
+/*
+ * Acceptance plan for translators (docs/core/failures.md#translators).
+ *
+ * Translators are proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - Example. jsonkit's reader holds no `JSON.parse` catch, and its application registers the
+ *   translation above. `jsonkit get name -f broken.json` and the same document piped to `jsonkit
+ *   get name` exit 65 and write `The document is not valid JSON. Correct its syntax, or supply
+ *   another document.`, and an `onFailure` hook in a fixture reads the `SyntaxError` as the
+ *   failure's `cause`.
+ * - Untranslated. A `TypeError` from an action with no translation for it reports as an
+ *   `InternalError` with exit 1.
+ * - Order. An application's translation and a plugin's for one class resolve to the application's;
+ *   an application's translation keyed on `Error` beats a plugin's keyed on `SyntaxError`; two
+ *   plugins resolve in installation order; a translator that returns `undefined` passes to the next
+ *   one, within one contributor in list order and then to the next contributor.
+ * - Reach. A foreign throw from an action, from a middleware before it calls `next()`, and from a
+ *   configuration source's resolver each reaches the translator and exits with the translated
+ *   class's code, 69 for a class that declares `EX_UNAVAILABLE`. A row source that yields one row
+ *   and then throws a `SyntaxError` under `out.results()` exits 69 whether the action awaited the
+ *   call or never awaited it, with the row and the incomplete-result line ahead of the translated
+ *   failure's report, and an action that caught its rejection exits 0 with the row and the line and
+ *   calls no translator. A middleware that throws an `Error` after its `next()` has settled reaches
+ *   the translator and exits 69, and a stdout write that fails with an `ENOSPC`-style error under
+ *   an awaited `out.print` exits 69 with no fallback line. A throw from a failure view, an
+ *   `onFailure` hook, a validator, a getter on a validator's output, and a plugin loader, a thrown
+ *   `FatalError`, a thrown string, and an object with a `null` prototype never reach it. A caller
+ *   abort whose action rejects with the signal's reason resolves 130 and calls no translator.
+ * - The raw throw. A middleware that awaits `next()` around an action that throws a `SyntaxError`
+ *   catches the `SyntaxError`, not the translated failure.
+ * - A translator that throws. It reports a defect with exit 1, and a later translator that would
+ *   have answered is not called. In a distributed build the text is the generic defect message; in
+ *   a development build it is the diagnostic of `@loomcli/core/foreign-throw`, which shows the
+ *   translator's line and its throw, the defect's `cause`.
+ * - Types. The translator's parameter types as the key's instance type, and a translator returning
+ *   a string or an `Error` that is not a `LoomError` is a compile error.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

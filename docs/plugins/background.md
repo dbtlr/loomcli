@@ -17,12 +17,5 @@ const app = new Application('notes', { plugins: [loomTheme(), background()] });
 - **No settings.** `background()` declares no parameter, as `color()` does, so TypeScript rejects an argument and the factory reads none. The mark rejects the keys a setting could carry, a short alias and an `env` binding, so there is nothing to set.
 - **Its readers.** Help lists `--background <background>` among the global options with its description and `One of: dark, light.`, which [Accepted values](help.md#accepted-values) derives from the validator's schema, and [completion](completion.md) offers both values. The [manifest](manifest.md) marks it `control` and `background` and carries the schema, and the [MCP](mcp.md) plugin leaves it out of every tool's input schema, as it leaves out every control option.
 - **A wrong value.** `--background=blue` supplies no choice, so the run settles its background from the other sources, and validation fails it with exit 2 and the issue `Supply dark or light.`
-- **Another spelling.** An application that wants another spelling leaves the plugin out and marks its own string global option. Installing the plugin beside another marked option is the two-marks declaration error.
+- **Another spelling.** An application that wants another spelling leaves the plugin out and marks its own string global option. Installing the plugin beside another marked option is a declaration error: [`@loomcli/core/background-mark`](../core/diagnostics.md#loomclicorebackground-mark).
 - **Names.** `background` and `BackgroundOptions`, the type of its options record, are exported from `@loomcli/plugins/background`.
-
-## Background plugin acceptance
-
-- A fixture application installs `loomTheme()` and `background()`. Its `--help` lists the `--background` row with its description and accepted values, its manifest marks the option `control` and `background` with the enum schema, and every other string option node reads `background: false`. No example application installs the plugin, so no example's help page or manifest changes.
-- On a scripted light terminal, `--background=dark` prints the Loom theme's dark side and writes no query, and `--background=blue` fails with exit 2 and `Supply dark or light.`
-- An application that marks its own option and installs the plugin fails with the two-marks error.
-- A consumer installs the packed pack, imports `@loomcli/plugins/background`, compiles against its declarations, and `pnpm check:packed` resolves the subpath from the packed tarball under Node and Bun.

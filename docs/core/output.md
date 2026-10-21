@@ -1,5 +1,5 @@
 ---
-description: "Rendered, drawn, and semantic output: the lanes, drawing on stderr, live regions, and progress events."
+description: "The out methods an action writes through: the semantic lanes, rendered and drawn views, live regions, and progress events."
 ---
 
 # Output
@@ -21,13 +21,13 @@ description: "Rendered, drawn, and semantic output: the lanes, drawing on stderr
 
 The `results` row holds on a Command that declares a result, where the action's `print` and `render` move to stderr as [Results](results.md) describes; on every other Command `results` takes a `never` argument and the other rows hold as written. Messages are marked strings. The seven semantic methods render through core's lane views, described under [Views](views.md), and append one newline. `print` has no prefix. By default the other methods add their matching glyph and one space, `debug` and `trace` their gutters under [Verbosity](verbosity.md), and indent continuation lines by the measured gutter, without repeating the glyph; that gutter belongs to the lane view, which an application can override. Those six lanes also wrap the message at the destination's `columns`, as [Width, padding, and multiline lanes](styles.md#width-padding-and-multiline-lanes) states. The run's [verbosity](verbosity.md) decides whether `info`, `success`, `debug`, and `trace` write, and `print`, `warn`, and `error` write at every verbosity. Semantic method identity remains distinct inside core. `out.render` is the neutral render call, and [Rendered output](#rendered-output) describes it.
 
-Nonfatal labels do not change success. Calls can omit `await`; core still accounts for their output and failures before completion. Awaiting a call observes its write completion or rejection. Catching that rejection does not make the invocation successful.
+Nonfatal labels do not change success. Calls can omit `await`; core still accounts for their output and failures before completion. Awaiting a call observes its write completion or rejection. What a caught rejection means for the run is under [the ordinary failure path](failures.md#the-ordinary-failure-path): a caught view rejection leaves the outcome to the code that caught it, and a failed destination write still fails the run.
 
 Writes preserve call order within a destination. Separate stdout and stderr captures have no shared observable order. While a [live region](#live-region) is drawn and stdout is a terminal too, stdout writes share stderr's order, so a result row lands above the region. A row sequence open on stdout holds its place in stdout's order alone: a stdout write issued behind it waits for its last row, and a stderr write issued meanwhile, one its row source awaits included, does not. Core does not close host streams.
 
 `out.fatal()` synchronously throws the exported `FatalError` without an eager write. An uncaught `FatalError` prints its message once and returns its class's code: 1, unless a subclass declares another under [Declared exit codes](failures.md#declared-exit-codes). A caught fatal error does not itself change success. Other exceptions use an internal-error diagnostic.
 
-A broken output pipe returns code 1 through the failure path below.
+A closed reader on stdout ends the run with 141, and any other failed write returns 1, under [the ordinary failure path](failures.md#the-ordinary-failure-path).
 
 ## Rendered output
 
@@ -68,7 +68,7 @@ const app = new Application('counts')
 
 A rendered value has no semantic identity: no purpose parameter and no destination parameter. The seven semantic methods keep their string-only signatures and their own destinations.
 
-Core calls a whole view's function synchronously inside the `out.render` call, then queues its text on the destination; a row view's functions run as the iterable yields, under [Row views](results.md#row-views). Call order within a destination holds across both forms, so a rendered table and a plain `print` write in the order the action issued them. The optional-await contract is unchanged: the returned promise resolves on write completion and rejects on a view or write failure, and catching that rejection changes the caller's control flow, not the invocation result.
+Core calls a whole view's function synchronously inside the `out.render` call, then queues its text on the destination; a row view's functions run as the iterable yields, under [Row views](results.md#row-views). Call order within a destination holds across both forms, so a rendered table and a plain `print` write in the order the action issued them. The optional-await contract is unchanged: the returned promise resolves on write completion and rejects on a view or write failure, and what a caught rejection means for the run is under [the ordinary failure path](failures.md#the-ordinary-failure-path).
 
 The type parameter is inferred from the value, so `out.render(rows, table)` checks the view against the rows it receives. A view for another value type, and one that returns anything but a string, are compile errors.
 
@@ -76,7 +76,7 @@ The type parameter is inferred from the value, so `out.render(rows, table)` chec
 
 `out.draw(data, view)` renders a view to stderr for a frame an operator watches, which the caller erases and redraws itself. It takes the arguments `out.render` takes, a bare view or a declared view and its data, and it renders the same way: the view function, the application's override when one applies, runs synchronously inside the call, its marked text resolves under stderr's rendering policy, the result is queued on stderr in call order with every other `out` write to stderr, and no newline is added. Three things differ. The promise resolves, on write completion, to the number of terminal rows the drawn text moved down: its line breaks, plus the extra rows each line wraps onto at `host.terminal.stderr.columns`, the real width read at that draw and never the `COLUMNS`-narrowed one, because the terminal soft-wraps at its real width, measured as [`width`](styles.md#width-padding-and-multiline-lanes) measures, and its line breaks alone when the width is unknown; control sequences count no width. A caller that redraws what it drew, whatever view rendered it, returns the cursor to column 0, moves up exactly the rows it drew, and erases to the end of the screen. The destination is always stderr, on a Command that declares a result as on any other. And when `host.terminal.stderr.isTTY` is true, terminal control sequences the text holds, such as cursor movement and erasure, are kept for that call alone, as `terminalControls: 'preserve'` keeps them for the whole application; every other write site, and a draw to a stderr that is not a terminal, keeps the Application's setting, so a redirected stderr or an invocation by name's `messages` never receives a cursor movement core would otherwise strip. The types reject a row view, and core adds no rule for one: from JavaScript, it fails the call as a view that breaks does. The caller decides when to draw.
 
-On a terminal, `out.draw` is a region of one frame that core writes as it writes every other write to stderr: above every open [live region](#live-region), with no line break added, never held by an open input region, and at every verbosity. With no region open it writes exactly as before. Its count is still measured at the width read at its own draw, so a caller that erases by it keeps working, and its call order, its control sequences, and its bytes off a terminal are unchanged. A [question](../libs/prompts.md) no longer draws through `out.draw`: it opens an input region.
+On a terminal, `out.draw` is a region of one frame that core writes as it writes every other write to stderr: above every open [live region](#live-region), with no line break added, never held by an open input region, and at every verbosity. With no region open it writes exactly as before. Its count is still measured at the width read at its own draw, so a caller that erases by it keeps working, and its call order, its control sequences, and its bytes off a terminal are unchanged. A [question](../libs/prompts.md) opens an input region and does not draw through `out.draw`.
 
 ## Live region
 
@@ -102,7 +102,7 @@ interface Region {
 }
 interface Out<Result = unknown> {
   // ...the members under Output and failures...
-  region(options?: RegionOptions): Region; // new
+  region(options?: RegionOptions): Region;
 }
 ```
 
@@ -150,7 +150,7 @@ A live region is an area at the bottom of stderr that core redraws in place whil
 - **Resize.** Before it erases the stack, core recounts each region's last frame at stderr's current width, counting rows as `out.draw` counts them, so a frame that a reflowing resize rewrapped is erased whole. A stack taller than the terminal cannot be erased above its top row, so a view keeps its frame within stderr's `rows`, as the [select question](../libs/prompts.md#the-kinds) does.
 - **No timer in core.** Core never uses a timer to cancel or limit work because it has run too long. An application that needs a timeout sets one in its own action. A timer that animates a frame is plain JavaScript that the author or the library drawing the frame runs, and it stops the timer when `signal` aborts. Core runs no timer for a region and redraws only when a frame or another write asks it to.
 - **Reports.** `report({ completed?, total?, label? })` builds a typed [progress event](#progress-events) for whoever observes the run, and draws nothing. A region reports whether or not it is live.
-- **Names.** `Region`, `RegionOptions`, `RegionCloser`, and `ProgressReport` are exported from `@loomcli/core`, and `Out` gains `region`.
+- **Names.** `Region`, `RegionOptions`, `RegionCloser`, and `ProgressReport` are exported from `@loomcli/core`, and `Out` carries `region`.
 
 A region call whose value the types reject, such as an `input` that is not a Boolean or an `end` state other than `'ended'` or `'failed'`, gets no rule, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). A `completed` or `total` that is negative or not finite, which the type allows, is carried into the progress event as it is.
 
@@ -174,52 +174,6 @@ A progress event is the typed value a region's report builds, so a program that 
 - **Not logging.** A progress event reaches no [`onLog`](lifecycle-hooks.md#observing-log-events) hook, and no log event is a progress event, under [ADR-0069](../decisions/0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md).
 - **Names.** `ProgressEvent` is exported from `@loomcli/core`.
 
-### Live region acceptance
+## When author code fails
 
-The live region is proven when public APIs alone produce these results under Node and Bun, against a headless terminal emulator fed what core writes to a host whose stderr reports a terminal:
-
-- **The stack.** Two regions draw, an `out.info` and an `out.debug` at verbosity 1 between their frames land above both, and the screen holds both frames below them in open order. A frame that grows by a row moves the region below it down. Closing the top region moves its last frame into scrollback above the other region, and a region whose last frame is empty leaves no row. An `out.draw` that writes `partial` with no line break before the first region draws leaves `partial` on its own row above the frame.
-- **Stdout.** With stdout a terminal too, a result written while a region is drawn lands above the stack. With stdout piped, stdout receives the result alone and stderr's stack is untouched.
-- **Out of core.** A fixture `onLog` hook that writes to its destination's `stderr` while a region is drawn lands above the stack.
-- **Input regions.** A region redrawn on a timer stops changing while an input region is open and shows its latest frame once when the input region closes, and a region that closed meanwhile is in scrollback above the input region's last frame. A second input region's first draw resolves only after the first input region closes.
-- **The signal.** `end()`, the action's return, a thrown failure, and the run's cancellation each abort the signal with `closedBy` `'end'`, `'completion'`, `'failure'`, and `'cancellation'`, and a frame an abort listener draws is the region's last frame. A failed run's report follows every region's last frame, from an action, a middleware, and a configuration source. A cancelled run writes no report. A second input region still waiting when the run is cancelled reads `closedBy` `'cancellation'`. A region a middleware opens before `next()` is still open, with `closedBy` `undefined`, after the action returns, and reads `'completion'` once the chain has unwound; a region a middleware opens after `next()` reads `'completion'` too, and a region a configuration source opens reads `closedBy` `'completion'` after `--help` takes over.
-- **Not live.** `live` reads `false` with stderr piped, under `app.invoke` and an action's `invoke`, and at verbosity -1 for a region without `input: true`. Its `draw` calls no override of its view and writes nothing. An input region at verbosity -1 on a terminal reads `true` and draws.
-- **Resize.** A two-row frame drawn at 80 columns, after the emulator is resized to 40 columns and reflows, is erased whole by the next draw, and no stale row remains.
-- **`out.draw`.** Its count is unchanged for every frame the [prompts](../libs/prompts.md) acceptance once pinned, its text lands above an open region, it draws at verbosity -1, and off a terminal its bytes are unchanged.
-- **After close.** `draw`, `end`, and `report` on a closed region do nothing and resolve.
-- **Faults.** The negative type checks reject the calls the types forbid.
-
-### Progress events acceptance
-
-- **Order.** Under `app.invoke` with `onProgress`, a fixture action whose region reports three times and then ends delivers `started`, `updated`, `updated`, and `ended` in order, with the latest label, `completed`, and `total` on each. Two regions number 1 and 2 by first report. A region whose first report carries only `completed` delivers `label` `''`, each event is frozen, and the observer has received the event before `report` returns. A label reported as `style.highlight('x')` reaches the observer as `x`.
-- **Ends.** A region closed by `end('failed')` and by a thrown failure delivers `failed`, one closed by the action's return delivers `ended`, and one closed by the call's cancellation delivers `cancelled`. A region that never reported delivers nothing. A region ended with a label delivers that label, plain, on its end event alone, and one ended with none keeps its last reported label.
-- **Not logging.** A fixture `onLog` hook receives no event for any report.
-
-## Example coverage
-
-[textstat](../../examples/textstat/src/application.ts) prints a row per counted source, and a read failure on any source leaves stdout empty. The header names `COUNT`, then `SOURCE`. Counts right-align in a column as wide as the header or the widest count, a two-space gutter separates the columns, a table wider than a terminal shrinks as [Table](../plugins/pack-views.md#table) states, and the source column has no trailing padding. The total row is present only with `--total` and its source is `total`, so a selection that the byte threshold filters entirely still prints the header and one `total` row. The [table](../plugins/pack-views.md#table) view produces these bytes from the column list, and the [table and records coverage](../plugins/pack-views.md#table-and-records-example-coverage) pins them.
-
-```text
-COUNT  SOURCE
-    6  one.txt
-    2  two words.txt
-    8  total
-```
-
-[jsonkit](../../examples/jsonkit/src/views.ts) overrides one failure view, the literal `FatalError` view above, and keeps core's text for every other class, so its usage diagnostics are core's sentences opened by the application name under the audit row of [Failure messages](failures.md#9-audit), with the [suggestions](../plugins/suggestions.md) plugin's fix where a name is near and help's hint under each.
-
-| Invocation                              | stderr                                                                                   | Code |
-| --------------------------------------- | ---------------------------------------------------------------------------------------- | ---- |
-| `jsonkit select --field '' -f doc.json` | `jsonkit: Option "--field" at 0: Expected a nonempty value.` then `Run "jsonkit select --help" to see the usage.` | 2 |
-| `jsonkit get -f doc.json`               | `jsonkit: Argument "path" requires a value. Supply a value for "path".` then `Run "jsonkit get --help" to see the usage.` | 2 |
-| `jsonkit typo -f doc.json`              | `jsonkit: Unknown command "typo". Use one of: doctor, completion, mcp, manpage, get, keys, select.` then `Run "jsonkit --help" to see the usage.` | 2 |
-| `jsonkit gte -f doc.json`               | `jsonkit: Unknown command "gte". Did you mean "get"?` then `Run "jsonkit --help" to see the usage.` | 2 |
-| `jsonkit get missing -f doc.json`       | `Path not found: "missing". Run jsonkit keys to list the keys at the root.`                | 65   |
-| `jsonkit keys missing -f doc.json`      | `Path not found: "missing". Run jsonkit keys to list the keys at the root.`                | 65   |
-| `jsonkit get name -f broken.json`       | `The document is not valid JSON. Correct its syntax, or supply another document.`          | 65   |
-
-The two rows above the last are jsonkit's `PathNotFoundError`, a `FatalError` subclass that `get` and `keys` throw for a path the document does not hold. It declares `EX_DATAERR`, 65, under [Declared exit codes](failures.md#declared-exit-codes), because the document was read and its data holds no value at the path, which `EX_NOINPUT` would misreport as a missing input file. It renders through the literal `FatalError` view, which escapes the message and adds nothing, so its bytes match core's text for a message that carries no marker.
-
-The last row is jsonkit's `InvalidJsonError`, which its [translator](failures.md#translators) returns for the `SyntaxError` `JSON.parse` throws, so the reader holds no catch. It also declares 65. It names no source, because the translator sees only the `SyntaxError`, and it quotes no engine text.
-
-The registry increment is proven when jsonkit's `FatalError` override produces the bytes above unchanged, and when an override of `helpPage` in a test application changes `jsonkit --help` while `help()` stays installed. The acceptance tests cover the resolution order with one application override and one plugin override for a shared key, an application override for `UsageError` beside a plugin override for `InputError` resolving to the application's, an earlier plugin's `UsageError` override beside a later plugin's `InputError` override resolving to the earlier plugin's, a declared-view key from a second copy of a package rejected, an inert override for a view no plugin declares, an override of `lanes.warn` observed through `out.warn` with one newline, a hand-built object with an `identity` field rendered as a bare view, a help page and a version line whose graph facts carry marker characters printed literally, each build rule above, a broken lane view, a broken `helpPage` override under `jsonkit --help` returning 1 with one diagnostic on stderr, an action that throws an `InputError` after an unawaited broken `out.render` returning 2 with one diagnostic, and a broken failure view under the fallback path. The negative type checks gain the invariance cases, a replacement that requires data the key lacks and a declared view reassigned to another data type, and the retired `Renderer` cases move to `View`. Each case runs under Node and Bun.
+A view that throws, a lane view or a region's frame view included, makes the `out.render`, `out.draw`, `region.draw`, or semantic-method call reject with the view's error. A rejection the action or a middleware lets propagate takes the [ordinary failure path](failures.md#the-ordinary-failure-path), and a rejection the code caught is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). A call no code awaited has no catcher, so core reports its rejection through the ordinary failure path after the chain has settled, as the output-view row of the [ordinary failure path](failures.md#the-ordinary-failure-path) states. A row view's pieces written before the fault stand, under [Results](results.md#row-views).

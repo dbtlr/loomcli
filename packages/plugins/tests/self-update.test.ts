@@ -1,3 +1,54 @@
+/*
+ * Acceptance plan for the self-update plugin (docs/plugins/self-update.md#self-update-plugin).
+ *
+ * The plugin is proven when process tests under Node and Bun produce these results. Each fixture
+ * sets `HOME` and `XDG_STATE_HOME` to temporary directories and runs an application that installs
+ * `selfUpdate()` through `run({ host: { release } })`, whose installation names a binary in a
+ * temporary directory and whose record lies where `applicationDirectory` resolves for that
+ * environment, with a preload that replaces `fetch` with a fake GitHub that serves fixture
+ * releases, redirects asset downloads to another HTTPS host as GitHub does, and records each
+ * request:
+ *
+ * - Updating. Under umask `077`, a binary with mode `755` at `1.4.2` on `stable` fetches
+ *   `releases/latest`, `SHA256SUMS`, and the asset of the latest release, replaces the file with
+ *   the asset's bytes and mode `755`, rewrites `install.json` with the pinned bytes and the new
+ *   digest, prints the update line, calls `afterReplace` once with `1.4.2`, the new version, and
+ *   the recorded path, and exits 0. A leftover staging file from an earlier run is gone afterwards.
+ * - Channels. A binary at `1.6.0-next.1` resolves the highest `next` or stable release in the feed,
+ *   passing over a `beta` release, a tag that is not a version, and a higher `next` tag whose
+ *   `SHA256SUMS` answers `404`, and moves to a stable `1.6.0` that outranks it. `--channel next`
+ *   from a stable binary installs the newest `next` release, and `--channel stable` from
+ *   `1.6.0-next.1` with `1.5.0` latest prints the newer-only line. A repository named `Acme/Notes`
+ *   in the release facts matches feed links for `acme/notes`, and one GitHub redirects to
+ *   `acme/notes2` resolves and downloads from `acme/notes2` on both channels. A `releases/latest`
+ *   that redirects to `/releases` fails with the no-release sentence.
+ * - Versions. `1.4.0` and `v1.4.0` install `v1.4.0` from a binary at `1.5.0`, and the running
+ *   version prints that it is already installed. `--channel next 1.4.0`, `1.x`, and `--channel 01`,
+ *   which SemVer forbids as an identifier, exit 2, and `--channel 1` follows the channel a version
+ *   such as `2.0.0-1` derives.
+ * - Newer only and `--check`. The latest release equal to the running version replaces nothing and
+ *   calls no hook. `--check` prints the pinned lines for a channel, for a named version, and for
+ *   the running version named, requests `SHA256SUMS` and no binary, writes nothing, and calls no
+ *   hook.
+ * - Refusals. A run with no release group, no asset, no installation, the method `npm`, an
+ *   unresolvable record directory, a missing file, a symbolic link at the recorded path, a file
+ *   whose digest changed, and a read-only directory each exit 1 with the pinned sentence, make no
+ *   request, and leave the binary and `install.json` byte for byte. A digest mismatch, no
+ *   `SHA256SUMS` line for the asset, two lines with different digests, a `404` for a named version,
+ *   a `503`, a redirect to `http:`, 21 redirects, a request that gets no response, and a staging
+ *   write that fails each exit 1 with the pinned sentence and leave the binary, `install.json`, and
+ *   no staging file. A channel with no release in the feed exits 1.
+ * - Cancellation. A run aborted during the asset download exits 130, writes no download failure
+ *   sentence, and leaves the binary, `install.json`, and no staging file. A run aborted after the
+ *   rename writes the record and the update line, calls the hook with an aborted signal, and exits
+ *   130.
+ * - The hook. An `afterReplace` that throws exits 1 through the ordinary failure path after the
+ *   update line, with the new binary and record in place, and the hook reads the run's host and
+ *   signal.
+ * - Packaging. `pnpm check:packed` resolves `@loomcli/plugins/self-update` from the packed tarball
+ *   under Node and Bun.
+ */
+
 import { createHash } from 'node:crypto';
 import {
   chmodSync,

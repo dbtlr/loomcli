@@ -52,7 +52,7 @@ Core's `InternalError` default text keeps its current form until the author deve
 
 ## Status
 
-Proposed 2026-09-28. Accepted 2026-09-28 with the implementation: the audited messages in [Failure messages](../core/failures.md#9-audit) ship with the rewritten text, core's default text opens every `UsageError` with the application name, `escapeControlCharacters` and core's quoted tokens escape the listed format characters, core's routing candidates leave out deprecated Commands, and the example applications' `fatal`, `warn`, and `FatalError` sentences end with their fix, under Node.js and Bun.
+Proposed 2026-09-28. Accepted 2026-09-28 with the implementation: the audited messages in [Failure messages](../core/failures.md#failure-message-voice) ship with the rewritten text, core's default text opens every `UsageError` with the application name, `escapeControlCharacters` and core's quoted tokens escape the listed format characters, core's routing candidates leave out deprecated Commands, and the example applications' `fatal`, `warn`, and `FatalError` sentences end with their fix, under Node.js and Bun.
 
 ## Changelog
 

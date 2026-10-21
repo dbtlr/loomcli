@@ -1,3 +1,4 @@
+// Acceptance plan: see packages/plugins/tests/table-fit.test.ts.
 import { fileURLToPath } from 'node:url';
 
 import { expect, test } from 'vite-plus/test';

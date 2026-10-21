@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/plugins/tests/installed-files.test.ts.
+
 import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

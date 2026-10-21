@@ -132,25 +132,8 @@ Tabs remain text except inside a padding frame, where they expand under the tab 
 The parser scans each input segment once. A rejected header cannot trigger rescans from every embedded opening delimiter.
 Emitted output is proportional to input and requested padding, with no implicit small limit on valid strings.
 Deep padding around unchanged content reuses its Unicode analysis. Arbitrary nested padding that changes its content at every level can require quadratic measurement work and transient allocation, including repeated appends of combining marks.
-Eliminating that pathological cost is a separate performance increment. The current resolver does not promise linear work for every nested composition.
+The current resolver does not promise linear work for every nested composition.
 Run `node packages/core/tests/fixtures/padding-growth.mjs concatenated` after building to reproduce it; `unchanged` exercises cached wrappers.
 Line breaking does not share that cost. `wrap` reads each input line once and answers every candidate span from that reading, so its work is linear in the text. Three cases are the exception, and `wrap` lays out their spans afresh: a line that holds a tab, any line of a text that holds a padding frame, and a span that starts or ends inside a grapheme cluster. The width helper and `plain` likewise measure and resolve a text with no padding frame, command, or tab without laying it out. Run `node packages/core/tests/fixtures/wrap-cost.mjs` after building to time `wrap` over long cells and paragraphs, with styles and with wide characters, and the table view over long cells. Each line it prints names a case, its time, and a digest of its output.
 Numeric validation prevents negative, fractional, infinite, and unsafe widths before a padding frame is produced.
 Allocation failure follows the ordinary view failure path; core does not silently truncate output.
-
-## Required constructions
-
-Implementation acceptance includes these cases through both width measurement and final output:
-
-- Every delimiter as literal input, escaped once, escaped twice, and next to a valid frame.
-- Unknown tokens and glyphs, malformed JSON, truncated headers, extra closes, and unterminated recognized frames.
-- A recognized glyph header with a nonempty body, preserving the malformed frame as literal text.
-- A known token without a mapping, a custom undefined mapping, and a literal string resembling a complete registered frame.
-- Nested styles, reset variants, embedded ANSI resets, and an ANSI reset inside a padded frame.
-- A multi-character compatibility glyph inside nested padding and escaped delimiters inside a measured value.
-- A no-wrap frame holding a style, a glyph, or a padding frame, and nested inside each, resolving to its body byte for byte, and a `["nowrap", 1]` header kept as literal text.
-- Large malformed headers without quadratic header rescanning, and deep unchanged padding without recursive-stack failure or repeated Unicode analysis.
-- Unclosed ANSI styling and hyperlinks followed by a separate output call, with no leaked formatting.
-- Loom frame boundaries inside raw OSC payloads and raw ANSI commands split across Loom frames, under disabled styling policies.
-
-Public process fixtures in `packages/core/tests/style.test.ts` exercise these constructions on Node and Bun.

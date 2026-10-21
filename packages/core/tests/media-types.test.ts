@@ -1,3 +1,22 @@
+/*
+ * Acceptance plan for media types (docs/core/results.md#media-types).
+ *
+ * Media types are proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - The examples. `inspect()` reports `mediaTypes` `{ table: null, json: 'application/json', jsonl:
+ *   'application/jsonl' }` on textstat's root and `{ list: null, table: null, json:
+ *   'application/json', jsonl: 'application/jsonl' }` on jsonkit's `paths`, and every pinned result
+ *   byte is unchanged.
+ * - Each store. A fixture declares a media type on a bare whole view, a row view, a declared view,
+ *   a view `views()` adds, and a view a hook adds, and each reads back by name. A view that
+ *   declares none reads `null`, a mapped `json()` under the key `wire` reads `application/json`,
+ *   and a write to a view object after the call changes no fact.
+ * - No check. A media type of `nonsense` is stored as written, and a view whose text is not JSON
+ *   under `application/json` renders unchanged.
+ * - Faults. The negative type checks reject a `mediaType` of `5` on a result view and on a declared
+ *   view.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

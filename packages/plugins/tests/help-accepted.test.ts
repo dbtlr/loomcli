@@ -1,3 +1,32 @@
+/*
+ * Acceptance plan for accepted values (docs/plugins/help.md#accepted-values).
+ *
+ * Accepted values are proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - Example pages. `textstat --help` prints the `--metric` and `--format` rows shown above, and
+ *   `jsonkit --help` prints `--format` with `One of: records, json, jsonl.`. The quoted pages in
+ *   this document and the example applications' help and manifest goldens are re-pinned for the
+ *   formatter's new description.
+ * - Derived shapes. Fixture applications prove each shape the Derived rule names, a string `enum`,
+ *   a single string `const`, and an `anyOf` of them, at every level it can appear: at the top level
+ *   and as an `anyOf` member, on a single option, a multiple option, and a variadic argument. At
+ *   each level, one case holds `type: 'string'` beside the shape and one holds an annotation such
+ *   as `default`, and both still derive, and one holds a narrowing keyword, such as `pattern` or
+ *   `minLength`, and derives nothing. Beside those, fixtures cover an `anyOf` mixing an `enum`
+ *   member and a `const` member, flattened in order, with a value repeating across members printing
+ *   once; a schema holding only a narrowing keyword such as `pattern`, with no closed set, deriving
+ *   nothing; an `enum` beside a `const` or an `anyOf` at the same level deriving nothing; a
+ *   repeated value printing once, an empty set and a nullable enum deriving nothing, eight values
+ *   printing, nine deriving and help listing none, a set holding a number deriving nothing, and an
+ *   argument row deriving from its schema.
+ * - Authored. An `accepts` wins over a derived list, prints for an input with a `null` or pattern
+ *   schema, prints on an argument row through `helpArgument`, and is never shown on a Boolean
+ *   option.
+ * - Text. A value that is empty or holds a space, a comma, a double quote, a line terminator, or a
+ *   control character prints as its JSON string, a marker character in a value prints literally,
+ *   and a row with no description starts its right cell with the sentence.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

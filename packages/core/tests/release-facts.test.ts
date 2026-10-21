@@ -1,3 +1,59 @@
+/*
+ * Acceptance plan for release facts (docs/core/release-facts.md#release-facts).
+ *
+ * Release facts are proven when public APIs and process runs alone produce these results:
+ *
+ * - The examples. jsonkit and textstat carry no packet and build with `loom build --target node`.
+ *   The process tests run each bundle under Node and Bun, and every golden they pin is unchanged,
+ *   because operator failures print the same bytes in both builds. A process test runs `bun
+ *   src/main.ts` for each example and pins the same bytes for its usage errors.
+ * - A source run. A fixture action that prints `host.release` prints `{ build: 'source' }` from
+ *   source. When the action throws a `TypeError` instead, the run writes the Developer Diagnostic
+ *   of `@loomcli/core/foreign-throw` and exits 1.
+ * - A bundle with facts. The fixture bundled by `loom build --target node` prints `{ build:
+ *   'distributed' }` with no release group, and its throwing action writes exactly `probe:
+ *   Something went wrong.` and exits 1, with no reason, class name, or path on stderr. Built with
+ *   `--build development`, it prints `development` and writes the Developer Diagnostic. Built with
+ *   `--release` from a package at `1.1.0-next.3` whose `repository` reads
+ *   `git+https://github.com/acme/probe.git`, it prints version `1.1.0-next.3`, channel `next`, and
+ *   repository `acme/probe`, with no asset, and a package at `2.0.0` reads channel `stable`. A
+ *   compiled binary built with `loom build --release` for the host target reads its asset name and
+ *   writes the generic message.
+ * - A bundle without facts. A packed consumer bundles a fixture application with `Bun.build` and
+ *   with Rolldown, each with no define. Each bundle reads `{ build: 'source' }` and writes the
+ *   Developer Diagnostic for a defect under Node and Bun. Each pads wide, combining, emoji, and
+ *   flag text to its display width and keeps the license notices of core's derived modules.
+ * - A malformed define. A fixture bundled with `--define` values that bake `{"build":"staging"}`,
+ *   `[]`, a release group whose version is `one`, and `"compiled":1` each exits 1 with the
+ *   Developer Diagnostic of `@loomcli/core/invalid-release-facts` and runs no action. `app.invoke`
+ *   from the same bundle resolves `failed` with exit 1, `inspect()` throws the `InternalError`, and
+ *   `run({ host: { release: { build: 'distributed' } } })` runs, because the override replaces the
+ *   baked value. A baked member core does not know reads as the known members alone.
+ * - Overrides by build. From source, `run({ host: { release: { build: 'distributed' } } })` writes
+ *   the generic message for a defect and `{ build: 'development' }` writes the Developer
+ *   Diagnostic. An application override of `InternalError` renders a defect in a distributed build
+ *   and is not consulted in a development build; a plugin override of `InternalError` is likewise
+ *   not consulted in development. An `onFailure` hint prints under the generic message and under
+ *   the Developer Diagnostic. An action's `invoke` reads its run's facts, and `app.invoke` with
+ *   `host: { release }` reads the override.
+ * - Build faults. A root with neither children nor an action writes the generic message from a
+ *   distributed bundle and its Developer Diagnostic from source, both with exit 1, and `inspect()`
+ *   throws the `DeclarationError` in both.
+ * - Broken contracts. A broken failure view and a throwing `onFailure` hook each write the
+ *   failure's own text and then one generic line in a distributed build, and the broken contract's
+ *   Developer Diagnostic in a development build, with exit 1, or 130 in a run a caller cancelled.
+ * - The converter. A validated input whose converter throws is a `DeclarationError` from `run()`
+ *   and `inspect()` from source and from a `--build development` bundle, and reads `null` in a
+ *   distributed bundle.
+ * - The packed consumer. A packed consumer installs `@loomcli/core` and `@loomcli/loom`, compiles
+ *   an action that reads `host.release` against core's emitted declarations with `skipLibCheck`
+ *   off, runs `loom build --target node` in its fixture package, and the bundle reads `distributed`
+ *   under Node and Bun while the source reads `source`. `@loomcli/loom` exports no `./build`
+ *   subpath.
+ *
+ * Each case runs under Node and Bun, except the source runs, which run under Bun.
+ */
+
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

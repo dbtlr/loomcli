@@ -1,3 +1,47 @@
+/*
+ * Acceptance plan for Developer Diagnostics
+ * (docs/core/declaration-faults.md#developer-diagnostics).
+ *
+ * Developer Diagnostics are proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - Thrown at a call. A fixture whose two `option()` calls give one short spelling throws while it
+ *   loads; the error's `message` holds the diagnostic of its rule, and the process's stderr under
+ *   both runtimes contains it.
+ * - From `run()`. A build fault, a default its validator rejects, and an implied value its
+ *   validator rejects each write their pinned diagnostic from source in a development build, with
+ *   the application name before the path in the findings.
+ * - A third-party rule. The fixture plugin writes the pinned text for `retry(50)`, with two
+ *   findings for a fixture fault that names both sides of a collision, and a correction list
+ *   printed one line per fix. A sentence-only `DeclarationError` from a fixture plugin writes the
+ *   banner and the sentence alone.
+ * - The descriptor. `diagnosticRule()` throws for an identity with no package part and one with an
+ *   uppercase rule name, and returns a frozen value otherwise.
+ * - A defect's source. In a development build, an action that throws a `TypeError` prints the
+ *   rule's banner, the action's own source lines with the caret under the failing column, and the
+ *   cause's name, escaped message, and stack; a cause chain of two prints both. A frame inside
+ *   `node_modules` is skipped for the next qualifying one.
+ * - The guards. A fixture throws an Error whose forged stack names a file outside `host.cwd` and
+ *   one that names a file that does not exist; `readSource` is not called for the first, the second
+ *   answers `undefined`, and both print the frame's location alone. The captured reader answers
+ *   `undefined` for a symbolic link under `cwd` that points outside it, with `cwd` itself reached
+ *   through a symbolic link, as `/tmp` is on macOS. A frame named by a `file:` URL reads its file.
+ *   A `readSource` that throws prints the location alone. In a distributed build `readSource` is
+ *   never called. The captured reader answers `undefined` for a FIFO and for a file larger than 1
+ *   MiB. A message line that reads as a frame never names a file the reader is asked for, a frame
+ *   whose path holds spaces or parentheses reads its file, and an action thrown from a module under
+ *   a `host.cwd` reached through a symbolic link prints its source.
+ * - Escaping. A cause whose message holds a line break, a bidirectional control, or a U+2028 prints
+ *   it escaped by `escapeControlCharacters`, both in the cause chain and where the sentence quotes
+ *   it, a validator's thrown reason included.
+ * - The layout. Goldens pin the whole text of a third-party rule's fault with findings, a core
+ *   declaration fault with a finding for each of two declarations, a core fault with no finding
+ *   from `run()`, and a defect with its source and stack.
+ * - The families. Every declaration rule in core, the pack, and the catalog pins its identity,
+ *   sentence, and correction, family by family. Each explanation lives in its rule's registry, and
+ *   one registry test per package checks that every rule there has one declaration, a one-line
+ *   headline, and an explanation of whole sentences on one line.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

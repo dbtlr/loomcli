@@ -1,3 +1,46 @@
+/*
+ * Acceptance plan for input sources (docs/core/input-sources.md#input-sources).
+ *
+ * Input sources are proven when public APIs alone produce these results under Node and Bun:
+ *
+ * - Precedence. A fixture option bound to a variable and to a configuration key reads argv over the
+ *   environment, the environment over the configuration source, and the configuration source over
+ *   the default, and an empty variable falls through.
+ * - Supplied. A required option filled from the environment passes, a `validateOmitted` validator
+ *   receives the filled string, `supplied` holds it, and the action receives the same value it
+ *   would for the flag.
+ * - Booleans. `true`, `1`, `FALSE`, and `0` fill a Boolean option under each polarity, `yes` fails
+ *   with the grammar diagnostic, and `NO_COLOR` keeps its presence rule.
+ * - Counts. `0`, `3`, and `007` fill a counted option with `0`, `3`, and `7`, `-1`, `1.5`, and
+ *   `three` fail with the count diagnostic, one occurrence beats the variable, and a configuration
+ *   answer of `2` fills `2`.
+ * - Implied values. A variable bound to a string option with an implied value fills the string it
+ *   holds, and no source supplies the implied value.
+ * - Activation. A plugin's option filled from the environment activates its middleware, and one
+ *   filled with `false` activates it too.
+ * - Held faults. A bad variable and a failing source both report nothing under `--help`, and each
+ *   reports its diagnostic without it.
+ * - Loading. A source is never loaded when no in-scope option is unfilled, configuration-bound, and
+ *   free of an environment fault, so a Boolean variable outside the grammar keeps the source
+ *   unloaded although its option is unfilled and configuration-bound. A source answers a multiple
+ *   option with a list.
+ * - Declarations. Each row of Input source declaration errors is rejected, and one variable bound
+ *   on two sibling Commands is accepted.
+ * - Projections. `inspect()` and the manifest report `env` on bound and unbound options.
+ * - Diagnostics. A rejected filled value prints `Option "--limit" (from TEXTSTAT_LIMIT): ...`, a
+ *   configuration answer prints its label, and an argv message is unchanged.
+ * - Scope. With a structural fault held, a global option is still filled and activates, a local
+ *   option is not, and the structural fault is reported ahead of a source fault.
+ * - Faults. Each invocation-time source fault prints its sentence with code 1.
+ * - Cancellation. An abort during the source call awaits it and dispatches nothing.
+ * - Own options. The source's own options are never in requests.
+ * - Ordinary channels. A source's `out.warn` renders through an override of `lanes.warn`, a source
+ *   reads `graph.name`, and an `InputError` a source throws prints each line of its message after
+ *   the application name and a colon with code 2, reports nothing under `--help`, and runs no
+ *   validation after it. The failure classes a source throws with other codes are proven under
+ *   Declared exit codes acceptance.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';

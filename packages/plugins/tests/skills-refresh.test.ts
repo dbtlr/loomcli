@@ -1,3 +1,5 @@
+// Acceptance plan: see packages/plugins/tests/skills.test.ts.
+
 import {
   chmodSync,
   existsSync,

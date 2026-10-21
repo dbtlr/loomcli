@@ -1,3 +1,39 @@
+/*
+ * Acceptance plan for progress lines (docs/libs/prompts.md#progress).
+ *
+ * - The look. Against a headless terminal emulator, a fixture's counted line and spinner line read
+ *   as the Progress view table shows, with color and with `NO_COLOR`, the spinner advancing one
+ *   frame each interval, and each success, failure, and cancelled line replacing its frame and
+ *   staying in scrollback. On a host that takes compat glyph forms, the failure line opens with
+ *   `×`. Two lines stack in start order, a lane message written between their frames lands above
+ *   both, and a question asked while they run holds them still and lets each catch up once when it
+ *   is answered.
+ * - Counts and time. The default view, rendered directly, draws 3 complete cells for 1/3, 10 for
+ *   12/10, and 10 for 0/0, reads `33%` for 1.5 of 4.5 and `0/5` for an absent `completed` of 5, and
+ *   reads `59.9s` at 59 999 ms, `1m 05s` at 65 999 ms, and `1h 02m` at 3 779 999 ms.
+ * - Tracking. `track` returns the work's value and ends with `done` from a function of it, and a
+ *   rejection fails with `failed` from a function of the rejection and rethrows the same object. A
+ *   line closed before its work settles draws nothing more.
+ * - Failing and returning. An action that throws with two lines open writes both failure lines
+ *   above the failure report, and one that returns with a line open writes its success line. A line
+ *   a middleware opens before `next()` and leaves open is still running after the action returns
+ *   and writes its success line once the chain has unwound.
+ * - Cancellation. `SIGINT` under a signals owner writes each open line's cancelled line, exits 130,
+ *   and leaves no timer that holds the process open.
+ * - Off a terminal. With stderr piped, the run writes exactly the plain lines the Progress section
+ *   shows. Under `-q` with the verbose plugin, it writes only failure lines. Under `app.invoke`,
+ *   the lines land in `messages`, and the observer reads every progress event in order. The end
+ *   event of a line ended by `end`, `fail`, or `track` with a `done` or `failed` message carries
+ *   that message as its label, and one ended with no message carries the line's last label.
+ * - Style. `progressStyle({ spinner: spinners.dots })` draws the dots frames at their interval, a
+ *   call's own spinner wins for its line, and the defaults hold without the plugin.
+ * - View. An override of `progressLine` changes every line's frame, and its data carries the state,
+ *   counts, frame, bar cells, and elapsed time the Progress view section lists.
+ * - Packed. `check:packed` installs the packed library, imports `progress` and `progressStyle` from
+ *   `@loomcli/prompts` and `progressLine` from `@loomcli/prompts/views`, and compiles against their
+ *   declarations under Node and Bun.
+ */
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke, start } from '../../../scripts/test-process.js';

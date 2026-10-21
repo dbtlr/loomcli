@@ -1,3 +1,4 @@
+// Acceptance plan: see packages/plugins/tests/manifest.test.ts.
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 

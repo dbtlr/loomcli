@@ -1,3 +1,5 @@
+// Acceptance plan: see examples/jsonkit/tests/completion.test.ts.
+
 import { createHash } from 'node:crypto';
 import {
   chmodSync,

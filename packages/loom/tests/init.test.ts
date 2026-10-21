@@ -1,3 +1,33 @@
+/*
+ * Acceptance plan for loom init (docs/toolchain/init.md).
+ *
+ * `loom init` is proven when process runs of the packed `loom` bin produce these results under Node
+ * and Bun:
+ *
+ * - A new application. In an empty directory, init writes `package.json`, the scaffold files, the
+ *   fragment guide, and the skill, and prints the warning that `install.sh` was not written,
+ *   because the new `package.json` names no repository. After the package manager installs, `tsc
+ *   --noEmit` and the assembly test pass, `loom build --target node` builds, and the bundle runs
+ *   under Node and Bun. The packed run installs the scaffold from the packed tarballs for the
+ *   defaults and for `--linter eslint --test-runner vitest`, requires `tsc` to report TypeScript 7,
+ *   requires `bun run check` to exit 0, and requires each linter run to name `@loomcli/undescribed`
+ *   once an option lacks a description.
+ * - An existing package. In a package with its own `src/application.ts`, `scripts.build`,
+ *   `tsconfig.json`, and `devDependencies.typescript`, init writes the missing pieces and leaves
+ *   all four byte-identical. `--only changes` writes `.changes/README.md` alone, and `--only
+ *   tsconfig` writes `tsconfig.json` alone.
+ * - Managed files. Re-running init on an unedited managed file re-renders it. An edited one draws
+ *   one warning and stays byte-identical, and `--force` re-renders it. A file whose header was
+ *   deleted stays byte-identical under `--force` and draws no warning.
+ * - The installer script. In a package whose `repository` reads as `me/notes`, init writes
+ *   `install.sh` with the shell header, the application's name, and `me/notes`, and the file is
+ *   executable. After `repository` changes to `me/jot`, init re-renders an unedited script with
+ *   `me/jot`. An edited script draws the drift warning from init. `--only install` writes the
+ *   script alone. With no `repository`, and with a `repository` on another host such as
+ *   `gitlab:me/notes`, init writes no `install.sh`, prints the warning that names `repository`, and
+ *   exits 0.
+ */
+
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

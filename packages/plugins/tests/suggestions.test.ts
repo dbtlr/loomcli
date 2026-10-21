@@ -1,3 +1,79 @@
+/*
+ * Acceptance plan for the suggestions plugin (docs/plugins/suggestions.md).
+ *
+ * Both example applications install `suggestions()`. jsonkit drops its `unknownCommand` and
+ * `inputProblems` overrides, because core's default text names the application under Failure
+ * classes (docs/core/failures.md#failure-classes), so the one override it keeps is the literal
+ * `FatalError` view, and its example coverage (docs/core/commands.md) reads as the
+ * rows below. Every usage diagnostic both examples pin gains help's hint line. Where help's hint
+ * and the explain hint both apply, help's prints first, because `help()` is installed first.
+ *
+ * - `jsonkit gte name -f doc.json`: `jsonkit: Unknown command "gte". Did you mean "get"?` then `Run
+ *   "jsonkit --help" to see the usage.`, code 2.
+ * - `jsonkit Get name -f doc.json`: `jsonkit: Unknown command "Get". Did you mean "get"?` then the
+ *   help hint, code 2.
+ * - `jsonkit typo -f doc.json`: `jsonkit: Unknown command "typo". Use one of: doctor, completion,
+ *   mcp, manpage, get, keys, select.` then the help hint, code 2.
+ * - `jsonkit lss -f doc.json`: core's text, because `ls` is an alias and `keys` is too far, code 2.
+ * - `jsonkit fetc -f doc.json`: core's text, because `fetch` is deprecated, code 2.
+ * - `jsonkit select --fields name -f doc.json`: `jsonkit: Unknown option "--fields". Did you mean
+ *   "--field"?` then the help hint, then `Run "jsonkit select --explain" to explain this command.`,
+ *   code 2.
+ * - `jsonkit select --fiel name -f doc.json`: `jsonkit: Unknown option "--fiel". Did you mean one
+ *   of these: --file, --field?`, both at distance 1 in declaration order, file before field, then
+ *   the help hint and the explain hint, code 2.
+ * - `jsonkit get --hlep name -f doc.json`: `jsonkit: Unknown option "--hlep". Did you mean
+ *   "--help"?` then the help hint and the explain hint, code 2.
+ * - `jsonkit get -f doc.json`: `jsonkit: Argument "path" requires a value. Supply a value for
+ *   "path".` then `Run "jsonkit get --help" to see the usage.`, code 2.
+ * - `textstat --totl one.txt`: `textstat: Unknown option "--totl". Did you mean "--total"?` then
+ *   `Run "textstat --help" to see the usage.` and the explain hint, code 2.
+ * - `textstat --minimun 5 one.txt`: core's text, because `--minimum` is an alias and `--min-bytes`
+ *   is too far, code 2.
+ * - `textstat --timin one.txt`: core's text, because `--timing` is hidden, code 2.
+ *
+ * The acceptance tests cover, through public APIs with fixture applications and fixture plugins:
+ *
+ * - the distance of each edit kind, an insertion, a deletion, a substitution, and an adjacent
+ *   transposition, and that a non-adjacent transposition costs 2;
+ * - the budget at 4, 5, 8, and 9 code points, with a token one edit past its budget matching
+ *   nothing;
+ * - a token of one code point after the hyphens are removed matching nothing;
+ * - NFC normalization and lowercasing, with a token that differs only in case matching at distance
+ *   0;
+ * - code points counted rather than code units, with a candidate that holds no astral character
+ *   beside a token that does;
+ * - leading hyphens left out for an option, with `---format` treated as `format`;
+ * - ranking by distance then graph order, with two candidates at one distance printed in authoring
+ *   order;
+ * - the cap of three with four matches;
+ * - a negative spelling suggested for its own typo and never for the positive spelling's, a
+ *   positive spelling never suggested for the negative spelling's, and both suggested for a typo as
+ *   near to each;
+ * - a plugin's option suggested;
+ * - a hidden child, a deprecated child, a hidden option, a deprecated option, and an alias never
+ *   suggested, each with the typo one edit from the excluded name;
+ * - the plugin's hook adding no hint line, so a second plugin's hint is the only line under the
+ *   plugin's sentence;
+ * - the view's bytes equal to core's default text, hints included, when nothing matches;
+ * - the escaped token in the sentence for a token that holds a control character or a bidirectional
+ *   control;
+ * - hints printed under the plugin's sentence in installation order;
+ * - an application override of `UnknownCommandError` winning over the plugin's, and an
+ *   earlier-installed plugin's override winning too;
+ * - a later-installed plugin's override losing;
+ * - the plugin installed before `help()` changing neither the help takeover nor the hint order of
+ *   the other plugins;
+ * - help's hint on each `UsageError` class, an `InputError` an action throws included, with the
+ *   command line of the root, of a group, and of a nested Command;
+ * - help's hint absent on a `FatalError`, an `InternalError`, and a `DeclarationError` a run
+ *   reports;
+ * - the example rows above.
+ *
+ * Each case runs under Node and Bun. A consumer installs the packed pack, imports
+ * `@loomcli/plugins/suggestions`, compiles against its declaration, and prints a suggestion.
+ */
+
 import { describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
