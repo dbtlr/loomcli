@@ -222,11 +222,7 @@ const keepAlive = setInterval(() => undefined, 60_000);
 const started = performance.now();
 let code = undefined;
 if (scenario.invoke) {
-  const outcome = await app.invoke(
-    [],
-    {},
-    { host: { env: scenario.env ?? {}, release: { build: 'distributed' } } },
-  );
+  const outcome = await app.invoke([], {}, { host: { env: scenario.env ?? {} } });
   code = outcome.status === 'failed' ? outcome.messages : outcome.status;
 } else {
   code = await app.run({
@@ -234,7 +230,6 @@ if (scenario.invoke) {
       argv: scenario.argv ?? [],
       env: scenario.env ?? { COLORTERM: 'truecolor', TERM: 'xterm-256color' },
       platform: scenario.platform ?? 'linux',
-      release: { build: 'distributed' },
       stderr: stderr.stream,
       stdin,
       stdout: stdout.stream,

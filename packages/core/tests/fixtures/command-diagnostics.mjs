@@ -46,11 +46,7 @@ const scenarios = {
 
 const scenario = process.argv[2];
 
-if (scenario === 'root-undescribed') {
-  // A gap waits for a development run, which reports it before routing.
-  const app = new Application('probe').action(act);
-  process.exitCode = await app.run({ host: { argv: [] } });
-} else if (scenario === 'root-without-action') {
+if (scenario === 'root-without-action') {
   // A root fault waits for build, which run() reports with the application name in a development build.
   process.exitCode = await new Application('probe').run({ host: { argv: [] } });
 } else {

@@ -126,6 +126,6 @@ function rooted() {
 }
 
 const code = await (scenario === 'rooted' ? rooted() : kit()).run({
-  host: { argv, release: { build: 'distributed' } },
+  host: { argv },
 });
 process.stdout.write(`resolved:${code}\n`);

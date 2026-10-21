@@ -363,7 +363,7 @@ if (scenario === 'pre-aborted') {
     signal.addEventListener('abort', () => {
       void new Application('app', { plugins: [plugins.bracket()] })
         .action(holding)
-        .run({ host: { argv, release: { build: 'distributed' } } });
+        .run({ host: { argv } });
     });
     await out.print(counts('first'));
     await out.print('ready');
@@ -371,14 +371,14 @@ if (scenario === 'pre-aborted') {
   };
   await new Application('app', { plugins: [plugins.bracket()] })
     .action(branching)
-    .run({ host: { argv, release: { build: 'distributed' } } });
+    .run({ host: { argv } });
   process.stdout.write('resolved\n');
 } else if (scenario === 'twice') {
   // One Application, run twice, so each run installs its own listeners and removes them.
   const app = application();
-  const first = await app.run({ host: { argv, release: { build: 'distributed' } } });
+  const first = await app.run({ host: { argv } });
   process.stdout.write(`${counts('between')}\n`);
-  const second = await app.run({ host: { argv, release: { build: 'distributed' } } });
+  const second = await app.run({ host: { argv } });
   process.stdout.write(`${counts('after')}\n`);
   process.stdout.write(`resolved:${first}:${second}\n`);
 } else if (scenario === 'not-a-signal-host') {

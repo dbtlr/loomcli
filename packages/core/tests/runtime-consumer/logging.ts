@@ -23,5 +23,5 @@ const app = new Application('packed-logging', {
 });
 
 await app.run({
-  host: { argv: process.argv.slice(2), platform: 'linux', release: { build: 'distributed' } },
+  host: { argv: process.argv.slice(2), platform: 'linux' },
 });

@@ -122,7 +122,7 @@ if (mode === 'inspect') {
   }
 } else {
   const code = await app.run({
-    host: { argv: process.argv.slice(4), release: { build: 'distributed' } },
+    host: { argv: process.argv.slice(4) },
   });
   process.stdout.write(`resolved:${code}\n`);
 }

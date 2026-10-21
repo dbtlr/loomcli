@@ -53,7 +53,6 @@ await app.run({
   host: {
     argv,
     env: { COLORTERM: 'truecolor', TERM: 'xterm-256color' },
-    release: { build: 'distributed' },
     stderr,
     stdin,
     terminal: {

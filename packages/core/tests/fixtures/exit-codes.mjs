@@ -375,7 +375,7 @@ if (scenario === 'statics') {
     throw new RegistryUnavailableError(503);
   });
   const code = await app.run({
-    host: { argv, release: { build: 'distributed' } },
+    host: { argv },
     signal: controller.signal,
   });
   process.stdout.write(`resolved:${code}\n`);

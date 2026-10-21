@@ -33,7 +33,6 @@ for (const token of tokens) {
   const stderr = sink();
   const host = {
     argv: [`--at=${token}`],
-    release: { build: 'distributed' },
     stderr: stderr.stream,
     stdout: stdout.stream,
   };

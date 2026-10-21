@@ -38,7 +38,6 @@ process.exitCode = await app.run({
     cwd: scenario.cwd,
     env: scenario.env,
     platform: scenario.platform ?? 'linux',
-    release: { build: 'distributed' },
     // A scenario with `columns` runs on a terminal that wide, so lanes wrap.
     ...(scenario.columns === undefined
       ? {}

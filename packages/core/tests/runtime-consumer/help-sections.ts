@@ -39,5 +39,5 @@ const app = new Application('grouped', {
   .command(read);
 
 process.exitCode = await app.run({
-  host: { argv: process.argv.slice(2), release: { build: 'distributed' } },
+  host: { argv: process.argv.slice(2) },
 });

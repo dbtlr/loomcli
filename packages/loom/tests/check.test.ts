@@ -37,8 +37,8 @@ export const probe = new Application('probe', { description: 'Probe the check.' 
 `;
 
 /**
- * An application with two inputs whose converters throw, an undescribed option, and a plugin whose
- * `onGraphBuilt` hook rejects the graph: four faults, which `check()` returns in that order.
+ * An application with two inputs whose converters throw and a plugin whose `onGraphBuilt` hook
+ * rejects the graph: three faults, which `check()` returns in that order.
  */
 const faulty = `import { writeFileSync } from 'node:fs';
 
@@ -74,7 +74,6 @@ const rejecting = plugin('@fixture/judge', {
 export const probe = new Application('probe', { description: 'Probe the check.', plugins: [rejecting] })
   .option('first', { description: 'The first.', type: 'string', validate: unconvertible('No first schema.') })
   .option('second', { description: 'The second.', type: 'string', validate: unconvertible('No second schema.') })
-  .option('bare', { type: 'string' })
   .action(() => {
     writeFileSync(new URL('../action-ran.txt', import.meta.url), 'ran');
   });
@@ -153,7 +152,6 @@ test('every fault prints as its Developer Diagnostic in order, one blank line ap
   expect(rules(result.stderr)).toEqual([
     '@loomcli/core/schema-converter-failed',
     '@loomcli/core/schema-converter-failed',
-    '@loomcli/core/undescribed',
     '@fixture/judge/shared-name',
   ]);
   const messages = checkedMessages(join(root, 'src/application.ts'));
@@ -267,7 +265,7 @@ test('--application reads the module it names', () => {
   const root = checkPackage({ 'src/app.ts': faulty, 'src/application.ts': clean });
   const result = loom(root, ['check', '--application', 'src/app.ts']);
   expect(result.status).toBe(1);
-  expect(rules(result.stderr)).toHaveLength(4);
+  expect(rules(result.stderr)).toHaveLength(3);
 });
 
 test('a missing application module exits 1 and names it', () => {
@@ -302,7 +300,7 @@ test('a package with no TypeScript installed prints the note and still reports i
   expect(result.stderr).toMatch(
     /^note: No TypeScript compiler resolves from the package, so the type pass was skipped\.\n\n/u,
   );
-  expect(rules(result.stderr)).toHaveLength(4);
+  expect(rules(result.stderr)).toHaveLength(3);
 });
 
 test('a package whose path holds a space resolves its core and passes a clean graph', () => {

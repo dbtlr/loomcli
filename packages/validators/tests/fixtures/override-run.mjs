@@ -37,5 +37,5 @@ const app = new Application('serve', {
   .action(({ options, out }) => out.print(`served ${String(options.workers)}`));
 
 process.exitCode = await app.run({
-  host: { argv: process.argv.slice(2), release: { build: 'distributed' } },
+  host: { argv: process.argv.slice(2) },
 });

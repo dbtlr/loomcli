@@ -93,8 +93,8 @@ function defaulted(value) {
     .action(dispatch);
 }
 
-/** The same application with no description anywhere, which a distributed build runs. */
-function undescribed(value) {
+/** The same application with no description anywhere. */
+function bare(value) {
   return new Application('app', { plugins: [manifest()] })
     .option('odd', { default: value, type: 'string', validate: z.any() })
     .action(dispatch);
@@ -188,8 +188,7 @@ const scenarios = {
   map: () => defaulted(new Map()),
   multiline,
   nan: () => defaulted(Number.NaN),
-  'null-prototype': () =>
-    undescribed(Object.assign(Object.create(null), { plain: [1, { two: null }] })),
+  'null-prototype': () => bare(Object.assign(Object.create(null), { plain: [1, { two: null }] })),
   schema: published(() => ({ minimum: Number.NaN, type: 'number' })),
   'schema-cycle': published(looped),
   short: () => application({ short: 'M' }),

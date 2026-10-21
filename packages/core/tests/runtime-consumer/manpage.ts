@@ -24,7 +24,6 @@ process.exitCode = await app.run({
   host: {
     argv: ['manpage', 'generate', '--out', folder],
     platform: 'linux',
-    release: { build: 'distributed' },
     stderr: quiet,
   },
 });

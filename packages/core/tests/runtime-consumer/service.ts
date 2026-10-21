@@ -19,5 +19,5 @@ const app = new Application('packed-service', {
 );
 
 process.exitCode = await app.run({
-  host: { argv: ['service', 'status'], platform: 'win32', release: { build: 'distributed' } },
+  host: { argv: ['service', 'status'], platform: 'win32' },
 });

@@ -87,12 +87,11 @@ if (scenario === 'marks') {
     const { app, seen } = declared(control);
     const stderr = sink();
     const exitCode = await app.run({
-      host: { argv, release: { build: 'distributed' }, stderr: stderr.stream },
+      host: { argv, stderr: stderr.stream },
     });
     const rejected = await app.run({
       host: {
         argv: ['get', '--depth', 'deep'],
-        release: { build: 'distributed' },
         stderr: stderr.stream,
       },
     });

@@ -13,4 +13,4 @@ await new Application('environment')
       }),
     );
   })
-  .run({ host: { argv: [], release: { build: 'distributed' } } });
+  .run({ host: { argv: [] } });

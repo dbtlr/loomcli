@@ -13,5 +13,5 @@ const app = new Application('packed-update', {
 });
 
 process.exitCode = await app.run({
-  host: { argv: ['self-update'], platform: 'linux', release: { build: 'distributed' } },
+  host: { argv: ['self-update'], platform: 'linux' },
 });

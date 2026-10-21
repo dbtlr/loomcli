@@ -15,4 +15,4 @@ const app = new Application('nested-root')
   .command(get)
   .command(keys);
 
-await app.run({ host: { argv: process.argv.slice(3), release: { build: 'distributed' } } });
+await app.run({ host: { argv: process.argv.slice(3) } });

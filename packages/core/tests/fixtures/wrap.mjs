@@ -50,7 +50,6 @@ await app.run({
     argv: [],
     env: input.env ?? {},
     platform: 'linux',
-    release: { build: 'distributed' },
     terminal: {
       stderr: { columns: undefined, isTTY: false, rows: undefined },
       stdin: { isTTY: false },

@@ -76,7 +76,7 @@ if (mode === 'inspect') {
   }
 } else {
   const code = await app.run({
-    host: { argv: scenario === 'root' ? [] : ['paths'], release: { build: 'distributed' } },
+    host: { argv: scenario === 'root' ? [] : ['paths'] },
   });
   process.stdout.write(`resolved:${code}\n`);
 }
