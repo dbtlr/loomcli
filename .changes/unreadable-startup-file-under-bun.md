@@ -1,0 +1,1 @@
+- Fix the completion plugin's `install`, `update`, and `uninstall` under Bun on macOS when they recover an interrupted run whose shell startup file the process may not read. They stopped with `EACCES`; they now keep the line, as they do under Node.
