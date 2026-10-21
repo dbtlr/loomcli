@@ -18,6 +18,7 @@ import { drawnRows, nextColumn, resolveText, width } from './style-resolve.js';
 import type { Palette } from './style-state.js';
 import { expandTabsMarked, wrapMarked } from './style-wrap.js';
 import { createStyle, tokens } from './style.js';
+import { handled } from './thenable.js';
 import type {
   ActionChannel,
   OpenResult,
@@ -107,11 +108,11 @@ type Passage = (text: string, send: (text: string) => Promise<void>) => Promise<
  * holds no other stream's send.
  */
 class Turn {
-  #last: Promise<void> = Promise.resolve();
+  #last: Promise<unknown> = Promise.resolve();
 
   take(send: () => Promise<void>): Promise<void> {
     const pending = this.#last.then(send);
-    this.#last = pending.catch(() => undefined);
+    this.#last = handled(pending);
     return pending;
   }
 }
@@ -562,7 +563,7 @@ export class Output {
     const fault = new ResultError('repeated', path);
     this.raised.add(fault);
     const rejected = Promise.reject(fault);
-    void rejected.catch(() => undefined);
+    void handled(rejected);
     return rejected;
   }
 
@@ -653,7 +654,7 @@ export class Output {
     const carried = new Writable({
       write: (chunk: unknown, _encoding, done) => {
         // The stream's own failure is the run's, recorded where the write was queued.
-        void this.write(stderr, String(chunk)).catch(() => undefined);
+        void handled(this.write(stderr, String(chunk)));
         done();
       },
     });
@@ -917,7 +918,7 @@ export class Output {
     });
     // A sequence its own channel can stop, so an action's failure ends it rather than draining it.
     target.live?.add(sequence.stop);
-    void sequence.pending.catch(() => undefined);
+    void handled(sequence.pending);
     return sequence.pending;
   }
 
@@ -962,7 +963,7 @@ export class Output {
       this.viewFaults.add(cause);
     }
     const rejection = Promise.reject(cause);
-    void rejection.catch(() => undefined);
+    void handled(rejection);
     return rejection;
   }
 

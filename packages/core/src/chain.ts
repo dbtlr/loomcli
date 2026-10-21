@@ -23,6 +23,7 @@ import {
   viewSelectionCorrection,
 } from './rules.js';
 import type { ContextualStyle } from './style.js';
+import { handled } from './thenable.js';
 import type {
   ActionChannel,
   DeclaredResult,
@@ -260,20 +261,6 @@ function activatedEntries(plugins: readonly BuiltPlugin[], values: OptionValues)
     }));
 }
 
-/**
- * A downstream promise core awaits for its completion alone, because the middleware's own throw is
- * the entry's outcome.
- */
-async function quiet(pending: Promise<unknown> | undefined): Promise<void> {
-  if (pending) {
-    try {
-      await pending;
-    } catch {
-      // The middleware threw its own failure, which is the outcome this entry reports.
-    }
-  }
-}
-
 /** What one entry's `next()` has done so far, which decides whether the call is still live. */
 interface EntryState {
   calls: number;
@@ -382,7 +369,7 @@ function misuse(turn: EntryTurn): Promise<ChainOutcome> {
     sentence: `${pluginSentence(turn.entry.identity)} called next() ${turn.state.returned ? 'after its middleware returned' : 'twice'}.`,
   });
   const rejected = Promise.reject<ChainOutcome>(fault);
-  void rejected.catch(() => undefined);
+  void handled(rejected);
   return rejected;
 }
 
@@ -436,8 +423,9 @@ async function settle(
 ): Promise<ChainOutcome> {
   const { chain, state } = turn;
   const { downstream } = state;
+  // A downstream promise is awaited for its completion alone, because the entry's outcome is decided here.
   if (thrown) {
-    await quiet(downstream);
+    await (downstream && handled(downstream));
     throw thrown.value;
   }
   if (downstream === undefined) {
@@ -446,7 +434,7 @@ async function settle(
   if (!downstream.observed) {
     return reported(chain, await downstream);
   }
-  await quiet(downstream);
+  await handled(downstream);
   return reported(chain, state.outcome ?? (chain.invoked() ? 'dispatched' : 'taken-over'));
 }
 

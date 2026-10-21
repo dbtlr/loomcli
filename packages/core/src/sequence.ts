@@ -1,5 +1,6 @@
 import { routedSubject } from './errors.js';
 import type { IncompleteResult } from './lanes.js';
+import { handled } from './thenable.js';
 import type { ViewContext } from './types.js';
 import type { ResolvedRowView } from './view.js';
 
@@ -168,7 +169,7 @@ async function step<Row>(reading: Reading<Row>): Promise<Pulled<Row>> {
 function endSteps<Row>(steps: Steps<Row>): void {
   try {
     const ended: unknown = steps.return?.();
-    void Promise.resolve(ended).catch(() => undefined);
+    void handled(Promise.resolve(ended));
   } catch {
     // A cleanup that throws outright is the same business, and it ends here too.
   }

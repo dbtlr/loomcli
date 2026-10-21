@@ -1,4 +1,5 @@
 import type { ProgressLedger, RegionReports } from './progress-events.js';
+import { handled } from './thenable.js';
 import type { ProgressReport, Region, RegionCloser, RegionOptions, View } from './types.js';
 
 /*
@@ -251,12 +252,6 @@ interface RegionHost {
   cancelled: () => boolean;
 }
 
-/** A promise whose rejection the caller may leave unobserved without an unhandled rejection. */
-function observed(pending: Promise<void>): Promise<void> {
-  void pending.catch(() => undefined);
-  return pending;
-}
-
 /** One region a run opened, as its handle answers and as the run closes it. */
 class LiveRegion implements Region {
   readonly live: boolean;
@@ -323,7 +318,9 @@ class LiveRegion implements Region {
     this.#controller.abort();
     this.#finished = true;
     this.reports.close(closer, state, label);
-    return observed(this.#regions.release(this));
+    const released = this.#regions.release(this);
+    void handled(released);
+    return released;
   }
 }
 
@@ -387,7 +384,9 @@ class Regions {
         region.waiters.push(resolve);
       });
     }
-    return observed(this.host.write(() => this.screen.draw(region.slot, frame)));
+    const drawn = this.host.write(() => this.screen.draw(region.slot, frame));
+    void handled(drawn);
+    return drawn;
   }
 
   /** A region that closed leaves the stack, and the next waiting input region opens. */

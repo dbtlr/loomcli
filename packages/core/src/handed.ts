@@ -1,3 +1,5 @@
+import { handled } from './thenable.js';
+
 /**
  * A promise core hands to author or plugin code, which notes whether that code observed it: awaited
  * it, attached a handler to it, or passed it to a promise combinator, each of which calls `then`.
@@ -18,7 +20,7 @@ class Handed<Value> extends Promise<Value> {
     const handed = new Handed<Value>((resolve) => {
       resolve(pending);
     });
-    handed.#quiet();
+    void handled(handed);
     return handed;
   }
 
@@ -35,10 +37,6 @@ class Handed<Value> extends Promise<Value> {
   ): Promise<Fulfilled | Rejected> {
     this.#observed = true;
     return super.then(onFulfilled, onRejected);
-  }
-
-  #quiet(): void {
-    void super.then(undefined, () => undefined);
   }
 }
 
