@@ -783,7 +783,7 @@ The ordinary release cut that follows an abandoned unpublished version or a defe
 _Avoid_: Retry, rebuild, republish, repair
 
 **Packed consumer**:
-A throwaway package that installs the tarballs a release would publish, compiles against their declarations, and runs what it built as processes under Node and Bun. It is the closest proof of what an author installs from the registry, and it runs on every pull request and before every publication.
+A throwaway package that installs the tarballs a release would publish, compiles against their declarations, and runs what it built as processes under Node and Bun. It is the closest proof of what an author installs from the registry, and it runs on every pull request that changes code and before every publication.
 _Avoid_: Smoke test, integration package, runtime fixture
 
 **Release asset**:

@@ -17,7 +17,7 @@ Each child process costs 125 to 420 ms to start. A CI run takes a median of 877 
 
 Two sources of process evidence now exist that ADR-0014 did not have:
 
-- **Loom's own pipeline runs the shipped CLI as a process.** `pnpm check` runs the workspace `loom` bin's `loom build` on each example and `loom changelog check`. The PR guard runs `loom pr check`, and the release workflow runs the published `loom release plan` and `loom release record` under [ADR-0075](0075-the-release-workflow-runs-a-pinned-published-loom-cli.md).
+- **Loom's own pipeline runs the shipped CLI as a process.** `pnpm check` runs the workspace `loom` bin's `loom build` on the textstat and jsonkit examples and `loom changelog check`. The PR guard runs `loom pr check`, and the release workflow runs the published `loom release plan` and `loom release record` under [ADR-0075](0075-the-release-workflow-runs-a-pinned-published-loom-cli.md).
 - **`pnpm check:packed` runs what an author installs.** It installs the packed tarballs into a consumer, compiles against their declarations, lints them, and runs the consumer's entries and a `loom build` bundle as processes under Node and Bun. That is closer to an author's application than the examples, which run against the workspace build.
 
 ## Decision
@@ -42,7 +42,9 @@ This record supersedes ADR-0014 whole and keeps its other provisions, stated abo
 
 ## Consequences
 
-The process tests that do not prove a process-only behavior move onto the in-process run entry of `@loomcli/testing`, package by package, and the tests that loop over Node and Bun themselves lose their loops. Until a package moves, its process tests stay and keep passing. `pnpm check:packed` runs on the macOS jobs as well as the Linux ones, so macOS keeps process evidence once the example process tests go.
+The process tests that do not prove a process-only behavior move to in-process runs through `run({ host })` or `invoke`, package by package, and the tests that loop over Node and Bun themselves lose their loops. Until a package moves, its process tests stay and keep passing. `pnpm check:packed` runs on the macOS jobs as well as the Linux ones, so macOS keeps process evidence once the example process tests go.
+
+Today vitest runs under Node in both CI jobs, and the Bun jobs select Bun only for the child processes a process test starts. Until the Bun jobs run the suite under Bun, a test that moves in-process runs under Node alone, and Bun's evidence for that behavior is the packed consumer and the process tests that remain.
 
 ## Status
 

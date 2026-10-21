@@ -37,7 +37,7 @@ Each job holds one permission, and the two writing jobs run under the `release` 
 
 Every third-party action is pinned to a full commit SHA with its version tag in a comment. GitHub-owned `actions/*` stay on their major tags.
 
-The packed consumer runs in CI on every pull request, on Linux and macOS: the Node jobs prove it under Node and the Bun jobs prove it under Bun, each selected by `LOOM_TEST_RUNTIME`.
+The packed consumer runs in CI on every pull request that changes code, on Linux and macOS: the Node jobs prove it under Node and the Bun jobs prove it under Bun, each selected by `LOOM_TEST_RUNTIME`.
 
 ## Release tool
 
