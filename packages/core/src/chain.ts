@@ -326,11 +326,17 @@ interface Invocation {
   invoke: DispatchInput['invoke'];
   /** Gives a context of the run its `log`, bound to the plugin core is calling, or to none. */
   logFor: LogBinder;
+  /**
+   * Rejects with a fault core raised in a call the code made, which the run reports after the
+   * chain settles when no code observed the call, as it reports an unobserved output call.
+   */
+  handFailure: (fault: InternalError) => Promise<never>;
 }
 
 /** The state one chain shares: what it reached and how it continues. */
 interface Chain {
   cancelled: () => boolean;
+  handFailure: Invocation['handFailure'];
   context: (entry: ChainEntry, next: () => Promise<ChainOutcome>) => MiddlewareContext;
   invoked: () => boolean;
   step: (index: number) => Promise<ChainOutcome>;
@@ -360,7 +366,8 @@ function selectionFault(sentence: string, correction: string): InternalError {
 
 /**
  * A `next()` call that is no longer live: it dispatches nothing and rejects, an ordinary rejection
- * the middleware handles or lets propagate as it does any other.
+ * the middleware handles or lets propagate as it does any other. A call no code observes has no
+ * catcher, so the run reports its fault after the chain settles.
  */
 function misuse(turn: EntryTurn): Promise<ChainOutcome> {
   const fault = new InternalError(nextMisuse, {
@@ -368,9 +375,7 @@ function misuse(turn: EntryTurn): Promise<ChainOutcome> {
     correction: 'Call next() once, and await it before the middleware returns.',
     sentence: `${pluginSentence(turn.entry.identity)} called next() ${turn.state.returned ? 'after its middleware returned' : 'twice'}.`,
   });
-  const rejected = Promise.reject<ChainOutcome>(fault);
-  void handled(rejected);
-  return rejected;
+  return turn.chain.handFailure(fault);
 }
 
 /**
@@ -522,6 +527,7 @@ async function runChain(
         selection.assign(entry.identity, name);
       },
     }),
+    handFailure: invocation.handFailure,
     invoked: () => run.invoked,
     step: (index) => {
       if (cancelled()) {

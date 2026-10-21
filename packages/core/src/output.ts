@@ -568,6 +568,16 @@ export class Output {
   }
 
   /**
+   * A call core rejects with a failure it raised outside output, such as a `next()` misuse, handed
+   * to the code that made it as an output call is. Once that code observed it, the failure is its
+   * own to handle, and when no code did, the run reports it after the chain settles.
+   */
+  handFailure(fault: unknown): Promise<never> {
+    this.raised.add(fault);
+    return this.hand(Promise.reject(fault));
+  }
+
+  /**
    * One output call handed to the code that made it. A failure core raised in it, which the call
    * rejects with, is that code's to handle once it observed the call, and has no catcher otherwise.
    */
@@ -583,8 +593,8 @@ export class Output {
   }
 
   /**
-   * Every failure an output call raised that no code observed, such as a render whose view threw
-   * in a call the action never awaited, in the order the calls were made. A failure that code
+   * Every failure a handed call raised that no code observed, such as a render whose view threw
+   * in a call the action never awaited, or a `next()` misuse, in the order the calls were made. A failure that code
    * observed through one call is that code's, whichever other call carried it.
    */
   uncaught(): readonly unknown[] {

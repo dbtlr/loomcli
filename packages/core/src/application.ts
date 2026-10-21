@@ -1011,6 +1011,7 @@ class ApplicationBuilder<
             channel: (binding) => invocationOutput.channel(binding),
             declaredValues,
             graph,
+            handFailure: (fault) => invocationOutput.handFailure(fault),
             host,
             inspected,
             invoke: (path, values, options) => this.#invoke({ options, path, values }, action),
@@ -1073,8 +1074,9 @@ class ApplicationBuilder<
         }
       }
       /**
-       * A failure an output call raised that no code observed has no catcher: a render whose view
-       * threw, or a row source that threw, in a call the code that made it never awaited. Each is
+       * A failure a handed call raised that no code observed has no catcher: a render whose view
+       * threw, a row source that threw, or a `next()` misuse, in a call the code that made it never
+       * awaited. Each is
        * reported after the chain settles through the ordinary failure path, offered to the
        * translators as a foreign throw is, and a failure that code observed is that code's own.
        */

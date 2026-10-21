@@ -128,6 +128,30 @@ test('a second next() call the middleware lets escape is its failure', () => {
   });
 });
 
+test('a second next() call no code observes fails the run with one next-misuse report', () => {
+  const env = { LOOM_FIXTURE_MISUSE: 'unawaited' };
+  expect(run('misuse', ['get', 'a.b'], env)).toEqual({
+    status: 1,
+    stderr: 'app: Something went wrong.\n',
+    stdout: 'get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n',
+  });
+  const development = invoke(fixture, ['misuse', 'development', 'get', 'a.b'], {
+    env: { TERM: 'xterm-256color', ...env },
+  });
+  expect(development.status).toBe(1);
+  expect(development.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n');
+  expect(development.stderr.match(/@loomcli\/core\/next-misuse/gu)).toHaveLength(1);
+  expect(development.stderr).toContain('Plugin "@fixture/misuse" called next() twice.');
+});
+
+test('a next() call a timer makes after the middleware returned, which no code observes, fails the open run', () => {
+  expect(run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'late' })).toEqual({
+    status: 1,
+    stderr: 'app: Something went wrong.\n',
+    stdout: 'get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n',
+  });
+});
+
 test('calling next() after the middleware returned rejects with its own sentence', () => {
   const result = run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'after-return' });
   expect(result.status).toBe(0);

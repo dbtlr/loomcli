@@ -2,7 +2,7 @@
   - A middleware that catches the action's failure, or the held fault the dispatch boundary raises, and returns now exits 0 in place of the caught failure's code.
   - An action or a middleware that awaits an `out.render`, `out.draw`, lane, or region call and catches its view's rejection now exits 0.
   - An action that catches the rejection of a second `out.results` call now exits 0. A second call no code awaits still fails the run with exit 1.
-  - A second `next()` call, or one after the middleware returned, still rejects and dispatches nothing. A middleware that catches the rejection decides the outcome, and core no longer reports it after the outcome.
+  - A second `next()` call, or one after the middleware returned, still rejects and dispatches nothing. A middleware that catches the rejection decides the outcome, and core no longer reports it after the outcome. A misuse call no code awaits or attaches to still fails the run with its `@loomcli/core/next-misuse` defect.
   - A throw while a middleware unwinds, after its `next()` settled, is that middleware's failure, with its own class and exit code, and a translator is offered it, in place of an internal error reported after the earlier outcome.
   - A view failure or a row source failure in a call no code awaited still fails the run after the chain settles, now with the failure's own exit code. A thrown failure class keeps its code in place of 1, and a view's throw reports as `@loomcli/core/foreign-throw`. A middleware that never observes its `next()` takes the rejection as its own outcome.
   - A cancelled run still resolves 130, 141, or 143 when code catches the cancellation.
