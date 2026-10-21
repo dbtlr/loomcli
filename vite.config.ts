@@ -343,7 +343,7 @@ export default defineConfig({
     include: ['packages/*/tests/**/*.test.ts', 'examples/*/tests/**/*.test.ts'],
     maxWorkers: Math.ceil(navigator.hardwareConcurrency * workersPerCore),
     // A documentation-only pull request runs only the tests tagged docs, which read files under docs/.
-    // Tag a whole test file with a first line of `// @module-tag docs`.
+    // A `// @module-tag docs` line in a test file tags every test in it.
     tags: [{ description: 'Reads a file under docs/', name: 'docs' }],
     // Process tests can run several children, each with its own ten-second deadline.
     testTimeout: 30_000,
