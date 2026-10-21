@@ -15,7 +15,7 @@ const compileTarget =
 
 /** The sentence every refused target ends with, naming the targets a build accepts. */
 const acceptedTargets =
-  'Use node, bun, or a Bun compile target bun-<os>-<arch>, with -musl on linux and -baseline or -modern on x64, such as bun-linux-x64.';
+  'Use node, bun, or a Bun compile target bun-<os>-<arch> for linux or darwin on x64 or arm64, with -musl on linux and -baseline or -modern on x64, such as bun-linux-x64.';
 
 /** Reads one `--target` value, or answers the sentence that refuses it. */
 function readTarget(value: string): BuildTarget | { readonly refused: string } {
