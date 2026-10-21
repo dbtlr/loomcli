@@ -1,5 +1,5 @@
 import { extension } from '@loomcli/core';
-import { z } from 'zod';
+import { object, pipe, regex, string } from 'valibot';
 
 import { packageName } from '../constants.js';
 
@@ -8,12 +8,13 @@ import { packageName } from '../constants.js';
  * line separator, U+2028 or U+2029. There is no escaping and no array indexing, so a key that
  * holds a dot is not reachable.
  */
-const configPath = z
-  .string()
-  .regex(
+const configPath = pipe(
+  string(),
+  regex(
     /^[^.\p{Cc}\p{Zl}\p{Zp}]+(?:\.[^.\p{Cc}\p{Zl}\p{Zp}]+)*$/u,
     'Supply a dotted path of nonempty keys with no control character.',
-  );
+  ),
+);
 
 /**
  * The configuration plugin's binding: the dotted path an option reads in each configuration file.
@@ -22,6 +23,6 @@ const configPath = z
  * environment leave it unfilled.
  */
 export const configInput = extension(`${packageName}/config/input`, {
-  schema: z.object({ path: configPath }),
+  schema: object({ path: configPath }),
   target: 'option',
 });

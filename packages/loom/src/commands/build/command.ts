@@ -2,7 +2,7 @@ import { existsSync, statSync } from 'node:fs';
 import { join, parse, resolve } from 'node:path';
 
 import { Command, InputError } from '@loomcli/core';
-import { z } from 'zod';
+import { createValidator } from '@loomcli/validators';
 
 import {
   applicationName,
@@ -18,11 +18,25 @@ import { existingModule, shown } from '../../helpers/modules.js';
 import { packageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
 
-const buildOption = z.enum(['development', 'distributed'], {
-  error: 'Use development or distributed.',
+const builds = ['development', 'distributed'] as const;
+
+const buildOption = createValidator({
+  inputSchema: { type: 'string', enum: [...builds] },
+  parse: (raw) => {
+    const match = builds.find((each) => each === raw);
+    return match === undefined
+      ? { issues: [{ message: 'Use development or distributed.' }] }
+      : { value: match };
+  },
 });
 
-const repositoryOption = z.string().regex(ownerName, 'Use owner/name, such as acme/notes.');
+const repositoryOption = createValidator({
+  inputSchema: { type: 'string', pattern: ownerName.source },
+  parse: (raw) =>
+    ownerName.test(raw)
+      ? { value: raw }
+      : { issues: [{ message: 'Use owner/name, such as acme/notes.' }] },
+});
 
 /** The option error one option draws from another it cannot be passed with, with exit code 2. */
 function optionError(name: string, message: string): InputError {

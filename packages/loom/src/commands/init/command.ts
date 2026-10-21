@@ -9,7 +9,7 @@ import {
 import { basename, dirname, join, resolve } from 'node:path';
 
 import { Command } from '@loomcli/core';
-import { z } from 'zod';
+import { createValidator } from '@loomcli/validators';
 
 import { changelogSkill } from '../../content/changelog-skill.js';
 import { fragmentGuide } from '../../content/fragment-guide.js';
@@ -50,13 +50,22 @@ type Piece = (typeof pieces)[number];
 
 /**
  * One `--only` value. A multiple option validates each value as the string the operator typed, so
- * its validator must accept a string input, and the enum of pieces sits behind `z.string().pipe`.
+ * its validator reads a string and publishes a plain string, and the match against the pieces
+ * decides the value.
  */
-const pieceOption = z.string().pipe(
-  z.enum(pieces, {
-    error: 'Use application, entry, tsconfig, package, changes, skill, or install.',
-  }),
-);
+const pieceOption = createValidator({
+  inputSchema: { type: 'string' },
+  parse: (raw) => {
+    const match = pieces.find((each) => each === raw);
+    return match === undefined
+      ? {
+          issues: [
+            { message: 'Use application, entry, tsconfig, package, changes, skill, or install.' },
+          ],
+        }
+      : { value: match };
+  },
+});
 
 /** The application module and the entry, by their conventional paths in the package directory. */
 const applicationPath = 'src/application.ts';

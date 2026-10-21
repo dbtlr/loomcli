@@ -2,15 +2,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
-import { z } from 'zod';
+import { object, safeParse, string, union } from 'valibot';
 
 import { runBun } from './bun.js';
 
 /** The `bin` map of a `typescript` package, whose `tsc` entry runs the compiler. */
-const tscBin = z.object({ tsc: z.string() });
+const tscBin = object({ tsc: string() });
 
 /** The `bin` of the `typescript` package, a path or a map whose `tsc` entry runs the compiler. */
-const typescriptManifest = z.object({ bin: z.string().or(tscBin) });
+const typescriptManifest = object({ bin: union([string(), tscBin]) });
 
 /**
  * The compiler the package resolves: the `tsc` bin of the `typescript` package that resolves from
@@ -25,11 +25,11 @@ function resolveCompiler(directory: string): string | undefined {
   } catch {
     return undefined;
   }
-  const parsed = typescriptManifest.safeParse(JSON.parse(readFileSync(manifestPath, 'utf8')));
+  const parsed = safeParse(typescriptManifest, JSON.parse(readFileSync(manifestPath, 'utf8')));
   if (!parsed.success) {
     return undefined;
   }
-  const { bin } = parsed.data;
+  const { bin } = parsed.output;
   return join(dirname(manifestPath), typeof bin === 'string' ? bin : bin.tsc);
 }
 

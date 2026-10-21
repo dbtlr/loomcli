@@ -2,7 +2,7 @@ import type { Writable } from 'node:stream';
 
 import { Command, locate, plugin } from '@loomcli/core';
 import type { ActionContext, Plugin } from '@loomcli/core';
-import { z } from 'zod';
+import { oneOf } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
 import { answer } from './answer.js';
@@ -48,7 +48,7 @@ const answerCommand = new Command('__complete', {
 );
 
 /** The five shell names `install` and `uninstall` accept. */
-const shellInput = z.enum(shells);
+const shellInput = oneOf(shells);
 
 /** What every installing child reads from its action context. */
 type ChildContext = Pick<ActionContext<unknown>, 'graph' | 'host' | 'out' | 'signal'>;

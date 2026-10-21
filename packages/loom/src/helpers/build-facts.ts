@@ -1,7 +1,8 @@
-import { z } from 'zod';
+import { object, safeParse, string, union } from 'valibot';
 
 import { isWindows } from './build-target.js';
 import type { BuildTarget } from './build-target.js';
+import { jsonObject } from './json-object.js';
 import { withoutByteOrderMark } from './markdown.js';
 import { readRegularFile } from './repository.js';
 
@@ -52,13 +53,18 @@ function addressOf(address: string): RepositoryAddress | undefined {
     : undefined;
 }
 
+const repositoryAddress = union([string(), object({ url: string() })]);
+
 /**
  * The address a `package.json` `repository` field holds: the string itself, or the `url` of an
  * object, else `undefined` for a field that is missing or holds neither.
  */
 function repositoryField(field: unknown): string | undefined {
-  const address = z.union([z.string(), z.object({ url: z.string() })]).safeParse(field).data;
-  return typeof address === 'string' ? address : address?.url;
+  const parsed = safeParse(repositoryAddress, field);
+  if (!parsed.success) {
+    return undefined;
+  }
+  return typeof parsed.output === 'string' ? parsed.output : parsed.output.url;
 }
 
 /** The key of a `bin` that is an object with exactly one key, which names the application. */
@@ -231,11 +237,11 @@ export function parseManifest(source: string): Record<string, unknown> {
   } catch (error) {
     throw new Error('package.json: expected valid JSON.', { cause: error });
   }
-  const parsed = z.record(z.string(), z.unknown()).safeParse(document);
+  const parsed = safeParse(jsonObject, document);
   if (!parsed.success) {
     throw new Error('package.json: expected a JSON object.');
   }
-  return parsed.data;
+  return parsed.output;
 }
 
 /** Reads the standard fields of the `package.json` in a package directory. */

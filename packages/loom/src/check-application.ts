@@ -3,9 +3,10 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { DeclarationError, diagnosticRule } from '@loomcli/core';
-import { z } from 'zod';
+import { array, object, string } from 'valibot';
 
 import type { CheckResult } from './helpers/application-check.js';
+import { parseOrThrow } from './helpers/parse-or-throw.js';
 
 /*
  * The graph checks of `loom check`, run under Bun in a process of their own, so the application
@@ -23,7 +24,7 @@ const loadFailed = diagnosticRule('@loomcli/loom/application-load-failed', {
 });
 
 /** The faults `check()` returns, each read by its message, which holds the whole diagnostic. */
-const faults = z.array(z.object({ message: z.string() }));
+const faults = array(object({ message: string() }));
 
 /** One export of a module namespace or member of the package's core, read without trusting it. */
 function member(value: unknown, name: string): unknown {
@@ -112,7 +113,7 @@ async function check(directory: string, path: string, module: string): Promise<C
   }
   const checked: unknown = Reflect.apply(method, only, []);
   return {
-    faults: faults.parse(checked).map((fault) => fault.message),
+    faults: parseOrThrow(faults, checked).map((fault) => fault.message),
     names: exported.filter(([, value]) => value === only).map(([name]) => name),
   };
 }
