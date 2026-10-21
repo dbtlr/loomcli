@@ -42,9 +42,9 @@ const refusals = {
     fatal(
       `${shownPath(startup)} is not a file, so ${shown(name)} cannot add its startup line. Remove it, then run ${shown(name)} completion install again.`,
     ),
-  notOnWindows: (name: string, verb: string, shell: string | undefined) =>
+  notOnWindows: (name: string, printer: string) =>
     fatal(
-      `${shown(name)} completion ${verb} works on Linux and macOS. On Windows, print the script with ${shown(name)} completion ${shell ?? 'bash, zsh, fish, or powershell'} and load it yourself.`,
+      `${shown(name)} completion installs bash, zsh, fish, and pwsh completion on Linux and macOS. Print the script with ${shown(name)} completion ${printer} and load it yourself.`,
     ),
   profile: (name: string, shell: string, fault: ProfileFault) =>
     fatal(

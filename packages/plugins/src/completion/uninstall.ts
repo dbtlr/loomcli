@@ -152,7 +152,7 @@ function handOverFolders(record: string, shell: Shell): void {
  * remove.
  */
 async function uninstallShells(run: ChildRun, argument: Shell | undefined): Promise<void> {
-  refuseWindows(run, 'uninstall', argument);
+  refuseWindows(run, argument);
   const record = recordDirectory(run.name, run.host);
   const selected = selectedShells(run, record, argument);
   const planned = selected.map((recorded) => planShell(run, recorded));

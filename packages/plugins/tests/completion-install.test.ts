@@ -549,32 +549,29 @@ describe('checks', () => {
   });
 
   it.each([
-    [['install', 'zsh'], 'install', 'jsonkit completion zsh'],
-    [['install', 'pwsh'], 'install', 'jsonkit completion powershell'],
-    [['install'], 'install', 'jsonkit completion bash, zsh, fish, or powershell'],
-    [['update'], 'update', 'jsonkit completion bash, zsh, fish, or powershell'],
-    [['uninstall', 'bash'], 'uninstall', 'jsonkit completion bash'],
-    [['uninstall'], 'uninstall', 'jsonkit completion bash, zsh, fish, or powershell'],
-  ])(
-    'refuses completion %j on win32 with exit 1, naming the print Command',
-    (words, verb, printer) => {
-      const box = sandbox();
-      const result = run(box, ['completion', ...words], {
-        env: { SHELL: undefined },
-        platform: 'win32',
-      });
-      expect(result.status).toBe(1);
-      expect(result.stdout).toBe('');
-      expect(lines(result.stderr)).toEqual([
-        `jsonkit completion ${verb} works on Linux and macOS. On Windows, print the script with ${printer} and load it yourself.`,
-      ]);
-      expect([readdirSync(box.data), readdirSync(box.state), readdirSync(box.home)]).toEqual([
-        [],
-        [],
-        [],
-      ]);
-    },
-  );
+    [['install', 'zsh'], 'zsh'],
+    [['install', 'pwsh'], 'powershell'],
+    [['install'], 'powershell'],
+    [['update'], 'powershell'],
+    [['uninstall', 'bash'], 'bash'],
+    [['uninstall'], 'powershell'],
+  ])('refuses completion %j on win32 with exit 1, naming the print Command', (words, printer) => {
+    const box = sandbox();
+    const result = run(box, ['completion', ...words], {
+      env: { SHELL: undefined },
+      platform: 'win32',
+    });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(lines(result.stderr)).toEqual([
+      `jsonkit completion installs bash, zsh, fish, and pwsh completion on Linux and macOS. Print the script with jsonkit completion ${printer} and load it yourself.`,
+    ]);
+    expect([readdirSync(box.data), readdirSync(box.state), readdirSync(box.home)]).toEqual([
+      [],
+      [],
+      [],
+    ]);
+  });
 
   it('prints the PowerShell script on win32', () => {
     const box = sandbox();

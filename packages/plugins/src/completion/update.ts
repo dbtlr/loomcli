@@ -136,7 +136,7 @@ function recordedShells(
  * then each shell rewritten and its changes stated.
  */
 async function updateShells(run: ChildRun): Promise<void> {
-  refuseWindows(run, 'update');
+  refuseWindows(run);
   const record = recordDirectory(run.name, run.host);
   const found = recordedShells(run, record);
   if (found.length === none) {

@@ -260,7 +260,7 @@ async function write(run: ChildRun, writing: Writing): Promise<void> {
  * in that order, then the script and line written and each change stated.
  */
 async function installShell(run: ChildRun, argument: Shell | undefined): Promise<void> {
-  refuseWindows(run, 'install', argument);
+  refuseWindows(run, argument);
   const shell = selectedShell(run.name, run.host, argument);
   const place = placeOf(run, shell);
   const record = recordDirectory(run.name, run.host);

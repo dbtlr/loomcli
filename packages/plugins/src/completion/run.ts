@@ -41,16 +41,13 @@ interface ShellRecord {
 }
 
 /**
- * Refuses an installing child on `win32`, before it reads anything, naming the Command that prints
- * the script: the shell's own when the operator named one, and every one otherwise.
+ * Refuses an installing child on `win32`, before it reads anything, naming the print Command of
+ * the shell the operator named, and the PowerShell one for `pwsh` or when no shell is named.
  */
-function refuseWindows(
-  run: ChildRun,
-  verb: 'install' | 'update' | 'uninstall',
-  shell?: Shell,
-): void {
+function refuseWindows(run: ChildRun, shell?: Shell): void {
   if (run.host.platform === 'win32') {
-    throw refusals.notOnWindows(run.name, verb, shell === 'pwsh' ? 'powershell' : shell);
+    const printer = shell === undefined || shell === 'pwsh' ? 'powershell' : shell;
+    throw refusals.notOnWindows(run.name, printer);
   }
 }
 
