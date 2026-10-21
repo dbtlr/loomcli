@@ -4,7 +4,7 @@ title: ADR-0018 - One run signal carries cancellation, and one slot owner bracke
 description: Each run has one private cancellation signal, fed by a caller-supplied AbortSignal or by the single plugin that owns the signals slot. Core installs and removes the process listeners for that owner inside one run, stays cooperative on a first signal, re-raises a repeated one, and resolves 130 or 143.
 status: accepted
 created: 2026-09-08
-modified: 2026-10-05
+modified: 2026-10-21
 ---
 
 # ADR-0018 - One run signal carries cancellation, and one slot owner brackets process signals
@@ -41,3 +41,4 @@ Accepted 2026-09-09 with the code that brackets a run for a slot owner, proved u
 - 2026-09-25: ADR-0034 is accepted. The entry above binds as written.
 - 2026-10-05: [ADR-0059](0059-a-command-runs-by-name-through-invoke.md), proposed, keeps one run signal per run and leaves `run()` unchanged. A run that `invoke()` starts has its own run signal and claims no process signal: core installs no listener for it even when a plugin owns the signals slot. An action's call derives its signal from its run's signal and the call's own `signal`, so a run cancelled by `SIGINT` or `SIGTERM` cancels the calls in flight with the same cause and code, and a call's own abort resolves 130 as a caller abort. `app.invoke()` derives it from the call's `signal` alone, so an embedding host cancels a call the way it cancels `run({ signal })`. It binds when that record is accepted.
 - 2026-10-15: [ADR-0082](0082-an-action-asks-through-the-prompts-library-and-one-interaction-decision-governs-questions-and-conditional-requiredness.md), proposed, adds a third cause that can abort the run signal: the action's `cancel()`, which aborts it with the `CancellationReason` source `action` and resolves 130, so code reading keys in raw mode ends the run as an interrupt would. The synchronous listener rule for terminal state, the force path, and every code rule stand. It binds when that record is accepted.
+- 2026-10-21: [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md), proposed, supersedes the clause that `plugin()` rejects one signal claimed twice; a repeated signal is claimed once. It binds when that record is accepted.
