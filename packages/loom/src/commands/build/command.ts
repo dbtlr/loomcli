@@ -11,7 +11,7 @@ import {
   ownerName,
   readManifest,
 } from '../../helpers/build-facts.js';
-import { hostTarget, isWindows, targetOption } from '../../helpers/build-target.js';
+import { acceptedTargets, hostTarget, targetOption } from '../../helpers/build-target.js';
 import type { BuildTarget } from '../../helpers/build-target.js';
 import { build, watch } from '../../helpers/build.js';
 import { existingModule, shown } from '../../helpers/modules.js';
@@ -105,13 +105,10 @@ function outputPath(
 
 /**
  * Where a build writes when `--out` names nothing: a bundle's directory, `dist/`, or a binary's
- * file, `dist/<name>`, with `.exe` for a Windows target.
+ * file, `dist/<name>`.
  */
 function defaultOutput(directory: string, target: BuildTarget, name: () => string): string {
-  if (target.kind === 'bundle') {
-    return join(directory, 'dist');
-  }
-  return join(directory, 'dist', `${name()}${isWindows(target) ? '.exe' : ''}`);
+  return target.kind === 'bundle' ? join(directory, 'dist') : join(directory, 'dist', name());
 }
 
 export const buildCommand = new Command('build', {
@@ -119,7 +116,7 @@ export const buildCommand = new Command('build', {
 })
   .option('target', {
     description:
-      'Build for node, bun, or a Bun compile target, by default the host compile target.',
+      'Build for node, bun, or a Bun compile target, by default the host compile target on Linux and macOS.',
     type: 'string',
     validate: targetOption,
   })
@@ -168,6 +165,9 @@ export const buildCommand = new Command('build', {
     type: 'boolean',
   })
   .action(async ({ host, options, out, passthrough }) => {
+    if (options.target === undefined && host.platform === 'win32') {
+      throw optionError('target', `Windows has no default target, so pass one. ${acceptedTargets}`);
+    }
     if (options.facts && options.define) {
       throw optionError('define', '--facts and --define exclude each other, so pass one of them.');
     }

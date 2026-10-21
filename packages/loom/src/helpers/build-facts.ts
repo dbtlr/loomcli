@@ -1,6 +1,5 @@
 import { object, safeParse, string, union } from 'valibot';
 
-import { isWindows } from './build-target.js';
 import type { BuildTarget } from './build-target.js';
 import { jsonObject } from './json-object.js';
 import { withoutByteOrderMark } from './markdown.js';
@@ -123,7 +122,7 @@ function releaseGroup(
   if (target.kind === 'bundle') {
     return { repository, version };
   }
-  const asset = `${applicationName(manifest, request.name)}-${target.platform}${isWindows(target) ? '.exe' : ''}`;
+  const asset = `${applicationName(manifest, request.name)}-${target.platform}`;
   return { asset, repository, version };
 }
 

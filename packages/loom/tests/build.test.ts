@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
+import { Writable } from 'node:stream';
 import { setTimeout as after } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
@@ -104,7 +105,7 @@ const foreignThrow =
 
 /** The compile target Bun names for the host this test runs on. */
 function hostTarget() {
-  const os = process.platform === 'win32' ? 'windows' : process.platform;
+  const os = process.platform;
   const report = spawnSync(
     'bun',
     ['-e', 'process.stdout.write(process.report.getReport().header.glibcVersionRuntime ?? "")'],
@@ -378,21 +379,13 @@ test('a compile target whose output is an existing directory fails before buildi
   expect(snapshot(join(root, 'dist'))).toEqual(before);
 });
 
-test("a windows target's default output is dist/<name>.exe", () => {
-  const root = probePackage({ bin: { notes: 'dist/main.js' } });
-  // A directory at the default path fails the build before Bun runs, naming the path it chose.
-  put(root, 'dist/notes.exe/keep.txt', 'A directory.\n');
-  const result = loom(root, ['build', '--target', 'bun-windows-x64']);
-  expect(result.status).toBe(1);
-  expect(result.stderr).toContain('dist/notes.exe is a directory');
-});
-
 test.each([
   ['browser', /browser/u],
   ['bun-plan9-x64', /bun-plan9-x64/u],
   ['deno', /deno/u],
   ['bun-linux-x64-foo', /bun-linux-x64-foo/u],
   ['bun-darwin-arm64-musl', /bun-darwin-arm64-musl/u],
+  ['bun-windows-x64', /bun-windows-x64/u],
 ])('--target %s exits with an error that names the targets', (target, named) => {
   const root = probePackage({ bin: { probe: 'dist/main.js' }, repository: 'acme/probe' });
   for (const print of [[], ['--release', '--facts'], ['--define']]) {
@@ -402,6 +395,26 @@ test.each([
     expect(result.stderr).toMatch(named);
     expect(result.stderr).toContain('node, bun, or a Bun compile target');
   }
+  expect(existsSync(join(root, 'dist'))).toBe(false);
+});
+
+test('a build on Windows with no --target fails as an option error that names the targets', async () => {
+  const root = probePackage({ bin: { probe: 'dist/main.js' } });
+  const { loom: toolchain } = await import('../src/application.js');
+  const written: string[] = [];
+  const sink = new Writable({
+    write(chunk, _encoding, done) {
+      written.push(String(chunk));
+      done();
+    },
+  });
+  const status = await toolchain.run({
+    host: { argv: ['build'], cwd: root, platform: 'win32', stderr: sink, stdout: sink },
+  });
+  expect(status).toBe(2);
+  expect(written.join('')).toContain(
+    'Option "--target": Windows has no default target, so pass one. Use node, bun, or a Bun compile target',
+  );
   expect(existsSync(join(root, 'dist'))).toBe(false);
 });
 
@@ -650,12 +663,6 @@ test('an object bin with several keys and no --name names --name', () => {
   const result = loom(root, ['build', '--target', 'bun-linux-x64', '--release', '--facts']);
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('--name');
-});
-
-test('a windows target names its asset with .exe', () => {
-  const root = probePackage({ bin: { notes: 'dist/main.js' }, repository: 'acme/probe' });
-  const facts = printed(root, ['--target', 'bun-windows-x64', '--release', '--facts']);
-  expect(JSON.parse(facts)).toMatchObject({ release: { asset: 'notes-windows-x64.exe' } });
 });
 
 test('--facts and --define each print one line, write no file, and compose a build that reads the same facts', () => {
