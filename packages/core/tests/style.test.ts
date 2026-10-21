@@ -1,3 +1,5 @@
+// @module-tag docs
+
 import { readFileSync } from 'node:fs';
 
 import { expect, test } from 'vite-plus/test';

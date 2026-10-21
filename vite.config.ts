@@ -1,5 +1,9 @@
 import { defineConfig } from 'vite-plus';
 
+// A worker that runs a process test waits on its child, so one worker per core leaves cores idle.
+// Vitest caps a percentage at the core count, so the worker count is computed from this ratio.
+const workersPerCore = 1.5;
+
 export default defineConfig({
   fmt: {
     ignorePatterns: [
@@ -337,6 +341,10 @@ export default defineConfig({
   },
   test: {
     include: ['packages/*/tests/**/*.test.ts', 'examples/*/tests/**/*.test.ts'],
+    maxWorkers: Math.ceil(navigator.hardwareConcurrency * workersPerCore),
+    // A documentation-only pull request runs only the tests tagged docs, which read files under docs/.
+    // Tag a whole test file with a first line of `// @module-tag docs`.
+    tags: [{ description: 'Reads a file under docs/', name: 'docs' }],
     // Process tests can run several children, each with its own ten-second deadline.
     testTimeout: 30_000,
   },
