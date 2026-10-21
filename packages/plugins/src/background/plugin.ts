@@ -1,10 +1,23 @@
 import { plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
-import { z } from 'zod';
+import { createValidator } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
 
 const identity = `${packageName}/background`;
+
+const backgrounds = ['dark', 'light'] as const;
+
+/** `dark` or `light`, with the sentence that names both. */
+const backgroundInput = createValidator({
+  inputSchema: { type: 'string', enum: [...backgrounds] },
+  parse: (raw) => {
+    const match = backgrounds.find((each) => each === raw);
+    return match === undefined
+      ? { issues: [{ message: 'Supply dark or light.' }] }
+      : { value: match };
+  },
+});
 
 const options = {
   background: {
@@ -12,7 +25,7 @@ const options = {
     control: true,
     description: 'Pick colors for this terminal background instead of detecting it.',
     type: 'string',
-    validate: z.enum(['dark', 'light'], { error: 'Supply dark or light.' }),
+    validate: backgroundInput,
   },
 } satisfies PluginOptions;
 export type BackgroundOptions = typeof options;

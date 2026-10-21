@@ -1,7 +1,9 @@
-import { z } from 'zod';
+import { array, looseObject, minLength, number, pipe, string, transform } from 'valibot';
+import type { InferOutput } from 'valibot';
 
 import { readJson, removeResource, writeBytes, writeJson } from './http.js';
 import type { HttpPolicy } from './http.js';
+import { parseOrThrow } from './parse-or-throw.js';
 
 // GitHub serves uploads from its own host, and a self-hosted API serves them from the API host.
 const uploadOrigin = 'https://uploads.github.com';
@@ -9,30 +11,33 @@ const uploadOrigin = 'https://uploads.github.com';
 // The largest page the GitHub API serves.
 const pageSize = 100;
 
-const objectSchema = z.looseObject({ sha: z.string().min(1), type: z.string() });
+const nonEmpty = pipe(string(), minLength(1));
 
-const referenceSchema = z.looseObject({ object: objectSchema });
+const objectSchema = looseObject({ sha: nonEmpty, type: string() });
 
-const targetSchema = z.looseObject({ sha: z.string().min(1) });
+const referenceSchema = looseObject({ object: objectSchema });
 
-const tagObjectSchema = z.looseObject({ object: targetSchema, sha: z.string().min(1) });
+const targetSchema = looseObject({ sha: nonEmpty });
 
-const assetSchema = z.looseObject({
-  id: z.number(),
-  name: z.string(),
-  size: z.number(),
-  state: z.string(),
+const tagObjectSchema = looseObject({ object: targetSchema, sha: nonEmpty });
+
+const assetSchema = looseObject({
+  id: number(),
+  name: string(),
+  size: number(),
+  state: string(),
 });
 
-const assetsSchema = z.array(assetSchema);
+const assetsSchema = array(assetSchema);
 
-const releaseSchema = z
-  .looseObject({ assets: assetsSchema, id: z.number(), upload_url: z.string().min(1) })
-  .transform((release) => ({
+const releaseSchema = pipe(
+  looseObject({ assets: assetsSchema, id: number(), upload_url: nonEmpty }),
+  transform((release) => ({
     assets: release.assets,
     id: release.id,
     uploadUrl: release.upload_url,
-  }));
+  })),
+);
 
 function repositoryUrl(target: { api: string; repository: string }, path: string) {
   return `${target.api.replace(/\/+$/u, '')}/repos/${target.repository}/${path}`;
@@ -52,7 +57,7 @@ export interface GitHubWriter extends GitHubTarget {
 
 // An upload finishes when GitHub reports the uploaded state and the bytes it received.
 // A Release asset in any other state is an interrupted upload that recording replaces.
-export function isUploadedAsset(asset: z.output<typeof assetSchema>) {
+export function isUploadedAsset(asset: InferOutput<typeof assetSchema>) {
   return asset.state === 'uploaded' && asset.size > 0;
 }
 
@@ -66,7 +71,7 @@ export async function readTagCommit(target: GitHubTarget, tag: string) {
   if (data === undefined) {
     return undefined;
   }
-  const { object } = referenceSchema.parse(data);
+  const { object } = parseOrThrow(referenceSchema, data);
   if (object.type !== 'tag') {
     return object.sha;
   }
@@ -77,7 +82,7 @@ export async function readTagCommit(target: GitHubTarget, tag: string) {
   if (dereferenced.data === undefined) {
     throw new Error(`Tag ${tag} names tag object ${object.sha}, which the API does not return.`);
   }
-  return tagObjectSchema.parse(dereferenced.data).object.sha;
+  return parseOrThrow(tagObjectSchema, dereferenced.data).object.sha;
 }
 
 export async function readRelease(target: GitHubTarget, tag: string) {
@@ -86,7 +91,7 @@ export async function readRelease(target: GitHubTarget, tag: string) {
     repositoryUrl(target, `releases/tags/${tag}`),
     target.token,
   );
-  return data === undefined ? undefined : releaseSchema.parse(data);
+  return data === undefined ? undefined : parseOrThrow(releaseSchema, data);
 }
 
 // The assets list is paged, and its default page holds 30 of the 1000 assets a Release can carry.
@@ -94,7 +99,7 @@ export async function readRelease(target: GitHubTarget, tag: string) {
 export async function readAssets(target: GitHubTarget, id: number) {
   const url = repositoryUrl(target, `releases/${String(id)}/assets?per_page=${String(pageSize)}`);
   const { data } = await readJson(target.policy, url, target.token);
-  return assetsSchema.parse(data);
+  return parseOrThrow(assetsSchema, data);
 }
 
 export async function createTag(target: GitHubWriter, tag: string, commit: string) {
@@ -104,7 +109,7 @@ export async function createTag(target: GitHubWriter, tag: string, commit: strin
     tag,
     type: 'commit',
   });
-  const object = targetSchema.parse(created);
+  const object = parseOrThrow(targetSchema, created);
   await writeJson(target.policy, repositoryUrl(target, 'git/refs'), target.token, {
     ref: `refs/tags/${tag}`,
     sha: object.sha,

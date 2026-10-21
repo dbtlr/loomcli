@@ -3,9 +3,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { z } from 'zod';
+import { array, boolean, object, string, union } from 'valibot';
+import type { InferOutput } from 'valibot';
 
 import { runBun } from './bun.js';
+import { parseOrThrow } from './parse-or-throw.js';
+
+const checked = object({ faults: array(string()), names: array(string()) });
+
+const unchecked = object({ failure: string(), loaded: boolean() });
 
 /**
  * What the graph checks found: the message of every fault, each a whole Developer Diagnostic, with
@@ -13,16 +19,13 @@ import { runBun } from './bun.js';
  * failed to load; or the one sentence that says why no Application could be checked, and whether
  * the module loaded before the check stopped.
  */
-const checkResult = z.union([
-  z.object({ faults: z.string().array(), names: z.string().array() }),
-  z.object({ failure: z.string(), loaded: z.boolean() }),
-]);
+const checkResult = union([checked, unchecked]);
 
 /** The script the checking process runs, shipped beside this module in `dist`. */
 const script = fileURLToPath(new URL('../check-application.js', import.meta.url));
 
 /** One run of the graph checks, as the checking process writes it to its result file. */
-export type CheckResult = z.infer<typeof checkResult>;
+export type CheckResult = InferOutput<typeof checkResult>;
 
 /** The graph checks' answer and whatever the application module wrote while it loaded. */
 export interface ApplicationCheck {
@@ -55,7 +58,10 @@ export function checkApplication(options: {
     if (run.status !== 0 || !existsSync(resultFile)) {
       throw new Error(`${written}\n\nBun could not check ${options.module}.`.trim());
     }
-    return { result: checkResult.parse(JSON.parse(readFileSync(resultFile, 'utf8'))), written };
+    return {
+      result: parseOrThrow(checkResult, JSON.parse(readFileSync(resultFile, 'utf8'))),
+      written,
+    };
   } finally {
     rmSync(temporary, { force: true, recursive: true });
   }

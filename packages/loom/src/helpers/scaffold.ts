@@ -1,10 +1,8 @@
-import { z } from 'zod';
+import { safeParse } from 'valibot';
 
 import { parseManifest } from './build-facts.js';
+import { jsonObject } from './json-object.js';
 import { withoutByteOrderMark } from './markdown.js';
-
-/** A JSON object as `package.json` holds it, every key kept in its order. */
-const jsonObject = z.record(z.string(), z.unknown());
 
 /**
  * Words that cannot name a `const` in a strict-mode module, which an application's identifier
@@ -77,8 +75,8 @@ function indentation(source: string): string {
 
 /** Whether a manifest value is an object that holds the key. */
 function holdsKey(value: unknown, key: string): boolean {
-  const parsed = jsonObject.safeParse(value);
-  return parsed.success && Object.hasOwn(parsed.data, key);
+  const parsed = safeParse(jsonObject, value);
+  return parsed.success && Object.hasOwn(parsed.output, key);
 }
 
 /**
@@ -100,9 +98,9 @@ function addKey(
   if (declaredIn.some((group) => holdsKey(manifest[group], second))) {
     return false;
   }
-  const parent = exists ? jsonObject.safeParse(manifest[first]) : undefined;
-  if (parent === undefined || (parent.success && !Object.hasOwn(parent.data, second))) {
-    manifest[first] = { ...parent?.data, [second]: value };
+  const parent = exists ? safeParse(jsonObject, manifest[first]) : undefined;
+  if (parent === undefined || (parent.success && !Object.hasOwn(parent.output, second))) {
+    manifest[first] = { ...parent?.output, [second]: value };
     return true;
   }
   return false;

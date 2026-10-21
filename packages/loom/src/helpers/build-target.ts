@@ -1,4 +1,6 @@
-import { z } from 'zod';
+import { createValidator } from '@loomcli/validators';
+import type { ParseResult } from '@loomcli/validators';
+import { object, optional, safeParse, string } from 'valibot';
 
 /**
  * A Bun compile target, as Bun 1.4.2 documents them: `bun-<os>-<arch>` for `linux`, `darwin`, or
@@ -32,9 +34,9 @@ function readTarget(value: string): BuildTarget | { readonly refused: string } {
 }
 
 /** The glibc version a Node-compatible runtime reports, which a musl host leaves out. */
-const report = z.object({
-  header: z.object({ glibcVersionRuntime: z.string().optional() }),
-});
+const header = object({ glibcVersionRuntime: optional(string()) });
+
+const report = object({ header });
 
 /**
  * The one target a build writes: a JavaScript bundle for a runtime, or a single binary that Bun
@@ -46,19 +48,19 @@ export type BuildTarget =
   | { readonly kind: 'compile'; readonly name: string; readonly platform: string };
 
 /** The `--target` validator, whose output is the target it read. */
-export const targetOption = z.string().transform((value, context) => {
-  const target = readTarget(value);
-  if ('refused' in target) {
-    context.addIssue({ code: 'custom', message: target.refused });
-    return z.NEVER;
-  }
-  return target;
+export const targetOption = createValidator({
+  inputSchema: { type: 'string' },
+  parse: (raw): ParseResult<BuildTarget> => {
+    const target = readTarget(raw);
+    return 'refused' in target ? { issues: [{ message: target.refused }] } : { value: target };
+  },
 });
 
 /** The compile target Bun names for the host: its platform, its architecture, and musl on Alpine. */
 export function hostTarget(): BuildTarget {
   const os = process.platform === 'win32' ? 'windows' : process.platform;
-  const glibc = report.safeParse(process.report.getReport()).data?.header.glibcVersionRuntime;
+  const reported = safeParse(report, process.report.getReport());
+  const glibc = reported.success ? reported.output.header.glibcVersionRuntime : undefined;
   const variant = os === 'linux' && glibc === undefined ? '-musl' : '';
   const name = `bun-${os}-${process.arch}${variant}`;
   const target = readTarget(name);

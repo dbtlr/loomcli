@@ -1,5 +1,4 @@
 import { escapeControlCharacters, LoomError } from '@loomcli/core';
-import { z } from 'zod';
 
 /** The lowest code a failure class may declare, since 0 is success. */
 const firstDeclarable = 1;
@@ -72,8 +71,7 @@ function invalidCodeMessage(className: string, declared: unknown): string {
 
 /**
  * One static of a failure class, walking to the nearest ancestor that declares it. A static getter
- * that throws answers `undefined`: a throw inside a zod transform makes zod retry the parse
- * asynchronously, which core rejects with the wrong fault and whose rejected retry nothing handles.
+ * that throws answers `undefined`, so the author's throw never reaches the schema's transform.
  */
 function readStatic(failureClass: object, key: 'code' | 'exitCode'): unknown {
   try {
@@ -99,7 +97,11 @@ function classNameOf(failureClass: object): string {
 /**
  * The failure code and exit code one class declares, or the sentence that rejects it: a value that
  * is not a failure class, then an undeclarable exit code, then a failure code outside the grammar,
- * the order core checks them in.
+ * the order core checks them in. The class's statics are read when the value is made, the exit code
+ * first as core reads them, so no failure is constructed and the class itself never reaches the
+ * graph. Every read of the class is guarded, so the author's throw never escapes into the schema.
+ * The value is `unknown`, because no typed path names a class without an assertion, so a value that
+ * is not a failure class is rejected at run time alone.
  */
 function readFailure(value: unknown): { code: string; exitCode: number } | { issue: string } {
   if (!isFailureClass(value)) {
@@ -116,21 +118,4 @@ function readFailure(value: unknown): { code: string; exitCode: number } | { iss
   return { code, exitCode };
 }
 
-/**
- * A failure class, output as the failure code and the exit code it declares. The class's statics
- * are read when the value is made, the exit code first as core reads them, so no failure is
- * constructed and the class itself never reaches the graph. Every read of the class is guarded, so
- * the author's throw never escapes into zod. Its input type is `unknown`, because no typed path
- * names a class without an assertion, so a value that is not a failure class is rejected at run
- * time alone.
- */
-const failure = z.unknown().transform((value, context) => {
-  const read = readFailure(value);
-  if ('issue' in read) {
-    context.addIssue({ code: 'custom', message: read.issue });
-    return z.NEVER;
-  }
-  return read;
-});
-
-export { failure };
+export { readFailure };

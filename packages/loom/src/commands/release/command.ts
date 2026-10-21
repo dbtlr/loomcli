@@ -2,8 +2,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { Command } from '@loomcli/core';
-import { z } from 'zod';
+import { createValidator } from '@loomcli/validators';
 
+import { parseOrThrow } from '../../helpers/parse-or-throw.js';
 import { planRelease, planSchema, renderPlan } from '../../helpers/release-plan.js';
 import { recordRelease } from '../../helpers/release-record.js';
 import { report } from '../../helpers/report.js';
@@ -12,10 +13,15 @@ import { cut } from './cut.js';
 const defaultRegistry = 'https://registry.npmjs.org';
 const defaultGitHubApi = 'https://api.github.com';
 
-const count = z
-  .string()
-  .regex(/^\d+$/u, 'Supply a whole number.')
-  .transform((value) => Number(value));
+const wholeNumber = /^\d+$/u;
+
+const count = createValidator({
+  inputSchema: { type: 'string', pattern: wholeNumber.source },
+  parse: (raw) =>
+    wholeNumber.test(raw)
+      ? { value: Number(raw) }
+      : { issues: [{ message: 'Supply a whole number.' }] },
+});
 
 export const release = new Command('release', {
   description: 'Cut, plan, and record a release.',
@@ -124,7 +130,7 @@ export const release = new Command('release', {
           const source: unknown = JSON.parse(readFileSync(resolve(host.cwd, options.plan), 'utf8'));
           return recordRelease({
             githubApi: options['github-api'],
-            plan: planSchema.parse(source),
+            plan: parseOrThrow(planSchema, source),
             registry: options.registry,
             repository: options.repository,
             retry: {

@@ -1,6 +1,6 @@
 import { Command, plugin } from '@loomcli/core';
 import type { ActionContext, Plugin } from '@loomcli/core';
-import { z } from 'zod';
+import { oneOf } from '@loomcli/validators';
 
 import { installGlobal, uninstallGlobal } from './global.js';
 import type { ChildRun } from './global.js';
@@ -9,7 +9,7 @@ import { identity, judgeSettings } from './settings.js';
 import type { Skill, SkillsSettings } from './types.js';
 
 /** `claude`, or `agents` for Codex and the other agents that read the shared folder. */
-const agentInput = z.enum(['claude', 'agents']);
+const agentInput = oneOf(['claude', 'agents']);
 
 /** What every child reads from its action context. */
 type ChildContext = Pick<ActionContext<unknown>, 'graph' | 'host' | 'out' | 'signal'>;

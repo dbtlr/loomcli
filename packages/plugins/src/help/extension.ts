@@ -1,5 +1,5 @@
 import { extension } from '@loomcli/core';
-import { z } from 'zod';
+import { array, object, optional, pipe, regex, strictTuple, string, union } from 'valibot';
 
 import { packageName } from '../constants.js';
 import { line, markdown } from '../lines.js';
@@ -11,29 +11,32 @@ import { line, markdown } from '../lines.js';
  * too, so every value help supplies to the manifest validates there.
  */
 
-const example = z.object({ command: line, note: line.optional() });
-const sectionPath = z.union([z.tuple([line]), z.tuple([line, line])]);
+const example = object({ command: line, note: optional(line) });
+const sectionPath = union([strictTuple([line]), strictTuple([line, line])]);
+const sectionPaths = array(sectionPath);
+const word = pipe(string(), regex(/^[^\s\u0085]+$/u, 'Supply one word with no whitespace.'));
+
+const commandFacts = object({
+  commandSections: optional(sectionPaths),
+  details: optional(markdown),
+  examples: optional(array(example)),
+  optionSections: optional(sectionPaths),
+  section: optional(sectionPath),
+});
+
+const inputFacts = object({
+  accepts: optional(line),
+  placeholder: optional(word),
+  section: optional(sectionPath),
+});
 
 export const helpCommand = extension(`${packageName}/help/command`, {
-  schema: z.object({
-    commandSections: z.array(sectionPath).optional(),
-    details: markdown.optional(),
-    examples: z.array(example).optional(),
-    optionSections: z.array(sectionPath).optional(),
-    section: sectionPath.optional(),
-  }),
+  schema: commandFacts,
   target: 'command',
 });
 
 export const helpInput = extension(`${packageName}/help/input`, {
-  schema: z.object({
-    accepts: line.optional(),
-    placeholder: z
-      .string()
-      .regex(/^[^\s\u0085]+$/u, 'Supply one word with no whitespace.')
-      .optional(),
-    section: sectionPath.optional(),
-  }),
+  schema: inputFacts,
   target: 'option',
 });
 
@@ -42,6 +45,6 @@ export const helpInput = extension(`${packageName}/help/input`, {
  * any list help would derive from the schema. An argument's placeholder is its declared name.
  */
 export const helpArgument = extension(`${packageName}/help/argument`, {
-  schema: z.object({ accepts: line.optional() }),
+  schema: object({ accepts: optional(line) }),
   target: 'argument',
 });

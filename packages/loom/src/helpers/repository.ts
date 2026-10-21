@@ -2,18 +2,24 @@ import { spawnSync } from 'node:child_process';
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { z } from 'zod';
+import { boolean, looseObject, minLength, object, optional, pipe, string } from 'valibot';
 
+import { stringMap } from './json-object.js';
+import { parseOrThrow } from './parse-or-throw.js';
 import { parseVersion } from './version.js';
 
-const manifestSchema = z.looseObject({
-  dependencies: z.record(z.string(), z.string()).optional(),
-  devDependencies: z.record(z.string(), z.string()).optional(),
-  name: z.string().min(1),
-  optionalDependencies: z.record(z.string(), z.string()).optional(),
-  peerDependencies: z.record(z.string(), z.string()).optional(),
-  private: z.boolean().optional(),
-  version: z.string(),
+const dependencyMap = optional(stringMap);
+
+const visibility = object({ private: optional(boolean()) });
+
+const manifestSchema = looseObject({
+  dependencies: dependencyMap,
+  devDependencies: dependencyMap,
+  name: pipe(string(), minLength(1)),
+  optionalDependencies: dependencyMap,
+  peerDependencies: dependencyMap,
+  private: optional(boolean()),
+  version: string(),
 });
 
 /**
@@ -121,10 +127,10 @@ export function readParticipants(root: string, ref?: string) {
     const path = `${directory}/package.json`;
     const source = readRegularFile(root, path, ref);
     const input: unknown = JSON.parse(source);
-    if (z.object({ private: z.boolean().optional() }).parse(input).private) {
+    if (parseOrThrow(visibility, input).private) {
       return [];
     }
-    const manifest = manifestSchema.parse(input);
+    const manifest = parseOrThrow(manifestSchema, input);
     return [{ directory, manifest, path, source }];
   });
 }
