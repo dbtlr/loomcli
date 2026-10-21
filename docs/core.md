@@ -6699,7 +6699,7 @@ export type LoggingSettings =
       readonly level?: WrittenLevel;
       /** The size in bytes past which the file rotates, 10_000_000 by default. */
       readonly maxBytes?: number;
-      /** How many rotated copies are kept, 5 by default. */
+      /** How many rotated copies are kept, 5 by default. With 0, a rotation deletes the file. */
       readonly keep?: number;
       /** Called for each failure to resolve, create, append to, or rotate the file. Absent, a failure is ignored. */
       readonly onError?: (error: LoggingError) => undefined;
