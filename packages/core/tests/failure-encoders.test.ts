@@ -87,8 +87,8 @@ test('a stream cancelled mid-sequence under an encoded selection writes the inco
   });
 });
 
-test('a stdout that fails with EPIPE under an encoded selection writes the incomplete-result line beside its plain fallback report', () => {
-  expect(run(['list', '--pick', 'json'], { env: { FIXTURE_STDOUT: 'epipe' } })).toEqual({
+test('a stdout that fails a write under an encoded selection writes the incomplete-result line beside its plain fallback report', () => {
+  expect(run(['list', '--pick', 'json'], { env: { FIXTURE_STDOUT: 'full' } })).toEqual({
     status: 1,
     stderr: `${incomplete(1, 0)}enc: Something went wrong.\n`,
     stdout: 'exit:1\n',

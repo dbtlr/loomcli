@@ -97,12 +97,12 @@ function sequencing(emit, source, translators = [answering(SyntaxError, 'applica
     .action(({ out }) => emit(out.results(source())));
 }
 
-/** What a write to a closed pipe fails with, as `write EPIPE` does. */
-class PipeError extends Error {
+/** What a write to a full disk fails with, as `write ENOSPC` does. */
+class DiskError extends Error {
   constructor() {
-    super('write EPIPE');
-    this.name = 'PipeError';
-    this.code = 'EPIPE';
+    super('write ENOSPC');
+    this.name = 'DiskError';
+    this.code = 'ENOSPC';
   }
 }
 
@@ -534,14 +534,14 @@ function build() {
     case 'destination': {
       stdout = new Writable({
         write(chunk, encoding, callback) {
-          callback(new PipeError());
+          callback(new DiskError());
         },
       });
       return ending(
         async ({ out }) => {
           await out.print('lost');
         },
-        { translators: [answering(PipeError, 'application')] },
+        { translators: [answering(DiskError, 'application')] },
       );
     }
     default: {

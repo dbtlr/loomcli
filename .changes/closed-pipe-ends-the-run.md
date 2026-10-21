@@ -1,0 +1,6 @@
+- Fix `app <command> | head -1` printing `Something went wrong.` and exiting 1 once the reader closed the pipe. A write to `run()`'s stdout that fails with `EPIPE` now ends the run, following the `SIGPIPE` convention, under [Signals and cancellation](docs/core.md#signals-and-cancellation):
+  - Core aborts the run signal with the `CancellationReason` source `closed-pipe`, whose `cause` is the failed write's error, so a streaming row source or an action that reads `signal` stops as it does on cancellation.
+  - The write and every later stdout write reject with the signal's reason, which is silent when the action lets it propagate. Core writes no failure report and no incomplete-result line for the closed pipe and logs no failure event.
+  - `run()` resolves 141, and the process exits 141, in a distributed and a development build, under Node and Bun. `ExitCode` and a cancelled `invoke()` outcome's `exitCode` gain 141, and the manifest's `exitCodes` gains its row.
+  - The first cause to abort the run still fixes the code, so a pipe that closes after `SIGINT` keeps 130.
+  - A failed stderr write and every other failed stdout write, such as `ENOSPC`, still report a broken destination and exit 1.

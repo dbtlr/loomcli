@@ -31,11 +31,11 @@ const silent = plugin('fixture/silent', {});
 
 const dispatch = ({ out }) => out.print('dispatched');
 
-/** A stdout whose reader has gone away, so every write fails as a closed pipe does. */
-function brokenPipe() {
+/** A stdout on a full disk, so every write fails, which leaves a broken destination. */
+function fullDisk() {
   return new Writable({
     write(_chunk, _encoding, callback) {
-      callback(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+      callback(Object.assign(new Error('write ENOSPC'), { code: 'ENOSPC' }));
     },
   });
 }
@@ -249,11 +249,11 @@ const scenarios = {
         log.info('outer again');
       }),
   'stdout-broken': () =>
-    new Application('probe', { description: 'Probe a closed pipe.', plugins: [collector] }).action(
+    new Application('probe', { description: 'Probe a full disk.', plugins: [collector] }).action(
       ({ out }) => out.print('lost'),
     ),
   'stdout-broken-after-failure': () =>
-    new Application('probe', { description: 'Probe a closed pipe.', plugins: [collector] }).action(
+    new Application('probe', { description: 'Probe a full disk.', plugins: [collector] }).action(
       async ({ out }) => {
         // The action catches the failed write and fails on its own.
         // A run whose output failed reports only the destination.
@@ -302,7 +302,7 @@ const app = build();
 const release =
   process.env.FIXTURE_BUILD === undefined ? {} : { release: { build: process.env.FIXTURE_BUILD } };
 /** A stdout that fails every write, for the scenarios whose destination breaks. */
-const stdout = scenario.startsWith('stdout-broken') ? { stdout: brokenPipe() } : {};
+const stdout = scenario.startsWith('stdout-broken') ? { stdout: fullDisk() } : {};
 const code = await app.run({
   host: { argv, ...release, ...stdout },
   signal: controller.signal,

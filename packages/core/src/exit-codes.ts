@@ -1,6 +1,6 @@
 /**
  * The first code no failure class may declare. 126 and 127 belong to the shell, and 128 plus a
- * signal number reports a signal, which covers 130 and 143.
+ * signal number reports a signal, which covers 130, 141, and 143.
  */
 const firstReserved = 126;
 

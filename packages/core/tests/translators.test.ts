@@ -208,7 +208,7 @@ test('a failure a deferred row source throws is never offered and exits with its
 });
 
 test('a destination write failure the action lets propagate is answered by its translator', () => {
-  expect(run('destination')).toEqual(translated('application', ['application:PipeError']));
+  expect(run('destination')).toEqual(translated('application', ['application:DiskError']));
 });
 
 test('the failure classes an author constructs accept the platform ErrorOptions', () => {

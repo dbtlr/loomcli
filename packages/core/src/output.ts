@@ -35,6 +35,32 @@ import type { ViewRegistry } from './view.js';
 
 export type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
 
+/**
+ * What one destination's writes meet: nothing refused yet, a failed write the run reports as a
+ * broken destination, or a reader that closed the run's stdout, which ended the run and whose
+ * writes reject with the run signal's reason.
+ */
+type DestinationState = WriteState | { kind: 'closed'; reason: unknown };
+
+/** What a write a destination refuses rejects with. */
+function refusal(state: Exclude<DestinationState, { kind: 'ok' }>): unknown {
+  return state.kind === 'closed' ? state.reason : state.error;
+}
+
+/**
+ * Whether one write failed because the reader of the pipe closed it. Node and Bun both report it
+ * with the code `EPIPE`.
+ */
+function closedPipe(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'EPIPE';
+}
+
+/**
+ * How the run's stdout reads a write failure: the run signal's reason once a closed reader ended
+ * the run, or nothing for a failure that leaves a broken destination.
+ */
+type Closing = (error: unknown) => { reason: unknown } | undefined;
+
 /** The semantic calls, which choose a destination. A rendered value has no purpose of its own. */
 type Purpose = Lane;
 
@@ -92,7 +118,7 @@ class Turn {
 
 class Destination {
   tail: Promise<void> = Promise.resolve();
-  state: WriteState = { kind: 'ok' };
+  state: DestinationState = { kind: 'ok' };
   passage: Passage | undefined = undefined;
   /**
    * The destination whose order this one's text writes may join, if any, and whether a write issued
@@ -104,15 +130,28 @@ class Destination {
   /** How many sequences hold a place in this destination's order and have not closed. */
   #sequences = 0;
 
-  constructor(readonly stream: Writable) {
+  constructor(
+    readonly stream: Writable,
+    private readonly closing?: Closing,
+  ) {
     stream.on('error', this.onError);
   }
 
   readonly onError = (error: unknown): void => {
     if (this.state.kind === 'ok') {
-      this.state = { error, kind: 'failed' };
+      const closed = this.closing?.(error);
+      this.state =
+        closed === undefined
+          ? { error, kind: 'failed' }
+          : { kind: 'closed', reason: closed.reason };
     }
   };
+
+  /** What one failed write rejects with, once the failure is recorded. */
+  private refused(error: unknown): unknown {
+    this.onError(error);
+    return this.state.kind === 'closed' ? this.state.reason : error;
+  }
 
   /**
    * One text queued behind this destination's earlier writes and, when it joins another
@@ -146,8 +185,8 @@ class Destination {
 
   /** One text queued behind whatever preceded it, on a destination that has not failed. */
   private accept(text: string): Promise<void> {
-    if (this.state.kind === 'failed') {
-      throw this.state.error;
+    if (this.state.kind !== 'ok') {
+      throw refusal(this.state);
     }
     return this.send(() =>
       this.passage ? this.passage(text, (sent) => this.writeText(sent)) : this.writeText(text),
@@ -172,8 +211,8 @@ class Destination {
    */
   compose(produce: () => string): Promise<void> {
     return this.run(() => {
-      if (this.state.kind === 'failed') {
-        throw this.state.error;
+      if (this.state.kind !== 'ok') {
+        throw refusal(this.state);
       }
       return this.send(() => {
         const text = produce();
@@ -184,7 +223,7 @@ class Destination {
 
   /** Sends text now, inside an operation this destination is running, recording any failure. */
   async sendQuietly(text: string): Promise<void> {
-    if (text === '' || this.state.kind === 'failed') {
+    if (text === '' || this.state.kind !== 'ok') {
       return;
     }
     try {
@@ -232,7 +271,7 @@ class Destination {
       }
       const onError = (error: unknown): void => {
         cleanup();
-        reject(error);
+        reject(this.refused(error));
       };
       const onClose = (): void => {
         onError(new Error('The output destination closed before writing completed.'));
@@ -247,7 +286,7 @@ class Destination {
         this.stream.write(text, (error) => {
           cleanup();
           if (error) {
-            reject(error);
+            reject(this.refused(error));
           } else {
             resolve();
           }
@@ -370,6 +409,26 @@ export class Output {
   // Closes every region at once when the run's signal aborts.
   private readonly onCancel = (): void => {
     this.regions.closeAll('cancellation');
+  };
+  // Aborts the run's signal with the closed-pipe reason, once the run has a signal bracket.
+  private closePipe: (cause: unknown) => void = () => undefined;
+  // Whether the reader of stdout closed the pipe, after which no incomplete-result line is written.
+  private pipeClosed = false;
+  /**
+   * The reading of a failed stdout write. A closed reader aborts the run's signal, and every write
+   * from then on rejects with its reason, which the run already reports as its end. Any other
+   * failure, or one before anything can abort the run, leaves a broken destination.
+   */
+  private readonly closing: Closing = (error) => {
+    if (!closedPipe(error)) {
+      return undefined;
+    }
+    this.closePipe(error);
+    if (!this.signal.aborted) {
+      return undefined;
+    }
+    this.pipeClosed = true;
+    return { reason: this.signal.reason };
   };
 
   constructor(
@@ -538,6 +597,11 @@ export class Output {
       }
     }
     return [...causes];
+  }
+
+  /** What ends the run when the reader of its stdout closes the pipe. */
+  useClosedPipe(close: (cause: unknown) => void): void {
+    this.closePipe = close;
   }
 
   /** The registry one invocation resolves through, republished as each contributor is read. */
@@ -746,6 +810,11 @@ export class Output {
    * answers what the first line whose view threw raised, which no code can catch.
    */
   async writeIncomplete(): Promise<{ cause: unknown } | undefined> {
+    // A reader that closed stdout stopped reading on purpose, so no line reports the truncation.
+    if (this.pipeClosed) {
+      this.dropIncomplete();
+      return undefined;
+    }
     let fault: { cause: unknown } | undefined = undefined;
     for (const facts of this.heldIncomplete.splice(0)) {
       const context = this.context('stderr');
@@ -903,11 +972,16 @@ export class Output {
     );
   }
 
-  /** The queue one stream writes through, opened the first time this invocation reaches it. */
+  /**
+   * The queue one stream writes through, opened the first time this invocation reaches it. Only
+   * the run's own stdout reads a closed reader as the end of the run.
+   */
   private destination(stream: Writable): Destination {
     let destination = this.destinations.get(stream);
     if (!destination) {
-      destination = new Destination(stream);
+      const { stderr, stdout } = this.host;
+      const ends = stream === stdout && stream !== stderr;
+      destination = new Destination(stream, ends ? this.closing : undefined);
       this.destinations.set(stream, destination);
     }
     return destination;

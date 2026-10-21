@@ -347,15 +347,19 @@ An application whose release facts read `distributed`: what an operator installs
 _Avoid_: Production, release mode, shipped mode
 
 **Exit code**:
-The status `run()` resolves and sets on the process. It reports whether the invocation succeeded and, if not, which category of failure, which failure class, or which cancellation ended it. 0 is success, 1 and 2 are core's failure categories, 3 through 125 appear only as declared exit codes, which may also be 1 or 2, 130 is a cancellation by `SIGINT`, by the caller, or by the action's `cancel()`, and 143 is a cancellation by `SIGTERM`.
+The status `run()` resolves and sets on the process. It reports whether the invocation succeeded and, if not, which category of failure, which failure class, or which cancellation ended it. 0 is success, 1 and 2 are core's failure categories, 3 through 125 appear only as declared exit codes, which may also be 1 or 2, 130 is a cancellation by `SIGINT`, by the caller, or by the action's `cancel()`, 141 is a closed pipe, and 143 is a cancellation by `SIGTERM`.
 
 **Declared exit code**:
 The exit code a failure class states as its static `exitCode`, read from the nearest ancestor that declares one, so every failure of one class exits with one code. Its type is a whole number from 1 through 125; 0 and 126 and above are reserved.
 _Avoid_: Custom exit code, error code, status override
 
 **Run signal**:
-The one cancellation signal a run creates and hands to every middleware and the action. A caller-supplied signal, the signals owner, or the action's `cancel()` aborts it, with a `CancellationReason` naming the cause.
+The one cancellation signal a run creates and hands to every middleware and the action. A caller-supplied signal, the signals owner, the action's `cancel()`, or a closed pipe aborts it, with a `CancellationReason` naming the cause.
 _Avoid_: Abort controller (for the concept), cancellation token, interrupt
+
+**Closed pipe**:
+The reader of a run's stdout closing the pipe, as `head -1` does once it has its line, so the run's next stdout write fails with `EPIPE`. It ends the run as a cause of the run signal and exits 141, following the `SIGPIPE` convention; it is not a broken destination, which every other failed write is.
+_Avoid_: Broken pipe (for the run's end), SIGPIPE (core receives no signal)
 
 **Signals owner**:
 The one installed plugin that claims the signals slot, on whose behalf core installs and removes the process listeners for one run.

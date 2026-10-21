@@ -263,9 +263,9 @@ test('a stdout that fails a write logs the destination defect at fatal with the 
   expect(event.level).toBe('fatal');
   expect(event.message).toBe('Could not write invocation output.');
   expect(event.defect).toEqual({
-    message: 'write EPIPE',
+    message: 'write ENOSPC',
     name: 'Error',
-    stack: expect.stringContaining('write EPIPE'),
+    stack: expect.stringContaining('write ENOSPC'),
   });
   expect(event.failure).toMatchObject({ code: 'internal', exitCode: 1 });
   expect(result.resolved).toBe('resolved:1');
@@ -276,7 +276,7 @@ test('a distributed build logs the destination defect while stderr holds the gen
   const { event } = only(result.events);
   expect(event.level).toBe('fatal');
   expect(event.message).toBe('Something went wrong.');
-  expect(event.defect?.message).toBe('write EPIPE');
+  expect(event.defect?.message).toBe('write ENOSPC');
   expect(result.stderr).toBe('probe: Something went wrong.\n');
 });
 
@@ -368,7 +368,7 @@ test.each(['node', 'bun'])(
     const result = bundledRun(runtime, 'stdout-broken');
     const { event } = only(result.events);
     expect(event.level).toBe('fatal');
-    expect(event.defect?.message).toBe('write EPIPE');
+    expect(event.defect?.message).toBe('write ENOSPC');
     expect(result.stderr).toBe('probe: Something went wrong.\n');
   },
 );

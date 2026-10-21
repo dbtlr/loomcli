@@ -6,16 +6,19 @@ type ProcessSignal = 'SIGINT' | 'SIGTERM';
 /**
  * What aborted one run's private controller. Core owns this value, so a middleware reads `source`
  * and never infers a signal name; `cause` carries the caller's own `signal.reason` when a caller
- * aborted. The first cause to abort fixes the reason and the code, and a later cause changes
- * neither.
+ * aborted, and the failed write when the reader of the run's stdout closed the pipe. The first
+ * cause to abort fixes the reason and the code, and a later cause changes neither.
  */
 interface CancellationReason {
-  source: ProcessSignal | 'caller' | 'action';
+  source: ProcessSignal | 'caller' | 'action' | 'closed-pipe';
   cause?: unknown;
 }
 
-/** The status each cause resolves. A script that saw 0 after an interrupt would carry on. */
-const codes = { SIGINT: 130, SIGTERM: 143, action: 130, caller: 130 } as const;
+/**
+ * The status each cause resolves. A script that saw 0 after an interrupt would carry on. A closed
+ * pipe resolves 141, the status a process ended by `SIGPIPE` reports, as `git` and `yes` do.
+ */
+const codes = { SIGINT: 130, SIGTERM: 143, action: 130, caller: 130, 'closed-pipe': 141 } as const;
 
 /** The status one cancelled run resolves, which is the part of `ExitCode` a signal decides. */
 type CancellationCode = (typeof codes)[CancellationReason['source']];
@@ -46,6 +49,8 @@ function isCancellationEcho(thrown: unknown, reason: unknown): boolean {
  */
 interface SignalBracket {
   cancel: () => void;
+  /** Aborts the run because the reader of its stdout closed the pipe, which `cause` failed on. */
+  closePipe: (cause: unknown) => void;
   /** Installs one listener per claimed signal, once the graph has built and validated. */
   install: (owned: readonly ProcessSignal[]) => void;
   /** The reason the first cause fixed, or `undefined` while nothing has aborted the run. */
@@ -126,6 +131,7 @@ function bracketRun(controller: AbortController, caller: AbortSignal | undefined
 
   return {
     cancel: () => first.cancel({ source: 'action' }),
+    closePipe: (cause) => first.cancel({ cause, source: 'closed-pipe' }),
     finish: () => {
       release();
       unsubscribe();
@@ -176,6 +182,7 @@ function bracketCall(
   ];
   return {
     cancel: () => first.cancel({ source: 'action' }),
+    closePipe: (cause) => first.cancel({ cause, source: 'closed-pipe' }),
     finish: () => {
       for (const unsubscribe of subscriptions) {
         unsubscribe();

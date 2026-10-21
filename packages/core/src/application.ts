@@ -931,6 +931,8 @@ class ApplicationBuilder<
         const choice = spellings && colorChoice(host.argv, spellings);
         const invocationOutput = door.output(host, controller.signal, chosenPolicy({}, choice));
         output = invocationOutput;
+        // A closed reader on stdout ends the run as a cancellation does, with its own reason.
+        invocationOutput.useClosedPipe((cause) => signals?.closePipe(cause));
         // The constructor validated the declared policy, which the build hands over after the overrides.
         let policy: RenderingPolicy = {};
         // The installed theme, which the run's background resolves to a palette once it settles.

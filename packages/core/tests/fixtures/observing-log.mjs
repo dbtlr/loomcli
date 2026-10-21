@@ -18,11 +18,11 @@ const stderr = new Writable({
   },
 });
 
-/** A stdout whose reader has gone away, so every write fails as a closed pipe does. */
-function brokenPipe() {
+/** A stdout on a full disk, so every write fails, which leaves a broken destination. */
+function fullDisk() {
   return new Writable({
     write(_chunk, _encoding, callback) {
-      callback(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+      callback(Object.assign(new Error('write ENOSPC'), { code: 'ENOSPC' }));
     },
   });
 }
@@ -160,7 +160,7 @@ const code = await app.run({
     env: { PROBE: 'run' },
     platform: 'probe-os',
     stderr,
-    ...(scenario === 'stdout-and-hook-broken' ? { stdout: brokenPipe() } : {}),
+    ...(scenario === 'stdout-and-hook-broken' ? { stdout: fullDisk() } : {}),
     ...release,
   },
   signal: controller.signal,
