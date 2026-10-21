@@ -18,29 +18,11 @@ const postfixFault: Expected = {
     'Plugin "@loomcli/plugins/version" postfix must be a string that holds a character other than whitespace and no line terminator.',
 };
 
-/** One service settings fault, from the setting it names and the fault's words. */
-function serviceFault(fault: {
-  readonly key: string;
-  readonly sentence: string;
-  readonly correction: string;
-}): Expected {
-  return {
-    correction: fault.correction,
-    rule: 'service/settings',
-    sentence: `Plugin "@loomcli/plugins/service" setting "${fault.key}" ${fault.sentence}`,
-  };
-}
-
-const labelFault = {
+/** The service `label` fault. */
+const labelFault: Expected = {
   correction: 'Supply a label such as com.acme.notes.',
-  key: 'label',
-  sentence: 'is not a reverse-DNS name.',
-};
-
-const runFault = {
-  correction: "Supply the words that run the service's Command, such as ['serve'].",
-  key: 'run',
-  sentence: 'is not a list of argument words.',
+  rule: 'service/settings',
+  sentence: 'Plugin "@loomcli/plugins/service" setting "label" is not a reverse-DNS name.',
 };
 
 /** One skills settings fault, from the fault's words. */
@@ -52,23 +34,24 @@ function skillsFault(fault: { readonly sentence: string; readonly correction: st
   };
 }
 
-const listFault = {
-  correction: "Supply at least one skill, such as { name: 'notes', files: loadNotesSkill }.",
-  sentence: 'is not a list of skills.',
-};
-
 const nameCorrection =
   'Use lowercase letters, digits, and single hyphens, 64 characters at most, such as notes.';
 
-/** One self-update `notices` fault, from the setting it names. */
-function noticesFault(key: 'notices' | 'notices.env'): Expected {
-  const notices = key === 'notices';
+/** The self-update `notices.env` fault. */
+const noticesFault: Expected = {
+  correction: 'Name it with letters, digits, and underscores, not starting with a digit.',
+  rule: 'self-update/settings',
+  sentence:
+    'Plugin "@loomcli/plugins/self-update" setting "notices.env" is not an environment variable name.',
+};
+
+/** The fault a dotenv list raises for a name that is not an environment variable name. */
+function dotenvFault(key: 'except' | 'only'): Expected {
   return {
-    correction: notices
-      ? 'Supply true, false, or { env }, or omit the setting.'
-      : 'Name it with letters, digits, and underscores, not starting with a digit.',
-    rule: 'self-update/settings',
-    sentence: `Plugin "@loomcli/plugins/self-update" setting "${key}" ${notices ? 'is not a Boolean or an object.' : 'is not an environment variable name.'}`,
+    correction:
+      'Name each variable with a letter or underscore followed by letters, digits, or underscores, such as API_TOKEN.',
+    rule: 'dotenv/variable-name',
+    sentence: `Plugin "@loomcli/plugins/dotenv" setting "${key}" lists a name that is not an environment variable name.`,
   };
 }
 
@@ -87,70 +70,19 @@ const settingsCases: Record<string, Expected> = {
     sentence: 'Plugin "@loomcli/plugins/config" file lists an extension the plugin cannot read.',
   },
   'config-path': {
-    correction:
-      'Supply a relative path such as .textstat.toml, with no control character and no empty, ., or .. segment.',
+    correction: 'Supply a relative path such as .textstat.toml, with no empty, ., or .. segment.',
     rule: 'config/file-path',
     sentence: 'Plugin "@loomcli/plugins/config" file is not a relative path.',
   },
-  'dotenv-empty': {
-    correction:
-      'Supply a nonempty variables list of distinct names, each a letter or underscore followed by letters, digits, or underscores.',
-    rule: 'dotenv/variables',
-    sentence: 'Plugin "@loomcli/plugins/dotenv" declares an invalid variables allowlist.',
-  },
-  'logging-console': {
-    correction: 'Remove the setting, or set "to" to "file".',
-    rule: 'logging/settings',
-    sentence:
-      'Plugin "@loomcli/plugins/logging" setting "file" is not accepted when "to" is "console".',
-  },
-  'logging-keep': {
-    correction: 'Supply a whole number of 1 or more.',
-    rule: 'logging/settings',
-    sentence: 'Plugin "@loomcli/plugins/logging" setting "keep" is not a positive whole number.',
-  },
-  'self-update-hook': {
-    correction: 'Supply a function, or omit the setting.',
-    rule: 'self-update/settings',
-    sentence: 'Plugin "@loomcli/plugins/self-update" setting "afterReplace" is not a function.',
-  },
-  'self-update-notices-env': noticesFault('notices.env'),
-  'self-update-notices-hyphen': noticesFault('notices.env'),
-  'self-update-notices-list': noticesFault('notices'),
-  'self-update-notices-number': noticesFault('notices'),
-  'service-label': serviceFault(labelFault),
-  'service-none': serviceFault(labelFault),
-  'service-probe': serviceFault({
-    correction: 'Supply a function, or omit the setting.',
-    key: 'probe',
-    sentence: 'is not a function.',
-  }),
-  'service-run-control': serviceFault({
-    correction: 'Remove the control character from the word.',
-    key: 'run',
-    sentence: 'holds a word with a control character.',
-  }),
-  'service-run-empty': serviceFault(runFault),
-  'service-run-word': serviceFault(runFault),
-  'skills-empty': skillsFault(listFault),
-  'skills-entry': skillsFault({
-    correction: 'Supply each skill as { name, files }.',
-    sentence: 'holds an entry that is not a skill.',
-  }),
-  'skills-files': skillsFault({
-    correction: "Supply a function that returns the skill's files.",
-    sentence: 'holds a skill whose files is not a function: notes.',
-  }),
-  'skills-list': skillsFault(listFault),
+  'dotenv-except': dotenvFault('except'),
+  'dotenv-only': dotenvFault('only'),
+  'self-update-notices-env': noticesFault,
+  'self-update-notices-hyphen': noticesFault,
+  'service-label': labelFault,
   'skills-name': skillsFault({
     correction: nameCorrection,
     sentence: 'holds a name that is not a skill name: Notes.',
   }),
-  'skills-name-none': skillsFault({
-    correction: nameCorrection,
-    sentence: 'holds a name that is not a skill name: (none).',
-  }),
-  'skills-none': skillsFault(listFault),
   'skills-twice': skillsFault({
     correction: 'Give each skill its own name.',
     sentence: 'holds the skill name notes twice.',

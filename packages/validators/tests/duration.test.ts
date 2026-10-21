@@ -226,14 +226,6 @@ describe('the min and max settings', () => {
     );
   });
 
-  it.each([30, null, false])('throws at the call for the bound %j', (bound) => {
-    expect(faultOf(() => Reflect.apply(duration, undefined, [{ max: bound }]))).toEqual(
-      declarationFault(
-        'duration() max is not a duration. Supply a duration such as "30s" or "2h30m".',
-      ),
-    );
-  });
-
   it('throws at the call for a min above max', () => {
     expect(faultOf(() => duration({ max: '30s', min: '1h' }))).toEqual(
       declarationFault('duration() min 1h is above max 30s. Supply a min at or below max.'),

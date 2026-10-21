@@ -14,9 +14,9 @@ interface Expected {
 
 const cases: Record<string, Expected> = {
   'bound-value': {
-    correction: 'Supply a whole number from -9007199254740991 through 9007199254740991.',
+    correction: 'Supply a finite number.',
     rule: 'bound-value',
-    sentence: 'integer() min is not a safe integer.',
+    sentence: 'integer() min is not a finite number.',
   },
   'bounds-order': {
     correction: 'Supply a min at or below max.',
@@ -38,20 +38,10 @@ const cases: Record<string, Expected> = {
     rule: 'bounds-order',
     sentence: 'duration() min 1h is above max 30s.',
   },
-  'factory-options': {
-    correction: 'Supply an object or leave it out.',
-    rule: 'factory-options',
-    sentence: 'number() options is not a plain object.',
-  },
   'input-schema': {
     correction: 'Leave out $schema, which the validator publishes itself.',
     rule: 'input-schema',
     sentence: 'createValidator() inputSchema declares its own $schema.',
-  },
-  'issue-code-config': {
-    correction: 'Supply a function that builds the sentence from the parameters.',
-    rule: 'issue-code-config',
-    sentence: 'issueCode() message is not a function.',
   },
   'issue-code-name': {
     correction:
@@ -60,30 +50,15 @@ const cases: Record<string, Expected> = {
     sentence:
       'issueCode() code "Bad Code" is not a package name, any subpath segments, and a rule name joined by slashes.',
   },
-  'issue-code-schema': {
-    correction: 'Supply a schema that returns its issues instead of throwing.',
-    rule: 'issue-code-schema',
-    sentence: 'Issue code "@acme/checks/shout" has a schema that throws in issue().',
-  },
   'issue-parameters': {
     correction: 'Supply parameters its schema accepts.',
     rule: 'issue-parameters',
     sentence: 'Issue code "@acme/checks/shout" rejects the parameters passed to issue().',
   },
-  'one-of-empty': {
-    correction: 'List at least one value.',
-    rule: 'one-of-values',
-    sentence: 'oneOf() values is empty.',
-  },
   'one-of-twice': {
     correction: 'List each value once.',
     rule: 'one-of-values',
     sentence: 'oneOf() lists "dev" twice.',
-  },
-  'pattern-message': {
-    correction: 'Supply a message that states what the pattern accepts.',
-    rule: 'pattern-message',
-    sentence: 'text() pattern has no message to describe it.',
   },
   'text-bounds-order': {
     correction: 'Supply a minLength at or below maxLength.',
@@ -104,11 +79,6 @@ const cases: Record<string, Expected> = {
     correction: 'List a letter followed by letters, digits, +, -, or ., with no trailing colon.',
     rule: 'url-protocols',
     sentence: 'url() protocols lists "https:", which is not a scheme name.',
-  },
-  'validator-definition': {
-    correction: 'Supply a function that validates one raw string.',
-    rule: 'validator-definition',
-    sentence: 'createValidator() parse is not a function.',
   },
 };
 

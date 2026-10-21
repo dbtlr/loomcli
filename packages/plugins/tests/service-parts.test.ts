@@ -1,8 +1,9 @@
 import { nowrap, style } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
 
+import { holdsControlCharacter } from '../src/service/children.js';
 import { readPrinted } from '../src/service/launchd.js';
-import { holdsControlCharacter, isLabel } from '../src/service/settings.js';
+import { isLabel } from '../src/service/settings.js';
 import { stateOf, statusOf, statusText } from '../src/service/status.js';
 import { readShown } from '../src/service/systemd.js';
 import { launchdPlist, systemdUnit } from '../src/service/unit.js';

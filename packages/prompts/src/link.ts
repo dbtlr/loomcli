@@ -11,7 +11,7 @@ import type { LinkKey, PromptContext } from './types.js';
 
 const linkRule = diagnosticRule('@loomcli/prompts/link', {
   explanation:
-    'A question links one local option of the routed Command, of the kind the question accepts.',
+    'A question asks in one line of prose and links one local option of the routed Command, of the kind the question accepts, and a select question offers at least one choice.',
   headline: 'Invalid question',
 });
 
@@ -41,16 +41,7 @@ function resolveLink<Options, Key extends LinkKey<Options>>(
   if (!isProseLine(message)) {
     invalid('A question message must be one nonempty line.', 'Supply a one-line message.');
   }
-  if (settings.skipIfSupplied !== undefined && typeof settings.skipIfSupplied !== 'boolean') {
-    invalid(`The question "${message}" sets an invalid skipIfSupplied.`, 'Use true or false.');
-  }
   if (key === undefined) {
-    if ('skipIfSupplied' in settings) {
-      invalid(
-        `The question "${message}" sets skipIfSupplied without option.`,
-        'Link an option or remove skipIfSupplied.',
-      );
-    }
     if (!context.interactive) {
       throw new InteractionUnavailableError(
         message,

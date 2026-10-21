@@ -10,27 +10,16 @@ const [mode] = process.argv.slice(2);
 if (process.env.FIXTURE_UNREADABLE === '1') {
   symlinkSync('.env', join(process.cwd(), '.env'));
 }
-const variables =
-  mode === 'copy' ? ['TOKEN'] : JSON.parse(process.env.FIXTURE_VARIABLES ?? '["TOKEN"]');
+const settings = JSON.parse(process.env.FIXTURE_SETTINGS ?? 'null') ?? undefined;
+const observedNames = JSON.parse(process.env.FIXTURE_NAMES ?? '["TOKEN"]');
 // Bun reads .env before this fixture starts; each test needs a controlled process baseline.
-for (const name of new Set([...variables, 'TOKEN', 'ALT', 'ENABLED', 'UNLISTED'])) {
+for (const name of new Set([...observedNames, 'TOKEN', 'ALT', 'ENABLED'])) {
   delete process.env[name];
 }
-const installed =
-  mode === 'settings'
-    ? dotenv(
-        process.env.FIXTURE_SETTINGS === undefined
-          ? undefined
-          : JSON.parse(process.env.FIXTURE_SETTINGS),
-      )
-    : dotenv({ variables });
-if (mode === 'copy') {
-  variables.splice(0, variables.length, 'NEXT');
-}
-const observedNames = [...new Set([...variables, 'TOKEN', 'UNLISTED'])];
+const installed = dotenv(settings);
 const hostOverride = { cwd: process.cwd(), env: JSON.parse(process.env.FIXTURE_ENV ?? '{}') };
 const app = new Application('app', {
-  description: 'Read an allowlisted dotenv file.',
+  description: 'Read a dotenv file.',
   plugins: [installed],
 })
   .option('token', {
@@ -49,7 +38,7 @@ const app = new Application('app', {
         host.env[name] === undefined ? [] : [[name, host.env[name]]],
       ),
     );
-    const processEnv = Object.fromEntries(variables.map((name) => [name, process.env[name]]));
+    const processEnv = Object.fromEntries(observedNames.map((name) => [name, process.env[name]]));
     return out.print(
       JSON.stringify({
         env,

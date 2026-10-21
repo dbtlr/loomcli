@@ -412,14 +412,6 @@ describe('names that collide', () => {
           ),
       'Commands "foo-bar" and "foo bar" both give the man page kit-foo-bar.',
     ],
-    [
-      'Get beside get',
-      () =>
-        new Application('kit', { description: 'A kit.', plugins: [manpage()] })
-          .command(new Command('Get', { description: 'Upper.' }).action(noop))
-          .command(new Command('get', { description: 'Lower.' }).action(noop)),
-      'Commands "Get" and "get" give the man pages kit-Get and kit-get, which one file holds on a file system that ignores case.',
-    ],
   ])('%s fails the build under page-name-taken', (_name, build, sentence) => {
     let thrown: unknown = undefined;
     try {
@@ -437,10 +429,6 @@ describe('names that collide', () => {
 
   it.each<[string, string]>([
     ['hyphen', 'Commands "foo-bar" and "foo bar" both give the man page kit-foo-bar.'],
-    [
-      'case',
-      'Commands "Get" and "get" give the man pages kit-Get and kit-get, which one file holds on a file system that ignores case.',
-    ],
   ])('the %s collision fails every run with the pinned diagnostic', (scenario, sentence) => {
     const collide = new URL('fixtures/manpage-collide.mjs', import.meta.url);
     for (const argv of [['manpage', 'install'], ['--help']]) {
@@ -463,9 +451,13 @@ describe('names that collide', () => {
 
   it('a hidden Command gives no page, so the same graph builds', () => {
     const app = new Application('kit', { description: 'A kit.', plugins: [manpage()] })
-      .command(new Command('Get', { description: 'Upper.', hidden: true }).action(noop))
-      .command(new Command('get', { description: 'Lower.' }).action(noop));
-    expect([...pagesOf(app).keys()]).toContain('kit-get.1');
+      .command(new Command('foo-bar', { description: 'Flat.', hidden: true }).action(noop))
+      .command(
+        new Command('foo', { description: 'Group.' }).command(
+          new Command('bar', { description: 'Nested.' }).action(noop),
+        ),
+      );
+    expect([...pagesOf(app).keys()]).toContain('kit-foo-bar.1');
   });
 });
 

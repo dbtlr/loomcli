@@ -5,7 +5,6 @@ import { listing } from './issues.js';
 import {
   isCount,
   isFiniteNumber,
-  isSafeInteger,
   kindParams,
   lengthParams,
   maxParams,
@@ -74,17 +73,17 @@ const integerIssue = issueCode(catalogCode('integer'), {
 
 const integerRangeIssue = issueCode(catalogCode('integer-range'), {
   message: ({ max, min }) => `Expected a whole number from ${String(min)} through ${String(max)}.`,
-  schema: rangeParams(isSafeInteger),
+  schema: rangeParams(isFiniteNumber),
 });
 
 const integerMinIssue = issueCode(catalogCode('integer-min'), {
   message: ({ min }) => `Expected a whole number of at least ${String(min)}.`,
-  schema: minParams(isSafeInteger),
+  schema: minParams(isFiniteNumber),
 });
 
 const integerMaxIssue = issueCode(catalogCode('integer-max'), {
   message: ({ max }) => `Expected a whole number of at most ${String(max)}.`,
-  schema: maxParams(isSafeInteger),
+  schema: maxParams(isFiniteNumber),
 });
 
 const numberIssue = issueCode(catalogCode('number'), {

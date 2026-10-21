@@ -28,12 +28,7 @@ function readInteger(raw: string): number | undefined {
 
 /** A decimal whole number that is a safe integer within `min` and `max`, both inclusive. */
 function integer(options?: IntegerOptions): Validator<number> {
-  const bounds = readBounds(options, {
-    accepts: Number.isSafeInteger,
-    correction: 'Supply a whole number from -9007199254740991 through 9007199254740991.',
-    factory: 'integer',
-    requirement: 'a safe integer',
-  });
+  const bounds = readBounds('integer', options);
   const issue = boundsIssue(integerCodes, bounds);
   return createValidator({
     inputSchema: boundsSchema('integer', bounds),

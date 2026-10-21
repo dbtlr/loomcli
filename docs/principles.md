@@ -56,7 +56,7 @@ A value that bypasses the types, from JavaScript or through `any`, and a constru
 | Only the author's own code | Fails through the ordinary failure path. At most one test shows that it does. |
 | Only a construction built to break the code | No rule, no test, and no finding. |
 
-Plausibility bounds operator reach. Command-line length bounds what an operator types, and an operator writes ordinary values into a configuration file by hand. A value that no operator plausibly produces, such as an integer beyond the safe range in a configuration file, is a probe.
+Plausibility bounds operator reach. Command-line length bounds what an operator types, and an operator writes ordinary values into a configuration file by hand. A value that no operator plausibly produces, such as an integer past 64 bits in a configuration file, is a probe.
 
 A test states a behavior someone relies on, and reaches it through the public surface. Assertions on exact bytes belong where the bytes are the product, which is operator output.
 

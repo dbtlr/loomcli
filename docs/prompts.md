@@ -86,7 +86,7 @@ The type tests prove the generic plumbing against the action context's real para
 | `skipIfSupplied` | All                    | `true` skips the question at a terminal when the linked option was supplied. Needs `option`. |
 | `default`        | Text, confirm, select  | The question's own default: a string for text, a Boolean for confirm, a choice for select.  |
 | `validate`       | Text, secret           | A Standard Schema value that checks a typed answer and may transform it.                    |
-| `choices`        | Select                 | A nonempty list of distinct strings.                                                        |
+| `choices`        | Select                 | A nonempty list of strings.                                                                 |
 
 Question validation receives the captured Loom run context through the Standard Schema options channel, with `phase: 'question'`. A linked question identifies its local option; an unlinked question identifies its title with `kind: 'question'`. The host, route, passthrough tail, and supplied values come from the same run, with separate copies for each validator call. Shipped validators such as `path()` and `dateTime()` use the host's working directory and time zone. A skipped question never calls its question validator.
 
@@ -104,9 +104,8 @@ The return type is the question's own output: the validator's output for text an
 | A global option                                    | `The question "Service port" links global option "verbose". Link a local option of the routed Command.`      |
 | A multiple, content, or counted option from text, secret, or select | `The question "Tags" links option "tag", which is not a string option that takes one value. Link a string option that takes one value.` |
 | Any option but a Boolean from confirm              | `The question "Install?" links option "install", which is not a Boolean option. Link a Boolean option.`     |
-| `skipIfSupplied` without `option`                  | `The question "Service port" sets skipIfSupplied without option. Link an option or remove skipIfSupplied.`   |
 
-The same rule covers settings that are malformed: an empty `choices` list, a repeated choice, a `default` that is not one of `choices`, a `default` on secret, and a `validate` that is not a Standard Schema value. The root Command reads as `the root Command`.
+The same rule covers a select question whose `choices` list is empty, which a computed list can be, before the question resolves: `The select question "Database" has no choices. Supply at least one choice.` The types reject the other malformed settings, such as `skipIfSupplied` without `option`, a `default` that is not one of `choices`, a `default` on secret, and a `validate` that is not a Standard Schema value, so they get no rule. The root Command reads as `the root Command`.
 
 ## Resolving a question
 
@@ -158,7 +157,7 @@ A secret's `typed` field is always the empty string. The default views use core'
 
 ## Leaving a question
 
-A question asks only when interaction is on, and it enters raw mode through `host.stdin.setRawMode`, which a terminal stream has. An embedding host that reports a terminal on stdin supplies a stream with that method, and a question that finds none fails as a defect, exit 1. Before it enters raw mode, it adds a synchronous listener to `context.signal` that leaves raw mode, so the terminal is cooked again at the moment of the abort. A question enters raw mode before its first frame, so a key typed while that frame is written, Ctrl-C included, reaches it as a key, and raw mode holds while any question of the run is open, so a question waiting its turn never leaves a key to a cooked terminal. Every path out of the run's last open question leaves raw mode, pauses `host.stdin` and removes the listeners the questions added, so stdin never holds the process open after the run. Every path out of a question draws the last line, answered or cancelled, with the sequence that shows the cursor, after every frame the question queued.
+A question asks only when interaction is on, and it enters raw mode through `host.stdin.setRawMode`, which a terminal stream has. An embedding host that reports a terminal on stdin supplies a stream with that method, and a question that finds none throws a `TypeError`, which a run reports as a defect with exit 1. Before it enters raw mode, it adds a synchronous listener to `context.signal` that leaves raw mode, so the terminal is cooked again at the moment of the abort. A question enters raw mode before its first frame, so a key typed while that frame is written, Ctrl-C included, reaches it as a key, and raw mode holds while any question of the run is open, so a question waiting its turn never leaves a key to a cooked terminal. Every path out of the run's last open question leaves raw mode, pauses `host.stdin` and removes the listeners the questions added, so stdin never holds the process open after the run. Every path out of a question draws the last line, answered or cancelled, with the sequence that shows the cursor, after every frame the question queued.
 
 - **Ctrl-C** calls `context.cancel()`, then the question draws its cancelled line and throws `context.signal.reason`. Core reads the throw as a silent cancellation, and the run resolves 130.
 - **End of input** while a question is active, stdin closing or Ctrl-D with nothing typed, takes the same path. It neither accepts a default nor submits an empty answer.
@@ -264,7 +263,7 @@ A progress line shows an operator that work is under way: a spinner while the wo
 - **A failing run.** When the run fails with a line still open, core closes the line's region for the failure before it renders the failure report, and the line draws its failure line with its label in the abort, so the report follows every line. A line the action leaves open draws its success line with its label when the action returns. A line a middleware or a configuration source leaves open stays open through the action, so a middleware can show a line around the whole run, and draws its success line with its label once the middleware chain has unwound.
 - **Off a terminal.** When the region is not live, because stderr is not a terminal, the run is an [invocation by name](core.md#invocation-by-name), or the run's [verbosity](core.md#verbosity) is -1, the line draws nothing. `progress()` writes its label once through `context.out.info`. `end` and a resolved `track` write the end message through `context.out.success`, and `fail`, a rejected `track`, and a failing run write it through `context.out.error`. An update and a cancellation write nothing, and no line carries the elapsed time. So under `-q` the start and success lines hide with their lanes and a failure line prints, and under an invocation by name the lines land in `messages`. The library reads the region's `live` and never the verbosity.
 - **Reports.** The line reports at its start, at each update, and when it closes, so an [`onProgress`](core.md#invocation-by-name) observer and an [MCP](core.md#mcp) client read `started`, `updated`, and `ended`, `failed`, or `cancelled`, whether or not the line draws.
-- **The values.** `label`, an update's `label`, and the end messages are marked strings, as a lane message is, so an author escapes raw data with `style.escape` first. `total` and `completed` are finite numbers of 0 or more, and `completed` may pass `total`.
+- **The values.** `label`, an update's `label`, and the end messages are marked strings, as a lane message is, so an author escapes raw data with `style.escape` first. `total` and `completed` are counts of 0 or more, which the library draws as given, and `completed` may pass `total`.
 - **No limit.** A line shows until its work ends. The library adds no timeout and no stall check.
 
 ### Progress style
@@ -284,19 +283,7 @@ export const app = new Application('fetchit', {
 - **One value.** The plugin declares no option, middleware, Command, view, or slot. It lists one Command-target [extension](core.md#extensions), `@loomcli/prompts/progress-style`, whose value its `onCommandAttach` hook adds to the root Command alone, and `progress()` reads it from `context.graph.root` with `readExtension`. The package does not export the descriptor.
 - **The spinner shape.** A spinner is `{ frames, interval }`, the shape every entry of [cli-spinners](https://github.com/sindresorhus/cli-spinners) has, so any entry drops in. One call's `spinner` setting wins over the style for its line.
 - **Defaults.** Without the plugin, and for each setting it omits, a line draws cli-spinners' `circleHalves` frames, `◐ ◓ ◑ ◒`, every 80 milliseconds, and a bar of `▰` complete cells and `▱` incomplete cells.
-- **Checked at the call.** `progressStyle()`, `progress()`, and `update()` check their settings at the call, as a question checks its own, and throw a `DeclarationError` under the rule `@loomcli/prompts/progress`, which a run reports with exit 1:
-
-| Setting                                              | Sentence                                                                                                      |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| A label, an update's label, or an end message that is not a string | `The progress line received a label that is not a string. Supply a string label.`                |
-| A `total` or `completed` that is not a finite number of 0 or more | `The progress line "Fetching records" received a total that is not a finite number of 0 or more. Supply a finite number of 0 or more.` |
-| A spinner with no frames                             | `The progress spinner has no frames. Supply at least one frame.`                                               |
-| A frame that is not a string                         | `The progress spinner frame 2 is not a string. Supply each frame as a string.`                                 |
-| An interval that is not a finite number above 0      | `The progress spinner interval is not a finite number above 0. Supply the milliseconds between frames.`        |
-| A bar cell that is not a nonempty string             | `The progress bar's complete cell is not a nonempty string. Supply the text of one cell.`, naming the incomplete cell for `incomplete` |
-| An update that is not an object                      | `The progress line "Fetching records" received an update that is not an object. Supply an object, such as { completed: 3 }.` |
-| A `done` or `failed` that is neither a string nor a function | `The progress line "Fetching records" received a done message that is neither a string nor a function. Supply a string, or a function that returns one.`, naming `failed` for `failed` |
-| `progressStyle()` settings that are not an object    | `The progress style received settings that are not an object. Supply an object, such as { spinner }.`         |
+- **No checks.** `progressStyle()` and `progress()` judge no setting, under [ADR-0093](decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md): the types bound each one, and the counts, labels, frames, cells, and interval are the author's values, drawn as given.
 
 ### Progress view
 
@@ -335,7 +322,7 @@ interface ProgressLine {
 - **Failing and returning.** An action that throws with two lines open writes both failure lines above the failure report, and one that returns with a line open writes its success line. A line a middleware opens before `next()` and leaves open is still running after the action returns and writes its success line once the chain has unwound.
 - **Cancellation.** `SIGINT` under a signals owner writes each open line's cancelled line, exits 130, and leaves no timer that holds the process open.
 - **Off a terminal.** With stderr piped, the run writes exactly the plain lines above. Under `-q` with the [verbose plugin](core.md#verbose-plugin), it writes only failure lines. Under `app.invoke`, the lines land in `messages`, and the observer reads every progress event in order. The end event of a line ended by `end`, `fail`, or `track` with a `done` or `failed` message carries that message as its label, and one ended with no message carries the line's last label.
-- **Style.** `progressStyle({ spinner: spinners.dots })` draws the dots frames at their interval, a call's own spinner wins for its line, the defaults hold without the plugin, and each malformed setting throws its sentence at the call.
+- **Style.** `progressStyle({ spinner: spinners.dots })` draws the dots frames at their interval, a call's own spinner wins for its line, and the defaults hold without the plugin.
 - **View.** An override of `progressLine` changes every line's frame, and its data carries the state, counts, frame, bar cells, and elapsed time above.
 - **Packed.** `check:packed` installs the packed library, imports `progress` and `progressStyle` from `@loomcli/prompts` and `progressLine` from `@loomcli/prompts/views`, and compiles against their declarations under Node and Bun.
 
@@ -352,7 +339,7 @@ interface ProgressLine {
 - **Interaction off.** Under `--no-input` with stdin and stderr terminals, with piped stdin, with stderr redirected, under `app.invoke`, under an action's `invoke`, and as an MCP tool call: a supplied linked option returns its validated value, an unsupplied one fails with the missing-input sentence and exit 2, by declared name under an invocation by name, and an unlinked question fails with `InteractionUnavailableError` and exit 1. A piped stdout with stdin and stderr terminals still asks, and stdout holds no question byte.
 - **Leaving.** Ctrl-C at each kind exits 130 and leaves the terminal in cooked mode with the cursor shown, with and without an installed signals owner, and stdin closing and Ctrl-D on empty input at a question do the same. A caller's abort while a question waits resolves 130 and restores the terminal. After every path, the process exits once the run resolves, with nothing left reading stdin.
 - **Typeahead.** `8080` Enter `yes` Enter written in one chunk answers a text question and the confirm after it, and a view override that draws more rows than the default redraws in place.
-- **Faults.** Each row of [Linking an option](#linking-an-option) and each malformed setting throws its `DeclarationError` at the call, and a run reports it with exit 1.
+- **Faults.** Each row of [Linking an option](#linking-an-option) and an empty `choices` list throw their `DeclarationError` at the call, and a run reports it with exit 1.
 - **Types.** `option` rejects a key the action's `options` lacks, secret rejects `default`, a select's `default` must be a choice, and the return types of each kind, linked and unlinked, match [Calling a question](#calling-a-question).
 - **Views.** An application's override of each view changes its frame, and a secret's typed text never reaches a view.
 - **Width.** The select frame clips at `context.columns`, including under `COLUMNS=60` on a terminal and in the first frame drawn after a resize, and at 80 columns when `columns` is `undefined`, where the window’s height estimate assumes no wrapping. Its frame data carries `rows` and no `columns`, and an override of `questionFrame` reads `context.columns`.

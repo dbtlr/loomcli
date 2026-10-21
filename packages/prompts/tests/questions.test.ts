@@ -13,27 +13,26 @@ test('a linked question returns the validated supplied option silently without p
   expect(result.stdout).toBe('8080\n');
 });
 
-test.each([
-  'empty',
-  'repeated',
-  'choice-default',
-  'secret-default',
-  'validator',
-  'text-default',
-  'confirm-default',
-  'skip-unlinked',
-  'unknown',
-  'global',
-  'multiple',
-  'count',
-  'content',
-  'confirm-string',
-])('malformed questions fail at their call with the question declaration rule: %s', (scenario) => {
-  const result = invoke(new URL('fixtures/faults.mjs', import.meta.url), [scenario]);
+test.each(['empty', 'unknown', 'global', 'multiple', 'count', 'content', 'confirm-string'])(
+  'malformed questions fail at their call with the question declaration rule: %s',
+  (scenario) => {
+    const result = invoke(new URL('fixtures/faults.mjs', import.meta.url), [scenario]);
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      name: 'DeclarationError',
+      rule: '@loomcli/prompts/link',
+    });
+  },
+);
+
+test('a select question with no choices states its fault and its correction', () => {
+  const result = invoke(new URL('fixtures/faults.mjs', import.meta.url), ['empty']);
   expect(result.status).toBe(0);
-  expect(JSON.parse(result.stdout)).toMatchObject({
+  expect(JSON.parse(result.stdout)).toEqual({
+    correction: 'Supply at least one choice.',
     name: 'DeclarationError',
     rule: '@loomcli/prompts/link',
+    sentence: 'The select question "Mode" has no choices.',
   });
 });
 

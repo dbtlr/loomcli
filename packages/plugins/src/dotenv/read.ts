@@ -20,13 +20,13 @@ async function fileText(cwd: string, out: EnvironmentContext['out']): Promise<st
 /** Only file access errors are lenient; parser and output defects use the ordinary failure path. */
 export async function readDotenv(
   { host, out }: EnvironmentContext,
-  variables: ReadonlySet<string>,
+  imports: (name: string) => boolean,
 ) {
   const text = await fileText(host.cwd, out);
   if (text === undefined) {
     return undefined;
   }
-  const { malformed, values } = parseDotenv(text, variables);
+  const { malformed, values } = parseDotenv(text, imports);
   for (const { line, name } of malformed) {
     await out.warn(
       `Skipped ${name} on line ${String(line)} of .env: the line is not a valid assignment. Correct the line, or remove it.`,

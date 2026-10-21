@@ -18,10 +18,8 @@ const lowercase = createValidator({
       : { issues: [{ message: 'Expected lowercase letters.' }] },
 });
 
-test('a validator built with an input schema is a frozen Standard Schema value from the package', () => {
+test('a validator built with an input schema is a Standard Schema value from the package', () => {
   expectTypeOf(lowercase).toEqualTypeOf<Validator<string>>();
-  expect(Object.isFrozen(lowercase)).toBe(true);
-  expect(Object.isFrozen(lowercase['~standard'])).toBe(true);
   expect(lowercase['~standard'].vendor).toBe('@loomcli/validators');
   expect(lowercase['~standard'].version).toBe(1);
 });
@@ -92,14 +90,6 @@ test('each input schema call returns a new plain object the caller may change', 
   expect(Object.getPrototypeOf(second)).toBe(Object.prototype);
 });
 
-test('the input schema is copied at the call, so a later change to the declared object changes nothing', () => {
-  const declared = { enum: ['a', 'b'], type: 'string' };
-  const validator = createValidator({ inputSchema: declared, parse: (raw) => ({ value: raw }) });
-  declared.type = 'number';
-  declared.enum.push('c');
-  expect(published(validator)).toEqual({ $schema: dialect, enum: ['a', 'b'], type: 'string' });
-});
-
 test('any target other than draft 2020-12 throws', () => {
   const { jsonSchema } = lowercase['~standard'];
   expect(() => jsonSchema.input({ target: 'draft-07' })).toThrow(Error);
@@ -115,7 +105,6 @@ test('the output schema throws for every target', () => {
 test('without an input schema the value implements no JSON Schema converter', () => {
   const plain = createValidator({ parse: (raw) => ({ value: raw }) });
   expect('jsonSchema' in plain['~standard']).toBe(false);
-  expect(Object.isFrozen(plain)).toBe(true);
 });
 
 test('outside a run parse receives a context whose every field throws the context sentence', async () => {
@@ -130,48 +119,17 @@ test('outside a run parse receives a context whose every field throws the contex
   await expect(verdict(ignores, 'x')).resolves.toEqual({ value: 'x' });
 });
 
-test('a value that is not a string throws rather than reaching parse', () => {
-  let called = false;
-  const validator = createValidator({
-    parse: (raw) => {
-      called = true;
-      return { value: raw };
-    },
-  });
-  expect(() => validator['~standard'].validate(8080)).toThrow(TypeError);
-  expect(called).toBe(false);
-});
-
-const faults: [string, unknown, string][] = [
-  [
-    'a definition that is not a plain object',
-    null,
-    'createValidator() definition is not a plain object. Supply an object with a parse function.',
-  ],
-  [
-    'a definition that is an array',
-    [],
-    'createValidator() definition is not a plain object. Supply an object with a parse function.',
-  ],
-  [
-    'a parse that is not a function',
-    { parse: 'raw' },
-    'createValidator() parse is not a function. Supply a function that validates one raw string.',
-  ],
-  [
-    'an input schema that is not a plain object',
-    { inputSchema: ['string'], parse: () => ({ value: 1 }) },
-    'createValidator() inputSchema is not a plain object. Supply the JSON Schema as a plain object.',
-  ],
-  [
-    'an input schema that declares its own $schema',
-    { inputSchema: { $schema: dialect, type: 'string' }, parse: () => ({ value: 1 }) },
-    'createValidator() inputSchema declares its own $schema. Leave out $schema, which the validator publishes itself.',
-  ],
-];
-
-test.each(faults)('%s throws a declaration fault from the call', (_name, definition, message) => {
-  expect(faultOf(() => Reflect.apply(createValidator, undefined, [definition]))).toEqual(
-    declarationFault(message),
+test('an input schema that declares its own $schema throws a declaration fault from the call', () => {
+  expect(
+    faultOf(() =>
+      createValidator({
+        inputSchema: { $schema: dialect, type: 'string' },
+        parse: () => ({ value: 1 }),
+      }),
+    ),
+  ).toEqual(
+    declarationFault(
+      'createValidator() inputSchema declares its own $schema. Leave out $schema, which the validator publishes itself.',
+    ),
   );
 });

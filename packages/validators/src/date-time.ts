@@ -2,7 +2,7 @@ import { dateTimeIssue } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { isRealDay } from './date.js';
-import { fault, readOptions } from './faults.js';
+import { fault } from './faults.js';
 import { reject } from './issues.js';
 import { timeZone as timeZoneRule } from './rules.js';
 import { hour, minute } from './time-units.js';
@@ -86,13 +86,13 @@ function offsetOf(groups: Groups): number | undefined | 'invalid' {
   return groups.sign === '-' ? -magnitude : magnitude;
 }
 
-/** Checks a pinned zone, which a JavaScript caller can leave malformed. */
-function readZone(options: unknown): string | undefined {
-  const declared = readOptions(factory, options).timeZone;
+/** Checks a pinned zone, which must be an IANA name the runtime knows. */
+function readZone(options: DateTimeOptions | undefined): string | undefined {
+  const declared = options?.timeZone;
   if (declared === undefined) {
     return undefined;
   }
-  if (typeof declared !== 'string' || !isKnownZone(declared)) {
+  if (!isKnownZone(declared)) {
     throw fault(
       timeZoneRule,
       { arguments: [options], factory, mark: '0.timeZone' },

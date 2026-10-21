@@ -1,119 +1,30 @@
-import { escapeControlCharacters, LoomError } from '@loomcli/core';
+import { escapeControlCharacters, isFailureCode, LoomError } from '@loomcli/core';
 
-/** The lowest code a failure class may declare, since 0 is success. */
-const firstDeclarable = 1;
-
-/**
- * The first code no failure class may declare.
- * It mirrors core's own check under Declared exit codes, which core does not export.
- */
-const firstReserved = 126;
-
-/**
- * Whether a value is a class that extends `LoomError`, read by its `prototype` as core reads it.
- * A read that throws, such as a proxy's, answers `false`, since the value cannot be read as a class.
- */
-function isFailureClass(value: unknown): value is object {
-  try {
-    return (
-      typeof value === 'function' && 'prototype' in value && value.prototype instanceof LoomError
-    );
-  } catch {
-    return false;
-  }
-}
-
-/** Whether a declared static is a code a failure may exit with: a whole number from 1 through 125. */
-function isDeclarableCode(value: unknown): value is number {
+/** Whether a value is a failure class: `LoomError` or a class that extends it, as core reads one. */
+function isFailureClass(value: unknown): value is typeof LoomError {
   return (
-    typeof value === 'number' &&
-    Number.isInteger(value) &&
-    value >= firstDeclarable &&
-    value < firstReserved
+    typeof value === 'function' && (value === LoomError || value.prototype instanceof LoomError)
   );
 }
 
 /**
- * Core's sentence for a class whose declared code no failure may exit with.
- * It mirrors, word for word, the sentence core throws when such a class is constructed.
- * Core does not export that sentence, so a test compares the two for one class.
- */
-function undeclarableMessage(className: string, declared: unknown): string {
-  const clause =
-    typeof declared === 'number' && Number.isFinite(declared)
-      ? `declares exit code ${String(declared)}.`
-      : 'declares an exit code that is not a finite number.';
-  return `Failure class "${className}" ${clause} Declare a whole number from 1 through 125.`;
-}
-
-/**
- * The grammar of a failure code: words of lowercase ASCII letters and digits joined by single
- * hyphens. It mirrors core's own check under Failure codes, which core does not export.
- */
-const failureCodeGrammar = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-
-/** Whether a declared static is a failure code: a string in the grammar. */
-function isFailureCode(value: unknown): value is string {
-  return typeof value === 'string' && failureCodeGrammar.test(value);
-}
-
-/**
- * Core's sentence for a class whose declared failure code is outside the grammar.
- * It mirrors, word for word, the sentence core throws when such a class is constructed.
- */
-function invalidCodeMessage(className: string, declared: unknown): string {
-  const clause =
-    typeof declared === 'string'
-      ? `declares failure code "${escapeControlCharacters(declared)}".`
-      : 'declares a failure code that is not a string.';
-  return `Failure class "${className}" ${clause} Declare a kebab-case code of lowercase letters and digits, such as "registry-down".`;
-}
-
-/**
- * One static of a failure class, walking to the nearest ancestor that declares it. A static getter
- * that throws answers `undefined`, so the author's throw never reaches the schema's transform.
- */
-function readStatic(failureClass: object, key: 'code' | 'exitCode'): unknown {
-  try {
-    return Reflect.get(failureClass, key);
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * The name core gives a failure class in its sentence, its constructor's `name` read as text.
- * A static `name` that throws, or that cannot be read as text, reads as the empty name an anonymous
- * class has.
- */
-function classNameOf(failureClass: object): string {
-  try {
-    return String(Reflect.get(failureClass, 'name'));
-  } catch {
-    return '';
-  }
-}
-
-/**
  * The failure code and exit code one class declares, or the sentence that rejects it: a value that
- * is not a failure class, then an undeclarable exit code, then a failure code outside the grammar,
- * the order core checks them in. The class's statics are read when the value is made, the exit code
- * first as core reads them, so no failure is constructed and the class itself never reaches the
- * graph. Every read of the class is guarded, so the author's throw never escapes into the schema.
- * The value is `unknown`, because no typed path names a class without an assertion, so a value that
- * is not a failure class is rejected at run time alone.
+ * is not a failure class, then a failure code outside core's grammar. Core judges a code when a
+ * failure of the class is constructed, and the manifest lists classes no run has constructed, so it
+ * judges the code it lists. Each static is read from the nearest ancestor that declares it, so no
+ * failure is constructed and the class itself never reaches the graph. The value is `unknown`,
+ * because no typed path names a class without an assertion, so a value that is not a failure class
+ * is rejected at run time alone.
  */
 function readFailure(value: unknown): { code: string; exitCode: number } | { issue: string } {
   if (!isFailureClass(value)) {
     return { issue: 'Supply a failure class, a class that extends LoomError.' };
   }
-  const exitCode = readStatic(value, 'exitCode');
-  if (!isDeclarableCode(exitCode)) {
-    return { issue: undeclarableMessage(classNameOf(value), exitCode) };
-  }
-  const code = readStatic(value, 'code');
+  const { code, exitCode, name } = value;
   if (!isFailureCode(code)) {
-    return { issue: invalidCodeMessage(classNameOf(value), code) };
+    return {
+      issue: `Failure class "${name}" declares failure code "${escapeControlCharacters(code)}". Declare a kebab-case code of lowercase letters and digits, such as "registry-down".`,
+    };
   }
   return { code, exitCode };
 }

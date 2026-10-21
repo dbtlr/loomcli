@@ -92,14 +92,9 @@ function serviceCommand(settings: ServiceSettings) {
  */
 function service(settings: ServiceSettings): Plugin {
   const judged = judgeSettings(settings);
-  const copied: ServiceSettings = {
-    label: judged.label,
-    run: Object.freeze([...judged.run]),
-    ...(judged.probe === undefined ? {} : { probe: judged.probe }),
-  };
   return plugin(identity, {
-    commands: [serviceCommand(copied)],
-    onGraphBuilt: judgeRun(copied.run),
+    commands: [serviceCommand(judged)],
+    onGraphBuilt: judgeRun(judged.run),
   });
 }
 

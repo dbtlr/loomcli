@@ -65,7 +65,7 @@ const judge = plugin('@fixture/judge', {
 
 const plugins = {
   config: [config({ file: '.notes.json' })],
-  dotenv: [dotenv({ variables: ['NOTES_TOKEN'] })],
+  dotenv: [dotenv({ only: ['NOTES_TOKEN'] })],
   graph: [judge],
 };
 

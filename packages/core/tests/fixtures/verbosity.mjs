@@ -89,7 +89,7 @@ const plugins = {
   ],
   /** The logging plugin writing every level's records to the console. */
   console: [logging({ level: 'trace', to: 'console' })],
-  dotenv: [dotenv({ variables: ['FETCHIT_TOKEN'] })],
+  dotenv: [dotenv({ only: ['FETCHIT_TOKEN'] })],
   /** A hook that rejects every graph, a declaration error graph build raises. */
   graph: [
     plugin('@fixture/judge', {

@@ -1,4 +1,4 @@
-import { DeclarationError, diagnosticRule, extension, plugin, readExtension } from '@loomcli/core';
+import { extension, plugin, readExtension } from '@loomcli/core';
 import type {
   ActionContext,
   Out,
@@ -55,17 +55,6 @@ interface ProgressStyleSettings {
   readonly bar?: { readonly complete: string; readonly incomplete: string };
 }
 
-const progressRule = diagnosticRule('@loomcli/prompts/progress', {
-  explanation:
-    'A progress line takes a string label, counts that are finite numbers of 0 or more, and a spinner whose frames are strings drawn every interval milliseconds. Its style takes the same spinner and a bar whose cells are nonempty strings.',
-  headline: 'Invalid progress line',
-});
-
-/** A malformed progress setting is an authoring fault at its call. */
-function invalid(sentence: string, correction: string): never {
-  throw new DeclarationError(progressRule, { correction, sentence });
-}
-
 /** Cli-spinners' `circleHalves`, every 80 milliseconds. */
 const defaultSpinner: Spinner = Object.freeze({
   frames: Object.freeze(['◐', '◓', '◑', '◒']),
@@ -73,101 +62,52 @@ const defaultSpinner: Spinner = Object.freeze({
 });
 const defaultBar = Object.freeze({ complete: '▰', incomplete: '▱' });
 
-/** Whether a value is an object that may hold settings. */
+/** The style one application sets, as plain data the root Command carries. */
+type StoredStyle = ProgressStyleSettings;
+
+/** Whether a value is an object that may hold fields. */
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null;
 }
 
-/** A label, an update's label, or an end message, which is a marked string. */
-function checkLabel(label: unknown): string {
-  if (typeof label !== 'string') {
-    invalid('The progress line received a label that is not a string.', 'Supply a string label.');
-  }
-  return label;
+/** Whether a value holds a spinner's frames and interval. */
+function isSpinner(value: unknown): value is Spinner {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.frames) &&
+    value.frames.every((frame: unknown) => typeof frame === 'string') &&
+    typeof value.interval === 'number'
+  );
 }
 
-/** A `total` or `completed`, which is a finite number of 0 or more when it is given. */
-function checkCount(
-  label: string,
-  name: 'total' | 'completed',
-  value: unknown,
-): number | undefined {
-  if (value === undefined) {
+/** Whether a value holds a bar's two cells. */
+function isBar(value: unknown): value is NonNullable<StoredStyle['bar']> {
+  return (
+    isRecord(value) && typeof value.complete === 'string' && typeof value.incomplete === 'string'
+  );
+}
+
+/** The stored style read back from the extension value `progressStyle()` built, or none. */
+function styleOf(value: unknown): StoredStyle | undefined {
+  if (!isRecord(value)) {
     return undefined;
   }
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    invalid(
-      `The progress line "${label}" received a ${name} that is not a finite number of 0 or more.`,
-      'Supply a finite number of 0 or more.',
-    );
+  const { bar, spinner } = value;
+  if ((spinner !== undefined && !isSpinner(spinner)) || (bar !== undefined && !isBar(bar))) {
+    return undefined;
   }
-  return value;
+  return { ...(spinner === undefined ? {} : { spinner }), ...(bar === undefined ? {} : { bar }) };
 }
 
-/** A spinner's frames and interval, copied as plain data. */
-function checkSpinner(spinner: unknown): Spinner {
-  const frames: unknown = isRecord(spinner) ? spinner.frames : undefined;
-  if (!Array.isArray(frames) || frames.length === 0) {
-    invalid('The progress spinner has no frames.', 'Supply at least one frame.');
-  }
-  const checked = frames.map((frame: unknown, index) => {
-    if (typeof frame !== 'string') {
-      invalid(
-        `The progress spinner frame ${String(index + 1)} is not a string.`,
-        'Supply each frame as a string.',
-      );
-    }
-    return frame;
-  });
-  const interval: unknown = isRecord(spinner) ? spinner.interval : undefined;
-  if (typeof interval !== 'number' || !Number.isFinite(interval) || interval <= 0) {
-    invalid(
-      'The progress spinner interval is not a finite number above 0.',
-      'Supply the milliseconds between frames.',
-    );
-  }
-  return { frames: checked, interval };
-}
-
-/** A bar's two cells, copied as plain data. */
-function checkBar(bar: unknown): { complete: string; incomplete: string } {
-  const cells = isRecord(bar) ? bar : {};
-  for (const cell of ['complete', 'incomplete'] as const) {
-    const text = cells[cell];
-    if (typeof text !== 'string' || text === '') {
-      invalid(
-        `The progress bar's ${cell} cell is not a nonempty string.`,
-        'Supply the text of one cell.',
-      );
-    }
-  }
-  return { complete: String(cells.complete), incomplete: String(cells.incomplete) };
-}
-
-/** The style one application sets, as plain data the root Command carries. */
-interface StoredStyle {
-  readonly spinner?: Spinner;
-  readonly bar?: { readonly complete: string; readonly incomplete: string };
-}
-
-/** One application's style settings, checked and copied as plain data. */
-function readStyle(settings: unknown): StoredStyle {
-  if (settings !== undefined && !isRecord(settings)) {
-    invalid(
-      'The progress style received settings that are not an object.',
-      'Supply an object, such as { spinner }.',
-    );
-  }
-  return {
-    ...(settings?.spinner === undefined ? {} : { spinner: checkSpinner(settings.spinner) }),
-    ...(settings?.bar === undefined ? {} : { bar: checkBar(settings.bar) }),
-  };
-}
-
-/** The extension's schema, which reads the style the way `progressStyle()` checked it. */
+/** The extension's schema, the typed read of the style `progressStyle()` stores. */
 const storedStyle: StandardSchemaV1<StoredStyle, StoredStyle> = {
   '~standard': {
-    validate: (value) => ({ value: readStyle(value) }),
+    validate: (value) => {
+      const style = styleOf(value);
+      return style === undefined
+        ? { issues: [{ message: 'Expected the style progressStyle() stores.' }] }
+        : { value: style };
+    },
     vendor: '@loomcli/prompts',
     version: 1,
   },
@@ -181,11 +121,13 @@ const progressStyleExtension = extension('@loomcli/prompts/progress-style', {
 
 /**
  * The optional plugin that sets how every progress line of an application looks: a spinner in the
- * cli-spinners shape and the bar's cells. Each setting is checked at the call, and each it omits
- * keeps the library's default.
+ * cli-spinners shape and the bar's cells. Each setting it omits keeps the library's default.
  */
 function progressStyle(settings?: ProgressStyleSettings): Plugin {
-  const style = readStyle(settings);
+  const style: StoredStyle = {
+    ...(settings?.spinner === undefined ? {} : { spinner: settings.spinner }),
+    ...(settings?.bar === undefined ? {} : { bar: settings.bar }),
+  };
   return plugin('@loomcli/prompts', {
     extensions: [progressStyleExtension],
     onCommandAttach: (command) =>
@@ -209,16 +151,6 @@ async function settle<Value>(
     return { value: await work };
   } catch (error) {
     return { error };
-  }
-}
-
-/** A `done` or `failed` message, which is a string or a function when it is given. */
-function checkMessage(label: string, name: 'done' | 'failed', message: unknown): void {
-  if (message !== undefined && typeof message !== 'string' && typeof message !== 'function') {
-    invalid(
-      `The progress line "${label}" received a ${name} message that is neither a string nor a function.`,
-      'Supply a string, or a function that returns one.',
-    );
   }
 }
 
@@ -248,11 +180,8 @@ interface LineState {
  * end line through `success` or `error`. It reports at its start, at each update, and at its close.
  */
 function progress(context: ProgressContext, settings: ProgressSettings): Progress {
-  const given: unknown = settings;
-  const record = isRecord(given) ? given : {};
-  const label = checkLabel(record.label);
-  const total = checkCount(label, 'total', record.total);
-  const own = record.spinner === undefined ? undefined : checkSpinner(record.spinner);
+  const { label, total } = settings;
+  const own = settings.spinner;
   const style = readExtension(context.graph.root, progressStyleExtension);
   const spinner = own ?? style?.spinner ?? defaultSpinner;
   const bar = style?.bar ?? defaultBar;
@@ -326,36 +255,22 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     await region.end(state, message);
   };
   return {
-    end: (message) => finish('ended', message === undefined ? undefined : checkLabel(message)),
-    fail: (message) => finish('failed', message === undefined ? undefined : checkLabel(message)),
+    end: (message) => finish('ended', message),
+    fail: (message) => finish('failed', message),
     async track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value> {
-      checkMessage(line.label, 'done', messages?.done);
-      checkMessage(line.label, 'failed', messages?.failed);
       const outcome = await settle(work);
       if ('error' in outcome) {
         if (line.state === 'running') {
-          const failed = trackedMessage(messages?.failed, outcome.error);
-          await finish('failed', failed === undefined ? undefined : checkLabel(failed));
+          await finish('failed', trackedMessage(messages?.failed, outcome.error));
         }
         throw outcome.error;
       }
       if (line.state === 'running') {
-        const done = trackedMessage(messages?.done, outcome.value);
-        await finish('ended', done === undefined ? undefined : checkLabel(done));
+        await finish('ended', trackedMessage(messages?.done, outcome.value));
       }
       return outcome.value;
     },
-    update(update) {
-      const changes: unknown = update;
-      if (!isRecord(changes)) {
-        invalid(
-          `The progress line "${line.label}" received an update that is not an object.`,
-          'Supply an object, such as { completed: 3 }.',
-        );
-      }
-      const completed = checkCount(line.label, 'completed', changes.completed);
-      const nextTotal = checkCount(line.label, 'total', changes.total);
-      const nextLabel = changes.label === undefined ? undefined : checkLabel(changes.label);
+    update({ completed, label: nextLabel, total: nextTotal }) {
       if (line.state !== 'running') {
         return;
       }

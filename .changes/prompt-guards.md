@@ -1,0 +1,3 @@
+- Remove the prompts library's checks that re-checked what TypeScript rejects, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). A question's settings, `skipIfSupplied` without `option`, a repeated select choice, a select `default` that is not a choice, and a progress line's label, counts, frames, spinner interval, bar cells, updates, and messages get no rule, so `@loomcli/prompts/progress` goes.
+  - A select question with an empty `choices` list throws `@loomcli/prompts/link` before it resolves: `The select question "Database" has no choices. Supply at least one choice.`
+  - An interactive stdin with no `setRawMode` method throws a `TypeError`, which a run reports as a defect, in place of a `DeclarationError`.

@@ -49,4 +49,4 @@ function isPlainContainer(value: object, ancestors: ReadonlySet<object>): boolea
   );
 }
 
-export { isPlainJson, isPlainObject, isRecord };
+export { isPlainJson, isRecord };

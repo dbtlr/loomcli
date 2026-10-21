@@ -12,8 +12,7 @@ type NoParams = Readonly<Record<string, never>>;
 
 /**
  * A Standard Schema for one fixed parameter shape, built without a schema library. It accepts a
- * plain object with exactly `keys`, which `read` turns into the typed parameters, and outputs a
- * frozen copy, so an issue's parameters cannot be changed by a reader.
+ * plain object with exactly `keys`, which `read` turns into the typed parameters.
  */
 function paramsSchema<Params extends object>(
   shape: string,
@@ -23,8 +22,8 @@ function paramsSchema<Params extends object>(
   const refusal = (): StandardSchemaV1.FailureResult => ({
     issues: [{ message: `Expected the parameters ${shape}.` }],
   });
-  return Object.freeze({
-    '~standard': Object.freeze({
+  return {
+    '~standard': {
       validate: (value: unknown): StandardSchemaV1.Result<Params> => {
         if (!isPlainObject(value)) {
           return refusal();
@@ -33,16 +32,12 @@ function paramsSchema<Params extends object>(
           Object.keys(value).length === keys.length &&
           keys.every((key) => Object.hasOwn(value, key));
         const params = exact ? read(value) : undefined;
-        if (params === undefined) {
-          return refusal();
-        }
-        Object.freeze(params);
-        return { value: params };
+        return params === undefined ? refusal() : { value: params };
       },
       vendor,
       version: 1,
-    }),
-  });
+    },
+  };
 }
 
 const none = 0;
@@ -50,23 +45,20 @@ const none = 0;
 const isCount: Guard<number> = (value): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= none;
 
-const isSafeInteger: Guard<number> = (value): value is number =>
-  typeof value === 'number' && Number.isSafeInteger(value);
-
 const isFiniteNumber: Guard<number> = (value): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
 const isKind: Guard<PathKind> = (value): value is PathKind =>
   value === 'file' || value === 'directory' || value === 'any';
 
-/** A nonempty list of strings, copied and frozen, or undefined for anything else. */
+/** A nonempty list of strings, or undefined for anything else. */
 function stringList(value: unknown): readonly string[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
   const items: readonly unknown[] = value;
   return items.length > none && items.every((item): item is string => typeof item === 'string')
-    ? Object.freeze([...items])
+    ? items
     : undefined;
 }
 
@@ -119,7 +111,6 @@ const kindParams = paramsSchema("{ kind: 'file' | 'directory' | 'any' }", ['kind
 export {
   isCount,
   isFiniteNumber,
-  isSafeInteger,
   kindParams,
   lengthParams,
   maxParams,

@@ -32,4 +32,15 @@ function isRuleIdentity(value: unknown): value is string {
   return name !== undefined && name.length <= packageNameLimit;
 }
 
-export { isRuleIdentity };
+/**
+ * The grammar of a failure code: one or more words of lowercase ASCII letters and digits joined by
+ * single hyphens, the grammar of the rule name that ends a rule identity.
+ */
+const failureCodeGrammar = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+
+/** Whether a value is a failure code: a string in the grammar, such as `path-not-found`. */
+function isFailureCode(value: unknown): value is string {
+  return typeof value === 'string' && failureCodeGrammar.test(value);
+}
+
+export { isFailureCode, isRuleIdentity };

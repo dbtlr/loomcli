@@ -157,14 +157,13 @@ async function askText<Options, Output>(
 /** A bounded viewport follows the selected entry; arrows stop at either end. */
 async function askSelect<Options, Choice extends string>(
   context: PromptContext<Options>,
-  settings: { message: string; choices: readonly Choice[]; prefill: unknown },
+  settings: { message: string; choices: readonly [Choice, ...Choice[]]; prefill: unknown },
 ): Promise<Choice> {
   const entries = [...settings.choices.entries()];
-  const first = entries[0];
-  if (first === undefined) {
-    throw new Error('A select question needs choices.');
-  }
-  let selected = entries.find(([, value]) => value === settings.prefill) ?? first;
+  let selected = entries.find(([, value]) => value === settings.prefill) ?? [
+    0,
+    settings.choices[0],
+  ];
   // Raw mode holds from here, and the first frame resolves once this question's turn has come.
   const reader = openReader(context);
   const draw = asking(context, settings.message, reader);

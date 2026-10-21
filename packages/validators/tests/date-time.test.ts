@@ -212,12 +212,6 @@ describe('the timeZone setting', () => {
       expect(faultOf(() => dateTime({ timeZone }))).toEqual(declarationFault(zoneFault));
     },
   );
-
-  it.each([5, null, ['UTC']])('throws at the call for %j', (timeZone) => {
-    expect(faultOf(() => Reflect.apply(dateTime, undefined, [{ timeZone }]))).toEqual(
-      declarationFault(zoneFault),
-    );
-  });
 });
 
 describe('the published schema', () => {

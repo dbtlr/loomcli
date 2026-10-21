@@ -19,7 +19,7 @@ function reportTo(onError: ((error: LoggingError) => undefined) | undefined): Re
   };
 }
 
-/** The hook that writes each record, from the settings judged at the call. */
+/** The hook that writes each record, from the settings with their defaults filled. */
 function hookOf(plan: LoggingPlan): LogHook {
   if (plan.to === 'console') {
     return (event, destination) => {
@@ -48,7 +48,6 @@ function hookOf(plan: LoggingPlan): LogHook {
 /**
  * A plugin that writes each log event as one JSON record, appended to a size-rotated file in the
  * platform's state or log directory, or written to stderr. It is an `onLog` hook and nothing else.
- * It judges the settings' own keys at the call.
  */
 export function logging(settings?: LoggingSettings): Plugin {
   return plugin(identity, { onLog: hookOf(planOf(settings)) });

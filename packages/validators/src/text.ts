@@ -10,10 +10,10 @@ import {
 } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
-import { fault, readOptions } from './faults.js';
+import { fault } from './faults.js';
 import type { FactoryCall } from './faults.js';
 import { reject } from './issues.js';
-import { boundsOrder, boundValue, patternMessage, textPattern } from './rules.js';
+import { boundsOrder, boundValue, textPattern } from './rules.js';
 
 /**
  * The bounds on a token's length, and a pattern with the author's sentence for what it accepts.
@@ -45,18 +45,16 @@ function textAt(call: FactoryCall, key: string) {
   return { ...call, mark: `0.${key}` };
 }
 
+/** A length bound, which is a whole number of 0 or more because it counts code points. */
 function lengthOf(
   call: FactoryCall,
   name: 'minLength' | 'maxLength',
-  value: unknown,
+  value: number | undefined,
 ): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < noLength) {
+  if (value !== undefined && !(Number.isInteger(value) && value >= noLength)) {
     throw fault(boundValue, textAt(call, name), {
       correction: 'Supply a whole number of 0 or more.',
-      sentence: `text() ${name} is not a non-negative safe integer.`,
+      sentence: `text() ${name} is not a whole number of 0 or more.`,
     });
   }
   return value;
@@ -75,19 +73,10 @@ function checkFlags(call: FactoryCall, pattern: RegExp): void {
 }
 
 /** The author's pattern recompiled under the `u` flag, as JSON Schema reads a `pattern`. */
-function patternOf(call: FactoryCall, value: unknown): RegExp | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!(value instanceof RegExp)) {
-    throw fault(textPattern, textAt(call, 'pattern'), {
-      correction: 'Supply a regular expression literal.',
-      sentence: 'text() pattern is not a RegExp.',
-    });
-  }
-  checkFlags(call, value);
+function compiled(call: FactoryCall, pattern: RegExp): RegExp {
+  checkFlags(call, pattern);
   try {
-    return new RegExp(value.source, 'u');
+    return new RegExp(pattern.source, 'u');
   } catch {
     throw fault(textPattern, textAt(call, 'pattern'), {
       correction: 'Supply a pattern that is valid with the u flag.',
@@ -96,41 +85,13 @@ function patternOf(call: FactoryCall, value: unknown): RegExp | undefined {
   }
 }
 
-function messageOf(call: FactoryCall, value: unknown): string | undefined {
-  if (value === undefined) {
+/** The pattern rule, or undefined without a pattern. The type gives a pattern its message. */
+function patternRule(call: FactoryCall, options: TextOptions | undefined): PatternRule | undefined {
+  if (options?.pattern === undefined) {
     return undefined;
   }
-  if (typeof value !== 'string' || value === '') {
-    throw fault(patternMessage, textAt(call, 'message'), {
-      correction: 'Supply one sentence that states the expectation.',
-      sentence: 'text() message is not a nonempty string.',
-    });
-  }
-  return value;
-}
-
-/** The pattern rule, or undefined without a pattern; a pattern and a message each need the other. */
-function patternRule(
-  call: FactoryCall,
-  pattern: RegExp | undefined,
-  message: string | undefined,
-): PatternRule | undefined {
-  if (pattern === undefined) {
-    if (message !== undefined) {
-      throw fault(patternMessage, textAt(call, 'message'), {
-        correction: 'Supply a pattern or leave out message.',
-        sentence: 'text() message has no pattern to describe.',
-      });
-    }
-    return undefined;
-  }
-  if (message === undefined) {
-    throw fault(patternMessage, textAt(call, 'pattern'), {
-      correction: 'Supply a message that states what the pattern accepts.',
-      sentence: 'text() pattern has no message to describe it.',
-    });
-  }
-  return { issue: textPatternIssue.issue({ message }), pattern };
+  const { message, pattern } = options;
+  return { issue: textPatternIssue.issue({ message }), pattern: compiled(call, pattern) };
 }
 
 /** The issue for bounds with a `maxLength`, where `min` is `minLength` after its default. */
@@ -168,23 +129,18 @@ function codePoints(raw: string): number {
 
 /** A string whose code-point length is within bounds and which the pattern matches, if any. */
 function text(options?: TextOptions): Validator<string> {
-  const declared = readOptions('text', options);
   const call = { arguments: [options], factory: 'text' };
-  const minLength = lengthOf(call, 'minLength', declared.minLength) ?? defaultMinLength;
-  const maxLength = lengthOf(call, 'maxLength', declared.maxLength);
+  const minLength = lengthOf(call, 'minLength', options?.minLength) ?? defaultMinLength;
+  const maxLength = lengthOf(call, 'maxLength', options?.maxLength);
   if (maxLength !== undefined && minLength > maxLength) {
     // A minLength left to its default has no key to mark, so the maxLength below it is marked.
-    const key = declared.minLength === undefined ? 'maxLength' : 'minLength';
+    const key = options?.minLength === undefined ? 'maxLength' : 'minLength';
     throw fault(boundsOrder, textAt(call, key), {
       correction: 'Supply a minLength at or below maxLength.',
       sentence: `text() minLength ${minLength} is above maxLength ${maxLength}.`,
     });
   }
-  const matching = patternRule(
-    call,
-    patternOf(call, declared.pattern),
-    messageOf(call, declared.message),
-  );
+  const matching = patternRule(call, options);
   const length = lengthRule(minLength, maxLength);
   return createValidator({
     inputSchema: {

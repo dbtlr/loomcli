@@ -4,16 +4,12 @@ import { object, pipe, regex, string } from 'valibot';
 import { packageName } from '../constants.js';
 
 /**
- * A dotted path of object keys. Each segment is nonempty and holds no control character and no
- * line separator, U+2028 or U+2029. There is no escaping and no array indexing, so a key that
- * holds a dot is not reachable.
+ * A dotted path of object keys, each segment nonempty. There is no escaping and no array indexing,
+ * so a key that holds a dot is not reachable.
  */
 const configPath = pipe(
   string(),
-  regex(
-    /^[^.\p{Cc}\p{Zl}\p{Zp}]+(?:\.[^.\p{Cc}\p{Zl}\p{Zp}]+)*$/u,
-    'Supply a dotted path of nonempty keys with no control character.',
-  ),
+  regex(/^[^.]+(?:\.[^.]+)*$/u, 'Supply a dotted path of nonempty keys.'),
 );
 
 /**

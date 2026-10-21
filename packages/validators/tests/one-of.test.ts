@@ -51,50 +51,8 @@ test('publishes the values as an enum in the declared order', () => {
   });
 });
 
-test('the values are copied at the call', async () => {
-  const values: [string, ...string[]] = ['a', 'b'];
-  const validator = oneOf(values);
-  values.push('z');
-  await expect(rejection(validator, 'z')).resolves.toEqual(rejectedWith('Expected one of: a, b.'));
-  expect(published(validator)).toEqual({ $schema: dialect, enum: ['a', 'b'], type: 'string' });
-});
-
-const faults: [string, unknown, string][] = [
-  ['an empty list', [], 'oneOf() values is empty. List at least one value.'],
-  [
-    'a list that is not an array',
-    'dev',
-    'oneOf() values is not an array. Supply an array of strings.',
-  ],
-  [
-    'a value that is not a string',
-    ['dev', 1],
-    'oneOf() lists a value that is not a string. List strings only.',
-  ],
-  ['an empty string', ['dev', ''], 'oneOf() lists an empty string. List nonempty values only.'],
-  [
-    'a value listed twice',
-    ['dev', 'prod', 'dev'],
-    'oneOf() lists "dev" twice. List each value once.',
-  ],
-];
-
-test('the checked values are the published ones, even when the list changes between reads', () => {
-  const values = ['x', 'b'];
-  let reads = 0;
-  Object.defineProperty(values, 0, {
-    enumerable: true,
-    get: () => {
-      reads += 1;
-      return reads === 1 ? 'a' : 'b';
-    },
-  });
-  const validator: ReturnType<typeof oneOf> = Reflect.apply(oneOf, undefined, [values]);
-  expect(published(validator)).toMatchObject({ enum: ['a', 'b'] });
-});
-
-test.each(faults)('%s throws a declaration fault from the call', (_name, values, message) => {
-  expect(faultOf(() => Reflect.apply(oneOf, undefined, [values]))).toEqual(
-    declarationFault(message),
+test('a value listed twice throws a declaration fault from the call', () => {
+  expect(faultOf(() => oneOf(['dev', 'prod', 'dev']))).toEqual(
+    declarationFault('oneOf() lists "dev" twice. List each value once.'),
   );
 });

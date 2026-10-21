@@ -9,10 +9,6 @@ const noop = ({ out }) => out.print('ran');
 const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
 
 const scenarios = {
-  case: () =>
-    new Application('kit', { description: 'A kit.', plugins: [manpage()] })
-      .command(new Command('Get', { description: 'Upper.' }).action(noop))
-      .command(new Command('get', { description: 'Lower.' }).action(noop)),
   hyphen: () =>
     new Application('kit', { description: 'A kit.', plugins: [manpage()] })
       .command(new Command('foo-bar', { description: 'Flat.' }).action(noop))

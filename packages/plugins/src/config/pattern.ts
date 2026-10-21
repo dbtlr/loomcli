@@ -17,8 +17,6 @@ const braceList = /^\{(?<items>[^*?[\]{}]*)\}$/u;
 /** A path that starts at a root: `/`, `\`, or a drive letter and a colon. */
 const rooted = /^(?:[/\\]|[A-Za-z]:)/u;
 
-const controlCharacter = /\p{Cc}/u;
-
 /** One fault of the `file` setting: its rule and the sentence and correction it reads. */
 interface FileFault {
   readonly rule: DiagnosticRule;
@@ -27,8 +25,7 @@ interface FileFault {
 }
 
 const notRelative: FileFault = {
-  correction:
-    'Supply a relative path such as .textstat.toml, with no control character and no empty, ., or .. segment.',
+  correction: 'Supply a relative path such as .textstat.toml, with no empty, ., or .. segment.',
   rule: configFilePath,
   sentence: `Plugin "${identity}" file is not a relative path.`,
 };
@@ -56,11 +53,11 @@ function fileFault(settings: unknown, { correction, rule, sentence }: FileFault)
 }
 
 /**
- * Whether a path is relative and well formed: nonempty, with no control character, not rooted,
- * and with every segment, split on `/` and `\`, nonempty and neither `.` nor `..`.
+ * Whether a path is relative and well formed: nonempty, not rooted, and with every segment, split
+ * on `/` and `\`, nonempty and neither `.` nor `..`.
  */
 function isRelativePath(path: string): boolean {
-  if (path === '' || controlCharacter.test(path) || rooted.test(path)) {
+  if (path === '' || rooted.test(path)) {
     return false;
   }
   return path.split(/[/\\]/u).every((segment) => !['', '.', '..'].includes(segment));
@@ -110,11 +107,11 @@ function patternCandidates(path: string): readonly string[] | FileFault {
 export function fileCandidates(
   settings: { readonly file?: string } | undefined,
 ): readonly string[] | undefined {
-  const file: unknown = settings?.file;
+  const file = settings?.file;
   if (file === undefined) {
     return undefined;
   }
-  if (typeof file !== 'string' || !isRelativePath(file)) {
+  if (!isRelativePath(file)) {
     throw fileFault(settings, notRelative);
   }
   const candidates = patternCandidates(file);

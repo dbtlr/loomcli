@@ -13,18 +13,6 @@ const range = issueCode('@acme/checks/range', {
   schema: rangeSchema,
 });
 
-/** A schema that validates by promise, which a synchronous read cannot wait for. */
-const later: StandardSchemaV1<{ count: number }> = {
-  '~standard': {
-    validate: async (value: unknown) => {
-      await Promise.resolve();
-      return { value: { count: typeof value === 'number' ? value : 0 } };
-    },
-    vendor: 'acme',
-    version: 1,
-  },
-};
-
 /** A schema that accepts every value as it is, so only `read` itself can refuse the parameters. */
 const anything = issueCode('@acme/checks/anything', {
   message: () => 'Expected anything.',
@@ -33,26 +21,19 @@ const anything = issueCode('@acme/checks/anything', {
   },
 });
 
-const pending = issueCode('@acme/checks/pending', {
-  message: ({ count }) => `Expected ${String(count)}.`,
-  schema: later,
-});
-
-test('issueCode returns a frozen descriptor carrying its code and schema', () => {
+test('issueCode returns a descriptor carrying its code and schema', () => {
   expectTypeOf(range).toEqualTypeOf<IssueCode<{ max: number; min: number }>>();
-  expect(Object.isFrozen(range)).toBe(true);
   expect(range.code).toBe('@acme/checks/range');
   expect(range.schema).toBe(rangeSchema);
 });
 
-test('issue returns a frozen issue with the sentence, the code, and the parameters', () => {
+test('issue returns an issue with the sentence, the code, and the parameters', () => {
   const issue = range.issue({ max: 64, min: 1 });
   expect(issue).toEqual({
     code: '@acme/checks/range',
     message: 'Expected from 1 to 64.',
     params: { max: 64, min: 1 },
   });
-  expect(Object.isFrozen(issue)).toBe(true);
 });
 
 test('the issue holds the schema output, not the argument', () => {
@@ -124,52 +105,7 @@ function answering(answer: () => StandardSchemaV1.Result<{ count: number }>) {
   });
 }
 
-describe('a schema answer that is not a Standard Schema result', () => {
-  const malformed = declarationFault(
-    'Issue code "@acme/checks/odd" has a schema that answers with a value that is not a Standard Schema result. Supply a schema that returns its value or its issues.',
-  );
-
-  // Each proxy claims a result's type while its traps hide or replace the fields a result holds.
-  const answers: [string, () => StandardSchemaV1.Result<{ count: number }>][] = [
-    [
-      'a throwing then getter and no own value',
-      () =>
-        new Proxy(
-          { value: { count: 1 } },
-          {
-            get: (_target, key) => {
-              if (key === 'then') {
-                throw new Error('then');
-              }
-              return undefined;
-            },
-            getOwnPropertyDescriptor: () => undefined,
-            has: (_target, key) => key === 'then',
-          },
-        ),
-    ],
-    [
-      'a proxy that reports no field',
-      () =>
-        new Proxy(
-          { value: { count: 1 } },
-          { get: () => undefined, getOwnPropertyDescriptor: () => undefined },
-        ),
-    ],
-    ['issues that are not an array', () => new Proxy({ issues: [] }, { get: () => 'x' })],
-  ];
-
-  it.each(answers)('issue throws for %s', (_name, answer) => {
-    expect(faultOf(() => answering(answer).issue({ count: 1 }))).toEqual(malformed);
-  });
-
-  it.each(answers)('read returns undefined for %s', (_name, answer) => {
-    const odd = answering(answer);
-    expect(
-      odd.read(foreignIssue({ code: odd.code, message: 'x', params: { count: 1 } })),
-    ).toBeUndefined();
-  });
-
+describe('the schema answer', () => {
   it('issue keeps the schema output as the parameters', () => {
     const issue = answering(() => ({ value: { count: 2 } })).issue({ count: 1 });
     expect(issue).toEqual({
@@ -179,20 +115,12 @@ describe('a schema answer that is not a Standard Schema result', () => {
     });
   });
 
-  const thrown = new Error('boom');
-  const throwing = answering(() => {
-    throw thrown;
-  });
-
-  it('issue throws a DeclarationError when the schema throws', () => {
-    expect(faultOf(() => throwing.issue({ count: 1 }))).toEqual(
-      declarationFault(
-        'Issue code "@acme/checks/odd" has a schema that throws in issue(). Supply a schema that returns its issues instead of throwing.',
-      ),
-    );
-  });
-
-  it('read lets the schema throw', () => {
+  it('a schema that throws throws from issue and read, as the author wrote it', () => {
+    const thrown = new Error('boom');
+    const throwing = answering(() => {
+      throw thrown;
+    });
+    expect(() => throwing.issue({ count: 1 })).toThrow(thrown);
     expect(() =>
       throwing.read(foreignIssue({ code: throwing.code, message: 'x', params: { count: 1 } })),
     ).toThrow(thrown);
@@ -200,7 +128,7 @@ describe('a schema answer that is not a Standard Schema result', () => {
 });
 
 describe('faults', () => {
-  const codes: [string, unknown][] = [
+  const codes: [string, string][] = [
     ['no package', 'range'],
     ['no rule', '@acme/checks'],
     ['an empty rule', '@acme/checks/'],
@@ -215,14 +143,13 @@ describe('faults', () => {
     ['an empty subpath segment', '@acme/checks//range'],
     ['an uppercase subpath segment', '@acme/checks/Ports/range'],
     ['a trailing slash', '@acme/checks/ports/'],
-    ['a code that is not a string', 42],
   ];
 
   it.each(codes)('a code with %s throws at the call', (_name, code) => {
     const config = { message: () => 'Expected a value.', schema: rangeSchema };
-    expect(faultOf(() => Reflect.apply(issueCode, undefined, [code, config]))).toEqual(
+    expect(faultOf(() => issueCode(code, config))).toEqual(
       declarationFault(
-        `issueCode() code ${typeof code === 'string' ? JSON.stringify(code) : String(code)} is not a package name, any subpath segments, and a rule name joined by slashes. Supply a code such as "@acme/validators/port-range", with each subpath segment and the rule of lowercase letters and digits in words joined by single hyphens.`,
+        `issueCode() code ${JSON.stringify(code)} is not a package name, any subpath segments, and a rule name joined by slashes. Supply a code such as "@acme/validators/port-range", with each subpath segment and the rule of lowercase letters and digits in words joined by single hyphens.`,
       ),
     );
   });
@@ -239,78 +166,11 @@ describe('faults', () => {
     );
   });
 
-  const configs: [string, unknown, string][] = [
-    [
-      'a config that is not a plain object',
-      null,
-      'issueCode() config is not a plain object. Supply an object with a schema and a message function.',
-    ],
-    [
-      'a schema that is not a Standard Schema',
-      { message: () => 'Expected a value.', schema: { validate: () => ({ value: {} }) } },
-      'issueCode() schema is not a Standard Schema. Supply a Standard Schema value that validates the parameters.',
-    ],
-    [
-      'a message that is not a function',
-      { message: 'Expected a value.', schema: rangeSchema },
-      'issueCode() message is not a function. Supply a function that builds the sentence from the parameters.',
-    ],
-  ];
-
-  const notStandard =
-    'issueCode() schema is not a Standard Schema. Supply a Standard Schema value that validates the parameters.';
-
-  it.each([
-    [
-      'a version other than 1',
-      { '~standard': { validate: () => ({ value: {} }), vendor: 'acme', version: 2 } },
-    ],
-    [
-      'a ~standard getter that throws',
-      {
-        get '~standard'(): never {
-          throw new Error('getter');
-        },
-      },
-    ],
-    [
-      'a has trap that throws',
-      new Proxy(rangeSchema, {
-        has: () => {
-          throw new Error('has');
-        },
-      }),
-    ],
-  ])('a schema with %s is not a Standard Schema', (_name, schema) => {
-    const config = { message: () => 'Expected a value.', schema };
-    expect(
-      faultOf(() => Reflect.apply(issueCode, undefined, ['@acme/checks/range', config])),
-    ).toEqual(declarationFault(notStandard));
-  });
-
-  it.each(configs)('%s throws at the call', (_name, config, message) => {
-    expect(
-      faultOf(() => Reflect.apply(issueCode, undefined, ['@acme/checks/range', config])),
-    ).toEqual(declarationFault(message));
-  });
-
   it('issue throws for parameters the schema rejects', () => {
     expect(faultOf(() => Reflect.apply(range.issue, undefined, [{ max: '64', min: 1 }]))).toEqual(
       declarationFault(
         'Issue code "@acme/checks/range" rejects the parameters passed to issue(). Supply parameters its schema accepts.',
       ),
     );
-  });
-
-  it('issue and read throw when the schema answers with a promise', () => {
-    const fault = declarationFault(
-      'Issue code "@acme/checks/pending" has a schema that answers with a promise. Supply a schema that validates synchronously.',
-    );
-    expect(faultOf(() => pending.issue({ count: 1 }))).toEqual(fault);
-    expect(
-      faultOf(() =>
-        pending.read(foreignIssue({ code: pending.code, message: 'x', params: { count: 1 } })),
-      ),
-    ).toEqual(fault);
   });
 });

@@ -96,12 +96,9 @@ const [mode, ...argv] = process.argv.slice(2);
 /** One variable's value, or "absent" when the process environment does not hold it. */
 const state = (name) => (name in process.env ? process.env[name] : 'absent');
 
-/** The host overrides a test sets: the platform, and the working directory the files resolve in. */
+/** The host overrides a test sets: the working directory the files resolve in, and the terminal. */
 function host() {
   const overrides = { argv };
-  if (process.env.FIXTURE_PLATFORM !== undefined) {
-    overrides.platform = process.env.FIXTURE_PLATFORM;
-  }
   if (process.env.FIXTURE_CWD !== undefined) {
     overrides.cwd = process.env.FIXTURE_CWD;
   }

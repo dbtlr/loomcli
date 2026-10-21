@@ -1,3 +1,5 @@
+import { variableNameSource } from '../variable-name.js';
+
 interface MalformedAssignment {
   readonly name: string;
   readonly line: number;
@@ -37,18 +39,6 @@ function validTail(text: string): boolean {
   return /^[ \t]*(?:#[^\n]*)?$/u.test(text);
 }
 
-/** Single quotes end on their physical line, so a missing quote cannot consume another assignment. */
-function singleQuoted(text: string, line: number): ParsedValue {
-  const end = text.indexOf("'", afterQuote);
-  return {
-    next: line + nextLine,
-    value:
-      end !== notFound && validTail(text.slice(end + afterQuote))
-        ? text.slice(afterQuote, end)
-        : undefined,
-  };
-}
-
 function quotedCharacter(text: string, offset: number) {
   const character = text.charAt(offset);
   const following = text.charAt(offset + characterWidth);
@@ -57,8 +47,22 @@ function quotedCharacter(text: string, offset: number) {
     : { value: character, width: characterWidth };
 }
 
+/** One physical line of a quoted value: its text, and what follows the closing quote when it has one. */
+interface QuotedLine {
+  value: string;
+  tail: string | undefined;
+}
+
+/** One physical line inside a single-quoted value, which keeps every character and stops at a quote. */
+function literalLine(text: string, from: number): QuotedLine {
+  const end = text.indexOf("'", from);
+  return end === notFound
+    ? { tail: undefined, value: text.slice(from) }
+    : { tail: text.slice(end + afterQuote), value: text.slice(from, end) };
+}
+
 /** One physical line inside a double-quoted value, stopping only at an unescaped quote. */
-function quotedLine(text: string, from: number): { value: string; tail: string | undefined } {
+function quotedLine(text: string, from: number): QuotedLine {
   let value = '';
   for (let offset = from; offset < text.length;) {
     if (text.charAt(offset) === '"') {
@@ -71,15 +75,25 @@ function quotedLine(text: string, from: number): { value: string; tail: string |
   return { tail: undefined, value };
 }
 
-/** Consume quoted regions even for unlisted names, so their contents never become assignments. */
-function doubleQuoted(lines: readonly string[], start: number, first: string): ParsedValue {
+/**
+ * A quoted value, which may span physical lines in either quote, as the dotenv package, Node's
+ * `--env-file`, and Bun read it. Quoted regions are consumed even for names the plugin does not
+ * import, so their contents never become assignments, and an unterminated quote consumes the rest
+ * of the file.
+ */
+function quoted(
+  lines: readonly string[],
+  start: number,
+  opening: { first: string; readLine: (text: string, from: number) => QuotedLine },
+): ParsedValue {
+  const { first, readLine } = opening;
   let value = '';
   let line = start;
-  let current = quotedLine(first, afterQuote);
+  let current = readLine(first, afterQuote);
   while (current.tail === undefined && line + nextLine < lines.length) {
     value += `${current.value}\n`;
     line += nextLine;
-    current = quotedLine(lines[line] ?? '', firstCharacter);
+    current = readLine(lines[line] ?? '', firstCharacter);
   }
   return {
     next: line + nextLine,
@@ -90,10 +104,10 @@ function doubleQuoted(lines: readonly string[], start: number, first: string): P
 
 function readValue(lines: readonly string[], line: number, text: string): ParsedValue {
   if (text.startsWith("'")) {
-    return singleQuoted(text, line);
+    return quoted(lines, line, { first: text, readLine: literalLine });
   }
   if (text.startsWith('"')) {
-    return doubleQuoted(lines, line, text);
+    return quoted(lines, line, { first: text, readLine: quotedLine });
   }
   const comment = /(?:^|[ \t])#/u.exec(text);
   const value = (comment === null ? text : text.slice(firstCharacter, comment.index)).replace(
@@ -103,11 +117,14 @@ function readValue(lines: readonly string[], line: number, text: string): Parsed
   return { next: line + nextLine, value };
 }
 
+/** An assignment's header: an optional `export`, the variable's name, and the rest of the line. */
+const headerPattern = new RegExp(
+  String.raw`^[ \t]*(?:export[ \t]+)?(?<name>${variableNameSource})(?=[ \t=]|$)(?<rest>[^\n]*)$`,
+  'u',
+);
+
 function assignmentAt(lines: readonly string[], line: number): ParsedAssignment {
-  const header =
-    /^[ \t]*(?:export[ \t]+)?(?<name>[A-Za-z_][A-Za-z0-9_]*)(?=[ \t=]|$)(?<rest>[^\n]*)$/u.exec(
-      lines[line] ?? '',
-    );
+  const header = headerPattern.exec(lines[line] ?? '');
   const assignment = /^[ \t]*=[ \t]*(?<value>[^\n]*)$/u.exec(header?.groups?.rest ?? '');
   const parsed =
     assignment === null
@@ -119,10 +136,10 @@ function assignmentAt(lines: readonly string[], line: number): ParsedAssignment 
 function recordAssignment(
   file: ParsedFile,
   parsed: ParsedAssignment,
-  variables: ReadonlySet<string>,
+  imports: (name: string) => boolean,
 ): void {
   const { line, name, value } = parsed;
-  if (name !== undefined && variables.has(name)) {
+  if (name !== undefined && imports(name)) {
     if (value === undefined || value.includes('\0')) {
       file.malformed.push({ line, name });
     } else {
@@ -131,8 +148,8 @@ function recordAssignment(
   }
 }
 
-/** The last valid assignment to each allowlisted variable, with secret-free warning locations. */
-export function parseDotenv(text: string, variables: ReadonlySet<string>) {
+/** The last valid assignment to each variable the plugin imports, with secret-free warning locations. */
+export function parseDotenv(text: string, imports: (name: string) => boolean) {
   const file: ParsedFile = { malformed: [], values: new Map() };
   const lines = text
     .replace(/^\uFEFF/u, '')
@@ -141,7 +158,7 @@ export function parseDotenv(text: string, variables: ReadonlySet<string>) {
   let line = firstCharacter;
   while (line < lines.length) {
     const parsed = assignmentAt(lines, line);
-    recordAssignment(file, parsed, variables);
+    recordAssignment(file, parsed, imports);
     line = parsed.next;
   }
   return { malformed: file.malformed, values: Object.fromEntries(file.values) };

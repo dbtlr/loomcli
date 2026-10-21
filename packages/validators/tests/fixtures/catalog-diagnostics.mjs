@@ -5,7 +5,6 @@ import {
   duration,
   integer,
   issueCode,
-  number,
   oneOf,
   text,
   url,
@@ -25,7 +24,7 @@ const message = ({ word }) => `Expected ${word} in capitals.`;
  * the Developer Diagnostic its message holds.
  */
 const scenarios = {
-  'bound-value': () => integer({ min: 1.5 }),
+  'bound-value': () => integer({ min: Number.POSITIVE_INFINITY }),
   'bounds-order': () => integer({ max: 1, min: 5 }),
   'context-outside-run': () =>
     createValidator({ parse: (raw, context) => ({ value: context.host }) })['~standard'].validate(
@@ -33,31 +32,18 @@ const scenarios = {
     ),
   'duration-bound-value': () => duration({ min: 'abc' }),
   'duration-bounds-order': () => duration({ max: '30s', min: '1h' }),
-  'factory-options': () => number('5'),
   'input-schema': () => createValidator({ inputSchema: { $schema: 'x', type: 'string' }, parse }),
-  'issue-code-config': () =>
-    issueCode('@acme/checks/shout', { message: 'x', schema: schema(parse) }),
   'issue-code-name': () => issueCode('Bad Code', { message, schema: schema(parse) }),
-  'issue-code-schema': () =>
-    issueCode('@acme/checks/shout', {
-      message,
-      schema: schema(() => {
-        throw new Error('broken');
-      }),
-    }).issue({ word: 'yes' }),
   'issue-parameters': () =>
     issueCode('@acme/checks/shout', {
       message,
       schema: schema(() => ({ issues: [{ message: 'Expected a string.' }] })),
     }).issue({ word: 7 }),
-  'one-of-empty': () => oneOf([]),
   'one-of-twice': () => oneOf(['dev', 'prod', 'dev']),
-  'pattern-message': () => text({ pattern: /[a-z]+/u }),
   'text-bounds-order': () => text({ maxLength: 0 }),
   'text-pattern': () => text({ message: 'Expected letters.', pattern: /[a-z]+/g }),
   'time-zone': () => dateTime({ timeZone: 'Mars/Olympus' }),
-  'url-protocols': () => url({ protocols: ['https:'] }),
-  'validator-definition': () => createValidator({ parse: 'x' }),
+  'url-protocols': () => url({ protocols: ['https', 'https:'] }),
 };
 
 try {

@@ -83,22 +83,6 @@ test('the empty string and a NUL character are rejected before anything is read'
   );
 });
 
-describe('an option that can never work throws from the call', () => {
-  const faults: [string, unknown, string][] = [
-    [
-      'options that are not an object',
-      'read',
-      'path() options is not a plain object. Supply an object or leave it out.',
-    ],
-  ];
-
-  it.each(faults)('%s', (_name, options, message) => {
-    expect(faultOf(() => Reflect.apply(path, undefined, [options]))).toEqual(
-      declarationFault(message),
-    );
-  });
-});
-
 test('a kind without an access is a type error, because kind narrows the access check', () => {
   // @ts-expect-error TS2322: kind narrows the access check, so it is declared beside an access.
   const validator = path({ kind: 'file' });
