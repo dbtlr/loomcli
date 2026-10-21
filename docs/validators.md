@@ -1,6 +1,6 @@
 # Validators reference
 
-The 0.15.0 rescope is recorded in [ADR-0093](decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md) through [ADR-0102](decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md). Where a rule below states what one of them decides, such as `path()` resolving with the running process's `node:path`, it states the target, and the code keeps enforcing the earlier rule until that record's implementing phase ships.
+The 0.15.0 rescope is recorded in [ADR-0093](decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md) through [ADR-0102](decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md). Where a rule below states what one of them decides, it states the target, and the code keeps enforcing the earlier rule until that record's implementing phase ships. The `path()` rules, which resolve with the running process's `node:path` and type `kind` beside an `access`, are already in force.
 
 File-or-stdin inputs use core's [content input type](core.md#content-inputs), which prepares lazy handles and declares the Command's stdin target. It is separate from this validator catalog.
 

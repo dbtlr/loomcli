@@ -228,7 +228,7 @@ interface Written {
   readonly outcome: Extract<InstallOutcome, { status: 'installed' }>;
   /** Whether a line the startup file already held is stated, as `install` states it. */
   readonly held: boolean;
-  /** The startup files the plugin may not change that already load the script, stated with `held`. */
+  /** The startup files the plugin may not change that already load the script, which `install` states. */
   readonly loaded: readonly string[];
   readonly notices: readonly Notice[];
 }
@@ -249,7 +249,7 @@ async function reportWritten(
     await run.warn(lines.leftInPlace(run.name, path));
   }
   await reportLines(run, outcome.lines, held);
-  for (const path of held ? loaded : []) {
+  for (const path of loaded) {
     await run.info(lines.alreadyLoads(path));
   }
   await writeNotices(run, notices);

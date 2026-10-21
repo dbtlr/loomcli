@@ -150,10 +150,14 @@ function replaceFile(
   }
 }
 
-/** Creates `path` exclusively and writes `content` through it, or answers `false` when something is already there. */
+/**
+ * Creates `path` exclusively and appends `content` through it, or answers `false` when something
+ * is already there. The descriptor appends, so a line another run appends between the create and
+ * this write lands whole before `content` rather than under it.
+ */
 function createNew(path: string, content: Uint8Array, options: ReplaceOptions): boolean {
   try {
-    fill(openSync(path, 'wx', options.mode ?? defaultMode), content, options);
+    fill(openSync(path, 'ax', options.mode ?? defaultMode), content, options);
     return true;
   } catch (error) {
     if (errorCode(error) === 'EEXIST') {

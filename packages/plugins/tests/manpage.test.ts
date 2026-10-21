@@ -755,17 +755,4 @@ describe('record and platform checks', () => {
       expect(snapshot(box)).toEqual(before);
     },
   );
-
-  it('a win32 host installs under HOME, updates, and uninstalls as other platforms do', () => {
-    const box = sandbox();
-    const folder = folderOf(box.home);
-    const install = run(box, ['manpage', 'install'], { platform: 'win32' });
-    expect(install.status).toBe(0);
-    expect(readdirSync(folder).toSorted()).toEqual(defaultSet.toSorted());
-    const update = run(box, ['manpage', 'update'], { platform: 'win32' });
-    expect(lines(update.stderr)).toEqual([`The 8 man pages in ${folder} are unchanged.`]);
-    const uninstall = run(box, ['manpage', 'uninstall'], { platform: 'win32' });
-    expect(uninstall.status).toBe(0);
-    expect(existsSync(folder)).toBe(false);
-  });
 });

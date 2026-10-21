@@ -17,8 +17,10 @@ import { syncBuiltinESMExports } from 'node:module';
  * - `killBeforeAppend` and `killAfterAppend`: the startup file whose append ends the process with
  *   SIGKILL, before or after the bytes land;
  * - `createBeforeCreate`: `{ path, content }`, a startup file another run creates with `content`
- *   right before this run's exclusive create of `path`, an open with `wx`, as when two runs add
- *   their lines at once;
+ *   right before this run's exclusive create of `path`, as when two runs add their lines at once;
+ * - `appendAfterCreate`: `{ path, content }`, `content` another run appends right after this run's
+ *   exclusive create of `path` and before its write, as when a run that found the file there
+ *   appends its line at once;
  * - `rounds`: how many installs to run one after another, each failure caught and counted.
  *
  * The traps replace a `node:fs` function and resync the builtin's ESM exports, so they run under
@@ -73,14 +75,30 @@ if (request.killBeforeAppend !== undefined || request.killAfterAppend !== undefi
   syncBuiltinESMExports();
 }
 
+/** The flags an exclusive create opens a file with, writing or appending. */
+const exclusive = new Set(['wx', 'ax']);
+
 if (request.createBeforeCreate !== undefined) {
   const open = fs.openSync;
   const { content, path: created } = request.createBeforeCreate;
   fs.openSync = (path, flags, mode) => {
-    if (path === created && flags === 'wx') {
+    if (path === created && exclusive.has(flags)) {
       fs.writeFileSync(created, content);
     }
     return open(path, flags, mode);
+  };
+  syncBuiltinESMExports();
+}
+if (request.appendAfterCreate !== undefined) {
+  const open = fs.openSync;
+  const append = fs.appendFileSync;
+  const { content, path: created } = request.appendAfterCreate;
+  fs.openSync = (path, flags, mode) => {
+    const descriptor = open(path, flags, mode);
+    if (path === created && exclusive.has(flags)) {
+      append(created, content);
+    }
+    return descriptor;
   };
   syncBuiltinESMExports();
 }

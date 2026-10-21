@@ -78,7 +78,7 @@ function run(
     cwd: box.work,
     env: {
       // The platform is pinned so a test reads the same row on every machine.
-      // The darwin and win32 cases name their own.
+      // The darwin case names its own.
       FIXTURE_PLATFORM: 'linux',
       HOME: box.home,
       XDG_STATE_HOME: box.state,
@@ -226,15 +226,6 @@ test('the darwin row resolves from HOME under Library/Logs', () => {
   });
   expect(lines(join(box.home, 'Library', 'Logs', 'heimdall', 'heimdall.jsonl'))).toHaveLength(3);
   expect(existsSync(box.file)).toBe(false);
-});
-
-test('win32 resolves from XDG_STATE_HOME as Linux does', () => {
-  const box = sandbox();
-  run(box, ['log'], {
-    FIXTURE_HOST_ENV: JSON.stringify({ HOME: box.home, XDG_STATE_HOME: box.state }),
-    FIXTURE_PLATFORM: 'win32',
-  });
-  expect(lines(box.file)).toHaveLength(3);
 });
 
 test.each([

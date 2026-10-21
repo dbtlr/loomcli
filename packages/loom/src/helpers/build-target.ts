@@ -5,9 +5,10 @@ import { object, optional, safeParse, string } from 'valibot';
 /**
  * A Bun compile target, as Bun 1.4.2 documents them, for the platforms CI runs: `bun-<os>-<arch>`
  * for `linux` or `darwin` on `x64` or `arm64`, then `-musl` on Linux alone, then `-baseline` or
- * `-modern` on x64 alone, such as `bun-linux-x64-musl-baseline`. Bun itself also tolerates the variants in any
- * order, repeated, or both CPU variants at once, and a CPU variant on arm64, which it ignores; each
- * of those names a target above, so a build refuses it rather than give one binary two names.
+ * `-modern` on x64 alone, such as `bun-linux-x64-musl-baseline`. Bun itself also tolerates the
+ * variants in any order, repeated, or both CPU variants at once, and a CPU variant on arm64, which
+ * it ignores; each of those names a target above, so a build refuses it rather than give one binary
+ * two names.
  */
 const compileTarget =
   /^bun-(?<platform>linux-(?:x64(?:-musl)?(?:-baseline|-modern)?|arm64(?:-musl)?)|darwin-(?:x64(?:-baseline|-modern)?|arm64))$/u;

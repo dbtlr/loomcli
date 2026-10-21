@@ -146,10 +146,10 @@ function handOverFolders(record: string, shell: Shell): void {
 }
 
 /**
- * `uninstall`: the platform, then the record's directory and each selected shell's plugin's file read before any is
- * changed, then each shell whose plugin's file exists removed and stated, its shared folders
- * handed first to a shell that outlives it. With nothing recorded, it states there was nothing to
- * remove.
+ * `uninstall`: the platform, then the record's directory and each selected shell's plugin's file
+ * read before any is changed, then each shell whose plugin's file exists removed and stated, its
+ * shared folders handed first to a shell that outlives it. With nothing recorded, it states there
+ * was nothing to remove.
  */
 async function uninstallShells(run: ChildRun, argument: Shell | undefined): Promise<void> {
   refuseWindows(run, argument);

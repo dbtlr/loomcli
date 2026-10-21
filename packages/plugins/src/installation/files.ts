@@ -136,8 +136,8 @@ interface UninstallRequest extends RecordRequest {
  * the skills plugin passes, replaces an unrecorded folder at a listed folder's path in place of
  * refusing. An update adds no recorded line its startup file no longer holds, and drops it from the
  * plugin's file. The directory mode is the permission bits of each directory the install creates,
- * whatever the umask. Each target path is absolute and normalized, and each startup line one line of
- * text, as the first-party plugins that call the module build them.
+ * whatever the umask. Each target path is absolute and normalized, and each startup line one line
+ * of text, as the first-party plugins that call the module build them.
  */
 interface InstallRequest extends UninstallRequest {
   readonly files: readonly InstalledFile[];
@@ -353,17 +353,18 @@ interface Listed {
 }
 
 /**
- * Installs the plugin's files and folders. It recovers a pending plugin's file first, then checks every target: a file target that is absent, or a regular file
- * the plugin recorded with its digest unchanged, may be written, and a folder target that is
- * absent or recorded may be replaced whatever is inside it. Any other target refuses the whole
- * install, which writes nothing, except an unrecorded folder target under the force mode, which is
- * replaced and recorded. It reads the run signal before the pending write and, once it has begun,
- * does not stop between targets. Each file goes through a staging file and a rename, unless it is
- * already there with the digest it would be written with, each folder through a staging folder and
- * renames, and each recorded file the install no longer lists is removed when no one changed it,
- * and each recorded folder it no longer lists is removed whole.
- * Each listed startup line is added, recorded as held, or replaced where it stands, each recorded
- * line it no longer lists is removed, and each released line is dropped, as Installed files states.
+ * Installs the plugin's files and folders. It recovers a pending plugin's file first, then checks
+ * every target: a file target that is absent, or a regular file the plugin recorded with its digest
+ * unchanged, may be written, and a folder target that is absent or recorded may be replaced
+ * whatever is inside it. Any other target refuses the whole install, which writes nothing, except
+ * an unrecorded folder target under the force mode, which is replaced and recorded. It reads the
+ * run signal before the pending write and, once it has begun, does not stop between targets. Each
+ * file goes through a staging file and a rename, unless it is already there with the digest it
+ * would be written with, each folder through a staging folder and renames, and each recorded file
+ * the install no longer lists is removed when no one changed it, and each recorded folder it no
+ * longer lists is removed whole. Each listed startup line is added, recorded as held, or replaced
+ * where it stands, each recorded line it no longer lists is removed, and each released line is
+ * dropped, as Installed files states.
  */
 function install(request: InstallRequest): InstallOutcome {
   const listed = listedOf(request);

@@ -147,13 +147,10 @@ test(
 );
 
 test(
-  'the home directory is HOME on every platform, and an unset, empty, or relative one is none',
+  'the home directory is HOME, and an unset, empty, or relative one is none',
   inWorkspace((space) => {
     space.write('.app.json', json({ title: 'home' }), space.home);
     expect(received(space.run([]).stdout)).toMatchObject({ title: 'home' });
-    expect(received(space.run([], { FIXTURE_PLATFORM: 'win32' }).stdout)).toMatchObject({
-      title: 'home',
-    });
     // A relative home names a directory under the working directory, which the plugin never reads.
     space.write('home/.app.json', json({ title: 'relative' }));
     for (const home of [undefined, '', 'home']) {

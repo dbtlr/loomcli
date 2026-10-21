@@ -1145,6 +1145,26 @@ describe('uninstall', () => {
     expect(existsSync(recordPath(box, 'zsh'))).toBe(false);
   });
 
+  it('never records or removes a line the operator added by hand to a file it may change', () => {
+    const box = sandbox();
+    const script = scripts.zsh(box);
+    const startup = join(box.home, '.zshrc');
+    const text = `setopt autocd\n${zshLine(script)}\n`;
+    writeFileSync(startup, text);
+    const installing = run(box, ['completion', 'install', 'zsh']);
+    expect(installing.status).toBe(0);
+    expect(lines(installing.stderr)).toEqual([
+      `Installed the zsh completion script in ${script}.`,
+      `${startup} already loads it.`,
+      'Open a new shell to use it.',
+    ]);
+    expect(recorded(box, 'zsh').lines).toEqual([]);
+    const removing = run(box, ['completion', 'uninstall', 'zsh']);
+    expect(removing.status).toBe(0);
+    expect(lines(removing.stderr)).toEqual([`Removed ${script}.`]);
+    expect(readFileSync(startup, 'utf8')).toBe(text);
+  });
+
   it('leaves an edited line and an edited script, stating each', () => {
     const box = sandbox();
     const script = scripts.bash(box);

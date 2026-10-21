@@ -30,7 +30,8 @@ type LineAction =
       /** The file's text, or `undefined` for a file the module creates. */
       readonly found: StartupText | undefined;
     }
-  | { readonly kind: 'hold'; readonly listed: InstalledLine; readonly prior: string | null }
+  | { readonly kind: 'hold'; readonly listed: InstalledLine; readonly prior: string }
+  | { readonly kind: 'present'; readonly listed: InstalledLine; readonly prior: string | null }
   | {
       readonly kind: 'replace';
       readonly listed: InstalledLine;
@@ -123,8 +124,9 @@ interface ListedRead {
 /**
  * What an install does to a listed line, given the text recorded for its file and the file's text:
  * a recorded line whose text changed replaces each line equal to the old text where it stands, a
- * line the file holds is recorded, an update adds no line where the file no longer holds the
- * recorded one, and every other line is added.
+ * line the file holds stays recorded when the record holds that text and is otherwise reported and
+ * never recorded, because the operator added it, an update adds no line where the file no longer
+ * holds the recorded one, and every other line is added.
  */
 function listedAction({ listed, prior, found }: ListedRead, update: boolean): LineAction {
   const holds = (text: string) => found !== undefined && holdsLine(found.text, text);
@@ -132,7 +134,9 @@ function listedAction({ listed, prior, found }: ListedRead, update: boolean): Li
     return { found, kind: 'replace', listed, prior };
   }
   if (holds(listed.line)) {
-    return { kind: 'hold', listed, prior };
+    return prior === listed.line
+      ? { kind: 'hold', listed, prior }
+      : { kind: 'present', listed, prior };
   }
   if (prior !== null && update) {
     return { kind: 'not-held', path: listed.path, prior };
@@ -206,7 +210,10 @@ function pathOf(action: LineAction): string {
   return 'listed' in action ? action.listed.path : action.path;
 }
 
-/** The pending entry of an action; a released line has none, so recovery never reads its file. */
+/**
+ * The pending entry of an action. A released line has none, so recovery never reads its file, and
+ * neither has a line the operator added, so recovery never records it.
+ */
 function pendingOf(action: LineAction): PendingLine[] {
   const path = pathOf(action);
   switch (action.kind) {
@@ -263,7 +270,8 @@ function addLine(listed: InstalledLine, found: StartupText | undefined): void {
 
 /**
  * Carries out one action: an append or a created file for an added line, and a rewrite for a
- * replaced or removed one. A held, no longer held, or released line changes no startup file.
+ * replaced or removed one. A held, present, no longer held, or released line changes no startup
+ * file.
  */
 function applyLine(action: LineAction): void {
   if (action.kind === 'add') {
@@ -283,6 +291,7 @@ const outcomeList: Readonly<Record<LineAction['kind'], keyof StartupLinesOutcome
   add: 'added',
   hold: 'held',
   'not-held': 'noLongerHeld',
+  present: 'held',
   release: 'released',
   remove: 'removed',
   replace: 'replaced',

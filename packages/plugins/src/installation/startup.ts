@@ -160,8 +160,8 @@ function appendLine(path: string, content: StartupText, line: string): void {
 }
 
 /**
- * Creates a missing startup file exclusively, holding `line` and a line feed as UTF-8 without a
- * byte order mark, with mode 644 whatever the umask.
+ * Creates a missing startup file exclusively for appending, holding `line` and a line feed as
+ * UTF-8 without a byte order mark, with mode 644 whatever the umask.
  * Answers `false`, writing nothing, when the file exists by the time it is created.
  */
 function createStartupFile(path: string, line: string): boolean {
@@ -208,8 +208,8 @@ function realPathOf(path: string): string {
 
 /**
  * Replaces or removes each line equal to the recorded text by writing the startup file's real path
- * through a staging file and a rename, keeping every other byte, the byte order mark, and the permission
- * bits, so a symbolic link stays a link.
+ * through a staging file and a rename, keeping every other byte, the byte order mark, and the
+ * permission bits, so a symbolic link stays a link.
  */
 function rewriteLines(path: string, content: StartupText, edit: LineEdit): void {
   const real = realPathOf(path);
