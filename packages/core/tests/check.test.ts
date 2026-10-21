@@ -139,11 +139,14 @@ test.each(runtimes)(
 );
 
 test.each(runtimes)(
-  'check() throws a TypeError an onGraphBuilt hook throws as it is, under %s',
+  'a hook that throws a TypeError adds the broken-graph-hook fault, and check() returns, under %s',
   (runtime) => {
-    expect(report(runtime, 'broken-hook', 'check-throw')).toEqual({
-      message: 'The hook broke.',
-      name: 'TypeError',
-    });
+    expect(report(runtime, 'broken-hook').faults).toEqual([
+      fault(
+        '@loomcli/core/broken-graph-hook',
+        'Plugin "@fixture/break" failed in onGraphBuilt: The hook broke.',
+        'BROKEN GRAPH HOOK',
+      ),
+    ]);
   },
 );

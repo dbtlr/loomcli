@@ -142,7 +142,7 @@ if (scenario === 'order') {
   }).action(() => undefined);
   print(await runCaptured(app, []));
 } else if (scenario === 'cause') {
-  // A hook's throw that is not a DeclarationError leaves inspect() as it is.
+  // The value a broken hook threw is the fault's cause.
   const thrown = new TypeError('the hook broke');
   const app = new Application('probe', {
     plugins: [
@@ -157,7 +157,7 @@ if (scenario === 'order') {
     app.inspect();
     print('returned');
   } catch (error) {
-    print({ same: error === thrown });
+    print({ cause: error instanceof DeclarationError && error.cause === thrown });
   }
 } else if (scenario === 'frozen') {
   const seen = [];

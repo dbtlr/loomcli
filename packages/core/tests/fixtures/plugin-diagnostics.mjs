@@ -13,6 +13,7 @@ import {
 } from '@loomcli/core';
 
 const act = () => undefined;
+const leaf = (name) => new Command(name).action(act);
 const render = () => '';
 const line = (form) => `${JSON.stringify({ error: form })}\n`;
 
@@ -30,6 +31,21 @@ const note = extension('@acme/notes/command', { schema: accepting, target: 'comm
  * diagnostic its message holds.
  */
 const scenarios = {
+  'attach-hook-throws': () =>
+    new Application('probe', {
+      plugins: [
+        plugin('@acme/format', {
+          onCommandAttach: (command) => {
+            if (command.name === 'count') {
+              throw new Error('No format\nfor this Command');
+            }
+            return command;
+          },
+        }),
+      ],
+    })
+      .command(leaf('count'))
+      .inspect(),
   'encoder-taken': () =>
     plugin('@acme/json', {
       failureEncoders: [
@@ -107,6 +123,18 @@ const scenarios = {
     }
     return new RegistryDownError('The registry is down.');
   },
+  'graph-hook-throws': () =>
+    new Application('probe', {
+      plugins: [
+        plugin('@acme/mcp', {
+          onGraphBuilt: () => {
+            throw new Error('Two tools share\nthe name "scratch_create"');
+          },
+        }),
+      ],
+    })
+      .action(act)
+      .inspect(),
   'hook-alias-spelling': () =>
     new Application('probe', {
       plugins: [

@@ -113,13 +113,6 @@ if (mode === 'run') {
       `${JSON.stringify({ rule: error.rule?.identity, sentence: error.sentence })}\n`,
     );
   }
-} else if (mode === 'check-throw') {
-  try {
-    app.check();
-    process.stdout.write('returned\n');
-  } catch (error) {
-    process.stdout.write(`${JSON.stringify({ message: error.message, name: error.name })}\n`);
-  }
 } else {
   const faults = app.check();
   const [graph] = received;
