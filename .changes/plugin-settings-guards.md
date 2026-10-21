@@ -6,6 +6,5 @@
   - Two man pages whose names differ only in ASCII case, such as `Get` and `get`, no longer fail the build under `@loomcli/plugins/manpage/page-name-taken`. Two Commands that give one page name still do.
 - Change the configuration plugin's checks to what a projection or an operator's file needs.
   - `file` and a binding path no longer refuse a control character or a line separator. `file` stays a relative path with no empty, `.`, or `..` segment, and a binding path stays dotted nonempty keys.
-  - A TOML integer beyond `-(2^53 - 1)` through `2^53 - 1` makes the file not valid TOML, as `smol-toml` reads it, in place of reaching a string option as its exact digits.
   - A YAML file converts through the parser's own `toJS()`. A mapping key that is a mapping or a sequence reads as the text `toJS()` writes for it, in place of making the file not valid YAML, and a scalar key that is not a string reads as `toJS()` writes it, so `0x1F:` reads as `31`. An alias that names no preceding anchor still makes the file not valid YAML, and no parser warning prints.
 - Fix `loom build`, which collected at most 64 MiB of Bun's output, so it now collects the whole output, as the toolchain's git calls do.

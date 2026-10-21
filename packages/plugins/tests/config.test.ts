@@ -398,6 +398,24 @@ test(
 );
 
 test(
+  'a TOML integer beyond the safe range fills a string option with its exact digits and a count with the nearest number',
+  inWorkspace((space) => {
+    space.write(
+      '.app.toml',
+      'title = "kept"\nverbose = 123456789012345678\n[limits]\nbytes = 123456789012345678\n',
+    );
+    const result = space.run([], settings({ file: '.app.toml' }));
+    expect(result.stderr).toBe('');
+    expect(received(result.stdout)).toEqual({
+      ...defaults,
+      limit: '123456789012345678',
+      title: 'kept',
+      verbose: Number(123_456_789_012_345_678n),
+    });
+  }),
+);
+
+test(
   'a TOML number fills as JSON writes it, and a date or time as written',
   inWorkspace((space) => {
     const toml = settings({ file: '.app.toml' });
