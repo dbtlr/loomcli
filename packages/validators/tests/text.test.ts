@@ -1,4 +1,4 @@
-import { describe, expect, it, test } from 'vite-plus/test';
+import { describe, expect, expectTypeOf, it, test } from 'vite-plus/test';
 
 import { text } from '../src/index.js';
 import {
@@ -201,4 +201,13 @@ describe('an option that can never work throws from the call', () => {
       declarationFault(message),
     );
   });
+});
+
+test('a pattern takes its message in the type, so one without the other does not compile', () => {
+  expectTypeOf(text).toBeCallableWith({
+    message: 'Expected lowercase letters.',
+    pattern: /^[a-z]+$/u,
+  });
+  // @ts-expect-error TS2345: Only the author can say what the pattern accepts, so message is required.
+  expectTypeOf(text).toBeCallableWith({ pattern: /^[a-z]+$/u });
 });
