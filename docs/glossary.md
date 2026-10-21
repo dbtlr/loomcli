@@ -782,6 +782,10 @@ _Avoid_: Direct change, visible change
 The ordinary release cut that follows an abandoned unpublished version or a defective published one. It takes a version above the one it supersedes and never rewrites, republishes, or retags that version.
 _Avoid_: Retry, rebuild, republish, repair
 
+**Packed consumer**:
+A throwaway package that installs the tarballs a release would publish, compiles against their declarations, and runs what it built as processes under Node and Bun. It is the closest proof of what an author installs from the registry, and it runs on every pull request and before every publication.
+_Avoid_: Smoke test, integration package, runtime fixture
+
 **Release asset**:
 One platform's binary on an application's GitHub Release of the tag `v<version>`, named `<name>-<os>-<arch>`, with `-musl` for a musl Linux build, and listed with its digest in the release's `SHA256SUMS`. The installer script and self-update read this shape, and each repository's own release workflow publishes it.
 _Avoid_: Artifact, download
@@ -839,3 +843,7 @@ _Avoid_: Diagnostic rule (for a lint rule), `loom check`
 **Assembly check**:
 The check from `@loomcli/testing` that a test runs to prove an Application assembles: it applies every build rule except the validation of declared defaults and implied values, and fails the test with each fault's Developer Diagnostic.
 _Avoid_: `loom check`, smoke test, health check
+
+**Process test**:
+A test that starts the application as a child process, kept for behavior only a process has, such as a signal and its exit code, a pseudo-terminal, a real shell, or stdio framing. Every other test runs the application in the test's own process through `run()` with a supplied host, or through `invoke`.
+_Avoid_: End-to-end test, integration test, acceptance test

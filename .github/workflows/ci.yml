@@ -118,7 +118,6 @@ jobs:
         run: pnpm verify
 
       - name: Run the packed consumer
-        if: runner.os == 'Linux'
         run: pnpm check:packed
 
   bun_matrix:
@@ -174,7 +173,6 @@ jobs:
         run: pnpm verify
 
       - name: Run the packed consumer
-        if: runner.os == 'Linux'
         run: pnpm check:packed
 
   # A documentation-only change runs only the tests that read files under docs/, on every

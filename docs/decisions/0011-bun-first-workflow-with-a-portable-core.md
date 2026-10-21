@@ -4,7 +4,7 @@ title: ADR-0011 - Bun-first developer workflow with a portable published core
 description: Bun is the project's development runtime. The published core is portable ESM that uses no Bun-only API, and the supported runtimes are stated only from executable evidence, never from CI pins.
 status: accepted
 created: 2026-09-07
-modified: 2026-10-20
+modified: 2026-10-21
 ---
 
 # ADR-0011 - Bun-first developer workflow with a portable published core
@@ -37,3 +37,4 @@ Explicit minimum Node and Bun versions and the TypeScript baseline remain open u
 - 2026-09-30: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) is accepted, so the entry above binds.
 - 2026-10-07: [ADR-0065](0065-release-facts-on-the-host-say-how-the-running-application-was-built.md) and [ADR-0066](0066-the-toolchain-acts-on-one-package-directory.md), proposed, move the example applications from `Bun.build` with `packet()` to `loom build --target node`, which bakes the release facts. `loom build` and `loom check` do their work under Bun, which keeps the developer workflow Bun-first, and the published core stays portable: it reads the facts behind a `typeof` guard. They bind when accepted.
 - 2026-10-20: [ADR-0100](0100-acceptance-plans-live-beside-the-tests.md), proposed, applies this record's rule that support is stated only from executable evidence to the code itself: code that no CI entry runs comes out until one runs it. No CI job runs Windows, so every branch Loom takes on `win32` comes out in 0.15.0, the `bun-windows-*` compile targets of `loom build` included, and Windows takes the paths Linux and macOS take. It binds when that record is accepted.
+- 2026-10-21: [ADR-0103](0103-process-acceptance-comes-from-looms-own-pipeline-and-the-packed-consumer.md), accepted, supersedes ADR-0014, so it now defines the executable evidence the Context names: Loom's own pipeline and the packed consumer under Node and Bun on Linux and macOS, with the rest of the suite in-process under both runtimes. The decision is unchanged.
