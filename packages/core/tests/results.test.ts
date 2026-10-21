@@ -145,6 +145,18 @@ test('the same fault at the root names the root Command', () => {
   );
 });
 
+test('a second emission no code awaits has no catcher and fails the run', () => {
+  expect(results('repeated-unawaited')).toEqual({
+    status: 1,
+    stderr: generic,
+    stdout: 'total 1\nresolved:1\n',
+  });
+  expectStated(
+    'repeated-unawaited',
+    'Command "count" emitted its result twice. Call out.results() once.',
+  );
+});
+
 test('an action that catches the rejection of a second emission decides the outcome', () => {
   expect(results('repeated-caught')).toEqual({
     status: 0,

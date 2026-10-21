@@ -340,7 +340,7 @@ export class Output {
   // Every value a view failed with.
   // A caller that lets one propagate never offers it to a translator.
   private readonly viewFaults = new WeakSet();
-  // Every failure an output call raised: a view's, and a source's that stopped a sequence.
+  // Every failure an output call raised: a view's, a source's that stopped a sequence, and a second result.
   private readonly raised = new Set<unknown>();
   // Every output call handed to the code that made it, which the run reads for a rejection no code observed.
   private readonly handed: HandedCall[] = [];
@@ -494,12 +494,10 @@ export class Output {
     });
   }
 
-  /**
-   * A second `out.results` call, which rejects and writes nothing. The rejection is the call's
-   * whole outcome, so a call the action never awaited reports nothing.
-   */
+  /** A second `out.results` call, which rejects and writes nothing, like any failed output call. */
   private repeated(path: readonly string[]): Promise<void> {
     const fault = new ResultError('repeated', path);
+    this.raised.add(fault);
     const rejected = Promise.reject(fault);
     void rejected.catch(() => undefined);
     return rejected;

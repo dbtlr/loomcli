@@ -116,6 +116,7 @@ const declarations = {
   redirect: 'value',
   'repeated-awaited': 'value',
   'repeated-caught': 'value',
+  'repeated-unawaited': 'value',
   'result-override': 'value',
   'string-source': 'row',
   sync: 'row',
@@ -206,6 +207,11 @@ async function act({ out }) {
     case 'repeated-awaited': {
       await out.results({ total: 1 });
       await out.results({ total: 2 });
+      break;
+    }
+    case 'repeated-unawaited': {
+      await out.results({ total: 1 });
+      void out.results({ total: 2 });
       break;
     }
     case 'repeated-caught': {
