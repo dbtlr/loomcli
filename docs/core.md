@@ -6009,7 +6009,7 @@ UTF-8 decoding replaces invalid bytes. The reader detects no alternate encoding 
 
 The file accepts a leading BOM, LF or CRLF, horizontal whitespace, an optional `export` prefix, and `NAME=value` assignments.
 Unquoted values trim surrounding spaces and tabs. A hash starts a comment at the start of a value or after a space or tab.
-Single quotes preserve literal content on one physical line.
+Single quotes preserve literal content, with no escape, and may span lines, so a private key reads as one value.
 Double quotes may span lines and decode `\n`, `\r`, `\t`, `\"`, and `\\`; other escapes stay literal.
 CRLF normalizes to LF, including inside multiline values. A quoted value permits only whitespace and a comment after its closing quote.
 There is no variable expansion. Empty values are valid, and NUL is invalid.
@@ -6022,7 +6022,7 @@ Skipped API_TOKEN on line 4 of .env: the line is not a valid assignment. Correct
 ```
 
 A malformed assignment the plugin would not import stays silent. Quoted regions are consumed for every name.
-An unterminated double quote consumes the rest of the file; an unterminated single quote consumes only its physical line.
+An unterminated quote of either kind consumes the rest of the file and warns once for its starting line.
 These rules and the exact warning-name boundaries are specified in [ADR-0084](decisions/0084-dotenv-prepares-an-allowlisted-environment-before-inputs.md), and [ADR-0102](decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md) carries them forward.
 Warnings do not change the exit code and are captured in a named invocation's `messages`.
 

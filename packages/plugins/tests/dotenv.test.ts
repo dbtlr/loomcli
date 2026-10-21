@@ -175,7 +175,7 @@ function warning(name: string, line: number): string {
 test.each([
   ['missing equals', 'TOKEN secret-value\nNEXT=ok\n', { NEXT: 'ok' }],
   ['bare export', 'export TOKEN\nNEXT=ok\n', { NEXT: 'ok' }],
-  ['unterminated single quote', "TOKEN='secret-value\nNEXT=ok\n", { NEXT: 'ok' }],
+  ['unterminated single quote', "TOKEN='secret-value\nNEXT=hidden\n", {}],
   ['unterminated double quote', 'TOKEN="secret-value\nNEXT=hidden\n', {}],
   ['trailing text', 'TOKEN="value" secret-value\nNEXT=ok\n', { NEXT: 'ok' }],
   ['NUL', 'TOKEN=secret-value\0\nNEXT=ok\n', { NEXT: 'ok' }],
@@ -233,6 +233,7 @@ test.each([
   ],
   ['empty assignment', 'TOKEN=\n', ''],
   ['single quotes are literal', "TOKEN='  a\\n${HOME}#b  '\n", '  a\\n${HOME}#b  '],
+  ['multiline single quotes', 'TOKEN=\'a\r\n\\n "b"\r\nc\' # comment\r\n', 'a\n\\n "b"\nc'],
   ['double quote escapes', 'TOKEN="a\\nb\\rc\\td\\"e\\\\f"\n', 'a\nb\rc\td"e\\f'],
   ['multiline double quotes', 'TOKEN="a\r\nb\r\nc" # comment\r\n', 'a\nb\nc'],
   ['unknown escapes stay literal', 'TOKEN="a\\qb\\$c"\n', String.raw`a\qb\$c`],
@@ -246,6 +247,28 @@ test.each([
   const result = runFile(content);
   expect(result).toMatchObject({ status: 0, stderr: '' });
   expect(JSON.parse(result.stdout).env).toEqual({ TOKEN: value });
+});
+
+test('a single-quoted private key spans its lines as one value, and no line of it becomes a name', () => {
+  const key = [
+    '-----BEGIN PRIVATE KEY-----',
+    'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7xyzSECRETabc',
+    'AbcDefGhiJklMnoPqrStuVwxYz0123456789secretPartTwo==',
+    '-----END PRIVATE KEY-----',
+  ].join('\n');
+  const result = runFile(`PRIVATE_KEY='${key}'\nDB_URL=postgres://x\n`, {
+    names: ['PRIVATE_KEY', 'DB_URL', 'AbcDefGhiJklMnoPqrStuVwxYz0123456789secretPartTwo'],
+    settings: null,
+  });
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  expect(JSON.parse(result.stdout).env).toEqual({ DB_URL: 'postgres://x', PRIVATE_KEY: key });
+});
+
+test('an unterminated single quote consumes the rest of the file and warns once for its line', () => {
+  const result = runFile("TOKEN='secret-value\nNEXT=hidden\nMIIsecret==\n", { settings: null });
+  expect(result).toMatchObject({ status: 0, stderr: warning('TOKEN', 1) });
+  expect(JSON.parse(result.stdout).env).toEqual({});
+  expect(result.stderr).not.toContain('secret');
 });
 
 test('unlisted multiline assignments cannot introduce allowlisted assignments from their contents', () => {
