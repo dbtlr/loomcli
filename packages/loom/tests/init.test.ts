@@ -715,6 +715,40 @@ test('a package with .oxlintrc.json uses oxlint and keeps the file', () => {
   expect(existsSync(join(root, 'eslint.config.js'))).toBe(false);
 });
 
+test.each(['.oxlintrc.jsonc', 'oxlint.config.ts', 'oxlint.config.mts'])(
+  'a package with %s uses oxlint and init writes no second oxlint file, which oxlint refuses to run beside',
+  (config) => {
+    const root = ownPackage({ [config]: '{}\n' });
+    const result = loom(root, ['init']);
+    expect(result.stdout).not.toContain('.oxlintrc.json');
+    expect(existsSync(join(root, '.oxlintrc.json'))).toBe(false);
+    expect(existsSync(join(root, 'eslint.config.js'))).toBe(false);
+    expect(loom(root, ['init', '--only', 'lint'])).toEqual({ status: 0, stderr: '', stdout: '' });
+    expect(JSON.parse(read(root, 'package.json')).scripts.check).toBe(
+      'tsc --noEmit && oxlint src && bun test',
+    );
+  },
+);
+
+test('a package that declares @types/bun uses Bun', () => {
+  const manifest = `${JSON.stringify({ devDependencies: { '@types/bun': '^1.0.0' }, name: 'probe', type: 'module' }, undefined, 2)}\n`;
+  const root = ownPackage({ 'package.json': manifest });
+  loom(root, ['init']);
+  const { devDependencies, scripts } = JSON.parse(read(root, 'package.json'));
+  expect(scripts.check).toBe('tsc --noEmit && oxlint src && bun test');
+  expect(devDependencies).not.toHaveProperty('vitest');
+});
+
+test('a --test-runner the operator supplies wins over a vitest dependency the package holds', () => {
+  const manifest = `${JSON.stringify({ devDependencies: { vitest: '^5.0.0' }, name: 'probe', type: 'module' }, undefined, 2)}\n`;
+  const root = ownPackage({ 'package.json': manifest });
+  loom(root, ['init', '--test-runner', 'bun']);
+  expect(JSON.parse(read(root, 'package.json')).scripts.check).toBe(
+    'tsc --noEmit && oxlint src && bun test',
+  );
+  expect(read(root, testPath)).toContain("import { test } from 'bun:test';");
+});
+
 test.each(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'])(
   'a package that declares vitest under %s uses vitest',
   (group) => {
@@ -856,6 +890,54 @@ test.skipIf(process.platform === 'win32')(
   },
 );
 
+test.skipIf(process.platform === 'win32')(
+  'at a terminal a re-run of a Bun scaffold asks no question',
+  async () => {
+    const directory = emptyNotes();
+    expect(loom(directory, ['init']).status).toBe(0);
+    const tty = atTerminal(directory);
+    try {
+      await expect(tty.expect('warning: install.sh was not written')).resolves.not.toContain(
+        'Which',
+      );
+    } finally {
+      await tty.close();
+    }
+    expect(JSON.parse(read(directory, 'package.json')).devDependencies).not.toHaveProperty(
+      'vitest',
+    );
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  'at a terminal the runner question is not asked when the test file exists and no other piece depends on the runner',
+  async () => {
+    const root = ownPackage({ [testPath]: 'export {};\n' });
+    const tty = atTerminal(root, ['--only', 'test', '--only', 'changes']);
+    try {
+      await expect(tty.expect(`Wrote ${guidePath}.`)).resolves.not.toContain('Which');
+    } finally {
+      await tty.close();
+    }
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  'at a terminal the runner question is asked when the test file is missing',
+  async () => {
+    const root = ownPackage();
+    const tty = atTerminal(root, ['--only', 'test']);
+    try {
+      await tty.expect('Which test runner should the scaffold use?');
+      tty.send(secondChoice);
+      await tty.expect(`Wrote ${testPath}.`);
+    } finally {
+      await tty.close();
+    }
+    expect(read(root, testPath)).toContain("import { test } from 'vitest';");
+  },
+);
+
 test('an ESLint scaffold aliases typescript to the TypeScript 6 package and adds the compiler as @typescript/native', () => {
   const directory = emptyNotes();
   loom(directory, ['init', '--linter', 'eslint', '--test-runner', 'vitest']);
@@ -877,4 +959,38 @@ test('an ESLint scaffold in a package that pins its own typescript keeps that ke
   const { devDependencies } = JSON.parse(read(root, 'package.json'));
   expect(devDependencies.typescript).toBe('~5.9.0');
   expect(devDependencies).not.toHaveProperty('@typescript/native');
+});
+
+/** The warning init prints for ESLint over a plain `typescript` key. */
+const plainTypescriptWarning = (range: string) =>
+  `warning: package.json declares typescript as ${range}, and typescript-eslint supports TypeScript below 6.1, so eslint . fails on TypeScript 7. Set typescript to npm:@typescript/typescript6@${toolRanges['@typescript/typescript6']} and add @typescript/native as npm:typescript@${range}, which keeps tsc on your compiler. See https://github.com/dbtlr/loomcli/blob/main/docs/libs/eslint-plugin.md.\n`;
+
+test('ESLint over a plain typescript key draws one warning that names the alias and the guide', () => {
+  const root = ownPackage({ 'package.json': ownTypedManifest });
+  expect(loom(root, ['init', '--linter', 'eslint']).stderr).toBe(
+    `${plainTypescriptWarning('~5.9.0')}${noRepository}`,
+  );
+});
+
+test('ESLint over the typescript alias, and oxlint over a plain typescript key, draw no such warning', () => {
+  const aliased = `${JSON.stringify(
+    {
+      devDependencies: { typescript: 'npm:@typescript/typescript6@^6.0.2' },
+      name: 'probe',
+      scripts: { build: 'tsc' },
+      type: 'module',
+    },
+    undefined,
+    2,
+  )}\n`;
+  expect(loom(ownPackage({ 'package.json': aliased }), ['init', '--linter', 'eslint']).stderr).toBe(
+    noRepository,
+  );
+  expect(
+    loom(ownPackage({ 'package.json': ownTypedManifest }), ['init', '--linter', 'oxlint']).stderr,
+  ).toBe(noRepository);
+});
+
+test('a new ESLint scaffold draws no typescript warning', () => {
+  expect(loom(emptyNotes(), ['init', '--linter', 'eslint']).stderr).toBe(noRepository);
 });

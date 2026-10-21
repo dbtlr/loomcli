@@ -41,8 +41,10 @@ import { report } from '../../helpers/report.js';
 import {
   addMissingKeys,
   applicationIdentifier,
+  declaredTypescript,
   existingRunner,
   isNewPackageName,
+  isTypescriptAlias,
   scaffoldKeys,
 } from '../../helpers/scaffold.js';
 import {
@@ -52,6 +54,7 @@ import {
   lintConfigPath,
   linters,
   testRunners,
+  toolRanges,
 } from '../../helpers/tooling.js';
 import type { Linter, TestRunner, Tooling } from '../../helpers/tooling.js';
 
@@ -233,6 +236,28 @@ function writeInstaller(run: Run) {
   );
 }
 
+/** Where the side-by-side TypeScript install that typescript-eslint needs is described. */
+const eslintPluginGuide = 'https://github.com/dbtlr/loomcli/blob/main/docs/libs/eslint-plugin.md';
+
+/**
+ * Warns when the linter is ESLint and the package already declares `typescript` as anything but
+ * the TypeScript 6 compatibility alias. Init never overwrites a key, so the package keeps its
+ * compiler, and typescript-eslint, which supports TypeScript below 6.1, fails on TypeScript 7
+ * when `eslint .` runs.
+ */
+function warnPlainTypescript(run: Run, target: Target) {
+  if (run.tooling.linter !== 'eslint' || target.fresh) {
+    return;
+  }
+  const range = declaredTypescript(parseManifest(manifestSource(target)));
+  if (range === undefined || isTypescriptAlias(range)) {
+    return;
+  }
+  run.warn(
+    `warning: package.json declares typescript as ${range}, and typescript-eslint supports TypeScript below 6.1, so eslint . fails on TypeScript 7. Set typescript to npm:@typescript/typescript6@${toolRanges['@typescript/typescript6']} and add @typescript/native as npm:typescript@${range}, which keeps tsc on your compiler. See ${eslintPluginGuide}.`,
+  );
+}
+
 /** Adds the scaffold's `package.json` keys the package lacks, one line for each key added. */
 function writeKeys(run: Run) {
   const source = readFileSync(join(run.directory, 'package.json'), 'utf8');
@@ -382,7 +407,7 @@ function manifestSource({ directory, fresh }: Target) {
 
 /**
  * What a package already settles about its tooling, which init follows without asking: the linter
- * of a lint configuration file, and vitest when a dependency field declares it.
+ * of a lint configuration file, and the runner a dependency field declares, vitest or Bun's types.
  */
 function existingTooling(target: Target): Partial<Tooling> {
   const linter = target.fresh ? undefined : existingLinter(target.directory);
@@ -444,6 +469,9 @@ function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; target:
   }
   const authored = existsSync(join(directory, applicationPath));
   const importing = applicationImporter(context, authored);
+  if (selected('package') || selected('lint')) {
+    warnPlainTypescript(context, run.target);
+  }
   if (selected('package')) {
     writeKeys(context);
   }
@@ -495,7 +523,7 @@ export const init = new Command('init', {
   .option('test-runner', {
     default: defaultTooling.runner,
     description:
-      'Wire this test runner: bun or vitest. A package that declares vitest uses it, and at a terminal init asks when nothing decides.',
+      'Wire this test runner: bun or vitest. A package that declares vitest or @types/bun uses that runner, and at a terminal init asks when nothing decides.',
     type: 'string',
     validate: runnerOption,
   })

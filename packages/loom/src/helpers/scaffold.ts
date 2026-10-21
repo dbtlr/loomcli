@@ -130,6 +130,9 @@ function dependencyKey(group: string, name: string, value: string): ManifestKey 
   return { declaredIn: dependencyGroups, path: [group, name], value };
 }
 
+/** What the `typescript` alias of an ESLint scaffold starts with, before the compatibility package's range. */
+const typescriptAliasPrefix = 'npm:@typescript/typescript6@';
+
 /**
  * The compiler keys of a scaffold. typescript-eslint supports TypeScript below 6.1 and reads the
  * TypeScript 6 API, which TypeScript 7 does not ship, so an ESLint scaffold aliases `typescript` to
@@ -146,7 +149,7 @@ function compilerKeys({ linter }: Tooling, typescript: string): ManifestKey[] {
     dependencyKey(
       'devDependencies',
       'typescript',
-      `npm:@typescript/typescript6@${toolRanges['@typescript/typescript6']}`,
+      `${typescriptAliasPrefix}${toolRanges['@typescript/typescript6']}`,
     ),
     {
       ...dependencyKey('devDependencies', '@typescript/native', `npm:typescript@${typescript}`),
@@ -155,9 +158,36 @@ function compilerKeys({ linter }: Tooling, typescript: string): ManifestKey[] {
   ];
 }
 
-/** The test runner a manifest already declares: vitest when any dependency field names it. */
+/**
+ * The test runner a manifest already declares: vitest when any dependency field names it, else Bun
+ * when one names `@types/bun`, the package a Bun scaffold declares. Vitest wins when both appear,
+ * because a package that declares it runs its tests there.
+ */
 export function existingRunner(manifest: Record<string, unknown>): Tooling['runner'] | undefined {
-  return declaresDependency(manifest, 'vitest') ? 'vitest' : undefined;
+  if (declaresDependency(manifest, 'vitest')) {
+    return 'vitest';
+  }
+  return declaresDependency(manifest, '@types/bun') ? 'bun' : undefined;
+}
+
+/** The range or alias a manifest declares `typescript` under, in the first field that names it. */
+export function declaredTypescript(manifest: Record<string, unknown>): string | undefined {
+  for (const group of dependencyGroups) {
+    const parsed = safeParse(jsonObject, manifest[group]);
+    const range = parsed.success ? parsed.output.typescript : undefined;
+    if (typeof range === 'string') {
+      return range;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Whether a declared `typescript` range is the TypeScript 6 compatibility alias an ESLint scaffold
+ * writes, which typescript-eslint can load.
+ */
+export function isTypescriptAlias(range: string): boolean {
+  return range.startsWith(typescriptAliasPrefix);
 }
 
 /**

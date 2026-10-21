@@ -152,8 +152,18 @@ test.each(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDepen
   },
 );
 
-test('a package that does not declare vitest selects no runner', () => {
-  expect(existingRunner({ devDependencies: { '@types/bun': '^1.0.0' } })).toBeUndefined();
+test.each(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'])(
+  '@types/bun declared under %s selects the Bun runner',
+  (group) => {
+    expect(existingRunner({ [group]: { '@types/bun': '^1.0.0' } })).toBe('bun');
+  },
+);
+
+test('vitest wins over @types/bun, and a package that declares neither selects no runner', () => {
+  expect(existingRunner({ devDependencies: { '@types/bun': '^1.0.0', vitest: '^5.0.0' } })).toBe(
+    'vitest',
+  );
+  expect(existingRunner({ devDependencies: { eslint: '^10.0.0' } })).toBeUndefined();
 });
 
 test('an existing key keeps its value and its place, and new keys follow the existing ones', () => {

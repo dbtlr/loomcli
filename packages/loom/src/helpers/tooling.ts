@@ -1,8 +1,20 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** The oxlint configuration file, which holds the whole configuration. */
+/** The oxlint configuration file init writes, which holds the whole configuration. */
 const oxlintConfigPath = '.oxlintrc.json';
+
+/**
+ * Every name oxlint reads its configuration from in a directory, which the oxlint version of
+ * `toolRanges` documents. oxlint refuses to run when a directory holds more than one, so init
+ * writes `.oxlintrc.json` only beside none of them.
+ */
+const oxlintConfigNames = [
+  oxlintConfigPath,
+  '.oxlintrc.jsonc',
+  'oxlint.config.ts',
+  'oxlint.config.mts',
+];
 
 /** The ESLint flat-config file init writes, which is also the first name ESLint looks for. */
 const eslintConfigPath = 'eslint.config.js';
@@ -65,7 +77,7 @@ export function lintConfigPath(linter: Linter): string {
 
 /** Whether the package directory already holds a configuration file of the linter. */
 export function hasLintConfig(directory: string, linter: Linter): boolean {
-  const names = linter === 'oxlint' ? [oxlintConfigPath] : eslintConfigNames;
+  const names = linter === 'oxlint' ? oxlintConfigNames : eslintConfigNames;
   return names.some((name) => existsSync(join(directory, name)));
 }
 
