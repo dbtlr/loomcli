@@ -2362,6 +2362,7 @@ abstract class LoomError extends Error {
 class FatalError extends LoomError {
   static override readonly code: string; // 'fatal'; each core class annotates its code as string
 }
+function isFailureCode(value: unknown): value is string;
 ```
 
 ```ts
@@ -2403,7 +2404,7 @@ A failure class states a failure code once, on the class, so a script or an agen
 | `ResultError`             | `internal`, inherited          |
 
 - **The declaration.** A class declares its code as `static override readonly code`. Core reads the code from the thrown failure's class, walking to the nearest ancestor that declares one, so an author class that declares none reads its parent's: a bare `FatalError` subclass reads `fatal`, and a class that extends jsonkit's `PathNotFoundError` without a code reads `path-not-found`. A projection reads `Class.code` without constructing a failure.
-- **The grammar.** A code is one or more words of lowercase ASCII letters and digits joined by single hyphens, the grammar of the rule name that ends a [rule identity](#developer-diagnostics), such as `path-not-found` or `http-503`. It has no package part: a code names one failure of the application that raises it.
+- **The grammar.** A code is one or more words of lowercase ASCII letters and digits joined by single hyphens, the grammar of the rule name that ends a [rule identity](#developer-diagnostics), such as `path-not-found` or `http-503`. It has no package part: a code names one failure of the application that raises it. `isFailureCode(value)`, exported from `@loomcli/core`, answers whether a value is a string in this grammar, the check `LoomError`'s constructor runs, so a projection that lists classes no run has constructed, as the [manifest](#manifest-failures) does, checks a code against core's grammar instead of a copy.
 - **Read from the class.** Core reads the code from the failure's class as it reads the exit code, and captures nothing, under [ADR-0095](decisions/0095-the-type-bounds-a-declared-exit-code.md).
 - **On the class alone.** A failure instance carries no `code` member of core's. The [failure form](#the-failure-form) reports the class's code, and an author's own instance field named `code`, such as one copied from a Node system error, keeps its own meaning.
 - **Type checks.** `LoomError` types its static as `string`, and every core class annotates its own as `string`, so a subclass declares any literal. A `readonly` static with a literal initializer takes that literal as its type, so an author class whose own subclasses declare other codes annotates its declaration, `static override readonly code: string = 'registry';`. A static that is not a string is a compile error, as a static side that incorrectly extends its base (TS2417). The types do not check the grammar.

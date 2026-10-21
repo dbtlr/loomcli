@@ -7,7 +7,7 @@ export { applicationDirectory } from './directory.js';
 export type { ApplicationDirectory, DirectoryLookup } from './directory.js';
 export { questionValidationOptions, validationContext, validationContextKey } from './context.js';
 export { diagnosticRule } from './diagnostic.js';
-export { isRuleIdentity } from './identity.js';
+export { isFailureCode, isRuleIdentity } from './identity.js';
 export { isDeclaredName } from './options.js';
 export { isProseLine } from './facts.js';
 export type { DiagnosticParts, DiagnosticRule, Finding } from './diagnostic-text.js';

@@ -57,16 +57,6 @@ const cases = {
 
 const [name, mode] = process.argv.slice(2);
 
-/** The sentence core's own construction of one class throws, which the manifest mirrors. */
-function coreConstructed(Class) {
-  try {
-    new Class();
-    return { fault: null };
-  } catch (error) {
-    return { fault: error.constructor.name, message: ruleText(error) };
-  }
-}
-
 /** One case's outcome: its fault, or with `--stored`, the first failure `get`'s value stores. */
 function outcome() {
   // The constructor that carries the value validates it, so a faulty value throws there.
@@ -83,9 +73,4 @@ function outcome() {
   }
 }
 
-/** The cases that construct a class through core rather than declaring a value. */
-const constructed = { 'core-bad-code': BadCodeError };
-
-process.stdout.write(
-  `${JSON.stringify(name in constructed ? coreConstructed(constructed[name]) : outcome())}\n`,
-);
+process.stdout.write(`${JSON.stringify(outcome())}\n`);

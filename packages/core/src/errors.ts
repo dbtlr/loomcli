@@ -4,6 +4,7 @@ import { escapeControlCharacters } from './controls.js';
 import { diagnosticText, isDiagnosticRule, valueCode } from './diagnostic-text.js';
 import type { DiagnosticParts, DiagnosticRule, Finding } from './diagnostic-text.js';
 import type { FailureExitCode } from './exit-codes.js';
+import { isFailureCode } from './identity.js';
 import { failureCode, foreignThrow, foreignThrowCorrection, resultContract } from './rules.js';
 import type { InputIdentity } from './types.js';
 
@@ -135,17 +136,6 @@ function invalidCodeSentence(className: string, declared: unknown): string {
       ? `declares failure code ${quoted(declared)}.`
       : 'declares a failure code that is not a string.';
   return `Failure class ${quoted(className)} ${clause}`;
-}
-
-/**
- * The grammar of a failure code: one or more words of lowercase ASCII letters and digits joined by
- * single hyphens, the grammar of the rule name that ends a rule identity.
- */
-const failureCodeGrammar = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-
-/** Whether one declared value is a failure code: a string in the grammar. */
-function isFailureCode(value: unknown): value is string {
-  return typeof value === 'string' && failureCodeGrammar.test(value);
 }
 
 /**

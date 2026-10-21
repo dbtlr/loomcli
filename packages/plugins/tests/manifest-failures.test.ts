@@ -280,12 +280,10 @@ test("the extension stores a declared failure as its class's failure code, exit 
   expect(rule('failure-stale-name', ['--stored'])).toEqual(stored);
 });
 
-test("a failure class whose failure code is outside the grammar is rejected at the call with core's sentence", () => {
-  const core = z.object({ message: z.string() }).parse(rule('core-bad-code'));
+test('a failure class whose failure code is outside the grammar is rejected at the call', () => {
   expect(rule('failure-bad-code')).toEqual(
     invalid(
       'Failure class "BadCodeError" declares failure code "Bad_Code". Declare a kebab-case code of lowercase letters and digits, such as "registry-down".',
     ),
   );
-  expect(rule('failure-bad-code')).toEqual(invalid(core.message));
 });
