@@ -234,7 +234,6 @@ describe('the captured terminal', () => {
     const stderr = new Writable({ write: (_chunk, _encoding, done) => done() });
     const overrides: HostOverrides = {
       cwd: '/work',
-      release: { build: 'distributed' },
       terminal: {
         background: 'light',
         stderr: { columns: 80, isTTY: true, rows: 24 },

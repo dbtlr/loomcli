@@ -18,7 +18,7 @@ if (input.inspect) {
   console.log(JSON.stringify(value));
 } else {
   await app.run({
-    host: { argv: input.argv ?? ['--help'], env: {}, release: { build: 'distributed' } },
+    host: { argv: input.argv ?? ['--help'], env: {} },
     rendering: input.rendering ?? { color: 'never', modifiers: 'never' },
   });
 }

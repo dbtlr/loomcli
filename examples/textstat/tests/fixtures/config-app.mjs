@@ -52,7 +52,6 @@ try {
     host: {
       argv,
       cwd,
-      release: { build: 'distributed' },
       ...(platform === undefined ? {} : { platform }),
     },
   });

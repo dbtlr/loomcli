@@ -36,27 +36,27 @@ first.inspect();
 first.inspect();
 codes.push(
   await first.run({
-    host: { argv: ['cache', 'clear'], release: { build: 'distributed' }, stderr, stdout },
+    host: { argv: ['cache', 'clear'], stderr, stdout },
   }),
 );
 codes.push(
   await first.run({
-    host: { argv: ['cache', 'clear'], release: { build: 'distributed' }, stderr, stdout },
+    host: { argv: ['cache', 'clear'], stderr, stdout },
   }),
 );
 codes.push(
   await second.run({
-    host: { argv: ['cache', 'clear'], release: { build: 'distributed' }, stderr, stdout },
+    host: { argv: ['cache', 'clear'], stderr, stdout },
   }),
 );
 codes.push(
   await second.run({
-    host: { argv: ['store', 'clear'], release: { build: 'distributed' }, stderr, stdout },
+    host: { argv: ['store', 'clear'], stderr, stdout },
   }),
 );
 codes.push(
   await second.run({
-    host: { argv: ['extra', 'clear'], release: { build: 'distributed' }, stderr, stdout },
+    host: { argv: ['extra', 'clear'], stderr, stdout },
   }),
 );
 second.inspect();

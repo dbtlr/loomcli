@@ -81,7 +81,7 @@ const declarations = {
         validate: digits,
       })
       .action(({ out }) => out.print('ran')),
-  // Two failing converters, an undescribed option, and a hook that rejects the graph.
+  // Two failing converters and a hook that rejects the graph.
   faults: () =>
     new Application('probe', { description: 'Probe the checks.', plugins: [rejecting, accepting] })
       .globalOption('level', {
@@ -96,7 +96,6 @@ const declarations = {
             type: 'string',
             validate: unconvertible('No limit schema.'),
           })
-          .option('quiet', { type: 'boolean' })
           .action(({ out }) => out.print('ran')),
       ),
 };

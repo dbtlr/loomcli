@@ -151,7 +151,7 @@ const mode = process.argv[3];
 
 if (mode === 'run') {
   const code = await build().run({
-    host: { argv: process.argv.slice(4), release: { build: 'distributed' } },
+    host: { argv: process.argv.slice(4) },
   });
   process.stdout.write(`${encode({ code })}\n`);
 } else if (mode === 'calls') {

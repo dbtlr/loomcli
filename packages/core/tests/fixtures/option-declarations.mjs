@@ -34,5 +34,5 @@ function build() {
 
 const app = declare(build);
 process.stdout.write('assembled\n');
-const code = await app.run({ host: { argv: ['--unknown'], release: { build: 'distributed' } } });
+const code = await app.run({ host: { argv: ['--unknown'] } });
 process.stdout.write(`resolved:${code}\n`);

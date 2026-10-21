@@ -21,8 +21,7 @@ const second = right.action(report);
 await first.run({
   host: {
     argv: ['-nl', '--__proto__=safe', '--dryRun', '--', '--', '', 'two words'],
-    release: { build: 'distributed' },
   },
 });
-await first.run({ host: { argv: [], release: { build: 'distributed' } } });
-await second.run({ host: { argv: ['-l'], release: { build: 'distributed' } } });
+await first.run({ host: { argv: [] } });
+await second.run({ host: { argv: ['-l'] } });

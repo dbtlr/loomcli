@@ -27,7 +27,7 @@ if (scenario === 'capture') {
     });
   process.argv = [process.execPath, 'host.mjs', 'before run', 'two words'];
   process.env.LOOM_CAPTURE_TEST = 'at run';
-  await app.run({ host: { release: { build: 'distributed' } } });
+  await app.run();
 } else if (scenario === 'capture-once') {
   const first = [];
   const second = [];
@@ -124,7 +124,6 @@ if (scenario === 'capture') {
       argv,
       cwd: 'virtual-workspace',
       env,
-      release: { build: 'distributed' },
       stdin,
       terminal,
     },
@@ -152,7 +151,7 @@ if (scenario === 'capture') {
       stdout.rows = 10;
       out.print(reading());
     })
-    .run({ host: { argv: [], env: {}, release: { build: 'distributed' }, terminal } });
+    .run({ host: { argv: [], env: {}, terminal } });
 } else if (scenario === 'build-output') {
   const chunks = [];
   const stderr = new Writable({
@@ -168,14 +167,14 @@ if (scenario === 'capture') {
   const app = new Application('reuse')
     .argument('values', { required: true, variadic: true })
     .action(({ args, out }) => out.print(args.values.join(',')));
-  await app.run({ host: { argv: ['one'], release: { build: 'distributed' } } });
-  await app.run({ host: { argv: ['two'], release: { build: 'distributed' } } });
+  await app.run({ host: { argv: ['one'] } });
+  await app.run({ host: { argv: ['two'] } });
 } else if (scenario === 'time-zone') {
   const app = new Application('zone').action(({ host, out }) => out.print(host.timeZone));
-  await app.run({ host: { argv: [], release: { build: 'distributed' } } });
+  await app.run({ host: { argv: [] } });
 } else if (scenario === 'time-zone-override') {
   const app = new Application('zone').action(({ host, out }) => out.print(host.timeZone));
   await app.run({
-    host: { argv: [], release: { build: 'distributed' }, timeZone: 'Pacific/Auckland' },
+    host: { argv: [], timeZone: 'Pacific/Auckland' },
   });
 }

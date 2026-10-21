@@ -32,4 +32,4 @@ const app = new Application('jsonkit')
   .command(keys)
   .action(report('root'));
 
-await app.run({ host: { argv: process.argv.slice(3), release: { build: 'distributed' } } });
+await app.run({ host: { argv: process.argv.slice(3) } });

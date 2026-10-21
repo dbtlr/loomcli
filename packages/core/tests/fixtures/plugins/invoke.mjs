@@ -220,8 +220,8 @@ if (mode === 'inspect') {
 } else if (mode === 'twice') {
   // One Application, run twice, so each run reads its declarations and its defaults anew.
   const app = application();
-  const first = await app.run({ host: { argv, release: { build: 'distributed' } } });
-  const second = await app.run({ host: { argv, release: { build: 'distributed' } } });
+  const first = await app.run({ host: { argv } });
+  const second = await app.run({ host: { argv } });
   process.stdout.write(`resolved:${first}:${second}\n`);
 } else {
   const code = await application().run({ host: { argv, release: { build: 'distributed' } } });

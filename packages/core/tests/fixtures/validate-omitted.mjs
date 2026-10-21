@@ -59,4 +59,4 @@ switch (scenario) {
     throw new Error(`Unknown scenario: ${scenario}`);
   }
 }
-await app.action(report).run({ host: { argv, release: { build: 'distributed' } } });
+await app.action(report).run({ host: { argv } });

@@ -12,5 +12,5 @@ const app = new Application('probe')
   .action(({ options, out }) => out.print(JSON.stringify(options.target)));
 
 process.exitCode = await app.run({
-  host: { argv, cwd, platform, release: { build: 'distributed' } },
+  host: { argv, cwd, platform },
 });

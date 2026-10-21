@@ -133,4 +133,4 @@ const app = new Application('kit', { plugins: [help(), completion()] })
   .command(quotes)
   .command(backups);
 
-await app.run({ host: { argv: process.argv.slice(2), release: { build: 'distributed' } } });
+await app.run({ host: { argv: process.argv.slice(2) } });

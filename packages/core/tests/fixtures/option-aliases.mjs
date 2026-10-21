@@ -72,10 +72,10 @@ const scenarios = {
       .action(report([]));
     const [bytes, color] = app.inspect().root.options;
     process.stdout.write(`${JSON.stringify([bytes?.aliases, color?.aliases])}\n`);
-    await app.run({ host: { argv, release: { build: 'distributed' } } });
+    await app.run({ host: { argv } });
   },
   run: async () => {
-    process.exitCode = await sizes().run({ host: { argv, release: { build: 'distributed' } } });
+    process.exitCode = await sizes().run({ host: { argv } });
   },
 };
 

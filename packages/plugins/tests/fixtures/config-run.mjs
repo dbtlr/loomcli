@@ -98,7 +98,7 @@ const state = (name) => (name in process.env ? process.env[name] : 'absent');
 
 /** The host overrides a test sets: the platform, and the working directory the files resolve in. */
 function host() {
-  const overrides = { argv, release: { build: 'distributed' } };
+  const overrides = { argv };
   if (process.env.FIXTURE_PLATFORM !== undefined) {
     overrides.platform = process.env.FIXTURE_PLATFORM;
   }

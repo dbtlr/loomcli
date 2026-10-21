@@ -33,7 +33,6 @@ if (scenario === 'destinations') {
   await app.run({
     host: {
       argv: [],
-      release: { build: 'distributed' },
       ...(input.env === undefined ? {} : { env: input.env }),
       ...(input.terminal === undefined ? {} : { terminal: input.terminal }),
     },
@@ -129,7 +128,6 @@ if (scenario === 'destinations') {
     host: {
       argv: input.argv,
       env: {},
-      release: { build: 'distributed' },
       terminal: { stderr: live, stdin: { isTTY: false }, stdout: live },
     },
   });
@@ -216,7 +214,6 @@ if (scenario === 'destinations') {
       host: {
         argv: [],
         env: { COLUMNS: '60' },
-        release: { build: 'distributed' },
         stderr: new Writable({
           write: (_chunk, _encoding, done) => done(),
         }),

@@ -65,7 +65,6 @@ await app.run({
     argv: input.argv ?? ['--help'],
     env: input.env ?? {},
     platform: 'linux',
-    release: { build: 'distributed' },
     terminal: {
       stderr: { isTTY: false },
       stdin: { isTTY: false },

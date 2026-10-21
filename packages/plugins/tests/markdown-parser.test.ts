@@ -42,7 +42,7 @@ async function render(
   ];
   const app = new Application('app', { plugins }).extend(helpCommand({ details })).action(() => {});
   const status = await app.run({
-    host: { argv, env: {}, release: { build: 'distributed' }, stderr: errors, stdout: output },
+    host: { argv, env: {}, stderr: errors, stdout: output },
     rendering: { color: themed ? 'always' : 'never', modifiers },
   });
   expect({ status, stderr }).toEqual({ status: 0, stderr: '' });
