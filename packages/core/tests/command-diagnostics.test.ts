@@ -106,11 +106,6 @@ test.each(Object.entries(cases))('the %s fault throws its rule’s diagnostic', 
 
 /** The faults run() reports from a development build, which wait for the graph to be built. */
 const reportedCases: Record<string, RuleParts> = {
-  'root-undescribed': {
-    correction: 'Give each one a description of one line.',
-    rule: 'undescribed',
-    sentence: '1 declaration has no description.',
-  },
   'root-without-action': {
     correction: 'Register an action.',
     rule: 'command-without-action',
@@ -126,12 +121,6 @@ test.each(Object.entries(reportedCases))(
     expect(coreRuleParts(result.stderr)).toEqual(parts);
   },
 );
-
-test('an undescribed root reported from run() marks the name its constructor received', () => {
-  expect(invoke(fixture, ['root-undescribed']).stderr).toContain(
-    "\n\n    new Application('probe', { … })\n                    ^^^^^^^ no description\n\n",
-  );
-});
 
 test('every rule of the family has a pinned diagnostic', () => {
   const pinned = new Set(

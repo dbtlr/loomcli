@@ -244,10 +244,13 @@ export function parseManifest(source: string): Record<string, unknown> {
   return parsed.output;
 }
 
+/** Reads the standard fields of a `package.json` source. */
+export function manifestOf(source: string): Manifest {
+  const { bin, name, repository, version } = parseManifest(source);
+  return { bin, name, repository, version };
+}
+
 /** Reads the standard fields of the `package.json` in a package directory. */
 export function readManifest(directory: string): Manifest {
-  const { bin, name, repository, version } = parseManifest(
-    readRegularFile(directory, 'package.json'),
-  );
-  return { bin, name, repository, version };
+  return manifestOf(readRegularFile(directory, 'package.json'));
 }

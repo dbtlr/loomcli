@@ -101,6 +101,6 @@ if (mode === 'inspect') {
     process.stdout.write(`${kind}:${error.exitCode}: ${error.sentence ?? error.message}\n`);
   }
 } else {
-  const code = await app.run({ host: { argv: [], release: { build: 'distributed' } } });
+  const code = await app.run({ host: { argv: [] } });
   process.stdout.write(`resolved:${code}\n`);
 }

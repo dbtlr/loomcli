@@ -23,6 +23,6 @@ export const loomVersion = manifest.version;
 
 /**
  * The TypeScript range `@loomcli/loom` declares as its optional peer, which `loom init` pins as a
- * new scaffold's compiler so `loom check` runs its type pass.
+ * new scaffold's compiler, which its `check` script runs as `tsc --noEmit`.
  */
 export const typescriptRange = manifest.peerDependencies.typescript;

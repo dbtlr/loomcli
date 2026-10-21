@@ -76,7 +76,7 @@ const app = new Application('table-fit', { description: 'Render rows at a live w
 );
 
 if (input.invoke) {
-  const host = { env: input.env ?? {}, platform: 'linux', release: { build: 'distributed' } };
+  const host = { env: input.env ?? {}, platform: 'linux' };
   const outcome = await app.invoke([], {}, { host });
   process.stdout.write(outcome.output);
 } else {
@@ -85,7 +85,6 @@ if (input.invoke) {
       argv: [],
       env: input.env ?? {},
       platform: 'linux',
-      release: { build: 'distributed' },
       terminal: { stderr: { isTTY: false }, stdin: { isTTY: false }, stdout: output },
     },
     rendering: input.rendering ?? { color: 'never', modifiers: 'never' },

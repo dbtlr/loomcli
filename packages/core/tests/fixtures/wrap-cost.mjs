@@ -118,7 +118,6 @@ async function run(input, view) {
       argv: [],
       env: {},
       platform: 'linux',
-      release: { build: 'distributed' },
       stdout,
       terminal: {
         stderr: { isTTY: false },

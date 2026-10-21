@@ -63,5 +63,5 @@ if (scenario === 'stores') {
   await new Application('probe')
     .result({ views: { json: { mediaType: 'application/json', render: () => 'not json\n' } } })
     .action(({ out }) => out.results({}))
-    .run({ host: { argv: [], release: { build: 'distributed' } } });
+    .run({ host: { argv: [] } });
 }

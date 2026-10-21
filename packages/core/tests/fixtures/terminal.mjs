@@ -20,4 +20,4 @@ await new Application('terminal')
     process.stdout.isTTY = false;
     out.print(JSON.stringify({ after: host.terminal, before: JSON.parse(before) }));
   })
-  .run({ host: { argv: [], release: { build: 'distributed' } } });
+  .run({ host: { argv: [] } });

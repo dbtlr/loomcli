@@ -141,7 +141,6 @@ import type {
   ValidateOmittedConstraint,
   Unmarked,
 } from './types.js';
-import { undescribedFault } from './undescribed.js';
 import type { ArgumentInput, DeclaredValues, InputPlaces, OptionInput } from './validation.js';
 import { prepareDeclaredValues } from './validation.js';
 import { argvVerbosity, checkVerbosityBinding, namedVerbosity } from './verbosity.js';
@@ -188,8 +187,6 @@ const unstaged: PrepareStage = {
 interface BuildChecks {
   /** Whether every validated input's converter is asked at build, a development build's check. */
   readonly converters: boolean;
-  /** Whether every member must carry a description, a development run's check. */
-  readonly descriptions: boolean;
   readonly fault: (fault: DeclarationError) => void;
 }
 
@@ -661,16 +658,6 @@ class ApplicationBuilder<
       // A build that checks converters asks every one at build, so its check runs on every build.
       inspected();
     }
-    if (checks.descriptions) {
-      // A member left undescribed fails after the converters and before a judge.
-      const undescribed = undescribedFault(graph, {
-        description: facts.description,
-        name: this.#name,
-      });
-      if (undescribed !== undefined) {
-        checks.fault(undescribed);
-      }
-    }
     if (judgesGraph(plugins)) {
       judgeGraph(inspected(), plugins, checks.fault);
     }
@@ -689,7 +676,6 @@ class ApplicationBuilder<
     const development = isDevelopment(bakedFacts());
     const built = this.prepare(unstaged, {
       converters: development,
-      descriptions: false,
       fault: raise,
     });
     return built.inspected();
@@ -700,16 +686,14 @@ class ApplicationBuilder<
    * implied value its validator rejects, as values in the order a run meets them. It builds the
    * graph as `inspect()` does and runs the development checks whatever the release facts read,
    * reading no host and no baked facts. A build rule's fault ends the build, so it is the one fault;
-   * past a built graph, each failing converter, the undescribed fault, and each rejecting
-   * `onGraphBuilt` hook is kept and the build goes on. Any other throw leaves it as it is. Nothing is
-   * cached.
+   * past a built graph, each failing converter and each rejecting `onGraphBuilt` hook is kept and
+   * the build goes on. Any other throw leaves it as it is. Nothing is cached.
    */
   check(): readonly DeclarationError[] {
     const faults: DeclarationError[] = [];
     try {
       this.prepare(unstaged, {
         converters: true,
-        descriptions: true,
         fault: (fault) => {
           faults.push(fault);
         },
@@ -964,11 +948,7 @@ class ApplicationBuilder<
         });
         settleTerminal(host.terminal, settled);
         invocationOutput.configure(policy, themePalette(theme, settled));
-        const built = this.build(
-          stage,
-          { converters: build.development, descriptions: build.development, fault: raise },
-          bound,
-        );
+        const built = this.build(stage, { converters: build.development, fault: raise }, bound);
         const { graph, inspected } = built;
         // Nothing has written a lane yet: graph build's hooks receive no out.
         invocationOutput.useVerbosity(entered.verbosity(graph, host));

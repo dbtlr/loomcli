@@ -28,6 +28,6 @@ await new Application('pty', { description: 'Render either side of a resize.' })
     await out.print('@@DONE@@');
   })
   .run({
-    host: { argv: [], release: { build: 'distributed' } },
+    host: { argv: [] },
     rendering: { color: 'never', modifiers: 'never' },
   });

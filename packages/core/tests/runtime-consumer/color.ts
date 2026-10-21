@@ -12,5 +12,5 @@ const app = new Application('packed-color', { plugins: [installed] }).action(({ 
 
 // No variable speaks for color, so only the operator's choice turns it on for piped output.
 await app.run({
-  host: { argv: process.argv.slice(2), env: {}, release: { build: 'distributed' } },
+  host: { argv: process.argv.slice(2), env: {} },
 });

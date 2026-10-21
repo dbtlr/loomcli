@@ -28,6 +28,6 @@ await new Application('pty-pack-views', {
     await out.print('@@DONE@@');
   })
   .run({
-    host: { argv: [], release: { build: 'distributed' } },
+    host: { argv: [] },
     rendering: { color: 'never', modifiers: 'never' },
   });

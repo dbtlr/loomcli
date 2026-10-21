@@ -354,7 +354,7 @@ function constructorFinding(name: unknown, options: unknown, mark: string): Find
  * The portable name rule, for every name an operator types as a command at a shell prompt: the
  * application name, every Command name, and every alias. The characters are the POSIX portable
  * filename set, and a name starts with neither `-`, which reads as an option, nor `.`, which a
- * shell hides.
+ * shell hides. Core exports it so the lint plugin judges a literal name by this same rule.
  */
 export function isPortableName(name: string): boolean {
   return /^[A-Za-z0-9_][A-Za-z0-9._-]*$/u.test(name);

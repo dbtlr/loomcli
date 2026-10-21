@@ -44,6 +44,6 @@ await new Application('pty-table', { description: 'Render a table either side of
     await out.print('@@DONE@@');
   })
   .run({
-    host: { argv: [], release: { build: 'distributed' } },
+    host: { argv: [] },
     rendering: { color: 'never', modifiers: 'never' },
   });

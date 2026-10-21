@@ -69,13 +69,6 @@ const commandWithoutAction = registerRule('@loomcli/core/command-without-action'
   headline: 'Nothing to run',
 });
 
-/** A Command, an option, or an argument with no description, which a development run rejects. */
-const undescribed = registerRule('@loomcli/core/undescribed', {
-  explanation:
-    'Agents, MCP tools, help, and the manifest read each Command, option, and argument by its description, so a development build fails a run whose graph leaves one out, and the author meets the gap before an operator or an agent does. A distributed build skips the check.',
-  headline: 'Missing description',
-});
-
 export {
   argumentDeclaredTwice,
   argumentsBesideChildren,
@@ -85,6 +78,5 @@ export {
   optionalArgumentLast,
   portableName,
   siblingNameTaken,
-  undescribed,
   variadicArgumentLast,
 };

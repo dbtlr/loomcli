@@ -54,10 +54,9 @@ const converterFaults = [
   ),
 ];
 
-/** The four faults the faulty declaration holds, in the order a run meets them. */
+/** The three faults the faulty declaration holds, in the order a run meets them. */
 const everyFault = [
   ...converterFaults,
-  fault('@loomcli/core/undescribed', '1 declaration has no description.', 'MISSING DESCRIPTION'),
   fault('@fixture/judge/shared-name', 'The graph shares a name.', 'SHARED NAME'),
 ];
 

@@ -18,7 +18,6 @@ await new Application('lanes', { description: 'Write one lane message.' })
       argv: [],
       env: input.env ?? {},
       platform: 'linux',
-      release: { build: 'distributed' },
       terminal: { stderr: output, stdin: { isTTY: false }, stdout: output },
     },
     rendering: input.rendering,

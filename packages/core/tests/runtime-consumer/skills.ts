@@ -21,6 +21,5 @@ process.exitCode = await app.run({
     argv: ['skills', 'install'],
     env: { HOME: 'relative' },
     platform: 'linux',
-    release: { build: 'distributed' },
   },
 });

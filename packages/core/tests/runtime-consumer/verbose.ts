@@ -13,5 +13,5 @@ const app = new Application('packed-verbose', { plugins: [installed] }).action(a
 });
 
 await app.run({
-  host: { argv: process.argv.slice(2), env: {}, release: { build: 'distributed' } },
+  host: { argv: process.argv.slice(2), env: {} },
 });

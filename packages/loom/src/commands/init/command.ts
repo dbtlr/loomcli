@@ -9,6 +9,7 @@ import {
 import { basename, dirname, join, resolve } from 'node:path';
 
 import { Command } from '@loomcli/core';
+import { select } from '@loomcli/prompts';
 import { createValidator } from '@loomcli/validators';
 
 import { changelogSkill } from '../../content/changelog-skill.js';
@@ -16,14 +17,23 @@ import { fragmentGuide } from '../../content/fragment-guide.js';
 import { installerScript } from '../../content/installer-script.js';
 import {
   applicationModule,
+  applicationTest,
   entryModule,
+  eslintConfig,
   newManifest,
+  oxlintConfig,
   typescriptConfig,
 } from '../../content/scaffold.js';
 import type { ApplicationImport } from '../../content/scaffold.js';
-import { checkApplication } from '../../helpers/application-check.js';
-import type { ApplicationCheck } from '../../helpers/application-check.js';
-import { githubRepository, readManifest, scaffoldName } from '../../helpers/build-facts.js';
+import { readApplicationExports } from '../../helpers/application-exports.js';
+import type { ApplicationExports } from '../../helpers/application-exports.js';
+import {
+  githubRepository,
+  manifestOf,
+  parseManifest,
+  readManifest,
+  scaffoldName,
+} from '../../helpers/build-facts.js';
 import { loomVersion, typescriptRange } from '../../helpers/loom-version.js';
 import { driftWarning, hasDrifted, readManaged, renderManaged } from '../../helpers/managed.js';
 import { nearestPackageDirectory } from '../../helpers/package-directory.js';
@@ -31,9 +41,22 @@ import { report } from '../../helpers/report.js';
 import {
   addMissingKeys,
   applicationIdentifier,
+  declaredTypescript,
+  existingRunner,
   isNewPackageName,
+  isTypescriptAlias,
   scaffoldKeys,
 } from '../../helpers/scaffold.js';
+import {
+  defaultTooling,
+  existingLinter,
+  hasLintConfig,
+  lintConfigPath,
+  linters,
+  testRunners,
+  toolRanges,
+} from '../../helpers/tooling.js';
+import type { Linter, TestRunner, Tooling } from '../../helpers/tooling.js';
 
 /** The pieces init writes, in the order it writes them. */
 const pieces = [
@@ -41,6 +64,8 @@ const pieces = [
   'application',
   'entry',
   'tsconfig',
+  'test',
+  'lint',
   'changes',
   'skill',
   'install',
@@ -49,29 +74,38 @@ const pieces = [
 type Piece = (typeof pieces)[number];
 
 /**
- * One `--only` value. A multiple option validates each value as the string the operator typed, so
- * its validator reads a string and publishes a plain string, and the match against the pieces
- * decides the value.
+ * A validator for one value of a string option out of a fixed set. A multiple option validates each
+ * value as the string the operator typed, so the validator reads a string and publishes a plain
+ * string, and the match against the values decides it.
  */
-const pieceOption = createValidator({
-  inputSchema: { type: 'string' },
-  parse: (raw) => {
-    const match = pieces.find((each) => each === raw);
-    return match === undefined
-      ? {
-          issues: [
-            { message: 'Use application, entry, tsconfig, package, changes, skill, or install.' },
-          ],
-        }
-      : { value: match };
-  },
-});
+function choiceOption<const Value extends string>(values: readonly Value[], message: string) {
+  return createValidator({
+    inputSchema: { type: 'string' },
+    parse: (raw) => {
+      const match = values.find((each) => each === raw);
+      return match === undefined ? { issues: [{ message }] } : { value: match };
+    },
+  });
+}
 
-/** The application module and the entry, by their conventional paths in the package directory. */
+/** One `--only` value. */
+const pieceOption = choiceOption(
+  pieces,
+  'Use application, entry, tsconfig, test, lint, package, changes, skill, or install.',
+);
+
+/** One `--linter` value. */
+const linterOption = choiceOption(linters, 'Use oxlint or eslint.');
+
+/** One `--test-runner` value. */
+const runnerOption = choiceOption(testRunners, 'Use bun or vitest.');
+
+/** The application module, the entry, and the test, by their conventional paths in the package. */
 const applicationPath = 'src/application.ts';
 const entryPath = 'src/main.ts';
+const testPath = 'src/application.test.ts';
 
-/** The compiler configuration `loom check` runs its type pass against. */
+/** The compiler configuration the `check` script's `tsc --noEmit` runs against. */
 const typescriptConfigPath = 'tsconfig.json';
 
 /** The installer script, and the mode init writes it with, so an operator can run it directly. */
@@ -81,12 +115,13 @@ const executableMode = 0o755;
 /**
  * Where one init run acts, and how it reports. Each line is written as the file or key lands, so a
  * failure later in the run follows the lines of what was already written. Every path a line names
- * is relative to the package directory, as `loom check` names a drifted managed file.
+ * is relative to the package directory.
  */
 interface Run {
   readonly directory: string;
   readonly force: boolean;
   readonly line: (text: string) => void;
+  readonly tooling: Tooling;
   readonly warn: (text: string) => void;
 }
 
@@ -99,13 +134,26 @@ type AuthoredImport =
   | { readonly kind: 'unloaded'; readonly reason: string }
   | { readonly kind: 'unexported' };
 
+/** The package directory init acts on, and whether init starts a new application in it. */
+interface Target {
+  readonly directory: string;
+  readonly fresh: boolean;
+}
+
 /**
  * The package directory init acts on: the working directory when it is empty, so a new application
- * starts there whatever lies above it, else the nearest package directory.
+ * starts there whatever lies above it, else the nearest package directory. An empty directory whose
+ * name npm or core would reject fails here, before anything is asked or written.
  */
-function initDirectory(cwd: string): { directory: string; fresh: boolean } {
+function initTarget(cwd: string): Target {
   const directory = resolve(cwd);
   if (readdirSync(directory).length === 0) {
+    const name = basename(directory);
+    if (!isNewPackageName(name)) {
+      throw new Error(
+        `The directory name "${name}" is not a valid package name, so rename the directory or write a package.json with the name to use.`,
+      );
+    }
     return { directory, fresh: true };
   }
   const nearest = nearestPackageDirectory(directory);
@@ -188,13 +236,35 @@ function writeInstaller(run: Run) {
   );
 }
 
+/** Where the side-by-side TypeScript install that typescript-eslint needs is described. */
+const eslintPluginGuide = 'https://github.com/dbtlr/loomcli/blob/main/docs/libs/eslint-plugin.md';
+
+/**
+ * Warns when the linter is ESLint and the package already declares `typescript` as anything but
+ * the TypeScript 6 compatibility alias. Init never overwrites a key, so the package keeps its
+ * compiler, and typescript-eslint, which supports TypeScript below 6.1, fails on TypeScript 7
+ * when `eslint .` runs.
+ */
+function warnPlainTypescript(run: Run, target: Target) {
+  if (run.tooling.linter !== 'eslint' || target.fresh) {
+    return;
+  }
+  const range = declaredTypescript(parseManifest(manifestSource(target)));
+  if (range === undefined || isTypescriptAlias(range)) {
+    return;
+  }
+  run.warn(
+    `warning: package.json declares typescript as ${range}, and typescript-eslint supports TypeScript below 6.1, so eslint . fails on TypeScript 7. Set typescript to npm:@typescript/typescript6@${toolRanges['@typescript/typescript6']} and add @typescript/native as npm:typescript@${range}, which keeps tsc on your compiler. See ${eslintPluginGuide}.`,
+  );
+}
+
 /** Adds the scaffold's `package.json` keys the package lacks, one line for each key added. */
 function writeKeys(run: Run) {
   const source = readFileSync(join(run.directory, 'package.json'), 'utf8');
   const name = scaffoldName(readManifest(run.directory));
   const { added, text } = addMissingKeys(
     source,
-    scaffoldKeys(name, { loom: loomVersion, typescript: typescriptRange }),
+    scaffoldKeys(name, { loom: loomVersion, typescript: typescriptRange }, run.tooling),
   );
   if (added.length > 0) {
     writeFile(run, 'package.json', text);
@@ -205,16 +275,16 @@ function writeKeys(run: Run) {
 }
 
 /**
- * How the entry imports an application module the author already holds, learned by loading it as
- * `loom check` does: the name it exports its one Application under, else its default export. A
- * module that could not be loaded, because core does not resolve, Bun is missing, or the module
- * throws, reads `unloaded` with the reason, and one that loads but exports no single Application
- * reads `unexported`.
+ * How the entry and the test import an application module the author already holds, learned by
+ * loading it: the name it exports its one Application under, else its default export. A module that
+ * could not be loaded, because core does not resolve, Bun is missing, or the module throws, reads
+ * `unloaded` with the reason, and one that loads but exports no single Application reads
+ * `unexported`.
  */
 function authoredImport(run: Run, name: string): AuthoredImport {
-  let checked: ApplicationCheck | undefined = undefined;
+  let result: ApplicationExports | undefined = undefined;
   try {
-    checked = checkApplication({
+    result = readApplicationExports({
       directory: run.directory,
       module: applicationPath,
       path: join(run.directory, applicationPath),
@@ -222,7 +292,6 @@ function authoredImport(run: Run, name: string): AuthoredImport {
   } catch (error) {
     return { kind: 'unloaded', reason: error instanceof Error ? error.message : String(error) };
   }
-  const { result } = checked;
   if ('failure' in result) {
     return result.loaded ? { kind: 'unexported' } : { kind: 'unloaded', reason: result.failure };
   }
@@ -230,10 +299,7 @@ function authoredImport(run: Run, name: string): AuthoredImport {
   if (named !== undefined) {
     return { imported: { identifier: named, kind: 'named' }, kind: 'read' };
   }
-  if (result.names.includes('default')) {
-    return { imported: { identifier: applicationIdentifier(name), kind: 'default' }, kind: 'read' };
-  }
-  return { kind: 'unloaded', reason: result.faults.join('\n') };
+  return { imported: { identifier: applicationIdentifier(name), kind: 'default' }, kind: 'read' };
 }
 
 /**
@@ -246,59 +312,166 @@ function reasonLine(reason: string) {
 }
 
 /**
- * Writes the entry when it is missing. It imports the Application by the scaffold's identifier
- * when init writes the application module too, and by what the module exports when the author
- * already holds one. An authored module init cannot read draws a warning and no entry.
+ * How the entry and the test import the Application, learned once for the run and only when a file
+ * needs it: the scaffold's identifier when init writes the application module too, and what the
+ * module exports when the author already holds one.
  */
-function writeEntry(run: Run, authored: boolean) {
+function applicationImporter(run: Run, authored: boolean): () => AuthoredImport {
+  let outcome: AuthoredImport | undefined = undefined;
+  return () => {
+    const name = scaffoldName(readManifest(run.directory));
+    outcome ??= authored
+      ? authoredImport(run, name)
+      : {
+          imported: { identifier: applicationIdentifier(name), kind: 'named' },
+          kind: 'read',
+        };
+    return outcome;
+  };
+}
+
+/**
+ * The import a file writes for the Application, or `undefined` after a warning that the file was
+ * not written. An authored application module init cannot read draws a warning and no file.
+ */
+function importedApplication(
+  run: Run,
+  file: { readonly noun: string; readonly path: string },
+  outcome: AuthoredImport,
+): ApplicationImport | undefined {
+  if (outcome.kind === 'read') {
+    return outcome.imported;
+  }
+  const { noun, path } = file;
+  if (outcome.kind === 'unloaded') {
+    run.warn(
+      `warning: ${path} was not written because ${applicationPath} could not be loaded: ${reasonLine(outcome.reason)}. Install the package and run loom init again, or write the ${noun} by hand.`,
+    );
+  } else {
+    run.warn(
+      `warning: ${path} was not written because ${applicationPath} exports no Application loom can read. Write the ${noun} by hand.`,
+    );
+  }
+  return undefined;
+}
+
+/** Writes the entry when it is missing. */
+function writeEntry(run: Run, importing: () => AuthoredImport) {
   if (existsSync(join(run.directory, entryPath))) {
     return;
   }
-  const name = scaffoldName(readManifest(run.directory));
-  const scaffolded: AuthoredImport = {
-    imported: { identifier: applicationIdentifier(name), kind: 'named' },
-    kind: 'read',
-  };
-  const outcome = authored ? authoredImport(run, name) : scaffolded;
-  if (outcome.kind === 'unloaded') {
-    run.warn(
-      `warning: ${entryPath} was not written because ${applicationPath} could not be loaded: ${reasonLine(outcome.reason)}. Install the package and run loom init again, or write the entry by hand.`,
-    );
+  const imported = importedApplication(run, { noun: 'entry', path: entryPath }, importing());
+  if (imported !== undefined) {
+    write(run, entryPath, entryModule(imported));
+  }
+}
+
+/** Writes the test of the assembly check when it is missing, for the run's test runner. */
+function writeTest(run: Run, importing: () => AuthoredImport) {
+  if (existsSync(join(run.directory, testPath))) {
     return;
   }
-  if (outcome.kind === 'unexported') {
-    run.warn(
-      `warning: ${entryPath} was not written because ${applicationPath} exports no Application loom can read. Write the entry by hand.`,
-    );
-    return;
+  const imported = importedApplication(run, { noun: 'test', path: testPath }, importing());
+  if (imported !== undefined) {
+    write(run, testPath, applicationTest(run.tooling.runner, imported));
   }
-  write(run, entryPath, entryModule(outcome.imported));
+}
+
+/** Writes the lint configuration of the run's linter when the package holds none for it. */
+function writeLint(run: Run) {
+  const { linter } = run.tooling;
+  if (!hasLintConfig(run.directory, linter)) {
+    write(run, lintConfigPath(linter), linter === 'oxlint' ? oxlintConfig : eslintConfig);
+  }
 }
 
 /**
  * Starts a new application in an empty directory with its `package.json`, named for the directory,
- * before any piece, so the application's name always comes from `package.json`. A directory name
- * that npm or core would reject fails before anything is written.
+ * before any piece, so the application's name always comes from `package.json`.
  */
 function writeNewManifest(run: Run) {
-  const name = basename(run.directory);
-  if (!isNewPackageName(name)) {
-    throw new Error(
-      `The directory name "${name}" is not a valid package name, so rename the directory or write a package.json with the name to use.`,
-    );
-  }
-  write(run, 'package.json', newManifest(name));
+  write(run, 'package.json', newManifest(basename(run.directory)));
+}
+
+/** Whether a run over `only` writes the piece: every piece is written when `only` is empty. */
+function isSelected(only: readonly Piece[], piece: Piece) {
+  return only.length === 0 || only.includes(piece);
+}
+
+/** The `package.json` text a run starts from: the new manifest in an empty directory. */
+function manifestSource({ directory, fresh }: Target) {
+  return fresh
+    ? newManifest(basename(directory))
+    : readFileSync(join(directory, 'package.json'), 'utf8');
+}
+
+/**
+ * What a package already settles about its tooling, which init follows without asking: the linter
+ * of a lint configuration file, and the runner a dependency field declares, vitest or Bun's types.
+ */
+function existingTooling(target: Target): Partial<Tooling> {
+  const linter = target.fresh ? undefined : existingLinter(target.directory);
+  const runner = target.fresh ? undefined : existingRunner(parseManifest(manifestSource(target)));
+  return {
+    ...(linter === undefined ? {} : { linter }),
+    ...(runner === undefined ? {} : { runner }),
+  };
+}
+
+/**
+ * Whether the `package.json` keys init adds differ between two toolings, which is when the `check`
+ * script or a development dependency depends on the answer.
+ */
+function keysDiffer(target: Target, first: Tooling, second: Tooling) {
+  const source = manifestSource(target);
+  const name = scaffoldName(manifestOf(source));
+  const versions = { loom: loomVersion, typescript: typescriptRange };
+  const textFor = (tooling: Tooling) =>
+    addMissingKeys(source, scaffoldKeys(name, versions, tooling)).text;
+  return textFor(first) !== textFor(second);
+}
+
+/**
+ * Which tooling questions init needs to ask: one for each choice that the files and keys init will
+ * write depend on. The lint configuration depends on the linter and the test on the runner, and the
+ * `package.json` keys depend on both while they are missing.
+ */
+function neededQuestions(
+  target: Target,
+  only: readonly Piece[],
+): { linter: boolean; runner: boolean } {
+  const selected = (piece: Piece) => isSelected(only, piece);
+  const keysMatter = selected('package');
+  const { linter, runner } = defaultTooling;
+  return {
+    linter:
+      selected('lint') ||
+      (keysMatter && keysDiffer(target, defaultTooling, { linter: 'eslint', runner })),
+    runner:
+      (selected('test') && !existsSync(join(target.directory, testPath))) ||
+      (keysMatter && keysDiffer(target, defaultTooling, { linter, runner: 'vitest' })),
+  };
 }
 
 /** One init run over the pieces it is limited to, all of them by default. */
-function runInit(run: Omit<Run, 'directory'> & { cwd: string; only: readonly Piece[] }) {
-  const { directory, fresh } = initDirectory(run.cwd);
-  const context: Run = { directory, force: run.force, line: run.line, warn: run.warn };
-  const selected = (piece: Piece) => run.only.length === 0 || run.only.includes(piece);
+function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; target: Target }) {
+  const { directory, fresh } = run.target;
+  const context: Run = {
+    directory,
+    force: run.force,
+    line: run.line,
+    tooling: run.tooling,
+    warn: run.warn,
+  };
+  const selected = (piece: Piece) => isSelected(run.only, piece);
   if (fresh) {
     writeNewManifest(context);
   }
   const authored = existsSync(join(directory, applicationPath));
+  const importing = applicationImporter(context, authored);
+  if (selected('package') || selected('lint')) {
+    warnPlainTypescript(context, run.target);
+  }
   if (selected('package')) {
     writeKeys(context);
   }
@@ -307,10 +480,16 @@ function runInit(run: Omit<Run, 'directory'> & { cwd: string; only: readonly Pie
     write(context, applicationPath, applicationModule(name, applicationIdentifier(name)));
   }
   if (selected('entry')) {
-    writeEntry(context, authored);
+    writeEntry(context, importing);
   }
   if (selected('tsconfig') && !existsSync(join(directory, typescriptConfigPath))) {
     write(context, typescriptConfigPath, typescriptConfig);
+  }
+  if (selected('test')) {
+    writeTest(context, importing);
+  }
+  if (selected('lint')) {
+    writeLint(context);
   }
   if (selected('changes')) {
     writeManaged(context, '.changes/README.md', fragmentGuide);
@@ -329,22 +508,64 @@ export const init = new Command('init', {
 })
   .option('only', {
     description:
-      'Write only this piece: application, entry, tsconfig, package, changes, skill, or install.',
+      'Write only this piece: application, entry, tsconfig, test, lint, package, changes, skill, or install.',
     multiple: true,
     type: 'string',
     validate: pieceOption,
+  })
+  .option('linter', {
+    default: defaultTooling.linter,
+    description:
+      'Wire this linter: oxlint or eslint. A lint configuration the package holds decides it, and at a terminal init asks when nothing does.',
+    type: 'string',
+    validate: linterOption,
+  })
+  .option('test-runner', {
+    default: defaultTooling.runner,
+    description:
+      'Wire this test runner: bun or vitest. A package that declares vitest or @types/bun uses that runner, and at a terminal init asks when nothing decides.',
+    type: 'string',
+    validate: runnerOption,
   })
   .option('force', {
     description: 'Re-render a managed file that was edited. Scaffold files are never overwritten.',
     type: 'boolean',
   })
-  .action(async ({ host, options, out, passthrough }) => {
-    await report(out, passthrough, () => {
+  .action(async (context) => {
+    const { host, options, out, passthrough, supplied } = context;
+    await report(out, passthrough, async () => {
+      const target = initTarget(host.cwd);
+      const existing = existingTooling(target);
+      const needed = neededQuestions(target, options.only);
+      // Precedence: a supplied option, the package's own setting, a terminal question, the default.
+      let linter: Linter = options.linter;
+      if (supplied.options.linter === undefined && existing.linter !== undefined) {
+        linter = existing.linter;
+      } else if (needed.linter && context.interactive) {
+        linter = await select(context, {
+          choices: linters,
+          message: 'Which linter should the scaffold use?',
+          option: 'linter',
+          skipIfSupplied: true,
+        });
+      }
+      let runner: TestRunner = options['test-runner'];
+      if (supplied.options['test-runner'] === undefined && existing.runner !== undefined) {
+        runner = existing.runner;
+      } else if (needed.runner && context.interactive) {
+        runner = await select(context, {
+          choices: testRunners,
+          message: 'Which test runner should the scaffold use?',
+          option: 'test-runner',
+          skipIfSupplied: true,
+        });
+      }
       runInit({
-        cwd: host.cwd,
         force: options.force,
         line: (text) => host.stdout.write(`${text}\n`),
         only: options.only,
+        target,
+        tooling: { linter, runner },
         warn: (text) => host.stderr.write(`${text}\n`),
       });
       return '';

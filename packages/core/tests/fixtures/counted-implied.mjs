@@ -228,10 +228,6 @@ if (mode === 'inspect') {
     `${JSON.stringify({ counts, kind: position.kind, lead: position.lead, option: position.option?.name, prefix: position.prefix, supplied: position.supplied })}\n`,
   );
 } else {
-  // Copyit and rejected describe every member, so they run as the source does; the others leave
-  // Members undescribed, so they run as a distributed build, which reads no description.
-  const described = scenario === 'copyit' || scenario === 'rejected';
-  const release = { build: described ? 'source' : 'distributed' };
-  const code = await app.run({ host: { argv, release } });
+  const code = await app.run({ host: { argv } });
   process.stdout.write(`resolved:${code}\n`);
 }

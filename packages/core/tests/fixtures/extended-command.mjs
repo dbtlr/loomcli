@@ -26,7 +26,7 @@ const app = new Application('example')
 const mode = process.argv[2];
 if (mode === 'invoke') {
   await app.run({
-    host: { argv: ['r', 'document', '--raw', '--quiet'], release: { build: 'distributed' } },
+    host: { argv: ['r', 'document', '--raw', '--quiet'] },
   });
 } else if (mode === 'inspect') {
   const before = new Application('library').command(original).inspect().root.children[0];

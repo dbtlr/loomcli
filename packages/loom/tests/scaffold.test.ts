@@ -4,9 +4,12 @@ import { applicationName, githubRepository, scaffoldName } from '../src/helpers/
 import {
   addMissingKeys,
   applicationIdentifier,
+  existingRunner,
   isNewPackageName,
   scaffoldKeys,
 } from '../src/helpers/scaffold.js';
+import { defaultTooling, toolRanges } from '../src/helpers/tooling.js';
+import type { Tooling } from '../src/helpers/tooling.js';
 
 test.each([
   ['notes', 'notes'],
@@ -46,7 +49,8 @@ test('a build still needs a bin to name its application', () => {
   expect(() => applicationName(manifest({ name: 'notes' }), undefined)).toThrow('--name');
 });
 
-const keys = scaffoldKeys('notes', { loom: '1.2.3', typescript: '^7.0.0' });
+const versions = { loom: '1.2.3', typescript: '^7.0.0' };
+const keys = scaffoldKeys('notes', versions, defaultTooling);
 
 test('every missing key is added at the end of its object, in the scaffold order', () => {
   const { added, text } = addMissingKeys('{\n  "name": "notes",\n  "type": "module"\n}\n', keys);
@@ -57,6 +61,10 @@ test('every missing key is added at the end of its object, in the scaffold order
     'dependencies.@loomcli/core',
     'devDependencies.@loomcli/loom',
     'devDependencies.typescript',
+    'devDependencies.@loomcli/testing',
+    'devDependencies.@loomcli/eslint-plugin',
+    'devDependencies.oxlint',
+    'devDependencies.@types/bun',
   ]);
   expect(Object.keys(JSON.parse(text))).toEqual([
     'name',
@@ -69,9 +77,93 @@ test('every missing key is added at the end of its object, in the scaffold order
   expect(JSON.parse(text)).toMatchObject({
     bin: { notes: 'dist/main.js' },
     dependencies: { '@loomcli/core': '1.2.3' },
-    devDependencies: { '@loomcli/loom': '1.2.3', typescript: '^7.0.0' },
-    scripts: { build: 'loom build --target node', check: 'loom check' },
+    devDependencies: {
+      '@loomcli/eslint-plugin': '1.2.3',
+      '@loomcli/loom': '1.2.3',
+      '@loomcli/testing': '1.2.3',
+      '@types/bun': toolRanges['@types/bun'],
+      oxlint: toolRanges.oxlint,
+      typescript: '^7.0.0',
+    },
+    scripts: { build: 'loom build --target node', check: 'tsc --noEmit && oxlint src && bun test' },
   });
+});
+
+test.each<[Tooling, string, Record<string, string>]>([
+  [
+    { linter: 'oxlint', runner: 'bun' },
+    'tsc --noEmit && oxlint src && bun test',
+    { '@types/bun': toolRanges['@types/bun'], oxlint: toolRanges.oxlint, typescript: '^7.0.0' },
+  ],
+  [
+    { linter: 'oxlint', runner: 'vitest' },
+    'tsc --noEmit && oxlint src && vitest run',
+    { oxlint: toolRanges.oxlint, typescript: '^7.0.0', vitest: toolRanges.vitest },
+  ],
+  [
+    { linter: 'eslint', runner: 'bun' },
+    'tsc --noEmit && eslint . && bun test',
+    {
+      '@types/bun': toolRanges['@types/bun'],
+      '@typescript/native': 'npm:typescript@^7.0.0',
+      eslint: toolRanges.eslint,
+      typescript: 'npm:@typescript/typescript6@^6.0.2',
+      'typescript-eslint': toolRanges['typescript-eslint'],
+    },
+  ],
+  [
+    { linter: 'eslint', runner: 'vitest' },
+    'tsc --noEmit && eslint . && vitest run',
+    {
+      '@typescript/native': 'npm:typescript@^7.0.0',
+      eslint: toolRanges.eslint,
+      typescript: 'npm:@typescript/typescript6@^6.0.2',
+      'typescript-eslint': toolRanges['typescript-eslint'],
+      vitest: toolRanges.vitest,
+    },
+  ],
+])('the tooling %j writes the check script and the packages it needs', (tooling, script, tools) => {
+  const { text } = addMissingKeys('{"name":"notes"}', scaffoldKeys('notes', versions, tooling));
+  const written = JSON.parse(text);
+  expect(written.scripts.check).toBe(script);
+  expect(written.devDependencies).toEqual({
+    '@loomcli/eslint-plugin': '1.2.3',
+    '@loomcli/loom': '1.2.3',
+    '@loomcli/testing': '1.2.3',
+    ...tools,
+  });
+});
+
+test('an ESLint scaffold leaves an existing typescript key alone and adds no second compiler key', () => {
+  const source = '{"name":"notes","devDependencies":{"typescript":"^7.0.0"}}';
+  const { added, text } = addMissingKeys(
+    source,
+    scaffoldKeys('notes', versions, { linter: 'eslint', runner: 'bun' }),
+  );
+  expect(JSON.parse(text).devDependencies.typescript).toBe('^7.0.0');
+  expect(added).not.toContain('devDependencies.typescript');
+  expect(added).not.toContain('devDependencies.@typescript/native');
+});
+
+test.each(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'])(
+  'vitest declared under %s selects the vitest runner',
+  (group) => {
+    expect(existingRunner({ [group]: { vitest: '^5.0.0' } })).toBe('vitest');
+  },
+);
+
+test.each(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'])(
+  '@types/bun declared under %s selects the Bun runner',
+  (group) => {
+    expect(existingRunner({ [group]: { '@types/bun': '^1.0.0' } })).toBe('bun');
+  },
+);
+
+test('vitest wins over @types/bun, and a package that declares neither selects no runner', () => {
+  expect(existingRunner({ devDependencies: { '@types/bun': '^1.0.0', vitest: '^5.0.0' } })).toBe(
+    'vitest',
+  );
+  expect(existingRunner({ devDependencies: { eslint: '^10.0.0' } })).toBeUndefined();
 });
 
 test('an existing key keeps its value and its place, and new keys follow the existing ones', () => {
@@ -91,10 +183,18 @@ test('an existing key keeps its value and its place, and new keys follow the exi
     'dependencies.@loomcli/core',
     'devDependencies.@loomcli/loom',
     'devDependencies.typescript',
+    'devDependencies.@loomcli/testing',
+    'devDependencies.@loomcli/eslint-plugin',
+    'devDependencies.oxlint',
+    'devDependencies.@types/bun',
   ]);
   const result = JSON.parse(text);
   expect(result.bin).toBe('dist/cli.js');
-  expect(result.scripts).toEqual({ build: 'tsc', check: 'loom check', test: 'vitest' });
+  expect(result.scripts).toEqual({
+    build: 'tsc',
+    check: 'tsc --noEmit && oxlint src && bun test',
+    test: 'vitest',
+  });
   expect(Object.keys(result.scripts)).toEqual(['build', 'test', 'check']);
   expect(Object.keys(result.dependencies)).toEqual(['zod', '@loomcli/core']);
 });
@@ -111,7 +211,8 @@ test('typescript declared under dependencies stays there and gains no devDepende
   expect(added).not.toContain('devDependencies.typescript');
   const result = JSON.parse(text);
   expect(result.dependencies.typescript).toBe('~5.9.0');
-  expect(result.devDependencies).toEqual({ '@loomcli/loom': '1.2.3' });
+  expect(result.devDependencies).toMatchObject({ '@loomcli/loom': '1.2.3' });
+  expect(result.devDependencies).not.toHaveProperty('typescript');
 });
 
 test('@loomcli/core declared under devDependencies gains no dependencies.@loomcli/core', () => {

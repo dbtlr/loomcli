@@ -17,5 +17,5 @@ const app = new Application('packed-background', {
 
 // Piped output has no terminal to query, so only the operator's choice settles the background.
 await app.run({
-  host: { argv: process.argv.slice(2), env: {}, release: { build: 'distributed' } },
+  host: { argv: process.argv.slice(2), env: {} },
 });

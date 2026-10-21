@@ -16,11 +16,12 @@ const repository = fileURLToPath(new URL('../../../', import.meta.url));
 const installed = {
   core: { from: 'packages/core', to: '@loomcli/core' },
   plugins: { from: 'packages/plugins', to: '@loomcli/plugins' },
+  testing: { from: 'packages/testing', to: '@loomcli/testing' },
   types: { from: 'packages/core/node_modules/@types/node', to: '@types/node' },
   typescript: { from: 'node_modules/typescript', to: 'typescript' },
 } as const;
 
-/** How long one loom run may take, which a compile or a type pass stretches. */
+/** How long one loom run may take, which a compile or the read of an application under Bun stretches. */
 const loomTimeout = 120_000;
 
 /** The built loom bin every process test runs. */
@@ -29,7 +30,7 @@ export const cli = fileURLToPath(new URL('../dist/main.js', import.meta.url));
 /** The runtimes every artifact runs under. */
 export const runtimes = ['node', 'bun'] as const;
 
-/** A link a fixture package holds: core, the plugins, the TypeScript compiler, or Node's type declarations. */
+/** A link a fixture package holds: a Loom package, the TypeScript compiler, or Node's type declarations. */
 export type Link = keyof typeof installed;
 
 /**
@@ -77,6 +78,20 @@ export function loom(
       timeout: loomTimeout,
     },
   );
+  if (result.error) {
+    throw result.error;
+  }
+  return { status: result.status, stderr: result.stderr, stdout: result.stdout };
+}
+
+/** One run of a command in a package directory, such as the compiler or a test runner. */
+export function inPackage(cwd: string, command: string, args: string[]) {
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    env: childEnvironment(undefined),
+    timeout: loomTimeout,
+  });
   if (result.error) {
     throw result.error;
   }
