@@ -172,21 +172,6 @@ describe('an option that can never work throws from the call', () => {
   const scheme = 'List a letter followed by letters, digits, +, -, or ., with no trailing colon.';
   const faults: [string, unknown, string][] = [
     [
-      'options that are not an object',
-      'https',
-      'url() options is not a plain object. Supply an object or leave it out.',
-    ],
-    [
-      'an empty protocols list',
-      { protocols: [] },
-      'url() protocols is empty. List at least one scheme.',
-    ],
-    [
-      'protocols that are not an array',
-      { protocols: 'https' },
-      'url() protocols is not an array. Supply an array of scheme names.',
-    ],
-    [
       'a scheme with a trailing colon',
       { protocols: ['https:'] },
       `url() protocols lists "https:", which is not a scheme name. ${scheme}`,
@@ -195,17 +180,6 @@ describe('an option that can never work throws from the call', () => {
       'a scheme that starts with a digit',
       { protocols: ['2x'] },
       `url() protocols lists "2x", which is not a scheme name. ${scheme}`,
-    ],
-    [
-      'a scheme that is not a string',
-      { protocols: [5] },
-      `url() protocols lists 5, which is not a scheme name. ${scheme}`,
-    ],
-    [
-      'a list with a hole',
-      // oxlint-disable-next-line no-sparse-arrays -- The hole is the fault under test.
-      { protocols: ['https', , 'http'] },
-      `url() protocols lists undefined, which is not a scheme name. ${scheme}`,
     ],
   ];
 

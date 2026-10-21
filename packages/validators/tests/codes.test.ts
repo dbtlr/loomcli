@@ -255,12 +255,11 @@ async function issueOf(validator: StandardSchemaV1<string, unknown>, token: stri
   return issue;
 }
 
-test('the catalog declares 29 codes, each a frozen descriptor under its export', () => {
+test('the catalog declares 29 codes, each a descriptor under its export', () => {
   expect(rows).toHaveLength(29);
   expect(new Set(descriptors).size).toBe(29);
   for (const [code, descriptor] of rows) {
     expect(descriptor.code).toBe(`${prefix}${code}`);
-    expect(Object.isFrozen(descriptor)).toBe(true);
   }
 });
 
@@ -301,32 +300,6 @@ test('a catalog code rejects parameters of another shape', () => {
       `Issue code "${prefix}path-readable" rejects the parameters passed to issue(). Supply parameters its schema accepts.`,
     ),
   );
-});
-
-/** The parameters an issue carries, read without claiming the issue's shape. */
-function paramsOf(issue: StandardSchemaV1.Issue): unknown {
-  return 'params' in issue ? issue.params : undefined;
-}
-
-/** One list parameter, read without claiming the parameters' shape. */
-function listOf(params: unknown, key: 'protocols' | 'values'): unknown {
-  return typeof params === 'object' && params !== null && key in params
-    ? Object.getOwnPropertyDescriptor(params, key)?.value
-    : undefined;
-}
-
-test('a catalog issue freezes its parameters and every list inside them', () => {
-  const range = catalog.integerRangeIssue.issue({ max: 2, min: 1 });
-  expect(Object.isFrozen(paramsOf(range))).toBe(true);
-  const oneOf = paramsOf(catalog.oneOfIssue.issue({ values: ['a', 'b'] }));
-  expect(Object.isFrozen(oneOf)).toBe(true);
-  expect(Object.isFrozen(listOf(oneOf, 'values'))).toBe(true);
-  const scheme = paramsOf(catalog.urlSchemeIssue.issue({ protocols: ['https'] }));
-  expect(Object.isFrozen(scheme)).toBe(true);
-  expect(Object.isFrozen(listOf(scheme, 'protocols'))).toBe(true);
-  expect(
-    Object.isFrozen(catalog.oneOfIssue.read(catalog.oneOfIssue.issue({ values: ['a'] }))?.values),
-  ).toBe(true);
 });
 
 test('a catalog code reads parameters with an extra key as undefined', () => {

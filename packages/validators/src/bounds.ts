@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@loomcli/core';
 
 import type { BoundCodes } from './codes.js';
-import { fault, readOptions } from './faults.js';
+import { fault } from './faults.js';
 import type { FactoryCall } from './faults.js';
 import { boundsOrder, boundValue } from './rules.js';
 
@@ -11,52 +11,44 @@ interface Bounds {
   max: number | undefined;
 }
 
-/** What a numeric factory requires of each bound, stated for its fault messages. */
-interface BoundRule {
-  factory: string;
-  accepts: (value: number) => boolean;
-  requirement: string;
-  correction: string;
+/** The bounds a numeric factory declares. */
+interface BoundOptions {
+  min?: number;
+  max?: number;
 }
 
 const zero = 0;
 
-/** One bound a numeric factory declares, checked against its rule; a fault marks the bound. */
-function boundOf(
-  bound: { rule: BoundRule; call: FactoryCall },
-  name: 'min' | 'max',
-  value: unknown,
-): number | undefined {
-  const { call, rule } = bound;
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== 'number' || !rule.accepts(value)) {
+/**
+ * One bound a numeric factory declares. It is finite, because the published schema holds a number
+ * and JSON has no infinity; a fault marks the bound.
+ */
+function boundOf(call: FactoryCall, name: 'min' | 'max', value: number | undefined) {
+  if (value !== undefined && !Number.isFinite(value)) {
     throw fault(
       boundValue,
       { ...call, mark: `0.${name}` },
       {
-        correction: rule.correction,
-        sentence: `${rule.factory}() ${name} is not ${rule.requirement}.`,
+        correction: 'Supply a finite number.',
+        sentence: `${call.factory}() ${name} is not a finite number.`,
       },
     );
   }
   return value;
 }
 
-/** Reads a numeric factory's `min` and `max`, and faults on a bad bound or `min` above `max`. */
-function readBounds(options: unknown, rule: BoundRule): Bounds {
-  const declared = readOptions(rule.factory, options);
-  const call = { arguments: [options], factory: rule.factory };
-  const min = boundOf({ call, rule }, 'min', declared.min);
-  const max = boundOf({ call, rule }, 'max', declared.max);
+/** Reads a numeric factory's `min` and `max`, and faults on a bound that is not finite or `min` above `max`. */
+function readBounds(factory: string, options: BoundOptions | undefined): Bounds {
+  const call = { arguments: [options], factory };
+  const min = boundOf(call, 'min', options?.min);
+  const max = boundOf(call, 'max', options?.max);
   if (min !== undefined && max !== undefined && min > max) {
     throw fault(
       boundsOrder,
       { ...call, mark: '0.min' },
       {
         correction: 'Supply a min at or below max.',
-        sentence: `${rule.factory}() min ${String(min)} is above max ${String(max)}.`,
+        sentence: `${factory}() min ${String(min)} is above max ${String(max)}.`,
       },
     );
   }
@@ -96,4 +88,4 @@ function boundsSchema(type: 'integer' | 'number', { max, min }: Bounds) {
 }
 
 export { boundsIssue, boundsSchema, readBounds, withinBounds, withoutNegativeZero };
-export type { Bounds };
+export type { BoundOptions, Bounds };

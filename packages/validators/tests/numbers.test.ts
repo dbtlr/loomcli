@@ -101,24 +101,9 @@ describe('integer', () => {
 
   const faults: [string, unknown, string][] = [
     [
-      'options that are not an object',
-      'min',
-      'integer() options is not a plain object. Supply an object or leave it out.',
-    ],
-    [
-      'a string min',
-      { min: '1' },
-      'integer() min is not a safe integer. Supply a whole number from -9007199254740991 through 9007199254740991.',
-    ],
-    [
-      'a fractional max',
-      { max: 1.5 },
-      'integer() max is not a safe integer. Supply a whole number from -9007199254740991 through 9007199254740991.',
-    ],
-    [
-      'an unsafe max',
-      { max: 2 ** 53 },
-      'integer() max is not a safe integer. Supply a whole number from -9007199254740991 through 9007199254740991.',
+      'an infinite max',
+      { max: Number.POSITIVE_INFINITY },
+      'integer() max is not a finite number. Supply a finite number.',
     ],
     [
       'min above max',
@@ -207,12 +192,6 @@ describe('number', () => {
   });
 
   const faults: [string, unknown, string][] = [
-    [
-      'options that are not an object',
-      [],
-      'number() options is not a plain object. Supply an object or leave it out.',
-    ],
-    ['a string min', { min: '0' }, 'number() min is not a finite number. Supply a finite number.'],
     [
       'an infinite max',
       { max: Number.POSITIVE_INFINITY },

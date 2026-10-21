@@ -1,9 +1,8 @@
 import { DeclarationError, validationContext } from '@loomcli/core';
 import type { StandardJSONSchemaV1, StandardSchemaV1, ValidationContext } from '@loomcli/core';
 
-import { copyRecord, isPlainObject } from './data.js';
 import { fault } from './faults.js';
-import { contextOutsideRun, inputSchema, validatorDefinition } from './rules.js';
+import { contextOutsideRun, inputSchema } from './rules.js';
 
 /** What `parse` returns: `{ value }` for an accepted token or `{ issues }` for a rejected one. */
 type ParseResult<Output> = StandardSchemaV1.Result<Output>;
@@ -60,72 +59,42 @@ const outsideRun: ValidationContext = Object.freeze({
   },
 });
 
-/** The converter that publishes a frozen input schema for draft 2020-12 and nothing else. */
+/**
+ * The converter that publishes the input schema for draft 2020-12 and nothing else. Each answer is
+ * a new object, so a consumer that changes it changes no other answer.
+ */
 function converter(schema: Readonly<Record<string, unknown>>): StandardJSONSchemaV1.Converter {
-  return Object.freeze({
+  return {
     input: (options: StandardJSONSchemaV1.Options) => {
       if (options.target !== target) {
         throw new Error(
           `This validator publishes JSON Schema for ${target} only, not ${options.target}.`,
         );
       }
-      return { $schema: dialect, ...copyRecord(schema, false) };
+      return { $schema: dialect, ...schema };
     },
     output: () => {
       throw new Error('This validator publishes no output schema.');
     },
-  });
+  };
+}
+
+/** Faults on an input schema that declares its own dialect, which the converter publishes itself. */
+function checkSchema(definition: ValidatorDefinition<unknown>): void {
+  if (definition.inputSchema !== undefined && Object.hasOwn(definition.inputSchema, '$schema')) {
+    throw fault(
+      inputSchema,
+      { arguments: [definition], factory: 'createValidator', mark: '0.inputSchema.$schema' },
+      {
+        correction: 'Leave out $schema, which the validator publishes itself.',
+        sentence: 'createValidator() inputSchema declares its own $schema.',
+      },
+    );
+  }
 }
 
 /**
- * Checks a definition that bypassed the types, and returns its input schema copied and frozen, or
- * undefined when it declares none.
- */
-function checkDefinition(definition: unknown) {
-  const at = (mark: string) => ({ arguments: [definition], factory: 'createValidator', mark });
-  if (!isPlainObject(definition)) {
-    throw fault(validatorDefinition, at('0'), {
-      correction: 'Supply an object with a parse function.',
-      sentence: 'createValidator() definition is not a plain object.',
-    });
-  }
-  if (typeof definition.parse !== 'function') {
-    throw fault(validatorDefinition, at('parse' in definition ? '0.parse' : '0'), {
-      correction: 'Supply a function that validates one raw string.',
-      sentence: 'createValidator() parse is not a function.',
-    });
-  }
-  return declaredSchema(definition.inputSchema, at);
-}
-
-/**
- * The declared input schema, checked, copied, and frozen, or undefined when none is declared. `at`
- * rebuilds the `createValidator()` call, marking the part at fault.
- */
-function declaredSchema(
-  declared: unknown,
-  at: (mark: string) => { factory: string; arguments: readonly unknown[]; mark: string },
-) {
-  if (declared === undefined) {
-    return undefined;
-  }
-  if (!isPlainObject(declared)) {
-    throw fault(inputSchema, at('0.inputSchema'), {
-      correction: 'Supply the JSON Schema as a plain object.',
-      sentence: 'createValidator() inputSchema is not a plain object.',
-    });
-  }
-  if (Object.hasOwn(declared, '$schema')) {
-    throw fault(inputSchema, at('0.inputSchema.$schema'), {
-      correction: 'Leave out $schema, which the validator publishes itself.',
-      sentence: 'createValidator() inputSchema declares its own $schema.',
-    });
-  }
-  return copyRecord(declared, true);
-}
-
-/**
- * Builds a frozen Standard Schema value from the author's parse function.
+ * Builds a Standard Schema value from the author's parse function.
  * With an input schema it also publishes that schema through Standard JSON Schema.
  */
 function createValidator<Output>(
@@ -137,24 +106,20 @@ function createValidator<Output>(
 function createValidator<Output>(
   definition: ValidatorDefinition<Output>,
 ): StandardSchemaV1<string, Output> {
-  const schema = checkDefinition(definition);
-  const { parse } = definition;
+  checkSchema(definition);
+  const { inputSchema: schema, parse } = definition;
   const props: StandardSchemaV1.Props<string, Output> = {
-    validate: (value: unknown, options?: StandardSchemaV1.Options) => {
-      if (typeof value !== 'string') {
-        throw new TypeError(
-          `A validator reads one raw string, and received a value of type ${typeof value}.`,
-        );
-      }
-      return parse(value, validationContext(options) ?? outsideRun);
-    },
+    // Core passes the raw string, which String() returns as it is.
+    validate: (value: unknown, options?: StandardSchemaV1.Options) =>
+      parse(String(value), validationContext(options) ?? outsideRun),
     vendor,
     version: 1,
   };
   if (schema === undefined) {
-    return Object.freeze({ '~standard': Object.freeze(props) });
+    return { '~standard': props };
   }
-  return Object.freeze({ '~standard': Object.freeze({ ...props, jsonSchema: converter(schema) }) });
+  const published = { ...props, jsonSchema: converter(schema) };
+  return { '~standard': published };
 }
 
 export { createValidator, vendor };

@@ -19,12 +19,7 @@ const decimal = /^-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/u;
 
 /** A finite decimal number, with an optional fraction and exponent, within `min` and `max`. */
 function number(options?: NumberOptions): Validator<number> {
-  const bounds = readBounds(options, {
-    accepts: Number.isFinite,
-    correction: 'Supply a finite number.',
-    factory: 'number',
-    requirement: 'a finite number',
-  });
+  const bounds = readBounds('number', options);
   const issue = boundsIssue(numberCodes, bounds);
   return createValidator({
     inputSchema: boundsSchema('number', bounds),

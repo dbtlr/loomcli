@@ -9,7 +9,7 @@ import {
   readDuration,
   spellsMinutesAsCapitalM,
 } from './duration-grammar.js';
-import { fault, readOptions } from './faults.js';
+import { fault } from './faults.js';
 import { reject } from './issues.js';
 import { boundsOrder, boundValue } from './rules.js';
 
@@ -22,11 +22,15 @@ interface DurationOptions {
 const factory = 'duration';
 
 /** One bound as milliseconds, or undefined when the factory declares none; a bad bound faults. */
-function boundOf(options: unknown, name: 'min' | 'max', value: unknown): number | undefined {
+function boundOf(
+  options: DurationOptions | undefined,
+  name: 'min' | 'max',
+  value: string | undefined,
+): number | undefined {
   if (value === undefined) {
     return undefined;
   }
-  const milliseconds = typeof value === 'string' ? readDuration(value) : undefined;
+  const milliseconds = readDuration(value);
   if (milliseconds === undefined) {
     throw fault(
       boundValue,
@@ -41,10 +45,9 @@ function boundOf(options: unknown, name: 'min' | 'max', value: unknown): number 
 }
 
 /** Reads `min` and `max`, and faults on a bad bound or a `min` above `max`. */
-function readDurationBounds(options: unknown): Bounds {
-  const declared = readOptions(factory, options);
-  const min = boundOf(options, 'min', declared.min);
-  const max = boundOf(options, 'max', declared.max);
+function readDurationBounds(options: DurationOptions | undefined): Bounds {
+  const min = boundOf(options, 'min', options?.min);
+  const max = boundOf(options, 'max', options?.max);
   if (min !== undefined && max !== undefined && min > max) {
     throw fault(
       boundsOrder,

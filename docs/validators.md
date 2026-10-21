@@ -33,7 +33,7 @@ An author climbs these rungs, and each pays only for itself:
 
 ## Shared rules
 
-**Values.** Every factory returns a `StandardSchemaV1<string, Output>` that also implements `StandardJSONSchemaV1`, with `vendor` `'@loomcli/validators'`. Its input is one raw string. `validate` is synchronous except under `path`, which probes the filesystem. The value is frozen and holds no state between calls, so one validator may serve many inputs.
+**Values.** Every factory returns a `StandardSchemaV1<string, Output>` that also implements `StandardJSONSchemaV1`, with `vendor` `'@loomcli/validators'`. Its input is one raw string. `validate` is synchronous except under `path`, which probes the filesystem. The value holds no state between calls, so one validator may serve many inputs.
 
 **Multiple options and variadic arguments.** On a multiple option or a variadic argument, the same validator checks each value under [ADR-0036](decisions/0036-each-value-passes-the-same-validator.md). `option('tag', { multiple: true, type: 'string', validate: text({ maxLength: 32 }) })` gives the action `string[]`, and the input schema is `text()`'s own.
 
@@ -47,26 +47,21 @@ An author climbs these rungs, and each pays only for itself:
 
 **Messages.** A rejection returns one issue with no path, carrying its code and parameters under [Issue codes](#issue-codes). Its message states the expectation in one plain sentence, beginning `Expected`, and never repeats the caller's token, because a rejected value may be a secret. Each factory configuration has one message for every way a token can fail, so `integer({ min: 1, max: 10 })` answers `Expected a whole number from 1 through 10.` for `abc` and for `11` alike. `text` with a `pattern` is the one exception: its length rule and its pattern each keep their own sentence. Core prefixes the message with the input's subject under [Issues and validator failures](core.md#issues-and-validator-failures). Every message follows the rules in [Failure messages](failure-messages.md).
 
-**Faults at the call.** A factory argument that can never work throws a `DeclarationError` from the factory call, under [ADR-0034](decisions/0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md). Each factory lists its faults. A fault's sentence names the factory and the argument and states the problem, and its correction states the fix, as `integer() min 5 is above max 1.` and `Supply a min at or below max.`, or `oneOf() lists "dev" twice.` and `List each value once.` TypeScript rejects what its types can express; the runtime check covers the rest for JavaScript callers and widened values.
+**Faults at the call.** A factory argument that can never work throws a `DeclarationError` from the factory call, under [ADR-0034](decisions/0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md). Each factory lists its faults. A fault's sentence names the factory and the argument and states the problem, and its correction states the fix, as `integer() min 5 is above max 1.` and `Supply a min at or below max.`, or `oneOf() lists "dev" twice.` and `List each value once.` TypeScript rejects what its types can express, and a factory checks only what a type cannot, under [ADR-0093](decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). A value that bypasses the types meets the platform's own error.
 
 Each fault carries a [diagnostic rule](core.md#developer-diagnostics) the package declares through `diagnosticRule()`, as a third-party validator package does, and its Developer Diagnostic rebuilds the call, such as `integer({ max: 1, min: 5 })`, and marks the argument or the key at fault. A value listed twice marks both entries.
 
 | Rule | Faults |
 | --- | --- |
-| `@loomcli/validators/factory-options` | Options that are not a plain object, for every factory that takes them |
 | `@loomcli/validators/one-of-values` | Every `oneOf` fault |
 | `@loomcli/validators/bound-value` | A `min` or `max` of `integer`, `number`, or `duration`, or a `minLength` or `maxLength` of `text`, that is not a value of its kind |
 | `@loomcli/validators/bounds-order` | `min` above `max`, and `minLength` above `maxLength` |
 | `@loomcli/validators/time-zone` | A `dateTime` `timeZone` that is not an IANA time zone name the runtime knows |
 | `@loomcli/validators/url-protocols` | Every `url` fault |
-| `@loomcli/validators/invalid-pattern` | A `text` pattern that is not a RegExp, carries a flag other than `u`, or does not compile under `u` |
-| `@loomcli/validators/pattern-message` | A `text` message that is not a nonempty string, a message without a pattern, and a pattern without a message |
-| `@loomcli/validators/validator-definition` | A `createValidator` definition that is not a plain object, and a `parse` that is not a function |
-| `@loomcli/validators/input-schema` | An `inputSchema` that is not a plain object, or that declares its own `$schema` |
+| `@loomcli/validators/invalid-pattern` | A `text` pattern that carries a flag other than `u`, or does not compile under `u` |
+| `@loomcli/validators/input-schema` | An `inputSchema` that declares its own `$schema` |
 | `@loomcli/validators/context-outside-run` | A validator that reads the validation context outside a run |
 | `@loomcli/validators/issue-code-name` | An `issueCode` code outside the grammar |
-| `@loomcli/validators/issue-code-config` | An `issueCode` config that is not a plain object, a `schema` that is not a Standard Schema, and a `message` that is not a function |
-| `@loomcli/validators/issue-code-schema` | A schema that answers with a promise, throws in `issue()`, or answers with a value that is not a Standard Schema result |
 | `@loomcli/validators/issue-parameters` | Parameters `issue()` receives that the code's schema rejects |
 
 ## Catalog
@@ -97,7 +92,7 @@ text(
 | `min` 1 or more, `maxLength` above it | `Expected from 1 through 32 characters.` |
 
 - **Pattern failures.** A pattern failure reads `message`, the author's one sentence describing what the pattern accepts, such as `Expected lowercase letters, digits, and hyphens.` `message` is required whenever `pattern` is given, because only the author can say what the pattern accepts. A token that fails both reports the length sentence.
-- **Faults.** A `minLength` or `maxLength` that is not a non-negative safe integer, `minLength` above `maxLength`, a `pattern` carrying any flag other than `u`, a `pattern` whose source does not compile under `u`, a `message` that is empty or not a string, a `message` without a `pattern`, and a `pattern` without a `message`, which reads `text() pattern has no message to describe it. Supply a message that states what the pattern accepts.`
+- **Faults.** A `minLength` or `maxLength` that is not a whole number of 0 or more, `minLength` above `maxLength`, a `pattern` carrying any flag other than `u`, and a `pattern` whose source does not compile under `u`. The type pairs a `pattern` with its `message`, so one without the other is a compile error.
 
 ### integer
 
@@ -109,7 +104,7 @@ integer(options?: { min?: number; max?: number }): Validator<number>
 - **Output** is the number, with `-0` read as `0`.
 - **Publishes** `{ type: 'integer', minimum?, maximum? }`.
 - **Message.** `Expected a whole number.`, `Expected a whole number from 1 through 10.`, `Expected a whole number of at least 1.`, or `Expected a whole number of at most 10.`
-- **Faults.** A `min` or `max` that is not a safe integer, and `min` above `max`.
+- **Faults.** A `min` or `max` that is not a finite number, because the published schema holds a number, and `min` above `max`.
 
 The parser reads a separate token that begins with `-` as an option spelling, so a negative value reaches an option only in the attached form, `--offset=-5`, and never reaches an argument.
 
@@ -146,7 +141,7 @@ oneOf<const Values extends readonly [string, ...string[]]>(values: Values): Vali
 - **Output** is the token, typed as the union of the literals.
 - **Publishes** `{ type: 'string', enum: [...values] }` in the declared order, so help prints `One of: bytes, words, lines.` under [Accepted values](core.md#accepted-values) with no authored line.
 - **Message.** `Expected one of: bytes, words, lines.` It lists the author's values, never the caller's token.
-- **Faults.** An empty list, a value that is not a string, an empty string, and a value listed twice. The values are copied at the call, so a later change to the declared array changes nothing.
+- **Faults.** A value listed twice. The type requires at least one string value.
 
 ### url
 
@@ -158,7 +153,7 @@ url(options?: { protocols?: readonly [string, ...string[]] }): Validator<URL>
 - **Output** is the parsed `URL`.
 - **Publishes** `{ type: 'string', format: 'uri' }`. With `protocols`, it adds a `pattern` anchored at the start that lists each scheme followed by `:`, spelling each letter as a two-case class, and escaping `+` and `.` with a backslash, while `-` stays bare because `\-` outside a class is a syntax error under the `u` flag, so `['https']` publishes `^(?:[hH][tT][tT][pP][sS]):` and `['https', 'svn+ssh']` publishes `^(?:[hH][tT][tT][pP][sS]|[sS][vV][nN]\+[sS][sS][hH]):`.
 - **Message.** `Expected an absolute URL, such as https://example.com.`, or, with `protocols`, `Expected an absolute URL with the scheme https.`, `Expected an absolute URL with the scheme https or http.` for two, and `Expected an absolute URL with the scheme https, http, or ftp.` for three or more, in the declared order.
-- **Faults.** An empty `protocols` list, and an entry that is not an RFC 3986 scheme name, one letter followed by letters, digits, `+`, `-`, or `.`, with no trailing `:`.
+- **Faults.** An entry of `protocols` that is not an RFC 3986 scheme name, one letter followed by letters, digits, `+`, `-`, or `.`, with no trailing `:`.
 
 ### uuid
 
@@ -193,7 +188,7 @@ dateTime(options?: { timeZone?: string }): Validator<Date>
 - **Output** is a `Date`. A fraction beyond milliseconds is truncated, not rounded.
 - **Publishes** `{ type: 'string', pattern }`, where the pattern admits the zone-less form and every offset spelling and states no range. `format: 'date-time'` requires an offset, so it would be stricter than the validator.
 - **Message.** `Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.`
-- **Faults.** A `timeZone` that is not a string or that the runtime does not know as an IANA time zone name, under `@loomcli/validators/time-zone`.
+- **Faults.** A `timeZone` that the runtime does not know as an IANA time zone name, under `@loomcli/validators/time-zone`.
 
 ### duration
 
@@ -206,7 +201,7 @@ duration(options?: { min?: string; max?: string }): Validator<number>
 - **Bounds.** `min` and `max` are durations in the same grammar, such as `'30'`, `'24h'`, or `'1 day'`, both inclusive.
 - **Publishes** `{ type: 'string', pattern }`, the grammar whole. The bounds are not stated, because a pattern cannot carry them.
 - **Message.** `Expected a duration, such as 90s, 2h30m, or 1.5h.`, `Expected a duration from 30s through 1d.`, `Expected a duration of at least 30s.`, or `Expected a duration of at most 1d.` A capital `M` earns `Expected a duration; write minutes as m or min, because M is ambiguous.` A bound prints in the grammar's largest units, so `24h` prints as `1d`.
-- **Faults.** A `min` or `max` that is not a string in the grammar, under `@loomcli/validators/bound-value`, and `min` above `max`.
+- **Faults.** A `min` or `max` outside the grammar, under `@loomcli/validators/bound-value`, and `min` above `max`.
 
 ### path
 
@@ -258,10 +253,10 @@ const branch = createValidator({
 ```
 
 - **`parse`** receives one raw string and the validation context, and returns the Standard Schema result, `{ value }` or `{ issues }`, directly or as a promise. The output type is inferred from `value`. A throw or a rejected promise is not a verdict; core reports it as a validator failure.
-- **`inputSchema`** is the JSON Schema the validator publishes, stated as plain data and copied and frozen at the call. The author owns its soundness. Without it the value implements no `jsonSchema`, and the input schema reads `null`, unknown, under [Input schema](core.md#input-schema).
+- **`inputSchema`** is the JSON Schema the validator publishes, stated as plain data. The author owns its soundness and its value, so a later change to the declared object changes what the validator publishes. Without it the value implements no `jsonSchema`, and the input schema reads `null`, unknown, under [Input schema](core.md#input-schema).
 - **Publishing.** With `inputSchema`, `'~standard'.jsonSchema.input({ target: 'draft-2020-12' })` returns a new plain object on every call: `$schema: 'https://json-schema.org/draft/2020-12/schema'` followed by the keywords of `inputSchema`. Any other target throws, as the standard permits. `'~standard'.jsonSchema.output` throws for every target, because the output side is the action's business and core never asks for it. These rules hold for every catalog factory, since each is built with `createValidator`.
 - **The context outside a run.** Core attaches the context to every call it makes. When `validate` is called any other way, such as in a unit test, `parse` receives a context whose every field throws a `DeclarationError` under `@loomcli/validators/context-outside-run` when read, whose sentence reads `This validator reads the validation context, which only exists during a Loom run.` and whose correction reads `Call the validator through an Application run, or leave the context unread.` A validator that never reads the context works anywhere; one that reads it fails at the read. A validator that reads the context is tested through an Application run with a host override.
-- **Faults.** A `definition` that is not a plain object, a `parse` that is not a function, an `inputSchema` that is not a plain object, and an `inputSchema` that declares its own `$schema`.
+- **Faults.** An `inputSchema` that declares its own `$schema`.
 
 The catalog factories are built with `createValidator`, so a catalog validator and an author's own share every rule above.
 
@@ -324,13 +319,13 @@ export const serve = new Application('serve', {
 
 A validator package declares one issue code for each sentence its validators print, and an author rewords a sentence by reading its code in an `InputError` view override. The message rules every code's sentence follows are in [Failure messages](failure-messages.md). [ADR-0048](decisions/0048-a-validator-package-declares-one-issue-code-per-sentence.md) records the decision.
 
-- **Declaring a code.** `issueCode(code, { schema, message })` returns a frozen descriptor. `schema` is a Standard Schema that validates the parameters and answers synchronously. `message` builds the code's one sentence from its parameters. Any package that ships validators built with `createValidator` declares its codes this way; the catalog is the first.
+- **Declaring a code.** `issueCode(code, { schema, message })` returns a descriptor. `schema` is a Standard Schema that validates the parameters and answers synchronously. `message` builds the code's one sentence from its parameters. Any package that ships validators built with `createValidator` declares its codes this way; the catalog is the first.
 - **The code string.** A code is the declaring package's name, as a plugin identity names its package, then zero or more subpath segments and a rule name, each after a `/` and each of lowercase letters and digits in words joined by single hyphens: `@loomcli/validators/integer-range`, or `@acme/checks/ports/range` for a rule the package's `ports` subpath owns. It is the grammar of a [diagnostic rule's identity](core.md#developer-diagnostics), and `issueCode` checks it with core's `isRuleIdentity`.
-- **Rejecting with a code.** `parse` returns `{ issues: [code.issue(params)] }`. `issue` validates `params` through the schema and returns a frozen issue with `message`, the sentence `message` built; `code`, the code string; and `params`, the schema's output. `createValidator` passes the issue through unchanged, and core keeps its fields under [Issues and validator failures](core.md#issues-and-validator-failures).
+- **Rejecting with a code.** `parse` returns `{ issues: [code.issue(params)] }`. `issue` validates `params` through the schema and returns an issue with `message`, the sentence `message` built; `code`, the code string; and `params`, the schema's output. `createValidator` passes the issue through unchanged, and core keeps its fields under [Issues and validator failures](core.md#issues-and-validator-failures).
 - **Reading a code.** `read(issue)` returns the schema's output for the issue's `params` when the issue's `code` equals the descriptor's code and the parameters pass the schema. It returns `undefined` for any other issue: another package's code, a schema library's own code such as Zod's, no code at all, a value that is not an object, and parameters that are not an object. Core's own issues, the Boolean grammar `Use true, false, 1, or 0.` and `The validator rejected this value without an explanation. Supply a different value.`, carry no code, and a missing input is a problem with no issue, which `InputProblem.reason` separates.
 - **One sentence per code.** A code identifies one sentence, and its parameters are exactly that sentence's blanks, with one fixed shape per code. Parameters hold the rule's settings and never the rejected value.
 - **No per-call rewording.** A factory takes no argument that replaces its sentence. `text()`'s `message` describes the pattern and is the sentence of `text-pattern`. Every other rewording is an override keyed on a code.
-- **Faults.** `issueCode` throws a `DeclarationError` at the call for a code outside the grammar, a `schema` that is not a Standard Schema, and a `message` that is not a function. A `schema` whose `~standard` field throws when it is read, through a getter or a proxy trap, is not a Standard Schema. `issue` throws one for parameters the schema rejects, for a schema that throws, and for an answer that is not a Standard Schema result, so the issue it returns always holds the schema's output: a success holds its own `value` and no issues, and a failure holds an issues array. `read` returns `undefined` for an answer that is not a Standard Schema result, and lets a throw from the schema propagate. `issue` and `read` throw one when the schema answers with a promise.
+- **Faults.** `issueCode` throws a `DeclarationError` at the call for a code outside the grammar. `issue` throws one for parameters the schema rejects, under `@loomcli/validators/issue-parameters`, and so for a schema that answers with a promise, which it cannot read synchronously; `read` returns `undefined` for either. A schema that throws throws from `issue` and `read` as the author's code, through the ordinary failure path.
 
 The catalog declares these codes. Each is exported under the name in the second column, and each code below is written without its `@loomcli/validators/` prefix. A blank in braces is a parameter. A list parameter prints as the factory's message bullet shows it.
 

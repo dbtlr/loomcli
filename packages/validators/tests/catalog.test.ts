@@ -61,15 +61,10 @@ test.each([
   ['dateTime', catalog.dateTime()],
   ['duration', catalog.duration()],
   ['path', catalog.path()],
-])(
-  '%s() returns a frozen value from the package that publishes an input schema',
-  (_name, value) => {
-    expect(Object.isFrozen(value)).toBe(true);
-    expect(Object.isFrozen(value['~standard'])).toBe(true);
-    expect(value['~standard'].vendor).toBe('@loomcli/validators');
-    expect(value['~standard'].jsonSchema.input).toBeTypeOf('function');
-  },
-);
+])('%s() returns a value from the package that publishes an input schema', (_name, value) => {
+  expect(value['~standard'].vendor).toBe('@loomcli/validators');
+  expect(value['~standard'].jsonSchema.input).toBeTypeOf('function');
+});
 
 // A projection prints the published schema as it is, so its key order is part of the contract.
 test.each([

@@ -2,7 +2,6 @@ import { DeclarationError } from '@loomcli/core';
 import type { DiagnosticRule } from '@loomcli/core';
 
 import { isPlainObject } from './data.js';
-import { factoryOptions } from './rules.js';
 
 /** One factory call as a finding rebuilds it: the factory's name and the arguments it received. */
 interface FactoryCall {
@@ -48,24 +47,12 @@ function quote(value: unknown): string {
 }
 
 /**
- * A factory's options read as unknown values, because a JavaScript caller can pass anything.
- * Omitted options read as an empty record.
+ * A factory's options read as unknown values, with omitted options read as an empty record. The
+ * types bound every factory's options, so a value that is not an object reads as none. Only `path()`
+ * still reads its options through it.
  */
-function readOptions(factory: string, options: unknown): Readonly<Record<string, unknown>> {
-  if (options === undefined) {
-    return {};
-  }
-  if (!isPlainObject(options)) {
-    throw fault(
-      factoryOptions,
-      { arguments: [options], factory, mark: '0' },
-      {
-        correction: 'Supply an object or leave it out.',
-        sentence: `${factory}() options is not a plain object.`,
-      },
-    );
-  }
-  return options;
+function readOptions(_factory: string, options: unknown): Readonly<Record<string, unknown>> {
+  return isPlainObject(options) ? options : {};
 }
 
 export { fault, quote, readOptions };
