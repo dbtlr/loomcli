@@ -15,18 +15,6 @@ function thrown(scenario: string): string {
 
 /** Each scenario's fault by the parts its rule's test pins; the layout goldens pin the rest. */
 const cases: Record<string, RuleParts> = {
-  'attach-hook-returns': {
-    correction: 'Return the value it received or a value derived from it.',
-    rule: 'broken-attach-hook',
-    sentence:
-      'Plugin "@acme/format" returned a value that is not the attached Command from onCommandAttach for Command "count".',
-  },
-  'attach-hook-throws': {
-    correction:
-      'Return the value the hook received or a value derived from it, and throw only a DeclarationError from the hook.',
-    rule: 'broken-attach-hook',
-    sentence: String.raw`Plugin "@acme/format" failed in onCommandAttach for Command "count": No format\u000afor this Command.`,
-  },
   'encoder-taken': {
     correction: 'Register one.',
     rule: 'failure-encoder-taken',
@@ -93,22 +81,7 @@ const cases: Record<string, RuleParts> = {
     rule: 'failure-code',
     sentence: 'Failure class "RegistryDownError" declares failure code "Registry_Down".',
   },
-  'graph-hook-promise': {
-    correction: 'Return nothing from the hook; it judges the graph and cannot change it.',
-    rule: 'broken-graph-hook',
-    sentence: 'Plugin "@acme/mcp" returned a value from onGraphBuilt.',
-  },
-  'graph-hook-returns': {
-    correction: 'Return nothing from the hook; it judges the graph and cannot change it.',
-    rule: 'broken-graph-hook',
-    sentence: 'Plugin "@acme/mcp" returned a value from onGraphBuilt.',
-  },
-  'graph-hook-throws': {
-    correction:
-      'Return nothing from the hook, and throw only a DeclarationError to reject the graph.',
-    rule: 'broken-graph-hook',
-    sentence: String.raw`Plugin "@acme/mcp" failed in onGraphBuilt: Two tools share\u000athe name "scratch_create".`,
-  },
+
   'hook-alias-spelling': {
     correction: 'Change one of the two spellings or omit the plugin.',
     rule: 'spelling-taken',

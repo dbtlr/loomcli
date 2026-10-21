@@ -108,18 +108,6 @@ test.each(thrown)('the call that declares the %s fault throws it', (scenario, me
 /** Every row that a lifecycle hook raises, which only the graph build can know. */
 const rejected = [
   [
-    'hook-returns-other',
-    'Plugin "@loomcli/plugins/format" returned a value that is not the attached Command from onCommandAttach for Command "count". Return the value it received or a value derived from it.',
-  ],
-  [
-    'hook-returns-earlier',
-    'Plugin "@loomcli/plugins/format" returned a value that is not the attached Command from onCommandAttach for Command "count". Return the value it received or a value derived from it.',
-  ],
-  [
-    'hook-throws',
-    'Plugin "@loomcli/plugins/format" failed in onCommandAttach for Command "count": the hook broke. Return the value the hook received or a value derived from it, and throw only a DeclarationError from the hook.',
-  ],
-  [
     'hook-throws-declaration',
     'Plugin "@loomcli/plugins/format" requires a result on Command "count". Declare one or omit the plugin.',
   ],
@@ -172,6 +160,19 @@ const rejected = [
     'Plugin "@loomcli/plugins/format" declares option "format" with spelling "-f" on Command "count", which "--file" already uses. Change one of the two spellings or omit the plugin.',
   ],
 ] satisfies [string, string][];
+
+test("an onCommandAttach hook's foreign throw leaves inspect() as it is, and run() reports it as a defect", () => {
+  expect(build('hook-throws', 'inspect')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'other:undefined: the hook broke\n',
+  });
+  expect(build('hook-throws', 'run')).toEqual({
+    status: 1,
+    stderr: `app: Something went wrong.\n`,
+    stdout: 'resolved:1\n',
+  });
+});
 
 test.each(rejected)('inspect() and run() reject the %s declaration alike', (scenario, message) => {
   expect(build(scenario, 'inspect')).toEqual({

@@ -56,22 +56,16 @@ function observing(identity, extra = {}) {
   });
 }
 
-/** A hook that breaks as the scenario names, counting every call it receives. */
+/** A hook that throws, on every event or on the level `only` names, counting every call it receives. */
 const calls = { broken: 0 };
-function breaking(how, only) {
+function breaking(only) {
   return plugin('fixture/broken', {
     onLog: (event) => {
       if (only !== undefined && event.level !== only) {
         return undefined;
       }
       calls.broken += 1;
-      if (how === 'throws') {
-        throw new TypeError('Cannot observe.');
-      }
-      if (how === 'true') {
-        return true;
-      }
-      return Promise.reject(new Error('Rejected late.'));
+      throw new TypeError('Cannot observe.');
     },
   });
 }
@@ -106,7 +100,7 @@ const scenarios = {
   'cancelled-broken': () =>
     new Application('probe', {
       description: 'Probe a cancelled run.',
-      plugins: [breaking('throws'), keeping],
+      plugins: [breaking(), keeping],
     }).action(({ log }) => {
       controller.abort(new Error('the caller stopped the run'));
       log.info('one');
@@ -129,21 +123,11 @@ const scenarios = {
       description: 'Probe delivery order.',
       plugins: [observing('fixture/first'), observing('fixture/second')],
     }).action(({ log }) => log.info('one')),
-  'returns-promise': () =>
-    new Application('probe', {
-      description: 'Probe a hook that returns a promise.',
-      plugins: [breaking('promise'), keeping],
-    }).action(twoLogs),
-  'returns-true': () =>
-    new Application('probe', {
-      description: 'Probe a hook that returns true.',
-      plugins: [breaking('true'), keeping],
-    }).action(twoLogs),
-  // The run's stdout refuses a write and a hook breaks, so two plain fallback reports follow.
+  // The run's stdout refuses a write and a hook throws, so two reports follow.
   'stdout-and-hook-broken': () =>
     new Application('probe', {
       description: 'Probe two plain fallback reports.',
-      plugins: [breaking('throws'), keeping],
+      plugins: [breaking(), keeping],
     }).action(({ log, out }) => {
       log.info('one');
       out.print('rows');
@@ -151,13 +135,13 @@ const scenarios = {
   'throws-on-event': () =>
     new Application('probe', {
       description: 'Probe a throwing hook.',
-      plugins: [breaking('throws'), keeping],
+      plugins: [breaking(), keeping],
     }).action(twoLogs),
   // The hook throws on core's own fatal event alone.
   'throws-on-fatal': () =>
     new Application('probe', {
       description: 'Probe a hook that breaks on a failure event.',
-      plugins: [breaking('throws', 'fatal'), keeping],
+      plugins: [breaking('fatal'), keeping],
     }).action(() => {
       throw new TypeError('The probe failed.');
     }),

@@ -544,15 +544,16 @@ test.skipIf(!unprivileged)('a later record lands once the directory is writable'
 });
 
 test.skipIf(!unprivileged)(
-  'an onError that throws is reported as a broken hook and the run exits 1',
+  'an onError that throws is reported as a foreign throw from the hook and the run exits 1',
   () => {
     const box = sandbox();
     readOnly(join(box.state, 'heimdall'));
     const result = run(box, ['log'], { FIXTURE_ON_ERROR: 'throw' });
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Plugin "@loomcli/plugins/logging" failed in onLog: ');
-    expect(result.stderr).toContain('The callback broke.');
+    expect(result.stderr).toMatch(
+      /^-- UNHANDLED EXCEPTION -+ @loomcli\/core\/foreign-throw\n\nThe callback broke\.\n/mu,
+    );
   },
 );
 

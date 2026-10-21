@@ -4,7 +4,7 @@ title: ADR-0097 - One ordinary failure path, where an author's catch is final
 description: When author or plugin code catches a failure and continues, the run's outcome is what that code produces, and Loom adds no rule in either direction. A middleware that catches a held usage fault, an action's failure, or a next() misuse decides the outcome, an action that catches a view's rejection or a second out.results call decides its own, and a throw during unwinding is the middleware's failure like any other. A failure no code caught still fails the run. The fallbacks that keep Loom's own failure output intact stay.
 status: proposed
 created: 2026-10-20
-modified: 2026-10-20
+modified: 2026-10-21
 ---
 
 # ADR-0097 - One ordinary failure path, where an author's catch is final
@@ -44,7 +44,10 @@ Each rule overrides code the author or a plugin wrote on purpose. A middleware t
   - An `onLog` hook that throws is one defect reported through the ordinary failure path, with exit 1.
   - A translator that throws is reported as a foreign throw from author code, a defect carried by an `InternalError`, through the ordinary failure path with that throw, in place of `@loomcli/core/broken-translator`. Its throw is not offered to translators again, so no translator answers its own failure.
   - An `onEnvironment` hook's throw takes the ordinary failure path: a `LoomError` it throws keeps its class and exit code, in place of the `@loomcli/core/broken-environment-hook` wrap.
-  - The remaining detail of each, such as what the other hooks' hints do when one `onFailure` hook throws, whether core calls a broken `onLog` hook again in the run, and which checks remain on an `onEnvironment` hook's answer, is settled in the implementing phase.
+  - An `onFailure` hook that throws ends the hooks for that failure: core calls no later hook, no hook's hints reach the report, and the hook's defect is the ordinary `@loomcli/core/foreign-throw` defect carrying its throw, in place of `@loomcli/core/broken-failure-hook`.
+  - An `onLog` hook that throws stays installed and receives every later event of the run. Core reports its first throw once, after every other report, as the ordinary `@loomcli/core/foreign-throw` defect, in place of `@loomcli/core/broken-log-hook`, and the run returns 1 outside a cancelled run.
+  - Core merges an `onEnvironment` hook's answer as it is, because the hook's type bounds it, and a foreign throw from the hook is the ordinary `@loomcli/core/foreign-throw` defect.
+  - An `onGraphBuilt` or `onCommandAttach` hook's throw that is not a `DeclarationError` is a foreign throw from the hook's code, in place of `@loomcli/core/broken-graph-hook` and `@loomcli/core/broken-attach-hook`: `inspect()` and `check()` throw it unchanged, and a run reports it as `@loomcli/core/foreign-throw`. The defect's cause chain names the hook's file and line, so the Developer Diagnostic still shows which plugin's hook threw.
 
 This record replaces ADR-0028's 2026-10-05 failure-precedence entry. That entry's rule that a middleware failing before dispatch reports its failure stands. Its rule that core records a held fault and catching its rejection does not change the exit outcome ends, and so does its rule for failures during unwinding. Its rule for cancellation stands. [ADR-0017](0017-plugins-participate-through-one-middleware-chain-with-declared-activation.md), [ADR-0023](0023-a-command-declares-its-result-and-core-resolves-its-presentation.md), [ADR-0028](0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md), [ADR-0046](0046-a-failure-view-reads-where-the-run-was-and-plugins-add-hint-lines.md), [ADR-0049](0049-a-translator-turns-a-foreign-throw-into-a-failure-class.md), [ADR-0060](0060-ongraphbuilt-judges-the-built-graph-and-never-contributes.md), [ADR-0064](0064-a-failure-class-declares-a-failure-code-and-a-plugin-encodes-the-failure-form-by-media-type.md), and [ADR-0069](0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md) carry dated entries for what changes in each, and [ADR-0102](0102-dotenv-imports-every-variable-the-process-has-not-set.md) carries the `onEnvironment` rule forward from [ADR-0084](0084-dotenv-prepares-an-allowlisted-environment-before-inputs.md).
 
@@ -64,3 +67,4 @@ Proposed. It moves to accepted with the release that folds these side paths into
 ## Changelog
 
 - 2026-10-20: Proposed with the 0.15.0 rescope.
+- 2026-10-21: The implementing phase settles the remaining hook detail: what the other hooks' hints do when one `onFailure` hook throws, whether core calls a throwing `onLog` hook again, which checks remain on an `onEnvironment` hook's answer, and the throws of `onGraphBuilt` and `onCommandAttach`.

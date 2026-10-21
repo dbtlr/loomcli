@@ -122,15 +122,11 @@ test('the five levels log in call order and the log has no fatal', () => {
   expect(levels.printed).toEqual([{ fatal: 'undefined' }]);
 });
 
-test('a message that is not a string is converted with String, and omitted fields read {}', () => {
-  expect(summary('message-converted')).toEqual([
-    ['info', '42', null],
-    ['warn', 'object message', null],
-  ]);
+test('omitted fields read {}', () => {
   expect(run('empty-fields').events[0]?.event.fields).toEqual({});
 });
 
-test('fields copy into the JSON data JSON.stringify produces, with the four differences', () => {
+test('fields copy into the JSON data JSON.stringify produces, with the three differences', () => {
   const collected = only(run('copy').events);
   expect(collected.frozen).toBe(true);
   const { fields } = collected.event;
@@ -145,7 +141,6 @@ test('fields copy into the JSON data JSON.stringify produces, with the four diff
     map: {},
     nested: { value: 1 },
     shared: [{ value: 1 }, { value: 1 }],
-    throwing: { bad: '[Unreadable]', ok: 1 },
   });
   expect(Object.keys(fields)).not.toContain('fn');
   expect(Object.keys(fields)).not.toContain('nothing');
@@ -337,20 +332,6 @@ test('with no plugin that declares onLog, a call returns undefined and a getter 
   expect(run('listened').printed).toEqual([{ reads: 1 }]);
 });
 
-test('a log call during delivery reports the log-in-log-hook defect once and exits 1', () => {
-  const developed = run('log-in-hook', [], { FIXTURE_BUILD: 'development' });
-  expect(developed.status).toBe(1);
-  expect(developed.stderr).toMatch(/^-- [A-Z -]+ -+ @loomcli\/core\/log-in-log-hook\n\n/u);
-  expect(developed.stderr).toContain('A log call ran while core was delivering a log event.\n');
-  expect(developed.stderr).toContain(
-    'Remove the log call from the onLog hook: an onLog hook observes events and never logs.\n',
-  );
-  expect(developed.stderr.match(/log-in-log-hook/gu)).toHaveLength(1);
-  const distributed = run('log-in-hook', [], { FIXTURE_BUILD: 'distributed' });
-  expect(distributed.status).toBe(1);
-  expect(distributed.stderr).toBe('probe: Something went wrong.\n');
-});
-
 /** Bundles the logging fixture, then runs one scenario of the bundle under a runtime. */
 function bundledRun(runtime: string, scenario: string) {
   const outdir = join(root, `${runtime}-${scenario}`);
@@ -388,15 +369,6 @@ test.each(['node', 'bun'])(
     const { event } = only(result.events);
     expect(event.level).toBe('fatal');
     expect(event.defect?.message).toBe('write EPIPE');
-    expect(result.stderr).toBe('probe: Something went wrong.\n');
-  },
-);
-
-test.each(['node', 'bun'])(
-  'a log call during delivery in a distributed bundle under %s writes the generic defect message once and exits 1',
-  (runtime) => {
-    const result = bundledRun(runtime, 'log-in-hook');
-    expect(result.status).toBe(1);
     expect(result.stderr).toBe('probe: Something went wrong.\n');
   },
 );

@@ -1,0 +1,5 @@
+- Change a throw from a plugin's lifecycle hook to take the ordinary failure path, under [ADR-0097](docs/decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md):
+  - An `onEnvironment` hook that throws a failure class, such as a `FatalError` subclass, now exits with that class's code and writes its message, in place of an internal error with exit 1.
+  - An `onFailure` hook that throws ends the hooks for that failure. Core calls no later hook and writes the failure's default text with no plugin's hints, then the hook's throw as a defect, and still exits 1.
+  - An `onLog` hook that throws keeps receiving every later event of the run. Core reports its first throw once after the run's outcome, and the run still exits 1.
+  - `inspect()` and `check()` now throw an `onGraphBuilt` or `onCommandAttach` hook's throw that is not a `DeclarationError` as it is, in place of a declaration fault that wrapped it.

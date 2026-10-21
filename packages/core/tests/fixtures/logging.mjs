@@ -110,12 +110,6 @@ function copiedFields() {
     nothing: undefined,
     shared: [shared, shared],
     symbol: Symbol('s'),
-    throwing: {
-      get bad() {
-        throw new Error('The getter failed.');
-      },
-      ok: 1,
-    },
   };
 }
 
@@ -133,9 +127,6 @@ const breaking = {
 
 /** Extra lines a scenario prints beside the events, keyed for the test to read. */
 const printed = [];
-
-/** The `log` a middleware kept, which the delivery scenario calls from `onLog`. */
-let kept = undefined;
 
 const scenarios = {
   'after-primary': () =>
@@ -223,34 +214,6 @@ const scenarios = {
         },
       });
       printed.push({ reads });
-    }),
-  // A plugin keeps its middleware's log and calls it from its own `onLog`.
-  'log-in-hook': () =>
-    failing(
-      [
-        plugin('fixture/keeper', {
-          middleware: {
-            activate: 'always',
-            load: async () => ({
-              default: async ({ log, next }) => {
-                kept = log;
-                await next();
-              },
-            }),
-          },
-          onLog: () => {
-            kept.info('from the hook');
-          },
-        }),
-      ],
-      ({ log }) => {
-        log.info('trigger');
-      },
-    ),
-  'message-converted': () =>
-    failing([collector], ({ log }) => {
-      log.info(42);
-      log.warn({ toString: () => 'object message' });
     }),
   'path-routed': () => grouped({ plugins: [collector] }),
   reach: () =>

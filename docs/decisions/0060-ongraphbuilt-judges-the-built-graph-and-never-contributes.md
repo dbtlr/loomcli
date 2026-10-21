@@ -4,7 +4,7 @@ title: ADR-0060 - onGraphBuilt judges the built graph and never contributes
 description: A plugin definition gains a third lifecycle hook, onGraphBuilt, which core calls once per graph build with the frozen graph, after every onCommandAttach hook. It may reject the graph by throwing a DeclarationError, and it cannot attach, rewrite, or store anything. Any other throw or a returned value is the broken-graph-hook build fault.
 status: accepted
 created: 2026-10-05
-modified: 2026-10-20
+modified: 2026-10-21
 ---
 
 # ADR-0060 - onGraphBuilt judges the built graph and never contributes
@@ -42,3 +42,4 @@ Accepted in 0.9.0.
 
 - 2026-10-05: Proposed with the contract.
 - 2026-10-20: [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md), proposed, removes the `@loomcli/core/broken-graph-hook` fault for a hook that returns a value, a promise included, because `GraphBuiltHook`'s type rejects it. A hook that throws anything but a `DeclarationError` stays the `@loomcli/core/broken-graph-hook` build fault, which names the plugin, and as a build fault it reaches neither `onFailure` nor `onLog`. [ADR-0097](0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md), proposed, does not change it: that record's hook rules apply to a broken `onFailure` or `onLog` hook during a run. Both bind when those records are accepted.
+- 2026-10-21: The implementing phase of [ADR-0097](0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md), proposed, ends the `@loomcli/core/broken-graph-hook` fault whole, so the 2026-10-20 entry's clause that a throw stays that fault ends. A hook's throw that is not a `DeclarationError` is a foreign throw from the hook's code: `inspect()` and `check()` throw it unchanged, and a run reports it as `@loomcli/core/foreign-throw`, whose cause chain names the hook's file and line. A `DeclarationError` the hook throws still rejects the graph. It binds when that record is accepted.

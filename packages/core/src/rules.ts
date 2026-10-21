@@ -7,27 +7,16 @@ import { registerRule } from './diagnostic-text.js';
  * plugin's rules are.
  */
 
-/** A value thrown from an action, a middleware, or a source that no translator answered. */
+/** A value that author or plugin code threw and no translator answered. */
 const foreignThrow = registerRule('@loomcli/core/foreign-throw', {
   explanation:
-    'Core reports a value that an action, a middleware, a configuration source, or a view threw, and that no translator answered, as a defect, because only the author knows what it means. A distributed build shows the operator one generic message in its place.',
+    "Core reports a value that an action, a middleware, a configuration source, a view, a translator, or a plugin's hook threw, and that no translator answered, as a defect, because only the author knows what it means. A distributed build shows the operator one generic message in its place.",
   headline: 'Unhandled exception',
 });
 
 /** The fix every foreign throw shares. */
 const foreignThrowCorrection =
   'Catch the error where it is thrown and throw a failure class, such as FatalError, with a sentence the operator can act on.';
-
-/** A translator that threw or answered with something other than a failure. */
-const brokenTranslator = registerRule('@loomcli/core/broken-translator', {
-  explanation:
-    'A translator turns a foreign throw into a failure synchronously. A throw, or any answer other than a failure or undefined, leaves core no failure to report, so it consults no later translator.',
-  headline: 'Broken translator',
-});
-
-/** The fix every broken translator shares. */
-const brokenTranslatorCorrection =
-  'Return a failure, or undefined to pass, and throw nothing from the translator.';
 
 /** A failure view that threw or returned a value that is not a string. */
 const brokenFailureView = registerRule('@loomcli/core/broken-failure-view', {
@@ -39,27 +28,6 @@ const brokenFailureView = registerRule('@loomcli/core/broken-failure-view', {
 /** The fix a broken failure view states. */
 const viewCorrection =
   "Return a string from the view's render function, and throw nothing from it.";
-
-/** An `onFailure` hook that threw or returned a value that is not hints. */
-const brokenFailureHook = registerRule('@loomcli/core/broken-failure-hook', {
-  explanation:
-    "An onFailure hook adds hint lines under a failure, synchronously and without throwing. Core dropped this hook's hints and rendered the failure with every other plugin's.",
-  headline: 'Broken failure hook',
-});
-
-/** An `onLog` hook that threw or returned a value. */
-const brokenLogHook = registerRule('@loomcli/core/broken-log-hook', {
-  explanation:
-    'An onLog hook observes the log events of a run, synchronously and without throwing, and returns nothing. Core stopped calling this hook for the rest of the run, and every other plugin kept receiving the events.',
-  headline: 'Broken log hook',
-});
-
-/** A `log` call made while core was delivering a log event to an `onLog` hook. */
-const logInLogHook = registerRule('@loomcli/core/log-in-log-hook', {
-  explanation:
-    'An onLog hook observes the events core delivers to it. A log call made during that delivery would create an event inside the delivery of another, so core throws instead of delivering it.',
-  headline: 'Log call in a log hook',
-});
 
 /** A plugin's middleware or source loader that rejected or exported no default function. */
 const pluginLoaderFailed = registerRule('@loomcli/core/plugin-loader-failed', {
@@ -124,13 +92,6 @@ const invokeOptions = registerRule('@loomcli/core/invoke-options', {
   headline: 'Invalid invoke options',
 });
 
-/** A region call that holds a value of the wrong kind. */
-const regionCall = registerRule('@loomcli/core/region-call', {
-  explanation:
-    'out.region() takes an optional options object whose input is a Boolean. A region reports a plain object whose completed and total are finite numbers of 0 or more and whose label is a string, and its end takes "ended", "failed", or nothing. A value of the wrong kind leaves the region nothing to act on.',
-  headline: 'Invalid region call',
-});
-
 /** A configuration source whose answers break the answers rule. */
 const sourceAnswers = registerRule('@loomcli/core/source-answers', {
   explanation:
@@ -180,22 +141,10 @@ const ruleIdentity = registerRule('@loomcli/core/rule-identity', {
   headline: 'Invalid rule identity',
 });
 
-/** An environment preparation hook that threw or returned malformed additions. */
-const brokenEnvironmentHook = registerRule('@loomcli/core/broken-environment-hook', {
-  explanation:
-    'An onEnvironment hook returns additions before inputs are read. Each addition names an environment variable and holds a string without NUL. A malformed answer or a throw fails the run through the plugin defect path.',
-  headline: 'Broken environment hook',
-});
-
 export {
-  brokenEnvironmentHook,
   brokenDestination,
   brokenFailureEncoder,
-  brokenFailureHook,
   brokenFailureView,
-  brokenLogHook,
-  brokenTranslator,
-  brokenTranslatorCorrection,
   failureCode,
   foreignGraph,
   foreignGraphCorrection,
@@ -204,10 +153,8 @@ export {
   invalidReleaseFacts,
   invokeOptions,
   invokeViewCorrection,
-  logInLogHook,
   nextMisuse,
   pluginLoaderFailed,
-  regionCall,
   resultContract,
   ruleIdentity,
   runOptions,

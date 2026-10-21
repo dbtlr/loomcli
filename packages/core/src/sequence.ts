@@ -1,6 +1,5 @@
-import { InternalError, routedSubject } from './errors.js';
+import { routedSubject } from './errors.js';
 import type { IncompleteResult } from './lanes.js';
-import { resultContract } from './rules.js';
 import type { ViewContext } from './types.js';
 import type { ResolvedRowView } from './view.js';
 
@@ -94,8 +93,8 @@ function iterate<Row>(source: Protocols<Row> | null | undefined): Steps<Row> | u
 
 /**
  * The steps one source answers with, with whatever the protocol raised marked as the source's own
- * failure. A value that iterates neither way is the same fault, named for the Command that emitted
- * it, because the types reject it and a JavaScript author alone reaches it.
+ * failure. A value that iterates neither way, which the types reject, is a `TypeError` of the same
+ * kind, reported through the ordinary failure path.
  */
 function stepsOf<Row>(writer: SequenceWriter<Row>): Steps<Row> {
   let steps: Steps<Row> | undefined = undefined;
@@ -106,11 +105,7 @@ function stepsOf<Row>(writer: SequenceWriter<Row>): Steps<Row> {
   }
   if (!steps) {
     throw new SourceFault(
-      new InternalError(resultContract, {
-        cause: undefined,
-        correction: 'Pass out.results() an iterable or an async iterable of rows.',
-        sentence: `The result of ${routedSubject(writer.path)} is not iterable.`,
-      }),
+      new TypeError(`The result of ${routedSubject(writer.path)} is not iterable.`),
     );
   }
   return steps;

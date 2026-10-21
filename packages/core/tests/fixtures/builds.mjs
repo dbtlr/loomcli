@@ -313,15 +313,6 @@ function scenarioRun() {
         },
       };
     }
-    case 'revoked-proxy': {
-      const { proxy, revoke } = Proxy.revocable({}, {});
-      revoke();
-      return {
-        app: new Application('probe', probe).action(() => {
-          throw proxy;
-        }),
-      };
-    }
     case 'two-defects': {
       // The action never awaits the render, so its view failure is reported after the action's own.
       return {

@@ -496,7 +496,7 @@ The failure `out.fatal()` throws to end an action with a message. It exits 1 and
 _Avoid_: Abort, panic, crash
 
 **Internal error**:
-A failure core wraps around an unexpected exception no translator answered, a broken view, a broken `onFailure` hook, a broken translator, or a broken destination whose write failure no translator answered, or raises when an action breaks the result contract: a promised result not emitted, emitted twice, emitted where none is declared, or emitted from a middleware. It exits 1.
+A failure core wraps around an unexpected exception no translator answered, a throw from a view, a translator, or a plugin's hook among them, a broken failure view, or a broken destination whose write failure no translator answered, or raises when an action breaks the result contract: a promised result not emitted, or emitted twice. It exits 1.
 _Avoid_: Unhandled error, bug (in output)
 
 **Defect**:

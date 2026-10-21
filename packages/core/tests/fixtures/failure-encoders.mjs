@@ -50,11 +50,10 @@ const digits = {
 /** One line on stderr: the form under `error`, and a newline. */
 const errorLine = (form) => `${JSON.stringify({ error: form })}\n`;
 
-/** The encoder each variant registers: a working one, and three that break. */
+/** The encoder each variant registers: a working one, and two that break. */
 const encoders = {
   line: errorLine,
   number: () => 42,
-  promise: () => Promise.reject(new Error('Never awaited.')),
   throws: () => {
     throw new Error('The encoder broke.');
   },

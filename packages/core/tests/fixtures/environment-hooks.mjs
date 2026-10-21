@@ -1,6 +1,17 @@
-import { Application, Command, plugin, validationContext } from '@loomcli/core';
+import { Application, Command, FatalError, plugin, validationContext } from '@loomcli/core';
 
 const [scenario, answer] = process.argv.slice(2);
+
+/** A failure an environment hook throws, which declares its own exit code. */
+class UnreadableFileError extends FatalError {
+  static exitCode = 78;
+
+  constructor(message) {
+    super(message);
+    this.name = 'UnreadableFileError';
+  }
+}
+
 const events = [];
 const controller = new AbortController();
 const first = plugin('fixture/first', {
@@ -9,13 +20,13 @@ const first = plugin('fixture/first', {
     if (scenario === 'cancel' && answer === 'during') {
       controller.abort();
     }
-    if (scenario === 'invalid') {
-      return {
-        'bad-name': { 'NOT-VALID': 'secret-value' },
-        'bad-value': { LOOM_DOTENV_TOKEN: 4 },
-        'not-record': ['secret-value'],
-        nul: { LOOM_DOTENV_TOKEN: 'secret-value\0' },
-      }[answer];
+    if (scenario === 'throws') {
+      throw answer === 'fatal'
+        ? new UnreadableFileError('The .env file cannot be read.')
+        : new TypeError('The parser broke.');
+    }
+    if (scenario === 'dashed') {
+      return { 'my-var': 'dashed' };
     }
     if (scenario === 'precedence') {
       return { EMPTY: 'file', SET: 'file', UNDEFINED: 'file' };
@@ -72,6 +83,7 @@ const app = new Application('app', {
         ...(scenario === 'nested' ? { nested: await invoke(['child'], {}) } : {}),
         options,
         ...(scenario === 'precedence' ? { env: host.env } : {}),
+        ...(scenario === 'dashed' ? { dashed: host.env['my-var'] } : {}),
         ...(scenario === 'timing' ? {} : { process: process.env.LOOM_DOTENV_TOKEN ?? null }),
       }),
     ),
@@ -90,6 +102,8 @@ if (scenario === 'inspect') {
     `${JSON.stringify({ events, process: process.env.LOOM_DOTENV_TOKEN ?? null })}\n`,
   );
 } else if (scenario === 'timing') {
+  await app.run({ host: { argv: [], env: {} } });
+} else if (scenario === 'dashed') {
   await app.run({ host: { argv: [], env: {} } });
 } else if (scenario === 'precedence') {
   await app.run({ host: { argv: [], env: { EMPTY: '', SET: 'shell', UNDEFINED: undefined } } });

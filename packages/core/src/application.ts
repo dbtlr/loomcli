@@ -48,7 +48,14 @@ import type { Content } from './content.js';
 import { encoderRegistry } from './encoders.js';
 import type { EncoderRegistry } from './encoders.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
-import { DeclarationError, exitCodeOf, InternalError, quoted, toFailure } from './errors.js';
+import {
+  DeclarationError,
+  exitCodeOf,
+  foreignFailure,
+  InternalError,
+  quoted,
+  toFailure,
+} from './errors.js';
 import type { InvokedBy, LoomError } from './errors.js';
 import type { FailureExitCode } from './exit-codes.js';
 import { carriesBinding, storeCommandLayers } from './extension.js';
@@ -67,7 +74,7 @@ import {
 } from './globals.js';
 import type { GlobalsState, GlobalTable } from './globals.js';
 import { judgeGraph, judgesGraph } from './graph-hooks.js';
-import { brokenLogReport, destinationDefect, destinationReport, reportFailure } from './hints.js';
+import { destinationDefect, destinationReport, reportFailure } from './hints.js';
 import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
 import { captureHost, settleTerminal, statedBackground } from './host.js';
 import type { HostCapture, ReportHost } from './host.js';
@@ -84,7 +91,7 @@ import {
 } from './invoke.js';
 import type { CapturedFields, ReadCall } from './invoke.js';
 import { coreViews } from './lanes.js';
-import { brokenLogHookDefect, RunLog } from './log.js';
+import { RunLog } from './log.js';
 import type { LogDestination } from './log.js';
 import { lowerInvocation } from './lower.js';
 import type { OptionSpelling } from './options.js';
@@ -693,8 +700,9 @@ class ApplicationBuilder<
    * implied value its validator rejects, as values in the order a run meets them. It builds the
    * graph as `inspect()` does and runs the development checks whatever the release facts read,
    * reading no host and no baked facts. A build rule's fault ends the build, so it is the one fault;
-   * past a built graph, each failing converter, the undescribed fault, and each rejecting or broken
-   * `onGraphBuilt` hook is kept and the build goes on. Nothing is cached.
+   * past a built graph, each failing converter, the undescribed fault, and each rejecting
+   * `onGraphBuilt` hook is kept and the build goes on. Any other throw leaves it as it is. Nothing is
+   * cached.
    */
   check(): readonly DeclarationError[] {
     const faults: DeclarationError[] = [];
@@ -863,9 +871,7 @@ class ApplicationBuilder<
           destination: logDestination(),
           path: () => walked,
         },
-        this.#config.plugins.flatMap(({ identity, onLog }) =>
-          onLog === undefined ? [] : [{ hook: onLog, identity }],
-        ),
+        this.#config.plugins.flatMap(({ onLog }) => (onLog === undefined ? [] : [onLog])),
       );
       return logged.current;
     };
@@ -1043,7 +1049,7 @@ class ApplicationBuilder<
           );
           const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
-            // A broken failure view or onFailure hook forces 1 over the failure's own code.
+            // A broken failure view or a throwing onFailure hook forces 1 over the failure's code.
             const sink = {
               build,
               encoders,
@@ -1114,6 +1120,16 @@ class ApplicationBuilder<
       if (lineFault !== undefined && decisive === undefined) {
         await reportFault(toFailure(lineFault.cause));
       }
+      /**
+       * The first throw of an `onLog` hook is reported once, after every other report, through the
+       * ordinary failure path, and the run returns 1 whatever code it would have returned. Its later
+       * throws, such as one on the event that report logs, are not reported.
+       */
+      const hookThrow = logged.current?.thrown;
+      if (hookThrow !== undefined) {
+        await reportFault(foreignFailure(hookThrow.value));
+        code = 1;
+      }
       if (output) {
         // A region nothing closed yet, such as one a run whose stdout broke left open, closes here.
         output.closeRegions(code === 0 ? 'completion' : 'failure');
@@ -1156,23 +1172,8 @@ class ApplicationBuilder<
         }
       }
       /**
-       * An `onLog` hook that broke is reported once, after every event of the run, through the
-       * plain fallback path. It turns a would-be 0 into 1, and it decides the failure of such a run.
-       */
-      const brokenHooks = logged.current?.broken ?? [];
-      if (brokenHooks.length > 0) {
-        const { application, host } = scene();
-        const text = brokenLogReport(brokenHooks, build, { application, host });
-        if (text !== '') {
-          await reportPlainly(stderr, text);
-        }
-        const [first] = brokenHooks;
-        decisive = code === 0 && first ? brokenLogHookDefect(first) : decisive;
-        code = 1;
-      }
-      /**
        * One rule orders every code: a cancelled run resolves its signal's code, and a broken
-       * failure view, onFailure hook, onLog hook, or destination in that run is reported as text without
+       * failure view, onFailure hook, onLog hook, or destination in that run is reported without
        * changing it. The signal decides the code whatever the action did afterward, so this
        * reading comes last.
        */

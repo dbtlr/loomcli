@@ -6,10 +6,10 @@ function run(scenario: string, argv: string[] = [], env: Record<string, string> 
   return invoke(new URL('fixtures/hints.mjs', import.meta.url), [scenario, ...argv], { env });
 }
 
-/** A development build states one broken hook's own sentence in its Developer Diagnostic. */
+/** A development build reports a throwing hook's throw as a foreign throw, its reason the sentence. */
 function expectBrokenHook(scenario: string, reason: string) {
   const { stderr } = run(scenario, ['cache', 'clear', '--bogus'], { FIXTURE_BUILD: 'development' });
-  expect(stderr).toContain(`\n\nPlugin "fixture/broken" failed in onFailure: ${reason}\n`);
+  expect(stderr).toContain(` @loomcli/core/foreign-throw\n\n${reason}\n`);
 }
 
 const unknownBogus =
@@ -133,53 +133,13 @@ test('hooks returning undefined and [] leave the default text unchanged byte for
   );
 });
 
-test.each([
-  ['broken-throws', 'Cannot suggest.'],
-  ['broken-number', 'The hook returned a value that is not a string or an array of strings.'],
-  ['broken-array', 'The hook returned a value that is not a string or an array of strings.'],
-  ['broken-hole', 'The hook returned a value that is not a string or an array of strings.'],
-  ['broken-lying-filter', 'The hook returned a value that is not a string or an array of strings.'],
-  ['broken-proxied', 'The hook returned a value that is not a string or an array of strings.'],
-  ['broken-promise', 'The hook returned a promise instead of hints.'],
-  ['broken-callable-thenable', 'The hook returned a promise instead of hints.'],
-  ['broken-rejecting', 'The hook returned a promise instead of hints.'],
-])(
-  'a broken hook (%s) loses its own hints, writes its one line, and returns 1',
-  (scenario, reason) => {
-    const result = run(scenario, ['cache', 'clear', '--bogus']);
-    expect(result.stderr).toBe(`${unknownBogus}still here\nstore: Something went wrong.\n`);
-    expect(result.stdout.split('\n').at(-2)).toBe('resolved:1');
-    expectBrokenHook(scenario, reason);
-  },
-);
-
-test.each(['lying-filter', 'proxied'])(
-  'a returned array (%s) contributes the strings it holds, whatever its own methods answer',
-  (scenario) => {
-    expect(run(scenario, ['cache', 'clear', '--bogus'])).toEqual({
-      status: 2,
-      stderr: `${unknownBogus}held\nstill here\n`,
-      stdout:
-        'hook:fixture/broken:UnknownOptionError:[cache,clear]\nhook:fixture/fine:UnknownOptionError:[cache,clear]\nresolved:2\n',
-    });
-  },
-);
-
-test.each(['getter', 'object', 'proxy', 'symbol'])(
-  'a hook that throws a value whose message cannot be read (%s) writes the fixed reason and keeps the failure',
-  (kind) => {
-    const result = run(`broken-unreadable-${kind}`, ['cache', 'clear', '--bogus']);
-    expect(result.stderr).toBe(`${unknownBogus}still here\nstore: Something went wrong.\n`);
-    expect(result.stdout.split('\n').at(-2)).toBe('resolved:1');
-  },
-);
-
-test('a failure view that throws a value whose message cannot be read writes the fixed reason', () => {
-  expect(run('broken-view-unreadable', ['cache', 'clear', '--bogus'])).toEqual({
+test('a hook that throws ends the hooks: no later hook runs, no hint prints, and the run returns 1', () => {
+  expect(run('broken-throws', ['cache', 'clear', '--bogus'])).toEqual({
     status: 1,
     stderr: `${unknownBogus}store: Something went wrong.\n`,
-    stdout: 'resolved:1\n',
+    stdout: 'hook:fixture/broken:UnknownOptionError:[cache,clear]\nresolved:1\n',
   });
+  expectBrokenHook('broken-throws', 'Cannot suggest.');
 });
 
 test.each([
@@ -189,10 +149,10 @@ test.each([
     `red${['001b', '000d', '2028', '2029'].map((hex) => `\\u${hex}`).join('')}end`,
   ],
 ])(
-  'a broken hook whose reason holds a line break or a control character (%s) writes one line',
+  'a throwing hook whose reason holds a line break or a control character (%s) writes one line',
   (scenario, reason) => {
     expect(run(scenario, ['cache', 'clear', '--bogus']).stderr).toBe(
-      `${unknownBogus}still here\nstore: Something went wrong.\n`,
+      `${unknownBogus}store: Something went wrong.\n`,
     );
     // The development build states the reason on one line, every control escaped.
     expectBrokenHook(scenario, reason);
@@ -205,23 +165,17 @@ test('a broken failure view whose reason holds a line break writes the generic l
   );
 });
 
-test('two broken hooks write their lines in installation order', () => {
-  expect(run('two-broken', ['cache', 'clear', '--bogus']).stderr).toBe(
-    `${unknownBogus}still here\nstore: Something went wrong.\n`,
-  );
-});
-
-test('a broken hook beside a broken view writes the default text without hints, the view line, then the hook line', () => {
+test('a throwing hook beside a view that would break writes the default text without hints, and the view never runs', () => {
   const result = run('broken-view', ['cache', 'clear', '--bogus']);
   expect(result.stderr).toBe(`${unknownBogus}store: Something went wrong.\n`);
   expect(result.stdout.split('\n').at(-2)).toBe('resolved:1');
 });
 
-test('a broken hook in a cancelled run whose failure still renders returns 130 and writes its line', () => {
+test('a throwing hook in a cancelled run whose failure still renders returns 130 and writes its line', () => {
   expect(run('cancelled-broken')).toEqual({
     status: 130,
-    stderr: 'The action failed.\nstill here\nstore: Something went wrong.\n',
-    stdout: 'hook:fixture/broken:FatalError:[]\nhook:fixture/fine:FatalError:[]\nresolved:130\n',
+    stderr: 'The action failed.\nstore: Something went wrong.\n',
+    stdout: 'hook:fixture/broken:FatalError:[]\nresolved:130\n',
   });
 });
 

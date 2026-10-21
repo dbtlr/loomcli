@@ -15,7 +15,6 @@ import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { DiagnosticRule, Finding } from './diagnostic-text.js';
 import type { RegisteredGlobals } from './environment.js';
 import {
-  asSentence,
   commandSentence,
   commandSubject,
   DeclarationError,
@@ -23,7 +22,6 @@ import {
   quoted,
   ResultError,
   toFailure,
-  reasonOf,
 } from './errors.js';
 import type { InvokedBy, LoomError } from './errors.js';
 import {
@@ -78,7 +76,6 @@ import type { CompileScope, OptionValues, SpellingOrigin, SpellingTable } from '
 import { candidatesOf } from './parse.js';
 import type { ParsedInvocation } from './parse.js';
 import { snapshot } from './plain.js';
-import { brokenAttachHook } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
 import { fillInputs } from './sources.js';
 import type { SourceOutcome } from './sources.js';
@@ -1274,8 +1271,6 @@ interface AttachState {
   registry: ReadonlyMap<string, AdmittedDescriptor>;
   hasAction: boolean;
   identity: string;
-  /** The token one Command's own build mints, which every value derived within it carries. */
-  lineage: object;
   path: readonly string[];
   /** The Command a diagnostic about one of its extension values names. */
   subject: ExtensionSubject;
@@ -1441,58 +1436,16 @@ class AttachedCommandValue implements AttachedCommand {
   }
 }
 
-/** The finding for the hook one plugin declared, as `plugin(identity, { onCommandAttach })`. */
-function hookFinding(identity: string, hook: CommandAttachHook): Finding {
-  return {
-    arguments: [identity, { onCommandAttach: hook }],
-    call: 'plugin',
-    mark: '1.onCommandAttach',
-  };
-}
-
-/** One hook's own call, whose failure is the plugin's, and whose own report is its own. */
-function callHook(
-  value: AttachedCommand,
-  hook: CommandAttachHook,
-  named: { identity: string; subject: string },
-): AttachedCommand {
-  try {
-    return hook(value);
-  } catch (error) {
-    // A hook that reports a declaration fault of its own reports as itself.
-    if (error instanceof DeclarationError) {
-      throw error;
-    }
-    throw new DeclarationError(
-      brokenAttachHook,
-      {
-        correction:
-          'Return the value the hook received or a value derived from it, and throw only a DeclarationError from the hook.',
-        findings: [hookFinding(named.identity, hook)],
-        sentence: `Plugin ${quoted(named.identity)} failed in onCommandAttach for ${named.subject}: ${asSentence(reasonOf(error))}`,
-      },
-      { cause: error },
-    );
-  }
-}
-
 /**
- * One plugin's hook over one Command, which answers with the declaration the hook returned. The
- * returned value has to carry the lineage token of the value the hook received, so the surface of
- * another Command, or of one an earlier build made, never replays its calls onto this Command.
+ * One plugin's hook over one Command, which answers with the declaration the hook returned. A throw
+ * is the hook's own and leaves the build: a `DeclarationError` reports as itself, and any other
+ * throw is a foreign throw. A returned value core never built has no declaration to read, which
+ * the hook's type already rejects, so it meets the same `TypeError` a missing property would.
  */
-function attachOnce(
-  value: AttachedCommand,
-  hook: CommandAttachHook,
-  named: { identity: string; lineage: object; subject: string },
-): AttachState {
-  const state = attachments.get(callHook(value, hook, named));
-  if (!state || state.lineage !== named.lineage) {
-    throw new DeclarationError(brokenAttachHook, {
-      correction: 'Return the value it received or a value derived from it.',
-      findings: [hookFinding(named.identity, hook)],
-      sentence: `Plugin ${quoted(named.identity)} returned a value that is not the attached Command from onCommandAttach for ${named.subject}.`,
-    });
+function attachOnce(value: AttachedCommand, hook: CommandAttachHook): AttachState {
+  const state = attachments.get(hook(value));
+  if (state === undefined) {
+    throw new TypeError('onCommandAttach returned a value that is not an attached Command.');
   }
   return state;
 }
@@ -1503,19 +1456,17 @@ function attachOnce(
  */
 function runAttachHooks(
   start: Pick<AttachState, 'declared' | 'extensions' | 'registry'> & { layer: ExtensionSubject },
-  facts: { hasAction: boolean; lineage: object; path: readonly string[] },
+  facts: { hasAction: boolean; path: readonly string[] },
   plugins: readonly BuiltPlugin[],
 ): AttachProgress {
   const { declared, extensions, layer, registry } = start;
-  const subject = commandSubject(declared.name);
-  const { lineage } = facts;
   let progress: AttachProgress = { calls: [], declared, extensions, registry };
   for (const installed of plugins) {
     const hook = installed.onCommandAttach;
     if (hook) {
       const identity = installed.identity;
       const value = new AttachedCommandValue({ ...progress, ...facts, identity, subject: layer });
-      const state = attachOnce(value, hook, { identity, lineage, subject });
+      const state = attachOnce(value, hook);
       progress = {
         calls: state.calls,
         declared: state.declared,
@@ -1957,11 +1908,9 @@ export function buildCommand<Args, Options, Globals>(
    * The hooks run once the author's declaration is complete, and each value a hook receives resolves
    * its result, so a hook reads an exact record. Every rule below reads what the hooks returned.
    */
-  // One token per Command per build, which binds a hook's return to the value it received.
-  const lineage = {};
   const progress = runAttachHooks(
     { declared: state, extensions: state.extensions, layer, registry: context.descriptors },
-    { hasAction, lineage, path: context.path },
+    { hasAction, path: context.path },
     context.plugins,
   );
   const { calls } = progress;

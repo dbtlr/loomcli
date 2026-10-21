@@ -69,33 +69,30 @@ test("a hook's DeclarationError prints as its own Developer Diagnostic in a deve
   );
 });
 
-test.each(['throws', 'returns', 'promise'])(
-  'a hook that %s reports broken-graph-hook with exit 1',
-  (kind) => {
-    const distributed: Record<string, Ran> = JSON.parse(report('broken'));
-    expect(distributed[kind]).toEqual({
-      exitCode: 1,
-      stderr: 'probe: Something went wrong.\n',
-      stdout: '',
-    });
-    const development: Record<string, Ran> = JSON.parse(report('broken', 'development'));
-    expect(development[kind]?.exitCode).toBe(1);
-    expect(development[kind]?.stderr).toMatch(
-      /^-- BROKEN GRAPH HOOK -+ @loomcli\/core\/broken-graph-hook\n/u,
-    );
-  },
-);
-
-test("a broken hook's fault keeps the value the hook threw as its cause", () => {
-  expect(JSON.parse(report('cause'))).toEqual({ cause: true });
+test('a hook that throws a TypeError is a foreign throw from its code, exit 1', () => {
+  const distributed: Ran = JSON.parse(report('broken'));
+  expect(distributed).toEqual({
+    exitCode: 1,
+    stderr: 'probe: Something went wrong.\n',
+    stdout: '',
+  });
+  const development: Ran = JSON.parse(report('broken', 'development'));
+  expect(development.exitCode).toBe(1);
+  expect(development.stderr).toMatch(
+    /^-- UNHANDLED EXCEPTION -+ @loomcli\/core\/foreign-throw\n\nthe hook broke\n/u,
+  );
 });
 
-test('the graph is frozen: a write throws, a caught write leaves the graph unchanged, and an uncaught one is a broken hook', () => {
+test("inspect() throws a hook's own throw as it is", () => {
+  expect(JSON.parse(report('cause'))).toEqual({ same: true });
+});
+
+test('the graph is frozen: a write throws, a caught write leaves the graph unchanged, and an uncaught one is a foreign throw', () => {
   const frozen: { quiet: Ran; seen: string[]; unguarded: Ran } = JSON.parse(
     report('frozen', 'development'),
   );
   expect(frozen.seen).toEqual(['threw']);
   expect(frozen.quiet).toEqual({ exitCode: 0, stderr: '', stdout: '1\n' });
   expect(frozen.unguarded.exitCode).toBe(1);
-  expect(frozen.unguarded.stderr).toContain(' @loomcli/core/broken-graph-hook\n');
+  expect(frozen.unguarded.stderr).toContain(' @loomcli/core/foreign-throw\n');
 });

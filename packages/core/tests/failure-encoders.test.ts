@@ -170,7 +170,6 @@ test("a structural fault core raises from argv words reaches the line with its c
 
 const brokenReasons = {
   number: 'The encoder returned number instead of a string.',
-  promise: 'The encoder returned a promise instead of a string.',
   throws: 'The encoder broke.',
 };
 

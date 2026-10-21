@@ -636,46 +636,20 @@ export function asSentence(text: string): string {
  * control character escaped. A `DeclarationError` answers its sentence, because its message holds
  * its whole diagnostic. Every sentence that quotes a thrown value reads it here, so a reason stays
  * on one line and no bidirectional control reaches a terminal, whichever rule's sentence carries
- * it, while the author's words around it keep their line breaks. Reading it never throws: an Error
- * whose message is not a string or cannot be read, and a value whose prototype cannot be read, such
- * as a proxy whose trap throws, answer one fixed sentence.
+ * it, while the author's words around it keep their line breaks.
  */
 export function reasonOf(thrown: unknown): string {
-  return escapeControlCharacters(rawReasonOf(thrown));
-}
-
-/** The thrown value's reason as it was written, read without throwing. */
-function rawReasonOf(thrown: unknown): string {
-  const unreadableReason = 'The thrown value has no readable message.';
-  try {
-    if (!(thrown instanceof Error)) {
-      return 'An unknown error occurred.';
-    }
-    if (thrown instanceof DeclarationError) {
-      return thrown.sentence;
-    }
-    const { message }: { message: unknown } = thrown;
-    return typeof message === 'string' ? message : unreadableReason;
-  } catch {
-    return unreadableReason;
+  if (!(thrown instanceof Error)) {
+    return 'An unknown error occurred.';
   }
-}
-
-/**
- * Whether a thrown value is a failure class by its prototype chain, read defensively, because a
- * revoked proxy or a proxy whose prototype trap throws answers no chain. Such a value is foreign.
- */
-function isLoomError(thrown: unknown): thrown is LoomError {
-  try {
-    return thrown instanceof LoomError;
-  } catch {
-    return false;
-  }
+  return escapeControlCharacters(
+    thrown instanceof DeclarationError ? thrown.sentence : thrown.message,
+  );
 }
 
 /** Every thrown value reaches reporting as a failure class; anything else is internal. */
 export function toFailure(thrown: unknown): LoomError {
-  return isLoomError(thrown) ? thrown : foreignFailure(thrown);
+  return thrown instanceof LoomError ? thrown : foreignFailure(thrown);
 }
 
 /**

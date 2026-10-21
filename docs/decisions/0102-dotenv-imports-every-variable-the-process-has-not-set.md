@@ -4,7 +4,7 @@ title: ADR-0102 - Dotenv imports every variable the process has not set
 description: The dotenv plugin imports every variable its .env file defines that the process has not set, as the dotenv package, Node's --env-file, and Bun do, and an allow list or a deny list narrows the import. The bounded onEnvironment hook, core's ownership of merging and process writes, the file format, and the warning and recovery rules carry forward. It supersedes ADR-0084.
 status: proposed
 created: 2026-10-20
-modified: 2026-10-20
+modified: 2026-10-21
 ---
 
 # ADR-0102 - Dotenv imports every variable the process has not set
@@ -28,7 +28,7 @@ This record supersedes ADR-0084 whole. Every other provision of ADR-0084 is inco
 - **Environment preparation.** A plugin definition's `onEnvironment(context)` hook receives the run's read-only `cwd` and `env`, its `warn` call, and its `log`. It returns additions synchronously or asynchronously, after graph build and before any declared default, implied value, routing, or input validation, and never under `inspect()` or `check()`. Core checks cancellation around each hook and sets no time limit on it.
 - **Core owns the merge.** A defined own variable always wins, an empty string included. Among hooks the first addition wins, and options read the prepared environment through their existing environment tier.
 - **The process copy.** Only an argv `run()` with neither `host.cwd` nor `host.env` overridden copies additions to `process.env`, skipping every variable the process already defines. `app.invoke()` never writes it, and an action's `invoke()` inherits the prepared environment.
-- **The hook's failure rules.** A throw takes the ordinary failure path under [ADR-0097](0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md), so a `LoomError` the hook throws keeps its class and exit code in place of the `@loomcli/core/broken-environment-hook` wrap. Which checks remain on a hook's answer is settled in that record's implementing phase. ADR-0084's other failure rules stand.
+- **The hook's failure rules.** A throw takes the ordinary failure path under [ADR-0097](0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md), so a `LoomError` the hook throws keeps its class and exit code in place of the `@loomcli/core/broken-environment-hook` wrap, and any other throw is a foreign throw. No check remains on a hook's answer: core merges the record it returns, whose type bounds it, under [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md), so ADR-0084's rules that core accepts only plain records of valid variable names and strings without NUL, and validates the whole answer before merging, end. ADR-0084's other failure rules stand.
 - **The plugin.** It reads only `.env` in `host.cwd`, once per outer run, with no custom filename, parent or home search, mode sibling, or layered file. It returns the values it imports, and core alone applies the merge and the process-write rules.
 - **The file format and recovery.** They stand as ADR-0084 states them: UTF-8 with an ignored leading byte order mark, CRLF normalized, the assignment, quoting, comment, and duplicate rules, the unterminated-quote rules, silent missing files and `.env` directories, and one warning for any other read error.
 - **The color narrowing.** [ADR-0089](0089-an-operators-color-or-no-color-settles-the-runs-color-right-after-host-capture.md)'s narrowing of imported `NO_COLOR` and `FORCE_COLOR` stands.
@@ -49,3 +49,4 @@ Proposed. It moves to accepted with the release that ships the import-everything
 ## Changelog
 
 - 2026-10-20: Proposed with the 0.15.0 rescope.
+- 2026-10-21: The implementing phase of ADR-0097 removes every check on an `onEnvironment` hook's answer, so the hook's failure rules name none.
