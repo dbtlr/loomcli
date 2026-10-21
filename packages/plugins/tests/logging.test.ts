@@ -81,7 +81,6 @@ function run(
       // The darwin and win32 cases name their own.
       FIXTURE_PLATFORM: 'linux',
       HOME: box.home,
-      USERPROFILE: box.home,
       XDG_STATE_HOME: box.state,
       ...(settings === undefined ? {} : { FIXTURE_SETTINGS: JSON.stringify(settings) }),
       ...env,
@@ -219,18 +218,6 @@ test('~/ resolves from the home directory the run was given', () => {
   expect(lines(join(box.home, 'x.jsonl'))).toHaveLength(3);
 });
 
-test('~/ resolves from USERPROFILE on win32 when HOME is unset', () => {
-  const box = sandbox();
-  const result = run(
-    box,
-    ['log'],
-    { FIXTURE_HOST_ENV: JSON.stringify({ USERPROFILE: box.home }), FIXTURE_PLATFORM: 'win32' },
-    { file: '~/x.jsonl' },
-  );
-  expect(result).toEqual({ status: 0, stderr: '', stdout: '' });
-  expect(lines(join(box.home, 'x.jsonl'))).toHaveLength(3);
-});
-
 test('the darwin row resolves from HOME under Library/Logs', () => {
   const box = sandbox();
   run(box, ['log'], {
@@ -241,14 +228,13 @@ test('the darwin row resolves from HOME under Library/Logs', () => {
   expect(existsSync(box.file)).toBe(false);
 });
 
-test('the win32 row resolves from LOCALAPPDATA under the application and Logs', () => {
+test('win32 resolves from XDG_STATE_HOME as Linux does', () => {
   const box = sandbox();
-  const local = join(box.root, 'local');
   run(box, ['log'], {
-    FIXTURE_HOST_ENV: JSON.stringify({ HOME: box.home, LOCALAPPDATA: local }),
+    FIXTURE_HOST_ENV: JSON.stringify({ HOME: box.home, XDG_STATE_HOME: box.state }),
     FIXTURE_PLATFORM: 'win32',
   });
-  expect(lines(join(local, 'heimdall', 'Logs', 'heimdall.jsonl'))).toHaveLength(3);
+  expect(lines(box.file)).toHaveLength(3);
 });
 
 test.each([
@@ -481,21 +467,6 @@ test.each([
   const failure = '{"kind":"unresolved-directory","path":null,"variable":"HOME"}';
   expect(result).toEqual({ status: 0, stderr: '', stdout: `onError:${failure}\n` });
   expect(readdirSync(box.work)).toEqual([]);
-});
-
-test('~/ on win32 passes over a relative HOME to USERPROFILE', () => {
-  const box = sandbox();
-  const result = run(
-    box,
-    ['log'],
-    {
-      FIXTURE_HOST_ENV: JSON.stringify({ HOME: 'home', USERPROFILE: box.home }),
-      FIXTURE_PLATFORM: 'win32',
-    },
-    { file: '~/x.jsonl' },
-  );
-  expect(result).toEqual({ status: 0, stderr: '', stdout: '' });
-  expect(lines(join(box.home, 'x.jsonl'))).toHaveLength(3);
 });
 
 test('a rotation that fails reports it, and the record is still written', () => {

@@ -547,18 +547,6 @@ describe('refusing', () => {
     expect(loaded(box)).toEqual([]);
   });
 
-  it('names USERPROFILE on win32', () => {
-    const box = sandbox();
-    const result = run(box, ['skills', 'install'], {
-      env: { HOME: box.home, USERPROFILE: 'relative' },
-      platform: 'win32',
-    });
-    expect(result.status).toBe(1);
-    expect(lines(result.stderr)).toEqual([
-      'notes cannot find your home folder because USERPROFILE is not an absolute path. Set USERPROFILE to an absolute path, then run the command again.',
-    ]);
-  });
-
   it('names the variable the record lookup answers when HOME and XDG_STATE_HOME are relative', () => {
     const box = sandbox();
     const result = run(box, ['skills', 'install', '--agent', 'claude'], {

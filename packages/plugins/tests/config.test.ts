@@ -10,17 +10,15 @@ const fixture = new URL('fixtures/config-run.mjs', import.meta.url);
 const settingsFixture = new URL('fixtures/config-settings.mjs', import.meta.url);
 
 /**
- * One temporary workspace per test: a project directory the host's `cwd` points at, and one
- * directory for each home variable, `HOME` and `USERPROFILE`. The child's own working directory
- * is the temporary root, so a file the plugin finds was resolved against `host.cwd` and nothing
- * else.
+ * One temporary workspace per test: a project directory the host's `cwd` points at, and a home
+ * directory `HOME` points at. The child's own working directory is the temporary root, so a file
+ * the plugin finds was resolved against `host.cwd` and nothing else.
  */
 interface Workspace {
   readonly root: string;
   readonly project: string;
   readonly home: string;
-  readonly profile: string;
-  /** Runs the fixture with each home variable pointed at its own directory. */
+  /** Runs the fixture with `HOME` pointed at the home directory. */
   run(argv: string[], env?: Record<string, string | undefined>): ReturnType<typeof invoke>;
   /** Writes one file, creating its directories, and answers its path. */
   write(relative: string, content: string, base?: string): string;
@@ -30,19 +28,17 @@ function workspace(): Workspace {
   const root = mkdtempSync(join(tmpdir(), 'loom-config-'));
   const project = join(root, 'project');
   const home = join(root, 'home');
-  const profile = join(root, 'profile');
-  for (const directory of [project, home, profile]) {
+  for (const directory of [project, home]) {
     mkdirSync(directory);
   }
   return {
     home,
-    profile,
     project,
     root,
     run: (argv, env = {}) =>
       invoke(fixture, ['run', ...argv], {
         cwd: root,
-        env: { FIXTURE_CWD: project, HOME: home, USERPROFILE: profile, ...env },
+        env: { FIXTURE_CWD: project, HOME: home, ...env },
       }),
     write: (relative, content, base = project) => {
       const path = join(base, relative);
@@ -151,21 +147,17 @@ test(
 );
 
 test(
-  'the home directory is USERPROFILE on win32 and HOME elsewhere, and an unset, empty, or relative one is none',
+  'the home directory is HOME on every platform, and an unset, empty, or relative one is none',
   inWorkspace((space) => {
     space.write('.app.json', json({ title: 'home' }), space.home);
-    space.write('.app.json', json({ title: 'profile' }), space.profile);
     expect(received(space.run([]).stdout)).toMatchObject({ title: 'home' });
     expect(received(space.run([], { FIXTURE_PLATFORM: 'win32' }).stdout)).toMatchObject({
-      title: 'profile',
+      title: 'home',
     });
     // A relative home names a directory under the working directory, which the plugin never reads.
     space.write('home/.app.json', json({ title: 'relative' }));
     for (const home of [undefined, '', 'home']) {
       expect(received(space.run([], { HOME: home }).stdout)).toEqual(defaults);
-      expect(
-        received(space.run([], { FIXTURE_PLATFORM: 'win32', USERPROFILE: home }).stdout),
-      ).toEqual(defaults);
     }
   }),
 );
@@ -1063,7 +1055,7 @@ test.each([
 function invokedRoot(space: Workspace, values: unknown, env: Record<string, string> = {}): unknown {
   const result = invoke(fixture, ['invoke', JSON.stringify(values)], {
     cwd: space.root,
-    env: { FIXTURE_CWD: space.project, HOME: space.home, USERPROFILE: space.profile, ...env },
+    env: { FIXTURE_CWD: space.project, HOME: space.home, ...env },
   });
   expect(result).toMatchObject({ status: 0, stderr: '' });
   return JSON.parse(result.stdout);

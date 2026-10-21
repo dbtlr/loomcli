@@ -22,17 +22,9 @@ function defaultDirectory(application: string, destination: LogDestination): str
   return 'path' in lookup ? lookup.path : unresolved(lookup.variable);
 }
 
-/**
- * The home directory a `~/` path starts from: `HOME`, or `USERPROFILE` on `win32` without it, each
- * counting only when it is an absolute path.
- */
+/** The home directory a `~/` path starts from: `HOME` on every platform, when it is absolute. */
 function homeDirectory(destination: LogDestination): string | LoggingError {
-  const home = absoluteVariable(destination, 'HOME');
-  if (home !== undefined) {
-    return home;
-  }
-  const name = destination.platform === 'win32' ? 'USERPROFILE' : 'HOME';
-  return absoluteVariable(destination, name) ?? unresolved(name);
+  return absoluteVariable(destination, 'HOME') ?? unresolved('HOME');
 }
 
 const homePrefix = '~/';
