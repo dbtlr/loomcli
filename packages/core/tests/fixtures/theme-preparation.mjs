@@ -5,10 +5,10 @@ const invalid = override(DeclarationError, {
   render: (_failure, context) => `${context.style.issue('invalid')}\n`,
 });
 
-/** A hook that fails, which only the graph build meets. */
+/** A hook that rejects the Command with a declaration fault, which only the graph build meets. */
 const failing = plugin('failing', {
   onCommandAttach: () => {
-    throw new Error('The hook broke.');
+    throw new DeclarationError('The hook rejects the Command.');
   },
 });
 

@@ -15,12 +15,6 @@ function thrown(scenario: string): string {
 
 /** Each scenario's fault by the parts its rule's test pins; the layout goldens pin the rest. */
 const cases: Record<string, RuleParts> = {
-  'attach-hook-returns': {
-    correction: 'Return the value it received or a value derived from it.',
-    rule: 'broken-attach-hook',
-    sentence:
-      'Plugin "@acme/format" returned a value that is not the attached Command from onCommandAttach for Command "count".',
-  },
   'attach-hook-throws': {
     correction:
       'Return the value the hook received or a value derived from it, and throw only a DeclarationError from the hook.',
@@ -92,21 +86,6 @@ const cases: Record<string, RuleParts> = {
       'Declare a kebab-case code of lowercase letters and digits, such as "registry-down".',
     rule: 'failure-code',
     sentence: 'Failure class "RegistryDownError" declares failure code "Registry_Down".',
-  },
-  'failure-exit-code': {
-    correction: 'Declare a whole number from 1 through 125.',
-    rule: 'failure-exit-code',
-    sentence: 'Failure class "OffScaleError" declares exit code 200.',
-  },
-  'graph-hook-promise': {
-    correction: 'Return nothing from the hook; it judges the graph and cannot change it.',
-    rule: 'broken-graph-hook',
-    sentence: 'Plugin "@acme/mcp" returned a value from onGraphBuilt.',
-  },
-  'graph-hook-returns': {
-    correction: 'Return nothing from the hook; it judges the graph and cannot change it.',
-    rule: 'broken-graph-hook',
-    sentence: 'Plugin "@acme/mcp" returned a value from onGraphBuilt.',
   },
   'graph-hook-throws': {
     correction:
@@ -191,7 +170,7 @@ test.each(Object.entries(cases))('the %s fault throws its rule’s diagnostic', 
 });
 
 /** The rules core declares beside its defects that this family raises. */
-const fromCore = ['failure-code', 'failure-exit-code', 'rule-identity'];
+const fromCore = ['failure-code', 'rule-identity'];
 
 /** The rules of the input family this family raises too, which a hook's declarations collide on. */
 const fromInputs = ['option-declared-twice', 'spelling-taken'];

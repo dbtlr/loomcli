@@ -231,6 +231,19 @@ async function abandoning({ signal }) {
   await cancelled(signal);
 }
 
+/**
+ * An action that cancels the run, catches the rejection its own wait raises, and returns. The
+ * run stays cancelled, because a catch decides a failure's outcome and not the cancellation.
+ */
+async function catching({ out, signal }) {
+  controller.abort(callerReason);
+  try {
+    await after(20_000, undefined, { signal });
+  } catch {
+    await out.print('caught');
+  }
+}
+
 /** An action that runs to completion, for the scenarios that watch the listener bracket alone. */
 async function finishing({ out }) {
   await out.print(counts('during'));
@@ -291,7 +304,17 @@ async function flushing({ out }) {
   void out.print('ready');
 }
 
-const actions = { abandoning, absorbing, finishing, flushing, ignoring, racing, refusing, waiting };
+const actions = {
+  abandoning,
+  absorbing,
+  catching,
+  finishing,
+  flushing,
+  ignoring,
+  racing,
+  refusing,
+  waiting,
+};
 
 function application() {
   const declared = new Application('app', {

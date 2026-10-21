@@ -59,17 +59,17 @@ const extensionOutput = registerRule('@loomcli/core/extension-output', {
   headline: 'Extension output not plain data',
 });
 
-/** An `onCommandAttach` hook that threw or returned a value that is not the attached Command. */
+/** An `onCommandAttach` hook that threw something other than a `DeclarationError`. */
 const brokenAttachHook = registerRule('@loomcli/core/broken-attach-hook', {
   explanation:
-    "onCommandAttach receives each Command's declaration at graph build and returns it, or a value derived from it, synchronously and without throwing. Core builds the Command the hook returns, so a throw or any other value leaves it nothing to build.",
+    "onCommandAttach receives each Command's declaration at graph build and returns it, or a value derived from it, synchronously and without throwing. Core builds the Command the hook returns, so a throw leaves it nothing to build.",
   headline: 'Broken attach hook',
 });
 
-/** An `onGraphBuilt` hook that threw something other than a `DeclarationError`, or returned a value. */
+/** An `onGraphBuilt` hook that threw something other than a `DeclarationError`. */
 const brokenGraphHook = registerRule('@loomcli/core/broken-graph-hook', {
   explanation:
-    'onGraphBuilt receives the frozen graph once per build and judges it: it returns nothing, and it rejects the graph only by throwing a DeclarationError. Core reads no answer from the hook, so a returned value or any other throw is a defect in the hook.',
+    'onGraphBuilt receives the frozen graph once per build and judges it: it returns nothing, and it rejects the graph only by throwing a DeclarationError. Any other throw is a defect in the hook.',
   headline: 'Broken graph hook',
 });
 

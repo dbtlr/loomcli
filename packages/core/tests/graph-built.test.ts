@@ -69,22 +69,19 @@ test("a hook's DeclarationError prints as its own Developer Diagnostic in a deve
   );
 });
 
-test.each(['throws', 'returns', 'promise'])(
-  'a hook that %s reports broken-graph-hook with exit 1',
-  (kind) => {
-    const distributed: Record<string, Ran> = JSON.parse(report('broken'));
-    expect(distributed[kind]).toEqual({
-      exitCode: 1,
-      stderr: 'probe: Something went wrong.\n',
-      stdout: '',
-    });
-    const development: Record<string, Ran> = JSON.parse(report('broken', 'development'));
-    expect(development[kind]?.exitCode).toBe(1);
-    expect(development[kind]?.stderr).toMatch(
-      /^-- BROKEN GRAPH HOOK -+ @loomcli\/core\/broken-graph-hook\n/u,
-    );
-  },
-);
+test('a hook that throws reports broken-graph-hook with exit 1', () => {
+  const distributed: Ran = JSON.parse(report('broken'));
+  expect(distributed).toEqual({
+    exitCode: 1,
+    stderr: 'probe: Something went wrong.\n',
+    stdout: '',
+  });
+  const development: Ran = JSON.parse(report('broken', 'development'));
+  expect(development.exitCode).toBe(1);
+  expect(development.stderr).toMatch(
+    /^-- BROKEN GRAPH HOOK -+ @loomcli\/core\/broken-graph-hook\n/u,
+  );
+});
 
 test("a broken hook's fault keeps the value the hook threw as its cause", () => {
   expect(JSON.parse(report('cause'))).toEqual({ cause: true });

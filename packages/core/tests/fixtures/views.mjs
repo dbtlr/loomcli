@@ -178,7 +178,7 @@ function build() {
       return new Application('views').action(({ out }) => out.render('bare', lanes.print));
     }
     case 'render-then-failure': {
-      // The unawaited render fault is deferred; the action's own failure stays primary.
+      // The unawaited render fails after the action's own failure, which stays primary.
       return new Application('views').action(({ out }) => {
         out.render({ title: 'one' }, breaks);
         throw new InputError('Option "--file" is required. Supply a value.', []);

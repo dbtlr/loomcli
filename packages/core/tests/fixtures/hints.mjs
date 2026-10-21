@@ -68,34 +68,6 @@ const throwingConverter = {
   },
 };
 
-/** An error whose message cannot be read as a string, in each way a JavaScript author can write. */
-const unreadable = {
-  getter: () =>
-    Object.defineProperty(new Error('x'), 'message', {
-      get() {
-        throw new Error('The getter failed.');
-      },
-    }),
-  object: () =>
-    Object.defineProperty(new Error('x'), 'message', {
-      value: {
-        toString() {
-          throw new Error('The conversion failed.');
-        },
-      },
-    }),
-  proxy: () =>
-    new Proxy(
-      {},
-      {
-        getPrototypeOf() {
-          throw new Error('The trap failed.');
-        },
-      },
-    ),
-  symbol: () => Object.defineProperty(new Error('x'), 'message', { value: Symbol('message') }),
-};
-
 /**
  * A two-level graph: a group with a visible child, a hidden child, and an aliased child, and
  * options of each listing kind on the root and on the child, so a hook's candidates are visible.
@@ -176,18 +148,12 @@ function suggest(failure, { command, graph }) {
   return undefined;
 }
 
-/** A middleware that runs the rest of the chain, then misuses `next()` with a second call. */
-const twice = plugin('fixture/twice', {
-  middleware: {
-    activate: 'always',
-    load: async () => ({
-      default: async ({ next }) => {
-        await next().catch(() => undefined);
-        await next().catch(() => undefined);
-      },
-    }),
+/** A view that throws, which a render the action never awaited fails through after the action. */
+const breaking = {
+  render: () => {
+    throw new Error('The view broke.');
   },
-});
+};
 
 /** A validator that rejects every value, so a declared default fails before any token is read. */
 const refuses = {
@@ -198,44 +164,20 @@ const refuses = {
   },
 };
 
-/** An array whose own `filter` answers a list other than the one it holds. */
-class Lying extends Array {
-  filter() {
-    return [{ toString: () => 'from filter' }];
-  }
-}
-
-/** An array whose proxy answers a `filter` of its own, which core must never call. */
-function proxied(held) {
-  return new Proxy(held, {
-    get: (target, key, receiver) =>
-      key === 'filter' ? () => ['from filter'] : Reflect.get(target, key, receiver),
-  });
-}
-
 /** A reason holding a line break, then ESC, CR, and the line and paragraph separators. */
 const multiline = 'line one\nline two';
 const controls = [27, 13, 8232, 8233].map((code) => String.fromCodePoint(code)).join('');
 
-/** One scenario per unreadable error, each thrown by a broken hook beside a working one. */
-const unreadableScenarios = Object.fromEntries(
-  Object.entries(unreadable).map(([kind, raise]) => [
-    `broken-unreadable-${kind}`,
-    () =>
-      broken(() => {
-        throw raise();
-      }),
-  ]),
-);
-
 const scenarios = {
-  ...unreadableScenarios,
-  // The action fails, then a plugin's misused next() is reported after it.
+  // The action fails, then a render it never awaited is reported after it.
   'after-primary': () =>
     new Application('store', {
       description: 'The store application.',
-      plugins: [twice, hinting('fixture/one', (failure) => `hint for ${failure.name}`)],
-    }).action(({ out }) => out.fatal('The action failed.')),
+      plugins: [hinting('fixture/one', (failure) => `hint for ${failure.name}`)],
+    }).action(({ out }) => {
+      void out.render('late', breaking);
+      out.fatal('The action failed.');
+    }),
   // A JavaScript hook steps outside the contract and assigns the code, which core already read.
   'assigns-exit-code': () =>
     routed({
@@ -252,27 +194,14 @@ const scenarios = {
         }),
       ],
     }).action(dispatch),
-  'broken-array': () => broken(() => ['fine', 7]),
-  'broken-callable-thenable': () =>
-    // A function with a callable then is a thenable under Promises/A+, so the shape is the fixture.
-    // oxlint-disable-next-line unicorn/no-thenable
-    broken(() => Object.assign(() => undefined, { then: () => undefined })),
   'broken-controls': () =>
     broken(() => {
       throw new Error(`red${controls}end`);
     }),
-  'broken-hole': () =>
-    // Index 1 of three is never assigned, so the list holds a hole there.
-    broken(() => Object.assign([], { 0: 'a', 2: 'c' })),
-  'broken-lying-filter': () => broken(() => Lying.of(7)),
   'broken-multiline': () =>
     broken(() => {
       throw new Error(multiline);
     }),
-  'broken-number': () => broken(() => 7),
-  'broken-promise': () => broken(async () => 'late'),
-  'broken-proxied': () => broken(() => proxied([7])),
-  'broken-rejecting': () => broken(() => Promise.reject(new Error('Rejected late.'))),
   'broken-throws': () =>
     broken(() => {
       throw new Error('Cannot suggest.');
@@ -293,16 +222,6 @@ const scenarios = {
         override(UsageError, {
           render: () => {
             throw new Error(multiline);
-          },
-        }),
-      ],
-    }).action(dispatch),
-  'broken-view-unreadable': () =>
-    routed({
-      views: [
-        override(UsageError, {
-          render: () => {
-            throw unreadable.getter();
           },
         }),
       ],
@@ -390,7 +309,6 @@ const scenarios = {
           })
           .action(dispatch),
       ),
-  'lying-filter': () => broken(() => Lying.of('held')),
   'marked-hint': () =>
     routed({
       plugins: [hinting('fixture/one', (_failure, { style }) => `plain ${style.bold('bold')}`)],
@@ -406,7 +324,6 @@ const scenarios = {
       views: [override(UsageError, bracketed)],
     }).action(dispatch),
   plain: () => routed().action(dispatch),
-  proxied: () => broken(() => proxied(['held'])),
   // A middleware and the hook read the same graph, built once for the run.
   'shared-graph': () => {
     let seen = null;
@@ -441,16 +358,6 @@ const scenarios = {
           options: { help: { type: 'boolean' } },
         }),
         hinting('fixture/one', () => 'never'),
-      ],
-    }).action(dispatch),
-  'two-broken': () =>
-    routed({
-      plugins: [
-        hinting('fixture/first', () => {
-          throw new Error('First failed.');
-        }),
-        hinting('fixture/fine', () => 'still here'),
-        hinting('fixture/second', () => 7),
       ],
     }).action(dispatch),
   'two-plugins': () =>

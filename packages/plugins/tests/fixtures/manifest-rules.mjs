@@ -160,7 +160,7 @@ function outcome() {
 }
 
 /** The cases that construct a class through core rather than declaring a value. */
-const constructed = { 'core-bad-code': BadCodeError, 'core-reserved': ReservedError };
+const constructed = { 'core-bad-code': BadCodeError };
 
 process.stdout.write(
   `${JSON.stringify(name in constructed ? coreConstructed(constructed[name]) : outcome())}\n`,

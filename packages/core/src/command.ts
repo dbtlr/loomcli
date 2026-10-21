@@ -1274,8 +1274,6 @@ interface AttachState {
   registry: ReadonlyMap<string, AdmittedDescriptor>;
   hasAction: boolean;
   identity: string;
-  /** The token one Command's own build mints, which every value derived within it carries. */
-  lineage: object;
   path: readonly string[];
   /** The Command a diagnostic about one of its extension values names. */
   subject: ExtensionSubject;
@@ -1477,22 +1475,18 @@ function callHook(
 }
 
 /**
- * One plugin's hook over one Command, which answers with the declaration the hook returned. The
- * returned value has to carry the lineage token of the value the hook received, so the surface of
- * another Command, or of one an earlier build made, never replays its calls onto this Command.
+ * One plugin's hook over one Command, which answers with the declaration the hook returned. A
+ * returned value core never built has no declaration to read, which the hook's type already
+ * rejects, so it meets the same `TypeError` a missing property would.
  */
 function attachOnce(
   value: AttachedCommand,
   hook: CommandAttachHook,
-  named: { identity: string; lineage: object; subject: string },
+  named: { identity: string; subject: string },
 ): AttachState {
   const state = attachments.get(callHook(value, hook, named));
-  if (!state || state.lineage !== named.lineage) {
-    throw new DeclarationError(brokenAttachHook, {
-      correction: 'Return the value it received or a value derived from it.',
-      findings: [hookFinding(named.identity, hook)],
-      sentence: `Plugin ${quoted(named.identity)} returned a value that is not the attached Command from onCommandAttach for ${named.subject}.`,
-    });
+  if (state === undefined) {
+    throw new TypeError('onCommandAttach returned a value that is not an attached Command.');
   }
   return state;
 }
@@ -1503,19 +1497,18 @@ function attachOnce(
  */
 function runAttachHooks(
   start: Pick<AttachState, 'declared' | 'extensions' | 'registry'> & { layer: ExtensionSubject },
-  facts: { hasAction: boolean; lineage: object; path: readonly string[] },
+  facts: { hasAction: boolean; path: readonly string[] },
   plugins: readonly BuiltPlugin[],
 ): AttachProgress {
   const { declared, extensions, layer, registry } = start;
   const subject = commandSubject(declared.name);
-  const { lineage } = facts;
   let progress: AttachProgress = { calls: [], declared, extensions, registry };
   for (const installed of plugins) {
     const hook = installed.onCommandAttach;
     if (hook) {
       const identity = installed.identity;
       const value = new AttachedCommandValue({ ...progress, ...facts, identity, subject: layer });
-      const state = attachOnce(value, hook, { identity, lineage, subject });
+      const state = attachOnce(value, hook, { identity, subject });
       progress = {
         calls: state.calls,
         declared: state.declared,
@@ -1957,11 +1950,9 @@ export function buildCommand<Args, Options, Globals>(
    * The hooks run once the author's declaration is complete, and each value a hook receives resolves
    * its result, so a hook reads an exact record. Every rule below reads what the hooks returned.
    */
-  // One token per Command per build, which binds a hook's return to the value it received.
-  const lineage = {};
   const progress = runAttachHooks(
     { declared: state, extensions: state.extensions, layer, registry: context.descriptors },
-    { hasAction, lineage, path: context.path },
+    { hasAction, path: context.path },
     context.plugins,
   );
   const { calls } = progress;
@@ -2393,8 +2384,8 @@ export interface DispatchInvocation {
   /** Offers a configuration source's foreign throw to the translators where its call settles. */
   offer: (thrown: unknown) => LoomError | undefined;
   signal: AbortSignal;
-  /** The channel a configuration source writes through, whose results call names the source. */
-  sourceOut: Out<OpenResult>;
+  /** The channel a configuration source writes through. */
+  out: Out<OpenResult>;
   style: ContextualStyle;
 }
 
@@ -2549,7 +2540,7 @@ async function fillScope(
         : undefined,
     log: invocation.logFor,
     offer: invocation.offer,
-    out: invocation.sourceOut,
+    out: invocation.out,
     plugins: graph.globals.plugins,
     request: (input, global) =>
       requestNode(invocation.inspected(), routed.path, { global, name: input.name }),

@@ -3,7 +3,6 @@ import { asSentence, DeclarationError, quoted, reasonOf } from './errors.js';
 import type { CommandGraph } from './inspect.js';
 import { brokenGraphHook } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
-import { ignoreRejection, isThenable } from './thenable.js';
 import type { GraphBuiltHook } from './types.js';
 
 /** The finding for the hook one plugin declared, as `plugin(identity, { onGraphBuilt })`. */
@@ -26,41 +25,21 @@ function threwFault(identity: string, hook: GraphBuiltHook, error: unknown): Dec
 }
 
 /**
- * The fault a hook that returned a value is. A returned promise is handed a rejection handler, so
- * its outcome never surfaces as an unhandled rejection.
- */
-function returnedFault(
-  identity: string,
-  hook: GraphBuiltHook,
-  returned: unknown,
-): DeclarationError {
-  if (isThenable(returned)) {
-    ignoreRejection(returned);
-  }
-  return new DeclarationError(brokenGraphHook, {
-    correction: 'Return nothing from the hook; it judges the graph and cannot change it.',
-    findings: [hookFinding(identity, hook)],
-    sentence: `Plugin ${quoted(identity)} returned a value from onGraphBuilt.`,
-  });
-}
-
-/**
  * One plugin's judgment of the graph, or nothing when the hook accepts it. A `DeclarationError` the
- * hook throws is its rejection and reports as itself. Any other throw, and any returned value, is
- * the hook's own defect.
+ * hook throws is its rejection and reports as itself. Any other throw is the hook's own defect,
+ * which names the plugin.
  */
 function judgeOnce(
   graph: CommandGraph,
   hook: GraphBuiltHook,
   identity: string,
 ): DeclarationError | undefined {
-  let returned: unknown = undefined;
   try {
-    returned = hook(graph);
+    hook(graph);
   } catch (error) {
     return error instanceof DeclarationError ? error : threwFault(identity, hook, error);
   }
-  return returned === undefined ? undefined : returnedFault(identity, hook, returned);
+  return undefined;
 }
 
 /**

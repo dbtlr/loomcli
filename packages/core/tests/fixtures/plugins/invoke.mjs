@@ -181,6 +181,10 @@ function application() {
           .next()
           .catch((error) => out.info(`misuse:${error.sentence ?? error.message}`));
       }
+      if (process.env.LOOM_FIXTURE_MISUSE === 'late') {
+        const module = await import('./modules/misuse.mjs');
+        await module.stashed.late;
+      }
       if (process.env.LOOM_FIXTURE_ACTION === 'fatal') {
         out.fatal('the action stopped the invocation');
       }
@@ -193,8 +197,10 @@ function application() {
     });
   // A group answers no invocation of its own, so the callable check is what rejects it.
   // Core holds that fault and raises it at the dispatch boundary, so a takeover swallows it.
-  const cache = new Command('cache').command(
-    new Command('clear').action(({ out }) => out.print('cleared')),
+  const cache = new Command('cache', { description: 'Manage the cache.' }).command(
+    new Command('clear', { description: 'Clear the cache.' }).action(({ out }) =>
+      out.print('cleared'),
+    ),
   );
   return new Application('app', {
     description: 'A fixture application.',
@@ -223,6 +229,9 @@ if (mode === 'inspect') {
   const first = await app.run({ host: { argv } });
   const second = await app.run({ host: { argv } });
   process.stdout.write(`resolved:${first}:${second}\n`);
+} else if (mode === 'development') {
+  const code = await application().run({ host: { argv, release: { build: 'development' } } });
+  process.stdout.write(`resolved:${code}\n`);
 } else {
   const code = await application().run({ host: { argv, release: { build: 'distributed' } } });
   process.stdout.write(`resolved:${code}\n`);

@@ -145,7 +145,7 @@ test('a core declaration fault no call declared reports from run() with no findi
 });
 
 test("a defect prints its sentence, the thrown value's source and stack, then the rule's explanation and correction", () => {
-  const result = invoke(new URL('fixtures/translators.mjs', import.meta.url), ['broken-string'], {
+  const result = invoke(new URL('fixtures/translators.mjs', import.meta.url), ['broken-throws'], {
     env: { FIXTURE_BUILD: 'development' },
   });
   expect(result.status).toBe(1);
@@ -153,34 +153,35 @@ test("a defect prints its sentence, the thrown value's source and stack, then th
   const framed = result.stderr.replaceAll(/(?:^ {4}at .+\n)+/gmu, '    at …\n');
   // Node reports the throw's column at `new` and Bun at the class name, so the golden reads the
   // Column the runtime reported and pins the caret beneath it.
-  const column = Number(/translators\.mjs:67:(?<column>\d+)$/mu.exec(framed)?.groups?.column);
+  const column = Number(/translators\.mjs:146:(?<column>\d+)$/mu.exec(framed)?.groups?.column);
   expect(column).toBeGreaterThan(0);
   const stderr = framed
-    .replace(`translators.mjs:67:${column}`, 'translators.mjs:67:9')
-    .replace(`     | ${' '.repeat(column - 1)}^\n`, `     | ${' '.repeat(8)}^\n`);
+    .replace(`translators.mjs:146:${column}`, 'translators.mjs:146:9')
+    .replace(`      | ${' '.repeat(column - 1)}^\n`, `      | ${' '.repeat(8)}^\n`);
   expect(stderr).toBe(
     [
-      '-- BROKEN TRANSLATOR --------------------------- @loomcli/core/broken-translator',
+      '-- UNHANDLED EXCEPTION ----------------------------- @loomcli/core/foreign-throw',
       '',
-      'The translator the Application registered for "SyntaxError" returned a string instead of a failure.',
+      'The translator failed.',
       '',
-      'packages/core/tests/fixtures/translators.mjs:67:9',
+      'packages/core/tests/fixtures/translators.mjs:146:9',
       '',
-      '  65 |',
-      '  66 | const foreign = () => {',
-      "> 67 |   throw new SyntaxError('Unexpected token.');",
-      '     |         ^',
-      '  68 | };',
-      '  69 |',
+      "  144 | /** A translator that throws, which is a foreign throw from the author's code. */",
+      '  145 | const throwingTranslator = () => {',
+      "> 146 |   throw new Error('The translator failed.');",
+      '      |         ^',
+      '  147 | };',
+      '  148 |',
       '',
-      'SyntaxError: Unexpected token.',
+      'Error: The translator failed.',
       '    at …',
       '',
-      'A translator turns a foreign throw into a failure synchronously. A throw, or any',
-      'answer other than a failure or undefined, leaves core no failure to report, so',
-      'it consults no later translator.',
+      'Core reports a value that an action, a middleware, a configuration source, a',
+      "view, a translator, or a plugin's hook threw, and that no translator answered,",
+      'as a defect, because only the author knows what it means. A distributed build',
+      'shows the operator one generic message in its place.',
       '',
-      'Return a failure, or undefined to pass, and throw nothing from the translator.',
+      'Catch the error where it is thrown and throw a failure class, such as FatalError, with a sentence the operator can act on.',
       '',
     ].join('\n'),
   );

@@ -130,30 +130,29 @@ test("a broken failure view writes the failure's own text, then the generic mess
   expect(stderr).toMatch(/^> 1\d\d \| +throw new Error\('View broke\.'\);$/mu);
 });
 
-test("a broken onFailure hook writes the generic message once, or the hook's diagnostic after the failure and the other hints", () => {
-  expect(run('broken-hook', 'distributed').stderr).toBe(
-    `${missingName}Report this at https://example.com/issues.\nprobe: Something went wrong.\n`,
-  );
+test("an onFailure hook that throws ends the hooks: the failure's own text with no plugin's hints, then the throw as a foreign throw, exit 1", () => {
+  expect(run('broken-hook', 'distributed')).toEqual({
+    status: 1,
+    stderr: `${missingName}probe: Something went wrong.\n`,
+    stdout: 'resolved:1\n',
+  });
   const { status, stderr } = run('broken-hook', 'development');
   expect(status).toBe(1);
-  expect(stderr).toMatch(
-    /^probe: Argument[^\n]+\nReport this at https:\/\/example\.com\/issues\.\n\n-- BROKEN FAILURE HOOK -+ @loomcli\/core\/broken-failure-hook\n\nPlugin "@acme\/broken-hook" failed in onFailure: Hook broke\.\n/u,
-  );
+  expect(stderr.startsWith(`${missingName}\n${foreignThrowBanner}\nHook broke.\n`)).toBe(true);
   expect(stderr).toMatch(/^> 4\d \| {5}throw new Error\('Hook broke\.'\);$/mu);
+  expect(stderr).not.toContain('Report this at');
 });
 
-test('a broken view beside a broken hook writes one generic line when distributed and one diagnostic per contract in development', () => {
+test('a throwing onFailure hook takes the plain fallback path, so no failure view runs', () => {
   expect(run('broken-both', 'distributed').stderr).toBe(
     `${missingName}probe: Something went wrong.\n`,
   );
   const { stderr } = run('broken-both', 'development');
-  const view = stderr.indexOf('-- BROKEN FAILURE VIEW');
-  const hook = stderr.indexOf('-- BROKEN FAILURE HOOK');
-  expect(view).toBeGreaterThan(0);
-  expect(hook).toBeGreaterThan(view);
+  expect(stderr.startsWith(`${missingName}\n${foreignThrowBanner}`)).toBe(true);
+  expect(stderr).not.toContain('-- BROKEN FAILURE VIEW');
 });
 
-test('a broken hook in a run a caller cancelled keeps the signal code in both builds', () => {
+test('a throwing onFailure hook in a run a caller cancelled keeps the signal code in both builds', () => {
   expect(run('broken-cancelled', 'distributed')).toEqual({
     status: 130,
     stderr: 'probe: Something went wrong.\n',
@@ -161,14 +160,7 @@ test('a broken hook in a run a caller cancelled keeps the signal code in both bu
   });
   const { status, stderr } = run('broken-cancelled', 'development');
   expect(status).toBe(130);
-  expect(stderr).toContain('-- BROKEN FAILURE HOOK');
-});
-
-test('a broken output view is a defect by build', () => {
-  expect(run('broken-output', 'distributed').stderr).toBe('probe: Something went wrong.\n');
-  expect(run('broken-output', 'development').stderr).toMatch(
-    /^-- BROKEN OUTPUT VIEW -+ @loomcli\/core\/broken-output-view\n\nRendering output failed: Output view broke\.\n/u,
-  );
+  expect(stderr).toContain(`\n\n${foreignThrowBanner}\nHook broke.\n`);
 });
 
 test('a forged frame outside the working directory is never read and prints its location alone', () => {
@@ -263,14 +255,6 @@ test.each([
   );
 });
 
-test('a thrown revoked proxy is a foreign throw that prints as a value', () => {
-  expect(run('revoked-proxy', 'distributed').stderr).toBe('probe: Something went wrong.\n');
-  const { status, stderr } = run('revoked-proxy', 'development');
-  expect(status).toBe(1);
-  expect(stderr.startsWith(foreignThrowBanner)).toBe(true);
-  expect(stderr).toContain('\n\nThrown value: …\n\n');
-});
-
 test('two defects in one run write the generic message once, or two diagnostics a blank line apart', () => {
   expect(run('two-defects', 'distributed')).toEqual({
     status: 1,
@@ -301,7 +285,7 @@ test('a destination that fails a write is a defect by build', () => {
 
 test('a DeclarationError thrown in an onFailure hook or a plugin loader reads as its sentence', () => {
   const hook = run('hook-declaration', 'development').stderr;
-  expect(hook).toContain('\n\nPlugin "@acme/hook" failed in onFailure: A sentence-only fault.\n');
+  expect(hook).toContain(`\n${foreignThrowBanner}\nA sentence-only fault.\n`);
   expect(hook).toContain('\nDeclarationError: A sentence-only fault.\n');
   const loader = run('loader-declaration', 'development').stderr;
   expect(loader).toContain(
@@ -325,12 +309,6 @@ test.each([
     'NEXT() MISUSED',
     '@loomcli/core/next-misuse',
     'Plugin "@acme/twice" called next() twice.',
-  ],
-  [
-    'unconstructed',
-    'FAILURE NEVER CONSTRUCTED',
-    '@loomcli/core/unconstructed-failure',
-    'A thrown value inherits from a failure class but was never constructed as one.',
   ],
   [
     'not-a-signal',

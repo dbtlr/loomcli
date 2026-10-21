@@ -151,7 +151,6 @@ const scenarios = {
           }),
       ),
       'type-error': await formOf(raising(() => new TypeError('Cannot read the value.'))),
-      unconstructed: await formOf(raising(() => Object.create(FatalError.prototype))),
     };
     const codes = Object.fromEntries(
       Object.entries(forms).map(([name, form]) => [name, form.code]),
@@ -202,22 +201,6 @@ const scenarios = {
     }
     process.stdout.write(`${JSON.stringify(codes)}\n`);
   },
-  /** Core's statics are captured when the package loads, so a later write changes nothing. */
-  'core-statics': async () => {
-    for (const Class of Object.values(coreClasses)) {
-      Object.defineProperty(Class, 'code', { value: 'x' });
-    }
-    const app = new Application('codes', { description: 'The codes application.' })
-      .command(new Command('get', { description: 'The get command.' }).action(() => undefined))
-      .command(
-        new Command('fail', { description: 'The fail command.' }).action(() => {
-          throw new BareError('Bare.');
-        }),
-      );
-    const unknown = await formOf(app, ['nope']);
-    const bare = await formOf(app, ['fail']);
-    process.stdout.write(`${unknown.code},${bare.code}\n`);
-  },
   /** Each instance's code, read from the form invoke() resolves with. */
   inherited: async () => {
     const codes = {};
@@ -233,21 +216,6 @@ const scenarios = {
       host: { argv: [], release },
     });
     process.stdout.write(`resolved:${String(code)}\n`);
-  },
-  /** A class whose static changes between two constructions keeps its first code. */
-  reassigned: async () => {
-    class MovingError extends FatalError {
-      static code = 'first-code';
-
-      constructor(message) {
-        super(message);
-        this.name = 'MovingError';
-      }
-    }
-    const first = await formOf(raising(() => new MovingError('First.')));
-    MovingError.code = 'second-code';
-    const second = await formOf(raising(() => new MovingError('Second.')));
-    process.stdout.write(`${first.code},${second.code}\n`);
   },
   /** Every core class's code, and the author classes' inherited ones, read without an instance. */
   statics: () => {

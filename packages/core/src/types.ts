@@ -208,7 +208,7 @@ export type NameConstraint<Name extends string, Whole extends string = Name> =
       : LiteralNameFault;
 
 /** The status `run()` resolves: success, a failure class's code, or a cancellation code. */
-export type ExitCode = 0 | FailureExitCode | 130 | 143;
+export type ExitCode = 0 | FailureExitCode | 130 | 141 | 143;
 export interface InputTerminal {
   isTTY: boolean;
 }
@@ -951,7 +951,7 @@ export type InvocationOutcome<Mapped = LoomError> =
       readonly output: string;
       readonly messages: string;
     }
-  | { readonly status: 'cancelled'; readonly exitCode: 130 | 143 };
+  | { readonly status: 'cancelled'; readonly exitCode: 130 | 141 | 143 };
 
 /**
  * What an action receives. `graph` is the frozen graph `inspect()` returns for this run, and

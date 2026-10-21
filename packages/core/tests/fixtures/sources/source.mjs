@@ -55,15 +55,12 @@ const source = async ({ graph, host, options, out, requests, style }) => {
       },
     ]);
   }
-  if (mode === 'results') {
-    await out.results('x');
-  }
   if (mode === 'fatal') {
     out.fatal('the source gave up');
   }
   if (mode === 'result-error') {
-    // A ResultError the source built itself is not the fault of its own out.results() call.
-    throw new ResultError('middleware', ['bogus']);
+    // A ResultError the source built itself reports as itself.
+    throw new ResultError('repeated', ['bogus']);
   }
   if (mode === 'declared') {
     throw new RegistryUnavailableError();

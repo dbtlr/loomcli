@@ -30,6 +30,14 @@ test('a caller abort during a run resolves 130 with the caller as its source', (
   });
 });
 
+test('an action that catches the cancellation and returns still resolves the signal code', () => {
+  expect(run('caller-abort', { LOOM_FIXTURE_ACTION: 'catching' })).toEqual({
+    status: 130,
+    stderr: '',
+    stdout: 'before:0:0\ncaught\nafter:0:0\nresolved:130\n',
+  });
+});
+
 test('a cancelled run with an unemitted result resolves the signal code and reports nothing', () => {
   // An action that reads its signal and returns is the sanctioned path, so it owes no result.
   expect(run('result-unemitted', { LOOM_FIXTURE_ACTION: 'abandoning' })).toEqual({

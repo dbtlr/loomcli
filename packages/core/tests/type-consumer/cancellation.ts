@@ -5,6 +5,7 @@ const cancellable = new Application('cancellable').action(({ signal }) => signal
 
 // The reason core owns is published, so a middleware reads `source` under a type of its own.
 const source: CancellationReason['source'] = 'SIGTERM';
+const closed: CancellationReason['source'] = 'closed-pipe';
 
 // A caller-owned signal cancels the run, and `run()` still resolves an `ExitCode`.
 const controller = new AbortController();
@@ -34,6 +35,9 @@ function describe(status: ExitCode): string {
     case 130: {
       return 'cancelled';
     }
+    case 141: {
+      return 'closed pipe';
+    }
     case 143: {
       return 'terminated';
     }
@@ -47,5 +51,6 @@ function describe(status: ExitCode): string {
 void resolved;
 void hangup;
 void source;
+void closed;
 
 export { describe, signals };

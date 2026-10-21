@@ -97,12 +97,12 @@ function sequencing(emit, source, translators = [answering(SyntaxError, 'applica
     .action(({ out }) => emit(out.results(source())));
 }
 
-/** What a write to a closed pipe fails with, as `write EPIPE` does. */
-class PipeError extends Error {
+/** What a write to a full disk fails with, as `write ENOSPC` does. */
+class DiskError extends Error {
   constructor() {
-    super('write EPIPE');
-    this.name = 'PipeError';
-    this.code = 'EPIPE';
+    super('write ENOSPC');
+    this.name = 'DiskError';
+    this.code = 'ENOSPC';
   }
 }
 
@@ -141,29 +141,10 @@ function ending(action, options = {}) {
   }).action(action);
 }
 
-/** Each broken translator, keyed by the scenario that registers it. */
-const brokenTranslators = {
-  'broken-promise': () => Promise.reject(new Error('The promise rejected.')),
-  'broken-string': () => 'text',
-  'broken-throws': () => {
-    throw new Error('The translator failed.');
-  },
-  'broken-unconstructed': () => Object.create(FatalError.prototype),
+/** A translator that throws, which is a foreign throw from the author's code. */
+const throwingTranslator = () => {
+  throw new Error('The translator failed.');
 };
-
-/** A thrown `SyntaxError` whose prototype trap throws on every read after its first. */
-function closingProxy() {
-  let reads = 0;
-  return new Proxy(new SyntaxError('Unexpected token.'), {
-    getPrototypeOf(target) {
-      reads += 1;
-      if (reads > 1) {
-        throw new Error('The trap closed.');
-      }
-      return Reflect.getPrototypeOf(target);
-    },
-  });
-}
 
 /** An Error whose `name` getter throws. */
 function unnamed() {
@@ -175,15 +156,6 @@ function unnamed() {
   });
   return error;
 }
-
-/** A `SyntaxError` subclass whose class name holds a bidirectional control. */
-class EscapedError extends SyntaxError {
-  constructor(message) {
-    super(message);
-    this.name = 'EscapedError';
-  }
-}
-Object.defineProperty(EscapedError, 'name', { value: 'Escaped‮Error' });
 
 /** The throw each reach case raises, where it is raised, with the catch-all registered. */
 const unreached = {
@@ -209,13 +181,6 @@ const unreached = {
       () => {
         controller.abort();
         throw unnamed();
-      },
-      { translators: [catchAll] },
-    ),
-  'closing-proxy': () =>
-    ending(
-      () => {
-        throw closingProxy();
       },
       { translators: [catchAll] },
     ),
@@ -368,20 +333,12 @@ const defectThrows = {
   translator: new Error('The translator failed.'),
 };
 
-/** A hook that reports how the broken-translator defect's cause holds the two throws. */
+/** A hook that reports which throw the throwing translator's defect carries as its cause. */
 const defectCauseReader = plugin('@fixture/defect-cause', {
   onFailure: (failure) => {
     const { cause } = failure;
-    if (cause === defectThrows.original) {
-      calls.push('cause:original');
-    } else if (cause instanceof AggregateError) {
-      const [first, second, ...rest] = cause.errors;
-      const exact =
-        first === defectThrows.translator && second === defectThrows.original && rest.length === 0;
-      calls.push(`cause:AggregateError:${exact ? 'translator,original' : 'other'}`);
-    } else {
-      calls.push('cause:other');
-    }
+    const kept = Object.entries(defectThrows).find(([, thrown]) => thrown === cause);
+    calls.push(`cause:${kept === undefined ? 'other' : kept[0]}`);
     return undefined;
   },
 });
@@ -401,10 +358,10 @@ function build() {
   if (scenario in unreached) {
     return unreached[scenario]();
   }
-  if (scenario in brokenTranslators) {
+  if (scenario === 'broken-throws') {
     return ending(foreign, {
       plugins: [contributing('@fixture/later', [answering(SyntaxError, 'later')])],
-      translators: [translate(SyntaxError, brokenTranslators[scenario])],
+      translators: [translate(SyntaxError, throwingTranslator)],
     });
   }
   switch (scenario) {
@@ -500,28 +457,10 @@ function build() {
         translators: [passing(SyntaxError, 'application')],
       });
     }
-    case 'broken-escaped': {
-      return ending(
-        () => {
-          throw new EscapedError('Unexpected token.');
-        },
-        {
-          translators: [
-            translate(EscapedError, () => {
-              throw new Error('The translator failed\r\nforged\u202eline');
-            }),
-          ],
-        },
-      );
-    }
     case 'broken-plugin': {
       return ending(foreign, {
         plugins: [
-          contributing('@fixture/broken', [
-            translate(SyntaxError, () => {
-              throw new Error('The translator failed.');
-            }),
-          ]),
+          contributing('@fixture/broken', [translate(SyntaxError, throwingTranslator)]),
           contributing('@fixture/later', [answering(SyntaxError, 'later')]),
         ],
       });
@@ -544,9 +483,6 @@ function build() {
       return defectCause(() => {
         throw defectThrows.translator;
       });
-    }
-    case 'defect-cause-returned': {
-      return defectCause(() => 'text');
     }
     case 'sequence': {
       return new Application('translators', {
@@ -578,7 +514,7 @@ function build() {
           void pending;
         },
         brokenRows,
-        [translate(SyntaxError, brokenTranslators['broken-throws'])],
+        [translate(SyntaxError, throwingTranslator)],
       );
     }
     case 'sequence-undefined': {
@@ -598,14 +534,14 @@ function build() {
     case 'destination': {
       stdout = new Writable({
         write(chunk, encoding, callback) {
-          callback(new PipeError());
+          callback(new DiskError());
         },
       });
       return ending(
         async ({ out }) => {
           await out.print('lost');
         },
-        { translators: [answering(PipeError, 'application')] },
+        { translators: [answering(DiskError, 'application')] },
       );
     }
     default: {

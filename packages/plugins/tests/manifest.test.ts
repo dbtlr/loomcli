@@ -54,6 +54,7 @@ const exitCodes = {
   '0': 'Successful execution and core output',
   '1': 'Expected action failure, internal failure, or invalid declarations',
   '130': "Cancelled by SIGINT, a caller-supplied abort, or the action's cancel()",
+  '141': 'Stopped because the reader of stdout closed the pipe',
   '143': 'Cancelled by SIGTERM',
   '2': 'Invalid invocation inputs',
 };

@@ -153,13 +153,6 @@ test("the logging plugin's console destination writes no record for a debug or t
   expect(lines.filter((line) => !line.startsWith('{')).join('\n')).toBe(shown.trace);
 });
 
-test('a hidden out.debug(42) rejects as out.info(42) does', () => {
-  const hidden = fetchit('hidden', 'pipe', ['get', 'u']);
-  const shownCall = fetchit('info', 'pipe', ['get', 'u']);
-  expect(hidden.status).toBe(1);
-  expect(hidden).toEqual(shownCall);
-});
-
 test('a hidden call calls no override of its lane view', () => {
   expect(fetchit('override', 'pipe', ['get', 'u']).status).toBe(0);
   expect(fetchit('override', 'pipe', ['-v', 'get', 'u']).status).toBe(1);

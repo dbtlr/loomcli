@@ -84,53 +84,46 @@ test('app.invoke passes a null stderr and the env its host replaced', () => {
   expect(written).toBe('fixture/first:root\nfixture/second:root\n');
 });
 
-const broken = [
-  ['throws-on-event', 'Cannot observe.'],
-  ['returns-true', 'The hook returned a value.'],
-  ['returns-promise', 'The hook returned a promise.'],
-] as const;
+/** The opening of the Developer Diagnostic a hook's first throw reports. */
+const hookThrow = /^-- UNHANDLED EXCEPTION -+ @loomcli\/core\/foreign-throw\n\nCannot observe\.\n/u;
 
-test.each(broken)(
-  'a hook that %s is reported once, receives no later event, and turns exit 0 into 1',
-  (scenario, reason) => {
-    const developed = run(scenario, 'development');
-    expect(developed.calls).toBe(1);
-    expect(developed.fine).toEqual(['one', 'two']);
-    expect(developed.resolved).toBe('1');
-    expect(developed.written).toMatch(
-      /^-- BROKEN LOG HOOK -+ @loomcli\/core\/broken-log-hook\n\nPlugin "fixture\/broken" failed in onLog: /u,
-    );
-    expect(developed.written).toContain(`Plugin "fixture/broken" failed in onLog: ${reason}\n`);
-    expect(developed.written.match(/failed in onLog/gu)).toHaveLength(1);
-    const distributed = run(scenario, 'distributed');
-    expect(distributed.calls).toBe(1);
-    expect(distributed.fine).toEqual(['one', 'two']);
-    expect(distributed.resolved).toBe('1');
-    expect(distributed.written).toBe('probe: Something went wrong.\n');
-  },
-);
+test('a hook that throws is still called for every later event, and its first throw is one defect that turns exit 0 into 1', () => {
+  const developed = run('throws-on-event', 'development');
+  // The hook receives both events and the fatal event its own report logs.
+  expect(developed.calls).toBe(3);
+  expect(developed.fine).toEqual(['one', 'two', 'Cannot observe.']);
+  expect(developed.resolved).toBe('1');
+  expect(developed.written).toMatch(hookThrow);
+  expect(developed.written.match(/^-- /gmu)).toHaveLength(1);
+  const distributed = run('throws-on-event', 'distributed');
+  expect(distributed.calls).toBe(3);
+  expect(distributed.resolved).toBe('1');
+  expect(distributed.written).toBe('probe: Something went wrong.\n');
+});
 
-test('a stdout that fails and a hook that breaks write two diagnostics with one blank line between', () => {
+test('a stdout that fails and a hook that throws write two diagnostics with one blank line between', () => {
   const result = run('stdout-and-hook-broken', 'development');
   expect(result.resolved).toBe('1');
-  expect(result.written).toMatch(/\n\n-- BROKEN LOG HOOK -+ @loomcli\/core\/broken-log-hook\n/u);
+  expect(result.written).toMatch(hookThrow);
+  expect(result.written).toMatch(
+    /\n\n-- BROKEN DESTINATION -+ @loomcli\/core\/broken-destination\n/u,
+  );
 });
 
-test('a broken hook in a run a caller cancelled keeps 130 and still writes the report', () => {
+test('a throwing hook in a run a caller cancelled keeps 130 and still writes the report', () => {
   const result = run('cancelled-broken', 'development');
   expect(result.resolved).toBe('130');
-  expect(result.calls).toBe(1);
-  expect(result.fine).toEqual(['one', 'two']);
-  expect(result.written).toContain('Plugin "fixture/broken" failed in onLog: Cannot observe.\n');
+  expect(result.fine).toEqual(['one', 'two', 'Cannot observe.']);
+  expect(result.written).toMatch(hookThrow);
 });
 
-test('a hook that throws on the fatal event is reported once and the run logs no further event', () => {
+test("a hook that throws on the fatal event is reported once, and its throw on its own report's event is not", () => {
   const developed = run('throws-on-fatal', 'development');
-  expect(developed.calls).toBe(1);
-  expect(developed.fine).toEqual(['The probe failed.']);
-  expect(developed.written.match(/failed in onLog/gu)).toHaveLength(1);
-  expect(developed.written).toContain('@loomcli/core/foreign-throw');
+  expect(developed.calls).toBe(2);
+  expect(developed.fine).toEqual(['The probe failed.', 'Cannot observe.']);
+  expect(developed.written.match(/^-- UNHANDLED EXCEPTION/gmu)).toHaveLength(2);
+  expect(developed.written).toContain('\n\nCannot observe.\n');
   const distributed = run('throws-on-fatal', 'distributed');
-  expect(distributed.calls).toBe(1);
+  expect(distributed.calls).toBe(2);
   expect(distributed.written).toBe('probe: Something went wrong.\n');
 });

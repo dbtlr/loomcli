@@ -76,18 +76,6 @@ function declaresTagOption(command) {
   return command.option('tag', { type: 'string' });
 }
 
-/**
- * A hook that keeps the first Command it is handed, the root, and returns that surface again for
- * `count`, so the value it returns is registered and belongs to another Command's build.
- */
-function returnsEarlier() {
-  let first = null;
-  return (command) => {
-    first ??= command;
-    return command.name === 'count' ? first : command;
-  };
-}
-
 /** The Command a hook reshapes: one value result under one declared view. */
 function counted() {
   return new Command('count').result({ views: { text } }).action(dispatch);
@@ -97,20 +85,6 @@ function counted() {
 function withHooks(plugins, count = counted()) {
   return new Application('app', { plugins }).command(count).action(dispatch);
 }
-
-/** A value with every key of the attached surface, which is still not the value core made. */
-const forged = {
-  argument: () => forged,
-  arguments: [],
-  extend: () => forged,
-  hasAction: true,
-  name: 'count',
-  option: () => forged,
-  options: [],
-  path: ['count'],
-  result: null,
-  views: () => forged,
-};
 
 /** A schema whose validate call is the scenario's own, so the rule under test is the only rule. */
 const schemaOf = (validate) => ({ '~standard': { validate, vendor: 'fixture', version: 1 } });
@@ -197,8 +171,6 @@ const scenarios = {
       named('@acme/out', { options: { format: { type: 'string' } } }),
       formatter(onCount(declaresFormat)),
     ]),
-  'hook-returns-earlier': () => withHooks([formatter(returnsEarlier())]),
-  'hook-returns-other': () => withHooks([formatter(onCount(() => forged))]),
   'hook-spelling-collision': () =>
     new Application('app', {
       plugins: [

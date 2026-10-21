@@ -236,7 +236,7 @@ test('a fault reported after a primary outcome that succeeded is the failure the
   const { lateFault }: Failures = JSON.parse(report('failures'));
   expect(lateFault).toEqual({
     exitCode: 1,
-    failure: '@loomcli/core/next-misuse',
+    failure: '@loomcli/core/foreign-throw',
     form: genericForm,
     messages: 'probe: Something went wrong.\n',
     output: '',
