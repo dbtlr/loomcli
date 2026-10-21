@@ -17,7 +17,9 @@
   "type": "module",
   "dependencies": {
     "@loomcli/core": "workspace:*",
+    "@loomcli/eslint-plugin": "workspace:*",
     "@loomcli/plugins": "workspace:*",
+    "@loomcli/prompts": "workspace:*",
     "mdast-util-from-markdown": "^2.0.3",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
@@ -27,14 +29,34 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
+    "@types/bun": "^1.4.3",
+    "eslint": "^10.13.0",
+    "oxlint": "^1.89.0",
     "pnpm": "12.8.1",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5"
   },
   "peerDependenciesMeta": {
+    "@types/bun": {
+      "optional": true
+    },
+    "eslint": {
+      "optional": true
+    },
+    "oxlint": {
+      "optional": true
+    },
     "pnpm": {
       "optional": true
     },
     "typescript": {
+      "optional": true
+    },
+    "typescript-eslint": {
+      "optional": true
+    },
+    "vitest": {
       "optional": true
     }
   },

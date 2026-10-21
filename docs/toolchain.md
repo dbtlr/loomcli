@@ -6,7 +6,7 @@ description: The public contract of the loom command, which acts on one package 
 
 `@loomcli/loom` is the Loom toolchain. An application installs it as a development dependency, and its `loom` bin builds, versions, and scaffolds that application, and the installer script rendered by `loom init` installs its release binary. The runtime the application ships depends on `@loomcli/core` alone. [ADR-0066](decisions/0066-the-toolchain-acts-on-one-package-directory.md), [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md), [ADR-0068](decisions/0068-init-writes-scaffold-files-once-and-owns-managed-files.md), and [ADR-0072](decisions/0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md) record the decisions, and the [release facts](core.md#release-facts) a build bakes in are core's contract.
 
-[ADR-0099](decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md), proposed, retires `loom check` for an assembly check from `@loomcli/testing`, and [ADR-0100](decisions/0100-acceptance-plans-live-beside-the-tests.md), proposed, removes the `win32` default target and the `bun-windows-*` targets of `loom build`. This page's rules state those targets. Until each record's implementing phase ships, the code keeps the earlier behavior, and the acceptance lists on this page, [loom check acceptance](#loom-check-acceptance) and the drift and host-target cases included, describe that code.
+[ADR-0099](decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md), proposed, retires the `check` command for an assembly check from `@loomcli/testing`, which `loom init` wires into a test, and [ADR-0100](decisions/0100-acceptance-plans-live-beside-the-tests.md), proposed, removes the `win32` default target and the `bun-windows-*` targets of `loom build`. This page's rules state those targets. Until ADR-0100's implementing phase ships, the code keeps the earlier build targets, and the host-target cases in the acceptance lists describe that code.
 
 ## One package directory
 
@@ -16,7 +16,7 @@ loom build [--target <target>] [--out <path>] [--entry <module>] [--application 
            [--release [--repository <owner/name>] [--name <name>]] [--facts | --define]
 loom changelog check
 loom changelog write [--date YYYY-MM-DD] [--narrative FILE] [--dry-run]
-loom init [--only <piece>]... [--force]
+loom init [--only <piece>]... [--linter oxlint|eslint] [--test-runner bun|vitest] [--force]
 ```
 
 ```sh
@@ -89,21 +89,6 @@ bun build src/main.ts src/application.ts --outdir dist --splitting --target node
 - **Composing.** `--facts` prints the facts JSON and `--define` the pair, and neither writes a file. A `bun build --define` with the printed pair, and a `Bun.build` call with the printed facts, each write an artifact that reads the same facts `loom build` bakes.
 - **A failed build.** A syntax error in the entry exits 1, and the earlier output is byte-identical afterward.
 
-## loom check
-
-`loom check` retires under [ADR-0099](decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md). A package checks its types with `tsc --noEmit`, its source with the linter, and its assembly with a test that passes the Application to the assembly check from `@loomcli/testing`, which throws an `Error` whose message is the [Developer Diagnostic](core.md#developer-diagnostics) of each fault [`check()`](core.md#checking-the-declarations) returns. `loom init` warns about a drifted [managed file](#managed-files). The acceptance below covers the command until the phase that removes it.
-
-### loom check acceptance
-
-`loom check` is proven when process runs of the packed `loom` bin produce these results under Node and Bun:
-
-- **Clean.** A new scaffold from `loom init` and the example applications each exit 0 and print nothing on stdout.
-- **Every fault.** A fixture whose application has two failing converters, an undescribed option, and a rejecting `onGraphBuilt` hook prints four Developer Diagnostics in that order and exits 1, and no action runs.
-- **Load faults.** A module whose `option()` call declares `multiple` on a Boolean option prints that rule's diagnostic and exits 1.
-- **The module.** A module that exports no Application and one that exports two each exit 1 and name the module. An Application exported as `default` is found. `--application src/app.ts` reads that module.
-- **The type pass.** A type error exits 1 with the compiler's report, and a package with no `typescript` installed prints the one-line note and still reports its graph faults.
-- **Drift.** An edited managed file prints one warning, and the check exits 0 when nothing else is wrong.
-
 ## The package changelog
 
 The public per-package commands use automatic version calculation. Explicit `--target` selection belongs only to this repository's hidden [synchronized release cut](changelog-compiler.md#version-calculation).
@@ -155,12 +140,12 @@ The package changelog is proven when process runs of the packed `loom` bin produ
 ## loom init
 
 ```text
-loom init [--only <piece>]... [--force]
+loom init [--only <piece>]... [--linter oxlint|eslint] [--test-runner bun|vitest] [--force]
 ```
 
 ```sh
 mkdir notes && cd notes
-bunx @loomcli/loom init   # a new application: package.json, src/, tsconfig.json, .changes/README.md, and the skill
+bunx @loomcli/loom init   # a new application: package.json, src/, its test, the lint configuration, tsconfig.json, .changes/README.md, and the skill
 pnpm install
 pnpm check
 ```
@@ -170,14 +155,16 @@ In an empty directory nothing is installed yet, so the first run goes through th
 `loom init` scaffolds a new application in an empty directory, or adds the pieces an existing package lacks. It writes two sorts of files: scaffold files, which become the author's at once, and managed files, which init keeps current.
 
 - **Where.** In an empty working directory, init scaffolds a new application there, whatever lies above it. Otherwise it acts on the package directory. A directory that is neither empty nor inside a package fails with exit 1.
-- **The pieces.** `application` is `src/application.ts`, `entry` is `src/main.ts`, `tsconfig` is `tsconfig.json`, `package` is the `package.json` keys, `changes` is `.changes/README.md`, `skill` is the changelog skill, and `install` is the [installer script](#the-installer-script), `install.sh`. `--only <piece>` limits init to the pieces it names, and it may repeat.
+- **The pieces.** `application` is `src/application.ts`, `entry` is `src/main.ts`, `tsconfig` is `tsconfig.json`, `test` is `src/application.test.ts`, `lint` is the linter's configuration file, `package` is the `package.json` keys, `changes` is `.changes/README.md`, `skill` is the changelog skill, and `install` is the [installer script](#the-installer-script), `install.sh`. `--only <piece>` limits init to the pieces it names, and it may repeat.
 - **Output.** Init prints one line for each file or key it writes and each warning it raises, and it installs nothing. The author runs the package manager afterward.
 - **Later pieces.** A release-cut skill and release workflows are not pieces, because release orchestration stays with each repository.
 
 ### Scaffold files
 
-- **The files.** `src/application.ts` exports an Application named with the application's name, with a description and one described action, so a new scaffold passes its own `check` script. `src/main.ts` imports it and calls `run()`, and it opens with `#!/usr/bin/env node`, which the bundle keeps. `tsconfig.json` is a strict configuration for a Node ESM application that emits nothing, because `loom build` bundles it, so `tsc --noEmit` checks it. Init also writes a test that imports the application module and passes the Application to the `@loomcli/testing` assembly check, with a comment that says to keep the test, because it is the check that the whole application assembles; its path is settled when that package ships, and init wires the lint configuration under [ADR-0098](decisions/0098-lint-is-the-author-guidance-lane.md).
-- **The `package.json` keys.** `bin` maps the application's name to `dist/main.js`. `scripts` gains `build`, `loom build --target node`, and `check`, which runs `tsc --noEmit`, the linter, and the test runner. `dependencies` gains `@loomcli/core`, and `devDependencies` gains `@loomcli/loom`, each at the exact version of the running `loom`. `devDependencies` also gains `typescript`, at the compiler range `@loomcli/loom` declares as its optional peer dependency. A dependency the package already declares in any of `dependencies`, `devDependencies`, `peerDependencies`, or `optionalDependencies` is left where it is and not added again. In an empty directory, init first writes a `package.json` whose `name` is the directory's name, `version` is `0.0.0`, and `type` is `module`.
+- **The files.** `src/application.ts` exports an Application named with the application's name, with a description and one described action, so a new scaffold passes its own `check` script. `src/main.ts` imports it and calls `run()`, and it opens with `#!/usr/bin/env node`, which the bundle keeps. `tsconfig.json` is a strict configuration for a Node ESM application that emits nothing, because `loom build` bundles it, so `tsc --noEmit` checks it. `src/application.test.ts` imports the Application from `./application.js` and passes it to the `@loomcli/testing` assembly check in one test, under `bun:test` or vitest. A comment above the test says to keep it, because it is the check that the whole application assembles, so a fault only the assembled application reveals fails CI rather than the operator's first run. A Bun test opens with `/// <reference types="bun" />`, because TypeScript loads no `@types` package that a configuration does not list. The lint file is `.oxlintrc.json` for oxlint, which holds the `configs.oxlint` object of [`@loomcli/eslint-plugin`](libs/eslint-plugin.md) as it is, or `eslint.config.js` for ESLint, which sets the TypeScript parser from `typescript-eslint` and adds the plugin's `configs.recommended`, under [ADR-0098](decisions/0098-lint-is-the-author-guidance-lane.md).
+- **The linter and the test runner.** `--linter oxlint|eslint` and `--test-runner bun|vitest` choose what the lint file, the test, the `check` script, and the development dependencies serve, by default oxlint and Bun. A package that settles a choice keeps it without a question: an `.oxlintrc.json` selects oxlint, an `eslint.config.js`, `.mjs`, `.cjs`, `.ts`, `.mts`, or `.cts` selects ESLint, and a package that declares `vitest` in any dependency field selects vitest. When both lint configurations exist, oxlint wins. A flag the operator supplies wins over what the package holds.
+- **The questions.** Each choice is a `select` question from [`@loomcli/prompts`](prompts.md) linked to its option with `skipIfSupplied`, so a supplied flag skips it. Init asks only when the answer changes something it will write, which is the lint file or the `check` script and its dependencies for the linter, and the test or the `check` script and its dependencies for the runner, and only when the run is interactive. Off a terminal, or under `--no-input`, the declared default applies and nothing is asked.
+- **The `package.json` keys.** `bin` maps the application's name to `dist/main.js`. `scripts` gains `build`, `loom build --target node`, and `check`, which runs `tsc --noEmit && <linter> && <test runner>`: `oxlint src` or `eslint .`, then `bun test` or `vitest run`. oxlint lints `src` alone, because it ignores `node_modules` only where a `.gitignore` names it, which a new scaffold does not yet have. `dependencies` gains `@loomcli/core`, and `devDependencies` gains `@loomcli/loom`, `@loomcli/testing`, and `@loomcli/eslint-plugin`, each at the exact version of the running `loom`. `devDependencies` also gains `typescript` and the packages of the chosen tools, each at the range `@loomcli/loom` declares as an optional peer dependency: `oxlint`, or `eslint` and `typescript-eslint`; and `@types/bun` or `vitest`. A dependency the package already declares in any of `dependencies`, `devDependencies`, `peerDependencies`, or `optionalDependencies` is left where it is and not added again. In an empty directory, init first writes a `package.json` whose `name` is the directory's name, `version` is `0.0.0`, and `type` is `module`.
 - **The application's name.** It is the `bin` key when `bin` is an object with one key, else the package name without its scope.
 - **Written once.** Init writes a scaffold file or key only when it is missing. It never overwrites an existing file or key and never tracks one afterward, because each is the author's code from the moment it is written.
 
@@ -199,10 +186,11 @@ In an empty directory nothing is installed yet, so the first run goes through th
 
 `loom init` is proven when process runs of the packed `loom` bin produce these results under Node and Bun:
 
-- **A new application.** In an empty directory, init writes `package.json`, the scaffold files, the fragment guide, and the skill, and prints the warning that `install.sh` was not written, because the new `package.json` names no repository. After the package manager installs, `loom check` exits 0 and runs the type pass, `loom build --target node` builds, and the bundle runs under Node and Bun.
+- **A new application.** In an empty directory, init writes `package.json`, the scaffold files, the fragment guide, and the skill, and prints the warning that `install.sh` was not written, because the new `package.json` names no repository. After the package manager installs, `tsc --noEmit` and the assembly test pass, `loom build --target node` builds, and the bundle runs under Node and Bun. The packed run installs the scaffold from the packed tarballs for the defaults and for `--linter eslint --test-runner vitest`, requires `bun run check` to exit 0, and requires the oxlint run to name `@loomcli/undescribed` once an option lacks a description.
 - **An existing package.** In a package with its own `src/application.ts`, `scripts.build`, `tsconfig.json`, and `devDependencies.typescript`, init writes the missing pieces and leaves all four byte-identical. `--only changes` writes `.changes/README.md` alone, and `--only tsconfig` writes `tsconfig.json` alone.
-- **Managed files.** Re-running init on an unedited managed file re-renders it. An edited one draws one warning and stays byte-identical, and `--force` re-renders it. A file whose header was deleted stays byte-identical under `--force`, and `loom check` raises no warning for it.
-- **The installer script.** In a package whose `repository` reads as `me/notes`, init writes `install.sh` with the shell header, the application's name, and `me/notes`, and the file is executable. After `repository` changes to `me/jot`, init re-renders an unedited script with `me/jot`. An edited script draws the drift warning from init and from `loom check`. `--only install` writes the script alone. With no `repository`, and with a `repository` on another host such as `gitlab:me/notes`, init writes no `install.sh`, prints the warning that names `repository`, and exits 0.
+- **The tooling.** Each pair of `--linter` and `--test-runner` values writes its lint file, its test, and its `check` script and dependencies. An existing lint configuration or a `vitest` dependency selects its tool without a question, `--only test` and `--only lint` write one file each, and a re-run overwrites neither. At a terminal, init asks for the linter and the runner when nothing settles them, and asks nothing when flags are supplied, under `--no-input`, or when the pieces it writes do not depend on the answer.
+- **Managed files.** Re-running init on an unedited managed file re-renders it. An edited one draws one warning and stays byte-identical, and `--force` re-renders it. A file whose header was deleted stays byte-identical under `--force` and draws no warning.
+- **The installer script.** In a package whose `repository` reads as `me/notes`, init writes `install.sh` with the shell header, the application's name, and `me/notes`, and the file is executable. After `repository` changes to `me/jot`, init re-renders an unedited script with `me/jot`. An edited script draws the drift warning from init. `--only install` writes the script alone. With no `repository`, and with a `repository` on another host such as `gitlab:me/notes`, init writes no `install.sh`, prints the warning that names `repository`, and exits 0.
 
 ## The installer script
 

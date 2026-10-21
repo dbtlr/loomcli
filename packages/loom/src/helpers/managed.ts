@@ -19,16 +19,6 @@ const frontmatter = /^---\r?\n(?:[\s\S]*?\r?\n)?---(?:\r?\n|$)/u;
 /** The empty lines at the start of a text. */
 const blankLines = /^(?:\r?\n)*/u;
 
-/**
- * The files `loom init` manages, by path under the package directory: the fragment guide, the
- * changelog skill, and the installer script.
- */
-export const managedFiles = [
-  '.changes/README.md',
-  '.agents/skills/loom-changelog/SKILL.md',
-  'install.sh',
-] as const;
-
 /** A managed file read apart: the checksum its header records and its content without the header. */
 export interface ManagedFile {
   readonly checksum: string;
