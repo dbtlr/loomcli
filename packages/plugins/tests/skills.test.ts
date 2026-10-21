@@ -1079,24 +1079,6 @@ describe('loading', () => {
 
   const diagnostics: [string, SkillEntry, string, string][] = [
     [
-      'a result that is not a list',
-      { name: 'notes', result: 'nope' },
-      'Skill "notes" loaded something that is not a list of files.',
-      "Return a list of { path, content } files from the skill's files function.",
-    ],
-    [
-      'an entry whose path is not a string',
-      { name: 'notes', result: [{ content: 'x', path: 1 }] },
-      'Skill "notes" loaded something that is not a list of files.',
-      "Return a list of { path, content } files from the skill's files function.",
-    ],
-    [
-      'an entry whose content is neither text nor bytes',
-      { name: 'notes', result: [{ content: 5, path: 'SKILL.md' }] },
-      'Skill "notes" loaded something that is not a list of files.',
-      "Return a list of { path, content } files from the skill's files function.",
-    ],
-    [
       'a path that leaves the folder',
       {
         name: 'notes',
@@ -1105,51 +1087,14 @@ describe('loading', () => {
           { content: 'x', path: 'SKILL.md' },
         ],
       },
-      'Skill "notes" lists a file path that is not a plain relative path: ../notes.md.',
-      'Use a relative path with / between its parts and no empty, ., or .. part, such as references/commands.md.',
+      'Skill "notes" lists a file path outside its folder: ../notes.md.',
+      'Use a relative path with no .. part, such as references/commands.md.',
     ],
     [
       'an absolute path',
       { name: 'notes', result: [{ content: 'x', path: '/SKILL.md' }] },
-      'Skill "notes" lists a file path that is not a plain relative path: /SKILL.md.',
-      'Use a relative path with / between its parts and no empty, ., or .. part, such as references/commands.md.',
-    ],
-    [
-      'a path with a backslash',
-      { name: 'notes', result: [{ content: 'x', path: String.raw`a\b.md` }] },
-      String.raw`Skill "notes" lists a file path that is not a plain relative path: a\b.md.`,
-      'Use a relative path with / between its parts and no empty, ., or .. part, such as references/commands.md.',
-    ],
-    [
-      'a path with an empty segment',
-      { name: 'notes', result: [{ content: 'x', path: 'a//b.md' }] },
-      'Skill "notes" lists a file path that is not a plain relative path: a//b.md.',
-      'Use a relative path with / between its parts and no empty, ., or .. part, such as references/commands.md.',
-    ],
-    [
-      'an empty path',
-      { name: 'notes', result: [{ content: 'x', path: '' }] },
-      'Skill "notes" lists a file path that is not a plain relative path: .',
-      'Use a relative path with / between its parts and no empty, ., or .. part, such as references/commands.md.',
-    ],
-    [
-      'a path with a control character, escaped',
-      { name: 'notes', result: [{ content: 'x', path: 'a\u0007b.md' }] },
-      String.raw`Skill "notes" lists a file path that is not a plain relative path: a\u0007b.md.`,
-      'Use a relative path with / between its parts and no empty, ., or .. part, such as references/commands.md.',
-    ],
-    [
-      'a path listed twice',
-      {
-        name: 'notes',
-        result: [
-          { content: 'x', path: 'SKILL.md' },
-          { content: 'x', path: 'references/commands.md' },
-          { content: 'y', path: 'references/commands.md' },
-        ],
-      },
-      'Skill "notes" lists the file references/commands.md twice.',
-      'List each file once.',
+      'Skill "notes" lists a file path outside its folder: /SKILL.md.',
+      'Use a relative path with no .. part, such as references/commands.md.',
     ],
     [
       'no SKILL.md',

@@ -20,13 +20,7 @@ const scenarios = {
   'self-update-notices-hyphen': () => selfUpdate({ notices: { env: 'A-B' } }),
   'service-label': () => service({ label: 'notes', run: ['serve'] }),
   'service-none': () => service(),
-  'skills-empty': () => skills({ skills: [] }),
-  'skills-entry': () => skills({ skills: [1] }),
-  'skills-files': () => skills({ skills: [{ files: 'notes.md', name: 'notes' }] }),
-  'skills-list': () => skills({ skills: 'notes' }),
   'skills-name': () => skills({ skills: [{ files: () => [], name: 'Notes' }] }),
-  'skills-name-none': () => skills({ skills: [{ files: () => [] }] }),
-  'skills-none': () => skills(),
   'skills-twice': () =>
     skills({
       skills: [

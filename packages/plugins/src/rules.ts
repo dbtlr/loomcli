@@ -78,17 +78,17 @@ const serviceRunUnrouted = diagnosticRule(`${packageName}/service/run-unrouted`,
   headline: 'Service run words do not route',
 });
 
-/** A skills plugin setting that is not one it accepts. */
+/** A skill name outside the Agent Skills grammar, or one that two skills hold. */
 const skillsSettings = diagnosticRule(`${packageName}/skills/settings`, {
   explanation:
-    "The skills plugin installs each skill the application declares from a name and a function that returns its files, so skills is a nonempty list of objects, each name is lowercase letters and digits joined by single hyphens, 64 characters at most, no name repeats, and files is a function. A name is one path segment in an agent's skills folder.",
+    "The skills plugin installs each skill as one folder named by the skill's name in an agent's skills folder, so each name follows the Agent Skills grammar, lowercase letters and digits joined by single hyphens, 64 characters at most, and no two skills hold one name.",
   headline: 'Invalid skills setting',
 });
 
 /** A skill's loaded files that the plugin cannot write as a folder. */
 const skillsFiles = diagnosticRule(`${packageName}/skills/files`, {
   explanation:
-    "The skills plugin writes each skill as one folder, so a skill's files function returns a list of files, each with a relative path that has / between its parts and no empty, ., or .. part, and text or bytes as content. Each path appears once, and the list holds the skill's SKILL.md.",
+    "The skills plugin writes each skill as one folder in the operator's agent folders, so each file's path is relative to that folder, with no .. part that would write outside it, and the list holds the skill's SKILL.md, the file every agent reads first.",
   headline: 'Invalid skill files',
 });
 

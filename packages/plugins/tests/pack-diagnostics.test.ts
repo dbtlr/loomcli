@@ -34,11 +34,6 @@ function skillsFault(fault: { readonly sentence: string; readonly correction: st
   };
 }
 
-const listFault = {
-  correction: "Supply at least one skill, such as { name: 'notes', files: loadNotesSkill }.",
-  sentence: 'is not a list of skills.',
-};
-
 const nameCorrection =
   'Use lowercase letters, digits, and single hyphens, 64 characters at most, such as notes.';
 
@@ -86,25 +81,10 @@ const settingsCases: Record<string, Expected> = {
   'self-update-notices-hyphen': noticesFault,
   'service-label': labelFault,
   'service-none': labelFault,
-  'skills-empty': skillsFault(listFault),
-  'skills-entry': skillsFault({
-    correction: 'Supply each skill as { name, files }.',
-    sentence: 'holds an entry that is not a skill.',
-  }),
-  'skills-files': skillsFault({
-    correction: "Supply a function that returns the skill's files.",
-    sentence: 'holds a skill whose files is not a function: notes.',
-  }),
-  'skills-list': skillsFault(listFault),
   'skills-name': skillsFault({
     correction: nameCorrection,
     sentence: 'holds a name that is not a skill name: Notes.',
   }),
-  'skills-name-none': skillsFault({
-    correction: nameCorrection,
-    sentence: 'holds a name that is not a skill name: (none).',
-  }),
-  'skills-none': skillsFault(listFault),
   'skills-twice': skillsFault({
     correction: 'Give each skill its own name.',
     sentence: 'holds the skill name notes twice.',

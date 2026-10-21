@@ -7170,27 +7170,22 @@ Text imports are Bun's: a compiled binary and a Bun bundle inline each file the 
 
 `skills()` is the skills plugin. It installs the application's agent skills where coding agents read them, keeps them current with the binary, and removes them. Its identity is `@loomcli/plugins/skills`, and its whole contribution is one [plugin Command](#plugin-commands) group. [ADR-0076](decisions/0076-the-skills-plugin-installs-an-applications-agent-skills-for-claude-and-the-shared-agents-folder.md) records the decision.
 
-- **Settings.** `skills()` fills each omitted setting with its default and judges a real conflict between settings, under [ADR-0093](decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md), which settles in its implementing phase which of the checks below remain. Until then it judges each skill in order at the call and throws a `DeclarationError` of `@loomcli/plugins/skills/settings` for the first fault, with the finding marked on `skills`:
+- **Settings.** The settings type bounds the list and each skill's `files`, under [ADR-0093](decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). `skills()` judges each skill's name in order at the call and throws a `DeclarationError` of `@loomcli/plugins/skills/settings` for the first fault, with the finding marked on `skills`:
 
   | The setting | The sentence and correction |
   | --- | --- |
-  | `skills` missing, not an array, or empty | `Plugin "@loomcli/plugins/skills" setting "skills" is not a list of skills.`, corrected by `Supply at least one skill, such as { name: 'notes', files: loadNotesSkill }.` |
-  | an entry that is not an object | `Plugin "@loomcli/plugins/skills" setting "skills" holds an entry that is not a skill.`, corrected by `Supply each skill as { name, files }.` |
   | an entry whose `name` is not a skill name | `Plugin "@loomcli/plugins/skills" setting "skills" holds a name that is not a skill name: Notes.`, corrected by `Use lowercase letters, digits, and single hyphens, 64 characters at most, such as notes.` |
   | a name a second entry repeats | `Plugin "@loomcli/plugins/skills" setting "skills" holds the skill name notes twice.`, corrected by `Give each skill its own name.` |
-  | an entry whose `files` is not a function | `Plugin "@loomcli/plugins/skills" setting "skills" holds a skill whose files is not a function: notes.`, corrected by `Supply a function that returns the skill's files.` |
 
-  A skill name is one or more runs of lowercase ASCII letters and digits joined by single `-`, 64 characters at most, the Agent Skills grammar, so it is safe as one path segment. A name the sentence repeats passes through [`escapeControlCharacters`](#strings-and-composition), and a name that is missing or not a string is written as `(none)`. Settings is required, so `skills()` with none is the `skills` fault.
+  A skill name is one or more runs of lowercase ASCII letters and digits joined by single `-`, 64 characters at most, the Agent Skills grammar, so it is safe as one path segment. A name the sentence repeats passes through [`escapeControlCharacters`](#strings-and-composition).
 - **Loading the files.** `install` and `update` call each skill's `files` once, in declaration order, after every check under Global installs or Project installs that comes before loading, and before they read the record or write anything, and await each; `uninstall` calls no loader, so a broken loader never blocks a removal. A loader that throws or rejects fails the run through the ordinary [failure path](#failure-contract). The result is judged before anything is written, and the first fault throws a `DeclarationError` of `@loomcli/plugins/skills/files`, which fails the run through the same path:
 
   | The result | The sentence and correction |
   | --- | --- |
-  | not an array, or holding an entry whose `path` is not a string or whose `content` is neither a string nor a `Uint8Array` | `Skill "notes" loaded something that is not a list of files.`, corrected by `Return a list of { path, content } files from the skill's files function.` |
-  | a path that is empty, starts with `/`, holds `\` or a control character, or has an empty, `.`, or `..` segment | `Skill "notes" lists a file path that is not a plain relative path: ../notes.md.`, corrected by `Use a relative path with / between its parts and no empty, ., or .. part, such as references/commands.md.` |
-  | a path a second entry repeats | `Skill "notes" lists the file references/commands.md twice.`, corrected by `List each file once.` |
+  | a path that starts with `/` or has a `..` segment, so it would write outside the skill's folder | `Skill "notes" lists a file path outside its folder: ../notes.md.`, corrected by `Use a relative path with no .. part, such as references/commands.md.` |
   | no entry whose path is `SKILL.md` | `Skill "notes" lists no SKILL.md.`, corrected by `Add the skill's SKILL.md at the top of its files.` |
 
-  A path the sentence repeats passes through `escapeControlCharacters`. The plugin judges no file's content.
+  A path the sentence repeats passes through `escapeControlCharacters`. The result's type bounds its shape, and the plugin judges no file's content.
 - **The Commands.** `skills`, visible, with the description `Install this application's agent skills.`, and three children, each visible with no arguments:
   - `install`, `Install the skills for your coding agents.`, with the string option `--agent`, `The agents to install for: claude, or agents for Codex and others. Both when left out.`, validated to `claude` or `agents`; the Boolean option `--project`, `Install into the current repository instead of your home folder.`; the string option `--directory` with the short spelling `-C`, `Find the repository from this directory instead of the current one.`; and the Boolean option `--force`, `Replace skill files that something else wrote or that you changed.`
   - `update`, `Bring installed skills up to date with this version.`, with no options.
