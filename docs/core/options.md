@@ -4,6 +4,8 @@ description: "Local options: string, boolean, and counted options, short groups,
 
 # Local options
 
+This page states how an author declares local options: string, Boolean, and counted options, short groups, repeated and implied values, aliases, option groups, and passthrough. An author uses it to shape the options a Command accepts.
+
 ```ts
 import { Application } from '@loomcli/core';
 

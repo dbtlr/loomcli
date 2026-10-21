@@ -4,6 +4,8 @@ description: The failure classes, declared exit codes, failure codes, the failur
 
 # Failures
 
+This page states the failure classes core reports, their exit codes and failure codes, translators, the ordinary failure path every failure takes, and the voice of a failure message. An author uses it to raise a failure an operator can act on.
+
 ## Failure classes
 
 Every failure `run()` reports is an instance of a public class. Each class carries the facts its sentence interpolates, so a view reads them instead of parsing prose. `message` is the sentence without its category prefix, except a `DeclarationError`'s, which holds its whole [Developer Diagnostic](declaration-faults.md#developer-diagnostics) while `sentence` holds the sentence. The exit code is a static field the class declares, so a subclass inherits it and a view reads it on the instance, as [Declared exit codes](#declared-exit-codes) describes. The failure code is a static field too, which a machine reader branches on, as [Failure codes](#failure-codes) describes.

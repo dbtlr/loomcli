@@ -4,6 +4,8 @@ description: "The MCP plugin: serving an application's opted-in Commands as MCP 
 
 # MCP plugin
 
+This page documents the MCP plugin, which serves an application's opted-in Commands as tools of a Model Context Protocol server over stdio, and the private protocol package behind it. An author installs it so an agent client can call those Commands as tools.
+
 ```ts
 // @loomcli/plugins/mcp
 import type { Plugin } from '@loomcli/core';
@@ -108,7 +110,7 @@ The plugin's `onGraphBuilt` hook judges the opted-in Commands on every build, a 
 
 ## When author code fails
 
-An action that throws or rejects during a tool call takes the [ordinary failure path](../core/failures.md#the-ordinary-failure-path), and an action's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). The call answers as the failed call above does: `isError` is `true`, the text is the failure's own report, and `structuredContent` is its failure form, so a defect in a distributed build reads `internal` and `Something went wrong.` A throw while the protocol package handles a request is answered with `-32603`, and the server keeps serving.
+An action that throws or rejects during a tool call takes the [ordinary failure path](../core/failures.md#the-ordinary-failure-path), and an action's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). The call answers as the failed call above does: `isError` is `true`, the text is the failure's own report, and `structuredContent` is `{ exitCode, failure }` with its failure form under `failure`, so a defect in a distributed build reads `internal` and `Something went wrong.` A throw while the protocol package handles a request is answered with `-32603`, and the server keeps serving.
 
 ## The protocol package
 

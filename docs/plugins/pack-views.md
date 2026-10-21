@@ -4,6 +4,8 @@ description: "The pack views: table, records, list, heading, rule, prose, and bo
 
 # Pack views
 
+This page documents the pack views: table, records, list, heading, rule, prose, and box. Each is a configured factory that returns a bare view, which an author registers under `views` or passes to `out.render`.
+
 ## Table
 
 The table is `@loomcli/plugins/table`. Its factory `table<Row>(config?)` takes a column list and returns a whole view over the collected rows, `View<readonly Row[]>`, so the same value reaches a `views` record under `rows<Row>` and the second argument of `out.render`. Nothing is installed: there is no plugin factory at the subpath, no option, no lifecycle hook, and no graph fact, and what the call returns is a bare pack view under [Row views](../core/results.md#row-views). The view measures every row before it writes its first line, which is what buys a column as wide as its widest cell and a fit to the screen, so a sequence rendered through it is buffered whatever its source. It takes one reading of the context's [`columns`](../core/styles.md#width-padding-and-multiline-lanes) for the whole render. [ADR-0086](../decisions/0086-renders-fit-the-destinations-live-columns-and-tables-shrink-to-fit.md) records the fit.

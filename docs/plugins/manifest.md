@@ -4,6 +4,8 @@ description: "The manifest plugin: the --manifest option, the JSON document it p
 
 # Manifest plugin
 
+This page documents the manifest plugin: the `--manifest` option, the JSON document it prints for the routed Command, and the `manifestCommand` extension that supplies details, examples, and declared failures. An author installs it so an agent can read how to invoke a Command before it does.
+
 ```ts
 // @loomcli/plugins/manifest
 import type { BooleanOption, Plugin, PluginOptions, ResultNode } from '@loomcli/core';

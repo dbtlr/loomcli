@@ -4,6 +4,8 @@ description: "How a failure renders: failure views, the failure view context, an
 
 # Failure views and encoders
 
+This page states how a failure renders: the failure views, the context they receive, and the failure encoders. An author uses it to restyle or re-encode a failure.
+
 ## Failure views
 
 Core keys each failure class's default text function as that class's default view, so a failure is overridden with the same `override` call as any other view. The key is the class itself, and the replacement is typed from its instances, so `override(InputError, fn)` checks `fn` against an `InputError`. This is the typed path for a class-keyed list, because an array literal cannot carry a different type parameter per element.

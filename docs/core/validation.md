@@ -4,6 +4,8 @@ description: "Standard Schema validation of inputs: content inputs, the validati
 
 # Standard Schema validation
 
+This page states Standard Schema validation of inputs: content inputs, the validation context, absence and defaults, validator failures, and the input schema fact. An author uses it to attach a validator to an argument or an option, and the validators Loom ships are in [validators](../libs/validators.md).
+
 ## Content inputs
 
 An argument or local option declares `type: 'content'` to accept readable file paths and give its action lazy `Content` handles. A content option consumes words like a string option with a separate value. It remains local to the Command that reads it.

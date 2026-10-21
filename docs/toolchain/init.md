@@ -4,6 +4,8 @@ description: "loom init: the scaffold files, the managed files, and drift warnin
 
 # loom init
 
+This page documents `loom init`, which scaffolds a new application or adds the pieces an existing package lacks, and the managed files it keeps current. An author runs it to start an application or to refresh those files.
+
 ```text
 loom init [--only <piece>]... [--linter oxlint|eslint] [--test-runner bun|vitest] [--force]
 ```

@@ -4,6 +4,8 @@ description: "The installer script: install.sh and the release shape it reads."
 
 # The installer script
 
+This page documents `install.sh`, the installer script that installs an application's binary from a GitHub Release, and the release shape it reads. An author reads it to publish releases the script can install.
+
 ```text
 install.sh [--dir <directory>] [<version>]
 install.sh --help

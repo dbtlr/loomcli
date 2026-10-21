@@ -4,6 +4,8 @@ description: "The skills plugin: installing an application's agent skills global
 
 # Skills plugin
 
+This page documents the skills plugin, which installs an application's agent skills globally or into a project, keeps them current, and removes them. An author installs it so coding agents can read the skills the application ships.
+
 ```ts
 // @loomcli/plugins/skills
 import type { Host, Log, Plugin } from '@loomcli/core';

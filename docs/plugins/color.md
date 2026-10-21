@@ -4,6 +4,8 @@ description: "The color plugin: the operator's --color option."
 
 # Color plugin
 
+This page documents the color plugin's option, `--color` and `--no-color`, which lets the operator turn color on or off for a run. [Color](../core/color.md) states the core rule for how core settles the run's color.
+
 ```ts
 import { Application } from '@loomcli/core';
 import { color } from '@loomcli/plugins/color';

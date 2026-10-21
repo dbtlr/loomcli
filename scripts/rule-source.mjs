@@ -14,8 +14,8 @@ import { join } from 'node:path';
  * only substitution is `${packageName}`, which the package's `package.json` name replaces.
  *
  * Reading is strict: a declaring call that does not give an identity, a headline, and an
- * explanation as plain string literals is a problem, reported with its file and line, so a new
- * declaration shape cannot silently drop a rule.
+ * explanation as plain string literals, or gives a `docs` field that is not one, is a problem,
+ * reported with its file and line, so a new declaration shape cannot silently drop a rule.
  */
 
 /** The functions whose calls declare a rule. */
@@ -40,7 +40,47 @@ const packageSubstitution = /\$\{packageName\}/gu;
 /** Any template substitution. */
 const substitution = /\$\{/u;
 
-/** The literal `key:` holds in one rule's definition, its escapes undone, and where it ends. */
+/** The characters a single-letter escape stands for. */
+const simpleEscapes = new Map([
+  ['n', '\n'],
+  ['t', '\t'],
+  ['r', '\r'],
+  ['0', '\0'],
+  ['\\', '\\'],
+  ["'", "'"],
+  ['"', '"'],
+  ['`', '`'],
+]);
+
+/** The escapes a literal may hold: a single character, `\xHH`, `\uHHHH`, or `\u{H...}`. */
+const escapeSequence =
+  /\\(?:u\{(?<braced>[0-9a-fA-F]+)\}|u(?<unicode>[0-9a-fA-F]{4})|x(?<hex>[0-9a-fA-F]{2})|(?<single>[\s\S]))/gu;
+
+/** The character an escape stands for, or undefined when the reader does not decode it. */
+function decodedEscape(groups) {
+  const code = groups.braced ?? groups.unicode ?? groups.hex;
+  if (code === undefined) {
+    return groups.single === '0' || !/[0-9]/u.test(groups.single)
+      ? simpleEscapes.get(groups.single)
+      : undefined;
+  }
+  const point = Number.parseInt(code, 16);
+  return point > 0x10_ff_ff ? undefined : String.fromCodePoint(point);
+}
+
+/** A literal's text with its escapes decoded, or the first escape the reader cannot decode. */
+function decodeEscapes(raw) {
+  const undecoded = [...raw.matchAll(escapeSequence)].find(
+    (match) => decodedEscape(match.groups) === undefined,
+  );
+  const text = raw.replaceAll(
+    escapeSequence,
+    (whole, ...rest) => decodedEscape(rest.at(-1)) ?? whole,
+  );
+  return { bad: undecoded?.[0], text };
+}
+
+/** The literal `key:` holds in one rule's definition, its escapes decoded, and where it ends. */
 function readLiteral(definition, key) {
   const start = definition.search(new RegExp(`\\b${key}:\\s*['"\`]`, 'u'));
   if (start === -1) {
@@ -51,15 +91,14 @@ function readLiteral(definition, key) {
   if (found?.groups === undefined) {
     return undefined;
   }
-  return {
-    end: start + found.index + found[0].length,
-    text: found.groups.text.replaceAll(/\\(?<escaped>.)/gu, '$<escaped>'),
-  };
+  const { bad, text } = decodeEscapes(found.groups.text);
+  return { bad, end: start + found.index + found[0].length, text };
 }
 
-/** The text of the literal `key:` holds in one rule's definition, its escapes undone. */
+/** The text of the literal `key:` holds in one rule's definition, or undefined when it has none or cannot be decoded. */
 function definitionText(definition, key) {
-  return readLiteral(definition, key)?.text;
+  const found = readLiteral(definition, key);
+  return found?.bad === undefined ? found?.text : undefined;
 }
 
 /** The index of the `}` that closes the `{` at `open`, skipping string literals, or -1. */
@@ -134,6 +173,9 @@ function proseOf(definition, key) {
   if (found === undefined || found.text.trim() === '') {
     return { reason: `${key} is a nonempty string literal` };
   }
+  if (found.bad !== undefined) {
+    return { reason: `${key} holds the escape ${found.bad}, which the reader does not decode` };
+  }
   const after = definition.slice(found.end).trimStart();
   if (after !== '' && !after.startsWith(',')) {
     return { reason: `${key} is one string literal, not an expression` };
@@ -141,6 +183,16 @@ function proseOf(definition, key) {
   return substitution.test(found.text)
     ? { reason: `${key} has no template substitution` }
     : { text: found.text };
+}
+
+/** Whether a definition has a `docs` field, ignoring the text of its string literals. */
+function hasDocsField(definition) {
+  return /\bdocs\b/u.test(definition.replaceAll(new RegExp(literal.source, 'gsu'), '""'));
+}
+
+/** The optional `docs` link a definition holds, or a reason it cannot be read; absent is not a problem. */
+function docsOf(definition) {
+  return hasDocsField(definition) ? proseOf(definition, 'docs') : { text: undefined };
 }
 
 /** One declaring call: its rule, or the problem that stopped the reader. */
@@ -166,12 +218,14 @@ function readCall(source, match, file, packageName) {
   const definition = source.slice(open + 1, close);
   const headline = proseOf(definition, 'headline');
   const explanation = proseOf(definition, 'explanation');
-  const reason = headline.reason ?? explanation.reason;
+  const docs = docsOf(definition);
+  const reason = headline.reason ?? explanation.reason ?? docs.reason;
   if (reason !== undefined) {
     return { problem: `${at}: ${named.identity} is not readable: ${reason}` };
   }
   return {
     rule: {
+      docs: docs.text,
       explanation: explanation.text,
       file,
       headline: headline.text,
@@ -203,7 +257,7 @@ function rulesInSource(source, file, packageName) {
 
 /** Whether a path is a source file the reader covers: TypeScript, and not a test or a declaration file. */
 function isSource(path) {
-  return /\.tsx?$/u.test(path) && !/\.(?:test|d)\.tsx?$/u.test(path);
+  return /\.(?:[cm]?ts|tsx)$/u.test(path) && !/\.(?:test|d)\.(?:[cm]?ts|tsx)$/u.test(path);
 }
 
 /** The source files under one `src` directory, as paths from the repository root. */
@@ -241,7 +295,7 @@ function packagesOf(root) {
 
 /**
  * Every rule the packages under `root` declare in their `src` directories, as
- * `{ identity, headline, explanation, file, line }`. It throws one error, naming each file and line,
+ * `{ identity, headline, explanation, docs, file, line }`, where `docs` is undefined when the rule has none. It throws one error, naming each file and line,
  * when a declaring call cannot be read or an identity is declared twice.
  */
 function readDeclaredRules(root) {

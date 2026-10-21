@@ -4,6 +4,8 @@ description: "The self-update plugin: updating an installed application and upda
 
 # Self-update plugin
 
+This page documents the self-update plugin, which replaces an installed application's binary with a verified release, and the update notices it can print. An author installs it so an operator can update the application in place.
+
 ```ts
 // @loomcli/plugins/self-update
 import type { Host, Log, Plugin } from '@loomcli/core';

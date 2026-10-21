@@ -4,6 +4,8 @@ description: "The man pages plugin: the page set, the page, roff text, and writi
 
 # Man pages plugin
 
+This page documents the man pages plugin, which writes one man page for each Command and installs, refreshes, and removes the set. An author installs it so an operator can read the application's documentation with `man`.
+
 ```ts
 // @loomcli/plugins/manpage
 import type { Host, Log, Plugin } from '@loomcli/core';

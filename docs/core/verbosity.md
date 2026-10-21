@@ -4,6 +4,8 @@ description: "How an operator's -v and -q settle the run's verbosity right after
 
 # Verbosity
 
+This page states the core rule for verbosity: how an operator's `-v` and `-q` settle the run's verbosity right after graph build, and how the debug and trace lanes follow it. The [verbose plugin](../plugins/verbose.md) documents the options that give the operator those spellings.
+
 An operator asks a run for more detail with `-v` or `-vv`, and for less with `-q`, as cargo and clap-verbosity-flag read them. An action writes that detail through `out.debug` and `out.trace`, beside `info`, `warn`, and `error`. Core settles the run's verbosity once, right after graph build, and every lane write after that follows it. [ADR-0090](../decisions/0090-an-operators-v-or-q-settles-the-runs-verbosity-right-after-graph-build.md) records the decision.
 
 ```ts

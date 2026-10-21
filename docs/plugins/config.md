@@ -4,6 +4,8 @@ description: "The configuration plugin: the one configuration file a run reads a
 
 # Configuration plugin
 
+This page documents the configuration plugin, which reads the one configuration file a run uses and feeds its values to the inputs bound to it. An author installs it so an operator can set options in a file.
+
 ```ts
 // @loomcli/plugins/config
 import type { Plugin, PluginOptions, StringOption } from '@loomcli/core';

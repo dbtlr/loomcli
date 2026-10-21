@@ -4,6 +4,8 @@ description: How core reads the operator's --color or --no-color from argv right
 
 # Color
 
+This page states the core rule for color: how core reads the operator's choice from argv and settles the run's color before any byte prints. The [color plugin](../plugins/color.md) documents the option that gives the operator that choice.
+
 An operator turns color on or off for one run with `--color` or `--no-color`. [NO_COLOR](https://no-color.org/) asks a command-line application for exactly this: an argument given for one run overrides `NO_COLOR`. Core reads the operator's color choice from argv right after host capture, before anything else prints, so every byte the run writes follows it. [ADR-0089](../decisions/0089-an-operators-color-or-no-color-settles-the-runs-color-right-after-host-capture.md) records the decision.
 
 ```ts

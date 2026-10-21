@@ -4,6 +4,8 @@ description: When core reports a declaration fault (at the call, at attach, at b
 
 # Declaration faults
 
+A declaration fault is a mistake in how an author declares an Application, a Command, an option, or a plugin. This page states when core reports one (at the call, at attach, or at build), how its Developer Diagnostic reads, and the defects core reports at run time when author code throws or breaks a contract.
+
 ```ts
 class DeclarationError extends LoomError {} // exit 1; its Developer Diagnostic, see Developer Diagnostics
 ```
@@ -26,7 +28,7 @@ A declaration fault throws `DeclarationError` at the earliest of three moments t
 
 - **Types first.** TypeScript rejects most faults at compile time. A runtime check exists only for a fault a type cannot express, and a value that bypasses the types, from JavaScript or through `any`, gets no rule: the platform's own error reports it. Each check runs at the top of its function, before any side effect, so a call that throws changes nothing.
 - **Where a fault surfaces.** A fault at a call or an attach throws when the module that makes the call evaluates, usually at import, with a stack at the offending line, and the run stops there. It never reaches `run()`, so no [failure view](failure-views.md#failure-views) renders it and core sets no exit code. Its `message` holds its whole [Developer Diagnostic](#developer-diagnostics) as plain text, so the runtime's own uncaught-error output prints the diagnostic under the offending line, in every build. A build fault surfaces from `run()` and a thrown `DeclarationError` from `inspect()`; `run()` renders the Developer Diagnostic in a development build and the generic defect message in a distributed one, under [Development builds](release-facts.md#development-builds).
-- **One text.** A rule's diagnostic reads the same whichever moment raises it. The rules lists under [Command declaration errors](commands.md#command-declaration-errors), [Input declaration errors](options.md#input-declaration-errors), [Input source declaration errors](input-sources.md#input-source-declaration-errors), [Result declaration errors](results.md#result-declaration-errors), and [Plugin declaration errors](plugin-contract.md#plugin-declaration-errors) state each rule, and this section alone assigns each rule its moment. [The diagnostics reference](diagnostics.md) lists every rule by identity with its headline and explanation.
+- **One text.** A rule's diagnostic reads the same whichever moment raises it. The rules lists under [Command declaration errors](commands.md#command-declaration-errors), [Input declaration errors](options.md#input-declaration-errors), [Input source declaration errors](input-sources.md#input-source-declaration-errors), [Result declaration errors](results.md#result-declaration-errors), and [Plugin declaration errors](plugin-contract.md#plugin-declaration-errors) state each rule, and this page alone assigns each rule its moment. [The diagnostics reference](diagnostics.md) lists every rule by identity with its headline and explanation.
 
 ## At the call
 
@@ -51,7 +53,7 @@ The call that receives a bad value throws, and so does a call that the receiver'
   - An output that is not plain data: [`@loomcli/core/extension-output`](diagnostics.md#loomclicoreextension-output).
   - Two distinct descriptors that share an identity within the receiver, the installed plugins' descriptors included for the Application: [`@loomcli/core/two-package-copies`](diagnostics.md#loomclicoretwo-package-copies).
 - **Plugins.** `plugin()` applies every rule on one definition. A signal claimed twice is claimed once, one key overridden twice resolves to the first override, and core admits the configuration source's binding descriptor itself, so a binding the plugin does not also list under `extensions` works the same.
-  - The rules on each option declaration, under the option rules above.
+  - The rules on each option declaration, under [Input declaration errors](options.md#input-declaration-errors).
   - An extension, view, override, translation, or failure encoding another installed copy of core built: [`@loomcli/core/foreign-value`](diagnostics.md#loomclicoreforeign-value).
   - Two distinct descriptors that share an identity: [`@loomcli/core/two-package-copies`](diagnostics.md#loomclicoretwo-package-copies).
   - Two [failure encoders](failure-views.md#failure-encoders) for one media type: [`@loomcli/core/failure-encoder-taken`](diagnostics.md#loomclicorefailure-encoder-taken).
@@ -212,4 +214,5 @@ Author code that throws or rejects takes the [ordinary failure path](failures.md
 - **A broken result.** An action broke the [result](results.md) contract, one `ResultError` kind: [`@loomcli/core/result-contract`](diagnostics.md#loomclicoreresult-contract).
 - **A view that cannot render.** A middleware assigned `view`, or `invoke()` selected a view, that the routed Command's result cannot render: [`@loomcli/core/view-selection`](diagnostics.md#loomclicoreview-selection).
 - **A source answer.** A configuration source answered outside the answers rule: [`@loomcli/core/source-answers`](diagnostics.md#loomclicoresource-answers).
-- **A validator.** A validator that throws, rejects, or returns a malformed result is a declaration fault, as [When author code fails](validation.md#when-author-code-fails) states: [`@loomcli/core/validator-failed`](diagnostics.md#loomclicorevalidator-failed).
+
+A validator that throws, rejects, or returns a malformed result is a `DeclarationError`, not an `InternalError`, with code 1, as [When author code fails](validation.md#when-author-code-fails) states: [`@loomcli/core/validator-failed`](diagnostics.md#loomclicorevalidator-failed).

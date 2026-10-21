@@ -100,7 +100,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/invalid-release-facts
 
-**Invalid release facts.** The build bakes the release facts into __LOOM_RELEASE__: a build of source, development, or distributed, and an optional release group with a semantic version, a repository as owner/name, and an optional asset name. A malformed value leaves the build unknown, so core shows the author this diagnostic in every build.
+**Invalid release facts.** The build bakes the release facts into \_\_LOOM\_RELEASE\_\_: a build of source, development, or distributed, and an optional release group with a semantic version, a repository as owner/name, and an optional asset name. A malformed value leaves the build unknown, so core shows the author this diagnostic in every build.
 
 ### @loomcli/core/invoke-options
 
@@ -214,7 +214,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/config/file-pattern
 
-**Invalid configuration file pattern.** The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: * for any format the plugin reads, or a brace list of json, toml, yaml, and yml, tried in the order listed.
+**Invalid configuration file pattern.** The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: \* for any format the plugin reads, or a brace list of json, toml, yaml, and yml, tried in the order listed.
 
 ### @loomcli/plugins/dotenv/variable-name
 
@@ -250,7 +250,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/service/settings
 
-**Invalid service setting.** The service plugin names its unit by label: the systemd unit is <label>.service and the launchd agent's Label is the label. So label is a reverse-DNS name of two or more segments of letters, digits, and hyphens, each opening with a letter or digit, 247 characters at most, which keeps the unit name within systemd's 255 characters.
+**Invalid service setting.** The service plugin names its unit by label: the systemd unit is \<label\>.service and the launchd agent's Label is the label. So label is a reverse-DNS name of two or more segments of letters, digits, and hyphens, each opening with a letter or digit, 247 characters at most, which keeps the unit name within systemd's 255 characters.
 
 ### @loomcli/plugins/skills/files
 
@@ -300,7 +300,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/validators/time-zone
 
-**Invalid time zone.** dateTime() reads a token with no offset in the time zone it names, so the name is an IANA time zone the runtime knows, such as America/New_York.
+**Invalid time zone.** dateTime() reads a token with no offset in the time zone it names, so the name is an IANA time zone the runtime knows, such as America/New\_York.
 
 ### @loomcli/validators/url-protocols
 

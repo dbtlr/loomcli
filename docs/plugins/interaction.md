@@ -4,6 +4,8 @@ description: "The interaction plugin: the operator's options for whether a run m
 
 # Interaction plugin
 
+This page documents the interaction plugin's option, `--no-input`, which lets the operator turn questions off for a run. [Interaction](../core/interaction.md) states the core rule for how a run decides whether it may ask.
+
 ```ts
 import { Application } from '@loomcli/core';
 import { interaction } from '@loomcli/plugins/interaction';

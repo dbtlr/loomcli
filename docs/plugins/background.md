@@ -4,6 +4,8 @@ description: "The background plugin: the operator's option for the terminal back
 
 # Background plugin
 
+This page documents the background plugin's option, `--background`, which lets the operator pick the terminal background for a run. [Background](../core/background.md) states the core rule for how core settles the background.
+
 ```ts
 import { Application } from '@loomcli/core';
 import { background } from '@loomcli/plugins/background';

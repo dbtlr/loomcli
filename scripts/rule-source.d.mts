@@ -10,6 +10,7 @@ export interface DeclaredRule {
   readonly identity: string;
   readonly headline: string;
   readonly explanation: string;
+  readonly docs: string | undefined;
   readonly file: string;
   readonly line: number;
 }

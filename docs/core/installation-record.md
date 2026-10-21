@@ -4,6 +4,8 @@ description: "The installation record: reading the installation and the files an
 
 # Installation record
 
+This page states the installation record, the per-application directory that says how the application was installed and which files its installers wrote. An author reads it when code needs the installation or the files an install wrote.
+
 ```ts
 type ApplicationDirectory = 'installation' | 'logs' | 'cache';
 type DirectoryLookup =

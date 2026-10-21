@@ -4,6 +4,8 @@ description: "How a run decides once whether it may ask the operator questions, 
 
 # Interaction
 
+This page states the core rule for interaction: how a run decides once whether it may ask the operator questions, and how a local option becomes required only when input is not interactive. The [interaction plugin](../plugins/interaction.md) documents the option that lets the operator turn questions off.
+
 Each run decides once whether it may ask the operator questions. Core computes the decision, a local option's conditional presence rule reads it before the action, and the action reads it as `interactive`, so a [question](../libs/prompts.md) and the validation phase never disagree. [ADR-0082](../decisions/0082-an-action-asks-through-the-prompts-library-and-one-interaction-decision-governs-questions-and-conditional-requiredness.md) records the decision.
 
 ```ts

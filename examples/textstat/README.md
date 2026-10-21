@@ -14,7 +14,7 @@ The tests under [`tests/`](tests) hold what this example alone shows, such as a 
 
 - **Validators** ([reference](../../docs/libs/validators.md#catalog)). `--metric` is declared with the catalog's `oneOf(['bytes', 'words', 'lines'])` and the default `'bytes'`. `--min-bytes` and `--minimum` are declared with `integer({ min: 0 })` and the default `'0'`, so the rejected-value message reads `Option "--min-bytes" (from TEXTSTAT_MIN_BYTES): Expected a whole number of at least 0.` The action uses the inferred values directly.
 - **Option aliases** ([reference](../../docs/core/options.md#option-aliases)). `--minimum` is an alias of `--min-bytes`, the name the threshold had before, so it binds the same option and appears in no listing.
-- **Hidden options** ([reference](../../docs/core/commands.md#hidden-and-deprecated-members)). `--timing` is a hidden Boolean. When set, the action writes one `elapsed: <n>ms` line to stderr after the rows.
+- **Hidden options** ([reference](../../docs/core/commands.md#hidden-and-deprecated-members)). `--timing` is a hidden Boolean. When set, the action writes one `ℹ elapsed: <n>ms` info line to stderr after the rows.
 - **Input schema** ([reference](../../docs/core/validation.md#input-schema)). `inspect()` reports `metric` with `{ $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'string', enum: ['bytes', 'words', 'lines'] }` beside its default, `min-bytes` with `{ $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'integer', minimum: 0 }`, `--timing` with `null`, `files` with `{ type: 'string', minLength: 1 }` because it is native content, and the `--format` option the formatter's hook declares with `enum: ['table', 'json', 'jsonl']`.
 - **Input sources** ([reference](../../docs/core/input-sources.md)). `min-bytes` binds `TEXTSTAT_MIN_BYTES` and `--total` binds `TEXTSTAT_TOTAL`, so `TEXTSTAT_MIN_BYTES=4 textstat one.txt` filters as `textstat --min-bytes 4 one.txt` does and the flag wins over the variable. A typed alias is the flag, so `TEXTSTAT_MIN_BYTES=5 textstat --minimum 1 one.txt` applies 1.
 - **Filtering and totals.** The action keeps a row for each source at or above the byte threshold and totals only retained sources. A selection the threshold filters entirely still prints the header, and a `total` row of zero when the invocation asked for one.
@@ -52,7 +52,7 @@ pnpm run build:examples
 node examples/textstat/dist/main.js README.md
 ```
 
-The output is one table: a header naming the metric, then one line per source with a right-aligned count and the supplied file path. The example reads files in argument order. Bytes are the default metric.
+The output is one table: a `COUNT` and `SOURCE` header, then one line per source with a right-aligned count and the supplied file path. The example reads files in argument order. Bytes are the default metric.
 
 To count words and add a combined total:
 

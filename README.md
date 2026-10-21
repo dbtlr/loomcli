@@ -17,7 +17,7 @@ pnpm build:examples
 node examples/textstat/dist/main.js README.md
 ```
 
-The output is one table: a header naming the metric, then one line per source with a right-aligned count and the supplied file path. The example reads files in argument order. Bytes are the default metric.
+The output is one table: a `COUNT` and `SOURCE` header, then one line per source with a right-aligned count and the supplied file path. The example reads files in argument order. Bytes are the default metric.
 
 To count words and add a combined total:
 
@@ -84,7 +84,7 @@ The result prints as JSON text. Objects and arrays use two-space indentation, an
 
 `--explain` prints the routed command's name, its description, and the details its declaration carries, then ends the invocation without reading a document, so it needs no `--file`.
 
-The [Application](examples/jsonkit/src/application.ts) declares global options with `globalOption()` and registers their types once for all [command modules](examples/jsonkit/src/commands), and each [action](examples/jsonkit/src/actions) derives its argument and option types from its own declaration. The application installs the same [shared example plugin](examples/explain/src/plugin.ts) that `textstat` does, and the private [doctor plugin](examples/doctor/src/plugin.ts), whose `doctor` Command leads the root's Commands, and lists its own [view overrides](examples/jsonkit/src/views.ts) for rejected inputs and unknown commands, so those two diagnostics read `jsonkit: ...`; every other failure keeps core's text.
+The [Application](examples/jsonkit/src/application.ts) declares global options with `globalOption()` and registers their types once for all [command modules](examples/jsonkit/src/commands), and each [action](examples/jsonkit/src/actions) derives its argument and option types from its own declaration. The application installs the same [shared example plugin](examples/explain/src/plugin.ts) that `textstat` does, and the private [doctor plugin](examples/doctor/src/plugin.ts), whose `doctor` Command leads the root's Commands, and overrides one failure view, the literal `FatalError` view, in [views.ts](examples/jsonkit/src/views.ts); every other failure keeps core's text.
 
 ## Verify the package
 

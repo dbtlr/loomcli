@@ -4,6 +4,8 @@ description: "How core settles the run's terminal background once, from the oper
 
 # Background
 
+This page states the core rule for the run's terminal background: how core settles it once, from the operator's choice through the terminal's own answer, and how an adaptive theme entry resolves to it. The [background plugin](../plugins/background.md) documents the option that gives the operator that choice.
+
 ```ts
 import type { ConcreteStyle, ExtensionValue, Host, InputTerminal, OutputTerminal, StandardSchemaV1, Style } from '@loomcli/core';
 

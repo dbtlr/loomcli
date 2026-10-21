@@ -4,6 +4,8 @@ description: Commands, nesting and groups, aliases, hidden and deprecated member
 
 # Commands and global options
 
+This page states how an author declares Commands and global options. Commands cover groups, nesting, aliases, hidden and deprecated members, and modular authoring. A global option is shared by every action, and the page states how core consumes and routes it.
+
 `Application.globalOption(name, config)` declares an option shared by every action. It accepts string, Boolean, and counted option configs, except the presence rules `required` and `validateOmitted`, and returns a new Application with the global output type added. Content options remain local. Keep the returned value; the receiver is unchanged. Declare all globals before the first `command()` or `action()` call. An Application with no global declarations has no application-owned global options.
 
 ```ts

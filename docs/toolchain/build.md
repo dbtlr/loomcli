@@ -3,6 +3,9 @@ description: "loom build: one package directory and the build that bundles an ap
 ---
 
 # Build reference
+
+This page documents how `loom` finds the one package directory a command acts on, and how `loom build` bundles an application. An author uses it to build an application for development or for distribution.
+
 ## One package directory
 
 ```text

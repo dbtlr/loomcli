@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { readDeclaredRules } from './rule-source.mjs';
 
 /**
  * Generates the diagnostics reference, `docs/core/diagnostics.md`, from the rule declarations in
- * the packages' source: every Developer Diagnostic rule by identity, with its headline and
- * explanation. `scripts/rule-source.mjs` reads the declarations as text, and fails, naming file and
- * line, when a declaring call is not one it can read. With `--check`, the script writes nothing and
+ * the packages' source: every Developer Diagnostic rule by identity, with its headline,
+ * explanation, and docs link. `scripts/rule-source.mjs` reads the declarations as text, and fails,
+ * naming file and line, when a declaring call is not one it can read. With `--check`, the script writes nothing and
  * fails when the committed page differs from what it would write; `pnpm check` runs it that way.
  * Run it without `--check` after adding or changing a rule.
  */
@@ -57,6 +57,28 @@ function packageRank(name) {
   return index === -1 ? packageOrder.length : index;
 }
 
+/** Backslash-escapes the characters Markdown reads as markup, so the text renders as written. */
+function escapeMarkdown(text) {
+  return text.replaceAll(/[\\`*_[\]<>&]/gu, String.raw`\$&`);
+}
+
+/** A link destination that holds no space, parenthesis, or angle bracket Markdown would read. */
+function linkDestination(url) {
+  return url.replaceAll(/[\s()<>]/gu, (char) => encodeURIComponent(char));
+}
+
+/** One rule's entry: its heading, its headline and explanation, and a See line when it has docs. */
+function renderRule(rule) {
+  const entry = [
+    `### ${rule.identity}`,
+    `**${escapeMarkdown(rule.headline)}.** ${escapeMarkdown(rule.explanation)}`,
+  ];
+  if (rule.docs !== undefined) {
+    entry.push(`See [${escapeMarkdown(rule.docs)}](${linkDestination(rule.docs)})`);
+  }
+  return entry;
+}
+
 /** The page's text for the given rules, sorted by package and then by identity. */
 function renderDiagnostics(rules) {
   const sorted = rules.toSorted(
@@ -70,7 +92,7 @@ function renderDiagnostics(rules) {
   for (const [name, group] of groups) {
     sections.push(`## ${name}`);
     for (const rule of group) {
-      sections.push(`### ${rule.identity}`, `**${rule.headline}.** ${rule.explanation}`);
+      sections.push(...renderRule(rule));
     }
   }
   return `${preamble}\n${sections.join('\n\n')}\n`;
@@ -106,4 +128,8 @@ function run(check) {
   return 1;
 }
 
-process.exitCode = run(process.argv.includes('--check'));
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.exitCode = run(process.argv.includes('--check'));
+}
+
+export { escapeMarkdown, renderDiagnostics };

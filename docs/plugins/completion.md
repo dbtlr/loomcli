@@ -4,6 +4,8 @@ description: "The completion plugin: shell completion scripts and installing, up
 
 # Completion plugin
 
+This page documents the completion plugin, which prints shell completion scripts and installs, updates, and removes them. An author installs it to give an operator tab completion for the application's Commands and options.
+
 ```ts
 // @loomcli/plugins/completion
 import type { Host, Log, Plugin } from '@loomcli/core';

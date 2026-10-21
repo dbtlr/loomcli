@@ -4,6 +4,8 @@ description: "The suggestions plugin: did-you-mean hints for an unknown Command 
 
 # Suggestions plugin
 
+This page documents the suggestions plugin, which adds did-you-mean hints to the failure for an unknown Command or option. An author installs it to help an operator recover from a mistyped name.
+
 ```ts
 // @loomcli/plugins/suggestions
 import type { Plugin } from '@loomcli/core';

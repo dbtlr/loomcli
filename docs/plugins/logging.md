@@ -4,6 +4,8 @@ description: "The logging plugin: JSONL log files, rotation, and the console des
 
 # Logging plugin
 
+This page documents the logging plugin, which writes core's log events as JSONL records to a rotating file or to stderr. An author installs it to keep a record of what an application did.
+
 ```ts
 // @loomcli/plugins/logging
 import type { LogLevel, Plugin } from '@loomcli/core';

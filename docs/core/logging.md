@@ -4,6 +4,8 @@ description: "The log events core publishes from the log member of each context,
 
 # Logging
 
+This page states the log events core publishes from the `log` member of each context, and the `onLog` hook through which a plugin observes them. An author calls `log` from an action or a middleware, and the [logging plugin](../plugins/logging.md) writes the records.
+
 ```ts
 interface ActionContext<Args, Options = {}, Result = unknown> {
   readonly log: Log;

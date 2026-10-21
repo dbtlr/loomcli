@@ -4,6 +4,8 @@ description: "The version plugin: the --version option, the version line it prin
 
 # Version plugin
 
+This page documents the version plugin, which declares the `--version` option, the line it prints, and the view an author overrides to restyle that line. An author installs it so an operator can ask which version is running.
+
 ```ts
 // @loomcli/plugins/version
 export interface VersionSettings {

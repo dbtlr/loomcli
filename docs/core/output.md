@@ -4,6 +4,8 @@ description: "The out methods an action writes through: the semantic lanes, rend
 
 # Output
 
+This page states the `out` methods an action writes through: the semantic lanes, rendered and drawn views, live regions, and progress events. An author uses it to decide what an action prints and where it goes.
+
 | Method                       | Default destination | Return          |
 | ---------------------------- | ------------------- | --------------- |
 | `out.print(message)`         | stdout              | `Promise<void>` |
