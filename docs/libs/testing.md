@@ -47,6 +47,7 @@ The parameter accepts an application in any authoring state, because `check()` i
 Place the test beside the application module, as `src/application.test.ts`, which is where `loom init` writes it.
 
 ```ts
+/// <reference types="bun" />
 import { test } from 'bun:test';
 import { assertAssembles } from '@loomcli/testing';
 

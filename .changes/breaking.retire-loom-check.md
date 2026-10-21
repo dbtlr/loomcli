@@ -23,6 +23,7 @@ After, with oxlint and `bun test`:
 Before, nothing tested the assembly. After, add `src/application.test.ts`, which imports the application module:
 
 ```ts
+/// <reference types="bun" />
 import { test } from 'bun:test';
 import { assertAssembles } from '@loomcli/testing';
 

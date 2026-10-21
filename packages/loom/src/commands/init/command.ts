@@ -537,8 +537,7 @@ export const init = new Command('init', {
       const target = initTarget(host.cwd);
       const existing = existingTooling(target);
       const needed = neededQuestions(target, options.only);
-      // A supplied option wins, then what the package settles, then a question at a terminal, and
-      // Otherwise the option's declared default.
+      // Precedence: a supplied option, the package's own setting, a terminal question, the default.
       let linter: Linter = options.linter;
       if (supplied.options.linter === undefined && existing.linter !== undefined) {
         linter = existing.linter;

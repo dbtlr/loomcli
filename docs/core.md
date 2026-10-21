@@ -1279,6 +1279,7 @@ declare class Application {
 
 ```ts
 // src/application.test.ts: the assembly check reads every fault and fails the test with their diagnostics.
+/// <reference types="bun" />
 import { test } from 'bun:test';
 import { assertAssembles } from '@loomcli/testing';
 
