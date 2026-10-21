@@ -48,6 +48,19 @@ export default [
 ];
 ```
 
+typescript-eslint supports TypeScript below 6.1 and reads the TypeScript 6 API, which TypeScript 7 does not ship. An application on TypeScript 7 runs the two side by side, with `typescript` aliased to the TypeScript 6 compatibility package and the compiler installed as `@typescript/native`, which keeps `tsc` on TypeScript 7:
+
+```json
+{
+  "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}
+```
+
+`loom init --linter eslint` writes both keys in a new scaffold, and an application that already declares `typescript` adds them by hand. The alias goes once typescript-eslint supports TypeScript 7.
+
 `configs.recommended` registers the plugin under `@loomcli` and turns all three rules on at `error`. To change a rule, set it in a later config object, such as `'@loomcli/name-shape': 'warn'`.
 
 ## How the rules find a declaration

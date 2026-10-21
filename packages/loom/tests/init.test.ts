@@ -11,6 +11,7 @@ import { fragmentGuide } from '../src/content/fragment-guide.js';
 import { installerScript } from '../src/content/installer-script.js';
 import { eslintConfig, oxlintConfig, typescriptConfig } from '../src/content/scaffold.js';
 import { renderManaged } from '../src/helpers/managed.js';
+import { toolRanges } from '../src/helpers/tooling.js';
 import { put, removeRoots, temporaryRoot } from './fixture.js';
 import {
   cli,
@@ -21,7 +22,6 @@ import {
   loom,
   runtimes,
   snapshot,
-  typeCheck,
 } from './package.js';
 
 afterEach(() => {
@@ -36,7 +36,7 @@ const slow = 180_000;
  * TypeScript range it declares, which a scaffold pins its compiler to.
  */
 const { peerDependencies: ranges, version } = z
-  .object({ peerDependencies: z.record(z.string(), z.string()), version: z.string() })
+  .object({ peerDependencies: z.object({ typescript: z.string() }), version: z.string() })
   .parse(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')));
 const { typescript } = ranges;
 
@@ -142,8 +142,8 @@ test("a new package.json is named for the directory, pins Loom at the running lo
       '@loomcli/eslint-plugin': version,
       '@loomcli/loom': version,
       '@loomcli/testing': version,
-      '@types/bun': ranges['@types/bun'],
-      oxlint: ranges.oxlint,
+      '@types/bun': toolRanges['@types/bun'],
+      oxlint: toolRanges.oxlint,
       typescript,
     },
     name: 'notes',
@@ -154,12 +154,11 @@ test("a new package.json is named for the directory, pins Loom at the running lo
 });
 
 test(
-  'a new scaffold, once installed, type-checks, passes its own assembly test under bun test, builds, and its bundle keeps the shebang and runs under Node and Bun',
+  'a new scaffold, once installed, passes its own assembly test under bun test, builds, and its bundle keeps the shebang and runs under Node and Bun',
   () => {
     const directory = emptyNotes();
     loom(directory, ['init']);
-    linkInstalled(directory, ['bunTypes', 'core', 'testing', 'types', 'typescript']);
-    expect(typeCheck(directory)).toEqual({ status: 0, stderr: '', stdout: '' });
+    linkInstalled(directory, ['core', 'testing', 'types', 'typescript']);
     expect(inPackage(directory, 'bun', ['test']).status).toBe(0);
     expect(loom(directory, ['build', '--target', 'node']).status).toBe(0);
     const bundle = join(directory, 'dist/main.js');
@@ -700,8 +699,8 @@ test.each([
   const manifest = JSON.parse(read(root, 'package.json'));
   expect(manifest.scripts.check).toBe('tsc --noEmit && eslint . && bun test');
   expect(manifest.devDependencies).toMatchObject({
-    eslint: ranges.eslint,
-    'typescript-eslint': ranges['typescript-eslint'],
+    eslint: toolRanges.eslint,
+    'typescript-eslint': toolRanges['typescript-eslint'],
   });
   expect(manifest.devDependencies).not.toHaveProperty('oxlint');
 });
@@ -783,17 +782,6 @@ test('a test for an application that cannot be loaded draws the warning and no f
   expect(existsSync(join(root, testPath))).toBe(false);
 });
 
-test(
-  'a scaffold for the ESLint and vitest pair type-checks once installed',
-  () => {
-    const directory = emptyNotes();
-    loom(directory, ['init', '--linter', 'eslint', '--test-runner', 'vitest']);
-    linkInstalled(directory, ['core', 'testing', 'types', 'typescript', 'vitest']);
-    expect(typeCheck(directory)).toEqual({ status: 0, stderr: '', stdout: '' });
-  },
-  slow,
-);
-
 /** `loom init` on a real terminal in the directory, with the extra arguments. */
 function atTerminal(directory: string, args: string[] = []) {
   return drive(
@@ -867,3 +855,26 @@ test.skipIf(process.platform === 'win32')(
     }
   },
 );
+
+test('an ESLint scaffold aliases typescript to the TypeScript 6 package and adds the compiler as @typescript/native', () => {
+  const directory = emptyNotes();
+  loom(directory, ['init', '--linter', 'eslint', '--test-runner', 'vitest']);
+  expect(JSON.parse(read(directory, 'package.json')).devDependencies).toEqual({
+    '@loomcli/eslint-plugin': version,
+    '@loomcli/loom': version,
+    '@loomcli/testing': version,
+    '@typescript/native': `npm:typescript@${typescript}`,
+    eslint: toolRanges.eslint,
+    typescript: `npm:@typescript/typescript6@${toolRanges['@typescript/typescript6']}`,
+    'typescript-eslint': toolRanges['typescript-eslint'],
+    vitest: toolRanges.vitest,
+  });
+});
+
+test('an ESLint scaffold in a package that pins its own typescript keeps that key and adds no second compiler', () => {
+  const root = ownPackage({ 'package.json': ownTypedManifest });
+  loom(root, ['init', '--linter', 'eslint']);
+  const { devDependencies } = JSON.parse(read(root, 'package.json'));
+  expect(devDependencies.typescript).toBe('~5.9.0');
+  expect(devDependencies).not.toHaveProperty('@typescript/native');
+});

@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 import { parseManifest } from './build-facts.js';
 import { withoutByteOrderMark } from './markdown.js';
-import { checkScript, toolDependencies } from './tooling.js';
-import type { ToolRanges, Tooling } from './tooling.js';
+import { checkScript, toolDependencies, toolRanges } from './tooling.js';
+import type { Tooling } from './tooling.js';
 
 /** A JSON object as `package.json` holds it, every key kept in its order. */
 const jsonObject = z.record(z.string(), z.unknown());
@@ -89,8 +89,12 @@ function holdsKey(value: unknown, key: string): boolean {
  */
 function addKey(
   manifest: Record<string, unknown>,
-  { declaredIn = [], path, value }: ManifestKey,
+  original: Record<string, unknown>,
+  { declaredIn = [], path, unlessDeclared, value }: ManifestKey,
 ): boolean {
+  if (unlessDeclared !== undefined && declaresDependency(original, unlessDeclared)) {
+    return false;
+  }
   const [first, second] = path;
   const exists = Object.hasOwn(manifest, first);
   if (second === undefined) {
@@ -128,6 +132,31 @@ function dependencyKey(group: string, name: string, value: string): ManifestKey 
   return { declaredIn: dependencyGroups, path: [group, name], value };
 }
 
+/**
+ * The compiler keys of a scaffold. typescript-eslint supports TypeScript below 6.1 and reads the
+ * TypeScript 6 API, which TypeScript 7 does not ship, so an ESLint scaffold aliases `typescript` to
+ * the TypeScript 6 compatibility package and gains the compiler itself as `@typescript/native`,
+ * which supplies `tsc`. A package that declares its own `typescript` keeps it and gets no second
+ * compiler, so an existing ESLint package on TypeScript 7 adds the alias by hand. Both keys go once
+ * typescript-eslint supports TypeScript 7.
+ */
+function compilerKeys({ linter }: Tooling, typescript: string): ManifestKey[] {
+  if (linter === 'oxlint') {
+    return [dependencyKey('devDependencies', 'typescript', typescript)];
+  }
+  return [
+    dependencyKey(
+      'devDependencies',
+      'typescript',
+      `npm:@typescript/typescript6@${toolRanges['@typescript/typescript6']}`,
+    ),
+    {
+      ...dependencyKey('devDependencies', '@typescript/native', `npm:typescript@${typescript}`),
+      unlessDeclared: 'typescript',
+    },
+  ];
+}
+
 /** The test runner a manifest already declares: vitest when any dependency field names it. */
 export function existingRunner(manifest: Record<string, unknown>): Tooling['runner'] | undefined {
   return declaresDependency(manifest, 'vitest') ? 'vitest' : undefined;
@@ -160,21 +189,20 @@ export function applicationIdentifier(name: string): string {
 
 /**
  * One `package.json` key init writes when it is missing: a top-level key or a key one level down. A
- * key one level down counts as present when any object named in `declaredIn` holds it too.
+ * key one level down counts as present when any object named in `declaredIn` holds it too. A key
+ * with `unlessDeclared` is left out when the package declared that dependency before the run.
  */
 export interface ManifestKey {
   readonly declaredIn?: readonly string[];
   readonly path: readonly [string] | readonly [string, string];
+  readonly unlessDeclared?: string;
   readonly value: unknown;
 }
 
-/**
- * The versions a scaffold pins: the running loom's, which every Loom package takes, and the range
- * `@loomcli/loom` declares as an optional peer dependency for each tool package.
- */
+/** The versions a scaffold pins: the running loom's, and the TypeScript range loom declares. */
 export interface ScaffoldVersions {
   readonly loom: string;
-  readonly ranges: Readonly<ToolRanges>;
+  readonly typescript: string;
 }
 
 /**
@@ -183,7 +211,7 @@ export interface ScaffoldVersions {
  */
 export function scaffoldKeys(
   name: string,
-  { loom, ranges }: ScaffoldVersions,
+  { loom, typescript }: ScaffoldVersions,
   tooling: Tooling,
 ): ManifestKey[] {
   return [
@@ -192,11 +220,11 @@ export function scaffoldKeys(
     { path: ['scripts', 'check'], value: checkScript(tooling) },
     dependencyKey('dependencies', '@loomcli/core', loom),
     dependencyKey('devDependencies', '@loomcli/loom', loom),
-    dependencyKey('devDependencies', 'typescript', ranges.typescript),
+    ...compilerKeys(tooling, typescript),
     dependencyKey('devDependencies', '@loomcli/testing', loom),
     dependencyKey('devDependencies', '@loomcli/eslint-plugin', loom),
     ...toolDependencies(tooling).map((tool) =>
-      dependencyKey('devDependencies', tool, ranges[tool]),
+      dependencyKey('devDependencies', tool, toolRanges[tool]),
     ),
   ];
 }
@@ -216,9 +244,10 @@ export function addMissingKeys(
   keys: readonly ManifestKey[],
 ): { added: string[]; text: string } {
   const manifest = parseManifest(source);
+  const original = parseManifest(source);
   const added: string[] = [];
   for (const key of keys) {
-    if (addKey(manifest, key)) {
+    if (addKey(manifest, original, key)) {
       added.push(key.path.join('.'));
     }
   }

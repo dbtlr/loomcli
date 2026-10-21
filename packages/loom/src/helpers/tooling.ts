@@ -1,8 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { z } from 'zod';
-
 /** The oxlint configuration file, which holds the whole configuration. */
 const oxlintConfigPath = '.oxlintrc.json';
 
@@ -41,20 +39,24 @@ export interface Tooling {
 /** The tooling a scaffold uses when nothing says otherwise. */
 export const defaultTooling: Tooling = { linter: linters[0], runner: testRunners[0] };
 
-/** The optional peer dependencies of `@loomcli/loom` that name a tool package a scaffold pins. */
-export const toolRanges = z.object({
-  '@types/bun': z.string(),
-  eslint: z.string(),
-  oxlint: z.string(),
-  typescript: z.string(),
-  'typescript-eslint': z.string(),
-  vitest: z.string(),
-});
+/**
+ * The range init writes for each tool package of a scaffold, other than TypeScript's own, which
+ * `@loomcli/loom` declares as its optional peer. Each range is bumped by hand.
+ * `@typescript/typescript6` is the TypeScript 6 compatibility package that an ESLint scaffold
+ * aliases as `typescript`, because typescript-eslint supports TypeScript below 6.1 and reads the
+ * TypeScript 6 API. Remove that alias, and this entry, once typescript-eslint supports
+ * TypeScript 7.
+ */
+export const toolRanges = {
+  '@types/bun': '^1.4.3',
+  '@typescript/typescript6': '^6.0.2',
+  eslint: '^10.13.0',
+  oxlint: '^1.89.0',
+  'typescript-eslint': '^8.72.0',
+  vitest: '^5.0.5',
+} as const;
 
-/** The range of each tool package, by package name. */
-export type ToolRanges = z.infer<typeof toolRanges>;
-
-export type ToolPackage = keyof ToolRanges;
+export type ToolPackage = keyof typeof toolRanges;
 
 /** The path of the lint configuration file init writes for a linter. */
 export function lintConfigPath(linter: Linter): string {
@@ -81,7 +83,10 @@ export function checkScript({ linter, runner }: Tooling): string {
 }
 
 /** The tool packages the linter and the runner need as development dependencies. */
-export function toolDependencies({ linter, runner }: Tooling): ToolPackage[] {
+export function toolDependencies({
+  linter,
+  runner,
+}: Tooling): Exclude<ToolPackage, '@typescript/typescript6'>[] {
   return [
     ...(linter === 'oxlint' ? (['oxlint'] as const) : (['eslint', 'typescript-eslint'] as const)),
     ...(runner === 'bun' ? (['@types/bun'] as const) : (['vitest'] as const)),

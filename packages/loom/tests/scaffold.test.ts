@@ -8,7 +8,7 @@ import {
   isNewPackageName,
   scaffoldKeys,
 } from '../src/helpers/scaffold.js';
-import { defaultTooling } from '../src/helpers/tooling.js';
+import { defaultTooling, toolRanges } from '../src/helpers/tooling.js';
 import type { Tooling } from '../src/helpers/tooling.js';
 
 test.each([
@@ -49,17 +49,7 @@ test('a build still needs a bin to name its application', () => {
   expect(() => applicationName(manifest({ name: 'notes' }), undefined)).toThrow('--name');
 });
 
-/** The ranges `@loomcli/loom` declares for the tool packages a scaffold pins. */
-const ranges = {
-  '@types/bun': '^1.0.0',
-  eslint: '^10.0.0',
-  oxlint: '^1.0.0',
-  typescript: '^7.0.0',
-  'typescript-eslint': '^8.0.0',
-  vitest: '^5.0.0',
-};
-
-const versions = { loom: '1.2.3', ranges };
+const versions = { loom: '1.2.3', typescript: '^7.0.0' };
 const keys = scaffoldKeys('notes', versions, defaultTooling);
 
 test('every missing key is added at the end of its object, in the scaffold order', () => {
@@ -91,8 +81,8 @@ test('every missing key is added at the end of its object, in the scaffold order
       '@loomcli/eslint-plugin': '1.2.3',
       '@loomcli/loom': '1.2.3',
       '@loomcli/testing': '1.2.3',
-      '@types/bun': '^1.0.0',
-      oxlint: '^1.0.0',
+      '@types/bun': toolRanges['@types/bun'],
+      oxlint: toolRanges.oxlint,
       typescript: '^7.0.0',
     },
     scripts: { build: 'loom build --target node', check: 'tsc --noEmit && oxlint src && bun test' },
@@ -103,22 +93,34 @@ test.each<[Tooling, string, Record<string, string>]>([
   [
     { linter: 'oxlint', runner: 'bun' },
     'tsc --noEmit && oxlint src && bun test',
-    { '@types/bun': '^1.0.0', oxlint: '^1.0.0' },
+    { '@types/bun': toolRanges['@types/bun'], oxlint: toolRanges.oxlint, typescript: '^7.0.0' },
   ],
   [
     { linter: 'oxlint', runner: 'vitest' },
     'tsc --noEmit && oxlint src && vitest run',
-    { oxlint: '^1.0.0', vitest: '^5.0.0' },
+    { oxlint: toolRanges.oxlint, typescript: '^7.0.0', vitest: toolRanges.vitest },
   ],
   [
     { linter: 'eslint', runner: 'bun' },
     'tsc --noEmit && eslint . && bun test',
-    { '@types/bun': '^1.0.0', eslint: '^10.0.0', 'typescript-eslint': '^8.0.0' },
+    {
+      '@types/bun': toolRanges['@types/bun'],
+      '@typescript/native': 'npm:typescript@^7.0.0',
+      eslint: toolRanges.eslint,
+      typescript: 'npm:@typescript/typescript6@^6.0.2',
+      'typescript-eslint': toolRanges['typescript-eslint'],
+    },
   ],
   [
     { linter: 'eslint', runner: 'vitest' },
     'tsc --noEmit && eslint . && vitest run',
-    { eslint: '^10.0.0', 'typescript-eslint': '^8.0.0', vitest: '^5.0.0' },
+    {
+      '@typescript/native': 'npm:typescript@^7.0.0',
+      eslint: toolRanges.eslint,
+      typescript: 'npm:@typescript/typescript6@^6.0.2',
+      'typescript-eslint': toolRanges['typescript-eslint'],
+      vitest: toolRanges.vitest,
+    },
   ],
 ])('the tooling %j writes the check script and the packages it needs', (tooling, script, tools) => {
   const { text } = addMissingKeys('{"name":"notes"}', scaffoldKeys('notes', versions, tooling));
@@ -128,9 +130,19 @@ test.each<[Tooling, string, Record<string, string>]>([
     '@loomcli/eslint-plugin': '1.2.3',
     '@loomcli/loom': '1.2.3',
     '@loomcli/testing': '1.2.3',
-    typescript: '^7.0.0',
     ...tools,
   });
+});
+
+test('an ESLint scaffold leaves an existing typescript key alone and adds no second compiler key', () => {
+  const source = '{"name":"notes","devDependencies":{"typescript":"^7.0.0"}}';
+  const { added, text } = addMissingKeys(
+    source,
+    scaffoldKeys('notes', versions, { linter: 'eslint', runner: 'bun' }),
+  );
+  expect(JSON.parse(text).devDependencies.typescript).toBe('^7.0.0');
+  expect(added).not.toContain('devDependencies.typescript');
+  expect(added).not.toContain('devDependencies.@typescript/native');
 });
 
 test.each(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'])(

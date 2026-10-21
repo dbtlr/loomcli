@@ -34,7 +34,7 @@ import {
   readManifest,
   scaffoldName,
 } from '../../helpers/build-facts.js';
-import { loomVersion, scaffoldRanges } from '../../helpers/loom-version.js';
+import { loomVersion, typescriptRange } from '../../helpers/loom-version.js';
 import { driftWarning, hasDrifted, readManaged, renderManaged } from '../../helpers/managed.js';
 import { nearestPackageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
@@ -228,7 +228,7 @@ function writeKeys(run: Run) {
   const name = scaffoldName(readManifest(run.directory));
   const { added, text } = addMissingKeys(
     source,
-    scaffoldKeys(name, { loom: loomVersion, ranges: scaffoldRanges }, run.tooling),
+    scaffoldKeys(name, { loom: loomVersion, typescript: typescriptRange }, run.tooling),
   );
   if (added.length > 0) {
     writeFile(run, 'package.json', text);
@@ -389,7 +389,7 @@ function existingTooling(target: Target): Partial<Tooling> {
 function keysDiffer(target: Target, first: Tooling, second: Tooling) {
   const source = manifestSource(target);
   const name = scaffoldName(manifestOf(source));
-  const versions = { loom: loomVersion, ranges: scaffoldRanges };
+  const versions = { loom: loomVersion, typescript: typescriptRange };
   const textFor = (tooling: Tooling) =>
     addMissingKeys(source, scaffoldKeys(name, versions, tooling)).text;
   return textFor(first) !== textFor(second);
