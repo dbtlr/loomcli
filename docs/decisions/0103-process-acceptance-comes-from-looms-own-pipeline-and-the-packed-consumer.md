@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0103 - Process acceptance comes from Loom's own pipeline and the packed consumer
-description: Proof that Loom works as a real process comes from Loom's own pipeline, which runs the loom CLI on every check, PR guard, and release, and from the packed consumer, which runs what an author installs under Node and Bun on Linux and macOS. A process test covers only what a process has; everything else, the example applications included, runs in-process under both runtimes. Acceptance evidence still uses only the public API. It supersedes ADR-0014.
+description: Proof that Loom works as a real process comes from Loom's own pipeline, which runs the loom CLI on every check, PR guard, and release, and from the packed consumer, which runs what an author installs under Node and Bun on Linux and macOS. A process test covers only what a process has; everything else, the example applications included, runs in-process, and each runtime's CI job runs the suite under that runtime. Acceptance evidence still uses only the public API. It supersedes ADR-0014.
 status: accepted
 created: 2026-10-21
 modified: 2026-10-21
@@ -25,7 +25,7 @@ Two sources of process evidence now exist that ADR-0014 did not have:
 - **Real-process acceptance comes from the pipeline and the packed consumer.** Loom's pipeline runs the `loom` CLI as a process on every check, PR guard, and release, and `pnpm check:packed` runs the packed consumer as processes under Node and Bun on every CI platform, Linux and macOS, and before every publication.
 - **A process test proves only what a process has.** A test starts a child process only for a behavior an in-process run cannot show: a signal and its exit code, a raw or pseudo-terminal, a real shell sourcing a script, MCP framing over stdio, bundling and the release facts a build bakes, `process.exitCode`, or a removed working directory.
 - **Everything else runs in-process.** A test runs an Application through `run({ host })` or `invoke`, with the host facts it needs supplied as data. The example applications run in-process too: they show authoring syntax, and none keeps a process role.
-- **Runtimes are a CI matrix axis.** The suite runs once under Node and once under Bun, each in its own CI job. A test does not loop over runtimes itself.
+- **Runtimes are a CI matrix axis.** Each runtime's CI job runs the suite under that runtime, once under Node and once under Bun, and a test does not loop over runtimes itself. The Bun jobs do not yet run the suite under Bun, and Consequences states that gap.
 - **Evidence uses only the public API.** Acceptance evidence reaches Loom through public APIs, and a type consumer compiles against the packed declarations.
 - **Passing tests alone do not accept a deliverable.** Its SDK syntax must also be acceptable on human review, because the authoring surface is the product.
 - **Support follows the evidence.** Adding a runtime or platform to the support statement means adding it to the CI matrix, and to `check:packed`, first. A change the examples cannot exercise needs a new example increment or a public-API fixture before it is accepted.
@@ -38,7 +38,7 @@ This record supersedes ADR-0014 whole and keeps its other provisions, stated abo
 - **Internal-reaching tests.** Rejected, as in ADR-0014. A test that imports a private module proves the module, not the package a consumer installs.
 - **Wrapper reimplementations of routing or parsing inside tests.** Rejected, as in ADR-0014. A wrapper tests the wrapper.
 - **Document-only claims of compatibility.** Rejected, as in ADR-0014. A runtime or platform is supported when CI runs it, not when a document says so.
-- **A test runner per runtime, such as `bun test` under Bun.** Rejected. vitest runs the suite under both runtimes with one runner and one testing API, and `bun test` ran no faster on the in-process files.
+- **A test runner per runtime, such as `bun test` under Bun.** Rejected. vitest can run the suite under both runtimes with one runner and one testing API, and `bun test` ran no faster on the in-process files.
 
 ## Consequences
 
