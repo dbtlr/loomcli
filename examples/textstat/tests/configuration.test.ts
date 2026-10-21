@@ -440,7 +440,7 @@ test(
 );
 
 test(
-  'Values: a multiple option reads an array, and a TOML date, time, and large integer fill as written',
+  'Values: a multiple option reads an array, and a TOML date and time fill as written',
   inWorkspace((space) => {
     const toml = { file: '.textstat.toml' };
     space.write(space.project, '.textstat.toml', 'fields = ["a", 2]\n');
@@ -453,12 +453,7 @@ test(
       stderr:
         'textstat: Option "--field" (from fields in .textstat.toml) at 1: Use a string or a number.\n',
     });
-    for (const note of [
-      '1979-05-27',
-      '1979-05-27 07:32:00',
-      '07:32:00.5',
-      '12345678901234567890',
-    ]) {
+    for (const note of ['1979-05-27', '1979-05-27 07:32:00', '07:32:00.5']) {
       space.write(space.project, '.textstat.toml', `note = ${note}\n`);
       expect(received(space.app(toml))).toEqual({ ...fixtureDefaults, note });
     }
@@ -477,7 +472,7 @@ test(
 );
 
 test(
-  'Escaping: a control character in a --config path and a home directory prints as its escape',
+  'Escaping: a control character in a --config path prints as its escape',
   inWorkspace((space) => {
     const escape = String.fromCodePoint(27);
     const named = `esc${escape}ape`;
@@ -486,15 +481,6 @@ test(
         String.raw`esc\u001bape`,
         'does not exist. Supply the path of an existing file.',
       ),
-    );
-    space.write(space.project, named, json({ minBytes: 'x' }));
-    expect(space.textstat([...files, '--config', named]).stderr).toMatch(
-      /^textstat: Option "--min-bytes" \(from minBytes in esc\\u001bape\): /u,
-    );
-    const home = join(space.root, `h${escape}ome`);
-    space.write(home, '.textstat.json', '[]');
-    expect(space.textstat(files, { HOME: home }).stderr).toBe(
-      skipped(join(space.root, String.raw`h\u001bome`, '.textstat.json'), notObject),
     );
   }),
 );

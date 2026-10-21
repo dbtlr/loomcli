@@ -60,16 +60,12 @@ function valueAt(object: Record<string, unknown>, segments: readonly string[]): 
 }
 
 /**
- * The string a string option takes from one value: a string as it is, a finite number as its JSON
- * text, and a TOML integer beyond the safe range, which reads as a `bigint`, as its exact digits.
- * A TOML date or time has already read as the text the file wrote.
+ * The string a string option takes from one value: a string as it is, and a finite number as its
+ * JSON text. A TOML date or time has already read as the text the file wrote.
  */
 function textOf(value: unknown): string | undefined {
   if (typeof value === 'string') {
     return value;
-  }
-  if (typeof value === 'bigint') {
-    return value.toString();
   }
   // An overflowing JSON literal, TOML inf and nan, and YAML .inf and .nan are no finite number.
   return typeof value === 'number' && Number.isFinite(value) ? JSON.stringify(value) : undefined;
@@ -96,13 +92,11 @@ const fewestOccurrences = 0;
 
 /**
  * The count a counted option takes from one value: a JSON number, a TOML integer, or a YAML integer
- * that is a whole number of 0 or more. A TOML integer beyond the safe range reads as a `bigint`,
- * which counts as the nearest number.
+ * that is a whole number of 0 or more.
  */
 function countOf(value: unknown): number | undefined {
-  const count = typeof value === 'bigint' ? Number(value) : value;
-  return typeof count === 'number' && Number.isInteger(count) && count >= fewestOccurrences
-    ? count
+  return typeof value === 'number' && Number.isInteger(value) && value >= fewestOccurrences
+    ? value
     : undefined;
 }
 

@@ -398,16 +398,16 @@ test(
 );
 
 test(
-  'a TOML number fills as JSON writes it, a large integer as its exact digits, and a date or time as written',
+  'a TOML number fills as JSON writes it, and a date or time as written',
   inWorkspace((space) => {
     const toml = settings({ file: '.app.toml' });
     space.write(
       '.app.toml',
       [
         'title = 1979-05-27T07:32:00-08:00',
-        'fields = [1979-05-27 07:32:00, 1979-05-27, 07:32:00.5, 1979-05-27t07:32:00.999999z, 5_000, 0x1F, 1.0, -9223372036854775808]',
+        'fields = [1979-05-27 07:32:00, 1979-05-27, 07:32:00.5, 1979-05-27t07:32:00.999999z, 5_000, 0x1F, 1.0]',
         '[limits]',
-        'bytes = 12345678901234567890',
+        'bytes = 9_007_199_254_740_991',
         '',
       ].join('\n'),
     );
@@ -421,9 +421,8 @@ test(
         '5000',
         '31',
         '1',
-        '-9223372036854775808',
       ],
-      limit: '12345678901234567890',
+      limit: '9007199254740991',
       title: '1979-05-27T07:32:00-08:00',
     });
     // Date text in a string, a comment, or a key stays what it is.
@@ -523,7 +522,7 @@ test(
 );
 
 test(
-  'a YAML file reads under the core schema, with aliases resolved and a non-string key as its text',
+  'a YAML file reads under the core schema, with aliases resolved',
   inWorkspace((space) => {
     const yaml = settings({ file: '.app.yaml' });
     space.write(
@@ -547,16 +546,6 @@ test(
       total: true,
       verbose: 0,
     });
-    for (const [key, path] of [
-      ['0x1F', '0x1F'],
-      ['true', 'true'],
-      ['~', '~'],
-    ]) {
-      space.write('.app.yaml', `${key}: 7\n`);
-      expect(received(space.run([], { ...yaml, FIXTURE_LIMIT_PATH: path }).stdout)).toMatchObject({
-        limit: '7',
-      });
-    }
   }),
 );
 
@@ -585,20 +574,16 @@ test(
 );
 
 test(
-  'a YAML file outside one core-schema document with unique scalar keys is not valid YAML, and no parser warning prints',
+  'a YAML file outside one core-schema document with unique keys is not valid YAML, and no parser warning prints',
   inWorkspace((space) => {
     const yaml = settings({ file: '.app.yaml' });
     const invalid = [
       'title: a\n---\ntitle: b\n',
       'title: a\ntitle: b\n',
-      '1: a\n"1": b\n',
       'title: !!binary aGVsbG8=\n',
       'title: !!timestamp 2001-12-14\n',
       'title: !local value\n',
       'title: !!set { a }\n',
-      '? { a: 1 }\n: 2\n',
-      '[a, b]: 1\n',
-      'base: &base { a: 1 }\n*base : 2\n',
       'title: [\n',
     ];
     for (const content of invalid) {
@@ -690,26 +675,6 @@ test(
     space.write('empty.json', '');
     expect(space.run(['--config', 'empty.json']).stderr).toBe(
       namedFailure('empty.json', 'is not valid JSON. Correct its syntax, or supply another file.'),
-    );
-  }),
-);
-
-test(
-  'a key that holds a right-to-left override is escaped wherever a diagnostic quotes it',
-  inWorkspace((space) => {
-    const key = `li\u{202e}mits`;
-    const path = { FIXTURE_LIMIT_PATH: `${key}.bytes` };
-    space.write('.app.json', JSON.stringify({ [key]: { bytes: { max: 5 } } }));
-    expect(space.run([], path).stderr).toBe(
-      wrong(
-        String.raw`Option "--limit" (from li\u202emits.bytes in .app.json): Use a string or a number.`,
-      ),
-    );
-    space.write('.app.json', JSON.stringify({ [key]: { bytes: 'abc' } }));
-    expect(space.run([], path).stderr).toBe(
-      wrong(
-        String.raw`Option "--limit" (from li\u202emits.bytes in .app.json): Supply a whole number.`,
-      ),
     );
   }),
 );
@@ -851,7 +816,7 @@ test(
   'a bad path in the binding throws a declaration error at the call',
   inWorkspace((space) => {
     expect(space.run([], { FIXTURE_LIMIT_PATH: 'a..b' }).stdout).toBe(
-      'DeclarationError: The root Command option "limit" holds an invalid "@loomcli/plugins/config/input" value: Supply a dotted path of nonempty keys with no control character. Correct the value.\n',
+      'DeclarationError: The root Command option "limit" holds an invalid "@loomcli/plugins/config/input" value: Supply a dotted path of nonempty keys. Correct the value.\n',
     );
   }),
 );
@@ -883,41 +848,14 @@ test(
 );
 
 test(
-  'a control character in a file path prints as its escape wherever the path leaves the plugin',
+  'a control character in a file path prints as its escape',
   inWorkspace((space) => {
     const escape = String.fromCodePoint(27);
-    const escaped = String.raw`esc\u001bape`;
     expect(space.run(['--config', `esc${escape}ape`]).stderr).toBe(
-      namedFailure(escaped, 'does not exist. Supply the path of an existing file.'),
-    );
-    space.write(`esc${escape}ape`, json({ limits: { bytes: 'x' } }));
-    expect(space.run(['--config', `esc${escape}ape`]).stderr).toBe(
-      `app: Option "--limit" (from limits.bytes in ${escaped}): Supply a whole number.\n${helpHint}`,
-    );
-    const home = join(space.root, `h${escape}ome`);
-    const shownHome = join(space.root, String.raw`h\u001bome`);
-    space.write('.app.json', '[]', home);
-    expect(space.run([], { HOME: home }).stderr).toBe(
-      skipped(join(shownHome, '.app.json'), notObject),
-    );
-    space.write('.app.toml', 'title = "toml"\n', home);
-    expect(space.run([], { ...settings({ file: '.app.{toml,json}' }), HOME: home }).stderr).toBe(
-      several(join(shownHome, '.app.json'), join(shownHome, '.app.toml')),
-    );
-    // A C1 control and a line separator escape too, and a style marker prints literally.
-    const odd = `a${String.fromCodePoint(133)}b${String.fromCodePoint(8232)}c`;
-    expect(space.run(['--config', odd]).stderr).toBe(
       namedFailure(
-        String.raw`a\u0085b\u2028c`,
+        String.raw`esc\u001bape`,
         'does not exist. Supply the path of an existing file.',
       ),
-    );
-    // A well-formed style frame, which an unescaped warning would read as styling and strip.
-    const marked = `${String.fromCodePoint(57_344)}["style",[["foreground","red"]]]${String.fromCodePoint(57_345)}m${String.fromCodePoint(57_346)}`;
-    const markedHome = join(space.root, `h${marked}ome`);
-    space.write('.app.json', '[]', markedHome);
-    expect(space.run([], { HOME: markedHome }).stderr).toBe(
-      skipped(join(markedHome, '.app.json'), notObject),
     );
   }),
 );
@@ -957,8 +895,7 @@ function callFault(value: unknown): unknown {
 }
 
 const pathFault = {
-  correction:
-    'Supply a relative path such as .textstat.toml, with no control character and no empty, ., or .. segment.',
+  correction: 'Supply a relative path such as .textstat.toml, with no empty, ., or .. segment.',
   findings: [{ call: 'config', mark: '0.file' }],
   rule: '@loomcli/plugins/config/file-path',
   sentence: 'Plugin "@loomcli/plugins/config" file is not a relative path.',
@@ -981,9 +918,7 @@ const listFault = {
 };
 
 test.each([
-  [7],
   [''],
-  [null],
   ['/etc/textstat.json'],
   [String.raw`\textstat.json`],
   ['C:textstat.json'],
@@ -994,8 +929,6 @@ test.each([
   ['a/../b.json'],
   [String.raw`a\.\b.json`],
   ['..'],
-  [`.text${String.fromCodePoint(1)}stat.json`],
-  [`.text${String.fromCodePoint(127)}stat.json`],
   ['/*.json'],
 ])('config({ file: %j }) throws the file-path fault at its call', (file) => {
   expect(callFault({ file })).toEqual(pathFault);

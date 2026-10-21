@@ -55,9 +55,8 @@ function quoteDates(text: string): string {
 }
 
 /**
- * The table a TOML document holds, read through `smol-toml`, which loads only here. An integer
- * beyond the safe range reads as a `bigint`, so it neither rounds nor fails the document. The
- * parser reads a date or time as a date object that keeps no source text, so once the document
+ * The table a TOML document holds, read through `smol-toml`, which loads only here. The parser
+ * reads a date or time as a date object that keeps no source text, so once the document
  * as written parses, which judges every literal, it is parsed again with each date literal
  * quoted, and the value is the text the file wrote. The parser's `useLegacyDate: false` option
  * does not help, because the Temporal values it returns normalize the text as well, and Temporal
@@ -65,11 +64,10 @@ function quoteDates(text: string): string {
  */
 export async function readToml(text: string): Promise<Reading> {
   const { parse } = await import('smol-toml');
-  const read = (source: string) => parse(source, { integersAsBigInt: 'asNeeded' });
   try {
-    const table = read(text);
+    const table = parse(text);
     const quoted = quoteDates(text);
-    return { kind: 'usable', object: quoted === text ? table : read(quoted) };
+    return { kind: 'usable', object: quoted === text ? table : parse(quoted) };
   } catch {
     return { clause: 'is not valid TOML.', kind: 'unusable' };
   }

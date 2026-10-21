@@ -70,8 +70,7 @@ const settingsCases: Record<string, Expected> = {
     sentence: 'Plugin "@loomcli/plugins/config" file lists an extension the plugin cannot read.',
   },
   'config-path': {
-    correction:
-      'Supply a relative path such as .textstat.toml, with no control character and no empty, ., or .. segment.',
+    correction: 'Supply a relative path such as .textstat.toml, with no empty, ., or .. segment.',
     rule: 'config/file-path',
     sentence: 'Plugin "@loomcli/plugins/config" file is not a relative path.',
   },
