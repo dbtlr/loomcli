@@ -40,3 +40,18 @@ test.each(['node', 'bun'])(
     }
   },
 );
+
+test.each(['node', 'bun'])(
+  'a reader that closes stdout before the completion script arrives ends the bundle under %s with 141 and nothing on stderr',
+  async (runtime) => {
+    const { child, exit } = start(main, ['completion', 'bash'], { runtime });
+    // The reader is gone before the script is written, as a `head -1` that already exited is.
+    child.stdout.destroy();
+    const ended = await exit;
+    expect({ signal: ended.signal, status: ended.status, stderr: ended.stderr }).toEqual({
+      signal: null,
+      status: 141,
+      stderr: '',
+    });
+  },
+);

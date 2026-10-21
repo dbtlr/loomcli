@@ -2,5 +2,6 @@
   - Core aborts the run signal with the `CancellationReason` source `closed-pipe`, whose `cause` is the failed write's error, so a streaming row source or an action that reads `signal` stops as it does on cancellation.
   - The write and every later stdout write reject with the signal's reason, which is silent when the action lets it propagate. Core writes no failure report and no incomplete-result line for the closed pipe and logs no failure event.
   - `run()` resolves 141, and the process exits 141, in a distributed and a development build, under Node and Bun. `ExitCode` and a cancelled `invoke()` outcome's `exitCode` gain 141, and the manifest's `exitCodes` gains its row.
+  - The completion plugin's print children and `__complete` write through `out`, so `app completion bash | head -1` ends the same way instead of crashing with an `EPIPE` trace under Node or reporting `Something went wrong.` under Bun.
   - The first cause to abort the run still fixes the code, so a pipe that closes after `SIGINT` keeps 130.
   - A failed stderr write and every other failed stdout write, such as `ENOSPC`, still report a broken destination and exit 1.
