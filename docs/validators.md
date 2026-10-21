@@ -229,7 +229,7 @@ path(
 - **The context.** `path` reads `host.cwd` from the [validation context](core.md#validation-context), so it runs only inside a Loom run.
 - **Publishes** `{ type: 'string', minLength: 1 }`. Existence, kind, and access are runtime state, not a shape of the token, so none is published.
 - **Message.** One sentence per configuration: `Expected a nonempty path with no NUL character.`, `Expected a readable file that exists.`, `Expected a readable directory that exists.`, `Expected a readable file or directory that exists.`, `Expected a writable file, or a new file in a writable directory.`, `Expected a writable directory, or a new directory in a writable directory.`, and `Expected a writable path, or a new path in a writable directory.`
-- **Faults.** None beyond options that are not a plain object: the type rejects `kind` without `access`, and an `access` or `kind` outside its set.
+- **Faults.** None: the type rejects `kind` without `access`, and an `access` or `kind` outside its set.
 
 ## createValidator
 

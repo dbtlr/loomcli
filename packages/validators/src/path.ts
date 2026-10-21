@@ -3,7 +3,6 @@ import { dirname, resolve } from 'node:path';
 import { pathIssue, pathReadableIssue, pathWritableIssue } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
-import { readOptions } from './faults.js';
 import { reject } from './issues.js';
 import { readable, writable } from './probe.js';
 import type { PathKind } from './probe.js';
@@ -24,7 +23,6 @@ type PathOptions =
  * With `access`, the filesystem is probed; the probe is advisory, since the filesystem can change.
  */
 function path(options?: PathOptions): Validator<string> {
-  readOptions('path', options);
   const access = options?.access;
   const kind = options?.kind ?? 'file';
   const issue =

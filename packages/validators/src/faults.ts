@@ -1,8 +1,6 @@
 import { DeclarationError } from '@loomcli/core';
 import type { DiagnosticRule } from '@loomcli/core';
 
-import { isPlainObject } from './data.js';
-
 /** One factory call as a finding rebuilds it: the factory's name and the arguments it received. */
 interface FactoryCall {
   readonly factory: string;
@@ -29,14 +27,5 @@ function fault(
   });
 }
 
-/**
- * A factory's options read as unknown values, with omitted options read as an empty record. The
- * types bound every factory's options, so a value that is not an object reads as none. Only `path()`
- * still reads its options through it.
- */
-function readOptions(_factory: string, options: unknown): Readonly<Record<string, unknown>> {
-  return isPlainObject(options) ? options : {};
-}
-
-export { fault, readOptions };
+export { fault };
 export type { FactoryCall };
