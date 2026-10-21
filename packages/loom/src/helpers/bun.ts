@@ -3,7 +3,7 @@ import type { ChildProcess } from 'node:child_process';
 
 /** The sentence a command that needs Bun fails with when none is on the PATH. */
 const missingBun =
-  'Bun is not on the PATH, and loom build and loom check do their work under Bun. Install Bun from https://bun.sh and run the command again.';
+  'Bun is not on the PATH, and loom build and loom init do their work under Bun. Install Bun from https://bun.sh and run the command again.';
 
 /** Whether a spawn failed because no executable answered to the name. */
 function isMissing(error: Error | undefined) {

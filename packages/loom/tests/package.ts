@@ -14,10 +14,13 @@ const repository = fileURLToPath(new URL('../../../', import.meta.url));
  * directory the repository installed, so the fixture resolves them as an installed package would.
  */
 const installed = {
+  bunTypes: { from: 'packages/loom/node_modules/@types/bun', to: '@types/bun' },
   core: { from: 'packages/core', to: '@loomcli/core' },
   plugins: { from: 'packages/plugins', to: '@loomcli/plugins' },
+  testing: { from: 'packages/testing', to: '@loomcli/testing' },
   types: { from: 'packages/core/node_modules/@types/node', to: '@types/node' },
   typescript: { from: 'node_modules/typescript', to: 'typescript' },
+  vitest: { from: 'packages/loom/node_modules/vitest', to: 'vitest' },
 } as const;
 
 /** How long one loom run may take, which a compile or a type pass stretches. */
@@ -29,7 +32,7 @@ export const cli = fileURLToPath(new URL('../dist/main.js', import.meta.url));
 /** The runtimes every artifact runs under. */
 export const runtimes = ['node', 'bun'] as const;
 
-/** A link a fixture package holds: core, the plugins, the TypeScript compiler, or Node's type declarations. */
+/** A link a fixture package holds: a Loom package, the TypeScript compiler, or a type declaration or test runner package. */
 export type Link = keyof typeof installed;
 
 /**
@@ -81,6 +84,30 @@ export function loom(
     throw result.error;
   }
   return { status: result.status, stderr: result.stderr, stdout: result.stdout };
+}
+
+/** One run of a command in a package directory, such as the compiler or a test runner. */
+export function inPackage(cwd: string, command: string, args: string[]) {
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    env: childEnvironment(undefined),
+    timeout: loomTimeout,
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  return { status: result.status, stderr: result.stderr, stdout: result.stdout };
+}
+
+/** The type check the scaffold's `check` script runs: the linked compiler, without emitting. */
+export function typeCheck(root: string) {
+  return inPackage(root, process.execPath, [
+    join(root, 'node_modules/typescript/bin/tsc'),
+    '--noEmit',
+    '--pretty',
+    'false',
+  ]);
 }
 
 /** One run of a built artifact, under a runtime or as a binary when the runtime is undefined. */

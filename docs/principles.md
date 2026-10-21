@@ -41,7 +41,7 @@ Loom meets the standards that already exist and uses them, so an application wor
 Loom steers an author toward a well-built application through three lanes, in order:
 
 1. A type turns the mistake into a compile error.
-2. A lint rule the author installs catches what a type cannot express. Lint runs through ESLint or oxlint, the ecosystem's standard tools, so the author sees it in the editor as they type and in CI, and Loom builds no check framework of its own for it. Loom ships no lint rules yet.
+2. A lint rule the author installs catches what a type cannot express. Lint runs through ESLint or oxlint, the ecosystem's standard tools, so the author sees it in the editor as they type and in CI, and Loom builds no check framework of its own for it. Loom's lint rules ship in `@loomcli/eslint-plugin`, which [its reference](libs/eslint-plugin.md) describes.
 3. A development diagnostic reports a plausible mistake that only the assembled application reveals, such as two plugins that claim one spelling.
 
 A value that bypasses the types, from JavaScript or through `any`, and a construction built to break the code, such as a proxy whose trap throws, gets no rule. The platform's own error reports it.

@@ -127,6 +127,7 @@ function run(command, args, cwd, env = {}) {
     cwd,
     encoding: 'utf8',
     env: { ...process.env, ...env },
+    maxBuffer: 256 * 1024 * 1024,
   });
   assert.ifError(result.error);
   assert.equal(result.signal, null, `${command} received ${result.signal}`);
@@ -136,6 +137,85 @@ function run(command, args, cwd, env = {}) {
     stderr: result.stderr,
     stdout: result.stdout,
   };
+}
+
+/** The start and end of a long output, so a failing check names its cause without a flood. */
+function excerpt(output) {
+  return output.length <= 6000 ? output : `${output.slice(0, 3000)}\n...\n${output.slice(-3000)}`;
+}
+
+/**
+ * The pnpm workspace file that resolves every first-party package a packed package depends on to
+ * its tarball in the directory, so an install never reads a package of the synchronized version
+ * from the registry, where a release cut's version is not yet published.
+ */
+function workspaceOverrides(directory) {
+  const names = ['core', 'eslint-plugin', 'plugins', 'prompts', 'testing'];
+  return `overrides:\n${names
+    .map((name) => `  '@loomcli/${name}': 'file:${join(directory, `${name}.tgz`)}'\n`)
+    .join('')}`;
+}
+
+/**
+ * The scaffolds `loom init` writes in an empty directory. The ESLint pair is not here, because
+ * typescript-eslint supports TypeScript below 6.1 and a scaffold pins TypeScript 7, so its `eslint .`
+ * stops with "typescript-eslint does not support TS 7.0".
+ */
+const scaffolds = [{ args: [], label: 'oxlint-bun', linter: 'oxlint' }];
+
+/**
+ * Scaffolds an application with the packed `loom init`, installs it from the packed tarballs, and
+ * requires its `check` script to pass under Bun. Then it adds an undescribed option to the
+ * application and requires the linter to fail naming the `@loomcli/undescribed` rule, which proves
+ * the linter loads the packed lint plugin.
+ */
+async function checkScaffold(temporary, { args, label, linter }) {
+  const directory = join(temporary, 'scaffolds', label, 'notes');
+  await mkdir(directory, { recursive: true });
+  const initialized = run(join(temporary, 'node_modules/.bin/loom'), ['init', ...args], directory);
+  assert.equal(initialized.status, 0, `${label}: ${initialized.output}`);
+  // The scaffold pins the synchronized version, so each first-party package installs from its tarball.
+  const manifestPath = join(directory, 'package.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  for (const group of ['dependencies', 'devDependencies']) {
+    for (const name of Object.keys(manifest[group] ?? {})) {
+      if (name.startsWith('@loomcli/')) {
+        manifest[group][name] = `file:${join(temporary, `${name.slice('@loomcli/'.length)}.tgz`)}`;
+      }
+    }
+  }
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await writeFile(join(directory, 'pnpm-workspace.yaml'), workspaceOverrides(temporary));
+  pnpm(['install', '--prefer-offline', '--ignore-scripts', '--lockfile=false'], directory);
+  const checked = run('bun', ['run', 'check'], directory);
+  assert.equal(
+    checked.status,
+    0,
+    `${label}: the scaffold's check script failed:\n${excerpt(checked.output)}`,
+  );
+  const applicationPath = join(directory, 'src/application.ts');
+  const application = await readFile(applicationPath, 'utf8');
+  const undescribed = application.replace(
+    '}).action(',
+    "}).option('verbose', { type: 'boolean' }).action(",
+  );
+  assert.notEqual(undescribed, application, `${label}: the scaffold's application changed shape`);
+  await writeFile(applicationPath, undescribed);
+  const linted = run(
+    join(directory, 'node_modules/.bin', linter),
+    linter === 'oxlint' ? ['src'] : ['.'],
+    directory,
+  );
+  assert.notEqual(
+    linted.status,
+    0,
+    `${label}: ${linter} passed an undescribed option:\n${excerpt(linted.output)}`,
+  );
+  assert.match(
+    linted.output,
+    /@loomcli.undescribed/u,
+    `${label}: ${linter} did not name the undescribed rule:\n${excerpt(linted.output)}`,
+  );
 }
 
 /** The `_meta` every request of the MCP revision the packed plugin speaks carries. */
@@ -207,14 +287,27 @@ try {
   pnpm(['pack', '--out', join(temporary, 'plugins.tgz')], join(root, 'packages/plugins'));
   pnpm(['pack', '--out', join(temporary, 'validators.tgz')], join(root, 'packages/validators'));
   pnpm(['pack', '--out', join(temporary, 'prompts.tgz')], join(root, 'packages/prompts'));
+  pnpm(['pack', '--out', join(temporary, 'testing.tgz')], join(root, 'packages/testing'));
+  pnpm(
+    ['pack', '--out', join(temporary, 'eslint-plugin.tgz')],
+    join(root, 'packages/eslint-plugin'),
+  );
   pnpm(['pack', '--out', join(temporary, 'loom.tgz')], join(root, 'packages/loom'));
   // Publint fails each tarball on any warning, such as a nested manifest's exports map.
-  for (const name of ['core', 'plugins', 'validators', 'prompts', 'loom']) {
+  for (const name of [
+    'core',
+    'plugins',
+    'validators',
+    'prompts',
+    'testing',
+    'eslint-plugin',
+    'loom',
+  ]) {
     pnpm(['exec', 'publint', '--strict', join(temporary, `${name}.tgz`)], root);
   }
   // Attw resolves each export's declarations under the module settings an ESM-only package serves.
   // The toolchain ships only its bin and exports no module, so it has no export to resolve.
-  for (const name of ['core', 'plugins', 'validators', 'prompts']) {
+  for (const name of ['core', 'plugins', 'validators', 'prompts', 'testing', 'eslint-plugin']) {
     pnpm(['exec', 'attw', join(temporary, `${name}.tgz`), '--profile', 'esm-only'], root);
   }
   // The packed manifest must pin each first-party dependency at the synchronized version itself.
@@ -222,7 +315,12 @@ try {
   const loomManifest = run('tar', ['-xzOf', 'loom.tgz', 'package/package.json'], temporary);
   assert.equal(loomManifest.status, 0, loomManifest.output);
   const loomPackage = JSON.parse(loomManifest.stdout);
-  for (const name of ['@loomcli/core', '@loomcli/plugins']) {
+  for (const name of [
+    '@loomcli/core',
+    '@loomcli/eslint-plugin',
+    '@loomcli/plugins',
+    '@loomcli/prompts',
+  ]) {
     const pinned = loomPackage.dependencies?.[name];
     assert.equal(
       pinned,
@@ -285,13 +383,10 @@ try {
       type: 'module',
     }),
   );
-  // The packed toolchain depends on core and the plugin pack at the synchronized version.
-  // The overrides resolve them to the packed tarballs, so the check never reads either from the
-  // Registry, where a release cut's version is not yet published.
-  await writeFile(
-    join(temporary, 'pnpm-workspace.yaml'),
-    "overrides:\n  '@loomcli/core': 'file:./core.tgz'\n  '@loomcli/plugins': 'file:./plugins.tgz'\n",
-  );
+  // The packed toolchain depends on core, the plugin pack, the prompts, and the lint plugin at the
+  // Synchronized version. The overrides resolve them to the packed tarballs, so the check never
+  // Reads any from the registry, where a release cut's version is not yet published.
+  await writeFile(join(temporary, 'pnpm-workspace.yaml'), workspaceOverrides(temporary));
   pnpm(['install', '--prefer-offline', '--ignore-scripts', '--lockfile=false'], temporary);
 
   // JavaScript emit proves the consumer runs what it compiled, not what a loader interpreted.
@@ -776,18 +871,6 @@ try {
       `${name}: packed Markdown Details from a text import`,
     );
   }
-  // The packed loom bin checks an application module against the packed core and finds no fault.
-  await writeFile(
-    join(temporary, 'checked.ts'),
-    "import { Application } from '@loomcli/core';\n\nexport const checked = new Application('checked', { description: 'Checked by the packed loom.' }).action(() => undefined);\n",
-  );
-  const applicationCheck = run(
-    join(temporary, 'node_modules/.bin/loom'),
-    ['check', '--application', 'checked.ts'],
-    temporary,
-  );
-  assert.equal(applicationCheck.status, 0, applicationCheck.output);
-  assert.equal(applicationCheck.stdout, '', 'the packed loom check prints nothing on stdout');
   const releaseBundle = join(temporary, 'release-dist/release.js');
   for (const name of selected) {
     const built = run(runtimes.get(name), [releaseBundle, 'build'], temporary);
@@ -865,8 +948,13 @@ try {
     assert.equal(sourced.status, 0, sourced.output);
     assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
   }
+  // Each scaffold the packed loom bin writes installs from the packed tarballs and passes its own
+  // Check script under Bun: the type check, the linter, and the assembly test.
+  for (const scaffold of scaffolds) {
+    await checkScaffold(temporary, scaffold);
+  }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, @loomcli/prompts, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the five tarballs with publint and the declarations of core, plugins, validators, and prompts with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, a supplied linked prompt, declared option groups with structured failures, dotenv values in argv and named runs, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a color choice, a background choice, a verbosity, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, the loom bin checking an application module, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, @loomcli/prompts, @loomcli/testing, @loomcli/eslint-plugin, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the seven tarballs with publint and the declarations of the six libraries with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, a supplied linked prompt, declared option groups with structured failures, dotenv values in argv and named runs, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a color choice, a background choice, a verbosity, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, ${scaffolds.length} scaffolds the loom bin wrote that passed their own check script and, for oxlint, failed on an undescribed option, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

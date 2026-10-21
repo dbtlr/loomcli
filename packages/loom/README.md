@@ -1,6 +1,6 @@
 # @loomcli/loom
 
-The Loom CLI toolchain. It exports no module. Its `loom` bin acts on one package: the directory of the nearest `package.json` at or above the working directory. `loom build` and `loom check` do their work under [Bun](https://bun.sh), so Bun must be on the `PATH`.
+The Loom CLI toolchain. It exports no module. Its `loom` bin acts on one package: the directory of the nearest `package.json` at or above the working directory. `loom build` does its work under [Bun](https://bun.sh), so Bun must be on the `PATH`.
 
 ## Install
 
@@ -14,17 +14,18 @@ pnpm add -D @loomcli/loom
 
 ```sh
 mkdir notes && cd notes
-bunx @loomcli/loom init   # package.json, src/, tsconfig.json, .changes/README.md, and the changelog skill
+bunx @loomcli/loom init   # package.json, src/, its test, the lint configuration, tsconfig.json, .changes/README.md, and the changelog skill
 pnpm install
-loom check
+pnpm check
 ```
 
 In an empty directory nothing is installed yet, so the first run goes through the package runner. Inside a package that already depends on `@loomcli/loom`, the bin is `loom`.
 
-- **Scaffold files.** `src/application.ts`, `src/main.ts`, `tsconfig.json`, and the `package.json` keys `bin`, `scripts.build`, `scripts.check`, the Loom dependencies, and `typescript` at the range `@loomcli/loom` declares are written once, only when missing. Init never overwrites them, because they are your code from then on.
+- **Scaffold files.** `src/application.ts`, `src/main.ts`, `tsconfig.json`, `src/application.test.ts`, the lint file (`.oxlintrc.json` or `eslint.config.js`), and the `package.json` keys `bin`, `scripts.build`, `scripts.check`, the Loom dependencies, and the tool packages at the ranges `@loomcli/loom` declares are written once, only when missing. Init never overwrites them, because they are your code from then on.
 - **Managed files.** `.changes/README.md`, the fragment guide, `.agents/skills/loom-changelog/SKILL.md`, the changelog skill, and `install.sh`, the installer script, carry a header with a checksum. Init re-renders an unedited one, so it follows the installed toolchain. An edited one draws a warning and is left alone, and `--force` restores it. Delete the header to keep the file as your own.
 - **The installer script.** When `package.json` `repository` names a GitHub repository, such as `owner/name`, init writes `install.sh`, executable. Under POSIX `sh` on Linux and macOS it downloads the platform's binary from the repository's GitHub Release, verifies it against the release's `SHA256SUMS`, installs it into `~/.local/bin` or the `--dir` it is given, and records the installation. Without a GitHub repository, init writes no script and prints a warning. See [the installer script](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md#the-installer-script) for its arguments and the release shape your release workflow publishes.
-- **Options.** `--only <piece>` limits init to `application`, `entry`, `tsconfig`, `package`, `changes`, `skill`, or `install`, and may repeat. Init installs nothing, so run your package manager afterward.
+- **The check script.** `scripts.check` runs `tsc --noEmit`, the linter, and the test runner. The test passes the Application to the assembly check of `@loomcli/testing`, so a fault only the assembled application reveals fails there.
+- **Options.** `--only <piece>` limits init to `application`, `entry`, `tsconfig`, `test`, `lint`, `package`, `changes`, `skill`, or `install`, and may repeat. `--linter oxlint|eslint` and `--test-runner bun|vitest` choose the tools, by default oxlint and Bun. A lint configuration or a `vitest` dependency the package holds selects its tool, and at a terminal init asks when nothing does. Init installs nothing, so run your package manager afterward.
 
 See [loom init](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md#loom-init) for the contract.
 
@@ -69,13 +70,3 @@ bun build src/main.ts --outdir dist --target node --define "$(loom build --targe
 ```
 
 `--facts` prints the facts JSON instead, for a bundler's `define` option. See [loom build](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md#loom-build) and [Release facts](https://github.com/dbtlr/loomcli/blob/main/docs/core.md#release-facts) for the contracts.
-
-## Check
-
-`loom check` reports every fault the package's application and code hold before anything runs.
-
-```sh
-loom check && loom build --target node
-```
-
-It runs the package's own TypeScript against its `tsconfig.json`, then imports `src/application.ts`, or the module `--application` names, and prints each fault `Application.check()` returns as its Developer Diagnostic on stderr. It never imports the entry. Any fault exits 1. A managed file that `loom init` wrote and you edited draws a warning, which never fails the check. See [loom check](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain.md#loom-check) for the contract.

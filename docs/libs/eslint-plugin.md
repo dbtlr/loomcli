@@ -22,7 +22,9 @@ Put the plugin's `configs.oxlint` object in `.oxlintrc.json`, as it is:
 
 ```json
 {
-  "jsPlugins": ["@loomcli/eslint-plugin"],
+  "jsPlugins": [
+    "@loomcli/eslint-plugin"
+  ],
   "rules": {
     "@loomcli/discarded-declaration": "error",
     "@loomcli/name-shape": "error",

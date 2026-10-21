@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import { parseManifest } from './build-facts.js';
 import { withoutByteOrderMark } from './markdown.js';
+import { checkScript, toolDependencies } from './tooling.js';
+import type { ToolRanges, Tooling } from './tooling.js';
 
 /** A JSON object as `package.json` holds it, every key kept in its order. */
 const jsonObject = z.record(z.string(), z.unknown());
@@ -116,9 +118,19 @@ const dependencyGroups = [
   'optionalDependencies',
 ] as const;
 
+/** Whether a manifest declares the package in any of its dependency fields. */
+function declaresDependency(manifest: Record<string, unknown>, name: string): boolean {
+  return dependencyGroups.some((group) => holdsKey(manifest[group], name));
+}
+
 /** A dependency a scaffold adds to its group unless the package declares it in any group. */
 function dependencyKey(group: string, name: string, value: string): ManifestKey {
   return { declaredIn: dependencyGroups, path: [group, name], value };
+}
+
+/** The test runner a manifest already declares: vitest when any dependency field names it. */
+export function existingRunner(manifest: Record<string, unknown>): Tooling['runner'] | undefined {
+  return declaresDependency(manifest, 'vitest') ? 'vitest' : undefined;
 }
 
 /**
@@ -156,21 +168,36 @@ export interface ManifestKey {
   readonly value: unknown;
 }
 
-/** The versions a scaffold pins: the running loom's, and the TypeScript range loom declares. */
+/**
+ * The versions a scaffold pins: the running loom's, which every Loom package takes, and the range
+ * `@loomcli/loom` declares as an optional peer dependency for each tool package.
+ */
 export interface ScaffoldVersions {
   readonly loom: string;
-  readonly typescript: string;
+  readonly ranges: Readonly<ToolRanges>;
 }
 
-/** The `package.json` keys a scaffold adds, for an application's name and the versions it pins. */
-export function scaffoldKeys(name: string, versions: ScaffoldVersions): ManifestKey[] {
+/**
+ * The `package.json` keys a scaffold adds, for an application's name, the versions it pins, and the
+ * linter and test runner it wires.
+ */
+export function scaffoldKeys(
+  name: string,
+  { loom, ranges }: ScaffoldVersions,
+  tooling: Tooling,
+): ManifestKey[] {
   return [
     { path: ['bin'], value: { [name]: 'dist/main.js' } },
     { path: ['scripts', 'build'], value: 'loom build --target node' },
-    { path: ['scripts', 'check'], value: 'loom check' },
-    dependencyKey('dependencies', '@loomcli/core', versions.loom),
-    dependencyKey('devDependencies', '@loomcli/loom', versions.loom),
-    dependencyKey('devDependencies', 'typescript', versions.typescript),
+    { path: ['scripts', 'check'], value: checkScript(tooling) },
+    dependencyKey('dependencies', '@loomcli/core', loom),
+    dependencyKey('devDependencies', '@loomcli/loom', loom),
+    dependencyKey('devDependencies', 'typescript', ranges.typescript),
+    dependencyKey('devDependencies', '@loomcli/testing', loom),
+    dependencyKey('devDependencies', '@loomcli/eslint-plugin', loom),
+    ...toolDependencies(tooling).map((tool) =>
+      dependencyKey('devDependencies', tool, ranges[tool]),
+    ),
   ];
 }
 
