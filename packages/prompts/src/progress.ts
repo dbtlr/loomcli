@@ -121,8 +121,7 @@ const progressStyleExtension = extension('@loomcli/prompts/progress-style', {
 
 /**
  * The optional plugin that sets how every progress line of an application looks: a spinner in the
- * cli-spinners shape and the bar's cells. The spinner's interval is checked at the call, and each
- * setting it omits keeps the library's default.
+ * cli-spinners shape and the bar's cells. Each setting it omits keeps the library's default.
  */
 function progressStyle(settings?: ProgressStyleSettings): Plugin {
   const style: StoredStyle = {
