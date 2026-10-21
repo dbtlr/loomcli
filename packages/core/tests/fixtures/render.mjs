@@ -17,10 +17,6 @@ const breaks = {
     throw new Error('Cannot render the table.');
   },
 };
-const counted = { render: (data) => data.length };
-// A view is synchronous, so a returned promise is a non-string return.
-// Core observes its rejection, which would otherwise end the process before `run()` resolves.
-const rejects = { render: () => Promise.reject(new Error('Cannot render the table.')) };
 
 const app = new Application('render').action(async ({ out }) => {
   switch (scenario) {
@@ -53,19 +49,6 @@ const app = new Application('render').action(async ({ out }) => {
       out.print('after');
       break;
     }
-    case 'non-string': {
-      try {
-        await out.render(rows, counted);
-      } catch (error) {
-        out.print(`caught:${ruleText(error)}`);
-      }
-      break;
-    }
-    case 'rejecting': {
-      out.render(rows, rejects);
-      out.print('after');
-      break;
-    }
     case 'late': {
       // The helper outlives the action, so its render failure lands while the writes still settle.
       const helper = async () => {
@@ -75,12 +58,6 @@ const app = new Application('render').action(async ({ out }) => {
         await out.print('late');
       };
       void helper();
-      break;
-    }
-    case 'twice': {
-      out.render(rows, breaks);
-      out.render(rows, counted);
-      out.print('after');
       break;
     }
     case 'action-failure': {

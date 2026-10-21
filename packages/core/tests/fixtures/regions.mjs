@@ -222,38 +222,6 @@ const scenarios = {
     ],
     tagged: true,
   },
-  /** One malformed call, named by argv[4]. */
-  fault: {
-    action: async ({ out }) => {
-      const call = argv[0];
-      const region = out.region();
-      const calls = {
-        closedLabel: async () => {
-          await region.end();
-          region.report({ label: 3 });
-        },
-        closedState: async () => {
-          await region.end();
-          await region.end('done');
-        },
-        completed: () => region.report({ completed: -1 }),
-        endLabel: () => region.end('ended', 3),
-        input: () => out.region({ input: 'yes' }),
-        label: () => region.report({ label: 3 }),
-        options: () => out.region([]),
-        report: () => region.report('three'),
-        state: () => region.end('done'),
-        total: () => region.report({ total: Number.POSITIVE_INFINITY }),
-      };
-      try {
-        await calls[call]();
-      } catch (error) {
-        notes.name = error.name;
-        notes.rule = error.rule?.identity;
-        notes.message = `${error.sentence} ${error.correction}`;
-      }
-    },
-  },
   /** An out.draw that fills the 40-column row exactly, then an info line, above an open region. */
   fullInfo: {
     action: async ({ out }) => {
@@ -546,7 +514,7 @@ if (terminal === 'invoke') {
 } else {
   code = await app.run({
     host: {
-      argv: scenario === 'fault' ? [] : argv,
+      argv,
       env: {},
       stderr,
       stdout,

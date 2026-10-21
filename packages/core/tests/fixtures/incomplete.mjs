@@ -50,9 +50,6 @@ const brokenWhole = {
   },
 };
 
-/** A whole view that returns a number, which is no text at all. */
-const countedWhole = { render: (all) => all.length };
-
 /** The failure one source raises, whose own code the awaited call reports. */
 function sourceFailure() {
   return scenario === 'source-awaited' || scenario === 'source-deferred'
@@ -237,7 +234,6 @@ const declarations = {
   'view-row': 'row',
   'view-row-class': 'row',
   'whole-cancelled': 'whole',
-  'whole-non-string': 'whole',
   'whole-source': 'whole',
   'whole-view': 'whole',
   wrapped: 'row',
@@ -251,7 +247,7 @@ function views() {
     if (scenario === 'whole-view') {
       return { table: brokenWhole };
     }
-    return { table: scenario === 'whole-non-string' ? countedWhole : collected };
+    return { table: collected };
   }
   return { list: scenario === 'view-row' || scenario === 'view-row-class' ? breaking : list };
 }
@@ -316,7 +312,6 @@ async function act({ out }) {
     }
     case 'view-row':
     case 'view-row-class':
-    case 'whole-non-string':
     case 'whole-view': {
       await out.results(rows);
       break;

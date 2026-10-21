@@ -37,9 +37,6 @@ const breaking = {
   },
 };
 
-/** A row view that returns a number, which is no text at all. */
-const counted = { head: () => 'PATHS\n', row: (row, index) => index };
-
 /** A source that records each request, so a test reads what core asked for and when. */
 function* recorded() {
   for (const row of rows) {
@@ -181,30 +178,12 @@ async function act({ out }) {
       out.render(rows, breaking);
       break;
     }
-    case 'row-non-string': {
-      out.render(rows, counted);
-      break;
-    }
     case 'write-fails': {
       out.render(rows, list);
       break;
     }
     case 'cancelled': {
       await out.render(cancelling(), list);
-      break;
-    }
-    case 'both-shapes': {
-      out.render(rows, { render: () => 'whole\n', row: () => 'row\n' });
-      break;
-    }
-    case 'no-shape': {
-      out.render(rows, {});
-      break;
-    }
-    case 'null-view': {
-      // The dispatch reads the value inside the guard, so no call throws where it was written.
-      out.render(rows, null);
-      out.print('after');
       break;
     }
     default: {

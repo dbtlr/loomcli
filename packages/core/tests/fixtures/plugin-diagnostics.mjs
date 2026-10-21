@@ -31,16 +31,6 @@ const note = extension('@acme/notes/command', { schema: accepting, target: 'comm
  * diagnostic its message holds.
  */
 const scenarios = {
-  'attach-hook-returns': () =>
-    new Application('probe', {
-      plugins: [
-        plugin('@acme/format', {
-          onCommandAttach: (command) => (command.name === 'count' ? leaf('count') : command),
-        }),
-      ],
-    })
-      .command(leaf('count'))
-      .inspect(),
   'attach-hook-throws': () =>
     new Application('probe', {
       plugins: [
@@ -133,27 +123,6 @@ const scenarios = {
     }
     return new RegistryDownError('The registry is down.');
   },
-  'failure-exit-code': () => {
-    class OffScaleError extends FatalError {
-      static exitCode = 200;
-
-      constructor(message) {
-        super(message);
-        this.name = 'OffScaleError';
-      }
-    }
-    return new OffScaleError('Off the scale.');
-  },
-  'graph-hook-promise': () =>
-    new Application('probe', {
-      plugins: [plugin('@acme/mcp', { onGraphBuilt: () => Promise.resolve(undefined) })],
-    })
-      .action(act)
-      .inspect(),
-  'graph-hook-returns': () =>
-    new Application('probe', { plugins: [plugin('@acme/mcp', { onGraphBuilt: () => true })] })
-      .action(act)
-      .inspect(),
   'graph-hook-throws': () =>
     new Application('probe', {
       plugins: [

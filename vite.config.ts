@@ -86,9 +86,9 @@ export default defineConfig({
         files: ['packages/core/src/**'],
         rules: {
           // Exit codes, argv offsets, and the missing-index sentinel have fixed meanings.
-          // 130 and 143 are the cancellation codes SIGINT and SIGTERM resolve.
+          // 130 and 143 are the cancellation codes SIGINT and SIGTERM resolve, and 141 a closed pipe's.
           // oxlint-disable-next-line eslint/no-magic-numbers
-          'eslint/no-magic-numbers': ['warn', { ignore: [-1, 0, 1, 2, 130, 143] }],
+          'eslint/no-magic-numbers': ['warn', { ignore: [-1, 0, 1, 2, 130, 141, 143] }],
         },
       },
       {

@@ -1,9 +1,5 @@
-import { InternalError } from './errors.js';
 import type { Log, LogBinder } from './log.js';
-import { isPlainObject } from './plain.js';
-import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin } from './plugin.js';
-import { brokenEnvironmentHook } from './rules.js';
 import type { Host, Out } from './types.js';
 
 /** Environment preparation precedes input validation and exposes no parsed invocation. */
@@ -29,52 +25,21 @@ interface EnvironmentSetup {
   signal: AbortSignal;
 }
 
-function hookFailure(identity: string, options?: ErrorOptions): InternalError {
-  return new InternalError(brokenEnvironmentHook, {
-    cause: options?.cause,
-    correction:
-      'Return a record of variable names to strings without NUL, or nothing, and throw nothing.',
-    sentence: `${pluginSentence(identity)} failed in onEnvironment.`,
-  });
-}
-
-/** Read the entire answer before changing either environment; diagnostics never repeat its data. */
-function readAdditions(value: unknown, identity: string): [string, string][] {
-  if (value === undefined) {
-    return [];
-  }
-  if (!isPlainObject(value)) {
-    throw hookFailure(identity);
-  }
-  const entries: [string, string][] = [];
-  for (const [name, item] of Object.entries(value)) {
-    if (
-      !/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name) ||
-      typeof item !== 'string' ||
-      item.includes('\0')
-    ) {
-      throw hookFailure(identity);
-    }
-    entries.push([name, item]);
-  }
-  return entries;
-}
-
+/**
+ * The additions one hook answers. Its throw takes the ordinary failure path: a failure class keeps
+ * its class and exit code, and any other throw is a foreign throw.
+ */
 async function callHook(
   installed: BuiltPlugin,
   setup: EnvironmentSetup,
 ): Promise<[string, string][]> {
   const { host, log, out } = setup;
-  try {
-    const answer: unknown = await installed.onEnvironment?.({
-      host: { cwd: host.cwd, env: Object.freeze({ ...host.env }) },
-      log: log(installed.identity),
-      out,
-    });
-    return setup.signal.aborted ? [] : readAdditions(answer, installed.identity);
-  } catch (error) {
-    throw hookFailure(installed.identity, { cause: error });
-  }
+  const answer = await installed.onEnvironment?.({
+    host: { cwd: host.cwd, env: Object.freeze({ ...host.env }) },
+    log: log(installed.identity),
+    out,
+  });
+  return setup.signal.aborted || !answer ? [] : Object.entries(answer);
 }
 
 /** Keep the captured map itself so output and log destinations observe additions as well. */

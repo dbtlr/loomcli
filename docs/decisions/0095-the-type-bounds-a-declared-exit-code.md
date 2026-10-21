@@ -4,7 +4,7 @@ title: ADR-0095 - The type bounds a declared exit code
 description: A failure class still declares its exit code as a static field from 1 through 125, read from the nearest ancestor that declares one, and core still exports the sysexits names. FailureExitCode alone bounds the code. The run-time range check, the reserved-code DeclarationError, the capture-once rule, the instance-tampering outcomes, and the unconstructed-failure rule go. It supersedes ADR-0045.
 status: proposed
 created: 2026-10-20
-modified: 2026-10-20
+modified: 2026-10-21
 ---
 
 # ADR-0095 - The type bounds a declared exit code
@@ -19,7 +19,7 @@ Each of those rules answers a value that bypasses the types or a construction bu
 
 ## Decision
 
-- **The type bounds the code.** `FailureExitCode` is the union of the declarable codes, 1 through 125, and `LoomError` types its static as that union, so TypeScript rejects a literal outside the range and a plain `number` on the class line (TS2417). `ExitCode`, which `run()` resolves, stays `0 | FailureExitCode | 130 | 143`.
+- **The type bounds the code.** `FailureExitCode` is the union of the declarable codes, 1 through 125, and `LoomError` types its static as that union, so TypeScript rejects a literal outside the range and a plain `number` on the class line (TS2417). `ExitCode`, which `run()` resolves, is `0 | FailureExitCode | 130 | 141 | 143`.
 - **No run-time range check.** `LoomError`'s constructor reads no code to judge it, and `@loomcli/core/failure-exit-code` goes. A JavaScript class that declares 130 exits 130, because a value that bypasses the types gets no rule.
 - **Read, not captured.** Core reads the code from the failure's class, walking to the nearest ancestor that declares one, and captures nothing. A static the author's code rewrites, a static getter, and an instance field that shadows the accessor are the author's code, and core adds no rule for them. The instance's `exitCode` stays a read-only accessor, because TypeScript then rejects an override as a property (TS2610) and an assignment (TS2540).
 - **No unconstructed-failure rule.** A value that inherits from a failure class without being constructed by one gets no rule of its own.
@@ -37,3 +37,4 @@ Proposed. It moves to accepted with the release that removes the run-time range 
 ## Changelog
 
 - 2026-10-20: Proposed with the 0.15.0 rescope.
+- 2026-10-21: Corrected the `ExitCode` bullet in place to add 141, which a run resolves when the reader of its stdout closed the pipe, under [ADR-0104](0104-a-closed-reader-on-stdout-ends-the-run-with-141.md), proposed. 141 is a reserved code, so no failure class declares it.

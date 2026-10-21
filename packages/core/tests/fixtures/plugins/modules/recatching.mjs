@@ -1,7 +1,6 @@
 /**
- * Catches what the rest of the chain raised and throws a failure of its own while unwinding. The
- * two are different values, so the recorded failure still decides the exit code and this throw is
- * an internal error reported after it.
+ * Catches what the rest of the chain raised and throws a failure of its own while unwinding, which
+ * is the outcome the run reports.
  */
 const middleware = async ({ next, out }) => {
   try {

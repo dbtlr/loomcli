@@ -1,6 +1,6 @@
 import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
-import { DeclarationError, defaultText, notTextReason, quoted, reasonOf } from './errors.js';
+import { DeclarationError, defaultText, quoted, reasonOf } from './errors.js';
 import type { LoomError } from './errors.js';
 import { partFinding, slotSite } from './facts.js';
 import type { FactSite } from './facts.js';
@@ -156,25 +156,6 @@ class RowViewDeclaration<Row> implements DeclaredRowView<Row> {
     declarations.set(this, this);
     Object.freeze(this);
   }
-}
-
-/** Which of the two exclusive view functions one value carries, or that it carries the wrong set. */
-type ViewShape = 'both' | 'neither' | 'render' | 'row';
-
-/**
- * The shape one value names. The argument is read defensively, because every call that takes a view
- * is reachable from JavaScript and `null` is one such value.
- */
-function shapeOf(value: { render?: unknown; row?: unknown } | null | undefined): ViewShape {
-  const row = typeof value?.row === 'function';
-  const render = typeof value?.render === 'function';
-  if (row && render) {
-    return 'both';
-  }
-  if (row) {
-    return 'row';
-  }
-  return render ? 'render' : 'neither';
 }
 
 /**
@@ -596,9 +577,7 @@ function describeFailure(
   }
   try {
     const rendered = callView(replacement, failure.name)(failure, context);
-    return typeof rendered === 'string'
-      ? { core: false, kind: 'rendered', text: rendered }
-      : { cause: undefined, kind: 'unrendered', reason: notTextReason('view', rendered), text };
+    return { core: false, kind: 'rendered', text: String(rendered) };
   } catch (error) {
     return { cause: error, kind: 'unrendered', reason: reasonOf(error), text };
   }
@@ -622,15 +601,5 @@ export type {
   ViewIdentities,
   ViewOverride,
   ViewRegistry,
-  ViewShape,
 };
-export {
-  buildViews,
-  describeFailure,
-  override,
-  resolveRowView,
-  resolveView,
-  shapeOf,
-  view,
-  viewIdentities,
-};
+export { buildViews, describeFailure, override, resolveRowView, resolveView, view, viewIdentities };

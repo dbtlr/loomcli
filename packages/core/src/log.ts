@@ -2,12 +2,9 @@ import type { Writable } from 'node:stream';
 
 import { defectDetail } from './defect.js';
 import type { LogDefect } from './defect.js';
-import { InternalError, isAuthorFault, reasonOf } from './errors.js';
+import { isAuthorFault } from './errors.js';
 import type { LoomError } from './errors.js';
 import type { FailureForm } from './form.js';
-import { pluginSentence } from './plugin.js';
-import { brokenLogHook, logInLogHook } from './rules.js';
-import { ignoreRejection, isThenable } from './thenable.js';
 
 /** The levels a log event carries. `fatal` is core's alone: `Log` has no method for it. */
 type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
@@ -72,21 +69,6 @@ type LogHook = (event: LogEvent, destination: LogDestination) => undefined;
 /** Gives one context its `log`, bound to the plugin core is calling, or to none. */
 type LogBinder = (plugin: string | null) => Log;
 
-/** One installed `onLog` hook, with the identity of the plugin that declared it. */
-interface InstalledLogHook {
-  readonly identity: string;
-  readonly hook: LogHook;
-}
-
-/** One hook that broke: the plugin that installed it, why, and what it threw. */
-interface BrokenLogHook {
-  readonly identity: string;
-  readonly reason: string;
-  readonly cause: unknown;
-  /** The fault of a `log` call made during delivery, when the hook threw that one. */
-  readonly fault: InternalError | undefined;
-}
-
 /** What one run's events read beside the call itself. */
 interface LogScene {
   readonly application: { readonly name: string; readonly version: string };
@@ -95,7 +77,6 @@ interface LogScene {
   readonly path: () => readonly string[];
 }
 
-const unreadable = '[Unreadable]';
 const circular = '[Circular]';
 
 /** What the copy leaves out of an object: `undefined`, a function, and a symbol. */
@@ -106,13 +87,9 @@ const errorKeys = ['name', 'message', 'stack', 'cause'] as const;
 
 type Copied = JsonValue | typeof omitted;
 
-/** The copy of one property of `holder`, or `"[Unreadable]"` when reading or copying it throws. */
+/** The copy of one property of `holder`. */
 function copyProperty(holder: object, key: string, ancestors: Set<object>): Copied {
-  try {
-    return copyValue(Reflect.get(holder, key), key, ancestors);
-  } catch {
-    return unreadable;
-  }
+  return copyValue(Reflect.get(holder, key), key, ancestors);
 }
 
 /** The copy of an array: each index in order, an omitted one reading `null`. */
@@ -204,27 +181,11 @@ const noFields: Readonly<Record<string, JsonValue>> = Object.freeze({});
 
 /**
  * A call's fields as the frozen JSON copy of the event. Omitted fields read `{}`, and so does
- * anything that does not copy to an object, so a call never throws on its fields.
+ * anything that does not copy to an object.
  */
-function copyFields(fields: unknown): Readonly<Record<string, JsonValue>> {
-  try {
-    const copied = copyProperty({ fields }, 'fields', new Set());
-    return isJsonRecord(copied) ? copied : noFields;
-  } catch {
-    return noFields;
-  }
-}
-
-/** The message as text: a string as it is, and anything else through `String()`. */
-function messageText(message: unknown): string {
-  if (typeof message === 'string') {
-    return message;
-  }
-  try {
-    return String(message);
-  } catch {
-    return unreadable;
-  }
+function copyFields(fields: LogFields | undefined): Readonly<Record<string, JsonValue>> {
+  const copied = copyProperty({ fields }, 'fields', new Set());
+  return isJsonRecord(copied) ? copied : noFields;
 }
 
 /** How many random bytes a run's id holds, and the radix their characters are written in. */
@@ -237,32 +198,13 @@ function newRunId(): string {
   return Array.from(bytes, (byte) => byte.toString(hexRadix).padStart(2, '0')).join('');
 }
 
-/** Whether core is delivering an event to a hook right now. Delivery is synchronous. */
-let delivering = false;
-
-/** The faults a `log` call during delivery threw, so a hook that threw one is told apart. */
-const deliveryFaults = new WeakSet<InternalError>();
-
-/** The fault a `log` call raises while core delivers an event. */
-function duringDelivery(): InternalError {
-  const fault = new InternalError(logInLogHook, {
-    cause: undefined,
-    correction:
-      'Remove the log call from the onLog hook: an onLog hook observes events and never logs.',
-    sentence: 'A log call ran while core was delivering a log event.',
-  });
-  deliveryFaults.add(fault);
-  return fault;
-}
-
-/** A `Log` whose methods hand each call to `emit`, and throw during delivery. */
-function logOf(emit: (level: CallLevel, message: unknown, fields: unknown) => void): Log {
+/** A `Log` whose methods hand each call to `emit`. */
+function logOf(
+  emit: (level: CallLevel, message: string, fields: LogFields | undefined) => void,
+): Log {
   const method =
     (level: CallLevel) =>
     (message: string, fields?: LogFields): void => {
-      if (delivering) {
-        throw duringDelivery();
-      }
       emit(level, message, fields);
     };
   return Object.freeze({
@@ -287,51 +229,19 @@ interface EventParts {
   readonly defect?: LogDefect;
 }
 
-/** The fault of a `log` call made during delivery, when a hook threw that very one. */
-function deliveryFault(thrown: unknown): InternalError | undefined {
-  return thrown instanceof InternalError && deliveryFaults.has(thrown) ? thrown : undefined;
-}
-
-/** Why a hook's return broke it, or `undefined` for a hook that returned nothing. */
-function returnedReason(returned: unknown): string | undefined {
-  if (returned === undefined) {
-    return undefined;
-  }
-  if (isThenable(returned)) {
-    ignoreRejection(returned);
-    return 'The hook returned a promise.';
-  }
-  return 'The hook returned a value.';
-}
-
-/** One hook's call, with a throw or a returned value read as the hook breaking. */
-function callLogHook(
-  { hook, identity }: InstalledLogHook,
-  event: LogEvent,
-  destination: LogDestination,
-): BrokenLogHook | undefined {
-  try {
-    const reason = returnedReason(hook(event, destination));
-    return reason === undefined
-      ? undefined
-      : { cause: undefined, fault: undefined, identity, reason };
-  } catch (error) {
-    return { cause: error, fault: deliveryFault(error), identity, reason: reasonOf(error) };
-  }
-}
-
 /**
  * One run's log events: the `log` each context receives, the delivery of every event to the
- * installed `onLog` hooks in installation order, core's failure events, and the hooks that broke.
- * A hook that breaks is dropped for the rest of the run.
+ * installed `onLog` hooks in installation order, core's failure events, and the first throw a hook
+ * raised. A hook that throws is still called for every later event, and the throw ends neither the
+ * delivery of that event to a later hook nor the call that created it.
  */
 class RunLog {
   readonly #scene: LogScene;
-  readonly #hooks: readonly InstalledLogHook[];
-  readonly #broken: BrokenLogHook[] = [];
+  readonly #hooks: readonly LogHook[];
+  #thrown: { readonly value: unknown } | undefined = undefined;
   #run: string | undefined = undefined;
 
-  constructor(scene: LogScene, hooks: readonly InstalledLogHook[]) {
+  constructor(scene: LogScene, hooks: readonly LogHook[]) {
     this.#scene = scene;
     this.#hooks = hooks;
   }
@@ -341,9 +251,9 @@ class RunLog {
     return this.#scene.destination;
   }
 
-  /** The hooks that broke, in the order they broke. */
-  get broken(): readonly BrokenLogHook[] {
-    return this.#broken;
+  /** The first value a hook threw in the run, which the run reports once after its outcome. */
+  get thrown(): { readonly value: unknown } | undefined {
+    return this.#thrown;
   }
 
   /** The `log` of one context, bound to the plugin core is calling, or to none. */
@@ -352,14 +262,7 @@ class RunLog {
       return silentLog;
     }
     return logOf((level, message, fields) => {
-      if (this.#listening()) {
-        this.#deliver({
-          fields: copyFields(fields),
-          level,
-          message: messageText(message),
-          plugin,
-        });
-      }
+      this.#deliver({ fields: copyFields(fields), level, message, plugin });
     });
   }
 
@@ -368,7 +271,7 @@ class RunLog {
    * `InternalError`, a `ResultError`, or a `DeclarationError`.
    */
   failure(failure: LoomError, form: FailureForm): void {
-    if (!this.#listening()) {
+    if (this.#hooks.length === 0) {
       return;
     }
     const base = { failure: form, fields: noFields, message: form.message, plugin: null };
@@ -377,15 +280,6 @@ class RunLog {
         ? { ...base, defect: Object.freeze(defectDetail(failure)), level: 'fatal' }
         : { ...base, level: 'error' },
     );
-  }
-
-  /** Whether a hook that has not broken is still installed. */
-  #listening(): boolean {
-    return this.#hooks.some(({ identity }) => !this.#isBroken(identity));
-  }
-
-  #isBroken(identity: string): boolean {
-    return this.#broken.some((entry) => entry.identity === identity);
   }
 
   #runId(): string {
@@ -403,40 +297,20 @@ class RunLog {
     });
   }
 
-  /** Hands one event to every hook that has not broken, in installation order, before returning. */
+  /** Hands one event to every hook, in installation order, before returning. */
   #deliver(parts: EventParts): void {
     const event = this.#event(parts);
-    delivering = true;
-    try {
-      for (const installed of this.#hooks) {
-        const broken = this.#isBroken(installed.identity)
-          ? undefined
-          : callLogHook(installed, event, this.#scene.destination);
-        if (broken !== undefined) {
-          this.#broken.push(broken);
-        }
+    for (const hook of this.#hooks) {
+      try {
+        hook(event, this.#scene.destination);
+      } catch (error) {
+        this.#thrown ??= { value: error };
       }
-    } finally {
-      delivering = false;
     }
   }
 }
 
-/** The defect one broken `onLog` hook reports. */
-function brokenLogHookDefect(broken: BrokenLogHook): InternalError {
-  return (
-    broken.fault ??
-    new InternalError(brokenLogHook, {
-      cause: broken.cause,
-      correction: 'Return undefined from onLog, and throw nothing from it.',
-      sentence: `${pluginSentence(broken.identity)} failed in onLog: ${broken.reason}`,
-    })
-  );
-}
-
 export type {
-  BrokenLogHook,
-  InstalledLogHook,
   JsonValue,
   Log,
   LogBinder,
@@ -447,5 +321,5 @@ export type {
   LogLevel,
   LogScene,
 };
-export { brokenLogHookDefect, RunLog, silentLog };
+export { RunLog, silentLog };
 export type { LogDefect } from './defect.js';

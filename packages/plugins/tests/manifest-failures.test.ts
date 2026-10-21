@@ -49,6 +49,7 @@ const exitCodes = {
   '0': 'Successful execution and core output',
   '1': 'Expected action failure, internal failure, or invalid declarations',
   '130': "Cancelled by SIGINT, a caller-supplied abort, or the action's cancel()",
+  '141': 'Stopped because the reader of stdout closed the pipe',
   '143': 'Cancelled by SIGTERM',
   '2': 'Invalid invocation inputs',
   '65': 'Declared failures: bad-data, inner-bad, write-bad',
@@ -59,7 +60,17 @@ const exitCodes = {
 test('the table joins each declared code to core rows, in ascending order, naming failures in depth-first order', () => {
   const { document, text } = documentOf(['--manifest']);
   expect(document.exitCodes).toEqual(exitCodes);
-  expect(Object.keys(document.exitCodes)).toEqual(['0', '1', '2', '65', '69', '70', '130', '143']);
+  expect(Object.keys(document.exitCodes)).toEqual([
+    '0',
+    '1',
+    '2',
+    '65',
+    '69',
+    '70',
+    '130',
+    '141',
+    '143',
+  ]);
   expect(text).toContain('"65": "Declared failures: bad-data, inner-bad, write-bad"');
 });
 
@@ -292,9 +303,12 @@ test('a value whose prototype read throws is rejected at the call as not a failu
   );
 });
 
-test('the manifest rejects an undeclarable class with the sentence core throws when it is constructed', () => {
-  const core = z.object({ message: z.string() }).parse(rule('core-reserved'));
-  expect(rule('failure-code-200')).toEqual(invalid(core.message));
+test('the manifest rejects a class that declares an exit code outside 1 through 125', () => {
+  expect(rule('failure-code-200')).toEqual(
+    invalid(
+      'Failure class "ReservedError" declares exit code 200. Declare a whole number from 1 through 125.',
+    ),
+  );
 });
 
 test("the extension stores a declared failure as its class's failure code, exit code, and meaning, in that key order", () => {

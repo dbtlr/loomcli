@@ -32,7 +32,7 @@ test('a rendered value and a plain message keep the order the action issued them
   });
 });
 
-test('a failing view writes nothing for its call and lets later output through', () => {
+test('a failing view the action never awaited writes nothing for its call and fails the run', () => {
   expect(render('unawaited')).toEqual({
     status: 1,
     stderr: internal,
@@ -40,28 +40,11 @@ test('a failing view writes nothing for its call and lets later output through',
   });
 });
 
-test('a failing view rejects its own call and still ends the invocation', () => {
+test('an action that awaits and catches a view rejection decides the outcome', () => {
   expect(render('caught')).toEqual({
-    status: 1,
-    stderr: internal,
-    stdout: 'caught:Cannot render the table.\nafter\nresolved:1\n',
-  });
-});
-
-test('a view that returns a non-string fails the call with a stated reason', () => {
-  const reason = 'The view returned number instead of a string.';
-  expect(render('non-string')).toEqual({
-    status: 1,
-    stderr: `render: Something went wrong.\n`,
-    stdout: `caught:${reason}\nresolved:1\n`,
-  });
-});
-
-test('a view that returns a rejecting promise fails the call without ending the process', () => {
-  expect(render('rejecting')).toEqual({
-    status: 1,
-    stderr: 'render: Something went wrong.\n',
-    stdout: 'after\nresolved:1\n',
+    status: 0,
+    stderr: '',
+    stdout: 'caught:Cannot render the table.\nafter\nresolved:0\n',
   });
 });
 
@@ -70,14 +53,6 @@ test('a render failure raised after the action returned still ends the invocatio
     status: 1,
     stderr: internal,
     stdout: 'late\nresolved:1\n',
-  });
-});
-
-test('two failing views report the first failure once', () => {
-  expect(render('twice')).toEqual({
-    status: 1,
-    stderr: internal,
-    stdout: 'after\nresolved:1\n',
   });
 });
 

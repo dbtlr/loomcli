@@ -87,14 +87,6 @@ test.each([
   expect(developed.stderr).toContain(`\n${correction}\n`);
 });
 
-test('a class keeps the code it read at its first construction', () => {
-  expect(codes('reassigned').stdout).toBe('first-code,first-code\n');
-});
-
-test("a write to a core class's static changes no code core reports", () => {
-  expect(codes('core-statics').stdout).toBe('unknown-command,fatal\n');
-});
-
 test.each(['development', 'distributed'] as const)(
   'every author fault reads internal in a %s build',
   (build) => {
@@ -103,7 +95,6 @@ test.each(['development', 'distributed'] as const)(
       internal: 'internal',
       result: 'internal',
       'type-error': 'internal',
-      unconstructed: 'internal',
     });
   },
 );

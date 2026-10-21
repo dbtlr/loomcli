@@ -14,7 +14,7 @@ import {
 
 // The first argument names a scenario; a run scenario passes the rest as the run's words.
 // FIXTURE_BUILD names the run's build, and FIXTURE_ENCODER the encoder the plugin registers.
-// FIXTURE_STDOUT=epipe gives a run a stdout that refuses every write with an EPIPE-style error.
+// FIXTURE_STDOUT=full gives a run a stdout that refuses every write, as a full disk does.
 const [scenario, ...words] = process.argv.slice(2);
 
 const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
@@ -50,11 +50,10 @@ const digits = {
 /** One line on stderr: the form under `error`, and a newline. */
 const errorLine = (form) => `${JSON.stringify({ error: form })}\n`;
 
-/** The encoder each variant registers: a working one, and three that break. */
+/** The encoder each variant registers: a working one, and two that break. */
 const encoders = {
   line: errorLine,
   number: () => 42,
-  promise: () => Promise.reject(new Error('Never awaited.')),
   throws: () => {
     throw new Error('The encoder broke.');
   },
@@ -183,11 +182,11 @@ function application(plugins = [encoding]) {
     .command(extra);
 }
 
-/** A stdout whose reader has gone away, so every write fails as a closed pipe does. */
-function brokenPipe() {
+/** A stdout on a full disk, so every write fails, which leaves a broken destination. */
+function fullDisk() {
   return new Writable({
     write(chunk, chunkEncoding, callback) {
-      callback(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+      callback(Object.assign(new Error('write ENOSPC'), { code: 'ENOSPC' }));
     },
   });
 }
@@ -227,7 +226,7 @@ const scenarios = {
     );
   },
   run: async () => {
-    const stdout = process.env.FIXTURE_STDOUT === 'epipe' ? brokenPipe() : undefined;
+    const stdout = process.env.FIXTURE_STDOUT === 'full' ? fullDisk() : undefined;
     const code = await application().run({
       host: { argv: words, release, ...(stdout ? { stdout } : {}) },
       signal: caller.signal,

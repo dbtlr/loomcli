@@ -108,14 +108,6 @@ test.each(thrown)('the call that declares the %s fault throws it', (scenario, me
 /** Every row that a lifecycle hook raises, which only the graph build can know. */
 const rejected = [
   [
-    'hook-returns-other',
-    'Plugin "@loomcli/plugins/format" returned a value that is not the attached Command from onCommandAttach for Command "count". Return the value it received or a value derived from it.',
-  ],
-  [
-    'hook-returns-earlier',
-    'Plugin "@loomcli/plugins/format" returned a value that is not the attached Command from onCommandAttach for Command "count". Return the value it received or a value derived from it.',
-  ],
-  [
     'hook-throws',
     'Plugin "@loomcli/plugins/format" failed in onCommandAttach for Command "count": the hook broke. Return the value the hook received or a value derived from it, and throw only a DeclarationError from the hook.',
   ],

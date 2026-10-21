@@ -266,22 +266,27 @@ if (scenario === 'lowering') {
   });
 } else if (scenario === 'failures') {
   const broken = process.argv[4] === 'broken-view';
-  const twice = plugin('@fixture/twice', {
+  // A middleware that starts a render whose view throws, and never awaits it.
+  const late = plugin('@fixture/late', {
     middleware: {
-      activate: ['twice'],
+      activate: ['late'],
       load: () =>
         Promise.resolve({
-          default: async ({ next }) => {
+          default: async ({ next, out }) => {
             await next();
-            await next().catch(() => undefined);
+            void out.render('late', {
+              render: () => {
+                throw new Error('the late view broke');
+              },
+            });
           },
         }),
     },
-    options: { twice: { description: 'Twice.', type: 'boolean' } },
+    options: { late: { description: 'Late.', type: 'boolean' } },
   });
   const app = new Application('probe', {
     ...probe,
-    plugins: [twice],
+    plugins: [late],
     translators: [
       translate(
         ForeignError,
@@ -328,7 +333,7 @@ if (scenario === 'lowering') {
     foreign: await app.invoke(['foreign'], {}, { failure: handler, host: { release } }),
     lateFault: await app.invoke(
       ['quiet'],
-      { options: { twice: true } },
+      { options: { late: true } },
       { failure: (failure) => failure.rule.identity, host: { release } },
     ),
     noHandler: await app.invoke(['foreign'], {}, { host: { release } }).then((outcome) => ({

@@ -110,70 +110,96 @@ test('a wrapper reads a later takeover as its own outcome', () => {
   expect(result.stdout).toBe('help:get\nresolved:0\n');
 });
 
-test('calling next() twice rejects, dispatches nothing more, and turns a 0 into 1', () => {
+test('a middleware that catches its second next() call decides the outcome', () => {
   const result = run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'twice' });
-  expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    'ℹ misuse:Plugin "@fixture/misuse" called next() twice.\napp: Something went wrong.\n',
-  );
-  expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n');
+  expect(result).toEqual({
+    status: 0,
+    stderr: 'ℹ misuse:Plugin "@fixture/misuse" called next() twice.\n',
+    stdout: 'get:a.b:{"raw":false}\naction-signal:true:false\nresolved:0\n',
+  });
 });
 
-test('a next() fault the middleware let escape is reported once, not twice', () => {
+test('a second next() call the middleware lets escape is its failure', () => {
   const result = run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'escaping' });
-  expect(result.status).toBe(1);
-  expect(result.stderr).toBe('app: Something went wrong.\n');
-  expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n');
+  expect(result).toEqual({
+    status: 1,
+    stderr: 'app: Something went wrong.\n',
+    stdout: 'get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n',
+  });
+});
+
+test('a second next() call no code observes fails the run with one next-misuse report', () => {
+  const env = { LOOM_FIXTURE_MISUSE: 'unawaited' };
+  expect(run('misuse', ['get', 'a.b'], env)).toEqual({
+    status: 1,
+    stderr: 'app: Something went wrong.\n',
+    stdout: 'get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n',
+  });
+  const development = invoke(fixture, ['misuse', 'development', 'get', 'a.b'], {
+    env: { TERM: 'xterm-256color', ...env },
+  });
+  expect(development.status).toBe(1);
+  expect(development.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n');
+  expect(development.stderr.match(/@loomcli\/core\/next-misuse/gu)).toHaveLength(1);
+  expect(development.stderr).toContain('Plugin "@fixture/misuse" called next() twice.');
+});
+
+test('a next() call a timer makes after the middleware returned, which no code observes, fails the open run', () => {
+  expect(run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'late' })).toEqual({
+    status: 1,
+    stderr: 'app: Something went wrong.\n',
+    stdout: 'get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n',
+  });
 });
 
 test('calling next() after the middleware returned rejects with its own sentence', () => {
   const result = run('misuse', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'after-return' });
-  expect(result.status).toBe(1);
+  expect(result.status).toBe(0);
   expect(result.stderr).toBe(
-    'ℹ misuse:Plugin "@fixture/misuse" called next() after its middleware returned.\napp: Something went wrong.\n',
+    'ℹ misuse:Plugin "@fixture/misuse" called next() after its middleware returned.\n',
   );
 });
 
-test('a chain fault reaches the view the application registered for its class', () => {
-  const result = run('misuse-rendered', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'twice' });
+test('a next() misuse that escapes reaches the view the application registered for its class', () => {
+  const result = run('misuse-rendered', ['get', 'a.b'], { LOOM_FIXTURE_MISUSE: 'escaping' });
   expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    'ℹ misuse:Plugin "@fixture/misuse" called next() twice.\napp internal: Plugin "@fixture/misuse" called next() twice.\n',
-  );
+  expect(result.stderr).toBe('app internal: Plugin "@fixture/misuse" called next() twice.\n');
 });
 
 test('a next() a middleware kept and called after it returned rejects and dispatches nothing', () => {
-  const result = run('stashed', ['get', 'a.b']);
-  expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    'ℹ stashing:taken-over\nℹ caller:taken-over\nℹ caller:Plugin "@fixture/stashing" called next() after its middleware returned.\napp: Something went wrong.\n',
-  );
-  expect(result.stdout).toBe('resolved:1\n');
+  expect(run('stashed', ['get', 'a.b'])).toEqual({
+    status: 0,
+    stderr:
+      'ℹ stashing:taken-over\nℹ caller:taken-over\nℹ caller:Plugin "@fixture/stashing" called next() after its middleware returned.\n',
+    stdout: 'resolved:0\n',
+  });
 });
 
-test('a middleware that throws its own failure while unwinding leaves the caught code alone', () => {
-  const result = run('recatching', ['get']);
-  expect(result.status).toBe(2);
-  expect(result.stderr).toBe(
-    'ℹ recatching:Argument "path" requires a value. Supply a value for "path".\napp: Argument "path" requires a value. Supply a value for "path".\napp: Something went wrong.\n',
-  );
-  expect(result.stdout).toBe('resolved:2\n');
+test('a middleware that catches and throws its own failure exits with that failure', () => {
+  expect(run('recatching', ['get'])).toEqual({
+    status: 1,
+    stderr:
+      'ℹ recatching:Argument "path" requires a value. Supply a value for "path".\napp: Something went wrong.\n',
+    stdout: 'resolved:1\n',
+  });
 });
 
-test('a wrapper reads a caught failure as taken-over when the action never ran', () => {
-  const result = run('wrapped-catching', ['get']);
-  expect(result.status).toBe(2);
-  expect(result.stderr).toBe(
-    'ℹ outer:start\nℹ catching:caught:Argument "path" requires a value. Supply a value for "path".\nℹ outer:taken-over\nℹ outer:cleanup\napp: Argument "path" requires a value. Supply a value for "path".\n',
-  );
+test('a middleware that catches the held fault decides the outcome, read as taken-over', () => {
+  expect(run('wrapped-catching', ['get'])).toEqual({
+    status: 0,
+    stderr:
+      'ℹ outer:start\nℹ catching:caught:Argument "path" requires a value. Supply a value for "path".\nℹ outer:taken-over\nℹ outer:cleanup\n',
+    stdout: 'resolved:0\n',
+  });
 });
 
-test('a wrapper reads a caught failure as dispatched when the action ran and threw', () => {
-  const result = run('wrapped-catching', ['get', 'a.b'], { LOOM_FIXTURE_ACTION: 'fatal' });
-  expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    'ℹ outer:start\nℹ catching:caught:the action stopped the invocation\nℹ outer:dispatched\nℹ outer:cleanup\nthe action stopped the invocation\n',
-  );
+test("a middleware that catches the action's failure decides the outcome, read as dispatched", () => {
+  expect(run('wrapped-catching', ['get', 'a.b'], { LOOM_FIXTURE_ACTION: 'fatal' })).toEqual({
+    status: 0,
+    stderr:
+      'ℹ outer:start\nℹ catching:caught:the action stopped the invocation\nℹ outer:dispatched\nℹ outer:cleanup\n',
+    stdout: 'resolved:0\n',
+  });
 });
 
 test('a next() queued as a microtask lands before the middleware result settles', () => {
@@ -206,29 +232,25 @@ test('a middleware failure before next() wins over a held missing argument', () 
   });
 });
 
-test('a throw during unwinding is reported after the primary outcome and turns a 0 into 1', () => {
-  const result = run('throwing', ['get', 'a.b'], { LOOM_FIXTURE_THROW: 'unwind' });
-  expect(result.status).toBe(1);
-  expect(result.stderr).toBe('ℹ throwing:dispatched\napp: Something went wrong.\n');
-  expect(result.stdout).toBe('get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n');
-});
-
-test('a throw during unwinding leaves the primary failure code alone', () => {
-  const result = run('throwing', ['get', 'a.b'], {
-    LOOM_FIXTURE_ACTION: 'fatal',
-    LOOM_FIXTURE_THROW: 'unwind',
+test("a throw during unwinding is the middleware's failure, with its own class and code", () => {
+  expect(run('throwing', ['get', 'a.b'], { LOOM_FIXTURE_THROW: 'unwind' })).toEqual({
+    status: 1,
+    stderr: 'ℹ throwing:dispatched\napp: Something went wrong.\n',
+    stdout: 'get:a.b:{"raw":false}\naction-signal:true:false\nresolved:1\n',
   });
-  expect(result.status).toBe(1);
-  expect(result.stdout).toBe('resolved:1\n');
+  expect(run('throwing', ['get', 'a.b'], { LOOM_FIXTURE_THROW: 'unwind-usage' })).toEqual({
+    status: 2,
+    stderr: 'ℹ throwing:dispatched\napp: the plugin rejected the outcome\n',
+    stdout: 'get:a.b:{"raw":false}\naction-signal:true:false\nresolved:2\n',
+  });
 });
 
-test('a caught rejection changes the middleware control flow and not the exit code', () => {
-  const result = run('catching', ['get', 'a.b'], { LOOM_FIXTURE_ACTION: 'fatal' });
-  expect(result.status).toBe(1);
-  expect(result.stderr).toBe(
-    'ℹ catching:caught:the action stopped the invocation\nthe action stopped the invocation\n',
-  );
-  expect(result.stdout).toBe('resolved:1\n');
+test("a middleware that catches the action's failure and returns exits 0", () => {
+  expect(run('catching', ['get', 'a.b'], { LOOM_FIXTURE_ACTION: 'fatal' })).toEqual({
+    status: 0,
+    stderr: 'ℹ catching:caught:the action stopped the invocation\n',
+    stdout: 'resolved:0\n',
+  });
 });
 
 test('a loader that rejects is an internal error with code 1', () => {

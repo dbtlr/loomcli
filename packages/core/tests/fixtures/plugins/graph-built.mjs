@@ -130,23 +130,17 @@ if (scenario === 'order') {
   }
   print({ afterRun, inspected, ran });
 } else if (scenario === 'broken') {
-  // Each kind breaks the hook a different way, and every one is the broken-graph-hook fault.
-  const hooks = {
-    promise: () => Promise.reject(new Error('the hook rejected')),
-    returns: () => true,
-    throws: () => {
-      throw new TypeError('the hook broke');
-    },
-  };
-  const results = {};
-  for (const [kind, onGraphBuilt] of Object.entries(hooks)) {
-    const app = new Application('probe', {
-      ...probe,
-      plugins: [plugin('@fixture/broken', { onGraphBuilt })],
-    }).action(() => undefined);
-    results[kind] = await runCaptured(app, []);
-  }
-  print(results);
+  const app = new Application('probe', {
+    ...probe,
+    plugins: [
+      plugin('@fixture/broken', {
+        onGraphBuilt: () => {
+          throw new TypeError('the hook broke');
+        },
+      }),
+    ],
+  }).action(() => undefined);
+  print(await runCaptured(app, []));
 } else if (scenario === 'cause') {
   // The value a broken hook threw is the fault's cause.
   const thrown = new TypeError('the hook broke');

@@ -1,7 +1,5 @@
-import type { Writable } from 'node:stream';
-
 import { Command, locate, plugin } from '@loomcli/core';
-import type { ActionContext, Plugin } from '@loomcli/core';
+import type { ActionContext, Plugin, View } from '@loomcli/core';
 import { oneOf } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
@@ -17,25 +15,17 @@ import { updateShells } from './update.js';
 import { zshScript } from './zsh.js';
 
 /**
- * Writes the whole text in one write and settles when the stream took it. The text goes to the
- * host's stdout as it is, because `out` styles text and appends a newline.
+ * The text as it is, with no markup resolved and no newline added, because a shell sources these
+ * bytes. It renders through `out`, so a reader that closes stdout ends the run as it does any write.
  */
-function writeExactly(stream: Writable, text: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    stream.write(text, (failure) => {
-      if (failure) {
-        reject(failure);
-      } else {
-        resolve();
-      }
-    });
-  });
-}
+const exactText: View<string> = {
+  render: (text, { style }) => style.escape(text),
+};
 
 /** One child that prints the script its shell sources, for the application it is installed in. */
 function shellCommand(name: string, shell: string, script: (application: string) => string) {
   return new Command(name, { description: `Print the ${shell} completion script.` }).action(
-    ({ graph, host }) => writeExactly(host.stdout, script(graph.name)),
+    ({ graph, out }) => out.render(script(graph.name), exactText),
   );
 }
 
@@ -43,8 +33,8 @@ function shellCommand(name: string, shell: string, script: (application: string)
 const answerCommand = new Command('__complete', {
   description: 'Answer a completion script.',
   hidden: true,
-}).action(({ graph, host, passthrough }) =>
-  writeExactly(host.stdout, answer(graph, locate(graph, passthrough))),
+}).action(({ graph, out, passthrough }) =>
+  out.render(answer(graph, locate(graph, passthrough)), exactText),
 );
 
 /** The five shell names `install` and `uninstall` accept. */

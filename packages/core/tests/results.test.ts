@@ -145,13 +145,24 @@ test('the same fault at the root names the root Command', () => {
   );
 });
 
-test('a second emission rejects and turns a would-be 0 into 1', () => {
-  expect(results('repeated')).toEqual({
+test('a second emission no code awaits has no catcher and fails the run', () => {
+  expect(results('repeated-unawaited')).toEqual({
     status: 1,
     stderr: generic,
     stdout: 'total 1\nresolved:1\n',
   });
-  expectStated('repeated', 'Command "count" emitted its result twice. Call out.results() once.');
+  expectStated(
+    'repeated-unawaited',
+    'Command "count" emitted its result twice. Call out.results() once.',
+  );
+});
+
+test('an action that catches the rejection of a second emission decides the outcome', () => {
+  expect(results('repeated-caught')).toEqual({
+    status: 0,
+    stderr: 'caught\n',
+    stdout: 'total 1\nresolved:0\n',
+  });
 });
 
 test('the same fault the action let propagate is reported once', () => {
@@ -163,30 +174,6 @@ test('the same fault the action let propagate is reported once', () => {
   expectStated(
     'repeated-awaited',
     'Command "count" emitted its result twice. Call out.results() once.',
-  );
-});
-
-test('out.results on a Command that declares no result is the undeclared fault', () => {
-  expect(results('undeclared')).toEqual({
-    status: 1,
-    stderr: generic,
-    stdout: 'resolved:1\n',
-  });
-  expectStated(
-    'undeclared',
-    'Command "plain" declares no result. Declare one with result() or rows() before action().',
-  );
-});
-
-test('out.results from a middleware is the middleware fault whatever the action did', () => {
-  expect(results('middleware-results')).toEqual({
-    status: 1,
-    stderr: generic,
-    stdout: 'before\ntotal 1\nafter\nresolved:1\n',
-  });
-  expectStated(
-    'middleware-results',
-    'A middleware called out.results() on Command "count". Only the action emits a result.',
   );
 });
 

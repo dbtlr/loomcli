@@ -1,7 +1,5 @@
-import { InternalError } from './errors.js';
-import { isPlainObject } from './plain.js';
 import type { ProgressLedger, RegionReports } from './progress-events.js';
-import { regionCall } from './rules.js';
+import { handled } from './thenable.js';
 import type { ProgressReport, Region, RegionCloser, RegionOptions, View } from './types.js';
 
 /*
@@ -240,86 +238,6 @@ class Screen {
   }
 }
 
-/** The defect one malformed region call raises, thrown from the call. */
-function callFault(sentence: string, correction: string): InternalError {
-  return new InternalError(regionCall, { cause: undefined, correction, sentence });
-}
-
-/** Whether an `input` option was asked for, checking the options `out.region()` received. */
-function readInput(options: unknown): boolean {
-  if (options === undefined) {
-    return false;
-  }
-  if (!isPlainObject(options)) {
-    throw callFault(
-      'out.region() received options that are not a plain object.',
-      'Supply an options object, such as { input: true }.',
-    );
-  }
-  const { input } = options;
-  if (input !== undefined && typeof input !== 'boolean') {
-    throw callFault(
-      'out.region() received an input that is not a Boolean.',
-      'Supply true or false.',
-    );
-  }
-  return input === true;
-}
-
-/** Whether a count is a finite number of 0 or more. */
-function isCount(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
-}
-
-/** The report a region received, checked field by field. */
-function readReport(progress: unknown): ProgressReport {
-  if (!isPlainObject(progress)) {
-    throw callFault(
-      'report() received a progress report that is not a plain object.',
-      'Supply an object, such as { completed: 3 }.',
-    );
-  }
-  const { completed, label, total } = progress;
-  for (const [name, value] of [
-    ['completed', completed],
-    ['total', total],
-  ] as const) {
-    if (value !== undefined && !isCount(value)) {
-      throw callFault(
-        `report() received a ${name} that is not a finite number of 0 or more.`,
-        'Supply a finite number of 0 or more.',
-      );
-    }
-  }
-  if (label !== undefined && typeof label !== 'string') {
-    throw callFault('report() received a label that is not a string.', 'Supply a string.');
-  }
-  return {
-    ...(isCount(completed) ? { completed } : {}),
-    ...(typeof label === 'string' ? { label } : {}),
-    ...(isCount(total) ? { total } : {}),
-  };
-}
-
-/** The end state a region's `end()` received, checked. */
-function readEndState(state: unknown): 'ended' | 'failed' {
-  if (state === undefined || state === 'ended' || state === 'failed') {
-    return state ?? 'ended';
-  }
-  throw callFault(
-    'end() received a state other than "ended" or "failed".',
-    'Supply "ended", "failed", or nothing.',
-  );
-}
-
-/** The end label a region's `end()` received, checked. */
-function readEndLabel(label: unknown): string | undefined {
-  if (label === undefined || typeof label === 'string') {
-    return label;
-  }
-  throw callFault('end() received a label that is not a string.', 'Supply a string.');
-}
-
 /** What the run's regions need from the output that owns them. */
 interface RegionHost {
   /** Whether a region opened now is live: stderr is a terminal, and it takes input or the run is not quiet. */
@@ -332,12 +250,6 @@ interface RegionHost {
   ledger: ProgressLedger;
   /** Whether the run has been cancelled already. */
   cancelled: () => boolean;
-}
-
-/** A promise whose rejection the caller may leave unobserved without an unhandled rejection. */
-function observed(pending: Promise<void>): Promise<void> {
-  void pending.catch(() => undefined);
-  return pending;
 }
 
 /** One region a run opened, as its handle answers and as the run closes it. */
@@ -382,15 +294,13 @@ class LiveRegion implements Region {
     return this.#regions.draw(this, data, view);
   }
 
-  end(state?: 'ended' | 'failed', label?: string): Promise<void> {
-    const checked = readEndState(state);
-    return this.close('end', checked, readEndLabel(label));
+  end(state: 'ended' | 'failed' = 'ended', label?: string): Promise<void> {
+    return this.close('end', state, label);
   }
 
   report(progress: ProgressReport): void {
-    const checked = readReport(progress);
     if (this.#closedBy === undefined) {
-      this.reports.report(checked);
+      this.reports.report(progress);
     }
   }
 
@@ -408,7 +318,9 @@ class LiveRegion implements Region {
     this.#controller.abort();
     this.#finished = true;
     this.reports.close(closer, state, label);
-    return observed(this.#regions.release(this));
+    const released = this.#regions.release(this);
+    void handled(released);
+    return released;
   }
 }
 
@@ -431,7 +343,7 @@ class Regions {
    * regions it left open. A region opened after the run's cancellation closes at once.
    */
   open(options: RegionOptions | undefined, owner?: Set<LiveRegion>): Region {
-    const input = readInput(options);
+    const input = options?.input === true;
     const region = new LiveRegion(this, {
       input,
       live: this.host.live(input),
@@ -472,7 +384,9 @@ class Regions {
         region.waiters.push(resolve);
       });
     }
-    return observed(this.host.write(() => this.screen.draw(region.slot, frame)));
+    const drawn = this.host.write(() => this.screen.draw(region.slot, frame));
+    void handled(drawn);
+    return drawn;
   }
 
   /** A region that closed leaves the stack, and the next waiting input region opens. */

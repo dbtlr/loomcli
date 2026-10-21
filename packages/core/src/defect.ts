@@ -15,9 +15,6 @@ interface SourceAccess {
   readonly read: ((path: string) => string | undefined) | undefined;
 }
 
-/** How many causes a chain prints before it stops, so a chain a getter grows cannot run forever. */
-const causeLimit = 8;
-
 /** How many lines a source excerpt shows on each side of the failing line. */
 const context = 2;
 
@@ -34,28 +31,10 @@ const frameLocation = /^(?<file>.+):(?<line>\d+):(?<column>\d+)$/u;
 /** Every line terminator a JavaScript engine counts, in a message, a stack, or a source file. */
 const lineBreak = /\r\n|[\n\r\u2028\u2029]/u;
 
-/** A value read through a property, or `undefined` when reading it throws. */
-function readField(value: object, key: string): unknown {
-  try {
-    return Reflect.get(value, key);
-  } catch {
-    return undefined;
-  }
-}
-
-/** A field that must be a string, read defensively. */
+/** A field that must be a string, or `undefined` for one that is not. */
 function readText(value: object, key: string): string | undefined {
-  const field = readField(value, key);
+  const field: unknown = Reflect.get(value, key);
   return typeof field === 'string' ? field : undefined;
-}
-
-/** Whether a value is an Error, read defensively, because a proxy's prototype trap can throw. */
-function isError(value: unknown): value is Error {
-  try {
-    return value instanceof Error;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -63,11 +42,7 @@ function isError(value: unknown): value is Error {
  * because its message holds its whole diagnostic.
  */
 function causeReason(cause: Error): string | undefined {
-  try {
-    return cause instanceof DeclarationError ? cause.sentence : readText(cause, 'message');
-  } catch {
-    return readText(cause, 'message');
-  }
+  return cause instanceof DeclarationError ? cause.sentence : readText(cause, 'message');
 }
 
 /**
@@ -198,20 +173,9 @@ function excerpt(text: string, frame: Frame): string | undefined {
     .join('\n');
 }
 
-/**
- * The errors an `AggregateError` holds, in order, read defensively, or none for any other Error. A
- * broken translator's defect holds the translator's throw and then the original throw this way.
- */
+/** The errors an `AggregateError` holds, in order, or none for any other Error. */
 function heldErrors(cause: Error): readonly unknown[] {
-  try {
-    if (!(cause instanceof AggregateError)) {
-      return [];
-    }
-  } catch {
-    return [];
-  }
-  const errors = readField(cause, 'errors');
-  return Array.isArray(errors) ? errors : [];
+  return cause instanceof AggregateError ? cause.errors : [];
 }
 
 /** Every frame one cause's stack names, in order, skipping a line that names no location. */
@@ -227,7 +191,7 @@ function framesOf(cause: Error): Frame[] {
  * cause's first frame's location alone.
  */
 function sourceSection(cause: Error, access: SourceAccess): string | undefined {
-  const stacks = [...heldErrors(cause).filter(isError), cause];
+  const stacks = [...heldErrors(cause).filter((held) => held instanceof Error), cause];
   const frame = stacks
     .flatMap((stack) => framesOf(stack))
     .find((candidate) => qualified(candidate.file, access.roots) !== undefined);
@@ -265,7 +229,7 @@ interface ChainWalk {
  */
 function appendLink(cause: unknown, prefix: string, walk: ChainWalk): unknown {
   walk.seen.add(cause);
-  if (!isError(cause)) {
+  if (!(cause instanceof Error)) {
     walk.lines.push(`${prefix}${valueCode(cause)}`);
     return undefined;
   }
@@ -274,17 +238,17 @@ function appendLink(cause: unknown, prefix: string, walk: ChainWalk): unknown {
   for (const held of heldErrors(cause)) {
     appendChain(held, 'Holds ', walk);
   }
-  return readField(cause, 'cause');
+  return cause.cause;
 }
 
 /**
  * One chain from `first`, the first link under `opening` and each later one under `Caused by`,
- * following `cause` links until one is absent, repeats, or passes the limit.
+ * following `cause` links until one is absent or repeats.
  */
 function appendChain(first: unknown, opening: string, walk: ChainWalk): void {
   let cause = first;
   let prefix = opening;
-  while (cause !== undefined && !walk.seen.has(cause) && walk.seen.size < causeLimit) {
+  while (cause !== undefined && !walk.seen.has(cause)) {
     cause = appendLink(cause, prefix, walk);
     prefix = 'Caused by ';
   }
@@ -292,7 +256,7 @@ function appendChain(first: unknown, opening: string, walk: ChainWalk): void {
 
 /**
  * The cause chain: each cause's name and escaped message and its stack, and each error an
- * `AggregateError` holds, until the chain ends, repeats, or passes the limit.
+ * `AggregateError` holds, until the chain ends or repeats.
  */
 function causeChain(outermost: Error): string {
   const walk: ChainWalk = { lines: [], seen: new Set() };
@@ -309,7 +273,7 @@ function defectEvidence(cause: unknown, access: SourceAccess): string[] {
   if (cause === undefined) {
     return [];
   }
-  if (!isError(cause)) {
+  if (!(cause instanceof Error)) {
     return [`Thrown value: ${valueCode(cause)}`];
   }
   const source = sourceSection(cause, access);
@@ -332,10 +296,10 @@ interface LogDefect {
  */
 function defectDetail(failure: DeclarationError | InternalError): LogDefect {
   const cause: unknown = failure instanceof InternalError ? failure.cause : undefined;
-  if (cause !== undefined && !isError(cause)) {
+  if (cause !== undefined && !(cause instanceof Error)) {
     return { message: valueCode(cause), name: 'InternalError' };
   }
-  const caught = isError(cause) ? cause : failure;
+  const caught = cause instanceof Error ? cause : failure;
   const stack = readText(caught, 'stack');
   return {
     message: causeReason(caught) ?? '',

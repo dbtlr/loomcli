@@ -145,17 +145,19 @@ export interface Completion {
 }
 
 /**
- * The same fixture spawned asynchronously, so a test can wait for a line the child announced and
- * then send it a signal. `exit` resolves once the child has ended and both of its streams closed,
- * which is how a signal that ended the process rather than a status is observed.
+ * The same fixture spawned asynchronously under the runtime the test run names, or under the one a
+ * case names, so a test can wait for a line the child announced and then send it a signal. `exit`
+ * resolves once the child has ended and both of its streams closed, which is how a signal that
+ * ended the process rather than a status is observed.
  */
 export function start(
   file: URL,
   args: string[] = [],
-  options: { cwd?: string; env?: Record<string, string | undefined> } = {},
+  options: { cwd?: string; env?: Record<string, string | undefined>; runtime?: string } = {},
 ) {
-  const { cwd, env } = options;
-  const child = spawn(process.env.LOOM_TEST_RUNTIME ?? 'node', [fileURLToPath(file), ...args], {
+  const { cwd, env, runtime } = options;
+  const executable = runtime ?? process.env.LOOM_TEST_RUNTIME ?? 'node';
+  const child = spawn(executable, [fileURLToPath(file), ...args], {
     ...(cwd === undefined ? {} : { cwd }),
     env: childEnvironment(env),
     // A fixture that owns the signals slot would absorb a SIGTERM as its first cooperative signal.

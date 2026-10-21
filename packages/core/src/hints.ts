@@ -7,30 +7,22 @@ import { callEncoder, encoderDefect } from './encoders.js';
 import type { EncoderAnswer, EncoderRegistry, InstalledEncoder } from './encoders.js';
 import {
   defaultText,
+  foreignFailure,
   genericDefectText,
   InternalError,
   isAuthorFault,
-  reasonOf,
 } from './errors.js';
 import type { DeclarationError, InvokedBy, LoomError } from './errors.js';
 import { failureForm } from './form.js';
 import type { FailureForm } from './form.js';
 import { nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
-import { brokenLogHookDefect } from './log.js';
-import type { BrokenLogHook, Log, RunLog } from './log.js';
+import type { Log, RunLog } from './log.js';
 import { reportPlainly } from './output.js';
 import type { Output } from './output.js';
-import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin } from './plugin.js';
-import {
-  brokenDestination,
-  brokenFailureHook,
-  brokenFailureView,
-  viewCorrection,
-} from './rules.js';
+import { brokenDestination, brokenFailureView, viewCorrection } from './rules.js';
 import type { ContextualStyle } from './style.js';
-import { ignoreRejection, isThenable } from './thenable.js';
 import { describeFailure } from './view.js';
 import type { FailureReport, FailureViewContext, ViewRegistry } from './view.js';
 
@@ -127,88 +119,12 @@ interface FailureSink {
   encoders: EncoderRegistry | undefined;
 }
 
-/** What one hook answered: its hints, or why it broke and what it threw. */
-type HookAnswer =
-  | { kind: 'hints'; hints: readonly string[] }
-  | { kind: 'broken'; reason: string; cause: unknown };
-
-/** The string one index of a returned list holds, read once, or `undefined` for a hole or a non-string. */
-function heldString(listed: readonly unknown[], index: number): string | undefined {
-  if (!Object.hasOwn(listed, index)) {
-    return undefined;
-  }
-  const held = listed[index];
-  return typeof held === 'string' ? held : undefined;
-}
-
-/** The first `length` strings a list holds, copied into a frozen array, or `undefined` at a gap. */
-function copiedHints(listed: readonly unknown[], length: number): readonly string[] | undefined {
-  const hints: string[] = [];
-  for (let index = 0; index < length; index += 1) {
-    const hint = heldString(listed, index);
-    if (hint === undefined) {
-      return undefined;
-    }
-    hints.push(hint);
-  }
-  return Object.freeze(hints);
-}
-
-/**
- * Every hint a returned list holds, copied by index into a fresh frozen array, or `undefined` for a
- * value that is not a list of strings alone. The copy calls no method on the returned value, so an
- * array subclass or a proxy cannot answer a list other than the one it holds. A hole is not a hint.
- * The length is read once, so a getter cannot grow the list while it is copied.
- */
-function listedHints(returned: unknown): readonly string[] | undefined {
-  if (!Array.isArray(returned)) {
-    return undefined;
-  }
-  const listed: readonly unknown[] = returned;
-  // A proxy answers its own length, so a length no array can hold is not a list.
-  const { length } = listed;
-  if (!Number.isSafeInteger(length) || length < 0) {
-    return undefined;
-  }
-  return copiedHints(listed, length);
-}
-
-/**
- * The hints one returned value holds. A hook is synchronous, so a returned promise is a broken
- * answer: it receives a rejection handler and is otherwise ignored, as a failure view's is.
- */
-function readHints(returned: unknown): HookAnswer {
+/** The hints one hook returned, as a list. */
+function hintsOf(returned: string | readonly string[] | undefined): readonly string[] {
   if (returned === undefined) {
-    return { hints: [], kind: 'hints' };
+    return [];
   }
-  if (typeof returned === 'string') {
-    return { hints: [returned], kind: 'hints' };
-  }
-  if (isThenable(returned)) {
-    ignoreRejection(returned);
-    return {
-      cause: undefined,
-      kind: 'broken',
-      reason: 'The hook returned a promise instead of hints.',
-    };
-  }
-  const hints = listedHints(returned);
-  return hints === undefined
-    ? {
-        cause: undefined,
-        kind: 'broken',
-        reason: 'The hook returned a value that is not a string or an array of strings.',
-      }
-    : { hints, kind: 'hints' };
-}
-
-/** One hook's call, with a throw read as a broken answer. */
-function callHook(hook: FailureHook, failure: LoomError, context: FailureHookContext): HookAnswer {
-  try {
-    return readHints(hook(failure, context));
-  } catch (error) {
-    return { cause: error, kind: 'broken', reason: reasonOf(error) };
-  }
+  return typeof returned === 'string' ? [returned] : returned;
 }
 
 /**
@@ -240,50 +156,55 @@ function hookContext(
   });
 }
 
-/** One hook that broke: the plugin that installed it, why, and what it threw. */
-interface BrokenHook {
-  identity: string;
-  reason: string;
-  cause: unknown;
+/** What the hooks answered for one failure: every hint, or the first throw, which ends the hooks. */
+type CollectedHints =
+  | { kind: 'hints'; hints: readonly string[] }
+  | { kind: 'threw'; thrown: unknown };
+
+/** One installed plugin's hook call: the hints it returned, none without a hook, or what it threw. */
+function callHook(
+  installed: BuiltPlugin,
+  failure: LoomError,
+  reading: { scene: FailureScene & { built: BuiltRun }; logging: RunLog; style: ContextualStyle },
+): CollectedHints {
+  const { identity, onFailure } = installed;
+  if (onFailure === undefined) {
+    return { hints: [], kind: 'hints' };
+  }
+  const context = hookContext(reading.scene, {
+    log: reading.logging.bind(identity),
+    style: reading.style,
+  });
+  try {
+    return { hints: hintsOf(onFailure(failure, context)), kind: 'hints' };
+  } catch (error) {
+    return { kind: 'threw', thrown: error };
+  }
 }
 
 /**
- * Every installed plugin's hints for one failure, in installation order, and each hook that broke.
- * Each hook receives the failure and its context alone, so hints accumulate and no hook sees
- * another's.
+ * Every installed plugin's hints for one failure, in installation order. Each hook receives the
+ * failure and its context alone, so hints accumulate and no hook sees another's. A hook that throws
+ * ends the hooks: no later hook runs, and no hook's hints reach the report.
  */
 function collectHints(
   scene: FailureScene,
   failure: LoomError,
   shared: { logging: RunLog; style: ContextualStyle },
-): { broken: readonly BrokenHook[]; hints: readonly string[] } {
+): CollectedHints {
   const { built } = scene;
   if (built === undefined) {
-    return { broken: [], hints: Object.freeze([]) };
+    return { hints: Object.freeze([]), kind: 'hints' };
   }
-  const { logging, style } = shared;
-  // Every hook runs here, in installation order, before any answer is read.
-  const answers = built.plugins.flatMap(({ identity, onFailure }) => {
-    if (onFailure === undefined) {
-      return [];
+  const hints: string[] = [];
+  for (const installed of built.plugins) {
+    const answer = callHook(installed, failure, { ...shared, scene: { ...scene, built } });
+    if (answer.kind === 'threw') {
+      return answer;
     }
-    const context = hookContext({ ...scene, built }, { log: logging.bind(identity), style });
-    return [{ answer: callHook(onFailure, failure, context), identity }];
-  });
-  const hints = answers.flatMap(({ answer }) => (answer.kind === 'hints' ? answer.hints : []));
-  const broken = answers.flatMap(({ answer, identity }) =>
-    answer.kind === 'broken' ? [{ cause: answer.cause, identity, reason: answer.reason }] : [],
-  );
-  return { broken, hints: Object.freeze(hints) };
-}
-
-/** The defect one broken hook reports in a development build. */
-function hookDefect({ cause, identity, reason }: BrokenHook): InternalError {
-  return new InternalError(brokenFailureHook, {
-    cause,
-    correction: 'Return a string, an array of strings, or undefined from onFailure, synchronously.',
-    sentence: `${pluginSentence(identity)} failed in onFailure: ${reason}`,
-  });
+    hints.push(...answer.hints);
+  }
+  return { hints: Object.freeze(hints), kind: 'hints' };
 }
 
 /** The defect a broken failure view reports in a development build. */
@@ -304,21 +225,6 @@ function brokenContract(defect: InternalError, build: BuildReports, scene: Devel
   return build.development
     ? `\n${developerPlainText(defect, scene)}`
     : genericOnce(build, scene.application);
-}
-
-/**
- * What the plain fallback path writes for the `onLog` hooks that broke in a run: each one's
- * Developer Diagnostic in a development build, opening with one blank line after an earlier
- * report, and the generic defect message, at most once per run, in a distributed one.
- */
-function brokenLogReport(
-  broken: readonly BrokenLogHook[],
-  build: BuildReports,
-  scene: DeveloperScene,
-): string {
-  return broken
-    .map((entry) => plainDefectReport(build, brokenLogHookDefect(entry), scene))
-    .join('');
 }
 
 /**
@@ -525,29 +431,55 @@ function loggedForm(
  * Reports one failure. The hooks run first, so the diagnostic, the view, or the encoder receives
  * their hints and their form. A failure whose selection an installed plugin encodes passes through
  * the encoding stage in place of its view. What a broken view or encoder leaves the plain fallback
- * path comes first there, and each broken hook's report follows that whole diagnostic. It answers
- * whether a view, an encoder, or a hook broke, which forces the run's code to 1 outside a cancelled
- * run, and the failure's form.
+ * path comes first there. It answers whether a view, an encoder, or a hook broke, which forces the
+ * run's code to 1 outside a cancelled run, and the failure's form.
  */
 async function reportFailure(
   sink: FailureSink,
   failure: LoomError,
   scene: FailureScene & { host: DeveloperScene['host'] },
 ): Promise<FailureReported> {
-  const { broken, hints } = collectHints(scene, failure, {
+  const collected = collectHints(scene, failure, {
     logging: sink.logging,
     style: sink.output.context('stderr').style,
   });
+  const hints = collected.kind === 'hints' ? collected.hints : [];
   const form = loggedForm(sink, failure, { built: scene.built, hints });
   const developer: DeveloperScene = { application: scene.application, host: scene.host };
-  const own = await reportOwn(sink, failure, { ...scene, developer, form, hints });
-  const hooks = broken.map((hook) => brokenContract(hookDefect(hook), sink.build, developer));
-  const plain = `${own.plain}${hooks.join('')}`;
-  if (plain !== '') {
-    await reportPlainly(sink.stderr, plain);
+  const own =
+    collected.kind === 'hints'
+      ? await reportOwn(sink, failure, { ...scene, developer, form, hints })
+      : await reportUnhinted(sink, failure, {
+          defect: foreignFailure(collected.thrown),
+          developer,
+        });
+  if (own.plain !== '') {
+    await reportPlainly(sink.stderr, own.plain);
   }
   sink.build.reported = true;
-  return { broken: own.broken || broken.length > 0, form };
+  return { broken: own.broken, form };
+}
+
+/**
+ * One failure's report when an `onFailure` hook threw, on the plain fallback path a broken failure
+ * view takes: the run's held incomplete-result lines, core's own text for the failure without
+ * hints, and then the hook's throw as a foreign throw. No view, override, or encoder runs.
+ */
+async function reportUnhinted(
+  sink: FailureSink,
+  failure: LoomError,
+  broken: { defect: InternalError; developer: DeveloperScene },
+): Promise<OwnReport> {
+  const { build } = sink;
+  const { defect, developer } = broken;
+  await sink.output.writeIncomplete();
+  let own = defaultText(failure, developer.application);
+  if (isAuthorFault(failure)) {
+    own = build.development
+      ? plainDefectReport(build, failure, developer)
+      : genericOnce(build, developer.application);
+  }
+  return { broken: true, plain: `${own}${brokenContract(defect, build, developer)}` };
 }
 
 /**
@@ -585,7 +517,7 @@ interface FailureReported {
  */
 function plainDefectReport(
   build: BuildReports,
-  defect: InternalError,
+  defect: DeclarationError | InternalError,
   scene: DeveloperScene,
 ): string {
   if (!build.development) {
@@ -620,4 +552,4 @@ function destinationDefect(cause: unknown): InternalError {
 }
 
 export type { BuildReports, BuiltRun, FailureHook, FailureHookContext, FailureScene };
-export { brokenLogReport, destinationDefect, destinationReport, reportFailure };
+export { destinationDefect, destinationReport, reportFailure };

@@ -27,16 +27,27 @@ test('existing and empty environment values win, while undefined values may be f
   });
 });
 
-test.each(['not-record', 'bad-value', 'bad-name', 'nul'])(
-  'a malformed hook answer is an ordinary plugin defect: %s',
-  (answer) => {
-    const result = invoke(fixture, ['invalid', answer]);
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain('@loomcli/core/broken-environment-hook');
-    expect(result.stderr).not.toContain('secret-value');
-    expect(result.stdout).toBe('');
-  },
-);
+test("a failure class a hook throws keeps its class's exit code and message", () => {
+  expect(invoke(fixture, ['throws', 'fatal'])).toEqual({
+    status: 78,
+    stderr: 'The .env file cannot be read.\n',
+    stdout: '',
+  });
+});
+
+test("any other throw from a hook is a foreign throw from the hook's code", () => {
+  const result = invoke(fixture, ['throws', 'foreign']);
+  expect(result).toMatchObject({ status: 1, stdout: '' });
+  expect(result.stderr).toMatch(
+    /^-- UNHANDLED EXCEPTION -+ @loomcli\/core\/foreign-throw\n\nThe parser broke\.\n/u,
+  );
+});
+
+test('a hook may add a variable whose name holds lowercase letters and a dash', () => {
+  const result = invoke(fixture, ['dashed']);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  expect(JSON.parse(result.stdout)).toMatchObject({ dashed: 'dashed' });
+});
 
 test('inspection and checking do not prepare an environment', () => {
   expect(invoke(fixture, ['inspect'])).toMatchObject({ status: 0, stderr: '', stdout: '[]\n' });

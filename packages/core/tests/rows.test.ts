@@ -78,7 +78,7 @@ test('a source that throws under an awaited call reports the incomplete line fir
   });
 });
 
-test('the same failure under an unawaited call is a deferred fault that returns 1', () => {
+test('the same failure under an unawaited call reports after the action with its own code', () => {
   expect(rows('source-deferred')).toEqual({
     status: 1,
     stderr: `${incomplete('Command "count"', 1, 1)}The source failed.\n`,
@@ -102,14 +102,6 @@ test('a row view that throws mid-sequence leaves the rows before it written', ()
   });
 });
 
-test('a row view that returns a non-string stops the sequence', () => {
-  expect(rows('row-non-string')).toEqual({
-    status: 1,
-    stderr: `${incomplete('Command "count"', 1, 0)}rows: Something went wrong.\n`,
-    stdout: 'PATHS\nresolved:1\n',
-  });
-});
-
 test('a failed write stops the sequence and counts the rows it had written', () => {
   expect(rows('write-fails')).toEqual({
     status: 1,
@@ -123,30 +115,6 @@ test('a cancelled run whose source then returns writes the line alone', () => {
     status: 130,
     stderr: incomplete('Command "count"', 1, 1),
     stdout: `${partial}resolved:130\n`,
-  });
-});
-
-test('a view value that carries both shapes is the fault of its own call', () => {
-  expect(rows('both-shapes')).toEqual({
-    status: 1,
-    stderr: 'rows: Something went wrong.\n',
-    stdout: 'resolved:1\n',
-  });
-});
-
-test('a view value that carries neither shape is the same fault', () => {
-  expect(rows('no-shape')).toEqual({
-    status: 1,
-    stderr: 'rows: Something went wrong.\n',
-    stdout: 'resolved:1\n',
-  });
-});
-
-test('a null view is the same fault of its call, rejected rather than thrown at the call', () => {
-  expect(rows('null-view')).toEqual({
-    status: 1,
-    stderr: 'rows: Something went wrong.\n',
-    stdout: 'after\nresolved:1\n',
   });
 });
 

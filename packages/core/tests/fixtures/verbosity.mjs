@@ -178,8 +178,6 @@ const actions = {
     context.log.trace('logged');
     await everyLane(context);
   },
-  hidden: ({ out }) => out.debug(42),
-  info: ({ out }) => out.info(42),
   long: ({ out }) =>
     Promise.all([
       out.debug('one two three four five six seven eight nine ten'),

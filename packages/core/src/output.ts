@@ -1,8 +1,8 @@
 import { Writable } from 'node:stream';
 import { setImmediate } from 'node:timers/promises';
 
-import { FatalError, notTextReason, ResultError } from './errors.js';
-import type { ResultFault } from './errors.js';
+import { FatalError, ResultError } from './errors.js';
+import { Handed } from './handed.js';
 import type { ReportHost } from './host.js';
 import { incompleteResult, lanes } from './lanes.js';
 import type { IncompleteResult, Lane } from './lanes.js';
@@ -18,6 +18,7 @@ import { drawnRows, nextColumn, resolveText, width } from './style-resolve.js';
 import type { Palette } from './style-state.js';
 import { expandTabsMarked, wrapMarked } from './style-wrap.js';
 import { createStyle, tokens } from './style.js';
+import { handled } from './thenable.js';
 import type {
   ActionChannel,
   OpenResult,
@@ -30,17 +31,45 @@ import type {
   View,
   ViewContext,
 } from './types.js';
-import { resolveRowView, resolveView, shapeOf } from './view.js';
+import { resolveRowView, resolveView } from './view.js';
 import type { ViewRegistry } from './view.js';
 
-function stringValue(value: unknown): string {
-  if (typeof value !== 'string') {
-    throw new Error(notTextReason('view', value));
-  }
-  return value;
+export type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
+
+/**
+ * What one destination's writes meet: nothing refused yet, a failed write the run reports as a
+ * broken destination, or a reader that closed the run's stdout, which ended the run and whose
+ * writes reject with the run signal's reason.
+ */
+type DestinationState = WriteState | { kind: 'closed'; reason: unknown };
+
+/** What a write a destination refuses rejects with. */
+function refusal(state: Exclude<DestinationState, { kind: 'ok' }>): unknown {
+  return state.kind === 'closed' ? state.reason : state.error;
 }
 
-export type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
+/**
+ * The codes a write reports once the reader of the run's stdout is gone. A pipe reports `EPIPE`
+ * under Node and Bun. A socket stdout, which a parent that spawns through libuv hands its child,
+ * reports `ENOTCONN` on macOS when Bun writes it with `send()` and the peer is already gone.
+ */
+const closedReaderCodes: ReadonlySet<unknown> = new Set(['EPIPE', 'ENOTCONN']);
+
+/** Whether one write failed because the reader of the run's stdout closed its end. */
+function closedPipe(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    closedReaderCodes.has(error.code)
+  );
+}
+
+/**
+ * How the run's stdout reads a write failure: the run signal's reason once a closed reader ended
+ * the run, or nothing for a failure that leaves a broken destination.
+ */
+type Closing = (error: unknown) => { reason: unknown } | undefined;
 
 /** The semantic calls, which choose a destination. A rendered value has no purpose of its own. */
 type Purpose = Lane;
@@ -88,18 +117,18 @@ type Passage = (text: string, send: (text: string) => Promise<void>) => Promise<
  * holds no other stream's send.
  */
 class Turn {
-  #last: Promise<void> = Promise.resolve();
+  #last: Promise<unknown> = Promise.resolve();
 
   take(send: () => Promise<void>): Promise<void> {
     const pending = this.#last.then(send);
-    this.#last = pending.catch(() => undefined);
+    this.#last = handled(pending);
     return pending;
   }
 }
 
 class Destination {
   tail: Promise<void> = Promise.resolve();
-  state: WriteState = { kind: 'ok' };
+  state: DestinationState = { kind: 'ok' };
   passage: Passage | undefined = undefined;
   /**
    * The destination whose order this one's text writes may join, if any, and whether a write issued
@@ -111,15 +140,28 @@ class Destination {
   /** How many sequences hold a place in this destination's order and have not closed. */
   #sequences = 0;
 
-  constructor(readonly stream: Writable) {
+  constructor(
+    readonly stream: Writable,
+    private readonly closing?: Closing,
+  ) {
     stream.on('error', this.onError);
   }
 
   readonly onError = (error: unknown): void => {
     if (this.state.kind === 'ok') {
-      this.state = { error, kind: 'failed' };
+      const closed = this.closing?.(error);
+      this.state =
+        closed === undefined
+          ? { error, kind: 'failed' }
+          : { kind: 'closed', reason: closed.reason };
     }
   };
+
+  /** What one failed write rejects with, once the failure is recorded. */
+  private refused(error: unknown): unknown {
+    this.onError(error);
+    return this.state.kind === 'closed' ? this.state.reason : error;
+  }
 
   /**
    * One text queued behind this destination's earlier writes and, when it joins another
@@ -153,8 +195,8 @@ class Destination {
 
   /** One text queued behind whatever preceded it, on a destination that has not failed. */
   private accept(text: string): Promise<void> {
-    if (this.state.kind === 'failed') {
-      throw this.state.error;
+    if (this.state.kind !== 'ok') {
+      throw refusal(this.state);
     }
     return this.send(() =>
       this.passage ? this.passage(text, (sent) => this.writeText(sent)) : this.writeText(text),
@@ -179,8 +221,8 @@ class Destination {
    */
   compose(produce: () => string): Promise<void> {
     return this.run(() => {
-      if (this.state.kind === 'failed') {
-        throw this.state.error;
+      if (this.state.kind !== 'ok') {
+        throw refusal(this.state);
       }
       return this.send(() => {
         const text = produce();
@@ -191,7 +233,7 @@ class Destination {
 
   /** Sends text now, inside an operation this destination is running, recording any failure. */
   async sendQuietly(text: string): Promise<void> {
-    if (text === '' || this.state.kind === 'failed') {
+    if (text === '' || this.state.kind !== 'ok') {
       return;
     }
     try {
@@ -239,7 +281,7 @@ class Destination {
       }
       const onError = (error: unknown): void => {
         cleanup();
-        reject(error);
+        reject(this.refused(error));
       };
       const onClose = (): void => {
         onError(new Error('The output destination closed before writing completed.'));
@@ -254,7 +296,7 @@ class Destination {
         this.stream.write(text, (error) => {
           cleanup();
           if (error) {
-            reject(error);
+            reject(this.refused(error));
           } else {
             resolve();
           }
@@ -270,27 +312,38 @@ class Destination {
   }
 }
 
-/** The sentence one view value of the wrong shape reports, which is the fault of its call. */
-function shapeReason(both: boolean): string {
-  return both
-    ? 'The view carries render and row. Supply one of the two.'
-    : 'The view carries neither render nor row. Supply a view with render or a row view with row.';
-}
-
 /**
  * No contributor at all. A result's selected view is replaced by view name alone, so the
  * Application's override list never reaches a result's views, which carry no identity.
  */
 const bare: ViewRegistry = [];
 
-/** The text a view produced, or the value that stands for its failure to produce text. */
-function renderText(produce: () => unknown): { text: string } | { failed: unknown } {
+/** The text a view produced, or the value its failure to produce text threw. */
+function renderText(produce: () => string): { text: string } | { failed: unknown } {
   try {
-    const text: unknown = produce();
-    return typeof text === 'string' ? { text } : { failed: new Error(notTextReason('view', text)) };
+    return { text: produce() };
   } catch (error) {
     return { failed: error };
   }
+}
+
+/**
+ * The call a middleware or a configuration source makes to `out.results`, which the types give no
+ * value it accepts, and an action's call on a Command that declares no result. Only the action of a
+ * Command that declares a result emits one, so the call throws.
+ */
+function noResult(): never {
+  throw new TypeError('Only the action of a Command that declares a result calls out.results().');
+}
+
+/**
+ * One output call handed to the code that made it that rejected with a failure core raised in it,
+ * and where the call falls in the order the calls were made.
+ */
+interface RejectedCall {
+  readonly call: Handed<unknown>;
+  readonly cause: unknown;
+  readonly order: number;
 }
 
 /**
@@ -334,13 +387,16 @@ interface Target {
 
 export class Output {
   private readonly destinations = new Map<Writable, Destination>();
-  private renderFault: { cause: unknown } | undefined = undefined;
   // Every value a view failed with.
   // A caller that lets one propagate never offers it to a translator.
   private readonly viewFaults = new WeakSet();
-  // Every fault the output path raised beside its calls, reported after the primary outcome.
-  // A source a sequence stopped on and a results-lane fault are both such faults.
-  private readonly stops: unknown[] = [];
+  // Every failure an output call raised: a view's, a source's that stopped a sequence, and a second result.
+  private readonly raised = new Set<unknown>();
+  // Every output call that rejected with a failure core raised, which the run reads for one no code observed.
+  // A call that settled any other way is not kept, so a long run's writes hold no memory.
+  private readonly rejected: RejectedCall[] = [];
+  // How many output calls have been handed out, which orders the rejected ones.
+  private handedCalls = 0;
   // The path routing walked, which an incomplete sequence names, updated as each name routes.
   private route: readonly string[] = [];
   /**
@@ -348,8 +404,6 @@ export class Output {
    * declaration a call answers to is checked where the action was authored.
    */
   readonly out: Out<OpenResult>;
-  /** The channel a configuration source receives: `out` with the results call naming a source. */
-  readonly sourceOut: Out<OpenResult>;
 
   private palette: Palette = new Map();
   private policy: RenderingPolicy = {};
@@ -370,6 +424,26 @@ export class Output {
   private readonly onCancel = (): void => {
     this.regions.closeAll('cancellation');
   };
+  // Aborts the run's signal with the closed-pipe reason, once the run has a signal bracket.
+  private closePipe: (cause: unknown) => void = () => undefined;
+  // Whether the reader of stdout closed the pipe, after which no incomplete-result line is written.
+  private pipeClosed = false;
+  /**
+   * The reading of a failed stdout write. A closed reader aborts the run's signal, and every write
+   * from then on rejects with its reason, which the run already reports as its end. Any other
+   * failure, or one before anything can abort the run, leaves a broken destination.
+   */
+  private readonly closing: Closing = (error) => {
+    if (!closedPipe(error)) {
+      return undefined;
+    }
+    this.closePipe(error);
+    if (!this.signal.aborted) {
+      return undefined;
+    }
+    this.pipeClosed = true;
+    return { reason: this.signal.reason };
+  };
 
   constructor(
     readonly host: ReportHost,
@@ -382,7 +456,11 @@ export class Output {
     this.regions = new Regions(
       {
         cancelled: () => this.signal.aborted,
-        frame: (data, view) => this.frame(data, view),
+        // A region's draw hands its rejection to the code that drew, as every output call does.
+        frame: (data, view) => {
+          const frame = this.frame(data, view);
+          return 'failed' in frame ? { failed: this.hand(frame.failed) } : frame;
+        },
         ledger: new ProgressLedger({
           deliver: (event) => {
             this.progressObserver?.(event);
@@ -397,34 +475,26 @@ export class Output {
     this.coordinate();
     signal.addEventListener('abort', this.onCancel, { once: true });
     this.out = {
-      debug: (message) => this.emit('debug', message, 'stderr'),
-      draw: (data: never, value: View<never>) => {
-        const drawn = this.draw(data, value);
-        // The row-count promise is a new boundary over the destination's observed write promise.
-        void drawn.catch(() => undefined);
-        return drawn;
-      },
-      error: (message) => this.emit('error', message, 'stderr'),
+      debug: (message) => this.hand(this.emit('debug', message, 'stderr')),
+      draw: (data: never, value: View<never>) => this.hand(this.draw(data, value)),
+      error: (message) => this.hand(this.emit('error', message, 'stderr')),
       fatal: (message) => {
         throw new FatalError(message);
       },
-      info: (message) => this.emit('info', message, 'stderr'),
-      print: (message) => this.emit('print', message, 'stdout'),
+      info: (message) => this.hand(this.emit('info', message, 'stderr')),
+      print: (message) => this.hand(this.emit('print', message, 'stdout')),
       // A region a middleware or a source opens closes once the chain has unwound.
       region: (options) => this.regions.open(options),
       // The data type is erased here, as it is in the registry.
       // One call dispatches on the shape of the view it was handed.
       // Every view function reads its data back through its own key.
       render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
-        this.renderValue(data, value, { destination: 'stdout' }),
-      // Only the action emits a result, so this call is the middleware fault whatever was declared.
-      results: () => this.resultFault('middleware'),
-      success: (message) => this.emit('success', message, 'stderr'),
-      trace: (message) => this.emit('trace', message, 'stderr'),
-      warn: (message) => this.emit('warn', message, 'stderr'),
+        this.hand(this.renderValue(data, value, { destination: 'stdout' })),
+      results: noResult,
+      success: (message) => this.hand(this.emit('success', message, 'stderr')),
+      trace: (message) => this.hand(this.emit('trace', message, 'stderr')),
+      warn: (message) => this.hand(this.emit('warn', message, 'stderr')),
     };
-    // A configuration source writes through the same channel, and its results call names it.
-    this.sourceOut = { ...this.out, results: () => this.resultFault('source') };
   }
 
   /**
@@ -444,14 +514,14 @@ export class Output {
       emitted: () => emission.calls > 0,
       out: {
         ...this.out,
-        print: (message) => this.emit('print', message, destination),
+        print: (message) => this.hand(this.emit('print', message, destination)),
         region: (options) => this.regions.open(options, emission.regions),
         // The data type is erased here, as it is in the registry.
         // One call dispatches on the shape of the view it was handed.
         // Every view function reads its data back through its own key.
         render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
-          this.renderValue(data, value, target),
-        results: (value) => this.results(binding, emission, value),
+          this.hand(this.renderValue(data, value, target)),
+        results: (value) => this.hand(this.results(binding, emission, value)),
       },
       stop: () => {
         for (const stop of emission.live) {
@@ -465,16 +535,15 @@ export class Output {
    * One `out.results` call on the action's channel. The declaration decides the unit, the selected
    * view decides how it renders, and stdout carries the result under either one. The selected
    * view is the one a middleware named before the action dispatched, or the declaration's default
-   * when none did. A call the declaration does not answer for is a fault of the lane and writes
-   * nothing.
+   * when none did. A second call rejects with a `ResultError` and writes nothing.
    */
   private results(binding: ResultBinding, emission: Emission, value: unknown): Promise<void> {
     const { path, result } = binding;
     if (!result) {
-      return this.resultFault('undeclared', path);
+      return noResult();
     }
     if (emission.calls > 0) {
-      return this.resultFault('repeated', path);
+      return this.repeated(path);
     }
     emission.calls += 1;
     const selected = binding.view ?? result.default;
@@ -490,24 +559,75 @@ export class Output {
         live: emission.live,
       });
     }
-    if (typeof view.row === 'function') {
-      // Only the types reject a row view on a value result, so a JavaScript author reaches it here.
-      return this.renderFailed(new Error(`The view "${selected}" renders rows, not a value.`));
-    }
-    return this.rendered(() => resolveView(bare, view)(erased(value), this.context('stdout')));
+    return this.rendered(() => {
+      if (typeof view.render !== 'function') {
+        throw new TypeError(`The view "${selected}" renders rows, not a value.`);
+      }
+      return resolveView(bare, view)(erased(value), this.context('stdout'));
+    });
+  }
+
+  /** A second `out.results` call, which rejects and writes nothing, like any failed output call. */
+  private repeated(path: readonly string[]): Promise<void> {
+    const fault = new ResultError('repeated', path);
+    this.raised.add(fault);
+    const rejected = Promise.reject(fault);
+    void handled(rejected);
+    return rejected;
   }
 
   /**
-   * One fault of the results lane: the call rejects, and the same failure is reported after this
-   * invocation's primary outcome, so a call the action never awaited still turns a would-be 0 into
-   * 1 and one the action let propagate is reported once.
+   * A call core rejects with a failure it raised outside output, such as a `next()` misuse, handed
+   * to the code that made it as an output call is. Once that code observed it, the failure is its
+   * own to handle, and when no code did, the run reports it after the chain settles.
    */
-  private resultFault(kind: ResultFault, path: readonly string[] = this.route): Promise<void> {
-    const fault = new ResultError(kind, path);
-    this.stops.push(fault);
-    const rejected = Promise.reject(fault);
-    void rejected.catch(() => undefined);
-    return rejected;
+  handFailure(fault: unknown): Promise<never> {
+    this.raised.add(fault);
+    return this.hand(Promise.reject(fault));
+  }
+
+  /**
+   * One output call handed to the code that made it. A failure core raised in it, which the call
+   * rejects with, is that code's to handle once it observed the call, and has no catcher otherwise.
+   */
+  private hand<Value>(pending: Promise<Value>): Promise<Value> {
+    const call = Handed.of(pending);
+    const order = this.handedCalls++;
+    void pending.catch((error: unknown) => {
+      if (this.raised.has(error)) {
+        this.rejected.push({ call, cause: error, order });
+      }
+    });
+    return call;
+  }
+
+  /**
+   * Every failure a handed call raised that no code observed, such as a render whose view threw
+   * in a call the action never awaited, or a `next()` misuse, in the order the calls were made. A failure that code
+   * observed through one call is that code's, whichever other call carried it.
+   */
+  uncaught(): readonly unknown[] {
+    const rejected = [...this.rejected];
+    // A call made earlier can reject later, behind writes queued on its destination.
+    rejected.sort((first, second) => first.order - second.order);
+    const observed = new Set<unknown>();
+    for (const { call, cause } of rejected) {
+      if (call.observed) {
+        observed.add(cause);
+      }
+    }
+    const causes = new Set<unknown>();
+    for (const { cause } of rejected) {
+      if (!observed.has(cause)) {
+        causes.add(cause);
+      }
+    }
+    return [...causes];
+  }
+
+  /** What ends the run when the reader of its stdout closes the pipe. */
+  useClosedPipe(close: (cause: unknown) => void): void {
+    this.closePipe = close;
   }
 
   /** The registry one invocation resolves through, republished as each contributor is read. */
@@ -553,7 +673,7 @@ export class Output {
     const carried = new Writable({
       write: (chunk: unknown, _encoding, done) => {
         // The stream's own failure is the run's, recorded where the write was queued.
-        void this.write(stderr, String(chunk)).catch(() => undefined);
+        void handled(this.write(stderr, String(chunk)));
         done();
       },
     });
@@ -624,34 +744,17 @@ export class Output {
   /**
    * One frame of a region or of `out.draw`: the view runs inside the call with stderr's context,
    * its marked text is kept so the frame's rows can be counted now and recounted at a later width,
-   * and a view of the wrong shape or one that breaks is this call's output-view fault.
+   * and a view that throws fails this call.
    */
   private frame(data: unknown, value: View<never>): Frame | { failed: Promise<void> } {
-    const shape = shapeOf(value);
-    if (shape !== 'render') {
-      return {
-        failed: this.renderFailed(
-          new Error(
-            shape === 'row'
-              ? 'The view carries row. Supply a view with render.'
-              : shapeReason(shape === 'both'),
-          ),
-        ),
-      };
-    }
     try {
-      const marked = stringValue(
+      const marked = String(
         resolveView(this.registry, value)(erased(data), this.context('stderr')),
       );
       return { marked, text: resolveText(marked, this.palette, this.drawCaps()) };
     } catch (error) {
       return { failed: this.renderFailed(error) };
     }
-  }
-
-  /** What this invocation's output raised beside its calls, in the order it was raised. */
-  get stopped(): readonly unknown[] {
-    return this.stops;
   }
 
   configure(policy: RenderingPolicy, palette: Palette): void {
@@ -693,21 +796,18 @@ export class Output {
   }
 
   /**
-   * A semantic message is one line on its destination; only `print` writes to stdout. The message
-   * is checked before the lane view runs, and this call appends the one newline after it, so a
-   * lane view returns none and an override that returns the empty string still writes one. A call
-   * the run's verbosity hides is checked the same way, then calls no lane view and writes nothing.
+   * A semantic message is one line on its destination; only `print` writes to stdout. This call
+   * appends the one newline after the lane view's text, so a lane view returns none and an override
+   * that returns the empty string still writes one. A call the run's verbosity hides calls no lane
+   * view and writes nothing.
    */
   emit(kind: Purpose, message: string, destination: Stream): Promise<void> {
-    if (typeof message === 'string' && this.verbosity < shownFrom[kind]) {
+    if (this.verbosity < shownFrom[kind]) {
       return Promise.resolve();
     }
     return this.rendered(() => {
-      if (typeof message !== 'string') {
-        throw new TypeError('Output messages must be strings.');
-      }
       const render = resolveView<string>(this.registry, lanes[kind]);
-      return `${stringValue(render(message, this.context(destination)))}\n`;
+      return `${String(render(message, this.context(destination)))}\n`;
     }, destination);
   }
 
@@ -731,13 +831,17 @@ export class Output {
   /**
    * Writes each incomplete-result line this run holds, in the order its sequences stopped, ahead of
    * whatever the run reports next. Each resolves through the registry like any other rendered
-   * output, so an override that returns the empty string silences it and one that throws is a view
-   * fault. A stderr that has failed already takes the plain fallback path and no further. It answers
-   * the view fault these lines raised when the run had raised none before, which the run reports
-   * only when nothing else failed.
+   * output, so an override that returns the empty string silences it and one that throws fails
+   * the line. A stderr that has failed already takes the plain fallback path and no further. It
+   * answers what the first line whose view threw raised, which no code can catch.
    */
   async writeIncomplete(): Promise<{ cause: unknown } | undefined> {
-    const earlier = this.renderFault;
+    // A reader that closed stdout stopped reading on purpose, so no line reports the truncation.
+    if (this.pipeClosed) {
+      this.dropIncomplete();
+      return undefined;
+    }
+    let fault: { cause: unknown } | undefined = undefined;
     for (const facts of this.heldIncomplete.splice(0)) {
       const context = this.context('stderr');
       const failed = this.destinations.get(this.host.stderr)?.state.kind === 'failed';
@@ -746,9 +850,13 @@ export class Output {
         : this.rendered(
             () => resolveView(this.registry, incompleteResult)(facts, context),
             'stderr',
-          ).catch(() => undefined));
+          ).catch((error: unknown) => {
+            if (this.raised.has(error)) {
+              fault ??= { cause: error };
+            }
+          }));
     }
-    return earlier === undefined ? this.renderFault : undefined;
+    return fault;
   }
 
   /**
@@ -775,21 +883,12 @@ export class Output {
     return rows;
   }
 
-  /**
-   * One `out.render` call, dispatched on the shape of the view it was handed. The two shapes are
-   * exclusive, so a JavaScript author's value that carries both, or neither, is the output-view
-   * fault of this call and nothing is written for it.
-   */
+  /** One `out.render` call, dispatched on the shape of the view it was handed. */
   private renderValue(
     data: never,
     value: View<never> | RowView<never>,
     target: Target,
   ): Promise<void> {
-    const shape = shapeOf(value);
-    if (shape === 'both' || shape === 'neither') {
-      return this.renderFailed(new Error(shapeReason(shape === 'both')));
-    }
-    // The shape was named above, so this second read narrows the value rather than deciding it.
     if (typeof value.render === 'function') {
       return this.rendered(
         () => resolveView(this.registry, value)(data, this.context(target.destination)),
@@ -832,13 +931,13 @@ export class Output {
       signal: this.signal,
       source,
       stopped: (cause) => {
-        this.stops.push(cause);
+        this.raised.add(cause);
       },
       view,
     });
     // A sequence its own channel can stop, so an action's failure ends it rather than draining it.
     target.live?.add(sequence.stop);
-    void sequence.pending.catch(() => undefined);
+    void handled(sequence.pending);
     return sequence.pending;
   }
 
@@ -853,8 +952,7 @@ export class Output {
 
   /**
    * The write site owns its newline; core resolves the view's marked text before queuing it. A
-   * throw or a non-string return rejects this call alone: nothing is written for it, later output
-   * still writes, and the recorded cause ends the invocation once the action has completed.
+   * throw rejects this call alone: nothing is written for it, and later output still writes.
    */
   private rendered(
     produce: () => unknown,
@@ -863,7 +961,7 @@ export class Output {
   ): Promise<void> {
     const rendered = renderText(() =>
       resolveText(
-        stringValue(produce()),
+        String(produce()),
         this.palette,
         capabilities(this.host, destination, this.policy),
       ),
@@ -875,24 +973,22 @@ export class Output {
   }
 
   /**
-   * The rejected call. The first view failure is the reported one, so a later one adds no
-   * second diagnostic, and the rejection is observed here as well, because an action that never
-   * awaits the call must not end the process with an unhandled rejection.
+   * The rejected call. The rejection is observed here as well, because an action that never awaits
+   * the call must not end the process with an unhandled rejection.
    */
   private renderFailed(cause: unknown): Promise<void> {
-    this.renderFault ??= { cause };
+    this.raised.add(cause);
     if ((typeof cause === 'object' || typeof cause === 'function') && cause !== null) {
       this.viewFaults.add(cause);
     }
     const rejection = Promise.reject(cause);
-    void rejection.catch(() => undefined);
+    void handled(rejection);
     return rejection;
   }
 
   /**
-   * Whether one value is what a view or a message check failed with during this invocation. A
-   * broken view is a defect in the code that broke the view contract, so an action or a source that
-   * lets its rejection propagate reports it as that defect.
+   * Whether one value is what a view failed with during this invocation, which already names what it
+   * is, so no translator is offered it.
    */
   raisedByView(value: unknown): boolean {
     return (
@@ -902,16 +998,16 @@ export class Output {
     );
   }
 
-  /** What a view failed with during this invocation, if one did. */
-  get fault(): { cause: unknown } | undefined {
-    return this.renderFault;
-  }
-
-  /** The queue one stream writes through, opened the first time this invocation reaches it. */
+  /**
+   * The queue one stream writes through, opened the first time this invocation reaches it. Only
+   * the run's own stdout reads a closed reader as the end of the run.
+   */
   private destination(stream: Writable): Destination {
     let destination = this.destinations.get(stream);
     if (!destination) {
-      destination = new Destination(stream);
+      const { stderr, stdout } = this.host;
+      const ends = stream === stdout && stream !== stderr;
+      destination = new Destination(stream, ends ? this.closing : undefined);
       this.destinations.set(stream, destination);
     }
     return destination;

@@ -225,11 +225,10 @@ test.each([
   expect(failures(scenario)).toEqual({ status: 1, stderr, stdout: 'resolved:1\n' });
 });
 
-test('a view failure inside the action is reported through the registry with its cause', () => {
+test('a view failure the action never awaited is reported through the registry with its cause', () => {
   expect(failures('render-failure')).toEqual({
     status: 1,
-    stderr:
-      'internal: Rendering output failed: Cannot render the failure. (cause: Cannot render the failure.)\n',
+    stderr: 'internal: Cannot render the failure. (cause: Cannot render the failure.)\n',
     stdout: 'resolved:1\n',
   });
 });
@@ -360,23 +359,16 @@ test('a broken view on a usage class writes the default text and returns 1', () 
   });
 });
 
-test.each([
-  ['broken', 'Cannot render the failure.'],
-  ['broken-nonstring', 'The view returned number instead of a string.'],
-  ['broken-rejecting', 'The view returned object instead of a string.'],
-])('a failure view that %s falls back to the default text and a diagnostic', (scenario, reason) => {
-  expect(failures(scenario)).toEqual({
+test('a failure view that throws falls back to the default text and a diagnostic', () => {
+  expect(failures('broken')).toEqual({
     status: 1,
     stderr: `Expected failure.\nfailures: Something went wrong.\n`,
     stdout: 'resolved:1\n',
   });
   // A development build states the broken view's reason in its Developer Diagnostic.
-  expect(failures(scenario, [], { FIXTURE_BUILD: 'development' }).stderr).toContain(
-    `Expected failure.\n\n-- BROKEN FAILURE VIEW -`,
-  );
-  expect(failures(scenario, [], { FIXTURE_BUILD: 'development' }).stderr).toContain(
-    `\n\nRendering the failure failed: ${reason}\n`,
-  );
+  const { stderr } = failures('broken', [], { FIXTURE_BUILD: 'development' });
+  expect(stderr).toContain(`Expected failure.\n\n-- BROKEN FAILURE VIEW -`);
+  expect(stderr).toContain(`\n\nRendering the failure failed: Cannot render the failure.\n`);
 });
 
 test('an unusable fallback destination still resolves the failure status', () => {

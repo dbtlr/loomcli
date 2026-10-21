@@ -176,17 +176,6 @@ function scenarioRun() {
         signal: controller.signal,
       };
     }
-    case 'broken-output': {
-      return {
-        app: new Application('probe', probe).action(({ out }) => {
-          void out.render('x', {
-            render: () => {
-              throw new Error('Output view broke.');
-            },
-          });
-        }),
-      };
-    }
     case 'forged-outside': {
       return {
         app: new Application('probe', probe).action(() => {
@@ -256,20 +245,13 @@ function scenarioRun() {
             Promise.resolve({
               default: async ({ next }) => {
                 await next();
-                await next().catch(() => undefined);
+                await next();
               },
             }),
         },
       });
       return {
         app: new Application('probe', { ...probe, plugins: [twice] }).action(() => undefined),
-      };
-    }
-    case 'unconstructed': {
-      return {
-        app: new Application('probe', probe).action(() => {
-          throw Object.create(InternalError.prototype);
-        }),
       };
     }
     case 'result-missing': {
@@ -331,31 +313,17 @@ function scenarioRun() {
         },
       };
     }
-    case 'revoked-proxy': {
-      const { proxy, revoke } = Proxy.revocable({}, {});
-      revoke();
-      return {
-        app: new Application('probe', probe).action(() => {
-          throw proxy;
-        }),
-      };
-    }
     case 'two-defects': {
-      const twice = plugin('@acme/twice', {
-        middleware: {
-          activate: 'always',
-          load: () =>
-            Promise.resolve({
-              default: async ({ next }) => {
-                await next();
-                await next().catch(() => undefined);
-                throw new Error('Middleware broke.');
-              },
-            }),
-        },
-      });
+      // The action never awaits the render, so its view failure is reported after the action's own.
       return {
-        app: new Application('probe', { ...probe, plugins: [twice] }).action(() => undefined),
+        app: new Application('probe', probe).action(({ out }) => {
+          void out.render('x', {
+            render: () => {
+              throw new Error('Output view broke.');
+            },
+          });
+          throw new Error('Action broke.');
+        }),
       };
     }
     case 'not-a-signal': {

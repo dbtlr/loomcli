@@ -31,11 +31,11 @@ const silent = plugin('fixture/silent', {});
 
 const dispatch = ({ out }) => out.print('dispatched');
 
-/** A stdout whose reader has gone away, so every write fails as a closed pipe does. */
-function brokenPipe() {
+/** A stdout on a full disk, so every write fails, which leaves a broken destination. */
+function fullDisk() {
   return new Writable({
     write(_chunk, _encoding, callback) {
-      callback(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+      callback(Object.assign(new Error('write ENOSPC'), { code: 'ENOSPC' }));
     },
   });
 }
@@ -110,12 +110,6 @@ function copiedFields() {
     nothing: undefined,
     shared: [shared, shared],
     symbol: Symbol('s'),
-    throwing: {
-      get bad() {
-        throw new Error('The getter failed.');
-      },
-      ok: 1,
-    },
   };
 }
 
@@ -124,27 +118,22 @@ function failing(plugins, action) {
   return new Application('probe', { description: 'Probe a failure.', plugins }).action(action);
 }
 
-/** A middleware that runs the rest of the chain, then misuses `next()` with a second call. */
-const twice = plugin('fixture/twice', {
-  middleware: {
-    activate: 'always',
-    load: async () => ({
-      default: async ({ next }) => {
-        await next().catch(() => undefined);
-        await next().catch(() => undefined);
-      },
-    }),
+/** A view that throws, which a render the action never awaited fails through after the action. */
+const breaking = {
+  render: () => {
+    throw new Error('The view broke.');
   },
-});
+};
 
 /** Extra lines a scenario prints beside the events, keyed for the test to read. */
 const printed = [];
 
-/** The `log` a middleware kept, which the delivery scenario calls from `onLog`. */
-let kept = undefined;
-
 const scenarios = {
-  'after-primary': () => failing([twice, collector], ({ out }) => out.fatal('The action failed.')),
+  'after-primary': () =>
+    failing([collector], ({ out }) => {
+      void out.render('late', breaking);
+      out.fatal('The action failed.');
+    }),
   // A call from an action returns undefined and a collector receives a frozen event.
   basic: () =>
     failing([collector], ({ log }) => {
@@ -226,34 +215,6 @@ const scenarios = {
       });
       printed.push({ reads });
     }),
-  // A plugin keeps its middleware's log and calls it from its own `onLog`.
-  'log-in-hook': () =>
-    failing(
-      [
-        plugin('fixture/keeper', {
-          middleware: {
-            activate: 'always',
-            load: async () => ({
-              default: async ({ log, next }) => {
-                kept = log;
-                await next();
-              },
-            }),
-          },
-          onLog: () => {
-            kept.info('from the hook');
-          },
-        }),
-      ],
-      ({ log }) => {
-        log.info('trigger');
-      },
-    ),
-  'message-converted': () =>
-    failing([collector], ({ log }) => {
-      log.info(42);
-      log.warn({ toString: () => 'object message' });
-    }),
   'path-routed': () => grouped({ plugins: [collector] }),
   reach: () =>
     new Application('probe', {
@@ -288,11 +249,11 @@ const scenarios = {
         log.info('outer again');
       }),
   'stdout-broken': () =>
-    new Application('probe', { description: 'Probe a closed pipe.', plugins: [collector] }).action(
+    new Application('probe', { description: 'Probe a full disk.', plugins: [collector] }).action(
       ({ out }) => out.print('lost'),
     ),
   'stdout-broken-after-failure': () =>
-    new Application('probe', { description: 'Probe a closed pipe.', plugins: [collector] }).action(
+    new Application('probe', { description: 'Probe a full disk.', plugins: [collector] }).action(
       async ({ out }) => {
         // The action catches the failed write and fails on its own.
         // A run whose output failed reports only the destination.
@@ -341,7 +302,7 @@ const app = build();
 const release =
   process.env.FIXTURE_BUILD === undefined ? {} : { release: { build: process.env.FIXTURE_BUILD } };
 /** A stdout that fails every write, for the scenarios whose destination breaks. */
-const stdout = scenario.startsWith('stdout-broken') ? { stdout: brokenPipe() } : {};
+const stdout = scenario.startsWith('stdout-broken') ? { stdout: fullDisk() } : {};
 const code = await app.run({
   host: { argv, ...release, ...stdout },
   signal: controller.signal,
