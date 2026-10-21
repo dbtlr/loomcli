@@ -67,3 +67,11 @@ test('an unusable fallback destination still resolves the failure status', () =>
     stdout: 'resolved:1\n',
   });
 });
+
+test('a call that settled is not held once the code that made it lets go of it', () => {
+  expect(invoke(new URL('fixtures/settled-calls.mjs', import.meta.url))).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"code":0,"retained":0}\n',
+  });
+});

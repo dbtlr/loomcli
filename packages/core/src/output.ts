@@ -327,12 +327,13 @@ function noResult(): never {
 }
 
 /**
- * One output call handed to the code that made it, and the failure core raised in it, once the
- * call rejected with one.
+ * One output call handed to the code that made it that rejected with a failure core raised in it,
+ * and where the call falls in the order the calls were made.
  */
-interface HandedCall {
+interface RejectedCall {
   readonly call: Handed<unknown>;
-  failure: { cause: unknown } | undefined;
+  readonly cause: unknown;
+  readonly order: number;
 }
 
 /**
@@ -381,8 +382,11 @@ export class Output {
   private readonly viewFaults = new WeakSet();
   // Every failure an output call raised: a view's, a source's that stopped a sequence, and a second result.
   private readonly raised = new Set<unknown>();
-  // Every output call handed to the code that made it, which the run reads for a rejection no code observed.
-  private readonly handed: HandedCall[] = [];
+  // Every output call that rejected with a failure core raised, which the run reads for one no code observed.
+  // A call that settled any other way is not kept, so a long run's writes hold no memory.
+  private readonly rejected: RejectedCall[] = [];
+  // How many output calls have been handed out, which orders the rejected ones.
+  private handedCalls = 0;
   // The path routing walked, which an incomplete sequence names, updated as each name routes.
   private route: readonly string[] = [];
   /**
@@ -568,11 +572,10 @@ export class Output {
    */
   private hand<Value>(pending: Promise<Value>): Promise<Value> {
     const call = Handed.of(pending);
-    const entry: HandedCall = { call, failure: undefined };
-    this.handed.push(entry);
+    const order = this.handedCalls++;
     void pending.catch((error: unknown) => {
       if (this.raised.has(error)) {
-        entry.failure = { cause: error };
+        this.rejected.push({ call, cause: error, order });
       }
     });
     return call;
@@ -584,16 +587,19 @@ export class Output {
    * observed through one call is that code's, whichever other call carried it.
    */
   uncaught(): readonly unknown[] {
+    const rejected = [...this.rejected];
+    // A call made earlier can reject later, behind writes queued on its destination.
+    rejected.sort((first, second) => first.order - second.order);
     const observed = new Set<unknown>();
-    for (const { call, failure } of this.handed) {
-      if (failure !== undefined && call.observed) {
-        observed.add(failure.cause);
+    for (const { call, cause } of rejected) {
+      if (call.observed) {
+        observed.add(cause);
       }
     }
     const causes = new Set<unknown>();
-    for (const { failure } of this.handed) {
-      if (failure !== undefined && !observed.has(failure.cause)) {
-        causes.add(failure.cause);
+    for (const { cause } of rejected) {
+      if (!observed.has(cause)) {
+        causes.add(cause);
       }
     }
     return [...causes];
