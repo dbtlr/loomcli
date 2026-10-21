@@ -37,7 +37,7 @@ const answerCommand = new Command('__complete', {
   out.render(answer(graph, locate(graph, passthrough)), exactText),
 );
 
-/** The five shell names `install` and `uninstall` accept. */
+/** The four shell names `install` and `uninstall` accept. */
 const shellInput = oneOf(shells);
 
 /** What every installing child reads from its action context. */
@@ -61,7 +61,7 @@ const installCommand = new Command('install', {
   description: 'Install completion for your shell.',
 })
   .argument('shell', {
-    description: 'The shell: bash, zsh, fish, powershell, or pwsh. Your login shell when left out.',
+    description: 'The shell: bash, zsh, fish, or pwsh. Your login shell when left out.',
     validate: shellInput,
   })
   .action((context) => installShell(childRun(context), context.args.shell));
@@ -76,8 +76,7 @@ const uninstallCommand = new Command('uninstall', {
   description: 'Remove completion from your shell.',
 })
   .argument('shell', {
-    description:
-      'The shell: bash, zsh, fish, powershell, or pwsh. Every installed shell when left out.',
+    description: 'The shell: bash, zsh, fish, or pwsh. Every installed shell when left out.',
     validate: shellInput,
   })
   .action((context) => uninstallShells(childRun(context), context.args.shell));
@@ -97,8 +96,8 @@ const completionCommand = new Command('completion', {
 
 /**
  * A plugin that prints Bash, Zsh, Fish, and PowerShell completion scripts, installs them into the
- * operator's shell, and answers them. Its whole contribution is the `completion` Command; it
- * declares no option, middleware, or extension.
+ * operator's shell on Linux and macOS, and answers them. Its whole contribution is the `completion`
+ * Command; it declares no option, middleware, or extension.
  */
 export function completion(): Plugin {
   return plugin(`${packageName}/completion`, { commands: [completionCommand] });

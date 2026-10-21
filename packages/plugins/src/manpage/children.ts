@@ -219,7 +219,7 @@ async function writeSet(run: ChildRun, writing: Writing): Promise<void> {
 function homeFor(run: ChildRun): string {
   const home = homeOf(run.host);
   if (home === undefined) {
-    throw homeRefusal(run.graph.name, 'HOME');
+    throw homeRefusal(run.graph.name);
   }
   return home;
 }
@@ -237,9 +237,6 @@ async function adviseOn(run: ChildRun, home: string): Promise<void> {
 
 /** `install`: the set under `<home>/.local/share/man/man1`, then the advice when man will not find it. */
 async function installPages(run: ChildRun): Promise<void> {
-  if (run.host.platform === 'win32') {
-    throw refusals.windows(run.graph.name);
-  }
   const home = homeFor(run);
   const recorded = readRecord(run, 'install');
   await writeSet(run, { folder: join(home, ...homeFolder), recorded, verb: 'install' });
@@ -254,7 +251,7 @@ function foldersOf(files: readonly { readonly path: string }[]): string[] {
 /** `update`: the set into the folder that holds the recorded pages, which derives nothing from `HOME`. */
 async function updatePages(run: ChildRun): Promise<void> {
   const name = run.graph.name;
-  const recorded = run.host.platform === 'win32' ? undefined : readRecord(run, 'install');
+  const recorded = readRecord(run, 'install');
   const [folder, ...others] = recorded === undefined ? [] : foldersOf(recorded.files);
   if (recorded === undefined || folder === undefined) {
     await run.success(lines.noneToUpdate(name));
@@ -291,7 +288,7 @@ function uninstalled(run: ChildRun): {
 
 /** `uninstall`: the recorded pages removed or kept, and the plugin's file deleted. */
 async function uninstallPages(run: ChildRun): Promise<void> {
-  const outcome = run.host.platform === 'win32' ? { kept: [], removed: [] } : uninstalled(run);
+  const outcome = uninstalled(run);
   if (isEmpty(outcome.removed) && isEmpty(outcome.kept)) {
     await run.success(lines.noneToRemove(run.graph.name));
     return;

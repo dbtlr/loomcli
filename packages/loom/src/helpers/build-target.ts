@@ -3,18 +3,19 @@ import type { ParseResult } from '@loomcli/validators';
 import { object, optional, safeParse, string } from 'valibot';
 
 /**
- * A Bun compile target, as Bun 1.4.2 documents them: `bun-<os>-<arch>` for `linux`, `darwin`, or
- * `windows` on `x64` or `arm64`, then `-musl` on Linux alone, then `-baseline` or `-modern` on x64
- * alone, such as `bun-linux-x64-musl-baseline`. Bun itself also tolerates the variants in any
- * order, repeated, or both CPU variants at once, and a CPU variant on arm64, which it ignores; each
- * of those names a target above, so a build refuses it rather than give one binary two names.
+ * A Bun compile target, as Bun 1.4.2 documents them, for the platforms CI runs: `bun-<os>-<arch>`
+ * for `linux` or `darwin` on `x64` or `arm64`, then `-musl` on Linux alone, then `-baseline` or
+ * `-modern` on x64 alone, such as `bun-linux-x64-musl-baseline`. Bun itself also tolerates the
+ * variants in any order, repeated, or both CPU variants at once, and a CPU variant on arm64, which
+ * it ignores; each of those names a target above, so a build refuses it rather than give one binary
+ * two names.
  */
 const compileTarget =
-  /^bun-(?<platform>linux-(?:x64(?:-musl)?(?:-baseline|-modern)?|arm64(?:-musl)?)|(?:darwin|windows)-(?:x64(?:-baseline|-modern)?|arm64))$/u;
+  /^bun-(?<platform>linux-(?:x64(?:-musl)?(?:-baseline|-modern)?|arm64(?:-musl)?)|darwin-(?:x64(?:-baseline|-modern)?|arm64))$/u;
 
 /** The sentence every refused target ends with, naming the targets a build accepts. */
-const accepted =
-  'Use node, bun, or a Bun compile target bun-<os>-<arch>, with -musl on linux and -baseline or -modern on x64, such as bun-linux-x64.';
+const acceptedTargets =
+  'Use node, bun, or a Bun compile target bun-<os>-<arch> for linux or darwin on x64 or arm64, with -musl on linux and -baseline or -modern on x64, such as bun-linux-x64.';
 
 /** Reads one `--target` value, or answers the sentence that refuses it. */
 function readTarget(value: string): BuildTarget | { readonly refused: string } {
@@ -27,10 +28,10 @@ function readTarget(value: string): BuildTarget | { readonly refused: string } {
   }
   if (value === 'browser') {
     return {
-      refused: `browser is refused, because a Loom application runs as a command. ${accepted}`,
+      refused: `browser is refused, because a Loom application runs as a command. ${acceptedTargets}`,
     };
   }
-  return { refused: `${JSON.stringify(value)} is not a target. ${accepted}` };
+  return { refused: `${JSON.stringify(value)} is not a target. ${acceptedTargets}` };
 }
 
 /** The glibc version a Node-compatible runtime reports, which a musl host leaves out. */
@@ -58,7 +59,7 @@ export const targetOption = createValidator({
 
 /** The compile target Bun names for the host: its platform, its architecture, and musl on Alpine. */
 export function hostTarget(): BuildTarget {
-  const os = process.platform === 'win32' ? 'windows' : process.platform;
+  const os = process.platform;
   const reported = safeParse(report, process.report.getReport());
   const glibc = reported.success ? reported.output.header.glibcVersionRuntime : undefined;
   const variant = os === 'linux' && glibc === undefined ? '-musl' : '';
@@ -70,7 +71,4 @@ export function hostTarget(): BuildTarget {
   return target;
 }
 
-/** Whether the target writes a Windows binary, whose file and asset names end in `.exe`. */
-export function isWindows(target: BuildTarget) {
-  return target.kind === 'compile' && target.platform.startsWith('windows-');
-}
+export { acceptedTargets };

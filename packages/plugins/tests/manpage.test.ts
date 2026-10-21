@@ -755,24 +755,4 @@ describe('record and platform checks', () => {
       expect(snapshot(box)).toEqual(before);
     },
   );
-
-  it('a win32 host fails install, while update and uninstall print their nothing-to lines', () => {
-    const box = sandbox();
-    const install = run(box, ['manpage', 'install'], { platform: 'win32' });
-    expect(install.status).toBe(1);
-    expect(install.stderr).toContain(
-      'notes manpage install works on Linux and macOS, which have man. Write the pages with notes manpage generate --out <folder> instead.',
-    );
-    expect(existsSync(join(box.home, '.local'))).toBe(false);
-    const update = run(box, ['manpage', 'update'], { platform: 'win32' });
-    expect(update.status).toBe(0);
-    expect(lines(update.stderr)).toEqual([
-      'notes has no man pages installed, so there is nothing to update. Run notes manpage install to install them.',
-    ]);
-    const uninstall = run(box, ['manpage', 'uninstall'], { platform: 'win32' });
-    expect(uninstall.status).toBe(0);
-    expect(lines(uninstall.stderr)).toEqual([
-      'notes has no man pages installed, so there is nothing to remove.',
-    ]);
-  });
 });

@@ -7,7 +7,6 @@
  * internal to the pack: no subpath exports it.
  */
 import { rmSync } from 'node:fs';
-import { isAbsolute, normalize, posix, sep } from 'node:path';
 
 import {
   createDirectory,
@@ -34,13 +33,7 @@ import {
   unlistedActions,
 } from './lines.js';
 import type { InstalledLine, LineAction, LineListing, StartupLinesOutcome } from './lines.js';
-import {
-  isLineText,
-  nothingRecorded,
-  pluginFilePath,
-  readPluginFile,
-  writePluginFile,
-} from './record.js';
+import { nothingRecorded, pluginFilePath, readPluginFile, writePluginFile } from './record.js';
 import type {
   Committed,
   CommittedFile,
@@ -103,7 +96,7 @@ type InstallOutcome =
       readonly kept: readonly string[];
       /** Unrecorded folder paths the force mode took over; the member is absent when it took none. */
       readonly replaced?: readonly string[];
-      /** What happened to each startup line listed, held, recorded, or released; absent when there was none. */
+      /** What happened to each startup line listed, recorded, or released; absent when there was none. */
       readonly lines?: StartupLinesOutcome;
     };
 
@@ -143,14 +136,10 @@ interface UninstallRequest extends RecordRequest {
  * the skills plugin passes, replaces an unrecorded folder at a listed folder's path in place of
  * refusing. An update adds no recorded line its startup file no longer holds, and drops it from the
  * plugin's file. The directory mode is the permission bits of each directory the install creates,
- * whatever the umask. A kept startup file's recorded line stays recorded as it is, and its startup
- * file is neither read nor written, as for a file the plugin cannot read. A held line is one the
- * plugin records in a startup file it cannot change: its file is read and never written, a recorded
- * line of other text there is released, and the line is recorded as held when the file holds it.
+ * whatever the umask. Each target path is absolute and normalized, and each startup line one line
+ * of text, as the first-party plugins that call the module build them.
  */
 interface InstallRequest extends UninstallRequest {
-  readonly keep?: readonly string[];
-  readonly hold?: readonly InstalledLine[];
   readonly files: readonly InstalledFile[];
   readonly folders?: readonly InstalledFolder[];
   readonly force?: boolean;
@@ -363,174 +352,22 @@ interface Listed {
   readonly directoryMode: number | undefined;
 }
 
-/** The rule a target path breaks, or none for an absolute, normalized path not yet listed. */
-function targetPathFault(path: string, listed: ReadonlySet<string>): string | undefined {
-  if (!isAbsolute(path)) {
-    return 'is not absolute';
-  }
-  if (path !== normalize(path) || path.endsWith(sep)) {
-    return 'is not normalized';
-  }
-  return listed.has(path) ? 'is listed twice' : undefined;
-}
-
 /**
- * The rule a file of a folder breaks, or none for a relative POSIX path that is normalized, stays
- * inside the folder, and is not yet listed.
- */
-function folderFilePathFault(path: string, listed: ReadonlySet<string>): string | undefined {
-  if (isAbsolute(path) || path === '' || path.endsWith(posix.sep)) {
-    return 'is not relative';
-  }
-  if (path !== posix.normalize(path) || path === '..' || path.startsWith(`..${posix.sep}`)) {
-    return 'is not normalized or leaves its folder';
-  }
-  return listed.has(path) ? 'is listed twice' : undefined;
-}
-
-/** Throws a TypeError for the first file of a folder whose path breaks the rule above. */
-function checkFolderFilePaths(folder: InstalledFolder): void {
-  const listed = new Set<string>();
-  for (const { path } of folder.files) {
-    const fault = folderFilePathFault(path, listed);
-    if (fault !== undefined) {
-      throw new TypeError(`Installed folder file path "${path}" in "${folder.path}" ${fault}.`);
-    }
-    listed.add(path);
-  }
-}
-
-/** The rule a startup line's text breaks, or none for one line of text with no line break. */
-function lineTextFault(line: string): string | undefined {
-  if (isLineText(line)) {
-    return undefined;
-  }
-  return line === '' ? 'is empty' : 'holds a line break';
-}
-
-/** Throws a TypeError for the first startup line whose text is empty or holds a line break. */
-function checkLineTexts(lines: readonly InstalledLine[]): void {
-  for (const { line, path } of lines) {
-    const fault = lineTextFault(line);
-    if (fault !== undefined) {
-      throw new TypeError(`Startup line for "${path}" ${fault}.`);
-    }
-  }
-}
-
-/**
- * Throws a TypeError for the first startup file path of a kind, released, kept, or held, that
- * conflicts with a path the install names otherwise, or that is not absolute, not normalized, or
- * named twice.
- */
-function checkNamedPaths(
-  label: 'Released' | 'Kept' | 'Held',
-  paths: readonly string[],
-  conflict: (path: string) => string | undefined,
-): void {
-  const named = new Set<string>();
-  for (const path of paths) {
-    const fault = conflict(path) ?? targetPathFault(path, named);
-    if (fault !== undefined) {
-      throw new TypeError(`${label} startup file path "${path}" ${fault}.`);
-    }
-    named.add(path);
-  }
-}
-
-/**
- * Throws a TypeError for the first released, then kept, then held startup file path that is not
- * absolute, not normalized, named twice, listed with a line in the same install, or named under two
- * of the three kinds. A held line releases a recorded line of other text itself.
- */
-function checkStartupPaths(
-  {
-    hold,
-    keep,
-    release,
-  }: {
-    readonly release: readonly string[];
-    readonly keep: readonly string[];
-    readonly hold: readonly InstalledLine[];
-  },
-  lines: readonly InstalledLine[],
-): void {
-  const listed = new Set(lines.map(({ path }) => path));
-  const released = new Set(release);
-  const kept = new Set(keep);
-  const withLine = (path: string) => (listed.has(path) ? 'is listed with a line too' : undefined);
-  const notReleased = (path: string) => (released.has(path) ? 'is released too' : withLine(path));
-  checkNamedPaths('Released', release, withLine);
-  checkNamedPaths('Kept', keep, notReleased);
-  checkNamedPaths(
-    'Held',
-    hold.map(({ path }) => path),
-    (path) => (kept.has(path) ? 'is kept too' : notReleased(path)),
-  );
-}
-
-/** The released startup file paths of an uninstall, after the checks above. */
-function releasedPaths(release: readonly string[]): ReadonlySet<string> {
-  checkStartupPaths({ hold: [], keep: [], release }, []);
-  return new Set(release);
-}
-
-/** The targets a request names, as the checks below read them. */
-interface Targets {
-  readonly files: readonly InstalledFile[];
-  readonly folders: readonly InstalledFolder[];
-  readonly lines: readonly InstalledLine[];
-  readonly release: readonly string[];
-  readonly keep: readonly string[];
-  readonly hold: readonly InstalledLine[];
-}
-
-/**
- * Throws a TypeError for the first target path, of a file, a folder, or a startup file, that is not
- * absolute, not normalized, or listed twice, for the first file of a folder whose path is not
- * relative and normalized, for the first startup line, listed or held, whose text is not one line,
- * and for the first released, kept, or held path that breaks the same rules: a first-party
- * plugin's bug, which the module never repairs by normalizing or merging.
- */
-function checkTargetPaths(targets: Targets): void {
-  const listed = new Set<string>();
-  const kinds = [
-    ...targets.files.map(({ path }) => ({ kind: 'file', path })),
-    ...targets.folders.map(({ path }) => ({ kind: 'folder', path })),
-    ...targets.lines.map(({ path }) => ({ kind: 'startup file', path })),
-  ];
-  for (const { kind, path } of kinds) {
-    const fault = targetPathFault(path, listed);
-    if (fault !== undefined) {
-      throw new TypeError(`Installed ${kind} path "${path}" ${fault}.`);
-    }
-    listed.add(path);
-  }
-  targets.folders.forEach(checkFolderFilePaths);
-  checkLineTexts([...targets.lines, ...targets.hold]);
-  checkStartupPaths(targets, targets.lines);
-}
-
-/**
- * Installs the plugin's files and folders. A target path that is not absolute, not normalized, or
- * listed twice throws a TypeError before anything is read or written. It recovers a pending
- * plugin's file first, then checks every target: a file target that is absent, or a regular file
- * the plugin recorded with its digest unchanged, may be written, and a folder target that is
- * absent or recorded may be replaced whatever is inside it. Any other target refuses the whole
- * install, which writes nothing, except an unrecorded folder target under the force mode, which is
- * replaced and recorded. It reads the run signal before the pending write and, once it has begun,
- * does not stop between targets. Each file goes through a staging file and a rename, unless it is
- * already there with the digest it would be written with, each folder through a staging folder and
- * renames, and each recorded file the install no longer lists is removed when no one changed it,
- * and each recorded folder it no longer lists is removed whole.
- * Each listed startup line is added, recorded as held, or replaced where it stands, each recorded
- * line it no longer lists is removed, each released line is dropped, each kept line stays
- * recorded, and each held line is recorded when its file holds it, as Installed files states.
+ * Installs the plugin's files and folders. It recovers a pending plugin's file first, then checks
+ * every target: a file target that is absent, or a regular file the plugin recorded with its digest
+ * unchanged, may be written, and a folder target that is absent or recorded may be replaced
+ * whatever is inside it. Any other target refuses the whole install, which writes nothing, except
+ * an unrecorded folder target under the force mode, which is replaced and recorded. It reads the
+ * run signal before the pending write and, once it has begun, does not stop between targets. Each
+ * file goes through a staging file and a rename, unless it is already there with the digest it
+ * would be written with, each folder through a staging folder and renames, and each recorded file
+ * the install no longer lists is removed when no one changed it, and each recorded folder it no
+ * longer lists is removed whole. Each listed startup line is added, recorded as held, or replaced
+ * where it stands, each recorded line it no longer lists is removed, and each released line is
+ * dropped, as Installed files states.
  */
 function install(request: InstallRequest): InstallOutcome {
-  const targets = targetsOf(request);
-  checkTargetPaths(targets);
-  const listed = listedOf(request, targets);
+  const listed = listedOf(request);
   const path = pluginFilePath(request.record, request.plugin);
   const prepared = prepareInstall(path, listed);
   if ('refused' in prepared) {
@@ -540,30 +377,16 @@ function install(request: InstallRequest): InstallOutcome {
   return carryOut(path, prepared.plan, listed);
 }
 
-/** The targets an install request names, each list it leaves out empty. */
-function targetsOf(request: InstallRequest): Targets {
-  return {
-    files: request.files,
-    folders: request.folders ?? [],
-    hold: request.hold ?? [],
-    keep: request.keep ?? [],
-    lines: request.lines ?? [],
-    release: request.release ?? [],
-  };
-}
-
-/** What an install request lists, with its startup lines' holds, releases, keeps, and update mark. */
-function listedOf(request: InstallRequest, targets: Targets): Listed {
+/** What an install request lists, each list it leaves out empty, with its releases and update mark. */
+function listedOf(request: InstallRequest): Listed {
   return {
     directoryMode: request.directoryMode,
-    files: targets.files,
-    folders: targets.folders,
+    files: request.files,
+    folders: request.folders ?? [],
     force: request.force === true,
     lines: {
-      hold: targets.hold,
-      keep: new Set(targets.keep),
-      lines: targets.lines,
-      release: new Set(targets.release),
+      lines: request.lines ?? [],
+      release: new Set(request.release),
       update: request.update === true,
     },
   };
@@ -647,7 +470,7 @@ function writeTargets(plan: InstallPlan, listed: Listed): void {
   plan.lines.forEach(applyLine);
 }
 
-/** The startup lines' outcome member, absent when no line was listed, held, recorded, or released. */
+/** The startup lines' outcome member, absent when no line was listed, recorded, or released. */
 function linesMember(actions: readonly LineAction[]): { readonly lines?: StartupLinesOutcome } {
   return actions.length === EMPTY ? {} : { lines: outcomeOf(actions) };
 }
@@ -694,7 +517,7 @@ function removeDirectories(directories: readonly string[]): void {
  * error, and a startup file is never removed.
  */
 function uninstall(request: UninstallRequest): UninstallOutcome {
-  const release = releasedPaths(request.release ?? []);
+  const release = new Set(request.release);
   const path = pluginFilePath(request.record, request.plugin);
   const found = recorded(path);
   if ('refused' in found) {

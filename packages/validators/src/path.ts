@@ -1,62 +1,32 @@
-import { posix, win32 } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 import { pathIssue, pathReadableIssue, pathWritableIssue } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
-import { fault, readOptions } from './faults.js';
-import type { FactoryCall } from './faults.js';
+import { readOptions } from './faults.js';
 import { reject } from './issues.js';
 import { readable, writable } from './probe.js';
 import type { PathKind } from './probe.js';
-import { pathCheck } from './rules.js';
-
-interface PathOptions {
-  access?: 'read' | 'write';
-  kind?: PathKind;
-}
 
 type PathAccess = 'read' | 'write';
 
-function accessOf(call: FactoryCall, value: unknown): PathAccess | undefined {
-  if (value === undefined || value === 'read' || value === 'write') {
-    return value;
-  }
-  throw fault(
-    pathCheck,
-    { ...call, mark: '0.access' },
-    {
-      correction: 'Supply "read" or "write".',
-      sentence: 'path() access is not "read" or "write".',
-    },
-  );
-}
-
-function kindOf(call: FactoryCall, value: unknown, access: PathAccess | undefined): PathKind {
-  const at = { ...call, mark: '0.kind' };
-  if (value !== undefined && access === undefined) {
-    throw fault(pathCheck, at, {
-      correction: 'Supply an access or leave out kind.',
-      sentence: 'path() kind has no access to check.',
-    });
-  }
-  if (value === undefined || value === 'file' || value === 'directory' || value === 'any') {
-    return value ?? 'file';
-  }
-  throw fault(pathCheck, at, {
-    correction: 'Supply one of them.',
-    sentence: 'path() kind is not "file", "directory", or "any".',
-  });
-}
+/**
+ * What `path()` checks on the filesystem: an access, read or write, which `kind` narrows to a
+ * file, a directory, or any entry. `kind` has no meaning without an access, so the type takes it
+ * only beside one.
+ */
+type PathOptions =
+  | { access: PathAccess; kind?: PathKind }
+  | { access?: undefined; kind?: undefined };
 
 /**
- * A path resolved against the host's cwd under the host platform's rules, and normalized.
+ * A path resolved against the host's cwd under the running process's path rules, and normalized.
  * With `access`, the filesystem is probed; the probe is advisory, since the filesystem can change.
  */
 function path(options?: PathOptions): Validator<string> {
-  const declared = readOptions('path', options);
-  const call = { arguments: [options], factory: 'path' };
-  const access = accessOf(call, declared.access);
-  const kind = kindOf(call, declared.kind, access);
+  readOptions('path', options);
+  const access = options?.access;
+  const kind = options?.kind ?? 'file';
   const issue =
     access === undefined
       ? pathIssue.issue({})
@@ -67,16 +37,12 @@ function path(options?: PathOptions): Validator<string> {
       if (raw === '' || raw.includes('\0')) {
         return reject(issue);
       }
-      const { cwd, platform } = context.host;
-      const rules = platform === 'win32' ? win32 : posix;
-      const resolved = rules.resolve(cwd, raw);
+      const resolved = resolve(context.host.cwd, raw);
       if (access === undefined) {
         return { value: resolved };
       }
       const probe =
-        access === 'read'
-          ? readable(resolved, kind)
-          : writable(resolved, kind, rules.dirname(resolved));
+        access === 'read' ? readable(resolved, kind) : writable(resolved, kind, dirname(resolved));
       return probe.then((passes) => (passes ? { value: resolved } : reject(issue)));
     },
   });

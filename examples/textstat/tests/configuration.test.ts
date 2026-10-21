@@ -20,14 +20,13 @@ const appFixture = new URL('fixtures/config-app.mjs', import.meta.url);
 
 /**
  * One temporary workspace per test: the project directory textstat runs in, with two files to
- * count, and the directories `HOME` and `USERPROFILE` point at.
+ * count, and the directory `HOME` points at.
  */
 interface Workspace {
   readonly root: string;
   readonly project: string;
   readonly home: string;
-  readonly profile: string;
-  /** The built application, run in the project directory with each home variable set. */
+  /** The built application, run in the project directory with `HOME` set. */
   textstat(argv: string[], env?: Record<string, string | undefined>): ReturnType<typeof invoke>;
   /**
    * An application named textstat, built from public APIs, that installs the plugin with the
@@ -46,13 +45,12 @@ function workspace(): Workspace {
   const root = mkdtempSync(join(tmpdir(), 'loom-textstat-config-'));
   const project = join(root, 'project');
   const home = join(root, 'home');
-  const profile = join(root, 'profile');
-  for (const directory of [project, home, profile]) {
+  for (const directory of [project, home]) {
     mkdirSync(directory);
   }
   writeFileSync(join(project, 'one.txt'), 'hello\n');
   writeFileSync(join(project, 'two.txt'), 'é');
-  const variables = { HOME: home, USERPROFILE: profile };
+  const variables = { HOME: home };
   return {
     app: (settings, argv = [], env = {}) =>
       invoke(
@@ -61,7 +59,6 @@ function workspace(): Workspace {
         { cwd: root, env: { ...variables, ...env } },
       ),
     home,
-    profile,
     project,
     root,
     textstat: (argv, env = {}) =>
@@ -130,19 +127,11 @@ const notMapping =
 const fixtureDefaults = { field: [], limit: 'none', 'min-bytes': 0, total: false };
 
 test(
-  'Lookup: textstat reads .textstat.toml in the working directory, then in the home directory each platform names',
+  'Lookup: textstat reads .textstat.toml in the working directory, then in the home directory',
   inWorkspace((space) => {
     expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: both });
     space.write(space.home, '.textstat.toml', 'minBytes = 5\n');
-    space.write(space.profile, '.textstat.toml', 'total = true\n');
     expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: filtered });
-    // Windows home lookup is exercised without resolving file paths against a simulated platform.
-    expect(
-      received(space.app({ file: '.textstat.toml' }, [], { FIXTURE_PLATFORM: 'win32' })),
-    ).toEqual({
-      ...fixtureDefaults,
-      total: true,
-    });
     // A file in the working directory hides the home file, so its minBytes is not read.
     space.write(space.project, '.textstat.toml', 'total = true\n');
     expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: withTotal });
@@ -353,7 +342,7 @@ function strippedBundle(
 test(
   'Formats: a run whose file is JSON loads neither parser, and each format loads only its own',
   inWorkspace((space) => {
-    const env = { HOME: space.home, USERPROFILE: space.profile };
+    const env = { HOME: space.home };
     const run = (bundle: URL, argv: string[] = []) =>
       invoke(bundle, [...files, ...argv], { cwd: space.project, env });
     const neither = strippedBundle(space, 'neither', ['toml', 'yaml']);

@@ -96,12 +96,11 @@ function configFile(path: string, shown: string): ConfigFile {
 }
 
 /**
- * The operator's home directory: `USERPROFILE` on a `win32` host and `HOME` on every other, or
- * `undefined` when that variable is unset, empty, or a relative path. The host's platform chooses
- * only the variable; the running process's path rules judge it.
+ * The operator's home directory, `HOME` on every platform, or `undefined` when it is unset, empty,
+ * or a relative path by the running process's path rules.
  */
 function homeDirectory(host: Host): string | undefined {
-  const home = host.platform === 'win32' ? host.env.USERPROFILE : host.env.HOME;
+  const home = host.env.HOME;
   return home !== undefined && isAbsolute(home) ? home : undefined;
 }
 

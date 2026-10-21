@@ -40,6 +40,17 @@ interface ShellRecord {
   readonly pending: boolean;
 }
 
+/**
+ * Refuses an installing child on `win32`, before it reads anything, naming the print Command of
+ * the shell the operator named, and the PowerShell one for `pwsh` or when no shell is named.
+ */
+function refuseWindows(run: ChildRun, shell?: Shell): void {
+  if (run.host.platform === 'win32') {
+    const printer = shell === undefined || shell === 'pwsh' ? 'powershell' : shell;
+    throw refusals.notOnWindows(run.name, printer);
+  }
+}
+
 /** The plugin's file in the installation record for a shell, `completion.<shell>.json`. */
 function recordName(shell: Shell): string {
   return `completion.${shell}`;
@@ -217,6 +228,8 @@ interface Written {
   readonly outcome: Extract<InstallOutcome, { status: 'installed' }>;
   /** Whether a line the startup file already held is stated, as `install` states it. */
   readonly held: boolean;
+  /** The startup files the plugin may not change that already load the script, which `install` states. */
+  readonly loaded: readonly string[];
   readonly notices: readonly Notice[];
 }
 
@@ -225,7 +238,10 @@ interface Written {
  * removed or kept because someone changed it, each startup line, and each line the operator adds
  * or removes by hand.
  */
-async function reportWritten(run: ChildRun, { held, notices, outcome }: Written): Promise<void> {
+async function reportWritten(
+  run: ChildRun,
+  { held, loaded, notices, outcome }: Written,
+): Promise<void> {
   for (const path of outcome.removed) {
     await run.info(lines.removed(path));
   }
@@ -233,6 +249,9 @@ async function reportWritten(run: ChildRun, { held, notices, outcome }: Written)
     await run.warn(lines.leftInPlace(run.name, path));
   }
   await reportLines(run, outcome.lines, held);
+  for (const path of loaded) {
+    await run.info(lines.alreadyLoads(path));
+  }
   await writeNotices(run, notices);
 }
 
@@ -244,6 +263,7 @@ export {
   readShell,
   recordName,
   refuseInTheWay,
+  refuseWindows,
   removeNotice,
   reportLines,
   reportWritten,

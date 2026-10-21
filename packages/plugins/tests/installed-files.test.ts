@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process';
 import {
-  appendFileSync,
   chmodSync,
   existsSync,
   linkSync,
@@ -310,28 +309,6 @@ test.each([
     expect(outcome).toEqual({ refused: [{ path: box.second, reason }], status: 'refused' });
     expect(existsSync(box.owner) ? ownerText(box) : undefined).toBe(before);
     expect(existsSync(box.first) ? readFileSync(box.first, 'utf8') : undefined).toBe(firstBefore);
-  },
-);
-
-test.each([
-  ['not absolute', (_box: Box) => ['notes/SKILL.md'], 'is not absolute'],
-  ['not normalized', (box: Box) => [`${box.skills}/x/../notes/SKILL.md`], 'is not normalized'],
-  ['ending in a separator', (box: Box) => [`${box.directory}/`], 'is not normalized'],
-  ['listed twice', (box: Box) => [box.first, box.first], 'is listed twice'],
-])(
-  'a target path %s throws a TypeError before the module reads or writes',
-  (_case, paths, rule) => {
-    const box = sandbox();
-    installed(box, [{ content: 'test', path: box.second }]);
-    const before = ownerText(box);
-    const [path = ''] = paths(box).slice(-1);
-    const files = paths(box).map((target) => ({ content: 'new', path: target }));
-    expect(() => installed(box, files)).toThrow(
-      new TypeError(`Installed file path "${path}" ${rule}.`),
-    );
-    expect(ownerText(box)).toBe(before);
-    expect(readdirSync(box.directory)).toEqual(['reference.md']);
-    expect(readdirSync(box.record)).toEqual(['skill.json']);
   },
 );
 
@@ -1303,48 +1280,6 @@ test('filling a staging folder that goes away between two files throws on the se
   expect(existsSync(staging)).toBe(false);
 });
 
-// Folder paths a first-party plugin got wrong
-
-test.each([
-  ['not absolute', () => 'notes', 'is not absolute'],
-  ['not normalized', (box: Box) => `${box.skills}/x/../notes`, 'is not normalized'],
-  ['listed as a file too', (box: Box) => box.first, 'is listed twice'],
-])(
-  'a folder path that is %s throws a TypeError before anything is written',
-  (_name, path, fault) => {
-    const box = sandbox();
-    expect(() =>
-      installedFolders(box, [folderOf(path(box), { 'a.md': 'abc' })], {
-        files: [{ content: 'test', path: box.first }],
-      }),
-    ).toThrow(new TypeError(`Installed folder path "${path(box)}" ${fault}.`));
-    expect(existsSync(box.record)).toBe(false);
-  },
-);
-
-test.each(['/etc/passwd', '../escape.md', 'a/../../escape.md', 'a//b.md', './a.md', '', 'a/'])(
-  'a folder file path "%s" that is not relative and normalized throws a TypeError',
-  (name) => {
-    const box = sandbox();
-    expect(() => installedFolders(box, [folderOf(box.directory, { [name]: 'abc' })])).toThrow(
-      TypeError,
-    );
-    expect(existsSync(box.record)).toBe(false);
-  },
-);
-
-test('a folder file listed twice throws a TypeError', () => {
-  const box = sandbox();
-  const folder = {
-    files: [
-      { content: 'a', path: 'a.md' },
-      { content: 'b', path: 'a.md' },
-    ],
-    path: box.directory,
-  };
-  expect(() => installedFolders(box, [folder])).toThrow(TypeError);
-});
-
 // Startup lines
 
 /** The line the tests add to a startup file, and the text that replaces it. */
@@ -1394,7 +1329,6 @@ function linesOutcome(named: Partial<StartupLinesOutcome>): StartupLinesOutcome 
   return {
     added: [],
     held: [],
-    kept: [],
     noLongerHeld: [],
     released: [],
     removed: [],
@@ -1412,14 +1346,19 @@ function committedLines(
   return `${JSON.stringify({ format: 1, state: 'committed', directories, files: [], lines: entries })}\n`;
 }
 
-/** UTF-16LE bytes of some text, after the byte order mark `FF FE`. */
-function utf16(text: string): Buffer {
-  return Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')]);
-}
-
 /** UTF-8 bytes of some text, after the byte order mark `EF BB BF`. */
 function utf8WithMark(text: string): Buffer {
   return Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(text, 'utf8')]);
+}
+
+/**
+ * Records the line `line` for the startup file `.zshrc` through an install that adds it, then
+ * leaves the file holding `text`, because an install records no line it finds already there.
+ */
+function recordedIn(box: HomeBox, text: string | Buffer, line = loader): void {
+  rmSync(box.rc, { force: true });
+  installedLines(box, [{ line, path: box.rc }]);
+  writeFileSync(box.rc, text);
 }
 
 /** What `run` answers when the process runs it under the umask `mask`, which is restored after. */
@@ -1477,13 +1416,7 @@ test('a created directory takes the named mode whatever the umask, and follows t
   expect(statSync(named).mode & 0o777).toBe(0o755);
 });
 
-test('a missing startup file the plugin asks to start with a byte order mark is created as UTF-8 with one', () => {
-  const box = homeBox();
-  installedLines(box, [{ byteOrderMark: true, line: loader, path: box.rc }]);
-  expect(readFileSync(box.rc)).toEqual(utf8WithMark(`${loader}\n`));
-});
-
-test('installing a line into a file that holds it adds nothing and records it', () => {
+test('installing a line into a file that holds it adds nothing and records it only when the record already held it', () => {
   const box = homeBox();
   const text = `export A=1\n${loader}\nexport B=2\n`;
   writeFileSync(box.rc, text);
@@ -1492,6 +1425,14 @@ test('installing a line into a file that holds it adds nothing and records it', 
     status: 'installed',
   });
   expect(readFileSync(box.rc, 'utf8')).toBe(text);
+  expect(ownerText(box)).toBe(
+    `${JSON.stringify({ format: 1, state: 'committed', directories: [], files: [] })}\n`,
+  );
+  writeFileSync(box.rc, 'export A=1\n');
+  installedLines(box, [{ line: loader, path: box.rc }]);
+  expect(installedLines(box, [{ line: loader, path: box.rc }])).toMatchObject({
+    lines: linesOutcome({ held: [{ line: loader, path: box.rc }] }),
+  });
   expect(ownerText(box)).toBe(committedLines([], [[box.rc, loader]]));
 });
 
@@ -1513,13 +1454,6 @@ test.each([
     expect(readFileSync(box.rc, 'utf8')).toBe(appended);
   },
 );
-
-test('installing a line into a UTF-16LE file with its byte order mark adds the line in UTF-16LE', () => {
-  const box = homeBox();
-  writeFileSync(box.rc, utf16('$env:A = 1\r\n'));
-  installedLines(box, [{ line: loader, path: box.rc }]);
-  expect(readFileSync(box.rc)).toEqual(utf16(`$env:A = 1\r\n${loader}\r\n`));
-});
 
 test('installing a line into a UTF-8 file with a byte order mark appends it with no second mark', () => {
   const box = homeBox();
@@ -1624,44 +1558,10 @@ test.each([
 );
 
 test.each([
-  ['a line feed', `${loader}\nmore`, 'holds a line break'],
-  ['a carriage return', `${loader}\r`, 'holds a line break'],
-  ['no text', '', 'is empty'],
-])(
-  'a startup line holding %s throws a TypeError before anything is read or written',
-  (_case, line, fault) => {
-    const box = homeBox();
-    expect(() => installedLines(box, [{ line, path: box.rc }])).toThrow(
-      new TypeError(`Startup line for "${box.rc}" ${fault}.`),
-    );
-    expect(existsSync(box.record)).toBe(false);
-    expect(existsSync(box.rc)).toBe(false);
-  },
-);
-
-test.each([
-  ['not absolute', (_box: HomeBox) => ['.zshrc'], 'is not absolute'],
-  ['not normalized', (box: HomeBox) => [`${box.home}/x/../.zshrc`], 'is not normalized'],
-  ['listed twice', (box: HomeBox) => [box.rc, box.rc], 'is listed twice'],
-  ['listed as a file too', (box: HomeBox) => [box.first], 'is listed twice'],
-])(
-  'a startup file path %s throws a TypeError before anything is read or written',
-  (_case, paths, fault) => {
-    const box = homeBox();
-    const [path = ''] = paths(box).slice(-1);
-    const lines = paths(box).map((target) => ({ line: loader, path: target }));
-    expect(() =>
-      installedLines(box, lines, { files: [{ content: 'test', path: box.first }] }),
-    ).toThrow(new TypeError(`Installed startup file path "${path}" ${fault}.`));
-    expect(existsSync(box.record)).toBe(false);
-  },
-);
-
-test.each([
+  ['a UTF-16LE byte order mark', [0xff, 0xfe, 0x61, 0x00]],
   ['a UTF-16BE byte order mark', [0xfe, 0xff, 0x00, 0x61]],
   ['a UTF-32LE byte order mark', [0xff, 0xfe, 0x00, 0x00, 0x61, 0x00, 0x00, 0x00]],
   ['bytes that are not UTF-8', [0x61, 0xc3, 0x28, 0x0a]],
-  ['an odd UTF-16LE length', [0xff, 0xfe, 0x61, 0x00, 0x62]],
 ])('a listed startup file with %s throws a TypeError and writes nothing', (_case, bytes) => {
   const box = homeBox();
   writeFileSync(box.rc, Buffer.from(bytes));
@@ -1696,8 +1596,7 @@ test('an install listing new text replaces the recorded line where it stands, th
 
 test('an install listing new text replaces the recorded line even where the file already holds the new one', () => {
   const box = homeBox();
-  writeFileSync(box.rc, `${loader}\n`);
-  installedLines(box, [{ line: loader, path: box.rc }]);
+  recordedIn(box, `${loader}\n`);
   writeFileSync(box.rc, `${loader}\n${newer}\n`);
   expect(installedLines(box, [{ line: newer, path: box.rc }])).toMatchObject({
     lines: linesOutcome({ replaced: [{ line: newer, path: box.rc }] }),
@@ -1705,12 +1604,11 @@ test('an install listing new text replaces the recorded line even where the file
   expect(readFileSync(box.rc, 'utf8')).toBe(`${newer}\n${newer}\n`);
 });
 
-test('replacing a line in a UTF-16LE file keeps its encoding and byte order mark', () => {
+test('replacing a line in a UTF-8 file with a byte order mark keeps the mark', () => {
   const box = homeBox();
-  writeFileSync(box.rc, utf16(`$env:A = 1\r\n${loader}\r\n`));
-  installedLines(box, [{ line: loader, path: box.rc }]);
+  recordedIn(box, utf8WithMark(`export A=1\r\n${loader}\r\n`));
   installedLines(box, [{ line: newer, path: box.rc }]);
-  expect(readFileSync(box.rc)).toEqual(utf16(`$env:A = 1\r\n${newer}\r\n`));
+  expect(readFileSync(box.rc)).toEqual(utf8WithMark(`export A=1\r\n${newer}\r\n`));
 });
 
 test('an install with new text where the file holds neither line adds the new one, and an update adds none', () => {
@@ -1756,8 +1654,7 @@ test('a recorded line the file no longer holds is added again by an install, and
 
 test('an update replaces a recorded line whose text changed where the file still holds it', () => {
   const box = homeBox();
-  writeFileSync(box.rc, `a\n${loader}\nb\n`);
-  installedLines(box, [{ line: loader, path: box.rc }]);
+  recordedIn(box, `a\n${loader}\nb\n`);
   expect(installedLines(box, [{ line: newer, path: box.rc }], { update: true })).toMatchObject({
     lines: linesOutcome({ replaced: [{ line: newer, path: box.rc }] }),
   });
@@ -1767,8 +1664,7 @@ test('an update replaces a recorded line whose text changed where the file still
 test('an install that no longer lists a recorded line removes it, and moves it to the startup file it lists', () => {
   const box = homeBox();
   const profile = join(box.home, '.bash_profile');
-  writeFileSync(box.rc, `a\n${loader}\nb\n`);
-  installedLines(box, [{ line: loader, path: box.rc }]);
+  recordedIn(box, `a\n${loader}\nb\n`);
   expect(installedLines(box, [{ line: loader, path: profile }])).toMatchObject({
     lines: linesOutcome({
       added: [{ line: loader, path: profile }],
@@ -1832,8 +1728,7 @@ test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
   () => {
     const box = homeBox();
     const text = `a\n${loader}\n`;
-    writeFileSync(box.rc, text);
-    installedLines(box, [{ line: loader, path: box.rc }]);
+    recordedIn(box, text);
     // A file no one may read throws on any read, so an outcome proves the module read none.
     chmodSync(box.rc, 0o000);
     const before = statSync(box.rc).mtimeMs;
@@ -1848,16 +1743,18 @@ test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
       expect(ownerText(box)).toBe(
         `${JSON.stringify({ format: 1, state: 'committed', directories: [], files: [] })}\n`,
       );
+      expect(statSync(box.rc).mtimeMs).toBe(before);
       chmodSync(box.rc, 0o644);
-      installedLines(box, [{ line: loader, path: box.rc }]);
+      recordedIn(box, text);
       chmodSync(box.rc, 0o000);
+      const recorded = statSync(box.rc).mtimeMs;
       expect(uninstalledLines(box, [box.rc])).toEqual({
         kept: [],
         lines: { noLongerHeld: [], released: [{ line: loader, path: box.rc }], removed: [] },
         removed: [],
         status: 'uninstalled',
       });
-      expect(statSync(box.rc).mtimeMs).toBe(before);
+      expect(statSync(box.rc).mtimeMs).toBe(recorded);
     } finally {
       chmodSync(box.rc, 0o644);
     }
@@ -1875,174 +1772,6 @@ test('an uninstall of a recorded startup file in an encoding the module does not
     new TypeError(`Startup file "${box.rc}" is not in an encoding the module reads.`),
   );
   expect(ownerText(box)).toBe(before);
-});
-
-test.each([
-  ['listed with a line too', (box: HomeBox) => [box.rc], 'is listed with a line too'],
-  ['released twice', (box: HomeBox) => [box.first, box.first], 'is listed twice'],
-  ['not absolute', (_box: HomeBox) => ['.zshrc'], 'is not absolute'],
-])(
-  'a released path %s throws a TypeError before anything is read or written',
-  (_case, paths, fault) => {
-    const box = homeBox();
-    const release = paths(box);
-    const [path = ''] = release.slice(-1);
-    expect(() => installedLines(box, [{ line: loader, path: box.rc }], { release })).toThrow(
-      new TypeError(`Released startup file path "${path}" ${fault}.`),
-    );
-    expect(existsSync(box.record)).toBe(false);
-    expect(existsSync(box.rc)).toBe(false);
-  },
-);
-
-test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
-  'a kept line stays recorded and its startup file is neither read nor written',
-  () => {
-    const box = homeBox();
-    const text = `a\n${loader}\n`;
-    writeFileSync(box.rc, text);
-    installedLines(box, [{ line: loader, path: box.rc }]);
-    // A file no one may read throws on any read, so an outcome proves the module read none.
-    chmodSync(box.rc, 0o000);
-    const before = statSync(box.rc).mtimeMs;
-    try {
-      expect(
-        installedLines(box, [], { files: [{ content: 'test', path: box.first }], keep: [box.rc] }),
-      ).toEqual({
-        kept: [],
-        lines: linesOutcome({ kept: [{ line: loader, path: box.rc }] }),
-        removed: [],
-        status: 'installed',
-        written: [box.first],
-      });
-      expect(statSync(box.rc).mtimeMs).toBe(before);
-    } finally {
-      chmodSync(box.rc, 0o644);
-    }
-    expect(readFileSync(box.rc, 'utf8')).toBe(text);
-    expect(JSON.parse(ownerText(box))).toMatchObject({
-      lines: [{ line: loader, path: box.rc }],
-      state: 'committed',
-    });
-  },
-);
-
-test.each([
-  ['listed with a line too', (box: HomeBox) => ({ keep: [box.rc] }), 'is listed with a line too'],
-  [
-    'released too',
-    (box: HomeBox) => ({ keep: [box.first], release: [box.first] }),
-    'is released too',
-  ],
-  ['kept twice', (box: HomeBox) => ({ keep: [box.first, box.first] }), 'is listed twice'],
-  ['not absolute', (_box: HomeBox) => ({ keep: ['.zshrc'] }), 'is not absolute'],
-])(
-  'a kept path %s throws a TypeError before anything is read or written',
-  (_case, paths, fault) => {
-    const box = homeBox();
-    const extra = paths(box);
-    const [path = ''] = extra.keep.slice(-1);
-    expect(() => installedLines(box, [{ line: loader, path: box.rc }], extra)).toThrow(
-      new TypeError(`Kept startup file path "${path}" ${fault}.`),
-    );
-    expect(existsSync(box.record)).toBe(false);
-    expect(existsSync(box.rc)).toBe(false);
-  },
-);
-
-test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
-  'a held line releases the line recorded for its startup file and is recorded as held, and the file is never written',
-  () => {
-    const box = homeBox();
-    const text = `a\n${loader}\n${newer}\n`;
-    writeFileSync(box.rc, text);
-    installedLines(box, [{ line: loader, path: box.rc }]);
-    chmodSync(box.rc, 0o444);
-    const before = statSync(box.rc);
-    try {
-      expect(installedLines(box, [], { hold: [{ line: newer, path: box.rc }] })).toEqual({
-        kept: [],
-        lines: linesOutcome({
-          held: [{ line: newer, path: box.rc }],
-          released: [{ line: loader, path: box.rc }],
-        }),
-        removed: [],
-        status: 'installed',
-        written: [],
-      });
-      const now = statSync(box.rc);
-      expect([now.ino, now.mtimeMs]).toEqual([before.ino, before.mtimeMs]);
-    } finally {
-      chmodSync(box.rc, 0o644);
-    }
-    expect(readFileSync(box.rc, 'utf8')).toBe(text);
-    expect(ownerText(box)).toBe(committedLines([], [[box.rc, newer]]));
-  },
-);
-
-test('a held line its startup file does not hold is never added and records nothing, while the recorded line is still released', () => {
-  const box = homeBox();
-  const text = `a\n${loader}\n`;
-  writeFileSync(box.rc, text);
-  installedLines(box, [{ line: loader, path: box.rc }]);
-  expect(installedLines(box, [], { hold: [{ line: newer, path: box.rc }] })).toEqual({
-    kept: [],
-    lines: linesOutcome({ released: [{ line: loader, path: box.rc }] }),
-    removed: [],
-    status: 'installed',
-    written: [],
-  });
-  expect(readFileSync(box.rc, 'utf8')).toBe(text);
-  expect(ownerText(box)).toBe(
-    `${JSON.stringify({ format: 1, state: 'committed', directories: [], files: [] })}\n`,
-  );
-});
-
-test('a held line equal to the recorded one stays recorded as held, with nothing released', () => {
-  const box = homeBox();
-  writeFileSync(box.rc, `${loader}\n`);
-  installedLines(box, [{ line: loader, path: box.rc }]);
-  expect(installedLines(box, [], { hold: [{ line: loader, path: box.rc }] })).toEqual({
-    kept: [],
-    lines: linesOutcome({ held: [{ line: loader, path: box.rc }] }),
-    removed: [],
-    status: 'installed',
-    written: [],
-  });
-  expect(ownerText(box)).toBe(committedLines([], [[box.rc, loader]]));
-});
-
-test.each([
-  [
-    'listed with a line too',
-    (box: HomeBox) => ({ hold: [box.rc], lines: [{ line: loader, path: box.rc }] }),
-    'is listed with a line too',
-  ],
-  ['released too', (box: HomeBox) => ({ hold: [box.rc], release: [box.rc] }), 'is released too'],
-  ['kept too', (box: HomeBox) => ({ hold: [box.rc], keep: [box.rc] }), 'is kept too'],
-  ['held twice', (box: HomeBox) => ({ hold: [box.rc, box.rc] }), 'is listed twice'],
-  ['not absolute', (_box: HomeBox) => ({ hold: ['.zshrc'] }), 'is not absolute'],
-])(
-  'a held path %s throws a TypeError before anything is read or written',
-  (_case, named, fault) => {
-    const box = homeBox();
-    const { hold, ...extra } = named(box);
-    const [path = ''] = hold.slice(-1);
-    const held = hold.map((heldPath) => ({ line: newer, path: heldPath }));
-    expect(() => installedLines(box, [], { ...extra, hold: held })).toThrow(
-      new TypeError(`Held startup file path "${path}" ${fault}.`),
-    );
-    expect(existsSync(box.record)).toBe(false);
-    expect(existsSync(box.rc)).toBe(false);
-  },
-);
-
-test('a held line holding a line break throws a TypeError before anything is read or written', () => {
-  const box = homeBox();
-  expect(() => installedLines(box, [], { hold: [{ line: `${newer}\n`, path: box.rc }] })).toThrow(
-    new TypeError(`Startup line for "${box.rc}" holds a line break.`),
-  );
-  expect(existsSync(box.record)).toBe(false);
 });
 
 // Reading startup lines
@@ -2122,12 +1851,8 @@ test('reading a startup file tells whether it is there, a file, in an encoding t
     holds: false,
     kind: 'text',
   });
-  writeFileSync(box.rc, utf16(`${loader}\n`));
-  expect(inspectStartupFile(box.rc, loader)).toEqual({
-    encoding: 'utf16le',
-    holds: true,
-    kind: 'text',
-  });
+  writeFileSync(box.rc, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(loader, 'utf16le')]));
+  expect(inspectStartupFile(box.rc, loader)).toEqual({ kind: 'unknown-encoding' });
 });
 
 // Startup lines from a process that stopped
@@ -2181,8 +1906,7 @@ test.each([
   'a process killed %s the rename that replaces a line leaves a pending file whose next run records the line the file holds',
   (_when, trap, kept) => {
     const box = homeBox();
-    writeFileSync(box.rc, `a\n${loader}\nb\n`);
-    installedLines(box, [{ line: loader, path: box.rc }]);
+    recordedIn(box, `a\n${loader}\nb\n`);
     const killed = inProcess({
       files: [],
       [trap]: realpathSync(box.rc),
@@ -2260,7 +1984,7 @@ test('a run whose missing startup file another run creates first with the same l
   expect(recordedLines(box)).toEqual([{ line: loader, path: box.rc }]);
 });
 
-test('a line another run appends to a startup file this run has just created is kept after this run’s own', () => {
+test('a line another run appends to a startup file this run has just created lands whole beside this run’s own', () => {
   const box = homeBox();
   const other = `${loader} other`;
   const result = inProcess({
@@ -2270,15 +1994,14 @@ test('a line another run appends to a startup file this run has just created is 
     record: box.record,
   });
   expect(result.status).toBe(0);
-  expect(readFileSync(box.rc, 'utf8')).toBe(`${loader}\n${other}\n`);
+  expect(readFileSync(box.rc, 'utf8')).toBe(`${other}\n${loader}\n`);
   expect(statSync(box.rc).mode & 0o777).toBe(0o644);
   expect(readdirSync(box.home)).toEqual(['.zshrc']);
 });
 
 test('a process killed before the rename that removes a line leaves a pending file whose next run records the line the file still holds', () => {
   const box = homeBox();
-  writeFileSync(box.rc, `a\n${loader}\n`);
-  installedLines(box, [{ line: loader, path: box.rc }]);
+  recordedIn(box, `a\n${loader}\n`);
   const killed = inProcess({
     files: [],
     killBeforeRename: realpathSync(box.rc),
@@ -2289,9 +2012,9 @@ test('a process killed before the rename that removes a line leaves a pending fi
   expect(recordedLines(box)).toEqual([{ line: loader, path: box.rc }]);
 });
 
-test('a process killed while it records a line the file already held leaves a pending file whose next run records the line', () => {
+test('a process killed while it keeps a recorded line the file holds leaves a pending file whose next run records the line', () => {
   const box = homeBox();
-  writeFileSync(box.rc, `a\n${loader}\n`);
+  recordedIn(box, `a\n${loader}\n`);
   const killed = inProcess({
     files: [{ content: 'test', path: box.first }],
     killAfterRename: box.first,
@@ -2302,41 +2025,6 @@ test('a process killed while it records a line the file already held leaves a pe
   expect(JSON.parse(ownerText(box))).toMatchObject({ state: 'pending' });
   expect(recordedLines(box)).toEqual([{ line: loader, path: box.rc }]);
 });
-
-test.each([
-  // An operator's comment saved as Latin-1, `# café`, whose `é` is not UTF-8.
-  [
-    'in an encoding the module does not read',
-    (path: string) => appendFileSync(path, Buffer.from([0x23, 0x20, 0x63, 0x61, 0x66, 0xe9, 0x0a])),
-  ],
-  ['one the process may not read', (path: string) => chmodSync(path, 0o000)],
-])(
-  'a process killed while it keeps a line whose startup file is %s leaves a pending file whose next run keeps the line',
-  (_case, spoil) => {
-    const box = homeBox();
-    installedLines(box, [{ line: loader, path: box.rc }]);
-    spoil(box.rc);
-    try {
-      const killed = inProcess({
-        files: [{ content: 'test', path: box.first }],
-        keep: [box.rc],
-        killAfterRename: box.first,
-        record: box.record,
-      });
-      expect(killed).toMatchObject({ status: null, stdout: '' });
-      expect(JSON.parse(ownerText(box))).toMatchObject({
-        lines: [{ intended: loader, path: box.rc, prior: loader }],
-        state: 'pending',
-      });
-      expect(recordedLines(box)).toEqual([{ line: loader, path: box.rc }]);
-      expect(uninstalledLines(box, [box.rc])).toMatchObject({
-        lines: { released: [{ line: loader, path: box.rc }] },
-      });
-    } finally {
-      chmodSync(box.rc, 0o644);
-    }
-  },
-);
 
 test('a process killed before it creates a startup file leaves a pending file whose next run records no line', () => {
   const box = homeBox();

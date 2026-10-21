@@ -41,15 +41,13 @@ test('textstat logs one record for each run through the logging plugin, and prin
     const home = join(directory, 'home');
     const state = join(directory, 'state');
     // The directory the plugin picks on the platform the child runs on.
-    let logDirectory = join(state, 'textstat');
-    if (process.platform === 'darwin') {
-      logDirectory = join(home, 'Library', 'Logs', 'textstat');
-    } else if (process.platform === 'win32') {
-      logDirectory = join(home, 'local', 'textstat', 'Logs');
-    }
+    const logDirectory =
+      process.platform === 'darwin'
+        ? join(home, 'Library', 'Logs', 'textstat')
+        : join(state, 'textstat');
     const result = invoke(new URL('../dist/main.js', import.meta.url), ['one.txt'], {
       cwd: directory,
-      env: { HOME: home, LOCALAPPDATA: join(home, 'local'), XDG_STATE_HOME: state },
+      env: { HOME: home, XDG_STATE_HOME: state },
     });
     expect(result).toEqual({
       status: 0,

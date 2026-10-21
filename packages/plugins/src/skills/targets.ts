@@ -6,7 +6,7 @@ import { basename, dirname, isAbsolute, join } from 'node:path';
 
 import type { Host } from '@loomcli/core';
 
-import { homeOf, homeRefusal, homeVariable } from '../application-folders.js';
+import { homeOf, homeRefusal } from '../application-folders.js';
 import { realPath } from '../installation/disk.js';
 
 /** The agents the plugin installs for, in the order every child follows. */
@@ -49,7 +49,7 @@ function globalPlaces(name: string, host: Host, selected: readonly Target[]): re
   return selected.map((target) => {
     const directory = skillsDirectory(target, host);
     if (directory === undefined) {
-      throw homeRefusal(name, homeVariable(host.platform));
+      throw homeRefusal(name);
     }
     return { directory, target };
   });

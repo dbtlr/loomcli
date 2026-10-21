@@ -19,6 +19,7 @@ import {
   hasPluginFile,
   readShell,
   recordName,
+  refuseWindows,
   removeNotice,
   reportLines,
   writeNotices,
@@ -37,7 +38,7 @@ interface Planned {
 /** The recorded lines in startup files the plugin cannot change that hold them, which it releases. */
 function planShell(run: ChildRun, recorded: ShellRecord): Planned {
   const released = recorded.lines.filter((entry) =>
-    mustRelease(judgeStartup(entry.path, entry.line, run.host.platform)),
+    mustRelease(judgeStartup(entry.path, entry.line)),
   );
   return { recorded, released };
 }
@@ -145,12 +146,13 @@ function handOverFolders(record: string, shell: Shell): void {
 }
 
 /**
- * `uninstall`: the record's directory and each selected shell's plugin's file read before any is
- * changed, then each shell whose plugin's file exists removed and stated, its shared folders
- * handed first to a shell that outlives it. With nothing recorded, it states there was nothing to
- * remove.
+ * `uninstall`: the platform, then the record's directory and each selected shell's plugin's file
+ * read before any is changed, then each shell whose plugin's file exists removed and stated, its
+ * shared folders handed first to a shell that outlives it. With nothing recorded, it states there
+ * was nothing to remove.
  */
 async function uninstallShells(run: ChildRun, argument: Shell | undefined): Promise<void> {
+  refuseWindows(run, argument);
   const record = recordDirectory(run.name, run.host);
   const selected = selectedShells(run, record, argument);
   const planned = selected.map((recorded) => planShell(run, recorded));

@@ -1,6 +1,6 @@
 # Validators reference
 
-The 0.15.0 rescope is recorded in [ADR-0093](decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md) through [ADR-0102](decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md). Where a rule below states what one of them decides, such as `path()` resolving with the running process's `node:path`, it states the target, and the code keeps enforcing the earlier rule until that record's implementing phase ships.
+The 0.15.0 rescope is recorded in [ADR-0093](decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md) through [ADR-0102](decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md). Where a rule below states what one of them decides, it states the target, and the code keeps enforcing the earlier rule until that record's implementing phase ships. The `path()` rules, which resolve with the running process's `node:path` and type `kind` beside an `access`, are already in force.
 
 File-or-stdin inputs use core's [content input type](core.md#content-inputs), which prepares lazy handles and declares the Command's stdin target. It is separate from this validator catalog.
 
@@ -59,7 +59,6 @@ Each fault carries a [diagnostic rule](core.md#developer-diagnostics) the packag
 | `@loomcli/validators/bounds-order` | `min` above `max`, and `minLength` above `maxLength` |
 | `@loomcli/validators/time-zone` | A `dateTime` `timeZone` that is not an IANA time zone name the runtime knows |
 | `@loomcli/validators/url-protocols` | Every `url` fault |
-| `@loomcli/validators/path-check` | Every `path` fault |
 | `@loomcli/validators/invalid-pattern` | A `text` pattern that is not a RegExp, carries a flag other than `u`, or does not compile under `u` |
 | `@loomcli/validators/pattern-message` | A `text` message that is not a nonempty string, a message without a pattern, and a pattern without a message |
 | `@loomcli/validators/validator-definition` | A `createValidator` definition that is not a plain object, and a `parse` that is not a function |
@@ -212,12 +211,16 @@ duration(options?: { min?: string; max?: string }): Validator<number>
 ### path
 
 ```ts
-path(options?: { access?: 'read' | 'write'; kind?: 'file' | 'directory' | 'any' }): Validator<string>
+path(
+  options?:
+    | { access: 'read' | 'write'; kind?: 'file' | 'directory' | 'any' }
+    | { access?: undefined; kind?: undefined },
+): Validator<string>
 ```
 
 - **Resolves** a nonempty token against `host.cwd` under the running process's `node:path` rules, and normalizes it, under [ADR-0100](decisions/0100-acceptance-plans-live-beside-the-tests.md). It does not resolve symbolic links. The empty string and a token containing the NUL character are rejected before any probe.
 - **Output** is the absolute, normalized path.
-- **Checks.** With no `access`, nothing on the filesystem is read. `kind` defaults to `'file'` when `access` is set.
+- **Checks.** With no `access`, nothing on the filesystem is read. `kind` narrows the access check and defaults to `'file'`, so the type takes it only beside an `access`.
 
 | `access`  | Accepts                                                                                                                                                                                  |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -231,7 +234,7 @@ path(options?: { access?: 'read' | 'write'; kind?: 'file' | 'directory' | 'any' 
 - **The context.** `path` reads `host.cwd` from the [validation context](core.md#validation-context), so it runs only inside a Loom run.
 - **Publishes** `{ type: 'string', minLength: 1 }`. Existence, kind, and access are runtime state, not a shape of the token, so none is published.
 - **Message.** One sentence per configuration: `Expected a nonempty path with no NUL character.`, `Expected a readable file that exists.`, `Expected a readable directory that exists.`, `Expected a readable file or directory that exists.`, `Expected a writable file, or a new file in a writable directory.`, `Expected a writable directory, or a new directory in a writable directory.`, and `Expected a writable path, or a new path in a writable directory.`
-- **Faults.** `kind` without `access`, and an `access` or `kind` outside its set.
+- **Faults.** None beyond options that are not a plain object: the type rejects `kind` without `access`, and an `access` or `kind` outside its set.
 
 ## createValidator
 

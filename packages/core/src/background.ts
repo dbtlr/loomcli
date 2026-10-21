@@ -181,19 +181,12 @@ function colorFgBg(value: string | undefined): Background | undefined {
 
 /**
  * Whether the environment lets core query the terminal: a `TERM` that is set, nonempty, and not
- * `dumb`, no GNU screen or Emacs, neither of which passes the query through, and not Windows.
+ * `dumb`, and no GNU screen or Emacs, neither of which passes the query through.
  */
-function queryAllowed(
-  env: Readonly<Record<string, string | undefined>>,
-  platform: string,
-): boolean {
+function queryAllowed(env: Readonly<Record<string, string | undefined>>): boolean {
   const term = env.TERM ?? '';
   return (
-    term !== '' &&
-    term !== 'dumb' &&
-    (env.STY ?? '') === '' &&
-    (env.INSIDE_EMACS ?? '') === '' &&
-    platform !== 'win32'
+    term !== '' && term !== 'dumb' && (env.STY ?? '') === '' && (env.INSIDE_EMACS ?? '') === ''
   );
 }
 

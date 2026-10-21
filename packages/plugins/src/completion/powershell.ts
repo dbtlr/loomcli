@@ -1,4 +1,4 @@
-import { identifier, powershellQuoted, scriptName } from './name.js';
+import { identifier, powershellQuoted } from './name.js';
 
 /**
  * The PowerShell completion script, ported from Cobra's `powershell_completions.go`.
@@ -11,8 +11,8 @@ import { identifier, powershellQuoted, scriptName } from './name.js';
  *   started through `ProcessStartInfo` with each word in its `ArgumentList`, its output read as
  *   UTF-8, and its stderr read to the end and discarded.
  * - The application name enters the script only as data: single-quoted in the shell's quoting, or
- *   encoded into function and variable identifiers by `identifier()`, and only a portable name,
- *   which `scriptName()` checks at the call with a `TypeError`.
+ *   encoded into function and variable identifiers by `identifier()`, and only the Application's
+ *   portable name.
  * - The completer registers with `-Native`.
  * - ActiveHelp handling is removed, including the ActiveHelp environment variable on the request.
  * - The request is read from the elements of the command PowerShell's parser hands the completer,
@@ -50,7 +50,7 @@ import { identifier, powershellQuoted, scriptName } from './name.js';
  * - Directive numbers are written as literals, and values are kept in arrays.
  */
 export function powershellScript(name: string): string {
-  const id = identifier(scriptName(name));
+  const id = identifier(name);
   const quoted = powershellQuoted(name);
   return `# PowerShell completion script, printed by the Loom completion plugin.
 # Ported from Cobra's powershell_completions.go, Copyright 2013-2023 The Cobra Authors,

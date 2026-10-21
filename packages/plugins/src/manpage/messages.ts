@@ -34,10 +34,6 @@ const refusals = {
     new FatalError(
       `${shownPath(record)} cannot be read, so ${shown(name)} will not change the man pages it lists. Remove it and the pages it lists, then run ${shown(name)} manpage ${verb} again.`,
     ),
-  windows: (name: string) =>
-    new FatalError(
-      `${shown(name)} manpage install works on Linux and macOS, which have man. Write the pages with ${shown(name)} manpage generate --out <folder> instead.`,
-    ),
 };
 
 /** The lines each child writes about its work. */

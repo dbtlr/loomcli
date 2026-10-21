@@ -6,7 +6,7 @@
  */
 import { recordDirectory } from '../application-folders.js';
 import { install } from '../installation/files.js';
-import type { InstalledLine, InstallOutcome, StartupLine } from '../installation/files.js';
+import type { InstallOutcome, StartupLine } from '../installation/files.js';
 import { lines } from './messages.js';
 import {
   directoryMode,
@@ -14,84 +14,43 @@ import {
   readShell,
   recordName,
   refuseInTheWay,
-  removeNotice,
+  refuseWindows,
   reportWritten,
   scriptFile,
   scriptState,
 } from './run.js';
-import type { ChildRun, Notice, ShellRecord } from './run.js';
+import type { ChildRun, ShellRecord } from './run.js';
 import { scriptContent, shells, startupLine } from './shells.js';
 import type { Shell } from './shells.js';
-import { judgeStartup, mustRelease } from './startup.js';
+import { judgeStartup, placeLine } from './startup.js';
+import type { LinePlacement } from './startup.js';
 
 /** The count of an empty list. */
 const none = 0;
 
-/** What an update does to one recorded line. */
-interface LineStep {
-  readonly listed: readonly InstalledLine[];
-  readonly hold: readonly InstalledLine[];
-  readonly release: readonly string[];
-  readonly keep: readonly string[];
-  readonly notices: readonly Notice[];
-  /** Whether the line stays as recorded with no write. */
-  readonly steady: boolean;
-}
-
-/** The step of a line an update drops, as one whose startup file is no longer a file. */
-const dropped: LineStep = {
-  hold: [],
-  keep: [],
-  listed: [],
-  notices: [],
-  release: [],
-  steady: false,
-};
+/** What an update does to one recorded line, and whether the line stays as recorded with no write. */
+type LineStep = LinePlacement & { readonly steady: boolean };
 
 /**
- * The step of a line whose text this version keeps: listed, so the module records it while the
- * file holds it, or kept as recorded in a file the plugin cannot read to tell.
+ * The step of a line whose startup file is no longer a file: nothing listed or released, so the
+ * module drops it and reports the file no longer holds it.
  */
-function keptLine(recorded: StartupLine, platform: string): LineStep {
-  const judgement = judgeStartup(recorded.path, recorded.line, platform);
-  if (judgement.kind === 'not-file') {
-    return dropped;
-  }
-  if (judgement.holds === undefined) {
-    return { ...dropped, keep: [recorded.path], steady: true };
-  }
-  return { ...dropped, listed: [recorded], steady: judgement.holds };
-}
+const dropped: LineStep = { lines: [], loaded: [], notices: [], release: [], steady: false };
 
 /**
- * The step of a changed line in a file the plugin cannot change: released with the line to remove
- * and the line to add, or, when the file already holds the new line because the operator added it,
- * released with the line to remove and the new line recorded as held in its place.
+ * The step of one recorded line, given this version's text of it: written where it stands in a
+ * startup file the plugin may change, and released with no line recorded in one it may not, the
+ * operator told to replace a line whose text this version changes.
  */
-function releasedLine(run: ChildRun, recorded: StartupLine, line: string): LineStep {
+function lineStep(run: ChildRun, recorded: StartupLine, line: string): LineStep {
   const { path } = recorded;
-  const removal = removeNotice(run, recorded);
-  const judgement = judgeStartup(path, line, run.host.platform);
-  if (judgement.kind !== 'not-file' && judgement.holds === true) {
-    return { ...dropped, hold: [{ line, path }], notices: [removal] };
-  }
-  const notices = [removal, { line, sentence: lines.addInPlace(path) }];
-  return { ...dropped, notices, release: [path] };
-}
-
-/**
- * The step of a line whose text this version changes: replaced where it stands, or, in a file the
- * plugin cannot change that holds it, released.
- */
-function changedLine(run: ChildRun, recorded: StartupLine, line: string): LineStep {
-  const judgement = judgeStartup(recorded.path, recorded.line, run.host.platform);
+  const judgement = judgeStartup(path, line);
   if (judgement.kind === 'not-file') {
     return dropped;
   }
-  if (mustRelease(judgement)) {
-    return releasedLine(run, recorded, line);
-  }
-  return { ...dropped, listed: [{ line, path: recorded.path }] };
+  const placed = placeLine(run, { line, path, recorded: recorded.line, update: true }, judgement);
+  const steady = placed.lines.length > none && judgement.holds === true && recorded.line === line;
+  return { ...placed, steady };
 }
 
 /** A shell an update writes: its record, the recorded script, and what it does to each line. */
@@ -104,13 +63,11 @@ interface Planned {
 /** What an update does to each recorded line of a shell, given the recorded script's path. */
 function planShell(run: ChildRun, recorded: ShellRecord, script: string): Planned {
   const { shell } = recorded;
-  const steps = recorded.lines.map((entry) => {
-    if (shell === 'fish') {
-      return dropped;
-    }
-    const line = startupLine({ name: run.name, platform: run.host.platform, script, shell });
-    return entry.line === line ? keptLine(entry, run.host.platform) : changedLine(run, entry, line);
-  });
+  const steps = recorded.lines.map((entry) =>
+    shell === 'fish'
+      ? dropped
+      : lineStep(run, entry, startupLine({ name: run.name, script, shell })),
+  );
   return { recorded, script, steps };
 }
 
@@ -127,9 +84,7 @@ function rewrite(
   const outcome = install({
     directoryMode,
     files: [scriptFile(script, content)],
-    hold: steps.flatMap((step) => step.hold),
-    keep: steps.flatMap((step) => step.keep),
-    lines: steps.flatMap((step) => step.listed),
+    lines: steps.flatMap((step) => step.lines),
     plugin: recordName(recorded.shell),
     record,
     release: steps.flatMap((step) => step.release),
@@ -157,6 +112,7 @@ async function updateShell(run: ChildRun, record: string, planned: Planned): Pro
     : run.info(lines.unchanged(script)));
   await reportWritten(run, {
     held: false,
+    loaded: [],
     notices: steps.flatMap((step) => step.notices),
     outcome,
   });
@@ -175,11 +131,12 @@ function recordedShells(
 }
 
 /**
- * `update`: the record's directory, every shell's plugin's file, every recorded script, and every
- * recorded startup file, each checked for every shell before any is written, then each shell
- * rewritten and its changes stated.
+ * `update`: the platform, the record's directory, every shell's plugin's file, every recorded
+ * script, and every recorded startup file, each checked for every shell before any is written,
+ * then each shell rewritten and its changes stated.
  */
 async function updateShells(run: ChildRun): Promise<void> {
+  refuseWindows(run);
   const record = recordDirectory(run.name, run.host);
   const found = recordedShells(run, record);
   if (found.length === none) {

@@ -52,19 +52,9 @@ function colorDepth(env: Host['env']): Capabilities['depth'] {
     : 16;
 }
 
-function mainGlyphs({ env, platform }: Pick<Host, 'env' | 'platform'>): boolean {
-  if (platform !== 'win32') {
-    return env.TERM !== 'linux';
-  }
-  return (
-    Boolean(env.CI || env.WT_SESSION || env.TERMINUS_SUBLIME) ||
-    env.ConEmuTask === '{cmd::Cmder}' ||
-    env.TERM_PROGRAM === 'Terminus-Sublime' ||
-    env.TERM_PROGRAM === 'vscode' ||
-    env.TERM === 'xterm-256color' ||
-    env.TERM === 'alacritty' ||
-    env.TERMINAL_EMULATOR === 'JetBrains-JediTerm'
-  );
+/** Whether a run uses main glyph forms: everywhere but the Linux console, `TERM=linux`. */
+function mainGlyphs(env: Host['env']): boolean {
+  return env.TERM !== 'linux';
 }
 
 function enabled(policy: SwitchPolicy | undefined, automatic: boolean): boolean {
@@ -73,7 +63,7 @@ function enabled(policy: SwitchPolicy | undefined, automatic: boolean): boolean 
 
 /** A run owns captured facts; stdout and stderr each resolve this one policy independently. */
 function capabilities(
-  host: Pick<Host, 'env' | 'platform' | 'terminal'>,
+  host: Pick<Host, 'env' | 'terminal'>,
   destination: 'stdout' | 'stderr',
   policy: RenderingPolicy,
 ): Capabilities {
@@ -84,7 +74,7 @@ function capabilities(
     color: enabled(policy.color, forced || (!host.env.NO_COLOR && capable)),
     depth: colorDepth(host.env),
     hyperlinks: enabled(policy.hyperlinks, tty),
-    mainGlyphs: mainGlyphs(host),
+    mainGlyphs: mainGlyphs(host.env),
     modifiers: enabled(policy.modifiers, forced || capable),
     terminalControls: policy.terminalControls === 'preserve',
   };

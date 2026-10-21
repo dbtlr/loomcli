@@ -188,22 +188,6 @@ test('every exported glyph matches the pinned main and compatibility catalog', (
   );
 });
 
-test.each([
-  [{}, 'i'],
-  [{ WT_SESSION: 'yes' }, 'ℹ'],
-  [{ CI: '1' }, 'ℹ'],
-  [{ ConEmuTask: '{cmd::Cmder}' }, 'ℹ'],
-  [{ TERMINUS_SUBLIME: '1' }, 'ℹ'],
-  [{ TERM_PROGRAM: 'Terminus-Sublime' }, 'ℹ'],
-  [{ TERM_PROGRAM: 'vscode' }, 'ℹ'],
-  [{ TERM: 'xterm-256color' }, 'ℹ'],
-  [{ TERM: 'alacritty' }, 'ℹ'],
-  [{ TERMINAL_EMULATOR: 'JetBrains-JediTerm' }, 'ℹ'],
-  [{ wt_session: 'yes' }, 'i'],
-])('Windows glyph selection uses captured case-sensitive facts %j', (env, expected) => {
-  expect(resolve('', { env, glyph: 'info', platform: 'win32' }).stdout).toBe(expected);
-});
-
 test('padding resolves compatibility glyphs and measures Unicode columns, tabs, and lines', () => {
   const radio = '\uE000["glyph","radioOn"]\uE001\uE002';
   expect(resolve(padded(padded(radio, 5), 8, 'center'), { env: { TERM: 'linux' } })).toEqual({

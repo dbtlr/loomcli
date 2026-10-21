@@ -43,8 +43,8 @@ const sharedState = join(tmpdir(), 'loom-test-state');
 
 /**
  * The home directory every fixture shares unless a test names its own. The plugin writes under the
- * home on macOS (`Library/Logs`) and Windows (`LOCALAPPDATA`), where `XDG_STATE_HOME` does not
- * apply, so a fixture's home is a temporary directory on every platform, never the developer's own.
+ * home on macOS (`Library/Logs`), where `XDG_STATE_HOME` does not apply, so a fixture's home is a
+ * temporary directory on every platform, never the developer's own.
  */
 const sharedHome = join(tmpdir(), 'loom-test-home');
 
@@ -63,9 +63,7 @@ export function childEnvironment(env: Record<string, string | undefined> | undef
   return {
     ...inherited,
     HOME: sharedHome,
-    LOCALAPPDATA: join(sharedHome, 'AppData', 'Local'),
     LOOM_CAPTURE_TEST: 'present',
-    USERPROFILE: sharedHome,
     XDG_STATE_HOME: sharedState,
     ...env,
   };

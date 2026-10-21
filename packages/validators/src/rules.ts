@@ -57,13 +57,6 @@ const urlProtocols = catalogRule('url-protocols', {
   headline: 'Invalid url protocols',
 });
 
-/** A `path()` access or kind outside its set, or a kind with no access to narrow. */
-const pathCheck = catalogRule('path-check', {
-  explanation:
-    'path() reads the file system only to check an access, read or write, and kind narrows that check to a file, a directory, or any entry, so kind has no meaning without access.',
-  headline: 'Invalid path check',
-});
-
 /** A `text()` pattern that JSON Schema cannot read as it is. */
 const textPattern = catalogRule('invalid-pattern', {
   explanation:
@@ -138,7 +131,6 @@ export {
   issueCodeSchema,
   issueParameters,
   oneOfValues,
-  pathCheck,
   patternMessage,
   textPattern,
   timeZone,

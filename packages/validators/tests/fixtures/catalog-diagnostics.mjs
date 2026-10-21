@@ -7,7 +7,6 @@ import {
   issueCode,
   number,
   oneOf,
-  path,
   text,
   url,
 } from '@loomcli/validators';
@@ -53,7 +52,6 @@ const scenarios = {
     }).issue({ word: 7 }),
   'one-of-empty': () => oneOf([]),
   'one-of-twice': () => oneOf(['dev', 'prod', 'dev']),
-  'path-check': () => path({ kind: 'file' }),
   'pattern-message': () => text({ pattern: /[a-z]+/u }),
   'text-bounds-order': () => text({ maxLength: 0 }),
   'text-pattern': () => text({ message: 'Expected letters.', pattern: /[a-z]+/g }),

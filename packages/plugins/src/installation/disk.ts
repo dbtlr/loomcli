@@ -8,7 +8,6 @@ import {
   closeSync,
   fchmodSync,
   fsyncSync,
-  linkSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -152,52 +151,13 @@ function replaceFile(
 }
 
 /**
- * Creates `path` whole when nothing is there: the content goes to a staging file created
- * exclusively in its directory, which is then linked into place, so no other run sees the file
- * before it holds every byte.
- * The staging file is removed either way.
- * A file system that refuses hard links, such as some network mounts, gets the file created
- * exclusively in place instead.
- * Answers `false`, leaving `path` as it is, when something is already there.
+ * Creates `path` exclusively and appends `content` through it, or answers `false` when something
+ * is already there. The descriptor appends, so a line another run appends between the create and
+ * this write lands whole before `content` rather than under it.
  */
-function publishFile(path: string, content: Uint8Array, options: ReplaceOptions = {}): boolean {
-  const staging = stagingPath(path);
-  try {
-    fill(openSync(staging, 'wx', options.mode ?? defaultMode), content, options);
-    const linked = linkNew(staging, path);
-    return linked === 'refused' ? createNew(path, content, options) : linked === 'linked';
-  } finally {
-    removeStaging(staging);
-  }
-}
-
-/** Links `existing` at `path`: `exists` when something is already there, `refused` when the file system allows no link. */
-function linkNew(existing: string, path: string): 'exists' | 'linked' | 'refused' {
-  try {
-    linkSync(existing, path);
-    return 'linked';
-  } catch (error) {
-    const code = errorCode(error);
-    if (code === 'EEXIST') {
-      return 'exists';
-    }
-    if (
-      code === 'EPERM' ||
-      code === 'ENOTSUP' ||
-      code === 'EOPNOTSUPP' ||
-      code === 'EXDEV' ||
-      code === 'ENOSYS'
-    ) {
-      return 'refused';
-    }
-    throw error;
-  }
-}
-
-/** Creates `path` exclusively and writes `content` through it, or answers `false` when something is already there. */
 function createNew(path: string, content: Uint8Array, options: ReplaceOptions): boolean {
   try {
-    fill(openSync(path, 'wx', options.mode ?? defaultMode), content, options);
+    fill(openSync(path, 'ax', options.mode ?? defaultMode), content, options);
     return true;
   } catch (error) {
     if (errorCode(error) === 'EEXIST') {
@@ -207,7 +167,7 @@ function createNew(path: string, content: Uint8Array, options: ReplaceOptions): 
   }
 }
 
-/** Removes a staging file after a replacement or publication, leaving any failure to recovery's next run. */
+/** Removes a staging file after a replacement, leaving any failure to recovery's next run. */
 function removeStaging(staging: string): void {
   try {
     rmSync(staging, { force: true });
@@ -326,6 +286,7 @@ function missingParents(path: string): string[] {
 export type { Observed, ReplaceOptions };
 export {
   createDirectory,
+  createNew,
   digestOf,
   entriesOf,
   errorCode,
@@ -334,7 +295,6 @@ export {
   missingParents,
   observe,
   permissionBits,
-  publishFile,
   realPath,
   removeEmptyDirectory,
   removeStagingFiles,

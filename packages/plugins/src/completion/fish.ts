@@ -1,4 +1,4 @@
-import { fishQuoted, identifier, scriptName } from './name.js';
+import { fishQuoted, identifier } from './name.js';
 
 /**
  * The Fish completion script, ported from Cobra's `fish_completions.go`.
@@ -7,8 +7,8 @@ import { fishQuoted, identifier, scriptName } from './name.js';
  * package NOTICE records the attribution. The changes from Cobra:
  * - Every `eval` is removed: the request is an argument-array call, and no answer is run as source.
  * - The application name enters the script only as data: single-quoted in the shell's quoting, or
- *   encoded into function identifiers by `identifier()`, and only a portable name, which
- *   `scriptName()` checks at the call with a `TypeError`.
+ *   encoded into function identifiers by `identifier()`, and only the Application's portable
+ *   name.
  * - ActiveHelp handling is removed; the plugin never writes it and leaves out such words.
  * - The request carries every word, the last cut at the cursor, so no empty word is appended.
  * - Answer words under `value` already carry the option's lead, such as `--format=`, so the script
@@ -28,7 +28,7 @@ import { fishQuoted, identifier, scriptName } from './name.js';
  * extension nor to directories.
  */
 export function fishScript(name: string): string {
-  const id = identifier(scriptName(name));
+  const id = identifier(name);
   const quoted = fishQuoted(name);
   const spaced = fishQuoted(`${name} `);
   return `# Fish completion script, printed by the Loom completion plugin.

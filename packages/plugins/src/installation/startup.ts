@@ -6,10 +6,10 @@
 import { appendFileSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
-import { errorCode, permissionBits, publishFile, replaceFile } from './disk.js';
+import { createNew, errorCode, permissionBits, replaceFile } from './disk.js';
 
-/** The encodings the module reads: UTF-8 with or without its byte order mark, and UTF-16LE with one. */
-type StartupEncoding = 'utf8' | 'utf8-bom' | 'utf16le';
+/** The encodings the module reads: UTF-8 with or without its byte order mark. */
+type StartupEncoding = 'utf8' | 'utf8-bom';
 
 /** A startup file's text, its byte order mark excluded, and the encoding it was read in. */
 interface StartupText {
@@ -28,29 +28,8 @@ type StartupRead =
   | { readonly kind: 'unknown-encoding' }
   | { readonly kind: 'text'; readonly content: StartupText };
 
-/** The byte order marks the module reads a file by. */
-const utf16Mark = Buffer.from('fffe', 'hex');
+/** UTF-8's byte order mark, which the module reads past and writes back. */
 const utf8Mark = Buffer.from('efbbbf', 'hex');
-
-/**
- * Every other byte order mark, which makes a file one the module does not change. UTF-32LE comes
- * first because its mark starts with UTF-16LE's. A mark that is not valid UTF-8 would fail the
- * decoding anyway, and the list names it so the reason reads plainly.
- */
-const otherMarks = [
-  'fffe0000', // UTF-32LE
-  '0000feff', // UTF-32BE
-  'feff', // UTF-16BE
-  '2b2f7638', // UTF-7
-  '2b2f7639',
-  '2b2f762b',
-  '2b2f762f',
-  'f7644c', // UTF-1
-  'dd736673', // UTF-EBCDIC
-  '0efeff', // SCSU
-  'fbee28', // BOCU-1
-  '84319533', // GB18030
-].map((hex) => Buffer.from(hex, 'hex'));
 
 /** The mode a startup file the module creates takes, whatever the umask. */
 const createdMode = 0o644;
@@ -64,39 +43,26 @@ function startsWith(bytes: Uint8Array, mark: Uint8Array): boolean {
   return mark.every((byte, index) => bytes[index] === byte);
 }
 
-/** The text of some bytes in one encoding, or `undefined` when they are not valid in it. */
-function decoded(bytes: Uint8Array, encoding: StartupEncoding): StartupText | undefined {
-  const label = encoding === 'utf16le' ? 'utf-16le' : 'utf8';
+/**
+ * A startup file's bytes as UTF-8 text, past its byte order mark when it starts with one, or
+ * `undefined` for bytes that are not valid UTF-8, as a file in another encoding is.
+ */
+function decode(bytes: Uint8Array): StartupText | undefined {
+  const marked = startsWith(bytes, utf8Mark);
   try {
-    const text = new TextDecoder(label, { fatal: true, ignoreBOM: true }).decode(bytes);
-    return { encoding, text };
+    const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+      marked ? bytes.subarray(utf8Mark.length) : bytes,
+    );
+    return { encoding: marked ? 'utf8-bom' : 'utf8', text };
   } catch {
     return undefined;
   }
 }
 
-/** A startup file's bytes as text, or `undefined` for any other byte order mark or invalid bytes. */
-function decode(bytes: Uint8Array): StartupText | undefined {
-  if (otherMarks.some((mark) => startsWith(bytes, mark))) {
-    return undefined;
-  }
-  if (startsWith(bytes, utf16Mark)) {
-    return decoded(bytes.subarray(utf16Mark.length), 'utf16le');
-  }
-  if (startsWith(bytes, utf8Mark)) {
-    return decoded(bytes.subarray(utf8Mark.length), 'utf8-bom');
-  }
-  return decoded(bytes, 'utf8');
-}
-
-/** Some text in one encoding, with that encoding's byte order mark first when `marked`. */
-function encode(text: string, encoding: StartupEncoding, marked: boolean): Buffer {
-  if (encoding === 'utf16le') {
-    const bytes = Buffer.from(text, 'utf16le');
-    return marked ? Buffer.concat([utf16Mark, bytes]) : bytes;
-  }
+/** A whole file's text as UTF-8, with the byte order mark first when the file was read with one. */
+function encode(text: string, encoding: StartupEncoding): Buffer {
   const bytes = Buffer.from(text, 'utf8');
-  return marked && encoding === 'utf8-bom' ? Buffer.concat([utf8Mark, bytes]) : bytes;
+  return encoding === 'utf8-bom' ? Buffer.concat([utf8Mark, bytes]) : bytes;
 }
 
 /** What `path` is, followed through a symbolic link, without reading its content. */
@@ -187,21 +153,19 @@ function appendix(text: string, line: string): string {
 
 /**
  * Appends `line` to an existing startup file in place, through any symbolic link, in the file's
- * own encoding and line ending, so the file keeps its owner, mode, links, and every other byte.
+ * own line ending, so the file keeps its owner, mode, links, and every other byte.
  */
 function appendLine(path: string, content: StartupText, line: string): void {
-  appendFileSync(path, encode(appendix(content.text, line), content.encoding, false));
+  appendFileSync(path, appendix(content.text, line), 'utf8');
 }
 
 /**
- * Creates a missing startup file holding `line` and a line feed, with mode 644 whatever the umask,
- * as UTF-8 with its byte order mark when `marked` and without one otherwise.
- * The file appears with every byte in place, so another run that finds it there appends after the line.
+ * Creates a missing startup file exclusively for appending, holding `line` and a line feed as
+ * UTF-8 without a byte order mark, with mode 644 whatever the umask.
  * Answers `false`, writing nothing, when the file exists by the time it is created.
  */
-function createStartupFile(path: string, line: string, marked: boolean): boolean {
-  const content = encode(`${line}${lineFeed}`, marked ? 'utf8-bom' : 'utf8', true);
-  return publishFile(path, content, { mode: createdMode });
+function createStartupFile(path: string, line: string): boolean {
+  return createNew(path, Buffer.from(`${line}${lineFeed}`, 'utf8'), { mode: createdMode });
 }
 
 /** A recorded line's text and what takes its place, `null` to remove it with its line ending. */
@@ -244,13 +208,13 @@ function realPathOf(path: string): string {
 
 /**
  * Replaces or removes each line equal to the recorded text by writing the startup file's real path
- * through a staging file and a rename, keeping every other byte, the encoding, and the permission
- * bits, so a symbolic link stays a link.
+ * through a staging file and a rename, keeping every other byte, the byte order mark, and the
+ * permission bits, so a symbolic link stays a link.
  */
 function rewriteLines(path: string, content: StartupText, edit: LineEdit): void {
   const real = realPathOf(path);
   const mode = statSync(real).mode & permissionBits;
-  replaceFile(real, encode(edited(content.text, edit), content.encoding, true), { mode });
+  replaceFile(real, encode(edited(content.text, edit), content.encoding), { mode });
 }
 
 /** What a plugin reads of a startup file before it lists a line: whether the module can read it, and whether it holds the line. */

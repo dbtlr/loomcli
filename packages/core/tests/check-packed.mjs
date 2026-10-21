@@ -584,7 +584,7 @@ try {
   const home = join(temporary, 'home');
   await mkdir(home, { recursive: true });
   await writeFile(join(home, '.packed-config.yaml'), 'greeting:\n  word: configured\n');
-  const homes = { HOME: home, USERPROFILE: home };
+  const homes = { HOME: home };
   for (const name of selected) {
     const named = run(runtimes.get(name), [configured, '-c', 'settings.toml'], temporary, homes);
     assert.equal(named.status, 0, named.output);

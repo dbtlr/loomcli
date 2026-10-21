@@ -1,7 +1,7 @@
 import { constants, createReadStream, fstatSync, open } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
-import { posix, win32 } from 'node:path';
+import { isAbsolute, join, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 
@@ -64,7 +64,6 @@ const verdicts = new Set([
   'ENAMETOOLONG',
   'EINVAL',
 ]);
-const unknownInode = 0n;
 
 function openFile(path: string): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -105,15 +104,7 @@ async function aliasesDarwinStdin(source: BigIntStats): Promise<boolean> {
 /** Named calls cannot reopen the process stream through a filesystem alias. */
 async function aliasesProcessStdin(source: BigIntStats): Promise<boolean> {
   try {
-    const stdin = fstatSync(0, { bigint: true });
-    // Windows may report no inode identity for a device; zero cannot identify an alias.
-    if (
-      process.platform === 'win32' &&
-      (source.ino === unknownInode || stdin.ino === unknownInode)
-    ) {
-      return false;
-    }
-    return sameSource(source, stdin) || (await aliasesDarwinStdin(source));
+    return sameSource(source, fstatSync(0, { bigint: true })) || (await aliasesDarwinStdin(source));
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'EBADF') {
       return false;
@@ -152,17 +143,16 @@ async function readableSource(path: string, named: boolean): Promise<boolean> {
   }
 }
 
-/** Preserve the operand's dot segments and trailing separators for filesystem resolution. */
+/**
+ * The operand as an absolute path under the running process's path rules, joined to the cwd
+ * without normalizing, so its dot segments and trailing separators reach filesystem resolution.
+ */
 function absoluteSource(name: string, host: Host): string {
-  const paths = host.platform === 'win32' ? win32 : posix;
-  const root = paths.parse(name).root;
-  if (paths.isAbsolute(name) && (host.platform !== 'win32' || root !== paths.sep)) {
+  if (isAbsolute(name)) {
     return name;
   }
-  const cwd = paths.isAbsolute(host.cwd) ? host.cwd : paths.resolve(host.cwd);
-  const base = root === '' ? cwd : paths.resolve(cwd, root);
-  const tail = root === '' ? name : name.slice(root.length);
-  return `${base}${base.endsWith(paths.sep) ? '' : paths.sep}${tail}`;
+  const cwd = isAbsolute(host.cwd) ? host.cwd : join(process.cwd(), host.cwd);
+  return `${cwd}${cwd.endsWith(sep) ? '' : sep}${name}`;
 }
 
 /** Native open preserves traversal; the reader alone closes its descriptor after pending reads. */

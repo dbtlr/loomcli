@@ -335,7 +335,7 @@ The directory, one per application and per user in the platform's state director
 _Avoid_: Receipt, installation receipt, journal, ledger, manifest
 
 **Startup line**:
-The one line an installer adds to a shell's startup file, such as `.zshrc` or the PowerShell profile, that loads a completion script it installed and names the Command that added it. The installation record holds the line's text rather than the file's digest, because the startup file is the operator's.
+The one line an installer adds to a shell's startup file, such as `.zshrc` or the PowerShell profile, that loads a completion script it installed and names the Command that added it. The installer writes the line into a file it may change, and prints it for the operator to add to one it may not. The installation record holds the text of a line the installer wrote, rather than the file's digest, because the startup file is the operator's, and it never holds a line the operator added by hand.
 _Avoid_: Shell hook, rc line, profile snippet, init block
 
 **Development build**:
