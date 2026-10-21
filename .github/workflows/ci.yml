@@ -8,8 +8,63 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels that pull request's run in progress. A push to main never
+# cancels another run, because each one has its own group.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Each Node process the tests start reuses compiled code instead of compiling it again.
+  NODE_COMPILE_CACHE: ${{ github.workspace }}/../node-compile-cache
+
 jobs:
+  # A pull request that changes only documentation, a file under docs/ or a Markdown file at the
+  # root, runs the docs tests in place of the test jobs.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.paths.outputs.code }}
+    steps:
+      - name: Decide whether the change touches code
+        id: paths
+        env:
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ]; then
+            echo code=true >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          paths=$(gh api --paginate "repos/$REPOSITORY/pulls/$PULL_REQUEST/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)')
+          code=false
+          if [ -z "$paths" ]; then
+            code=true
+          fi
+          while IFS= read -r path; do
+            case "$path" in
+              '') ;;
+              docs/*) ;;
+              */*) code=true ;;
+              *.md) ;;
+              *) code=true ;;
+            esac
+          done <<< "$paths"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Changed paths touch code: $code"
+
   node_matrix:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     name: node / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -65,6 +120,8 @@ jobs:
         run: pnpm check:packed
 
   bun_matrix:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     name: bun / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -118,20 +175,86 @@ jobs:
         if: runner.os == 'Linux'
         run: pnpm check:packed
 
+  # A documentation-only change runs only the tests that read files under docs/, on every
+  # operating system. Each such test file carries `// @module-tag docs`.
+  docs_matrix:
+    needs: changes
+    if: needs.changes.outputs.code == 'false'
+    name: docs / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      LOOM_TEST_RUNTIME: node
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 12.8.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          cache: pnpm
+          node-version: 22.23.2
+
+      # The installation tests run their fixtures under Node and Bun.
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and run the tests that read docs
+        run: pnpm run build && pnpm exec vp test --run --tagsFilter docs
+
   node:
     name: Node LTS / verify
     if: always()
-    needs: node_matrix
+    needs: [changes, node_matrix, docs_matrix]
     runs-on: ubuntu-latest
     steps:
-      - name: Require every operating system
-        run: test "${{ needs.node_matrix.result }}" = "success"
+      - name: Require every operating system, or the docs tests for a documentation-only change
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+          DOCS: ${{ needs.docs_matrix.result }}
+          MATRIX: ${{ needs.node_matrix.result }}
+        run: |
+          test "$CHANGES" = success
+          if [ "$CODE" = false ]; then
+            echo "The change touches only documentation, so only the docs tests ran."
+            test "$MATRIX" = skipped && test "$DOCS" = success
+          else
+            test "$MATRIX" = success
+          fi
 
   bun:
     name: Bun / verify
     if: always()
-    needs: bun_matrix
+    needs: [changes, bun_matrix, docs_matrix]
     runs-on: ubuntu-latest
     steps:
-      - name: Require every operating system
-        run: test "${{ needs.bun_matrix.result }}" = "success"
+      - name: Require every operating system, or the docs tests for a documentation-only change
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+          DOCS: ${{ needs.docs_matrix.result }}
+          MATRIX: ${{ needs.bun_matrix.result }}
+        run: |
+          test "$CHANGES" = success
+          if [ "$CODE" = false ]; then
+            echo "The change touches only documentation, so only the docs tests ran."
+            test "$MATRIX" = skipped && test "$DOCS" = success
+          else
+            test "$MATRIX" = success
+          fi

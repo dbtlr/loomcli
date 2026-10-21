@@ -1,3 +1,5 @@
+// @module-tag docs
+
 import {
   existsSync,
   mkdirSync,
