@@ -3,6 +3,7 @@ import { rm } from 'node:fs/promises';
 await Promise.all(
   [
     'packages/core/dist',
+    'packages/eslint-plugin/dist',
     'packages/loom/dist',
     'packages/mcp/dist',
     'packages/plugins/dist',
