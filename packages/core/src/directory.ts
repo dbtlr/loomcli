@@ -30,13 +30,6 @@ const darwinFolders: Readonly<Record<ApplicationDirectory, string>> = {
   logs: 'Logs',
 };
 
-/** The folder under `%LOCALAPPDATA%\<app>` on win32, for each kind. */
-const win32Folders: Readonly<Record<ApplicationDirectory, string>> = {
-  cache: 'Cache',
-  installation: 'installation',
-  logs: 'Logs',
-};
-
 /**
  * The XDG base directory each kind lives under on any other platform, and the directory under
  * `$HOME` that stands in for an unset, empty, or relative one.
@@ -52,9 +45,9 @@ function xdgBase(kind: ApplicationDirectory): {
 
 /**
  * The directory an application keeps its installation record, its logs, or its cache in, resolved
- * from a run's `env` and `platform` alone. The platform chooses the row and its variables; the
- * running process's path rules judge an absolute path and join the segments. It reads no file and
- * creates nothing.
+ * from a run's `env` and `platform` alone. Darwin keeps it under `$HOME/Library`, and every other
+ * platform, Windows included, under the XDG base directories and `$HOME`. The running process's
+ * path rules judge an absolute path and join the segments. It reads no file and creates nothing.
  */
 function applicationDirectory(
   kind: ApplicationDirectory,
@@ -66,9 +59,6 @@ function applicationDirectory(
   switch (platform) {
     case 'darwin': {
       return under(env, 'HOME', ['Library', darwinFolders[kind], ...segments]);
-    }
-    case 'win32': {
-      return under(env, 'LOCALAPPDATA', [application, win32Folders[kind]]);
     }
     default: {
       const base = xdgBase(kind);

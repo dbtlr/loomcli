@@ -164,7 +164,6 @@ describe('the skips', () => {
     ['TERM is dumb', { env: { COLORTERM: 'truecolor', FORCE_COLOR: '1', TERM: 'dumb' } }],
     ['STY is set', { env: { ...terminalEnv, STY: '1234.pts-0.host' } }],
     ['INSIDE_EMACS is set', { env: { ...terminalEnv, INSIDE_EMACS: '29.1,comint' } }],
-    ['the platform is Windows', { platform: 'win32' }],
   ])('%s: no byte written or read, and COLORFGBG answers', (_case, scenario) => {
     const env = { ...(scenario.env ?? terminalEnv), COLORFGBG: '0;15' };
     const report = run({ ...scenario, env, replies: light });

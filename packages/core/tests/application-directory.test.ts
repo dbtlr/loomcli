@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 /** Fixed absolute directories for lookups that never touch the disk. */
-const fixed = { cache: '/cache', home: '/home/me', local: '/local', state: '/state' };
+const fixed = { cache: '/cache', home: '/home/me', state: '/state' };
 
 /** An empty temporary directory whose home, state, and cache directories the lookups name but never create. */
 function sandbox() {
@@ -25,7 +25,6 @@ function sandbox() {
   return {
     cache: join(root, 'cache'),
     home: join(root, 'home'),
-    local: join(root, 'local'),
     root,
     state: join(root, 'state'),
   };
@@ -48,13 +47,12 @@ test.each([
   ['darwin', 'installation', ['home', 'Library', 'Application Support', 'notes', 'installation']],
   ['darwin', 'logs', ['home', 'Library', 'Logs', 'notes']],
   ['darwin', 'cache', ['home', 'Library', 'Caches', 'notes']],
-  ['win32', 'installation', ['local', 'notes', 'installation']],
-  ['win32', 'logs', ['local', 'notes', 'Logs']],
-  ['win32', 'cache', ['local', 'notes', 'Cache']],
+  ['win32', 'installation', ['state', 'notes', 'installation']],
+  ['win32', 'logs', ['state', 'notes']],
+  ['win32', 'cache', ['cache', 'notes']],
 ] as const)('%s gives the %s row', (platform, kind, [base, ...segments]) => {
   const env = {
     HOME: fixed.home,
-    LOCALAPPDATA: fixed.local,
     XDG_CACHE_HOME: fixed.cache,
     XDG_STATE_HOME: fixed.state,
   };
@@ -107,24 +105,10 @@ test('an absolute XDG_STATE_HOME or XDG_CACHE_HOME needs no HOME for its kinds',
   });
 });
 
-test.each([
-  ['unset', undefined],
-  ['empty', ''],
-  ['relative', 'AppData'],
-])('a LOCALAPPDATA that is %s answers its variable on win32', (_case, local) => {
-  for (const kind of ['installation', 'logs', 'cache'] as const) {
-    expect(lookup(kind, 'win32', { HOME: fixed.home, LOCALAPPDATA: local })).toEqual({
-      variable: 'LOCALAPPDATA',
-    });
-  }
-});
-
 test.skipIf(process.platform === 'win32')(
   "the running process's path rules judge an absolute path, whatever the platform names",
   () => {
-    expect(lookup('logs', 'win32', { LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' })).toEqual({
-      variable: 'LOCALAPPDATA',
-    });
+    expect(lookup('logs', 'win32', { HOME: 'C:\\Users\\me' })).toEqual({ variable: 'HOME' });
   },
 );
 
@@ -132,7 +116,6 @@ test('a lookup reads no file and creates nothing', () => {
   const box = sandbox();
   const env = {
     HOME: box.home,
-    LOCALAPPDATA: box.local,
     XDG_CACHE_HOME: box.cache,
     XDG_STATE_HOME: box.state,
   };

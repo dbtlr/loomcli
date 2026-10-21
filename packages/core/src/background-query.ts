@@ -220,7 +220,7 @@ async function askTerminal(host: Host, signal: AbortSignal): Promise<Background 
   if (
     signal.aborted ||
     raw === undefined ||
-    !queryAllowed(host.env, host.platform) ||
+    !queryAllowed(host.env) ||
     (host.stdin instanceof ReadStream && !foregroundJob())
   ) {
     return undefined;

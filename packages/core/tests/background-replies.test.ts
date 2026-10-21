@@ -130,17 +130,16 @@ describe('COLORFGBG', () => {
 });
 
 describe('the environment a query needs', () => {
-  it.each<[string, Record<string, string | undefined>, string, boolean]>([
-    ['a color terminal', { TERM: 'xterm-256color' }, 'darwin', true],
-    ['TERM unset', {}, 'linux', false],
-    ['TERM empty', { TERM: '' }, 'linux', false],
-    ['TERM dumb', { TERM: 'dumb' }, 'linux', false],
-    ['GNU screen', { STY: '1234.pts-0.host', TERM: 'screen' }, 'linux', false],
-    ['an empty STY', { STY: '', TERM: 'screen' }, 'linux', true],
-    ['Emacs', { INSIDE_EMACS: '29.1,comint', TERM: 'xterm' }, 'linux', false],
-    ['Windows', { TERM: 'xterm-256color' }, 'win32', false],
-  ])('%s', (_case, env, platform, allowed) => {
-    expect(queryAllowed(env, platform)).toBe(allowed);
+  it.each<[string, Record<string, string | undefined>, boolean]>([
+    ['a color terminal', { TERM: 'xterm-256color' }, true],
+    ['TERM unset', {}, false],
+    ['TERM empty', { TERM: '' }, false],
+    ['TERM dumb', { TERM: 'dumb' }, false],
+    ['GNU screen', { STY: '1234.pts-0.host', TERM: 'screen' }, false],
+    ['an empty STY', { STY: '', TERM: 'screen' }, true],
+    ['Emacs', { INSIDE_EMACS: '29.1,comint', TERM: 'xterm' }, false],
+  ])('%s', (_case, env, allowed) => {
+    expect(queryAllowed(env)).toBe(allowed);
   });
 });
 
