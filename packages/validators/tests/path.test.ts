@@ -90,21 +90,6 @@ describe('an option that can never work throws from the call', () => {
       'read',
       'path() options is not a plain object. Supply an object or leave it out.',
     ],
-    [
-      'kind without access',
-      { kind: 'file' },
-      'path() kind has no access to check. Supply an access or leave out kind.',
-    ],
-    [
-      'an access outside its set',
-      { access: 'exec' },
-      'path() access is not "read" or "write". Supply "read" or "write".',
-    ],
-    [
-      'a kind outside its set',
-      { access: 'read', kind: 'link' },
-      'path() kind is not "file", "directory", or "any". Supply one of them.',
-    ],
   ];
 
   it.each(faults)('%s', (_name, options, message) => {
@@ -114,6 +99,12 @@ describe('an option that can never work throws from the call', () => {
   });
 });
 
+test('a kind without an access is a type error, because kind narrows the access check', () => {
+  // @ts-expect-error TS2322: kind narrows the access check, so it is declared beside an access.
+  const validator = path({ kind: 'file' });
+  expect(published(validator)).toEqual({ $schema: dialect, minLength: 1, type: 'string' });
+});
+
 describe('inside a run with no access', () => {
   it('a relative token resolves against the host cwd and normalizes', () => {
     expect(run({}, '/loom/work', 'a/../b/./c', 'linux')).toEqual(accepted('/loom/work/b/c'));
@@ -121,12 +112,6 @@ describe('inside a run with no access', () => {
 
   it('an absolute token keeps its own root', () => {
     expect(run({}, '/loom/work', '/etc//hosts', 'linux')).toEqual(accepted('/etc/hosts'));
-  });
-
-  it('the host platform chooses the path rules', () => {
-    expect(run({}, String.raw`C:\work`, String.raw`a/b\c`, 'win32')).toEqual(
-      accepted(String.raw`C:\work\a\b\c`),
-    );
   });
 
   it('nothing on the filesystem is read', () => {

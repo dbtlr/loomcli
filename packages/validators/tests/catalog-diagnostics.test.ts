@@ -80,11 +80,6 @@ const cases: Record<string, Expected> = {
     rule: 'one-of-values',
     sentence: 'oneOf() lists "dev" twice.',
   },
-  'path-check': {
-    correction: 'Supply an access or leave out kind.',
-    rule: 'path-check',
-    sentence: 'path() kind has no access to check.',
-  },
   'pattern-message': {
     correction: 'Supply a message that states what the pattern accepts.',
     rule: 'pattern-message',
