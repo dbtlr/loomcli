@@ -4054,19 +4054,19 @@ An extension is a typed fact a plugin defines and a declaration carries. `extens
 ```ts
 // src/help/extension.ts, abbreviated: the shipped module in First-party plugins adds the value rules
 import { extension } from '@loomcli/core';
-import { z } from 'zod';
+import { array, object, optional, string } from 'valibot';
 
 import { packageName } from '../constants.js';
 
 export const helpCommand = extension(`${packageName}/help/command`, {
-  schema: z.object({
-    details: z.string().optional(),
-    examples: z.array(z.object({ command: z.string(), note: z.string().optional() })).optional(),
+  schema: object({
+    details: optional(string()),
+    examples: optional(array(object({ command: string(), note: optional(string()) }))),
   }),
   target: 'command',
 });
 export const helpInput = extension(`${packageName}/help/input`, {
-  schema: z.object({ placeholder: z.string().optional() }),
+  schema: object({ placeholder: optional(string()) }),
   target: 'option',
 });
 ```
@@ -4349,50 +4349,65 @@ const app = new Application('example', {
 
 ```ts
 // src/lines.ts, the pack's line, prose, and Markdown rules, which belong to no subpath
-import { z } from 'zod';
+import { check, pipe, string } from 'valibot';
 
 const terminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
-export const line = z.string().refine((value) => /\S/u.test(value) && !terminator.test(value), {
-  message: 'Supply one line that holds a character other than whitespace.',
-});
-export const prose = z.string().refine((value) => value.split(/\r\n|[\n\v\f\r\u0085\u2028\u2029]/u).every((each) => /\S/u.test(each)), {
-  message: 'Supply prose whose every line holds a character other than whitespace.',
-});
-export const markdown = z.string().refine((value) => /\S/u.test(value), {
-  message: 'Supply Markdown that holds a character other than whitespace.',
-});
+export const line = pipe(
+  string(),
+  check(
+    (value) => /\S/u.test(value) && !terminator.test(value),
+    'Supply one line that holds a character other than whitespace.',
+  ),
+);
+export const prose = pipe(
+  string(),
+  check(
+    (value) => value.split(/\r\n|[\n\v\f\r\u0085\u2028\u2029]/u).every((each) => /\S/u.test(each)),
+    'Supply prose whose every line holds a character other than whitespace.',
+  ),
+);
+export const markdown = pipe(
+  string(),
+  check(
+    (value) => /\S/u.test(value),
+    'Supply Markdown that holds a character other than whitespace.',
+  ),
+);
 ```
 
 ```ts
 // src/help/extension.ts, the declarations module of the @loomcli/plugins/help subpath
 import { extension } from '@loomcli/core';
-import { z } from 'zod';
+import { array, object, optional, pipe, regex, strictTuple, string, union } from 'valibot';
 
 import { packageName } from '../constants.js';
 import { line, markdown } from '../lines.js';
 
-const sectionPath = z.union([z.tuple([line]), z.tuple([line, line])]);
+const example = object({ command: line, note: optional(line) });
+const sectionPath = union([strictTuple([line]), strictTuple([line, line])]);
+const sectionPaths = array(sectionPath);
+const word = pipe(string(), regex(/^[^\s\u0085]+$/u, 'Supply one word with no whitespace.'));
 
 export const helpCommand = extension(`${packageName}/help/command`, {
-  schema: z.object({
-    commandSections: z.array(sectionPath).optional(),
-    details: markdown.optional(),
-    examples: z.array(z.object({ command: line, note: line.optional() })).optional(),
-    optionSections: z.array(sectionPath).optional(),
-    section: sectionPath.optional(),
+  schema: object({
+    commandSections: optional(sectionPaths),
+    details: optional(markdown),
+    examples: optional(array(example)),
+    optionSections: optional(sectionPaths),
+    section: optional(sectionPath),
   }),
   target: 'command',
 });
 export const helpInput = extension(`${packageName}/help/input`, {
-  schema: z.object({
-    accepts: line.optional(),
-    placeholder: z.string().regex(/^[^\s\u0085]+$/u, 'Supply one word with no whitespace.').optional(),
-    section: sectionPath.optional(),
+  schema: object({
+    accepts: optional(line),
+    placeholder: optional(word),
+    section: optional(sectionPath),
   }),
   target: 'option',
 });
 export const helpArgument = extension(`${packageName}/help/argument`, {
-  schema: z.object({ accepts: line.optional() }),
+  schema: object({ accepts: optional(line) }),
   target: 'argument',
 });
 ```
@@ -4682,7 +4697,7 @@ The deprecated child `fetch` carries its message as the last fact of its row, an
 
 ```ts
 // The shared schema in the help declarations module.
-const sectionPath = z.union([z.tuple([line]), z.tuple([line, line])]);
+const sectionPath = union([strictTuple([line]), strictTuple([line, line])]);
 ```
 
 ```ts
@@ -5920,21 +5935,35 @@ The manifest plugin prints, for the routed Command, a self-contained JSON projec
 ```ts
 // src/manifest/extension.ts, the declarations module of the @loomcli/plugins/manifest subpath
 import { extension } from '@loomcli/core';
-import { z } from 'zod';
+import { array, object, optional, pipe, rawTransform, unknown } from 'valibot';
 
 import { packageName } from '../constants.js';
 // The pack's shared line and Markdown rules, which help's schema also uses.
 import { line, markdown } from '../lines.js';
-// failureEntry accepts { failure, meaning }, where failure is a class that extends LoomError,
+// readFailure reads a value as a class that extends LoomError and answers its failure code and
+// declared exit code, or the sentence that rejects it.
+import { readFailure } from './failures.js';
+
+// declaredFailure accepts { failure, meaning }, where failure is a class that extends LoomError,
 // and outputs { code, exitCode, meaning } from the class's failure code and declared exit code.
-import { failureEntry } from './failures.js';
+const declaredFailure = pipe(
+  object({ failure: optional(unknown()), meaning: line }),
+  rawTransform(({ addIssue, dataset, NEVER }) => {
+    const read = readFailure(dataset.value.failure);
+    if ('issue' in read) {
+      addIssue({ message: read.issue });
+      return NEVER;
+    }
+    return { code: read.code, exitCode: read.exitCode, meaning: dataset.value.meaning };
+  }),
+);
 
 export const manifestCommand = extension(`${packageName}/manifest/command`, {
   collect: true,
-  schema: z.object({
-    details: markdown.optional(),
-    examples: z.array(z.object({ command: line, note: line.optional() })).optional(),
-    failures: z.array(failureEntry).optional(),
+  schema: object({
+    details: optional(markdown),
+    examples: optional(array(object({ command: line, note: optional(line) }))),
+    failures: optional(array(declaredFailure)),
   }),
   target: 'command',
 });
@@ -6087,7 +6116,7 @@ export declare function config(settings?: ConfigSettings): Plugin<ConfigOptions>
 // src/config/extension.ts, the declarations module of the @loomcli/plugins/config subpath.
 // configPath is the dotted-path schema the rules below state.
 export const configInput = extension(`${packageName}/config/input`, {
-  schema: z.object({ path: configPath }),
+  schema: object({ path: configPath }),
   target: 'option',
 });
 ```
