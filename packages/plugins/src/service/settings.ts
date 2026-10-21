@@ -12,36 +12,24 @@ const longestLabel = 247;
 /** Two or more segments joined by `.`, each a letter or digit followed by letters, digits, and `-`. */
 const labelGrammar = /^[\dA-Za-z][\dA-Za-z-]*(?:\.[\dA-Za-z][\dA-Za-z-]*)+$/u;
 
-/** A control character, U+0000 to U+001F or U+007F to U+009F. */
-const controlCharacter = /\p{Cc}/u;
-
 /** Whether a label follows the grammar and fits its length. */
-function isLabel(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= longestLabel && labelGrammar.test(value);
-}
-
-/** Whether the text holds a control character, U+0000 to U+001F or U+007F to U+009F. */
-function holdsControlCharacter(text: string): boolean {
-  return controlCharacter.test(text);
+function isLabel(label: string): boolean {
+  return label.length <= longestLabel && labelGrammar.test(label);
 }
 
 /**
  * Judges the label at the `service()` call, the one setting whose grammar the types cannot carry,
- * and answers the settings. Settings are required, so none is the label fault. The graph judges
- * the run words.
+ * and answers the settings. The graph judges the run words.
  */
-function judgeSettings(settings: ServiceSettings | undefined): ServiceSettings {
-  const label: unknown = settings?.label;
-  if (settings === undefined || !isLabel(label)) {
+function judgeSettings(settings: ServiceSettings): ServiceSettings {
+  if (!isLabel(settings.label)) {
     throw new DeclarationError(serviceSettings, {
       correction: 'Supply a label such as com.acme.notes.',
-      findings: [
-        { arguments: settings === undefined ? [] : [settings], call: 'service', mark: '0.label' },
-      ],
+      findings: [{ arguments: [settings], call: 'service', mark: '0.label' }],
       sentence: `Plugin "${identity}" setting "label" is not a reverse-DNS name.`,
     });
   }
   return settings;
 }
 
-export { holdsControlCharacter, identity, isLabel, judgeSettings };
+export { identity, isLabel, judgeSettings };

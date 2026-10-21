@@ -79,7 +79,6 @@ const settingsCases: Record<string, Expected> = {
   'self-update-notices-env': noticesFault,
   'self-update-notices-hyphen': noticesFault,
   'service-label': labelFault,
-  'service-none': labelFault,
   'skills-name': skillsFault({
     correction: nameCorrection,
     sentence: 'holds a name that is not a skill name: Notes.',

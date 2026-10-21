@@ -12,8 +12,15 @@ import type { Backend, Service } from './backend.js';
 import { launchd } from './launchd.js';
 import { lines, refusals } from './messages.js';
 import type { Child } from './messages.js';
-import { holdsControlCharacter } from './settings.js';
 import { systemd } from './systemd.js';
+
+/** A control character, U+0000 to U+001F or U+007F to U+009F. */
+const controlCharacter = /\p{Cc}/u;
+
+/** Whether the text holds a control character, which would write extra directives into the unit. */
+function holdsControlCharacter(text: string): boolean {
+  return controlCharacter.test(text);
+}
 
 /** The unit file's mode whatever the umask, because launchd refuses a plist its group or others can write. */
 const unitMode = 0o644;
@@ -300,4 +307,4 @@ async function control(run: ChildRun, verb: keyof typeof controlLines): Promise<
 }
 
 export type { ChildRun, Prepared };
-export { control, installChild, isPresent, prepare, uninstallChild };
+export { control, holdsControlCharacter, installChild, isPresent, prepare, uninstallChild };

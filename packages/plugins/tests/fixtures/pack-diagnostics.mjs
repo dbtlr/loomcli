@@ -19,7 +19,6 @@ const scenarios = {
   'self-update-notices-env': () => selfUpdate({ notices: { env: '1X' } }),
   'self-update-notices-hyphen': () => selfUpdate({ notices: { env: 'A-B' } }),
   'service-label': () => service({ label: 'notes', run: ['serve'] }),
-  'service-none': () => service(),
   'skills-name': () => skills({ skills: [{ files: () => [], name: 'Notes' }] }),
   'skills-twice': () =>
     skills({
