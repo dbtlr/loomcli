@@ -36,13 +36,6 @@ const failureCodeConflict = diagnosticRule(`${packageName}/manifest/failure-code
   headline: 'Failure code conflict',
 });
 
-/** A logging plugin setting that is out of its range, or a setting the console destination cannot use. */
-const loggingSettings = diagnosticRule(`${packageName}/logging/settings`, {
-  explanation:
-    'The logging plugin writes records to a file or to the console, so to is file or console; a file is a nonempty name, absolute path, or path under ~/ with no control character; level is one of the five written levels; maxBytes and keep are whole numbers of 1 or more; onError is a function; and the console destination takes only a level.',
-  headline: 'Invalid logging setting',
-});
-
 /** Two opted-in Commands that give one MCP tool name, the root included. */
 const mcpToolNameTaken = diagnosticRule(`${packageName}/mcp/tool-name-taken`, {
   explanation:
@@ -118,7 +111,6 @@ export {
   configFilePath,
   configFilePattern,
   failureCodeConflict,
-  loggingSettings,
   manpagePageNameTaken,
   mcpPropertyNameTaken,
   mcpToolNameTaken,

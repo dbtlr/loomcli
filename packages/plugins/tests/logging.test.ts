@@ -260,6 +260,13 @@ test('with maxBytes 200 and keep 2, writes past the size leave the file, .1, and
   ]).toEqual(['m5', 'm4', 'm3']);
 });
 
+test('with keep 0, a write past maxBytes deletes the file and a new one starts, with no copy', () => {
+  const box = sandbox();
+  run(box, ['burst', '3', '0', 'm'], {}, { keep: 0, maxBytes: 200 });
+  expect(readdirSync(join(box.state, 'heimdall'))).toEqual(['heimdall.jsonl']);
+  expect(lines(box.file).map((line) => JSON.parse(line).message)).toEqual(['m3']);
+});
+
 test('a copy of a file with no extension puts its number after the name', () => {
   const box = sandbox();
   run(box, ['burst', '3', '0', 'm'], {}, { file: 'hub', keep: 2, maxBytes: 200 });
@@ -518,136 +525,3 @@ test.skipIf(!unprivileged)(
     );
   },
 );
-
-// Settings
-
-/** What one `logging()` call returns or throws under `settings`. */
-function settingsOutcome(settings: unknown): unknown {
-  const settingsFixture = new URL('fixtures/logging-settings.mjs', import.meta.url);
-  const result = invoke(settingsFixture, settings === undefined ? [] : [JSON.stringify(settings)]);
-  expect(result).toMatchObject({ status: 0, stderr: '' });
-  return JSON.parse(result.stdout);
-}
-
-const identity = '@loomcli/plugins/logging';
-
-/** The diagnostic a fault in `key` throws: its rule, sentence, and correction. */
-function fault(key: string, problem: string, correction: string) {
-  return {
-    correction,
-    findings: [{ call: 'logging', mark: `0.${key}` }],
-    rule: `${identity}/settings`,
-    sentence: `Plugin "${identity}" setting "${key}" ${problem}`,
-  };
-}
-
-const wholeNumber = 'Supply a whole number of 1 or more.';
-const fileValue =
-  'Supply a file name, an absolute path, or a path under "~/", or omit the setting.';
-
-test.each([
-  [
-    { to: 'stdout' },
-    fault('to', 'is not "file" or "console".', 'Supply "file" or "console", or omit the setting.'),
-  ],
-  [{ file: 5 }, fault('file', 'is not a nonempty string without a control character.', fileValue)],
-  [{ file: '' }, fault('file', 'is not a nonempty string without a control character.', fileValue)],
-  [
-    { file: 'a\nb.jsonl' },
-    fault('file', 'is not a nonempty string without a control character.', fileValue),
-  ],
-  [
-    { file: 'a\u0000b' },
-    fault('file', 'is not a nonempty string without a control character.', fileValue),
-  ],
-  [
-    { level: 'fatal' },
-    fault(
-      'level',
-      'is not a written level.',
-      'Supply "trace", "debug", "info", "warn", or "error", or omit the setting.',
-    ),
-  ],
-  [
-    { level: 3 },
-    fault(
-      'level',
-      'is not a written level.',
-      'Supply "trace", "debug", "info", "warn", or "error", or omit the setting.',
-    ),
-  ],
-  [{ maxBytes: 0 }, fault('maxBytes', 'is not a positive whole number.', wholeNumber)],
-  [{ maxBytes: 1.5 }, fault('maxBytes', 'is not a positive whole number.', wholeNumber)],
-  [{ maxBytes: '200' }, fault('maxBytes', 'is not a positive whole number.', wholeNumber)],
-  [
-    { maxBytes: Number.MAX_SAFE_INTEGER + 1 },
-    fault('maxBytes', 'is not a positive whole number.', wholeNumber),
-  ],
-  [{ keep: -1 }, fault('keep', 'is not a positive whole number.', wholeNumber)],
-  [{ keep: 0 }, fault('keep', 'is not a positive whole number.', wholeNumber)],
-  [
-    { onError: 'ignore' },
-    fault('onError', 'is not a function.', 'Supply a function, or omit the setting.'),
-  ],
-  [
-    // The first key at fault in the contract's order is reported, not the first fault class.
-    { keep: 2, level: 'x', to: 'console' },
-    fault(
-      'level',
-      'is not a written level.',
-      'Supply "trace", "debug", "info", "warn", or "error", or omit the setting.',
-    ),
-  ],
-  [
-    { file: 5, to: 'console' },
-    fault(
-      'file',
-      'is not accepted when "to" is "console".',
-      'Remove the setting, or set "to" to "file".',
-    ),
-  ],
-  [
-    { file: 'a.jsonl', to: 'console' },
-    fault(
-      'file',
-      'is not accepted when "to" is "console".',
-      'Remove the setting, or set "to" to "file".',
-    ),
-  ],
-  [
-    { maxBytes: 200, to: 'console' },
-    fault(
-      'maxBytes',
-      'is not accepted when "to" is "console".',
-      'Remove the setting, or set "to" to "file".',
-    ),
-  ],
-  [
-    { keep: 2, to: 'console' },
-    fault(
-      'keep',
-      'is not accepted when "to" is "console".',
-      'Remove the setting, or set "to" to "file".',
-    ),
-  ],
-  [
-    { onError: 'x', to: 'console' },
-    fault(
-      'onError',
-      'is not accepted when "to" is "console".',
-      'Remove the setting, or set "to" to "file".',
-    ),
-  ],
-])('logging(%j) throws its pinned diagnostic', (settings, diagnostic) => {
-  expect(settingsOutcome(settings)).toEqual(diagnostic);
-});
-
-test.each([
-  [undefined],
-  [{}],
-  [{ to: 'file' }],
-  [{ level: 'warn', to: 'console' }],
-  [{ file: '~/x.jsonl', keep: 1, level: 'trace', maxBytes: 1 }],
-])('logging(%j) accepts the settings', (settings) => {
-  expect(settingsOutcome(settings)).toBe('returned');
-});

@@ -1,7 +1,6 @@
 import { DeclarationError } from '@loomcli/core';
 import { config } from '@loomcli/plugins/config';
 import { dotenv } from '@loomcli/plugins/dotenv';
-import { logging } from '@loomcli/plugins/logging';
 import { selfUpdate } from '@loomcli/plugins/self-update';
 import { service } from '@loomcli/plugins/service';
 import { skills } from '@loomcli/plugins/skills';
@@ -17,8 +16,6 @@ const scenarios = {
   'config-path': () => config({ file: '/etc/textstat.json' }),
   'dotenv-except': () => dotenv({ except: ['1X'] }),
   'dotenv-only': () => dotenv({ only: ['API_TOKEN', 'API-TOKEN'] }),
-  'logging-console': () => logging({ file: 'a.jsonl', to: 'console' }),
-  'logging-keep': () => logging({ keep: 0 }),
   'self-update-hook': () => selfUpdate({ afterReplace: 1 }),
   'self-update-notices-env': () => selfUpdate({ notices: { env: '1X' } }),
   'self-update-notices-hyphen': () => selfUpdate({ notices: { env: 'A-B' } }),

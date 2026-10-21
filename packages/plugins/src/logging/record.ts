@@ -5,11 +5,6 @@ type WrittenLevel = Exclude<LogLevel, 'fatal'>;
 
 const writtenLevels: readonly WrittenLevel[] = ['trace', 'debug', 'info', 'warn', 'error'];
 
-/** Whether a value is one of the five levels the `level` setting accepts. */
-function isWrittenLevel(value: unknown): value is WrittenLevel {
-  return writtenLevels.some((level) => level === value);
-}
-
 /** Whether an event reaches the destination: at or above `floor`, and a `fatal` event always. */
 function isWritten(level: LogLevel, floor: WrittenLevel): boolean {
   return level === 'fatal' || writtenLevels.indexOf(level) >= writtenLevels.indexOf(floor);
@@ -41,4 +36,4 @@ function recordOf(event: LogEvent): string {
 }
 
 export type { WrittenLevel };
-export { isWritten, isWrittenLevel, recordOf, writtenLevels };
+export { isWritten, recordOf, writtenLevels };

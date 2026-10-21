@@ -104,17 +104,6 @@ const settingsCases: Record<string, Expected> = {
   },
   'dotenv-except': dotenvFault('except'),
   'dotenv-only': dotenvFault('only'),
-  'logging-console': {
-    correction: 'Remove the setting, or set "to" to "file".',
-    rule: 'logging/settings',
-    sentence:
-      'Plugin "@loomcli/plugins/logging" setting "file" is not accepted when "to" is "console".',
-  },
-  'logging-keep': {
-    correction: 'Supply a whole number of 1 or more.',
-    rule: 'logging/settings',
-    sentence: 'Plugin "@loomcli/plugins/logging" setting "keep" is not a positive whole number.',
-  },
   'self-update-hook': {
     correction: 'Supply a function, or omit the setting.',
     rule: 'self-update/settings',

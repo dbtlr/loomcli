@@ -55,10 +55,15 @@ function unlessMissing(operation: () => void): void {
 
 /**
  * Deletes the copy past `keep`, shifts each older copy up one, and renames the file to the first
- * copy. A copy that is not there is skipped, and so is a file that is not there: another process
- * rotated it first, and the record then goes to the file now at the path.
+ * copy. With `keep` 0 the file is deleted, as logrotate's `rotate 0` does. A copy that is not there
+ * is skipped, and so is a file that is not there: another process rotated it first, and the record
+ * then goes to the file now at the path.
  */
 function rotate(path: string, keep: number): void {
+  if (keep < FIRST) {
+    unlessMissing(() => unlinkSync(path));
+    return;
+  }
   unlessMissing(() => unlinkSync(copyName(path, keep)));
   for (let number = keep - FIRST; number >= FIRST; number -= FIRST) {
     unlessMissing(() => renameSync(copyName(path, number), copyName(path, number + FIRST)));
