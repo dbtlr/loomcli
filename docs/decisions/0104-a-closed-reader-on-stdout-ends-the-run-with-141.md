@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0104 - A closed reader on stdout ends the run with 141
-description: When a write to run()'s own stdout fails with EPIPE, core aborts the run signal with the closed-pipe reason, writes no report and no incomplete-result line, and resolves 141, the status the SIGPIPE convention gives. Every other failed write stays a broken destination with exit 1.
+description: When a write to run()'s own stdout fails because its reader closed it, reported as EPIPE, or as ENOTCONN on a macOS socket, core aborts the run signal with the closed-pipe reason, writes no report and no incomplete-result line, and resolves 141, the status the SIGPIPE convention gives. Every other failed write stays a broken destination with exit 1.
 status: proposed
 created: 2026-10-21
 modified: 2026-10-21
@@ -19,7 +19,7 @@ Command-line tools treat a closed reader as the end of the run, not as a defect.
 
 ## Decision
 
-- **Only the run's own stdout.** A write to `run()`'s stdout that fails with the error code `EPIPE` ends the run. Detection reads the code, so it holds under Node and Bun alike. A stdout that is also the run's stderr does not end the run this way.
+- **Only the run's own stdout.** A write to `run()`'s stdout that fails with the error code `EPIPE` ends the run. A stdout that is a socket, which a parent spawning through libuv hands its child, reports the same closed reader as `ENOTCONN` on macOS when Bun writes it with `send()` after the peer is gone, so that code ends the run too. Detection reads the code, so it holds under Node and Bun alike. A stdout that is also the run's stderr does not end the run this way.
 - **A cause of the run signal.** Core aborts the run signal with the `CancellationReason` source `closed-pipe`, whose `cause` is the failed write's error. The first-cause rule of ADR-0018 holds: a pipe that closes after `SIGINT` keeps 130, and `SIGINT` after a closed pipe keeps 141. For a plugin that owns the signals slot, `SIGINT` after a closed pipe takes the existing force path, as after any cause.
 - **141, with nothing on stderr.** The run resolves 141 in a distributed and a development build. Core writes no failure report, no incomplete-result line, and no failure event for the closed pipe.
 - **Writes reject with the signal's reason.** The write that met the closed pipe and every later stdout write reject with the run signal's reason. An action that awaits a write stops there, and one that lets the rejection propagate stays silent, because a thrown value that is the signal's reason is silent under ADR-0018. A streaming row source stops as it does on any cancellation.
@@ -46,3 +46,4 @@ Proposed. It moves to accepted with the release that ships the closed-pipe rule,
 ## Changelog
 
 - 2026-10-21: Proposed with the implementation.
+- 2026-10-21: Revised before acceptance. `ENOTCONN` joins `EPIPE`, because Bun 1.4.0 on macOS reports a socket stdout's closed reader with it.

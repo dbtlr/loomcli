@@ -39,6 +39,21 @@ test('an action awaiting a print sees it reject with the run signal reason, and 
   });
 });
 
+test('a socket stdout whose reader closed, which macOS reports as ENOTCONN, ends the run as a closed pipe', () => {
+  expect(run('closed-socket')).toEqual({
+    status: 141,
+    stderr: '',
+    stdout: [
+      'stdout:line 0',
+      'rejected:true:aborted:true',
+      'reason:closed-pipe:write ENOTCONN',
+      'failures:0',
+      'resolved:141',
+      '',
+    ].join('\n'),
+  });
+});
+
 test('the first cause to abort the run fixes the code between a caller abort and a closed pipe', () => {
   expect(run('caller-first')).toMatchObject({ status: 130, stderr: '' });
   expect(run('pipe-first')).toEqual({

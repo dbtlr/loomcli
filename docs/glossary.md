@@ -358,7 +358,7 @@ The one cancellation signal a run creates and hands to every middleware and the 
 _Avoid_: Abort controller (for the concept), cancellation token, interrupt
 
 **Closed pipe**:
-The reader of a run's stdout closing the pipe, as `head -1` does once it has its line, so the run's next stdout write fails with `EPIPE`. It ends the run as a cause of the run signal and exits 141, following the `SIGPIPE` convention; it is not a broken destination, which every other failed write is.
+The reader of a run's stdout closing the pipe, as `head -1` does once it has its line, so the run's next stdout write fails with `EPIPE`, or with `ENOTCONN` on a macOS socket. It ends the run as a cause of the run signal and exits 141, following the `SIGPIPE` convention; it is not a broken destination, which every other failed write is.
 _Avoid_: Broken pipe (for the run's end), SIGPIPE (core receives no signal)
 
 **Signals owner**:

@@ -80,6 +80,17 @@ const scenarios = {
     }),
     host: { stdout: closing('EPIPE', 0) },
   }),
+  // A socket stdout whose reader closed, which XNU's send() reports as ENOTCONN once the peer is gone.
+  'closed-socket': () => ({
+    app: application(async (context) => {
+      try {
+        await printUntilRefused(context);
+      } finally {
+        printed.push(describe(context.signal));
+      }
+    }),
+    host: { stdout: closing('ENOTCONN', 1) },
+  }),
   // A stdout that fails with another code is a broken destination.
   'full-disk': () => ({
     app: application(({ out }) => out.print('lost')),

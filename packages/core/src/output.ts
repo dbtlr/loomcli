@@ -49,11 +49,20 @@ function refusal(state: Exclude<DestinationState, { kind: 'ok' }>): unknown {
 }
 
 /**
- * Whether one write failed because the reader of the pipe closed it. Node and Bun both report it
- * with the code `EPIPE`.
+ * The codes a write reports once the reader of the run's stdout is gone. A pipe reports `EPIPE`
+ * under Node and Bun. A socket stdout, which a parent that spawns through libuv hands its child,
+ * reports `ENOTCONN` on macOS when Bun writes it with `send()` and the peer is already gone.
  */
+const closedReaderCodes: ReadonlySet<unknown> = new Set(['EPIPE', 'ENOTCONN']);
+
+/** Whether one write failed because the reader of the run's stdout closed its end. */
 function closedPipe(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'EPIPE';
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    closedReaderCodes.has(error.code)
+  );
 }
 
 /**
