@@ -25,16 +25,19 @@ export const stringMap = pipe(
   jsonObject,
   rawTransform(({ addIssue, dataset, NEVER }) => {
     const entries: [string, string][] = [];
+    let failed = false;
     for (const [key, value] of Object.entries(dataset.value)) {
-      if (typeof value !== 'string') {
+      if (typeof value === 'string') {
+        entries.push([key, value]);
+      } else {
+        // Every wrong value is an issue of its own, so the operator sees each key at once.
+        failed = true;
         addIssue({
           message: `Invalid type: Expected string but received ${JSON.stringify(value)}`,
           path: [{ input: dataset.value, key, origin: 'value', type: 'object', value }],
         });
-        return NEVER;
       }
-      entries.push([key, value]);
     }
-    return Object.fromEntries(entries);
+    return failed ? NEVER : Object.fromEntries(entries);
   }),
 );
