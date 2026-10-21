@@ -839,3 +839,4 @@ _Avoid_: Diagnostic rule (for a lint rule), `loom check`
 **Assembly check**:
 The check from `@loomcli/testing` that a test runs to prove an Application assembles: it applies every build rule except the validation of declared defaults and implied values, and fails the test with each fault's Developer Diagnostic.
 _Avoid_: `loom check`, smoke test, health check
+
