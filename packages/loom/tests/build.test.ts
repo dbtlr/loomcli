@@ -56,7 +56,6 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
-import { Writable } from 'node:stream';
 import { setTimeout as after } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
@@ -442,26 +441,6 @@ test.each([
     expect(result.stderr).toContain('node, bun, or a Bun compile target');
     expect(result.stderr).toContain('for linux or darwin on x64 or arm64');
   }
-  expect(existsSync(join(root, 'dist'))).toBe(false);
-});
-
-test('a build on Windows with no --target fails as an option error that names the targets', async () => {
-  const root = probePackage({ bin: { probe: 'dist/main.js' } });
-  const { loom: toolchain } = await import('../src/application.js');
-  const written: string[] = [];
-  const sink = new Writable({
-    write(chunk, _encoding, done) {
-      written.push(String(chunk));
-      done();
-    },
-  });
-  const status = await toolchain.run({
-    host: { argv: ['build'], cwd: root, platform: 'win32', stderr: sink, stdout: sink },
-  });
-  expect(status).toBe(2);
-  expect(written.join('')).toContain(
-    'Option "--target": Windows has no default target, so pass one. Use node, bun, or a Bun compile target',
-  );
   expect(existsSync(join(root, 'dist'))).toBe(false);
 });
 

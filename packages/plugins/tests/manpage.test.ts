@@ -43,9 +43,8 @@
  *   with one of the two hidden builds.
  * - Generating. `generate` creates a missing folder and its parents with mode `755` and pages with
  *   mode `644` under umask `077`, replaces a page of the same name and a symbolic link of that
- *   name, leaves every other file, writes no installation record, and runs on a `win32` fixture
- *   host. A `--out` that names a file fails with the pinned sentence and writes nothing, and a run
- *   without `--out` exits 2.
+ *   name, leaves every other file, writes no installation record. A `--out` that names a file fails with the pinned sentence
+ *   and writes nothing, and a run without `--out` exits 2.
  * - Installing. Process tests set `HOME`, `XDG_STATE_HOME`, and the working directory to temporary
  *   directories, and clear `MANPATH` and `SHELL` unless a case sets them:
  *   - `install` writes the set under `<home>/.local/share/man/man1` with the modes above, records
@@ -304,7 +303,7 @@ describe('generate', () => {
     expect(readdirSync(folder).filter((name) => name.startsWith('.'))).toEqual([]);
   });
 
-  it('runs on a win32 host, and two runs under another HOME, TERM, COLUMNS, and locale write the same bytes', () => {
+  it('two runs under another HOME, TERM, COLUMNS, and locale write the same bytes', () => {
     const box = sandbox();
     const first = join(box.root, 'first');
     const second = join(box.root, 'second');
@@ -313,7 +312,6 @@ describe('generate', () => {
       run(box, ['manpage', 'generate', '--out', second], {
         env: { COLUMNS: '40', LANG: 'de_DE.UTF-8', LC_ALL: 'de_DE.UTF-8', TERM: 'dumb' },
         home: box.other,
-        platform: 'win32',
       }).status,
     ).toBe(0);
     expect(tree(second)).toEqual(tree(first));

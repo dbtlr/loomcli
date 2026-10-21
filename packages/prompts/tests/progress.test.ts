@@ -260,16 +260,13 @@ test("under app.invoke a line's fail and track's failed message is its failed ev
   ]);
 });
 
-test.skipIf(process.platform === 'win32')(
-  "SIGINT under a signals owner writes the line's cancelled line, exits 130, and leaves no timer",
-  async () => {
-    const running = start(fixture, ['signal', 'tty'], { env: plain });
-    await running.announced('READY');
-    running.child.kill('SIGINT');
-    const exit = await running.exit;
-    expect(exit.signal).toBeNull();
-    const run: Run = JSON.parse(exit.stdout.slice(exit.stdout.indexOf('{')));
-    expect(run.code).toBe(130);
-    await expect(screen(run)).resolves.toEqual(['■ Waiting for SIGINT (cancelled)']);
-  },
-);
+test("SIGINT under a signals owner writes the line's cancelled line, exits 130, and leaves no timer", async () => {
+  const running = start(fixture, ['signal', 'tty'], { env: plain });
+  await running.announced('READY');
+  running.child.kill('SIGINT');
+  const exit = await running.exit;
+  expect(exit.signal).toBeNull();
+  const run: Run = JSON.parse(exit.stdout.slice(exit.stdout.indexOf('{')));
+  expect(run.code).toBe(130);
+  await expect(screen(run)).resolves.toEqual(['■ Waiting for SIGINT (cancelled)']);
+});
