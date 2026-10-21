@@ -619,62 +619,6 @@ test('reports an optional variadic argument with its declared default', () => {
   ]);
 });
 
-test.each([
-  [
-    'nonboolean-variadic',
-    'The root Command argument "files" declares variadic that is not a Boolean. Use true or false.',
-  ],
-  [
-    'nonboolean-required',
-    'The root Command option "size" declares required that is not a Boolean. Use true or false.',
-  ],
-  [
-    'nonboolean-omitted',
-    'The root Command option "file" declares validateOmitted that is not a Boolean. Use true or false.',
-  ],
-  [
-    'numeric-omitted',
-    'The root Command option "file" declares validateOmitted that is not a Boolean. Use true or false.',
-  ],
-  [
-    'null-omitted',
-    'The root Command option "file" declares validateOmitted that is not a Boolean. Use true or false.',
-  ],
-  [
-    'undefined-omitted',
-    'The root Command option "file" declares validateOmitted that is not a Boolean. Use true or false.',
-  ],
-  [
-    'required-default',
-    'Option "depth" is required and declares a default. Remove the default or make the input optional.',
-  ],
-  [
-    'boolean-validate',
-    'Option "total" is Boolean and declares validate. Remove validate; use polarity to control its absent value.',
-  ],
-  [
-    'boolean-default',
-    'Option "total" is Boolean and declares default. Remove default; use polarity to control its absent value.',
-  ],
-  [
-    'foreign-schema',
-    'Option "size" validate must be a Standard Schema v1 object. Supply a compatible validator.',
-  ],
-  [
-    'multiple-default',
-    'Option "field" default must be an array of strings without a validator. Supply a string array default.',
-  ],
-] satisfies [string, string][])(
-  'the call that declares the %s input throws before inspect() or run()',
-  (graph, message) => {
-    expect(invoke(new URL('fixtures/inspect.mjs', import.meta.url), [graph, 'declare'])).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: `thrown:1: ${message}\n`,
-    });
-  },
-);
-
 test('inspect() leaves a default that only its validator rejects to run()', () => {
   expect(invokeInspect('schema-default', 'catch')).toEqual({ caught: false });
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), [
@@ -689,10 +633,6 @@ test('run() still reports a build fault with code 1', () => {
   const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), ['invalid', 'run']);
   expect(result.stderr).toBe('invalid: Something went wrong.\n');
   expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
-});
-
-test('copies and freezes a declared default that has no prototype', () => {
-  expect(invokeInspect('bare', 'default')).toEqual({ rejected: true, value: { depth: '1' } });
 });
 
 test('returns frozen data and builds a new graph on each call', () => {

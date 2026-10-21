@@ -134,9 +134,3 @@ test('a hook that throws on the fatal event is reported once and the run logs no
   expect(distributed.calls).toBe(1);
   expect(distributed.written).toBe('probe: Something went wrong.\n');
 });
-
-test('plugin() rejects an onLog that is not a function', () => {
-  expect(run('not-function').stdout).toContain(
-    'thrown:1: Plugin "@acme/stacks" declares onLog that is not a function. Supply a function of the log event and its destination.\n',
-  );
-});

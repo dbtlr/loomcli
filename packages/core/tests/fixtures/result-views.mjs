@@ -44,7 +44,6 @@ const scenarios = {
   // The same call before the action, which the declaration publishes in every state.
   'before-action': () =>
     new Command('paths').rows({ views: { list, table } }).views({ wide }).action(act),
-  'missing-default': () => imported().views({ wide }).views({}, { default: 'narrow' }),
   'move-default': () => imported().views({ wide }, { default: 'wide' }),
   'persist-default': () => imported().views({ wide }, { default: 'wide' }).views({ narrow }),
   replace: () => imported().views({ list: relisted }),

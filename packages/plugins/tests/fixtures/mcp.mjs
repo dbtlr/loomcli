@@ -163,6 +163,29 @@ function listing() {
     .action(dispatch);
 }
 
+/** Descriptions and deprecation messages an author wrote across several lines. */
+function multiline() {
+  const fetch = new Command('fetch', {
+    deprecated: 'Use get\ninstead.',
+    description: 'Read one value\r\nat a path.',
+    extensions: [mcpCommand({})],
+  })
+    .argument('path', { description: 'The\npath.' })
+    .option('depth', {
+      deprecated: 'Use\n--level.',
+      description: 'How deep\nto walk.',
+      type: 'string',
+    })
+    .action(dispatch);
+  return new Application('kit', {
+    description: 'A fixture\nkit.',
+    plugins: [mcp()],
+    version: '1.2.3',
+  })
+    .command(fetch)
+    .action(dispatch);
+}
+
 /** Resolves when the call's signal aborts, reporting both moments on the process's own stderr. */
 function waitForAbort({ args, signal }) {
   process.stderr.write(`started ${args.label}\n`);
@@ -425,7 +448,7 @@ function fitted() {
   }).command(grid);
 }
 
-const scenarios = { calls, columns, fitted, listing, progress, ...faults };
+const scenarios = { calls, columns, fitted, listing, multiline, progress, ...faults };
 
 const [name, ...argv] = process.argv.slice(2);
 

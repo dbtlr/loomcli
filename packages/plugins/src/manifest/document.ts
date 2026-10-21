@@ -9,6 +9,7 @@ import type {
 } from '@loomcli/core';
 
 import { encodeText } from '../encode.js';
+import { singleLineOf } from '../lines.js';
 import { visibleOptionGroups } from '../option-groups.js';
 import { isPlainJson } from '../plain-data.js';
 import { failureCodeConflict } from '../rules.js';
@@ -150,12 +151,20 @@ function defaultOf(node: { readonly default: { readonly value: unknown } | undef
     : { value: node.default.value };
 }
 
+/**
+ * A description or a migration message as the document carries it: on one line, a line break the
+ * author wrote read as a space, or `null` for none.
+ */
+function lineOf(text: string | undefined): string | null {
+  return singleLineOf(text) ?? null;
+}
+
 /** One option's entry: its node without `hidden`, `aliases`, `extensions`, and the schema-run flags. */
 function optionEntry(node: OptionNode): ManifestOption {
   const common = {
     name: node.name,
-    description: node.description ?? null,
-    deprecated: node.deprecated ?? null,
+    description: lineOf(node.description),
+    deprecated: lineOf(node.deprecated),
     control: node.control,
     long: node.long,
     short: node.short,
@@ -213,7 +222,7 @@ function argumentEntry(node: ArgumentNode): ManifestArgument {
       ? { type: 'content' as const, stdin: node.stdin ?? false, min: node.min, max: node.max }
       : {}),
     name: node.name,
-    description: node.description ?? null,
+    description: lineOf(node.description),
     required: node.required,
     variadic: node.variadic,
     schema: node.schema,
@@ -350,10 +359,17 @@ function exitCodeTable(root: CommandNode): Readonly<Record<string, string>> {
 function commandEntry(node: CommandNode): ManifestCommand {
   const values = readExtension(node, manifestCommand);
   return {
-    ...(node.stdin !== undefined ? { stdin: node.stdin } : {}),
+    ...(node.stdin !== undefined
+      ? {
+          stdin: {
+            ...node.stdin,
+            description: singleLineOf(node.stdin.description),
+          },
+        }
+      : {}),
     name: node.name,
     path: node.path,
-    description: node.description ?? null,
+    description: lineOf(node.description),
     details: values.flatMap((value) => (value.details === undefined ? [] : [value.details])),
     examples: values.flatMap((value) =>
       (value.examples ?? []).map((example) => ({
@@ -361,7 +377,7 @@ function commandEntry(node: CommandNode): ManifestCommand {
         note: example.note ?? null,
       })),
     ),
-    deprecated: node.deprecated ?? null,
+    deprecated: lineOf(node.deprecated),
     hasAction: node.hasAction,
     result:
       node.result === null
@@ -390,7 +406,7 @@ function manifestDocument(graph: CommandGraph, command: CommandNode): ManifestDo
   return {
     name: graph.name,
     version: graph.version,
-    description: graph.description ?? null,
+    description: lineOf(graph.description),
     tokens,
     exitCodes: exitCodeTable(graph.root),
     encodings,

@@ -16,15 +16,6 @@ const overrides =
           ),
     ]),
   );
-if (input.invalidValue) {
-  const invalid = {
-    applied: style.red('x'),
-    null: null,
-    reserved: style.red,
-    semantic: style.info,
-  };
-  overrides[input.invalidValue === 'reserved' ? 'red' : 'highlight'] = invalid[input.invalidValue];
-}
 let plugins = [loomTheme(overrides)];
 if (input.bare) {
   plugins = [theme({})];

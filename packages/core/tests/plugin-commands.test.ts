@@ -77,10 +77,6 @@ const rejected = [
     'Option "quiet" is declared as a global option and as a local option on Command "doctor". Rename the local option.',
   ],
   [
-    'global-after-command',
-    'The Application declares global option "file" after command() or action(). Declare global options before attaching Commands or registering an action.',
-  ],
-  [
     'root-arguments',
     'The root Command declares argument "files" and attaches child "doctor". Move the argument into a child Command or remove the children.',
   ],
@@ -88,10 +84,6 @@ const rejected = [
   [
     'plugin-repeated-name',
     'The root Command attaches two children named "doctor". Rename or remove one.',
-  ],
-  [
-    'plugin-deep-group',
-    'Command "kit" attaches child "tools", which has children of its own. Nest Commands at most two levels below the root.',
   ],
 ] satisfies [string, string][];
 

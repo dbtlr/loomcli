@@ -64,6 +64,17 @@ test('jsonkit fetch --manifest carries the deprecation, and debug --manifest pri
   expect(pinned('root')).not.toContain('"name": "debug"');
 });
 
+test('jsonkit stats depth max --manifest prints the slice of the Command three levels down', () => {
+  const max = routed.parse(
+    JSON.parse(invoke(main, ['stats', 'depth', 'max', '--manifest']).stdout),
+  );
+  expect(max.command).toEqual({
+    deprecated: null,
+    description: 'Print the deepest nesting level under a path.',
+    name: 'max',
+  });
+});
+
 /** The routed entry's declared failures, parsed at the boundary. */
 const declared = z.object({
   command: z.object({

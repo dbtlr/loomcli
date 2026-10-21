@@ -726,6 +726,108 @@
         "children": []
       },
       {
+        "name": "stats",
+        "path": [
+          "stats"
+        ],
+        "description": "Report facts about the document's shape.",
+        "details": [],
+        "examples": [],
+        "deprecated": null,
+        "hasAction": false,
+        "result": null,
+        "failures": [],
+        "arguments": [],
+        "optionGroups": [],
+        "options": [],
+        "children": [
+          {
+            "name": "depth",
+            "path": [
+              "stats",
+              "depth"
+            ],
+            "description": "Measure how deeply the document nests.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": false,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "optionGroups": [],
+            "options": [],
+            "children": [
+              {
+                "name": "max",
+                "path": [
+                  "stats",
+                  "depth",
+                  "max"
+                ],
+                "description": "Print the deepest nesting level under a path.",
+                "details": [],
+                "examples": [
+                  {
+                    "command": "stats depth max user -f doc.json",
+                    "note": null
+                  }
+                ],
+                "deprecated": null,
+                "hasAction": true,
+                "result": null,
+                "failures": [
+                  {
+                    "code": "path-not-found",
+                    "exitCode": 65,
+                    "meaning": "The path names no value in the document."
+                  },
+                  {
+                    "code": "invalid-json",
+                    "exitCode": 65,
+                    "meaning": "The document is not valid JSON."
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "path",
+                    "description": "Dot path to measure. Omit it for the root.",
+                    "required": false,
+                    "variadic": false,
+                    "schema": null,
+                    "default": null
+                  }
+                ],
+                "optionGroups": [],
+                "options": [
+                  {
+                    "type": "content",
+                    "stdin": true,
+                    "name": "file",
+                    "description": "The document to read. Omit it to read piped text.",
+                    "deprecated": null,
+                    "control": false,
+                    "long": "--file",
+                    "short": "-f",
+                    "required": true,
+                    "requiredWhen": null,
+                    "multiple": false,
+                    "schema": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "env": [],
+                    "default": null,
+                    "implied": null
+                  }
+                ],
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
         "name": "fetch",
         "path": [
           "fetch"

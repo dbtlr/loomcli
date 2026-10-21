@@ -1,4 +1,3 @@
-import { spelled } from './diagnostic-text.js';
 import {
   asSentence,
   DeclarationError,
@@ -10,8 +9,7 @@ import {
 } from './errors.js';
 import { partFinding } from './facts.js';
 import type { FactSite } from './facts.js';
-import { foreignValue, notAFunction, notAList, translationKey } from './plugin-rules.js';
-import { prototypeChain } from './prototypes.js';
+import { foreignValue, foreignValueCorrection } from './plugin-rules.js';
 import { brokenTranslator, brokenTranslatorCorrection } from './rules.js';
 import { ignoreRejection, isThenable } from './thenable.js';
 
@@ -33,7 +31,7 @@ type Translator<Thrown extends object> = (error: Thrown) => LoomError | undefine
 /** One translation as core reads it back: the key's prototype, its name, and the typed call. */
 interface TranslationRecord {
   /** The object a thrown value's prototype chain holds when the key's class constructed it. */
-  prototype: object;
+  prototype: unknown;
   /** The key's name, which a broken translator's diagnostic reports. */
   name: string;
   /**
@@ -59,56 +57,9 @@ class TranslationDeclaration {
 /** An opaque translation pairing one error class with the translator that answers it. */
 type Translation = Pick<TranslationDeclaration, typeof translation>;
 
-/**
- * The prototype a class key carries, or `undefined` for a value that is not a class. A class is a
- * function whose `prototype` is the object its instances' chains hold, so an arrow function, a
- * bound function, and every non-function are no key at all. A key whose `prototype` cannot be
- * read, such as a proxy whose trap throws, is no key either.
- */
-function keyPrototype(key: unknown): object | undefined {
-  let prototype: unknown = undefined;
-  try {
-    if (typeof key !== 'function' || !('prototype' in key)) {
-      return undefined;
-    }
-    prototype = key.prototype;
-  } catch {
-    return undefined;
-  }
-  return typeof prototype === 'object' && prototype !== null ? prototype : undefined;
-}
-
-/** A key's own name, or `undefined` when it has none that can be read. */
-function nameOf(key: object): string | undefined {
-  let name: unknown = undefined;
-  try {
-    name = 'name' in key ? key.name : undefined;
-  } catch {
-    name = undefined;
-  }
-  return typeof name === 'string' && name !== '' ? name : undefined;
-}
-
-/**
- * How a diagnostic names one key class: its name, quoted and escaped, or what it is when it has no
- * name that can be read.
- */
-function keyName(key: object): string {
-  const name = nameOf(key);
-  return name === undefined ? 'an anonymous class' : quoted(name);
-}
-
-/** A name JavaScript source can spell as an identifier, which a finding prints a class key as. */
-const identifier = /^[A-Za-z_$][\w$]*$/u;
-
-/**
- * The finding for one `translate()` call, marking the argument at `mark`. A class key prints as
- * its name, as its author wrote it, where any other function prints as an ellipsis.
- */
-function translateFinding(key: unknown, translator: unknown, mark: string) {
-  const name = typeof key === 'function' ? nameOf(key) : undefined;
-  const code = name !== undefined && identifier.test(name) ? spelled(name) : key;
-  return { arguments: [code, translator], call: 'translate', mark };
+/** How a diagnostic names one key class: its name, quoted and escaped, or what it is without one. */
+function keyName(key: { readonly name: string }): string {
+  return key.name === '' ? 'an anonymous class' : quoted(key.name);
 }
 
 /**
@@ -132,32 +83,7 @@ function translate<Thrown extends object>(
   key: ErrorClass<Thrown>,
   translator: Translator<Thrown>,
 ): Translation {
-  const prototype = keyPrototype(key);
-  // A key whose prototype's chain cannot be read, such as through a proxy whose trap throws, is no
-  // Key either, so it is reported as a non-class before any failure-class check.
-  const chain = prototype === undefined ? undefined : prototypeChain(prototype);
-  if (prototype === undefined || chain === undefined) {
-    throw new DeclarationError(translationKey, {
-      correction: 'Supply an error class, such as SyntaxError.',
-      findings: [translateFinding(key, translator, '0')],
-      sentence: 'translate() received a key that is not a class.',
-    });
-  }
-  // Core never offers a failure to translators, so a translation keyed on a failure class never runs.
-  if (prototype === LoomError.prototype || chain.includes(LoomError.prototype)) {
-    throw new DeclarationError(translationKey, {
-      correction: 'Key the translation on the foreign class it replaces.',
-      findings: [translateFinding(key, translator, '0')],
-      sentence: 'translate() received a failure class as its key.',
-    });
-  }
-  if (typeof translator !== 'function') {
-    throw new DeclarationError(notAFunction, {
-      correction: 'Supply a function that returns a failure or undefined.',
-      findings: [translateFinding(key, translator, '1')],
-      sentence: 'translate() received a translator that is not a function.',
-    });
-  }
+  const prototype: unknown = key.prototype;
   return new TranslationDeclaration({
     name: keyName(key),
     offer: (thrown) => (claims(thrown, key) ? translator(thrown) : undefined),
@@ -172,7 +98,7 @@ function translate<Thrown extends object>(
 interface TranslationContributor {
   /** The contributor as a diagnostic's subject, such as `the Application` or `plugin "@acme/http"`. */
   subject: string;
-  byPrototype: ReadonlyMap<object, readonly TranslationRecord[]>;
+  byPrototype: ReadonlyMap<unknown, readonly TranslationRecord[]>;
 }
 
 /**
@@ -184,11 +110,14 @@ type TranslatorRegistry = readonly TranslationContributor[];
 /**
  * One contributor's `translators` list. `site` names the contributor at the start of a sentence,
  * `The Application` or `Plugin "@acme/http"`, and holds the call that declared the list, which a
- * fault marks. The slot is read defensively, because a JavaScript author reaches it with any value.
+ * fault marks.
  */
-function readTranslations(site: FactSite, declared: unknown): TranslationContributor {
+function readTranslations(
+  site: FactSite,
+  declared: readonly Translation[] | undefined,
+): TranslationContributor {
   const sentence = site.subject;
-  const byPrototype = new Map<object, TranslationRecord[]>();
+  const byPrototype = new Map<unknown, TranslationRecord[]>();
   for (const record of translationRecords(site, declared)) {
     const listed = byPrototype.get(record.prototype) ?? [];
     listed.push(record);
@@ -200,27 +129,21 @@ function readTranslations(site: FactSite, declared: unknown): TranslationContrib
   };
 }
 
-/** The fix a `translators` slot's list fault and entry fault share. */
-const translationSupply = 'translate(ErrorClass, translator)';
-
-/** The record behind each entry of one `translators` slot, whose every other value is its fault. */
-function translationRecords(site: FactSite, declared: unknown): TranslationRecord[] {
-  if (declared !== undefined && !Array.isArray(declared)) {
-    throw new DeclarationError(notAList, {
-      correction: `Supply a list of values returned by ${translationSupply}.`,
-      findings: [partFinding(site, [])],
-      sentence: `${site.subject} declares translators that are not an array.`,
-    });
-  }
-  const list: readonly unknown[] = declared ?? [];
-  // Array.from visits a hole as undefined, where map would skip it and leave the hole in place.
-  return Array.from(list, (entry, index) => {
-    const record = typeof entry === 'object' && entry !== null ? records.get(entry) : undefined;
+/**
+ * The record behind each entry of one `translators` slot. A translation another installed copy of
+ * `@loomcli/core` built misses this copy's registry.
+ */
+function translationRecords(
+  site: FactSite,
+  declared: readonly Translation[] | undefined,
+): TranslationRecord[] {
+  return (declared ?? []).map((entry, index) => {
+    const record = records.get(entry);
     if (!record) {
       throw new DeclarationError(foreignValue, {
-        correction: `Supply the value returned by ${translationSupply}.`,
+        correction: foreignValueCorrection,
         findings: [partFinding(site, [index])],
-        sentence: `${site.subject} holds a translator entry that is not a translation.`,
+        sentence: `${site.subject} holds a translation another installed copy of @loomcli/core built.`,
       });
     }
     return record;
@@ -228,14 +151,23 @@ function translationRecords(site: FactSite, declared: unknown): TranslationRecor
 }
 
 /**
- * Every prototype in one thrown value's chain, most derived first, or `undefined` when the value is
- * never offered: a value whose chain holds a failure class, and a value whose chain cannot be read,
- * such as a proxy whose trap throws, or whose chain repeats a link or never ends. A value with a
- * `null` prototype has an empty chain, which no key matches.
+ * Every prototype in one thrown value's chain, most derived first, or none when the chain holds a
+ * failure class, which core never offers to a translator. A value with a `null` prototype has an
+ * empty chain, which no key matches.
  */
-function offeredChain(thrown: object): object[] | undefined {
-  const chain = prototypeChain(thrown);
-  return chain?.includes(LoomError.prototype) ? undefined : chain;
+function offeredChain(thrown: object): object[] {
+  const chain: object[] = [];
+  for (
+    let prototype = Reflect.getPrototypeOf(thrown);
+    prototype !== null;
+    prototype = Reflect.getPrototypeOf(prototype)
+  ) {
+    if (prototype === LoomError.prototype) {
+      return [];
+    }
+    chain.push(prototype);
+  }
+  return chain;
 }
 
 /** How a broken translator's diagnostic names a value that is not a failure. */
@@ -318,7 +250,7 @@ function translateThrow(registry: TranslatorRegistry, thrown: unknown): LoomErro
   }
   // With no translation registered, the chain is never read.
   const chain = registry.some((contributor) => contributor.byPrototype.size > 0)
-    ? (offeredChain(thrown) ?? [])
+    ? offeredChain(thrown)
     : [];
   for (const contributor of registry) {
     for (const prototype of chain) {

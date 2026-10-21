@@ -17,12 +17,6 @@ function build() {
     .globalOption('file', { short: 'f', type: 'string' })
     .globalOption('total', { polarity: 'both', type: 'boolean' });
   switch (scenario) {
-    case 'arguments-and-children': {
-      return app
-        .argument('files', { required: true, variadic: true })
-        .command(child('get'))
-        .action(dispatch);
-    }
     case 'duplicate-children': {
       return app.command(child('get')).command(child('get')).action(dispatch);
     }
@@ -76,9 +70,6 @@ function build() {
     case 'slash-application-name': {
       return new Application('bin/app').action(dispatch);
     }
-    case 'nonstring-application-name': {
-      return new Application(7).action(dispatch);
-    }
     case 'portable-application-name': {
       return new Application('App_.v2-x').command(child('get')).action(dispatch);
     }
@@ -93,23 +84,6 @@ function build() {
     }
     case 'hyphen-argument-name': {
       return app.argument('--file', { required: true }).action(dispatch);
-    }
-    case 'nonstring-argument-name': {
-      return app.command(new Command('get').argument(1, {}).action(dispatch)).action(dispatch);
-    }
-    case 'foreign-globals': {
-      const other = {};
-      return app.command(new Command('get', { globals: other }).action(dispatch)).action(dispatch);
-    }
-    case 'foreign-child': {
-      return app.command({ name: 'get' }).action(dispatch);
-    }
-    case 'foreign-globals-value': {
-      return new Application('graph', { globals: {} }).action(dispatch);
-    }
-    case 'null-globals': {
-      // Only an omitted argument means no globals; null is a value, and not a declaration.
-      return new Application('graph', { globals: null }).action(dispatch);
     }
     case 'shared-option-key': {
       return app
@@ -133,9 +107,6 @@ function build() {
     }
     case 'child-actionless': {
       return app.command(new Command('get')).action(dispatch);
-    }
-    case 'child-multiple-actions': {
-      return app.command(child('get').action(dispatch)).action(dispatch);
     }
     case 'child-duplicate-argument': {
       return app
@@ -166,48 +137,10 @@ function build() {
         )
         .action(dispatch);
     }
-    case 'late-argument': {
-      return app
-        .command(new Command('get').action(dispatch).argument('path', { required: true }))
-        .action(dispatch);
-    }
-    case 'late-option': {
-      return app
-        .command(new Command('get').action(dispatch).option('raw', { type: 'boolean' }))
-        .action(dispatch);
-    }
-    case 'late-root-argument': {
-      return app.action(dispatch).argument('files', { required: true, variadic: true });
-    }
-    case 'late-root-option': {
-      return app.action(dispatch).option('pretty', { type: 'boolean' });
-    }
-    case 'late-two-options': {
-      return app
-        .command(
-          new Command('get')
-            .action(dispatch)
-            .option('raw', { type: 'boolean' })
-            .option('deep', { type: 'boolean' }),
-        )
-        .action(dispatch);
-    }
-    case 'late-root-child': {
-      return app.action(dispatch).command(child('get'));
-    }
     // The order fault outranks the argument-and-child rule, which the same graph also breaks.
-    case 'late-child-beside-argument': {
-      return app
-        .argument('files', { required: true, variadic: true })
-        .action(dispatch)
-        .command(child('get'));
-    }
     // The child's own constructor throws before the late attach is reached.
     case 'late-child-invalid-name': {
       return app.action(dispatch).command(child('-get'));
-    }
-    case 'late-child-foreign': {
-      return app.action(dispatch).command({ name: 'get' });
     }
     default: {
       return app.command(child('get')).command(child('keys')).action(dispatch);

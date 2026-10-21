@@ -51,9 +51,10 @@ const root = page(
   '',
   'DOCUMENT COMMANDS',
   '  READ',
-  '    get    Read one value at a path.',
-  '    keys   List the keys at a path.',
-  '    fetch  Read one value at a path.  (deprecated: Use get instead.)',
+  '    get              Read one value at a path.',
+  '    keys             List the keys at a path.',
+  "    stats <command>  Report facts about the document's shape.",
+  '    fetch            Read one value at a path.  (deprecated: Use get instead.)',
   '  RESHAPE',
   '    select  Keep the named fields of the document.',
   '',
@@ -130,7 +131,7 @@ test('jsonkit holds a fault on a root local option, so help after it renders the
   expect(invoke(main, ['nope', '--help'])).toEqual({
     status: 2,
     stderr:
-      'jsonkit: Unknown command "nope". Use one of: doctor, completion, mcp, manpage, get, keys, select.\nRun "jsonkit --help" to see the usage.\n',
+      'jsonkit: Unknown command "nope". Use one of: doctor, completion, mcp, manpage, get, keys, select, stats.\nRun "jsonkit --help" to see the usage.\n',
     stdout: '',
   });
 });
@@ -146,9 +147,10 @@ test('jsonkit -h prints the compact root page, the child hint ahead of the point
       '',
       'DOCUMENT COMMANDS',
       '  READ',
-      '    get    Read one value at a path.',
-      '    keys   List the keys at a path.',
-      '    fetch  Read one value at a path.  (deprecated: Use get instead.)',
+      '    get              Read one value at a path.',
+      '    keys             List the keys at a path.',
+      "    stats <command>  Report facts about the document's shape.",
+      '    fetch            Read one value at a path.  (deprecated: Use get instead.)',
       '  RESHAPE',
       '    select  Keep the named fields of the document.',
       '',
@@ -193,6 +195,41 @@ test('jsonkit select --help prints the leaf page of a Command with a required op
 
 test('jsonkit select -h prints the extended page, because select has no details or examples', () => {
   expect(invoke(main, ['select', '-h'])).toEqual(select);
+});
+
+test('jsonkit stats depth max --help prints the page of the Command three levels down', () => {
+  expect(invoke(main, ['stats', 'depth', 'max', '--help'])).toEqual(
+    page(
+      'jsonkit stats depth max · Print the deepest nesting level under a path.',
+      '',
+      'USAGE',
+      '  jsonkit stats depth max [path] [options]',
+      '',
+      'ARGUMENTS',
+      '  path  Dot path to measure. Omit it for the root.',
+      '',
+      'OPTIONS',
+      '  -f, --file <path>  The document to read. Omit it to read piped text.  (file or piped stdin; - selects stdin, required)',
+      '',
+      'GLOBAL OPTIONS',
+      '  -h, --help        Show this help.',
+      '  -V, --version     Print the version.',
+      "  -M, --manifest    Print this command's manifest as JSON.",
+      '  -e, --explain     Explain the selected command and exit.',
+      '      --[no-]color  Turn color on or off, overriding NO_COLOR.',
+      '  -v, --verbose...  Show more detail. Repeat it for more.',
+      '  -q, --quiet       Hide info and success messages.',
+      '',
+      'EXAMPLES',
+      '  $ jsonkit stats depth max user -f doc.json',
+    ),
+  );
+});
+
+test('jsonkit stats depth --help lists the child of the group two levels down', () => {
+  expect(invoke(main, ['stats', 'depth', '--help']).stdout).toContain(
+    ['COMMANDS', '  max  Print the deepest nesting level under a path.'].join('\n'),
+  );
 });
 
 test('jsonkit get --help renders while the required path is missing', () => {
@@ -373,10 +410,12 @@ test('jsonkit --help on a 60-column terminal wraps its prose and keeps its liter
       '',
       'DOCUMENT COMMANDS',
       '  READ',
-      '    get    Read one value at a path.',
-      '    keys   List the keys at a path.',
-      '    fetch  Read one value at a path.  (deprecated: Use get',
-      '           instead.)',
+      '    get              Read one value at a path.',
+      '    keys             List the keys at a path.',
+      "    stats <command>  Report facts about the document's",
+      '                     shape.',
+      '    fetch            Read one value at a path.  (deprecated:',
+      '                     Use get instead.)',
       '  RESHAPE',
       '    select  Keep the named fields of the document.',
       '',

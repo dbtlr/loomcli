@@ -1,4 +1,6 @@
 import { Command } from '@loomcli/core';
 
-// JavaScript, so no type check stops the call; the declaration below throws as the module evaluates.
-export const list = new Command('list').option('verbose', { multiple: true, type: 'boolean' });
+// The declaration below throws as the module evaluates, because two options claim one spelling.
+export const list = new Command('list')
+  .option('verbose', { short: 'v', type: 'boolean' })
+  .option('version', { short: 'v', type: 'boolean' });

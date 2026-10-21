@@ -99,9 +99,3 @@ test('the graph is frozen: a write throws, a caught write leaves the graph uncha
   expect(frozen.unguarded.exitCode).toBe(1);
   expect(frozen.unguarded.stderr).toContain(' @loomcli/core/broken-graph-hook\n');
 });
-
-test('plugin() rejects an onGraphBuilt that is not a function', () => {
-  expect(report('not-a-function')).toContain(
-    'Plugin "@fixture/judge" declares onGraphBuilt that is not a function.',
-  );
-});

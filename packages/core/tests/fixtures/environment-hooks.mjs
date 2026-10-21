@@ -4,27 +4,24 @@ const [scenario, answer] = process.argv.slice(2);
 const events = [];
 const controller = new AbortController();
 const first = plugin('fixture/first', {
-  onEnvironment:
-    scenario === 'not-function'
-      ? 4
-      : async () => {
-          events.push('first');
-          if (scenario === 'cancel' && answer === 'during') {
-            controller.abort();
-          }
-          if (scenario === 'invalid') {
-            return {
-              'bad-name': { 'NOT-VALID': 'secret-value' },
-              'bad-value': { LOOM_DOTENV_TOKEN: 4 },
-              'not-record': ['secret-value'],
-              nul: { LOOM_DOTENV_TOKEN: 'secret-value\0' },
-            }[answer];
-          }
-          if (scenario === 'precedence') {
-            return { EMPTY: 'file', SET: 'file', UNDEFINED: 'file' };
-          }
-          return { LOOM_DOTENV_TOKEN: 'imported' };
-        },
+  onEnvironment: async () => {
+    events.push('first');
+    if (scenario === 'cancel' && answer === 'during') {
+      controller.abort();
+    }
+    if (scenario === 'invalid') {
+      return {
+        'bad-name': { 'NOT-VALID': 'secret-value' },
+        'bad-value': { LOOM_DOTENV_TOKEN: 4 },
+        'not-record': ['secret-value'],
+        nul: { LOOM_DOTENV_TOKEN: 'secret-value\0' },
+      }[answer];
+    }
+    if (scenario === 'precedence') {
+      return { EMPTY: 'file', SET: 'file', UNDEFINED: 'file' };
+    }
+    return { LOOM_DOTENV_TOKEN: 'imported' };
+  },
 });
 const second = plugin('fixture/second', {
   middleware: {

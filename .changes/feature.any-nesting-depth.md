@@ -1,0 +1,1 @@
+- Allow a Command path to nest to any depth. `command()` attaches a child at any level, and routing, validation, help, completion, the manifest, MCP, and man pages serve the path. `@loomcli/core/nesting-depth` goes, under [ADR-0094](docs/decisions/0094-core-sets-no-structural-limit-and-a-projection-reports-its-own-limits.md).

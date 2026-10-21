@@ -1,13 +1,6 @@
 import { join } from 'node:path';
 
-import {
-  applicationDirectory,
-  checkPluginSettings,
-  Command,
-  DeclarationError,
-  InputError,
-  plugin,
-} from '@loomcli/core';
+import { applicationDirectory, Command, DeclarationError, InputError, plugin } from '@loomcli/core';
 import type { Host, Log, Plugin } from '@loomcli/core';
 import { z } from 'zod';
 
@@ -107,9 +100,8 @@ function judgeNotices(settings: SelfUpdateSettings | undefined): void {
   }
 }
 
-/** Judges each key, after core's rules for any plugin's settings, at the `selfUpdate()` call. */
+/** Judges each key at the `selfUpdate()` call. */
 function judgeSettings(settings: SelfUpdateSettings | undefined): void {
-  checkPluginSettings(settings, { call: 'selfUpdate', plugin: identity });
   const afterReplace: unknown = settings?.afterReplace;
   if (afterReplace !== undefined && typeof afterReplace !== 'function') {
     throw settingsFault(settings, {

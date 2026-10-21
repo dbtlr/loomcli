@@ -186,15 +186,16 @@ test('a fault a declaring call throws while the module loads prints that rule an
     'src/application.ts': `import { Application } from '@loomcli/core';
 
 export const probe = new Application('probe', { description: 'Probe the check.' })
-  .option('verbose', { description: 'Say more.', multiple: true, type: 'boolean' })
+  .option('verbose', { description: 'Say more.', short: 'v', type: 'boolean' })
+  .option('version', { description: 'Print the version.', short: 'v', type: 'boolean' })
   .action(() => undefined);
 `,
   });
   const result = loom(root, ['check']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
-  expect(rules(result.stderr)).toEqual(['@loomcli/core/boolean-option-multiple']);
-  expect(result.stderr).toContain('Option "verbose" is a boolean option and declares multiple.');
+  expect(rules(result.stderr)).toEqual(['@loomcli/core/spelling-taken']);
+  expect(result.stderr).toContain('Option spelling "-v" is used by both "verbose" and "version".');
 });
 
 test('any other throw while the module loads is a fault that names the module and the error', () => {

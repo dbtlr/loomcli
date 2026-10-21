@@ -20,10 +20,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /**
  * Whether a value is plain JSON data: null, a Boolean, a finite number, a string, or arrays and
- * plain objects of these. Core copies every plain object it snapshots onto `Object.prototype`, so
- * a null-prototype object never reaches the pack. Core also copies a value that holds itself with
- * its cycle, which no JSON text can carry, so a container that is one of its own `ancestors` is not
- * plain JSON data.
+ * plain objects of these, a null-prototype object included. A value that holds itself has a cycle
+ * no JSON text can carry, so a container that is one of its own `ancestors` is not plain JSON data.
  */
 function isPlainJson(value: unknown, ancestors: ReadonlySet<object> = new Set()): boolean {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') {
@@ -46,10 +44,8 @@ function isPlainContainer(value: object, ancestors: ReadonlySet<object>): boolea
   if (Array.isArray(value)) {
     return value.every((item: unknown) => isPlainJson(item, inner));
   }
-  const prototype: unknown = Object.getPrototypeOf(value);
   return (
-    prototype === Object.prototype &&
-    Object.values(value).every((item: unknown) => isPlainJson(item, inner))
+    isPlainObject(value) && Object.values(value).every((item: unknown) => isPlainJson(item, inner))
   );
 }
 

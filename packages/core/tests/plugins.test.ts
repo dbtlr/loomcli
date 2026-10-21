@@ -16,92 +16,12 @@ function build(scenario: string, mode: 'inspect' | 'rule' | 'run') {
  */
 const thrown = [
   [
-    'commands-hole',
-    'Plugin "@acme/doctor" holds a value that is not a Command. Supply the value returned by new Command(name).',
-  ],
-  [
-    'commands-null',
-    'Plugin "@acme/doctor" declares commands that are not an array. Supply a list of Command values.',
-  ],
-  [
-    'commands-not-array',
-    'Plugin "@acme/doctor" declares commands that are not an array. Supply a list of Command values.',
-  ],
-  [
-    'commands-entry-not-command',
-    'Plugin "@acme/doctor" holds a value that is not a Command. Supply the value returned by new Command(name).',
-  ],
-  [
-    'signals-not-array',
-    'Plugin "@loomcli/signals" declares signals that are not an array. Supply a list of signal names.',
-  ],
-  [
-    'signals-outside-set',
-    'Plugin "@loomcli/signals" claims signal "SIGHUP". Claim SIGINT or SIGTERM.',
-  ],
-  [
-    'signals-repeated-claim',
-    'Plugin "@loomcli/signals" claims signal "SIGINT" twice. Claim each signal once.',
-  ],
-  [
     'signals-second-claim',
     'Plugin "@acme/trace" claims the signals slot, which plugin "@loomcli/signals" already holds. Install one owner.',
   ],
   [
-    'not-a-plugin',
-    'The Application holds a value that is not a plugin. Supply the value returned by plugin(identity, definition).',
-  ],
-  [
     'installed-twice',
     'The Application installs plugin "@loomcli/help" twice. Install each plugin once.',
-  ],
-  [
-    'empty-identity',
-    'A plugin declares the identity "", which is not a package name with optional kebab-case subpath segments. Name it <package>[/<subpath>...], such as "@acme/notes" or "@acme/notes/page".',
-  ],
-  [
-    'identity-not-string',
-    'A plugin declares the identity 7, which is not a package name with optional kebab-case subpath segments. Name it <package>[/<subpath>...], such as "@acme/notes" or "@acme/notes/page".',
-  ],
-  [
-    'plugins-not-array',
-    'The Application declares plugins that are not an array. Supply a list of plugin values.',
-  ],
-  [
-    'definition-not-object',
-    'Plugin "@loomcli/help" declares a definition that is not an object. Supply { options, middleware, extensions, views }.',
-  ],
-  [
-    'options-not-object',
-    'Plugin "@loomcli/log" declares options that are not an object. Supply a record of option declarations.',
-  ],
-  [
-    'option-not-declaration',
-    'Plugin "@loomcli/log" option "level" is not an option declaration. Supply { type, ... }.',
-  ],
-  [
-    'views-not-array',
-    'Plugin "@loomcli/help" declares views that are not an array. Supply a list of declared views and override values.',
-  ],
-  [
-    'extensions-not-array',
-    'Plugin "@loomcli/help" declares extensions that are not an array. Supply a list of extension descriptors.',
-  ],
-  [
-    'option-validate',
-    'Plugin "@loomcli/log" option "level" validate must be a Standard Schema v1 object. Supply a compatible validator.',
-  ],
-  [
-    'option-validate-omitted',
-    'Plugin "@loomcli/log" option "level" declares validateOmitted. Remove validateOmitted, and check for the value in each Command that needs it.',
-  ],
-  [
-    'option-required',
-    'Plugin "@loomcli/log" option "level" declares required. Remove required, and check for the value in each Command that needs it.',
-  ],
-  [
-    'option-required-false',
-    'Plugin "@loomcli/log" option "level" declares required. Remove required, and check for the value in each Command that needs it.',
   ],
   [
     'option-global-key',
@@ -120,58 +40,6 @@ const thrown = [
     'Option spelling "-h" is used by plugin "@loomcli/help" option "help" and the global option "host". Change one declaration.',
   ],
   [
-    'middleware-not-object',
-    'Plugin "@loomcli/help" declares middleware that is not an object. Supply { activate, load }.',
-  ],
-  [
-    'no-activation',
-    `Plugin "@loomcli/help" declares middleware with no activation. Supply activate: 'always' or a list of the plugin's own option names.`,
-  ],
-  [
-    'empty-activation',
-    `Plugin "@loomcli/help" declares middleware with an empty activation list. Name at least one of the plugin's options or use 'always'.`,
-  ],
-  [
-    'activation-undeclared',
-    `Plugin "@loomcli/help" activates middleware on option "hlep", which it does not declare. Name one of the plugin's own options.`,
-  ],
-  [
-    'no-loader',
-    `Plugin "@loomcli/help" declares middleware with no load function. Supply load: () => import('./middleware.js').`,
-  ],
-  [
-    'option-boolean-default',
-    'Plugin "@loomcli/log" option "level" is Boolean and declares default. Remove default; use polarity to control its absent value.',
-  ],
-  [
-    'option-raw-default',
-    'Plugin "@loomcli/log" option "level" default must be a string without a validator. Supply a string default.',
-  ],
-  [
-    'not-an-extension',
-    'Command "get" holds a value that is not an extension value. Supply the value returned by calling an extension.',
-  ],
-  [
-    'root-extensions',
-    'The root Command holds a value that is not an extension value. Supply the value returned by calling an extension.',
-  ],
-  [
-    'not-a-descriptor',
-    'Plugin "@loomcli/help" holds a value that is not an extension. Supply the value returned by extension(identity, config).',
-  ],
-  [
-    'no-schema',
-    'The root Command holds extension "@fixture/bare", which declares no schema. Supply a Standard Schema v1 object that answers synchronously.',
-  ],
-  [
-    'wrong-target',
-    'Command "get" holds extension "@fixture/facts/option", which applies to options. Supply an extension that applies to Commands.',
-  ],
-  [
-    'twice-on-one',
-    'Command "get" holds extension "@fixture/facts/command" twice. Supply one value.',
-  ],
-  [
     'twin-descriptors',
     'Extension "@fixture/facts/command" is defined twice. Install one copy of the package that defines it.',
   ],
@@ -181,7 +49,7 @@ const thrown = [
   ],
   [
     'async-schema',
-    'Extension "@fixture/async" validates asynchronously. Supply a schema that answers synchronously.',
+    'The root Command holds a "@fixture/async" value its schema did not answer synchronously. Supply a schema that answers synchronously.',
   ],
   [
     'exotic-output',
@@ -198,10 +66,6 @@ const thrown = [
   [
     'schema-sentence',
     'The root Command holds an invalid "@fixture/schema/sentence" value: Supply one word. Correct the value.',
-  ],
-  [
-    'schema-thenable',
-    'Extension "@fixture/schema/thenable" validates asynchronously. Supply a schema that answers synchronously.',
   ],
   [
     'output-symbol',
@@ -230,14 +94,6 @@ const thrown = [
   [
     'output-cycle',
     'Extension "@fixture/output/cycle" produced a value that is not plain data on the root Command. Return strings, numbers, booleans, null, arrays, and plain objects.',
-  ],
-  [
-    'plugin-overrides',
-    'Plugin "@loomcli/help" overrides the view for "InputError" twice. Remove one override.',
-  ],
-  [
-    'hook-not-function',
-    'Plugin "@loomcli/plugins/format" declares onCommandAttach that is not a function. Supply a function of the Command.',
   ],
 ] satisfies [string, string][];
 
@@ -314,18 +170,6 @@ const rejected = [
   [
     'hook-spelling-collision',
     'Plugin "@loomcli/plugins/format" declares option "format" with spelling "-f" on Command "count", which "--file" already uses. Change one of the two spellings or omit the plugin.',
-  ],
-  [
-    'hook-row-view',
-    'Command "count" names row view "records" on a value result. Supply a view with render, or declare the result with rows().',
-  ],
-  [
-    'hook-missing-default',
-    'Command "count" selects default view "wide", which it does not name. Name the view or select a named one.',
-  ],
-  [
-    'hook-invalid-option',
-    'Option "format" has an invalid type. Use "string", "content", "boolean", or "count".',
   ],
 ] satisfies [string, string][];
 

@@ -25,7 +25,7 @@ import type { Shell } from '../../../scripts/test-shell.js';
 import { counts, main } from './documents.js';
 
 /** The visible root children `jsonkit <Tab>` lists. */
-const commands = ['completion', 'doctor', 'get', 'keys', 'manpage', 'mcp', 'select'];
+const commands = ['completion', 'doctor', 'get', 'keys', 'manpage', 'mcp', 'select', 'stats'];
 
 /** The comment every startup line `completion install` adds ends with. */
 const marker = '# added by jsonkit completion install';

@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { expectRuleParts } from './rule-parts.js';
+import { coreRuleParts } from './rule-parts.js';
 
 function multiple(scenario: string, argv: string[] = []) {
   return invoke(new URL('fixtures/multiple.mjs', import.meta.url), [scenario, ...argv]);
@@ -111,7 +111,7 @@ test('a rejected default value fails every run with its position', () => {
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   // The fixture is a development build, so the fault prints its Developer Diagnostic.
-  expectRuleParts(result.stderr, {
+  expect(coreRuleParts(result.stderr)).toEqual({
     correction: 'Fix the default or its validator.',
     rule: 'invalid-default',
     sentence: 'Option "field" has an invalid default.\nOption "field" at 1: Supply a field name.',
@@ -155,45 +155,4 @@ test('a multiple global is collected at every placement, whichever layer reads i
     stderr: '',
     stdout: '{"options":{"field":[],"local":false},"passthrough":[]}\n',
   });
-});
-
-test.each([
-  [
-    'boolean-multiple',
-    {
-      correction: 'Remove multiple or declare a string option.',
-      rule: 'boolean-option-multiple',
-      sentence: 'Option "verbose" is a boolean option and declares multiple.',
-    },
-  ],
-  [
-    'nonboolean-multiple',
-    {
-      correction: 'Use true or false.',
-      rule: 'flag-not-boolean',
-      sentence: 'The root Command option "field" declares multiple that is not a Boolean.',
-    },
-  ],
-  [
-    'validated-string-default',
-    {
-      correction: 'Supply an array of values.',
-      rule: 'default-shape',
-      sentence: 'Option "field" default must be an array.',
-    },
-  ],
-  [
-    'string-default',
-    {
-      correction: 'Supply a string array default.',
-      rule: 'default-shape',
-      sentence: 'Option "field" default must be an array of strings without a validator.',
-    },
-  ],
-])('%s throws from the declaring call while the module evaluates', (scenario, parts) => {
-  const result = multiple(scenario, ['--unknown']);
-  expect(result.status).toBe(1);
-  expect(result.stdout).toBe('');
-  expect(result.stderr).not.toContain('Invalid declaration:');
-  expectRuleParts(result.stderr, parts);
 });

@@ -144,9 +144,11 @@ const scenarios = {
       ),
       internal: await formOf(raising(() => new OopsError())),
       result: await formOf(
-        new Application('codes', { description: 'The codes application.' }).result().action(() => {
-          // The action returns without emitting the result it declared.
-        }),
+        new Application('codes', { description: 'The codes application.' })
+          .result({ views: { plain: { render: () => '' } } })
+          .action(() => {
+            // The action returns without emitting the result it declared.
+          }),
       ),
       'type-error': await formOf(raising(() => new TypeError('Cannot read the value.'))),
       unconstructed: await formOf(raising(() => Object.create(FatalError.prototype))),

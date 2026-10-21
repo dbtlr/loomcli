@@ -1,4 +1,4 @@
-import { checkShortSetting, encodeFailure, plugin } from '@loomcli/core';
+import { encodeFailure, plugin } from '@loomcli/core';
 import type { FailureEncoder, Plugin, StringOption } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
@@ -24,12 +24,10 @@ export interface FormatSettings {
 /**
  * A plugin that puts `--format` on every Command that declares a result, copies a supplied name
  * into `view`, and writes a failed run's form as one JSON line when the run selected a `json()` or
- * `jsonl()` view. It judges the settings at the call, under core's rules for a short spelling,
- * and reads them once. The annotated return type is the boundary that breaks the cycle between
- * this module and the middleware module `load` names.
+ * `jsonl()` view. It reads the settings once, at the call. The annotated return type is the
+ * boundary that breaks the cycle between this module and the middleware module `load` names.
  */
 export function format(settings?: FormatSettings): Plugin<{}> {
-  checkShortSetting(settings, { call: 'format', option: 'format', plugin: identity });
   return plugin(identity, {
     failureEncoders: [
       encodeFailure('application/json', errorLine),

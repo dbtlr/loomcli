@@ -106,19 +106,10 @@ test.each([
 );
 
 test.each([
-  ['nonstring-name', 'Option name', 'not a string'],
-  ['symbol-short', 'flag', 'one ASCII letter'],
-  ['nonboolean-short-only', 'flag', 'shortOnly that is not a Boolean'],
   ['duplicate-key', 'total', 'declared more than once'],
   ['duplicate-short', '-t', 'used by both'],
   ['negative-collision', '--no-total', 'used by both'],
-  ['missing-short', 'metric', 'no short alias'],
-  ['both-short-only', 'total', 'both polarities'],
-  ['string-polarity', 'metric', 'Boolean'],
-  ['invalid-short', 'metric', 'one ASCII letter'],
   ['invalid-name', 'bad=name', 'name'],
-  ['invalid-type', 'metric', 'type'],
-  ['invalid-polarity', 'total', 'polarity'],
 ])('the option() call that declares %s throws before any build', (scenario, name, reason) => {
   const result = invoke(new URL('fixtures/option-declarations.mjs', import.meta.url), [scenario]);
   expect(result.status).toBe(0);

@@ -1,4 +1,4 @@
-import { Application, Command, DeclarationError, plugin } from '@loomcli/core';
+import { Application, DeclarationError, plugin } from '@loomcli/core';
 import { config } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { verbose } from '@loomcli/plugins/verbose';
@@ -48,35 +48,7 @@ function scenariosOf(mark) {
       ],
       ['new Application', (loud) => new Application('notes', { plugins: [config(), loud] })],
     ],
-    boolean: [
-      [
-        'globalOption',
-        () => new Application('notes').globalOption(mark, { [mark]: true, type: 'boolean' }),
-      ],
-    ],
-    content: [
-      [
-        'globalOption',
-        () => new Application('notes').globalOption(mark, { [mark]: true, type: 'content' }),
-      ],
-    ],
     count: [['globalOption', () => new Application('notes').globalOption(mark, marked)]],
-    'env-global': [
-      [
-        'globalOption',
-        () => new Application('notes').globalOption(mark, { ...marked, env: 'NOTES_LEVEL' }),
-      ],
-    ],
-    'env-plugin': [['plugin', () => declaring({ [mark]: { ...marked, env: 'NOTES_LEVEL' } })]],
-    'local-application': [['option', () => new Application('notes').option(mark, marked)]],
-    'local-command': [['option', () => new Command('loud').option(mark, marked)]],
-    'not-true': [
-      [
-        'globalOption',
-        () => new Application('notes').globalOption(mark, { [mark]: 'yes', type: 'count' }),
-      ],
-    ],
-    'not-true-plugin': [['plugin', () => declaring({ [mark]: { [mark]: false, type: 'count' } })]],
     short: [
       [
         'globalOption',
@@ -93,12 +65,6 @@ function scenariosOf(mark) {
         'globalOption',
         () =>
           new Application('notes').globalOption(mark, { ...marked, short: 'l', shortOnly: true }),
-      ],
-    ],
-    string: [
-      [
-        'globalOption',
-        () => new Application('notes').globalOption(mark, { [mark]: true, type: 'string' }),
       ],
     ],
     'two-global': [
@@ -118,20 +84,6 @@ function scenariosOf(mark) {
 
 /** Scenarios that read both marks at once. */
 const both = {
-  'both-global': [
-    [
-      'globalOption',
-      () =>
-        new Application('notes').globalOption('verbose', {
-          quiet: true,
-          type: 'count',
-          verbose: true,
-        }),
-    ],
-  ],
-  'both-plugin': [
-    ['plugin', () => declaring({ verbose: { quiet: true, type: 'count', verbose: true } })],
-  ],
   'verbose-alone': [
     ['globalOption', () => new Application('notes').globalOption('loud', marks.verbose)],
   ],

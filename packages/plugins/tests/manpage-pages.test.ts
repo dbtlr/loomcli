@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vite-plus/test';
 import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { ruleParts } from '../../../scripts/test-rules.js';
 import { findOnPath } from '../../../scripts/test-shell.js';
 import { configInput } from '../src/config/extension.js';
 import { helpCommand, helpInput } from '../src/help/extension.js';
@@ -340,6 +341,56 @@ describe('sections', () => {
     );
   });
 
+  it('a line break in a description, a deprecation, or the stdin description reads as a space', () => {
+    const app = new Application('kit', {
+      description: 'First line.\nSecond line.',
+      plugins: [manpage()],
+    })
+      .command(
+        new Command('old', {
+          deprecated: 'Use new.\r\nIt is faster.',
+          description: 'Old line.\nOld more.',
+        }).action(noop),
+      )
+      .command(
+        new Command('read', { description: 'Read line.\r\nRead more.' })
+          .argument('name', { description: 'Name line.\nName more.' })
+          .option('fast', { description: 'Fast line.\nFast more.', type: 'boolean' })
+          .stdin({ description: 'Input line.\nInput more.' })
+          .action(noop),
+      );
+    const pages = pagesOf(app);
+    expect(pages.get('kit.1')).toContain(
+      ['.SH "NAME"', String.raw`kit \- First line. Second line.`].join('\n'),
+    );
+    expect(pages.get('kit.1')).toContain(
+      ['.TP', String.raw`\fBread\fR`, 'Read line. Read more.'].join('\n'),
+    );
+    expect(pages.get('kit.1')).toContain(
+      [
+        '.TP',
+        String.raw`\fBold\fR`,
+        'Old line. Old more.  (deprecated: Use new. It is faster.)',
+      ].join('\n'),
+    );
+    expect(pages.get('kit-old.1')).toContain(
+      ['.SH "NAME"', String.raw`kit\-old \- Old line. Old more.`].join('\n'),
+    );
+    expect(pages.get('kit-old.1')).toContain(
+      ['.SH "DESCRIPTION"', 'Deprecated: Use new. It is faster.'].join('\n'),
+    );
+    const read = pages.get('kit-read.1');
+    expect(read).toContain(
+      ['.SH "NAME"', String.raw`kit\-read \- Read line. Read more.`].join('\n'),
+    );
+    expect(read).toContain(['.SH "INPUT"', 'Input line. Input more.'].join('\n'));
+    expect(read).toContain(['.TP', String.raw`\fIname\fR`, 'Name line. Name more.'].join('\n'));
+    expect(read).toContain(['.TP', String.raw`\fB\-\-fast\fR`, 'Fast line. Fast more.'].join('\n'));
+    for (const text of pages.values()) {
+      expect(text).not.toMatch(/\\eu000/iu);
+    }
+  });
+
   it('a root whose authored option section holds a global lists it there, and its child page does not', () => {
     const pages = pagesOf(kit);
     expect(pages.get('kit.1')).toContain('.SH "LOGGING"');
@@ -392,24 +443,16 @@ describe('names that collide', () => {
     ],
   ])('the %s collision fails every run with the pinned diagnostic', (scenario, sentence) => {
     const collide = new URL('fixtures/manpage-collide.mjs', import.meta.url);
-    const diagnostic = [
-      '-- MAN PAGE NAME TAKEN ---------------- @loomcli/plugins/manpage/page-name-taken',
-      '',
-      sentence,
-      '',
-      'The manpage plugin writes one page for each Command an operator can find, named',
-      "by the application name and the Command's path joined with hyphens. Two names",
-      'that are equal when letters are compared without case would be one file on a',
-      "file system that ignores case, such as macOS's default, so one page would",
-      'replace the other.',
-      '',
-      'Rename one of them, or hide one.',
-      '',
-    ].join('\n');
     for (const argv of [['manpage', 'install'], ['--help']]) {
-      expect(
-        invoke(collide, [scenario, ...argv], { env: { FIXTURE_BUILD: 'development' } }),
-      ).toEqual({ status: 1, stderr: diagnostic, stdout: '' });
+      const developed = invoke(collide, [scenario, ...argv], {
+        env: { FIXTURE_BUILD: 'development' },
+      });
+      expect(developed).toMatchObject({ status: 1, stdout: '' });
+      expect(ruleParts(developed.stderr)).toEqual({
+        correction: 'Rename one of them, or hide one.',
+        identity: '@loomcli/plugins/manpage/page-name-taken',
+        sentence,
+      });
       expect(invoke(collide, [scenario, ...argv])).toEqual({
         status: 1,
         stderr: 'kit: Something went wrong.\n',

@@ -20,14 +20,6 @@ const codes = { SIGINT: 130, SIGTERM: 143, action: 130, caller: 130 } as const;
 /** The status one cancelled run resolves, which is the part of `ExitCode` a signal decides. */
 type CancellationCode = (typeof codes)[CancellationReason['source']];
 
-/** The closed set a claim is drawn from, as the values a runtime signal name may take. */
-const claimable = new Set<string>(['SIGINT', 'SIGTERM']);
-
-/** Whether one declared value names a signal core installs a listener for. */
-function isProcessSignal(value: unknown): value is ProcessSignal {
-  return typeof value === 'string' && claimable.has(value);
-}
-
 /** The status one cancelled run resolves, which the first cause to abort fixed. */
 function cancellationCode(reason: CancellationReason): CancellationCode {
   return codes[reason.source];
@@ -195,4 +187,4 @@ function bracketCall(
 }
 
 export type { CancellationCode, CancellationReason, ParentRun, ProcessSignal, SignalBracket };
-export { bracketCall, bracketRun, cancellationCode, isCancellationEcho, isProcessSignal };
+export { bracketCall, bracketRun, cancellationCode, isCancellationEcho };

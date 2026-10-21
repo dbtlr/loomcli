@@ -99,7 +99,7 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
     await expect(session.close()).resolves.toMatchObject({ status: 0, stderr: '' });
   });
 
-  it('tools/list lists the root, get, keys, and select with their schemas, and no control option', async () => {
+  it('tools/list lists the root, get, keys, select, and stats depth max with their schemas, and no control option', async () => {
     const session = serve();
     session.send(request(1, 'tools/list'));
     const answer = await session.next();
@@ -166,6 +166,20 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
           },
           name: 'select',
         },
+        {
+          annotations,
+          description: 'Print the deepest nesting level under a path.',
+          inputSchema: {
+            additionalProperties: false,
+            properties: {
+              file,
+              path: { description: 'Dot path to measure. Omit it for the root.', type: 'string' },
+            },
+            required: ['file'],
+            type: 'object',
+          },
+          name: 'stats_depth_max',
+        },
       ],
       ttlMs: 0,
     });
@@ -200,6 +214,12 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
   it('keys answers the keys as text', async () => {
     await expect(resultOf('keys', { file: 'doc.json' })).resolves.toEqual(
       result({ content: [{ text: 'name\nuser\ntags\n', type: 'text' }], isError: false }),
+    );
+  });
+
+  it('stats_depth_max answers the depth of the Command three levels down as text', async () => {
+    await expect(resultOf('stats_depth_max', { file: 'doc.json' })).resolves.toEqual(
+      result({ content: [{ text: '2\n', type: 'text' }], isError: false }),
     );
   });
 

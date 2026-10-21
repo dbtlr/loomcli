@@ -511,13 +511,12 @@ test(
 );
 
 test(
-  'Edges: a bad file pattern or short spelling throws from config() under its rule',
+  'Edges: a bad file pattern throws from config() under its rule',
   inWorkspace((space) => {
     const cases: readonly (readonly [unknown, string])[] = [
       [{ file: '/etc/textstat.json' }, '@loomcli/plugins/config/file-path'],
       [{ file: '*.json' }, '@loomcli/plugins/config/file-pattern'],
       [{ file: '.textstat.{toml,ini}' }, '@loomcli/plugins/config/file-pattern'],
-      [{ short: 'cc' }, '@loomcli/core/short-alias'],
     ];
     for (const [settings, rule] of cases) {
       expect(space.app(settings).stdout).toBe(`DeclarationError: ${rule}\n`);

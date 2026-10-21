@@ -210,41 +210,6 @@ switch (scenario) {
       .action(report);
     break;
   }
-  case 'boolean-multiple': {
-    app = new Application('multiple', development)
-      .option('verbose', { description: 'The verbose option.', multiple: true, type: 'boolean' })
-      .action(report);
-    break;
-  }
-  case 'nonboolean-multiple': {
-    app = new Application('multiple', development)
-      .option('field', { description: 'The field option.', multiple: 'yes', type: 'string' })
-      .action(report);
-    break;
-  }
-  case 'validated-string-default': {
-    app = new Application('multiple', development)
-      .option('field', {
-        default: 'a',
-        description: 'The field option.',
-        multiple: true,
-        type: 'string',
-        validate: fieldName,
-      })
-      .action(report);
-    break;
-  }
-  case 'string-default': {
-    app = new Application('multiple', development)
-      .option('field', {
-        default: 'a',
-        description: 'The field option.',
-        multiple: true,
-        type: 'string',
-      })
-      .action(report);
-    break;
-  }
   default: {
     throw new Error(`Unknown scenario: ${scenario}`);
   }

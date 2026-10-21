@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { coreRuleParts } from './rule-parts.js';
 
 function run(scenario: string, build: 'development' | 'distributed' | 'source') {
   return invoke(new URL('fixtures/builds.mjs', import.meta.url), [scenario, build]);
@@ -80,21 +81,12 @@ test('a build fault writes the generic message when distributed and its diagnost
     stderr: 'probe: Something went wrong.\n',
     stdout: 'resolved:1\n',
   });
-  expect(run('build-fault', 'development')).toEqual({
-    status: 1,
-    stderr: [
-      '-- NOTHING TO RUN ------------------------- @loomcli/core/command-without-action',
-      '',
-      'The root Command has no action.',
-      '',
-      "Routing ends at a Command that runs its action, or passes on to one of a group's",
-      'children. A Command with neither leaves an invocation that reaches it nothing to',
-      'run.',
-      '',
-      'Register an action.',
-      '',
-    ].join('\n'),
-    stdout: 'resolved:1\n',
+  const developed = run('build-fault', 'development');
+  expect(developed).toMatchObject({ status: 1, stdout: 'resolved:1\n' });
+  expect(coreRuleParts(developed.stderr)).toEqual({
+    correction: 'Register an action.',
+    rule: 'command-without-action',
+    sentence: 'The root Command has no action.',
   });
   expect(run('inspect', 'source').stdout).toBe(
     'thrown: DeclarationError: The root Command has no action.\n',

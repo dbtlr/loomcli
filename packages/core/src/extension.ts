@@ -5,19 +5,13 @@ import type { Finding } from './diagnostic-text.js';
 import { asSentence, DeclarationError, quoted, reasonOf } from './errors.js';
 import { partOf } from './facts.js';
 import type { FactSite } from './facts.js';
-import { checkIdentity, identityFault, isIdentity } from './identity.js';
-import { flagNotBoolean } from './input-rules.js';
 import type { ArgumentNode, CommandNode, OptionNode } from './inspect.js';
 import { isPlainObject } from './plain.js';
 import {
-  asyncExtensionSchema,
   extensionOutput,
-  extensionTarget as extensionTargetRule,
-  extensionValueTwice,
-  extensionWithoutSchema,
   foreignValue,
+  foreignValueCorrection,
   invalidExtensionValue,
-  notAList,
   twoPackageCopies,
 } from './plugin-rules.js';
 import { isThenable } from './thenable.js';
@@ -39,18 +33,9 @@ interface AnyExtension {
   readonly collect: boolean;
 }
 
-/**
- * What a value must show to be taken for a descriptor before admission checks its identity and its
- * `collect` flag. The identity stays unread here, so admission reads it once.
- */
-interface DescriptorShape {
-  readonly identity: unknown;
-  readonly target: ExtensionTarget;
-}
-
 /** One carried value: the input its author supplied and the descriptor that produced it. */
 interface CarriedValue {
-  descriptor: AnyExtension;
+  descriptor: AnyExtension & { readonly schema: StandardSchemaV1 };
   input: unknown;
 }
 
@@ -123,13 +108,11 @@ function extension<Target extends ExtensionTarget, Schema extends StandardSchema
   identity: string,
   config: { schema: Schema; target: Target; collect?: boolean | undefined },
 ): Extension<Target, Schema, boolean> {
-  checkIdentity('extension', identity);
   // `Object.assign` returns the same function object, so the value carries the descriptor itself.
   function create(input: StandardSchemaV1.InferInput<Schema>): ExtensionValue<Target> {
     return new ExtensionCarrier<Target>({ descriptor, input });
   }
-  // An omitted or undefined `collect` publishes as false, and any other value as given.
-  // Build then rejects a JavaScript author's value that is neither Boolean.
+  // An omitted or undefined `collect` publishes as false.
   const descriptor: Extension<Target, Schema, boolean> = Object.assign(create, {
     collect: config.collect === undefined ? false : config.collect,
     identity,
@@ -204,18 +187,6 @@ function readExtension<
   // `Collect` is the literal `extension()` published as `collect`, which registration enforces.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return stored as ExtensionRead<Schema, Collect>;
-}
-
-/** How a diagnostic names the declarations one target covers. */
-const applies: Readonly<Record<ExtensionTarget, string>> = {
-  argument: 'arguments',
-  command: 'Commands',
-  option: 'options',
-};
-
-/** How a diagnostic names the declarations one target covers, such as "Commands". */
-function appliesTo(target: ExtensionTarget): string {
-  return applies[target];
 }
 
 /** One value of a plain-data walk: the frozen copy, or nothing when the shape is rejected. */
@@ -359,11 +330,8 @@ interface ExtensionSubject {
   sentence: string;
 }
 
-/**
- * A descriptor admission accepted: its shape and a Boolean `collect` flag. Its identity is the key
- * a registry holds it under, so nothing reads it from the descriptor again.
- */
-type AdmittedDescriptor = DescriptorShape & { readonly collect: boolean };
+/** A descriptor admission accepted, which a registry holds under its identity. */
+type AdmittedDescriptor = AnyExtension;
 
 /** Every descriptor one build has met, so a second descriptor under one identity is visible. */
 type DescriptorRegistry = Map<string, AdmittedDescriptor>;
@@ -374,25 +342,6 @@ type DescriptorRegistry = Map<string, AdmittedDescriptor>;
  * build alone and inspection reads them back with the nodes it renders.
  */
 type ExtensionRecords = Map<object, Readonly<Record<string, unknown>>>;
-
-/**
- * Whether a value has a descriptor's shape: a callable object carrying an identity and a declared
- * target. Admission checks its identity and its `collect` flag where a build registers it.
- */
-function isDescriptor(value: unknown): value is DescriptorShape {
-  return (
-    value !== null &&
-    (typeof value === 'object' || typeof value === 'function') &&
-    'identity' in value &&
-    'target' in value &&
-    (value.target === 'argument' || value.target === 'command' || value.target === 'option')
-  );
-}
-
-/** Whether a descriptor carries the `collect` flag every descriptor publishes, as a Boolean. */
-function hasCollectFlag(descriptor: DescriptorShape): descriptor is AdmittedDescriptor {
-  return 'collect' in descriptor && typeof descriptor.collect === 'boolean';
-}
 
 /** Whether one registered descriptor collects, so its values accumulate instead of replacing. */
 function collects(descriptor: AnyExtension): boolean {
@@ -405,45 +354,27 @@ function marking(place: Finding | undefined, note: string): Finding[] {
 }
 
 /**
- * How one descriptor is admitted: the declaration that carries it, the plugin that holds it in a
- * sentence, and its identity when a registry already read it once.
+ * How one descriptor is admitted: the declaration that carries it, and its identity when a
+ * registry already holds it under one.
  */
 interface Admission {
   place?: Finding | undefined;
-  holder?: string | undefined;
   identity?: string | undefined;
 }
 
 /**
  * The descriptor a registry holds for one identity once this one is admitted, and that identity.
- * One identity means one descriptor, wherever on the graph that descriptor appears, and a
- * descriptor is checked when a build first meets it: its identity follows the identity grammar and
- * its `collect` flag is `true` or `false`, which the factory always ensures and a hand-built
- * descriptor may not. The identity is read once, so a getter cannot answer the check with one value
- * and the registry with another. It reads the registry and changes nothing.
+ * One identity means one descriptor, wherever on the graph that descriptor appears. It reads the
+ * registry and changes nothing.
  */
 function admitDescriptor(
   descriptors: ReadonlyMap<string, AdmittedDescriptor>,
-  descriptor: DescriptorShape,
-  { holder, place, ...admission }: Admission,
+  descriptor: AnyExtension,
+  { place, ...admission }: Admission,
 ): { descriptor: AdmittedDescriptor; identity: string } {
-  const identity: unknown = admission.identity ?? descriptor.identity;
-  if (!isIdentity(identity)) {
-    const subject =
-      holder === undefined
-        ? 'An extension declares the identity'
-        : `${holder} holds the extension identity`;
-    throw identityFault(subject, identity, place === undefined ? [] : [place]);
-  }
+  const identity = admission.identity ?? descriptor.identity;
   const known = descriptors.get(identity);
   if (known === undefined) {
-    if (!hasCollectFlag(descriptor)) {
-      throw new DeclarationError(flagNotBoolean, {
-        correction: 'Use true or false.',
-        findings: marking(place, `extension ${quoted(identity)}`),
-        sentence: `Extension ${quoted(identity)} declares collect that is not a Boolean.`,
-      });
-    }
     return { descriptor, identity };
   }
   if (known !== descriptor) {
@@ -462,25 +393,11 @@ function admitDescriptor(
  */
 function registerDescriptor(
   descriptors: DescriptorRegistry,
-  descriptor: DescriptorShape,
+  descriptor: AnyExtension,
   admission: Admission = {},
 ): void {
   const admitted = admitDescriptor(descriptors, descriptor, admission);
   descriptors.set(admitted.identity, admitted.descriptor);
-}
-
-/** Whether a value answers the Standard Schema v1 contract this build calls synchronously. */
-function isSchema(value: unknown): value is StandardSchemaV1 {
-  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) {
-    return false;
-  }
-  const standard: unknown = '~standard' in value ? value['~standard'] : undefined;
-  return (
-    standard !== null &&
-    typeof standard === 'object' &&
-    'validate' in standard &&
-    typeof standard.validate === 'function'
-  );
 }
 
 /** The message one rejected value reports, escaped, with the placeholder a silent schema earns. */
@@ -514,32 +431,14 @@ interface CarriedEntry {
   place: Finding;
 }
 
-/** The schema one descriptor answers with, which a JavaScript author can leave out. */
-function schemaOf(subject: ExtensionSubject, { carried, place }: CarriedEntry): StandardSchemaV1 {
-  const { descriptor } = carried;
-  const schema: unknown = 'schema' in descriptor ? descriptor.schema : undefined;
-  if (!isSchema(schema)) {
-    throw new DeclarationError(extensionWithoutSchema, {
-      correction: 'Supply a Standard Schema v1 object that answers synchronously.',
-      findings: [place],
-      sentence: `${subject.sentence} holds extension ${quoted(descriptor.identity)}, which declares no schema.`,
-    });
-  }
-  return schema;
-}
-
 /** The fix every rejected extension value shares. */
 const correctValue = 'Correct the value.';
 
 /** The result one schema answered with, or the rejection its own throw is. */
-function validated(
-  subject: ExtensionSubject,
-  entry: CarriedEntry,
-  schema: StandardSchemaV1,
-): unknown {
+function validated(subject: ExtensionSubject, entry: CarriedEntry): unknown {
   const { carried, place } = entry;
   try {
-    return schema['~standard'].validate(carried.input);
+    return carried.descriptor.schema['~standard'].validate(carried.input);
   } catch (error) {
     // A schema that throws rejected the value the only way it could, so it reads as a rejection.
     throw new DeclarationError(
@@ -558,12 +457,12 @@ function validated(
 function validateValue(subject: ExtensionSubject, entry: CarriedEntry): unknown {
   const { carried, place } = entry;
   const { identity } = carried.descriptor;
-  const result: unknown = validated(subject, entry, schemaOf(subject, entry));
+  const result: unknown = validated(subject, entry);
   if (result === null || typeof result !== 'object' || isThenable(result)) {
-    throw new DeclarationError(asyncExtensionSchema, {
+    throw new DeclarationError(invalidExtensionValue, {
       correction: 'Supply a schema that answers synchronously.',
       findings: [place],
-      sentence: `Extension ${quoted(identity)} validates asynchronously.`,
+      sentence: `${subject.sentence} holds a ${quoted(identity)} value its schema did not answer synchronously.`,
     });
   }
   const issues: unknown = 'issues' in result ? result.issues : undefined;
@@ -585,52 +484,30 @@ function validateValue(subject: ExtensionSubject, entry: CarriedEntry): unknown 
   return output.data;
 }
 
-/** An `extensions` slot holds a list of values, so anything else is the same declaration fault. */
-function readList(slot: ExtensionSlot): readonly unknown[] {
-  const { declared, site, subject } = slot;
-  if (declared === undefined) {
-    return [];
-  }
-  if (!Array.isArray(declared)) {
-    throw new DeclarationError(notAList, {
-      correction: 'Supply a list of values returned by calling an extension.',
-      findings: [{ ...site.declaration, mark: site.at }],
-      sentence: `${subject.sentence} declares extensions that are not an array.`,
-    });
-  }
-  return declared;
-}
-
-/** The value one entry carries, under the rules its own slot's target sets. */
+/**
+ * The value one entry carries. A value another installed copy of `@loomcli/core` built misses this
+ * copy's registry.
+ */
 function carriedValue(slot: ExtensionSlot, entry: unknown, index: number): CarriedEntry {
-  const { site, subject, target } = slot;
+  const { site, subject } = slot;
   const carried = typeof entry === 'object' && entry !== null ? values.get(entry) : undefined;
   if (!carried) {
     throw new DeclarationError(foreignValue, {
-      correction: 'Supply the value returned by calling an extension.',
+      correction: foreignValueCorrection,
       findings: [entryFinding(site, index)],
-      sentence: `${subject.sentence} holds a value that is not an extension value.`,
+      sentence: `${subject.sentence} holds an extension value another installed copy of @loomcli/core built.`,
     });
   }
   const { descriptor } = carried;
-  const place = entryFinding(site, index, `extension ${quoted(descriptor.identity)}`);
-  if (descriptor.target !== target) {
-    throw new DeclarationError(extensionTargetRule, {
-      correction: `Supply an extension that applies to ${applies[target]}.`,
-      findings: [place],
-      sentence: `${subject.sentence} holds extension ${quoted(descriptor.identity)}, which applies to ${applies[descriptor.target]}.`,
-    });
-  }
-  return { carried, place };
+  return { carried, place: entryFinding(site, index, `extension ${quoted(descriptor.identity)}`) };
 }
 
-/** Everything one `extensions` slot needs to answer: whose it is, where, and what it may carry. */
+/** Everything one `extensions` slot needs to answer: whose it is, where, and what it carries. */
 interface ExtensionSlot {
-  declared: unknown;
+  declared: readonly unknown[] | undefined;
   descriptors: DescriptorRegistry;
   site: ExtensionSite;
   subject: ExtensionSubject;
-  target: ExtensionTarget;
 }
 
 /** One carried value, validated against its descriptor's schema and ready to store. */
@@ -640,39 +517,26 @@ interface ValidatedValue {
 }
 
 /**
- * One layer's values, each validated once, synchronously, in authoring order. A layer holds at
- * most one value of an extension, collecting or not, so a second one is a declaration fault.
+ * One layer's values, each validated once, synchronously, in authoring order. A second value of
+ * one extension in a layer replaces the first whole and keeps the first one's position, as a value
+ * in a later layer does.
  */
 function validateLayer(slot: ExtensionSlot): readonly ValidatedValue[] {
   const { site, subject } = slot;
-  const layer: ValidatedValue[] = [];
-  // Each identity's position in the list, so a repeat marks both values.
-  const seen = new Map<string, number>();
+  const layer = new Map<string, ValidatedValue>();
   // The layer's descriptors register together once every value is valid.
   // A rejected layer, such as a hook's `extend()` call the hook catches, leaves the registry as it was.
   const staged = new Map(slot.descriptors);
-  for (const [index, value] of readList(slot).entries()) {
+  for (const [index, value] of (slot.declared ?? []).entries()) {
     const entry = carriedValue(slot, value, index);
     const { descriptor } = entry.carried;
     registerDescriptor(staged, descriptor, { place: entryFinding(site, index) });
-    const first = seen.get(descriptor.identity);
-    if (first !== undefined) {
-      throw new DeclarationError(extensionValueTwice, {
-        correction: 'Supply one value.',
-        findings: [
-          entryFinding(site, first, 'the first value'),
-          entryFinding(site, index, 'the second value'),
-        ],
-        sentence: `${subject.sentence} holds extension ${quoted(descriptor.identity)} twice.`,
-      });
-    }
-    seen.set(descriptor.identity, index);
-    layer.push({ descriptor, output: validateValue(subject, entry) });
+    layer.set(descriptor.identity, { descriptor, output: validateValue(subject, entry) });
   }
   for (const [identity, descriptor] of staged) {
     slot.descriptors.set(identity, descriptor);
   }
-  return layer;
+  return [...layer.values()];
 }
 
 /**
@@ -742,11 +606,13 @@ function buildExtensions(slot: ExtensionSlot): Readonly<Record<string, unknown>>
 
 /** A Command's author layers, validated in authoring order into the store its hooks extend. */
 function storeCommandLayers(
-  slot: Omit<ExtensionSlot, 'declared' | 'target'> & { layers: readonly unknown[] },
+  slot: Omit<ExtensionSlot, 'declared'> & {
+    layers: readonly (readonly unknown[] | undefined)[];
+  },
 ): ExtensionStore {
   let store = emptyStore;
   for (const declared of slot.layers) {
-    store = extendStore(store, validateLayer({ ...slot, declared, target: 'command' }));
+    store = extendStore(store, validateLayer({ ...slot, declared }));
   }
   return store;
 }
@@ -773,12 +639,10 @@ export type {
   ExtensionValue,
 };
 export {
-  appliesTo,
   buildExtensions,
   carriesBinding,
   extendStore,
   extension,
-  isDescriptor,
   publishStore,
   readExtension,
   registerDescriptor,

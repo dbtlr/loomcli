@@ -1,6 +1,5 @@
 import { Application, Command, DeclarationError } from '@loomcli/core';
 
-import { declare } from './declare.mjs';
 import { ruleText } from './rule-text.mjs';
 
 const digits = {
@@ -123,17 +122,6 @@ function defaults() {
     .action(dispatch);
 }
 
-// An object with no prototype is plain data too, so inspection copies and freezes its default.
-function bare() {
-  return new Application('bare')
-    .option('config', {
-      default: Object.assign(Object.create(null), { depth: '1' }),
-      type: 'string',
-      validate: digits,
-    })
-    .action(dispatch);
-}
-
 function tails() {
   return new Application('tails')
     .argument('files', { default: ['a'], variadic: true })
@@ -153,55 +141,15 @@ function invalid() {
   return new Application('invalid');
 }
 
-// Each of these throws from the call that declares the input.
-// A default that its schema rejects is the one fault that waits for run().
+// A default that its schema rejects waits for run().
 const faults = {
-  'boolean-default': () =>
-    new Application('faults').option('total', { default: 'x', type: 'boolean' }).action(dispatch),
-  'boolean-validate': () =>
-    new Application('faults')
-      .option('total', { type: 'boolean', validate: digits })
-      .action(dispatch),
-  'foreign-schema': () =>
-    new Application('faults')
-      .option('size', { type: 'string', validate: { parse: () => 1 } })
-      .action(dispatch),
-  'multiple-default': () =>
-    new Application('faults')
-      .option('field', { default: 'a', multiple: true, type: 'string' })
-      .action(dispatch),
-  'nonboolean-omitted': () =>
-    new Application('faults')
-      .option('file', { type: 'string', validate: digits, validateOmitted: 'yes' })
-      .action(dispatch),
-  'nonboolean-required': () =>
-    new Application('faults').option('size', { required: 'yes', type: 'string' }).action(dispatch),
-  'nonboolean-variadic': () =>
-    new Application('faults').argument('files', { variadic: 'yes' }).action(dispatch),
-  'null-omitted': () =>
-    new Application('faults')
-      .option('file', { type: 'string', validate: digits, validateOmitted: null })
-      .action(dispatch),
-  'numeric-omitted': () =>
-    new Application('faults')
-      .option('file', { type: 'string', validate: digits, validateOmitted: 0 })
-      .action(dispatch),
-  'required-default': () =>
-    new Application('faults')
-      .option('depth', { default: '1', required: true, type: 'string' })
-      .action(dispatch),
   'schema-default': () =>
     new Application('faults')
       .option('depth', { default: 'deep', type: 'string', validate: digits })
       .action(dispatch),
-  'undefined-omitted': () =>
-    new Application('faults')
-      .option('file', { type: 'string', validate: digits, validateOmitted: undefined })
-      .action(dispatch),
 };
 
 const graphs = {
-  bare,
   defaults,
   described,
   invalid,
@@ -232,9 +180,6 @@ if (mode === 'catch') {
       })}\n`,
     );
   }
-} else if (mode === 'declare') {
-  declare(build);
-  process.stdout.write('declared\n');
 } else if (mode === 'run') {
   const code = await build().run({ host: { argv: [], release: { build: 'distributed' } } });
   process.stdout.write(`${encode({ code })}\n`);
@@ -271,16 +216,6 @@ if (mode === 'catch') {
     graph.root.children[0].aliases.push('other');
   });
   process.stdout.write(`${encode({ attempts, repeats: build().inspect().name })}\n`);
-} else if (mode === 'default') {
-  // A reported default is a copy, frozen to any depth, so a consumer cannot reach the declaration.
-  const [option] = build().inspect().root.options;
-  let rejected = false;
-  try {
-    option.default.value.depth = 'other';
-  } catch (error) {
-    rejected = error instanceof TypeError;
-  }
-  process.stdout.write(`${encode({ rejected, value: option.default.value })}\n`);
 } else {
   process.stdout.write(`${encode(build().inspect())}\n`);
 }

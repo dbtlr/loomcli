@@ -181,24 +181,6 @@ switch (scenario) {
     report(() => diagnosticRule('retry-limit', { explanation: 'E.', headline: 'H' }));
     break;
   }
-  case 'empty-headline': {
-    report(() => diagnosticRule('@acme/retry/retry-limit', { explanation: 'E.', headline: ' ' }));
-    break;
-  }
-  case 'empty-explanation': {
-    report(() => diagnosticRule('@acme/retry/retry-limit', { explanation: '', headline: 'H' }));
-    break;
-  }
-  case 'bad-docs': {
-    report(() =>
-      diagnosticRule('@acme/retry/retry-limit', {
-        docs: 'rules page',
-        explanation: 'E.',
-        headline: 'H',
-      }),
-    );
-    break;
-  }
   case 'run-width': {
     // A development run that meets the fault, on the terminal and environment the test names.
     const input = JSON.parse(process.argv[3]);

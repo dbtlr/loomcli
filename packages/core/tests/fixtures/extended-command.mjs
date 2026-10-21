@@ -46,13 +46,17 @@ if (mode === 'invoke') {
       root: readExtension(graph.root, other),
     })}\n`,
   );
+} else if (mode === 'duplicate') {
+  // A second value of one extension in one call replaces the first whole.
+  const twice = original.extend(
+    help({ details: 'One.', examples: ['one'] }),
+    help({ details: 'Two.' }),
+  );
+  const node = new Application('twice').command(twice).inspect().root.children[0];
+  process.stdout.write(`${JSON.stringify(readExtension(node, help))}\n`);
 } else {
   const scenarios = {
-    duplicate: () => original.extend(help({ details: 'One.' }), help({ details: 'Two.' })),
     invalid: () => original.extend(help({ details: 1 })).extend(help({ details: 'Valid.' })),
-    late: () => enriched.option('extra', { type: 'boolean' }),
-    target: () =>
-      original.extend(extension('test/input', { schema: z.string(), target: 'option' })('Wrong.')),
     twin: () =>
       original.extend(extension('test/help', { schema: z.string(), target: 'command' })('Twin.')),
   };

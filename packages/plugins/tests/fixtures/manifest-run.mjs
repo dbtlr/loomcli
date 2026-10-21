@@ -156,6 +156,24 @@ const wired = () =>
     .result({ views: { json: text, wire: json({ map: (value) => ({ value }) }) } })
     .action(({ out }) => out.results('wired'));
 
+/** Descriptions and a deprecation message an author wrote across several lines. */
+function multiline() {
+  const fetch = new Command('fetch', {
+    deprecated: 'Use get\ninstead.',
+    description: 'Read one value\r\nat a path.',
+  })
+    .argument('path', { description: 'The\npath.' })
+    .option('depth', {
+      deprecated: 'Use\n--level.',
+      description: 'How deep\nto walk.',
+      type: 'string',
+    })
+    .action(dispatch);
+  return new Application('app', { description: 'Do the\nwork.', plugins: [manifest()] })
+    .command(fetch)
+    .action(dispatch);
+}
+
 const scenarios = {
   app: application,
   'argument-nan': () => placed('argument', Number.NaN),
@@ -168,6 +186,7 @@ const scenarios = {
   'global-nan': () => placed('global', Number.NaN),
   infinity: () => defaulted(Number.POSITIVE_INFINITY),
   map: () => defaulted(new Map()),
+  multiline,
   nan: () => defaulted(Number.NaN),
   'null-prototype': () =>
     undescribed(Object.assign(Object.create(null), { plain: [1, { two: null }] })),

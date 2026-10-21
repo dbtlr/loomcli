@@ -1,4 +1,4 @@
-import { checkPluginSettings, DeclarationError, isProseLine, plugin } from '@loomcli/core';
+import { DeclarationError, isProseLine, plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
@@ -37,12 +37,10 @@ export interface VersionSettings {
 
 /**
  * A plugin that prints the Application's version, then the settings' postfix when there is one, and
- * ends the invocation. It judges the settings at the call, their shape under core's rules and then
- * the postfix. The annotated return type is the boundary that breaks the cycle between this module
- * and the middleware module `load` names.
+ * ends the invocation. It judges the postfix at the call. The annotated return type is the boundary
+ * that breaks the cycle between this module and the middleware module `load` names.
  */
 export function version(settings?: VersionSettings): Plugin<VersionOptions> {
-  checkPluginSettings(settings, { call: 'version', plugin: identity });
   const postfix = postfixOf(settings);
   return plugin(identity, {
     middleware: {

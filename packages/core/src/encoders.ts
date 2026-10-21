@@ -1,9 +1,8 @@
-import { viewMediaType } from './command-rules.js';
 import { DeclarationError, InternalError, notTextReason, quoted, reasonOf } from './errors.js';
 import { partFinding } from './facts.js';
 import type { FactSite } from './facts.js';
 import type { FailureForm } from './form.js';
-import { failureEncoderTaken, foreignValue, notAFunction, notAList } from './plugin-rules.js';
+import { failureEncoderTaken, foreignValue, foreignValueCorrection } from './plugin-rules.js';
 import { pluginSentence } from './plugin.js';
 import type { BuiltPlugin } from './plugin.js';
 import { brokenFailureEncoder } from './rules.js';
@@ -40,11 +39,6 @@ class FailureEncodingDeclaration {
 /** An opaque encoding pairing one media type with the encoder that writes it. */
 type FailureEncoding = Pick<FailureEncodingDeclaration, typeof failureEncoding>;
 
-/** The finding for one `encodeFailure()` call, marking the argument at `mark`. */
-function encodeFinding(mediaType: unknown, encoder: unknown, mark: string) {
-  return { arguments: [mediaType, encoder], call: 'encodeFailure', mark };
-}
-
 /**
  * Pairs a media type with the encoder that writes a failed run's form in it. A plugin lists the
  * pair under its `failureEncoders`, and a failed `run()` whose selected view declares the media type
@@ -52,36 +46,20 @@ function encodeFinding(mediaType: unknown, encoder: unknown, mark: string) {
  * exact strings core stores, so core judges no grammar.
  */
 function encodeFailure(mediaType: string, encoder: FailureEncoder): FailureEncoding {
-  if (typeof mediaType !== 'string') {
-    throw new DeclarationError(viewMediaType, {
-      correction: 'Supply a media type such as "application/json".',
-      findings: [encodeFinding(mediaType, encoder, '0')],
-      sentence: 'encodeFailure() received a media type that is not a string.',
-    });
-  }
-  if (typeof encoder !== 'function') {
-    throw new DeclarationError(notAFunction, {
-      correction: 'Supply a function of the failure form that returns a string.',
-      findings: [encodeFinding(mediaType, encoder, '1')],
-      sentence: 'encodeFailure() received an encoder that is not a function.',
-    });
-  }
   return new FailureEncodingDeclaration({ encoder, mediaType });
 }
 
-/** The fix a `failureEncoders` slot's list fault and entry fault share. */
-const encodingSupply = 'encodeFailure(mediaType, encoder)';
-
 /**
  * One plugin's `failureEncoders` list, by media type, in list order. `site` names the plugin at the
- * start of a sentence and holds the call that declared the list, which a fault marks. The slot is
- * read defensively, because a JavaScript author reaches it with any value.
+ * start of a sentence and holds the call that declared the list, which a fault marks.
  */
-function readEncodings(site: FactSite, declared: unknown): ReadonlyMap<string, FailureEncoder> {
+function readEncodings(
+  site: FactSite,
+  declared: readonly FailureEncoding[] | undefined,
+): ReadonlyMap<string, FailureEncoder> {
   const encoders = new Map<string, FailureEncoder>();
   const positions = new Map<string, number>();
-  // A spread visits a hole as undefined, so a hole is an entry that is not an encoding.
-  for (const [index, entry] of [...encodingList(site, declared)].entries()) {
+  for (const [index, entry] of (declared ?? []).entries()) {
     const record = encodingRecord(site, entry, index);
     const first = positions.get(record.mediaType);
     if (first !== undefined) {
@@ -100,26 +78,17 @@ function readEncodings(site: FactSite, declared: unknown): ReadonlyMap<string, F
   return encoders;
 }
 
-/** The entries of one `failureEncoders` slot: a list, or none when the slot is omitted. */
-function encodingList(site: FactSite, declared: unknown): readonly unknown[] {
-  if (declared !== undefined && !Array.isArray(declared)) {
-    throw new DeclarationError(notAList, {
-      correction: `Supply a list of values returned by ${encodingSupply}.`,
-      findings: [partFinding(site, [])],
-      sentence: `${site.subject} declares failureEncoders that are not an array.`,
-    });
-  }
-  return declared ?? [];
-}
-
-/** The record behind one entry of a `failureEncoders` slot, whose every other value is its fault. */
-function encodingRecord(site: FactSite, entry: unknown, index: number): EncodingRecord {
-  const record = typeof entry === 'object' && entry !== null ? records.get(entry) : undefined;
+/**
+ * The record behind one entry of a `failureEncoders` slot. An encoding another installed copy of
+ * `@loomcli/core` built misses this copy's registry.
+ */
+function encodingRecord(site: FactSite, entry: FailureEncoding, index: number): EncodingRecord {
+  const record = records.get(entry);
   if (!record) {
     throw new DeclarationError(foreignValue, {
-      correction: `Supply the value returned by ${encodingSupply}.`,
+      correction: foreignValueCorrection,
       findings: [partFinding(site, [index])],
-      sentence: `${site.subject} holds a failure encoder entry that is not an encoding.`,
+      sentence: `${site.subject} holds a failure encoding another installed copy of @loomcli/core built.`,
     });
   }
   return record;

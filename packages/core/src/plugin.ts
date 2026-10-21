@@ -1,69 +1,33 @@
-import { checkBackground } from './background-mark.js';
-import { checkEnvBinding, claimVariables } from './bindings.js';
-import { captureDeclaration, elidedRead, unreadableArgument, unreadableFault } from './capture.js';
+import { claimVariables } from './bindings.js';
 import type { MiddlewareContext } from './chain.js';
-import { checkColor } from './color.js';
-import { notACommand } from './command-rules.js';
-import { attach, commandCode, commandNode } from './command.js';
+import { attach, childNode, commandCode, commandNode } from './command.js';
 import type { AttachedChild, Command } from './command.js';
 import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { readEncodings } from './encoders.js';
 import type { FailureEncoder, FailureEncoding } from './encoders.js';
 import { DeclarationError, InternalError, midSentence, quoted, reasonOf } from './errors.js';
-import {
-  appliesTo,
-  buildExtensions,
-  carriesBinding,
-  isDescriptor,
-  registerDescriptor,
-} from './extension.js';
+import { buildExtensions, registerDescriptor } from './extension.js';
 import type { AdmittedDescriptor, AnyExtension, DescriptorRegistry } from './extension.js';
-import {
-  checkDeprecated,
-  checkDescription,
-  checkControl,
-  checkHidden,
-  partFinding,
-  pluginOptionSite,
-  slotSite,
-} from './facts.js';
+import { partFinding, pluginOptionSite, slotSite } from './facts.js';
 import type { FactSite } from './facts.js';
-import { boundOptions, checkNoPresenceRule, pluginSites } from './globals.js';
+import { boundOptions, pluginSites } from './globals.js';
 import type { InputRecords } from './globals.js';
 import type { FailureHook } from './hints.js';
-import { checkIdentity } from './identity.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
-import { checkInteraction } from './interaction.js';
 import { coreViews } from './lanes.js';
 import type { Log, LogHook } from './log.js';
 import { compileOptions } from './options.js';
 import type { OptionValues } from './options.js';
 import {
-  copyOwnKeys,
-  decidePlain,
-  declaring,
-  isPlainObject,
-  shallowList,
-  shallowRecord,
-} from './plain.js';
-import {
   failureEncoderTaken,
   foreignValue,
-  middlewareActivation,
-  notAFunction,
-  notAList,
-  notAnObject,
+  foreignValueCorrection,
   pluginInstalledTwice,
-  signalClaimedTwice,
   slotTaken,
-  sourceBinding,
-  sourceBoundOwnOption,
-  unknownSignal,
 } from './plugin-rules.js';
 import type { EnvironmentHook } from './prepare-environment.js';
 import { pluginLoaderFailed } from './rules.js';
-import { isProcessSignal } from './signals.js';
 import type { ProcessSignal } from './signals.js';
 import type { ContextualStyle, ThemeConstraint, ThemeMapping } from './style.js';
 import { buildTheme } from './theme.js';
@@ -78,16 +42,14 @@ import type {
   OptionValue,
   Out,
 } from './types.js';
-import { captureConfig, checkDeclarations, defaultDepthFault } from './validation.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
-import { checkVerbosity } from './verbosity.js';
 import { buildViews, viewIdentities } from './view.js';
 import type { ViewContribution, ViewSubject } from './view.js';
 
 /**
  * The declaration record a plugin contributes its global options under, keyed by option name. Each
  * entry takes the configuration `globalOption()` takes, so the config type publishes no presence
- * rule, and `plugin()` repeats the rule for a JavaScript author.
+ * rule.
  */
 type PluginOptions = Readonly<Record<string, GlobalOptionConfig>>;
 
@@ -113,38 +75,27 @@ declare const pluginOptions: unique symbol;
 declare const pluginTheme: unique symbol;
 
 /**
- * One plugin's declarations as `plugin()` receives them, with the generic parts erased. A
- * JavaScript author reaches the same slots with any value, so each slot but `options` is read as
- * `unknown` and no declaration is claimed to be well formed here. `options` keeps the record type
- * the signature declares, because each entry's config reaches the shared input rules under it.
+ * One plugin's declarations as `plugin()` receives them, with the generic parts erased: the
+ * middleware activation and the loaders read as plain names and functions, the theme as any
+ * mapping, and the Commands as any Command values.
  */
 interface DeclaredPlugin {
-  theme?: unknown;
+  theme?: ThemeMapping | undefined;
   options?: PluginOptions | undefined;
-  middleware?: unknown;
-  onCommandAttach?: unknown;
-  onGraphBuilt?: unknown;
-  onFailure?: unknown;
-  onLog?: unknown;
-  onEnvironment?: unknown;
-  extensions?: unknown;
-  views?: unknown;
-  translators?: unknown;
-  failureEncoders?: unknown;
-  signals?: unknown;
-  source?: unknown;
-  commands?: unknown;
+  middleware?: { activate: 'always' | readonly string[]; load: () => unknown } | undefined;
+  onCommandAttach?: CommandAttachHook | undefined;
+  onGraphBuilt?: GraphBuiltHook | undefined;
+  onFailure?: FailureHook | undefined;
+  onLog?: LogHook | undefined;
+  onEnvironment?: EnvironmentHook | undefined;
+  extensions?: readonly AnyExtension[] | undefined;
+  views?: readonly ViewContribution[] | undefined;
+  translators?: readonly Translation[] | undefined;
+  failureEncoders?: readonly FailureEncoding[] | undefined;
+  signals?: readonly ProcessSignal[] | undefined;
+  source?: { binding: AnyExtension; load: () => unknown } | undefined;
+  commands?: readonly unknown[] | undefined;
 }
-
-/** The slots of a definition that hold a list, each copied with its entries as they were built. */
-const definitionLists = [
-  'extensions',
-  'signals',
-  'commands',
-  'views',
-  'translators',
-  'failureEncoders',
-] as const;
 
 /** Authored values register here, so the public type publishes no state to reach or replace. */
 const nodes = new WeakMap<object, BuiltPlugin>();
@@ -287,53 +238,7 @@ function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMap
   identity: string,
   definition: PluginDefinition<Options, Theme>,
 ): Plugin<NoInfer<Options>, NoInfer<Theme>> {
-  return new PluginDeclaration<Options, Theme>(declaring(() => readPlugin(identity, definition)));
-}
-
-/**
- * The one copy of a definition that `plugin()` reads: the definition, its theme mapping, options
- * record, middleware with its activation list, and source, and each list it holds. An entry of a
- * list is what its factory built and is not copied, and each option's config is captured where its
- * own rules read it, so a fault about it names the option. A read that throws is the unreadable
- * fault of the definition, and a definition that is not a plain object is the not-an-object fault.
- */
-function captureDefinition(identity: string, definition: DeclaredPlugin): DeclaredPlugin {
-  return captureDeclaration(
-    definition,
-    (copy, read) => {
-      read.nested(copy, 'theme', shallowRecord);
-      read.nested(copy, 'options', shallowRecord);
-      read.nested(copy, 'middleware', copyMiddleware);
-      read.nested(copy, 'source', shallowRecord);
-      for (const list of definitionLists) {
-        read.nested(copy, list, shallowList);
-      }
-    },
-    {
-      notAnObject: () =>
-        new DeclarationError(notAnObject, {
-          correction: 'Supply { options, middleware, extensions, views }.',
-          findings: [{ arguments: [identity, definition], call: 'plugin', mark: '1' }],
-          sentence: `${pluginSentence(identity)} declares a definition that is not an object.`,
-        }),
-      unreadable: unreadableArgument(
-        { call: 'plugin', named: identity, subject: pluginSentence(identity) },
-        'definition',
-      ),
-    },
-  );
-}
-
-/** A middleware object's copy, its activation list copied too, or any other value as declared. */
-function copyMiddleware(middleware: unknown): unknown {
-  if (!decidePlain(middleware)) {
-    return middleware;
-  }
-  const copy = copyOwnKeys(middleware);
-  if (Object.hasOwn(copy, 'activate')) {
-    copy.activate = shallowList(copy.activate);
-  }
-  return copy;
+  return new PluginDeclaration<Options, Theme>(readPlugin(identity, definition));
 }
 
 /** How every plugin diagnostic names one plugin at the start of a sentence. */
@@ -353,19 +258,18 @@ function pluginSlot(identity: string, slot: string, value: unknown): FactSite {
 /** The subject a plugin's `views` list reports under, and the call that declared it. */
 function pluginViews(identity: string): ViewSubject {
   return {
-    declares: true,
     owner: { call: 'plugin', named: identity },
     sentence: pluginSentence(identity),
   };
 }
 
-/** The declarations behind one installed value, or `undefined` for a value `plugin()` did not make. */
-function nodeOf(value: unknown): BuiltPlugin | undefined {
-  return typeof value === 'object' && value !== null ? nodes.get(value) : undefined;
+/** The declarations behind one installed value, or `undefined` for a value this copy did not make. */
+function nodeOf(value: object): BuiltPlugin | undefined {
+  return nodes.get(value);
 }
 
 /** One `plugins` entry as a finding prints it: a plugin as its `plugin()` call, elided. */
-function entryCode(value: unknown): unknown {
+function entryCode(value: object): unknown {
   const node = nodeOf(value);
   return node ? spelled(`plugin(${quoteString(node.identity)}, ${elided})`) : value;
 }
@@ -422,32 +326,23 @@ function slotFault(
 /**
  * The installed list in composition order, with every rule that reads two plugins together: an
  * identity installed twice, a second claim on the theme slot, the signals slot, or the
- * configuration source, and two distinct descriptors under one identity. The slot is the copy the
- * Application's constructor took, which a JavaScript author fills with any value. Each plugin's own
- * rules already ran at its `plugin()` call.
+ * configuration source, and two distinct descriptors under one identity. Each plugin's own rules
+ * already ran at its `plugin()` call. A plugin another installed copy of `@loomcli/core` built
+ * misses this copy's registry.
  */
-function installPlugins(application: string, plugins: unknown): InstalledPlugins {
-  const printed = Array.isArray(plugins) ? Array.from(plugins, entryCode) : plugins;
+function installPlugins(application: string, plugins: readonly Plugin[]): InstalledPlugins {
   const site = slotSite(
     { call: 'new Application', named: application, subject: 'The Application' },
     'plugins',
-    printed,
+    Array.from(plugins, entryCode),
   );
-  if (!Array.isArray(plugins)) {
-    throw new DeclarationError(notAList, {
-      correction: 'Supply a list of plugin values.',
-      findings: [partFinding(site, [])],
-      sentence: 'The Application declares plugins that are not an array.',
-    });
-  }
-  const list: readonly unknown[] = plugins;
-  const installed = list.map((value, index) => {
+  const installed = plugins.map((value, index) => {
     const node = nodeOf(value);
     if (!node) {
       throw new DeclarationError(foreignValue, {
-        correction: 'Supply the value returned by plugin(identity, definition).',
+        correction: foreignValueCorrection,
         findings: [partFinding(site, [index])],
-        sentence: 'The Application holds a value that is not a plugin.',
+        sentence: 'The Application holds a plugin another installed copy of @loomcli/core built.',
       });
     }
     return node;
@@ -514,52 +409,6 @@ function installPlugins(application: string, plugins: unknown): InstalledPlugins
 }
 
 /**
- * The rules a plugin's option answers before every rule an ordinary declaration carries, read from
- * the one copy of its config that `captureConfig` takes, which it answers with for every later read.
- * `siteOf` places the option with the value its entry prints as: the config as declared for a value
- * that is not one, elided for a config whose read threw, and the copy for every later rule.
- */
-function checkPluginOption(
-  siteOf: (shown: unknown) => FactSite,
-  declared: GlobalOptionConfig,
-): GlobalOptionConfig {
-  const sentence = siteOf(declared).subject;
-  const config = captureConfig(declared, {
-    notAnObject: () =>
-      new DeclarationError(notAnObject, {
-        correction: 'Supply { type, ... }.',
-        findings: [partFinding(siteOf(declared), [])],
-        sentence: `${sentence} is not an option declaration.`,
-      }),
-    // The default's walk stopped at the limit, so the finding prints it elided.
-    tooDeep: () => {
-      const { keys, shown } = elidedRead('default');
-      return defaultDepthFault(sentence, [partFinding(siteOf(shown), keys)]);
-    },
-    // A part whose read threw is never read again, so the finding prints it elided.
-    unreadable: (thrown, slot) => {
-      const { keys, shown } = elidedRead(slot);
-      return unreadableFault(
-        { declared: 'config', findings: [partFinding(siteOf(shown), keys)], subject: sentence },
-        thrown,
-      );
-    },
-  });
-  const site = siteOf(config);
-  // A plugin's options are global options, so they answer the global option's presence rule.
-  checkNoPresenceRule(site, config);
-  checkInteraction(config, site, true);
-  checkColor(config, site, true);
-  checkVerbosity(config, site, true);
-  checkBackground(config, site, true);
-  checkDescription(site, config.description);
-  checkHidden(site, config.hidden);
-  checkDeprecated(site, config.deprecated);
-  checkControl(site, config.control);
-  return config;
-}
-
-/**
  * One plugin's option declarations, in declaration order. They join the globals table, so the rules
  * that pair them with another scope's options belong to that table and not to this reading.
  */
@@ -568,15 +417,8 @@ function readOptions(
   declared: PluginOptions | undefined,
   build: PluginRegisters,
 ): readonly OptionInput[] {
-  if (declared !== undefined && !isPlainObject(declared)) {
-    throw new DeclarationError(notAnObject, {
-      correction: 'Supply a record of option declarations.',
-      findings: [partFinding(pluginSlot(identity, 'options', declared), [])],
-      sentence: `${pluginSentence(identity)} declares options that are not an object.`,
-    });
-  }
   const inputs: OptionInput[] = [];
-  // A finding prints each option's captured config once it is taken, and each later one elided.
+  // A finding prints each option's config once it is read, and each later one elided.
   const shown: Record<string, unknown> = Object.fromEntries(
     Object.keys(declared ?? {}).map((name) => [name, spelled(elided)]),
   );
@@ -585,7 +427,7 @@ function readOptions(
     // A computed key defines its own property even for `__proto__`, where assignment would not.
     const siteOf = (value: unknown) =>
       pluginOptionSite({ identity, options: { ...shown, [name]: value } }, name, sentence);
-    const config = checkPluginOption(siteOf, entry);
+    const config = { ...entry };
     // Defining the key keeps its place, and holds even for a key of `__proto__`.
     Object.defineProperty(shown, name, {
       configurable: true,
@@ -594,10 +436,7 @@ function readOptions(
       writable: true,
     });
     const site = siteOf(config);
-    checkEnvBinding(site, config);
     const input: OptionInput = { config, kind: 'option', name };
-    // The shared rules name the plugin and the option, so a fault reads with its contributor.
-    checkDeclarations([{ input, site }], sentence);
     build.records.set(
       input,
       buildExtensions({
@@ -608,7 +447,6 @@ function readOptions(
           phrase: `on ${midSentence(sentence)}`,
           sentence,
         },
-        target: 'option',
       }),
     );
     inputs.push(input);
@@ -624,55 +462,6 @@ function readOptions(
     })),
   );
   return inputs;
-}
-
-/**
- * The activation a middleware declares, checked against the options its own plugin declares. `site`
- * holds the middleware object, and a fault marks its `activate` key, or the object itself when the
- * key is absent.
- */
-function readActivation(
-  site: FactSite,
-  declared: Readonly<Record<string, unknown>>,
-  names: ReadonlySet<string>,
-): 'always' | readonly string[] {
-  const { activate } = declared;
-  if (activate === 'always') {
-    return 'always';
-  }
-  if (!Array.isArray(activate)) {
-    throw new DeclarationError(middlewareActivation, {
-      correction: "Supply activate: 'always' or a list of the plugin's own option names.",
-      findings: [partFinding(site, 'activate' in declared ? ['activate'] : [])],
-      sentence: `${site.subject} declares middleware with no activation.`,
-    });
-  }
-  const list: readonly unknown[] = activate;
-  if (list.length === 0) {
-    throw new DeclarationError(middlewareActivation, {
-      correction: "Name at least one of the plugin's options or use 'always'.",
-      findings: [partFinding(site, ['activate'])],
-      sentence: `${site.subject} declares middleware with an empty activation list.`,
-    });
-  }
-  return list.map((name, index) => {
-    if (typeof name !== 'string' || !names.has(name)) {
-      throw new DeclarationError(middlewareActivation, {
-        correction: "Name one of the plugin's own options.",
-        findings: [partFinding(site, ['activate', index])],
-        sentence: `${site.subject} activates middleware on option ${quoted(name)}, which it does not declare.`,
-      });
-    }
-    return name;
-  });
-}
-
-/**
- * The loader a middleware declares. Core calls it with no arguments and reads whatever it resolves
- * to, so being callable is the whole runtime claim this check makes.
- */
-function isLoader(value: unknown): value is () => unknown {
-  return typeof value === 'function';
 }
 
 /**
@@ -719,230 +508,28 @@ interface BuiltMiddleware {
   load: () => unknown;
 }
 
-/** One plugin's middleware, or `undefined` for a plugin that declares none. */
-function readMiddleware(
-  identity: string,
-  declared: unknown,
-  names: ReadonlySet<string>,
-): BuiltMiddleware | undefined {
-  if (declared === undefined) {
-    return undefined;
-  }
-  const site = pluginSlot(identity, 'middleware', declared);
-  if (!isPlainObject(declared)) {
-    throw new DeclarationError(notAnObject, {
-      correction: 'Supply { activate, load }.',
-      findings: [partFinding(site, [])],
-      sentence: `${pluginSentence(identity)} declares middleware that is not an object.`,
-    });
-  }
-  const activate = readActivation(site, declared, names);
-  const { load } = declared;
-  if (!isLoader(load)) {
-    throw new DeclarationError(notAFunction, {
-      correction: "Supply load: () => import('./middleware.js').",
-      findings: [partFinding(site, 'load' in declared ? ['load'] : [])],
-      sentence: `${pluginSentence(identity)} declares middleware with no load function.`,
-    });
-  }
-  return { activate, load };
-}
-
 /**
  * The Commands one plugin attaches to the root, each checked by the attach the root applies, as a
- * finished Command, against the plugin's own earlier Commands, and against the nesting cap. The
- * Application attaches them again when it is constructed, against every other root child.
+ * finished Command and against the plugin's own earlier Commands. The Application attaches them
+ * again when it is constructed, against every other root child.
  */
-function readCommands(identity: string, declared: unknown): readonly AttachedChild[] {
-  if (declared === undefined) {
-    return [];
-  }
-  if (!Array.isArray(declared)) {
-    throw new DeclarationError(notAList, {
-      correction: 'Supply a list of Command values.',
-      findings: [partFinding(pluginSlot(identity, 'commands', declared), [])],
-      sentence: `${pluginSentence(identity)} declares commands that are not an array.`,
-    });
-  }
-  const list: readonly unknown[] = declared;
+function readCommands(identity: string, list: readonly unknown[]): readonly AttachedChild[] {
   const commands: AttachedChild[] = [];
   // Each entry prints as the Command it is, so a finding rebuilds the list the plugin declared.
-  const entries = Array.from(list, (value) => {
+  const entries = list.map((value) => {
     const node = commandNode(value);
     return node ? commandCode(node.name) : value;
   });
-  // A for...of walk reads a hole as undefined, which the entry rule rejects, where map would skip it.
   for (const [index, value] of list.entries()) {
-    const node = commandNode(value);
     const placement: Finding = {
       arguments: [identity, { commands: entries }],
       call: 'plugin',
       mark: `1.commands.${String(index)}`,
     };
-    if (!node) {
-      throw new DeclarationError(notACommand, {
-        correction: 'Supply the value returned by new Command(name).',
-        findings: [placement],
-        sentence: `${pluginSentence(identity)} holds a value that is not a Command.`,
-      });
-    }
-    const parent = {
-      argument: undefined,
-      children: commands,
-      hasAction: false,
-      name: null,
-      path: [],
-    };
-    commands.push(attach(parent, node, placement));
+    const parent = { children: commands, name: null, path: [] };
+    commands.push(attach(parent, childNode(value), placement));
   }
   return commands;
-}
-
-/**
- * One plugin's claim on the signals slot, drawn from the closed set core installs listeners for.
- * An empty list claims nothing, so it leaves the slot free for another plugin.
- * Each signal is claimed once, because core installs one listener per entry and a second listener
- * on one signal would take the force path on the first signal the run receives.
- */
-function readSignals(identity: string, declared: unknown): readonly ProcessSignal[] {
-  if (declared === undefined) {
-    return [];
-  }
-  const site = pluginSlot(identity, 'signals', declared);
-  if (!Array.isArray(declared)) {
-    throw new DeclarationError(notAList, {
-      correction: 'Supply a list of signal names.',
-      findings: [partFinding(site, [])],
-      sentence: `${pluginSentence(identity)} declares signals that are not an array.`,
-    });
-  }
-  const list: readonly unknown[] = declared;
-  // Each claimed signal's position, so a repeat marks both claims.
-  const claimed = new Map<ProcessSignal, number>();
-  for (const [index, value] of list.entries()) {
-    if (!isProcessSignal(value)) {
-      throw new DeclarationError(unknownSignal, {
-        correction: 'Claim SIGINT or SIGTERM.',
-        findings: [partFinding(site, [index])],
-        sentence: `${pluginSentence(identity)} claims signal ${quoted(value)}.`,
-      });
-    }
-    const first = claimed.get(value);
-    if (first !== undefined) {
-      throw new DeclarationError(signalClaimedTwice, {
-        correction: 'Claim each signal once.',
-        findings: [
-          partFinding(site, [first], 'the first claim'),
-          partFinding(site, [index], 'the second claim'),
-        ],
-        sentence: `${pluginSentence(identity)} claims signal ${quoted(value)} twice.`,
-      });
-    }
-    claimed.set(value, index);
-  }
-  return [...claimed.keys()];
-}
-
-/**
- * A lifecycle hook is a function core calls at one named point, so being callable is the whole
- * claim this check makes; every rule the calls it makes carry belongs to the build that calls it.
- */
-function isHook(value: unknown): value is CommandAttachHook {
-  return typeof value === 'function';
-}
-
-/** One plugin's `onCommandAttach` hook, or `undefined` for a plugin that declares none. */
-function readHook(identity: string, declared: unknown): CommandAttachHook | undefined {
-  if (declared === undefined) {
-    return undefined;
-  }
-  if (!isHook(declared)) {
-    throw new DeclarationError(notAFunction, {
-      correction: 'Supply a function of the Command.',
-      findings: [partFinding(pluginSlot(identity, 'onCommandAttach', declared), [])],
-      sentence: `${pluginSentence(identity)} declares onCommandAttach that is not a function.`,
-    });
-  }
-  return declared;
-}
-
-/** Being callable is the whole claim, as it is for `onCommandAttach`; build checks what it returns. */
-function isGraphHook(value: unknown): value is GraphBuiltHook {
-  return typeof value === 'function';
-}
-
-/** One plugin's `onGraphBuilt` hook, or `undefined` for a plugin that declares none. */
-function readGraphHook(identity: string, declared: unknown): GraphBuiltHook | undefined {
-  if (declared === undefined) {
-    return undefined;
-  }
-  if (!isGraphHook(declared)) {
-    throw new DeclarationError(notAFunction, {
-      correction: 'Supply a function of the built graph.',
-      findings: [partFinding(pluginSlot(identity, 'onGraphBuilt', declared), [])],
-      sentence: `${pluginSentence(identity)} declares onGraphBuilt that is not a function.`,
-    });
-  }
-  return declared;
-}
-
-/** Being callable is the declaration rule; the run checks the returned environment additions. */
-function isEnvironmentHook(value: unknown): value is EnvironmentHook {
-  return typeof value === 'function';
-}
-
-function readEnvironmentHook(identity: string, declared: unknown): EnvironmentHook | undefined {
-  if (declared === undefined) {
-    return undefined;
-  }
-  if (!isEnvironmentHook(declared)) {
-    throw new DeclarationError(notAFunction, {
-      correction: 'Supply a function of the environment context.',
-      findings: [partFinding(pluginSlot(identity, 'onEnvironment', declared), [])],
-      sentence: `${pluginSentence(identity)} declares onEnvironment that is not a function.`,
-    });
-  }
-  return declared;
-}
-
-/** Being callable is the whole claim, as it is for `onCommandAttach`; `run()` checks what it returns. */
-function isFailureHook(value: unknown): value is FailureHook {
-  return typeof value === 'function';
-}
-
-/** One plugin's `onFailure` hook, or `undefined` for a plugin that declares none. */
-function readFailureHook(identity: string, declared: unknown): FailureHook | undefined {
-  if (declared === undefined) {
-    return undefined;
-  }
-  if (!isFailureHook(declared)) {
-    throw new DeclarationError(notAFunction, {
-      correction: 'Supply a function of the failure and its context.',
-      findings: [partFinding(pluginSlot(identity, 'onFailure', declared), [])],
-      sentence: `${pluginSentence(identity)} declares onFailure that is not a function.`,
-    });
-  }
-  return declared;
-}
-
-/** Being callable is the whole claim; core checks what a hook returns each time it calls one. */
-function isLogHook(value: unknown): value is LogHook {
-  return typeof value === 'function';
-}
-
-/** One plugin's `onLog` hook, or `undefined` for a plugin that declares none. */
-function readLogHook(identity: string, declared: unknown): LogHook | undefined {
-  if (declared === undefined) {
-    return undefined;
-  }
-  if (!isLogHook(declared)) {
-    throw new DeclarationError(notAFunction, {
-      correction: 'Supply a function of the log event and its destination.',
-      findings: [partFinding(pluginSlot(identity, 'onLog', declared), [])],
-      sentence: `${pluginSentence(identity)} declares onLog that is not a function.`,
-    });
-  }
-  return declared;
 }
 
 /**
@@ -955,70 +542,22 @@ interface BuiltSource {
 }
 
 /**
- * The configuration source one plugin declares, or `undefined` for a plugin that declares none.
- * The binding is one of the plugin's own option-target extensions, so core knows which options to
- * ask about without knowing what the binding means. The plugin's own options resolve before the
- * source loads, so none of them may carry its binding.
+ * The configuration source one plugin declares, or `undefined` for a plugin that declares none. The
+ * binding is an option-target extension, so core knows which options to ask about without knowing
+ * what the binding means. Core admits the binding's descriptor itself, so a binding the plugin does
+ * not also list under `extensions` works the same.
  */
-function readSource(
-  identity: string,
-  declaration: DeclaredPlugin,
-  own: { build: PluginRegisters; inputs: readonly OptionInput[] },
-): BuiltSource | undefined {
+function readSource(identity: string, declaration: DeclaredPlugin, build: PluginRegisters) {
   const declared = declaration.source;
   if (declared === undefined) {
     return undefined;
   }
-  const sentence = pluginSentence(identity);
-  const site = pluginSlot(identity, 'source', declared);
-  if (!isPlainObject(declared)) {
-    throw new DeclarationError(notAnObject, {
-      correction: 'Supply { binding, load }.',
-      findings: [partFinding(site, [])],
-      sentence: `${sentence} declares a source that is not an object.`,
-    });
-  }
   const { binding, load } = declared;
-  // A fault about one key marks the key, or the source itself when the key is absent.
-  const keyFinding = (key: string) => partFinding(site, key in declared ? [key] : []);
-  // The plugin's own extensions were admitted first, so a listed binding is in the registry.
-  // Its identity is read from there, where admission read it once, and never from the binding again.
-  const bound = [...own.build.descriptors].find(([, descriptor]) => descriptor === binding);
-  if (bound === undefined) {
-    throw new DeclarationError(sourceBinding, {
-      correction: 'Supply a descriptor the plugin lists under extensions.',
-      findings: [keyFinding('binding')],
-      sentence: `${sentence} declares a source binding that is not one of its extensions.`,
-    });
-  }
-  const [bindingIdentity, { target }] = bound;
-  if (target !== 'option') {
-    throw new DeclarationError(sourceBinding, {
-      correction: 'Supply an extension that applies to options.',
-      findings: [keyFinding('binding')],
-      sentence: `${sentence} declares source binding ${quoted(bindingIdentity)}, which applies to ${appliesTo(target)}.`,
-    });
-  }
-  if (!isLoader(load)) {
-    throw new DeclarationError(notAFunction, {
-      correction: "Supply load: () => import('./source.js').",
-      findings: [keyFinding('load')],
-      sentence: `${sentence} declares a source with no load function.`,
-    });
-  }
-  const carrier = own.inputs.find((input) =>
-    carriesBinding(own.build.records.get(input), bindingIdentity),
-  );
-  if (carrier) {
-    // The record prints each option's captured config, which is what its rules read.
-    const option = pluginSites(identity, own.inputs)(carrier);
-    throw new DeclarationError(sourceBoundOwnOption, {
-      correction: "Remove the value; the source's own options resolve before it loads.",
-      findings: [partFinding(option, ['extensions'])],
-      sentence: `${option.subject} carries its own source binding.`,
-    });
-  }
-  return { binding: bindingIdentity, load };
+  const site = pluginSlot(identity, 'source', declared);
+  registerDescriptor(build.descriptors, binding, {
+    place: partFinding(site, ['binding']),
+  });
+  return { binding: binding.identity, load };
 }
 
 /** One plugin's declarations, read once at its `plugin()` call. */
@@ -1034,8 +573,8 @@ interface BuiltPlugin {
   onLog: LogHook | undefined;
   /** Prepares additions once per captured environment, before any declared value validates. */
   onEnvironment: EnvironmentHook | undefined;
-  /** The copy of the plugin's own `views` list, which the Application reads again. */
-  views: unknown;
+  /** The plugin's own `views` list, which the Application reads again. */
+  views: readonly ViewContribution[] | undefined;
   /** The translations the plugin registers, which resolve after the application's. */
   translators: TranslationContributor;
   /** The failure encoders the plugin registers, by media type. */
@@ -1065,78 +604,53 @@ function defineExtensions(
   declaration: DeclaredPlugin,
   build: PluginRegisters,
 ): void {
-  const { extensions } = declaration;
+  const { extensions = [] } = declaration;
   const site = pluginSlot(identity, 'extensions', extensions);
-  if (extensions !== undefined && !Array.isArray(extensions)) {
-    throw new DeclarationError(notAList, {
-      correction: 'Supply a list of extension descriptors.',
-      findings: [partFinding(site, [])],
-      sentence: `${pluginSentence(identity)} declares extensions that are not an array.`,
-    });
-  }
-  const list: readonly unknown[] = Array.isArray(extensions) ? extensions : [];
-  for (const [index, descriptor] of list.entries()) {
-    if (!isDescriptor(descriptor)) {
-      throw new DeclarationError(foreignValue, {
-        correction: 'Supply the value returned by extension(identity, config).',
-        findings: [partFinding(site, [index])],
-        sentence: `${pluginSentence(identity)} holds a value that is not an extension.`,
-      });
-    }
+  for (const [index, descriptor] of extensions.entries()) {
     registerDescriptor(build.descriptors, descriptor, {
-      holder: pluginSentence(identity),
       place: partFinding(site, [index]),
     });
   }
 }
 
 /**
- * Every rule one definition carries on its own, in the order the definition's slots are read, each
- * from the one copy `captureDefinition` takes once the identity is judged. The plugin's own
- * extensions register before any declaration carries a value, so a duplicated package copy is
- * reported from the list that defines it. The views list is read against core's view identities,
- * and the Application reads the same copy again against every other contributor's.
+ * Every rule one definition carries on its own, in the order the definition's slots are read. The
+ * plugin's own extensions register before any declaration carries a value, so a duplicated package
+ * copy is reported from the list that defines it. The views list is read against core's view
+ * identities, and the Application reads it again against every other contributor's. A signal
+ * claimed twice is claimed once.
  */
-function readPlugin(named: unknown, definition: DeclaredPlugin): BuiltPlugin {
-  checkIdentity('plugin', named);
-  const declaration = captureDefinition(named, definition);
-  const theme = declaration.theme === undefined ? undefined : buildTheme(declaration.theme, named);
+function readPlugin(identity: string, declaration: DeclaredPlugin): BuiltPlugin {
+  const theme = declaration.theme === undefined ? undefined : buildTheme(declaration.theme);
   const build: PluginRegisters = { descriptors: new Map(), records: new Map() };
-  defineExtensions(named, declaration, build);
-  const inputs = readOptions(named, declaration.options, build);
-  const names = new Set(inputs.map((input) => input.name));
-  const signals = readSignals(named, declaration.signals);
-  const source = readSource(named, declaration, { build, inputs });
-  const commands = readCommands(named, declaration.commands);
-  const middleware = readMiddleware(named, declaration.middleware, names);
-  const onCommandAttach = readHook(named, declaration.onCommandAttach);
-  const onGraphBuilt = readGraphHook(named, declaration.onGraphBuilt);
-  const onFailure = readFailureHook(named, declaration.onFailure);
-  const onLog = readLogHook(named, declaration.onLog);
-  const onEnvironment = readEnvironmentHook(named, declaration.onEnvironment);
-  buildViews(pluginViews(named), declaration.views, viewIdentities(coreViews));
+  defineExtensions(identity, declaration, build);
+  const inputs = readOptions(identity, declaration.options, build);
+  const source = readSource(identity, declaration, build);
+  const commands = readCommands(identity, declaration.commands ?? []);
+  buildViews(pluginViews(identity), declaration.views, viewIdentities(coreViews));
   const translators = readTranslations(
-    pluginSlot(named, 'translators', declaration.translators),
+    pluginSlot(identity, 'translators', declaration.translators),
     declaration.translators,
   );
   const failureEncoders = readEncodings(
-    pluginSlot(named, 'failureEncoders', declaration.failureEncoders),
+    pluginSlot(identity, 'failureEncoders', declaration.failureEncoders),
     declaration.failureEncoders,
   );
+  const { middleware } = declaration;
   return {
     commands,
     descriptors: build.descriptors,
     failureEncoders,
-    identity: named,
+    identity,
     inputs,
-    middleware,
-    onCommandAttach,
-    onEnvironment,
-    onFailure,
-    onGraphBuilt,
-    onLog,
+    middleware: middleware && { activate: middleware.activate, load: middleware.load },
+    onCommandAttach: declaration.onCommandAttach,
+    onEnvironment: declaration.onEnvironment,
+    onFailure: declaration.onFailure,
+    onGraphBuilt: declaration.onGraphBuilt,
+    onLog: declaration.onLog,
     records: build.records,
-    signals,
+    signals: [...new Set(declaration.signals)],
     source,
     theme,
     translators,

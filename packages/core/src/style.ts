@@ -153,23 +153,6 @@ const reservedCallableNames = [
   'then',
 ] as const;
 
-const reservedStyleNames = new Set([
-  ...Object.keys(colors),
-  ...Object.keys(colors).map((name) => `bg${name.charAt(0).toUpperCase()}${name.slice(1)}`),
-  ...modifiers,
-  'reset',
-  'resetForeground',
-  'resetBackground',
-  'hex',
-  'bgHex',
-  'rgb',
-  'bgRgb',
-  'ansi256',
-  'bgAnsi256',
-  'escape',
-  ...reservedCallableNames,
-]);
-
 function textOnly(text: string): string {
   if (typeof text !== 'string') {
     throw new TypeError('Style helpers require a string.');
@@ -425,7 +408,6 @@ export {
   nowrap,
   open,
   pad,
-  reservedStyleNames,
   style,
   textOnly,
   tokens,

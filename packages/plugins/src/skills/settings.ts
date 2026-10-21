@@ -1,4 +1,4 @@
-import { checkPluginSettings, DeclarationError, escapeControlCharacters } from '@loomcli/core';
+import { DeclarationError, escapeControlCharacters } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
 import { skillsSettings } from '../rules.js';
@@ -123,12 +123,11 @@ function listFault(settings: SkillsSettings | undefined): DeclarationError | und
 }
 
 /**
- * Judges the settings at the `skills()` call: their shape under core's rules, then the list, then
- * each skill in order, throwing the first fault. Settings are required, so none is the list fault.
- * It answers a copy of the skills, so a later change to the author's list changes nothing.
+ * Judges the settings at the `skills()` call: the list, then each skill in order, throwing the
+ * first fault. Settings are required, so none is the list fault. It answers a copy of the skills,
+ * so a later change to the author's list changes nothing.
  */
 function judgeSettings(given: SkillsSettings | undefined): readonly Skill[] {
-  checkPluginSettings(given, { call: 'skills', plugin: identity });
   const fault = listFault(given);
   if (fault !== undefined) {
     throw fault;

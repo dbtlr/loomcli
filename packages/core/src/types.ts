@@ -462,9 +462,9 @@ export interface AttachedCommand {
   exclusive(...names: [string, string, ...string[]]): AttachedCommand;
   oneRequired(...names: [string, string, ...string[]]): AttachedCommand;
   requiredTogether(...names: [string, string, ...string[]]): AttachedCommand;
-  views(
-    replacements: Readonly<Record<string, ResultView>>,
-    options?: { default?: string },
+  views<const Replacements extends Readonly<Record<string, ResultView>>>(
+    replacements: Replacements,
+    options?: { default?: keyof Replacements & string },
   ): AttachedCommand;
   extend(...values: readonly ExtensionValue<'command'>[]): AttachedCommand;
 }

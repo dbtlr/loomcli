@@ -1,4 +1,4 @@
-import { checkPluginSettings, DeclarationError, plugin } from '@loomcli/core';
+import { DeclarationError, plugin } from '@loomcli/core';
 import type { Plugin } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
@@ -38,7 +38,6 @@ function readVariables(settings: DotenvSettings | undefined): ReadonlySet<string
 
 /** Imports only explicitly named variables from the working directory's .env file. */
 export function dotenv(settings: DotenvSettings): Plugin {
-  checkPluginSettings(settings, { call: 'dotenv', plugin: `${packageName}/dotenv` });
   const variables = readVariables(settings);
   return plugin(`${packageName}/dotenv`, {
     onEnvironment: (context) => readDotenv(context, variables),

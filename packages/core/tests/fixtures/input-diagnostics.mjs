@@ -3,9 +3,6 @@ import { Application, Command, DeclarationError, plugin } from '@loomcli/core';
 const act = () => undefined;
 const leaf = (name) => new Command(name, { description: 'Probe.' }).action(act);
 
-/** A validator that accepts every value it receives. */
-const text = { '~standard': { validate: (value) => ({ value }), vendor: 'probe', version: 1 } };
-
 /** A validator that accepts a string of digits alone. */
 const digits = {
   '~standard': {
@@ -111,59 +108,16 @@ const scenarios = {
     new Application('probe')
       .globalOption('file', { aliases: ['input'], type: 'string' })
       .command(new Command('get').option('input', { type: 'boolean' }).action(act)),
-  'alias-list': () =>
-    new Command('get').option('min-bytes', { aliases: 'minimum', type: 'string' }),
   'alias-name': () =>
     new Command('get').option('min-bytes', { aliases: ['bad=name'], type: 'string' }),
-  'alias-name-kind': () => new Command('get').option('min-bytes', { aliases: [7], type: 'string' }),
   'alias-negative-spelling': () =>
     new Command('get')
       .option('color', { aliases: ['colour'], polarity: 'both', type: 'boolean' })
       .option('no-colour', { type: 'boolean' }),
-  'alias-own-name': () =>
-    new Command('get').option('min-bytes', { aliases: ['min-bytes'], type: 'string' }),
-  'alias-own-spelling': () =>
-    new Command('get').option('color', {
-      aliases: ['no-color'],
-      polarity: 'both',
-      type: 'boolean',
-    }),
-  'alias-short-only': () =>
-    new Command('get').option('file', {
-      aliases: ['input'],
-      short: 'f',
-      shortOnly: true,
-      type: 'string',
-    }),
   'alias-spelling': () =>
     new Command('get')
       .option('min-bytes', { aliases: ['limit'], type: 'string' })
       .option('limit', { type: 'string' }),
-  'alias-twice': () =>
-    new Command('get').option('min-bytes', { aliases: ['minimum', 'minimum'], type: 'string' }),
-  'argument-env': () => new Command('get').argument('path', { env: 'PATH' }),
-  'boolean-default': () =>
-    new Command('get').option('verbose', { default: false, type: 'boolean' }),
-  'boolean-implied': () => new Command('get').option('total', { implied: 'yes', type: 'boolean' }),
-  'boolean-multiple': () =>
-    new Command('list').option('verbose', { multiple: true, type: 'boolean' }),
-  'count-default': () => new Command('get').option('verbose', { default: '1', type: 'count' }),
-  'count-implied': () => new Command('get').option('verbose', { implied: '1', type: 'count' }),
-  'count-multiple': () => new Command('list').option('verbose', { multiple: true, type: 'count' }),
-  'count-polarity': () => new Command('get').option('verbose', { polarity: 'both', type: 'count' }),
-  'count-validate': () => new Command('get').option('verbose', { type: 'count', validate: text }),
-  'default-depth': () =>
-    new Command('get').option('limit', {
-      default: [[[[[[[[[[['7']]]]]]]]]]],
-      type: 'string',
-      validate: text,
-    }),
-  'default-shape': () => new Command('get').option('limit', { default: 7, type: 'string' }),
-  'env-multiple': () =>
-    new Command('get').option('field', { env: 'FIELD', multiple: true, type: 'string' }),
-  'env-name': () => new Command('get').option('limit', { env: '9LIMIT', type: 'string' }),
-  'global-after-command': () =>
-    new Application('probe').command(leaf('get')).globalOption('file', { type: 'string' }),
   'global-local-key': () =>
     new Application('probe')
       .globalOption('file', { type: 'string' })
@@ -172,8 +126,6 @@ const scenarios = {
     new Application('probe')
       .globalOption('file', { short: 'f', type: 'string' })
       .command(new Command('get').option('force', { short: 'f', type: 'boolean' }).action(act)),
-  'global-presence': () =>
-    new Application('probe').globalOption('file', { required: false, type: 'string' }),
   'hook-argument-option': () =>
     new Application('probe', {
       plugins: [
@@ -185,38 +137,17 @@ const scenarios = {
     })
       .command(new Command('count').option('tag', { type: 'string' }).action(act))
       .inspect(),
-  'implied-not-string': () => new Command('get').option('backup', { implied: 1, type: 'string' }),
-  'multiple-flag': () => new Command('get').option('field', { multiple: 'yes', type: 'string' }),
   'negative-spelling': () =>
     new Command('get')
       .option('color', { polarity: 'both', type: 'boolean' })
       .option('no-color', { type: 'boolean' }),
-  'not-a-validator': () => new Command('get').option('limit', { type: 'string', validate: {} }),
-  'omission-default': () =>
-    new Command('get').option('file', {
-      default: 'a.json',
-      type: 'string',
-      validate: text,
-      validateOmitted: true,
-    }),
-  'omission-required': () =>
-    new Command('get').argument('path', { required: true, validate: text, validateOmitted: true }),
-  'omission-variadic': () =>
-    new Command('get').argument('paths', { validate: text, validateOmitted: true, variadic: true }),
-  'omission-without-validator': () =>
-    new Command('get').option('file', { type: 'string', validateOmitted: true }),
   'option-name': () => new Command('get').option('-raw', { type: 'boolean' }),
-  'option-name-kind': () => new Command('get').option(7, { type: 'boolean' }),
-  'option-polarity': () => new Command('get').option('color', { polarity: 'on', type: 'boolean' }),
   'option-twice': () =>
     new Command('get').option('raw', { type: 'boolean' }).option('raw', { type: 'string' }),
-  'option-type': () => new Command('get').option('limit', { type: 'number' }),
   'plugin-alias-spelling': () =>
     new Application('probe', {
       plugins: [optionsPlugin('@acme/trace', { trace: { aliases: ['tail'], type: 'boolean' } })],
     }).command(new Command('get').option('tail', { type: 'string' }).action(act)),
-  'plugin-boolean-default': () =>
-    optionsPlugin('@acme/trace', { verbose: { default: true, type: 'boolean' } }),
   'plugin-global-key': () =>
     new Application('probe', {
       plugins: [optionsPlugin('@acme/trace', { verbose: { type: 'boolean' } })],
@@ -239,36 +170,14 @@ const scenarios = {
         optionsPlugin('@acme/trace', { verbose: { polarity: 'both', type: 'boolean' } }),
       ],
     }),
-  'polarity-on-string': () =>
-    new Command('get').option('color', { polarity: 'both', type: 'string' }),
-  'required-default': () =>
-    new Command('get').option('limit', { default: '5', required: true, type: 'string' }),
-  'required-flag': () => new Command('get').option('limit', { required: 'yes', type: 'string' }),
-  'short-alias': () => new Command('get').option('file', { short: 'fi', type: 'string' }),
-  'short-only-both': () =>
-    new Command('get').option('color', {
-      polarity: 'both',
-      short: 'c',
-      shortOnly: true,
-      type: 'boolean',
-    }),
-  'short-only-flag': () =>
-    new Command('get').option('file', { short: 'f', shortOnly: 'yes', type: 'string' }),
-  'short-only-without-short': () =>
-    new Command('get').option('file', { shortOnly: true, type: 'string' }),
   'short-spelling': () =>
     new Command('get')
       .option('force', { short: 'f', type: 'boolean' })
       .option('file', { short: 'f', type: 'string' }),
-  'validate-omitted-flag': () =>
-    new Command('get').option('file', { type: 'string', validate: text, validateOmitted: 'yes' }),
   'variable-twice': () =>
     new Application('probe')
       .globalOption('limit', { env: 'LIMIT', type: 'string' })
       .command(new Command('count').option('max', { env: 'LIMIT', type: 'string' }).action(act)),
-  'variadic-default': () =>
-    new Command('get').argument('paths', { default: 'a', validate: text, variadic: true }),
-  'variadic-flag': () => new Command('get').argument('paths', { variadic: 'yes' }),
 };
 
 /** Applications whose fault waits for build, which run() reports in a development build. */

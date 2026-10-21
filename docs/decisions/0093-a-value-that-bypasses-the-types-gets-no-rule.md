@@ -4,7 +4,7 @@ title: ADR-0093 - A value that bypasses the types gets no rule
 description: A declaration fault still throws at the call, the attach, or the build, whichever first holds the data proving it, as ADR-0034 settled. A runtime check exists only for a fault a type cannot express. A value that bypasses the types, from JavaScript or through any, and a construction built to break the code get no rule, and the platform's own error reports them. The hostile-value machinery goes as a class, and the checks a projection, the parser, a standard, or Loom's own writer needs stay. It supersedes ADR-0034.
 status: proposed
 created: 2026-10-20
-modified: 2026-10-20
+modified: 2026-10-21
 ---
 
 # ADR-0093 - A value that bypasses the types gets no rule
@@ -31,6 +31,7 @@ The [principles](../principles.md) settle the question the other way. Principle 
   - the settings checks of the logging, skills, and prompts packages beyond their defaults and real conflicts between settings;
   - the lineage check on what an `onCommandAttach` hook returns;
   - the 64 MiB output buffer `loom build` sets on the Bun process it runs.
+- **A repeated declaration resolves without a rule.** Declaring the same thing twice is not a conflict, so it gets no rule: a repeated alias or signal claim is deduplicated, a second extension value for one descriptor in one layer replaces the first whole, as a value in a later layer does, and a second view override of one key in one contributor loses to the first. This supersedes the clause of [ADR-0025](0025-completed-commands-accept-immutable-extension-configuration.md) that two values with the same identity within one layer are a declaration error. A collision between two different declarations, such as two options that claim one spelling or two plugins that claim one slot, stays a fault.
 - **What stays, and why.** Each of these checks serves something Loom owns or an operator reaches:
   - the failure-code grammar, because agents and scripts branch on a failure code and its type is `string`;
   - the fault for one failure code with two meanings, because a machine reader would read one code as two failures;

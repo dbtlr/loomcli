@@ -1,4 +1,4 @@
-import { Application, Command, DeclarationError, plugin, style } from '@loomcli/core';
+import { Application, DeclarationError, plugin, style } from '@loomcli/core';
 import { background } from '@loomcli/plugins/background';
 import { config } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
@@ -58,79 +58,6 @@ const scenarios = {
         }),
     ],
     ['new Application', (shade) => new Application('notes', { plugins: [config(), shade] })],
-  ],
-  boolean: [
-    [
-      'globalOption',
-      () =>
-        new Application('notes').globalOption('background', { background: true, type: 'boolean' }),
-    ],
-  ],
-  content: [
-    [
-      'globalOption',
-      () =>
-        new Application('notes').globalOption('background', { background: true, type: 'content' }),
-    ],
-  ],
-  count: [
-    [
-      'globalOption',
-      () =>
-        new Application('notes').globalOption('background', { background: true, type: 'count' }),
-    ],
-  ],
-  default: [
-    [
-      'globalOption',
-      () => new Application('notes').globalOption('background', { ...marked, default: 'dark' }),
-    ],
-  ],
-  'env-global': [
-    [
-      'globalOption',
-      () => new Application('notes').globalOption('background', { ...marked, env: 'NOTES_SHADE' }),
-    ],
-  ],
-  'env-plugin': [['plugin', () => declaring({ background: { ...marked, env: 'NOTES_SHADE' } })]],
-  implied: [
-    [
-      'globalOption',
-      () => new Application('notes').globalOption('background', { ...marked, implied: 'dark' }),
-    ],
-  ],
-  'local-application': [['option', () => new Application('notes').option('background', marked)]],
-  'local-command': [['option', () => new Command('shade').option('background', marked)]],
-  'look-alike': [
-    [
-      'plugin',
-      () => theme({ highlight: { dark: style.hex('#C97B36'), light: style.hex('#9C5A1E') } }),
-    ],
-  ],
-  multiple: [
-    [
-      'globalOption',
-      () => new Application('notes').globalOption('background', { ...marked, multiple: true }),
-    ],
-  ],
-  'not-true': [
-    [
-      'globalOption',
-      () =>
-        new Application('notes').globalOption('background', { background: 'yes', type: 'string' }),
-    ],
-  ],
-  'not-true-plugin': [
-    ['plugin', () => declaring({ background: { background: false, type: 'string' } })],
-  ],
-  'rendering-application': [
-    ['new Application', () => new Application('notes', { rendering: { background: 'blue' } })],
-  ],
-  short: [
-    [
-      'globalOption',
-      () => new Application('notes').globalOption('background', { ...marked, short: 'b' }),
-    ],
   ],
   string: [['globalOption', () => new Application('notes').globalOption('background', marked)]],
   'two-global': [

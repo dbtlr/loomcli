@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 
 import { childEnvironment, invoke } from '../../../scripts/test-process.js';
+import { ruleParts } from '../../../scripts/test-rules.js';
 import { launch, meta, request } from '../../mcp/tests/session.js';
 import type { Message } from '../../mcp/tests/session.js';
 
@@ -187,6 +188,23 @@ describe('the listing', () => {
     expect(toolNamed(await toolsOf('listing'), 'old')).toMatchObject({
       description: 'Deprecated: Use read instead.\nRead one value the old way.',
     });
+  });
+
+  it('a line break in a core description or a deprecation message reads as one space', async () => {
+    expect(toolNamed(await toolsOf('multiline'), 'fetch')).toMatchObject({
+      description: 'Deprecated: Use get instead.\nRead one value at a path.',
+      inputSchema: {
+        properties: {
+          depth: { description: 'Deprecated: Use --level.\nHow deep to walk.' },
+          path: { description: 'The path.' },
+        },
+      },
+    });
+    const session = serve('multiline');
+    session.send(request(1, 'server/discover'));
+    const answer: Message = await session.next();
+    await session.close();
+    expect(JSON.stringify(answer.result)).toContain('"description":"A fixture kit."');
   });
 
   it("the extension's description replaces the core one, and a tool with neither carries none", async () => {
@@ -636,43 +654,7 @@ describe('progress', () => {
   });
 });
 
-/** Each rule's headline as its banner prints it, and its explanation as an 80-column diagnostic wraps it. */
-const rules = {
-  'property-name-taken': {
-    explanation: [
-      'An MCP tool takes its arguments and options as one object keyed by declared',
-      'name, so an argument and an option that share a name leave the client no way to',
-      'supply each one.',
-    ],
-    headline: 'MCP PROPERTY NAME TAKEN',
-  },
-  'tool-name-taken': {
-    explanation: [
-      'An MCP client calls a tool by its name: the Command path joined with',
-      'underscores, or the application name for the root, with each hyphen written as',
-      'an underscore. Two Commands that give one name leave the client no way to call',
-      'either one.',
-    ],
-    headline: 'MCP TOOL NAME TAKEN',
-  },
-  'tool-without-action': {
-    explanation: [
-      "An MCP tool call runs the Command's action, so a Command with no action, such as",
-      'a group, has nothing to run when a client calls it.',
-    ],
-    headline: 'MCP TOOL WITHOUT AN ACTION',
-  },
-};
-
-type Rule = keyof typeof rules;
-
-/** One build fault's Developer Diagnostic: its banner, sentence, explanation, and correction. */
-function diagnostic(rule: Rule, sentence: string, correction: string): string {
-  const left = `-- ${rules[rule].headline} `;
-  const right = ` @loomcli/plugins/mcp/${rule}`;
-  const banner = `${left}${'-'.repeat(80 - left.length - right.length)}${right}`;
-  return `${[banner, sentence, rules[rule].explanation.join('\n'), correction].join('\n\n')}\n`;
-}
+type Rule = 'property-name-taken' | 'tool-name-taken' | 'tool-without-action';
 
 describe('build faults', () => {
   it.each<[string, Rule, string, string]>([
@@ -720,9 +702,15 @@ describe('build faults', () => {
     });
     // A run that never serves a tool fails as the run that serves them does.
     for (const argv of [['plain'], ['mcp']]) {
-      expect(
-        invoke(fixture, [scenario, ...argv], { env: { FIXTURE_BUILD: 'development' } }),
-      ).toEqual({ status: 1, stderr: diagnostic(rule, sentence, correction), stdout: '' });
+      const developed = invoke(fixture, [scenario, ...argv], {
+        env: { FIXTURE_BUILD: 'development' },
+      });
+      expect(developed).toMatchObject({ status: 1, stdout: '' });
+      expect(ruleParts(developed.stderr)).toEqual({
+        correction,
+        identity: `@loomcli/plugins/mcp/${rule}`,
+        sentence,
+      });
       expect(invoke(fixture, [scenario, ...argv])).toEqual({
         status: 1,
         stderr: 'app: Something went wrong.\n',

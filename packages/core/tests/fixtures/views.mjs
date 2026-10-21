@@ -122,16 +122,6 @@ function build() {
     case 'app-duplicate-view': {
       return rendering(page, [override(page, branded('one')), override(page, branded('two'))]);
     }
-    case 'plugin-duplicate-view': {
-      const twice = declaring([override(page, branded('one')), override(page, branded('two'))]);
-      return rendering(page, [], [twice]);
-    }
-    case 'app-declares': {
-      return rendering(page, [page]);
-    }
-    case 'plugin-foreign': {
-      return rendering(page, [], [plugin('@fixture/pages', { views: [{}] })]);
-    }
     case 'usage-over-input': {
       const inputs = plugin('@fixture/inputs', {
         views: [override(InputError, brand('plugin input'))],
@@ -156,25 +146,6 @@ function build() {
     case 'build-fault-unbranded': {
       return new Application('views', { plugins: [pluginBrand], views: [] });
     }
-    case 'plugin-twice': {
-      const twice = plugin('@fixture/twice', {
-        views: [override(InputError, brand('one')), override(InputError, brand('two'))],
-      });
-      return failing(declarationBrand, [pluginBrand, twice]);
-    }
-    case 'plugins-not-array': {
-      return new Application('views', { plugins: 'help', views: declarationBrand }).action(
-        dispatch,
-      );
-    }
-    case 'rendering-not-object': {
-      return new Application('views', { rendering: 'never', views: declarationBrand }).action(
-        dispatch,
-      );
-    }
-    case 'retired-globals': {
-      return new Application('views', { globals: {}, views: declarationBrand }).action(dispatch);
-    }
     case 'global-name': {
       return new Application('views', { views: declarationBrand })
         .globalOption('-file', { type: 'string' })
@@ -185,12 +156,6 @@ function build() {
       return new Application('views', { plugins: [pluginBrand], views: [] })
         .command(new Command('one').command(shared).action(dispatch))
         .command(new Command('two').command(shared).action(dispatch));
-    }
-    case 'app-junk-key': {
-      return rendering(page, [override({}, branded('app'))]);
-    }
-    case 'app-junk-keys': {
-      return rendering(page, [override({}, branded('one')), override({}, branded('two'))]);
     }
     case 'lane-warn': {
       return new Application('views', {
@@ -219,31 +184,12 @@ function build() {
         throw new InputError('Option "--file" is required. Supply a value.', []);
       });
     }
-    case 'retired': {
-      return new Application('views', { failures: [] }).action(dispatch);
-    }
     default: {
       throw new Error(`Unknown scenario: ${scenario}`);
     }
   }
 }
 
-/** The definitions `view()` rejects at the call, keyed by the identity each diagnostic names. */
-const shapes = {
-  'probe/both': { render: () => '', row: () => '' },
-  'probe/none': {},
-};
-
-if (scenario in shapes) {
-  try {
-    view(scenario, shapes[scenario]);
-    process.stdout.write('declared\n');
-  } catch (error) {
-    const kind = error instanceof DeclarationError ? 'declaration' : 'other';
-    process.stdout.write(`${kind}:${error.exitCode}: ${ruleText(error)}\n`);
-  }
-} else {
-  const app = declare(build);
-  const code = await app.run({ host: { argv, release: { build: 'distributed' } } });
-  process.stdout.write(`resolved:${code}\n`);
-}
+const app = declare(build);
+const code = await app.run({ host: { argv, release: { build: 'distributed' } } });
+process.stdout.write(`resolved:${code}\n`);

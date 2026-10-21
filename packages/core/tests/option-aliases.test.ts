@@ -95,6 +95,14 @@ test.each([
   },
 );
 
-test('the declaring call reads the aliases once, so a later change to the list reaches nothing', () => {
-  expect(invoke(fixture, ['mutated'])).toEqual({ status: 0, stderr: '', stdout: '["minimum"]\n' });
+test('an alias an option already answers to adds nothing, and the option keeps every spelling', () => {
+  expect(invoke(fixture, ['repeated', '--minimum', '5', '--no-color'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: [
+      '[["minimum"],["no-color","colour"]]',
+      '{"command":[],"options":{"min-bytes":"5","color":false}}',
+      '',
+    ].join('\n'),
+  });
 });

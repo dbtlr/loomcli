@@ -112,19 +112,6 @@ test('an empty issues array still rejects input', () => {
   expect(result.stderr).toContain('without an explanation');
 });
 
-test.each([
-  ['required-default', 'required and declares a default'],
-  ['boolean-schema', 'is Boolean'],
-  ['invalid-schema', 'Standard Schema v1'],
-  ['nonstring-default', 'default must be a string'],
-])('%s throws from the declaring call while the module evaluates', (scenario, reason) => {
-  const result = schema(scenario, ['--unknown']);
-  expect(result.status).toBe(1);
-  expect(result.stdout).toBe('');
-  expect(result.stderr).not.toContain('Invalid declaration:');
-  expect(result.stderr).toContain(reason);
-});
-
 test('a malformed schema result is a developer error', () => {
   const result = schema('malformed-result', ['--size', '12']);
   expect(result.status).toBe(1);

@@ -121,15 +121,14 @@ test('each value is validated once per build, the author layers and the hook val
   expect(facts('hooks', 'calls')[0]).toEqual({ calls: 8 });
 });
 
-test('one layer holds one value of a collecting extension, in a declaration and in one extend() call', () => {
-  const twice = 'holds extension "@fixture/notes/command" twice. Supply one value.';
-  expect(facts('twice-in-layer', 'fault')[0]).toEqual({
-    fault: 'DeclarationError',
-    message: `Command "get" ${twice}`,
+test('a second value of a collecting extension in one layer replaces the first, in a declaration and in one extend() call', () => {
+  expect(facts('twice-in-layer', 'inspect')[0]).toEqual({
+    get: { '@fixture/notes/command': [{ note: 'b' }] },
   });
-  expect(facts('twice-in-call', 'fault')[0]).toEqual({
-    fault: 'DeclarationError',
-    message: `The root Command ${twice}`,
+  expect(facts('twice-in-call', 'inspect')[0]).toMatchObject({
+    get: {
+      '@fixture/notes/command': [{ note: 'constructor' }, { note: 'layer' }, { note: 'b' }],
+    },
   });
 });
 
@@ -181,21 +180,4 @@ test('an invalid author value is reported before a hook on that Command runs', (
     message:
       'Command "get" holds an invalid "@fixture/notes/command" value: Supply a note. Correct the value.',
   });
-});
-
-test('build rejects a descriptor whose collect is neither true nor false', () => {
-  const rejected = {
-    fault: 'DeclarationError',
-    message:
-      'Extension "@fixture/hand/command" declares collect that is not a Boolean. Use true or false.',
-  };
-  expect(facts('hand-yes', 'fault')[0]).toEqual(rejected);
-  expect(facts('hand-absent', 'fault')[0]).toEqual(rejected);
-  expect(facts('hand-false', 'fault')[0]).toEqual({ fault: null });
-  const factory = {
-    ...rejected,
-    message: rejected.message.replace('@fixture/hand/', '@fixture/factory/'),
-  };
-  expect(facts('factory-null', 'fault')[0]).toEqual(factory);
-  expect(facts('factory-yes', 'fault')[0]).toEqual(factory);
 });

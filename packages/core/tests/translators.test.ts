@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { coreRuleParts } from './rule-parts.js';
 
 function run(scenario: string, argv: string[] = [], env: Record<string, string> = {}) {
   return invoke(new URL('fixtures/translators.mjs', import.meta.url), [scenario, ...argv], { env });
@@ -17,15 +18,9 @@ const generic = 'translators: Something went wrong.\n';
 /** The banner of the broken-translator rule, 80 columns wide. */
 const brokenBanner = `-- BROKEN TRANSLATOR ${'-'.repeat(27)} @loomcli/core/broken-translator`;
 
-/** The explanation and correction every broken translator's diagnostic closes with. */
-const brokenClose = [
-  'A translator turns a foreign throw into a failure synchronously. A throw, or any',
-  'answer other than a failure or undefined, leaves core no failure to report, so',
-  'it consults no later translator.',
-  '',
-  'Return a failure, or undefined to pass, and throw nothing from the translator.',
-  '',
-].join('\n');
+/** The fix every broken translator's diagnostic closes with. */
+const brokenCorrection =
+  'Return a failure, or undefined to pass, and throw nothing from the translator.';
 
 /** A run whose foreign throw one translator answered with the fixture's 69 failure. */
 function translated(from: string, calls: readonly string[]) {
@@ -90,11 +85,9 @@ test.each([
   ['cancelled', [], 130],
   ['cancelled-name', [], 130],
   ['closing-proxy', [], 1],
-  ['cycle', [], 1],
   ['fatal', [], 1],
   ['hook', [], 1],
   ['loader', [], 1],
-  ['long-chain', [], 1],
   ['null-prototype', [], 1],
   ['render', [], 1],
   ['answers', [], 1],
@@ -135,9 +128,11 @@ test.each([
   expect(run(scenario)).toEqual({ status: 1, stderr: generic, stdout: 'resolved:1\n' });
   const developed = develop(scenario);
   expect(developed).toMatchObject({ status: 1, stdout: 'resolved:1\n' });
-  const opening = `${brokenBanner}\n\nThe translator the Application registered for "SyntaxError" ${clause}\n\n`;
-  expect(developed.stderr.slice(0, opening.length)).toBe(opening);
-  expect(developed.stderr.slice(-brokenClose.length - 2)).toBe(`\n\n${brokenClose}`);
+  expect(coreRuleParts(developed.stderr)).toEqual({
+    correction: brokenCorrection,
+    rule: 'broken-translator',
+    sentence: `The translator the Application registered for "SyntaxError" ${clause}`,
+  });
 });
 
 test("a throwing translator's diagnostic shows the translator's own source, then its throw, then the original throw", () => {
@@ -256,75 +251,6 @@ test('a failure a deferred row source throws is never offered and returns 1', ()
 
 test('a destination write failure the action lets propagate is answered by its translator', () => {
   expect(run('destination')).toEqual(translated('application', ['application:PipeError']));
-});
-
-test.each([
-  [
-    'fault-key',
-    'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
-  ],
-  [
-    'fault-key-get',
-    'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
-  ],
-  [
-    'fault-key-has',
-    'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
-  ],
-  [
-    'fault-key-chain',
-    'translate() received a key that is not a class. Supply an error class, such as SyntaxError.',
-  ],
-  [
-    'fault-key-failure',
-    'translate() received a failure class as its key. Key the translation on the foreign class it replaces.',
-  ],
-  [
-    'fault-key-fatal',
-    'translate() received a failure class as its key. Key the translation on the foreign class it replaces.',
-  ],
-  [
-    'fault-key-subclass',
-    'translate() received a failure class as its key. Key the translation on the foreign class it replaces.',
-  ],
-  [
-    'fault-translator',
-    'translate() received a translator that is not a function. Supply a function that returns a failure or undefined.',
-  ],
-  [
-    'fault-application',
-    'The Application holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
-  ],
-  [
-    'fault-application-list',
-    'The Application declares translators that are not an array. Supply a list of values returned by translate(ErrorClass, translator).',
-  ],
-  [
-    'fault-application-hole',
-    'The Application holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
-  ],
-  [
-    'fault-plugin',
-    'Plugin "@acme/http" holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
-  ],
-  [
-    'fault-plugin-hole',
-    'Plugin "@acme/http" holds a translator entry that is not a translation. Supply the value returned by translate(ErrorClass, translator).',
-  ],
-  [
-    'fault-plugin-list',
-    'Plugin "@acme/http" declares translators that are not an array. Supply a list of values returned by translate(ErrorClass, translator).',
-  ],
-])('%s throws its DeclarationError', (scenario, message) => {
-  expect(run(scenario)).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: `thrown:DeclarationError: ${message}\n`,
-  });
-});
-
-test('translate() accepts a class whose name cannot be read', () => {
-  expect(run('key-name')).toEqual({ status: 0, stderr: '', stdout: 'constructed\n' });
 });
 
 test('the failure classes an author constructs accept the platform ErrorOptions', () => {

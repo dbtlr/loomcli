@@ -289,5 +289,5 @@ async function prepareContent(
   return { value: scope.collected ? sources : sources[0] };
 }
 
-export { minimumSources, prepareContent };
+export { prepareContent };
 export type { Content, ContentSettings };

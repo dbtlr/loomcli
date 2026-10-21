@@ -6,20 +6,14 @@ import { ruleText } from './rule-text.mjs';
 const scenario = process.argv[2];
 const mode = process.argv[3];
 
-const declared = new Application('example').globalOption('file', { short: 'f', type: 'string' });
-
 /** An options object with no prototype is plain data too, so either slot accepts one. */
 const bare = (entries) => Object.assign(Object.create(null), entries);
 
-/** The second argument of each scenario: the options object, and the shapes it is mistaken for. */
+/** The second argument of each scenario: an options object. */
 const supplied = {
-  'application-value': declared,
-  'array-options': [],
-  'empty-application': new Application('example'),
   'null-prototype': bare({ description: 'Reads one value.' }),
   'null-prototype-application': {},
   'options-object': { description: 'Reads one value.' },
-  'string-options': 'globals',
 };
 
 /** The Application's own slot, which one scenario supplies with no prototype either. */

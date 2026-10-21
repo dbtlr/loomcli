@@ -21,31 +21,6 @@ test('a string global option carries the background mark, with aliases', () => {
 
 test.each([
   [
-    'local-application',
-    'option',
-    'The root Command option "background" declares background but is not a global option. Declare it with globalOption().',
-  ],
-  [
-    'local-command',
-    'option',
-    'Command "shade" option "background" declares background but is not a global option. Declare it with globalOption().',
-  ],
-  ...['boolean', 'content', 'count'].map((type) => [
-    type,
-    'globalOption',
-    'Global option "background" declares background but is not a string option. Use type "string".',
-  ]),
-  [
-    'not-true',
-    'globalOption',
-    'Global option "background" declares background that is not true. Remove background or set it to true.',
-  ],
-  [
-    'not-true-plugin',
-    'plugin',
-    'Plugin "@fixture/shade" option "background" declares background that is not true. Remove background or set it to true.',
-  ],
-  [
     'two-global',
     'globalOption',
     'Global option "shade" and plugin "@loomcli/plugins/background" option "background" both declare background. Mark one option.',
@@ -59,36 +34,6 @@ test.each([
     'two-plugins',
     'new Application',
     'Plugin "@fixture/shade" option "shade" and plugin "@loomcli/plugins/background" option "background" both declare background. Mark one option.',
-  ],
-  [
-    'short',
-    'globalOption',
-    'Global option "background" declares background and a short alias. Remove short; the run reads its background before it reads short groups.',
-  ],
-  [
-    'env-global',
-    'globalOption',
-    'Global option "background" declares background and env, a second source for the run\'s background. Remove env; COLORFGBG speaks for the environment.',
-  ],
-  [
-    'env-plugin',
-    'plugin',
-    'Plugin "@fixture/shade" option "background" declares background and env, a second source for the run\'s background. Remove env; COLORFGBG speaks for the environment.',
-  ],
-  [
-    'default',
-    'globalOption',
-    'Global option "background" declares background and a default, a second source for the run\'s background. Remove default; set rendering.background instead.',
-  ],
-  [
-    'implied',
-    'globalOption',
-    'Global option "background" declares background and an implied value. Remove implied; the operator names dark or light.',
-  ],
-  [
-    'multiple',
-    'globalOption',
-    'Global option "background" declares background and multiple. Remove multiple; a run has one background.',
   ],
   [
     'binding-global',
@@ -106,14 +51,6 @@ test.each([
 
 test('a binding of a source the Application does not install is inert beside the mark', () => {
   expect(outcome('binding-inert')).toBe('ok');
-});
-
-test('a rendering background other than auto, dark, or light is a rendering policy fault', () => {
-  expect(outcome('rendering-application')).toEqual({
-    rule: '@loomcli/core/rendering-policy',
-    text: 'Rendering background is not auto, dark, or light. Supply one of the three, or omit background.',
-    threw: 'new Application',
-  });
 });
 
 test('inspect() publishes background on each string option node, true on the marked one', () => {
@@ -143,12 +80,4 @@ test('style.adaptive takes an unapplied concrete chain for dark and for light, a
 test('a bare theme() accepts an adaptive entry and a custom token named adaptive', () => {
   expect(outcome('adaptive-entry')).toBe('ok');
   expect(outcome('adaptive-name')).toBe('ok');
-});
-
-test('a look-alike of an adaptive style is not a theme entry', () => {
-  expect(outcome('look-alike')).toEqual({
-    rule: '@loomcli/core/theme-mapping',
-    text: 'Plugin "@loomcli/plugins/theme" theme mapping "highlight" is not an unapplied concrete style chain without semantic tokens. Map the name to a concrete chain such as style.cyan.bold, without calling it or naming a semantic style.',
-    threw: 'plugin',
-  });
 });

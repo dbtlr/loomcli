@@ -274,7 +274,7 @@ describe('the answer', () => {
     expect(complete('$(touch sentinel)', '')).toBe(framed([], 1));
   });
 
-  it('a description keeps its first line with every control character removed', () => {
+  it('a description reads each line break as a space, with every control character removed', () => {
     const graph = new Application('kit')
       .command(new Command('one', { description: 'First.' }).action(() => {}))
       .inspect();
@@ -286,12 +286,17 @@ describe('the answer', () => {
       ...graph.root,
       children: [
         { ...one, description: `Line${String.fromCodePoint(7)} one.\r\nLine two.` },
-        { ...one, description: `\t${String.fromCodePoint(8233)}Two.`, name: 'two' },
+        { ...one, description: `\tTwo.${String.fromCodePoint(8233)}More.`, name: 'two' },
         { ...one, description: undefined, name: 'three' },
+        { ...one, description: 'Four.\nFour more.', name: 'four' },
+        { ...one, description: '\t', name: 'five' },
       ],
     };
     expect(answer(graph, { command: root, kind: 'command', prefix: '' })).toBe(
-      framed(['one\tLine one.', 'two', 'three'], 4),
+      framed(
+        ['one\tLine one. Line two.', 'two\tTwo. More.', 'three', 'four\tFour. Four more.', 'five'],
+        4,
+      ),
     );
   });
 });

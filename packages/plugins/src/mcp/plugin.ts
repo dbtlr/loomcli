@@ -11,6 +11,7 @@ import type {
 } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
+import { singleLine } from '../lines.js';
 import { isRecord } from '../plain-data.js';
 import { mcpArgument, mcpCommand, mcpInput } from './extension.js';
 import { judgeTools } from './faults.js';
@@ -30,12 +31,15 @@ interface FailedCall {
 /** The media type whose view a call selects and whose output it sends as structured content. */
 const jsonMediaType = 'application/json';
 
-/** The server's identity: the application's name, version, and description where it declares one. */
+/**
+ * The server's identity: the application's name, version, and description where it declares one,
+ * on one line, a line break the author wrote read as a space.
+ */
 function identityOf(graph: CommandGraph): ServerIdentity {
   return {
     name: graph.name,
     version: graph.version,
-    ...(graph.description === undefined ? {} : { description: graph.description }),
+    ...(graph.description === undefined ? {} : { description: singleLine(graph.description) }),
   };
 }
 

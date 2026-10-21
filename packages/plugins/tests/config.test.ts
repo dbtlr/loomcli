@@ -1039,15 +1039,7 @@ test.each([
   expect(callFault({ file })).toEqual(listFault);
 });
 
-test('config() judges the settings and short first, then the path, then the pattern', () => {
-  expect(callFault(5)).toMatchObject({
-    findings: [{ call: 'config', mark: '0' }],
-    rule: '@loomcli/core/not-an-object',
-  });
-  expect(callFault({ file: '/*.json', short: 'cc' })).toMatchObject({
-    findings: [{ call: 'config', mark: '0.short' }],
-    rule: '@loomcli/core/short-alias',
-  });
+test('config() judges the path before the pattern', () => {
   expect(callFault({ file: 'a/../*.json' })).toEqual(pathFault);
 });
 

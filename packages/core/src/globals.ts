@@ -1,23 +1,14 @@
-import { background, checkBackground } from './background-mark.js';
-import { checkEnvBinding, claimVariables, envNames } from './bindings.js';
+import { background } from './background-mark.js';
+import { claimVariables, envNames } from './bindings.js';
 import type { BoundOption } from './bindings.js';
-import { checkColor, color } from './color.js';
+import { color } from './color.js';
 import { DeclarationError, quoted } from './errors.js';
 import { buildExtensions } from './extension.js';
 import type { DescriptorRegistry } from './extension.js';
-import {
-  callSite,
-  checkDeprecated,
-  checkDescription,
-  checkControl,
-  checkHidden,
-  factFault,
-  pluginOptionSite,
-  siteFinding,
-} from './facts.js';
-import type { FactSite, InputSite } from './facts.js';
-import { globalPresenceRule, optionDeclaredTwice, spellingTaken } from './input-rules.js';
-import { checkInteraction, interaction } from './interaction.js';
+import { callSite, pluginOptionSite, siteFinding } from './facts.js';
+import type { InputSite } from './facts.js';
+import { optionDeclaredTwice, spellingTaken } from './input-rules.js';
+import { interaction } from './interaction.js';
 import { checkOneMark, isMarked } from './marks.js';
 import type { Mark } from './marks.js';
 import { checkOptionName, compileOptions, spellingMark, tableEntries } from './options.js';
@@ -25,18 +16,11 @@ import type { CompileScope, OptionSpelling, SpellingOrigin, SpellingTable } from
 import { snapshot } from './plain.js';
 import type { BuiltPlugin } from './plugin.js';
 import type { OptionConfig } from './types.js';
-import { captureInputConfig, configUnread } from './validation.js';
+import { configUnread } from './validation.js';
 import type { InputDeclaration, OptionInput, ValidatedInputs } from './validation.js';
-import { checkVerbosity, quiet, verbose } from './verbosity.js';
+import { quiet, verbose } from './verbosity.js';
 
 const globalSubject = 'the global options';
-
-/**
- * The presence keys a global option may not declare, in the order its diagnostic names them. A
- * global's validation runs on every Command, plugin Commands included, so a rule that a value must
- * exist belongs to the Commands that read it.
- */
-const omissionRules = ['required', 'validateOmitted'] as const;
 
 /**
  * Who declared one option that shares the globals table, or the Command that declares a local
@@ -222,23 +206,8 @@ function pluginSites(
 }
 
 /**
- * A global option declares no presence rule, whether the application or a plugin declares it, and
- * whatever the key's value. The fault marks the key on the call that declared the option.
- */
-function checkNoPresenceRule(site: FactSite, config: OptionConfig): void {
-  const rejected = omissionRules.find((key) => key in config);
-  if (rejected !== undefined) {
-    throw factFault(globalPresenceRule, site, {
-      correction: `Remove ${rejected}, and check for the value in each Command that needs it.`,
-      fact: rejected,
-      sentence: `${site.subject} declares ${rejected}.`,
-    });
-  }
-}
-
-/**
- * One global option's own facts, binding, and extension values, checked at its `globalOption()`
- * call against the Application's descriptors. The rules that pair it with another option belong to
+ * One global option's name and extension values, checked at its `globalOption()` call against the
+ * Application's descriptors. The rules that pair it with another option belong to
  * the table, which the caller rebuilds with it.
  */
 function declareGlobalOption<Name extends string, Config extends OptionConfig>(
@@ -248,30 +217,16 @@ function declareGlobalOption<Name extends string, Config extends OptionConfig>(
 ): { readonly input: OptionInput<Name, Config>; readonly state: GlobalsState } {
   // The name is judged before the config, as every other declaration judges its own name first.
   checkOptionName(declared.name, configUnread(globalSite(declared)));
-  const input = {
-    ...declared,
-    config: captureInputConfig(declared, { call: 'globalOption', path: [] }),
-  };
+  const input = { ...declared, config: { ...declared.config } };
   const site = globalSite(input);
   const sentence = site.subject;
-  checkNoPresenceRule(site, input.config);
-  checkInteraction(input.config, site, true);
-  checkColor(input.config, site, true);
-  checkVerbosity(input.config, site, true);
-  checkBackground(input.config, site, true);
-  checkDescription(site, input.config.description);
-  checkHidden(site, input.config.hidden);
-  checkDeprecated(site, input.config.deprecated);
-  checkControl(site, input.config.control);
-  checkEnvBinding(site, input.config);
   const record = buildExtensions({
     declared: input.config.extensions,
     descriptors,
     site: { ...site, at: '1.extensions' },
     subject: { phrase: `on the global option ${quoted(input.name)}`, sentence },
-    target: 'option',
   });
-  // The caller validates the captured input this state stores, so both read one capture.
+  // The caller validates the input this state stores, so both read one config.
   return {
     input,
     state: {
@@ -501,7 +456,6 @@ export {
   boundOptions,
   buildGlobals,
   checkLocalOptions,
-  checkNoPresenceRule,
   declareGlobalOption,
   emptyGlobals,
   frozenValues,

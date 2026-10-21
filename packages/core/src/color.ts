@@ -2,7 +2,7 @@ import { registerRule } from './diagnostic-text.js';
 import { quoted } from './errors.js';
 import { factFault } from './facts.js';
 import type { FactSite } from './facts.js';
-import { checkMarkPlacement, isMarked } from './marks.js';
+import { isMarked } from './marks.js';
 import type { Mark } from './marks.js';
 import type { OptionSpelling } from './options.js';
 import type { RenderingPolicy } from './rendering.js';
@@ -21,43 +21,6 @@ type ColorChoice = 'always' | 'never';
 const color: Mark = { fact: 'color', rule: colorMark, type: 'boolean' };
 
 /**
- * The mark belongs only to a Boolean global option with no short alias and no environment
- * binding, judged at the call that declares the option. The configuration binding needs the
- * installed source, so `checkColorBinding` judges it where the Application knows the source.
- */
-function checkColor(config: OptionConfig, site: FactSite, global: boolean): void {
-  if (!('color' in config)) {
-    return;
-  }
-  checkMarkPlacement(config, site, { global, mark: color });
-  checkOneSource(config, site);
-}
-
-/** The fault for one of the mark's own rules, marking the key it names. */
-function markFault(site: FactSite, fact: string, parts: { sentence: string; correction: string }) {
-  return factFault(colorMark, site, { ...parts, fact });
-}
-
-/**
- * The marked option is read from argv alone: no short alias, whose group only the parse can read,
- * and no variable, because the environment speaks for color through NO_COLOR and FORCE_COLOR.
- */
-function checkOneSource(config: OptionConfig, site: FactSite): void {
-  if (config.short !== undefined) {
-    throw markFault(site, 'short', {
-      correction: 'Remove short; the run reads its color before it reads short groups.',
-      sentence: `${site.subject} declares color and a short alias.`,
-    });
-  }
-  if (config.env !== undefined) {
-    throw markFault(site, 'env', {
-      correction: 'Remove env; NO_COLOR and FORCE_COLOR speak for the environment.',
-      sentence: `${site.subject} declares color and env, a second source for the run's color.`,
-    });
-  }
-}
-
-/**
  * A marked option carries no value of the installed configuration source's binding, because the
  * run reads its color before configuration. `carried` is the identity of the installed source's
  * binding when the option's extension record carries it, and `undefined` otherwise.
@@ -70,8 +33,9 @@ function checkColorBinding(
   if (!isMarked(config, color) || carried === undefined) {
     return;
   }
-  throw markFault(site, 'extensions', {
+  throw factFault(colorMark, site, {
     correction: 'Remove the binding; the run reads its color before configuration.',
+    fact: 'extensions',
     sentence: `${site.subject} declares color and carries configuration binding ${quoted(carried)}, a second source for the run's color.`,
   });
 }
@@ -114,4 +78,4 @@ function uncapturedPolicy(marked: boolean): RenderingPolicy {
 }
 
 export type { ColorChoice };
-export { checkColor, checkColorBinding, chosenPolicy, color, colorChoice, uncapturedPolicy };
+export { checkColorBinding, chosenPolicy, color, colorChoice, uncapturedPolicy };

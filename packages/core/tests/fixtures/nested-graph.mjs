@@ -19,24 +19,8 @@ function aliased(name, ...aliases) {
 function build() {
   const app = new Application('nested-graph').globalOption('file', { short: 'f', type: 'string' });
   switch (scenario) {
-    case 'group-option': {
-      return app
-        .command(new Command('cache').option('verbose', { type: 'boolean' }).command(leaf('clear')))
-        .action(dispatch);
-    }
-    case 'root-group-option': {
-      return app.option('verbose', { type: 'boolean' }).command(leaf('clear'));
-    }
     case 'leaf-actionless': {
       return app.command(new Command('cache').command(new Command('clear'))).action(dispatch);
-    }
-    case 'nested-foreign-globals': {
-      const other = {};
-      return app
-        .command(
-          new Command('cache').command(new Command('clear', { globals: other }).action(dispatch)),
-        )
-        .action(dispatch);
     }
     case 'duplicate-nested-children': {
       return app
@@ -45,11 +29,6 @@ function build() {
     }
     case 'invalid-nested-child-name': {
       return app.command(new Command('cache').command(leaf('bad name'))).action(dispatch);
-    }
-    case 'late-nested-child': {
-      return app
-        .command(new Command('cache').action(dispatch).command(leaf('clear')))
-        .action(dispatch);
     }
     case 'nested-shared-option-key': {
       return app
@@ -87,9 +66,6 @@ function build() {
     case 'slash-alias-name': {
       return app.command(aliased('keys', 'ls/all')).action(dispatch);
     }
-    case 'nonstring-alias-name': {
-      return app.command(aliased('keys', 7)).action(dispatch);
-    }
     case 'portable-alias-name': {
       return app.command(aliased('keys', '_Ls.v2-all')).action(dispatch);
     }
@@ -98,15 +74,6 @@ function build() {
     }
     case 'colon-alias-name': {
       return app.command(aliased('keys', 'ls:all')).action(dispatch);
-    }
-    case 'symbol-alias-name': {
-      return app.command(aliased('keys', Symbol('ls'))).action(dispatch);
-    }
-    case 'empty-alias': {
-      return app.command(new Command('keys').alias().action(dispatch)).action(dispatch);
-    }
-    case 'late-alias': {
-      return app.command(new Command('keys').action(dispatch).alias('ls')).action(dispatch);
     }
     case 'nested-alias-sibling-name': {
       return app
@@ -117,8 +84,8 @@ function build() {
       const clear = leaf('clear');
       return app.command(new Command('cache').command(clear)).command(clear).action(dispatch);
     }
-    case 'nested-too-deep': {
-      // A group attached below a named Command would put its children three levels below the root.
+    case 'three-levels': {
+      // A group attached below a named Command puts its children three levels below the root.
       const cache = new Command('cache').command(leaf('clear'));
       return app.command(new Command('store').command(cache)).action(dispatch);
     }

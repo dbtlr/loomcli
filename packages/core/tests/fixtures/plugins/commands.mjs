@@ -29,11 +29,6 @@ const scenarios = {
       named('doctor'),
     ),
   // The application's own command() closes globalOption(), whatever the plugins attached.
-  'global-after-command': () =>
-    new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] })
-      .command(named('local'))
-      .globalOption('file', { type: 'string' }),
-  // The plugins' Commands attach at construction and leave globalOption() open.
   'global-after-plugin-commands': () =>
     new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] })
       .globalOption('file', { type: 'string' })
@@ -95,9 +90,6 @@ const scenarios = {
     new Application('app', {
       plugins: [attaching('@acme/doctor', [doctor]), attaching('@acme/clinic', [named('doctor')])],
     }).command(named('local')),
-  // The next three scenarios build a plugin alone, so no Application can raise the fault.
-  // The group's own command() call rejects a child with children before plugin() reads the list.
-  'plugin-deep-group': () => attaching('@acme/kit', [new Command('kit').command(tools)]),
   'plugin-repeated-name': () => attaching('@acme/doctor', [named('doctor'), named('doctor')]),
   'plugin-unfinished': () => attaching('@acme/doctor', [new Command('doctor')]),
   'root-arguments': () =>

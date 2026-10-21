@@ -582,18 +582,6 @@ const wholeNumber = 'Supply a whole number of 1 or more.';
 const fileValue =
   'Supply a file name, an absolute path, or a path under "~/", or omit the setting.';
 
-test.each([['logging'], [5], [null], [['file']]])(
-  'logging(%j) rejects settings that are not an object',
-  (settings) => {
-    expect(settingsOutcome(settings)).toEqual({
-      correction: 'Supply a settings object, or omit the settings.',
-      findings: [{ call: 'logging', mark: '0', note: `declared by plugin "${identity}"` }],
-      rule: '@loomcli/core/not-an-object',
-      sentence: `Plugin "${identity}" declares settings that are not an object.`,
-    });
-  },
-);
-
 test.each([
   [
     { to: 'stdout' },

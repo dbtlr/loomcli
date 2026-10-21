@@ -64,15 +64,15 @@ const scenarios = {
       `${JSON.stringify({ kind: position.kind, lead: position.lead, option: position.option?.name, prefix: position.prefix })}\n`,
     );
   },
-  mutated: () => {
-    const aliases = ['minimum'];
+  repeated: async () => {
+    // Each repeat names the option, an alias before it, or a spelling the option already accepts.
     const app = new Application('sizes')
-      .option('min-bytes', { aliases, type: 'string' })
-      .action(() => undefined);
-    aliases.push('min');
-    aliases[0] = 'smallest';
-    const [option] = app.inspect().root.options;
-    process.stdout.write(`${JSON.stringify(option?.aliases)}\n`);
+      .option('min-bytes', { aliases: ['minimum', 'minimum', 'min-bytes'], type: 'string' })
+      .option('color', { aliases: ['no-color', 'colour'], polarity: 'both', type: 'boolean' })
+      .action(report([]));
+    const [bytes, color] = app.inspect().root.options;
+    process.stdout.write(`${JSON.stringify([bytes?.aliases, color?.aliases])}\n`);
+    await app.run({ host: { argv, release: { build: 'distributed' } } });
   },
   run: async () => {
     process.exitCode = await sizes().run({ host: { argv, release: { build: 'distributed' } } });

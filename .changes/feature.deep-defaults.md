@@ -1,0 +1,1 @@
+- Allow a declared default to nest as deep as the author writes it. `@loomcli/core/default-depth` goes, and core no longer freezes a copy of a default: the graph and the default's validator read the value the author declared, and each invocation still receives its own copy of an array default.

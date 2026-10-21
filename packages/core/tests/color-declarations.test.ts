@@ -20,36 +20,6 @@ test('a Boolean global option with polarity both carries the mark', () => {
 
 test.each([
   [
-    'local-application',
-    'option',
-    'The root Command option "color" declares color but is not a global option. Declare it with globalOption().',
-  ],
-  [
-    'local-command',
-    'option',
-    'Command "paint" option "color" declares color but is not a global option. Declare it with globalOption().',
-  ],
-  [
-    'string',
-    'globalOption',
-    'Global option "color" declares color but is not Boolean. Use type "boolean".',
-  ],
-  [
-    'count',
-    'globalOption',
-    'Global option "color" declares color but is not Boolean. Use type "boolean".',
-  ],
-  [
-    'not-true',
-    'globalOption',
-    'Global option "color" declares color that is not true. Remove color or set it to true.',
-  ],
-  [
-    'not-true-plugin',
-    'plugin',
-    'Plugin "@fixture/paint" option "color" declares color that is not true. Remove color or set it to true.',
-  ],
-  [
     'two-global',
     'globalOption',
     'Global option "paint" and plugin "@loomcli/plugins/color" option "color" both declare color. Mark one option.',
@@ -63,26 +33,6 @@ test.each([
     'two-plugins',
     'new Application',
     'Plugin "@fixture/paint" option "paint" and plugin "@loomcli/plugins/color" option "color" both declare color. Mark one option.',
-  ],
-  [
-    'short',
-    'globalOption',
-    'Global option "color" declares color and a short alias. Remove short; the run reads its color before it reads short groups.',
-  ],
-  [
-    'short-plugin',
-    'plugin',
-    'Plugin "@fixture/paint" option "color" declares color and a short alias. Remove short; the run reads its color before it reads short groups.',
-  ],
-  [
-    'env-global',
-    'globalOption',
-    `Global option "color" declares color and env, a second source for the run's color. Remove env; NO_COLOR and FORCE_COLOR speak for the environment.`,
-  ],
-  [
-    'env-plugin',
-    'plugin',
-    `Plugin "@fixture/paint" option "color" declares color and env, a second source for the run's color. Remove env; NO_COLOR and FORCE_COLOR speak for the environment.`,
   ],
   [
     'binding-global',

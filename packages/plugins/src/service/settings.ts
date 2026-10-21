@@ -1,4 +1,4 @@
-import { checkPluginSettings, DeclarationError } from '@loomcli/core';
+import { DeclarationError } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
 import { serviceSettings } from '../rules.js';
@@ -83,12 +83,10 @@ function labelled(settings: ServiceSettings | undefined): ServiceSettings {
 }
 
 /**
- * Judges the settings at the `service()` call: their shape under core's rules, then the label, the
- * run words, and the probe, throwing the first fault. Settings are required, so none is the label
- * fault.
+ * Judges the settings at the `service()` call: the label, the run words, and the probe, throwing
+ * the first fault. Settings are required, so none is the label fault.
  */
 function judgeSettings(given: ServiceSettings | undefined): ServiceSettings {
-  checkPluginSettings(given, { call: 'service', plugin: identity });
   const settings = labelled(given);
   const fault = runFault(settings);
   if (fault !== undefined) {

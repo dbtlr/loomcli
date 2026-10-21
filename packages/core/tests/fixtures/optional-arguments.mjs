@@ -65,7 +65,7 @@ switch (scenario) {
     app = new Application('optional', development).command(keys).action(report);
     break;
   }
-  case 'after-optional': {
+  case 'two-optional': {
     app = new Application('optional', development)
       .argument('path', { description: 'The path argument.' })
       .argument('extra', { description: 'The extra argument.' })
@@ -94,12 +94,6 @@ switch (scenario) {
   case 'tail-required': {
     app = new Application('optional', development)
       .argument('files', { description: 'The files argument.', required: true, variadic: true })
-      .action(report);
-    break;
-  }
-  case 'tail-raw-default': {
-    app = new Application('optional', development)
-      .argument('files', { default: 'a', description: 'The files argument.', variadic: true })
       .action(report);
     break;
   }

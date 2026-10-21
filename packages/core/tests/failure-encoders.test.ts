@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { expectRuleParts } from './rule-parts.js';
+import { coreRuleParts } from './rule-parts.js';
 
 const fixture = new URL('fixtures/failure-encoders.mjs', import.meta.url);
 
@@ -185,7 +185,7 @@ test.each(Object.entries(brokenReasons))(
     const developed = run(['wire'], { build: 'development', encoder });
     expect(developed.status).toBe(1);
     expect(developed.stderr.startsWith('Refused.\n\n-- BROKEN FAILURE ENCODER ')).toBe(true);
-    expectRuleParts(developed.stderr, {
+    expect(coreRuleParts(developed.stderr)).toEqual({
       correction: 'Return the encoded failure as a string, and throw nothing from the encoder.',
       rule: 'broken-failure-encoder',
       sentence: `Plugin "@fixture/encoding" failed to encode the failure as "application/json": ${reason}`,
@@ -216,26 +216,6 @@ test('a run by name calls no encoder and carries the form on its outcome', () =>
 });
 
 test.each([
-  [
-    'media-type',
-    '@loomcli/core/media-type',
-    'encodeFailure() received a media type that is not a string.',
-  ],
-  [
-    'not-a-function',
-    '@loomcli/core/not-a-function',
-    'encodeFailure() received an encoder that is not a function.',
-  ],
-  [
-    'not-a-list',
-    '@loomcli/core/not-a-list',
-    'Plugin "@fixture/odd" declares failureEncoders that are not an array.',
-  ],
-  [
-    'foreign-entry',
-    '@loomcli/core/foreign-value',
-    'Plugin "@fixture/odd" holds a failure encoder entry that is not an encoding.',
-  ],
   [
     'taken-in-plugin',
     '@loomcli/core/failure-encoder-taken',

@@ -163,25 +163,12 @@ if (['stdin-group', 'named-conflict', 'mixed-conflict'].includes(scenario)) {
   }
 }
 
-if (['default', 'validate', 'validateOmitted', 'duplicate'].includes(scenario)) {
+if (scenario === 'duplicate') {
   try {
     const config = { description: 'The source.', stdin: true, type: 'content' };
-    if (scenario === 'default') {
-      config.default = 'input.txt';
-    }
-    if (scenario === 'validate') {
-      config.validate = {};
-    }
-    if (scenario === 'validateOmitted') {
-      config.validateOmitted = false;
-    }
-    const app = new Application('content', { description: 'Check content declarations.' }).argument(
-      'file',
-      config,
-    );
-    if (scenario === 'duplicate') {
-      app.option('other', config);
-    }
+    new Application('content', { description: 'Check content declarations.' })
+      .argument('file', config)
+      .option('other', config);
     process.stdout.write(JSON.stringify({ accepted: true }));
   } catch (error) {
     process.stdout.write(JSON.stringify({ name: error.name, rule: error.rule?.identity }));

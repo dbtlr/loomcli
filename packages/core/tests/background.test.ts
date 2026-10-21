@@ -192,12 +192,6 @@ describe('the skips', () => {
     expect(report.queried).toBe(0);
     expect(report.code).toBe(130);
   });
-
-  it('a run() policy that fails its background writes no query', () => {
-    const report = run({ rendering: { background: 'blue' }, replies: light });
-    expect(report.queried).toBe(0);
-    expect(report.code).toBe(1);
-  });
 });
 
 describe('readers', () => {
