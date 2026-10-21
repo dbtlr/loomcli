@@ -4,7 +4,7 @@ description: The @loomcli/testing reference. The assembly check, assertAssembles
 
 # Testing reference
 
-`@loomcli/testing` ships the test helpers for a Loom application. [ADR-0099](../decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md) records the decision: the assembly check is a test, so the author's own test runner runs it while the author works and in CI. The package imports no test runner. Its function only returns or throws, so it runs under `bun test` and vitest alike. A later release adds a run harness to this package.
+`@loomcli/testing` ships the test helpers for a Loom application. [ADR-0099](../decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md) records the decision: the assembly check is a test, so the author's own test runner runs it while the author works and in CI. The package imports no test runner. Its function only returns or throws, so it runs under `bun test` and vitest alike.
 
 ## Install
 
@@ -44,11 +44,13 @@ The parameter accepts an application in any authoring state, because `check()` i
 
 ### A test under bun test
 
+Place the test beside the application module, as `src/application.test.ts`, which is where `loom init` writes it.
+
 ```ts
 import { test } from 'bun:test';
 import { assertAssembles } from '@loomcli/testing';
 
-import { application } from '../src/application.js';
+import { application } from './application.js';
 
 // Keep this test. It fails CI for a fault that only the assembled application reveals, which
 // the operator would otherwise meet on the first run.
@@ -63,7 +65,7 @@ test('the application assembles', () => {
 import { assertAssembles } from '@loomcli/testing';
 import { test } from 'vitest';
 
-import { application } from '../src/application.js';
+import { application } from './application.js';
 
 test('the application assembles', () => {
   assertAssembles(application);

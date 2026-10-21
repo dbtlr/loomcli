@@ -1278,17 +1278,18 @@ declare class Application {
 ```
 
 ```ts
-// A test imports the application module and passes the Application to the @loomcli/testing assembly check, which reads every fault.
+// src/application.test.ts: the assembly check reads every fault and fails the test with their diagnostics.
+import { test } from 'bun:test';
+import { assertAssembles } from '@loomcli/testing';
+
 import { store } from './application.js';
 
-const faults = store.check();
-for (const fault of faults) {
-  process.stderr.write(`${fault.message}\n\n`);
-}
-process.exitCode = faults.length === 0 ? 0 : 1;
+test('the application assembles', () => {
+  assertAssembles(store);
+});
 ```
 
-`check()` builds the graph with nothing run and returns every declaration fault a development run would report before routing, except a declared default or implied value its validator rejects, as values. The assembly check of `@loomcli/testing` reads them all without running an action. [ADR-0066](decisions/0066-the-toolchain-acts-on-one-package-directory.md) records the decision, and [ADR-0099](decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md) carries it forward with the assembly check.
+`check()` builds the graph with nothing run and returns every declaration fault a development run would report before routing, except a declared default or implied value its validator rejects, as values. The assembly check of `@loomcli/testing`, `assertAssembles`, reads them all without running an action, as the [testing reference](libs/testing.md) describes. [ADR-0066](decisions/0066-the-toolchain-acts-on-one-package-directory.md) records the decision, and [ADR-0099](decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md) carries it forward with the assembly check.
 
 - **What it checks.** It builds the graph as `inspect()` does and runs the checks a development run makes before routing that need no host and no await: the build rules under [At build](#at-build), the converter check of [Input schema](#input-schema), and every [`onGraphBuilt`](#judging-the-built-graph) hook. It returns each `DeclarationError` they raise, in the order a run meets them, and throws none of them. An empty list means a development run reports no declaration fault before routing other than a rejected default.
 - **Every fault it can reach.** A fault in the build rules ends the build, because the graph a later rule reads does not exist, so the list holds that fault alone. Once the graph builds, `check()` continues past each fault: one fault for each converter that fails and one fault for each `onGraphBuilt` hook that rejects the graph or breaks. Every hook receives the same frozen graph, whatever an earlier check found. An input whose converter failed reads its `schema` as `null` in that graph, as a distributed build reads it.

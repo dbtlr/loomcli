@@ -1,5 +1,4 @@
 - Remove `loom check`, under [ADR-0099](docs/decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md). The `loom` bin's commands are `build`, `changelog check`, `changelog write`, and `init`. An application checks its types with `tsc --noEmit`, its source with a linter, and its assembly with a test that passes the Application to `assertAssembles` from `@loomcli/testing`.
-- Change `loom init` to write the assembly test, the lint configuration, and a `check` script that runs `tsc --noEmit`, the linter, and the test runner. A new scaffold gets `src/application.test.ts`, `.oxlintrc.json` or `eslint.config.js`, and `@loomcli/testing`, `@loomcli/eslint-plugin`, and the linter and test runner packages as development dependencies. `--linter oxlint|eslint` and `--test-runner bun|vitest` choose the tools, by default oxlint and Bun, and `--only` accepts `test` and `lint`. An existing lint configuration or a `vitest` dependency selects its tool, and at a terminal init asks when nothing does. An ESLint scaffold writes `typescript` as `npm:@typescript/typescript6@<range>` and the compiler as `@typescript/native`, because typescript-eslint does not support TypeScript 7 yet, so `tsc` stays on TypeScript 7. Init still never overwrites an existing file or key. See the [toolchain reference](docs/toolchain.md#loom-init).
 
 ### Migration
 
@@ -38,10 +37,12 @@ Under vitest, import `test` from `vitest` instead of `bun:test`, and run `vitest
 
 **Steps.**
 
-1. Add `@loomcli/testing` as a development dependency at the same exact version as `@loomcli/core`, and the test runner's and linter's packages when the application uses none.
-2. Add the test above to the application, importing the Application the entry runs.
+1. Add the development dependencies. `@loomcli/testing` takes the same exact version as `@loomcli/core`. The test runner is Bun's own `bun test` with `@types/bun`, or `vitest`. To lint with Loom's rules, add `@loomcli/eslint-plugin` at the same exact version, and the linter: `oxlint`, or `eslint` with `typescript-eslint`. For example, with pnpm, oxlint, and `bun test`: `pnpm add --save-dev --save-exact @loomcli/testing@<version> @loomcli/eslint-plugin@<version> oxlint @types/bun`.
+2. Add the test above to the application as `src/application.test.ts`, importing the Application the entry runs.
 3. Replace each `loom check` call in scripts and CI with `tsc --noEmit`, the linter, and the test runner, or with `pnpm run check` when the script holds them.
-4. To lint with Loom's rules, run `loom init --only lint`, which writes `.oxlintrc.json` or `eslint.config.js` from `@loomcli/eslint-plugin` and leaves every existing file alone.
+4. Load the lint rules. In a package with no lint configuration, run `loom init --only lint`, which writes `.oxlintrc.json` or `eslint.config.js` from `@loomcli/eslint-plugin`. A package that already holds a lint configuration gets nothing from `loom init --only lint`, because init never overwrites a file, so add the plugin to that configuration as the [plugin reference](docs/libs/eslint-plugin.md#install-and-configure) shows.
 5. Remove the `--application` option from any `loom check` call. The test imports the module itself.
 
-**Validation.** Run `tsc --noEmit`, the linter, and the test runner, or the `check` script that holds them. The assembly test fails with the Developer Diagnostic of each fault `Application.check()` returns, and passes when the application assembles. Run `loom --help` to see the remaining commands.
+An ESLint package on TypeScript 7 also needs the side-by-side install of the [plugin reference](docs/libs/eslint-plugin.md#eslint), because typescript-eslint does not support TypeScript 7: `typescript` aliased to `npm:@typescript/typescript6@^6.0.2` and the compiler installed as `@typescript/native`, so `tsc` stays on TypeScript 7.
+
+**Validation.** Run `pnpm run check`, or `tsc --noEmit`, the linter, and the test runner it holds one after another, and confirm that each exits 0 and that the test runner reports the assembly test as passed. Run `grep -rn "loom check" package.json .github` and confirm that it prints nothing. Run `pnpm loom --help` and confirm that it lists `build`, `changelog`, and `init` and no `check`.

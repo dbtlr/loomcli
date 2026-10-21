@@ -21,7 +21,7 @@ const installed = {
   typescript: { from: 'node_modules/typescript', to: 'typescript' },
 } as const;
 
-/** How long one loom run may take, which a compile or a type pass stretches. */
+/** How long one loom run may take, which a compile or the read of an application under Bun stretches. */
 const loomTimeout = 120_000;
 
 /** The built loom bin every process test runs. */

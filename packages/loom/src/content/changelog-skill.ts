@@ -14,7 +14,7 @@ description: Use when finishing a consumer-visible change to this package or cut
 
 This package cuts its version from change fragments in \`.changes/\`. The fragment guide, \`.changes/README.md\`, holds the naming rules, the body grammar, and the version table. Read it before writing a fragment.
 
-The \`loom\` bin is installed in the package, so run it through the package manager, such as \`pnpm loom changelog check\` or \`npx loom changelog check\`, and the package's \`check\` script runs \`loom check\`.
+The \`loom\` bin is installed in the package, so run it through the package manager, such as \`pnpm loom changelog check\` or \`npx loom changelog check\`, and the package's \`check\` script runs \`tsc --noEmit\`, the linter, and the test runner.
 
 ## Record a change
 

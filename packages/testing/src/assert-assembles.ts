@@ -15,10 +15,10 @@ import type { Application } from '@loomcli/core';
  * as it is.
  *
  * ```ts
- * import { expect, test } from 'bun:test'; // or: from 'vitest'
+ * import { test } from 'bun:test'; // or: from 'vitest'
  * import { assertAssembles } from '@loomcli/testing';
  *
- * import { application } from '../src/application.js';
+ * import { application } from './application.js';
  *
  * test('the application assembles', () => {
  *   assertAssembles(application);
