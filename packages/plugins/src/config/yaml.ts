@@ -41,7 +41,8 @@ function withoutDebugVariables<Parsed>(parse: () => Parsed): Parsed {
  * the core schema, and an alias that names no preceding anchor, which `toJS()` throws for, make it
  * not valid YAML. The `error` log level keeps the parser from printing a warning, so no file
  * content reaches the terminal. An empty document, or one that holds only comments, holds no
- * mapping.
+ * mapping. Every alias reads, with no alias count limit: `toJS()` shares the value an anchor names
+ * among its aliases, so a profile reused across many environments costs one value.
  */
 export async function readYaml(text: string): Promise<Reading> {
   const yaml = await import('yaml');
@@ -58,7 +59,7 @@ export async function readYaml(text: string): Promise<Reading> {
     return { clause: 'is not valid YAML.', kind: 'unusable' };
   }
   try {
-    return readingOf(document.toJS(), 'does not hold a YAML mapping.');
+    return readingOf(document.toJS({ maxAliasCount: -1 }), 'does not hold a YAML mapping.');
   } catch {
     return { clause: 'is not valid YAML.', kind: 'unusable' };
   }

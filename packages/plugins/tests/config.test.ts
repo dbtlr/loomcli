@@ -550,6 +550,32 @@ test(
 );
 
 test(
+  'a YAML file that reuses one profile across many environments reads every alias',
+  inWorkspace((space) => {
+    const environments = Array.from({ length: 30 }, (_entry, index) => `  env${index}: *profile`);
+    space.write(
+      '.app.yaml',
+      [
+        'limits: &limits { bytes: 7 }',
+        'profile: &profile',
+        '  fetch: *limits',
+        '  store: *limits',
+        '  index: *limits',
+        'environments:',
+        ...environments,
+        '',
+      ].join('\n'),
+    );
+    const result = space.run([], {
+      ...settings({ file: '.app.yaml' }),
+      FIXTURE_LIMIT_PATH: 'environments.env29.index.bytes',
+    });
+    expect(result.stderr).toBe('');
+    expect(received(result.stdout)).toMatchObject({ limit: '7' });
+  }),
+);
+
+test(
   'a YAML value the option cannot take is a wrong value',
   inWorkspace((space) => {
     const yaml = settings({ file: '.app.yaml' });
