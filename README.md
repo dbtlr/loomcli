@@ -92,15 +92,13 @@ The [Application](examples/jsonkit/src/application.ts) declares global options w
 pnpm verify
 ```
 
-This command builds ESM and declarations, checks source, tests a packed declaration consumer, and runs process integration tests with Node.
+This command builds ESM and declarations, checks source, tests a packed declaration consumer, and runs the tests with Node.
 
-To run the process cases with Bun in a POSIX shell:
+To run the same checks with the tests under Bun, both the test workers and the processes the tests start:
 
 ```sh
-LOOM_TEST_RUNTIME=bun pnpm test
+pnpm verify:bun
 ```
-
-In PowerShell, set `$env:LOOM_TEST_RUNTIME = 'bun'` before `pnpm test`.
 
 CI tests Node 22.23.2 and Bun 1.4.0 on macOS and Linux. These versions define the compatibility baseline for this increment. Windows is not exercised in CI and is unverified. TypeScript 7.0.2 checks emitted declarations with strict NodeNext resolution. Earlier versions are unverified.
 
