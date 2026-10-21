@@ -1,7 +1,7 @@
 import { urlIssue, urlSchemeIssue } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
-import { fault, quote } from './faults.js';
+import { fault } from './faults.js';
 import { reject } from './issues.js';
 import { urlProtocols } from './rules.js';
 import { schemePattern, uriPattern } from './uri-grammar.js';
@@ -23,7 +23,7 @@ function protocolsOf(options: UrlOptions | undefined): readonly string[] | undef
       {
         correction:
           'List a letter followed by letters, digits, +, -, or ., with no trailing colon.',
-        sentence: `url() protocols lists ${quote(protocols[invalid])}, which is not a scheme name.`,
+        sentence: `url() protocols lists ${JSON.stringify(protocols[invalid])}, which is not a scheme name.`,
       },
     );
   }

@@ -29,23 +29,6 @@ function fault(
   });
 }
 
-/** A declared value as a fault message quotes it: a string in quotes, a primitive as printed. */
-function quote(value: unknown): string {
-  if (typeof value === 'string') {
-    return JSON.stringify(value);
-  }
-  if (
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    typeof value === 'bigint' ||
-    value === null ||
-    value === undefined
-  ) {
-    return String(value);
-  }
-  return `a value of type ${typeof value}`;
-}
-
 /**
  * A factory's options read as unknown values, with omitted options read as an empty record. The
  * types bound every factory's options, so a value that is not an object reads as none. Only `path()`
@@ -55,5 +38,5 @@ function readOptions(_factory: string, options: unknown): Readonly<Record<string
   return isPlainObject(options) ? options : {};
 }
 
-export { fault, quote, readOptions };
+export { fault, readOptions };
 export type { FactoryCall };

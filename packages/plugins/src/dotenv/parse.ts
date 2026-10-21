@@ -1,3 +1,5 @@
+import { variableNameSource } from '../variable-name.js';
+
 interface MalformedAssignment {
   readonly name: string;
   readonly line: number;
@@ -115,11 +117,14 @@ function readValue(lines: readonly string[], line: number, text: string): Parsed
   return { next: line + nextLine, value };
 }
 
+/** An assignment's header: an optional `export`, the variable's name, and the rest of the line. */
+const headerPattern = new RegExp(
+  String.raw`^[ \t]*(?:export[ \t]+)?(?<name>${variableNameSource})(?=[ \t=]|$)(?<rest>[^\n]*)$`,
+  'u',
+);
+
 function assignmentAt(lines: readonly string[], line: number): ParsedAssignment {
-  const header =
-    /^[ \t]*(?:export[ \t]+)?(?<name>[A-Za-z_][A-Za-z0-9_]*)(?=[ \t=]|$)(?<rest>[^\n]*)$/u.exec(
-      lines[line] ?? '',
-    );
+  const header = headerPattern.exec(lines[line] ?? '');
   const assignment = /^[ \t]*=[ \t]*(?<value>[^\n]*)$/u.exec(header?.groups?.rest ?? '');
   const parsed =
     assignment === null

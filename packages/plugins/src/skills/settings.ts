@@ -13,8 +13,8 @@ const longestName = 64;
 const nameGrammar = /^[\da-z]+(?:-[\da-z]+)*$/u;
 
 /** Whether a value is a skill name: the Agent Skills grammar, safe as one path segment. */
-function isSkillName(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= longestName && nameGrammar.test(value);
+function isSkillName(name: string): boolean {
+  return name.length <= longestName && nameGrammar.test(name);
 }
 
 /** What a setting's fault says: the rest of its sentence after the plugin's setting, and its correction. */

@@ -3,6 +3,7 @@ import type { Plugin } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
 import { dotenvVariableName } from '../rules.js';
+import { isVariableName } from '../variable-name.js';
 import { readDotenv } from './read.js';
 
 /**
@@ -13,13 +14,10 @@ type DotenvSettings =
   | { readonly only: readonly string[]; readonly except?: never }
   | { readonly except: readonly string[]; readonly only?: never };
 
-/** The form of a name an assignment in `.env` gives, so a listed name of another form never matches. */
-const variableName = /^[A-Za-z_][A-Za-z0-9_]*$/u;
-
 const notFound = -1;
 
 function listedNames(key: 'except' | 'only', names: readonly string[]): ReadonlySet<string> {
-  const invalid = names.findIndex((name) => !variableName.test(name));
+  const invalid = names.findIndex((name) => !isVariableName(name));
   if (invalid !== notFound) {
     throw new DeclarationError(dotenvVariableName, {
       correction:

@@ -7,6 +7,7 @@ import { createValidator } from '@loomcli/validators';
 import { packageName } from '../constants.js';
 import { digestOf, observe, removeStagingFiles, replaceFile } from '../installation/disk.js';
 import { selfUpdateSettings } from '../rules.js';
+import { isVariableName } from '../variable-name.js';
 import { releaseBinary } from './binary.js';
 import type { ReleaseBinary } from './binary.js';
 import { failures, refusals, requestFailed, shown } from './messages.js';
@@ -54,14 +55,11 @@ interface SelfUpdateSettings {
   readonly notices?: boolean | NoticeSettings;
 }
 
-/** An environment variable's name, the grammar of an input's environment binding. */
-const variableName = /^[A-Za-z_][A-Za-z0-9_]*$/u;
-
 /** Judges `notices.env`, which names the variable that turns notices off, at the `selfUpdate()` call. */
 function judgeNoticeVariable(settings: SelfUpdateSettings | undefined): void {
   const { notices } = settings ?? {};
   const env = typeof notices === 'object' ? notices.env : undefined;
-  if (env !== undefined && !variableName.test(env)) {
+  if (env !== undefined && !isVariableName(env)) {
     throw new DeclarationError(selfUpdateSettings, {
       correction: 'Name it with letters, digits, and underscores, not starting with a digit.',
       findings: [{ arguments: [settings], call: 'selfUpdate', mark: '0.notices.env' }],

@@ -54,10 +54,12 @@ function entryFileFault(shown: string, files: readonly SkillFile[]): Declaration
     : fault(`Skill "${shown}" lists no ${entryFile}.`, corrections.missing);
 }
 
-/** A skill's loaded files, or the first fault they hold, in the order the contract lists them. */
+/**
+ * A skill's loaded files, or the first fault they hold, in the order the contract lists them. The
+ * name passed the skill-name grammar, so a sentence repeats it as it is.
+ */
 function judged(name: string, files: readonly SkillFile[]): readonly SkillFile[] {
-  const shown = escapeControlCharacters(name);
-  const found = pathFault(shown, files) ?? entryFileFault(shown, files);
+  const found = pathFault(name, files) ?? entryFileFault(name, files);
   if (found !== undefined) {
     throw found;
   }
