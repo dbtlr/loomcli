@@ -108,20 +108,18 @@ const declarations = {
   'internal-override': 'value',
   'middleware-no-dispatch': 'value',
   'middleware-print': 'value',
-  'middleware-results': 'value',
   missing: 'value',
   'missing-root': 'value',
   order: 'row',
   'override-scope': 'none',
   plain: 'none',
   redirect: 'value',
-  repeated: 'value',
   'repeated-awaited': 'value',
+  'repeated-caught': 'value',
   'result-override': 'value',
   'string-source': 'row',
   sync: 'row',
   unawaited: 'row',
-  undeclared: 'none',
   value: 'value',
   whole: 'whole',
 };
@@ -201,14 +199,8 @@ async function act({ out }) {
       await beside(out);
       break;
     }
-    case 'middleware-print':
-    case 'middleware-results': {
+    case 'middleware-print': {
       await out.results({ total: 1 });
-      break;
-    }
-    case 'repeated': {
-      await out.results({ total: 1 });
-      out.results({ total: 2 });
       break;
     }
     case 'repeated-awaited': {
@@ -216,8 +208,9 @@ async function act({ out }) {
       await out.results({ total: 2 });
       break;
     }
-    case 'undeclared': {
-      out.results({ total: 1 });
+    case 'repeated-caught': {
+      await out.results({ total: 1 });
+      await out.results({ total: 2 }).catch(() => out.print('caught'));
       break;
     }
     case 'override-scope': {
@@ -244,9 +237,6 @@ async function middleware({ next, out }) {
   if (scenario === 'middleware-no-dispatch') {
     return;
   }
-  if (scenario === 'middleware-results') {
-    out.results({ total: 9 });
-  }
   await out.print('before');
   await next();
   await out.print('after');
@@ -254,7 +244,7 @@ async function middleware({ next, out }) {
 
 /** The plugins one scenario installs, which is one always-on middleware or none. */
 function plugins() {
-  const installed = ['middleware-no-dispatch', 'middleware-print', 'middleware-results'];
+  const installed = ['middleware-no-dispatch', 'middleware-print'];
   return installed.includes(scenario)
     ? [
         plugin('@fixture/wrapper', {

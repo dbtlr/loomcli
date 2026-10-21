@@ -176,18 +176,12 @@ function suggest(failure, { command, graph }) {
   return undefined;
 }
 
-/** A middleware that runs the rest of the chain, then misuses `next()` with a second call. */
-const twice = plugin('fixture/twice', {
-  middleware: {
-    activate: 'always',
-    load: async () => ({
-      default: async ({ next }) => {
-        await next().catch(() => undefined);
-        await next().catch(() => undefined);
-      },
-    }),
+/** A view that throws, which a render the action never awaited fails through after the action. */
+const breaking = {
+  render: () => {
+    throw new Error('The view broke.');
   },
-});
+};
 
 /** A validator that rejects every value, so a declared default fails before any token is read. */
 const refuses = {
@@ -230,12 +224,15 @@ const unreadableScenarios = Object.fromEntries(
 
 const scenarios = {
   ...unreadableScenarios,
-  // The action fails, then a plugin's misused next() is reported after it.
+  // The action fails, then a render it never awaited is reported after it.
   'after-primary': () =>
     new Application('store', {
       description: 'The store application.',
-      plugins: [twice, hinting('fixture/one', (failure) => `hint for ${failure.name}`)],
-    }).action(({ out }) => out.fatal('The action failed.')),
+      plugins: [hinting('fixture/one', (failure) => `hint for ${failure.name}`)],
+    }).action(({ out }) => {
+      void out.render('late', breaking);
+      out.fatal('The action failed.');
+    }),
   // A JavaScript hook steps outside the contract and assigns the code, which core already read.
   'assigns-exit-code': () =>
     routed({

@@ -1,4 +1,4 @@
-import { DeclarationError, InternalError, notTextReason, quoted, reasonOf } from './errors.js';
+import { DeclarationError, InternalError, quoted, reasonOf } from './errors.js';
 import { partFinding } from './facts.js';
 import type { FactSite } from './facts.js';
 import type { FailureForm } from './form.js';
@@ -143,7 +143,11 @@ function callEncoder(installed: InstalledEncoder, form: FailureForm): EncoderAns
       reason: 'The encoder returned a promise instead of a string.',
     };
   }
-  return { cause: undefined, kind: 'broken', reason: notTextReason('encoder', encoded) };
+  return {
+    cause: undefined,
+    kind: 'broken',
+    reason: `The encoder returned ${typeof encoded} instead of a string.`,
+  };
 }
 
 /** The defect one broken encoder reports in a development build. */

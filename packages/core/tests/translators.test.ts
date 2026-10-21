@@ -65,10 +65,12 @@ test('a middleware that awaits next() catches the raw throw, not the translated 
   );
 });
 
-test('a throw a middleware caught is still translated once, where it leaves the chain', () => {
-  expect(run('caught')).toEqual(
-    translated('application', ['caught:SyntaxError', 'application:SyntaxError']),
-  );
+test('a throw a middleware caught is never offered, and the middleware decides the outcome', () => {
+  expect(run('caught')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'caught:SyntaxError\nresolved:0\n',
+  });
 });
 
 test.each([
@@ -112,12 +114,8 @@ test("a cancelled run whose throw has an unreadable name keeps its cancellation 
   });
 });
 
-test('a middleware throw during unwinding stays the unwinding internal error', () => {
-  expect(run('unwinding')).toEqual({
-    status: 1,
-    stderr: generic,
-    stdout: 'dispatched\nresolved:1\n',
-  });
+test('a middleware throw during unwinding is offered to the translators like any middleware throw', () => {
+  expect(run('unwinding')).toEqual(translated('catch-all', ['dispatched', 'catch-all:Error']));
 });
 
 test.each([
@@ -181,17 +179,6 @@ test("a translator that returns a non-failure keeps the original throw as the de
   });
 });
 
-test('a translator that returns an unconstructed failure meets the unconstructed-failure rule', () => {
-  expect(run('broken-unconstructed')).toEqual({
-    status: 1,
-    stderr: generic,
-    stdout: 'resolved:1\n',
-  });
-  expect(develop('broken-unconstructed').stderr).toMatch(
-    /^-- FAILURE NEVER CONSTRUCTED -+ @loomcli\/core\/unconstructed-failure\n/u,
-  );
-});
-
 test('a translated failure carries the foreign throw as its cause only when the translator passes it', () => {
   expect(run('cause')).toEqual(translated('cause', ['cause:SyntaxError:Unexpected token.']));
   expect(run('no-cause')).toEqual(
@@ -209,20 +196,24 @@ test('a sequence source the action let propagate reports once, as the translated
 
 const incompleteLine = 'Output is incomplete: the root Command stopped after 1 rows, 1 written.\n';
 
-test.each([
-  ['sequence', []],
-  ['sequence-unawaited', []],
-  ['sequence-caught', ['caught']],
-])(
-  '%s: a row source that throws is translated whether the action awaited, never awaited, or caught the call',
-  (scenario, observed) => {
+test.each(['sequence', 'sequence-unawaited'])(
+  '%s: a row source that throws is translated whether the action awaited the call or never did',
+  (scenario) => {
     expect(run(scenario)).toEqual({
       status: 69,
       stderr: `${incompleteLine}Unavailable from application.\n`,
-      stdout: ['one', ...observed, 'application:SyntaxError', 'resolved:69', ''].join('\n'),
+      stdout: 'one\napplication:SyntaxError\nresolved:69\n',
     });
   },
 );
+
+test('a row source failure the action caught is final, and the incomplete line still marks the result', () => {
+  expect(run('sequence-caught')).toEqual({
+    status: 0,
+    stderr: incompleteLine,
+    stdout: 'one\ncaught\nresolved:0\n',
+  });
+});
 
 test("a deferred row source's broken translator reports its defect, keeping both throws", () => {
   const result = run('sequence-broken');
@@ -241,11 +232,11 @@ test('a deferred row source that throws undefined is still a fault that returns 
   });
 });
 
-test('a failure a deferred row source throws is never offered and returns 1', () => {
+test('a failure a deferred row source throws is never offered and exits with its own code', () => {
   expect(run('sequence-failure')).toEqual({
-    status: 1,
+    status: 69,
     stderr: `${incompleteLine}Unavailable from source.\n`,
-    stdout: 'one\nresolved:1\n',
+    stdout: 'one\nresolved:69\n',
   });
 });
 

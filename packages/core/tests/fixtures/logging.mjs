@@ -124,18 +124,12 @@ function failing(plugins, action) {
   return new Application('probe', { description: 'Probe a failure.', plugins }).action(action);
 }
 
-/** A middleware that runs the rest of the chain, then misuses `next()` with a second call. */
-const twice = plugin('fixture/twice', {
-  middleware: {
-    activate: 'always',
-    load: async () => ({
-      default: async ({ next }) => {
-        await next().catch(() => undefined);
-        await next().catch(() => undefined);
-      },
-    }),
+/** A view that throws, which a render the action never awaited fails through after the action. */
+const breaking = {
+  render: () => {
+    throw new Error('The view broke.');
   },
-});
+};
 
 /** Extra lines a scenario prints beside the events, keyed for the test to read. */
 const printed = [];
@@ -144,7 +138,11 @@ const printed = [];
 let kept = undefined;
 
 const scenarios = {
-  'after-primary': () => failing([twice, collector], ({ out }) => out.fatal('The action failed.')),
+  'after-primary': () =>
+    failing([collector], ({ out }) => {
+      void out.render('late', breaking);
+      out.fatal('The action failed.');
+    }),
   // A call from an action returns undefined and a collector receives a frozen event.
   basic: () =>
     failing([collector], ({ log }) => {

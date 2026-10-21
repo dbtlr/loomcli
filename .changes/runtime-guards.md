@@ -1,0 +1,6 @@
+- Remove the run-time rules that re-checked what TypeScript rejects, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md) and [ADR-0095](docs/decisions/0095-the-type-bounds-a-declared-exit-code.md): `@loomcli/core/failure-exit-code`, `@loomcli/core/unconstructed-failure`, and `@loomcli/core/broken-output-view`.
+  - A failure class's exit code and failure code are read from its class, from the nearest ancestor that declares one, with nothing captured. A JavaScript class that declares a code outside 1 through 125, such as 130, exits with that code, and a static the application rewrites during a run is read as it stands.
+  - A value that inherits from a failure class without being constructed reports as that class.
+  - A view that throws in a call no code awaited reports as `@loomcli/core/foreign-throw`, as a view throw the action lets propagate already does.
+  - A view value that carries both `render` and `row`, or neither, and a view that returns a value that is not a string, get no rule: the platform's own error or `String()` meets them. So does a lane message that is not a string. A failure view that returns a value that is not a string writes what `String()` reads.
+- Keep `@loomcli/core/failure-code`, which still rejects a failure code outside its grammar where a failure of the class is constructed.

@@ -148,7 +148,6 @@ const brokenTranslators = {
   'broken-throws': () => {
     throw new Error('The translator failed.');
   },
-  'broken-unconstructed': () => Object.create(FatalError.prototype),
 };
 
 /** A thrown `SyntaxError` whose prototype trap throws on every read after its first. */

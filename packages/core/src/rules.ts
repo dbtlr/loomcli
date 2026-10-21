@@ -2,28 +2,21 @@ import { registerRule } from './diagnostic-text.js';
 
 /*
  * Core's own rules for the defects it raises, the run-time declaration faults it finds, and the
- * faults of the two things an author declares to describe a failure: a failure class's exit code
- * and a diagnostic rule. Each is declared once here and shared by every site that raises it, as a
+ * faults of the two things an author declares to describe a failure: a failure class's failure
+ * code and a diagnostic rule. Each is declared once here and shared by every site that raises it, as a
  * plugin's rules are.
  */
 
 /** A value thrown from an action, a middleware, or a source that no translator answered. */
 const foreignThrow = registerRule('@loomcli/core/foreign-throw', {
   explanation:
-    'Core reports a value that an action, a middleware, or a configuration source threw, and that no translator answered, as a defect, because only the author knows what it means. A distributed build shows the operator one generic message in its place.',
+    'Core reports a value that an action, a middleware, a configuration source, or a view threw, and that no translator answered, as a defect, because only the author knows what it means. A distributed build shows the operator one generic message in its place.',
   headline: 'Unhandled exception',
 });
 
 /** The fix every foreign throw shares. */
 const foreignThrowCorrection =
   'Catch the error where it is thrown and throw a failure class, such as FatalError, with a sentence the operator can act on.';
-
-/** A thrown value that inherits from a failure class without having been constructed by one. */
-const unconstructedFailure = registerRule('@loomcli/core/unconstructed-failure', {
-  explanation:
-    'A failure class records its exit code when a failure is constructed, so a value that only inherits from one, such as one made with Object.create(), carries no code core can trust.',
-  headline: 'Failure never constructed',
-});
 
 /** A translator that threw or answered with something other than a failure. */
 const brokenTranslator = registerRule('@loomcli/core/broken-translator', {
@@ -43,14 +36,7 @@ const brokenFailureView = registerRule('@loomcli/core/broken-failure-view', {
   headline: 'Broken failure view',
 });
 
-/** An output or lane view that threw or returned a value that is not a string. */
-const brokenOutputView = registerRule('@loomcli/core/broken-output-view', {
-  explanation:
-    'A view turns a value into text synchronously and without throwing. Core wrote nothing for the call whose view broke, and a run whose output is incomplete cannot succeed.',
-  headline: 'Broken output view',
-});
-
-/** The fix a broken failure view and a broken output view share. */
+/** The fix a broken failure view states. */
 const viewCorrection =
   "Return a string from the view's render function, and throw nothing from it.";
 
@@ -173,17 +159,10 @@ const brokenDestination = registerRule('@loomcli/core/broken-destination', {
   headline: 'Broken destination',
 });
 
-/** A failure class whose exit code is outside 1 through 125. */
-const failureExitCode = registerRule('@loomcli/core/failure-exit-code', {
-  explanation:
-    "A failure's exit code tells the shell how the run ended: 0 means success, and 126 and above belong to the shell and to signals, so a failure exits with a code from 1 through 125. Core never clamps or replaces the code a failure class declares, so a code no failure may exit with is rejected where the class is first constructed.",
-  headline: 'Undeclarable exit code',
-});
-
 /** A failure class whose failure code is outside the kebab-case grammar. */
 const failureCode = registerRule('@loomcli/core/failure-code', {
   explanation:
-    "A failure's code tells a script or an agent which failure ended the run, where many failures share one exit code. A machine reader branches on the code, so it follows one grammar: words of lowercase letters and digits joined by single hyphens. A code outside it is rejected where the class is first constructed.",
+    "A failure's code tells a script or an agent which failure ended the run, where many failures share one exit code. A machine reader branches on the code, so it follows one grammar: words of lowercase letters and digits joined by single hyphens. A code outside it is rejected where a failure of the class is constructed.",
   headline: 'Invalid failure code',
 });
 
@@ -215,11 +194,9 @@ export {
   brokenFailureHook,
   brokenFailureView,
   brokenLogHook,
-  brokenOutputView,
   brokenTranslator,
   brokenTranslatorCorrection,
   failureCode,
-  failureExitCode,
   foreignGraph,
   foreignGraphCorrection,
   foreignThrow,
@@ -236,7 +213,6 @@ export {
   runOptions,
   sourceAnswers,
   sourceAnswersCorrection,
-  unconstructedFailure,
   validatorFailed,
   viewCorrection,
   viewSelection,

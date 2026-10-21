@@ -1,7 +1,8 @@
 import type { BuiltGraph, DispatchInput, Prepared } from './command.js';
 import { prepareDispatch } from './command.js';
-import { foreignFailure, InternalError, routedSubject } from './errors.js';
+import { InternalError, routedSubject } from './errors.js';
 import type { InvokedBy, LoomError } from './errors.js';
+import { Handed } from './handed.js';
 import { nodeAt } from './inspect.js';
 import type { CommandGraph, CommandNode } from './inspect.js';
 import type { Log, LogBinder } from './log.js';
@@ -259,13 +260,16 @@ function activatedEntries(plugins: readonly BuiltPlugin[], values: OptionValues)
     }));
 }
 
-/** A downstream promise core awaits for its completion alone; its outcome was recorded already. */
+/**
+ * A downstream promise core awaits for its completion alone, because the middleware's own throw is
+ * the entry's outcome.
+ */
 async function quiet(pending: Promise<unknown> | undefined): Promise<void> {
   if (pending) {
     try {
       await pending;
     } catch {
-      // The rejection was recorded where it crossed the `next()` boundary.
+      // The middleware threw its own failure, which is the outcome this entry reports.
     }
   }
 }
@@ -273,11 +277,9 @@ async function quiet(pending: Promise<unknown> | undefined): Promise<void> {
 /** What one entry's `next()` has done so far, which decides whether the call is still live. */
 interface EntryState {
   calls: number;
-  downstream?: Promise<ChainOutcome>;
+  downstream?: Handed<ChainOutcome>;
   outcome?: ChainOutcome;
-  rejection?: { value: unknown };
   returned: boolean;
-  settled: boolean;
 }
 
 /**
@@ -303,19 +305,16 @@ interface Invocation {
    */
   offer: (thrown: unknown) => LoomError | undefined;
   /**
-   * The invocation's own channel. A middleware reads it as the neutral `Out`, and the action
-   * receives the channel the results lane builds for the Command that was routed.
+   * The invocation's own channel. A middleware and a configuration source read it as the neutral
+   * `Out`, and the action receives the channel the results lane builds for the Command that was
+   * routed.
    */
   out: Out<OpenResult>;
-  /** The channel a configuration source receives, whose results call names the source. */
-  sourceOut: Out<OpenResult>;
   /** Where every input of the graph was declared, which a broken validator's finding rebuilds. */
   places: InputPlaces;
   plugins: readonly BuiltPlugin[];
   /** Every declared default and implied value, validated before any token was read. */
   declaredValues: DeclaredValues;
-  /** A fault reported after the primary outcome, which turns a would-be 0 into 1. */
-  report: (fault: LoomError) => void;
   /**
    * The path routing walked, published as each name routes, which output names in its own line
    * and a failure view reads. An unknown Command leaves the partial path published.
@@ -342,15 +341,11 @@ interface Invocation {
   logFor: LogBinder;
 }
 
-/** The state one chain shares: what it reached, what it raised, and how it continues. */
+/** The state one chain shares: what it reached and how it continues. */
 interface Chain {
-  /** Whether one value is a fault this chain reported already, which it never reports twice. */
-  announced: (value: unknown) => boolean;
   cancelled: () => boolean;
   context: (entry: ChainEntry, next: () => Promise<ChainOutcome>) => MiddlewareContext;
   invoked: () => boolean;
-  record: (error: unknown) => void;
-  report: (fault: LoomError) => void;
   step: (index: number) => Promise<ChainOutcome>;
 }
 
@@ -376,14 +371,16 @@ function selectionFault(sentence: string, correction: string): InternalError {
   return new InternalError(viewSelection, { cause: undefined, correction, sentence });
 }
 
-/** A `next()` call that is no longer live: it dispatches nothing and rejects. */
+/**
+ * A `next()` call that is no longer live: it dispatches nothing and rejects, an ordinary rejection
+ * the middleware handles or lets propagate as it does any other.
+ */
 function misuse(turn: EntryTurn): Promise<ChainOutcome> {
   const fault = new InternalError(nextMisuse, {
     cause: undefined,
     correction: 'Call next() once, and await it before the middleware returns.',
     sentence: `${pluginSentence(turn.entry.identity)} called next() ${turn.state.returned ? 'after its middleware returned' : 'twice'}.`,
   });
-  turn.chain.report(fault);
   const rejected = Promise.reject<ChainOutcome>(fault);
   void rejected.catch(() => undefined);
   return rejected;
@@ -400,24 +397,15 @@ function nextOf(turn: EntryTurn): () => Promise<ChainOutcome> {
       return misuse(turn);
     }
     state.calls += 1;
-    const pending = chain.step(turn.index + 1).then(
-      (outcome) => {
+    const pending = Handed.of(
+      chain.step(turn.index + 1).then((outcome) => {
         state.outcome = outcome;
-        state.settled = true;
         return outcome;
-      },
-      (error: unknown) => {
-        state.rejection = { value: error };
-        state.settled = true;
-        chain.record(error);
-        throw error;
-      },
+      }),
     );
-    state.downstream = pending;
     // Core awaits the downstream promise itself.
     // A middleware that never awaits `next()` still holds the chain open.
-    // The run therefore never ends with an unobserved rejection.
-    void pending.catch(() => undefined);
+    state.downstream = pending;
     return pending;
   };
 }
@@ -436,35 +424,29 @@ async function call(
 }
 
 /**
- * What one entry reports to its caller once its own result has settled. A throw before `next()`
- * settled, or without calling it, is this invocation's failure; a throw during unwinding is an
- * internal error reported after the primary outcome, which keeps its own code.
+ * What one entry reports to its caller once its own result has settled. The middleware's own
+ * outcome is final: a throw, before `next()` settled or while unwinding after it, is the entry's
+ * failure, and a middleware that caught the rejection of `next()` and returned reports what the
+ * chain reached. A `next()` the middleware never observed has no catcher, so its rejection is the
+ * entry's own.
  */
 async function settle(
   turn: EntryTurn,
   thrown: { value: unknown } | undefined,
 ): Promise<ChainOutcome> {
   const { chain, state } = turn;
+  const { downstream } = state;
   if (thrown) {
-    const propagated = state.rejection !== undefined && thrown.value === state.rejection.value;
-    if (propagated || !state.settled) {
-      await quiet(state.downstream);
-      throw thrown.value;
-    }
-    /**
-     * A fault core recorded where it was raised, such as a misused `next()`, reaches this point
-     * again when the middleware let it escape. It keeps the one report it already has.
-     */
-    if (!chain.announced(thrown.value)) {
-      chain.report(foreignFailure(thrown.value));
-    }
+    await quiet(downstream);
+    throw thrown.value;
   }
-  if (state.calls === 0) {
+  if (downstream === undefined) {
     return reported(chain, 'taken-over');
   }
-  await quiet(state.downstream);
-  // A middleware that caught the rejection reports what the chain reached.
-  // The recorded failure still decides the exit code.
+  if (!downstream.observed) {
+    return reported(chain, await downstream);
+  }
+  await quiet(downstream);
   return reported(chain, state.outcome ?? (chain.invoked() ? 'dispatched' : 'taken-over'));
 }
 
@@ -486,7 +468,7 @@ async function runEntry(entry: ChainEntry, index: number, chain: Chain): Promise
      */
     return 'cancelled';
   }
-  const state: EntryState = { calls: 0, returned: false, settled: false };
+  const state: EntryState = { calls: 0, returned: false };
   const turn: EntryTurn = { chain, entry, index, state };
   const thrown = await call(middleware, chain.context(entry, nextOf(turn)));
   state.returned = true;
@@ -494,19 +476,16 @@ async function runEntry(entry: ChainEntry, index: number, chain: Chain): Promise
 }
 
 /**
- * The whole chain, answering with the value it raised when a middleware caught that value. The
- * value is kept as it was thrown, so it is offered to the translators once, where it leaves.
+ * The whole chain, which settles with the outcome of its outermost middleware, or of the action
+ * when no middleware wraps it.
  */
 async function runChain(
   invocation: Invocation,
   routed: ParsedInvocation,
   prepared: Prepared,
-): Promise<{ value: unknown } | undefined> {
+): Promise<void> {
   const entries = activatedEntries(invocation.plugins, prepared.globals);
-  const run: { invoked: boolean; raised: { value: unknown } | undefined } = {
-    invoked: false,
-    raised: undefined,
-  };
+  const run = { invoked: false };
   const selection = new ViewSelection(prepared.result, invocation.start);
   invocation.select(() => selection.atFailure());
   /**
@@ -529,15 +508,12 @@ async function runChain(
     if (!cancelled()) {
       await terminal();
     }
-    return undefined;
+    return;
   }
   // The graph a middleware reads is the one `inspect()` returns, built once for the run.
   const graph = invocation.inspected();
   const command = nodeAt(graph, routed.path);
-  // Every fault this chain has reported, so the same one raised again carries no second report.
-  const announced = new WeakSet();
   const chain: Chain = {
-    announced: (value) => typeof value === 'object' && value !== null && announced.has(value),
     cancelled,
     context: (entry, next) => ({
       command,
@@ -559,13 +535,6 @@ async function runChain(
       },
     }),
     invoked: () => run.invoked,
-    record: (error) => {
-      run.raised ??= { value: error };
-    },
-    report: (fault) => {
-      announced.add(fault);
-      invocation.report(fault);
-    },
     step: (index) => {
       if (cancelled()) {
         /**
@@ -579,7 +548,6 @@ async function runChain(
     },
   };
   await chain.step(0);
-  return run.raised;
 }
 
 /**
@@ -593,18 +561,11 @@ async function runChain(
 async function runInvocation(invocation: Invocation): Promise<void> {
   const routed = invocation.read(invocation.graph, invocation.route);
   const prepared = await prepareDispatch(invocation.graph, routed, invocation);
-  let raised: { value: unknown } | undefined = undefined;
   try {
-    raised = await runChain(invocation, routed, prepared);
+    await runChain(invocation, routed, prepared);
   } catch (error) {
     // A throw leaves the chain here, so a middleware that awaited next() saw it raw.
     throw invocation.offer(error) ?? error;
-  }
-  if (raised) {
-    // The chain resolved because a middleware caught the rejection.
-    // The failure it caught still decides the exit code.
-    // That is the rule an action's caught output rejection already follows.
-    throw invocation.offer(raised.value) ?? raised.value;
   }
 }
 

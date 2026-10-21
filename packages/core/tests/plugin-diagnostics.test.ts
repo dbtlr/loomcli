@@ -93,11 +93,6 @@ const cases: Record<string, RuleParts> = {
     rule: 'failure-code',
     sentence: 'Failure class "RegistryDownError" declares failure code "Registry_Down".',
   },
-  'failure-exit-code': {
-    correction: 'Declare a whole number from 1 through 125.',
-    rule: 'failure-exit-code',
-    sentence: 'Failure class "OffScaleError" declares exit code 200.',
-  },
   'graph-hook-promise': {
     correction: 'Return nothing from the hook; it judges the graph and cannot change it.',
     rule: 'broken-graph-hook',
@@ -191,7 +186,7 @@ test.each(Object.entries(cases))('the %s fault throws its rule’s diagnostic', 
 });
 
 /** The rules core declares beside its defects that this family raises. */
-const fromCore = ['failure-code', 'failure-exit-code', 'rule-identity'];
+const fromCore = ['failure-code', 'rule-identity'];
 
 /** The rules of the input family this family raises too, which a hook's declarations collide on. */
 const fromInputs = ['option-declared-twice', 'spelling-taken'];

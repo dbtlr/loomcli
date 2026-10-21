@@ -15,16 +15,6 @@ type WholeNumbersBelow<
 /** The codes a failure class may declare, 1 through 125. 0 is success, and the rest are reserved. */
 export type FailureExitCode = Exclude<WholeNumbersBelow<typeof firstReserved>, 0>;
 
-/**
- * Whether one declared value is a code a failure class may exit with. A JavaScript class, or one
- * that escaped the type check, may declare any value at all, so the check reads it as unknown.
- */
-export function isFailureExitCode(value: unknown): value is FailureExitCode {
-  return (
-    typeof value === 'number' && Number.isInteger(value) && value >= 1 && value < firstReserved
-  );
-}
-
 // The failure codes BSD's `sysexits.h` names, as flat constants with literal types.
 // A failure class declares one by name: `static override readonly exitCode = EX_UNAVAILABLE;`.
 // `EX_OK` is not here, because no failure declares 0.

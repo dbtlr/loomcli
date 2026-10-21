@@ -298,7 +298,7 @@ test('a fault reported after the outcome logs its own event', () => {
     ['error', 'The action failed.'],
     ['fatal', 'Something went wrong.'],
   ]);
-  expect(result.events[1]?.event.defect?.message).toContain('next()');
+  expect(result.events[1]?.event.defect?.message).toContain('The view broke.');
 });
 
 test('a failed action invoke logs its failure event under the nested run', () => {

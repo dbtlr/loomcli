@@ -115,22 +115,18 @@ test('a lane override that returns the empty string still writes the one newline
   expect(views('lane-empty')).toEqual({ status: 0, stderr: '\n', stdout: 'resolved:0\n' });
 });
 
-test('a broken lane view rejects its own call and ends the invocation', () => {
-  expect(views('lane-broken')).toEqual({
-    status: 1,
-    stderr: 'views: Something went wrong.\n',
-    stdout: 'caught\nresolved:1\n',
-  });
+test('a broken lane view rejects its own call, which the action catches', () => {
+  expect(views('lane-broken')).toEqual({ status: 0, stderr: '', stdout: 'caught\nresolved:0\n' });
 });
 
 test('a lane view rendered through out.render writes its message with no newline', () => {
   expect(views('lane-rendered')).toEqual(rendered('bareresolved:0\n'));
 });
 
-test('a failure the action raised stays primary over an unawaited broken render', () => {
+test('a failure the action raised stays primary, and an unawaited broken render reports after it', () => {
   expect(views('render-then-failure')).toEqual({
     status: 2,
-    stderr: 'views: Option "--file" is required. Supply a value.\n',
+    stderr: 'views: Option "--file" is required. Supply a value.\nviews: Something went wrong.\n',
     stdout: 'resolved:2\n',
   });
 });

@@ -1,6 +1,6 @@
 /**
- * A middleware that catches what the rest of the chain raised and returns. Its own control flow
- * changes; the exit code stays the recorded failure's.
+ * A middleware that catches what the rest of the chain raised and returns, so the outcome is its
+ * own.
  */
 const middleware = async ({ next, out }) => {
   try {

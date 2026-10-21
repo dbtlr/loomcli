@@ -133,17 +133,6 @@ const scenarios = {
     }
     return new RegistryDownError('The registry is down.');
   },
-  'failure-exit-code': () => {
-    class OffScaleError extends FatalError {
-      static exitCode = 200;
-
-      constructor(message) {
-        super(message);
-        this.name = 'OffScaleError';
-      }
-    }
-    return new OffScaleError('Off the scale.');
-  },
   'graph-hook-promise': () =>
     new Application('probe', {
       plugins: [plugin('@acme/mcp', { onGraphBuilt: () => Promise.resolve(undefined) })],

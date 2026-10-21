@@ -2393,8 +2393,8 @@ export interface DispatchInvocation {
   /** Offers a configuration source's foreign throw to the translators where its call settles. */
   offer: (thrown: unknown) => LoomError | undefined;
   signal: AbortSignal;
-  /** The channel a configuration source writes through, whose results call names the source. */
-  sourceOut: Out<OpenResult>;
+  /** The channel a configuration source writes through. */
+  out: Out<OpenResult>;
   style: ContextualStyle;
 }
 
@@ -2549,7 +2549,7 @@ async function fillScope(
         : undefined,
     log: invocation.logFor,
     offer: invocation.offer,
-    out: invocation.sourceOut,
+    out: invocation.out,
     plugins: graph.globals.plugins,
     request: (input, global) =>
       requestNode(invocation.inspected(), routed.path, { global, name: input.name }),

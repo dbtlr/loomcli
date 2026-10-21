@@ -635,23 +635,6 @@ test('an InputError from the resolver is a usage failure that replaces every oth
   );
 });
 
-test('out.results() in a source is the results fault with the source as its subject', () => {
-  const fault = 'app: Something went wrong.\n';
-  expect(run(['count', '--max', '1'], { FIXTURE_SOURCE: 'results' })).toEqual({
-    status: 1,
-    stderr: fault,
-    stdout:
-      'source:{"options":{"config":"fixture.json"},"requests":["limit","level","total"]}\nresolved:1\n',
-  });
-  // The results-lane fault reports once after the outcome, as a middleware's call does, a takeover included.
-  expect(run(['count', '--max', '1', '--help'], { FIXTURE_SOURCE: 'results' })).toEqual({
-    status: 1,
-    stderr: fault,
-    stdout:
-      'source:{"options":{"config":"fixture.json"},"requests":["limit","level","total"]}\nhelp\nresolved:1\n',
-  });
-});
-
 test.each([
   [
     { FIXTURE_SOURCE: 'input-error-getter' },

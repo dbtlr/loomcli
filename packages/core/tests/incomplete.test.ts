@@ -22,11 +22,11 @@ test('a source that throws under an awaited call reports its own code and diagno
   });
 });
 
-test('the same failure under an unawaited call is a deferred fault that returns 1', () => {
+test('the same failure under an unawaited call reports after the action with its own code', () => {
   expect(incomplete('source-deferred')).toEqual({
-    status: 1,
+    status: 2,
     stderr: `${line('Command "count"', 1, 1)}incomplete: The source failed.\n`,
-    stdout: `${partial}resolved:1\n`,
+    stdout: `${partial}resolved:2\n`,
   });
 });
 
@@ -64,14 +64,6 @@ test('an awaited call that lets a thrown failure class propagate keeps that clas
 
 test('a whole view that throws after the source ended writes nothing of the sequence', () => {
   expect(incomplete('whole-view')).toEqual({
-    status: 1,
-    stderr: `${line('Command "count"', 2, 0)}incomplete: Something went wrong.\n`,
-    stdout: 'resolved:1\n',
-  });
-});
-
-test('a whole view that returns a non-string is the same fault with a stated reason', () => {
-  expect(incomplete('whole-non-string')).toEqual({
     status: 1,
     stderr: `${line('Command "count"', 2, 0)}incomplete: Something went wrong.\n`,
     stdout: 'resolved:1\n',

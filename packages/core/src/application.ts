@@ -48,14 +48,7 @@ import type { Content } from './content.js';
 import { encoderRegistry } from './encoders.js';
 import type { EncoderRegistry } from './encoders.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
-import {
-  DeclarationError,
-  exitCodeOf,
-  InternalError,
-  quoted,
-  reasonOf,
-  toFailure,
-} from './errors.js';
+import { DeclarationError, exitCodeOf, InternalError, quoted, toFailure } from './errors.js';
 import type { InvokedBy, LoomError } from './errors.js';
 import type { FailureExitCode } from './exit-codes.js';
 import { carriesBinding, storeCommandLayers } from './extension.js';
@@ -104,7 +97,7 @@ import { prepareEnvironment } from './prepare-environment.js';
 import { bakedFacts, isDevelopment } from './release.js';
 import { capabilities, plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
-import { brokenOutputView, runOptions, viewCorrection } from './rules.js';
+import { runOptions } from './rules.js';
 import { bracketCall, bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
 import type { CancellationCode, ParentRun, SignalBracket } from './signals.js';
 import { installedSource } from './sources.js';
@@ -210,25 +203,10 @@ function silenced(
   return cancelled !== undefined && isCancellationEcho(thrown, signal.reason);
 }
 
-/** The failure a view that broke while the run wrote its output is, once nothing else failed. */
-function brokenOutput(cause: unknown): InternalError {
-  return new InternalError(brokenOutputView, {
-    cause,
-    correction: viewCorrection,
-    sentence: `Rendering output failed: ${reasonOf(cause)}`,
-  });
-}
-
 /** The selection of a run whose chain never ran, which reaches no Command's result. */
 function unselected(): FailureSelection {
   return noSelection;
 }
-
-/**
- * The stand-in for "this run has no primary failure", which is a value no thrown value can be.
- * `undefined` is itself throwable, so the absence is spelled here rather than borrowed from it.
- */
-const noPrimary = Symbol('no primary');
 
 /**
  * The write state a run reports by. A destination whose write failure the action let propagate,
@@ -239,25 +217,6 @@ function answeredWrite(writes: WriteState, answered: unknown): WriteState {
   return writes.kind === 'failed' && answered !== undefined && writes.error === answered
     ? { kind: 'ok' }
     : writes;
-}
-
-/**
- * Whether the primary outcome carries one recorded cause already: the value itself, or a failure
- * that wraps it at any depth, which an action that caught a source failure and rethrew its own
- * produces. Such a cause is reported once, through the primary outcome that carries it.
- */
-function carried(primary: unknown, cause: unknown): boolean {
-  const seen = new Set<unknown>();
-  let value = primary;
-  while (value !== noPrimary && !seen.has(value)) {
-    if (value === cause) {
-      return true;
-    }
-    seen.add(value);
-    // A failure wraps its own cause under `cause`, and one that declares none ends the walk.
-    value = value instanceof Error && 'cause' in value ? value.cause : noPrimary;
-  }
-  return false;
 }
 
 /**
@@ -845,10 +804,8 @@ class ApplicationBuilder<
     let reportingFailed = false;
     // A registry that could not be built reports through core's defaults, not through itself.
     let registry: ViewRegistry | undefined = undefined;
-    // Faults a plugin raised beside the primary outcome, reported after it and never before it.
-    const faults: LoomError[] = [];
-    // The failure this run reports as its primary outcome, so nothing reports it a second time.
-    let primary: unknown = noPrimary;
+    // The thrown value this run reports as its primary outcome, whose translation decides its writes.
+    let primary: { value: unknown } | undefined = undefined;
     // The failure that set this run's failure code, which an invocation by name hands its caller.
     let decisive: LoomError | undefined = undefined;
     // The form of each failure this run reported, which holds the hints its hooks returned.
@@ -1056,7 +1013,6 @@ class ApplicationBuilder<
             places,
             plugins: built.plugins,
             read: entered.read(host),
-            report: (fault) => faults.push(fault),
             route: (path) => {
               walked = path;
               invocationOutput.useRoute(path);
@@ -1065,23 +1021,14 @@ class ApplicationBuilder<
               selected = read;
             },
             signal: controller.signal,
-            sourceOut: output.sourceOut,
             start: entered.start,
             style: output.style,
           });
           // The chain has unwound, so every region a middleware or a source left open closes.
           invocationOutput.closeRegions('completion');
         }
-        // The fault check covers the same window the write accounting covers.
-        // A render failure an unawaited helper raised is still this invocation's failure.
-        await output.settle();
-        const fault = output.fault;
-        if (fault) {
-          // The action returned, so the view failure is this invocation's own failure.
-          throw brokenOutput(fault.cause);
-        }
       } catch (error) {
-        primary = error;
+        primary = { value: error };
         // Each open region writes its last frame before the failure report, which comes last.
         output?.closeRegions('failure');
         try {
@@ -1118,37 +1065,21 @@ class ApplicationBuilder<
         }
       }
       /**
-       * A sequence that stopped on its own source reports the same way: the call the action never
-       * awaited observed nothing, and a failure the action let propagate is the primary outcome
-       * already, so the one it raised is not reported twice. A throw a translator replaced is
-       * carried by the failure it became, whether or not that failure keeps it as its cause. A
-       * foreign throw that is not carried is a deferred fault, offered to the translators here,
-       * where core would otherwise wrap it as an internal error.
+       * A failure an output call raised that no code observed has no catcher: a render whose view
+       * threw, or a row source that threw, in a call the code that made it never awaited. Each is
+       * reported after the chain settles through the ordinary failure path, offered to the
+       * translators as a foreign throw is, and a failure that code observed is that code's own.
        */
-      // A primary no translator answered replaced nothing, so even a thrown `undefined` is reported.
-      const replaced = translatedFrom.get(primary) ?? noPrimary;
-      const deferred = new Set<LoomError>();
-      for (const cause of output?.stopped ?? []) {
-        if (!carried(primary, cause) && cause !== replaced) {
-          // A failure is never offered, so only a foreign throw can be translated here.
-          const translated = offer(cause);
-          if (translated !== undefined) {
-            deferred.add(translated);
-          }
-          faults.push(translated ?? toFailure(cause));
-        }
-      }
-      // A plugin's own fault is reported after the primary outcome and turns a would-be 0 into 1.
-      // A deferred fault a translator answered turns it into that failure's own code instead.
-      // The primary outcome keeps its code, the way a view failure leaves it alone.
+      await output?.settle();
+      const faults = (output?.uncaught() ?? []).map((cause) => offer(cause) ?? toFailure(cause));
+      // A fault is reported after the primary outcome, which keeps its code.
+      // After a primary outcome that succeeded, the first fault's own code decides the run.
       // It is reported the way the primary failure is, so an override answers its class.
       const reportFault = async (fault: LoomError): Promise<void> => {
         if (!silenced(fault, controller.signal, cancellation())) {
           output?.closeRegions('failure');
-          const own = deferred.has(fault) ? exitCodeOf(fault) : 1;
-          // The first fault that sets the code after a primary outcome that succeeded decides it.
           decisive = code === 0 ? fault : decisive;
-          code = code === 0 ? own : code;
+          code = code === 0 ? exitCodeOf(fault) : code;
           try {
             const sink = output && {
               build,
@@ -1181,12 +1112,15 @@ class ApplicationBuilder<
        */
       const lineFault = await output?.writeIncomplete();
       if (lineFault !== undefined && decisive === undefined) {
-        await reportFault(brokenOutput(lineFault.cause));
+        await reportFault(toFailure(lineFault.cause));
       }
       if (output) {
         // A region nothing closed yet, such as one a run whose stdout broke left open, closes here.
         output.closeRegions(code === 0 ? 'completion' : 'failure');
-        const writes = answeredWrite(await output.settle(), translatedFrom.get(primary));
+        const writes = answeredWrite(
+          await output.settle(),
+          primary && translatedFrom.get(primary.value),
+        );
         if (writes.kind === 'failed') {
           code = 1;
           reportingFailed = true;

@@ -15,7 +15,7 @@ const middleware = async ({ next, out }) => {
   }
   if (process.env.LOOM_FIXTURE_MISUSE === 'escaping') {
     await next();
-    // Uncaught, so the same recorded fault reaches core a second time as this middleware's throw.
+    // Uncaught, so the rejection is this middleware's failure.
     await next();
     return;
   }

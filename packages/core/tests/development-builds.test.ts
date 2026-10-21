@@ -164,13 +164,6 @@ test('a broken hook in a run a caller cancelled keeps the signal code in both bu
   expect(stderr).toContain('-- BROKEN FAILURE HOOK');
 });
 
-test('a broken output view is a defect by build', () => {
-  expect(run('broken-output', 'distributed').stderr).toBe('probe: Something went wrong.\n');
-  expect(run('broken-output', 'development').stderr).toMatch(
-    /^-- BROKEN OUTPUT VIEW -+ @loomcli\/core\/broken-output-view\n\nRendering output failed: Output view broke\.\n/u,
-  );
-});
-
 test('a forged frame outside the working directory is never read and prints its location alone', () => {
   const { stderr, stdout } = run('forged-outside', 'development');
   expect(stdout).toBe('resolved:1\n');
@@ -325,12 +318,6 @@ test.each([
     'NEXT() MISUSED',
     '@loomcli/core/next-misuse',
     'Plugin "@acme/twice" called next() twice.',
-  ],
-  [
-    'unconstructed',
-    'FAILURE NEVER CONSTRUCTED',
-    '@loomcli/core/unconstructed-failure',
-    'A thrown value inherits from a failure class but was never constructed as one.',
   ],
   [
     'not-a-signal',

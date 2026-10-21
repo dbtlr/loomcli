@@ -42,10 +42,6 @@ const breaks = {
     throw new Error('Cannot render the failure.');
   },
 };
-const counted = { render: (failure) => failure.exitCode };
-// A view is synchronous, so a returned promise is a non-string return.
-// Core observes its rejection, which would otherwise end the process before `run()` resolves.
-const rejects = { render: () => Promise.reject(new Error('Cannot render the failure.')) };
 /** Every issue the reported problems carry, so a test reads the list a view receives. */
 const issueMessages = {
   render: (failure) =>
@@ -200,7 +196,7 @@ function build() {
       );
     }
     case 'render-failure': {
-      // The action returns without the rejection, so the view failure is reported after it.
+      // The action never awaits the call, so the view failure is reported after it returns.
       return ending(
         [
           override(InternalError, {
@@ -235,12 +231,6 @@ function build() {
     case 'broken':
     case 'broken-fallback': {
       return ending([override(FatalError, breaks)], ({ out }) => out.fatal('Expected failure.'));
-    }
-    case 'broken-nonstring': {
-      return ending([override(FatalError, counted)], ({ out }) => out.fatal('Expected failure.'));
-    }
-    case 'broken-rejecting': {
-      return ending([override(FatalError, rejects)], ({ out }) => out.fatal('Expected failure.'));
     }
     // A broken view on a usage class: the default text of the failure, then the diagnostic.
     case 'broken-usage': {

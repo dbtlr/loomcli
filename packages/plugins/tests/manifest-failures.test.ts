@@ -292,9 +292,12 @@ test('a value whose prototype read throws is rejected at the call as not a failu
   );
 });
 
-test('the manifest rejects an undeclarable class with the sentence core throws when it is constructed', () => {
-  const core = z.object({ message: z.string() }).parse(rule('core-reserved'));
-  expect(rule('failure-code-200')).toEqual(invalid(core.message));
+test('the manifest rejects a class that declares an exit code outside 1 through 125', () => {
+  expect(rule('failure-code-200')).toEqual(
+    invalid(
+      'Failure class "ReservedError" declares exit code 200. Declare a whole number from 1 through 125.',
+    ),
+  );
 });
 
 test("the extension stores a declared failure as its class's failure code, exit code, and meaning, in that key order", () => {
