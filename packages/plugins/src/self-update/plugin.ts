@@ -6,7 +6,6 @@ import { createValidator } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
 import { digestOf, observe, removeStagingFiles, replaceFile } from '../installation/disk.js';
-import { isPlainObject } from '../plain-data.js';
 import { selfUpdateSettings } from '../rules.js';
 import { releaseBinary } from './binary.js';
 import type { ReleaseBinary } from './binary.js';
@@ -58,59 +57,17 @@ interface SelfUpdateSettings {
 /** An environment variable's name, the grammar of an input's environment binding. */
 const variableName = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
-/** What one settings fault says: the key the finding marks, the fault, and its correction. */
-interface SettingsFault {
-  readonly key: string;
-  readonly fault: string;
-  readonly correction: string;
-}
-
-/** The settings fault `selfUpdate()` throws at its call. */
-function settingsFault(
-  settings: SelfUpdateSettings | undefined,
-  { correction, fault, key }: SettingsFault,
-): DeclarationError {
-  return new DeclarationError(selfUpdateSettings, {
-    correction,
-    findings: [{ arguments: [settings], call: 'selfUpdate', mark: `0.${key}` }],
-    sentence: `Plugin "${identity}" setting "${key}" ${fault}`,
-  });
-}
-
-/** Judges `notices`: `true`, `false`, or a plain object whose `env` names a variable when present. */
-function judgeNotices(settings: SelfUpdateSettings | undefined): void {
-  const notices: unknown = settings?.notices;
-  if (notices === undefined || typeof notices === 'boolean') {
-    return;
-  }
-  if (!isPlainObject(notices)) {
-    throw settingsFault(settings, {
-      correction: 'Supply true, false, or { env }, or omit the setting.',
-      fault: 'is not a Boolean or an object.',
-      key: 'notices',
-    });
-  }
-  const { env } = notices;
-  if (env !== undefined && !(typeof env === 'string' && variableName.test(env))) {
-    throw settingsFault(settings, {
+/** Judges `notices.env`, which names the variable that turns notices off, at the `selfUpdate()` call. */
+function judgeNoticeVariable(settings: SelfUpdateSettings | undefined): void {
+  const { notices } = settings ?? {};
+  const env = typeof notices === 'object' ? notices.env : undefined;
+  if (env !== undefined && !variableName.test(env)) {
+    throw new DeclarationError(selfUpdateSettings, {
       correction: 'Name it with letters, digits, and underscores, not starting with a digit.',
-      fault: 'is not an environment variable name.',
-      key: 'notices.env',
+      findings: [{ arguments: [settings], call: 'selfUpdate', mark: '0.notices.env' }],
+      sentence: `Plugin "${identity}" setting "notices.env" is not an environment variable name.`,
     });
   }
-}
-
-/** Judges each key at the `selfUpdate()` call. */
-function judgeSettings(settings: SelfUpdateSettings | undefined): void {
-  const afterReplace: unknown = settings?.afterReplace;
-  if (afterReplace !== undefined && typeof afterReplace !== 'function') {
-    throw settingsFault(settings, {
-      correction: 'Supply a function, or omit the setting.',
-      fault: 'is not a function.',
-      key: 'afterReplace',
-    });
-  }
-  judgeNotices(settings);
 }
 
 /** A string input that `accepts` or the one-sentence `message`, published as a plain string. */
@@ -582,7 +539,7 @@ function noticeOptOut(notices: boolean | NoticeSettings): string | undefined {
  * boundary that breaks the cycle between this module and the middleware module `load` names.
  */
 function selfUpdate(settings?: SelfUpdateSettings): Plugin {
-  judgeSettings(settings);
+  judgeNoticeVariable(settings);
   const notices = settings?.notices ?? true;
   const commands = [selfUpdateCommand(settings)];
   if (notices === false) {

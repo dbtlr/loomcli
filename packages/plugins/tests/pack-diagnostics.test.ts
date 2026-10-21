@@ -18,29 +18,11 @@ const postfixFault: Expected = {
     'Plugin "@loomcli/plugins/version" postfix must be a string that holds a character other than whitespace and no line terminator.',
 };
 
-/** One service settings fault, from the setting it names and the fault's words. */
-function serviceFault(fault: {
-  readonly key: string;
-  readonly sentence: string;
-  readonly correction: string;
-}): Expected {
-  return {
-    correction: fault.correction,
-    rule: 'service/settings',
-    sentence: `Plugin "@loomcli/plugins/service" setting "${fault.key}" ${fault.sentence}`,
-  };
-}
-
-const labelFault = {
+/** The service `label` fault. */
+const labelFault: Expected = {
   correction: 'Supply a label such as com.acme.notes.',
-  key: 'label',
-  sentence: 'is not a reverse-DNS name.',
-};
-
-const runFault = {
-  correction: "Supply the words that run the service's Command, such as ['serve'].",
-  key: 'run',
-  sentence: 'is not a list of argument words.',
+  rule: 'service/settings',
+  sentence: 'Plugin "@loomcli/plugins/service" setting "label" is not a reverse-DNS name.',
 };
 
 /** One skills settings fault, from the fault's words. */
@@ -60,17 +42,13 @@ const listFault = {
 const nameCorrection =
   'Use lowercase letters, digits, and single hyphens, 64 characters at most, such as notes.';
 
-/** One self-update `notices` fault, from the setting it names. */
-function noticesFault(key: 'notices' | 'notices.env'): Expected {
-  const notices = key === 'notices';
-  return {
-    correction: notices
-      ? 'Supply true, false, or { env }, or omit the setting.'
-      : 'Name it with letters, digits, and underscores, not starting with a digit.',
-    rule: 'self-update/settings',
-    sentence: `Plugin "@loomcli/plugins/self-update" setting "${key}" ${notices ? 'is not a Boolean or an object.' : 'is not an environment variable name.'}`,
-  };
-}
+/** The self-update `notices.env` fault. */
+const noticesFault: Expected = {
+  correction: 'Name it with letters, digits, and underscores, not starting with a digit.',
+  rule: 'self-update/settings',
+  sentence:
+    'Plugin "@loomcli/plugins/self-update" setting "notices.env" is not an environment variable name.',
+};
 
 /** The fault a dotenv list raises for a name that is not an environment variable name. */
 function dotenvFault(key: 'except' | 'only'): Expected {
@@ -104,29 +82,10 @@ const settingsCases: Record<string, Expected> = {
   },
   'dotenv-except': dotenvFault('except'),
   'dotenv-only': dotenvFault('only'),
-  'self-update-hook': {
-    correction: 'Supply a function, or omit the setting.',
-    rule: 'self-update/settings',
-    sentence: 'Plugin "@loomcli/plugins/self-update" setting "afterReplace" is not a function.',
-  },
-  'self-update-notices-env': noticesFault('notices.env'),
-  'self-update-notices-hyphen': noticesFault('notices.env'),
-  'self-update-notices-list': noticesFault('notices'),
-  'self-update-notices-number': noticesFault('notices'),
-  'service-label': serviceFault(labelFault),
-  'service-none': serviceFault(labelFault),
-  'service-probe': serviceFault({
-    correction: 'Supply a function, or omit the setting.',
-    key: 'probe',
-    sentence: 'is not a function.',
-  }),
-  'service-run-control': serviceFault({
-    correction: 'Remove the control character from the word.',
-    key: 'run',
-    sentence: 'holds a word with a control character.',
-  }),
-  'service-run-empty': serviceFault(runFault),
-  'service-run-word': serviceFault(runFault),
+  'self-update-notices-env': noticesFault,
+  'self-update-notices-hyphen': noticesFault,
+  'service-label': labelFault,
+  'service-none': labelFault,
   'skills-empty': skillsFault(listFault),
   'skills-entry': skillsFault({
     correction: 'Supply each skill as { name, files }.',

@@ -57,17 +57,17 @@ const mcpPropertyNameTaken = diagnosticRule(`${packageName}/mcp/property-name-ta
   headline: 'MCP property name taken',
 });
 
-/** A self-update plugin setting that is not one it accepts. */
+/** A self-update `notices.env` setting that is not an environment variable name. */
 const selfUpdateSettings = diagnosticRule(`${packageName}/self-update/settings`, {
   explanation:
-    'The self-update plugin calls afterReplace once it has replaced the binary and rewritten its installation record, so afterReplace is a function, and notices is true, false, or an object whose env names the environment variable that turns update notices off.',
+    'The self-update plugin reads the variable that notices.env names from the environment, as an input binds one, and turns update notices off when it is set and not empty, so env is a variable name: letters, digits, and underscores, not starting with a digit.',
   headline: 'Invalid self-update setting',
 });
 
-/** A service plugin setting that is not one it accepts. */
+/** A service plugin `label` that is not a reverse-DNS name its unit can carry. */
 const serviceSettings = diagnosticRule(`${packageName}/service/settings`, {
   explanation:
-    'The service plugin names its unit by label, a reverse-DNS name of two or more segments of letters, digits, and hyphens, each opening with a letter or digit, 247 characters at most; runs the application with the words in run, a nonempty list of strings with no control character; and calls probe, a function, from status.',
+    "The service plugin names its unit by label: the systemd unit is <label>.service and the launchd agent's Label is the label. So label is a reverse-DNS name of two or more segments of letters, digits, and hyphens, each opening with a letter or digit, 247 characters at most, which keeps the unit name within systemd's 255 characters.",
   headline: 'Invalid service setting',
 });
 
