@@ -1,0 +1,2 @@
+$ pace calc 10k 50:00 --unit km
+5:00 /km

@@ -1,0 +1,3 @@
+$ pace calcc 10k 50:00
+pace: Unknown command "calcc". Did you mean "calc"?
+Run "pace --help" to see the usage.

@@ -4,7 +4,9 @@ import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/pr
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+import { snapshotNames } from '../../../examples/guide/scripts/snapshots.mjs';
 
 const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL('../../../', import.meta.url));
@@ -12,6 +14,8 @@ const typescript = require('typescript/package.json');
 const compiler = join(dirname(require.resolve('typescript/package.json')), typescript.bin.tsc);
 const { version } = typescript;
 const zod = require('zod/package.json');
+// The guide's chapters hold the assembly test `loom init` writes, which runs under bun test.
+const guide = require('../../../examples/guide/package.json');
 const packageManager = process.env.npm_execpath;
 assert.ok(packageManager, 'Run this check through pnpm run check:types.');
 
@@ -63,9 +67,13 @@ try {
   const coreTarball = join(temporary, 'core.tgz');
   const pluginsTarball = join(temporary, 'plugins.tgz');
   const promptsTarball = join(temporary, 'prompts.tgz');
+  const validatorsTarball = join(temporary, 'validators.tgz');
+  const testingTarball = join(temporary, 'testing.tgz');
   pnpm(['pack', '--out', coreTarball], join(root, 'packages/core'));
   pnpm(['pack', '--out', pluginsTarball], join(root, 'packages/plugins'));
   pnpm(['pack', '--out', promptsTarball], join(root, 'packages/prompts'));
+  pnpm(['pack', '--out', validatorsTarball], join(root, 'packages/validators'));
+  pnpm(['pack', '--out', testingTarball], join(root, 'packages/testing'));
   await cp(source, temporary, { recursive: true });
   await writeFile(
     join(temporary, 'package.json'),
@@ -74,6 +82,9 @@ try {
         '@loomcli/core': 'file:./core.tgz',
         '@loomcli/plugins': 'file:./plugins.tgz',
         '@loomcli/prompts': 'file:./prompts.tgz',
+        '@loomcli/testing': 'file:./testing.tgz',
+        '@loomcli/validators': 'file:./validators.tgz',
+        '@types/bun': guide.devDependencies['@types/bun'],
         zod: zod.version,
       },
       private: true,
@@ -81,6 +92,42 @@ try {
     }),
   );
   pnpm(['install', '--prefer-offline', '--ignore-scripts', '--lockfile=false'], temporary);
+  // Each guide chapter snapshot compiles as its own project against the packed packages.
+  // A modular application registers its environment, and one project allows one registration.
+  // A chapter compiles with skipLibCheck on, as the tsconfig.json `loom init` writes does.
+  // Its bun test types bring a second @types/node beside the one core pins, as in a new scaffold.
+  const guideSource = new URL('examples/guide/src/', pathToFileURL(root));
+  // The application's package.json sits above its sources, where a chapter reads its version.
+  await mkdir(join(temporary, 'guide'));
+  await cp(
+    fileURLToPath(new URL('package.json', guideSource)),
+    join(temporary, 'guide', 'package.json'),
+  );
+  for (const name of await snapshotNames(guideSource)) {
+    const chapter = join(temporary, 'guide', name);
+    await cp(fileURLToPath(new URL(`${name}/`, guideSource)), chapter, { recursive: true });
+    await writeFile(
+      join(chapter, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          lib: ['ES2022'],
+          module: 'NodeNext',
+          noEmit: true,
+          resolveJsonModule: true,
+          skipLibCheck: true,
+          strict: true,
+          target: 'ES2022',
+        },
+        include: ['**/*.ts'],
+      }),
+    );
+    const compiled = run(
+      process.execPath,
+      [compiler, '-p', 'tsconfig.json', '--pretty', 'false'],
+      chapter,
+    );
+    assert.equal(compiled.status, 0, `guide ${name}: ${compiled.output}`);
+  }
   // Invalid augmentation cannot silently erase globals, including with skipLibCheck enabled.
   const invalid = join(temporary, 'invalid-registration');
   await mkdir(invalid);

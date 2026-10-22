@@ -1,0 +1,2 @@
+$ pace 10x 50:00
+Cannot read the distance "10x". Write one such as 10k, 5mi, 400m, half, or marathon.

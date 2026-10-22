@@ -1,0 +1,14 @@
+$ pace calc --help
+pace calc · Work out the pace of a run.
+
+USAGE
+  pace calc <distance> <time> [options]
+
+ARGUMENTS
+  distance  How far you ran, such as 10k, 5mi, 400m, half, or marathon.
+  time      How long the run took, as mm:ss or h:mm:ss.
+
+GLOBAL OPTIONS
+  -u, --unit <unit>  The unit to give a pace in. One of: km, mi.  (default: km)
+  -h, --help         Show this help.
+  -V, --version      Print the version.

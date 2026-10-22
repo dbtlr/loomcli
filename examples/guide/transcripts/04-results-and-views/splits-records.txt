@@ -1,0 +1,17 @@
+$ pace splits 3k 15:00 --format records
+split     1
+distance  1 km
+time      5:00
+elapsed   5:00
+
+split     2
+distance  2 km
+time      5:00
+elapsed   10:00
+
+split     3
+distance  3 km
+time      5:00
+elapsed   15:00
+
+3 records

@@ -24,6 +24,7 @@
     "**/dist/**",
     "node_modules",
     "examples/jsonkit/**",
+    "examples/guide/src/**",
     "packages/core/tests/type-consumer/**",
     "packages/core/tests/runtime-consumer/registered/**"
   ]

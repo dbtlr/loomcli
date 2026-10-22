@@ -1,0 +1,4 @@
+$ pace calc marathn 3:30:00
+pace: Argument "distance": Expected a distance, such as 10k, 5mi, 400m, half, or marathon.
+Run "pace calc --help" to see the usage.
+Run "pace races" to list the races pace knows by name.

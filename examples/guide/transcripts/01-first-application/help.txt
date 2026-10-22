@@ -1,0 +1,13 @@
+$ pace --help
+pace · Work out the pace of a run from its distance and time.
+
+USAGE
+  pace <distance> <time> [options]
+
+ARGUMENTS
+  distance  How far you ran, such as 10k, 5mi, 400m, half, or marathon.
+  time      How long the run took, as mm:ss or h:mm:ss.
+
+OPTIONS
+  -h, --help     Show this help.
+  -V, --version  Print the version.

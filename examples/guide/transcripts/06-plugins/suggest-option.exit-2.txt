@@ -1,0 +1,3 @@
+$ pace calc 10k 50:00 --unti km
+pace: Unknown option "--unti". Did you mean "--unit"?
+Run "pace calc --help" to see the usage.

@@ -1,0 +1,4 @@
+$ pace splits 10k 50:00 --every 10x
+pace: Option "--every": Expected a distance, such as 10k, 5mi, 400m, half, or marathon.
+Run "pace splits --help" to see the usage.
+Run "pace races" to list the races pace knows by name.

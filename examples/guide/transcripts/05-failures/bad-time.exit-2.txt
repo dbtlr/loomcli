@@ -1,0 +1,3 @@
+$ pace calc 10k 50
+pace: Argument "time": Expected a time above zero as mm:ss or h:mm:ss, such as 25:30.
+Run "pace calc --help" to see the usage.

@@ -1,0 +1,2 @@
+$ pace convert 8:03/mi
+5:00 /km

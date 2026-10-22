@@ -1,0 +1,3 @@
+$ pace 10k
+pace: Argument "time" requires a value. Supply a value for "time".
+Run "pace --help" to see the usage.

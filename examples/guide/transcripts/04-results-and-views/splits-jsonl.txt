@@ -1,0 +1,4 @@
+$ pace splits 3k 15:00 --format jsonl
+{"distance":1,"elapsed":300,"split":1,"time":300,"unit":"km"}
+{"distance":2,"elapsed":600,"split":2,"time":300,"unit":"km"}
+{"distance":3,"elapsed":900,"split":3,"time":300,"unit":"km"}

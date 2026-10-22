@@ -1,0 +1,2 @@
+$ pace --version
+pace v1.0.0

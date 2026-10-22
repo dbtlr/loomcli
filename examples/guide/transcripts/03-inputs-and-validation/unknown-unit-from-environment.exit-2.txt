@@ -1,0 +1,3 @@
+$ PACE_UNIT=miles pace calc 10k 50:00
+pace: Option "--unit" (from PACE_UNIT): Expected one of: km, mi.
+Run "pace calc --help" to see the usage.
