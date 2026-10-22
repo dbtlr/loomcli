@@ -162,6 +162,18 @@ function correctionOf(declare: () => unknown): unknown {
   return undefined;
 }
 
+/**
+ * Calls a method with arguments its types would refuse, as JavaScript would. The target is
+ * `unknown`, so the checker never infers Reflect.apply's generic overload from `option()`'s
+ * signature, whose constraints expand until the checker runs out of memory.
+ */
+function applyUnchecked(target: unknown, receiver: unknown, args: unknown[]): unknown {
+  if (typeof target !== 'function') {
+    throw new TypeError('Expected a function');
+  }
+  return Reflect.apply(target, receiver, args);
+}
+
 /** The message the rule reports under one id. */
 function messageOf(id: string): string {
   return nameShape.meta?.messages?.[id] ?? '';
@@ -174,10 +186,9 @@ test('the portable-name message ends with the correction core gives', () => {
 });
 
 test('the declared-name message ends with the correction core gives', () => {
-  // Reflect.apply passes a name the call's types would refuse, as JavaScript would.
   const base = new Command('base');
   const correction = correctionOf(() =>
-    Reflect.apply(base.option, base, ['bad name', { description: 'D.', type: 'string' }]),
+    applyUnchecked(base.option, base, ['bad name', { description: 'D.', type: 'string' }]),
   );
   expect(correction).toEqual(expect.any(String));
   expect(messageOf('declared').endsWith(String(correction))).toBe(true);
