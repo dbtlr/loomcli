@@ -16,16 +16,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * consumer cannot reach the source through the copy. A value that holds itself is copied with the
  * same cycle, because each source object is copied once and every path to it reaches that copy.
  * Primitives and library objects, such as a class instance or a `Date` a schema produced, are
- * reported as they are, because core cannot copy them meaningfully. Build reads it for a
- * converter's schema, and the chain for the request one middleware holds.
+ * reported as they are, because core cannot copy them meaningfully. The chain reads it for the
+ * request and the option values a middleware holds.
  */
 function snapshot(value: unknown): unknown {
   return copied(value, new Map());
-}
-
-/** The snapshot of one plain object, under the record type the caller already established. */
-function snapshotRecord(value: Record<string, unknown>): Readonly<Record<string, unknown>> {
-  return copiedRecord(value, new Map());
 }
 
 /** One value of a snapshot in progress. An object the walk reached already answers as it did then. */
@@ -88,4 +83,4 @@ function defineEntry(target: object, key: number | string, value: unknown): void
   });
 }
 
-export { defineEntry, isPlainObject, snapshot, snapshotRecord };
+export { defineEntry, isPlainObject, snapshot };

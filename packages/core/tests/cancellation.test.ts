@@ -76,22 +76,6 @@ test('a declared default its validator rejects installs no listener and still re
   });
 });
 
-test('a run signal that is not an AbortSignal is an internal error with code 1', () => {
-  expect(run('not-a-signal')).toEqual({
-    status: 1,
-    stderr: 'app: Something went wrong.\n',
-    stdout: 'before:0:0\nafter:0:0\nresolved:1\n',
-  });
-});
-
-test('an invalid signal reports its diagnostic to the host stderr override, not the process stderr', () => {
-  const result = run('not-a-signal-host');
-  expect(result.stderr).toBe('');
-  expect(result.stdout).toBe(
-    `before:0:0\ncaptured:${JSON.stringify('app: Something went wrong.\n')}\nresolved:1\n`,
-  );
-});
-
 test('a host stderr that refuses every write leaves no listener behind', () => {
   /**
    * Core reports the action's failure to the host's stderr, which refuses it, so the real stderr

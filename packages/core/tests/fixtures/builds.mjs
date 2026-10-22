@@ -326,16 +326,11 @@ function scenarioRun() {
         }),
       };
     }
-    case 'not-a-signal': {
-      return {
-        app: new Application('probe', probe).action(() => undefined),
-        signal: 'not a signal',
-      };
-    }
     case 'foreign-graph': {
       return {
-        app: new Application('probe', probe).action(() => {
-          locate(Object.freeze({}), ['']);
+        // A spread copy type-checks as a graph, but it is not the graph inspect() returned.
+        app: new Application('probe', probe).action(({ graph }) => {
+          locate({ ...graph }, ['']);
         }),
       };
     }

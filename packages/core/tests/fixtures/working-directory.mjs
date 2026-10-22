@@ -117,13 +117,6 @@ const scenarios = {
     const outcome = await application().invoke(['where'], {}, { host: { release } });
     process.stdout.write(`${JSON.stringify({ calls, reads, ...described(outcome) })}\n`);
   },
-  /** A malformed call is reported from a working directory that cannot be read, and never rejects. */
-  malformed: async () => {
-    const outcome = await application().invoke('where', {}, { host: { release } });
-    process.stdout.write(
-      `${JSON.stringify({ calls, form: outcome.form, reads, status: outcome.status })}\n`,
-    );
-  },
   /** A `host.cwd` override replaces the capture at both doors. */
   overrides: async () => {
     const ran = await runOn({ cwd: '/srv/override' });

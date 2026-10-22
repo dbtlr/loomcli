@@ -402,65 +402,7 @@ if (scenario === 'lowering') {
     ),
     json: await app.invoke(['count'], {}, { host: { release }, view: 'json' }),
     noResult: await app.invoke(['get'], {}, { host: { release }, view: 'json' }),
-    notString: await app.invoke(['count'], {}, { host: { release }, view: 5 }),
     unknown: await app.invoke(['count'], {}, { host: { release }, view: 'yaml' }),
-  });
-} else if (scenario === 'shape') {
-  const app = new Application('probe', probe).action(() => undefined);
-  // Each call names the run's build, which renders its fault, except a host that cannot be read.
-  const malformed = {
-    args: [[], { args: [] }, { host: { release } }],
-    failure: [[], {}, { failure: 'not a function', host: { release } }],
-    host: [[], {}, { host: { argv: ['x'], release } }],
-    onProgress: [[], {}, { host: { release }, onProgress: 'not a function' }],
-    options: [[], { options: 'verbose' }, { host: { release } }],
-    passthrough: [[], { passthrough: [1] }, { host: { release } }],
-    path: ['get', {}, { host: { release } }],
-    signal: [[], {}, { host: { release }, signal: 'not a signal' }],
-    values: [[], null, { host: { release } }],
-    valuesKey: [[], { flags: {} }, { host: { release } }],
-  };
-  const outcomes = {};
-  for (const [slot, call] of Object.entries(malformed)) {
-    outcomes[slot] = await app.invoke(...call);
-  }
-  print(outcomes);
-} else if (scenario === 'shape-handled') {
-  const received = [];
-  const handler = (failure, context) => {
-    received.push({ context, identity: failure.rule.identity });
-    return { mapped: failure.message };
-  };
-  const thrown = new Error('the handler broke');
-  const app = new Application('probe', probe).command(
-    new Command('nested', {
-      description: 'The nested command.',
-    }).action(async ({ invoke, out }) => {
-      const nested = await invoke(['x'], { options: null }, { failure: handler });
-      await out.print(JSON.stringify(nested));
-    }),
-  );
-  print({
-    action: await app.invoke(['nested'], {}, { host: { release } }),
-    args: await app.invoke(['x'], { args: [] }, { failure: handler, host: { release } }),
-    options: await app.invoke(['x'], { options: null }, { failure: handler, host: { release } }),
-    received,
-    rejected: await app
-      .invoke(
-        ['x'],
-        { options: null },
-        {
-          failure: () => {
-            throw thrown;
-          },
-          host: { release },
-        },
-      )
-      .then(
-        () => 'resolved',
-        (error) => error === thrown,
-      ),
-    signal: await app.invoke(['x'], {}, { failure: handler, host: { release }, signal: {} }),
   });
 }
 

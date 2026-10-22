@@ -71,25 +71,11 @@ const viewSelectionCorrection =
 /** The fix every invalid starting view an `invoke()` caller selected shares. */
 const invokeViewCorrection = "Supply a view name the Command's result declares.";
 
-/** A `run()` option that holds a value of the wrong kind. */
-const runOptions = registerRule('@loomcli/core/run-options', {
-  explanation:
-    'run() reads its options before it builds the graph. A caller that embeds the application, such as a test, passes them, and a value of the wrong kind leaves the run nothing to act on.',
-  headline: 'Invalid run options',
-});
-
 /** Release facts the build baked into `__LOOM_RELEASE__` that core cannot read. */
 const invalidReleaseFacts = registerRule('@loomcli/core/invalid-release-facts', {
   explanation:
     'The build bakes the release facts into __LOOM_RELEASE__: a build of source, development, or distributed, and an optional release group with a semantic version, a repository as owner/name, and an optional asset name. A malformed value leaves the build unknown, so core shows the author this diagnostic in every build.',
   headline: 'Invalid release facts',
-});
-
-/** An `invoke()` call that holds a value of the wrong kind in one of its slots. */
-const invokeOptions = registerRule('@loomcli/core/invoke-options', {
-  explanation:
-    'invoke() reads its path, values, and options before it builds the graph. A caller that runs a Command by name, such as an agent protocol or a test, passes them, and a value of the wrong kind leaves the call nothing to act on.',
-  headline: 'Invalid invoke options',
 });
 
 /** A configuration source whose answers break the answers rule. */
@@ -151,13 +137,11 @@ export {
   foreignThrow,
   foreignThrowCorrection,
   invalidReleaseFacts,
-  invokeOptions,
   invokeViewCorrection,
   nextMisuse,
   pluginLoaderFailed,
   resultContract,
   ruleIdentity,
-  runOptions,
   sourceAnswers,
   sourceAnswersCorrection,
   validatorFailed,

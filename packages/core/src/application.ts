@@ -48,14 +48,7 @@ import type { Content } from './content.js';
 import { encoderRegistry } from './encoders.js';
 import type { EncoderRegistry } from './encoders.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
-import {
-  DeclarationError,
-  exitCodeOf,
-  foreignFailure,
-  InternalError,
-  quoted,
-  toFailure,
-} from './errors.js';
+import { DeclarationError, exitCodeOf, foreignFailure, quoted, toFailure } from './errors.js';
 import type { InvokedBy, LoomError } from './errors.js';
 import type { FailureExitCode } from './exit-codes.js';
 import { carriesBinding, storeCommandLayers } from './extension.js';
@@ -89,7 +82,7 @@ import {
   processFields,
   readCall,
 } from './invoke.js';
-import type { CapturedFields, ReadCall } from './invoke.js';
+import type { CapturedFields, InvocationFields, InvokeCall } from './invoke.js';
 import { coreViews } from './lanes.js';
 import { RunLog } from './log.js';
 import type { LogDestination } from './log.js';
@@ -104,7 +97,6 @@ import { prepareEnvironment } from './prepare-environment.js';
 import { bakedFacts, isDevelopment } from './release.js';
 import { capabilities, plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
-import { runOptions } from './rules.js';
 import { bracketCall, bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
 import type { CancellationCode, ParentRun, SignalBracket } from './signals.js';
 import { installedSource } from './sources.js';
@@ -221,24 +213,6 @@ function answeredWrite(writes: WriteState, answered: unknown): WriteState {
   return writes.kind === 'failed' && answered !== undefined && writes.error === answered
     ? { kind: 'ok' }
     : writes;
-}
-
-/**
- * The caller's own signal, read where it enters. A JavaScript caller reaches the slot with any
- * value, and a value that is not an `AbortSignal` would otherwise escape as a raw TypeError.
- */
-function checkSignal(signal: unknown): AbortSignal | undefined {
-  if (signal === undefined) {
-    return undefined;
-  }
-  if (!(signal instanceof AbortSignal)) {
-    throw new InternalError(runOptions, {
-      cause: undefined,
-      correction: 'Supply the signal of an AbortController.',
-      sentence: 'run() received a signal that is not an AbortSignal.',
-    });
-  }
-  return signal;
 }
 
 /**
@@ -736,15 +710,16 @@ class ApplicationBuilder<
     call: {
       path: readonly string[];
       values: InvocationValues;
-      options: Parameters<typeof readCall<Mapped>>[0]['options'];
+      options: (InvokeOptions<Mapped> & { readonly host?: Partial<InvocationFields> }) | undefined;
     },
     action: ActionCall | undefined,
   ): Promise<InvocationOutcome<Mapped>> {
-    const read = readCall(call, action === undefined ? 'application' : 'action');
+    const read = readCall(call);
     const sinks = { stderr: captureSink(), stdout: captureSink() };
     const streams = { stderr: sinks.stderr.stream, stdout: sinks.stdout.stream };
-    const overrides = read.host;
-    const progress = guardedObserver('call' in read ? read.call.onProgress : undefined);
+    // An action's call reads no host, because its five fields are its run's.
+    const overrides = call.options?.host ?? {};
+    const progress = guardedObserver(read.onProgress);
     const end = await this.#execute(
       nameDoor(read, {
         action,
@@ -765,8 +740,7 @@ class ApplicationBuilder<
       return { messages, output, status: 'completed' };
     }
     const { exitCode, form, path } = end;
-    const handler = 'call' in read ? read.call.failure : read.failure;
-    const failure = mappedFailure(end.failure, handler, {
+    const failure = mappedFailure(end.failure, read.failure, {
       application: this.#name,
       exitCode,
       form,
@@ -871,10 +845,7 @@ class ApplicationBuilder<
     let reportingCause: unknown = undefined;
     // One private controller per run, subscribed to the caller's signal at run entry.
     const controller = new AbortController();
-    /**
-     * The bracket this run holds. It exists once the caller's own signal has been read, so a
-     * signal that is not an `AbortSignal` is reported through the failure path like any other.
-     */
+    // The bracket this run holds, once the run has entered and subscribed to the caller's signal.
     let signals: SignalBracket | undefined = undefined;
     // A cancelled run resolves its cancellation code whenever it ends after graph build.
     // A declaration or internal failure raised before that ends the run with its own code instead.
@@ -1312,7 +1283,7 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
             },
             () => askTerminal(host, signal),
           ),
-        bracket: (controller) => bracketRun(controller, checkSignal(options?.signal)),
+        bracket: (controller) => bracketRun(controller, options?.signal),
         host: (stderr) => captureHost(application, overrides, stderr),
         publishEnvironment: overrides?.cwd === undefined && overrides?.env === undefined,
         read: (host) => (graph, walked) => parseInvocation(graph, host.argv, walked),
@@ -1342,10 +1313,10 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
 /**
  * The door an invocation by name enters by: the call read where it entered, a host of capture
  * sinks around five fields, a signal derived from the call's own and an action's run, and no
- * process effect. A call that could not be read reports its defect from the entry.
+ * process effect.
  */
 function nameDoor<Mapped>(
-  read: ReadCall<Mapped>,
+  call: InvokeCall<Mapped>,
   setup: {
     action: ActionCall | undefined;
     declared: RenderingPolicy;
@@ -1363,31 +1334,25 @@ function nameDoor<Mapped>(
     destination: ({ env, platform }) =>
       action?.destination ?? Object.freeze({ env, platform, stderr: null }),
     encodes: false,
-    enter: () => {
-      if ('fault' in read) {
-        throw read.fault;
-      }
-      const { call } = read;
-      return {
-        // An invocation by name settles no background and writes no query.
-        background: async () => undefined,
-        bracket: (controller) =>
-          bracketCall(controller, { caller: call.signal, parent: action?.parent }),
-        host,
-        publishEnvironment: false,
-        read: () => (graph, walked) => lowerInvocation(graph, call.named, walked),
-        start: call.view,
-        stderr: undefined,
-        // A call settles its own verbosity from the values it lowers, and inherits none.
-        verbosity: (graph) => namedVerbosity(graph, call.named),
-      };
-    },
+    enter: () => ({
+      // An invocation by name settles no background and writes no query.
+      background: async () => undefined,
+      bracket: (controller) =>
+        bracketCall(controller, { caller: call.signal, parent: action?.parent }),
+      host,
+      publishEnvironment: false,
+      read: () => (graph, walked) => lowerInvocation(graph, call.named, walked),
+      start: call.view,
+      stderr: undefined,
+      // A call settles its own verbosity from the values it lowers, and inherits none.
+      verbosity: (graph) => namedVerbosity(graph, call.named),
+    }),
     fallback: () => host().report,
     invokedBy: 'name',
     // A call's host.argv is empty, so it reads no choice, and its plain policy holds color off.
     output: (captured, signal) => {
       const output = new Output(captured, signal);
-      // A malformed call's report must already render plain, so the policy applies before the call is read.
+      // A fault raised before the build must already render plain, so the policy applies at entry.
       output.configure(plainPolicy(declared), new Map());
       if (setup.observe !== undefined) {
         output.observeProgress(setup.observe);

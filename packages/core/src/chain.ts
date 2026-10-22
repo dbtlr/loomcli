@@ -86,14 +86,14 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
 interface ViewAssignment {
   correction: string;
   subject: string;
-  name: unknown;
+  name: string;
 }
 
 /**
  * The run's selection when it failed, which a failure view, an `onFailure` hook, and a failure
  * encoder read: the view the result would render through, and the media type that view declares.
  * Both are `undefined` where no view would render: on a Command with no result, and for a name the
- * result does not hold or one that is not a string.
+ * result does not hold.
  */
 interface FailureSelection {
   readonly view: string | undefined;
@@ -105,13 +105,13 @@ const noSelection: FailureSelection = Object.freeze({ mediaType: undefined, view
 
 /** The view an invocation by name starts from, kept as the caller passed it. */
 interface StartingView {
-  name: unknown;
+  name: string;
 }
 
 /**
  * The view one run selects, which is one value whichever middleware wrote it. The assignment is
- * kept as it arrived, because a JavaScript caller reaches the setter with any value and the check
- * belongs at the dispatch boundary, where the fault it raises ranks behind a held fault. An
+ * kept as it arrived, because only the routed Command's result decides whether it renders, and the
+ * check belongs at the dispatch boundary, where the fault it raises ranks behind a held fault. An
  * invocation by name starts from the view its caller selected, which reads as an assignment made
  * before any middleware's, so a later one wins.
  */
@@ -131,19 +131,13 @@ class ViewSelection {
 
   /**
    * What `view` reads: the assigned name, or the declaration's default until one is assigned, and
-   * `null` on a Command that declares no result, whatever was assigned there. An assignment that is
-   * not a name reads as the default, because the getter answers a view name and the assignment is
-   * the boundary's fault. The assignment itself is kept either way, so the boundary still raises it.
+   * `null` on a Command that declares no result, whatever was assigned there.
    */
   read(): string | null {
     if (!this.#result) {
       return null;
     }
-    const assigned = this.#assigned;
-    if (assigned !== undefined && typeof assigned.name === 'string') {
-      return assigned.name;
-    }
-    return this.#result.default;
+    return this.#assigned?.name ?? this.#result.default;
   }
 
   /**
@@ -157,14 +151,14 @@ class ViewSelection {
       return noSelection;
     }
     const name = this.#assigned === undefined ? result.default : this.#assigned.name;
-    if (typeof name !== 'string' || !result.views.has(name)) {
+    if (!result.views.has(name)) {
       return noSelection;
     }
     return Object.freeze({ mediaType: result.mediaTypes.get(name) ?? undefined, view: name });
   }
 
   /** The last assignment before the boundary wins; one made after it changes nothing. */
-  assign(identity: string, name: unknown): void {
+  assign(identity: string, name: string): void {
     if (!this.#reached) {
       this.#assigned = {
         correction: viewSelectionCorrection,
@@ -192,13 +186,7 @@ class ViewSelection {
     const { correction, name, subject } = assigned;
     if (!this.#result) {
       throw selectionFault(
-        `${subject} selected view "${String(name)}" on ${routedSubject(path)}, which declares no result.`,
-        correction,
-      );
-    }
-    if (typeof name !== 'string') {
-      throw selectionFault(
-        `${subject} selected a view that is not a string on ${routedSubject(path)}.`,
+        `${subject} selected view "${name}" on ${routedSubject(path)}, which declares no result.`,
         correction,
       );
     }

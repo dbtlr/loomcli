@@ -4,7 +4,7 @@ title: ADR-0094 - Core sets no structural limit, and a projection reports its ow
 description: Core caps neither how deep a Command path nests nor how deep a declared default nests. A projection that cannot serve a shape the author declared, such as an MCP tool name longer than the protocol allows or a man page file name the file system cannot hold, reports it in a Developer Diagnostic that names the projection and the Command path. One example application gains a three-level path. It supersedes ADR-0035 and ADR-0053.
 status: proposed
 created: 2026-10-20
-modified: 2026-10-20
+modified: 2026-10-22
 ---
 
 # ADR-0094 - Core sets no structural limit, and a projection reports its own limits
@@ -24,7 +24,7 @@ Some limits are real, and they belong to a projection. The MCP plugin flattens a
 - **A projection reports its own limits.** A projection that cannot serve a shape the author declared reports it in a Developer Diagnostic that names the projection and the Command path. A projection plugin reports it as a declaration fault through its `onGraphBuilt` hook under [ADR-0060](0060-ongraphbuilt-judges-the-built-graph-and-never-contributes.md), as the MCP plugin already reports two Commands that flatten to one tool name. Examples are an MCP tool name longer than the protocol allows and a man page file name the file system cannot hold. Core states no limit on a projection's behalf.
 - **An example nests three levels.** One example application gains a three-level Command path, so routing, help, completion, and the projections it installs run on a path deeper than two levels in CI.
 
-This record supersedes ADR-0035 and ADR-0053 whole. Neither keeps a provision that binds without its cap. ADR-0053's rule that a converter's input schema is snapshotted without a cap, under [ADR-0030](0030-an-input-carries-its-json-schema-as-a-core-graph-fact.md), stands as ADR-0030 states it.
+This record supersedes ADR-0035 and ADR-0053 whole. Neither keeps a provision that binds without its cap. ADR-0053's rule that a converter's input schema takes no cap, under [ADR-0030](0030-an-input-carries-its-json-schema-as-a-core-graph-fact.md), stands as ADR-0030 states it.
 
 ## Considered options
 
@@ -42,3 +42,4 @@ Proposed. It moves to accepted with the release that removes both caps and ships
 ## Changelog
 
 - 2026-10-20: Proposed with the 0.15.0 rescope.
+- 2026-10-22: Build no longer snapshots a converter's input schema, under [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md), so the sentence on ADR-0053's rule says that the schema takes no cap rather than that its snapshot takes none.

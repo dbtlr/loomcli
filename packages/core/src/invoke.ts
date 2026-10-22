@@ -1,6 +1,6 @@
 import { Readable, Writable } from 'node:stream';
 
-import { InternalError } from './errors.js';
+import type { StartingView } from './chain.js';
 import type { LoomError } from './errors.js';
 import {
   capturedHost,
@@ -12,10 +12,8 @@ import {
 } from './host.js';
 import type { CapturedFacts, HostCapture } from './host.js';
 import type { NamedCall } from './lower.js';
-import { isPlainObject } from './plain.js';
 import { captureRelease } from './release.js';
-import { invokeOptions } from './rules.js';
-import type { Host, InvokeOptions, ProgressEvent } from './types.js';
+import type { Host, InvocationValues, InvokeOptions, ProgressEvent } from './types.js';
 
 /** The host fields an invocation by name reads, which `app.invoke` replaces whole. */
 type InvocationFields = Required<Pick<Host, 'cwd' | 'env' | 'platform' | 'release'>> &
@@ -30,175 +28,45 @@ type CapturedFields = Omit<InvocationFields, 'cwd' | 'release'> &
   CapturedFacts &
   Pick<Host, 'program' | 'timeZone'>;
 
-/** The five host fields by name, the only keys `app.invoke` accepts under `host`. */
-const hostFields = new Set(['cwd', 'env', 'platform', 'readSource', 'release']);
-
-/** The keys `values` may hold. */
-const valueKeys = new Set(['args', 'options', 'passthrough']);
-
-/** The defect one malformed slot of an `invoke()` call reports, before the graph is built. */
-function callFault(sentence: string, correction: string): InternalError {
-  return new InternalError(invokeOptions, { cause: undefined, correction, sentence });
-}
-
-/** Whether a value is an array of strings alone. */
-function isStringList(value: unknown): value is readonly string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
-}
-
 /** The entries of one `args` or `options` record, a key whose value is `undefined` left out. */
-function definedEntries(
-  record: unknown,
-  slot: 'args' | 'options',
-  noun: string,
-): (readonly [string, unknown])[] {
-  if (record === undefined) {
-    return [];
-  }
-  if (!isPlainObject(record)) {
-    throw callFault(
-      `invoke() received ${slot} that are not an object.`,
-      `Supply ${slot} as an object keyed by ${noun} name.`,
-    );
-  }
-  return Object.entries(record).filter(([, value]) => value !== undefined);
+function definedEntries(record: InvocationValues['args']): (readonly [string, unknown])[] {
+  return record === undefined
+    ? []
+    : Object.entries(record).filter(([, value]) => value !== undefined);
 }
 
-/** The path, read where the call entered: an array of Command names, `[]` for the root. */
-function readPath(path: unknown): readonly string[] {
-  if (!isStringList(path)) {
-    throw callFault(
-      'invoke() received a path that is not an array of Command names.',
-      'Supply the path as an array of Command names, [] for the root.',
-    );
-  }
-  return [...path];
-}
-
-/** The values record itself: a plain object that holds `args`, `options`, and `passthrough` alone. */
-function valuesRecord(values: unknown): Record<string, unknown> {
-  if (!isPlainObject(values)) {
-    throw callFault(
-      'invoke() received values that are not an object.',
-      'Supply values as an object that holds args, options, and passthrough.',
-    );
-  }
-  if (Object.keys(values).some((key) => !valueKeys.has(key))) {
-    throw callFault(
-      'invoke() received values that hold a key other than args, options, and passthrough.',
-      'Supply values with args, options, and passthrough alone.',
-    );
-  }
-  return values;
-}
-
-/** The passthrough tail, copied: an array of strings, delivered unchanged. */
-function readPassthrough(passthrough: unknown): readonly string[] {
-  if (passthrough === undefined) {
-    return [];
-  }
-  if (!isStringList(passthrough)) {
-    throw callFault(
-      'invoke() received a passthrough that is not an array of strings.',
-      'Supply passthrough as an array of strings.',
-    );
-  }
-  return [...passthrough];
-}
-
-/** The values, read where the call entered, into the named call the run lowers. */
-function readValues(path: readonly string[], values: unknown): NamedCall {
-  const record = valuesRecord(values);
-  return {
-    args: definedEntries(record.args, 'args', 'argument'),
-    options: definedEntries(record.options, 'options', 'option'),
-    passthrough: readPassthrough(record.passthrough),
-    path,
-  };
-}
-
-/** The caller's own signal, read where the call entered. */
-function readSignal(signal: unknown): AbortSignal | undefined {
-  if (signal !== undefined && !(signal instanceof AbortSignal)) {
-    throw callFault(
-      'invoke() received a signal that is not an AbortSignal.',
-      'Supply the signal of an AbortController.',
-    );
-  }
-  return signal;
-}
-
-/** A slot of the call that takes a function: the value as given, or the defect naming the slot. */
-function readFunction<Slot>(value: Slot, sentence: string, correction: string): Slot {
-  if (value !== undefined && typeof value !== 'function') {
-    throw callFault(sentence, correction);
-  }
-  return value;
-}
-
-/**
- * The host overrides `app.invoke` reads: whole replacements of the five fields, and nothing else.
- * The types state each field's kind, and the call's rule covers a field outside the five.
- */
-function readHost(host: Partial<InvocationFields> | undefined): Partial<InvocationFields> {
-  const supplied: unknown = host;
-  if (supplied === undefined) {
-    return {};
-  }
-  const correction = 'Supply host with env, cwd, platform, readSource, or release alone.';
-  if (!isPlainObject(supplied)) {
-    throw callFault('invoke() received a host that is not an object.', correction);
-  }
-  if (Object.keys(supplied).some((key) => !hostFields.has(key))) {
-    throw callFault(
-      'invoke() received a host that holds a field other than env, cwd, platform, readSource, and release.',
-      correction,
-    );
-  }
-  return host ?? {};
-}
-
-/** One `invoke()` call as the run reads it, every slot checked where the call entered. */
+/** One `invoke()` call as the run reads it. */
 interface InvokeCall<Mapped> {
   named: NamedCall;
-  /** The starting view selection, kept as the caller passed it. */
-  view: { name: unknown } | undefined;
+  /** The starting view selection, as the caller passed it. */
+  view: StartingView | undefined;
   failure: InvokeOptions<Mapped>['failure'];
   signal: AbortSignal | undefined;
   onProgress: InvokeOptions<Mapped>['onProgress'];
 }
 
 /**
- * Reads the slots of one `invoke()` call after its host, in the order they are listed: the path,
- * the values and each record they hold, the signal, the failure handler, and the progress
- * observer. A malformed slot throws the `invoke-options` defect, which the run reports before it
- * builds the graph.
+ * Reads one `invoke()` call where it entered. The path and the passthrough tail are copied and
+ * each record's defined entries read once, so a later change to the caller's path or passthrough array
+ * changes nothing the run lowers. The types state each slot's kind.
  */
-function readInvokeCall<Mapped>(call: {
-  path: unknown;
-  values: unknown;
-  options: (InvokeOptions<Mapped> & { readonly host?: Partial<InvocationFields> }) | undefined;
+function readCall<Mapped>(call: {
+  path: readonly string[];
+  values: InvocationValues;
+  options: InvokeOptions<Mapped> | undefined;
 }): InvokeCall<Mapped> {
-  const { options } = call;
-  const named = readValues(readPath(call.path), call.values);
-  const signal = readSignal(options?.signal);
-  const failure = readFunction(
-    options?.failure,
-    'invoke() received a failure handler that is not a function.',
-    'Supply the failure handler as a function.',
-  );
-  const onProgress = readFunction(
-    options?.onProgress,
-    'invoke() received an onProgress that is not a function.',
-    'Supply onProgress as a function that receives each progress event.',
-  );
-  const view: unknown = options?.view;
+  const { options, values } = call;
   return {
-    failure,
-    named,
-    onProgress,
-    signal,
-    view: view === undefined ? undefined : { name: view },
+    failure: options?.failure,
+    named: {
+      args: definedEntries(values.args),
+      options: definedEntries(values.options),
+      passthrough: [...(values.passthrough ?? [])],
+      path: [...call.path],
+    },
+    onProgress: options?.onProgress,
+    signal: options?.signal,
+    view: options?.view === undefined ? undefined : { name: options.view },
   };
 }
 
@@ -237,37 +105,6 @@ function guardedObserver(onProgress: InvokeOptions['onProgress']): GuardedObserv
       }
     },
   };
-}
-
-/**
- * One `invoke()` call as read where it entered, or the fault reading it raised, which the run
- * reports through its failure path before it builds the graph. The fault is the primary failure,
- * so it keeps the caller's failure handler whenever that slot holds a function. Either way it
- * holds the host overrides the call supplied, which a fault in a later slot reports through.
- */
-type ReadCall<Mapped> = { host: Partial<InvocationFields> } & (
-  | { call: InvokeCall<Mapped> }
-  | { fault: unknown; failure: InvokeOptions<Mapped>['failure'] }
-);
-
-/**
- * Reads one `invoke()` call and keeps a fault as a value, so the call itself never throws. On
- * `app.invoke` the host is read first, because its fields, the release facts among them, decide
- * how a fault in any later slot reports; a host that cannot be read leaves the captured fields. An
- * action's call reads no `host`, because its five fields are its run's.
- */
-function readCall<Mapped>(
-  call: Parameters<typeof readInvokeCall<Mapped>>[0],
-  door: 'action' | 'application',
-): ReadCall<Mapped> {
-  let host: Partial<InvocationFields> = {};
-  try {
-    host = door === 'application' ? readHost(call.options?.host) : {};
-    return { call: readInvokeCall(call), host };
-  } catch (error) {
-    const failure = call.options?.failure;
-    return { failure: typeof failure === 'function' ? failure : undefined, fault: error, host };
-  }
 }
 
 /**
@@ -376,7 +213,7 @@ function mappedFailure<Mapped>(
   return failure as Mapped;
 }
 
-export type { CapturedFields, InvocationFields, InvokeCall, ReadCall };
+export type { CapturedFields, InvocationFields, InvokeCall };
 export {
   captureSink,
   fieldsOf,

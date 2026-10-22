@@ -150,8 +150,6 @@ const installed = {
   'first-cause': ['owner'],
   'hostile-stderr': ['owner'],
   'no-owner': [],
-  'not-a-signal': ['owner'],
-  'not-a-signal-host': ['owner'],
   owner: ['owner'],
   'pending-loader': ['pending'],
   'pre-aborted': ['reporting'],
@@ -351,10 +349,6 @@ function hostOf() {
 /** The run options one scenario supplies, which is where a caller-owned signal enters. */
 function options() {
   const host = hostOf();
-  if (scenario === 'not-a-signal') {
-    // A JavaScript caller reaches the slot with any value, so core answers for the value itself.
-    return { host, signal: 'not a signal' };
-  }
   return callerSignal.has(scenario) ? { host, signal: controller.signal } : { host };
 }
 
@@ -404,24 +398,6 @@ if (scenario === 'pre-aborted') {
   const second = await app.run({ host: { argv } });
   process.stdout.write(`${counts('after')}\n`);
   process.stdout.write(`resolved:${first}:${second}\n`);
-} else if (scenario === 'not-a-signal-host') {
-  /**
-   * The invalid signal is read from a host whose stderr is overridden, so the diagnostic's
-   * destination proves whether core read the override before or after the signal check.
-   */
-  const captured = [];
-  const stderr = new Writable({
-    write(chunk, _encoding, callback) {
-      captured.push(chunk.toString());
-      callback();
-    },
-  });
-  const code = await application().run({
-    host: { argv, release: { build: 'distributed' }, stderr },
-    signal: 'not a signal',
-  });
-  process.stdout.write(`captured:${JSON.stringify(captured.join(''))}\n`);
-  process.stdout.write(`resolved:${code}\n`);
 } else {
   const code = await application().run(options());
   process.stdout.write(`${counts('after')}\n`);
