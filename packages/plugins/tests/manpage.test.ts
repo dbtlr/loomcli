@@ -43,8 +43,8 @@
  *   with one of the two hidden builds.
  * - Generating. `generate` creates a missing folder and its parents with mode `755` and pages with
  *   mode `644` under umask `077`, replaces a page of the same name and a symbolic link of that
- *   name, leaves every other file, writes no installation record. A `--out` that names a file fails with the pinned sentence
- *   and writes nothing, and a run without `--out` exits 2.
+ *   name, leaves every other file, and writes no installation record. A `--out` that names a file
+ *   fails with the pinned sentence and writes nothing, and a run without `--out` exits 2.
  * - Installing. Process tests set `HOME`, `XDG_STATE_HOME`, and the working directory to temporary
  *   directories, and clear `MANPATH` and `SHELL` unless a case sets them:
  *   - `install` writes the set under `<home>/.local/share/man/man1` with the modes above, records

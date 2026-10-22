@@ -4,7 +4,7 @@ title: ADR-0100 - Acceptance plans live beside the tests
 description: Acceptance plans move out of the core reference into the test suites that prove them, and each example application's README states what that example covers. Support that no CI entry runs is not shipped, so every win32 branch comes out in 0.15.0. ADR-0103 holds the evidence rules.
 status: proposed
 created: 2026-10-20
-modified: 2026-10-21
+modified: 2026-10-22
 ---
 
 # ADR-0100 - Acceptance plans live beside the tests
@@ -33,7 +33,7 @@ Examples also repeat behavior the unit tests already prove, so an example's own 
   - **The configuration, logging, skills, completion, and manpage plugins:** `USERPROFILE` as the home folder. Home is `HOME` on every platform.
   - **The manpage plugin:** the `win32` refusal of `install` and the `win32` skips in `update` and `uninstall`. Each child resolves its folder from `HOME` as on other platforms.
   - **The completion plugin:** the Windows install rows [ADR-0101](0101-completion-installs-on-linux-and-macos-and-a-startup-line-is-written-or-printed.md) removes. Its refusal on Windows stays, because a Bash or Zsh line written there would be wrong, and `completion powershell` still prints the script.
-  - **`loom build`:** the `win32` host's default compile target, and the `bun-windows-*` compile targets with their `.exe` output and asset names, because no CI job runs the binary they build. On Windows `--target` has no default, so a run without one fails as an option error that names the targets, rather than computing a target Bun does not name. An author who wants a Windows binary calls `bun build --compile` directly.
+  - **`loom build`:** the `win32` host's default compile target, and the `bun-windows-*` compile targets with their `.exe` output and asset names, because no CI job runs the binary they build. On Windows `--target` has no default: `hostTarget` names `bun-win32-<arch>`, which Bun does not name, so a run without one fails with the ordinary "Bun compiles for no target on this host, so pass --target." error, as on any other platform Bun does not name. An author who wants a Windows binary calls `bun build --compile` directly.
 
 
 ## Considered options
