@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0100 - Acceptance plans live beside the tests
 description: Acceptance plans move out of the core reference into the test suites that prove them, and each example application's README states what that example covers. Support that no CI entry runs is not shipped, so every win32 branch comes out in 0.15.0. ADR-0103 holds the evidence rules.
-status: proposed
+status: accepted
 created: 2026-10-20
 modified: 2026-10-22
 ---
@@ -47,7 +47,7 @@ The acceptance lists leave the reference in the documentation restructure, once 
 
 ## Status
 
-Proposed. It moves to accepted with the release that moves the acceptance plans beside their tests and gives each example's README its coverage, planned for 0.15.0.
+Accepted in 0.15.0.
 
 ## Changelog
 

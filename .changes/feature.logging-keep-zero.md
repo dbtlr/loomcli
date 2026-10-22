@@ -1,1 +1,0 @@
-- Allow `logging({ keep: 0 })`, which keeps no copies: before a write that would take the file past `maxBytes`, the plugin deletes the file and a new one starts, as logrotate's `rotate 0` does.

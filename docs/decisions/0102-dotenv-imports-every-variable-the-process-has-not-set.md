@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0102 - Dotenv imports every variable the process has not set
 description: The dotenv plugin imports every variable its .env file defines that the process has not set, as the dotenv package, Node's --env-file, and Bun do, and an allow list or a deny list narrows the import. The bounded onEnvironment hook, core's ownership of merging and process writes, the file format, and the warning and recovery rules carry forward. It supersedes ADR-0084.
-status: proposed
+status: accepted
 created: 2026-10-20
-modified: 2026-10-21
+modified: 2026-10-22
 ---
 
 # ADR-0102 - Dotenv imports every variable the process has not set
@@ -44,7 +44,7 @@ This record supersedes ADR-0084 whole. Every other provision of ADR-0084 is inco
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships the import-everything default with its allow and deny lists, planned for 0.15.0.
+Accepted in 0.15.0.
 
 ## Changelog
 

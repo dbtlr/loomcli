@@ -1,1 +1,0 @@
-- Allow an optional argument after another optional one. Bare words fill optional arguments left to right, and an argument that receives no word is omitted. `@loomcli/core/optional-argument-last` still rejects a required argument after an optional one.

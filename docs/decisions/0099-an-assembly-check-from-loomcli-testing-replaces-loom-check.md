@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0099 - An assembly check from @loomcli/testing replaces loom check
 description: loom check retires, and the loom bin does only what no standard tool does. @loomcli/testing ships an assembly check that bun test and vitest run, which throws an Error whose message is the Developer Diagnostic of each fault Application.check() returns. loom init writes the first test with a comment on why to keep it, and the scaffold's check script runs tsc --noEmit, the linter, and the test runner. Every other provision of ADR-0066 carries forward. It supersedes ADR-0066.
-status: proposed
+status: accepted
 created: 2026-10-20
-modified: 2026-10-20
+modified: 2026-10-22
 ---
 
 # ADR-0099 - An assembly check from @loomcli/testing replaces loom check
@@ -48,7 +48,7 @@ ADR-0066's rejection of failing on a drifted managed file moves with the drift w
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships `@loomcli/testing` with the assembly check, retires `loom check`, and has `loom init` write the test and the new `check` script, planned for 0.15.0.
+Accepted in 0.15.0.
 
 ## Changelog
 

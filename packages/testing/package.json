@@ -1,6 +1,6 @@
 {
   "name": "@loomcli/testing",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Test helpers for a Loom CLI application. Ships the assembly check that bun test and vitest run.",
   "license": "MIT",
   "repository": {

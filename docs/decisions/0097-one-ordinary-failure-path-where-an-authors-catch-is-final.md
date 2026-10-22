@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0097 - One ordinary failure path, where an author's catch is final
 description: When author or plugin code catches a failure and continues, the run's outcome is what that code produces, and Loom adds no rule in either direction. A middleware that catches a held usage fault, an action's failure, or a next() misuse decides the outcome, an action that catches a view's rejection or a second out.results call decides its own, and a throw during unwinding is the middleware's failure like any other. A failure no code caught still fails the run. The fallbacks that keep Loom's own failure output intact stay.
-status: proposed
+status: accepted
 created: 2026-10-20
-modified: 2026-10-21
+modified: 2026-10-22
 ---
 
 # ADR-0097 - One ordinary failure path, where an author's catch is final
@@ -59,7 +59,7 @@ An application whose code never catches a failure exits as it does today. One th
 
 ## Status
 
-Proposed. It moves to accepted with the release that folds these side paths into the ordinary failure path, planned for 0.15.0.
+Accepted in 0.15.0.
 
 ## Changelog
 

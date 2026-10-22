@@ -6,6 +6,502 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.15.0 - 2026-10-22
+
+This release moves author guidance into types, lint rules, and an assembly test. Install `@loomcli/eslint-plugin` for oxlint or ESLint and call `assertAssembles` from `@loomcli/testing` in the application’s test runner. `loom init` writes these files for new applications. Existing applications must replace `loom check` in their scripts and CI, as the migration below describes.
+
+Loom trusts application code: a caught failure stays caught, declarations can repeat or nest without the removed limits, and values that bypass TypeScript get no special runtime rules. Parser checks and the checks Loom’s projections need remain. A closed stdout pipe now ends silently with exit code 141.
+
+Review the breaking migrations before upgrading, especially argument config keys, `views()` defaults, dotenv’s `variables` setting becoming `only`, and Windows build targets and install paths. Keep all installed `@loomcli` packages at the same exact version, `0.15.0`. The [documentation map](docs/README.md) routes to the SDK, plugin, library, and toolchain references.
+
+### Breaking Changes
+
+- Remove `checkPluginSettings` and `checkShortSetting` from `@loomcli/core`. A plugin factory's typed settings already reject what they judged, and every first-party plugin stops calling them.
+
+### Migration
+
+**Affected surface.** A third-party plugin that imports `checkPluginSettings` or `checkShortSetting` from `@loomcli/core`.
+
+**Why.** Each check judged a value that the plugin factory's settings type already rejects at compile time, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md), so core no longer exports them.
+
+**Before and after.**
+
+Before:
+
+```ts
+import { checkPluginSettings, plugin } from '@loomcli/core';
+
+export function notes(settings?: NotesSettings) {
+  checkPluginSettings(settings, { call: 'notes', plugin: '@acme/notes' });
+  return plugin('@acme/notes', { options: notesOptions(settings) });
+}
+```
+
+After:
+
+```ts
+import { plugin } from '@loomcli/core';
+
+export function notes(settings?: NotesSettings) {
+  return plugin('@acme/notes', { options: notesOptions(settings) });
+}
+```
+
+**Steps.**
+
+1. Delete each call to `checkPluginSettings` or `checkShortSetting`.
+2. Remove both names from the `@loomcli/core` import.
+3. Type the factory's settings parameter, such as `short?: NonNullable<BooleanOption['short']>`, so the compiler rejects a value the check rejected.
+
+**Validation.** Run `tsc --noEmit` in the plugin package, and run its tests.
+
+- Change the `default` option of `views()`, on a Command, on the Application, and on the Command a lifecycle hook receives, to take one of the keys the same call supplies, so a misspelled default is a compile error. `@loomcli/core/unknown-default-view` goes.
+
+### Migration
+
+**Affected surface.** TypeScript code that passes `views()` a `default` naming a view the same call's record does not supply, such as a view an earlier `result()`, `rows()`, or `views()` call declared.
+
+**Why.** A `views()` default is typed from the record the call supplies, so a misspelled view name fails to compile in place of failing at attach.
+
+**Before and after.**
+
+Before:
+
+```ts
+const listed = paths.views({}, { default: 'table' });
+```
+
+After:
+
+```ts
+const listed = paths.views({ table: table({ columns: ['path', 'kind'] }) }, { default: 'table' });
+```
+
+**Steps.**
+
+1. Find each `views()` call whose `default` names a view the call's own record does not hold.
+2. Supply that view again in the same call's record, or declare the views in the order that makes the wanted view the first key.
+
+**Validation.** Run `tsc --noEmit` in the application, and run its tests.
+
+- Change a failure that author or plugin code catches to be final, under [ADR-0097](docs/decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). The run's outcome is what the outermost middleware settles with, or the action when no middleware wraps it:
+  - A middleware that catches the action's failure, or the held fault the dispatch boundary raises, and returns now exits 0 in place of the caught failure's code.
+  - An action or a middleware that awaits an `out.render`, `out.draw`, lane, or region call and catches its view's rejection now exits 0.
+  - An action that catches the rejection of a second `out.results` call now exits 0. A second call no code awaits still fails the run with exit 1.
+  - A second `next()` call, or one after the middleware returned, still rejects and dispatches nothing. A middleware that catches the rejection decides the outcome, and core no longer reports it after the outcome. A misuse call no code awaits or attaches to still fails the run with its `@loomcli/core/next-misuse` defect.
+  - A throw while a middleware unwinds, after its `next()` settled, is that middleware's failure, with its own class and exit code, and a translator is offered it, in place of an internal error reported after the earlier outcome.
+  - A view failure or a row source failure in a call no code awaited still fails the run after the chain settles, now with the failure's own exit code. A thrown failure class keeps its code in place of 1, and a view's throw reports as `@loomcli/core/foreign-throw`. A middleware that never observes its `next()` takes the rejection as its own outcome.
+  - A cancelled run still resolves 130, 141, or 143 when code catches the cancellation.
+
+### Migration
+
+**Affected surface.** A middleware or an action that catches a failure, a view's rejection, or a second `out.results` rejection on purpose and relies on the caught failure still deciding the exit code. A middleware that throws while unwinding and relies on the earlier failure's code.
+
+**Why.** A caught failure is the code's to decide, as JavaScript defines `try`, `catch`, and `finally`, so a deliberate retry, fallback, or recovery is no longer overridden by core.
+
+**Before and after.**
+
+Before, the run exited 1 because core recorded the caught failure:
+
+```ts
+const middleware: Middleware = async ({ next, out }) => {
+  try {
+    await next();
+  } catch (error) {
+    await out.warn(`The command failed: ${String(error)}`);
+  }
+};
+```
+
+After, the middleware rethrows the failure so the run still exits with its code:
+
+```ts
+const middleware: Middleware = async ({ next, out }) => {
+  try {
+    await next();
+  } catch (error) {
+    await out.warn(`The command failed: ${String(error)}`);
+    throw error;
+  }
+};
+```
+
+**Steps.**
+
+1. Find each `catch` around `next()`, `out.render`, `out.draw`, a lane call such as `out.info`, a region's `draw`, or `out.results` in a middleware or an action.
+2. Where the caught failure must still decide the exit code, rethrow it, or throw a failure class with the code you want.
+3. Where a middleware throws in a `finally` or after `await next()`, expect that throw's class and exit code to be the run's outcome.
+
+**Validation.** Run the application's tests, and run the affected commands with a failing action or view to check that each exits with the code you expect.
+
+- Change `ResultError.kind` and `ResultFault` to `'missing' | 'repeated'`. The `undeclared`, `middleware`, and `source` kinds go, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md): the types give `out.results` no value it accepts on a Command with no result, in a middleware, and in a configuration source, and a JavaScript call there throws a plain `TypeError`.
+
+### Migration
+
+**Affected surface.** Code that compares `ResultError.kind` or a `ResultFault` value with `'undeclared'`, `'middleware'`, or `'source'`, or that constructs a `ResultError` with one of them.
+
+**Why.** Each kind reported a call the types already reject, so core no longer raises it.
+
+**Before and after.**
+
+Before:
+
+```ts
+if (failure instanceof ResultError && failure.kind === 'middleware') {
+  return 'A plugin wrote a result.\n';
+}
+```
+
+After, the branch is deleted, because no failure carries that kind.
+
+**Steps.**
+
+1. Delete each branch on `'undeclared'`, `'middleware'`, or `'source'`.
+2. Construct a `ResultError` with `'missing'` or `'repeated'` alone.
+
+**Validation.** Run `tsc --noEmit` in the application, and run its tests.
+
+- Remove `loom check`, under [ADR-0099](docs/decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md). The `loom` bin's commands are `build`, `changelog check`, `changelog write`, and `init`. An application checks its types with `tsc --noEmit`, its source with a linter, and its assembly with a test that passes the Application to `assertAssembles` from `@loomcli/testing`.
+
+### Migration
+
+**Affected surface.** Applications whose scripts, CI, or tooling run `loom check`, which now fails as an unknown command.
+
+**Why.** Each job of `loom check` already belongs to a standard tool: `tsc` checks types, a linter guides the source, and a test runner verifies that the application assembles, in watch mode while the author works and in CI. The assembly check now runs as a test, so the author's own test runner runs it.
+
+**Before and after.**
+
+Before, in `package.json`:
+
+```json
+{ "scripts": { "check": "loom check" } }
+```
+
+After, with oxlint and `bun test`:
+
+```json
+{ "scripts": { "check": "tsc --noEmit && oxlint src && bun test" } }
+```
+
+Before, nothing tested the assembly. After, add `src/application.test.ts`, which imports the application module:
+
+```ts
+/// <reference types="bun" />
+import { test } from 'bun:test';
+import { assertAssembles } from '@loomcli/testing';
+
+import { application } from './application.js';
+
+test('the application assembles', () => {
+  assertAssembles(application);
+});
+```
+
+Under vitest, import `test` from `vitest` instead of `bun:test`, and run `vitest run`.
+
+**Steps.**
+
+1. Add the development dependencies. `@loomcli/testing` takes the same exact version as `@loomcli/core`. The test runner is Bun's own `bun test` with `@types/bun`, or `vitest`. To lint with Loom's rules, add `@loomcli/eslint-plugin` at the same exact version, and the linter: `oxlint`, or `eslint` with `typescript-eslint`. For example, with pnpm, oxlint, and `bun test`: `pnpm add --save-dev --save-exact @loomcli/testing@<version> @loomcli/eslint-plugin@<version> oxlint @types/bun`.
+2. Add the test above to the application as `src/application.test.ts`, importing the Application the entry runs.
+3. Replace each `loom check` call in scripts and CI with `tsc --noEmit`, the linter, and the test runner, or with `pnpm run check` when the script holds them.
+4. Load the lint rules. In a package with no lint configuration, run `loom init --only lint`, which writes `.oxlintrc.json` or `eslint.config.js` from `@loomcli/eslint-plugin`. A package that already holds a lint configuration gets nothing from `loom init --only lint`, because init never overwrites a file, so add the plugin to that configuration as the [plugin reference](docs/libs/eslint-plugin.md#install-and-configure) shows.
+5. Remove the `--application` option from any `loom check` call. The test imports the module itself.
+
+An ESLint package on TypeScript 7 also needs the side-by-side install of the [plugin reference](docs/libs/eslint-plugin.md#eslint), because typescript-eslint does not support TypeScript 7: `typescript` aliased to `npm:@typescript/typescript6@^6.0.2` and the compiler installed as `@typescript/native`, so `tsc` stays on TypeScript 7.
+
+**Validation.** Run `pnpm run check`, or `tsc --noEmit`, the linter, and the test runner it holds one after another, and confirm that each exits 0 and that the test runner reports the assembly test as passed. Run `grep -rn "loom check" package.json .github` and confirm that it prints nothing. Run `pnpm loom --help` and confirm that it lists `build`, `changelog`, and `init` and no `check`.
+
+- Change `completion install`, `completion update`, and `completion uninstall` to serve `bash`, `zsh`, `fish`, and `pwsh` on Linux and macOS alone, under [ADR-0101](docs/decisions/0101-completion-installs-on-linux-and-macos-and-a-startup-line-is-written-or-printed.md). On Windows each exits 1 with `<app> completion installs bash, zsh, fish, and pwsh completion on Linux and macOS. Print the script with <app> completion powershell and load it yourself.`, naming the print Command of the shell asked for. `completion powershell` still prints the PowerShell script.
+- Remove `powershell`, Windows PowerShell 5.1, as a shell `install` and `uninstall` take, with its `completion.powershell.json` record file. `install` with `SHELL` unset no longer picks a PowerShell edition from `PSModulePath`, and the plugin reads no `LOCALAPPDATA` or `USERPROFILE`, checks no execution policy, and reads or writes no UTF-16LE startup file.
+
+### Migration
+
+**Affected surface.** Applications that install `completion()` and whose operators ran `completion install` on Windows, or ran `completion install powershell` or `completion uninstall powershell` anywhere, including in documentation or scripts the application ships.
+
+**Why.** No CI job runs Windows, so the Windows install paths ran only under a faked platform, and support that no CI entry runs is not shipped, under [ADR-0100](docs/decisions/0100-acceptance-plans-live-beside-the-tests.md).
+
+**Before and after.**
+
+Before, on Windows:
+
+```powershell
+notes completion install powershell
+```
+
+After, on Windows, the operator loads the printed script from `$PROFILE` with this line:
+
+```powershell
+notes completion powershell | Out-String | Invoke-Expression
+```
+
+After, on Linux and macOS, PowerShell 7 installs as `pwsh`:
+
+```sh
+notes completion install pwsh
+```
+
+**Steps.**
+
+1. Replace `completion install powershell` and `completion uninstall powershell` in the application's documentation and scripts with `completion install pwsh` and `completion uninstall pwsh` for Linux and macOS.
+2. Tell Windows operators to add the `completion powershell` line above to `$PROFILE`, and to remove the line an earlier release added there, which ends with `# added by <app> completion install`.
+3. Tell Windows operators that the script an earlier release wrote under `%LOCALAPPDATA%\<app>\completion\` and its record file under `%LOCALAPPDATA%\<app>\installation\` are no longer read, and that they may delete both.
+
+**Validation.** On Linux or macOS, run `<app> completion install pwsh` and confirm that it exits 0, and run `<app> completion install powershell` and confirm that it exits 2 and lists `bash, zsh, fish, pwsh`. On Windows, open a new PowerShell session and confirm that Tab completes the application's Commands.
+
+- Remove the `bun-windows-x64`, `bun-windows-x64-baseline`, `bun-windows-x64-modern`, and `bun-windows-arm64` targets from `loom build`, with their `.exe` output and asset names, under [ADR-0100](docs/decisions/0100-acceptance-plans-live-beside-the-tests.md). Each is now an option error that names the targets. On a Windows host, `--target` has no default, so a run without one fails with `Bun compiles for no target on this host (bun-win32-x64), so pass --target.` and exit 1.
+
+### Migration
+
+**Affected surface.** Packages whose scripts or CI run `loom build --target bun-windows-<arch>`, or run `loom build` without `--target` on a Windows host.
+
+**Why.** No CI job runs the Windows binary these targets built, and support that no CI entry runs is not shipped.
+
+**Before and after.**
+
+Before:
+
+```sh
+loom build --target bun-windows-x64 --release
+```
+
+After, Bun compiles the Windows binary directly. The facts of a bundle name no release asset, so `self-update` does not replace that binary:
+
+```sh
+bun build src/main.ts --compile --target bun-windows-x64 --outfile dist/notes.exe \
+  --define "$(loom build --target node --release --define)"
+```
+
+**Steps.**
+
+1. Replace each `loom build --target bun-windows-<arch>` call with `bun build --compile --target bun-windows-<arch>`, as above.
+2. On a Windows build host, pass `--target` to every `loom build` call, such as `--target node`.
+3. Remove `.exe` assets from release automation that expected `loom build` to name them.
+
+**Validation.** Run `loom build --target bun-windows-x64` and confirm that it exits 2 and names the targets. Run the replacement `bun build` command and confirm that it writes `dist/notes.exe`.
+
+- Change `applicationDirectory` on `win32` to resolve the `installation`, `logs`, and `cache` directories from `XDG_STATE_HOME`, `XDG_CACHE_HOME`, and `HOME`, as on Linux, in place of `%LOCALAPPDATA%\<app>\installation\`, `Logs\`, and `Cache\`, under [ADR-0100](docs/decisions/0100-acceptance-plans-live-beside-the-tests.md). When the XDG variable gives no absolute path and `HOME` is unset, the answer is `{ variable: 'HOME' }`.
+- Change the configuration, logging, skills, completion, and manpage plugins to read the home folder from `HOME` on every platform. They no longer read `USERPROFILE` on `win32`.
+- Allow `manpage install`, `manpage update`, and `manpage uninstall` on `win32`, where each resolves its folder from `HOME` as on other platforms, in place of refusing `install` and skipping `update` and `uninstall`.
+- Change core on `win32` to choose main glyph forms unless `TERM` is `linux`, to run the background query under the same rules as elsewhere, and to resolve a content operand with the running process's `node:path`, with no Windows exception for a stdin alias.
+
+### Migration
+
+**Affected surface.** Applications run on Windows that read `applicationDirectory`, write logs to the logging plugin's default directory or to a `~/` file, read a configuration file from the home folder, or install skills or man pages, and Windows operators whose environment sets `USERPROFILE` and no `HOME`.
+
+**Why.** No CI job runs Windows, so these branches ran only under a faked platform, and support that no CI entry runs is not shipped, under [ADR-0100](docs/decisions/0100-acceptance-plans-live-beside-the-tests.md).
+
+**Before and after.**
+
+Before, on Windows, the installation record lived at:
+
+```text
+%LOCALAPPDATA%\notes\installation\
+```
+
+After, it lives where Linux keeps it, under `XDG_STATE_HOME` when that is an absolute path:
+
+```text
+%XDG_STATE_HOME%\notes\installation\
+%HOME%\.local\state\notes\installation\
+```
+
+Before, a Windows operator's home configuration file was `%USERPROFILE%\.notes.toml`. After, it is `%HOME%\.notes.toml`.
+
+**Steps.**
+
+1. Tell Windows operators to set `HOME` where it is not already set, for example with `setx HOME "%USERPROFILE%"`.
+2. Tell Windows operators to move a home configuration file, a log file, or an installation record from its `%USERPROFILE%` or `%LOCALAPPDATA%` path to the path above, or to delete it.
+3. Where the application's own code read `USERPROFILE` to agree with Loom's folders, read `HOME` instead.
+
+**Validation.** On Windows, with `HOME` set, run the application with a home configuration file at `%HOME%\.<file>` and confirm that it reads the file. Call `applicationDirectory('installation', name, host)` and confirm that it answers a path under `XDG_STATE_HOME` or `%HOME%\.local\state`.
+
+- Change `dotenv()` to import every variable `.env` defines that the process has not set when it takes no settings, as the `dotenv` package, Node's `--env-file`, and Bun do, under [ADR-0102](docs/decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md).
+- Add `dotenv({ only })`, an allow list that imports only the names it lists, and `dotenv({ except })`, a deny list that imports every name but the ones it lists. One call that gives both is a compile error.
+- Change a single-quoted value in `.env` to span physical lines as a double-quoted one does, keeping every character with no escape, so a multi-line private key reads as one value. An unterminated single quote consumes the rest of the file and warns once for its starting line.
+- Remove the `variables` setting, and replace `@loomcli/plugins/dotenv/variables` with `@loomcli/plugins/dotenv/variable-name`, which rejects a listed name that is not an environment variable name. A name listed twice, and an empty list, are no longer faults.
+
+### Migration
+
+**Affected surface.** An application that calls `dotenv({ variables })` from `@loomcli/plugins/dotenv`, or that builds a `DotenvSettings` value with a `variables` key.
+
+**Why.** The allow list is optional now that the plugin imports every variable by default, and it takes the name `only` beside the deny list `except`. A JavaScript application that keeps `dotenv({ variables })` gets no type error and no run-time fault: the plugin reads no `variables` key, so it now imports every variable `.env` defines.
+
+**Before and after.**
+
+Before:
+
+```ts
+const app = new Application('notes', {
+  plugins: [dotenv({ variables: ['NOTES_TOKEN'] })],
+});
+```
+
+After:
+
+```ts
+const app = new Application('notes', {
+  plugins: [dotenv({ only: ['NOTES_TOKEN'] })],
+});
+```
+
+**Steps.**
+
+1. Search every `dotenv(` call for a `variables` key, in TypeScript and JavaScript sources alike, because a JavaScript call that keeps one fails nowhere.
+2. Rename each `variables` setting passed to `dotenv()` to `only`.
+3. To import every variable `.env` defines, remove the setting and call `dotenv()`.
+
+**Validation.** Run the application's type check, which rejects a remaining `variables` key in TypeScript, search the sources for `variables` beside `dotenv(` once more, and run a command that reads an imported variable from a `.env` file in the working directory.
+
+- Change `argument()` on a `Command` and on an `Application` to reject, at compile time, every config key that `ArgumentConfig` does not declare, such as `hidden`, `deprecated`, `multiple`, `env`, `control`, `aliases`, `short`, and `implied`. Core reads none of them on an argument, so a config that set one compiled in 0.14.0 and had no effect.
+
+### Migration
+
+**Affected surface.** Applications and plugins that pass a key `ArgumentConfig` does not declare in the config of `Command.argument()` or `Application.argument()`.
+
+**Why.** Core reads only the keys `ArgumentConfig` declares from an argument. The types now reject the rest, as they already did on the attached Command a lifecycle hook receives.
+
+**Before and after.**
+
+Before, this compiled and had no effect:
+
+```ts
+new Command('get').argument('path', { description: 'A path.', multiple: true });
+```
+
+After, remove the key:
+
+```ts
+new Command('get').argument('path', { description: 'A path.' });
+```
+
+**Steps.**
+
+1. Find each `argument()` call that fails with `An argument declares no <key> key`.
+2. Remove the key. To read many values, declare the argument `variadic: true`. To bind an environment variable or another option-only behavior, declare an option in place of the argument. To hide or deprecate the work an argument belongs to, set `hidden` or `deprecated` on its Command or on an option.
+
+**Validation.** Run `tsc --noEmit` and confirm that no argument declaration reports the message. Run the application's tests, which behave as before because none of these keys ever had an effect.
+
+### Features
+
+- Allow a Command path to nest to any depth. `command()` attaches a child at any level, and routing, validation, help, completion, the manifest, MCP, and man pages serve the path. `@loomcli/core/nesting-depth` goes, under [ADR-0094](docs/decisions/0094-core-sets-no-structural-limit-and-a-projection-reports-its-own-limits.md).
+
+- Allow a declared default to nest as deep as the author writes it. `@loomcli/core/default-depth` goes, and core no longer freezes a copy of a default: the graph and the default's validator read the value the author declared, and each invocation still receives its own copy of an array default.
+
+- Allow any string as the identity of `plugin()`, `extension()`, and `view()`, and as a hand-built descriptor's identity. The package-name grammar is a naming convention, under [ADR-0096](docs/decisions/0096-the-identity-grammar-is-a-naming-convention.md), and `@loomcli/core/invalid-identity` goes. An identity installed twice, and two distinct descriptors or declared views under one identity, stay declaration faults, and `diagnosticRule()` keeps its rule-identity check.
+
+- Allow a line break in a description or a deprecated message. Help, the manifest, MCP, man pages, shell completion, and the service unit print the text on one line and read each line break in it as a space, and a blank description prints as written. `@loomcli/core/not-one-line` goes.
+
+- Allow an optional argument after another optional one. Bare words fill optional arguments left to right, and an argument that receives no word is omitted. `@loomcli/core/optional-argument-last` still rejects a required argument after an optional one.
+
+- Allow a repeated declaration of one thing, which resolves instead of failing:
+  - An option alias that repeats the option's name, another of its aliases, or a spelling the option already accepts adds nothing, and an `env` list that names one variable twice binds it once.
+  - A Command alias that repeats its own name or another of its aliases adds nothing.
+  - A signal claimed twice is claimed once.
+  - A second value of one extension in one layer replaces the first whole, as a value in a later layer does.
+  - A second override of one key in one contributor loses to the first, as overrides across contributors do.
+
+  This removes `@loomcli/core/repeated-alias`, `@loomcli/core/signal-claimed-twice`, `@loomcli/core/extension-value-twice`, and `@loomcli/core/override-twice`. Two different declarations that collide, such as two options with one spelling or two plugins with one identity, stay declaration faults.
+
+- Allow a configuration source binding that its plugin does not list under `extensions`. Core admits the binding's descriptor itself, and `@loomcli/core/source-binding` goes.
+
+- Add `@loomcli/eslint-plugin`, the lint rules that guide an application author where a type cannot, under [ADR-0098](docs/decisions/0098-lint-is-the-author-guidance-lane.md). The plugin is ESLint-compatible, and oxlint loads it through `jsPlugins`. It ships three rules, `@loomcli/undescribed`, `@loomcli/discarded-declaration`, and `@loomcli/name-shape`, with a `recommended` flat config for ESLint and an `oxlint` config for `.oxlintrc.json`. See the [plugin reference](docs/libs/eslint-plugin.md).
+- Export `isPortableName` and `isDeclaredName` from `@loomcli/core`. They are the predicates behind core's portable-name and declared-name rules, so a tool that checks a literal name judges it as core does.
+
+- Add the assembly test, the lint configuration, and a `check` script to `loom init`. A new scaffold gets `src/application.test.ts`, `.oxlintrc.json` or `eslint.config.js`, a `check` script that runs `tsc --noEmit`, the linter, and the test runner, and `@loomcli/testing`, `@loomcli/eslint-plugin`, and the linter and test runner packages as development dependencies. `--linter oxlint|eslint` and `--test-runner bun|vitest` choose the tools, by default oxlint and Bun, and `--only` accepts `test` and `lint`. An existing oxlint or ESLint configuration file, a `vitest` dependency, or an `@types/bun` dependency selects its tool, and at a terminal init asks only when nothing does, so a re-run of a scaffold asks nothing. Init never overwrites an existing file or key, and it writes no `.oxlintrc.json` beside an `.oxlintrc.jsonc`, `oxlint.config.ts`, or `oxlint.config.mts`, because oxlint refuses to run with two. See the [toolchain reference](docs/toolchain/init.md).
+- Add the side-by-side TypeScript install to an ESLint scaffold. It writes `typescript` as `npm:@typescript/typescript6@<range>` and the compiler as `@typescript/native`, because typescript-eslint does not support TypeScript 7 yet, so `tsc` stays on TypeScript 7. A package that already declares `typescript` as anything else keeps it, and init warns that `eslint .` fails there and links the [plugin reference](docs/libs/eslint-plugin.md#eslint).
+
+- Add `@loomcli/testing`, which ships `assertAssembles(application)`. A test under `bun test` or vitest calls it with the Application. It returns when the application assembles, and otherwise throws an `Error` whose message is the Developer Diagnostic of each fault `Application.check()` returns, in order, with the fault list as its `cause`. The [testing reference](docs/libs/testing.md) describes what it covers.
+
+- Remove `@loomcli/core/undescribed`, under [ADR-0098](docs/decisions/0098-lint-is-the-author-guidance-lane.md). A development `run()` and `app.invoke()` run a graph that holds a Command, an option, or an argument without a description, and `Application.check()` no longer returns the fault. The `undescribed` rule of `@loomcli/eslint-plugin` reports the gap in the editor and in CI.
+
+- Add `isFailureCode` to `@loomcli/core`, which answers whether a value is a failure code in core's kebab-case grammar, so a plugin that lists failure classes, as the manifest does, checks a code against core's grammar instead of a copy.
+
+- Allow `logging({ keep: 0 })`, which keeps no copies: before a write that would take the file past `maxBytes`, the plugin deletes the file and a new one starts, as logrotate's `rotate 0` does.
+
+- Publish `@loomcli/testing` and `@loomcli/eslint-plugin` with the synchronized package set so applications can install the assembly check and lint rules.
+
+### Fixes
+
+- Remove the declaration rules that re-checked what TypeScript rejects at the call, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md): `option-type`, `short-alias`, `flag-not-boolean`, `short-only-without-short`, `short-only-with-aliases`, `boolean-option-multiple`, `count-option-multiple`, `polarity-on-count`, `implied-on-boolean-or-count`, `implied-not-a-string`, `polarity-on-string`, `option-polarity`, `short-only-both-polarities`, `global-presence-rule`, `global-option-after-command`, `env-on-multiple`, `env-name`, `env-on-argument`, `omission-already-decided`, `omission-without-validator`, `boolean-option-value-rule`, `count-option-value-rule`, `required-with-default`, `not-a-validator`, `default-shape`, `content-declaration`, `command-globals`, `declared-after-action`, `multiple-actions`, `alias-without-names`, `group-option`, `multiple-results`, `views-without-result`, `view-shape`, `row-view-on-value`, `media-type`, `view-name`, `result-without-action`, `misplaced-listing-fact`, `not-a-list`, `not-a-function`, `not-a-command`, `middleware-activation`, `unknown-signal`, `source-bound-own-option`, `extension-without-schema`, `extension-target`, `override-key`, `translation-key`, `retired-application-option`, `rendering-policy`, `theme-name-taken`, `theme-mapping`, `rule-prose`, and `rule-docs`, each under `@loomcli/core/`. A value that bypasses the types now meets the platform's own error: a value passed to `command()` or listed under a plugin's `commands` that is not a Command throws a plain `TypeError`, and so does a theme entry that is not a style chain.
+- Remove `@loomcli/core/not-an-object` and `@loomcli/core/unreadable-declaration`. A declaring call no longer reads its config, options, or definition through a guarded one-time copy, so a getter or proxy that throws reports its own error.
+- Change the interaction, color, verbose, quiet, and background marks to check only two marked options in one Application and a configuration binding on a marked option. The types place each mark.
+- Change stdin declared on a Command with no action to report `@loomcli/core/command-without-action`.
+- Change a schema that does not answer synchronously to report `@loomcli/core/invalid-extension-value`, which replaces `@loomcli/core/async-extension-schema`.
+- Change a views record that names no view to fail where the result renders, in place of `@loomcli/core/result-without-views`.
+- Change `@loomcli/core/foreign-value` to report a plugin, extension value, view, override, translation, or failure encoding that another installed copy of `@loomcli/core` built, with a correction to install one copy.
+- Change `@loomcli/core/portable-name` and `@loomcli/core/declared-name` to judge a name that is a string. A name that is not a string, which the types reject, gets no rule.
+
+- Start applications faster. `@loomcli/plugins` and `@loomcli/loom` no longer depend on zod, so an application that installs the help plugin or any other first-party plugin no longer loads it on every run. They validate their own extension values and files with valibot, and their option and argument validators come from `@loomcli/validators`, which `@loomcli/plugins` and `@loomcli/loom` now depend on. An application that still imports zod itself declares it in its own `package.json`.
+- Change the sentence a wrong `completion install` or `completion uninstall` shell and a wrong `skills install` or `skills uninstall` `--agent` draw. The rejection now reads `Expected one of: bash, zsh, fish, pwsh.` and `Expected one of: claude, agents.` where it read `Invalid option: expected one of "bash"|"zsh"|"fish"|"powershell"|"pwsh"` and `Invalid option: expected one of "claude"|"agents"`.
+- Change what `loom release record` prints for a release plan file it cannot read: each problem now prints on its own line, led by the key it concerns, such as `publish: Invalid type: Expected boolean but received "yes"`, where it printed a JSON list of every problem. Manifest and registry responses that `loom` cannot read print the same way.
+
+- Fix the completion plugin's `install`, `update`, and `uninstall` under Bun on macOS when they recover an interrupted run whose shell startup file the process may not read. They stopped with `EACCES`; they now finish the recovery, as they do under Node.
+
+- Fix `app <command> | head -1` printing `Something went wrong.` and exiting 1 once the reader closed the pipe. A write to `run()`'s stdout that fails with `EPIPE`, or with `ENOTCONN`, which Bun reports for a socket stdout on macOS, now ends the run, following the `SIGPIPE` convention, under [Signals and cancellation](docs/core/signals.md) and [ADR-0104](docs/decisions/0104-a-closed-reader-on-stdout-ends-the-run-with-141.md):
+  - Core aborts the run signal with the `CancellationReason` source `closed-pipe`, whose `cause` is the failed write's error, so a streaming row source or an action that reads `signal` stops as it does on cancellation.
+  - The write and every later stdout write reject with the signal's reason, which is silent when the action lets it propagate. Core writes no failure report and no incomplete-result line for the closed pipe and logs no failure event.
+  - `run()` resolves 141, and the process exits 141, in a distributed and a development build, under Node and Bun. `ExitCode` and a cancelled `invoke()` outcome's `exitCode` gain 141, and the manifest's `exitCodes` gains its row.
+  - The completion plugin's print children and `__complete` write through `out`, so `app completion bash | head -1` ends the same way instead of crashing with an `EPIPE` trace under Node or reporting `Something went wrong.` under Bun.
+  - The first cause to abort the run still fixes the code, so a pipe that closes after `SIGINT` keeps 130.
+  - A failed stderr write and every other failed stdout write, such as `ENOSPC`, still report a broken destination and exit 1.
+  - A translator an author wrote for an `EPIPE` error no longer receives a closed stdout pipe's error, so such a run now exits 141 in place of the translated class's code.
+
+- Change a throw from a plugin's lifecycle hook to take the ordinary failure path, under [ADR-0097](docs/decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md):
+  - An `onEnvironment` hook that throws a failure class, such as a `FatalError` subclass, now exits with that class's code and writes its message, in place of an internal error with exit 1.
+  - An `onFailure` hook that throws ends the hooks for that failure. Core calls no later hook and writes the failure's default text with no plugin's hints, then the hook's throw as a defect, and still exits 1.
+  - An `onLog` hook that throws keeps receiving every later event of the run. Core reports its first throw once after the run's outcome, and the run still exits 1.
+
+- Remove the run-time rules that re-checked what TypeScript rejects, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md) and [ADR-0095](docs/decisions/0095-the-type-bounds-a-declared-exit-code.md): `@loomcli/core/failure-exit-code`, `@loomcli/core/unconstructed-failure`, and `@loomcli/core/broken-output-view`.
+  - A failure class's exit code and failure code are read from its class, from the nearest ancestor that declares one, with nothing captured. A JavaScript class that declares a code outside 1 through 125, such as 130, exits with that code, and a static the application rewrites during a run is read as it stands.
+  - A value that inherits from a failure class without being constructed reports as that class.
+  - A view that throws in a call no code awaited reports as `@loomcli/core/foreign-throw`, as a view throw the action lets propagate already does.
+  - A view value that carries both `render` and `row`, or neither, and a view that returns a value that is not a string, get no rule: the platform's own error or `String()` meets them. So does a lane message that is not a string. A failure view that returns a value that is not a string writes what `String()` reads.
+- Keep `@loomcli/core/failure-code`, which still rejects a failure code outside its grammar where a failure of the class is constructed.
+- Remove the run-time rules for a hook, a translator, or a region call that only re-checked what the types reject or that only a construction built to break the code reaches, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md) and [ADR-0097](docs/decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md): `@loomcli/core/broken-translator`, `@loomcli/core/broken-failure-hook`, `@loomcli/core/broken-log-hook`, `@loomcli/core/log-in-log-hook`, `@loomcli/core/broken-environment-hook`, and `@loomcli/core/region-call`.
+  - A throw from a translator or an `onFailure` or `onLog` hook reports as `@loomcli/core/foreign-throw`, with the throw as the defect's cause. An `onEnvironment` hook's throw takes the ordinary failure path: a failure class keeps its class and exit code, and any other throw reports as `@loomcli/core/foreign-throw`. A translator's throw is never offered to a translator.
+  - A translator answer, a hook's return, or a region call argument that the types reject, such as a promise, a non-string hint, an `onEnvironment` name with a dash or a value holding NUL, a value from another Command's `onCommandAttach` build, or a negative or `NaN` progress count, gets no rule. A value an `onCommandAttach` hook returns that core never built throws a `TypeError`.
+  - `@loomcli/core/broken-graph-hook` no longer reports an `onGraphBuilt` hook that returns a value, and `@loomcli/core/broken-attach-hook` no longer reports an `onCommandAttach` hook that returns a value from another Command's build. Both still report a hook that throws anything but a `DeclarationError`, naming the plugin.
+  - A result that iterates neither way throws a `TypeError` that reports as `@loomcli/core/foreign-throw`, in place of its `@loomcli/core/result-contract` defect.
+  - A `log` call inside an `onLog` hook is an ordinary call. A log field whose getter throws throws from the call, in place of reading `"[Unreadable]"`. A thrown Error whose message cannot be read and a thrown revoked proxy get no special reading, and a Developer Diagnostic prints every link of a cause chain until one repeats, in place of stopping at eight.
+
+- Change how the completion plugin treats a startup file it may not change, such as a read-only `.bashrc` that a home configuration manager links, under [ADR-0101](docs/decisions/0101-completion-installs-on-linux-and-macos-and-a-startup-line-is-written-or-printed.md). `install` writes the script, prints the line for the operator to add, or states that the file already loads it, and records no line, dropping any line the record held for that file without writing the file. `update` drops such a line the same way, and prints the line to remove and the line to add in its place only when this version changes the line's text. `uninstall` prints a recorded line for the operator to remove and drops it from the record. A line the operator added by hand, in any startup file, is never recorded: `install` states that the file already loads the script, and `update` and `uninstall` no longer keep, print, or remove the line.
+- Change a startup file in an encoding other than UTF-8, with or without its byte order mark, such as UTF-16, into one the completion plugin cannot change.
+- Allow a script path or a PowerShell profile path that holds a control character. `completion install` writes the line in place of refusing the path.
+
+- Remove `@loomcli/validators/path-check`, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). The type of `path()`'s options takes `kind` only beside an `access`, so `path({ kind: 'file' })` is a compile error, and an `access` or `kind` outside its set gets no rule.
+- Change `path()` to resolve a token with the running process's `node:path`, in place of choosing Windows path rules by `host.platform`.
+
+- Remove the plugin pack's settings checks that re-checked what TypeScript rejects, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). A value that bypasses the types meets the platform's own error.
+  - `@loomcli/plugins/logging/settings` goes. `logging()` fills its defaults and judges no setting.
+  - `selfUpdate()` judges only `notices.env`, and `service()` judges only `label`: an `afterReplace` or `probe` that is not a function, a `notices` that is not a Boolean or an object, and `run` words that are not a list of strings get no rule, and a `run` word with a control character is no longer refused. The graph check that the run words route stays.
+  - `skills()` judges only the skill names, and a skill's loaded files only for a path that is absolute or has a `..` segment, which reads `Skill "notes" lists a file path outside its folder: ../notes.md.`, and for a missing `SKILL.md`. A list that is not an array or is empty, an entry that is not a skill, a loaded result that is not a list of files, a path with a backslash, a control character, or an empty segment, and a path listed twice get no rule.
+  - The manifest reads a failure class's exit code as the class declares it, under [ADR-0095](docs/decisions/0095-the-type-bounds-a-declared-exit-code.md), with no range check, and judges only its failure code's grammar. A static getter or a proxy that throws is no longer read through a guard.
+  - Two man pages whose names differ only in ASCII case, such as `Get` and `get`, no longer fail the build under `@loomcli/plugins/manpage/page-name-taken`. Two Commands that give one page name still do.
+- Change the configuration plugin's checks to what a projection or an operator's file needs.
+  - `file` and a binding path no longer refuse a control character or a line separator. `file` stays a relative path with no empty, `.`, or `..` segment, and a binding path stays dotted nonempty keys.
+  - A YAML file converts through the parser's own `toJS()`. A mapping key that is a mapping or a sequence reads as the text `toJS()` writes for it, in place of making the file not valid YAML, and a scalar key that is not a string reads as `toJS()` writes it, so `0x1F:` reads as `31`. An alias that names no preceding anchor still makes the file not valid YAML, and no parser warning prints.
+- Fix `loom build`, which collected at most 64 MiB of Bun's output, so it now collects the whole output, as the toolchain's git calls do.
+
+- Remove the prompts library's checks that re-checked what TypeScript rejects, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). A question's settings, `skipIfSupplied` without `option`, a repeated select choice, a select `default` that is not a choice, and a progress line's label, counts, frames, spinner interval, bar cells, updates, and messages get no rule, so `@loomcli/prompts/progress` goes.
+  - A select question with an empty `choices` list throws `@loomcli/prompts/link` before it resolves: `The select question "Database" has no choices. Supply at least one choice.`
+  - An interactive stdin with no `setRawMode` method throws a `TypeError`, which a run reports as a defect, in place of a `DeclarationError`.
+
+- Remove the validator catalog's checks that re-checked what TypeScript rejects, and its defenses against an author's schema, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md): `@loomcli/validators/factory-options`, `@loomcli/validators/pattern-message`, `@loomcli/validators/validator-definition`, `@loomcli/validators/issue-code-config`, and `@loomcli/validators/issue-code-schema`.
+  - `oneOf()` judges only a value listed twice. An empty list, a value that is not a string, and an empty string get no rule, and the list is no longer copied at the call.
+  - A bound of `integer()` or `number()` is judged only for being finite, so `integer({ min: 0.5 })` is accepted. A `text()` length is a whole number of 0 or more, with no safe-integer limit. A `text()` pattern without its message, and a message without a pattern, are compile errors with no run-time check.
+  - `url()` judges only that each protocol is a scheme name. `createValidator()` judges only an `inputSchema` that declares its own `$schema`, and its `validate` reads a value that is not a string as `String()` reads it.
+  - `issueCode()` judges only the code's grammar. `issue()` and `read()` call the schema and read its result: a schema that throws throws from them, and a schema that answers with a promise accepts no parameters, so `issue()` throws `@loomcli/validators/issue-parameters`.
+  - Validators, their `~standard` props, issue code descriptors, issues, and issue parameters are no longer frozen, and an input schema is no longer copied at the call.
+
+- Remove `@loomcli/core/run-options` and `@loomcli/core/invoke-options`, which re-checked what TypeScript rejects, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md).
+  - A `run()` `signal` that is not an `AbortSignal` meets the platform's own error, which the run reports as a defect.
+  - An `invoke()` path, values record, `signal`, `failure` handler, or `onProgress` observer that the types reject meets the platform's own error, as a rejection of the call or as a defect of its run. A `host` field outside the five and a `values` key other than `args`, `options`, and `passthrough` are not read.
+- Change a `view` that is not a string, assigned by a middleware or passed to `invoke()`, to report as the view-selection defect for a name the routed Command's result does not hold, or for a view on a Command that declares no result. The sentence for a view that is not a string goes.
+- Change a validator's published input schema to the object its converter returned, neither copied nor frozen. A converter answer whose getter throws is no longer a `@loomcli/core/schema-converter-failed` fault: the getter throws where a reader reads it. An answer that holds itself is published as it is.
+
+- Fix `Parameters<typeof command.option>`, and `Reflect.apply(command.option, ...)`, running the type checker out of memory, which hung the editor's TypeScript server instead of reporting a result. The same applies to `option()` and `globalOption()` on an `Application`. A default that does not fit its option's validator input, or its raw tokens, is still rejected with the same diagnostic, and editor diagnostics at an `option()` call are faster.
+- Allow a readonly list, such as an `as const` array, as the default of a multiple option or a variadic argument. Core copies a declared list for each run, so the action still receives its own array.
+
 ## v0.14.0 - 2026-10-20
 
 0.14.0 fits terminal output to the operator's screen and gives the operator control over it. Every render reads the destination's live width, so the semantic lanes, tables, records, and the help page wrap on a terminal, and a table that cannot fit shrinks its widest columns or falls back to one block per row. The pack adds list, heading, rule, prose, and box views. Optional plugins add `--color` and `--no-color`; `-v`, which shows the new `out.debug` and `out.trace` lines, and `-q`, which hides info and success messages; and `--background`. A theme entry can adapt to a light terminal's background, which core settles once per run. Actions can keep live regions at the bottom of stderr, where `@loomcli/prompts` now draws its questions and new progress lines, and progress events reach `invoke` callers and MCP clients. Off a terminal nothing wraps, tables and records keep their layout, help changes only its Details lists and headings, which now print as the list and heading views do, and each manifest option entry gains its `color`, `verbose`, `quiet`, or `background` field.
