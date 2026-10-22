@@ -1,1 +1,0 @@
-- Add `isFailureCode` to `@loomcli/core`, which answers whether a value is a failure code in core's kebab-case grammar, so a plugin that lists failure classes, as the manifest does, checks a code against core's grammar instead of a copy.

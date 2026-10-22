@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0098 - Lint is the author-guidance lane
 description: Author guidance that a type cannot express runs as lint rules in an ESLint plugin Loom ships, which oxlint loads through its jsPlugins slot, so an author sees it in the editor and in CI. Loom builds no check framework of its own, and a new lint rule is a contract change. @loomcli/core/undescribed leaves core's runs and becomes a lint rule. The starting rule set, shipped in 0.15.0, covers undescribed members, a discarded authoring-call result, and name shapes.
-status: proposed
+status: accepted
 created: 2026-10-20
-modified: 2026-10-20
+modified: 2026-10-22
 ---
 
 # ADR-0098 - Lint is the author-guidance lane
@@ -45,7 +45,7 @@ A development run of an application that leaves a description out now succeeds, 
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships the lint plugin with its starting rules and removes the undescribed check from core's runs, planned for 0.15.0.
+Accepted in 0.15.0.
 
 ## Changelog
 

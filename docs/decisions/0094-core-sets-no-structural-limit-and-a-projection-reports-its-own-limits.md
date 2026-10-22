@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0094 - Core sets no structural limit, and a projection reports its own limits
 description: Core caps neither how deep a Command path nests nor how deep a declared default nests. A projection that cannot serve a shape the author declared, such as an MCP tool name longer than the protocol allows or a man page file name the file system cannot hold, reports it in a Developer Diagnostic that names the projection and the Command path. One example application gains a three-level path. It supersedes ADR-0035 and ADR-0053.
-status: proposed
+status: accepted
 created: 2026-10-20
 modified: 2026-10-22
 ---
@@ -37,7 +37,7 @@ Removing a cap relaxes a rule, so an application that builds today builds unchan
 
 ## Status
 
-Proposed. It moves to accepted with the release that removes both caps and ships the example's three-level path, planned for 0.15.0.
+Accepted in 0.15.0.
 
 ## Changelog
 

@@ -1,1 +1,0 @@
-- Allow a configuration source binding that its plugin does not list under `extensions`. Core admits the binding's descriptor itself, and `@loomcli/core/source-binding` goes.

@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0101 - Completion installs on Linux and macOS, and a startup line is written or printed
 description: The completion plugin's install, update, and uninstall serve bash, zsh, fish, and pwsh on Linux and macOS, and refuse on Windows, where completion powershell still prints Cobra's script. Windows PowerShell 5.1 as its own shell, the execution-policy check, UTF-16LE startup files, the byte order mark on a created profile, and the win32 variables and folders come out. A startup line is either written and recorded, or printed with nothing recorded, and uninstall removes only a line Loom wrote. Every other provision of ADR-0078 carries forward. It supersedes ADR-0078.
-status: proposed
+status: accepted
 created: 2026-10-20
-modified: 2026-10-21
+modified: 2026-10-22
 ---
 
 # ADR-0101 - Completion installs on Linux and macOS, and a startup line is written or printed
@@ -60,7 +60,7 @@ A Linux or macOS operator sees the same install, update, and uninstall, except t
 
 ## Status
 
-Proposed. It moves to accepted with the release that removes the Windows install paths and the keep and hold modes, planned for 0.15.0.
+Accepted in 0.15.0.
 
 ## Changelog
 

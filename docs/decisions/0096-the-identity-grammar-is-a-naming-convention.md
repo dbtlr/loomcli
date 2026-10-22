@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0096 - The identity grammar is a naming convention
 description: A plugin, extension, or view identity is a string that core compares by equality. plugin(), extension(), and view() stop checking it against the identity grammar and the 214-character package-name limit, and @loomcli/core/invalid-identity goes. The faults for one identity used twice stay. The grammar becomes the naming convention the plugin contract documents, and isRuleIdentity stays exported. It supersedes ADR-0052.
-status: proposed
+status: accepted
 created: 2026-10-20
-modified: 2026-10-20
+modified: 2026-10-22
 ---
 
 # ADR-0096 - The identity grammar is a naming convention
@@ -32,7 +32,7 @@ Removing the check relaxes a rule, so an application that builds today builds un
 
 ## Status
 
-Proposed. It moves to accepted with the release that removes the identity check from `plugin()`, `extension()`, and `view()`, planned for 0.15.0.
+Accepted in 0.15.0.
 
 ## Changelog
 

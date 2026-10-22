@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0104 - A closed reader on stdout ends the run with 141
 description: When a write to run()'s own stdout fails because its reader closed it, reported as EPIPE, or as ENOTCONN on a macOS socket, core aborts the run signal with the closed-pipe reason, writes no report and no incomplete-result line, and resolves 141, the status the SIGPIPE convention gives. Every other failed write stays a broken destination with exit 1.
-status: proposed
+status: accepted
 created: 2026-10-21
-modified: 2026-10-21
+modified: 2026-10-22
 ---
 
 # ADR-0104 - A closed reader on stdout ends the run with 141
@@ -41,7 +41,7 @@ A translator an author wrote for an `EPIPE` error no longer receives a closed st
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships the closed-pipe rule, planned for 0.15.0.
+Accepted in 0.15.0.
 
 ## Changelog
 

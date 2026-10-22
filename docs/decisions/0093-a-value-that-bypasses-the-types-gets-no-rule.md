@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0093 - A value that bypasses the types gets no rule
 description: A declaration fault still throws at the call, the attach, or the build, whichever first holds the data proving it, as ADR-0034 settled. A runtime check exists only for a fault a type cannot express. A value that bypasses the types, from JavaScript or through any, and a construction built to break the code get no rule, and the platform's own error reports them. The hostile-value machinery goes as a class, and the checks a projection, the parser, a standard, or Loom's own writer needs stay. It supersedes ADR-0034.
-status: proposed
+status: accepted
 created: 2026-10-20
-modified: 2026-10-21
+modified: 2026-10-22
 ---
 
 # ADR-0093 - A value that bypasses the types gets no rule
@@ -58,7 +58,7 @@ The reference keeps the rows of each removed rule until the phase that removes t
 
 ## Status
 
-Proposed. It moves to accepted with the release that removes the rules and machinery above from core, the plugin pack, the validator catalog, the prompts library, and the toolchain, planned for 0.15.0.
+Accepted in 0.15.0.
 
 ## Changelog
 

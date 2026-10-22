@@ -1,1 +1,0 @@
-- Publish `@loomcli/testing` and `@loomcli/eslint-plugin` with the synchronized package set so applications can install the assembly check and lint rules.

@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0095 - The type bounds a declared exit code
 description: A failure class still declares its exit code as a static field from 1 through 125, read from the nearest ancestor that declares one, and core still exports the sysexits names. FailureExitCode alone bounds the code. The run-time range check, the reserved-code DeclarationError, the capture-once rule, the instance-tampering outcomes, and the unconstructed-failure rule go. It supersedes ADR-0045.
-status: proposed
+status: accepted
 created: 2026-10-20
-modified: 2026-10-21
+modified: 2026-10-22
 ---
 
 # ADR-0095 - The type bounds a declared exit code
@@ -32,7 +32,7 @@ An application that compiles today exits with the same codes. A JavaScript autho
 
 ## Status
 
-Proposed. It moves to accepted with the release that removes the run-time range check and the capture-once machinery, planned for 0.15.0.
+Accepted in 0.15.0.
 
 ## Changelog
 

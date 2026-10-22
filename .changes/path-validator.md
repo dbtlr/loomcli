@@ -1,2 +1,0 @@
-- Remove `@loomcli/validators/path-check`, under [ADR-0093](docs/decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). The type of `path()`'s options takes `kind` only beside an `access`, so `path({ kind: 'file' })` is a compile error, and an `access` or `kind` outside its set gets no rule.
-- Change `path()` to resolve a token with the running process's `node:path`, in place of choosing Windows path rules by `host.platform`.
