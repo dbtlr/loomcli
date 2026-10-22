@@ -1,2 +1,2 @@
 $ pace splits marathon 3:30:00 --every 1m
-pace: The run makes 42195 splits, and pace lists at most 1000. Supply a longer --every, such as 1k.
+The run makes 42195 splits, and pace lists at most 1000. Supply a longer --every, such as 1k.

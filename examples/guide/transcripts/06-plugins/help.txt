@@ -9,6 +9,7 @@ COMMANDS
   calc                  Work out the pace of a run.
   splits                List the time of each split of a run.
   convert               Give a pace per kilometre as a pace per mile, or the other way round.
+  races                 List the races pace knows by name.
 
 GLOBAL OPTIONS
   -u, --unit <unit>      The unit to give a pace in. One of: km, mi.  (default: km)

@@ -1,0 +1,2 @@
+$ pace self-update
+pace was not built as a release binary, so it cannot update itself. Update it the way you installed it.

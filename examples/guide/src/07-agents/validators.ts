@@ -16,7 +16,7 @@ export const distance = createValidator({
       ? {
           issues: [
             {
-              message: 'Expected a distance above zero, such as 10k, 5mi, 400m, half, or marathon.',
+              message: 'Expected a distance, such as 10k, 5mi, 400m, half, or marathon.',
             },
           ],
         }

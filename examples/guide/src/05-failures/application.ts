@@ -1,4 +1,4 @@
-import { Application, FatalError, InternalError, override } from '@loomcli/core';
+import { Application, InternalError, override } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
@@ -9,13 +9,14 @@ import { calc } from './commands/calc.js';
 import { convert } from './commands/convert.js';
 import { splits } from './commands/splits.js';
 import { splitTooLong } from './failures.js';
-import { defectView, fatalView } from './views.js';
+import { defectView } from './views.js';
 
+// #region application
 const configured = new Application('pace', {
   description: 'Work out running paces, splits, and conversions.',
   plugins: [help(), version(), format()],
   translators: [splitTooLong],
-  views: [override(FatalError, fatalView), override(InternalError, defectView)],
+  views: [override(InternalError, defectView)],
 }).globalOption('unit', {
   default: 'km',
   description: 'The unit to give a pace in.',
@@ -24,6 +25,7 @@ const configured = new Application('pace', {
   type: 'string',
   validate: oneOf(['km', 'mi']),
 });
+// #endregion
 
 // Each Command reads the types of the global options through this registration.
 declare module '@loomcli/core' {

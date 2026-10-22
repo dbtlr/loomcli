@@ -2,6 +2,7 @@ import { EX_USAGE, FatalError, translate } from '@loomcli/core';
 
 import { formatDistance, SplitLongerThanRunError } from './pace.js';
 
+// #region failure-class
 /**
  * A split longer than the run. The operator chose the split with --every, so the failure exits
  * with `EX_USAGE`, and a script branches on its failure code, `split-too-long`.
@@ -18,7 +19,9 @@ export class SplitTooLongError extends FatalError {
     this.name = 'SplitTooLongError';
   }
 }
+// #endregion
 
+// #region translator
 /** The domain module throws its own error, so no action catches it to report it. */
 export const splitTooLong = translate(
   SplitLongerThanRunError,
@@ -31,3 +34,4 @@ export const splitTooLong = translate(
       },
     ),
 );
+// #endregion

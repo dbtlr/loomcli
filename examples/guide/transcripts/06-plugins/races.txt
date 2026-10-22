@@ -1,0 +1,6 @@
+$ pace races
+RACE        DISTANCE
+5k              5 km
+10k            10 km
+half      21.0975 km
+marathon   42.195 km

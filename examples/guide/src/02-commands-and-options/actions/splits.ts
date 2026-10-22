@@ -17,13 +17,18 @@ export const printSplits: ActionHandler<typeof splits> = async ({ args, options,
   const unitName = options.unit ?? 'km';
   const unit =
     parseUnit(unitName) ?? out.fatal(`Unknown unit "${style.escape(unitName)}". Use km or mi.`);
+  // #region every
   // With no --every, each split is one unit long.
+  const everyText = options.every;
   const every =
-    (options.every === undefined ? unitLength(unit) : parseDistance(options.every)) ??
-    out.fatal(
-      `Cannot read the split "${style.escape(options.every ?? '')}". Write one such as 1k, 1mi, or 400m.`,
-    );
+    everyText === undefined
+      ? unitLength(unit)
+      : (parseDistance(everyText) ??
+        out.fatal(
+          `Cannot read the split "${style.escape(everyText)}". Write one such as 1k, 1mi, or 400m.`,
+        ));
   for (const split of splitRun({ every, metres, negative: options.negative, seconds, unit })) {
     await out.print(formatSplit(split));
   }
+  // #endregion
 };

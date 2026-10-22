@@ -1,0 +1,19 @@
+$ pace self-update --help
+pace self-update · Replace this application with another release.
+
+USAGE
+  pace self-update [version] [options]
+
+ARGUMENTS
+  version  A release version to install, newer or older, such as 1.4.0.
+
+OPTIONS
+      --channel <channel>  The release channel to follow, such as stable or next.
+      --check              Report what an update would do and replace nothing.
+
+GLOBAL OPTIONS
+  -u, --unit <unit>      The unit to give a pace in. One of: km, mi.  (default: km)
+  -h, --help             Show this help.
+  -V, --version          Print the version.
+      --manifest         Print this command's manifest as JSON.
+      --config <config>  Read configuration from this file alone.

@@ -16,12 +16,6 @@ const suffixes: ReadonlyMap<string, number> = new Map([
   ['mi', metresPerMile],
 ]);
 
-/** The races a runner names rather than measures. `5k` and `10k` already read as distances. */
-const races: ReadonlyMap<string, number> = new Map([
-  ['half', 21_097.5],
-  ['marathon', 42_195],
-]);
-
 const distancePattern = /^(?<amount>\d+(?:\.\d+)?)(?<suffix>[a-z]+)$/u;
 
 /** `h:mm:ss`, whose minutes stay below 60, or `mm:ss`, whose minutes may run past 59. */
@@ -60,8 +54,23 @@ function splitEnds(metres: number, every: number): number[] {
   );
 }
 
+/** The races pace knows by name. `5k` and `10k` read as distances too. */
+export const knownRaces: readonly Race[] = [
+  { metres: 5000, name: '5k' },
+  { metres: 10_000, name: '10k' },
+  { metres: 21_097.5, name: 'half' },
+  { metres: 42_195, name: 'marathon' },
+];
+
 /** The unit a pace is measured per: kilometres or miles. */
 export type Unit = 'km' | 'mi';
+
+/** A race a runner names rather than measures, such as `marathon`. */
+export interface Race {
+  readonly name: string;
+  /** The race's length, in metres. */
+  readonly metres: number;
+}
 
 /** A pace: the seconds a runner takes to cover one unit. */
 export interface Pace {
@@ -122,9 +131,9 @@ export function parseUnit(text: string): Unit | undefined {
 
 /** Reads a distance such as `10k`, `5mi`, `400m`, or `half` as metres, or `undefined`. */
 export function parseDistance(text: string): number | undefined {
-  const race = races.get(text);
+  const race = knownRaces.find((known) => known.name === text);
   if (race !== undefined) {
-    return race;
+    return race.metres;
   }
   const groups = distancePattern.exec(text)?.groups;
   const perSuffix = suffixes.get(groups?.suffix ?? '');

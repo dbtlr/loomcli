@@ -1,4 +1,4 @@
-import { Application, FatalError, InternalError, override } from '@loomcli/core';
+import { Application, InternalError, override } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { config } from '@loomcli/plugins/config';
@@ -13,13 +13,15 @@ import { oneOf } from '@loomcli/validators';
 
 import { calc } from './commands/calc.js';
 import { convert } from './commands/convert.js';
+import { races } from './commands/races.js';
 import { splits } from './commands/splits.js';
 import { splitTooLong } from './failures.js';
-import { races } from './races.js';
-import { defectView, fatalView } from './views.js';
+import { raceHint } from './race-hint.js';
+import { defectView } from './views.js';
 
 const configured = new Application('pace', {
   description: 'Work out running paces, splits, and conversions.',
+  // #region plugins
   // Installation order is composition order: help and version answer before any later plugin.
   plugins: [
     help(),
@@ -30,10 +32,11 @@ const configured = new Application('pace', {
     config(),
     completion(),
     mcp(),
-    races(),
+    raceHint(),
   ],
+  // #endregion
   translators: [splitTooLong],
-  views: [override(FatalError, fatalView), override(InternalError, defectView)],
+  views: [override(InternalError, defectView)],
 }).globalOption('unit', {
   default: 'km',
   description: 'The unit to give a pace in.',
@@ -52,4 +55,4 @@ declare module '@loomcli/core' {
   }
 }
 
-export const pace = configured.command(calc).command(splits).command(convert);
+export const pace = configured.command(calc).command(splits).command(convert).command(races);

@@ -1,4 +1,4 @@
-$ pace calc --manifest
+$ pace convert --manifest
 {
   "name": "pace",
   "version": "0.0.0",
@@ -110,11 +110,11 @@ $ pace calc --manifest
     }
   ],
   "command": {
-    "name": "calc",
+    "name": "convert",
     "path": [
-      "calc"
+      "convert"
     ],
-    "description": "Work out the pace of a run.",
+    "description": "Give a pace per kilometre as a pace per mile, or the other way round.",
     "details": [],
     "examples": [],
     "deprecated": null,
@@ -136,25 +136,13 @@ $ pace calc --manifest
     "failures": [],
     "arguments": [
       {
-        "name": "distance",
-        "description": "How far you ran, such as 10k, 5mi, 400m, half, or marathon.",
+        "name": "pace",
+        "description": "The pace to convert, such as 5:00/km or 8:03/mi.",
         "required": true,
         "variadic": false,
         "schema": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "pattern": "^(?:\\d+(?:\\.\\d+)?(?:k|km|m|mi)|half|marathon)$",
-          "type": "string"
-        },
-        "default": null
-      },
-      {
-        "name": "time",
-        "description": "How long the run took, as mm:ss or h:mm:ss.",
-        "required": true,
-        "variadic": false,
-        "schema": {
-          "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "pattern": "^(?:\\d+:[0-5]\\d|\\d+):[0-5]\\d$",
+          "pattern": "^(?:\\d+:[0-5]\\d|\\d+):[0-5]\\d ?/(?:km|mi)$",
           "type": "string"
         },
         "default": null

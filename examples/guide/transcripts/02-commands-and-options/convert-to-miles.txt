@@ -1,0 +1,2 @@
+$ pace -u mi convert 5:00/km
+8:03 /mi

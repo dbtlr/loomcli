@@ -17,12 +17,14 @@ export const splits = new Command('splits', {
     required: true,
     validate: time,
   })
+  // #region every
   .option('every', {
     description: 'How long each split is, such as 1k, 1mi, or 400m. Defaults to one unit.',
     short: 'e',
     type: 'string',
     validate: distance,
   })
+  // #endregion
   .option('negative', {
     description: 'Run the second half faster than the first.',
     short: 'n',

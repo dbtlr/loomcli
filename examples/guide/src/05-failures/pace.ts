@@ -93,6 +93,7 @@ export interface Split {
   readonly elapsed: number;
 }
 
+// #region domain-error
 /** A split longer than the run it splits. */
 export class SplitLongerThanRunError extends RangeError {
   /** The split's length, in metres. */
@@ -109,6 +110,7 @@ export class SplitLongerThanRunError extends RangeError {
     this.unit = unit;
   }
 }
+// #endregion
 
 /** The metres in one `unit`. */
 export function unitLength(unit: Unit): number {
@@ -165,6 +167,7 @@ export function splitCount(metres: number, every: number): number {
   return Math.ceil(roundTo(metres / every, 6));
 }
 
+// #region split-run
 /** The splits of a run, each with its own time and the time elapsed at its end. */
 export function splitRun(plan: SplitPlan): Split[] {
   if (plan.every > plan.metres) {
@@ -182,6 +185,7 @@ export function splitRun(plan: SplitPlan): Split[] {
     };
   });
 }
+// #endregion
 
 /** The pace of a run of `metres` that took `seconds`, per `unit`, to the nearest second. */
 export function paceOf(metres: number, seconds: number, unit: Unit): Pace {

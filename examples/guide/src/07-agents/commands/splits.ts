@@ -10,6 +10,7 @@ import type { Split } from '../pace.js';
 import { distance, time } from '../validators.js';
 import { distanceCell, durationCell } from '../views.js';
 
+// #region declaration
 export const splits = new Command('splits', {
   description: 'List the time of each split of a run.',
   extensions: [
@@ -19,6 +20,7 @@ export const splits = new Command('splits', {
     mcpCommand({ annotations: { idempotent: true, openWorld: false, readOnly: true } }),
   ],
 })
+  // #endregion
   .alias('split')
   .argument('distance', {
     description: 'How far the run goes, such as 10k, 5mi, half, or marathon.',

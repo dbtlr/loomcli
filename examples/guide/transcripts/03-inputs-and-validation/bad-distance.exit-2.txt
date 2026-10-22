@@ -1,3 +1,3 @@
 $ pace calc 10x 50:00
-pace: Argument "distance": Expected a distance above zero, such as 10k, 5mi, 400m, half, or marathon.
+pace: Argument "distance": Expected a distance, such as 10k, 5mi, 400m, half, or marathon.
 Run "pace calc --help" to see the usage.

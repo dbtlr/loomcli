@@ -32,6 +32,7 @@ export const splits = new Command('splits', {
     short: 'n',
     type: 'boolean',
   })
+  // #region rows
   // The first view, the table, is the one a run renders unless --format names another.
   .rows<Split>({
     views: {
@@ -56,3 +57,4 @@ export const splits = new Command('splits', {
     },
   })
   .action(listSplits);
+// #endregion
