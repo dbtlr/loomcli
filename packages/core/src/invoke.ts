@@ -47,8 +47,8 @@ interface InvokeCall<Mapped> {
 
 /**
  * Reads one `invoke()` call where it entered. The path and the passthrough tail are copied and
- * each record's defined entries read once, so a later change to the caller's values changes
- * nothing the run lowers. The types state each slot's kind.
+ * each record's defined entries read once, so a later change to the caller's path or passthrough array
+ * changes nothing the run lowers. The types state each slot's kind.
  */
 function readCall<Mapped>(call: {
   path: readonly string[];
