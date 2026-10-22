@@ -131,6 +131,7 @@ import type {
   RowViews,
   RunOptions,
   ValidateOmittedConstraint,
+  ArgumentKeyConstraint,
   Unmarked,
 } from './types.js';
 import type { ArgumentInput, DeclaredValues, InputPlaces, OptionInput } from './validation.js';
@@ -333,6 +334,7 @@ class ApplicationBuilder<
     config: Config &
       NameConstraint<Name> &
       NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ArgumentKeyConstraint<Config>> &
       NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
   ): Application<

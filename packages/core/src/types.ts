@@ -107,6 +107,8 @@ interface Listed {
   hidden?: boolean;
   deprecated?: string;
 }
+/** Every key any member of a union declares. */
+type KeysOf<Type> = Type extends unknown ? keyof Type : never;
 /**
  * The core fact that marks an option as controlling the invocation rather than feeding the
  * Command's work, such as `--help` or `--format`. An omitted mark reads `false`. Core never reads
@@ -742,6 +744,26 @@ export type DefaultConstraint<Config> = Config extends unknown
         : RawValue<Config>;
     }
   : never;
+
+/**
+ * An argument's config names only the keys `ArgumentConfig` declares, because core reads no other.
+ * TypeScript runs no excess-key check on a config a type parameter infers, so this constraint
+ * rejects each other key. The key names the fault, the way the other declaration constraints do,
+ * because an intersection with `never` properties would reduce the whole config and report every
+ * key.
+ */
+export type ArgumentKeyConstraint<Config> = [
+  Exclude<KeysOf<Config>, KeysOf<ArgumentConfig>>,
+] extends [never]
+  ? unknown
+  : {
+      [
+        Key in Exclude<
+          KeysOf<Config>,
+          KeysOf<ArgumentConfig>
+        > as `An argument declares no ${Key & string} key`
+      ]: never;
+    };
 
 /**
  * An implied value is the string an operator would otherwise attach, so it must be a string the

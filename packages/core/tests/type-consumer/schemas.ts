@@ -57,17 +57,22 @@ new Application('widened').option('size', widened).action(({ options }) => {
   return unsafe;
 });
 
-const rawArgument = { mode: 'raw', required: true, variadic: true } satisfies {
-  mode: 'raw';
+const rawArgument = { description: 'raw', required: true, variadic: true } satisfies {
+  description: 'raw';
   required: true;
   variadic: true;
 };
 const transformedArgument = {
-  mode: 'schema',
+  description: 'schema',
   required: true,
   validate: z.string().transform((file) => file.length),
   variadic: true,
-} satisfies { mode: 'schema'; required: true; variadic: true; validate: unknown };
+} satisfies {
+  description: 'schema';
+  required: true;
+  variadic: true;
+  validate: unknown;
+};
 const conditionalArgument = Math.random() > 0.5 ? rawArgument : transformedArgument;
 new Application('conditional').argument('files', conditionalArgument).action(({ args }) => {
   const either: string[] | number[] = args.files;
