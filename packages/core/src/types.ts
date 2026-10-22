@@ -754,6 +754,7 @@ export type UnlistedConstraint<Config> = 'hidden' extends keyof Config
   : 'deprecated' extends keyof Config
     ? { 'An argument declares no deprecated fact': never }
     : unknown;
+
 /**
  * An implied value is the string an operator would otherwise attach, so it must be a string the
  * validator's input type accepts, as a default must be. A multiple option's validator reads one
