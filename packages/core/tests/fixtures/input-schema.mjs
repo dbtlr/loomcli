@@ -23,15 +23,12 @@ const digits = {
 /** The same validator with a converter, which records every call and answers with `answer`. */
 function converting(answer) {
   const calls = [];
-  const answers = [];
   const schema = {
     '~standard': {
       jsonSchema: {
         input: (options) => {
           calls.push(options);
-          const value = answer(options);
-          answers.push(value);
-          return value;
+          return answer(options);
         },
         output: () => {
           throw new Error('The output side is never asked.');
@@ -42,7 +39,7 @@ function converting(answer) {
       version: 1,
     },
   };
-  return { answers, calls, schema };
+  return { calls, schema };
 }
 
 /** A converter that throws, the way zod does for a shape JSON Schema cannot carry. */
@@ -68,7 +65,7 @@ const lazy = {
   },
 };
 
-/** A converter that answers a nested document, so the copy and the freeze reach every depth. */
+/** A converter that answers a nested document that holds the target it was passed. */
 const nested = converting((options) => ({
   items: { pattern: '^[0-9]+$', type: 'string' },
   target: options.target,
@@ -106,7 +103,7 @@ function plain() {
     .action(dispatch);
 }
 
-// Two inputs share one converter, and its answer is nested, so each node gets its own frozen copy.
+// Two inputs share one converter, so each node holds the answer of its own call.
 function shared() {
   return new Application('shared')
     .option('first', { type: 'string', validate: nested.schema })
@@ -162,24 +159,6 @@ if (mode === 'run') {
   const code = await build().run({ host: { argv: [], release: { build: 'distributed' } } });
   const ran = nested.calls.length - before - inspected;
   process.stdout.write(`${encode({ code, inspected, options: nested.calls[0], ran })}\n`);
-} else if (mode === 'copies') {
-  const graph = build().inspect();
-  const [first, second] = graph.root.options;
-  let rejected = false;
-  try {
-    first.schema.items.type = 'number';
-  } catch (error) {
-    rejected = error instanceof TypeError;
-  }
-  process.stdout.write(
-    `${encode({
-      distinct: first.schema !== second.schema,
-      equal: JSON.stringify(first.schema) === JSON.stringify(second.schema),
-      libraryFrozen: nested.answers.some((answer) => Object.isFrozen(answer)),
-      nestedFrozen: Object.isFrozen(first.schema.items),
-      rejected,
-    })}\n`,
-  );
 } else if (mode === 'distributed') {
   await build().run({ host: { argv: [], release: { build: 'distributed' } } });
 } else {

@@ -256,20 +256,6 @@ test('a view name the record does not hold is a defect under the view selection 
   );
 });
 
-test('a selection that is not a string is an internal error naming the plugin', () => {
-  const result = run('select', ['count'], { LOOM_FIXTURE_VIEW_FIRST: 'not-a-string' });
-  expect(result.status).toBe(1);
-  expect(result.stderr).toBe(generic);
-  expect(
-    run('select', ['count'], {
-      FIXTURE_BUILD: 'development',
-      LOOM_FIXTURE_VIEW_FIRST: 'not-a-string',
-    }).stderr,
-  ).toContain(
-    stated('Plugin "@fixture/first" selected a view that is not a string on Command "count".'),
-  );
-});
-
 test('a selection on a Command that declares no result is an internal error naming the plugin', () => {
   const result = run('select', ['get', 'a.b'], { LOOM_FIXTURE_VIEW_FIRST: 'json' });
   expect(result.status).toBe(1);
@@ -281,20 +267,6 @@ test('a selection on a Command that declares no result is an internal error nami
     stated(
       'Plugin "@fixture/first" selected view "json" on Command "get", which declares no result.',
     ),
-  );
-});
-
-test('the no-result sentence wins when the selection is not a string either', () => {
-  const result = run('select', ['get', 'a.b'], { LOOM_FIXTURE_VIEW_FIRST: 'not-a-string' });
-  expect(result.status).toBe(1);
-  expect(result.stderr).toBe(generic);
-  expect(
-    run('select', ['get', 'a.b'], {
-      FIXTURE_BUILD: 'development',
-      LOOM_FIXTURE_VIEW_FIRST: 'not-a-string',
-    }).stderr,
-  ).toContain(
-    stated('Plugin "@fixture/first" selected view "7" on Command "get", which declares no result.'),
   );
 });
 

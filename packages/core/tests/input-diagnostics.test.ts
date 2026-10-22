@@ -161,12 +161,6 @@ const converterThrows: RuleParts = {
 
 /** The faults run() reports from a development build, before any token is read. */
 const reportedCases: Record<string, RuleParts> = {
-  'converter-getter': {
-    correction: converterCorrection,
-    rule: 'schema-converter-failed',
-    sentence:
-      'Option "limit" validator\'s JSON Schema converter failed for target "draft-2020-12": getter boom.',
-  },
   'converter-list': {
     correction: converterCorrection,
     rule: 'schema-converter-failed',
@@ -252,22 +246,6 @@ test('a distributed build reads a failing converter as no published schema', () 
   });
   expect(thrown('converter-throws-distributed', 'inspect')).toBe('{"schema":null}\n');
 });
-
-test.each(['converter-getter-distributed'])(
-  'a distributed build reads a converter whose answer throws while core reads it as no published schema (%s)',
-  (scenario) => {
-    expect(thrown(scenario, 'inspect')).toBe('{"schema":null}\n');
-    expect(invoke(fixture, [scenario])).toEqual({ status: 0, stderr: '', stdout: '' });
-  },
-);
-
-test.each(['converter-cyclic', 'converter-cyclic-distributed'])(
-  'a converter answer that holds itself publishes a frozen copy holding the same cycle (%s)',
-  (scenario) => {
-    expect(thrown(scenario, 'cycle')).toBe('{"cycle":true,"frozen":true,"type":"string"}\n');
-    expect(invoke(fixture, [scenario])).toEqual({ status: 0, stderr: '', stdout: '' });
-  },
-);
 
 test("a converter fault keeps the converter's thrown value as its cause", () => {
   expect(thrown('converter-throws', 'cause')).toBe(

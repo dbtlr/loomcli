@@ -4,7 +4,7 @@ description: "The facts core captures from the host for each run, how a caller o
 
 # Host
 
-`run({ host: partialHost })` overrides selected host fields. Omitted fields use process capture at invocation entry, before graph build, except that terminal width and height are read live. `run({ signal })` supplies a caller-owned `AbortSignal` that cancels the run, as [Signals and cancellation](signals.md) describes; it is the path for an embedding host or a test, and it composes with an installed signals owner. A `signal` slot holding a value that is not an `AbortSignal` is a defect reported before the graph is built, under `@loomcli/core/run-options`, whose sentence is `run() received a signal that is not an AbortSignal.` and whose correction is `Supply the signal of an AbortController.`, rendered by build under [Development builds](release-facts.md#development-builds), and the run returns 1.
+`run({ host: partialHost })` overrides selected host fields. Omitted fields use process capture at invocation entry, before graph build, except that terminal width and height are read live. `run({ signal })` supplies a caller-owned `AbortSignal` that cancels the run, as [Signals and cancellation](signals.md) describes; it is the path for an embedding host or a test, and it composes with an installed signals owner.
 
 | Field              | Value                                                         |
 | ------------------ | ------------------------------------------------------------- |

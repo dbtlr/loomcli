@@ -45,20 +45,6 @@ const throwing = converting(() => {
 
 const listing = converting(() => ['string']);
 
-/** A converter whose answer throws while core reads its keys. */
-const getterThrowing = converting(() => ({
-  get type() {
-    throw new Error('getter boom');
-  },
-}));
-
-/** A converter whose answer holds itself, which the graph copies with the same cycle. */
-const cyclic = converting(() => {
-  const schema = { type: 'string' };
-  schema.self = schema;
-  return schema;
-});
-
 /** A validator that throws on every value it receives. */
 const broken = {
   '~standard': {
@@ -86,14 +72,6 @@ const probe = (build) =>
   build === 'distributed'
     ? { description: 'Probe.', plugins: [judging] }
     : { description: 'Probe.' };
-
-/** An application in one build whose `get` Command declares one option validated by `validate`. */
-const validated = (build, validate) =>
-  new Application('probe', probe(build)).command(
-    new Command('get', { description: 'Probe.' })
-      .option('limit', { description: 'Limit.', type: 'string', validate })
-      .action(act),
-  );
 
 /** A plugin that declares the options given, and nothing else. */
 const optionsPlugin = (identity, options) => plugin(identity, { options });
@@ -182,10 +160,6 @@ const scenarios = {
 
 /** Applications whose fault waits for build, which run() reports in a development build. */
 const reported = {
-  'converter-cyclic': () => validated('development', cyclic),
-  'converter-cyclic-distributed': () => validated('distributed', cyclic),
-  'converter-getter': () => validated('development', getterThrowing),
-  'converter-getter-distributed': () => validated('distributed', getterThrowing),
   'converter-list': () =>
     new Application('probe', { description: 'Probe.' }).command(
       new Command('get', { description: 'Probe.' })
@@ -300,14 +274,6 @@ if (scenario in reported) {
     } catch (error) {
       process.stdout.write(`${error.message}\n`);
     }
-  } else if (mode === 'cycle') {
-    const graph = await graphOf(app);
-    const [child] = graph.root.children;
-    const { schema } = child.options[0];
-    const cycle = schema.self === schema;
-    process.stdout.write(
-      `${JSON.stringify({ cycle, frozen: Object.isFrozen(schema), type: schema.type })}\n`,
-    );
   } else if (mode === 'cause') {
     try {
       app.inspect();

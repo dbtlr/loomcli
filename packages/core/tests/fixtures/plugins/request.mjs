@@ -91,9 +91,7 @@ const total = { render: (all) => `${all.length} rows\n` };
 
 /** The view one selector assigns, read from its own environment name. */
 function assigned(key) {
-  const value = process.env[`LOOM_FIXTURE_VIEW_${key.toUpperCase()}`];
-  // A selection that is not a string has no spelling in the environment, so one word stands for it.
-  return value === 'not-a-string' ? 7 : value;
+  return process.env[`LOOM_FIXTURE_VIEW_${key.toUpperCase()}`];
 }
 
 /** A middleware that assigns the view its environment names, before or after it continues. */

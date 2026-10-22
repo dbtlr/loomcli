@@ -102,10 +102,6 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Invalid release facts.** The build bakes the release facts into \_\_LOOM\_RELEASE\_\_: a build of source, development, or distributed, and an optional release group with a semantic version, a repository as owner/name, and an optional asset name. A malformed value leaves the build unknown, so core shows the author this diagnostic in every build.
 
-### @loomcli/core/invoke-options
-
-**Invalid invoke options.** invoke() reads its path, values, and options before it builds the graph. A caller that runs a Command by name, such as an agent protocol or a test, passes them, and a value of the wrong kind leaves the call nothing to act on.
-
 ### @loomcli/core/missing-input-name
 
 **Unknown missing input.** A missing input names a local option of the routed Command.
@@ -153,10 +149,6 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 ### @loomcli/core/rule-identity
 
 **Invalid rule identity.** A rule's identity names the package that declares it and the rule inside it, so tooling keys on it and two packages never share one. It is an identity, a package name and any kebab-case subpath segments that name the part of the package that owns the rule, then a kebab-case rule name, joined by /.
-
-### @loomcli/core/run-options
-
-**Invalid run options.** run() reads its options before it builds the graph. A caller that embeds the application, such as a test, passes them, and a value of the wrong kind leaves the run nothing to act on.
 
 ### @loomcli/core/schema-converter-failed
 

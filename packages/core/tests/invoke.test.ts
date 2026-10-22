@@ -32,8 +32,8 @@
  *   development one, while the handler receives the `InternalError`. A broken failure view resolves
  *   `failed` with exit 1, and a handler that throws makes `invoke` reject with the same value.
  * - The view. `view: 'json'` renders the JSON view, and a middleware's later assignment wins over
- *   it. An unknown name, a non-string, and a view on a Command with no result each report their
- *   `invoke()` sentence with exit 1.
+ *   it. An unknown name and a view on a Command with no result each report their `invoke()`
+ *   sentence with exit 1.
  * - Process isolation. A parent run with a sentinel host whose streams record every write calls
  *   `invoke` from its action, with a signals owner installed. The process's listener counts,
  *   `process.exitCode`, and real stdout and stderr are unchanged, and the parent's own streams
@@ -45,7 +45,6 @@
  *   interleaving, and an invoked action that calls `invoke` resolves its inner outcome.
  * - The graph. A fixture hook counts its calls: an action's `invoke` runs no hook again, and each
  *   `app.invoke` runs every `onCommandAttach` and `onGraphBuilt` once.
- * - Call shape. Each malformed slot reports `@loomcli/core/invoke-options` with exit 1.
  * - Progress. An `onProgress` observer receives a fixture action's progress events in order, as the
  *   progress events acceptance plan in packages/core/tests/progress-events.test.ts states, and
  *   `messages` holds the progress line's start and end lines and no frame. An action's `invoke`
@@ -291,6 +290,9 @@ test('a path ending at a group holds the missing subcommand, and a hidden Comman
   expect(hidden).toEqual({ messages: '', output: 'purged\n', status: 'completed' });
 });
 
+/** The form of a defect in a distributed build, which names no reason. */
+const genericForm = { code: 'internal', exitCode: 1, hints: [], message: 'Something went wrong.' };
+
 test('a fault reported after a primary outcome that succeeded is the failure the handler receives', () => {
   const { lateFault }: Failures = JSON.parse(report('failures'));
   expect(lateFault).toEqual({
@@ -336,7 +338,7 @@ test('a handler that throws makes invoke reject with the same value', () => {
 });
 
 /** The fixture's view report. */
-type Views = Record<'assigned' | 'json' | 'noResult' | 'notString' | 'unknown', Outcome>;
+type Views = Record<'assigned' | 'json' | 'noResult' | 'unknown', Outcome>;
 
 test('view selects the starting view, and a middleware assignment after it wins', () => {
   const { assigned, json }: Views = JSON.parse(report('view'));
@@ -346,7 +348,6 @@ test('view selects the starting view, and a middleware assignment after it wins'
 
 test.each([
   ['unknown', 'invoke() selected view "yaml", which Command "count" does not name.'],
-  ['notString', 'invoke() selected a view that is not a string on Command "count".'],
   ['noResult', 'invoke() selected view "json" on Command "get", which declares no result.'],
 ] as const)('a %s view is the view-selection defect named for invoke()', (key, sentence) => {
   const views: Views = JSON.parse(report('view', 'development'));
@@ -453,93 +454,6 @@ test("the failure view and the onFailure hook read invokedBy as 'argv' under run
     named: 'Stopped. (name)\n',
     seen: [{ hook: 'argv' }, { hook: 'name' }],
   });
-});
-
-/** The fixture's call-shape report, keyed by the slot each call malforms. */
-type Shapes = Record<string, Outcome & { failure: { sentence: string } }>;
-
-test.each([
-  ['path', 'invoke() received a path that is not an array of Command names.'],
-  ['values', 'invoke() received values that are not an object.'],
-  [
-    'valuesKey',
-    'invoke() received values that hold a key other than args, options, and passthrough.',
-  ],
-  ['args', 'invoke() received args that are not an object.'],
-  ['options', 'invoke() received options that are not an object.'],
-  ['passthrough', 'invoke() received a passthrough that is not an array of strings.'],
-  ['signal', 'invoke() received a signal that is not an AbortSignal.'],
-  ['failure', 'invoke() received a failure handler that is not a function.'],
-  ['onProgress', 'invoke() received an onProgress that is not a function.'],
-])(
-  'a malformed %s reports invoke-options with exit 1, rendered by the build the call names',
-  (slot, sentence) => {
-    const distributed: Shapes = JSON.parse(report('shape', 'distributed'));
-    const development: Shapes = JSON.parse(report('shape', 'development'));
-    expect(distributed[slot]).toMatchObject({
-      exitCode: 1,
-      failure: { sentence },
-      messages: 'probe: Something went wrong.\n',
-      status: 'failed',
-    });
-    expect(development[slot]?.messages).toMatch(
-      /^-- INVALID INVOKE OPTIONS -+ @loomcli\/core\/invoke-options\n\n/u,
-    );
-    expect(development[slot]?.messages).toContain(`\n\n${sentence}\n`);
-  },
-);
-
-test('a malformed host reports invoke-options by the baked facts, because its release facts are never read', () => {
-  const sentence =
-    'invoke() received a host that holds a field other than env, cwd, platform, readSource, and release.';
-  // The source reads { build: 'source' }, so the call that names a distributed build still shows the author.
-  for (const build of ['distributed', 'development']) {
-    const shapes: Shapes = JSON.parse(report('shape', build));
-    expect(shapes.host).toMatchObject({ exitCode: 1, failure: { sentence }, status: 'failed' });
-    expect(shapes.host?.messages).toMatch(
-      /^-- INVALID INVOKE OPTIONS -+ @loomcli\/core\/invoke-options\n\n/u,
-    );
-  }
-});
-
-/** The fixture's report of malformed calls that pass a failure handler. */
-interface HandledShapes {
-  action: Outcome;
-  args: Outcome;
-  options: Outcome;
-  received: { context: unknown; identity: string }[];
-  rejected: boolean | string;
-  signal: Outcome;
-}
-
-/** A failed outcome whose failure the fixture's handler mapped to the defect's sentence. */
-/** The form of a defect in a distributed build, which names no reason. */
-const genericForm = { code: 'internal', exitCode: 1, hints: [], message: 'Something went wrong.' };
-
-function mapped(sentence: string): Outcome {
-  return {
-    exitCode: 1,
-    failure: { mapped: sentence },
-    form: genericForm,
-    messages: 'probe: Something went wrong.\n',
-    output: '',
-    status: 'failed',
-  };
-}
-
-test("a malformed slot's invoke-options defect reaches the caller's failure handler, from app.invoke and an action's invoke", () => {
-  const handled: HandledShapes = JSON.parse(report('shape-handled'));
-  expect(handled.args).toEqual(mapped('invoke() received args that are not an object.'));
-  expect(handled.options).toEqual(mapped('invoke() received options that are not an object.'));
-  expect(handled.signal).toEqual(mapped('invoke() received a signal that is not an AbortSignal.'));
-  expect(JSON.parse(handled.action.output ?? '')).toEqual(
-    mapped('invoke() received options that are not an object.'),
-  );
-  const context = { application: 'probe', exitCode: 1, form: genericForm, path: [] };
-  expect(handled.received).toEqual(
-    Array.from({ length: 4 }, () => ({ context, identity: '@loomcli/core/invoke-options' })),
-  );
-  expect(handled.rejected).toBe(true);
 });
 
 test("a value lowered by name is recorded in a middleware's spellings under the option's reported spelling", () => {

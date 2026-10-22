@@ -84,14 +84,7 @@ test('a converter that throws, on reach or on call, or returns anything but a pl
   expect(graph.root.arguments[0]).toMatchObject({ name: 'files', schema: null, validated: true });
 });
 
-test('the stored value is a frozen copy to every depth, one per input, with the target passed', () => {
-  expect(inspect('shared', 'copies')).toEqual({
-    distinct: true,
-    equal: true,
-    libraryFrozen: false,
-    nestedFrozen: true,
-    rejected: true,
-  });
+test("the stored value is the converter's answer for the target it was passed", () => {
   expect(inspect('shared').root.options[1].schema).toEqual({
     items: { pattern: '^[0-9]+$', type: 'string' },
     target: 'draft-2020-12',

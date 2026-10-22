@@ -239,7 +239,7 @@ const app = new Application('example', {
 await app.run({ rendering: { color: 'never' } });
 ```
 
-`color`, `modifiers`, and `hyperlinks` each accept `'auto'`, `'always'`, or `'never'`. Their default is `'auto'`. `terminalControls` accepts `'strip'` or `'preserve'`, defaulting to `'strip'`. `background` accepts `'auto'`, `'dark'`, or `'light'`, defaulting to `'auto'`: `'dark'` and `'light'` state the run's [background](background.md) over every source but the operator's background choice, except in an invocation by name, which settles nothing and reads `undefined`, and `'auto'` leaves it to the sources after the author's. Undefined fields act as omitted fields. Invalid values are declaration errors and name the field and accepted values.
+`color`, `modifiers`, and `hyperlinks` each accept `'auto'`, `'always'`, or `'never'`. Their default is `'auto'`. `terminalControls` accepts `'strip'` or `'preserve'`, defaulting to `'strip'`. `background` accepts `'auto'`, `'dark'`, or `'light'`, defaulting to `'auto'`: `'dark'` and `'light'` state the run's [background](background.md) over every source but the operator's background choice, except in an invocation by name, which settles nothing and reads `undefined`, and `'auto'` leaves it to the sources after the author's. Undefined fields act as omitted fields.
 
 There is one policy for both streams. No field accepts a stdout/stderr map. Core evaluates automatic capabilities separately for each destination. Redirecting stdout therefore does not turn off capable stderr output.
 

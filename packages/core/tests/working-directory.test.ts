@@ -80,15 +80,6 @@ test('app.invoke resolves failed with the failure, its form, and the line, and r
   });
 });
 
-test('a malformed call is reported from a working directory that cannot be read, which is read once', () => {
-  expect(report('malformed')).toEqual({
-    calls: [],
-    form: { code: 'internal', exitCode: 1, hints: [], message: 'Something went wrong.' },
-    reads: 1,
-    status: 0,
-  });
-});
-
 test('a host.cwd override replaces the capture at both doors, so neither reads the directory', () => {
   expect(report('overrides')).toEqual({
     calls: ['action:where', 'action:where'],

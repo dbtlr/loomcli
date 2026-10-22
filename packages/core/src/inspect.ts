@@ -10,7 +10,7 @@ import { schemaConverterFailed } from './input-rules.js';
 import type { OptionGroup } from './option-groups.js';
 import { distinctAliases, reportedOf, spellingsOf } from './options.js';
 import type { OptionSpelling } from './options.js';
-import { isPlainObject, snapshotRecord } from './plain.js';
+import { isPlainObject } from './plain.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
 import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
@@ -257,7 +257,7 @@ function converterFault(
 }
 
 /**
- * The input-side schema a declaration's validator publishes, copied into a frozen snapshot, or
+ * The input-side schema a declaration's validator publishes, as its converter returned it, or
  * `null` where the graph holds no published shape: no validator, a validator with
  * no converter, or a converter that throws or returns anything but a plain object. A build that
  * checks converters reports that last case as a declaration fault first.
@@ -271,15 +271,13 @@ function inputSchema(input: InputDeclaration, check: SchemaCheck): InputSchema {
   if (schema === undefined) {
     return null;
   }
-  let copied: Readonly<Record<string, unknown>> | undefined = undefined;
-  // The converter is the library's code from the first property read to the last key of its answer.
-  // A throw on reaching it, on calling it, or on reading what it answered is one failure.
+  let published: unknown = undefined;
+  // The converter is the library's code, so a throw on reaching it or on calling it is one failure.
   try {
     if (!publishesSchema(schema)) {
       return null;
     }
-    const published: unknown = schema['~standard'].jsonSchema.input(schemaTarget);
-    copied = isPlainObject(published) ? snapshotRecord(published) : undefined;
+    published = schema['~standard'].jsonSchema.input(schemaTarget);
   } catch (error) {
     if (check.fault) {
       const reason = asSentence(reasonOf(error));
@@ -288,8 +286,8 @@ function inputSchema(input: InputDeclaration, check: SchemaCheck): InputSchema {
     }
     return null;
   }
-  if (copied !== undefined) {
-    return copied;
+  if (isPlainObject(published)) {
+    return published;
   }
   if (check.fault) {
     const failure = `answered target "${schemaTarget.target}" with a value that is not a plain object.`;

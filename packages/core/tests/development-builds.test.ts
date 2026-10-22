@@ -313,12 +313,6 @@ test.each([
     'Plugin "@acme/twice" called next() twice.',
   ],
   [
-    'not-a-signal',
-    'INVALID RUN OPTIONS',
-    '@loomcli/core/run-options',
-    'run() received a signal that is not an AbortSignal.',
-  ],
-  [
     'foreign-graph',
     'GRAPH NOT FROM INSPECT()',
     '@loomcli/core/foreign-graph',
