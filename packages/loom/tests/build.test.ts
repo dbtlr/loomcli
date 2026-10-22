@@ -7,7 +7,8 @@
  * - Targets. `--target node` and `--target bun` each write a bundle that reads `{ build:
  *   'distributed' }`. The host's compile target, by default and by name, writes `dist/<name>`, a
  *   binary that runs with no runtime installed. `--target browser` and an unknown target each exit
- *   with an error that names the targets.
+ *   with an error that names the targets. With no `--target`, a host Bun names no target for exits 1
+ *   and says to pass one.
  * - The application module. A `--target node` build of a package that holds `src/application.ts`
  *   writes `dist/application.js`, which a caller imports to run the Application on the facts the
  *   build baked, and a package without it writes the entry alone. `--application` naming a module
@@ -56,6 +57,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
+import { Writable } from 'node:stream';
 import { setTimeout as after } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
@@ -441,6 +443,26 @@ test.each([
     expect(result.stderr).toContain('node, bun, or a Bun compile target');
     expect(result.stderr).toContain('for linux or darwin on x64 or arm64');
   }
+  expect(existsSync(join(root, 'dist'))).toBe(false);
+});
+
+test('a build with no --target on a host Bun names no target for fails and says to pass one', async () => {
+  const root = probePackage({ bin: { probe: 'dist/main.js' } });
+  const { loom: toolchain } = await import('../src/application.js');
+  const written: string[] = [];
+  const sink = new Writable({
+    write(chunk, _encoding, done) {
+      written.push(String(chunk));
+      done();
+    },
+  });
+  const status = await toolchain.run({
+    host: { argv: ['build'], cwd: root, platform: 'win32', stderr: sink, stdout: sink },
+  });
+  expect(status).toBe(1);
+  expect(written.join('')).toContain(
+    `Bun compiles for no target on this host (bun-win32-${process.arch}), so pass --target.`,
+  );
   expect(existsSync(join(root, 'dist'))).toBe(false);
 });
 
