@@ -114,7 +114,7 @@ import type {
   ValidateOmittedConstraint,
   StdinConfig,
   StdinContext,
-  UnlistedConstraint,
+  ArgumentKeyConstraint,
   Unmarked,
 } from './types.js';
 import {
@@ -2129,7 +2129,7 @@ export class CommandBuilder<
     config: Config &
       NameConstraint<Name> &
       NoInfer<DefaultConstraint<Config>> &
-      NoInfer<UnlistedConstraint<Config>> &
+      NoInfer<ArgumentKeyConstraint<Config>> &
       NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
   ): Command<
