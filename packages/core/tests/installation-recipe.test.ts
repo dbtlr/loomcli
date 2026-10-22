@@ -56,9 +56,7 @@ function recordOf(box: { home: string; state: string }) {
     : join(box.state, 'notes', 'installation');
 }
 
-const posix = process.platform !== 'win32';
-
-test.skipIf(!posix)('the recipe writes install.json with the pinned bytes', () => {
+test('the recipe writes install.json with the pinned bytes', () => {
   const box = sandbox();
   const result = install(box.binary, { HOME: box.home, XDG_STATE_HOME: box.state });
   expect(result).toEqual({ status: 0, stderr: '', stdout: '' });
@@ -67,14 +65,14 @@ test.skipIf(!posix)('the recipe writes install.json with the pinned bytes', () =
   );
 });
 
-test.skipIf(!posix)('the recipe leaves no staging file beside install.json', () => {
+test('the recipe leaves no staging file beside install.json', () => {
   const box = sandbox();
   install(box.binary, { HOME: box.home, XDG_STATE_HOME: box.state });
   install(box.binary, { HOME: box.home, XDG_STATE_HOME: box.state });
   expect(readdirSync(recordOf(box))).toEqual(['install.json']);
 });
 
-test.skipIf(!posix).each([
+test.each([
   ['a quote', 'no"tes'],
   ['a backslash', String.raw`no\tes`],
   ['a newline', 'no\ntes'],
@@ -93,7 +91,7 @@ test.skipIf(!posix).each([
   expect(existsSync(join(box.home, 'Library'))).toBe(false);
 });
 
-test.skipIf(!posix)('a relative target path exits 1 and writes nothing', () => {
+test('a relative target path exits 1 and writes nothing', () => {
   const box = sandbox();
   const result = install('bin/notes', { HOME: box.home, XDG_STATE_HOME: box.state });
   expect(result).toEqual({
@@ -104,7 +102,7 @@ test.skipIf(!posix)('a relative target path exits 1 and writes nothing', () => {
   expect(existsSync(join(box.state, 'notes'))).toBe(false);
 });
 
-test.skipIf(!posix)('a relative HOME the directory needs exits 1 and writes nothing', () => {
+test('a relative HOME the directory needs exits 1 and writes nothing', () => {
   const box = sandbox();
   // XDG_STATE_HOME is unset, so the directory needs HOME on every platform.
   const result = install(box.binary, { HOME: 'home' });

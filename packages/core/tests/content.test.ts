@@ -48,134 +48,118 @@ test.each(['header-break', 'header-destroy'])(
   },
 );
 
-test
-  .skipIf(process.platform === 'win32')
-  .each(['/dev/stdin', '/dev/fd/0', ...(process.platform === 'linux' ? ['/proc/self/fd/0'] : [])])(
-  'a named content path cannot read process stdin through %s',
-  (path) => {
+test.each([
+  '/dev/stdin',
+  '/dev/fd/0',
+  ...(process.platform === 'linux' ? ['/proc/self/fd/0'] : []),
+])('a named content path cannot read process stdin through %s', (path) => {
+  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['named-pipe', path]);
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe('');
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    outcome: {
+      exitCode: 2,
+      failure: {
+        name: 'InputError',
+        problems: [
+          { issues: [{ message: 'Expected a readable file that exists.' }], reason: 'invalid' },
+        ],
+      },
+      output: '',
+      status: 'failed',
+    },
+    remaining: 'transport sentinel\n',
+  });
+});
+
+test('a named content path cannot read process stdin through a symlink', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'loom-content-stdin-link-'));
+  try {
+    const path = join(directory, 'input');
+    await symlink('/dev/stdin', path);
     const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['named-pipe', path]);
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(JSON.parse(result.stdout)).toMatchObject({
-      outcome: {
-        exitCode: 2,
-        failure: {
-          name: 'InputError',
-          problems: [
-            { issues: [{ message: 'Expected a readable file that exists.' }], reason: 'invalid' },
-          ],
-        },
-        output: '',
-        status: 'failed',
-      },
+      outcome: { exitCode: 2, output: '', status: 'failed' },
       remaining: 'transport sentinel\n',
     });
-  },
-);
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
 
-test.skipIf(process.platform === 'win32')(
-  'a named content path cannot read process stdin through a symlink',
-  async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'loom-content-stdin-link-'));
-    try {
-      const path = join(directory, 'input');
-      await symlink('/dev/stdin', path);
-      const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['named-pipe', path]);
-      expect(result.status).toBe(0);
-      expect(result.stderr).toBe('');
-      expect(JSON.parse(result.stdout)).toMatchObject({
-        outcome: { exitCode: 2, output: '', status: 'failed' },
-        remaining: 'transport sentinel\n',
-      });
-    } finally {
-      await rm(directory, { recursive: true });
-    }
-  },
-);
-
-test.skipIf(process.platform === 'win32')(
-  'a named regular file opens independently when the same file is redirected to stdin',
-  async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'loom-content-redirected-'));
-    try {
-      const path = join(directory, 'input.txt');
-      await writeFile(path, 'source sentinel\n');
-      const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [
-        'named-redirected',
-        path,
-      ]);
-      expect(result.status).toBe(0);
-      expect(result.stderr).toBe('');
-      const { outcome, remaining } = JSON.parse(result.stdout);
-      expect(outcome.status).toBe('completed');
-      expect(JSON.parse(outcome.output)).toEqual({
-        kind: 'file',
-        name: path,
-        path,
-        text: 'source sentinel\n',
-      });
-      expect(remaining).toBe('source sentinel\n');
-    } finally {
-      await rm(directory, { recursive: true });
-    }
-  },
-);
-
-test.skipIf(process.platform === 'win32')(
-  'a named content input accepts an unrelated FIFO',
-  async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'loom-content-fifo-'));
-    try {
-      const path = join(directory, 'input');
-      const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['named-fifo', path]);
-      expect(result.status).toBe(0);
-      expect(result.stderr).toBe('');
-      const { outcome } = JSON.parse(result.stdout);
-      expect(outcome.status).toBe('completed');
-      expect(JSON.parse(outcome.output)).toEqual({
-        kind: 'file',
-        name: path,
-        path,
-        text: 'source sentinel\n',
-      });
-    } finally {
-      await rm(directory, { recursive: true });
-    }
-  },
-);
-
-test.skipIf(process.platform === 'win32')(
-  'a named content input accepts an unrelated device',
-  () => {
+test('a named regular file opens independently when the same file is redirected to stdin', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'loom-content-redirected-'));
+  try {
+    const path = join(directory, 'input.txt');
+    await writeFile(path, 'source sentinel\n');
     const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [
-      'named-pipe',
-      '/dev/null',
+      'named-redirected',
+      path,
     ]);
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     const { outcome, remaining } = JSON.parse(result.stdout);
     expect(outcome.status).toBe('completed');
-    expect(JSON.parse(outcome.output).text).toBe('');
-    expect(remaining).toBe('transport sentinel\n');
-  },
-);
+    expect(JSON.parse(outcome.output)).toEqual({
+      kind: 'file',
+      name: path,
+      path,
+      text: 'source sentinel\n',
+    });
+    expect(remaining).toBe('source sentinel\n');
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
 
-test.skipIf(process.platform === 'win32')(
-  'closed process stdin leaves unrelated named sources usable',
-  () => {
-    const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [
-      'file-closed-stdin',
-      '/dev/null',
-    ]);
+test('a named content input accepts an unrelated FIFO', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'loom-content-fifo-'));
+  try {
+    const path = join(directory, 'input');
+    const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['named-fifo', path]);
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
-    const outcome = JSON.parse(result.stdout);
+    const { outcome } = JSON.parse(result.stdout);
     expect(outcome.status).toBe('completed');
-    expect(JSON.parse(outcome.output).text).toBe('');
-  },
-);
+    expect(JSON.parse(outcome.output)).toEqual({
+      kind: 'file',
+      name: path,
+      path,
+      text: 'source sentinel\n',
+    });
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
 
-test.skipIf(process.platform === 'win32')('argv content paths can still name process stdin', () => {
+test('a named content input accepts an unrelated device', () => {
+  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [
+    'named-pipe',
+    '/dev/null',
+  ]);
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe('');
+  const { outcome, remaining } = JSON.parse(result.stdout);
+  expect(outcome.status).toBe('completed');
+  expect(JSON.parse(outcome.output).text).toBe('');
+  expect(remaining).toBe('transport sentinel\n');
+});
+
+test('closed process stdin leaves unrelated named sources usable', () => {
+  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [
+    'file-closed-stdin',
+    '/dev/null',
+  ]);
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe('');
+  const outcome = JSON.parse(result.stdout);
+  expect(outcome.status).toBe('completed');
+  expect(JSON.parse(outcome.output).text).toBe('');
+});
+
+test('argv content paths can still name process stdin', () => {
   const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [
     'argv-pipe',
     '/dev/stdin',
@@ -183,7 +167,7 @@ test.skipIf(process.platform === 'win32')('argv content paths can still name pro
   expect(result).toEqual({ status: 0, stderr: '', stdout: 'transport sentinel\n\n' });
 });
 
-test.skipIf(process.platform === 'win32')('argv content paths accept process substitution', () => {
+test('argv content paths accept process substitution', () => {
   const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['argv-substitution']);
   expect(result).toEqual({ status: 0, stderr: '', stdout: 'source sentinel\n\n' });
 });
@@ -314,26 +298,23 @@ test('content preparation leaves an open stdin unread when another input fails',
   expect(result.stdout).toBe('{"reads":0}');
 });
 
-test.skipIf(process.platform === 'win32')(
-  'content reads .. after following a directory symlink',
-  async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'loom-content-link-'));
-    try {
-      await mkdir(join(directory, 'real', 'child'), { recursive: true });
-      await writeFile(join(directory, 'real', 'target.txt'), 'followed');
-      await writeFile(join(directory, 'target.txt'), 'lexical');
-      await symlink(join(directory, 'real', 'child'), join(directory, 'link'));
-      const result = invoke(
-        new URL('fixtures/content.mjs', import.meta.url),
-        ['scalar', '--file', 'link/../target.txt'],
-        { cwd: directory },
-      );
-      expect(result).toEqual({ status: 0, stderr: '', stdout: 'followed\n' });
-    } finally {
-      await rm(directory, { recursive: true });
-    }
-  },
-);
+test('content reads .. after following a directory symlink', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'loom-content-link-'));
+  try {
+    await mkdir(join(directory, 'real', 'child'), { recursive: true });
+    await writeFile(join(directory, 'real', 'target.txt'), 'followed');
+    await writeFile(join(directory, 'target.txt'), 'lexical');
+    await symlink(join(directory, 'real', 'child'), join(directory, 'link'));
+    const result = invoke(
+      new URL('fixtures/content.mjs', import.meta.url),
+      ['scalar', '--file', 'link/../target.txt'],
+      { cwd: directory },
+    );
+    expect(result).toEqual({ status: 0, stderr: '', stdout: 'followed\n' });
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+});
 
 test('a trailing slash cannot turn a file operand into another source', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'loom-content-slash-'));

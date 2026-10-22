@@ -861,112 +861,90 @@ const lastWrite = `Wrote ${skillPath}.`;
 /** The key presses that move a select's highlight from its first choice to its second, and pick it. */
 const secondChoice = String.raw`\x1b[B\r`;
 
-test.skipIf(process.platform === 'win32')(
-  'at a terminal init asks for the linter and the test runner, and writes what the answers pick',
-  async () => {
-    const directory = emptyNotes();
-    const tty = atTerminal(directory);
-    try {
-      await tty.expect('Which linter should the scaffold use?');
-      tty.send(secondChoice);
-      await tty.expect('Which test runner should the scaffold use?');
-      tty.send(secondChoice);
-      await tty.expect(lastWrite);
-    } finally {
-      await tty.close();
-    }
-    expect(read(directory, 'eslint.config.js')).toBe(eslintConfig);
-    expect(JSON.parse(read(directory, 'package.json')).scripts.check).toBe(
-      'tsc --noEmit && eslint . && vitest run',
-    );
-  },
-);
+test('at a terminal init asks for the linter and the test runner, and writes what the answers pick', async () => {
+  const directory = emptyNotes();
+  const tty = atTerminal(directory);
+  try {
+    await tty.expect('Which linter should the scaffold use?');
+    tty.send(secondChoice);
+    await tty.expect('Which test runner should the scaffold use?');
+    tty.send(secondChoice);
+    await tty.expect(lastWrite);
+  } finally {
+    await tty.close();
+  }
+  expect(read(directory, 'eslint.config.js')).toBe(eslintConfig);
+  expect(JSON.parse(read(directory, 'package.json')).scripts.check).toBe(
+    'tsc --noEmit && eslint . && vitest run',
+  );
+});
 
-test.skipIf(process.platform === 'win32')(
-  'at a terminal a package with an ESLint configuration is asked for the test runner alone',
-  async () => {
-    const root = ownPackage({ 'eslint.config.js': 'export default [];\n' });
-    const tty = atTerminal(root);
-    try {
-      const asked = await tty.expect('Which test runner should the scaffold use?');
-      expect(asked).not.toContain('Which linter');
-      tty.send(String.raw`\r`);
-      await tty.expect(lastWrite);
-    } finally {
-      await tty.close();
-    }
-    expect(JSON.parse(read(root, 'package.json')).scripts.check).toBe(
-      'tsc --noEmit && eslint . && bun test',
-    );
-  },
-);
+test('at a terminal a package with an ESLint configuration is asked for the test runner alone', async () => {
+  const root = ownPackage({ 'eslint.config.js': 'export default [];\n' });
+  const tty = atTerminal(root);
+  try {
+    const asked = await tty.expect('Which test runner should the scaffold use?');
+    expect(asked).not.toContain('Which linter');
+    tty.send(String.raw`\r`);
+    await tty.expect(lastWrite);
+  } finally {
+    await tty.close();
+  }
+  expect(JSON.parse(read(root, 'package.json')).scripts.check).toBe(
+    'tsc --noEmit && eslint . && bun test',
+  );
+});
 
-test.skipIf(process.platform === 'win32')(
-  'at a terminal supplied flags, --no-input, and an init that writes nothing they decide ask no question',
-  async () => {
-    for (const { args, last } of [
-      { args: ['--linter', 'eslint', '--test-runner', 'vitest'], last: lastWrite },
-      { args: ['--no-input'], last: lastWrite },
-      { args: ['--only', 'changes'], last: `Wrote ${guidePath}.` },
-    ]) {
-      const root = ownPackage();
-      const tty = atTerminal(root, args);
-      try {
-        await expect(tty.expect(last)).resolves.not.toContain('Which');
-      } finally {
-        await tty.close();
-      }
-    }
-  },
-);
-
-test.skipIf(process.platform === 'win32')(
-  'at a terminal a re-run of a Bun scaffold asks no question',
-  async () => {
-    const directory = emptyNotes();
-    expect(loom(directory, ['init']).status).toBe(0);
-    const tty = atTerminal(directory);
-    try {
-      await expect(tty.expect('warning: install.sh was not written')).resolves.not.toContain(
-        'Which',
-      );
-    } finally {
-      await tty.close();
-    }
-    expect(JSON.parse(read(directory, 'package.json')).devDependencies).not.toHaveProperty(
-      'vitest',
-    );
-  },
-);
-
-test.skipIf(process.platform === 'win32')(
-  'at a terminal the runner question is not asked when the test file exists and no other piece depends on the runner',
-  async () => {
-    const root = ownPackage({ [testPath]: 'export {};\n' });
-    const tty = atTerminal(root, ['--only', 'test', '--only', 'changes']);
-    try {
-      await expect(tty.expect(`Wrote ${guidePath}.`)).resolves.not.toContain('Which');
-    } finally {
-      await tty.close();
-    }
-  },
-);
-
-test.skipIf(process.platform === 'win32')(
-  'at a terminal the runner question is asked when the test file is missing',
-  async () => {
+test('at a terminal supplied flags, --no-input, and an init that writes nothing they decide ask no question', async () => {
+  for (const { args, last } of [
+    { args: ['--linter', 'eslint', '--test-runner', 'vitest'], last: lastWrite },
+    { args: ['--no-input'], last: lastWrite },
+    { args: ['--only', 'changes'], last: `Wrote ${guidePath}.` },
+  ]) {
     const root = ownPackage();
-    const tty = atTerminal(root, ['--only', 'test']);
+    const tty = atTerminal(root, args);
     try {
-      await tty.expect('Which test runner should the scaffold use?');
-      tty.send(secondChoice);
-      await tty.expect(`Wrote ${testPath}.`);
+      await expect(tty.expect(last)).resolves.not.toContain('Which');
     } finally {
       await tty.close();
     }
-    expect(read(root, testPath)).toContain("import { test } from 'vitest';");
-  },
-);
+  }
+});
+
+test('at a terminal a re-run of a Bun scaffold asks no question', async () => {
+  const directory = emptyNotes();
+  expect(loom(directory, ['init']).status).toBe(0);
+  const tty = atTerminal(directory);
+  try {
+    await expect(tty.expect('warning: install.sh was not written')).resolves.not.toContain('Which');
+  } finally {
+    await tty.close();
+  }
+  expect(JSON.parse(read(directory, 'package.json')).devDependencies).not.toHaveProperty('vitest');
+});
+
+test('at a terminal the runner question is not asked when the test file exists and no other piece depends on the runner', async () => {
+  const root = ownPackage({ [testPath]: 'export {};\n' });
+  const tty = atTerminal(root, ['--only', 'test', '--only', 'changes']);
+  try {
+    await expect(tty.expect(`Wrote ${guidePath}.`)).resolves.not.toContain('Which');
+  } finally {
+    await tty.close();
+  }
+});
+
+test('at a terminal the runner question is asked when the test file is missing', async () => {
+  const root = ownPackage();
+  const tty = atTerminal(root, ['--only', 'test']);
+  try {
+    await tty.expect('Which test runner should the scaffold use?');
+    tty.send(secondChoice);
+    await tty.expect(`Wrote ${testPath}.`);
+  } finally {
+    await tty.close();
+  }
+  expect(read(root, testPath)).toContain("import { test } from 'vitest';");
+});
 
 test('an ESLint scaffold aliases typescript to the TypeScript 6 package and adds the compiler as @typescript/native', () => {
   const directory = emptyNotes();

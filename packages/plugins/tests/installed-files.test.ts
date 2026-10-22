@@ -451,22 +451,19 @@ test('an install reads the run signal before it writes and throws its reason', (
   expect(existsSync(box.directory)).toBe(false);
 });
 
-test.skipIf(process.platform === 'win32')(
-  'an install over a FIFO refuses, writes nothing, and reports the path',
-  () => {
-    const box = sandbox();
-    mkdirSync(box.directory);
-    expect(spawnSync('mkfifo', [box.second]).status).toBe(0);
-    expect(
-      installed(box, [
-        { content: 'new', path: box.first },
-        { content: 'new', path: box.second },
-      ]),
-    ).toEqual({ refused: [{ path: box.second, reason: 'special' }], status: 'refused' });
-    expect(existsSync(box.first)).toBe(false);
-    expect(existsSync(box.owner)).toBe(false);
-  },
-);
+test('an install over a FIFO refuses, writes nothing, and reports the path', () => {
+  const box = sandbox();
+  mkdirSync(box.directory);
+  expect(spawnSync('mkfifo', [box.second]).status).toBe(0);
+  expect(
+    installed(box, [
+      { content: 'new', path: box.first },
+      { content: 'new', path: box.second },
+    ]),
+  ).toEqual({ refused: [{ path: box.second, reason: 'special' }], status: 'refused' });
+  expect(existsSync(box.first)).toBe(false);
+  expect(existsSync(box.owner)).toBe(false);
+});
 
 // Uninstalling
 
@@ -1790,7 +1787,7 @@ test('an uninstall of a startup file that is gone reports the line no longer hel
   expect(existsSync(box.rc)).toBe(false);
 });
 
-test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+test.skipIf(process.getuid?.() === 0)(
   'a released line is dropped from the plugin file and its startup file is neither read nor written, by an install or an uninstall',
   () => {
     const box = homeBox();

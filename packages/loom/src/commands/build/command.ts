@@ -11,7 +11,7 @@ import {
   ownerName,
   readManifest,
 } from '../../helpers/build-facts.js';
-import { acceptedTargets, hostTarget, targetOption } from '../../helpers/build-target.js';
+import { hostTarget, targetOption } from '../../helpers/build-target.js';
 import type { BuildTarget } from '../../helpers/build-target.js';
 import { build, watch } from '../../helpers/build.js';
 import { existingModule, shown } from '../../helpers/modules.js';
@@ -165,9 +165,6 @@ export const buildCommand = new Command('build', {
     type: 'boolean',
   })
   .action(async ({ host, options, out, passthrough }) => {
-    if (options.target === undefined && host.platform === 'win32') {
-      throw optionError('target', `Windows has no default target, so pass one. ${acceptedTargets}`);
-    }
     if (options.facts && options.define) {
       throw optionError('define', '--facts and --define exclude each other, so pass one of them.');
     }
@@ -193,7 +190,7 @@ export const buildCommand = new Command('build', {
       const { cwd } = host;
       const directory = packageDirectory(cwd);
       const manifest = readManifest(directory);
-      const target = options.target ?? hostTarget();
+      const target = options.target ?? hostTarget(host.platform);
       const facts = buildFacts({
         build: options.build ?? (options.watch ? 'development' : 'distributed'),
         manifest,

@@ -49,9 +49,6 @@ test.each([
   ['darwin', 'installation', ['home', 'Library', 'Application Support', 'notes', 'installation']],
   ['darwin', 'logs', ['home', 'Library', 'Logs', 'notes']],
   ['darwin', 'cache', ['home', 'Library', 'Caches', 'notes']],
-  ['win32', 'installation', ['state', 'notes', 'installation']],
-  ['win32', 'logs', ['state', 'notes']],
-  ['win32', 'cache', ['cache', 'notes']],
 ] as const)('%s gives the %s row', (platform, kind, [base, ...segments]) => {
   const env = {
     HOME: fixed.home,
@@ -107,13 +104,6 @@ test('an absolute XDG_STATE_HOME or XDG_CACHE_HOME needs no HOME for its kinds',
   });
 });
 
-test.skipIf(process.platform === 'win32')(
-  "the running process's path rules judge an absolute path, whatever the platform names",
-  () => {
-    expect(lookup('logs', 'win32', { HOME: 'C:\\Users\\me' })).toEqual({ variable: 'HOME' });
-  },
-);
-
 test('a lookup reads no file and creates nothing', () => {
   const box = sandbox();
   const env = {
@@ -121,7 +111,7 @@ test('a lookup reads no file and creates nothing', () => {
     XDG_CACHE_HOME: box.cache,
     XDG_STATE_HOME: box.state,
   };
-  for (const platform of ['linux', 'darwin', 'win32']) {
+  for (const platform of ['linux', 'darwin']) {
     for (const kind of ['installation', 'logs', 'cache'] as const) {
       lookup(kind, platform, env);
     }

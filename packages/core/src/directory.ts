@@ -46,7 +46,7 @@ function xdgBase(kind: ApplicationDirectory): {
 /**
  * The directory an application keeps its installation record, its logs, or its cache in, resolved
  * from a run's `env` and `platform` alone. Darwin keeps it under `$HOME/Library`, and every other
- * platform, Windows included, under the XDG base directories and `$HOME`. The running process's
+ * platform under the XDG base directories and `$HOME`. The running process's
  * path rules judge an absolute path and join the segments. It reads no file and creates nothing.
  */
 function applicationDirectory(

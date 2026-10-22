@@ -1,4 +1,4 @@
-- Remove the `bun-windows-x64`, `bun-windows-x64-baseline`, `bun-windows-x64-modern`, and `bun-windows-arm64` targets from `loom build`, with their `.exe` output and asset names, under [ADR-0100](docs/decisions/0100-acceptance-plans-live-beside-the-tests.md). Each is now an option error that names the targets. On Windows, `--target` has no default, so a run without one fails as that option error.
+- Remove the `bun-windows-x64`, `bun-windows-x64-baseline`, `bun-windows-x64-modern`, and `bun-windows-arm64` targets from `loom build`, with their `.exe` output and asset names, under [ADR-0100](docs/decisions/0100-acceptance-plans-live-beside-the-tests.md). Each is now an option error that names the targets. On a Windows host, `--target` has no default, so a run without one fails with `Bun compiles for no target on this host (bun-win32-x64), so pass --target.` and exit 1.
 
 ### Migration
 

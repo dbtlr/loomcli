@@ -28,7 +28,7 @@ Only an argv `run()` with neither `host.cwd` nor `host.env` overridden copies ad
 Other host overrides do not suppress that copy. Core preserves every existing process variable, including an empty one.
 Every other run changes only its snapshot. `app.invoke()` never changes the process.
 An action's `invoke()` inherits its parent's prepared environment without reading the file again.
-Process additions persist after the run. The snapshot is case-sensitive; Windows process lookups remain case-insensitive.
+Process additions persist after the run. The snapshot is case-sensitive.
 
 The plugin reads no parent or home directory, alternate filename, mode sibling, or layered file.
 An environment override does not disable the file read. Isolated tests also supply their fixture's `cwd`.

@@ -10,7 +10,7 @@ description: "The facts core captures from the host for each run, how a caller o
 | ------------------ | ------------------------------------------------------------- |
 | `argv`             | Application tokens without the runtime and script prefix      |
 | `program`          | The runtime and script prefix `argv` omits: the words that start this application again; frozen |
-| `platform`         | Captured process platform string, such as `linux` or `win32` |
+| `platform`         | Captured process platform string, such as `linux` or `darwin` |
 | `cwd`              | Working directory; a capture that throws fails the run, under [An unreadable working directory](#an-unreadable-working-directory) |
 | `timeZone`         | The operator's IANA time zone, such as `America/New_York`, which a validator reads to place a local time |
 | `env`              | Map of environment names to strings or `undefined`            |
@@ -26,7 +26,7 @@ An override replaces its whole field. Process capture reads `timeZone` once per 
 
 Installed [environment preparation](plugin-contract.md#environment-preparation) hooks may add variables after capture and before declared values or inputs validate. Core preserves defined values, including empty strings. Only argv runs with neither `host.cwd` nor `host.env` overridden copy accepted additions to `process.env`; named invocations never do. Other captured facts, including `timeZone` and release facts, remain unchanged.
 
-The environment snapshot is a plain, case-sensitive map on every operating system, including Windows. Keys retain their original spelling; `Path` and `PATH` are distinct lookups. It does not retain the Windows `process.env` object's case-insensitive lookup.
+The environment snapshot is a plain, case-sensitive map on every operating system. Keys retain their original spelling; `Path` and `PATH` are distinct lookups.
 
 Core captures `program` from the process and the build: a compiled binary reads `[process.execPath]`, because the binary is the whole program, and any other run reads `process.execPath` followed by the absolute path of `process.argv[1]`, the script the runtime ran, or `[process.execPath]` alone when there is none. A run is a compiled binary when the build baked `compiled: true`, which `loom build` bakes for a compile target alone; the release facts do not repeat it. So `[...host.program, ...host.argv]` starts the same application again, without runtime options such as `process.execArgv`, and a [service unit](../plugins/service.md) runs `host.program`. A `program` override replaces the whole list, and an `invoke` keeps the outer run's.
 

@@ -614,67 +614,57 @@ test('an initial cut whose section lost its narrative carries no notes and fails
   expect(releaseCheck(root, base, '0.1.0').stderr).toContain('requires a narrative');
 });
 
-test.skipIf(process.platform === 'win32')(
-  'the Ubuntu workflow checks metadata as data and reruns admission when a label is removed',
-  () => {
-    const workflow: unknown = parse(
-      readFileSync(new URL('../../../.github/workflows/pr.yml', import.meta.url), 'utf8'),
-    );
-    const config = z
-      .object({
-        jobs: z.object({
-          guards: z.object({
-            steps: z.array(z.object({ name: z.string(), run: z.string().optional() })),
-          }),
+test('the Ubuntu workflow checks metadata as data and reruns admission when a label is removed', () => {
+  const workflow: unknown = parse(
+    readFileSync(new URL('../../../.github/workflows/pr.yml', import.meta.url), 'utf8'),
+  );
+  const config = z
+    .object({
+      jobs: z.object({
+        guards: z.object({
+          steps: z.array(z.object({ name: z.string(), run: z.string().optional() })),
         }),
-        on: z.object({ pull_request: z.object({ types: z.array(z.string()) }) }),
-        permissions: z.object({ contents: z.literal('read') }).strict(),
-      })
-      .parse(workflow);
-    expect(config.on.pull_request.types).toEqual(
-      expect.arrayContaining([
-        'opened',
-        'reopened',
-        'synchronize',
-        'edited',
-        'labeled',
-        'unlabeled',
-      ]),
-    );
-    const script = config.jobs.guards.steps.find(
-      (step) => step.name === 'Check PR fragments and versions',
-    )?.run;
-    if (script === undefined) {
-      throw new Error('Missing guard step.');
-    }
-    const { base, root } = repository();
-    put(
-      root,
-      'package.json',
-      JSON.stringify({ name: 'fixture', private: true, scripts: { loom: 'node "$LOOM_PR_CLI"' } }),
-    );
-    const head = commit(root);
-    const env = {
-      ...process.env,
-      LOOM_PR_CLI: fileURLToPath(cli),
-      PR_BASE: base,
-      PR_HEAD: head,
-      PR_LABELS: JSON.stringify(['skip-changelog']),
-      PR_TITLE: 'Fix output $(touch injected) `touch injected` "quoted"',
-    };
-    const skipped = spawnSync('bash', ['-c', script], { cwd: root, encoding: 'utf8', env });
-    expect(skipped.status).toBe(0);
-    expect(skipped.stdout).toContain('PR checks passed.');
-    const admitted = spawnSync('bash', ['-c', script], {
-      cwd: root,
-      encoding: 'utf8',
-      env: { ...env, PR_LABELS: JSON.stringify(['Skip-Changelog']) },
-    });
-    expect(admitted.status).toBe(1);
-    expect(admitted.stderr).toContain('fragment or skip-changelog');
-    expect(git(root, ['status', '--porcelain'])).toBe('');
-  },
-);
+      }),
+      on: z.object({ pull_request: z.object({ types: z.array(z.string()) }) }),
+      permissions: z.object({ contents: z.literal('read') }).strict(),
+    })
+    .parse(workflow);
+  expect(config.on.pull_request.types).toEqual(
+    expect.arrayContaining(['opened', 'reopened', 'synchronize', 'edited', 'labeled', 'unlabeled']),
+  );
+  const script = config.jobs.guards.steps.find(
+    (step) => step.name === 'Check PR fragments and versions',
+  )?.run;
+  if (script === undefined) {
+    throw new Error('Missing guard step.');
+  }
+  const { base, root } = repository();
+  put(
+    root,
+    'package.json',
+    JSON.stringify({ name: 'fixture', private: true, scripts: { loom: 'node "$LOOM_PR_CLI"' } }),
+  );
+  const head = commit(root);
+  const env = {
+    ...process.env,
+    LOOM_PR_CLI: fileURLToPath(cli),
+    PR_BASE: base,
+    PR_HEAD: head,
+    PR_LABELS: JSON.stringify(['skip-changelog']),
+    PR_TITLE: 'Fix output $(touch injected) `touch injected` "quoted"',
+  };
+  const skipped = spawnSync('bash', ['-c', script], { cwd: root, encoding: 'utf8', env });
+  expect(skipped.status).toBe(0);
+  expect(skipped.stdout).toContain('PR checks passed.');
+  const admitted = spawnSync('bash', ['-c', script], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...env, PR_LABELS: JSON.stringify(['Skip-Changelog']) },
+  });
+  expect(admitted.status).toBe(1);
+  expect(admitted.stderr).toContain('fragment or skip-changelog');
+  expect(git(root, ['status', '--porcelain'])).toBe('');
+});
 
 test('breaking cuts advance the minor and synchronize every library', () => {
   const { root } = repository();

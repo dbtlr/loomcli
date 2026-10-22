@@ -102,7 +102,7 @@ test('environment snapshots preserve key spelling and use case-sensitive lookup 
   expect(JSON.parse(result.stdout)).toEqual({
     captured: 'captured',
     capturedUppercase: null,
-    nativeUppercase: process.platform === 'win32' ? 'captured' : null,
+    nativeUppercase: null,
   });
 });
 

@@ -57,9 +57,12 @@ export const targetOption = createValidator({
   },
 });
 
-/** The compile target Bun names for the host: its platform, its architecture, and musl on Alpine. */
-export function hostTarget(): BuildTarget {
-  const os = process.platform;
+/**
+ * The compile target Bun names for the host: the run's platform, the process's architecture, and
+ * musl on Alpine.
+ */
+export function hostTarget(platform: string): BuildTarget {
+  const os = platform;
   const reported = safeParse(report, process.report.getReport());
   const glibc = reported.success ? reported.output.header.glibcVersionRuntime : undefined;
   const variant = os === 'linux' && glibc === undefined ? '-musl' : '';

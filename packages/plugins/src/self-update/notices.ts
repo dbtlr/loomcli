@@ -128,7 +128,6 @@ function startRefresh(host: Host, directory: string): void {
       detached: true,
       env: { ...host.env },
       stdio: 'ignore',
-      windowsHide: true,
     });
     child.on('error', passOver);
     child.unref();
