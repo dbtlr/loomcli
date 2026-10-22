@@ -171,6 +171,41 @@ type SchemaOutput<Config, Schema, Raw> = Schema extends StandardSchemaV1
 type SchemaInput<Schema> = Schema extends StandardSchemaV1
   ? StandardSchemaV1.InferInput<Schema>
   : string;
+/** The value a default stands in for: the validator's input for each value, or the raw tokens. */
+type DefaultInput<Config> = 'validate' extends keyof Config
+  ? PerValue<Config, SchemaInput<Config['validate']>>
+  : RawValue<Config>;
+/**
+ * The defaults a config accepts: its default input, or a readonly list of it. A list a conditional
+ * declaration writes inline infers as a readonly tuple, and core copies a declared list for each
+ * run, so the action still receives its own array.
+ */
+type AcceptedDefault<Config> =
+  | DefaultInput<Config>
+  | (DefaultInput<Config> extends unknown[] ? Readonly<DefaultInput<Config>> : never);
+/**
+ * The members of a config whose declared default is outside their own accepted defaults. A
+ * default a config spreads in conditionally is optional, and is checked the same way. An
+ * `unknown` default, which the wide `OptionConfig` declares, states nothing to check.
+ */
+type DefaultFault<Config> = Config extends { default: infer Default }
+  ? [Default] extends [AcceptedDefault<Config>]
+    ? never
+    : Config
+  : 'default' extends keyof Config
+    ? unknown extends Config['default']
+      ? never
+      : Config extends { default?: AcceptedDefault<Config> }
+        ? never
+        : Config
+    : never;
+/**
+ * Each member paired with its own default input. A member whose default misses that input
+ * reduces to `never`, so another member's validator input never stands in for it.
+ */
+type PairedDefault<Config> = Config extends unknown
+  ? Config & { default?: DefaultInput<Config> }
+  : never;
 
 /** The named key states the rule, so a rejected declaration name reads as its own diagnostic. */
 interface LiteralNameFault {
@@ -736,14 +771,15 @@ export type ValidatedValue<Config, Raw> = Config extends { type: 'content' }
       ? SchemaOutput<Config, Config['validate'], Raw>
       : Raw
     : never;
-/** Keep each conditional declaration paired with its own validator input type. */
-export type DefaultConstraint<Config> = Config extends unknown
-  ? Config & {
-      default?: 'validate' extends keyof Config
-        ? PerValue<Config, SchemaInput<Config['validate']>>
-        : RawValue<Config>;
-    }
-  : never;
+/**
+ * Each member of a conditional declaration checks its default against its own validator input
+ * type. Only a config with a failing member is paired, because the pairing intersects a union
+ * config with a copy of itself, which multiplies it by its own members: a config whose type
+ * parameters are erased to the wide `OptionConfig` declares no default and is never paired.
+ */
+export type DefaultConstraint<Config> = [DefaultFault<Config>] extends [never]
+  ? unknown
+  : PairedDefault<Config>;
 
 /**
  * An argument's config names only the keys `ArgumentConfig` declares, because core reads no other.
