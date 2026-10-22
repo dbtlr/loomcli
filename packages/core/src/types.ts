@@ -171,6 +171,16 @@ type SchemaOutput<Config, Schema, Raw> = Schema extends StandardSchemaV1
 type SchemaInput<Schema> = Schema extends StandardSchemaV1
   ? StandardSchemaV1.InferInput<Schema>
   : string;
+/** The value a default stands in for: the validator's input for each value, or the raw tokens. */
+type DefaultInput<Config> = 'validate' extends keyof Config
+  ? PerValue<Config, SchemaInput<Config['validate']>>
+  : RawValue<Config>;
+/** The members of a config whose declared default is outside their own default input. */
+type DefaultFault<Config> = Config extends { default: infer Default }
+  ? [Default] extends [DefaultInput<Config>]
+    ? never
+    : { default?: DefaultInput<Config> }
+  : never;
 
 /** The named key states the rule, so a rejected declaration name reads as its own diagnostic. */
 interface LiteralNameFault {
@@ -736,14 +746,14 @@ export type ValidatedValue<Config, Raw> = Config extends { type: 'content' }
       ? SchemaOutput<Config, Config['validate'], Raw>
       : Raw
     : never;
-/** Keep each conditional declaration paired with its own validator input type. */
-export type DefaultConstraint<Config> = Config extends unknown
-  ? Config & {
-      default?: 'validate' extends keyof Config
-        ? PerValue<Config, SchemaInput<Config['validate']>>
-        : RawValue<Config>;
-    }
-  : never;
+/**
+ * Each member of a conditional declaration checks its default against its own validator input
+ * type. Only a member that fails contributes its default input, so a config is never intersected
+ * with a copy of itself, which multiplies a union config by its own members.
+ */
+export type DefaultConstraint<Config> = [DefaultFault<Config>] extends [never]
+  ? unknown
+  : DefaultFault<Config>;
 
 /**
  * An argument's config names only the keys `ArgumentConfig` declares, because core reads no other.
