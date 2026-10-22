@@ -169,3 +169,17 @@ const stringForNumber = {
 const crossedSchemas = Math.random() > 0.5 ? numberForString : stringForNumber;
 // @ts-expect-error TS2345: each branch's default meets its own validator, not the other branch's
 new Application('crossed-schemas').option('value', crossedSchemas);
+
+// A default spread in conditionally is optional, and still meets the option's input.
+const withDefault = Math.random() > 0.5;
+const spreadDefault = {
+  type: 'string',
+  ...(withDefault ? { default: 'a' } : {}),
+} satisfies StringOption;
+new Application('spread-default').option('value', spreadDefault);
+const spreadNumber = {
+  type: 'string',
+  ...(withDefault ? { default: 5 } : {}),
+} satisfies StringOption;
+// @ts-expect-error TS2379: an optional default is still checked against the raw string
+new Application('spread-number').option('value', spreadNumber);

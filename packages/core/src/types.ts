@@ -182,12 +182,22 @@ type DefaultInput<Config> = 'validate' extends keyof Config
 type WritableDefault<Default> = Default extends readonly unknown[]
   ? { -readonly [Index in keyof Default]: Default[Index] }
   : Default;
-/** The members of a config whose declared default is outside their own default input. */
+/**
+ * The members of a config whose declared default is outside their own default input. A default a
+ * config spreads in conditionally is optional, and is checked the same way. An `unknown` default,
+ * which the wide `OptionConfig` declares, states nothing to check.
+ */
 type DefaultFault<Config> = Config extends { default: infer Default }
   ? [WritableDefault<Default>] extends [DefaultInput<Config>]
     ? never
     : Config
-  : never;
+  : 'default' extends keyof Config
+    ? unknown extends Config['default']
+      ? never
+      : Config extends { default?: DefaultInput<Config> }
+        ? never
+        : Config
+    : never;
 /**
  * Each member paired with its own default input. A member whose default misses that input
  * reduces to `never`, so another member's validator input never stands in for it.
