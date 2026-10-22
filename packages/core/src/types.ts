@@ -744,6 +744,17 @@ export type DefaultConstraint<Config> = Config extends unknown
   : never;
 
 /**
+ * Core reads neither listing fact on an argument, and TypeScript runs no excess-key check on a
+ * config a type parameter infers, so this constraint rejects the keys. The key names the fault,
+ * the way the other declaration constraints do, because an intersection with `never` properties
+ * would reduce the whole config and report every key.
+ */
+export type UnlistedConstraint<Config> = 'hidden' extends keyof Config
+  ? { 'An argument declares no hidden fact': never }
+  : 'deprecated' extends keyof Config
+    ? { 'An argument declares no deprecated fact': never }
+    : unknown;
+/**
  * An implied value is the string an operator would otherwise attach, so it must be a string the
  * validator's input type accepts, as a default must be. A multiple option's validator reads one
  * value, so the implied value meets that one value's input type. A validator that declares no types
