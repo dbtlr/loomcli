@@ -14,5 +14,6 @@ await Promise.all(
     'examples/explain/dist',
     'examples/textstat/dist',
     'examples/jsonkit/dist',
+    'examples/guide/dist',
   ].map((path) => rm(new URL(`../${path}`, import.meta.url), { force: true, recursive: true })),
 );

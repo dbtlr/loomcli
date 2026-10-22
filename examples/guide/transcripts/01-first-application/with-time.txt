@@ -1,0 +1,2 @@
+$ pace --time 5:30
+time: 5:30
