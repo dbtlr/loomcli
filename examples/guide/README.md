@@ -18,7 +18,7 @@ Line 1 is `$ ` followed by optional `NAME=value` assignments, `pace`, and the ar
 
 A comment on the line directly above a fence binds the fence to a source:
 
-- `<!-- example: <path> -->` before a `ts` fence. The fence body equals the whole file without its trailing newline. `<path>` is relative to the Markdown file.
+- `<!-- example: <path> -->` before a `ts` fence. The fence body equals the whole file without its trailing newline and without its region marker lines, the lines that hold only `// #region <name>` or `// #endregion`, so the reader sees the file they write. `<path>` is relative to the Markdown file.
 - `<!-- example: <path>#<region> -->` before a `ts` fence. The body equals the lines between `// #region <region>` and the next `// #endregion` in that file, dedented by their common indentation.
 - `<!-- transcript: <path> -->` before a `console` fence. The body equals the transcript file without its trailing newline.
 

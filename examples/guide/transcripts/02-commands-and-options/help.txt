@@ -10,7 +10,7 @@ COMMANDS
   convert  Give a pace per kilometre as a pace per mile, or the other way round.
 
 GLOBAL OPTIONS
-  -u, --unit <unit>  The unit to give a pace in, km or mi. Defaults to km.
+  -u, --unit <unit>  The unit to give a pace in, km or mi.
   -h, --help         Show this help.
   -V, --version      Print the version.
 

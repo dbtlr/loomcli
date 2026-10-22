@@ -4,13 +4,23 @@ description: "Guide chapter 5. Declare a failure class with its own exit code an
 
 # Failures
 
-In this chapter `pace` learns to report its own failures. At the end, `pace splits 5k 25:00 --every 10k` says that the split is longer than the run, tells the operator what to supply instead, and exits with status 64, and with `--format json` it reports the same failure as one line of JSON that a script can branch on.
+In this chapter `pace` learns to report its own failures. At the end, `pace splits 5k 25:00 --every 10k` says that the split is longer than the run, tells the operator what to supply instead, and exits 64, and with `--format json` it reports the same failure as one line of JSON that a script can branch on.
 
-So far, every mistake `pace` reports is one that a validator finds before an action runs. This chapter adds the failures an action finds: a split longer than the run, which gets a class of its own, and a run with too many splits, which a single `out.fatal` call reports. The [Failures](../core/failures.md) reference states every rule this chapter uses, and the [glossary](../glossary.md#failures) defines its terms.
+So far, every mistake `pace` reports is one that a validator finds before an action runs. This chapter adds the failures an action finds: a split longer than the run, which gets a class of its own, and a run with too many splits, which a single `out.fatal` call reports. The [Failures](../core/failures.md) reference holds every rule this chapter uses.
 
 ## Let the domain module throw
 
-A split can be longer than the run only when both are known, so no validator of a single input can reject it. The check belongs to the arithmetic, and `src/pace.ts` still knows nothing about Loom, so it throws an error of its own. Add the error class to `src/pace.ts`:
+A split can be longer than the run only when both are known, so no validator of a single input can reject it. The check belongs to the arithmetic, and `src/pace.ts` still knows nothing about Loom, so it throws an error of its own.
+
+This chapter changes these files:
+
+- `src/actions/splits.ts` is shown below, and so are the parts of the other files that teach something.
+- `src/pace.ts`: copy it from [the snapshot](../../examples/guide/src/05-failures/pace.ts). Beside the error class and the check in `splitRun`, it gains `splitCount` and `formatDistance`.
+- `src/failures.ts`: create it from [the snapshot](../../examples/guide/src/05-failures/failures.ts), which holds the imports of the class and the translator below.
+- `src/views.ts`: copy it from [the snapshot](../../examples/guide/src/05-failures/views.ts). It gains the defect view below, a `lines` helper that ends each line with a newline, and the type imports the view needs.
+- `src/application.ts`: copy it from [the snapshot](../../examples/guide/src/05-failures/application.ts). It imports and installs the translator and the defect view.
+
+Add the error class to `src/pace.ts`:
 
 <!-- example: ../../examples/guide/src/05-failures/pace.ts#domain-error -->
 ```ts
@@ -83,8 +93,8 @@ export class SplitTooLongError extends FatalError {
 
 Read the class from the top:
 
-- **`static override readonly code`** is the failure code, `split-too-long`. A script or an agent branches on it, because many failures share one exit code. A code is lowercase words joined by hyphens, and a class whose code breaks that grammar raises a declaration error when one of its failures is constructed. [Failure codes](../core/failures.md#failure-codes) states the grammar.
-- **`static override readonly exitCode`** is the exit code, `EX_USAGE`, which is 64. The operator chose the split with `--every`, so the invocation is wrong. Loom exports the `sysexits.h` names with their literal types, and the type accepts a code from 1 through 125, so a reserved code such as 0 or 130 is a compile error. [Declared exit codes](../core/failures.md#declared-exit-codes) lists the names and the range.
+- **`static override readonly code`** is the failure code, `split-too-long`. A script or an agent branches on it, because many failures share one exit code. A code is [lowercase words joined by hyphens](../core/failures.md#failure-codes), and a class whose code breaks that grammar raises a declaration error when one of its failures is constructed.
+- **`static override readonly exitCode`** is the exit code, `EX_USAGE`, which is 64. The operator chose the split with `--every`, so the invocation is wrong. Loom exports the [`sysexits.h` names](../core/failures.md#declared-exit-codes) with their literal types, and the type accepts a code from 1 through 125, so a reserved code such as 0 or 130 is a compile error.
 - **The constructor** writes the operator's sentence from two distances and passes the platform's `ErrorOptions` on to `FatalError`, so the failure can keep the error it replaces as its `cause`.
 
 Both codes live on the class, so every `SplitTooLongError` exits 64 and reads `split-too-long`, and nothing sets a code per throw.
@@ -111,7 +121,7 @@ export const splitTooLong = translate(
 
 `translate` pairs an error class with a function. The function receives the thrown error, typed from the class, and returns a failure, or `undefined` to pass the throw on. It writes both distances in the run's unit with `formatDistance`, a helper `src/pace.ts` gains in this chapter, and passes the domain error as `cause`, because Loom never sets `cause` for you. The application lists its translators under `translators`, as the next sections show.
 
-Loom offers a throw from an action, a middleware, or an input source to the translators at the point it would otherwise report it as a defect. A failure class is never offered, so a `SplitTooLongError` an action throws itself reports as it is. The translated failure reports as if the action had thrown it: it exits with its class's code and renders through its class's view. [Translators](../core/failures.md#translators) states the order in which Loom consults them.
+Loom offers a throw from an action to the translators at the point it would otherwise report it as a defect. A failure class is never offered, so a `SplitTooLongError` an action throws itself reports as it is. The translated failure reports as if the action had thrown it: it exits with its class's code and renders through its class's view. See [Translators](../core/failures.md#translators).
 
 ## End a run with `out.fatal`
 
@@ -142,22 +152,23 @@ export const listSplits: ActionHandler<typeof splits> = ({ args, options, out })
 };
 ```
 
-`out.fatal` throws a `FatalError` with the message, so the run exits with status 1 and its failure code reads `fatal`. Its return type is `never`, so the code after the `if` block runs only when the count fits. `splitCount` is the count `splitRun` already used, moved into its own function so that the action and the domain module agree on it. [Output](../core/output.md) describes `out.fatal`.
+`out.fatal` throws a `FatalError` with the message, so the run exits 1 and its failure code reads `fatal`. Its return type is `never`, so the code after the `if` block runs only when the count fits. `splitCount` is the count `splitRun` already used, moved into its own function so that the action and the domain module agree on it.
 
 Declare a class when a script or a view needs to tell the failure apart, by its exit code, its failure code, or its facts. Use `out.fatal` for a failure that one action reports once and that needs neither.
 
 ## Override the defect view
 
-Loom renders each failure through the failure view of its class. Core's default text is each class's default view, so an application replaces it with `override`, keyed by the class. [Failure views](../core/failure-views.md#failure-views) states how Loom resolves a failure's view.
+Loom renders each failure through the [failure view](../core/failure-views.md#failure-views) of its class. Core's default text is each class's default view, so an application replaces it with `override`, keyed by the class. `pace` keeps core's text for `FatalError`, which prints the message as written.
 
-`pace` keeps core's text for `FatalError`. That text is the message as written, with no prefix, as chapter 1's `Cannot read the distance` message showed, while a usage error opens with the application name. [Failure classes](../core/failures.md#failure-classes) states which classes take the prefix. Each of `pace`'s messages is a whole sentence for the operator, and a plugin that ends a run with a failure of its own writes its own wording: the self-update plugin in [chapter 8](shipping.md) opens its refusal with the application name. A view that added `pace: ` to every `FatalError` would print the name twice under that refusal, so `pace` adds nothing.
-
-A defect is different. A defect is a failure only the author can fix, such as an exception no translator answered, which core reports as an `InternalError`. Core's message for it gives the operator no next step, and `pace` has one: its issue tracker. Override the defect view in `src/views.ts`:
+A defect is different. A [defect](../core/failures.md#failure-message-voice) is a failure only the author can fix: an exception no translator answered, which core reports as an `InternalError`, or a declaration fault that `run()` reports, a `DeclarationError`, such as a declared default that its validator rejects. Core's message for either gives the operator no next step, and `pace` has one: its issue tracker. Override the defect view in `src/views.ts`:
 
 <!-- example: ../../examples/guide/src/05-failures/views.ts#defect-view -->
 ```ts
-/** A defect in a distributed build: the generic message, and where to report it. */
-export const defectView: FailureView<InternalError> = {
+/**
+ * A defect in a distributed build, an error no translator answered or a declaration fault: the
+ * generic message, and where to report it.
+ */
+export const defectView: FailureView<DeclarationError | InternalError> = {
   render: (_failure, { application, hints }) =>
     lines([
       `${application}: Something went wrong. Report it at https://github.com/acme/pace/issues.`,
@@ -166,11 +177,13 @@ export const defectView: FailureView<InternalError> = {
 };
 ```
 
-A failure view receives the failure and the [failure view context](../core/failure-views.md#failure-view-context), which carries the application name and the hint lines that plugins added. It returns the whole text, its trailing newline included, and the `lines` helper earlier in the file ends each line with one. A view that leaves `hints` out prints none, so `defectView` prints them after its own line.
+A failure view receives the failure and the [failure view context](../core/failure-views.md#failure-view-context), which carries the application name and the hint lines that plugins added. It returns the whole text, its trailing newline included, and the `lines` helper ends each line with one. A view that leaves `hints` out prints none, so `defectView` prints them after its own line.
 
-What a defect shows depends on the build. In a distributed build, the build `loom build` makes, the operator sees one generic message, `pace: Something went wrong.`, with no reason, class name, or stack. The operator cannot change the code, so the error's reason gives them no step to take, and its text can carry a path or a value they never supplied. With `defectView` installed, that line also says where to report the defect. In a development build, such as `bun src/main.ts`, Loom writes the defect's Developer Diagnostic instead, the error, the line that threw it, and how to fix it, ahead of every override, so no view hides a fault from you. [Development builds](../core/release-facts.md#development-builds) states which build a run is and what each one prints, and chapter 8 makes a distributed build.
+What a defect shows depends on the build. In a distributed build, the build `loom build` makes, the operator sees one generic message, `pace: Something went wrong.`, with no reason, class name, or stack. The operator cannot change the code, so the error's reason gives them no step to take, and its text can carry a path or a value they never supplied. With `defectView` installed, that line also says where to report the defect.
 
-Install the view and the translator in `src/application.ts`, importing `InternalError` and `override` from `@loomcli/core`:
+In a development build, such as `bun src/main.ts`, Loom writes the defect's Developer Diagnostic instead: the error, the line that threw it, and how to fix it. Loom writes it ahead of every override, so no view hides a fault from you. [Development builds](../core/release-facts.md#development-builds) says which build a run is, and chapter 8 makes a distributed build.
+
+Install the view and the translator in `src/application.ts`, importing `DeclarationError`, `InternalError`, and `override` from `@loomcli/core`:
 
 <!-- example: ../../examples/guide/src/05-failures/application.ts#application -->
 ```ts
@@ -178,7 +191,7 @@ const configured = new Application('pace', {
   description: 'Work out running paces, splits, and conversions.',
   plugins: [help(), version(), format()],
   translators: [splitTooLong],
-  views: [override(InternalError, defectView)],
+  views: [override(InternalError, defectView), override(DeclarationError, defectView)],
 }).globalOption('unit', {
   default: 'km',
   description: 'The unit to give a pace in.',
@@ -189,7 +202,7 @@ const configured = new Application('pace', {
 });
 ```
 
-`override(InternalError, defectView)` keys the view by the class, so TypeScript checks `defectView` against an `InternalError`.
+Each `override` call keys the view by a class, so TypeScript checks `defectView` against an `InternalError` and against a `DeclarationError`. Its type, `FailureView<DeclarationError | InternalError>`, accepts both, so one view serves both kinds of defect.
 
 ## Run it
 
@@ -201,7 +214,7 @@ $ pace splits 5k 25:00 --every 10k
 A split of 10 km is longer than the 5 km run. Supply a shorter --every, or run pace calc for the pace of the whole run.
 ```
 
-A run with too many splits ends at the action's `out.fatal` and exits with status 1:
+A run with too many splits ends at the action's `out.fatal` and exits 1:
 
 <!-- transcript: ../../examples/guide/transcripts/05-failures/too-many-splits.exit-1.txt -->
 ```console
@@ -209,7 +222,7 @@ $ pace splits marathon 3:30:00 --every 1m
 The run makes 42195 splits, and pace lists at most 1000. Supply a longer --every, such as 1k.
 ```
 
-A time that the validator rejects never reaches an action. Loom reports it as its own usage error with status 2, and the help plugin adds a hint line under it:
+A time that the validator rejects never reaches an action. Loom reports it as its own usage error and exits 2, and the help plugin adds a hint line under it:
 
 <!-- transcript: ../../examples/guide/transcripts/05-failures/bad-time.exit-2.txt -->
 ```console
@@ -218,7 +231,7 @@ pace: Argument "time": Expected a time above zero as mm:ss or h:mm:ss, such as 2
 Run "pace calc --help" to see the usage.
 ```
 
-The two usage failures exit with different statuses on purpose. Loom raises an input it rejects as 2 and never 64, and `EX_USAGE` is left for an application's own usage failure, so a script tells Loom's report from `pace`'s by the status alone. The help plugin's hint follows a usage error alone, so neither of `pace`'s failures gains it. [Help's failure hint](../plugins/suggestions.md#helps-failure-hint) states when it applies.
+A rejected input [exits 2 and never 64](../core/failures.md#declared-exit-codes), so a script tells Loom's usage failure from `pace`'s split-too-long failure by the status alone. The [help plugin's hint](../plugins/suggestions.md#helps-failure-hint) follows only Loom's usage errors, which exit 2, so neither of `pace`'s own failures gains it.
 
 ## Report a failure to a script
 
@@ -230,11 +243,11 @@ $ pace splits 5k 25:00 --every 10k --format json
 {"error":{"code":"split-too-long","exitCode":64,"message":"A split of 10 km is longer than the 5 km run. Supply a shorter --every, or run pace calc for the pace of the whole run.","hints":[]}}
 ```
 
-The line is the [failure form](../core/failures.md#the-failure-form), the failure as plain data, which the formatter writes to stderr through its failure encoder. It holds the class's failure code, its exit code, the message as plain text, and the hint lines. The encoder writes in place of the failure view, so the line carries the failure's facts and no view's wording. A script reads `error.code` to tell a split too long from any other failure. [Failure encoders](../core/failure-views.md#failure-encoders) states when an encoder answers. In a distributed build, a defect's form reads the code `internal` and the message `Something went wrong.`, so a script learns no more about a defect than an operator does.
+The line is the [failure form](../core/failures.md#the-failure-form), the failure as plain data, which the formatter writes to stderr through its failure encoder. It holds the class's failure code, its exit code, the message as plain text, and the hint lines. The [encoder](../core/failure-views.md#failure-encoders) writes in place of the failure view, so the line carries the failure's facts and no view's wording. A script reads `error.code` to tell a split too long from any other failure. In a distributed build, a defect's form reads the code `internal` and the message `Something went wrong.`, so a script learns no more about a defect than an operator does.
 
 ## The path every failure takes
 
-No action in `pace` catches an error. A failure takes one path: it leaves the action, a foreign throw is offered to the translators, each plugin's `onFailure` hook adds its hint lines, the failure view or a failure encoder writes the report, and the run exits with the failure's code. [The ordinary failure path](../core/failures.md#the-ordinary-failure-path) states each step.
+No action in `pace` catches an error. A failure takes [one path](../core/failures.md#the-ordinary-failure-path): it leaves the action, a foreign throw is offered to the translators, plugins add their hint lines, the failure view or a failure encoder writes the report, and the run exits with the failure's code.
 
 An author's catch is final. If `listSplits` caught the `SplitLongerThanRunError` and carried on, the run's outcome would be whatever the action did next: Loom neither records a caught failure to fail the run later nor turns a failure the action lets propagate into a success. `pace` lets the error propagate, because the run should fail.
 
@@ -244,7 +257,7 @@ Loom cannot check a message an application writes, so the quality of `pace`'s me
 
 - **Say what went wrong, then what to do instead.** `A split of 10 km is longer than the 5 km run.` names the problem, and `Supply a shorter --every, or run pace calc for the pace of the whole run.` gives two ways forward. The too-many-splits message suggests a value, `1k`.
 - **Name your own Commands and options.** `pace` knows its own Commands, so its messages name `--every` and `pace calc`. A pointer that depends on an installed plugin, such as the help page, comes from the plugin as a hint line, as `Run "pace calc --help" to see the usage.` does under the bad time.
-- **Repeat a value only when you know it is not a secret.** Loom's own messages never repeat an input's value, because Loom cannot know which values are secret. An application owns its inputs and can know. A distance is never a secret, so `pace` repeats both distances, and the split count. For an input that can hold a secret, such as a token, describe what the input accepts instead.
+- **Repeat a value only when you know it is not a secret.** Core and the validator catalog never repeat an input's value, because they cannot know which values are secret, and a plugin repeats one only when it knows the value is not a secret. An application owns its inputs and can know. A distance is never a secret, so `pace` repeats both distances, and the split count. For an input that can hold a secret, such as a token, describe what the input accepts instead.
 - **Decide which foreign text to quote.** Loom never quotes text it did not write, such as an engine's reason or a thrown error's message. That rule binds Loom and not an application, which owns its domain. `pace`'s translator writes its own sentence from the error's facts and keeps the `RangeError` as `cause` instead of quoting it. An application that reads files can keep a runtime's reason in a `Cannot read` message, because the reason points at what the operator must fix.
 - **Give a defect a next step when you have one.** The generic defect message is the one operator message with no next step, because Loom cannot name one honestly. `pace` has one, its issue tracker, so `defectView` adds it.
 

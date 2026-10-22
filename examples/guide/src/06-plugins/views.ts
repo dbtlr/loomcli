@@ -1,4 +1,4 @@
-import type { FailureView, InternalError, View } from '@loomcli/core';
+import type { DeclarationError, FailureView, InternalError, View } from '@loomcli/core';
 
 import { formatDuration, formatPace } from './pace.js';
 import type { Pace, Split } from './pace.js';
@@ -12,8 +12,11 @@ export const paceView: View<Pace> = {
   render: (pace) => `${formatPace(pace)}\n`,
 };
 
-/** A defect in a distributed build: the generic message, and where to report it. */
-export const defectView: FailureView<InternalError> = {
+/**
+ * A defect in a distributed build, an error no translator answered or a declaration fault: the
+ * generic message, and where to report it.
+ */
+export const defectView: FailureView<DeclarationError | InternalError> = {
   render: (_failure, { application, hints }) =>
     lines([
       `${application}: Something went wrong. Report it at https://github.com/acme/pace/issues.`,

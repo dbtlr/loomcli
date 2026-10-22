@@ -1,4 +1,4 @@
-import { Application, InternalError, override } from '@loomcli/core';
+import { Application, DeclarationError, InternalError, override } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
 import { completion, refreshCompletion } from '@loomcli/plugins/completion';
 import { config } from '@loomcli/plugins/config';
@@ -45,7 +45,7 @@ const configured = new Application('pace', {
   // #region version
   version: Package.version,
   // #endregion
-  views: [override(InternalError, defectView)],
+  views: [override(InternalError, defectView), override(DeclarationError, defectView)],
 }).globalOption('unit', {
   default: 'km',
   description: 'The unit to give a pace in.',

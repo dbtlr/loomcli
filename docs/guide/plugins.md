@@ -10,13 +10,22 @@ Every capability beyond declaring Commands and running them is a plugin that you
 
 ## Install the plugins
 
-The plugins come from `@loomcli/plugins`, which you added in chapter 1. Each plugin has its own subpath, so `pace` imports only the plugins it installs. [First-party plugins](../plugins/README.md) lists every plugin in the pack, with the moment to open each page.
+The plugins come from `@loomcli/plugins`, which you added in chapter 1. Each plugin has its own subpath, so `pace` imports only the plugins it installs. [First-party plugins](../plugins/README.md) lists every plugin in the pack.
+
+This chapter changes these files:
+
+- `src/application.ts`, `src/commands/races.ts`, and `src/race-hint.ts` are shown below, with the list of races in `src/pace.ts`.
+- `src/pace.ts`: copy it from [the snapshot](../../examples/guide/src/06-plugins/pace.ts). It gains the list of races and the `Race` type, and `parseDistance` reads the list.
+- `src/views.ts`: copy it from [the snapshot](../../examples/guide/src/06-plugins/views.ts). It gains `kilometresCell`, the cell function `races` uses.
+- `src/actions/races.ts`: create it from [the snapshot](../../examples/guide/src/06-plugins/actions/races.ts). It emits the list of races.
+
+`src/application.ts` imports `races` and `raceHint`, which later sections of this chapter write, so `pace` compiles again once both files exist.
 
 Add `suggestions()`, `config()`, and `completion()` to the `plugins` list, bind `--unit` to the configuration file with `configInput`, and install `raceHint()`, the plugin you write later in this chapter. Attach `races`, a Command you also write later, after the other Commands:
 
 <!-- example: ../../examples/guide/src/06-plugins/application.ts -->
 ```ts
-import { Application, InternalError, override } from '@loomcli/core';
+import { Application, DeclarationError, InternalError, override } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { config } from '@loomcli/plugins/config';
@@ -40,7 +49,7 @@ const configured = new Application('pace', {
   // Installation order is composition order: help and version answer before any later plugin.
   plugins: [help(), suggestions(), version(), format(), config(), completion(), raceHint()],
   translators: [splitTooLong],
-  views: [override(InternalError, defectView)],
+  views: [override(InternalError, defectView), override(DeclarationError, defectView)],
 }).globalOption('unit', {
   default: 'km',
   description: 'The unit to give a pace in.',
@@ -62,18 +71,14 @@ declare module '@loomcli/core' {
 export const pace = configured.command(calc).command(splits).command(convert).command(races);
 ```
 
-Each factory call returns a plugin, a frozen value that runs none of its code until core calls it. The `plugins` list is the only way to install one: there is no install call on the chain and no default set, so the list shows everything `pace` has beyond its own declarations.
+Each factory call returns a plugin, a value that runs none of its code until core calls it. The `plugins` list is the only way to install one: there is no install call on the chain and no default set, so the list shows everything `pace` has beyond its own declarations.
 
 ## Order the plugins
 
-The order of the list matters. [Installation order](../core/plugin-contract.md#identity-and-installation) is the order every plugin's contributions compose in, so you read the precedence from the source:
+The order of the list matters, because [installation order](../core/plugin-contract.md#identity-and-installation) is the order every plugin's contributions compose in:
 
-- **The middleware chain.** Plugins that act on an invocation, as help acts on `--help`, run their [middleware](../core/middleware.md) in installation order, and the first one that takes over ends the invocation. Help comes before version, so `pace --version --help` prints the help page, and the version plugin's middleware never loads.
-- **Views and overrides.** When two plugins override the same view, the first one installed wins, and an override the application declares wins over every plugin's. [Views](../core/views.md) states the walk.
-- **Hints.** A hint is a line a plugin adds under a failure message. The hints of every installed plugin accumulate in installation order, under [Failure hints](../core/lifecycle-hooks.md#failure-hints).
-- **Global options.** The [graph](../core/graph-inspection.md) lists the application's global options, then each plugin's in installation order, and the help page lists them in that order.
-
-A plugin's place in the list matters only for the contributions it makes. The suggestions plugin has no middleware, so its place changes no takeover, and [its page](../plugins/suggestions.md) places no rule on where you install it.
+- **The first plugin to take over a run wins.** Help comes before version, so `pace --version --help` prints the help page.
+- **Hints stack in installation order.** A [hint](../core/lifecycle-hooks.md#failure-hints) is a line a plugin adds under a failure message, and each plugin's hints follow the hints of the plugins installed before it.
 
 ## Suggest the closest name
 
@@ -95,7 +100,7 @@ pace: Unknown option "--unti". Did you mean "--unit"?
 Run "pace calc --help" to see the usage.
 ```
 
-The last line of each message is the help plugin's hint. When no declared name is close, the plugin prints core's own message unchanged. The plugin's page states which names are candidates and how close a name must be.
+The last line of each message is the help plugin's hint. When no declared name is close, the plugin prints core's own message unchanged.
 
 ## Offer shell completion
 
@@ -105,7 +110,9 @@ The [completion plugin](../plugins/completion.md) adds a `completion` Command. A
 pace completion install
 ```
 
-From then on, pressing Tab after `pace` completes the names of Commands and options, and the values an option accepts, such as `km` and `mi` for `--unit`. The script asks `pace` for the answer at each Tab and holds no copy of the Commands, so it stays correct as `pace` grows. [Installing completion](../plugins/completion.md#installing-completion) describes which shells it supports and what the install changes.
+The command works once `pace` is installed as a command, which chapter 8 covers.
+
+From then on, pressing Tab after `pace` completes the names of Commands and options, and the values an option accepts, such as `km` and `mi` for `--unit`. The script asks `pace` for the answer at each Tab and holds no copy of the Commands, so it stays correct as `pace` grows. See [Installing completion](../plugins/completion.md#installing-completion).
 
 ## Read the unit from a configuration file
 
@@ -127,7 +134,7 @@ $ pace calc 10k 50:00
 8:03 /mi
 ```
 
-The file is one of four places `--unit` can get its value. For each option, the first of these that supplies a value wins: the command line, then the environment, then the configuration file, then the declared default. Core owns the order, and no plugin changes it. [Input sources](../core/input-sources.md) states the rule.
+The file is one of four places `--unit` can get its value. For each option, the first of these that supplies a value wins: the command line, then the environment, then the configuration file, then the declared default. [Core owns the order](../core/input-sources.md), and no plugin changes it.
 
 So `PACE_UNIT`, which [chapter 3](inputs-and-validation.md) bound, wins over the file:
 
@@ -145,7 +152,7 @@ $ pace calc 10k 50:00 --unit km
 5:00 /km
 ```
 
-In these two runs, nothing is left for the file to fill, so the plugin does not read it. A value from the file passes through the option's validator as a typed one does, and a failure on it names the file and the key. The configuration plugin's page lists the formats it reads and how it reports a broken file.
+In these two runs, nothing is left for the file to fill, so the plugin does not read it. A value from the file passes through the option's validator as a typed one does, and a failure on it names the file and the key.
 
 ## List the races
 
@@ -201,7 +208,7 @@ marathon   42.195 km
 
 ## Write a plugin of your own
 
-A line under a failure message is a hint, and a hint comes from an `onFailure` hook. Hooks belong to plugins, so an application that observes a run through a hook installs a plugin of its own, under [Failure hints](../core/lifecycle-hooks.md#failure-hints). Pace's plugin points an operator who typed an unreadable distance at `pace races`, and it uses the same contract the first-party plugins use. A plugin can attach Commands as well, but a plugin builds its Commands in its own compilation, so `races` is `pace`'s Command and not the plugin's, under [Plugin Commands](../core/plugin-contract.md#plugin-commands). Write the plugin in `src/race-hint.ts`:
+A line under a failure message is a hint, and a hint comes from an `onFailure` hook. [Hooks belong to plugins](../core/lifecycle-hooks.md#failure-hints), so an application that observes a run through a hook installs a plugin of its own. Pace's plugin points an operator who typed an unreadable distance at `pace races`, and it uses the same contract the first-party plugins use. Write the plugin in `src/race-hint.ts`:
 
 <!-- example: ../../examples/guide/src/06-plugins/race-hint.ts -->
 ```ts
@@ -214,8 +221,8 @@ function isDistance(problem: InputProblem): boolean {
 }
 
 /**
- * Points at `pace races` under a failure for a distance pace could not read. A run by name has no
- * command line to point at, so it gets no hint.
+ * Points at `pace races` under a failure for a distance pace could not read. A run that code
+ * starts has no command line to point at, so it gets no hint.
  */
 const pointAtRaces: FailureHook = (failure, { invokedBy }) =>
   invokedBy === 'argv' && failure instanceof InputError && failure.problems.some(isDistance)
@@ -224,16 +231,16 @@ const pointAtRaces: FailureHook = (failure, { invokedBy }) =>
 
 /** Pace's own plugin. It uses the plugin contract every first-party plugin uses. */
 export function raceHint(): Plugin {
-  return plugin('pace/races', { onFailure: pointAtRaces });
+  return plugin('pace/race-hint', { onFailure: pointAtRaces });
 }
 ```
 
 Read it from the bottom:
 
-- **`plugin(identity, definition)`** builds the plugin, the same call the first-party plugins make. The identity names the plugin. By [convention](../core/plugin-contract.md#identity-and-installation), a plugin local to an application names itself under the application's name, so this one is `pace/races`.
+- **`plugin(identity, definition)`** builds the plugin, the same call the first-party plugins make. The identity names the plugin. By [convention](../core/plugin-contract.md#identity-and-installation), a plugin local to an application names itself under the application's name, so this one is `pace/race-hint`.
 - **`raceHint()`** is a factory, as `help()` and `config()` are, so the application installs it with a call like any other plugin.
 - **`onFailure`** is a [lifecycle hook](../core/lifecycle-hooks.md), a function core calls at a named point in a run. Core calls `onFailure` for each failure a run renders, and the hook returns a hint, several hints, or `undefined` for none.
-- **`pointAtRaces`** returns its hint only for an `InputError` that holds a problem for the `distance` argument or the `--every` option. An `InputError` lists its problems in `problems`, and an `invalid` problem names the input a validator rejected, as [Failure classes](../core/failures.md#failure-classes) shows. The hint points at a command line, so the hook reads `invokedBy` and returns `undefined` for a run by name, which has none, as [Failure hints](../core/lifecycle-hooks.md#failure-hints) asks. For any other failure, it returns `undefined` too.
+- **`pointAtRaces`** returns its hint only for an `InputError` that holds a problem for the `distance` argument or the `--every` option. An `InputError` lists its [problems](../core/failures.md#failure-classes) in `problems`, and an `invalid` problem names the input a validator rejected. The hint points at a command line, so it reads `invokedBy` and stays silent when code starts the run instead, as chapter 7 shows. For any other failure, it returns `undefined` too.
 
 A hint is a pointer: it names where to go next and leaves the failure's own sentence as it is. A mistyped race now gets the validator's message, help's hint, and the race hint, in installation order:
 
@@ -284,7 +291,7 @@ Run pace <command> --help for command details.
 ```
 
 - **`completion`** is listed first. Core attaches a [plugin Command](../core/plugin-contract.md#plugin-commands) to the root ahead of the application's own Commands, and it is an ordinary Command in every other way.
-- **`--config`** follows help's and version's options, because `config()` is installed after them. `--unit` comes first, because the application's own global options come before every plugin's.
+- **`--config`** follows help's and version's options, because `config()` is installed after them. `--unit` comes first, because the page lists [the application's own global options before every plugin's](../plugins/help-page.md#the-help-page).
 - **`races`** comes last, because `pace` attaches it after its other Commands.
 - **`raceHint()`** adds nothing to the page, because its one contribution is a hook.
 

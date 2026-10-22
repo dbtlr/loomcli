@@ -132,6 +132,14 @@ test('a fence with no region equals the whole file without its trailing newline'
   expect(matching.problems).toEqual([]);
 });
 
+test('a fence with no region omits the region marker lines of the file', () => {
+  const whole = lines('a', '  // #region inner', '  b', '  // #endregion', '// #region tail', 'c');
+  const result = check(page('<!-- example: ../../x.ts -->', '```ts', 'a', '  b', 'c', '```'), {
+    'x.ts': whole,
+  });
+  expect(result.problems).toEqual([]);
+});
+
 test('a stale fence is reported with file, line, first difference, and the way to fix it', () => {
   const result = check(
     page(

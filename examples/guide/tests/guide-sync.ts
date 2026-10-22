@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path/posix';
 const bindingComment = /^\s*<!--\s*(?<kind>example|transcript):\s*(?<target>\S+?)\s*-->\s*$/u;
 const fenceOpening = /^(?<indent>\s*)(?<fence>`{3,}|~{3,})\s*(?<info>.*)$/u;
 const updateCommand = 'UPDATE_GUIDE=1 pnpm vp test --run examples/guide';
+const regionMarker = /^\s*\/\/ #(?:region\b.*|endregion)\s*$/u;
 
 /** What a binding comment ties a fence to: a source file or region, or a transcript file. */
 interface Binding {
@@ -101,6 +102,14 @@ function withoutTrailingNewline(text: string): string {
   return text.endsWith('\n') ? text.slice(0, -1) : text;
 }
 
+/** A whole file as the reader copies it: without its region marker lines. */
+function withoutRegionMarkers(text: string): string {
+  return text
+    .split('\n')
+    .filter((row) => !regionMarker.test(row))
+    .join('\n');
+}
+
 /** Quotes a line for a message, or says there is none. */
 function show(row: string | undefined): string {
   return row === undefined ? 'no line' : JSON.stringify(row);
@@ -171,7 +180,7 @@ function expectedBody(
     };
   }
   if (binding.region === undefined) {
-    return { body: withoutTrailingNewline(text) };
+    return { body: withoutTrailingNewline(withoutRegionMarkers(text)) };
   }
   try {
     return { body: extractRegion(text, binding.region) };

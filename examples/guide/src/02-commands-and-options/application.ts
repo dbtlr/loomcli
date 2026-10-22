@@ -11,7 +11,7 @@ const configured = new Application('pace', {
   description: 'Work out running paces, splits, and conversions.',
   plugins: [help(), version()],
 }).globalOption('unit', {
-  description: 'The unit to give a pace in, km or mi. Defaults to km.',
+  description: 'The unit to give a pace in, km or mi.',
   short: 'u',
   type: 'string',
 });

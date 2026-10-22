@@ -23,7 +23,7 @@ Loom owns the tools for each step: the [toolchain](../toolchain/README.md) build
 }
 ```
 
-`pnpm check` runs three checks, one after another, and stops at the first that fails. They follow the order in which Loom guides an author, under [principle 7](../principles.md#7-guide-with-types-then-lint-then-diagnostics): a type first, then a lint rule, then a check that only the assembled application can answer.
+`pnpm check` runs three checks, one after another, and stops at the first that fails. They follow the order in which [Loom guides an author](../principles.md#7-guide-with-types-then-lint-then-diagnostics): a type first, then a lint rule, then a check that only the assembled application can answer.
 
 ```sh
 pnpm check
@@ -31,7 +31,7 @@ pnpm check
 
 ### The type checker
 
-`tsc --noEmit` type-checks the application and writes nothing, because `loom build` bundles it. It catches the mistakes the earlier chapters left to the types, such as a call in the wrong place on a declaration, which chapter 1 showed, or an action that reads a validated value as the wrong type, which chapter 3 showed.
+`tsc --noEmit` type-checks the application and writes nothing, because `loom build` bundles it. It catches the mistakes the earlier chapters left to the types, such as a call in the wrong place on a declaration, which chapter 1 showed.
 
 ### The linter
 
@@ -63,30 +63,25 @@ test('the application assembles', () => {
 });
 ```
 
-[`assertAssembles`](../libs/testing.md#assertassembles) calls `pace.check()`, which applies the build rules to the whole application, and fails the test with the Developer Diagnostic of each fault it finds. Some faults exist only once every Command and plugin is in place. For example, two options that [claim one spelling](../core/diagnostics.md#loomclicorespelling-taken), such as a global option of `pace`'s own and one a plugin declares, compile and lint without complaint, because each declaration is correct on its own.
+[`assertAssembles`](../libs/testing.md#assertassembles) calls `pace.check()`, which applies the build rules to the whole application, and fails the test with the Developer Diagnostic of each fault it finds. Some faults exist only once every Command and plugin is in place. For example, the MCP plugin from chapter 7 gives a tool its arguments and options as one object keyed by name, so an argument named `unit` on `convert` would [clash with the global `--unit`](../core/diagnostics.md#loomclipluginsmcpproperty-name-taken) in `convert`'s tool. Each declaration is correct on its own, so the code compiles and lints, and the plugin reports the clash only when the application assembles.
 
-Keep the test as the application grows. Without it, such a fault first appears when an operator runs the application, and in a distributed build the operator sees only a generic message. [What it covers](../libs/testing.md#what-it-covers) lists the faults the test finds and the ones it leaves to the first run, such as a declared default that its validator rejects.
+Keep the test as the application grows. Without it, such a fault first appears when an operator runs the application, and in a distributed build the operator sees only a generic message. The test leaves [a few faults](../libs/testing.md#what-it-covers) to the first run, such as a declared default that its validator rejects.
 
 ## Read the version from package.json
 
-Since chapter 1, `pace --version` has printed `0.0.0`, the version an Application reads when it declares none. Set `version` in `package.json` to the version you ship first, and name the GitHub repository the releases belong to:
+Since chapter 1, `pace --version` has printed `0.0.0`, the version an Application reads [when it declares none](../core/application.md). Set these keys in `package.json`: `version`, the version you ship first, and `repository`, the GitHub repository the releases belong to.
 
 ```json
 {
-  "name": "pace",
   "version": "1.0.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/acme/pace.git"
-  },
-  "bin": {
-    "pace": "dist/main.js"
-  },
-  "type": "module"
+  }
 }
 ```
 
-Then import the manifest in `src/application.ts`:
+Then import `package.json` in `src/application.ts`:
 
 <!-- example: ../../examples/guide/src/08-shipping/application.ts#package-import -->
 ```ts
@@ -100,7 +95,7 @@ And pass its version to the Application:
 version: Package.version,
 ```
 
-`package.json` is now the one place that holds the version. `loom build` bundles the application, so the bundler inlines the value the application reads from its manifest, as the [plugin contract](../core/plugin-contract.md) notes for applications. The [version plugin](../plugins/version.md) prints it:
+`package.json` is now [the one place that holds the version](../core/extensions.md). `loom build` bundles the application, so [the bundler inlines the version](../core/plugin-contract.md) into the bundle. The [version plugin](../plugins/version.md) prints it:
 
 <!-- transcript: ../../examples/guide/transcripts/08-shipping/version.txt -->
 ```console
@@ -116,32 +111,26 @@ pace v1.0.0
 pnpm build
 ```
 
-It writes `dist/main.js`, the bundle of `src/main.ts`, and `dist/application.js`, the bundle of the application module, beside the chunks they share. The `bin` key that `loom init` wrote points `pace` at `dist/main.js`, so a package manager that installs `pace` puts a `pace` command on the operator's `PATH`. `src/main.ts` opens with `#!/usr/bin/env node`, and the bundle keeps that line. [`loom build`](../toolchain/build.md#loom-build) describes every target and option.
+It writes `dist/main.js`, the bundle of `src/main.ts`, and `dist/application.js`, the bundle of the application module, beside the chunks they share. The `bin` key that `loom init` wrote points `pace` at `dist/main.js`, so a package manager that installs `pace` puts a `pace` command on the operator's `PATH`. `src/main.ts` opens with `#!/usr/bin/env node`, and the bundle keeps that line. See [`loom build`](../toolchain/build.md#loom-build).
 
-The build also bakes [release facts](../core/release-facts.md) into the bundle. They say how the running copy was built, and core delivers them to every run as `host.release`, so you import nothing to read them. The fact that changes what the operator sees is the build:
+The build also records [release facts](../core/release-facts.md) in the bundle. They say how the running copy was built, and core delivers them to every run as `host.release`, so you import nothing to read them. The fact that changes what the operator sees is the build:
 
 - **While you develop.** `bun src/main.ts` runs the source, and its release facts read `source`. That is a development build, so a defect shows you its Developer Diagnostic, with the detail you need to fix it.
-- **What you ship.** `loom build` writes a distributed build by default, and its release facts read `distributed`. A defect there shows the operator one generic message through the view of `InternalError`.
+- **What you ship.** `loom build` writes a distributed build by default, and its release facts read `distributed`. A defect there shows the operator one generic message, which `pace`'s defect view from [chapter 5](failures.md) extends with where to report it.
 
-`pace` overrides that view in [chapter 5](failures.md), so the generic message also says where to report the defect:
+Usage errors and `pace`'s own failures print the same text in both builds. See [Development builds](../core/release-facts.md#development-builds).
 
-<!-- example: ../../examples/guide/src/08-shipping/views.ts#defect-view -->
-```ts
-/** A defect in a distributed build: the generic message, and where to report it. */
-export const defectView: FailureView<InternalError> = {
-  render: (_failure, { application, hints }) =>
-    lines([
-      `${application}: Something went wrong. Report it at https://github.com/acme/pace/issues.`,
-      ...hints,
-    ]),
-};
+To run the built `pace` as a command on your own machine, install the package directory globally with pnpm. pnpm links the directory, so each later build reaches the same command:
+
+```sh
+pnpm add --global .
 ```
 
-Usage errors and `pace`'s own failures print the same text in both builds. The table in [Development builds](../core/release-facts.md#development-builds) lists what the build changes.
+pnpm puts `pace` in its global bin directory, which must be on your `PATH`; `pnpm setup` adds it. If you set the alias from chapter 1, run `unalias pace` so the shell finds the installed command. `pnpm remove --global pace` removes it again.
 
 ## Release a binary
 
-An operator who does not install Node or Bun runs a compiled binary. `loom build` with a Bun compile target, such as `bun-linux-x64`, compiles a single binary for that platform. With `--release`, it also bakes the release group: the version from `package.json`, the repository from `repository`, and the asset name, such as `pace-linux-x64`.
+An operator who does not install Node or Bun runs a compiled binary. `loom build` with a Bun compile target, such as `bun-linux-x64`, compiles a single binary for that platform. With `--release`, it also records the facts of the release in the binary: the version from `package.json`, the repository from `repository`, and the asset name, such as `pace-linux-x64`. A build without `--release`, such as `pnpm build`, records none of them.
 
 Your repository's release workflow builds one binary per platform, writes their digests to `SHA256SUMS`, and publishes them as the GitHub Release `v1.0.0`:
 
@@ -153,11 +142,11 @@ done
 gh release create v1.0.0 dist/pace-* dist/SHA256SUMS
 ```
 
-The installer script and self-update read a release in exactly this shape. [The release shape](../toolchain/install.md#the-release-shape) states the tag, the asset names, the `SHA256SUMS` format, and how to publish a prerelease or an older line.
+The installer script and self-update read a release in exactly this shape. See [The release shape](../toolchain/install.md#the-release-shape).
 
 ## Install with install.sh
 
-When `package.json` names a GitHub repository, `loom init` writes the [installer script](../toolchain/install.md), `install.sh`, in the package directory. If you ran `loom init` before you set `repository`, init printed a warning and wrote no script. Write it now:
+When `package.json` names a GitHub repository, `loom init` writes the [installer script](../toolchain/install.md), `install.sh`, in the package directory. In chapter 1, `package.json` named no repository, so init wrote no installer script. Write it now:
 
 ```sh
 pnpm exec loom init --only install
@@ -175,7 +164,7 @@ The script picks the asset for the operator's platform, downloads it from the la
 curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/acme/pace/main/install.sh | sh -s -- --dir /opt/pace/bin 1.0.0
 ```
 
-After it places the binary, the script writes the [installation record](../core/installation-record.md), `install.json`, which says that a script installed `pace`, where, and with which digest. When the installed binary runs, core reads the record into `host.release.installation`, under [Reading the installation](../core/installation-record.md#reading-the-installation).
+After it places the binary, the script writes the [installation record](../core/installation-record.md), `install.json`, which says that a script installed `pace`, where, and with which digest. When the installed binary runs, [core reads the record](../core/installation-record.md#reading-the-installation) into `host.release.installation`.
 
 ## Let the binary update itself
 
@@ -222,7 +211,7 @@ pace was not built as a release binary, so it cannot update itself. Update it th
 
 The [self-update reference](../plugins/self-update.md) lists each refusal and its message, and how the Command follows a release channel.
 
-`afterReplace` runs once the new binary and its record are in place. `pace` installs the completion plugin from chapter 6, and an operator may have installed its completion script, so `refreshCompletion` runs the new binary's `completion update` to refresh it. A refresh that fails never fails the update, under [Refreshing completion after a self-update](../plugins/completion.md#refreshing-completion-after-a-self-update).
+`afterReplace` runs once the new binary and its record are in place. `pace` installs the completion plugin from chapter 6, and an operator may have installed its completion script, so `refreshCompletion` runs the new binary's `completion update` to refresh it. A [refresh that fails](../plugins/completion.md#refreshing-completion-after-a-self-update) never fails the update.
 
 The plugin also prints an update notice at a terminal when a newer release exists on the binary's channel. It reads a cache and never waits on the network. [Update notices](../plugins/self-update.md#update-notices) says when a notice prints and how you or the operator turn notices off.
 
@@ -245,7 +234,7 @@ pnpm exec loom changelog write
 pnpm install
 ```
 
-`--dry-run` prints the section and the next version and writes nothing. `write` refreshes no lockfile, so run the package manager after it. Because `src/application.ts` reads its version from `package.json`, the next build prints the new version and bakes it into the release facts, and your release workflow publishes it as `v1.1.0`. [The package changelog](../toolchain/changelog.md) states the fragment grammar, the version table, and what `write` needs from git.
+`--dry-run` prints the section and the next version and writes nothing. `write` refreshes no lockfile, so run the package manager after it. Because `src/application.ts` reads its version from `package.json`, the next build prints the new version, and your release workflow's `--release` builds record it in their release facts and publish it as `v1.1.0`. See [The package changelog](../toolchain/changelog.md).
 
 ## Where to go next
 

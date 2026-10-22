@@ -6,9 +6,16 @@ description: "Guide chapter 7. Install the manifest and MCP plugins so an agent 
 
 In this chapter you make `pace` ready for agents. At the end, `pace convert --manifest` prints a JSON description of `convert` that an agent reads before it runs the Command, `pace mcp` serves `calc`, `splits`, and `convert` as tools to an MCP client, and a TypeScript function runs `pace calc` by name and returns what the run wrote.
 
-An agent that runs `pace` is an [operator](../glossary.md#people), as a person at a terminal is. [Principle 2](../principles.md#2-the-operators-experience-is-the-product) states that an agent reads the same facts a person does, from the one command graph. Loom builds that graph from your declarations, and the help page you have read since chapter 1 is one [projection](../glossary.md#product-surface) of it. This chapter adds two more projections: the manifest and the MCP tool listing. Neither one asks you to describe `pace` a second time, so an agent can use `pace` correctly without having been trained on it.
+An agent that runs `pace` is an [operator](../glossary.md#people), as a person at a terminal is, and Loom holds that [an agent reads the same facts a person does](../principles.md#2-the-operators-experience-is-the-product). Loom builds those facts from your declarations into one structure, the [command graph](../glossary.md#compilation-and-invocation). A surface that reads the graph is a [projection](../glossary.md#product-surface), and the help page you have read since chapter 1 is one. This chapter adds two more projections: the manifest and the MCP tool listing. Neither one asks you to describe `pace` a second time, so an agent can use `pace` correctly without having been trained on it.
 
 ## Install the plugins
+
+This chapter changes these files:
+
+- `src/commands/calc.ts` and `src/scripts/pace-for.ts` are shown below, with the parts of `src/application.ts` and `src/commands/splits.ts` that change.
+- `src/application.ts`: copy it from [the snapshot](../../examples/guide/src/07-agents/application.ts). It imports and installs the two plugins.
+- `src/commands/splits.ts`: copy it from [the snapshot](../../examples/guide/src/07-agents/commands/splits.ts). It imports `manifestCommand`, `mcpCommand`, and `SplitTooLongError`.
+- `src/commands/convert.ts`: copy it from [the snapshot](../../examples/guide/src/07-agents/commands/convert.ts). It gains the `mcpCommand` value that `calc` gains.
 
 Import `manifest` from `@loomcli/plugins/manifest` and `mcp` from `@loomcli/plugins/mcp`, and add both to the Application's `plugins` list in `src/application.ts`:
 
@@ -30,8 +37,6 @@ plugins: [
 
 - **`manifest()`** declares one global option, `--manifest`, which prints the manifest of the routed Command. The [manifest plugin](../plugins/manifest.md) describes the option and the document.
 - **`mcp()`** contributes one [plugin Command](../core/plugin-contract.md#plugin-commands), `mcp`, which serves `pace`'s Commands to an MCP client. The [MCP plugin](../plugins/mcp.md) describes the server.
-
-The manifest plugin sits after help and version. When an operator supplies two options that each take over the run, the plugin installed earlier wins, so `pace --help --manifest` prints the help page. The [manifest plugin](../plugins/manifest.md#manifest-plugin) states this rule under its takeover.
 
 The help page now lists the `mcp` Command and the `--manifest` option:
 
@@ -65,7 +70,7 @@ Run pace <command> --help for command details.
 
 ## Read a Command's manifest
 
-`--manifest` prints the manifest of the routed Command as JSON, and the run ends with status 0 without running the action. So `pace convert --manifest` prints although it supplies no pace.
+`--manifest` prints the manifest of the routed Command as JSON, and the run exits 0 without running the action. So `pace convert --manifest` prints although it supplies no pace.
 
 The document is the slice of the graph for `convert`, with the facts an agent needs to call it in one place. Most of its lines describe the global options, so read these fields first:
 
@@ -264,7 +269,7 @@ $ pace convert --manifest
 
 </details>
 
-Every field is present in every entry, and an absent value reads `null` or `[]`, as the [manifest reference](../plugins/manifest.md#manifest-plugin) states. At the root the slice is the whole application, so `pace --manifest` prints every Command under `children`.
+[Every field is present in every entry](../plugins/manifest.md#manifest-plugin), and an absent value reads `null` or `[]`. At the root the slice is the whole application, so `pace --manifest` prints every Command under `children`.
 
 ## Declare the failures a Command raises
 
@@ -286,7 +291,9 @@ export const splits = new Command('splits', {
 - **`failure`** is the class itself. The extension reads the class's [failure code](../core/failures.md#failure-codes) and its [declared exit code](../core/failures.md#declared-exit-codes) when you call it, so the entry holds no code you could mistype.
 - **`meaning`** is one line that tells an agent what the failure means before it runs the Command.
 
-Now `pace splits --manifest` lists one entry under `failures`, with the code `split-too-long`, the exit code 64, and that meaning. A Command inherits no failures from its parent or the root, so each Command lists the failures it can raise itself, under [Manifest failures](../plugins/manifest.md#manifest-failures). The list is as accurate as your declarations: Loom never checks it against what the action throws.
+The second value, `mcpCommand` from `@loomcli/plugins/mcp/extension`, serves `splits` as an MCP tool, which the next section explains.
+
+Now `pace splits --manifest` lists one entry under `failures`, with the code `split-too-long`, the exit code 64, and that meaning. A Command [inherits no failures](../plugins/manifest.md#manifest-failures) from its parent or the root, so each Command lists the failures it can raise itself. The list is as accurate as your declarations: Loom never checks it against what the action throws.
 
 `manifestCommand` is a [collecting extension](../core/extensions.md#collecting-extensions), so your value and the values a plugin supplies all reach the entry. The same extension takes `details` and `examples` for an instruction an agent needs beyond the help page, as the [manifest extension](../plugins/manifest.md#manifest-extension) describes.
 
@@ -322,7 +329,7 @@ export const calc = new Command('calc', {
   .action(calculatePace);
 ```
 
-Give `convert` the same value, and add it to the `extensions` list of `splits` beside `manifestCommand`, as the declaration above shows. The `annotations` are hints for the client: `calc` reads nothing outside its inputs and changes nothing, so it is read-only, idempotent, and not open-world. The [MCP plugin](../plugins/mcp.md#mcp-plugin) states that these hints are yours to set, and that Loom infers none from the graph and never verifies them.
+Give `convert` the same value, and add it to the `extensions` list of `splits` beside `manifestCommand`, as the declaration above shows. The `annotations` are hints for the client: `calc` reads nothing outside its inputs and changes nothing, so it is read-only, idempotent, and not open-world. The hints are [yours to set](../plugins/mcp.md#mcp-plugin): Loom infers none from the graph and never verifies them.
 
 `pace mcp` serves three tools, and each one comes from the graph:
 
@@ -331,22 +338,22 @@ Give `convert` the same value, and add it to the `extensions` list of `splits` b
 - **The input schema** is one object, keyed by declared name: the Command's arguments, then its local options, then the global options. Each property is the input's own schema, with its description and its declared default, so `calc`'s tool takes `distance`, `time`, and `unit`, and `unit` lists `km` and `mi` with the default `km`. The `required` list holds `distance` and `time`, the required arguments.
 - **Control options are left out.** No tool lists `help`, `version`, `manifest`, `config`, or `format`, because a tool lists what a Command needs, and a control option feeds none of its work. A call that names one fails with a tool error, and no run starts.
 
-A tool call runs the Command through [invocation by name](../core/invocation.md#invocation-by-name), so it is the same run as `pace calc 10k 50:00`, with the same validation, failures, and exit codes. When the Command declares a view with the JSON media type, as `calc` does, the plugin selects it and the call returns the parsed JSON too. A failed call reports the failure's own message and its [failure form](../core/failures.md#the-failure-form), so a `splits` call with a split longer than the run returns exit code 64 and the code `split-too-long`. The [MCP plugin](../plugins/mcp.md#mcp-plugin) states each part of a call.
+A tool call runs the Command through [invocation by name](../core/invocation.md#invocation-by-name), so it is the same run as `pace calc 10k 50:00`, with the same validation, failures, and exit codes. When the Command's result holds a view with the JSON media type, as `calc`'s does once the formatter adds `json`, the plugin selects it and the call returns the parsed JSON too. A failed call reports the failure's own message and its [failure form](../core/failures.md#the-failure-form), so a `splits` call with a split longer than the run returns exit code 64 and the code `split-too-long`. See [MCP plugin](../plugins/mcp.md#mcp-plugin).
 
-To connect a client, configure it to launch `pace mcp` as a server over stdin and stdout. While you develop, the command is `bun src/main.ts mcp`. The server speaks MCP revision 2026-07-28 alone, so the client must support that revision. A client that opens with an `initialize` request receives an error that names the revision, under [The protocol package](../plugins/mcp.md#the-protocol-package).
+To connect a client, configure it to launch `pace mcp` as a server over stdin and stdout. While you develop, the command is `bun src/main.ts mcp`. The server speaks [MCP revision 2026-07-28](../plugins/mcp.md#the-protocol-package), so it works with a client that supports that revision. A client that opens with an `initialize` request, as clients of earlier revisions do, receives an error that names 2026-07-28; use a client that supports that revision instead.
 
 ## Write for an agent
 
 A person who reads a vague help page can try a value and read the error. An agent that reads the manifest or the tool listing chooses a Command and fills its inputs from the text you declared, before it runs anything. Your declarations are now most of what an agent knows about `pace`:
 
-- **Descriptions.** The description of the Application, of each Command, and of each input reaches every projection. A description that names the accepted forms, such as `How far you ran, such as 10k, 5mi, 400m, half, or marathon.`, tells an agent what to supply. The manifest and the MCP tool listing print each of these descriptions on one line, under [Extensions](../core/extensions.md).
+- **Descriptions.** The description of the Application, of each Command, and of each input reaches every projection. A description that names the accepted forms, such as `How far you ran, such as 10k, 5mi, 400m, half, or marathon.`, tells an agent what to supply. The manifest and the MCP tool listing [print each of these descriptions on one line](../core/extensions.md).
 - **Accepted values.** The schema a validator publishes is the [input schema](../core/validation.md#input-schema) that the manifest and each tool carry. `oneOf` publishes the enum of `--unit`, and the `inputSchema` you gave `createValidator` in chapter 3 publishes the patterns of `distance` and `time`. An input whose validator publishes no schema reads `null` in the manifest, which means unknown, so an agent learns what it accepts only by running the Command and reading the error.
 
 When an agent needs other words than a person, add them for the agent alone: `mcpInput` and `mcpArgument` give an input a tool-only description, and `manifestCommand` takes `details` and `examples`.
 
 ## Run a Command from code
 
-A program can run `pace` without a shell. Create `src/scripts/pace-for.ts`, which runs `pace calc` by name:
+A program that embeds `pace`, such as a test or another tool, can run a Command without a shell and read what it wrote. Create `src/scripts/pace-for.ts`, which runs `pace calc` by name:
 
 <!-- example: ../../examples/guide/src/07-agents/scripts/pace-for.ts -->
 ```ts
@@ -368,7 +375,7 @@ export async function paceFor(distance: string, time: string): Promise<string> {
 `pace.invoke(['calc'], { args: { distance, time } })` is an [invocation by name](../core/invocation.md#invocation-by-name):
 
 - **The path** names Commands from the root, so `['calc']` routes to `calc`, and `[]` names the root.
-- **The values** are keyed by declared name. `args` holds the arguments and `options` holds the options, so `options: { unit: 'mi' }` gives a pace per mile. Each value lowers to the tokens a command line would give, and every validator runs on them.
+- **The values** are keyed by declared name. `args` holds the arguments and `options` holds the options, so `options: { unit: 'mi' }` gives a pace per mile. Each value becomes the token a command line would give, and every validator runs on it.
 - **The run** behaves as `pace calc 10k 50:00` does, and it touches no process: it writes nothing to the real stdout or stderr and sets no exit code. `pace.invoke` builds the graph for each call, as `run()` does.
 
 The call resolves an outcome, and its `status` names one of three cases. The function handles each one:
@@ -376,6 +383,8 @@ The call resolves an outcome, and its `status` names one of three cases. The fun
 - **`completed`** holds `output`, every byte the run wrote to stdout, so `paceFor('10k', '50:00')` returns `5:00 /km` and a newline. `messages` holds what the run wrote to stderr.
 - **`failed`** holds the exit code, the captured text, and the failure's form. `form.message` is the failure's sentence without the application name. A problem names its input by declared name, so `paceFor('10k', '50')` returns `Argument "time": Expected a time above zero as mm:ss or h:mm:ss, such as 25:30.`
 - **`cancelled`** holds only the exit code, because a cancelled run's captured text is discarded, so the function has no text to return and throws.
+
+The guide's own test, [`invoke.test.ts`](../../examples/guide/tests/invoke.test.ts), calls `paceFor` with both of those inputs and checks what it returns.
 
 `invoke` takes an options object as its third argument. `{ view: 'json' }` selects the `json` view, so `output` holds JSON that a program parses; the MCP plugin selects that view in the same way. An action reaches the same call as `invoke` on its context, to run another Command of its own graph.
 

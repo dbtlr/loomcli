@@ -10,7 +10,7 @@ The chapter starts from the code [Commands and options](commands-and-options.md)
 
 ## Install the validator catalog
 
-A validator is a [Standard Schema](https://standardschema.dev/) object that you attach to an argument or an option with `validate`. Loom calls it with the text the operator typed. When the validator accepts the text, the action receives the value the validator returns. When it rejects the text, the action does not run. [Standard Schema validation](../core/validation.md) states how core calls a validator and what the action receives.
+A validator is a [Standard Schema](https://standardschema.dev/) object that you attach to an argument or an option with `validate`. Loom calls it with the text the operator typed. When the validator accepts the text, the action receives the value the validator returns. When it rejects the text, the action does not run. See [Standard Schema validation](../core/validation.md).
 
 `@loomcli/validators` ships the validator catalog, validators for common input shapes, and `createValidator`, which builds a validator from a parse function of your own. Add it to the project:
 
@@ -19,6 +19,12 @@ pnpm add @loomcli/validators
 ```
 
 The [validators reference](../libs/validators.md) lists every validator in the catalog.
+
+This chapter changes these files:
+
+- `src/application.ts`, `src/validators.ts`, `src/commands/calc.ts`, and both `calc` and `splits` actions are shown below, with the `--every` option of `src/commands/splits.ts`.
+- `src/commands/splits.ts`: copy it from [the snapshot](../../examples/guide/src/03-inputs-and-validation/commands/splits.ts). Its arguments gain the validators `calc`'s arguments use.
+- `src/commands/convert.ts` and `src/actions/convert.ts`: copy them from [the snapshot](../../examples/guide/src/03-inputs-and-validation/commands/convert.ts). The argument gains the `pace` validator, and the action shrinks to one line.
 
 ## Validate the unit
 
@@ -60,11 +66,11 @@ export const pace = configured.command(calc).command(splits).command(convert);
 
 The global option has three new keys:
 
-- **`validate: oneOf(['km', 'mi'])`** accepts a token that equals one of the listed values exactly. The value the action receives is typed as the union of the values, `'km' | 'mi'`, so it fits the `Unit` type in `src/pace.ts` with no check of its own. [oneOf](../libs/validators.md#oneof) describes the validator, and the `Register` augmentation passes the validated type to every Command, under [Modular authoring](../core/commands.md#modular-authoring).
-- **`default: 'km'`** is the value the option takes when nothing supplies it. You write a default as the text an operator would type, and it passes through the validator like a token, so the action receives `'km'` typed as the union, and `options.unit` is never `undefined`. Core checks the default against the validator on every run, so a default the validator rejects fails every run. [Absence and defaults](../core/validation.md#absence-and-defaults) states both rules.
+- **`validate: oneOf(['km', 'mi'])`** accepts a token that equals one of the listed values exactly. The value the action receives is typed as the union of the values, `'km' | 'mi'`, so it fits the `Unit` type in `src/pace.ts` with no check of its own, and the `Register` augmentation passes that type to every Command. See [oneOf](../libs/validators.md#oneof).
+- **`default: 'km'`** is the value the option takes when nothing supplies it. You write a default as the text an operator would type, and it passes through the validator like a token, so the action receives `'km'` typed as the union, and `options.unit` is never `undefined`. Core [checks the default against the validator on every run](../core/validation.md#absence-and-defaults), so a default the validator rejects fails every run.
 - **`env: 'PACE_UNIT'`** binds the option to an environment variable. [Read the unit from the environment](#read-the-unit-from-the-environment) covers it.
 
-The description no longer lists the units or the default, because the help page now prints both from the declaration, as [Help shows the default and the accepted values](#help-shows-the-default-and-the-accepted-values) shows.
+The description no longer lists the units, because the help page now prints them and the default from the declaration, as [the help section below](#help-shows-the-default-and-the-accepted-values) shows.
 
 With no `--unit`, `pace` uses the default:
 
@@ -82,7 +88,7 @@ $ pace calc 10k 50:00 --unit mi
 8:03 /mi
 ```
 
-A unit that `oneOf` rejects never reaches the action. Loom names the option, prints the validator's message, points at the help page, and exits with status 2:
+A unit that `oneOf` rejects never reaches the action. Loom names the option, prints the validator's message, and exits 2, and the help plugin's hint follows:
 
 <!-- transcript: ../../examples/guide/transcripts/03-inputs-and-validation/unknown-unit.exit-2.txt -->
 ```console
@@ -91,7 +97,7 @@ pace: Option "--unit": Expected one of: km, mi.
 Run "pace calc --help" to see the usage.
 ```
 
-In chapter 2 the action reported the same mistake with `out.fatal`, so the run exited with status 1. A value that a validator rejects is a usage error: the invocation itself is wrong, so Loom exits with status 2, the status it gives a missing argument. [Issues and validator failures](../core/validation.md#issues-and-validator-failures) states how Loom reports a rejected value.
+In chapter 2 the action reported the same mistake with `out.fatal`, so the run exited 1. A value that a validator rejects is a usage error: the invocation itself is wrong, so Loom exits 2, as it does for a missing argument. See [Issues and validator failures](../core/validation.md#issues-and-validator-failures).
 
 ## Read the unit from the environment
 
@@ -103,7 +109,7 @@ $ PACE_UNIT=mi pace calc 10k 50:00
 8:03 /mi
 ```
 
-The command line still wins. For each option, Loom takes the first source that supplies a value: the command line, then the environment, then the configuration source, then the declared default. [Input sources](../core/input-sources.md) states this precedence, and chapter 6 adds a configuration file. Here `--unit km` overrides `PACE_UNIT=mi`:
+The command line still wins. For each option, Loom takes [the first tier that supplies a value](../core/input-sources.md): the command line, then the environment, then a configuration file, then the declared default. Chapter 6 adds the configuration file. Here `--unit km` overrides `PACE_UNIT=mi`:
 
 <!-- transcript: ../../examples/guide/transcripts/03-inputs-and-validation/option-over-environment.txt -->
 ```console
@@ -120,7 +126,7 @@ pace: Option "--unit" (from PACE_UNIT): Expected one of: km, mi.
 Run "pace calc --help" to see the usage.
 ```
 
-The action cannot tell which source supplied the value, so it reads `options.unit` the same way in every case. The help page does not list an environment variable, because help teaches command-line syntax, so document `PACE_UNIT` wherever you document the application. [Input sources](../core/input-sources.md) states both rules.
+The action cannot tell which tier supplied the value, so it reads `options.unit` the same way in every case. The help page [does not list an environment variable](../core/input-sources.md), because help teaches command-line syntax, so document `PACE_UNIT` wherever you document the application.
 
 ## Write validators for distance, time, and pace
 
@@ -177,11 +183,10 @@ export const pace = createValidator({
 });
 ```
 
-Each validator reuses a parser from `src/pace.ts` and has two parts:
+Each validator reuses a parser from `src/pace.ts`, and the definition `createValidator` takes has two members:
 
-- **`parse`** receives the operator's text and returns either `{ value }`, the value the action receives, or `{ issues }`, the reasons the text is rejected. `distance` returns metres, `time` returns seconds, and `pace` returns a `Pace`. Each message follows the catalog's form: one sentence that begins with `Expected` and does not repeat the operator's text. [Shared rules](../libs/validators.md#shared-rules) describes that form.
-- **`ParseResult<number>`** annotates the return type of `parse`, as the catalog's own factories annotate theirs. It names, in one place, the type every branch returns and the type the action receives.
-- **`inputSchema`** is the JSON Schema the validator publishes, the input schema. Loom does not validate with it. It describes what a token must look like to every projection of the application, such as the manifest that chapter 7 shows to agents, so a reader learns the shape without trying a value. A published schema must accept every token the validator accepts, and it may accept more. [createValidator](../libs/validators.md#createvalidator) and [Input schema](../core/validation.md#input-schema) state the rules.
+- **`parse`** receives the operator's text and returns a `ParseResult`: either `{ value }`, the value the action receives, or `{ issues }`, the reasons the text is rejected. `distance` returns metres, `time` returns seconds, and `pace` returns a `Pace`. The annotation `ParseResult<number>` names, in one place, the type every branch returns and the type the action receives. Each message follows [the catalog's form](../libs/validators.md#shared-rules): one sentence that begins with `Expected` and does not repeat the operator's text.
+- **`inputSchema`** is the JSON Schema the validator publishes, its [input schema](../core/validation.md#input-schema). Loom does not validate with it. It tells the help page, and the manifest that chapter 7 shows to agents, what a token must look like, so a reader learns the shape without trying a value. A published schema must accept every token the validator accepts, and it may accept more, under the [soundness rule](../libs/validators.md#shared-rules).
 
 Attach the validators to the arguments in `src/commands/calc.ts`:
 
@@ -230,7 +235,7 @@ pace: Argument "distance": Expected a distance, such as 10k, 5mi, 400m, half, or
 Run "pace calc --help" to see the usage.
 ```
 
-Compare this with [chapter 1](first-application.md#run-it), where the action called `out.fatal` for the same input and the run exited with status 1. The message is the validator's, prefixed with the argument it belongs to, and the run exits with status 2, the usage-error status.
+Compare this with [chapter 1](first-application.md#run-it), where the action called `out.fatal` for the same input and the run exited 1. The message is the validator's, prefixed with the argument it belongs to, and the run exits 2.
 
 ## Leave an option out
 
@@ -246,7 +251,7 @@ Compare this with [chapter 1](first-application.md#run-it), where the action cal
 })
 ```
 
-When the operator leaves out an optional option that has no default, the action receives `undefined` and Loom does not call the validator. [Absence and defaults](../core/validation.md#absence-and-defaults) states the rule. So `options.every` is typed `number | undefined`, and the action supplies the fallback itself. Replace `src/actions/splits.ts`:
+When the operator leaves out an optional option that has no default, the action receives `undefined` and [Loom does not call the validator](../core/validation.md#absence-and-defaults). So `options.every` is typed `number | undefined`, and the action supplies the fallback itself. Replace `src/actions/splits.ts`:
 
 <!-- example: ../../examples/guide/src/03-inputs-and-validation/actions/splits.ts -->
 ```ts
@@ -302,8 +307,8 @@ GLOBAL OPTIONS
 
 The `--unit` row now ends with `One of: km, mi.` and `(default: km)`, which you no longer write in the description:
 
-- **`One of: km, mi.`** is the accepted-values sentence. The help plugin derives the sentence from the input schema when the schema is a closed set of strings, as the one `oneOf` publishes is. [Accepted values](../plugins/help.md#accepted-values) states when help derives it.
-- **`(default: km)`** is the declared default, which the help page prints as a fact after the description, under [the right-cell rule](../plugins/help-page.md#the-help-page).
+- **`One of: km, mi.`** is the [accepted-values sentence](../plugins/help.md#accepted-values). The help plugin derives it from the input schema when the schema is a closed set of strings, as the one `oneOf` publishes is.
+- **`(default: km)`** is the declared default, which the help page [prints as a fact](../plugins/help-page.md#the-help-page) after the description.
 
 The `distance` and `time` rows show no accepted values, because their input schemas hold a `pattern` rather than a closed set. Their descriptions keep the examples that tell the operator what to type.
 

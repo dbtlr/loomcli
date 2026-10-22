@@ -7,8 +7,8 @@ function isDistance(problem: InputProblem): boolean {
 }
 
 /**
- * Points at `pace races` under a failure for a distance pace could not read. A run by name has no
- * command line to point at, so it gets no hint.
+ * Points at `pace races` under a failure for a distance pace could not read. A run that code
+ * starts has no command line to point at, so it gets no hint.
  */
 const pointAtRaces: FailureHook = (failure, { invokedBy }) =>
   invokedBy === 'argv' && failure instanceof InputError && failure.problems.some(isDistance)
@@ -17,5 +17,5 @@ const pointAtRaces: FailureHook = (failure, { invokedBy }) =>
 
 /** Pace's own plugin. It uses the plugin contract every first-party plugin uses. */
 export function raceHint(): Plugin {
-  return plugin('pace/races', { onFailure: pointAtRaces });
+  return plugin('pace/race-hint', { onFailure: pointAtRaces });
 }

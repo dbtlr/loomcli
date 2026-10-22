@@ -10,9 +10,16 @@ In this chapter each of `pace`'s Commands declares the value it produces, and it
 
 Until now each action has built the text it prints. The splits action wrote one line per split with `out.print`, so the only output `pace splits` has is those lines. A person reads them well, but a script that wants the elapsed time of the third split has to parse text that was laid out for a person.
 
-A [result](../core/results.md) is the typed value a Command produces for its consumer, as distinct from the messages it writes about its work. The Command declares the result's type and a record of views, and the action emits the value once. A [view](../core/output.md#rendered-output) turns the value into text, so one value has many projections: a person gets a table, a script gets JSON, and an agent reads the same facts through the views that declare a [media type](../core/results.md#media-types). The action never decides which one a run prints.
+A [result](../core/results.md) is the typed value a Command produces for its consumer, as distinct from the messages it writes about its work. The Command declares the result's type and a record of views, and the action emits the value once. A [view](../core/output.md#rendered-output) turns the value into text, so one value has many views: a person gets a table, a script gets JSON, and an agent reads the same facts through the views that declare a [media type](../core/results.md#media-types). The action never decides which one a run prints.
 
 The change comes in three steps: give `calc` a result with a view of its own, give `splits` rows with a table and a records view, and install the formatter so the operator can choose a view by name.
+
+This chapter changes these files:
+
+- `src/views.ts`, `src/application.ts`, `calc`'s Command and action, and the `splits` action are shown below, with the result `src/commands/splits.ts` declares.
+- `src/commands/splits.ts`: copy it from [the snapshot](../../examples/guide/src/04-results-and-views/commands/splits.ts). It imports `records`, `table`, `Split`, and the cell functions, and its action is renamed `listSplits`.
+- `src/commands/convert.ts` and `src/actions/convert.ts`: copy them from [the snapshot](../../examples/guide/src/04-results-and-views/commands/convert.ts). They make the change `calc` makes.
+- `src/pace.ts`: delete `formatSplit`, which no action calls any more.
 
 ## Declare a result for calc
 
@@ -41,7 +48,7 @@ export function durationCell(seconds: number): string {
 }
 ```
 
-`paceView` renders a pace as the line `calc` printed before, such as `5:00 /km`, and ends it with a newline, because core writes the text the view returns as it is, as [Emitting a result](../core/results.md#emitting-a-result) states. Its `render` function also receives a view context, with `style`, `columns`, and the other members [Rendered output](../core/output.md#rendered-output) lists, which `paceView` does not need. The view is declared in its own constant, so it states its data type, `View<Pace>`. The two cell functions below it are for `splits`, later in this chapter.
+`paceView` renders a pace as the line `calc` printed before, such as `5:00 /km`, and ends it with a newline, because [a view owns its trailing newline](../core/output.md#rendered-output). Its `render` function also receives a view context, with `style`, `columns`, and other members that `paceView` does not need. The view is declared in its own constant, so it states its data type, `View<Pace>`. The two cell functions below it are for `splits`, later in this chapter.
 
 Then declare the result on the Command, before its action:
 
@@ -69,7 +76,7 @@ export const calc = new Command('calc', { description: 'Work out the pace of a r
   .action(calculatePace);
 ```
 
-- **`.result<Pace>(declaration)`** declares that `calc` produces one `Pace`. You state the type, and it rides in the Command's declared types beside its arguments and options. `.action()` removes `.result()`, so a result declared after the action is a compile error. [Declaring a result](../core/results.md#declaring-a-result) states both rules.
+- **`.result<Pace>(declaration)`** declares that `calc` produces one `Pace`. You state the type, and it rides in the Command's declared types beside its arguments and options. `.action()` removes `.result()`, so a result declared after the action is a compile error. See [Declaring a result](../core/results.md#declaring-a-result).
 - **`views`** is a record keyed by view name. The first key is the default view, the one a run renders when nothing selects another. Core knows no view name of its own, so `text` is a name `pace` chose, not one Loom reserves.
 
 The action now emits the pace instead of printing it:
@@ -85,7 +92,7 @@ export const calculatePace: ActionHandler<typeof calc> = ({ args, options, out }
   out.results(paceOf(args.distance, args.time, options.unit));
 ```
 
-`ActionHandler<typeof calc>` types `out.results` from the declaration, so passing anything but a `Pace` is a compile error. The action emits its result once. An action that returns without calling `out.results`, or calls it twice, fails with a `ResultError`, as [Emitting a result](../core/results.md#emitting-a-result) states. The formatting call is gone from the action, because the view does it now.
+`ActionHandler<typeof calc>` types `out.results` from the declaration, so passing anything but a `Pace` is a compile error. The action emits its result once. An action that returns without calling `out.results` fails with a `ResultError`. A second call rejects with a `ResultError`, which fails the run unless the action catches it, and then the action decides the outcome. See [Emitting a result](../core/results.md#emitting-a-result). The formatting call is gone from the action, because the view does it now.
 
 `pace calc` prints what it printed before:
 
@@ -99,7 +106,7 @@ $ pace calc 10k 50:00
 
 ## Stdout belongs to the result
 
-On a Command that declares a result, the result is the only thing the action writes to stdout. The action's `out.print` and `out.render` keep their signatures and write to stderr instead, beside `out.info` and `out.warn`. A script that captures the stdout of `pace calc` receives the pace and nothing else, whichever view ran, even after a later change adds a progress line or a warning to the action. [Stdout belongs to the result](../core/results.md#stdout-belongs-to-the-result) states the rule.
+On a Command that declares a result, [the result is the only thing the action writes to stdout](../core/results.md#stdout-belongs-to-the-result). The action's `out.print` and `out.render` keep their signatures and write to stderr instead, beside `out.info` and `out.warn`. A script that captures the stdout of `pace calc` receives the pace and nothing else, whichever view ran, even after a later change adds a progress line or a warning to the action.
 
 ## Declare rows for splits
 
@@ -133,12 +140,12 @@ On a Command that declares a result, the result is the only thing the action wri
 .action(listSplits);
 ```
 
-- **`.rows<Split>(declaration)`** declares that `splits` produces rows of type `Split`. Each entry in `views` renders the rows. [Declaring a result](../core/results.md#declaring-a-result) states what a rows record accepts.
+- **`.rows<Split>(declaration)`** declares that `splits` produces rows of type `Split`. Each entry in `views` renders the rows.
 - **`table({ columns })`** is a [table](../plugins/pack-views.md#table). Each column names a key of `Split`, a header, an alignment, and an optional `format` function that renders the cell. The table measures every row before it writes its first line, so each column is as wide as its widest cell, and it fits the table to the screen.
 - **`records({ identifier, fields })`** is a [records list](../plugins/pack-views.md#records): one block of lines per split, with a count at the end. `identifier` names the field that identifies each record, which the view styles apart. A records list is a row view, so it writes each record as the rows arrive.
 - **The first view is the default.** `table` comes first, so `pace splits` prints a table unless the operator selects another view.
 
-Both factories are written inside the `views` record, so the row type flows into them from `.rows<Split>()`. A column that names a key `Split` does not have is a compile error, and each `format` function receives that key's own type, such as a `number` for `elapsed`. [Row views](../core/results.md#row-views) states how the type flows. The cell functions `distanceCell` and `durationCell` come from `src/views.ts`. A `format` function returns marked text that you own, and the view writes it without escaping it. These cells interpolate numbers and `pace`'s own unit, never text an operator typed, so nothing in them needs [`style.escape`](../core/styles.md#strings-and-composition).
+Both factories are written inside the `views` record, so [the row type flows into them](../core/results.md#row-views) from `.rows<Split>()`. A column that names a key `Split` does not have is a compile error, and each `format` function receives that key's own type, such as a `number` for `elapsed`. The cell functions `distanceCell` and `durationCell` come from `src/views.ts`. A `format` function returns marked text that you own, and the view writes it without escaping it. These cells interpolate numbers and `pace`'s own unit, never text an operator typed, so nothing in them needs [`style.escape`](../core/styles.md#strings-and-composition).
 
 The action emits the splits as one array:
 
@@ -158,7 +165,7 @@ export const listSplits: ActionHandler<typeof splits> = ({ args, options, out })
 };
 ```
 
-The loop of `out.print` calls and its `await` are gone, and so is `formatSplit` in `src/pace.ts`. Under `rows`, `out.results` accepts any iterable or async iterable, an array included, so the action does not decide whether its consumer wants every row at once or one at a time. [Emitting a result](../core/results.md#emitting-a-result) states how core feeds each view shape.
+The loop of `out.print` calls and its `await` are gone, and so is `formatSplit` in `src/pace.ts`. Under `rows`, `out.results` accepts any iterable or async iterable, an array included, so the action does not decide whether its consumer wants every row at once or one at a time.
 
 `pace splits` now prints the default view:
 
@@ -212,39 +219,29 @@ declare module '@loomcli/core' {
 export const pace = configured.command(calc).command(splits).command(convert);
 ```
 
-The formatter puts a `--format` option on every Command that declares a result, and adds two views, `json` and `jsonl`, to every views record that does not already have them. `--format` selects a view by its name. It is a [control option](../core/commands.md#control-options), because it controls the run rather than feeding the Command's work, and it is absent from the action's types. [Formatter plugin](../plugins/format.md) describes the option, the two views, and the order in which they are added.
+The formatter adds a `--format` option to every Command that declares a result, and adds two views, `json` and `jsonl`, to every views record that does not already have them. `--format` selects a view by its name. A hook of the formatter adds the option when Loom builds the application, outside your declarations, so the option is absent from the action's types. The formatter also marks it as a [control option](../core/commands.md#control-options), an option that controls the run rather than feeding the Command's work. Core never reads the mark: the MCP tool listing in chapter 7 reads it to leave the option out. See [Formatter plugin](../plugins/format.md).
 
 `--format records` selects the records view:
 
 <!-- transcript: ../../examples/guide/transcripts/04-results-and-views/splits-records.txt -->
 ```console
-$ pace splits half 1:45:00 --every 5k --format records
+$ pace splits 3k 15:00 --format records
 split     1
-distance  5 km
-time      24:53
-elapsed   24:53
+distance  1 km
+time      5:00
+elapsed   5:00
 
 split     2
-distance  10 km
-time      24:53
-elapsed   49:46
+distance  2 km
+time      5:00
+elapsed   10:00
 
 split     3
-distance  15 km
-time      24:53
-elapsed   1:14:39
+distance  3 km
+time      5:00
+elapsed   15:00
 
-split     4
-distance  20 km
-time      24:53
-elapsed   1:39:32
-
-split     5
-distance  21.1 km
-time      5:28
-elapsed   1:45:00
-
-5 records
+3 records
 ```
 
 `--format json` selects the formatter's `json` view, which writes the same rows as one JSON array:
@@ -325,7 +322,7 @@ GLOBAL OPTIONS
   -V, --version      Print the version.
 ```
 
-A name that is not in the record never reaches the action. The formatter's validator rejects it, and Loom reports the names it accepts and exits with status 2, the usage-error status. The report is text, because the default view, the table, declares no media type:
+A name that is not in the record never reaches the action. The formatter's validator rejects it, and Loom reports the names it accepts and exits 2:
 
 <!-- transcript: ../../examples/guide/transcripts/04-results-and-views/unknown-format.exit-2.txt -->
 ```console

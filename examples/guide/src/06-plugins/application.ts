@@ -1,4 +1,4 @@
-import { Application, InternalError, override } from '@loomcli/core';
+import { Application, DeclarationError, InternalError, override } from '@loomcli/core';
 import type { EnvironmentOf } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { config } from '@loomcli/plugins/config';
@@ -22,7 +22,7 @@ const configured = new Application('pace', {
   // Installation order is composition order: help and version answer before any later plugin.
   plugins: [help(), suggestions(), version(), format(), config(), completion(), raceHint()],
   translators: [splitTooLong],
-  views: [override(InternalError, defectView)],
+  views: [override(InternalError, defectView), override(DeclarationError, defectView)],
 }).globalOption('unit', {
   default: 'km',
   description: 'The unit to give a pace in.',

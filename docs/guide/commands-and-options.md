@@ -10,7 +10,7 @@ The code is in [`examples/guide/src/02-commands-and-options/`](../../examples/gu
 
 ## Lay out the modules
 
-A [Command](../glossary.md#authoring) is a declaration with a name, its own arguments and options, and at most one action. The Application owns an unnamed root Command, and you attach named Commands to it. A Command that has children and registers no action is a [group](../glossary.md#authoring): routing passes through it to one of its children and never runs it. In this chapter the root becomes a group, under the rule [Nested Commands and groups](../core/commands.md#nested-commands-and-groups) states.
+A [Command](../glossary.md#authoring) is a declaration with a name, its own arguments and options, and at most one action. The Application owns an unnamed root Command, and you attach named Commands to it. A Command that has children and registers no action is a [group](../core/commands.md#nested-commands-and-groups): routing passes through it to one of its children and never runs it. In this chapter the root becomes a group.
 
 You can declare every Command in `src/application.ts`. `pace` gives each Command a module of its own instead, and puts each action in a module beside it, the layout [Modular authoring](../core/commands.md#modular-authoring) describes:
 
@@ -29,7 +29,12 @@ src/
     convert.ts
 ```
 
-[`src/pace.ts`](../../examples/guide/src/02-commands-and-options/pace.ts) still knows nothing about Loom. It gains the functions the new Commands call, such as `parseUnit`, `splitRun`, and `convertPace`. Copy it into your project again.
+This chapter changes these files:
+
+- `src/application.ts`, `src/commands/calc.ts`, `src/actions/calc.ts`, and `src/commands/splits.ts` are shown below.
+- `src/pace.ts`: copy it from [the snapshot](../../examples/guide/src/02-commands-and-options/pace.ts). It still knows nothing about Loom, and it gains the functions the new Commands call, such as `parseUnit`, `splitRun`, and `convertPace`.
+- `src/actions/splits.ts`: create it from [the snapshot](../../examples/guide/src/02-commands-and-options/actions/splits.ts). It reads its distance, time, and unit as `calc`'s action does, and it is `async`, because it awaits each line it prints. A section below shows the part that reads its options.
+- `src/commands/convert.ts` and `src/actions/convert.ts`: create them from [the snapshot](../../examples/guide/src/02-commands-and-options/commands/convert.ts). They follow the pattern of `calc`.
 
 ## Declare the global option
 
@@ -50,7 +55,7 @@ const configured = new Application('pace', {
   description: 'Work out running paces, splits, and conversions.',
   plugins: [help(), version()],
 }).globalOption('unit', {
-  description: 'The unit to give a pace in, km or mi. Defaults to km.',
+  description: 'The unit to give a pace in, km or mi.',
   short: 'u',
   type: 'string',
 });
@@ -69,8 +74,8 @@ Read it from the top:
 
 - **`new Application('pace', options)`** keeps its name and plugins. The description now describes the whole application, because the root no longer does one job.
 - **`.globalOption('unit', config)`** declares a [global option](../glossary.md#authoring): every Command accepts it, and its value reaches every action. Its config takes the keys of a local option, here a `description`, a short name `u`, and the `string` type. Declare global options before the first `command()` call, because `command()` returns an Application that offers no `globalOption()`, as the table in [Application declarations](../core/application.md) shows.
-- **No presence rule.** A global option cannot be `required`, because the rule would fail every Command that never reads it. When the operator omits `--unit`, its value is `undefined`, and each action chooses kilometres. [Commands and global options](../core/commands.md) states the rule.
-- **`declare module '@loomcli/core'`** is the [application registration](../glossary.md#authoring). A Command in another module imports neither the Application nor its global options, so this augmentation of the `Register` interface gives every Command in the TypeScript project the type of `options.unit`. `EnvironmentOf` reads the types of the global options and of the installed plugins. Register `configured`, the Application before any Command is attached: registering the finished `pace` creates a circular dependency through the Commands that read its types. Keep one registration per TypeScript project, as [Modular authoring](../core/commands.md#modular-authoring) states.
+- **No presence rule.** A global option [cannot be `required`](../core/commands.md), because the rule would fail every Command that never reads it. When the operator omits `--unit`, its value is `undefined`, and each action chooses kilometres.
+- **`declare module '@loomcli/core'`** is the [application registration](../glossary.md#authoring). A Command in another module imports neither the Application nor its global options, so this augmentation of the `Register` interface gives every Command in the TypeScript project the type of `options.unit`. Register `configured`, the Application before any Command is attached, because the finished `pace` depends on the Commands that read the registration. Keep one registration per TypeScript project. [Modular authoring](../core/commands.md#modular-authoring) explains both rules.
 - **`configured.command(calc)`** attaches a Command to the root and returns a new Application. Keep the value the last call returns: the exported `pace` holds all three Commands. `src/main.ts` imports `pace` and runs it, so it does not change.
 
 ## Declare a Command
@@ -97,7 +102,7 @@ export const calc = new Command('calc', { description: 'Work out the pace of a r
 
 - **`new Command('calc', options)`** names the Command. The operator types the name after `pace`, so it follows the same [portable name](../glossary.md#names-and-routing) rule as the application name. The `description` appears beside the name on the group's help page.
 - **`.argument()`** declares the same two arguments as chapter 1, now on `calc` alone.
-- **`.action(calculatePace)`** registers a handler that another module exports. Keep `.action(handler)` as the last call in the declaration: the handler's module imports the declaration's type, and TypeScript resolves the outermost call before it checks the handler. [Modular authoring](../core/commands.md#modular-authoring) explains the circular inference that another call after `.action()` causes.
+- **`.action(calculatePace)`** registers an action that another module exports. Keep `.action()` as the last call in the declaration, because the action's type reads the declaration, as [Modular authoring](../core/commands.md#modular-authoring) explains.
 
 ## Write the action in its own module
 
@@ -129,8 +134,8 @@ export const calculatePace: ActionHandler<typeof calc> = ({ args, options, out, 
 ```
 
 - **`ActionHandler<typeof calc>`** derives the type of the action's context from the declaration, so `args.distance` is a `string` and `options.unit` is `string | undefined`. The registration supplies the type of `unit`. [Modular authoring](../core/commands.md#modular-authoring) describes `ActionHandler` and the helpers beside it.
-- **`import type`** imports the declaration's type and no value, so the action module and the Command module do not load each other at run time.
-- **`options`** holds the values of the global options and of the routed Command's own options. A local option of another Command never appears in it, as [Commands and global options](../core/commands.md) states.
+- **`import type`** imports the declaration's type and no value, so the action module never loads the Command module. `commands/calc.ts` imports the action as a value, and the two modules form no cycle.
+- **`options`** holds the values of the global options and of the routed Command's own options. A local option of another Command [never appears in it](../core/commands.md).
 
 The action checks the unit by hand. It reads `options.unit`, chooses `km` when the value is `undefined`, and calls `out.fatal` when the text is neither `km` nor `mi`. The `splits` and `convert` actions repeat the same three lines. Chapter 3 removes that repetition: a validator on the global option checks the unit once, before any action runs.
 
@@ -142,7 +147,7 @@ $ pace calc 10k 50:00
 5:00 /km
 ```
 
-The operator can write `--unit` after the arguments, because every Command accepts every global option, under [Global consumption and routing](../core/commands.md#global-consumption-and-routing):
+The operator can write `--unit` after the arguments, because [every Command accepts every global option](../core/commands.md#global-consumption-and-routing):
 
 <!-- transcript: ../../examples/guide/transcripts/02-commands-and-options/calc-in-miles.txt -->
 ```console
@@ -150,7 +155,7 @@ $ pace calc half 1:45:00 --unit mi
 8:01 /mi
 ```
 
-A unit that the action cannot read ends with the action's message and status 1:
+A unit that the action cannot read ends with the action's message and exits 1:
 
 <!-- transcript: ../../examples/guide/transcripts/02-commands-and-options/unknown-unit.exit-1.txt -->
 ```console
@@ -193,14 +198,14 @@ export const splits = new Command('splits', {
   .action(printSplits);
 ```
 
-- **`.alias('split')`** routes the word `split` to `splits`. An [alias](../glossary.md#names-and-routing) is an unadvertised synonym for a common mistype or a guess: an operator or an agent who types `split` still reaches the Command, but no help page or list of Commands shows the alias, and every diagnostic names `splits`. It is not a second name that the application advertises. [Aliases](../core/commands.md#aliases) states the rule. Declare an alias before the action, because `.action()` returns a value that offers no `.alias()`, as [Application declarations](../core/application.md) lists.
+- **`.alias('split')`** routes the word `split` to `splits`. An [alias](../glossary.md#names-and-routing) is an unadvertised synonym for a common mistype or a guess: an operator or an agent who types `split` still reaches the Command, but no help page or list of Commands shows the alias, and every diagnostic names `splits`. Declare an alias before the action, because `.action()` returns a value that offers no `.alias()`. See [Aliases](../core/commands.md#aliases).
 - **`.option('every', config)`** declares a string option, which takes a value. The operator writes `--every 5k`, `--every=5k`, or `-e 5k` with the short name `e`. When the operator omits it, its value is `undefined`. [String values and token consumption](../core/options.md#string-values-and-token-consumption) lists every form.
-- **`.option('negative', config)`** declares a Boolean option, which takes no value. `--negative` or `-n` gives `true`, and its value is `false` when the operator omits it, as [Boolean polarity](../core/options.md#boolean-polarity) states.
+- **`.option('negative', config)`** declares a Boolean option, which takes no value. `--negative` or `-n` gives `true`, and its value is [`false` when the operator omits it](../core/options.md#boolean-polarity).
 - **`description`** on each option appears beside the option on the Command's help page.
 
 [Local options](../core/options.md) describes every kind of option and every key its config takes.
 
-The action in [`src/actions/splits.ts`](../../examples/guide/src/02-commands-and-options/actions/splits.ts) reads its distance, time, and unit as `calculatePace` does. Then it reads its own options:
+The action in `src/actions/splits.ts` reads its distance, time, and unit as `calculatePace` does. Then it reads its own options:
 
 <!-- example: ../../examples/guide/src/02-commands-and-options/actions/splits.ts#every -->
 ```ts
@@ -218,7 +223,7 @@ for (const split of splitRun({ every, metres, negative: options.negative, second
 }
 ```
 
-`options.every` and `options.negative` have the types their declarations give them: `string | undefined` and `boolean`. A supplied `--every` goes through the local `everyText`, so the message for a split the action cannot read repeats the text the operator typed. With no `--every`, each split is one unit long, and the action prints one line for each split: where the split ends, the split's own time, and the time from the start.
+`options.every` and `options.negative` have the types their declarations give them: `string | undefined` and `boolean`. With no `--every`, each split is one unit long, and the action prints one line for each split: where the split ends, the split's own time, and the time from the start.
 
 <!-- transcript: ../../examples/guide/transcripts/02-commands-and-options/splits.txt -->
 ```console
@@ -244,7 +249,7 @@ $ pace split half 1:45:00 -e 5k -n
 
 ## Add the convert Command
 
-[`src/commands/convert.ts`](../../examples/guide/src/02-commands-and-options/commands/convert.ts) declares one argument, `pace`, and [`src/actions/convert.ts`](../../examples/guide/src/02-commands-and-options/actions/convert.ts) converts it to the unit that `--unit` names. Both follow the pattern of `calc`. Create them, and `pace` has all three Commands that `src/application.ts` attaches:
+[`src/commands/convert.ts`](../../examples/guide/src/02-commands-and-options/commands/convert.ts) declares one argument, `pace`, and [`src/actions/convert.ts`](../../examples/guide/src/02-commands-and-options/actions/convert.ts) converts it to the unit that `--unit` names. With both in place, `pace` has all three Commands that `src/application.ts` attaches:
 
 <!-- transcript: ../../examples/guide/transcripts/02-commands-and-options/convert.txt -->
 ```console
@@ -278,14 +283,14 @@ COMMANDS
   convert  Give a pace per kilometre as a pace per mile, or the other way round.
 
 GLOBAL OPTIONS
-  -u, --unit <unit>  The unit to give a pace in, km or mi. Defaults to km.
+  -u, --unit <unit>  The unit to give a pace in, km or mi.
   -h, --help         Show this help.
   -V, --version      Print the version.
 
 Run pace <command> --help for command details.
 ```
 
-`--help` and `--version` are global options too: the help and version plugins declare them, and every Command accepts them. In chapter 1 the page listed them under OPTIONS, because a root with no children lists its global options there. [Ordered help sections](../plugins/help.md#ordered-help-sections) states where the help page lists each member.
+`--help` and `--version` are global options too: the help and version plugins declare them, and every Command accepts them. In chapter 1 the page listed them under OPTIONS, because [a root with no children lists its global options there](../plugins/help-page.md#the-help-page).
 
 Each Command has its own help page. It lists the Command's arguments, its local options under OPTIONS, and the global options under GLOBAL OPTIONS:
 
@@ -306,7 +311,7 @@ OPTIONS
   -n, --negative       Run the second half faster than the first.
 
 GLOBAL OPTIONS
-  -u, --unit <unit>  The unit to give a pace in, km or mi. Defaults to km.
+  -u, --unit <unit>  The unit to give a pace in, km or mi.
   -h, --help         Show this help.
   -V, --version      Print the version.
 ```
@@ -315,7 +320,7 @@ Neither page shows the alias `split`.
 
 ## Type a command that does not exist
 
-When the first word names no Command, routing fails before any action runs. Loom lists the names of the root's Commands, points at the help page, and exits with status 2, the usage-error status:
+When the first word names no Command, routing fails before any action runs. Loom lists the names of the root's Commands and exits 2, the status of a [usage error](../core/failures.md#failure-classes), and the help plugin's hint points at the help page:
 
 <!-- transcript: ../../examples/guide/transcripts/02-commands-and-options/unknown-command.exit-2.txt -->
 ```console
@@ -324,7 +329,7 @@ pace: Unknown command "calculate". Use one of: calc, splits, convert.
 Run "pace --help" to see the usage.
 ```
 
-The list holds each Command's name and never an alias, as [Failure classes](../core/failures.md#failure-classes) states for `UnknownCommandError`.
+The list holds each Command's name and never an alias.
 
 ## Next
 

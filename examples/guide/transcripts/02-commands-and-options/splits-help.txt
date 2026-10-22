@@ -13,6 +13,6 @@ OPTIONS
   -n, --negative       Run the second half faster than the first.
 
 GLOBAL OPTIONS
-  -u, --unit <unit>  The unit to give a pace in, km or mi. Defaults to km.
+  -u, --unit <unit>  The unit to give a pace in, km or mi.
   -h, --help         Show this help.
   -V, --version      Print the version.
