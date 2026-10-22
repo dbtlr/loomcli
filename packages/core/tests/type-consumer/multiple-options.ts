@@ -46,6 +46,17 @@ new Application('readonly-default')
     const fields: string[] = options.field;
     return fields;
   });
+const spreadFields = Math.random() > 0.5;
+new Application('readonly-spread-default')
+  .option('field', {
+    multiple: true,
+    type: 'string',
+    ...(spreadFields ? { default: fixedFields } : {}),
+  })
+  .action(({ options }) => {
+    const fields: string[] = options.field;
+    return fields;
+  });
 
 const rawDefault = { default: 'a', multiple: true, type: 'string' } satisfies StringOption;
 // @ts-expect-error TS2345: A raw multiple default is a string array, not one string.

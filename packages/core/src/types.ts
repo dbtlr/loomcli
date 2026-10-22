@@ -176,25 +176,26 @@ type DefaultInput<Config> = 'validate' extends keyof Config
   ? PerValue<Config, SchemaInput<Config['validate']>>
   : RawValue<Config>;
 /**
- * A list default a conditional declaration writes inline infers as a readonly tuple, so the check
- * reads it as writable, as it reads a list written in a single declaration.
+ * The defaults a config accepts: its default input, or a readonly list of it. A list a conditional
+ * declaration writes inline infers as a readonly tuple, and core copies a declared list for each
+ * run, so the action still receives its own array.
  */
-type WritableDefault<Default> = Default extends readonly unknown[]
-  ? { -readonly [Index in keyof Default]: Default[Index] }
-  : Default;
+type AcceptedDefault<Config> =
+  | DefaultInput<Config>
+  | (DefaultInput<Config> extends unknown[] ? Readonly<DefaultInput<Config>> : never);
 /**
- * The members of a config whose declared default is outside their own default input. A default a
- * config spreads in conditionally is optional, and is checked the same way. An `unknown` default,
- * which the wide `OptionConfig` declares, states nothing to check.
+ * The members of a config whose declared default is outside their own accepted defaults. A
+ * default a config spreads in conditionally is optional, and is checked the same way. An
+ * `unknown` default, which the wide `OptionConfig` declares, states nothing to check.
  */
 type DefaultFault<Config> = Config extends { default: infer Default }
-  ? [WritableDefault<Default>] extends [DefaultInput<Config>]
+  ? [Default] extends [AcceptedDefault<Config>]
     ? never
     : Config
   : 'default' extends keyof Config
     ? unknown extends Config['default']
       ? never
-      : Config extends { default?: DefaultInput<Config> }
+      : Config extends { default?: AcceptedDefault<Config> }
         ? never
         : Config
     : never;
