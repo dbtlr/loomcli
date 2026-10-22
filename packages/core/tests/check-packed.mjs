@@ -150,7 +150,7 @@ function excerpt(output) {
  * from the registry, where a release cut's version is not yet published.
  */
 function workspaceOverrides(directory) {
-  const names = ['core', 'eslint-plugin', 'plugins', 'prompts', 'testing'];
+  const names = ['core', 'eslint-plugin', 'plugins', 'prompts', 'testing', 'validators'];
   return `overrides:\n${names
     .map((name) => `  '@loomcli/${name}': 'file:${join(directory, `${name}.tgz`)}'\n`)
     .join('')}`;
@@ -326,6 +326,7 @@ try {
     '@loomcli/eslint-plugin',
     '@loomcli/plugins',
     '@loomcli/prompts',
+    '@loomcli/validators',
   ]) {
     const pinned = loomPackage.dependencies?.[name];
     assert.equal(
