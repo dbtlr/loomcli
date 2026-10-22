@@ -63,9 +63,11 @@ try {
   const coreTarball = join(temporary, 'core.tgz');
   const pluginsTarball = join(temporary, 'plugins.tgz');
   const promptsTarball = join(temporary, 'prompts.tgz');
+  const validatorsTarball = join(temporary, 'validators.tgz');
   pnpm(['pack', '--out', coreTarball], join(root, 'packages/core'));
   pnpm(['pack', '--out', pluginsTarball], join(root, 'packages/plugins'));
   pnpm(['pack', '--out', promptsTarball], join(root, 'packages/prompts'));
+  pnpm(['pack', '--out', validatorsTarball], join(root, 'packages/validators'));
   await cp(source, temporary, { recursive: true });
   await writeFile(
     join(temporary, 'package.json'),
@@ -79,6 +81,10 @@ try {
       private: true,
       type: 'module',
     }),
+  );
+  await writeFile(
+    join(temporary, 'pnpm-workspace.yaml'),
+    `overrides:\n  '@loomcli/validators': 'file:${validatorsTarball}'\n`,
   );
   pnpm(['install', '--prefer-offline', '--ignore-scripts', '--lockfile=false'], temporary);
   // Invalid augmentation cannot silently erase globals, including with skipLibCheck enabled.
