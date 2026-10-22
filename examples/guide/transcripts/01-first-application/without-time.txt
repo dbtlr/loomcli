@@ -1,2 +1,0 @@
-$ pace
-time: not given

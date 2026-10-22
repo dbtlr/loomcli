@@ -1,0 +1,17 @@
+$ pace --help
+pace · Work out running paces, splits, and conversions.
+
+USAGE
+  pace <command> [options]
+
+COMMANDS
+  calc     Work out the pace of a run.
+  splits   List the time of each split of a run.
+  convert  Give a pace per kilometre as a pace per mile, or the other way round.
+
+GLOBAL OPTIONS
+  -u, --unit <unit>  The unit to give a pace in. One of: km, mi.  (default: km)
+  -h, --help         Show this help.
+  -V, --version      Print the version.
+
+Run pace <command> --help for command details.

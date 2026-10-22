@@ -1,0 +1,2 @@
+$ pace calc 10k 50:00 --unit miles
+Unknown unit "miles". Use km or mi.

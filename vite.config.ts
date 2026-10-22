@@ -83,6 +83,16 @@ export default defineConfig({
         },
       },
       {
+        files: ['examples/guide/src/**'],
+        rules: {
+          // A guide snapshot is the application a reader writes, so its arithmetic reads as written.
+          // Pace names its units and leaves zero, padding widths, and race lengths literal.
+          // The assembly test keeps the comment loom init writes, whose second line runs on.
+          'eslint/capitalized-comments': 'off',
+          'eslint/no-magic-numbers': 'off',
+        },
+      },
+      {
         files: ['packages/core/src/**'],
         rules: {
           // Exit codes, argv offsets, and the missing-index sentinel have fixed meanings.

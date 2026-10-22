@@ -1,0 +1,3 @@
+$ pace calculate 10k 50:00
+pace: Unknown command "calculate". Use one of: calc, splits, convert.
+Run "pace --help" to see the usage.

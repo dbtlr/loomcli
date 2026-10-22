@@ -1,2 +1,0 @@
-$ pace --nope
-pace: Unknown option "--nope". Supply a declared option; prefix a hyphenated path with "./".

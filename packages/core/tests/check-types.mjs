@@ -14,6 +14,8 @@ const typescript = require('typescript/package.json');
 const compiler = join(dirname(require.resolve('typescript/package.json')), typescript.bin.tsc);
 const { version } = typescript;
 const zod = require('zod/package.json');
+// The guide's chapters hold the assembly test `loom init` writes, which runs under bun test.
+const guide = require('../../../examples/guide/package.json');
 const packageManager = process.env.npm_execpath;
 assert.ok(packageManager, 'Run this check through pnpm run check:types.');
 
@@ -82,6 +84,7 @@ try {
         '@loomcli/prompts': 'file:./prompts.tgz',
         '@loomcli/testing': 'file:./testing.tgz',
         '@loomcli/validators': 'file:./validators.tgz',
+        '@types/bun': guide.devDependencies['@types/bun'],
         zod: zod.version,
       },
       private: true,
@@ -91,7 +94,15 @@ try {
   pnpm(['install', '--prefer-offline', '--ignore-scripts', '--lockfile=false'], temporary);
   // Each guide chapter snapshot compiles as its own project against the packed packages.
   // A modular application registers its environment, and one project allows one registration.
+  // A chapter compiles with skipLibCheck on, as the tsconfig.json `loom init` writes does.
+  // Its bun test types bring a second @types/node beside the one core pins, as in a new scaffold.
   const guideSource = new URL('examples/guide/src/', pathToFileURL(root));
+  // The application's package.json sits above its sources, where a chapter reads its version.
+  await mkdir(join(temporary, 'guide'));
+  await cp(
+    fileURLToPath(new URL('package.json', guideSource)),
+    join(temporary, 'guide', 'package.json'),
+  );
   for (const name of await snapshotNames(guideSource)) {
     const chapter = join(temporary, 'guide', name);
     await cp(fileURLToPath(new URL(`${name}/`, guideSource)), chapter, { recursive: true });
@@ -102,7 +113,8 @@ try {
           lib: ['ES2022'],
           module: 'NodeNext',
           noEmit: true,
-          skipLibCheck: false,
+          resolveJsonModule: true,
+          skipLibCheck: true,
           strict: true,
           target: 'ES2022',
         },

@@ -128,12 +128,15 @@ function rewriteTranscript(text: string, output: string): string {
 }
 
 /**
- * Runs the transcript's command in process with the public API. The environment holds only the
- * transcript's assignments, color is off, and both streams append to one buffer in write order.
+ * Runs the transcript's command in process with the public API, in the working directory `cwd`,
+ * so a fixture such as a configuration file sits beside the transcripts that read it. The
+ * environment holds only the transcript's assignments, color is off, and both streams append to
+ * one buffer in write order.
  */
 async function runTranscript(
   application: Application,
   transcript: Pick<Transcript, 'argv' | 'env'>,
+  cwd: string,
 ): Promise<{ output: string; status: number }> {
   let output = '';
   const stream = () =>
@@ -144,7 +147,13 @@ async function runTranscript(
       },
     });
   const status = await application.run({
-    host: { argv: transcript.argv, env: transcript.env, stderr: stream(), stdout: stream() },
+    host: {
+      argv: transcript.argv,
+      cwd,
+      env: transcript.env,
+      stderr: stream(),
+      stdout: stream(),
+    },
     rendering: { color: 'never' },
   });
   return { output, status };

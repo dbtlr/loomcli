@@ -56,7 +56,8 @@ test.each(filesIn(new URL('transcripts/', guide), '.txt'))(
     const label = `examples/guide/transcripts/${name}`;
     const text = readFileSync(file, 'utf8');
     const transcript = parseTranscript(basename(name), text);
-    const run = await runTranscript(await loadSnapshot(dirname(name)), transcript);
+    const chapter = fileURLToPath(new URL(`transcripts/${dirname(name)}/`, guide));
+    const run = await runTranscript(await loadSnapshot(dirname(name)), transcript, chapter);
     const expected = settledOutput(file, text, run.output, transcript.output);
     expect(run.output, `${label} is stale. ${updateHint}`).toBe(expected);
     expect(

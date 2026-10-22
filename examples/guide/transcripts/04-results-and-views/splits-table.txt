@@ -1,0 +1,7 @@
+$ pace splits 5k 25:00
+SPLIT  DISTANCE  TIME  ELAPSED
+    1      1 km  5:00     5:00
+    2      2 km  5:00    10:00
+    3      3 km  5:00    15:00
+    4      4 km  5:00    20:00
+    5      5 km  5:00    25:00

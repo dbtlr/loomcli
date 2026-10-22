@@ -1,0 +1,27 @@
+$ pace splits half 1:45:00 --every 5k --format records
+split     1
+distance  5 km
+time      24:53
+elapsed   24:53
+
+split     2
+distance  10 km
+time      24:53
+elapsed   49:46
+
+split     3
+distance  15 km
+time      24:53
+elapsed   1:14:39
+
+split     4
+distance  20 km
+time      24:53
+elapsed   1:39:32
+
+split     5
+distance  21.1 km
+time      5:28
+elapsed   1:45:00
+
+5 records

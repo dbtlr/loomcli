@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+
 import { Application } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
 
@@ -72,18 +74,29 @@ const application = new Application('pace')
   });
 
 test('running a transcript returns the combined output in write order and the status', async () => {
-  const run = await runTranscript(application, parseTranscript('t.txt', '$ pace --time 5\n'));
+  const run = await runTranscript(
+    application,
+    parseTranscript('t.txt', '$ pace --time 5\n'),
+    tmpdir(),
+  );
   expect(run).toEqual({ output: 'time 5\n✘ late\n', status: 0 });
 });
 
 test('the environment of a run holds only the transcript assignments', async () => {
-  const bare = await runTranscript(application, parseTranscript('t.txt', '$ pace\n'));
+  const bare = await runTranscript(application, parseTranscript('t.txt', '$ pace\n'), tmpdir());
   expect(bare.output).toMatch(/^time none\n/u);
   const assigned = await runTranscript(
     application,
     parseTranscript('t.txt', '$ PACE_TIME=7 pace\n'),
+    tmpdir(),
   );
   expect(assigned.output).toMatch(/^time 7\n/u);
+});
+
+test('a run reads the working directory it is given', async () => {
+  const where = new Application('pace').action(({ host, out }) => out.print(host.cwd));
+  const run = await runTranscript(where, parseTranscript('t.txt', '$ pace\n'), tmpdir());
+  expect(run.output).toBe(`${tmpdir()}\n`);
 });
 
 test('the application of a snapshot is its only Application export', () => {

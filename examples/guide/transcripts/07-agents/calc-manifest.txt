@@ -1,0 +1,193 @@
+$ pace calc --manifest
+{
+  "name": "pace",
+  "version": "0.0.0",
+  "description": "Work out running paces, splits, and conversions.",
+  "tokens": "Every input is a string token. A schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument satisfies it alone. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.",
+  "exitCodes": {
+    "0": "Successful execution and core output",
+    "1": "Expected action failure, internal failure, or invalid declarations",
+    "2": "Invalid invocation inputs",
+    "64": "Declared failures: split-too-long",
+    "130": "Cancelled by SIGINT, a caller-supplied abort, or the action's cancel()",
+    "141": "Stopped because the reader of stdout closed the pipe",
+    "143": "Cancelled by SIGTERM"
+  },
+  "encodings": {
+    "json": "The output is one JSON document. Unless the Command's view reshapes it, a value result is the value and a rows result is the array of its rows.",
+    "jsonl": "Each line is one JSON document: one line per element when the printed value is an array, nothing for an empty array, and one line otherwise. Unless the view reshapes it, a rows result prints one line per row."
+  },
+  "globals": [
+    {
+      "type": "string",
+      "name": "unit",
+      "description": "The unit to give a pace in.",
+      "deprecated": null,
+      "control": false,
+      "long": "--unit",
+      "short": "-u",
+      "required": false,
+      "requiredWhen": null,
+      "multiple": false,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "string",
+        "enum": [
+          "km",
+          "mi"
+        ]
+      },
+      "env": [
+        "PACE_UNIT"
+      ],
+      "default": {
+        "value": "km"
+      },
+      "implied": null,
+      "background": false
+    },
+    {
+      "type": "boolean",
+      "name": "help",
+      "description": "Show this help.",
+      "deprecated": null,
+      "control": true,
+      "long": "--help",
+      "short": "-h",
+      "negative": null,
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "version",
+      "description": "Print the version.",
+      "deprecated": null,
+      "control": true,
+      "long": "--version",
+      "short": "-V",
+      "negative": null,
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "manifest",
+      "description": "Print this command's manifest as JSON.",
+      "deprecated": null,
+      "control": true,
+      "long": "--manifest",
+      "short": null,
+      "negative": null,
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "string",
+      "name": "config",
+      "description": "Read configuration from this file alone.",
+      "deprecated": null,
+      "control": true,
+      "long": "--config",
+      "short": null,
+      "required": false,
+      "requiredWhen": null,
+      "multiple": false,
+      "schema": null,
+      "env": [],
+      "default": null,
+      "implied": null,
+      "background": false
+    }
+  ],
+  "command": {
+    "name": "calc",
+    "path": [
+      "calc"
+    ],
+    "description": "Work out the pace of a run.",
+    "details": [],
+    "examples": [],
+    "deprecated": null,
+    "hasAction": true,
+    "result": {
+      "kind": "value",
+      "views": [
+        "text",
+        "json",
+        "jsonl"
+      ],
+      "default": "text",
+      "mediaTypes": {
+        "text": null,
+        "json": "application/json",
+        "jsonl": "application/jsonl"
+      }
+    },
+    "failures": [],
+    "arguments": [
+      {
+        "name": "distance",
+        "description": "How far you ran, such as 10k, 5mi, 400m, half, or marathon.",
+        "required": true,
+        "variadic": false,
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "pattern": "^(?:\\d+(?:\\.\\d+)?(?:k|km|m|mi)|half|marathon)$",
+          "type": "string"
+        },
+        "default": null
+      },
+      {
+        "name": "time",
+        "description": "How long the run took, as mm:ss or h:mm:ss.",
+        "required": true,
+        "variadic": false,
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "pattern": "^(?:\\d+:[0-5]\\d|\\d+):[0-5]\\d$",
+          "type": "string"
+        },
+        "default": null
+      }
+    ],
+    "optionGroups": [],
+    "options": [
+      {
+        "type": "string",
+        "name": "format",
+        "description": "Select the output format, text by default.",
+        "deprecated": null,
+        "control": true,
+        "long": "--format",
+        "short": null,
+        "required": false,
+        "requiredWhen": null,
+        "multiple": false,
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "string",
+          "enum": [
+            "text",
+            "json",
+            "jsonl"
+          ]
+        },
+        "env": [],
+        "default": null,
+        "implied": null,
+        "background": false
+      }
+    ],
+    "children": []
+  }
+}

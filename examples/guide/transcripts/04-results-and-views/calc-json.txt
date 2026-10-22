@@ -1,0 +1,5 @@
+$ pace calc 10k 50:00 --format json
+{
+  "seconds": 300,
+  "unit": "km"
+}

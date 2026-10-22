@@ -1,0 +1,2 @@
+$ pace calc half 1:45:00 --unit mi
+8:01 /mi

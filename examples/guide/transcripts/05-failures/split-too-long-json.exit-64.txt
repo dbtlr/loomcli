@@ -1,0 +1,2 @@
+$ pace splits 5k 25:00 --every 10k --format json
+{"error":{"code":"split-too-long","exitCode":64,"message":"A split of 10 km is longer than the 5 km run. Supply a shorter --every, or run pace calc for the pace of the whole run.","hints":[]}}

@@ -1,0 +1,2 @@
+$ PACE_UNIT=mi pace calc 10k 50:00
+8:03 /mi

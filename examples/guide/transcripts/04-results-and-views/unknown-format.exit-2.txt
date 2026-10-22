@@ -1,0 +1,3 @@
+$ pace splits 5k 25:00 --format yaml
+pace: Option "--format": Supply one of table, records, json, jsonl.
+Run "pace splits --help" to see the usage.
