@@ -1,7 +1,6 @@
 {
   "name": "@loomcli/eslint-plugin",
   "version": "0.14.0",
-  "private": true,
   "description": "The Loom CLI lint rules. Ships ESLint-compatible rules, which oxlint also loads, for what a type cannot express about a declaration.",
   "license": "MIT",
   "repository": {

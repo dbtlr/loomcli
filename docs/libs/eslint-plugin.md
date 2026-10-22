@@ -6,7 +6,7 @@ description: The @loomcli/eslint-plugin reference. The lint rules that guide an 
 
 `@loomcli/eslint-plugin` ships the [lint rules](../glossary.md) for Loom applications. A lint rule guides an author where a type cannot express the guidance, and it reports in the editor and in CI before anything runs. [ADR-0098](../decisions/0098-lint-is-the-author-guidance-lane.md) records the decision. The plugin is ESLint-compatible, so oxlint loads it through its `jsPlugins` setting and ESLint loads it as a flat-config plugin. Both tools run the same three rules.
 
-The package is private until the release that ships it, planned for 0.15.0. It has a peer dependency on `@loomcli/core`, because the `name-shape` rule calls the same name predicates core does. It needs no type information, so it runs under oxlint, which provides none.
+The package has a peer dependency on `@loomcli/core`, because the `name-shape` rule calls the same name predicates core does. It needs no type information, so it runs under oxlint, which provides none.
 
 ## Install and configure
 
