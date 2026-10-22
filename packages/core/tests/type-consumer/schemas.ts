@@ -150,3 +150,22 @@ const validSchemaBranch = {
 const mixedSchemas = Math.random() > 0.5 ? invalidSchemaBranch : validSchemaBranch;
 // @ts-expect-error TS2345: schema inputs remain correlated with each branch's default
 new Application('mixed-schemas').option('value', mixedSchemas);
+
+// An inline list default infers as a readonly tuple, and stays a valid multiple default.
+const listOrScalar = Math.random() > 0.5;
+new Application('list-or-scalar').option(
+  'tag',
+  listOrScalar
+    ? { default: ['latest'], multiple: true, type: 'string' }
+    : { default: 'latest', type: 'string' },
+);
+
+const numberForString = { default: 5, type: 'string', validate: z.string() } satisfies StringOption;
+const stringForNumber = {
+  default: 'x',
+  type: 'string',
+  validate: z.number(),
+} satisfies StringOption;
+const crossedSchemas = Math.random() > 0.5 ? numberForString : stringForNumber;
+// @ts-expect-error TS2345: each branch's default meets its own validator, not the other branch's
+new Application('crossed-schemas').option('value', crossedSchemas);

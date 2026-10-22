@@ -38,6 +38,15 @@ new Application('multiple-schema')
 
 new Application('globals').globalOption('field', { multiple: true, type: 'string' });
 
+// Core copies a declared list for each run, so a readonly list is a valid default.
+const fixedFields = ['name', 'size'] as const;
+new Application('readonly-default')
+  .option('field', { default: fixedFields, multiple: true, type: 'string' })
+  .action(({ options }) => {
+    const fields: string[] = options.field;
+    return fields;
+  });
+
 const rawDefault = { default: 'a', multiple: true, type: 'string' } satisfies StringOption;
 // @ts-expect-error TS2345: A raw multiple default is a string array, not one string.
 new Application('bad').option('field', rawDefault);

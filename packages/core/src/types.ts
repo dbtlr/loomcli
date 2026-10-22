@@ -175,11 +175,25 @@ type SchemaInput<Schema> = Schema extends StandardSchemaV1
 type DefaultInput<Config> = 'validate' extends keyof Config
   ? PerValue<Config, SchemaInput<Config['validate']>>
   : RawValue<Config>;
+/**
+ * A list default a conditional declaration writes inline infers as a readonly tuple, so the check
+ * reads it as writable, as it reads a list written in a single declaration.
+ */
+type WritableDefault<Default> = Default extends readonly unknown[]
+  ? { -readonly [Index in keyof Default]: Default[Index] }
+  : Default;
 /** The members of a config whose declared default is outside their own default input. */
 type DefaultFault<Config> = Config extends { default: infer Default }
-  ? [Default] extends [DefaultInput<Config>]
+  ? [WritableDefault<Default>] extends [DefaultInput<Config>]
     ? never
-    : { default?: DefaultInput<Config> }
+    : Config
+  : never;
+/**
+ * Each member paired with its own default input. A member whose default misses that input
+ * reduces to `never`, so another member's validator input never stands in for it.
+ */
+type PairedDefault<Config> = Config extends unknown
+  ? Config & { default?: DefaultInput<Config> }
   : never;
 
 /** The named key states the rule, so a rejected declaration name reads as its own diagnostic. */
@@ -748,12 +762,13 @@ export type ValidatedValue<Config, Raw> = Config extends { type: 'content' }
     : never;
 /**
  * Each member of a conditional declaration checks its default against its own validator input
- * type. Only a member that fails contributes its default input, so a config is never intersected
- * with a copy of itself, which multiplies a union config by its own members.
+ * type. Only a config with a failing member is paired, because the pairing intersects a union
+ * config with a copy of itself, which multiplies it by its own members: a config whose type
+ * parameters are erased to the wide `OptionConfig` declares no default and is never paired.
  */
 export type DefaultConstraint<Config> = [DefaultFault<Config>] extends [never]
   ? unknown
-  : DefaultFault<Config>;
+  : PairedDefault<Config>;
 
 /**
  * An argument's config names only the keys `ArgumentConfig` declares, because core reads no other.
