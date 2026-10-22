@@ -377,4 +377,4 @@ The rules below bind every operator message Loom ships: core, `@loomcli/plugins`
    - A fault only the author can fix is a defect under rule 7, and its message never advises the operator to change the application.
    - A validator that rejects with no issues is a fault the operator can fix, by supplying a different value, so it stays an operator message: `The validator rejected this value without an explanation. Supply a different value.`
 
-   Moving a check earlier, so the fault cannot reach a shipped application, is separate work under [ADR-0034](../decisions/0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md).
+   Moving a check earlier, so the fault cannot reach a shipped application, is separate work under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md).
