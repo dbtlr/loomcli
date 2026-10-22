@@ -2,9 +2,10 @@
 type: adr
 title: ADR-0066 - The toolchain acts on one package directory
 description: The loom bin of @loomcli/loom acts on the package whose directory it runs in, never on a repository as a set of packages, and reads no configuration file. loom build builds one target per call and bakes the release facts, which --facts and --define print for a custom build. loom check imports the application module, runs the package's own TypeScript, and reads every fault through Application.check(). Release orchestration is out of scope.
-status: accepted
+status: superseded
+superseded_by: ADR-0099
 created: 2026-10-07
-modified: 2026-10-20
+modified: 2026-10-22
 ---
 
 # ADR-0066 - The toolchain acts on one package directory
@@ -56,3 +57,4 @@ Accepted in 0.10.0.
 - 2026-10-12: Installer scripts leave the out-of-scope list. [ADR-0072](0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md), proposed, has `loom init` render one from the release shape each repository's own workflow publishes. The rest of release orchestration stays out of scope.
 - 2026-10-20: [ADR-0099](0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md), proposed, supersedes this record when it is accepted. `loom check` retires, and an assembly check from `@loomcli/testing`, run by `bun test` or vitest, throws an Error whose message is the Developer Diagnostic of each fault `Application.check()` returns. `Application.check()` stays without the undescribed fault. Every other rule here carries forward unchanged: one package directory, no configuration file, `loom build` one target per call with its facts, and release orchestration out of scope. This record binds as written until then, and its status moves to superseded in an ordinary PR before the release cut that accepts that record, because the release-PR guard admits only acceptances, as ADR-0050's supersession did.
 - 2026-10-20: [ADR-0100](0100-acceptance-plans-live-beside-the-tests.md), proposed, removes the `bun-windows-*` compile targets from the Bun compile targets `--target` takes, with their `.exe` output and asset names, because no CI job runs the binary they build. An author who wants a Windows binary calls `bun build --compile` directly. It binds when that record is accepted.
+- 2026-10-22: Superseded by [ADR-0099](0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md), which binds when accepted in the 0.15.0 release. `loom check` retires in favour of an assembly check from `@loomcli/testing`. Every other provision carries forward, `Application.check()` included.

@@ -2,9 +2,10 @@
 type: adr
 title: ADR-0084 - Dotenv prepares an allowlisted environment before inputs
 description: A bounded onEnvironment hook returns environment additions before declared values and inputs validate. Core merges additions without replacing existing values and writes them to the process only for an argv run with neither cwd nor env overridden.
-status: accepted
+status: superseded
+superseded_by: ADR-0102
 created: 2026-10-15
-modified: 2026-10-20
+modified: 2026-10-22
 ---
 
 # ADR-0084 - Dotenv prepares an allowlisted environment before inputs
@@ -163,3 +164,4 @@ Accepted in 0.13.0.
 - 2026-10-15: Proposed with the bounded environment preparation hook and dotenv plugin contract.
 - 2026-10-19: [ADR-0089](0089-an-operators-color-or-no-color-settles-the-runs-color-right-after-host-capture.md), proposed, narrows the statement that imported `NO_COLOR`, `FORCE_COLOR`, and `TERM` affect subsequent output: once an operator's `--color` or `--no-color` set the run's `color` field, an imported variable no longer turns color on or off, while `FORCE_COLOR` and `TERM` still affect automatic modifiers. Every other rule here stands. It binds when that record is accepted.
 - 2026-10-20: [ADR-0102](0102-dotenv-imports-every-variable-the-process-has-not-set.md), proposed, supersedes this record when it is accepted. `dotenv()` imports every variable its file defines that the process has not set, as the `dotenv` package, Node's `--env-file`, and Bun do, and an allow list or a deny list narrows the import, so the required `variables` list and the rejected option of importing every name end. A malformed assignment warns when its name is one the plugin would import. The `onEnvironment` hook, core's merge and process writes, the file format, and the recovery rules carry forward. This record binds as written until then, and its status moves to superseded in an ordinary PR before the release cut that accepts that record, because the release-PR guard admits only acceptances, as ADR-0050's supersession did.
+- 2026-10-22: Superseded by [ADR-0102](0102-dotenv-imports-every-variable-the-process-has-not-set.md), which binds when accepted in the 0.15.0 release. `dotenv()` imports every variable the process has not set. The `onEnvironment` hook, core's merge and process writes, the file format, and the recovery rules carry forward, as do its narrowings of ADR-0009, ADR-0013, ADR-0028, ADR-0032, and ADR-0063.

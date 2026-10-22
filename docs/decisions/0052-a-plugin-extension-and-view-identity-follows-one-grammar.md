@@ -2,9 +2,10 @@
 type: adr
 title: ADR-0052 - A plugin, extension, and view identity follows one grammar, checked at the declaring call
 description: A plugin, extension, or view identity is an npm package name, scoped or unscoped, followed by zero or more kebab-case subpath segments. plugin(), extension(), and view() check it at the call and raise one shared rule, @loomcli/core/invalid-identity, for a value outside it. A diagnostic rule's identity is this grammar plus a kebab-case rule name, built from the same source in core. The check rejects identities accepted since 0.2.0, so it is a breaking change.
-status: accepted
+status: superseded
+superseded_by: ADR-0096
 created: 2026-09-30
-modified: 2026-10-20
+modified: 2026-10-22
 ---
 
 # ADR-0052 - A plugin, extension, and view identity follows one grammar, checked at the declaring call
@@ -45,3 +46,4 @@ Accepted.
 - 2026-09-30: The implementation shipped in 0.6.0, published from `4c0f9a6`. Accepted.
 - 2026-10-06: [ADR-0064](0064-a-failure-class-declares-a-failure-code-and-a-plugin-encodes-the-failure-form-by-media-type.md), proposed, renames the manifest's conflict rule `@loomcli/plugins/manifest/failure-code-conflict`, so the example above names it by its earlier identity, `@loomcli/plugins/manifest/failure-name-conflict`. The grammar and the prefix the plugin's identity gives the rule are unchanged. It binds when ADR-0064 is accepted.
 - 2026-10-20: [ADR-0096](0096-the-identity-grammar-is-a-naming-convention.md), proposed, supersedes this record when it is accepted. `plugin()`, `extension()`, and `view()` stop checking an identity against the grammar and the 214-character limit, `@loomcli/core/invalid-identity` goes, and so does the hand-built descriptor clause. The faults for one identity used twice stay, the grammar becomes the plugin contract's naming convention, and the rule-identity grammar, `@loomcli/core/rule-identity`, and `isRuleIdentity` stay. This record binds as written until then, and its status moves to superseded in an ordinary PR before the release cut that accepts that record, because the release-PR guard admits only acceptances, as ADR-0050's supersession did.
+- 2026-10-22: Superseded by [ADR-0096](0096-the-identity-grammar-is-a-naming-convention.md), which binds when accepted in the 0.15.0 release. The grammar becomes the plugin contract's naming convention and `plugin()`, `extension()`, and `view()` stop checking it. The rule-identity grammar and the faults for one identity used twice carry forward.
