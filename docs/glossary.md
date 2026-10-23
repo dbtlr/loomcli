@@ -374,7 +374,7 @@ What a process signal does when no live, uncancelled run claims it cooperatively
 _Avoid_: Force path (it is the immediate path, reached by a second signal), hard exit, kill
 
 **Cleanup**:
-A function registered through `defer` on the action or middleware context. It runs exactly once: when the function `defer` returned is called, at the run's unwind, awaited newest first before the failure report, or synchronously on the immediate path, whichever comes first.
+A function registered through `defer` on the action or middleware context. It runs exactly once: when the function `defer` returned is called, at the run's unwind, awaited newest first before the failure report, or synchronously on the immediate path or at the process's own `exit` event, whichever comes first.
 _Avoid_: Disposer, finalizer, teardown hook, exit handler
 
 **Process event**:

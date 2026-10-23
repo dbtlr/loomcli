@@ -14,7 +14,7 @@ export interface SignalsSettings {
   /** The signals that cancel the run cooperatively. Defaults to SIGINT, SIGTERM, and SIGHUP. */
   readonly cooperative?: readonly CooperativeSignal[];
 }
-export function signals(settings?: SignalsSettings): Plugin;
+export declare function signals(settings?: SignalsSettings): Plugin;
 ```
 
 ```ts

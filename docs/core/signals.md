@@ -89,7 +89,7 @@ export async function readKey(context: Pick<ActionContext<unknown>, 'defer'>, in
 
 `defer(cleanup)` registers a cleanup for the run whose context it is on, and returns a function that runs the cleanup now and removes it.
 
-- **Exactly once.** A cleanup runs at the first of three points: a call of the function `defer` returned, the run's unwind, or the [immediate path](#the-immediate-path) or the [`exit` backstop](#ending-by-the-signal). The returned function returns what the cleanup returned on its first call and `undefined` on every later call, and once core has run the cleanup it does nothing and returns `undefined`.
+- **Exactly once.** A cleanup runs at the first of three points: a call of the function `defer` returned, the run's unwind, or the [immediate path](#the-immediate-path) or the [`exit` backstop](#the-exit-backstop). The returned function returns what the cleanup returned on its first call and `undefined` on every later call, and once core has run the cleanup it does nothing and returns `undefined`.
 - **At the unwind.** Once the chain has settled and core has closed the run's open [regions](output.md#live-region), core awaits each pending cleanup in turn, newest first, before it renders the failure report. So the terminal is restored before the report prints, and a line a cleanup writes lands above the report. A cleanup that a cleanup registers runs next, because it is the newest.
 - **On a signal.** On the immediate path, core calls each pending cleanup synchronously, newest first, and awaits none. A promise a cleanup returns is started, and its rejection is caught. So a cleanup that restores the terminal or the process must do its work synchronously, as `setRawMode` and `rmSync` do; work after an `await` may never happen.
 - **A middleware's `finally`.** On the immediate path, no `finally` block runs, a middleware's included, because the process ends without unwinding the chain. A middleware that changes terminal or process state restores it through `defer`.
@@ -102,7 +102,7 @@ export async function readKey(context: Pick<ActionContext<unknown>, 'defer'>, in
 
 ```ts
 // @loomcli/core
-export const processEvents: ProcessEvents;
+export declare const processEvents: ProcessEvents;
 
 interface ProcessEventMap {
   readonly exit: ProcessExitEvent;
@@ -113,12 +113,12 @@ interface ProcessEvents extends EventTarget {
   addEventListener<Type extends keyof ProcessEventMap>(
     type: Type,
     listener: (event: ProcessEventMap[Type]) => void,
-    options?: AddEventListenerOptions,
+    options?: Parameters<EventTarget['addEventListener']>[2],
   ): void;
   removeEventListener<Type extends keyof ProcessEventMap>(
     type: Type,
     listener: (event: ProcessEventMap[Type]) => void,
-    options?: EventListenerOptions,
+    options?: Parameters<EventTarget['removeEventListener']>[2],
   ): void;
 }
 declare class ProcessExitEvent extends Event {
@@ -145,12 +145,13 @@ export function hideCursor(stream: NodeJS.WriteStream): () => void {
 `processEvents` is the one process event object. Any action, middleware, hook, library, or embedding host may add and remove listeners.
 
 - **One per process.** It lives under `globalThis[Symbol.for('loomcli.processEvents')]`. The first copy of `@loomcli/core` to load creates it, and every later copy uses the one it finds, so two installed copies listen once and re-raise once. Its shape is a contract across versions of core.
-- **`exit`.** It fires when the process is about to end: on the immediate path, at the [`exit` backstop](#ending-by-the-signal) after a cooperative run, and at the process's own `exit` event for a normal end, a `process.exit()` call, or an uncaught exception. It fires at most once per process. `cause` is the signal's name when a signal ends the process and `'exit'` otherwise. `code` is the status the shell sees: 128 plus the signal's number for a signal, which is 129, 130, 131, or 143, and the exit code otherwise.
+- **`exit`.** It fires when the process is about to end: on the immediate path, and at the [`exit` backstop](#the-exit-backstop), the process's own `exit` event, for a normal end, a `process.exit()` call, an uncaught exception, or the end that follows a cooperative run. It fires at most once per process. `cause` is the signal's name when a signal ends the process and `'exit'` otherwise. `code` is the status the shell sees: 128 plus the signal's number for a signal, which is 129, 130, 131, or 143, and the exit code otherwise.
 - **`exit` listeners are synchronous and run newest first.** Unlike a plain `EventTarget`, core calls the newest registration first, so code that set up last tears down first. The process ends after the last listener returns, so a returned promise is never awaited. A listener that throws is caught, and the rest still run.
 - **`suspend` and `resume`.** On `SIGTSTP`, which Ctrl-Z sends from a cooked terminal, core calls each `suspend` listener synchronously, newest first, and then stops the process by raising `SIGSTOP` on itself. On the `SIGCONT` that follows, which `fg` sends, core calls each `resume` listener in registration order. A listener restores cooked mode and shows the cursor on suspend, and enters raw mode again and redraws on resume. A suspend cancels no run. A `SIGCONT` with no suspend before it fires nothing.
 - **A raw-mode reader joins suspend.** In raw mode, Ctrl-Z reaches the reader as the byte 0x1a, not as a signal, so a reader raises `SIGTSTP` on the process for it, and the suspend runs as it would from a cooked terminal.
 - **Other signals.** `SIGWINCH` is not a process event: a terminal stream's `resize` event serves redraws. `SIGPIPE` is not one either: a closed reader on stdout ends the run as a [closed pipe](#the-run-signal).
-- **Removal.** An `AbortSignal` in the listener options removes the listener when it aborts, so `{ signal: context.signal }` removes an action's listener when its run is cancelled.
+- **Removal.** An `AbortSignal` in the listener options removes the listener when it aborts, so `{ signal: context.signal }` removes an action's listener when its run is cancelled. The immediate path aborts the run signals first, so such a listener is gone before core fires `exit`; work that must run then too belongs in `defer`.
+- **Names.** `processEvents`, `ProcessEvents`, `ProcessEventMap`, `ProcessExitEvent`, `Defer`, `CooperativeSignal`, and `CancellationReason` are exported from `@loomcli/core`.
 
 ## Listening
 
@@ -158,7 +159,7 @@ Core listens for a signal only while someone has asked, so a library still insta
 
 | Core listens for                                              | While                                                                                                                                       |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SIGINT`, `SIGTERM`, `SIGHUP`, `SIGQUIT`, and the `exit` event | an `exit` listener is registered, a cleanup is pending in a run whose outermost run is `run()`, or a live `run()` holds a cooperative claim |
+| `SIGINT`, `SIGTERM`, `SIGHUP`, `SIGQUIT`, and the `exit` event | an `exit` listener is registered, a cleanup is pending in a run whose outermost run is `run()`, a live `run()` holds a cooperative claim, or a `run()` a signal cancelled has set `process.exitCode`, until the process ends |
 | `SIGTSTP` and `SIGCONT`                                        | a `suspend` or `resume` listener is registered                                                                                              |
 
 With none of these, core holds no listener, and every signal has its default effect: the process ends with the shell's status, or stops on `SIGTSTP`. Core adds a listener when the first reason appears and removes it when the last one ends, so an Application can run again and a test leaks no listener. An invocation by name never claims a signal.
@@ -189,7 +190,7 @@ A plugin claims the signals slot by listing the signals it makes cooperative. Th
 
 - **Per signal.** A listed signal is cooperative. An unlisted signal takes the immediate path. `SIGQUIT` cannot be listed, because Ctrl-\\ asks for an immediate end with a core dump.
 - **One owner.** The slot has one owner: a second claim is a declaration error from the Application constructor naming both plugins, [`@loomcli/core/slot-taken`](diagnostics.md#loomclicoreslot-taken). A signal listed twice is listed once. An empty list claims nothing and leaves the slot free.
-- **What cooperative means.** The first signal cancels the run and core absorbs it, so the process stays up while the chain unwinds on its own terms. Core awaits the cleanups, renders the failure report, resolves the signal's code, and the process then [ends by the signal](#ending-by-the-signal). A later signal finds the claimant cancelled, so it takes the immediate path: pressing Ctrl-C again always ends the process at once, with the terminal restored.
+- **What cooperative means.** The first signal cancels the run and core absorbs it, so the process stays up while the chain unwinds on its own terms. Core awaits the cleanups, renders the failure report, resolves the signal's code, and the process then ends by the signal at the [`exit` backstop](#the-exit-backstop). A later signal finds the claimant cancelled, so it takes the immediate path: pressing Ctrl-C again always ends the process at once, with the terminal restored.
 
 ### Several runs in one process
 
@@ -214,7 +215,7 @@ Nothing on this path is awaited, and core sets no timer. A write on this path is
 2. The chain unwinds on its own terms, and core closes each run's open regions with `'cancellation'` once its signal aborts.
 3. Core awaits each run's pending cleanups, newest first.
 4. Core renders the run's failure report, if any, and the run resolves the signal's code and sets `process.exitCode`.
-5. When the process ends, it [ends by the signal](#ending-by-the-signal).
+5. When the process ends, it ends by the signal at the [`exit` backstop](#the-exit-backstop).
 
 Any signal after step 1 takes the immediate path for whatever has not run.
 
@@ -226,9 +227,11 @@ Any signal after step 1 takes the immediate path for whatever has not run.
 
 `exit` listeners run only when the process itself ends, at its own `exit` event.
 
-### Ending by the signal
+### The exit backstop
 
-A run cancelled by a signal resolves that signal's code and sets `process.exitCode`, and the author's code after `run()` still runs. When the process then ends on its own, core's backstop at the process's `exit` event fires `exit` on `processEvents` and, if `process.exitCode` still holds that run's code, re-raises the signal, so the process dies by it. A shell that runs the application in a script loop follows wait-and-cooperative-exit: it stops the script only when its child died by `SIGINT`, so a normal exit with 130 would leave the loop running through every Ctrl-C. A host that sets another exit code, or keeps the process running, is unaffected.
+At the process's own `exit` event, which a normal end, a `process.exit()` call, and an uncaught exception all reach, core calls every pending cleanup synchronously, newest first, then fires `exit` on `processEvents`, then re-raises when `process.exitCode` still holds the code of a run a signal cancelled. Nothing is awaited, because the runtime ends the process when the event's listeners return.
+
+A run cancelled by a signal resolves that signal's code and sets `process.exitCode`, and the author's code after `run()` still runs. When the process then ends on its own, the backstop fires `exit` and, since `process.exitCode` still holds that run's code, re-raises the signal, so the process dies by it. A shell that runs the application in a script loop follows wait-and-cooperative-exit: it stops the script only when its child died by `SIGINT`, so a normal exit with 130 would leave the loop running through every Ctrl-C. A host that sets another exit code, or keeps the process running, is unaffected.
 
 ## When author code fails
 
