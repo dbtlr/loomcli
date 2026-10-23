@@ -4,7 +4,7 @@ title: ADR-0065 - Release facts on the host say how the running application was 
 description: Core fills host.release for every run from one define, __LOOM_RELEASE__, that the build bakes into the artifact. The facts hold the build, source, development, or distributed, an optional release group with a lane core derives from the version, and an installation group whose source a later contract specifies. No baked facts reads as source. Authors import and pass nothing, and the packet, its option, its type, its file, and its writer are removed. This supersedes ADR-0050.
 status: accepted
 created: 2026-10-07
-modified: 2026-10-20
+modified: 2026-10-24
 ---
 
 # ADR-0065 - Release facts on the host say how the running application was built
@@ -57,3 +57,4 @@ Accepted in 0.10.0.
 - 2026-10-12: [ADR-0073](0073-the-self-update-plugin-replaces-a-script-installed-binary-with-a-verified-release.md), proposed, renames the release lane the release channel: the release group's `lane` member becomes `channel`, derived from the version as above. It binds when that record is accepted.
 - 2026-10-13: [ADR-0074](0074-the-service-plugin-supervises-one-user-unit-per-application-through-the-installation-record.md), proposed, adds a baked member: a compile target bakes `compiled: true`, which core reads to capture `host.program`, the runtime and script prefix that `host.argv` omits. The release facts do not expose it, and their shape is unchanged. It binds when that record is accepted.
 - 2026-10-20: [ADR-0098](0098-lint-is-the-author-guidance-lane.md), proposed, narrows the `build` bullet's development-only checks: the converter check still runs for `source` and `development`, and the undescribed check leaves core's runs and becomes a lint rule. Every other rule here stands. It binds when that record is accepted.
+- 2026-10-24: [ADR-0107](0107-a-run-reads-the-process-through-one-process-handle.md), proposed, replaces `run({ host: { release } })` and `app.invoke`'s `host` override with a `release` given to `processHandle` or `mockProcess`, which replaces the whole field as the override did; a mock reads `{ build: 'source' }` unless a test gives it facts. The real process's handle reads the facts from the build as this record states, and core still freezes them into `host.release` once per run. It binds when that record is accepted.

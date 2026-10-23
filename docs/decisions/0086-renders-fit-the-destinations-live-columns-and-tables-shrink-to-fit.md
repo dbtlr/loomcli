@@ -4,7 +4,7 @@ title: ADR-0086 - Renders fit the destination's live columns, and tables shrink 
 description: Core reads the destination's real width at the moment of each render and passes it to the view as columns, narrowed by POSIX COLUMNS and undefined off a terminal. The view context also gains wrap, an eager line breaker that breaks at spaces and never splits a word, and expandTabs, which turns tabs into spaces so text placed at an offset shows as it measures. Marked lanes wrap with the gutter, the table view shrinks its widest columns to fit and falls back to the records layout, and the records view wraps its values. Core's failure text, print, and help do not wrap.
 status: accepted
 created: 2026-10-17
-modified: 2026-10-20
+modified: 2026-10-24
 ---
 
 # ADR-0086 - Renders fit the destination's live columns, and tables shrink to fit
@@ -153,3 +153,4 @@ Accepted in 0.14.0.
 - 2026-10-18: Amended before acceptance: on a terminal a records or fallback line whose value is empty ends at its label, with no padding or gap after it.
 - 2026-10-18: [ADR-0087](0087-help-wraps-its-prose-to-the-destinations-columns-and-keeps-its-literals-whole.md), proposed, makes help wrap on a terminal, so this record's statement that help is unchanged, and that ADR-0077 stands, no longer holds once ADR-0087 is accepted. Help reuses `columns`, `wrap`, `expandTabs`, `splitLines`, `nowrap`, and the table's floor rule. It binds when that record is accepted.
 - 2026-10-19: [ADR-0091](0091-live-regions-stack-at-the-bottom-of-stderr-and-progress-reaches-invoke-callers-and-mcp-clients-as-typed-events.md), proposed, adds each live region's `draw` to the render calls that build a fresh context, and has core redraw a region's kept frame text below every other write without rendering it again. It binds when that record is accepted.
+- 2026-10-24: [ADR-0107](0107-a-run-reads-the-process-through-one-process-handle.md), proposed, moves the live width and height from process capture to the run's process handle: the real process's handle backs them with a read of the stream, and a handle's `terminal` holds plain numbers or getters, which core keeps rather than copying, as a terminal override did. A mock's `resize(columns, rows)` changes what its next read returns. The rule that output fits the destination's live width is unchanged. It binds when that record is accepted.

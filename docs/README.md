@@ -21,7 +21,7 @@ New to Loom? Read the [jsonkit example](../examples/jsonkit/README.md), then [Ap
 - [Libraries](libs/README.md) document the packages an application uses beside core:
   - [Validators](libs/validators.md): the `@loomcli/validators` catalog of Standard Schema validators.
   - [Prompts](libs/prompts.md): asking the operator questions and showing progress with `@loomcli/prompts`.
-  - [Testing](libs/testing.md): the assembly check from `@loomcli/testing`.
+  - [Testing](libs/testing.md): the assembly check and `mockProcess` from `@loomcli/testing`.
   - [ESLint plugin](libs/eslint-plugin.md): the lint rules that guide an author in the editor and in CI.
 
 ## Shipping an application

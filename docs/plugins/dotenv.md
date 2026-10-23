@@ -24,14 +24,14 @@ An env-bound option reads imported values through its ordinary environment tier,
 An empty variable still supplies no option value, so option resolution can fall through to another name, configuration, or a default.
 Failures identify the variable without `.env` provenance.
 
-Only an argv `run()` with neither `host.cwd` nor `host.env` overridden copies additions into `process.env` for libraries and child processes.
-Other host overrides do not suppress that copy. Core preserves every existing process variable, including an empty one.
+Only an argv `run()` whose [process handle](../core/host.md#the-process-handle) has a `publishEnv` copies additions out, and a handle `processHandle` builds has one, which copies them into `process.env` for libraries and child processes, only when it was given neither `env` nor `cwd`.
+Other supplied fields do not suppress that copy. Core preserves every existing process variable, including an empty one.
 Every other run changes only its snapshot. `app.invoke()` never changes the process.
 An action's `invoke()` inherits its parent's prepared environment without reading the file again.
 Process additions persist after the run. The snapshot is case-sensitive.
 
 The plugin reads no parent or home directory, alternate filename, mode sibling, or layered file.
-An environment override does not disable the file read. Isolated tests also supply their fixture's `cwd`.
+A supplied environment does not disable the file read. Isolated tests also supply their fixture's `cwd`.
 Missing files and directories named `.env` are silent. Other read errors warn once and contribute no values.
 UTF-8 decoding replaces invalid bytes. The reader detects no alternate encoding and follows symbolic links.
 

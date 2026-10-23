@@ -275,7 +275,7 @@ The `quiet: true` fact on the one counted global option whose occurrence lowers 
 _Avoid_: Silent flag, quiet option (for the mark)
 
 **Background**:
-The run's terminal background, `dark`, `light`, or `undefined` when no source knows it, which core settles once per run, right after the color choice and before environment preparation, from the first source that answers: the operator's background choice, the author's `rendering.background`, a background a host override states, and then, only when a theme entry is adaptive or an option carries the background mark, `undefined` when stdin, stdout, or stderr is not a terminal or the run's color is off, dark when `TERM` is `linux`, a query to the terminal, `COLORFGBG`, and otherwise `undefined`. An adaptive style resolves against it, taking its dark side when it is `undefined`, and the host and every view context read it. An invocation by name reads `undefined`.
+The run's terminal background, `dark`, `light`, or `undefined` when no source knows it, which core settles once per run, right after the color choice and before environment preparation, from the first source that answers: the operator's background choice, the author's `rendering.background`, a background the run's process handle states, and then, only when a theme entry is adaptive or an option carries the background mark, `undefined` when stdin, stdout, or stderr is not a terminal or the run's color is off, dark when `TERM` is `linux`, a query to the terminal, `COLORFGBG`, and otherwise `undefined`. An adaptive style resolves against it, taking its dark side when it is `undefined`, and the host and every view context read it. An invocation by name reads `undefined`.
 _Avoid_: Theme mode, color scheme, appearance, dark mode (for the fact)
 
 **Background choice**:
@@ -291,7 +291,7 @@ One `run()` or `invoke()` call: host capture, graph build, routing, parsing the 
 _Avoid_: Execution, call, request
 
 **Invocation by name**:
-An invocation that names its Command by path and its inputs by declared name instead of by argv, captures what the run writes, and resolves a structured outcome: completed, failed, or cancelled. It reports inputs by name and touches no process, following argv behavior except that no stdin is available for content. An action starts one through `invoke` on its context, and an embedding host through `app.invoke`.
+An invocation that names its Command by path and its inputs by declared name instead of by argv, captures what the run writes, and resolves a structured outcome: completed, failed, or cancelled. It reports inputs by name and makes no process effect, following argv behavior except that no stdin is available for content. An action starts one through `invoke` on its context, and an embedding host through `app.invoke`.
 _Avoid_: Programmatic run, child run, sub-invocation, tool call (for the invocation)
 
 **Request**:
@@ -319,8 +319,16 @@ Handing the validated invocation to the selected Command's action.
 _Avoid_: Routing (for the handoff), execution
 
 **Host**:
-The facts of the process an invocation runs in: argument tokens, working directory, environment, the standard streams, terminal facts, and the release facts. Core copies the facts, except that it reads terminal width and height live and settles the terminal's background rather than copying it, retains the streams, and lets a caller override fields. Core captures the other facts once per run, then installed environment hooks may add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
+The facts of the process an invocation runs in, copied from the run's process handle: argument tokens, working directory, environment, platform, architecture, C library, user ID, the standard streams, terminal facts, and the release facts. Core copies the facts once per run, except that it reads terminal width and height live and settles the terminal's background rather than copying it, and retains the streams; installed environment hooks may then add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
 _Avoid_: Environment (for the whole object), process, platform, context
+
+**Process handle**:
+The one object a run reads every process fact from and sends every process effect to, such as its exit status and the signals core listens for and re-raises, bound when the run enters and never replaced during it. `processHandle()` builds the real process's handle, and `@loomcli/testing`'s `mockProcess()` builds a sealed one that reads nothing from the process a test runs in.
+_Avoid_: Host (for the handle), process object, host overrides
+
+**Signal source**:
+The part of a process handle that delivers process signals and the process's own end. Every handle over the real process shares its one signal source, a mock has its own, and a signal reaches only the runs whose handle shares the source it was raised on.
+_Avoid_: Process lane (for the source), signal bus
 
 **Release facts**:
 The facts that say how the running application was built, released, and installed: its build, which is `source`, `development`, or `distributed`, an optional release group with its version, release channel, repository, and asset, and an optional installation group. The build bakes the build and release group into the artifact, core reads the installation group from the installation record, and core holds them on the host as `release`. An artifact built with none reads `source`.
@@ -347,7 +355,7 @@ An application whose release facts read `distributed`: what an operator installs
 _Avoid_: Production, release mode, shipped mode
 
 **Exit code**:
-The status `run()` resolves and sets on the process. It reports whether the invocation succeeded and, if not, which category of failure, which failure class, or which cancellation ended it. 0 is success, 1 and 2 are core's failure categories, 3 through 125 appear only as declared exit codes, which may also be 1 or 2, 129 is a cancellation by `SIGHUP`, 130 a cancellation by `SIGINT`, by the caller, or by the action's `cancel()`, 131 a cancellation by `SIGQUIT`, 141 a closed pipe, and 143 a cancellation by `SIGTERM`.
+The status `run()` resolves and writes to its process handle. It reports whether the invocation succeeded and, if not, which category of failure, which failure class, or which cancellation ended it. 0 is success, 1 and 2 are core's failure categories, 3 through 125 appear only as declared exit codes, which may also be 1 or 2, 129 is a cancellation by `SIGHUP`, 130 a cancellation by `SIGINT`, by the caller, or by the action's `cancel()`, 131 a cancellation by `SIGQUIT`, 141 a closed pipe, and 143 a cancellation by `SIGTERM`.
 
 **Declared exit code**:
 The exit code a failure class states as its static `exitCode`, read from the nearest ancestor that declares one, so every failure of one class exits with one code. Its type is a whole number from 1 through 125; 0 and 126 and above are reserved.
@@ -362,7 +370,7 @@ The reader of a run's stdout closing the pipe, as `head -1` does once it has its
 _Avoid_: Broken pipe (for the run's end), SIGPIPE (core receives no signal)
 
 **Shutdown**:
-What an ending signal, `SIGINT`, `SIGTERM`, or `SIGHUP`, starts while core listens: core aborts every live run's signal, gives the runs the shutdown budget to unwind, then calls every pending `onShutdown` handler synchronously, newest first, and re-raises the signal, so the process dies by it. It ends at the first of every run resolving, the budget running out, or a second ending signal. `SIGQUIT` ends the process the same way with no budget.
+What an ending signal, `SIGINT`, `SIGTERM`, or `SIGHUP`, starts while core listens: core aborts the signal of every live run whose process handle shares the signal source, gives the runs the shutdown budget to unwind, then calls every pending `onShutdown` handler synchronously, newest first, and re-raises the signal, so the process dies by it. It ends at the first of every run resolving, the budget running out, or a second ending signal. `SIGQUIT` ends the process the same way with no budget.
 _Avoid_: Cooperative claim, immediate path, force path, graceful shutdown (for core's), exit backstop
 
 **Shutdown budget**:
@@ -865,5 +873,5 @@ The check from `@loomcli/testing` that a test runs to prove an Application assem
 _Avoid_: `loom check`, smoke test, health check
 
 **Process test**:
-A test that starts the application as a child process, kept for behavior only a process has, such as a signal and its exit code, a pseudo-terminal, a real shell, or stdio framing. Every other test runs the application in the test's own process through `run()` with a supplied host, or through `invoke`.
+A test that starts the application as a child process, kept for behavior only a process has, such as a real signal and its exit status, a pseudo-terminal, a real shell, or stdio framing. Every other test runs the application in the test's own process through `run()` or `invoke` on a process handle, usually a mock.
 _Avoid_: End-to-end test, integration test, acceptance test

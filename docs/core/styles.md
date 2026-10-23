@@ -243,7 +243,7 @@ await app.run({ rendering: { color: 'never' } });
 
 There is one policy for both streams. No field accepts a stdout/stderr map. Core evaluates automatic capabilities separately for each destination. Redirecting stdout therefore does not turn off capable stderr output.
 
-Invocation overrides replace only supplied rendering fields. Omitted fields retain the Application setting. Explicit `'auto'` restores automatic behavior for that field. This merge applies to rendering policy alone: `host` overrides still replace whole fields under [ADR-0009](../decisions/0009-core-captures-the-host-and-resolves-an-exit-code.md).
+Invocation overrides replace only supplied rendering fields. Omitted fields retain the Application setting. Explicit `'auto'` restores automatic behavior for that field. This merge applies to rendering policy alone: a field supplied to a [process handle](host.md#the-process-handle) still replaces its whole field under [ADR-0107](../decisions/0107-a-run-reads-the-process-through-one-process-handle.md).
 
 The operator's [color choice](color.md), `--color` or `--no-color` on an Application that declares the color mark, comes first for the `color` field alone: it sets `'always'` or `'never'` over the merged policy and over both variables, and every other field keeps its own policy. Without a choice, explicit `'always'` or `'never'` wins for its policy. With color set to `'auto'`, precedence is nonempty `FORCE_COLOR`, nonempty `NO_COLOR`, then terminal detection. Empty values make no override. The string `"0"` is nonempty and therefore active for either variable. A nonempty `FORCE_COLOR` wins when both variables are active. Numeric values do not select a color depth.
 
