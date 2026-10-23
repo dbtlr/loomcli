@@ -370,7 +370,7 @@ The signals owner's list of the signals that cancel the run and let it unwind, a
 _Avoid_: Graceful shutdown (for the claim), signal handler
 
 **Immediate path**:
-What a process signal does when no live, uncancelled run claims it cooperatively, for every `SIGQUIT`, and for a signal after a cooperative cancel: core aborts every run signal, calls every cleanup and `exit` listener synchronously, newest first, and re-raises the signal, so the process ends at once with the shell's status and its terminal restored. It is the default, following `signal-exit`.
+What a process signal does when no live, uncancelled run claims it cooperatively, for every `SIGQUIT`, and for a signal after a cooperative cancel: core aborts every run signal, calls every cleanup and `exit` listener synchronously, newest first, and re-raises the signal, so the process ends at once with the shell's status and its terminal restored. While a listener outside core is installed for the signal, core does not re-raise, and that listener decides whether the process ends. It is the default, following `signal-exit`.
 _Avoid_: Force path (it is the immediate path, reached by a second signal), hard exit, kill
 
 **Cleanup**:
@@ -378,7 +378,7 @@ A function registered through `defer` on the action or middleware context. It ru
 _Avoid_: Disposer, finalizer, teardown hook, exit handler
 
 **Process event**:
-One of the events `processEvents`, the one process-wide event object `@loomcli/core` exports, publishes: `exit` as the process is about to end, `suspend` on `SIGTSTP`, and `resume` on the `SIGCONT` after it. A library and an embedding host, which have no run, use it for what a run uses `defer` for. Core listens for a signal only while a process event listener, a pending cleanup, or a cooperative claim asks it to.
+One of the events `processEvents`, the one process-wide event object `@loomcli/core` exports, publishes: `exit` as the process is about to end, `suspend` on `SIGTSTP`, and `resume` on the `SIGCONT` after it. A library and an embedding host, which have no run, use it for what a run uses `defer` for. Core listens for a signal only while a process event listener, a pending cleanup, a cooperative claim, or the end-by-signal of a cancelled run asks it to.
 _Avoid_: Signal bus, channel, process hook
 
 **Suspend**:
