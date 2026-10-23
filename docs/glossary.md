@@ -370,7 +370,7 @@ The signals owner's list of the signals that cancel the run and let it unwind, a
 _Avoid_: Graceful shutdown (for the claim), signal handler
 
 **Immediate path**:
-What a process signal does when no live, uncancelled run claims it cooperatively, for every `SIGQUIT`, and for a signal after a cooperative cancel: core aborts every run signal, calls every cleanup and `exit` listener synchronously, newest first, and re-raises the signal, so the process ends at once with the shell's status and its terminal restored. While a listener outside core is installed for the signal, core does not re-raise, and that listener decides whether the process ends. It is the default, following `signal-exit`.
+What a process signal does when no live, uncancelled run claims it cooperatively, for every `SIGQUIT`, and for a signal after a cooperative cancel: core aborts every run signal, calls every cleanup and `exit` listener synchronously, newest first, and re-raises the signal, so the process ends at once with the shell's status and its terminal restored. While a listener outside core is installed for the signal, core takes neither path's end: it cancels the runs, lets them unwind, and leaves the process's end to that listener. It is the default, following `signal-exit`.
 _Avoid_: Force path (it is the immediate path, reached by a second signal), hard exit, kill
 
 **Cleanup**:

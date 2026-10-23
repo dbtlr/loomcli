@@ -164,7 +164,7 @@ Core listens for a signal only while someone has asked, so a library still insta
 
 With none of these, core holds no listener, and every signal has its default effect: the process ends with the shell's status, or stops on `SIGTSTP`. Core adds a listener when the first reason appears and removes it when the last one ends, so an Application can run again and a test leaks no listener. An invocation by name never claims a signal.
 
-A raw `process.on` listener stays allowed, and core never forbids going around the lane. It costs what it costs without Loom: it takes over that signal's default disposition. While a listener outside core is installed for a signal, core's immediate path still cancels every run, calls every cleanup and `exit` listener, and removes its own listeners, but it does not re-raise, so that listener decides whether the process ends. This is how `signal-exit` treats a listener it does not own.
+A raw `process.on` listener stays allowed, and core never forbids going around the lane. It costs what it costs without Loom: it takes over that signal's default disposition. While a listener outside core is installed for a signal, that signal takes neither path's end: core cancels every live run not yet cancelled with that signal as the source, lets each unwind with its cleanups awaited, fires no `exit`, and does not re-raise, so that listener decides whether the process ends, and `exit` fires once, when it does. This is how `signal-exit` treats a listener it does not own.
 
 ## The cooperative claim
 
@@ -200,12 +200,12 @@ Core holds one listener per signal for the whole process, so one rule decides wh
 
 ### The immediate path
 
-A signal that no live, uncancelled run claims, every `SIGQUIT`, and every signal after the claimants are cancelled takes this path:
+A signal that no live, uncancelled run claims, every `SIGQUIT`, and every signal after the claimants are cancelled takes this path, unless a listener outside core also receives it, under [Listening](#listening):
 
 1. Core aborts every live run's signal with the signal as the source. Each abort listener runs synchronously: each open [region](output.md#live-region) closes with `'cancellation'` and draws its cancelled line, and each question leaves raw mode.
 2. Core calls every pending cleanup, of every live run, synchronously, newest first.
 3. Core fires `exit` on `processEvents`, and its listeners run synchronously, newest first.
-4. Core removes its listeners and re-raises the signal, so the default disposition ends the process with the shell's status: 129, 130, 131, or 143. When a listener outside core remains for that signal, core does not re-raise.
+4. Core removes its listeners and re-raises the signal, so the default disposition ends the process with the shell's status: 129, 130, 131, or 143.
 
 Nothing on this path is awaited, and core sets no timer. A write on this path is best effort: a cancelled line written to a terminal that has hung up is dropped.
 
@@ -229,7 +229,7 @@ Any signal after step 1 takes the immediate path for whatever has not run.
 
 ### The exit backstop
 
-At the process's own `exit` event, which a normal end, a `process.exit()` call, and an uncaught exception all reach, core calls every pending cleanup synchronously, newest first, then fires `exit` on `processEvents`, then re-raises when `process.exitCode` still holds the code of a run a signal cancelled. Nothing is awaited, because the runtime ends the process when the event's listeners return.
+At the process's own `exit` event, which a normal end, a `process.exit()` call, and an uncaught exception all reach, core calls every pending cleanup synchronously, newest first, then fires `exit` on `processEvents`, then re-raises when `process.exitCode` still holds the code of a run a signal cancelled and no listener outside core is installed for that signal. It fires `exit` only when the immediate path has not. Nothing is awaited, because the runtime ends the process when the event's listeners return.
 
 A run cancelled by a signal resolves that signal's code and sets `process.exitCode`, and the author's code after `run()` still runs. When the process then ends on its own, the backstop fires `exit` and, since `process.exitCode` still holds that run's code, re-raises the signal, so the process dies by it. A shell that runs the application in a script loop follows wait-and-cooperative-exit: it stops the script only when its child died by `SIGINT`, so a normal exit with 130 would leave the loop running through every Ctrl-C. A host that sets another exit code, or keeps the process running, is unaffected.
 
