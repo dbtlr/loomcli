@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0105 - Core is the only process listener, and cleanup runs on every path out
 description: Core listens for process signals only while someone has subscribed or a run holds a claim, and publishes exit, suspend, and resume through one exported processEvents object shared across copies of core. Each action and middleware context gains defer, a run-scoped cleanup that runs once at the run's unwind or on the process ending. With no claim a signal takes the immediate path, signal-exit's model; one plugin may claim a cooperative policy per signal, shipped as signals(). SIGHUP and SIGQUIT join, and SIGTSTP and SIGCONT become suspend and resume.
-status: proposed
+status: superseded
 created: 2026-10-23
 modified: 2026-10-23
 ---
@@ -57,3 +57,4 @@ Proposed. It moves to accepted with the release that ships `processEvents`, `def
 ## Changelog
 
 - 2026-10-23: Proposed with the process events contract.
+- 2026-10-23: Superseded whole by [ADR-0106](0106-a-signal-ends-the-process-within-one-bounded-shutdown.md) before it shipped. Review of its core lane found that Ctrl-C could wait without bound, under a cooperative claim or beside `signal-exit`, and that a cleanup behaved two ways. A signal now ends the process within one bounded shutdown, with synchronous `onShutdown` handlers in place of `defer` and `processEvents`.

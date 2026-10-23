@@ -27,7 +27,7 @@ Every `Invalid declaration: ` and `Internal error: ` line a page shows quotes th
 - [Color](color.md): open it when you need to know how the operator's color choice settles for a run.
 - [Verbosity](verbosity.md): open it when you write debug or trace lines, or mark an option that raises or lowers the run's verbosity.
 - [Background](background.md): open it when output adapts to the terminal's light or dark background.
-- [Signals, cancellation, and cleanup](signals.md): open it when an action or a plugin reacts to Ctrl-C, a signal, cancellation, or a closed pipe, cleans up before its run or the process ends, or restores the terminal on suspend.
+- [Signals, cancellation, and shutdown](signals.md): open it when an action or a plugin reacts to Ctrl-C, a signal, cancellation, or a closed pipe, registers a handler that restores the terminal or a child process when a signal ends the process, or restores the terminal on suspend and resume.
 
 ## Output
 

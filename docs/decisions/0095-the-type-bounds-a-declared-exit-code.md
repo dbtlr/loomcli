@@ -38,3 +38,4 @@ Accepted in 0.15.0.
 
 - 2026-10-20: Proposed with the 0.15.0 rescope.
 - 2026-10-21: Corrected the `ExitCode` bullet in place to add 141, which a run resolves when the reader of its stdout closed the pipe, under [ADR-0104](0104-a-closed-reader-on-stdout-ends-the-run-with-141.md), proposed. 141 is a reserved code, so no failure class declares it.
+- 2026-10-23: [ADR-0106](0106-a-signal-ends-the-process-within-one-bounded-shutdown.md), proposed, widens the `ExitCode` bullet to add 129, for `SIGHUP`, and 131, for `SIGQUIT`, which a cancelled run resolves beside 130, 141, and 143. Both are reserved codes, so no failure class declares them. It binds when that record is accepted.
