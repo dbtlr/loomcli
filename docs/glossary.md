@@ -347,14 +347,14 @@ An application whose release facts read `distributed`: what an operator installs
 _Avoid_: Production, release mode, shipped mode
 
 **Exit code**:
-The status `run()` resolves and sets on the process. It reports whether the invocation succeeded and, if not, which category of failure, which failure class, or which cancellation ended it. 0 is success, 1 and 2 are core's failure categories, 3 through 125 appear only as declared exit codes, which may also be 1 or 2, 130 is a cancellation by `SIGINT`, by the caller, or by the action's `cancel()`, 141 is a closed pipe, and 143 is a cancellation by `SIGTERM`.
+The status `run()` resolves and sets on the process. It reports whether the invocation succeeded and, if not, which category of failure, which failure class, or which cancellation ended it. 0 is success, 1 and 2 are core's failure categories, 3 through 125 appear only as declared exit codes, which may also be 1 or 2, 129 is a cancellation by `SIGHUP`, 130 a cancellation by `SIGINT`, by the caller, or by the action's `cancel()`, 131 a cancellation by `SIGQUIT`, 141 a closed pipe, and 143 a cancellation by `SIGTERM`.
 
 **Declared exit code**:
 The exit code a failure class states as its static `exitCode`, read from the nearest ancestor that declares one, so every failure of one class exits with one code. Its type is a whole number from 1 through 125; 0 and 126 and above are reserved.
 _Avoid_: Custom exit code, error code, status override
 
 **Run signal**:
-The one cancellation signal a run creates and hands to every middleware and the action. A caller-supplied signal, the signals owner, the action's `cancel()`, or a closed pipe aborts it, with a `CancellationReason` naming the cause.
+The one cancellation signal a run creates and hands to every middleware and the action. A caller-supplied signal, a process signal, the action's `cancel()`, or a closed pipe aborts it, with a `CancellationReason` naming the cause.
 _Avoid_: Abort controller (for the concept), cancellation token, interrupt
 
 **Closed pipe**:
@@ -362,8 +362,32 @@ The reader of a run's stdout closing the pipe, as `head -1` does once it has its
 _Avoid_: Broken pipe (for the run's end), SIGPIPE (core receives no signal)
 
 **Signals owner**:
-The one installed plugin that claims the signals slot, on whose behalf core installs and removes the process listeners for one run.
+The one installed plugin that claims the signals slot by listing the signals it makes cooperative, such as the pack's `signals()`.
 _Avoid_: Signal handler plugin, interrupt plugin
+
+**Cooperative claim**:
+The signals owner's list of the signals that cancel the run and let it unwind, a subset of `SIGINT`, `SIGTERM`, and `SIGHUP`. While a live run claims a signal and is not yet cancelled, that signal cancels every live run and the process stays up until the runs end; the process then ends by the signal.
+_Avoid_: Graceful shutdown (for the claim), signal handler
+
+**Immediate path**:
+What a process signal does when no live, uncancelled run claims it cooperatively, for every `SIGQUIT`, and for a signal after a cooperative cancel: core aborts every run signal, calls every cleanup and `exit` listener synchronously, newest first, and re-raises the signal, so the process ends at once with the shell's status and its terminal restored. While a listener outside core is installed for the signal, core takes neither path's end: it cancels the runs, lets them unwind, and leaves the process's end to that listener. It is the default, following `signal-exit`.
+_Avoid_: Force path (it is the immediate path, reached by a second signal), hard exit, kill
+
+**Cleanup**:
+A function registered through `defer` on the action or middleware context. It runs exactly once: when the function `defer` returned is called, at the run's unwind, awaited newest first before the failure report, or synchronously on the immediate path or at the process's own `exit` event, whichever comes first.
+_Avoid_: Disposer, finalizer, teardown hook, exit handler
+
+**Process event**:
+One of the events `processEvents`, the one process-wide event object `@loomcli/core` exports, publishes: `exit` as the process is about to end, `suspend` on `SIGTSTP`, and `resume` on the `SIGCONT` after it. A library and an embedding host, which have no run, use it for what a run uses `defer` for. Core listens for a signal only while a process event listener, a pending cleanup, a cooperative claim, or the end-by-signal of a cancelled run asks it to.
+_Avoid_: Signal bus, channel, process hook
+
+**Suspend**:
+The process event before the process stops on `SIGTSTP`, from Ctrl-Z at a cooked terminal or a reader that raises it for a raw Ctrl-Z byte. Its listeners restore cooked mode and show the cursor, then core stops the process with `SIGSTOP`. It cancels no run.
+_Avoid_: Pause, background (for the event)
+
+**Resume**:
+The process event on the `SIGCONT` that follows a suspend, as `fg` sends. Its listeners enter raw mode again and redraw.
+_Avoid_: Continue, foreground (for the event)
 
 ## Output
 

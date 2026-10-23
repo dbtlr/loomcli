@@ -4,7 +4,7 @@ title: ADR-0097 - One ordinary failure path, where an author's catch is final
 description: When author or plugin code catches a failure and continues, the run's outcome is what that code produces, and Loom adds no rule in either direction. A middleware that catches a held usage fault, an action's failure, or a next() misuse decides the outcome, an action that catches a view's rejection or a second out.results call decides its own, and a throw during unwinding is the middleware's failure like any other. A failure no code caught still fails the run. The fallbacks that keep Loom's own failure output intact stay.
 status: accepted
 created: 2026-10-20
-modified: 2026-10-22
+modified: 2026-10-23
 ---
 
 # ADR-0097 - One ordinary failure path, where an author's catch is final
@@ -68,3 +68,4 @@ Accepted in 0.15.0.
 - 2026-10-21: Corrected the cancellation and fallback bullets in place: a closed reader on stdout ends the run with 141 under [ADR-0104](0104-a-closed-reader-on-stdout-ends-the-run-with-141.md), proposed, and is no longer a broken destination, while every other failed write keeps the fallback report.
 - 2026-10-21: Merged the hook bullets to one per hook, and reworded the Context's example to a fallback, because a second `next()` call is rejected. A throw from `onGraphBuilt` or `onCommandAttach` stays its build fault, as ADR-0060's 2026-10-20 entry rules, so the earlier entry's settlement of those throws is withdrawn.
 - 2026-10-21: Corrected the `next()` misuse bullet in place: a misuse rejection no code observes fails the run, as an unobserved output call does under principle 5, and one the middleware catches stays final.
+- 2026-10-23: [ADR-0105](0105-core-is-the-only-process-listener-and-cleanup-runs-on-every-path-out.md), proposed, adds a cleanup to the author code that takes the ordinary failure path: the first cleanup that throws or rejects at the unwind of a run that would otherwise succeed is the run's failure, as if the action had thrown it. A cleanup failure in a run that already failed or was cancelled changes no outcome and is a log event. The cancellation codes read 129, 130, 131, 141, and 143. It binds when that record is accepted.

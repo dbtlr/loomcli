@@ -25,7 +25,7 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
   views?: readonly ViewContribution[];
   translators?: readonly Translation[];
   failureEncoders?: readonly FailureEncoding[]; // see Failure encoders
-  signals?: readonly ('SIGINT' | 'SIGTERM')[];
+  signals?: readonly CooperativeSignal[]; // see The cooperative claim
   source?: {
     binding: AnyExtension & { readonly target: 'option' };
     load: () => Promise<{ default: SourceResolver<Plugin<Options>> }>;
