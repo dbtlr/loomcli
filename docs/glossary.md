@@ -354,39 +354,31 @@ The exit code a failure class states as its static `exitCode`, read from the nea
 _Avoid_: Custom exit code, error code, status override
 
 **Run signal**:
-The one cancellation signal a run creates and hands to every middleware and the action. A caller-supplied signal, a process signal, the action's `cancel()`, or a closed pipe aborts it, with a `CancellationReason` naming the cause.
+The one cancellation signal a run creates and hands to every middleware and the action. A caller-supplied signal, a shutdown, the action's `cancel()`, or a closed pipe aborts it, with a `CancellationReason` naming the cause.
 _Avoid_: Abort controller (for the concept), cancellation token, interrupt
 
 **Closed pipe**:
 The reader of a run's stdout closing the pipe, as `head -1` does once it has its line, so the run's next stdout write fails with `EPIPE`, or with `ENOTCONN` on a macOS socket. It ends the run as a cause of the run signal and exits 141, following the `SIGPIPE` convention; it is not a broken destination, which every other failed write is.
 _Avoid_: Broken pipe (for the run's end), SIGPIPE (core receives no signal)
 
-**Signals owner**:
-The one installed plugin that claims the signals slot by listing the signals it makes cooperative, such as the pack's `signals()`.
-_Avoid_: Signal handler plugin, interrupt plugin
+**Shutdown**:
+What an ending signal, `SIGINT`, `SIGTERM`, or `SIGHUP`, starts while core listens: core aborts every live run's signal, gives the runs the shutdown budget to unwind, then calls every pending `onShutdown` handler synchronously, newest first, and re-raises the signal, so the process dies by it. It ends at the first of every run resolving, the budget running out, or a second ending signal. `SIGQUIT` ends the process the same way with no budget.
+_Avoid_: Cooperative claim, immediate path, force path, graceful shutdown (for core's), exit backstop
 
-**Cooperative claim**:
-The signals owner's list of the signals that cancel the run and let it unwind, a subset of `SIGINT`, `SIGTERM`, and `SIGHUP`. While a live run claims a signal and is not yet cancelled, that signal cancels every live run and the process stays up until the runs end; the process then ends by the signal.
-_Avoid_: Graceful shutdown (for the claim), signal handler
+**Shutdown budget**:
+How long a shutdown waits for the runs to unwind before it ends the process: `shutdown.timeout` on the Application, 500 ms unless the Application sets another, the longest among the live runs' Applications. A small budget keeps Ctrl-C instant.
+_Avoid_: Grace period, deadline (for the setting), timeout (alone, for the concept)
 
-**Immediate path**:
-What a process signal does when no live, uncancelled run claims it cooperatively, for every `SIGQUIT`, and for a signal after a cooperative cancel: core aborts every run signal, calls every cleanup and `exit` listener synchronously, newest first, and re-raises the signal, so the process ends at once with the shell's status and its terminal restored. While a listener outside core is installed for the signal, core takes neither path's end: it cancels the runs, lets them unwind, and leaves the process's end to that listener. It is the default, following `signal-exit`.
-_Avoid_: Force path (it is the immediate path, reached by a second signal), hard exit, kill
-
-**Cleanup**:
-A function registered through `defer` on the action or middleware context. It runs exactly once: when the function `defer` returned is called, at the run's unwind, awaited newest first before the failure report, or synchronously on the immediate path or at the process's own `exit` event, whichever comes first.
-_Avoid_: Disposer, finalizer, teardown hook, exit handler
-
-**Process event**:
-One of the events `processEvents`, the one process-wide event object `@loomcli/core` exports, publishes: `exit` as the process is about to end, `suspend` on `SIGTSTP`, and `resume` on the `SIGCONT` after it. A library and an embedding host, which have no run, use it for what a run uses `defer` for. Core listens for a signal only while a process event listener, a pending cleanup, a cooperative claim, or the end-by-signal of a cancelled run asks it to.
-_Avoid_: Signal bus, channel, process hook
+**Shutdown handler**:
+A synchronous function registered through `onShutdown`, on the action or middleware context for a run or exported from `@loomcli/core` for the process, that restores what must not outlive the process, such as raw mode or the cursor. It runs once, at the shutdown's end or at the process's own `exit` event, newest first. A run's handler is removed when the run ends outside a shutdown.
+_Avoid_: Cleanup, defer, disposer, finalizer, exit handler, process event
 
 **Suspend**:
-The process event before the process stops on `SIGTSTP`, from Ctrl-Z at a cooked terminal or a reader that raises it for a raw Ctrl-Z byte. Its listeners restore cooked mode and show the cursor, then core stops the process with `SIGSTOP`. It cancels no run.
+What `SIGTSTP` does while core listens for it, from Ctrl-Z at a cooked terminal or a reader that raises it for a raw Ctrl-Z byte: core calls each `onSuspend` handler, newest first, which restores cooked mode and shows the cursor, then removes its listener and re-raises `SIGTSTP`, so the default action stops the process. It cancels no run.
 _Avoid_: Pause, background (for the event)
 
 **Resume**:
-The process event on the `SIGCONT` that follows a suspend, as `fg` sends. Its listeners enter raw mode again and redraw.
+What the `SIGCONT` after a suspend does, as `fg` sends: core calls each `onResume` handler in registration order, which enters raw mode again and redraws.
 _Avoid_: Continue, foreground (for the event)
 
 ## Output
@@ -717,7 +709,7 @@ A function on a plugin definition that core calls at one named point of an Appli
 _Avoid_: Event handler, listener, callback, plugin API
 
 **Slot**:
-A core-declared position that exactly one plugin may claim. A second claim is a declaration error. The signals slot is the first, and the configuration source follows the same rule.
+A core-declared position that exactly one plugin may claim. A second claim is a declaration error. The theme and the configuration source are the slots.
 _Avoid_: Singleton, capability (for the position)
 
 **Configuration source**:
