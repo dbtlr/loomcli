@@ -9,7 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 
 import type { CommandGraph, Host } from '@loomcli/core';
 
-import { homeOf, homeRefusal, recordDirectory } from '../application-folders.js';
+import { recordDirectory, requiredHome } from '../application-folders.js';
 import { isEmpty } from '../help/cells.js';
 import {
   createDirectory,
@@ -215,15 +215,6 @@ async function writeSet(run: ChildRun, writing: Writing): Promise<void> {
   await reportRemovals(run, outcome);
 }
 
-/** The home `install` writes under: `host.home`, which must be an absolute path. */
-function homeFor(run: ChildRun): string {
-  const home = homeOf(run.host);
-  if (home === undefined) {
-    throw homeRefusal(run.graph.name);
-  }
-  return home;
-}
-
 /** States how to read the pages: `man <name>`, or the line that sets `MANPATH` when man will not find them. */
 async function adviseOn(run: ChildRun, home: string): Promise<void> {
   const advised = advice(home, run.host.env);
@@ -237,7 +228,7 @@ async function adviseOn(run: ChildRun, home: string): Promise<void> {
 
 /** `install`: the set under `<home>/.local/share/man/man1`, then the advice when man will not find it. */
 async function installPages(run: ChildRun): Promise<void> {
-  const home = homeFor(run);
+  const home = requiredHome(run.graph.name, run.host);
   const recorded = readRecord(run, 'install');
   await writeSet(run, { folder: join(home, ...homeFolder), recorded, verb: 'install' });
   await adviseOn(run, home);

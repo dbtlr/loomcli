@@ -295,7 +295,8 @@ interface DatabaseFacts {
  * the empty string when there is none. Node's `os.userInfo()` reads the database. Bun's answers
  * the `HOME` the process started with when it held one, so under Bun with a `HOME` the local
  * database, `/etc/passwd`, answers first. Where it lists no entry for the user, as on macOS or for
- * a directory-service user, the home Bun reports answers, so Node and Bun answer the same home.
+ * a directory-service user, the home Bun reports answers, which is the `HOME` the process started
+ * with, where Node answers the empty string for a user the database does not hold.
  */
 function userDatabaseHome(facts: DatabaseFacts): string {
   const answered =

@@ -74,7 +74,7 @@ The rules read source text and scope analysis. They use no type information. A v
 
 Type assertions around a value (`as`, `satisfies`, `!`) do not change what it is.
 
-A rule reports only what it can trace. A parameter, a `let` variable, a destructured binding, a spread options object, a computed name, a name held in a variable, and a `Command` that does not come from `@loomcli/core` all get no report. A false report is worse than a missed one.
+A rule reports only what it can trace. Apart from what [`host-bypass`](#host-bypass) traces through a destructure, a parameter, a `let` variable, a destructured binding, a spread options object, a computed name, a name held in a variable, and a `Command` that does not come from `@loomcli/core` all get no report. A false report is worse than a missed one.
 
 `host-bypass` judges no declaration. It reads scope analysis and import declarations, under the forms [its section](#host-bypass) lists.
 
