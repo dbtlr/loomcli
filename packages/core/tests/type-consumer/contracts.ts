@@ -42,9 +42,22 @@ new Application('async-return').action(async () => Promise.resolve('ignored'));
 // @ts-expect-error TS2554: The Application constructor has no global output type parameter.
 new Application<{ forged: number }>('forged');
 
-void new Application('host-override').run({
+// A handle takes no supplied exitCode, signals, or publishEnv: processHandle decides each itself.
+void new Application('handle-fields').run({
   process: processHandle({
-    // @ts-expect-error TS2353: Host overrides cannot control the exit code.
-    setExitCode() {},
+    // @ts-expect-error TS2353: A supplied field cannot set the exit code core writes.
+    exitCode: 0,
+  }),
+});
+void new Application('handle-fields').run({
+  process: processHandle({
+    // @ts-expect-error TS2353: A supplied field cannot replace the real process's signal source.
+    signals: processHandle().signals,
+  }),
+});
+void new Application('handle-fields').run({
+  process: processHandle({
+    // @ts-expect-error TS2353: A supplied field cannot replace where environment additions go.
+    publishEnv: () => undefined,
   }),
 });
