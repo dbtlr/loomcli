@@ -119,16 +119,30 @@ test.skipIf(zsh === undefined)(
 );
 
 /**
+ * The shell script that runs the scenario with no core dump and prints the status it ended with.
+ * A core dump is what SIGQUIT asks for, and a Bun process's dump spans gigabytes of reserved
+ * address space. `ulimit -c 0` stops a dump to a file, but where the kernel pipes dumps to a
+ * collector, as systemd-coredump and apport are installed on Linux CI runners, it streams the whole
+ * dump whatever the limit, except a limit of exactly one byte, which only `prlimit` can set. Where
+ * there is no `prlimit`, as on macOS, `ulimit -c 0` is enough.
+ */
+const noCoreDump = [
+  // The shell's `ulimit` sets the hard limit too, which no later call may raise, so it comes second.
+  'if command -v prlimit >/dev/null 2>&1; then prlimit --core=1 "$0" "$1" "$2"',
+  'else ulimit -c 0; "$0" "$1" "$2"; fi',
+  'echo "status=$?"',
+].join('; ');
+
+/**
  * Runs the cooperative scenario under `sh`, which prints the status it ended with, sends the
- * scenario `signal` once it announced its process id, and resolves everything `sh` printed. A core
- * dump is what SIGQUIT asks for, so the shell turns dumps off before the scenario starts.
+ * scenario `signal` once it announced its process id, and resolves everything `sh` printed.
  */
 function underShell(signal: NodeJS.Signals): Promise<string> {
-  const child = spawn(
-    'sh',
-    ['-c', 'ulimit -c 0; "$0" "$1" "$2"; echo "status=$?"', runtime, fixture, 'cooperative'],
-    { env: childEnvironment({}), stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 },
-  );
+  const child = spawn('sh', ['-c', noCoreDump, runtime, fixture, 'cooperative'], {
+    env: childEnvironment({}),
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 10_000,
+  });
   let output = '';
   let sent = false;
   child.stdout.setEncoding('utf8');
