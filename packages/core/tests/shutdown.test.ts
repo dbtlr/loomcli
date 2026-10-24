@@ -1046,6 +1046,51 @@ describe('suspend and resume', () => {
     expect(mock.stderr.text.slice(before)).toBe('\r\u001B[1A\u001B[J\u001B[?25hMIDDLE\nSPIN\n');
   });
 
+  it('an app.invoke never starts listening for its suspend handlers, which run while a run() listens', async () => {
+    const mock = mockProcess();
+    const count = listening(mock);
+    const lines: string[] = [];
+    const during: string[] = [];
+    const reached = deferred();
+    const release = deferred();
+    const invoked = new Application('invoked').action(({ onResume, onSuspend }) => {
+      onSuspend(() => {
+        lines.push('suspend:invoked');
+      });
+      onResume(() => {
+        lines.push('resume:invoked');
+      });
+      during.push(count());
+      mock.signals.raise('SIGTSTP');
+    });
+    await expect(invoked.invoke([], {}, { process: mock })).resolves.toMatchObject({
+      status: 'completed',
+    });
+    const holder = new Application('holder').action(async ({ onSuspend }) => {
+      onSuspend(() => {
+        lines.push('suspend:holder');
+      });
+      reached.resolve();
+      await release.promise;
+    });
+    const holding = holder.run({ process: mock });
+    await reached.promise;
+    const call = new Application('called').action(({ onSuspend }) => {
+      onSuspend(() => {
+        lines.push('suspend:called');
+      });
+      mock.signals.raise('SIGTSTP');
+    });
+    await call.invoke([], {}, { process: mock });
+    release.resolve();
+    await expect(holding).resolves.toBe(0);
+    expect([during, lines, count()]).toEqual([
+      ['0,0,0,0,0,0,0'],
+      ['suspend:called', 'suspend:holder'],
+      '0,0,0,0,0,0,0',
+    ]);
+  });
+
   it('a handler a context registers after its run ended holds nothing', async () => {
     const mock = mockProcess();
     const count = listening(mock);

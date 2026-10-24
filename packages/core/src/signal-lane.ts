@@ -179,6 +179,11 @@ interface Place {
   flushed: boolean;
 }
 
+/** One suspend or resume handler as the lane holds it, and whether it keeps the lane listening. */
+interface HeldHandler extends HandlerRegistration {
+  readonly listens: boolean;
+}
+
 /** One pending shutdown handler, the run it belongs to, and whether it keeps the lane listening. */
 interface PendingShutdown {
   readonly registration: ShutdownRegistration;
@@ -298,8 +303,8 @@ class SignalLane implements SharedLane {
   readonly source: SignalSource;
   readonly #places = new Set<Place>();
   readonly #shutdownHandlers = new Set<PendingShutdown>();
-  readonly #suspendHandlers = new Set<HandlerRegistration>();
-  readonly #resumeHandlers = new Set<HandlerRegistration>();
+  readonly #suspendHandlers = new Set<HeldHandler>();
+  readonly #resumeHandlers = new Set<HeldHandler>();
   #shutdown: Shutdown | undefined = undefined;
   #listening = false;
   #listeningSuspend = false;
@@ -396,18 +401,24 @@ class SignalLane implements SharedLane {
   }
 
   onSuspend(registration: HandlerRegistration): () => void {
-    return this.#hold(this.#suspendHandlers, registration);
+    return this.#hold(this.#suspendHandlers, registration, true);
   }
 
   onResume(registration: HandlerRegistration): () => void {
-    return this.#hold(this.#resumeHandlers, registration);
+    return this.#hold(this.#resumeHandlers, registration, true);
   }
 
-  #hold(held: Set<HandlerRegistration>, registration: HandlerRegistration): () => void {
+  /**
+   * Holds one suspend or resume handler. One that does not listen, from a run that keeps its lane
+   * from listening such as an `app.invoke`, still runs while another handler keeps the lane
+   * listening.
+   */
+  #hold(held: Set<HeldHandler>, registration: HandlerRegistration, listens: boolean): () => void {
     // Each registration is its own entry, so one handler registered twice is held twice.
-    const entry: HandlerRegistration = {
+    const entry: HeldHandler = {
       failed: registration.failed,
       handler: registration.handler,
+      listens,
     };
     held.add(entry);
     this.#refresh();
@@ -421,15 +432,11 @@ class SignalLane implements SharedLane {
    * Holds one suspend or resume handler scoped to a run's place, which goes when the run leaves. A
    * handler registered after its run left is never called, so it holds nothing.
    */
-  #holdFor(
-    place: Place,
-    held: Set<HandlerRegistration>,
-    registration: HandlerRegistration,
-  ): () => void {
+  #holdFor(place: Place, held: Set<HeldHandler>, registration: HandlerRegistration): () => void {
     if (place.left) {
       return () => undefined;
     }
-    const release = this.#hold(held, registration);
+    const release = this.#hold(held, registration, listensFor(place));
     const remove = () => {
       place.held.delete(remove);
       release();
@@ -635,7 +642,9 @@ class SignalLane implements SharedLane {
 
   /** Holds the SIGTSTP and SIGCONT listeners while a suspend or resume handler is registered. */
   #refreshSuspend(): void {
-    const suspending = this.#suspendHandlers.size > 0 || this.#resumeHandlers.size > 0;
+    const suspending = [...this.#suspendHandlers, ...this.#resumeHandlers].some(
+      (entry) => entry.listens,
+    );
     // While the process is stopped, core holds no SIGTSTP listener; it listens again on SIGCONT.
     const stopping = suspending && !this.#suspended;
     if (stopping !== this.#listeningSuspend) {
