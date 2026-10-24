@@ -1,7 +1,7 @@
 {
   "name": "@loomcli/testing",
   "version": "0.15.0",
-  "description": "Test helpers for a Loom CLI application. Ships the assembly check that bun test and vitest run.",
+  "description": "Test helpers for a Loom CLI application. Ships the assembly check that bun test and vitest run, and mockProcess, the sealed process handle a test runs an Application on.",
   "license": "MIT",
   "repository": {
     "type": "git",
