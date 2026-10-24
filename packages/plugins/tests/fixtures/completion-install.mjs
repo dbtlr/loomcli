@@ -39,7 +39,7 @@ process.exitCode = await app.run({
     argv: process.argv.slice(2),
     cwd: scenario.cwd,
     env: scenario.env,
-    // The test's HOME, as given, so the user database's home is never the fixture's.
+    // The handle's home is the test's HOME as given, never the user database's.
     home: fixtureHome(scenario.env),
     platform: scenario.platform ?? 'linux',
     // A scenario with `columns` runs on a terminal that wide, so lanes wrap.

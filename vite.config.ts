@@ -143,8 +143,8 @@ export default defineConfig({
         },
       },
       {
-        // The toolchain's git, pnpm, and bun children and its scratch folders move onto the host in
-        // PR B of LM-409, so until then packages/loom/src is held to the process rules above alone.
+        // The toolchain's git, pnpm, and bun children and its scratch folders move onto the host in PR B.
+        // Until then (LM-409), packages/loom/src is held to the process rules above alone.
         files: [
           'packages/core/src/**',
           'packages/plugins/src/**',
@@ -152,8 +152,8 @@ export default defineConfig({
           'packages/testing/src/**',
           'packages/validators/src/**',
         ],
-        // The home, the user, and the temporary folder are host facts, and every child program
-        // Starts through host.spawn (ADR-0107), so these packages never ask the machine for them.
+        // The home, the user, and the temporary folder are host facts (ADR-0107).
+        // Every child program starts through host.spawn, so these packages never ask the machine.
         rules: {
           'eslint/no-restricted-globals': ['error', processGlobal, requireGlobal],
           'eslint/no-restricted-imports': [
@@ -164,8 +164,8 @@ export default defineConfig({
         },
       },
       {
-        // Core's one module that builds the real process's handle, which reads the process, asks
-        // Node:os for the user's folders, and starts real children.
+        // Core's one module that builds the real process's handle.
+        // It reads the process, asks node:os for the user's folders, and starts real children.
         files: ['packages/core/src/process-handle.ts'],
         rules: {
           'eslint/no-restricted-globals': 'off',

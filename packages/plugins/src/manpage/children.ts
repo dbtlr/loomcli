@@ -215,7 +215,7 @@ async function writeSet(run: ChildRun, writing: Writing): Promise<void> {
   await reportRemovals(run, outcome);
 }
 
-/** The home `install` writes under: `HOME`, which must be an absolute path. */
+/** The home `install` writes under: `host.home`, which must be an absolute path. */
 function homeFor(run: ChildRun): string {
   const home = homeOf(run.host);
   if (home === undefined) {
@@ -248,7 +248,7 @@ function foldersOf(files: readonly { readonly path: string }[]): string[] {
   return [...new Set(files.map(({ path }) => dirname(path)))];
 }
 
-/** `update`: the set into the folder that holds the recorded pages, which derives nothing from `HOME`. */
+/** `update`: the set into the folder that holds the recorded pages, which derives nothing from the home. */
 async function updatePages(run: ChildRun): Promise<void> {
   const name = run.graph.name;
   const recorded = readRecord(run, 'install');

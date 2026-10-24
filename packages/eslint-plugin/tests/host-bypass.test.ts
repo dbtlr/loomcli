@@ -134,7 +134,7 @@ tester.run('host-bypass', hostBypass, {
     // A use the rule cannot trace is not reported.
     `Reflect.get(globalThis, 'process');`,
     `const name = 'node:child_process'; await import(name);`,
-    // Os members other than the user's folders, and a type-only import, read nothing.
+    // Members of os other than the user's folders, and a type-only import, read nothing.
     `import { cpus, EOL } from 'node:os'; cpus(); EOL;`,
     `import type { ChildProcess } from 'node:child_process';`,
     `import { type ChildProcess } from 'node:child_process';`,

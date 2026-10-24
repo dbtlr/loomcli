@@ -90,7 +90,7 @@ process.exitCode = await app.run({
   process: processHandle({
     argv,
     env: scenario.env,
-    // The test's HOME, as given, so the user database's home is never the fixture's.
+    // The handle's home is the test's HOME as given, never the user database's.
     home: fixtureHome(scenario.env),
     platform: scenario.platform,
     program: scenario.program,

@@ -35,9 +35,9 @@ const config: Linter.Config[] = [
     ...plugin.configs.recommended,
   },
   {
-    // The exceptions the repository's own process rule names (ADR-0107): the YAML library's debug
-    // Variables, the toolchain's application reader, and its Bun signal forwarding. The
-    // Toolchain's git, pnpm, bun, and scratch-folder modules move onto the host in PR B (LM-409).
+    // These are the exceptions the repository's own process rule names (ADR-0107).
+    // They are the YAML guard, the toolchain's application reader, and its Bun signal forwarding.
+    // The toolchain's git, pnpm, bun, and scratch-folder modules move onto the host in PR B (LM-409).
     files: [
       'packages/plugins/src/config/yaml.ts',
       'packages/loom/src/read-application.ts',

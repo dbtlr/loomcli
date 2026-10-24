@@ -391,7 +391,7 @@ process.exitCode = await app.run({
       ...scenario.env,
       ...(child ? {} : { FIXTURE_RUN_PID: String(process.pid) }),
     },
-    // The test's HOME, as given, so the user database's home is never the fixture's.
+    // The handle's home is the test's HOME as given, never the user database's.
     home: fixtureHome({ ...process.env, ...scenario.env }),
     platform: 'linux',
     release: scenario.release,

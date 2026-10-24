@@ -39,7 +39,7 @@ function host() {
   const parsed = env === undefined ? undefined : JSON.parse(env);
   return {
     ...(parsed === undefined ? {} : { env: parsed }),
-    // The test's HOME, as given, so the user database's home is never the fixture's.
+    // The handle's home is the test's HOME as given, never the user database's.
     home: fixtureHome(parsed),
     ...(platform === undefined ? {} : { platform }),
   };

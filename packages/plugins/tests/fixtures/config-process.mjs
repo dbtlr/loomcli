@@ -20,7 +20,7 @@ const code = await application({
   process: processHandle({
     argv: process.argv.slice(2),
     ...(FIXTURE_CWD === undefined ? {} : { cwd: FIXTURE_CWD }),
-    // The test's HOME, as given, so the user database's home is never the fixture's.
+    // The handle's home is the test's HOME as given, never the user database's.
     home: fixtureHome(),
   }),
 });
