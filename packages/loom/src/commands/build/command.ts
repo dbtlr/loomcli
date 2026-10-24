@@ -190,7 +190,7 @@ export const buildCommand = new Command('build', {
       const { cwd } = host;
       const directory = packageDirectory(cwd);
       const manifest = readManifest(directory);
-      const target = options.target ?? hostTarget(host.platform);
+      const target = options.target ?? hostTarget(host);
       const facts = buildFacts({
         build: options.build ?? (options.watch ? 'development' : 'distributed'),
         manifest,

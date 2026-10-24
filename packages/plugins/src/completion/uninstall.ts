@@ -38,7 +38,7 @@ interface Planned {
 /** The recorded lines in startup files the plugin cannot change that hold them, which it releases. */
 function planShell(run: ChildRun, recorded: ShellRecord): Planned {
   const released = recorded.lines.filter((entry) =>
-    mustRelease(judgeStartup(entry.path, entry.line)),
+    mustRelease(judgeStartup(entry.path, entry.line, run.host.uid)),
   );
   return { recorded, released };
 }

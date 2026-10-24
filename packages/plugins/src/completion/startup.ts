@@ -66,15 +66,14 @@ function ownedByAnother(file: {
   return file.user !== undefined && file.owner !== file.user;
 }
 
-/** Whether the plugin may change a file that exists: write it and its folder, and own it. */
-function mayChangeFile(path: string): boolean {
+/**
+ * Whether the plugin may change a file that exists: write it and its folder, and own it, as the
+ * run's user, which a runtime with no user ID reports as `undefined`.
+ */
+function mayChangeFile(path: string, user: number | undefined): boolean {
   const real = realpathSync(path);
   const owner = statSync(real).uid;
-  return (
-    mayWrite(real) &&
-    mayWrite(dirname(real)) &&
-    !ownedByAnother({ owner, user: process.getuid?.() })
-  );
+  return mayWrite(real) && mayWrite(dirname(real)) && !ownedByAnother({ owner, user });
 }
 
 /**
@@ -83,7 +82,7 @@ function mayChangeFile(path: string): boolean {
  * it, its folder, or the nearest folder that exists and whether another user owns it, one it may
  * or may not change.
  */
-function judgeStartup(path: string, line: string): StartupJudgement {
+function judgeStartup(path: string, line: string, user: number | undefined): StartupJudgement {
   const state = inspectStartupFile(path, line);
   switch (state.kind) {
     case 'not-file': {
@@ -98,7 +97,7 @@ function judgeStartup(path: string, line: string): StartupJudgement {
       return { holds: false, kind: changeable ? 'changeable' : 'unchangeable' };
     }
     default: {
-      const changeable = mayChangeFile(path);
+      const changeable = mayChangeFile(path, user);
       return { holds: state.holds, kind: changeable ? 'changeable' : 'unchangeable' };
     }
   }
@@ -152,7 +151,7 @@ function recordedHere(
   if (recorded === undefined) {
     return { notices: [], release: [] };
   }
-  const held = mustRelease(judgeStartup(path, recorded));
+  const held = mustRelease(judgeStartup(path, recorded, run.host.uid));
   return {
     notices: held && recorded !== line ? [removeNotice(run, { line: recorded, path })] : [],
     release: held || judgement.holds === true ? [path] : [],

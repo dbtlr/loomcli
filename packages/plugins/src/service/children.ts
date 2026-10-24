@@ -57,12 +57,12 @@ interface Removals {
 /** The backend each supported platform selects. */
 const backends: Readonly<Record<string, Backend>> = { darwin: launchd, linux: systemd };
 
-/** The process's user id, or the platform refusal where the process has none. */
-function userId(name: string, platform: string): number {
-  if (process.getuid === undefined) {
-    throw refusals.platform(name, platform);
+/** The run's user id, or the platform refusal where the process has none. */
+function userId(name: string, host: Host): number {
+  if (host.uid === undefined) {
+    throw refusals.platform(name, host.platform);
   }
-  return process.getuid();
+  return host.uid;
 }
 
 /**
@@ -111,7 +111,7 @@ function prepare(run: ChildRun): Prepared {
   const { host, label, name, signal } = run;
   const backend = backendOf(run);
   const home = homeOf(run);
-  const uid = userId(name, host.platform);
+  const uid = userId(name, host);
   const manager = { env: managerEnv(host, uid), name, signal };
   const unit = backend.unitPath(label, home, host.env);
   const service = { label, manager, name, uid, unit };
