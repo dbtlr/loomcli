@@ -13,7 +13,7 @@ export const changelog = new Command('changelog', {
     new Command('check', {
       description: 'Check every fragment in .changes/ and count them.',
     }).action(async ({ host, onShutdown, out, passthrough, signal }) => {
-      await report(out, passthrough, async () => {
+      await report({ out, passthrough, signal }, async () => {
         const fragments = await readFragments({
           host,
           onShutdown,
@@ -42,7 +42,7 @@ export const changelog = new Command('changelog', {
         type: 'boolean',
       })
       .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
-        await report(out, passthrough, async () => {
+        await report({ out, passthrough, signal }, async () => {
           const directory = packageDirectory(host.cwd);
           const cut = await preparePackageCut(
             { host, onShutdown, root: directory, signal },

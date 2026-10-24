@@ -31,16 +31,19 @@ const neutralSettings = ['-c', 'log.showSignature=false', '-c', 'log.follow=fals
 
 /**
  * Runs git in the checkout through the run's host and waits for it. The run's signal ends git once
- * the run is cancelled. A git that cannot start fails with the runtime's error, and one that exits
+ * the run is cancelled, and a cancelled run starts no git and fails with the signal's reason,
+ * which core keeps silent. A git that cannot start fails with the runtime's error, and one that exits
  * with a failure fails with what it wrote to stderr. A tracked file read at a commit can be large,
  * as a reference document is, and the output is unbounded.
  */
 async function gitOutput(checkout: Checkout, args: string[]) {
   const { host, root, signal } = checkout;
+  signal.throwIfAborted();
   const exit = await host.spawn('git', [...neutralSettings, '--literal-pathspecs', ...args], {
     cwd: root,
     signal,
   }).exited;
+  signal.throwIfAborted();
   if (exit.kind === 'unstarted') {
     throw exit.error;
   }
@@ -130,12 +133,14 @@ export async function readRegularFile(checkout: Checkout, path: string, ref?: st
 // Whether the root sits inside a git work tree; a missing git still fails.
 export async function isRepository(checkout: Checkout) {
   const { host, root, signal } = checkout;
+  signal.throwIfAborted();
   const exit = await host.spawn('git', ['rev-parse', '--is-inside-work-tree'], {
     cwd: root,
     signal,
     stderr: 'ignore',
     stdout: 'ignore',
   }).exited;
+  signal.throwIfAborted();
   if (exit.kind === 'unstarted') {
     throw exit.error;
   }

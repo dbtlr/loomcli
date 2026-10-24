@@ -28,7 +28,7 @@ export const pr = new Command('pr', { description: 'Check a pull request.', hidd
       type: 'string',
     })
     .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
-      await report(out, passthrough, async () => {
+      await report({ out, passthrough, signal }, async () => {
         await checkPullRequest(
           { host, onShutdown, root: host.cwd, signal },
           {

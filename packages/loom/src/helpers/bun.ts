@@ -58,7 +58,8 @@ export interface BunResult {
 
 /**
  * Runs Bun from the PATH with the arguments, in the directory, through the run's host, and waits
- * for it. The run's signal ends Bun once the run is cancelled, and a shutdown that ends while Bun still runs kills it. Its stdout and stderr are collected,
+ * for it. The run's signal ends Bun once the run is cancelled, a cancelled run fails with the
+ * signal's reason, and a shutdown that ends while Bun still runs kills it. Its stdout and stderr are collected,
  * stdout first, and the output is unbounded, as git's is. A missing Bun fails with a sentence that
  * names it.
  */
@@ -67,12 +68,14 @@ export async function runBun(
   args: readonly string[],
   cwd: string,
 ): Promise<BunResult> {
+  run.signal.throwIfAborted();
   const child = run.host.spawn('bun', args, { cwd, signal: run.signal });
   // A shutdown that ends while Bun still runs ends it, whatever it does with the SIGTERM it received.
   const removeKill = run.onShutdown(() => {
     child.kill('SIGKILL');
   });
   const exit = await child.exited.finally(removeKill);
+  run.signal.throwIfAborted();
   if (exit.kind === 'unstarted') {
     throw unstartedError(exit.error);
   }

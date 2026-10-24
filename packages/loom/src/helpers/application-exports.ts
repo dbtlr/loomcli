@@ -34,7 +34,7 @@ export type ApplicationExports = InferOutput<typeof exportsResult>;
  * `--no-install`, because a package with no `node_modules` would otherwise resolve core and the
  * module's imports from Bun's global cache, which the package never installed. The result file lives
  * in a scratch folder under the run's temporary folder, removed once it is read or when a shutdown
- * ends before the run has unwound.
+ * ends before the run has unwound. A cancelled run fails with the signal's reason.
  */
 export async function readApplicationExports(
   run: RunHost,

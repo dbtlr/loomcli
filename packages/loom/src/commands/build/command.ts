@@ -186,7 +186,7 @@ export const buildCommand = new Command('build', {
         '--watch builds development, so pass --watch or --build distributed.',
       );
     }
-    await report(out, passthrough, async () => {
+    await report({ out, passthrough, signal }, async () => {
       const { cwd } = host;
       const directory = packageDirectory(cwd);
       const manifest = readManifest(directory);

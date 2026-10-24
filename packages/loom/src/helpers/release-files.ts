@@ -38,7 +38,8 @@ const lockfileLimit = 60_000;
 
 /**
  * Prepares the lockfile in the staged copy at `root` with the installed pnpm, which starts through
- * the run's host. The run's cancellation and the time limit each stop pnpm, and a shutdown that ends while pnpm still runs kills it.
+ * the run's host. The run's cancellation and the time limit each stop pnpm, a cancelled run fails
+ * with the signal's reason, and a shutdown that ends while pnpm still runs kills it.
  */
 async function updateLockfile(run: RunHost, root: string) {
   const lock = join(root, 'pnpm-lock.yaml');
@@ -54,6 +55,7 @@ async function updateLockfile(run: RunHost, root: string) {
   const manifestSource = readWorkingFile(dirname(manifestPath), 'package.json');
   const manifest = parseOrThrow(pnpmManifest, JSON.parse(manifestSource));
   const limit = AbortSignal.timeout(lockfileLimit);
+  run.signal.throwIfAborted();
   const child = run.host.spawn(
     join(dirname(manifestPath), manifest.bin.pnpm),
     [
@@ -72,6 +74,7 @@ async function updateLockfile(run: RunHost, root: string) {
     child.kill('SIGKILL');
   });
   const exit = await child.exited.finally(removeKill);
+  run.signal.throwIfAborted();
   if (exit.kind === 'unstarted') {
     throw exit.error;
   }

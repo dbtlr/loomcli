@@ -60,6 +60,7 @@ async function requireCommitInCheckout(checkout: Checkout, commit: string, subje
   try {
     await git(checkout, ['merge-base', '--is-ancestor', commit, head]);
   } catch {
+    checkout.signal.throwIfAborted();
     throw new Error(
       `${subject} was published from ${commit}, which is neither the head ${head} of the checkout nor an ancestor of it.`,
     );

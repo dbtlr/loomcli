@@ -186,7 +186,7 @@ export const cut = new Command('cut', {
     type: 'string',
   })
   .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
-    await report(out, passthrough, async () => {
+    await report({ out, passthrough, signal }, async () => {
       const checkout = { host, onShutdown, root: host.cwd, signal };
       const release = await prepare(checkout, options);
       if (!options['dry-run']) {

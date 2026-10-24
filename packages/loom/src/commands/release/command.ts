@@ -64,7 +64,7 @@ export const release = new Command('release', {
         validate: count,
       })
       .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
-        await report(out, passthrough, async () => {
+        await report({ out, passthrough, signal }, async () => {
           const plan = await planRelease({
             checkout: { host, onShutdown, root: host.cwd, signal },
             githubApi: options['github-api'],
@@ -122,7 +122,7 @@ export const release = new Command('release', {
         validate: count,
       })
       .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
-        await report(out, passthrough, async () => {
+        await report({ out, passthrough, signal }, async () => {
           const token = host.env.GH_TOKEN;
           if (token === undefined || token === '') {
             throw new Error('Recording a release requires GH_TOKEN.');

@@ -537,7 +537,7 @@ export const init = new Command('init', {
   })
   .action(async (context) => {
     const { host, onShutdown, options, out, passthrough, signal, supplied } = context;
-    await report(out, passthrough, async () => {
+    await report({ out, passthrough, signal }, async () => {
       const target = initTarget(host.cwd);
       const existing = existingTooling(target);
       const needed = neededQuestions(target, options.only);

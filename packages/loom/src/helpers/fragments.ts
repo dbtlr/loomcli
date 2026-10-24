@@ -122,6 +122,8 @@ export async function readFragments(checkout: Checkout, ref?: string) {
     try {
       fragments.push(await readFragment(checkout, entry, ref));
     } catch (error) {
+      // A cancelled run reads no further fragment and reports none.
+      checkout.signal.throwIfAborted();
       failures.push(error instanceof Error ? error.message : String(error));
     }
   }
