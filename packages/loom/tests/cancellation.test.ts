@@ -86,6 +86,24 @@ test('a SIGTERM while pr check reads a fragment prints nothing, resolves 143, an
   expect(calls.at(-1)).toContain('.changes/add.md');
 });
 
+test('a SIGINT while loom init reads the application with Bun prints nothing, resolves 130, and writes nothing after it', async () => {
+  const root = temporaryRoot('loom-cancel-');
+  const tmpdir = temporaryRoot('loom-cancel-tmp-');
+  put(root, 'package.json', '{ "name": "notes", "version": "1.0.0" }\n');
+  put(root, 'src/application.ts', 'export const notes = undefined;\n');
+  const mock: MockProcess = mockProcess({
+    argv: ['init'],
+    cwd: root,
+    programs: { bun: cancelling(() => mock, 'SIGINT') },
+    tmpdir,
+  });
+  await expect(loom.run({ process: mock })).resolves.toBe(130);
+  expect(mock.stderr.text).toBe('');
+  expect(existsSync(join(root, 'src/main.ts'))).toBe(false);
+  expect(existsSync(join(root, 'tsconfig.json'))).toBe(false);
+  expect(readdirSync(tmpdir)).toEqual([]);
+});
+
 const pnpmManifest = z.object({ bin: z.object({ pnpm: z.string() }) });
 
 /** The command release preparation starts pnpm with: the installed pnpm's own bin. */

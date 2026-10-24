@@ -291,6 +291,8 @@ async function authoredImport(run: Run, name: string): Promise<AuthoredImport> {
       path: join(run.directory, applicationPath),
     });
   } catch (error) {
+    // A cancelled read stops init where it is, with no warning and nothing more written.
+    run.signal.throwIfAborted();
     return { kind: 'unloaded', reason: error instanceof Error ? error.message : String(error) };
   }
   if ('failure' in result) {
