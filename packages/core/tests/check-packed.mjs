@@ -382,6 +382,7 @@ try {
         '@loomcli/core': 'file:./core.tgz',
         '@loomcli/plugins': 'file:./plugins.tgz',
         '@loomcli/prompts': 'file:./prompts.tgz',
+        '@loomcli/testing': 'file:./testing.tgz',
         '@loomcli/validators': 'file:./validators.tgz',
       },
       // Rolldown bundles the plain fixture below, at the version the repository pins.
@@ -706,6 +707,13 @@ try {
       `${name}: packed suggestion`,
     );
   }
+  // The packed testing package runs an Application on a mock process and reads what it wrote.
+  const mocking = join(temporary, 'dist/mock-process.js');
+  for (const name of selected) {
+    const mocked = run(runtimes.get(name), [mocking], temporary);
+    assert.equal(mocked.status, 0, mocked.output);
+    assert.equal(mocked.output, '0 0 got /packed\n', `${name}: packed mockProcess run`);
+  }
   // The packed color plugin's --color turns color on for piped output, which is plain without it.
   const coloring = join(temporary, 'dist/color.js');
   for (const name of selected) {
@@ -961,7 +969,7 @@ try {
     await checkScaffold(temporary, scaffold);
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, @loomcli/prompts, @loomcli/testing, @loomcli/eslint-plugin, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the seven tarballs with publint and the declarations of the six libraries with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, a supplied linked prompt, declared option groups with structured failures, dotenv values in argv and named runs, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a color choice, a background choice, a verbosity, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, ${scaffolds.length} scaffolds the loom bin wrote that passed their own check script and, with oxlint and with ESLint, failed on an undescribed option, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, @loomcli/prompts, @loomcli/testing, @loomcli/eslint-plugin, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the seven tarballs with publint and the declarations of the six libraries with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, a supplied linked prompt, declared option groups with structured failures, dotenv values in argv and named runs, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a run on a mock process, a color choice, a background choice, a verbosity, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, ${scaffolds.length} scaffolds the loom bin wrote that passed their own check script and, with oxlint and with ESLint, failed on an undescribed option, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });
