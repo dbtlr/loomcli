@@ -22,6 +22,8 @@ export async function report(
       out.fatal('Arguments after -- are not supported.');
     }
     const text = await work();
+    // Work that finished after a cancel, such as a request that obeys only its own timeout, prints nothing.
+    signal.throwIfAborted();
     await out.render(text, { render: (value) => value });
   } catch (error) {
     signal.throwIfAborted();
