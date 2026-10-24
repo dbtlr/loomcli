@@ -4,7 +4,7 @@ title: ADR-0106 - A signal ends the process within one bounded shutdown
 description: Every ending signal starts one shutdown. Core cancels every run, gives the runs a bounded budget to unwind, 500 ms unless the Application sets another, then calls each synchronous onShutdown handler once, newest first, and re-raises the signal so the process dies by it. onShutdown is the one cleanup registration, scoped to a run or to the process. The cooperative claim, the signals slot, defer, and processEvents go.
 status: proposed
 created: 2026-10-23
-modified: 2026-10-23
+modified: 2026-10-24
 ---
 
 # ADR-0106 - A signal ends the process within one bounded shutdown
@@ -59,3 +59,4 @@ Proposed. It moves to accepted with the release that ships the shutdown, `onShut
 ## Changelog
 
 - 2026-10-23: Proposed. Supersedes ADR-0105, which never shipped, after the owner's review of its core lane.
+- 2026-10-24: [ADR-0107](0107-a-run-reads-the-process-through-one-process-handle.md), proposed, moves this record's lane from the process to a signal source. Core listens and re-raises on the signal source of each run's process handle. The real process's source keeps the lane under `globalThis[Symbol.for('loomcli.processLane')]`, shared by every copy of core and every handle `processHandle` builds, beside a `WeakMap` from every other source to its lane, so one process still listens once and re-raises once. A mock's source has a lane of its own, so a signal raised on a mock reaches only the runs that hold it, and a shutdown on the real process never reaches them. A raw-mode reader raises the signal its key stands for through `host.raise`, on the run's signal source, only when its stdin is that source's own terminal, `process.stdin` for the real process; any other stdin, a mock's included, raises nothing, `host.raise` answers `false`, and the reader cancels the run. A run that resolves inside the shutdown writes its code to its handle's `exitCode`. The shutdown, its budget, `onShutdown`, suspend and resume, the lane's shape contract, and the codes stand. It binds when that record is accepted.

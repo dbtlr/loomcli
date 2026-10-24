@@ -4,7 +4,7 @@ title: ADR-0103 - Process acceptance comes from Loom's own pipeline and the pack
 description: Proof that Loom works as a real process comes from Loom's own pipeline, which runs the loom CLI on every check, PR guard, and release, and from the packed consumer, which runs what an author installs under Node and Bun on Linux and macOS. A process test covers only what a process has; everything else, the example applications included, runs in-process, and each runtime's CI job runs the suite under that runtime. Acceptance evidence still uses only the public API. It supersedes ADR-0014.
 status: accepted
 created: 2026-10-21
-modified: 2026-10-21
+modified: 2026-10-24
 ---
 
 # ADR-0103 - Process acceptance comes from Loom's own pipeline and the packed consumer
@@ -54,3 +54,4 @@ Accepted on merge. It governs Loom's own test suite and CI, which no release shi
 
 - 2026-10-21: Accepted. ADR-0014 moves to superseded in the same change, and [ADR-0100](0100-acceptance-plans-live-beside-the-tests.md), proposed, no longer restates the evidence rules this record holds.
 - 2026-10-21: The Bun jobs run the suite under Bun through `pnpm verify:bun`, test workers included, so a test that moves in-process runs under Node in the Node jobs and under Bun in the Bun jobs. `LOOM_TEST_RUNTIME` names the runtime of the whole suite, and a test fails when a worker runs on another. The gap is closed: the Decision's sentence that the Bun jobs do not yet run the suite under Bun, and the Consequences paragraph on vitest running under Node in both jobs, are historical. The decision is unchanged.
+- 2026-10-24: [ADR-0107](0107-a-run-reads-the-process-through-one-process-handle.md), proposed, replaces `run({ host })` in this record's in-process runs with `run({ process: mockProcess(...) })`, a sealed process handle from `@loomcli/testing` that reads nothing from the test's process. The shutdown, the `onShutdown` order, and the re-raise of [ADR-0106](0106-a-signal-ends-the-process-within-one-bounded-shutdown.md) become testable in-process through a mock's signal source, and so do the exit code `run()` writes to the handle and a working directory that cannot be read. A real signal on a real terminal, a pseudo-terminal, a real shell, and a process's own exit status stay what a process test proves, and real-process evidence still comes from Loom's own pipeline and the packed consumer. It binds when that record is accepted.

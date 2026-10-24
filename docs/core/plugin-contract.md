@@ -236,7 +236,7 @@ Each hook sees a read-only environment snapshot containing earlier additions.
 Core merges the returned record as it is. A record whose names or values the hook's type rejects gets no rule, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md).
 Defined variables, including empty strings, win. The first hook that fills a missing variable wins.
 The report host and log destination share the merged map, even if logging was initialized earlier.
-Each accepted answer merges and, where allowed, copies to the process before the next hook runs.
+Each accepted answer merges and, where allowed, passes to the process handle's `publishEnv` before the next hook runs.
 Later failures do not roll back additions. [Dotenv](../plugins/dotenv.md) specifies the process-write boundary.
 
 Core checks cancellation before each hook and after awaiting its answer, before applying additions.
