@@ -1,0 +1,1 @@
+- Fix `loom` commands that ran on after an ending signal. `SIGINT`, `SIGTERM`, `SIGHUP`, and `SIGQUIT` now stop the git, pnpm, and Bun children `loom` starts, and the command with them, so `loom changelog write` and `loom init` stop before they write and leave no lock or scratch folder behind. A cancelled command prints nothing and exits 129, 130, 131, or 143.
