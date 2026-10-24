@@ -741,14 +741,26 @@ describe('the lane', () => {
         }),
       ]);
     }
+    for (const [member, label] of [
+      ['onSuspend', 'suspend'],
+      ['onResume', 'resume'],
+    ] as const) {
+      const hold: unknown = Reflect.get(lane, member);
+      if (typeof hold === 'function') {
+        Reflect.apply(hold, lane, [recorded(label, { handler: () => undefined })]);
+      }
+    }
+    mock.signals.raise('SIGTSTP');
     mock.signals.raise('SIGTERM');
     expect([...new Set(read)].toSorted()).toEqual([
       'registration.failed',
       'registration.handler',
+      'resume.handler',
       'run.cancel',
       'run.flush',
       'run.listens',
       'run.timeout',
+      'suspend.handler',
     ]);
     expect(handed).toEqual(['place:leave,onShutdown', 'cancel:signal', 'shutdown:cause,code']);
   });

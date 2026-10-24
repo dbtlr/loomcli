@@ -394,7 +394,7 @@ What `SIGTSTP` does while core listens for it, from Ctrl-Z at a cooked terminal 
 _Avoid_: Pause, background (for the event)
 
 **Resume**:
-What the `SIGCONT` after a suspend does, as `fg` sends: core calls each `onResume` handler in registration order, which enters raw mode again and redraws.
+What follows a suspend once the process runs again, after the `SIGCONT` that `fg` sends or at once where nothing stops the process, as in an orphaned process group or on a mock: core calls each `onResume` handler in registration order, which enters raw mode again and redraws.
 _Avoid_: Continue, foreground (for the event)
 
 ## Output
