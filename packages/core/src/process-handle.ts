@@ -459,4 +459,4 @@ async function aliasesProcessStdin(source: BigIntStats): Promise<boolean> {
   }
 }
 
-export { aliasesProcessStdin, handleRelease, inBackgroundJob, processHandle, readSourceFile };
+export { aliasesProcessStdin, handleRelease, inBackgroundJob, processHandle };
