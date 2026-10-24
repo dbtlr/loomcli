@@ -178,14 +178,18 @@ async function readBackground(
 
 /**
  * Raises the signal each interrupt key stands for, in arrival order, or cancels the run for Ctrl-C
- * and Ctrl-\ where nothing is raised, and answers whether any signal was raised.
+ * and Ctrl-\ where nothing is raised, and answers whether any signal was raised. Several Ctrl-Z
+ * keys raise one SIGTSTP, as a cooked terminal suspends once and hands the rest to the shell.
  */
 function raiseKeys(
   terminal: Pick<Host, 'raise'> & { readonly cancel: () => void },
   signals: readonly InterruptSignal[],
 ): boolean {
   let raised = false;
-  for (const signal of signals) {
+  const once = signals.filter(
+    (signal, index) => signal !== 'SIGTSTP' || signals.indexOf('SIGTSTP') === index,
+  );
+  for (const signal of once) {
     if (terminal.raise(signal)) {
       raised = true;
     } else if (signal !== 'SIGTSTP') {

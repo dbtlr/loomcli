@@ -204,6 +204,11 @@ describe('interrupt keys during the wait', () => {
     expect(suspended.stdinRead).toBe('a');
   });
 
+  it('raise one SIGTSTP for two Ctrl-Z keys in one read, as a cooked terminal suspends once', () => {
+    const report = run({ kill: 'record', replies: `${ctrlZ}${ctrlZ}${light}` });
+    expect(report.raised).toEqual([{ raw: false, self: true, signal: 'SIGTSTP' }]);
+  });
+
   it('end the wait at once, with no reply, as an abort does', () => {
     const raised = run({ kill: 'record', replies: `a${ctrlC}` });
     expect([raised.elapsed, raised.raised, raised.modes]).toEqual([

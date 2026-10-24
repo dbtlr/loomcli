@@ -98,8 +98,9 @@ const sessions = new WeakMap<AbortSignal, Session>();
  * Raises the signal each interrupt key stands for on the run's signal source, in arrival order, as
  * the key would at a cooked terminal: Ctrl-C starts the shutdown, Ctrl-\\ ends the process, and
  * Ctrl-Z suspends it. Where stdin is not its signal source's own terminal nothing is raised: Ctrl-C
- * and Ctrl-\\ cancel the run, as the action's `cancel()` does, and Ctrl-Z does nothing. Answers
- * whether a signal that ends the process was raised, which reaches the run a moment later.
+ * and Ctrl-\\ cancel the run, as the action's `cancel()` does, and Ctrl-Z does nothing. Several
+ * Ctrl-Z keys in one read raise one SIGTSTP, as a cooked terminal suspends once. Answers whether a
+ * signal that ends the process was raised, which reaches the run a moment later.
  */
 function raiseInterrupts<Options>(context: PromptContext<Options>, queue: InputQueue): boolean {
   const interrupts: InterruptSignal[] = [];
@@ -107,7 +108,9 @@ function raiseInterrupts<Options>(context: PromptContext<Options>, queue: InputQ
     if (key.kind !== 'interrupt') {
       return true;
     }
-    interrupts.push(key.signal);
+    if (key.signal !== 'SIGTSTP' || !interrupts.includes('SIGTSTP')) {
+      interrupts.push(key.signal);
+    }
     return false;
   });
   let ending = false;
