@@ -196,6 +196,24 @@ if (scenario === 'two-copies') {
       await holdOpen();
     })
     .run({ process: processHandle({ argv: [] }) });
+} else if (scenario === 'suspend-leader') {
+  // The scenario leads its own terminal session, so its process group is orphaned and no Ctrl-Z
+  // Stops it: each one runs the suspend handlers, then the resume handlers, and the run goes on.
+  for (const label of ['first', 'second']) {
+    onSuspend(() => {
+      line(`suspended:${label}`);
+    });
+    onResume(() => {
+      line(`resumed:${label}`);
+    });
+  }
+  await new Application('app')
+    .action(async ({ signal }) => {
+      line('ready');
+      await cancelled(signal);
+      line(`action:${signal.reason.source}`);
+    })
+    .run({ process: processHandle({ argv: [] }) });
 } else if (scenario === 'suspend') {
   line(`before:${suspending()}`);
   for (const label of ['first', 'second']) {

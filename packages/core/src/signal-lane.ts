@@ -248,6 +248,12 @@ class SignalLane implements Lane {
     this.#callShutdownHandlers({ cause: 'exit', code });
   };
 
+  /**
+   * Calls the suspend handlers, then re-raises SIGTSTP with core's listener gone, so its default
+   * action stops the process. A raise to the process's own self returns once the process continues,
+   * and at once where nothing stops it, such as an orphaned process group, which the kernel never
+   * stops, or a mock, so the resume path runs as soon as the raise returns.
+   */
   readonly #onSuspend = (): void => {
     for (const registration of newestFirst(this.#suspendHandlers)) {
       callCaught(registration.handler);
@@ -255,6 +261,7 @@ class SignalLane implements Lane {
     this.#suspended = true;
     this.#refresh();
     this.source.raise('SIGTSTP');
+    this.#onResume();
   };
 
   readonly #onResume = (): void => {

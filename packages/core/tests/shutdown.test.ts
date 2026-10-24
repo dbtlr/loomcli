@@ -717,16 +717,21 @@ describe('shutdown.timeout', () => {
 });
 
 describe('suspend and resume', () => {
-  it('SIGTSTP calls suspend handlers newest first and re-raises; SIGCONT listens again and resumes in order', () => {
+  it('SIGTSTP calls suspend handlers newest first, re-raises with no listener, then resumes in order at once on a mock', () => {
     const mock = mockProcess();
     const count = listening(mock);
     const lane = laneOf(mock.signals);
     const lines: string[] = [];
-    const raise = vi.spyOn(mock.signals, 'raise');
+    const deliver = mock.signals.raise.bind(mock.signals);
+    // Each raise is recorded with the listeners held at that moment, then delivered.
+    vi.spyOn(mock.signals, 'raise').mockImplementation((signal) => {
+      lines.push(`raise:${signal}:${count()}`);
+      deliver(signal);
+    });
     const removers = ['first', 'second'].flatMap((label) => [
       lane.onSuspend({
         handler: () => {
-          lines.push(`suspend:${label}:${count()}`);
+          lines.push(`suspend:${label}`);
         },
       }),
       lane.onResume({
@@ -737,22 +742,24 @@ describe('suspend and resume', () => {
     ]);
     // A SIGCONT with no suspend before it calls none.
     mock.signals.raise('SIGCONT');
+    // A mock's raise returns at once, so each suspend runs its resume handlers back to back.
     mock.signals.raise('SIGTSTP');
-    const reraised = raise.mock.calls.map(([signal]) => signal);
-    lines.push(`stopped:${count()}`);
+    mock.signals.raise('SIGTSTP');
+    // The resume already ran, so a SIGCONT now calls none.
     mock.signals.raise('SIGCONT');
     for (const remove of removers) {
       remove();
     }
-    expect([lines, reraised, count()]).toEqual([
-      [
-        'suspend:second:0,0,0,0,0,1,1',
-        'suspend:first:0,0,0,0,0,1,1',
-        'stopped:0,0,0,0,0,0,1',
-        'resume:first:0,0,0,0,0,1,1',
-        'resume:second:0,0,0,0,0,1,1',
-      ],
-      ['SIGCONT', 'SIGTSTP', 'SIGTSTP'],
+    const suspend = [
+      'raise:SIGTSTP:0,0,0,0,0,1,1',
+      'suspend:second',
+      'suspend:first',
+      'raise:SIGTSTP:0,0,0,0,0,0,1',
+      'resume:first:0,0,0,0,0,1,1',
+      'resume:second:0,0,0,0,0,1,1',
+    ];
+    expect([lines, count()]).toEqual([
+      ['raise:SIGCONT:0,0,0,0,0,1,1', ...suspend, ...suspend, 'raise:SIGCONT:0,0,0,0,0,1,1'],
       '0,0,0,0,0,0,0',
     ]);
   });

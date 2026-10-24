@@ -279,6 +279,34 @@ test('two copies of core share one lane, listen once, and call each handler once
   });
 });
 
+test.skipIf(zsh === undefined)(
+  'an app that leads its own terminal session runs its suspend and resume handlers at each Ctrl-Z and keeps running',
+  async () => {
+    // `exec` makes the runtime the session's leader, so its process group is orphaned.
+    const terminal = drive(['sh', '-c', 'exec "$0" "$1" "$2"', runtime, fixture, 'suspend-leader']);
+    try {
+      await terminal.expect('ready');
+      // A second Ctrl-Z calls the handlers again, because core listens for SIGTSTP once more.
+      const rounds: string[][] = [];
+      for (const press of ['first', 'second']) {
+        terminal.send(String.raw`\x1a`);
+        const pressed = await terminal.expect('resumed:second');
+        rounds.push([press, ...(pressed.match(/(?:suspended|resumed):\w+/gu) ?? [])]);
+      }
+      const order = ['suspended:second', 'suspended:first', 'resumed:first', 'resumed:second'];
+      expect(rounds).toEqual([
+        ['first', ...order],
+        ['second', ...order],
+      ]);
+      // The run is still live, so Ctrl-C starts its shutdown and the run unwinds.
+      terminal.send(String.raw`\x03`);
+      await expect(terminal.expect('action:SIGINT')).resolves.toContain('action:SIGINT');
+    } finally {
+      await terminal.close();
+    }
+  },
+);
+
 /** The process state `ps` reports for one process: `T` when it is stopped. */
 function processState(pid: number): string {
   return spawnSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim();
