@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -117,6 +118,12 @@ const scenarios = {
   'raw-terminal': () =>
     new Application('app').action(async ({ onShutdown: register }) => {
       process.stdin.setRawMode(true);
+      // The test's own command names the raw-mode flags, read here from the terminal on stdin.
+      const modes = spawnSync('sh', ['-c', process.env.LOOM_FIXTURE_TTY_MODES ?? 'true'], {
+        encoding: 'utf8',
+        stdio: ['inherit', 'pipe', 'ignore'],
+      });
+      line(`modes-during=${modes.stdout.trim()}`);
       writeSync(1, '\u001B[?25l');
       register(() => {
         process.stdin.setRawMode(false);

@@ -5,7 +5,7 @@
  * - The terminal. On a pseudo-terminal, an action that enters raw mode and hides the cursor,
  *   restoring both through `onShutdown`, and then ignores its signal, is sent `kill -TERM` and, in
  *   a second run, `SIGHUP`. Each time the process dies by the signal (143, 129), the cursor shows,
- *   and the terminal settings read as they did before. A region's cancelled line reaches the
+ *   and every terminal flag raw mode turns off reads as it did before the run. A region's cancelled line reaches the
  *   terminal at a budget of 0.
  * - The status a shell sees. A cooperative run sent SIGHUP, SIGINT, SIGQUIT, or SIGTERM dies by it,
  *   and `sh` reports 129, 130, 131, or 143.
@@ -49,26 +49,54 @@ afterAll(() => {
 const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
 
 /**
+ * The shell command that prints the terminal modes raw mode turns off, each as `stty -a` names it
+ * with a leading `-` when it is off, in one sorted line. Raw mode is a change to exactly these, so a
+ * test compares them rather than the whole of `stty -g`, which on macOS also carries `pendin`, a
+ * flag the kernel sets on its own whenever a program turns canonical mode back on.
+ */
+const ttyModes = String.raw`stty -a | tr -s ' ;' '\n\n' | grep -E '^-?(icanon|echo|isig|iexten|icrnl|ixon|opost)$' | LC_ALL=C sort | tr '\n' ' '`;
+
+/**
  * Runs one scenario on a real terminal under `sh`, which then prints the status the scenario ended
- * with and whether the terminal's settings read as they did before it ran, so a test reads what
- * the operator's shell would meet.
+ * with and the raw-mode flags before and after it ran, so a test reads what the operator's shell
+ * would meet. The scenario prints the same flags while it holds raw mode.
  */
 function onTerminal(scenario: string) {
-  return drive([
-    'sh',
-    '-c',
+  return drive(
     [
-      'before=$(stty -g)',
-      '"$0" "$1" "$2"',
-      'echo "status=$?"',
-      'if [ "$(stty -g)" = "$before" ]; then echo terminal=restored; else echo terminal=changed; fi',
-      'echo @@DONE@@',
-    ].join('; '),
-    runtime,
-    fixture,
-    scenario,
-  ]);
+      'sh',
+      '-c',
+      [
+        `before=$(${ttyModes})`,
+        '"$0" "$1" "$2"',
+        'echo "status=$?"',
+        `echo "modes-before=$before"`,
+        `echo "modes-after=$(${ttyModes})"`,
+        'echo @@DONE@@',
+      ].join('; '),
+      runtime,
+      fixture,
+      scenario,
+    ],
+    { LOOM_FIXTURE_TTY_MODES: ttyModes },
+  );
 }
+
+/** The raw-mode flags one line of a transcript names after `label=`. */
+function modesOf(transcript: string, label: string): string {
+  const modes = new RegExp(`${label}=(?<modes>[^\\r\\n]*)`, 'u').exec(transcript)?.groups?.modes;
+  if (modes === undefined) {
+    throw new Error(`The transcript names no ${label}:\n${transcript}`);
+  }
+  return modes.trim();
+}
+
+/**
+ * The flags of a cooked terminal apart from `echo`, and the flags of the raw mode Node and Bun set,
+ * which keeps output processing on.
+ */
+const cooked = ['icanon', 'icrnl', 'iexten', 'isig', 'ixon', 'opost'];
+const raw = '-echo -icanon -icrnl -iexten -isig -ixon opost';
 
 /** The process id a scenario announced with `ready:<pid>:`. */
 function announcedPid(transcript: string): number {
@@ -89,11 +117,17 @@ test.skipIf(zsh === undefined).each([
     try {
       const ready = await terminal.expect('ready:*:');
       expect(ready).toContain('\u001B[?25l');
+      // The action holds raw mode: every flag raw mode turns off is off.
+      expect(modesOf(ready, 'modes-during')).toBe(raw);
       process.kill(announcedPid(ready), signal);
       const ended = await terminal.expect('@@DONE@@');
       expect(ended).toContain('\u001B[?25h');
       expect(ended).toContain(`status=${status}`);
-      expect(ended).toContain('terminal=restored');
+      // The handler left raw mode: the shell reads every flag as it was before the run, which was
+      // Cooked. The driver's terminal starts with its echo off, so `echo` is compared, not required.
+      const before = modesOf(ended, 'modes-before');
+      expect(before.split(' ').filter((flag) => !flag.endsWith('echo'))).toEqual(cooked);
+      expect(modesOf(ended, 'modes-after')).toBe(before);
     } finally {
       await terminal.close();
     }
