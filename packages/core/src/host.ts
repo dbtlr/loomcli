@@ -1,23 +1,19 @@
 import { realpathSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
-import type { Writable } from 'node:stream';
+import type { Readable, Writable } from 'node:stream';
 
 import type { Background } from './background.js';
 import { WorkingDirectoryError } from './errors.js';
 import type { InternalError } from './errors.js';
-import { readSmallFile } from './files.js';
-import { captureRelease, isCompiled } from './release.js';
+import { handleRelease } from './process-handle.js';
 import type { CapturedRelease } from './release.js';
-import type { Host, HostTerminal, OutputTerminal, ReleaseFacts, RunOptions } from './types.js';
-
-// Process stream declarations assume a terminal, but pipes omit isTTY at runtime.
-function isTerminal(stream: { isTTY?: boolean }): boolean {
-  return stream.isTTY === true;
-}
-
-function dimension(value: number | undefined): number | undefined {
-  return value === 0 ? undefined : value;
-}
+import type {
+  Host,
+  HostTerminal,
+  OutputTerminal,
+  ProcessHandle,
+  ReleaseFacts,
+  SignalSource,
+} from './types.js';
 
 /**
  * Each run's background, by the terminal facts it belongs to: the background an override stated,
@@ -27,6 +23,21 @@ const settlements = new WeakMap<
   HostTerminal,
   { readonly stated: Background | undefined; value: Background | undefined }
 >();
+
+/**
+ * The raise a run's host holds: the signal a raw-mode key stands for, raised on the run's signal
+ * source when `stdin` is that source's own terminal, answering whether it raised.
+ */
+function raiseOn(signals: SignalSource, stdin: Readable): Host['raise'] {
+  return (signal) => {
+    const { terminal } = signals;
+    if (terminal === undefined || terminal !== stdin) {
+      return false;
+    }
+    signals.raise(signal);
+    return true;
+  };
+}
 
 /** An output terminal whose width and height are read each time, and whose kind is fixed. */
 function outputTerminal(
@@ -42,18 +53,6 @@ function outputTerminal(
       return read.rows();
     },
   };
-}
-
-/**
- * One process stream's terminal: `isTTY` captured once, because a stream does not change kind
- * mid-run, and the width and height read from the stream each time, which Node and Bun update when
- * the window resizes. A zero reading is unavailable.
- */
-function streamTerminal(stream: NodeJS.WriteStream): OutputTerminal {
-  return outputTerminal(isTerminal(stream), {
-    columns: () => dimension(stream.columns),
-    rows: () => dimension(stream.rows),
-  });
 }
 
 /**
@@ -80,37 +79,6 @@ function suppliedTerminal(supplied: OutputTerminal): OutputTerminal {
   });
 }
 
-/** The absolute path of the script the runtime ran, as the process names it. */
-function scriptPath(script: string): string {
-  if (isAbsolute(script)) {
-    return script;
-  }
-  try {
-    return resolve(script);
-  } catch {
-    return script;
-  }
-}
-
-/**
- * The reader process capture supplies: one UTF-8 file, read synchronously, whose path lies under
- * the working directory once both resolve through symbolic links. A stack can be forged, so a file
- * outside `cwd`, a link that leaves it, a path that is not a regular file, such as a FIFO or a
- * device, a file larger than 1 MiB, and any failure answer `undefined`.
- */
-export function readSourceFile(path: string, cwd: string): string | undefined {
-  try {
-    const file = realpathSync(path);
-    const within = relative(realpathSync(cwd), file);
-    if (within === '' || within === '..' || within.startsWith(`..${sep}`) || isAbsolute(within)) {
-      return undefined;
-    }
-    return readSmallFile(file);
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * The roots a defect's frame may lie under: the working directory as the host names it, and the
  * path it resolves to through symbolic links, because a runtime names a module by its resolved
@@ -125,58 +93,19 @@ export function sourceRoots(cwd: string): readonly string[] {
   }
 }
 
-/**
- * The words that start this application again, frozen: an override copied whole, else the
- * compiled binary alone, else the runtime and the absolute path of the script it ran, or the
- * runtime alone when it ran none.
- */
-export function captureProgram(override: readonly string[] | undefined): readonly string[] {
-  if (override !== undefined) {
-    return Object.freeze([...override]);
-  }
-  const [, script] = process.argv;
-  return Object.freeze(
-    isCompiled() || script === undefined
-      ? [process.execPath]
-      : [process.execPath, scriptPath(script)],
-  );
-}
-
-/**
- * The time zone a run reads: an override, else the IANA name `Intl` resolves, which honours `TZ`.
- * A zone `Intl` does not resolve, or will not build a formatter for, reads as UTC, as an empty `TZ` does.
- */
-export function captureTimeZone(override: string | undefined): string {
-  if (override !== undefined) {
-    return override;
-  }
-  const resolved: string | undefined = new Intl.DateTimeFormat().resolvedOptions().timeZone;
-  if (resolved === undefined) {
-    return 'UTC';
-  }
-  try {
-    return new Intl.DateTimeFormat('en-US', { timeZone: resolved }).resolvedOptions().timeZone;
-  } catch {
-    return 'UTC';
-  }
-}
-
 /** The working directory one capture read, or the failure its read raised in its place. */
 export type WorkingDirectory =
   | { readonly cwd: string }
   | { readonly failure: WorkingDirectoryError };
 
 /**
- * The one step `run()` and `app.invoke` read the working directory through, once per run. An
- * override replaces the read. A read that throws, as `process.cwd()` does once another process
- * removed the directory, answers the failure in its place, whose `cause` is the thrown value.
+ * The one step `run()` and `app.invoke` read the working directory through, once per run: the
+ * handle's `cwd()`. A read that throws, as the process's does once another process removed the
+ * directory, answers the failure in its place, whose `cause` is the thrown value.
  */
-export function captureWorkingDirectory(override: string | undefined): WorkingDirectory {
-  if (override !== undefined) {
-    return { cwd: override };
-  }
+export function captureWorkingDirectory(handle: ProcessHandle): WorkingDirectory {
   try {
-    return { cwd: process.cwd() };
+    return { cwd: handle.cwd() };
   } catch (error) {
     return { failure: new WorkingDirectoryError({ cause: error }) };
   }
@@ -227,50 +156,43 @@ export function capturedHost(
 }
 
 /**
- * The host `run()` captures from the process at entry, each override replacing its whole field.
- * The application's name finds its installation record.
+ * The host `run()` captures from its process handle at entry, each fact read once. The
+ * application's name finds its installation record.
  */
 export function captureHost(
   application: string,
-  overrides: RunOptions['host'],
+  handle: ProcessHandle,
   stderr: Writable,
 ): HostCapture {
-  const { argv, cwd, program, readSource, release, stdin, stdout, terminal, timeZone } =
-    overrides ?? {};
-  const env = { ...(overrides?.env ?? process.env) };
-  const platform = overrides?.platform ?? process.platform;
+  const env = { ...handle.env };
+  const { platform, signals, stdin } = handle;
   const captured = {
-    directory: captureWorkingDirectory(cwd),
-    release: captureRelease(release, { application, env, platform }),
+    directory: captureWorkingDirectory(handle),
+    release: handleRelease(handle, { application, env, platform }),
   };
-  return capturedHost(
-    {
-      argv: [...(argv ?? process.argv.slice(2))],
-      env,
-      platform,
-      program: captureProgram(program),
-      readSource: readSource ?? readSourceFile,
-      stderr,
-      stdin: stdin ?? process.stdin,
-      stdout: stdout ?? process.stdout,
-      terminal: settlingTerminal(
-        terminal
-          ? {
-              background: terminal.background,
-              stderr: suppliedTerminal(terminal.stderr),
-              stdin: { isTTY: terminal.stdin.isTTY },
-              stdout: suppliedTerminal(terminal.stdout),
-            }
-          : {
-              stderr: streamTerminal(process.stderr),
-              stdin: { isTTY: isTerminal(process.stdin) },
-              stdout: streamTerminal(process.stdout),
-            },
-      ),
-      timeZone: captureTimeZone(timeZone),
-    },
-    captured,
-  );
+  const terminal = handle.terminal;
+  const { readSource } = handle;
+  const facts = {
+    arch: handle.arch,
+    argv: [...handle.argv],
+    env,
+    libc: handle.libc,
+    platform,
+    program: Object.freeze([...handle.program]),
+    raise: raiseOn(signals, stdin),
+    stderr,
+    stdin,
+    stdout: handle.stdout,
+    terminal: settlingTerminal({
+      background: terminal.background,
+      stderr: suppliedTerminal(terminal.stderr),
+      stdin: { isTTY: terminal.stdin.isTTY },
+      stdout: suppliedTerminal(terminal.stdout),
+    }),
+    timeZone: handle.timeZone,
+    uid: handle.uid,
+  };
+  return capturedHost(readSource === undefined ? facts : { ...facts, readSource }, captured);
 }
 
 /**
@@ -294,7 +216,7 @@ export function settlingTerminal(
   return terminal;
 }
 
-/** The background a run's host override stated, a source of its settled background. */
+/** The background a run's process handle stated, a source of its settled background. */
 export function statedBackground(terminal: HostTerminal): Background | undefined {
   return settlements.get(terminal)?.stated;
 }

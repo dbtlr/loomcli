@@ -9,10 +9,14 @@ import type { Host, ReleaseFacts } from './types.js';
 /** How the running application was installed, as its installation record holds it. */
 type Installation = NonNullable<ReleaseFacts['installation']>;
 
-/** What finds a run's installation record: the application's name and the run's env and platform. */
+/**
+ * What finds a run's installation record: the application's name and the run's env and platform,
+ * and the path of the running executable the record must name.
+ */
 interface InstallationLookup {
   readonly application: string;
   readonly env: Host['env'];
+  readonly executable: string;
   readonly platform: string;
 }
 
@@ -53,7 +57,7 @@ function readInstallation(lookup: InstallationLookup): Installation | undefined 
     if (installation === undefined) {
       return undefined;
     }
-    return realpathSync(installation.path) === realpathSync(process.execPath)
+    return realpathSync(installation.path) === realpathSync(lookup.executable)
       ? installation
       : undefined;
   } catch {

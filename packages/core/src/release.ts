@@ -158,18 +158,10 @@ function withInstallation(facts: ReleaseFacts, lookup: InstallationLookup): Rele
 }
 
 /**
- * The one step `run()` and `app.invoke` read the release facts through, once per run, beside the
- * working directory: the baked facts and, for a compiled binary, the installation `lookup` finds.
- * An override replaces the whole field and is taken as given, so no baked value and no
- * installation record is read.
+ * The release facts of a handle that reads them from the build, once per run, beside the working
+ * directory: the baked facts and, for a compiled binary, the installation `lookup` finds.
  */
-function captureRelease(
-  override: ReleaseFacts | undefined,
-  lookup: InstallationLookup,
-): CapturedRelease {
-  if (override !== undefined) {
-    return { facts: override };
-  }
+function captureRelease(lookup: InstallationLookup): CapturedRelease {
   const read = readBaked();
   return 'failure' in read ? read : { facts: withInstallation(read.facts, lookup) };
 }

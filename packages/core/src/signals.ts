@@ -1,7 +1,8 @@
 import { InternalError } from './errors.js';
+import type { SignalSource } from './types.js';
 
-/** The signals a plugin may claim, which is the closed set core installs process listeners for. */
-type ProcessSignal = 'SIGINT' | 'SIGTERM';
+/** The signals a plugin may claim, which is the closed set core installs listeners for. */
+type ClaimedSignal = 'SIGINT' | 'SIGTERM';
 
 /**
  * What aborted one run's private controller. Core owns this value, so a middleware reads `source`
@@ -10,7 +11,7 @@ type ProcessSignal = 'SIGINT' | 'SIGTERM';
  * cause to abort fixes the reason and the code, and a later cause changes neither.
  */
 interface CancellationReason {
-  source: ProcessSignal | 'caller' | 'action' | 'closed-pipe';
+  source: ClaimedSignal | 'caller' | 'action' | 'closed-pipe';
   cause?: unknown;
 }
 
@@ -52,7 +53,7 @@ interface SignalBracket {
   /** Aborts the run because the reader of its stdout closed the pipe, which `cause` failed on. */
   closePipe: (cause: unknown) => void;
   /** Installs one listener per claimed signal, once the graph has built and validated. */
-  install: (owned: readonly ProcessSignal[]) => void;
+  install: (owned: readonly ClaimedSignal[]) => void;
   /** The reason the first cause fixed, or `undefined` while nothing has aborted the run. */
   reason: () => CancellationReason | undefined;
   /** Removes every listener this run holds. Called on the run's last exit path. */
@@ -100,26 +101,31 @@ function subscribe(signal: AbortSignal | undefined, listener: () => void): () =>
 
 /**
  * The bracket for one run. Core subscribes to a caller's signal at run entry, and installs its own
- * process listeners only for the plugin that owns the signals slot, only after the graph has built,
- * and only until the run resolves. A process signal that arrives once the run is already cancelled
- * is the force path: core removes its own listeners and re-raises, so the default disposition ends
- * the process when no other listener remains. Core does not own the process.
+ * listeners on the run's signal source only for the plugin that owns the signals slot, only after
+ * the graph has built, and only until the run resolves. A signal that arrives once the run is
+ * already cancelled is the force path: core removes its own listeners and re-raises on the source,
+ * so the default disposition ends the process when no other listener remains. Core does not own
+ * the process.
  */
-function bracketRun(controller: AbortController, caller: AbortSignal | undefined): SignalBracket {
+function bracketRun(
+  controller: AbortController,
+  causes: { caller: AbortSignal | undefined; signals: SignalSource },
+): SignalBracket {
+  const { caller, signals } = causes;
   const first = firstCause(controller);
-  let held: { handler: () => void; signal: ProcessSignal }[] = [];
+  let held: { handler: () => void; signal: ClaimedSignal }[] = [];
 
   const release = () => {
     for (const entry of held) {
-      process.off(entry.signal, entry.handler);
+      signals.off(entry.signal, entry.handler);
     }
     held = [];
   };
 
-  const received = (signal: ProcessSignal) => {
+  const received = (signal: ClaimedSignal) => {
     if (first.reason()) {
       release();
-      process.kill(process.pid, signal);
+      signals.raise(signal);
       return;
     }
     first.cancel({ source: signal });
@@ -141,7 +147,7 @@ function bracketRun(controller: AbortController, caller: AbortSignal | undefined
         const handler = () => {
           received(signal);
         };
-        process.on(signal, handler);
+        signals.on(signal, handler);
         held.push({ handler, signal });
       }
     },
@@ -193,5 +199,5 @@ function bracketCall(
   };
 }
 
-export type { CancellationCode, CancellationReason, ParentRun, ProcessSignal, SignalBracket };
+export type { CancellationCode, CancellationReason, ClaimedSignal, ParentRun, SignalBracket };
 export { bracketCall, bracketRun, cancellationCode, isCancellationEcho };

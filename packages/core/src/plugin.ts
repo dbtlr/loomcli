@@ -28,7 +28,7 @@ import {
 } from './plugin-rules.js';
 import type { EnvironmentHook } from './prepare-environment.js';
 import { pluginLoaderFailed } from './rules.js';
-import type { ProcessSignal } from './signals.js';
+import type { ClaimedSignal } from './signals.js';
 import type { ContextualStyle, ThemeConstraint, ThemeMapping } from './style.js';
 import { buildTheme } from './theme.js';
 import type { BuiltTheme } from './theme.js';
@@ -92,7 +92,7 @@ interface DeclaredPlugin {
   views?: readonly ViewContribution[] | undefined;
   translators?: readonly Translation[] | undefined;
   failureEncoders?: readonly FailureEncoding[] | undefined;
-  signals?: readonly ProcessSignal[] | undefined;
+  signals?: readonly ClaimedSignal[] | undefined;
   source?: { binding: AnyExtension; load: () => unknown } | undefined;
   commands?: readonly unknown[] | undefined;
 }
@@ -582,7 +582,7 @@ interface BuiltPlugin {
   identity: string;
   inputs: readonly OptionInput[];
   middleware: BuiltMiddleware | undefined;
-  signals: readonly ProcessSignal[];
+  signals: readonly ClaimedSignal[];
   source: BuiltSource | undefined;
   /** The Commands the plugin attaches to the root, in list order. */
   commands: readonly AttachedChild[];
@@ -659,7 +659,7 @@ function readPlugin(identity: string, declaration: DeclaredPlugin): BuiltPlugin 
 }
 
 /** The signals the one slot owner claimed, or none when no installed plugin claims the slot. */
-function ownedSignals(plugins: readonly BuiltPlugin[]): readonly ProcessSignal[] {
+function ownedSignals(plugins: readonly BuiltPlugin[]): readonly ClaimedSignal[] {
   return plugins.find((entry) => entry.signals.length > 0)?.signals ?? [];
 }
 

@@ -1,10 +1,8 @@
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import type { Readable, Writable } from 'node:stream';
-import { ReadStream } from 'node:tty';
 
 import { backgroundQuery, queryAllowed, readReplies } from './background.js';
 import type { Background } from './background.js';
+import { inBackgroundJob } from './process-handle.js';
 import type { Host } from './types.js';
 
 /**
@@ -13,68 +11,12 @@ import type { Host } from './types.js';
  */
 const deadline = 1000;
 
-/** The process and terminal process groups a job-control check compares. */
-interface JobIds {
-  readonly group: number;
-  readonly foreground: number;
-}
-
 /** A stream's raw-mode switch, or `undefined` when it offers none. */
 function rawModeOf(stream: Readable): ((mode: boolean) => unknown) | undefined {
   if (!('setRawMode' in stream) || typeof stream.setRawMode !== 'function') {
     return undefined;
   }
   return stream.setRawMode.bind(stream);
-}
-
-/** Two process group ids, when both are positive integers. */
-function jobIds(group: unknown, foreground: unknown): JobIds | undefined {
-  const ids = { foreground: Number(foreground), group: Number(group) };
-  return Number.isSafeInteger(ids.group) && ids.group > 0 && Number.isSafeInteger(ids.foreground)
-    ? ids
-    : undefined;
-}
-
-/** Where `/proc/self/stat` holds the process group and the terminal's foreground group. */
-const groupField = 2;
-const foregroundField = 5;
-
-/**
- * The ids `/proc/self/stat` holds on Linux: after the command name, the fields run state, parent,
- * process group, session, terminal, and the terminal's foreground process group.
- */
-function procIds(): JobIds | undefined {
-  try {
-    const stat = readFileSync('/proc/self/stat', 'utf8');
-    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
-    return jobIds(fields[groupField], fields[foregroundField]);
-  } catch {
-    return undefined;
-  }
-}
-
-/** The ids `ps` reports where there is no `/proc`, such as macOS and the BSDs. */
-function psIds(): JobIds | undefined {
-  try {
-    const reported = execFileSync('ps', ['-o', 'tpgid=,pgid=', '-p', String(process.pid)], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    const [foreground, group] = reported.trim().split(/\s+/u);
-    return jobIds(group, foreground);
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Whether this process belongs to its terminal's foreground job. A background job that switches
- * the terminal to raw mode or reads it is stopped by SIGTTOU or SIGTTIN, so core queries only from
- * the foreground, and a check that cannot tell counts as background.
- */
-function foregroundJob(): boolean {
-  const ids = procIds() ?? psIds();
-  return ids !== undefined && ids.group === ids.foreground;
 }
 
 /**
@@ -193,10 +135,12 @@ async function exchange(terminal: {
  * The answer the replies give, after every byte that is neither a reply nor an interrupt key is
  * pushed back onto the front of stdin in arrival order, so keys typed ahead reach the action's own
  * read. Raw mode turned each interrupt key into a byte, so once the mode is restored each one's
- * signal is raised on the process in arrival order, as if the key had come a moment later.
+ * signal is raised through `host.raise` in arrival order, as if the key had come a moment later.
+ * When stdin is not its signal source's own terminal nothing is raised: Ctrl-C and Ctrl-\ cancel
+ * the run, as the action's `cancel()` does, and Ctrl-Z is dropped.
  */
 async function readBackground(
-  terminal: Parameters<typeof exchange>[0],
+  terminal: Parameters<typeof exchange>[0] & Pick<Host, 'raise'> & { readonly cancel: () => void },
 ): Promise<Background | undefined> {
   const { answer, signals, typeahead } = readReplies(await exchange(terminal));
   const { stdin } = terminal;
@@ -204,7 +148,9 @@ async function readBackground(
     stdin.unshift(Buffer.from(typeahead, 'latin1'));
   }
   for (const signal of signals) {
-    process.kill(process.pid, signal);
+    if (!terminal.raise(signal) && signal !== 'SIGTSTP') {
+      terminal.cancel();
+    }
   }
   return answer;
 }
@@ -212,20 +158,31 @@ async function readBackground(
 /**
  * The terminal's answer to the background query, written to stderr, or `undefined` when a skip
  * applies: the run is already cancelled, stdin offers no raw mode, the environment forbids the
- * query, or the process is a background job of a real terminal. Settlement asks only when stdin,
+ * query, or the process is a background job of the real terminal. Settlement asks only when stdin,
  * stdout, and stderr are all terminals and color is on.
  */
-async function askTerminal(host: Host, signal: AbortSignal): Promise<Background | undefined> {
+async function askTerminal(
+  host: Host,
+  run: { readonly cancel: () => void; readonly signal: AbortSignal },
+): Promise<Background | undefined> {
+  const { signal } = run;
   const raw = rawModeOf(host.stdin);
   if (
     signal.aborted ||
     raw === undefined ||
     !queryAllowed(host.env) ||
-    (host.stdin instanceof ReadStream && !foregroundJob())
+    inBackgroundJob(host.stdin)
   ) {
     return undefined;
   }
-  return readBackground({ destination: host.stderr, raw, signal, stdin: host.stdin });
+  return readBackground({
+    cancel: run.cancel,
+    destination: host.stderr,
+    raise: host.raise,
+    raw,
+    signal,
+    stdin: host.stdin,
+  });
 }
 
 export { askTerminal };

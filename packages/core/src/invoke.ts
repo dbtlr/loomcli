@@ -2,31 +2,27 @@ import { Readable, Writable } from 'node:stream';
 
 import type { StartingView } from './chain.js';
 import type { LoomError } from './errors.js';
-import {
-  capturedHost,
-  captureProgram,
-  captureTimeZone,
-  captureWorkingDirectory,
-  readSourceFile,
-  settlingTerminal,
-} from './host.js';
+import { capturedHost, captureWorkingDirectory, settlingTerminal } from './host.js';
 import type { CapturedFacts, HostCapture } from './host.js';
 import type { NamedCall } from './lower.js';
-import { captureRelease } from './release.js';
-import type { Host, InvocationValues, InvokeOptions, ProgressEvent } from './types.js';
-
-/** The host fields an invocation by name reads, which `app.invoke` replaces whole. */
-type InvocationFields = Required<Pick<Host, 'cwd' | 'env' | 'platform' | 'release'>> &
-  Pick<Host, 'readSource'>;
+import { handleRelease } from './process-handle.js';
+import type {
+  Host,
+  InvocationValues,
+  InvokeOptions,
+  ProcessHandle,
+  ProgressEvent,
+} from './types.js';
 
 /**
- * The five fields one invocation by name runs on, its working directory and its release facts as
- * its capture read them, and the program that starts the application again, which an invocation
- * by name never replaces.
+ * The facts one invocation by name runs on, with its working directory and its release facts as
+ * its capture read them.
  */
-type CapturedFields = Omit<InvocationFields, 'cwd' | 'release'> &
-  CapturedFacts &
-  Pick<Host, 'program' | 'timeZone'>;
+type CapturedFields = Pick<
+  Host,
+  'arch' | 'env' | 'libc' | 'platform' | 'program' | 'readSource' | 'timeZone' | 'uid'
+> &
+  CapturedFacts;
 
 /** The entries of one `args` or `options` record, a key whose value is `undefined` left out. */
 function definedEntries(record: InvocationValues['args']): (readonly [string, unknown])[] {
@@ -108,37 +104,43 @@ function guardedObserver(onProgress: InvokeOptions['onProgress']): GuardedObserv
 }
 
 /**
- * The five fields `app.invoke` captures at entry, unless the caller replaces one. The working
- * directory and the release facts are read through the steps `run()` shares, the application's
- * name finding its installation record.
+ * The facts `app.invoke` captures from its process handle at entry. The working directory and the
+ * release facts are read through the steps `run()` shares, the application's name finding its
+ * installation record. It reads no argv, stream, or terminal fact.
  */
-function processFields(application: string, overrides: Partial<InvocationFields>): CapturedFields {
-  const env = overrides.env ?? process.env;
-  const platform = overrides.platform ?? process.platform;
-  return {
-    directory: captureWorkingDirectory(overrides.cwd),
+function processFields(application: string, handle: ProcessHandle): CapturedFields {
+  const env = { ...handle.env };
+  const { platform, readSource } = handle;
+  const captured = {
+    arch: handle.arch,
+    directory: captureWorkingDirectory(handle),
     env,
+    libc: handle.libc,
     platform,
-    program: captureProgram(undefined),
-    readSource: overrides.readSource ?? readSourceFile,
-    release: captureRelease(overrides.release, { application, env, platform }),
-    timeZone: captureTimeZone(undefined),
+    program: Object.freeze([...handle.program]),
+    release: handleRelease(handle, { application, env, platform }),
+    timeZone: handle.timeZone,
+    uid: handle.uid,
   };
+  return readSource === undefined ? captured : { ...captured, readSource };
 }
 
 /**
- * The five fields an action's call reads from its run's host, which it never reads again, and the
+ * The facts an action's call reads from its run's host, which it never reads again, and the
  * run's program.
  */
 function fieldsOf(host: Host): CapturedFields {
-  const { cwd, env, platform, program, readSource, timeZone } = host;
+  const { arch, cwd, env, libc, platform, program, readSource, timeZone, uid } = host;
   const captured = {
+    arch,
     directory: { cwd },
     env,
+    libc,
     platform,
     program,
     release: { facts: host.release },
     timeZone,
+    uid,
   };
   return readSource === undefined ? captured : { ...captured, readSource };
 }
@@ -167,7 +169,7 @@ const noTerminal = (): Host['terminal'] =>
   });
 
 /**
- * The host an invocation by name runs on: the five fields it reads, capture sinks for stdout and
+ * The host an invocation by name runs on: the facts it reads, capture sinks for stdout and
  * stderr, an empty stdin, no argv, and no terminal. Nothing in it is the process's own stream.
  * Malformed release facts, or a working directory its capture could not read, is the failure in
  * its place.
@@ -177,15 +179,20 @@ function invocationHost(
   sinks: { stderr: Writable; stdout: Writable },
 ): HostCapture {
   const facts = {
+    arch: fields.arch,
     argv: [],
     env: { ...fields.env },
+    libc: fields.libc,
     platform: fields.platform,
     program: fields.program,
+    // Its stdin is no terminal's, so a raw-mode reader raises nothing and cancels the call itself.
+    raise: () => false,
     stderr: sinks.stderr,
     stdin: Readable.from([]),
     stdout: sinks.stdout,
     terminal: noTerminal(),
     timeZone: fields.timeZone,
+    uid: fields.uid,
   };
   return capturedHost(
     fields.readSource === undefined ? facts : { ...facts, readSource: fields.readSource },
@@ -213,7 +220,7 @@ function mappedFailure<Mapped>(
   return failure as Mapped;
 }
 
-export type { CapturedFields, InvocationFields, InvokeCall };
+export type { CapturedFields, InvokeCall };
 export {
   captureSink,
   fieldsOf,

@@ -52,6 +52,7 @@ export { locate } from './locate.js';
 export { incompleteResult, lanes } from './lanes.js';
 export { override, view } from './view.js';
 export { plugin } from './plugin.js';
+export { processHandle } from './process-handle.js';
 export { translate } from './translators.js';
 export { encodeFailure } from './encoders.js';
 export { glyph } from './glyphs.generated.js';
@@ -130,7 +131,6 @@ export type {
   ExitCode,
   GraphBuiltHook,
   Host,
-  HostOverrides,
   HostTerminal,
   InputIdentity,
   InputTerminal,
@@ -140,6 +140,10 @@ export type {
   Out,
   OptionConfig,
   OutputTerminal,
+  ProcessFields,
+  ProcessHandle,
+  ProcessSignal,
+  ProcessTerminal,
   ProgressEvent,
   ProgressReport,
   Region,
@@ -154,6 +158,8 @@ export type {
   RowViewOver,
   RunOptions,
   ScalarArgument,
+  SignalListener,
+  SignalSource,
   StringOption,
   SuppliedInputs,
   RowView,

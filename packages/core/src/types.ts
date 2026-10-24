@@ -264,12 +264,69 @@ export interface HostTerminal {
   stderr: OutputTerminal;
   readonly background: Background | undefined;
 }
+/** A signal a signal source delivers and raises. */
+export type ProcessSignal = 'SIGHUP' | 'SIGINT' | 'SIGQUIT' | 'SIGTERM' | 'SIGTSTP' | 'SIGCONT';
+/** A listener for one signal source event: the `exit` event passes the exit code, a signal nothing. */
+export type SignalListener<Event extends ProcessSignal | 'exit'> = Event extends 'exit'
+  ? (code: number) => void
+  : () => void;
 /**
- * The host fields `run()` accepts in place of process capture. A terminal may omit `background`;
- * one that states it supplies the run's background unless the operator or the author names one.
+ * Where a run's signals come from and where core raises them: the real process's own, which every
+ * handle `processHandle` builds shares, or a source a handle holds of its own.
  */
-export type HostOverrides = Partial<Omit<Host, 'terminal'>> & {
-  terminal?: Omit<HostTerminal, 'background'> & { readonly background?: Background | undefined };
+export interface SignalSource {
+  /** The stdin of the terminal this source's process is attached to, or `undefined` for none. */
+  readonly terminal: Readable | undefined;
+  on<Event extends ProcessSignal | 'exit'>(event: Event, listener: SignalListener<Event>): void;
+  off<Event extends ProcessSignal | 'exit'>(event: Event, listener: SignalListener<Event>): void;
+  /** Delivers the signal to this source's process. */
+  raise(signal: ProcessSignal): void;
+}
+/**
+ * The terminal facts of a process handle's streams. Output `columns` and `rows` may be getters,
+ * which core reads live. A stated `background` settles the run's background, with no query.
+ */
+export interface ProcessTerminal {
+  readonly stdin: InputTerminal;
+  readonly stdout: OutputTerminal;
+  readonly stderr: OutputTerminal;
+  readonly background?: Background | undefined;
+}
+/**
+ * Every process fact a run reads and every process effect it makes. A run binds one at entry and
+ * never replaces it, and core copies its facts into the run's host.
+ */
+export interface ProcessHandle {
+  readonly argv: readonly string[];
+  readonly program: readonly string[];
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** The working directory, which throws when it cannot be read. */
+  cwd(): string;
+  readonly platform: string;
+  readonly arch: string;
+  readonly libc: 'glibc' | 'musl' | undefined;
+  readonly uid: number | undefined;
+  readonly timeZone: string;
+  readonly release: ReleaseFacts;
+  readonly readSource?: (path: string, cwd: string) => string | undefined;
+  readonly stdin: Readable;
+  readonly stdout: Writable;
+  readonly stderr: Writable;
+  readonly terminal: ProcessTerminal;
+  readonly signals: SignalSource;
+  /** The one member core writes: `run()` writes the run's code once it is final. */
+  exitCode: ExitCode | undefined;
+  /** Receives each variable an argv run's environment preparation copies out. */
+  readonly publishEnv?: (name: string, value: string) => void;
+}
+/**
+ * The fields `processHandle` takes, each replacing its whole field. A `cwd` string never throws,
+ * and a `cwd` function throws as it chooses.
+ */
+export type ProcessFields = Partial<
+  Omit<ProcessHandle, 'cwd' | 'exitCode' | 'publishEnv' | 'signals'>
+> & {
+  readonly cwd?: string | (() => string);
 };
 /**
  * How the running application was built, released, and installed. The build bakes the build and
@@ -302,6 +359,12 @@ export interface ReleaseFacts {
 }
 export interface Host {
   platform: string;
+  /** The process's CPU architecture, such as `x64` or `arm64`. */
+  arch: string;
+  /** `glibc` or `musl` on Linux, and `undefined` elsewhere. */
+  libc: 'glibc' | 'musl' | undefined;
+  /** The process's user ID, or `undefined` on a runtime with none. */
+  uid: number | undefined;
   argv: string[];
   /**
    * The runtime and script prefix `argv` omits: the words that start this application again, so
@@ -335,10 +398,17 @@ export interface Host {
    * core read them. An override is taken as given, neither validated nor frozen.
    */
   release: ReleaseFacts;
+  /**
+   * Raises the signal a key read in raw mode stands for on the run's signal source and answers
+   * `true` when `stdin` is that source's own terminal; otherwise it raises nothing and answers
+   * `false`, and the reader cancels the run itself.
+   */
+  raise: (signal: 'SIGINT' | 'SIGQUIT' | 'SIGTSTP') => boolean;
 }
 export interface RunOptions {
   rendering?: RenderingPolicy;
-  host?: HostOverrides;
+  /** The process the run reads its facts from and makes its effects on: `processHandle()` when omitted. */
+  process?: ProcessHandle;
   /**
    * A caller-owned signal that cancels the run. Core subscribes to it at run entry and honors an
    * abort at every phase boundary; it composes with an installed signals owner.
