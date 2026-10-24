@@ -19,6 +19,7 @@ import { expect, test } from 'vite-plus/test';
 
 import { Application, Command, plugin, processHandle } from '../src/index.js';
 import type { LogDestination } from '../src/index.js';
+import { userDatabaseHome } from '../src/process-handle.js';
 
 /** A stream that keeps what a run writes to it. */
 function sink(): { stream: Writable; text: () => string } {
@@ -165,4 +166,35 @@ test("an onLog hook's destination carries the run's home", async () => {
   });
   await app.invoke([], {}, { process: processHandle({ cwd: '/', env: {}, home: '/home/you' }) });
   expect(destinations.map(({ home }) => home)).toEqual(['/home/me', '/home/you']);
+});
+
+test.each([
+  [
+    'Node reports the database',
+    { bun: false, passwd: '/home/passwd', reported: '/home/db' },
+    '/home/db',
+  ],
+  [
+    'Bun with no HOME reports the database',
+    { bun: true, passwd: '/home/passwd', processHome: undefined, reported: '/home/db' },
+    '/home/db',
+  ],
+  [
+    'Bun with a HOME reads /etc/passwd',
+    { bun: true, passwd: '/home/passwd', processHome: '/home/env', reported: '/home/env' },
+    '/home/passwd',
+  ],
+  [
+    'Bun with a HOME and no passwd entry answers the home Bun reports',
+    { bun: true, passwd: undefined, processHome: '/home/env', reported: '/home/env' },
+    '/home/env',
+  ],
+  ['a relative answer is no home', { bun: false, passwd: undefined, reported: 'relative' }, ''],
+  ['no database entry is no home', { bun: false, passwd: undefined, reported: undefined }, ''],
+])('the user database home: %s', (_case, facts, expected) => {
+  const { bun, passwd, reported } = facts;
+  const processHome = 'processHome' in facts ? facts.processHome : '/home/env';
+  expect(
+    userDatabaseHome({ bun, passwd: () => passwd, processHome, reported: () => reported }),
+  ).toBe(expected);
 });

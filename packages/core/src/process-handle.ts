@@ -284,18 +284,39 @@ function reportedHome(): string | undefined {
   }
 }
 
+/** What the user database lookup reads: the runtime, the process's own HOME, and two readers. */
+interface DatabaseFacts {
+  readonly bun: boolean;
+  readonly processHome: string | undefined;
+  /** The home `os.userInfo()` reports, or none when it throws. */
+  readonly reported: () => string | undefined;
+  /** The home `/etc/passwd` lists for the process's user, or none. */
+  readonly passwd: () => string | undefined;
+}
+
 /**
  * The home the user database holds for the process's user, which is `os.homedir()`'s fallback, or
- * the empty string when there is none. Node's `os.userInfo()` reads the database; Bun's answers
+ * the empty string when there is none. Node's `os.userInfo()` reads the database. Bun's answers
  * the `HOME` the process started with when it held one, so under Bun with a `HOME` the local
- * database, `/etc/passwd`, answers instead.
+ * database, `/etc/passwd`, answers first. Where it lists no entry for the user, as on macOS or for
+ * a directory-service user, the home Bun reports answers, so Node and Bun answer the same home.
  */
-function databaseHome(): string {
+function userDatabaseHome(facts: DatabaseFacts): string {
   const answered =
-    process.versions.bun === undefined || process.env.HOME === undefined
-      ? reportedHome()
-      : passwdHome(process.getuid?.());
+    !facts.bun || facts.processHome === undefined
+      ? facts.reported()
+      : (facts.passwd() ?? facts.reported());
   return answered !== undefined && isAbsolute(answered) ? answered : '';
+}
+
+/** The real process's user database home. */
+function databaseHome(): string {
+  return userDatabaseHome({
+    bun: process.versions.bun !== undefined,
+    passwd: () => passwdHome(process.getuid?.()),
+    processHome: process.env.HOME,
+    reported: reportedHome,
+  });
 }
 
 /** The folder for temporary files when the environment names none, on Linux and macOS alike. */
@@ -752,4 +773,4 @@ async function aliasesProcessStdin(source: BigIntStats): Promise<boolean> {
   }
 }
 
-export { aliasesProcessStdin, handleRelease, inBackgroundJob, processHandle };
+export { aliasesProcessStdin, handleRelease, inBackgroundJob, processHandle, userDatabaseHome };
