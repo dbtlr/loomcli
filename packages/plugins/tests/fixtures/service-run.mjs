@@ -88,6 +88,9 @@ process.exitCode = await app.run({
   process: processHandle({
     argv,
     env: scenario.env,
+    // The test's HOME is the handle's home as given, so a relative or missing one reaches the
+    // Plugin unresolved rather than as the user database's home, and nothing lands in the real home.
+    home: (scenario.env ?? process.env).HOME ?? '',
     platform: scenario.platform,
     program: scenario.program,
     release: scenario.release,

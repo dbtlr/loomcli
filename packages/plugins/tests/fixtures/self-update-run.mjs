@@ -389,6 +389,9 @@ process.exitCode = await app.run({
       ...scenario.env,
       ...(child ? {} : { FIXTURE_RUN_PID: String(process.pid) }),
     },
+    // The test's HOME is the handle's home as given, so a relative or missing one reaches the
+    // Plugin unresolved rather than as the user database's home, and nothing lands in the real home.
+    home: { ...process.env, ...scenario.env }.HOME ?? '',
     platform: 'linux',
     release: scenario.release,
     stderr,

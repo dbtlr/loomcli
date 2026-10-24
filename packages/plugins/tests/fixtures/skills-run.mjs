@@ -75,6 +75,9 @@ process.exitCode = await app.run({
     argv,
     cwd: scenario.cwd,
     env: scenario.env,
+    // The test's HOME is the handle's home as given, so a relative or missing one reaches the
+    // Plugin unresolved rather than as the user database's home, and nothing lands in the real home.
+    home: (scenario.env ?? process.env).HOME ?? '',
     platform: scenario.platform ?? 'linux',
     release: scenario.release ?? { build: 'distributed' },
     // A scenario with `columns` runs on a terminal that wide, so lanes wrap.

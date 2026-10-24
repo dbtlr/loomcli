@@ -5,12 +5,6 @@ import type { LogDestination } from '@loomcli/core';
 
 import { LoggingError } from './error.js';
 
-/** A variable's value when it is an absolute path, which alone counts as set. */
-function absoluteVariable(destination: LogDestination, name: string): string | undefined {
-  const value = destination.env[name];
-  return value !== undefined && isAbsolute(value) ? value : undefined;
-}
-
 /** The failure of a path the variable `name` cannot give. */
 function unresolved(name: string): LoggingError {
   return new LoggingError('unresolved-directory', { path: null, variable: name });
@@ -22,9 +16,12 @@ function defaultDirectory(application: string, destination: LogDestination): str
   return 'path' in lookup ? lookup.path : unresolved(lookup.variable);
 }
 
-/** The home directory a `~/` path starts from: `HOME` on every platform, when it is absolute. */
+/**
+ * The home directory a `~/` path starts from: the destination's `home`, the outermost run's
+ * `host.home`, when it is absolute, on every platform.
+ */
 function homeDirectory(destination: LogDestination): string | LoggingError {
-  return absoluteVariable(destination, 'HOME') ?? unresolved('HOME');
+  return isAbsolute(destination.home) ? destination.home : unresolved('HOME');
 }
 
 const homePrefix = '~/';

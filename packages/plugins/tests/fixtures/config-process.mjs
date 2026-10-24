@@ -19,6 +19,9 @@ const code = await application({
   process: processHandle({
     argv: process.argv.slice(2),
     ...(FIXTURE_CWD === undefined ? {} : { cwd: FIXTURE_CWD }),
+    // The test's HOME is the handle's home as given, so a missing one is no home rather than the
+    // User database's, and no file in the real home is read.
+    home: process.env.HOME ?? '',
   }),
 });
 process.stdout.write(`resolved:${code}\n`);

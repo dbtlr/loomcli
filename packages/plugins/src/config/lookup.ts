@@ -96,12 +96,12 @@ function configFile(path: string, shown: string): ConfigFile {
 }
 
 /**
- * The operator's home directory, `HOME` on every platform, or `undefined` when it is unset, empty,
- * or a relative path by the running process's path rules.
+ * The operator's home directory, `host.home` on every platform, or `undefined` when it is empty or
+ * a relative path by the running process's path rules.
  */
 function homeDirectory(host: Host): string | undefined {
-  const home = host.env.HOME;
-  return home !== undefined && isAbsolute(home) ? home : undefined;
+  const { home } = host;
+  return isAbsolute(home) ? home : undefined;
 }
 
 /**

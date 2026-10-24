@@ -8,7 +8,6 @@ import { isAbsolute, join } from 'node:path';
 
 import type { Host } from '@loomcli/core';
 
-import { runChild } from '../child.js';
 import { refusals } from './messages.js';
 
 /** The program the profile query runs, and the shell its failures name. */
@@ -96,31 +95,24 @@ interface ProfileRequest {
 }
 
 /**
- * Runs the program with the pinned words, `host.env` as its environment, the home folder as its
- * working directory, no shell, and no input, its standard error passed through to the host's, and
- * answers its standard output with the trailing line break removed. A program that cannot start,
- * and one that exits with any code but 0, throw the pinned failure; the run signal ends it with
- * SIGTERM and then aborts the run.
+ * Runs the program through `host.spawn` with the pinned words, `host.env` as its environment, the
+ * home folder as its working directory, no shell, and no input, its standard error piped into the
+ * host's, and answers its standard output with the trailing line break removed. A program that
+ * cannot start, and one that exits with any code but 0, throw the pinned failure; the run signal
+ * ends it with SIGTERM and then aborts the run.
  */
 async function answerOf(request: ProfileRequest, program: string): Promise<string> {
   const { home, host, name, signal } = request;
-  const answer = await runChild({
-    cwd: home,
-    env: host.env,
-    program,
-    signal,
-    stderr: host.stderr,
-    stdout: 'capture',
-    words,
-  });
+  const answer = await host.spawn(program, words, { cwd: home, signal, stderr: host.stderr })
+    .exited;
   signal.throwIfAborted();
-  if (answer.kind === 'missing') {
+  if (answer.kind === 'unstarted') {
     throw refusals.profile(name, shell, { kind: 'not-started' });
   }
   if (answer.code !== succeeded) {
     throw refusals.profile(name, shell, { code: answer.code, kind: 'exited' });
   }
-  return answer.stdout.replace(trailingLineBreak, '');
+  return answer.stdout.text.replace(trailingLineBreak, '');
 }
 
 /**

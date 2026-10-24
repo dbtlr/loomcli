@@ -34,8 +34,12 @@ function settings() {
 function host() {
   const env = process.env.FIXTURE_HOST_ENV;
   const platform = process.env.FIXTURE_PLATFORM;
+  const parsed = env === undefined ? undefined : JSON.parse(env);
   return {
-    ...(env === undefined ? {} : { env: JSON.parse(env) }),
+    ...(parsed === undefined ? {} : { env: parsed }),
+    // The test's HOME is the handle's home as given, so a relative or missing one reaches the
+    // Plugin unresolved rather than as the user database's home, and nothing lands in the real home.
+    home: (parsed ?? process.env).HOME ?? '',
     ...(platform === undefined ? {} : { platform }),
   };
 }

@@ -3,8 +3,6 @@
  * the cache names a newer release on the running binary's channel, and refreshes a stale cache
  * through a detached copy of the application, which the run never waits for.
  */
-import { spawn } from 'node:child_process';
-
 import { applicationDirectory, escapeControlCharacters } from '@loomcli/core';
 import type { Host, Middleware, Out } from '@loomcli/core';
 
@@ -113,9 +111,9 @@ function passOver(): void {
 }
 
 /**
- * Starts `[...program, 'self-update', '--refresh-notice']` detached, in the cache directory, with
- * every stream ignored, and releases it. A child that cannot start, at the call or through its
- * `error` event, is passed over.
+ * Starts `[...program, 'self-update', '--refresh-notice']` through `host.spawn` as a detached
+ * child, in the cache directory, with every stream ignored, and releases it. A child that cannot
+ * start, at the call, as a mock with no script for it throws, or through `exited`, is passed over.
  */
 function startRefresh(host: Host, directory: string): void {
   const [command, ...words] = host.program;
@@ -123,14 +121,9 @@ function startRefresh(host: Host, directory: string): void {
     return;
   }
   try {
-    const child = spawn(command, [...words, ...refreshWords], {
-      cwd: directory,
-      detached: true,
-      env: { ...host.env },
-      stdio: 'ignore',
-    });
-    child.on('error', passOver);
-    child.unref();
+    // The run never waits for the refresh, and `exited` never rejects, so its answer is released.
+    void host.spawn(command, [...words, ...refreshWords], { cwd: directory, detached: true })
+      .exited;
   } catch {
     passOver();
   }
