@@ -153,8 +153,8 @@ function mockSignals(life: Life): SignalSource {
       const held = registry[signal];
       if (held.size > noListeners) {
         // A copy, so a listener added during this raise waits for the next one.
-        // oxlint-disable-next-line unicorn/no-useless-spread
-        for (const listener of [...held]) {
+        const listeners = [...held];
+        for (const listener of listeners) {
           listener();
         }
       } else if (endingSignals.has(signal)) {
