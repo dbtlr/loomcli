@@ -8,7 +8,7 @@ import type { BigIntStats } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { Readable } from 'node:stream';
-import { isatty } from 'node:tty';
+import { isatty, ReadStream } from 'node:tty';
 
 import { readSmallFile } from './files.js';
 import type { InstallationLookup } from './installation.js';
@@ -404,13 +404,13 @@ function psIds(): JobIds | undefined {
 
 /**
  * Whether a run reading `stdin` must skip the background query because the process is a
- * background job of the real terminal: a background job that switches the terminal to raw mode or
+ * background job of its terminal: a background job that switches the terminal to raw mode or
  * reads it is stopped by SIGTTOU or SIGTTIN, and a check that cannot tell counts as background.
- * The check applies only when `stdin` is the real process's own terminal.
+ * The check applies when `stdin` is a real terminal stream, a terminal device of the process such
+ * as `process.stdin` or a stream opened on `/dev/tty`, whatever the handle, and to no other stdin.
  */
 function inBackgroundJob(stdin: Readable): boolean {
-  const terminal = realSignals().terminal;
-  if (terminal === undefined || stdin !== terminal) {
+  if (!(stdin instanceof ReadStream)) {
     return false;
   }
   const ids = procIds() ?? psIds();

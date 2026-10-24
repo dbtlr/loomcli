@@ -70,7 +70,7 @@
  *   both runtimes, which is why the foreground check exists, as ADR-0092 records.
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vite-plus/test';
@@ -155,6 +155,23 @@ describe('the answered path', () => {
     const report = run({ before: 'a', replies });
     expect(report.stdinRead).toBe('abcde');
     expect(report.seen.action).toBe('dark');
+  });
+});
+
+describe('the foreground check', () => {
+  it('runs for any terminal stream, whatever the handle, and is skipped for a stream that is none', async () => {
+    // A session of its own has no controlling terminal, so a check that runs reads background.
+    const child = spawn(
+      process.env.LOOM_TEST_RUNTIME ?? 'node',
+      [fileURLToPath(new URL('fixtures/foreground.mjs', import.meta.url))],
+      { detached: true, stdio: ['ignore', 'pipe', 'inherit'] },
+    );
+    let output = '';
+    child.stdout.on('data', (chunk) => {
+      output += String(chunk);
+    });
+    await new Promise((resolve) => child.once('close', resolve));
+    expect(JSON.parse(output)).toEqual({ scripted: false, terminal: true });
   });
 });
 
