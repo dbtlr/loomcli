@@ -9,7 +9,7 @@ This page states how a run is cancelled, how a signal ends the process, and how 
 - **The run signal** cancels one run. It is an `AbortSignal` on the action and middleware contexts.
 - **The shutdown** is what an ending signal starts: core cancels every run, gives the runs a short budget to unwind, then ends the process by the signal.
 - **`onShutdown`** registers a synchronous handler that runs once, at the shutdown's end or at the process's own end, on the action and middleware contexts for a run and exported from `@loomcli/core` for a library or an embedding host.
-- **`onSuspend` and `onResume`** register handlers for Ctrl-Z and `fg`.
+- **`onSuspend` and `onResume`** register handlers for Ctrl-Z and `fg`, on the action and middleware contexts for a run and exported from `@loomcli/core` for a library or an embedding host.
 
 A signal ends a Loom application within its budget, 500 ms unless the Application sets another, whatever its action does, and a second signal ends it at once, as long as the action leaves the event loop free. JavaScript handles no signal while its main thread is blocked, so while an action runs a long synchronous loop or a call such as `execSync`, every signal, Ctrl-\ included, waits until the loop is free; `kill -9` ends such a process at once. Long synchronous work yields between steps, or runs as a [child program](host.md#child-programs) through `host.spawn`.
 
@@ -147,9 +147,35 @@ export function hideCursor(stream: NodeJS.WriteStream): () => void {
 ## Suspend and resume
 
 ```ts
+type OnSuspend = <Returned>(handler: () => Synchronous<Returned>) => () => void;
+type OnResume = <Returned>(handler: () => Synchronous<Returned>) => () => void;
+
+interface ActionContext<Args, Options = {}, Result = unknown> {
+  readonly onSuspend: OnSuspend;
+  readonly onResume: OnResume;
+  // ...
+}
+// MiddlewareContext carries the same members.
+
 // @loomcli/core
-export declare function onSuspend<Returned>(handler: () => Synchronous<Returned>): () => void;
-export declare function onResume<Returned>(handler: () => Synchronous<Returned>): () => void;
+export declare const onSuspend: OnSuspend;
+export declare const onResume: OnResume;
+```
+
+```ts
+import { Command } from '@loomcli/core';
+
+import { openViewer } from './viewer.js';
+
+// A full-screen viewer leaves the alternate screen before Ctrl-Z stops the process, and returns to it on fg.
+export const view = new Command('view', { description: 'Page through a log.' }).action(
+  async ({ host, onResume, onSuspend, signal }) => {
+    const viewer = openViewer(host);
+    onSuspend(() => viewer.leaveScreen());
+    onResume(() => viewer.enterScreen());
+    await viewer.closed(signal);
+  },
+);
 ```
 
 `SIGTSTP`, which Ctrl-Z sends from a cooked terminal, suspends the process, and `SIGCONT`, which `fg` sends, resumes it.
@@ -157,7 +183,10 @@ export declare function onResume<Returned>(handler: () => Synchronous<Returned>)
 - **Suspend.** Core calls each suspend handler synchronously, newest first, then removes its `SIGTSTP` listener and raises `SIGTSTP` on its signal source, so the default action stops the process, as the glibc manual describes and vim and less do. A handler restores cooked mode and shows the cursor, as vim and less do before they stop.
 - **Resume.** A raise to the process's own self returns once the process continues, so as soon as the raise returns, core listens for `SIGTSTP` again and calls each resume handler in registration order. A handler enters raw mode again and redraws. Where nothing stops the process, the raise returns at once and the resume handlers run right after the suspend handlers: a process in an orphaned process group, which no shell can resume, such as an application that leads its own terminal session under `docker run -it`, `ssh -t`, or `tmux new`, does not stop, and neither does a mock. Either way the next Ctrl-Z suspends again. A `SIGCONT` with no suspend before it calls none.
 - **Nothing cancels.** A suspend cancels no run and starts no shutdown.
-- **Removal.** Each returns a function that removes the handler, and a handler stays until that function runs or the process ends. Handlers are synchronous by type, as `onShutdown`'s are, and a handler that throws is caught while the rest still run.
+- **Scoped to a run.** A handler from an action's or a middleware's `onSuspend` or `onResume` belongs to that run: it lives in the lane of the run's [signal source](host.md#the-process-handle), so a `SIGTSTP` raised on a mock reaches it, and it is removed when the run ends, so nothing leaks into the next run or the next test. A handler registered after its run has ended is never called. A call by name has its own, scoped to the call.
+- **Scoped to the process.** A handler from the exported `onSuspend` or `onResume` belongs to no run, so it lives in the real process's lane and stays until the returned function removes it or the process ends. A library and an embedding host, which have no run, use it.
+- **Removal.** Each returns a function that removes the handler. Handlers are synchronous by type, as `onShutdown`'s are.
+- **A handler that fails.** A handler that throws is caught, and the rest still run. A run-scoped handler's throw is an `error` [log event](logging.md), `A suspend handler failed.` or `A resume handler failed.`, with the thrown value under `error` and the plugin whose middleware registered it, or `null` for an action's. A process-scoped handler's throw is dropped.
 
 ## Raw-mode readers
 
@@ -165,8 +194,8 @@ In raw mode the terminal sends a key as a byte instead of a signal, so a reader 
 
 Core's terminal users restore the terminal through these handlers:
 
-- **A question** leaves raw mode at the abort, registers a run-scoped `onShutdown` handler that leaves raw mode and shows the cursor while it is open, and registers suspend and resume handlers that restore the terminal and redraw the question.
-- **A live region** draws its cancelled line at the abort. At the shutdown's end, core writes every region frame still in its write queue straight to the terminal and shows the cursor, so the cancelled line lands even when the budget is 0 or the signal is `SIGQUIT`. A suspend erases the open regions and a resume redraws them.
+- **A question** leaves raw mode at the abort, and while it is open registers a run-scoped `onShutdown` handler that leaves raw mode and shows the cursor, and run-scoped suspend and resume handlers: a suspend leaves raw mode before the process stops, and the resume enters raw mode again and hides the cursor again, while core erases and redraws the question's frame as a live region's.
+- **A live region** draws its cancelled line at the abort. At the shutdown's end, core writes every region frame still in its write queue straight to the terminal and shows the cursor, so the cancelled line lands even when the budget is 0 or the signal is `SIGQUIT`. While a region is open, core holds run-scoped suspend and resume handlers. A suspend writes every region frame still in its write queue, then erases the open regions and shows the cursor, straight to the terminal, before the process stops. The resume redraws them after every write queued before it, starting at the start of a row, because the shell wrote its own lines while the process was stopped.
 - **The background query** restores raw mode through an `onShutdown` handler while its read is open, and an interrupt key it reads ends its wait at once, as an abort does.
 
 ## Listening
@@ -180,8 +209,8 @@ Core listens for a signal only while someone has asked, so a library still insta
 
 A live `run()` asks from the moment it is called, before its first await, because the application that calls it owns the process for that run, so every run an application starts on argv unwinds within the budget on Ctrl-C, whatever it has open. An `app.invoke` makes no process effect, so it never asks. With none of these, core holds no listener, and every signal has its default effect: the process ends at once with the shell's status, or stops on `SIGTSTP`. Core adds a listener when the first reason appears and removes it when the last one ends, so an Application can run again and a test leaks no listener. A run still live when a shutdown ends has been cut off: it keeps no listener, and neither does a handler it registers afterward, because a listener core added right after its re-raise would catch that re-raise itself. A later `run()` or a handler from the exported `onShutdown` makes core listen again. Core's own terminal users register handlers too, so a question asked or progress drawn inside an `app.invoke` still restores the terminal when a shutdown comes.
 
-- **One lane per signal source.** The handlers and the listeners live in one lane per [signal source](host.md#the-process-handle), and core listens and re-raises on the source of each run's process handle. The real process's source keeps its lane under `globalThis[Symbol.for('loomcli.processLane')]`, shared by every handle `processHandle` builds. The first copy of `@loomcli/core` to load creates it, and every later copy uses the one it finds, so two installed copies listen once and re-raise once. It also holds the real process's one signal source, which every copy's `processHandle` uses, and a `WeakMap` from every other source to its lane, so every copy resolves the same lane for any source and a mock's lane goes once nothing holds the mock. Its shape is a contract across versions of core, and it only grows: no version removes a member or changes what one accepts, and every member takes one object argument, so a later version adds fields beside the earlier ones. A copy that finds the lane lacks a member it would call goes without what that member provides and never creates a second lane. Core's own tests pin the members. A mock's signal source has a lane of its own, so a signal raised on a mock reaches only the runs that hold it, and a shutdown on the real process never reaches them. A handler from the exported `onShutdown`, `onSuspend`, or `onResume` belongs to no run, so it lives in the real process's lane. [ADR-0107](../decisions/0107-a-run-reads-the-process-through-one-process-handle.md) records the decision.
-- **Names.** `onShutdown`, `onSuspend`, and `onResume` are exported from `@loomcli/core`, and so are the types `OnShutdown`, `ShutdownEvent`, `Synchronous`, and `CancellationReason`.
+- **One lane per signal source.** The handlers and the listeners live in one lane per [signal source](host.md#the-process-handle), and core listens and re-raises on the source of each run's process handle. The real process's source keeps its lane under `globalThis[Symbol.for('loomcli.processLane')]`, shared by every handle `processHandle` builds. The first copy of `@loomcli/core` to load creates it, and every later copy uses the one it finds, so two installed copies listen once and re-raise once. It also holds the real process's one signal source, which every copy's `processHandle` uses, and a `WeakMap` from every other source to its lane, so every copy resolves the same lane for any source and a mock's lane goes once nothing holds the mock. Its shape is a contract across versions of core, and it only grows: no version removes a member or changes what one accepts, and every member takes one object argument, so a later version adds fields beside the earlier ones. A copy that finds the lane lacks a member it would call goes without what that member provides and never creates a second lane. Core's own tests pin the members. A mock's signal source has a lane of its own, so a signal raised on a mock reaches only the runs that hold it, and a shutdown on the real process never reaches them. A handler from the exported `onShutdown`, `onSuspend`, or `onResume` belongs to no run, so it lives in the real process's lane, and a handler from a context lives in the lane of its run's source. [ADR-0107](../decisions/0107-a-run-reads-the-process-through-one-process-handle.md) records the decision.
+- **Names.** `onShutdown`, `onSuspend`, and `onResume` are exported from `@loomcli/core`, and so are the types `OnShutdown`, `OnSuspend`, `OnResume`, `ShutdownEvent`, `Synchronous`, and `CancellationReason`.
 
 ## When author code fails
 

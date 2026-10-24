@@ -164,7 +164,7 @@ Each message names what the code reached and the member to use instead:
 | `process.stdin` | `host.stdin` |
 | `process.stdout`, `process.stderr` | `out` |
 | `process.exit()`, `process.exitCode` | a result the action returns, or a failure it throws |
-| `process.on()`, `process.once()` | `onShutdown`, and the run's `signal` |
+| `process.on()`, `process.once()` | `onShutdown`, `onSuspend`, `onResume`, and the run's `signal` |
 | any other use of `process` | the run's host |
 | `homedir()` from `os` | `host.home` |
 | `tmpdir()` from `os` | `host.tmpdir` |
