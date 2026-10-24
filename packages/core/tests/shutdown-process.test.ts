@@ -372,7 +372,12 @@ test('SIGTSTP calls suspend handlers newest first and stops; SIGCONT resumes the
   await running.announced('continued');
   running.child.kill('SIGTSTP');
   await running.announced('suspended:first');
+  // A bounded wait, so a fixture that never stops, or a missing `ps`, fails here and says so.
+  const stoppedBy = Date.now() + 5000;
   while (!processState(pid).startsWith('T')) {
+    if (Date.now() > stoppedBy) {
+      throw new Error(`The fixture never stopped on SIGTSTP; ps reported "${processState(pid)}".`);
+    }
     await delay(10);
   }
   running.child.kill('SIGCONT');
