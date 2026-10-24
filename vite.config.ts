@@ -79,6 +79,7 @@ export default defineConfig({
           'packages/loom/src/**',
           'packages/plugins/src/**',
           'packages/prompts/src/**',
+          'packages/testing/src/**',
           'packages/validators/src/**',
         ],
         // A run reads every process fact and makes every process effect through its process handle
