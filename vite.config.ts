@@ -136,24 +136,8 @@ export default defineConfig({
         ],
         // A run reads every process fact and makes every process effect through its process handle
         // (ADR-0107), so the code that runs inside a run never reaches the process around the handle.
-        rules: {
-          'eslint/no-restricted-globals': ['error', processGlobal],
-          'eslint/no-restricted-imports': ['error', { paths: processImports }],
-          'eslint/no-restricted-properties': ['error', ...processProperties],
-        },
-      },
-      {
-        // The toolchain's git, pnpm, and bun children and its scratch folders move onto the host in PR B.
-        // Until then (LM-409), packages/loom/src is held to the process rules above alone.
-        files: [
-          'packages/core/src/**',
-          'packages/plugins/src/**',
-          'packages/prompts/src/**',
-          'packages/testing/src/**',
-          'packages/validators/src/**',
-        ],
-        // The home, the user, and the temporary folder are host facts (ADR-0107).
-        // Every child program starts through host.spawn, so these packages never ask the machine.
+        // The home, the user, and the temporary folder are host facts, and every child program
+        // Starts through host.spawn, so these packages never ask the machine.
         rules: {
           'eslint/no-restricted-globals': ['error', processGlobal, requireGlobal],
           'eslint/no-restricted-imports': [
