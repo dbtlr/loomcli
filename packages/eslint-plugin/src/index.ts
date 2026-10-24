@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 import { discardedDeclaration } from './rules/discarded-declaration.js';
+import { hostBypass } from './rules/host-bypass.js';
 import { nameShape } from './rules/name-shape.js';
 import { undescribed } from './rules/undescribed.js';
 
@@ -27,6 +28,7 @@ function manifestVersion(): string {
 /** Every rule the plugin ships, by the name that follows the namespace in a rule id. */
 const rules = {
   'discarded-declaration': discardedDeclaration,
+  'host-bypass': hostBypass,
   'name-shape': nameShape,
   undescribed,
 };

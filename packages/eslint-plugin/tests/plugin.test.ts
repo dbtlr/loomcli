@@ -4,10 +4,10 @@ import { expect, test } from 'vite-plus/test';
 
 import plugin from '../src/index.js';
 
-const ruleNames = ['discarded-declaration', 'name-shape', 'undescribed'];
+const ruleNames = ['discarded-declaration', 'host-bypass', 'name-shape', 'undescribed'];
 const ruleIds = ruleNames.map((name) => `@loomcli/${name}`);
 
-test('the plugin ships exactly the three rules', () => {
+test('the plugin ships exactly the four rules', () => {
   expect(Object.keys(plugin.rules).toSorted()).toEqual(ruleNames);
 });
 
@@ -30,14 +30,14 @@ test('the plugin names itself and carries the version of its manifest', () => {
   expect(manifest).toMatchObject({ version: plugin.meta.version });
 });
 
-test('the recommended config registers the plugin under @loomcli and turns exactly the three rules on at error', () => {
+test('the recommended config registers the plugin under @loomcli and turns exactly the four rules on at error', () => {
   const { recommended } = plugin.configs;
   expect(Object.keys(recommended.plugins)).toEqual(['@loomcli']);
   expect(recommended.plugins['@loomcli'].rules).toBe(plugin.rules);
   expect(recommended.rules).toEqual(Object.fromEntries(ruleIds.map((id) => [id, 'error'])));
 });
 
-test('the oxlint config loads the plugin by its package name and turns exactly the three rules on at error', () => {
+test('the oxlint config loads the plugin by its package name and turns exactly the four rules on at error', () => {
   const { oxlint } = plugin.configs;
   expect(oxlint.jsPlugins).toEqual(['@loomcli/eslint-plugin']);
   expect(oxlint.rules).toEqual(Object.fromEntries(ruleIds.map((id) => [id, 'error'])));
@@ -52,6 +52,7 @@ test('the oxlint config is the JSON an .oxlintrc.json holds as it is', () => {
       '  ],',
       '  "rules": {',
       '    "@loomcli/discarded-declaration": "error",',
+      '    "@loomcli/host-bypass": "error",',
       '    "@loomcli/name-shape": "error",',
       '    "@loomcli/undescribed": "error"',
       '  }',
