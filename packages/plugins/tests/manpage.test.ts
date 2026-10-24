@@ -106,7 +106,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { findOnPath } from '../../../scripts/test-shell.js';
+import { findOnPath, sealedShellEnvironment } from '../../../scripts/test-shell.js';
 
 const fixture = new URL('fixtures/manpage-run.mjs', import.meta.url);
 
@@ -538,7 +538,10 @@ describe('advice when man will not find the pages', () => {
           ['--no-config', '-c', `${result.stdout}printf %s "$MANPATH"`],
           {
             encoding: 'utf8',
-            env: { PATH: process.env.PATH, ...(manpath === undefined ? {} : { MANPATH: manpath }) },
+            env: sealedShellEnvironment(
+              box.home,
+              manpath === undefined ? {} : { MANPATH: manpath },
+            ),
           },
         );
         expect(fish.stdout).toBe(`${manFolder}:${manpath ?? ''}`);
