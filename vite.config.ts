@@ -106,6 +106,19 @@ export default defineConfig({
               ],
             },
           ],
+          'eslint/no-restricted-properties': [
+            'error',
+            {
+              message: 'Read the host of the run, or its process handle, instead (ADR-0107).',
+              object: 'globalThis',
+              property: 'process',
+            },
+            {
+              message: 'Read the host of the run, or its process handle, instead (ADR-0107).',
+              object: 'global',
+              property: 'process',
+            },
+          ],
         },
       },
       {
@@ -122,6 +135,7 @@ export default defineConfig({
         rules: {
           'eslint/no-restricted-globals': 'off',
           'eslint/no-restricted-imports': 'off',
+          'eslint/no-restricted-properties': 'off',
         },
       },
       {
