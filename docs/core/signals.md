@@ -11,7 +11,7 @@ This page states how a run is cancelled, how a signal ends the process, and how 
 - **`onShutdown`** registers a synchronous handler that runs once, at the shutdown's end or at the process's own end, on the action and middleware contexts for a run and exported from `@loomcli/core` for a library or an embedding host.
 - **`onSuspend` and `onResume`** register handlers for Ctrl-Z and `fg`.
 
-A signal ends a Loom application within its budget, 500 ms unless the Application sets another, whatever its action does, and a second signal ends it at once.
+A signal ends a Loom application within its budget, 500 ms unless the Application sets another, whatever its action does, and a second signal ends it at once, as long as the action leaves the event loop free. JavaScript handles no signal while its main thread is blocked, so while an action runs a long synchronous loop or a call such as `execSync`, every signal, Ctrl-\ included, waits until the loop is free; `kill -9` ends such a process at once. Long synchronous work yields between steps, or runs as a [child program](host.md#child-programs) through `host.spawn`.
 
 ```ts
 import { mkdtempSync, rmSync } from 'node:fs';
