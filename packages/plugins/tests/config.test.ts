@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { InvocationValues } from '@loomcli/core';
+import type { ConfigSettings } from '@loomcli/plugins/config';
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
@@ -25,27 +26,28 @@ interface Result {
   readonly stdout: string;
 }
 
+/** The key under which a test's environment carries the plugin's settings, typed. */
+const settingsKey = Symbol('settings');
+
+/** A test's environment, which may also carry the settings the plugin is installed with. */
+type Overrides = Record<string, string | undefined> & { [settingsKey]?: ConfigSettings };
+
 /** The names of the environment entries that configure the fixture application, not the run. */
-const fixtureNames = new Set([
-  'FIXTURE_CWD',
-  'FIXTURE_LIMIT_PATH',
-  'FIXTURE_SETTINGS',
-  'FIXTURE_TTY',
-  'FIXTURE_VIEWS',
-]);
+const fixtureNames = new Set(['FIXTURE_CWD', 'FIXTURE_LIMIT_PATH', 'FIXTURE_TTY', 'FIXTURE_VIEWS']);
 
 /**
  * Splits a test's environment into what configures the fixture application and what is the run's
  * whole environment. A `FIXTURE_` name in the first group is never visible to the run.
  */
-function split(env: Record<string, string | undefined>) {
+function split(env: Overrides) {
   const entries = Object.entries(env);
   const own = Object.fromEntries(entries.filter(([name]) => !fixtureNames.has(name)));
-  const { FIXTURE_CWD, FIXTURE_LIMIT_PATH, FIXTURE_SETTINGS, FIXTURE_TTY, FIXTURE_VIEWS } = env;
+  const { FIXTURE_CWD, FIXTURE_LIMIT_PATH, FIXTURE_TTY, FIXTURE_VIEWS } = env;
+  const { [settingsKey]: installed } = env;
   return {
     declared: {
       ...(FIXTURE_LIMIT_PATH === undefined ? {} : { limitPath: FIXTURE_LIMIT_PATH }),
-      ...(FIXTURE_SETTINGS === undefined ? {} : { settings: JSON.parse(FIXTURE_SETTINGS) }),
+      ...(installed === undefined ? {} : { settings: installed }),
       ...(FIXTURE_VIEWS === undefined ? {} : { view: FIXTURE_VIEWS }),
     },
     env: own,
@@ -64,13 +66,13 @@ interface Workspace {
   readonly project: string;
   readonly home: string;
   /** Runs the fixture application with `HOME` pointed at the home directory. */
-  run(argv: string[], env?: Record<string, string | undefined>): Promise<Result>;
+  run(argv: string[], env?: Overrides): Promise<Result>;
   /** What the run writes to stdout. */
-  stdout(argv: string[], env?: Record<string, string | undefined>): Promise<string>;
+  stdout(argv: string[], env?: Overrides): Promise<string>;
   /** What the run writes to stderr. */
-  stderr(argv: string[], env?: Record<string, string | undefined>): Promise<string>;
+  stderr(argv: string[], env?: Overrides): Promise<string>;
   /** Runs the same case as a process whose own working directory is the temporary root. */
-  spawn(argv: string[], env?: Record<string, string | undefined>): ReturnType<typeof invoke>;
+  spawn(argv: string[], env?: Overrides): ReturnType<typeof invoke>;
   /** Writes one file, creating its directories, and answers its path. */
   write(relative: string, content: string, base?: string): string;
 }
@@ -82,7 +84,7 @@ function workspace(): Workspace {
   for (const directory of [project, home]) {
     mkdirSync(directory);
   }
-  const run = (argv: string[], env: Record<string, string | undefined> = {}) =>
+  const run = (argv: string[], env: Overrides = {}) =>
     runInProcess({ argv, ...split({ FIXTURE_CWD: project, HOME: home, ...env }) });
   return {
     home,
@@ -92,7 +94,14 @@ function workspace(): Workspace {
     spawn: (argv, env = {}) =>
       invoke(processFixture, argv, {
         cwd: root,
-        env: { FIXTURE_CWD: project, HOME: home, ...env },
+        env: {
+          FIXTURE_CWD: project,
+          HOME: home,
+          ...env,
+          ...(env[settingsKey] === undefined
+            ? {}
+            : { FIXTURE_SETTINGS: JSON.stringify(env[settingsKey]) }),
+        },
       }),
     stderr: async (argv, env = {}) => {
       const { stderr } = await run(argv, env);
@@ -131,8 +140,8 @@ function json(value: unknown): string {
 }
 
 /** The environment that installs the plugin with one settings object. */
-function settings(value: unknown): Record<string, string> {
-  return { FIXTURE_SETTINGS: JSON.stringify(value) };
+function settings(value: ConfigSettings): Overrides {
+  return { [settingsKey]: value };
 }
 
 /** The options the action received, parsed from the one line it prints. */
@@ -191,17 +200,23 @@ test(
 );
 
 test(
-  'the lookup never reads the process working directory, a parent directory, or a ~ path',
+  'the lookup never reads the process working directory',
   inWorkspace((space) => {
     space.write('.app.json', json({ title: 'process' }), space.root);
     expect(received(space.spawn([], { HOME: undefined }).stdout)).toEqual(defaults);
+  }),
+);
+
+test(
+  'the lookup never reads a parent directory or a ~ path',
+  inWorkspace(async (space) => {
     space.write('.app.json', json({ title: 'parent' }));
     const nested = join(space.project, 'nested');
     mkdirSync(nested);
-    expect(received(space.spawn([], { FIXTURE_CWD: nested, HOME: undefined }).stdout)).toEqual(
+    expect(received(await space.stdout([], { FIXTURE_CWD: nested, HOME: undefined }))).toEqual(
       defaults,
     );
-    expect(space.spawn(['--config', '~/.app.json'])).toMatchObject({
+    await expect(space.run(['--config', '~/.app.json'])).resolves.toMatchObject({
       status: 2,
       stderr: namedFailure('~/.app.json', 'does not exist. Supply the path of an existing file.'),
     });
@@ -999,12 +1014,12 @@ test('inspect() lists the --config option and the binding value on each bound op
 });
 
 /** The inspected graph of the fixture application, with the settings an environment names. */
-function inspected(env: Record<string, string>) {
+function inspected(env: Overrides) {
   return inspectGraph(split(env).declared);
 }
 
 /** The fault a `config()` call throws for settings given as JSON, or `"returned"` when it returns. */
-function callFault(value?: object): unknown {
+function callFault(value?: ConfigSettings): unknown {
   return settingsFault(value);
 }
 
@@ -1091,7 +1106,7 @@ test.each([
   [{ file: '.textstat.conf' }],
   [{ file: '.textstatrc' }],
   [{ file: `.text${String.fromCodePoint(8232)}stat.json` }],
-])('config(%j) returns its plugin', (value) => {
+] satisfies [ConfigSettings | undefined][])('config(%j) returns its plugin', (value) => {
   expect(callFault(value)).toBe('returned');
 });
 
@@ -1099,7 +1114,7 @@ test.each([
 function invokedRoot(
   space: Workspace,
   values: InvocationValues,
-  env: Record<string, string> = {},
+  env: Overrides = {},
 ): Promise<unknown> {
   return invoked({
     ...split({ FIXTURE_CWD: space.project, HOME: space.home, ...env }),

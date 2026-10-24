@@ -1,23 +1,18 @@
 import { DeclarationError } from '@loomcli/core';
 import { config } from '@loomcli/plugins/config';
-
-/**
- * `config` seen through a method signature, which compares its parameter loosely, so a test hands
- * it the invalid settings it exists to reject.
- */
-const loose: { config(settings?: object): unknown } = { config };
+import type { ConfigSettings } from '@loomcli/plugins/config';
 
 /**
  * Calls `config()` with the settings given, or with none when they are absent, and answers the
  * fault the call throws as plain data: its rule, sentence, correction, and findings. A call that
  * returns answers "returned".
  */
-function settingsFault(settings?: object) {
+function settingsFault(settings?: ConfigSettings) {
   try {
     if (settings === undefined) {
       config();
     } else {
-      loose.config(settings);
+      config(settings);
     }
     return 'returned';
   } catch (error) {

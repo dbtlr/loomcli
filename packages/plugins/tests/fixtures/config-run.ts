@@ -1,6 +1,7 @@
 import { Application, DeclarationError, InputError, override } from '@loomcli/core';
 import type { InvocationValues } from '@loomcli/core';
 import { config } from '@loomcli/plugins/config';
+import type { ConfigSettings } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { help } from '@loomcli/plugins/help';
 import { mockProcess } from '@loomcli/testing';
@@ -22,7 +23,7 @@ const views: Record<string, ReturnType<typeof override>[]> = {
 /** What a case declares about the fixture application. */
 interface Declared {
   readonly limitPath?: string;
-  readonly settings?: Parameters<typeof config>[0];
+  readonly settings?: ConfigSettings;
   readonly view?: string;
 }
 
