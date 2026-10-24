@@ -17,6 +17,8 @@ class Keyboard extends Readable {
   }
 }
 const input = new Keyboard();
+/** The bytes each key scenario types: an interrupt key, which this stdin raises no signal for. */
+const keys = { 'ctrl-backslash': '\u001c', 'ctrl-c': '\u0003', 'ctrl-z': '\u001a8080\r' };
 const caller = new AbortController();
 let output = '';
 let messages = '';
@@ -42,6 +44,8 @@ const stderr = new Writable({
           input.push(null);
         } else if (scenario === 'error') {
           input.destroy(new Error('keyboard failed'));
+        } else if (scenario in keys) {
+          input.push(keys[scenario]);
         } else {
           input.push(scenario === 'secret' ? 'secret-value\r' : '8080\ryes\r');
         }

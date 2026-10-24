@@ -4,7 +4,21 @@ import type { PromptContext } from './types.js';
 
 type Key =
   | { kind: 'text'; value: string }
-  | { kind: 'enter' | 'backspace' | 'up' | 'down' | 'cancel' | 'eof' };
+  | { kind: 'interrupt'; signal: InterruptSignal }
+  | { kind: 'enter' | 'backspace' | 'up' | 'down' | 'eof' };
+
+/** The signals the interrupt keys stand for, which raw mode turns into bytes. */
+type InterruptSignal = 'SIGINT' | 'SIGQUIT' | 'SIGTSTP';
+
+/** The byte each interrupt key sends in raw mode: Ctrl-C, Ctrl-\\, and Ctrl-Z. */
+const interruptKeys: Readonly<Record<string, InterruptSignal>> = {
+  '\u0003': 'SIGINT',
+  '\u001a': 'SIGTSTP',
+  '\u001c': 'SIGQUIT',
+};
+
+/** The control sequence that shows the terminal's cursor. */
+const showCursor = '\u001b[?25h';
 interface InputQueue {
   keys: Key[];
   decoder: StringDecoder;
@@ -51,10 +65,11 @@ function feed(queue: InputQueue, chunk: Buffer | string): void {
       continue;
     }
     queue.carriage = character === '\r';
+    const signal = interruptKeys[character];
     if (character === '\r' || character === '\n') {
       queue.keys.push({ kind: 'enter' });
-    } else if (character === '\u0003') {
-      queue.keys.push({ kind: 'cancel' });
+    } else if (signal !== undefined) {
+      queue.keys.push({ kind: 'interrupt', signal });
     } else if (character === '\u0004') {
       queue.keys.push({ kind: 'eof' });
     } else if (character === '\u007f' || character === '\b') {
@@ -79,6 +94,56 @@ interface Session {
 }
 const sessions = new WeakMap<AbortSignal, Session>();
 
+/**
+ * Raises the signal each interrupt key stands for on the run's signal source, in arrival order, as
+ * the key would at a cooked terminal: Ctrl-C starts the shutdown, Ctrl-\\ ends the process, and
+ * Ctrl-Z suspends it. Where stdin is not its signal source's own terminal nothing is raised: Ctrl-C
+ * and Ctrl-\\ cancel the run, as the action's `cancel()` does, and Ctrl-Z does nothing.
+ */
+function raiseInterrupts<Options>(context: PromptContext<Options>, queue: InputQueue): void {
+  const interrupts: InterruptSignal[] = [];
+  queue.keys = queue.keys.filter((key) => {
+    if (key.kind !== 'interrupt') {
+      return true;
+    }
+    interrupts.push(key.signal);
+    return false;
+  });
+  for (const signal of interrupts) {
+    if (!context.host.raise(signal) && signal !== 'SIGTSTP') {
+      context.cancel();
+    }
+  }
+}
+
+/**
+ * Registers the run's handlers that restore the terminal while raw mode holds: a shutdown leaves
+ * raw mode and shows the cursor, a suspend leaves raw mode before the process stops, and the resume
+ * enters it again. Answers the call that removes them.
+ */
+function restoring<Options>(
+  context: PromptContext<Options>,
+  raw: (mode: boolean) => unknown,
+): () => void {
+  const removers = [
+    context.onShutdown(() => {
+      raw(false);
+      context.host.stderr.write(showCursor);
+    }),
+    context.onSuspend(() => {
+      raw(false);
+    }),
+    context.onResume(() => {
+      raw(true);
+    }),
+  ];
+  return () => {
+    for (const remove of removers) {
+      remove();
+    }
+  };
+}
+
 /** Enters raw mode and feeds the run's queue until the last reader closes or the run aborts. */
 function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue): Session {
   const input = context.host.stdin;
@@ -87,6 +152,7 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
   }
   const raw = input.setRawMode.bind(input);
   let released = false;
+  let unregister: (() => void) | undefined = undefined;
   const session: Session = {
     failure: undefined,
     queue,
@@ -96,6 +162,7 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
         return;
       }
       released = true;
+      unregister?.();
       sessions.delete(context.signal);
       raw(false);
       input.pause();
@@ -116,9 +183,7 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
   };
   const data = (chunk: Buffer | string) => {
     feed(queue, chunk);
-    if (queue.keys.some((key) => key.kind === 'cancel')) {
-      context.cancel();
-    }
+    raiseInterrupts(context, queue);
     settle();
   };
   const end = () => {
@@ -141,6 +206,7 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
   context.signal.addEventListener('abort', abort, { once: true });
   try {
     raw(true);
+    unregister = restoring(context, raw);
     input.on('data', data).once('end', end).once('close', end).once('error', inputError);
     input.resume();
     if (input.readableEnded || input.destroyed) {

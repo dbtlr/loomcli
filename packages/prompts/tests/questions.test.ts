@@ -81,7 +81,7 @@ test.each([
   expect(JSON.parse(result.stdout)).toMatchObject(outcome);
 });
 
-test.each(['abort', 'eof'])(
+test.each(['abort', 'eof', 'ctrl-c', 'ctrl-backslash'])(
   'an embedding host cancels and synchronously restores terminal input on %s',
   (scenario) => {
     const result = invoke(new URL('fixtures/host.mjs', import.meta.url), [scenario]);
@@ -101,6 +101,12 @@ test.each(['abort', 'eof'])(
     expect(observed.abortRestored).toBe(scenario === 'abort');
   },
 );
+
+test('Ctrl-Z on a stdin that is not the process terminal does nothing, and the question goes on', () => {
+  const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['ctrl-z']);
+  expect(result.status).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({ code: 0, output: '8080\n', raw: false });
+});
 
 test('a frame override can add rows while secret text stays out of view data', () => {
   const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['secret']);

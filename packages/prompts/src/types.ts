@@ -11,6 +11,9 @@ type PromptContext<Options> = Pick<
   | 'host'
   | 'signal'
   | 'cancel'
+  | 'onShutdown'
+  | 'onSuspend'
+  | 'onResume'
 > & { readonly out: Pick<Out, 'draw' | 'region'> };
 
 type LinkKey<Options> = keyof Options & string;
