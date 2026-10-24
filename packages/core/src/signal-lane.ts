@@ -146,6 +146,8 @@ interface Place {
   left: boolean;
   /** Whether a shutdown ended while the run was still live, after which it keeps no listener. */
   cutOff: boolean;
+  /** Whether the run's terminal was flushed, which happens once, at a shutdown's end or the exit. */
+  flushed: boolean;
 }
 
 /** One pending shutdown handler, the run it belongs to, and whether it keeps the lane listening. */
@@ -158,6 +160,8 @@ interface PendingShutdown {
 /** The shutdown under way: its first signal, and the timer or turn that ends it. */
 interface Shutdown {
   signal: EndingSignal;
+  /** The runs that resolved during the shutdown, whose terminals its end still restores. */
+  readonly unwound: Set<Place>;
   budget: ReturnType<typeof setTimeout> | undefined;
   turn: ReturnType<typeof setImmediate> | undefined;
   ending: boolean;
@@ -288,7 +292,14 @@ class SignalLane implements SharedLane {
     },
   };
 
+  /**
+   * The process's own end, which can come before a shutdown's: an entry that calls
+   * `process.exit()` with the code a run resolved inside the shutdown ends the process before the
+   * shutdown's next turn. Its terminals are restored here as the shutdown's end would, then every
+   * pending handler runs.
+   */
   readonly #onExit = (code: number): void => {
+    this.#flushTerminals();
     this.#callShutdownHandlers({ cause: 'exit', code });
   };
 
@@ -324,7 +335,7 @@ class SignalLane implements SharedLane {
   }
 
   enter(run: LaneRun): LanePlace {
-    const place: Place = { cutOff: false, handlers: new Set(), left: false, run };
+    const place: Place = { cutOff: false, flushed: false, handlers: new Set(), left: false, run };
     this.#places.add(place);
     this.#refresh();
     const shutdown = this.#shutdown;
@@ -397,13 +408,24 @@ class SignalLane implements SharedLane {
     const shutdown = this.#shutdown;
     if (shutdown === undefined) {
       this.#release(place);
-    } else if (this.#places.size === 0 && shutdown.turn === undefined) {
-      // The last run resolved: the shutdown ends on the next turn, so code that awaited it runs.
+    } else {
+      this.#unwound(shutdown, place);
+    }
+    this.#refresh();
+  }
+
+  /**
+   * A run that resolved during a shutdown: its terminal is still restored at the shutdown's end,
+   * and once the last run has resolved the shutdown ends on the next turn, so code that awaited the
+   * run runs its synchronous part first.
+   */
+  #unwound(shutdown: Shutdown, place: Place): void {
+    shutdown.unwound.add(place);
+    if (this.#places.size === 0 && shutdown.turn === undefined) {
       shutdown.turn = setImmediate(() => {
         this.#end(shutdown.signal);
       });
     }
-    this.#refresh();
   }
 
   /** Removes a run's handlers, which go with it when it leaves while no shutdown is under way. */
@@ -431,7 +453,13 @@ class SignalLane implements SharedLane {
   #begin(signal: EndingSignal): void {
     const live = snapshot(this.#places);
     const budget = budgetOf(signal, live);
-    const shutdown: Shutdown = { budget: undefined, ending: false, signal, turn: undefined };
+    const shutdown: Shutdown = {
+      budget: undefined,
+      ending: false,
+      signal,
+      turn: undefined,
+      unwound: new Set(),
+    };
     this.#shutdown = shutdown;
     for (const place of live) {
       callCaught(() => {
@@ -468,6 +496,7 @@ class SignalLane implements SharedLane {
     shutdown.ending = true;
     stopTimers(shutdown);
     this.#flushTerminals();
+    this.#cutOff();
     this.#callShutdownHandlers({ cause: signal, code: signalCodes[signal] });
     this.#shutdown = undefined;
     this.#reraise(signal);
@@ -483,14 +512,26 @@ class SignalLane implements SharedLane {
     holdForDelivery();
   }
 
-  /** Writes every live run's queued region frames straight to its terminal and shows the cursor. */
+  /**
+   * Writes the queued region frames of every live run, and of every run that resolved during the
+   * shutdown under way, straight to its terminal and shows the cursor, once per run.
+   */
   #flushTerminals(): void {
-    for (const place of snapshot(this.#places)) {
-      // A run still live at the end is cut off: it keeps core listening no more.
+    const unwound = this.#shutdown?.unwound ?? [];
+    for (const place of [...unwound, ...this.#places]) {
+      if (!place.flushed) {
+        place.flushed = true;
+        callCaught(() => {
+          flushRun(place.run);
+        });
+      }
+    }
+  }
+
+  /** Marks every run still live as cut off by the shutdown that ends now. */
+  #cutOff(): void {
+    for (const place of this.#places) {
       place.cutOff = true;
-      callCaught(() => {
-        flushRun(place.run);
-      });
     }
   }
 

@@ -203,6 +203,23 @@ if (scenario === 'two-copies') {
       await holdOpen();
     })
     .run({ process: processHandle({ argv: [] }) });
+} else if (scenario === 'region-exit') {
+  /**
+   * An entry that exits with the run's code, as `process.exit(await app.run())` does: the run
+   * resolves inside the shutdown and the process ends through its `exit` event before the
+   * shutdown's own end, so the terminal is restored there.
+   */
+  const app = new Application('app').action(async ({ out, signal }) => {
+    const view = { render: (text) => text };
+    const region = out.region();
+    region.signal.addEventListener('abort', () => {
+      void region.draw('CANCELLED-LINE', view);
+    });
+    await region.draw('WORKING-FRAME', view);
+    line(`ready:${process.pid}:`);
+    await cancelled(signal);
+  });
+  process.exit(await app.run({ process: processHandle({ argv: [] }) }));
 } else if (scenario === 'suspend-leader') {
   // The scenario leads its own terminal session, so its process group is orphaned and no Ctrl-Z
   // Stops it: each one runs the suspend handlers, then the resume handlers, and the run goes on.

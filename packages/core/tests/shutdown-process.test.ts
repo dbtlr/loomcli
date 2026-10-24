@@ -153,6 +153,26 @@ test.skipIf(zsh === undefined)(
   },
 );
 
+test.skipIf(zsh === undefined)(
+  'an entry that calls process.exit with the code a shutdown resolved still shows the cursor after the cancelled line',
+  async () => {
+    const terminal = onTerminal('region-exit');
+    try {
+      const ready = await terminal.expect('ready:*:');
+      expect(ready).toContain('WORKING-FRAME');
+      process.kill(announcedPid(ready), 'SIGTERM');
+      const ended = await terminal.expect('@@DONE@@');
+      const cancelledAt = ended.indexOf('CANCELLED-LINE');
+      expect(cancelledAt).toBeGreaterThan(-1);
+      expect(ended.indexOf('\u001B[?25h', cancelledAt)).toBeGreaterThan(cancelledAt);
+      // The process ended through process.exit with the run's code, before the shutdown's end.
+      expect(ended).toContain('status=143');
+    } finally {
+      await terminal.close();
+    }
+  },
+);
+
 /**
  * The shell script that runs the scenario with no core dump and prints the status it ended with.
  * A core dump is what SIGQUIT asks for, and a Bun process's dump spans gigabytes of reserved

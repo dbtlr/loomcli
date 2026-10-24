@@ -516,6 +516,27 @@ describe('the end of a shutdown', () => {
     expect(mock.stderr.text.endsWith('\u001B[?25h')).toBe(true);
   });
 
+  it('a run that resolved during the shutdown has its cursor shown once, at the end', async () => {
+    const mock = mockProcess({ terminal: { columns: 80, rows: 24 } });
+    const view = { render: (text: string) => text };
+    const app = new Application('app').action(async ({ out, signal }) => {
+      const region = out.region();
+      region.signal.addEventListener('abort', () => {
+        void region.draw('CANCELLED-LINE', view);
+      });
+      await region.draw('WORKING-FRAME', view);
+      const wait = aborted(signal);
+      mock.signals.raise('SIGTERM');
+      await wait;
+    });
+    await app.run({ process: mock });
+    expect(mock.stderr.text).not.toContain('\u001B[?25h');
+    await nextTurn();
+    const { text } = mock.stderr;
+    expect([mock.endedBy, text.split('\u001B[?25h').length - 1]).toEqual(['SIGTERM', 1]);
+    expect(text.indexOf('\u001B[?25h')).toBeGreaterThan(text.indexOf('CANCELLED-LINE'));
+  });
+
   it('every pending handler runs once, newest first, from the action and its middleware', async () => {
     const mock = mockProcess();
     const lines: string[] = [];
