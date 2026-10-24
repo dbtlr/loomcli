@@ -408,6 +408,9 @@ function connectOutput(
   if (piped === null || choice === 'ignore') {
     return noOutput;
   }
+  // A read error on the child's pipe ends its output early, which exited still reports, and is no
+  // Failure of the run, as a closed stdin pipe is not.
+  piped.on('error', () => undefined);
   if (choice === 'capture') {
     const chunks: Buffer[] = [];
     piped.on('data', (chunk: Buffer) => chunks.push(chunk));
