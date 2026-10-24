@@ -98,9 +98,10 @@ const sessions = new WeakMap<AbortSignal, Session>();
  * Raises the signal each interrupt key stands for on the run's signal source, in arrival order, as
  * the key would at a cooked terminal: Ctrl-C starts the shutdown, Ctrl-\\ ends the process, and
  * Ctrl-Z suspends it. Where stdin is not its signal source's own terminal nothing is raised: Ctrl-C
- * and Ctrl-\\ cancel the run, as the action's `cancel()` does, and Ctrl-Z does nothing.
+ * and Ctrl-\\ cancel the run, as the action's `cancel()` does, and Ctrl-Z does nothing. Answers
+ * whether a signal that ends the process was raised, which reaches the run a moment later.
  */
-function raiseInterrupts<Options>(context: PromptContext<Options>, queue: InputQueue): void {
+function raiseInterrupts<Options>(context: PromptContext<Options>, queue: InputQueue): boolean {
   const interrupts: InterruptSignal[] = [];
   queue.keys = queue.keys.filter((key) => {
     if (key.kind !== 'interrupt') {
@@ -109,11 +110,15 @@ function raiseInterrupts<Options>(context: PromptContext<Options>, queue: InputQ
     interrupts.push(key.signal);
     return false;
   });
+  let ending = false;
   for (const signal of interrupts) {
-    if (!context.host.raise(signal) && signal !== 'SIGTSTP') {
+    if (context.host.raise(signal)) {
+      ending ||= signal !== 'SIGTSTP';
+    } else if (signal !== 'SIGTSTP') {
       context.cancel();
     }
   }
+  return ending;
 }
 
 /**
@@ -128,7 +133,9 @@ function restoring<Options>(
   const removers = [
     context.onShutdown(() => {
       raw(false);
-      context.host.stderr.write(showCursor);
+      if (context.host.terminal.stderr.isTTY) {
+        context.host.stderr.write(showCursor);
+      }
     }),
     context.onSuspend(() => {
       raw(false);
@@ -181,9 +188,19 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
       queue.keys.unshift(key);
     }
   };
+  // Once Ctrl-C or Ctrl-\\ raised its signal, every key still unread is dropped until it arrives, as a
+  // Cooked terminal flushes its input on an interrupt, so no key answers the question first.
+  let interrupted = false;
   const data = (chunk: Buffer | string) => {
+    if (interrupted) {
+      return;
+    }
     feed(queue, chunk);
-    raiseInterrupts(context, queue);
+    if (raiseInterrupts(context, queue)) {
+      interrupted = true;
+      queue.keys.length = 0;
+      return;
+    }
     settle();
   };
   const end = () => {

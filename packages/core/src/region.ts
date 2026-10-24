@@ -154,7 +154,9 @@ class Screen {
 
   /**
    * A suspend: the bytes that erase the stack, which then shows nothing until `resume`. The cursor
-   * is left at the start of the stack's first row, where the shell writes while the process stops.
+   * is left at the start of the stack's first row, where a write queued before the resume lands and
+   * where the shell writes while the process stops, so text written above the stack from now on
+   * starts a row of its own.
    */
   suspend(): string {
     if (this.#suspended) {
@@ -162,21 +164,20 @@ class Screen {
     }
     const erase = this.#erase();
     this.#suspended = true;
+    this.#opened = undefined;
+    this.#column = 0;
     return erase;
   }
 
   /**
-   * A resume: the bytes that draw the stack again. The shell wrote while the process was stopped
-   * and leaves the cursor at the start of a row, so the stack starts there, and text written above
-   * it later starts a row of its own.
+   * A resume: the bytes that draw the stack again, below whatever was written since the suspend.
+   * The shell leaves the cursor at the start of a row after it writes, as the erase did.
    */
   resume(): string {
     if (!this.#suspended) {
       return '';
     }
     this.#suspended = false;
-    this.#opened = undefined;
-    this.#column = 0;
     return this.#draw();
   }
 

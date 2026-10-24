@@ -161,25 +161,15 @@ function bracketRun(
   };
 }
 
-/**
- * The handlers one context registers through its run's place, each throw going to its `failed`.
- * A place an earlier copy of core built may lack the suspend and resume members, and a handler
- * registered through a member it lacks holds nothing.
- */
+/** The handlers one context registers through its run's place, each throw going to its `failed`. */
 function placeHandlers(
   place: LanePlace,
   failed: Readonly<Record<'resume' | 'shutdown' | 'suspend', (thrown: unknown) => void>>,
 ): LaneHandlers {
-  const held =
-    (member: 'onResume' | 'onSuspend', onFailure: (thrown: unknown) => void) =>
-    (handler: () => unknown): (() => void) =>
-      typeof place[member] === 'function'
-        ? place[member]({ failed: onFailure, handler })
-        : () => undefined;
   return {
-    onResume: held('onResume', failed.resume),
+    onResume: (handler) => place.onResume({ failed: failed.resume, handler }),
     onShutdown: (handler) => place.onShutdown({ failed: failed.shutdown, handler }),
-    onSuspend: held('onSuspend', failed.suspend),
+    onSuspend: (handler) => place.onSuspend({ failed: failed.suspend, handler }),
   };
 }
 

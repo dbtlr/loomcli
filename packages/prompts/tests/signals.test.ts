@@ -3,7 +3,8 @@
  * docs/core/signals.md#raw-mode-readers), on a real terminal under Node and Bun:
  *
  * - Ctrl-C at a question ends the process by SIGINT, so a loop an interactive shell runs stops at
- *   the first round, and the shell reports 130.
+ *   the first round, and the shell reports 130. Keys typed after it in the same read are dropped,
+ *   as a cooked terminal flushes its input on an interrupt.
  * - Ctrl-\ at a question ends the process by SIGQUIT, with the terminal cooked and the cursor shown.
  * - Ctrl-Z at a question suspends the process under a job-control shell: the question's frame is
  *   erased and the cursor shown before it stops, and `fg` redraws the question, which then takes an
@@ -93,6 +94,22 @@ test.skipIf(zsh === undefined)(
       expect(transcript).not.toContain('round-2');
     } finally {
       await shell.close();
+    }
+  },
+);
+
+test.skipIf(zsh === undefined)(
+  'keys typed after Ctrl-C in the same read are dropped, as a cooked terminal flushes them',
+  async () => {
+    const terminal = underSh('text');
+    try {
+      await terminal.expect('Service port');
+      terminal.send(String.raw`\x03\r`);
+      const ended = await terminal.expect('@@DONE@@');
+      expect(ended).toContain('status=130');
+      expect(ended).not.toContain('ANSWER');
+    } finally {
+      await terminal.close();
     }
   },
 );

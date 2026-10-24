@@ -1026,6 +1026,26 @@ describe('suspend and resume', () => {
     ]);
   });
 
+  it('a write queued before a suspend lands where the erase left the cursor, and the resume draws below it', async () => {
+    const mock = mockProcess({ terminal: { columns: 80, rows: 24 } });
+    const view = { render: (text: string) => text };
+    let before = 0;
+    const app = new Application('app').action(async ({ out }) => {
+      // The region opens below a partial row, so the stack starts on the row after it.
+      await out.draw('Fetching ', view);
+      const region = out.region();
+      await region.draw('SPIN\n', view);
+      before = mock.stderr.text.length;
+      const pending = out.draw('MIDDLE\n', view);
+      mock.signals.raise('SIGTSTP');
+      await pending;
+      await nextTurn();
+      await region.end();
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(mock.stderr.text.slice(before)).toBe('\r\u001B[1A\u001B[J\u001B[?25hMIDDLE\nSPIN\n');
+  });
+
   it('a handler a context registers after its run ended holds nothing', async () => {
     const mock = mockProcess();
     const count = listening(mock);
