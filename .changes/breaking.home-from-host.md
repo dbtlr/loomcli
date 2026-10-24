@@ -4,7 +4,7 @@
 
 ### Migration
 
-**Affected surface.** Code that calls `applicationDirectory` with an object it builds itself, `{ env, platform }`, rather than the run's host.
+**Affected surface.** Code that calls `applicationDirectory` with an object it builds itself, `{ env, platform }`, rather than the run's host. A test or embedding host that builds `processHandle({ env })` without an absolute `HOME`: its home is now the user database's, the operator's real home, so a plugin that installs or logs writes there.
 
 **Why.** The home is a host fact, `host.home`, which follows the process handle's absolute `HOME` and falls back to the user database, so every Loom lookup reads it in one place, under [ADR-0107](docs/decisions/0107-a-run-reads-the-process-through-one-process-handle.md).
 
@@ -28,6 +28,6 @@ const logs = applicationDirectory('logs', 'notes', { env, home: '/home/me', plat
 
 1. Where a call passes the run's host, leave it as it is.
 2. Where a call builds its own `from`, pass the run's host instead, or add `home`, the run's `host.home`.
-3. In a test that wanted a lookup with no home, supply `home: ''` to the process handle or the object, because an unset or relative `HOME` now falls back to the user database's home.
+3. Where code builds `processHandle({ env })` with no absolute `HOME`, supply `home`: a temporary folder for a run that writes files, or `''` for a run with no home. A test can use `mockProcess` from `@loomcli/testing` instead, whose home is a folder that does not exist.
 
 **Validation.** Run the TypeScript compiler over the application and its tests: every `applicationDirectory` call compiles. Run the application's tests, which pass with the same results.

@@ -39,7 +39,7 @@ const outcome = await jsonkit.invoke(['keys'], values, {
 
 **Steps.**
 
-1. Replace each `run({ host: fields })` with `run({ process: processHandle(fields) })`.
+1. Replace each `run({ host: fields })` with `run({ process: processHandle(fields) })`. Where `fields` holds an `env` with no absolute `HOME`, also supply `home`, a temporary folder or `''`, because the handle's home otherwise falls back to the user database's, the operator's real home; a test can use `mockProcess` instead.
 2. Replace each `invoke(path, values, { host: fields })` with `invoke(path, values, { process: processHandle(fields) })`.
 3. Replace the `HostOverrides` type with `ProcessFields`, and `HostOverrides['terminal']` with `ProcessTerminal`.
 4. Where code read a relative `host.cwd` it supplied, read the absolute directory it resolves to.
