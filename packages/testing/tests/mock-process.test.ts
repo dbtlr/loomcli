@@ -308,9 +308,10 @@ describe('child programs', () => {
           }),
       },
     });
-    const ended: [ProcessSignal, number][] = [
+    const ended: [ProcessSignal | 'SIGKILL', number][] = [
       ['SIGHUP', 129],
       ['SIGINT', 130],
+      ['SIGKILL', 137],
       ['SIGQUIT', 131],
       ['SIGTERM', 143],
     ];

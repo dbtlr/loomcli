@@ -45,6 +45,7 @@ void read(interactive);
 void read(released);
 bare.kill();
 bare.kill('SIGINT');
+bare.kill('SIGKILL');
 
 // The host's folders are strings.
 const home: string = host.home;

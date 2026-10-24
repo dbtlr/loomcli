@@ -247,10 +247,14 @@ function absoluteOf(env: ProcessHandle['env'], name: string): string | undefined
   return value !== undefined && isAbsolute(value) ? value : undefined;
 }
 
+/** A signal a child's `kill` delivers. */
+type KillSignal = ProcessSignal | 'SIGKILL';
+
 /** The shell's status for a child a signal ended: 128 plus the number of each ending signal. */
-const endedCodes: Readonly<Partial<Record<ProcessSignal, number>>> = {
+const endedCodes: Readonly<Partial<Record<KillSignal, number>>> = {
   SIGHUP: 129,
   SIGINT: 130,
+  SIGKILL: 137,
   SIGQUIT: 131,
   SIGTERM: 143,
 };
@@ -365,7 +369,7 @@ class ChildEnd {
   }
 
   /** Ends the child for an ending signal; `SIGTSTP` and `SIGCONT` end nothing. */
-  end(signal: ProcessSignal): void {
+  end(signal: KillSignal): void {
     const code = endedCodes[signal];
     if (this.#settled || code === undefined) {
       return;
