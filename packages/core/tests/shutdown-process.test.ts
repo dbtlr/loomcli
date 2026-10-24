@@ -30,8 +30,9 @@ import { fileURLToPath } from 'node:url';
 
 import { afterAll, expect, test } from 'vite-plus/test';
 
-import { childEnvironment, invoke, start } from '../../../scripts/test-process.js';
+import { invoke, start } from '../../../scripts/test-process.js';
 import { zsh } from '../../../scripts/test-pty.js';
+import { sealedShellEnvironment } from '../../../scripts/test-shell.js';
 import { drive } from '../../../scripts/test-terminal.js';
 
 const fixtureUrl = new URL('fixtures/shutdown.mjs', import.meta.url);
@@ -169,11 +170,12 @@ const noCoreDump = [
 
 /**
  * Runs the cooperative scenario under `sh`, which prints the status it ended with, sends the
- * scenario `signal` once it announced its process id, and resolves everything `sh` printed.
+ * scenario `signal` once it announced its process id, and resolves everything `sh` printed. The
+ * shell starts under a sealed home of the test's own, so nothing it runs reaches the real home.
  */
 function underShell(signal: NodeJS.Signals): Promise<string> {
   const child = spawn('sh', ['-c', noCoreDump, runtime, fixture, 'cooperative'], {
-    env: childEnvironment({}),
+    env: sealedShellEnvironment(join(copies, 'home')),
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 10_000,
   });
