@@ -885,30 +885,6 @@ function temporaryLeftovers(root: string) {
     );
 }
 
-test.each(['SIGINT', 'SIGTERM'] as const)(
-  'a %s that lands while held work runs without yielding, as the moves do, lets the work finish and then ends with it',
-  (signal) => {
-    const root = temporaryRoot('loom-held-');
-    const helpers = pathToFileURL(join(dirname(cli), 'helpers/bun.js')).href;
-    put(
-      root,
-      'held.mjs',
-      `import { writeFileSync } from 'node:fs';
-import { holdingSignals } from ${JSON.stringify(helpers)};
-
-await holdingSignals(async () => {
-  process.kill(process.pid, '${signal}');
-  writeFileSync('finished', '');
-});
-writeFileSync('carried-on', '');
-`,
-    );
-    const result = spawnSync(process.env.LOOM_TEST_RUNTIME ?? 'node', ['held.mjs'], { cwd: root });
-    expect(result.signal).toBe(signal);
-    expect(readdirSync(root).toSorted()).toEqual(['finished', 'held.mjs']);
-  },
-);
-
 test('undoing a build removes only the directories it created that nothing else has filled', () => {
   const root = temporaryRoot('loom-undo-');
   const helpers = pathToFileURL(join(dirname(cli), 'helpers/build.js')).href;

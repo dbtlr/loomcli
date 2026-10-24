@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
+
+import type { OnShutdown } from '@loomcli/core';
 
 /** The sentence a command that needs Bun fails with when none is on the PATH. */
 const missingBun =
@@ -10,33 +11,24 @@ function isMissing(error: Error | undefined) {
   return error !== undefined && 'code' in error && error.code === 'ENOENT';
 }
 
-/** The signals loom hands on to a Bun build it runs, so stopping `loom` stops the build. */
-const forwarded = ['SIGINT', 'SIGTERM'] as const;
-
 /**
- * Ends this process with a signal it held, once nothing listens for it, so the process ends as the
- * signal's default disposition ends it and its shell reads 130 or 143.
+ * The signal that stops Bun once the run is cancelled: the ending signal loom received, or SIGTERM
+ * for any other cancellation.
  */
-function endAs(signal: NodeJS.Signals) {
-  process.kill(process.pid, signal);
-}
-
-/** Waits for the event loop to turn once, past the phase that runs `setImmediate` callbacks. */
-function nextTurn() {
-  return new Promise<void>((resolve) => {
-    setImmediate(resolve);
-  });
+function stopSignal(signal: AbortSignal): NodeJS.Signals {
+  const reason: unknown = signal.reason;
+  const source: unknown =
+    typeof reason === 'object' && reason !== null ? Reflect.get(reason, 'source') : undefined;
+  return source === 'SIGHUP' || source === 'SIGINT' || source === 'SIGQUIT' ? source : 'SIGTERM';
 }
 
 /**
- * Waits until every signal that reached this process so far has reached its listener. A signal
- * that lands while work runs without yielding, such as the moves that place a build's files, waits
- * for the event loop to poll, and a listener released before that poll never hears it. Two turns
- * hold at least one poll that starts after this call.
+ * What a supervised Bun reads from the run that started it: the run's signal, which stops Bun, and
+ * its `onShutdown`, which the work registers the synchronous undo of what it wrote through.
  */
-async function signalsDelivered() {
-  await nextTurn();
-  await nextTurn();
+export interface Stoppable {
+  readonly signal: AbortSignal;
+  readonly onShutdown: OnShutdown;
 }
 
 /** One finished Bun process: its status and everything it wrote. */
@@ -63,79 +55,18 @@ export function runBun(args: readonly string[], cwd: string): BunResult {
 }
 
 /**
- * The SIGINT and SIGTERM this process holds while it does work it must finish or undo before it
- * ends. Holding a signal keeps it from ending the process at once; the signal reaches the Bun
- * process loom runs, if one runs, and the work reads it to know it was stopped.
- */
-export class HeldSignals {
-  #bun: ChildProcess | undefined = undefined;
-  #received: NodeJS.Signals | undefined = undefined;
-  readonly #listeners = forwarded.map((signal) => {
-    const listener = () => {
-      this.#received ??= signal;
-      this.#bun?.kill(signal);
-    };
-    process.on(signal, listener);
-    return { listener, signal };
-  });
-
-  /** The first signal that arrived while the signals were held, if one did. */
-  get received(): NodeJS.Signals | undefined {
-    return this.#received;
-  }
-
-  /**
-   * Hands each held signal on to Bun until the returned function is called. A signal that arrived
-   * before Bun started reaches it at once, so a stopped run never builds to its end.
-   */
-  forwardTo(bun: ChildProcess): () => void {
-    this.#bun = bun;
-    if (this.#received !== undefined) {
-      bun.kill(this.#received);
-    }
-    return () => {
-      this.#bun = undefined;
-    };
-  }
-
-  /** Stops holding the signals, so the next one ends the process as its default disposition does. */
-  release() {
-    for (const { listener, signal } of this.#listeners) {
-      process.off(signal, listener);
-    }
-  }
-}
-
-/**
- * Holds SIGINT and SIGTERM for the whole of the work, then releases them and, if one arrived, ends
- * this process with it, as `endAs` does, once the work has finished or undone what it wrote.
- */
-export async function holdingSignals<Outcome>(
-  work: (signals: HeldSignals) => Promise<Outcome>,
-): Promise<Outcome> {
-  const signals = new HeldSignals();
-  try {
-    return await work(signals);
-  } finally {
-    await signalsDelivered();
-    signals.release();
-    if (signals.received !== undefined) {
-      endAs(signals.received);
-    }
-  }
-}
-
-/**
- * Runs Bun from the PATH with the arguments, in the directory, until it ends, handing on to it each
- * signal the caller holds. With `collect`, Bun's stdout and stderr are collected together in the
- * order they arrive; with `inherit`, Bun writes to this process's own streams and the output is
- * empty. A missing Bun fails with a sentence that names it.
+ * Runs Bun from the PATH with the arguments, in the directory, until it ends. Once the run is
+ * cancelled, Bun receives the signal loom received, or SIGTERM for any other cancellation, so a
+ * stopped run never builds to its end; a shutdown that ends before Bun does kills it. With
+ * `collect`, Bun's stdout and stderr are collected together in the order they arrive; with
+ * `inherit`, Bun writes to this process's own streams and the output is empty. A missing Bun fails
+ * with a sentence that names it.
  */
 export async function superviseBun(
   args: readonly string[],
   cwd: string,
   output: 'collect' | 'inherit',
-  signals: HeldSignals,
+  run: Stoppable,
 ): Promise<BunResult> {
   const streams = output === 'collect' ? 'pipe' : 'inherit';
   const child = spawn('bun', args, { cwd, stdio: ['ignore', streams, streams] });
@@ -146,7 +77,19 @@ export async function superviseBun(
       written += chunk;
     });
   }
-  const stopForwarding = signals.forwardTo(child);
+  const stop = () => {
+    child.kill(stopSignal(run.signal));
+  };
+  const { signal } = run;
+  if (signal.aborted) {
+    stop();
+  } else {
+    signal.addEventListener('abort', stop, { once: true });
+  }
+  // A shutdown that ends while Bun still runs ends it, whatever it does with the signal it received.
+  const removeKill = run.onShutdown(() => {
+    child.kill('SIGKILL');
+  });
   try {
     const status = await new Promise<number | null>((resolve, reject) => {
       child.on('error', (error) => {
@@ -158,6 +101,7 @@ export async function superviseBun(
     });
     return { output: written, status };
   } finally {
-    stopForwarding();
+    removeKill();
+    signal.removeEventListener('abort', stop);
   }
 }

@@ -185,8 +185,6 @@ export default defineConfig({
         files: [
           // The toolchain's application reader is its own child program.
           'packages/loom/src/read-application.ts',
-          // The toolchain's Bun signal forwarding, until it moves onto onShutdown.
-          'packages/loom/src/helpers/bun.ts',
         ],
         rules: {
           'eslint/no-restricted-globals': 'off',
