@@ -3,9 +3,9 @@ import { processHandle } from '@loomcli/core';
 import { application } from './config-run.ts';
 
 /**
- * The one case that needs a process: an argv run on the real process handle, whose own working
- * directory differs from the run's `cwd`, and whose environment holds yaml's debug variables, which
- * the YAML reader's guard reads on the real global. `FIXTURE_SETTINGS` holds the plugin's settings
+ * The two cases that need a process, each an argv run on the real process handle: one whose own
+ * working directory differs from the run's `cwd`, and one whose environment holds yaml's debug
+ * variables, which the YAML reader's guard reads on the real global. `FIXTURE_SETTINGS` holds the plugin's settings
  * as JSON and `FIXTURE_CWD` the working directory the files resolve in.
  */
 const { FIXTURE_CWD, FIXTURE_DEBUG_VARIABLES, FIXTURE_SETTINGS } = process.env;

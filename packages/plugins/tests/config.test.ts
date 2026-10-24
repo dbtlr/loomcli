@@ -1018,7 +1018,7 @@ function inspected(env: Overrides) {
   return inspectGraph(split(env).declared);
 }
 
-/** The fault a `config()` call throws for settings given as JSON, or `"returned"` when it returns. */
+/** The fault a `config()` call throws for the settings, or `"returned"` when it returns. */
 function callFault(value?: ConfigSettings): unknown {
   return settingsFault(value);
 }
