@@ -33,13 +33,18 @@ export type ApplicationExports = InferOutput<typeof exportsResult>;
  * for the result. A process that ends without a result fails with what it wrote. Bun runs with
  * `--no-install`, because a package with no `node_modules` would otherwise resolve core and the
  * module's imports from Bun's global cache, which the package never installed. The result file lives
- * in a scratch folder under the run's temporary folder.
+ * in a scratch folder under the run's temporary folder, removed once it is read or when a shutdown
+ * ends before the run has unwound.
  */
 export async function readApplicationExports(
   run: RunHost,
   options: { directory: string; module: string; path: string },
 ): Promise<ApplicationExports> {
   const temporary = mkdtempSync(join(run.host.tmpdir, 'loom-init-'));
+  const removeTemporary = () => {
+    rmSync(temporary, { force: true, recursive: true });
+  };
+  const removeCleanup = run.onShutdown(removeTemporary);
   try {
     const resultFile = join(temporary, 'result.json');
     const read = await runBun(
@@ -52,6 +57,7 @@ export async function readApplicationExports(
     }
     return parseOrThrow(exportsResult, JSON.parse(readFileSync(resultFile, 'utf8')));
   } finally {
-    rmSync(temporary, { force: true, recursive: true });
+    removeCleanup();
+    removeTemporary();
   }
 }

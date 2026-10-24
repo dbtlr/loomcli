@@ -38,7 +38,7 @@ const lockfileLimit = 60_000;
 
 /**
  * Prepares the lockfile in the staged copy at `root` with the installed pnpm, which starts through
- * the run's host. The run's cancellation and the time limit each stop pnpm.
+ * the run's host. The run's cancellation and the time limit each stop pnpm, and a shutdown that ends while pnpm still runs kills it.
  */
 async function updateLockfile(run: RunHost, root: string) {
   const lock = join(root, 'pnpm-lock.yaml');
@@ -54,7 +54,7 @@ async function updateLockfile(run: RunHost, root: string) {
   const manifestSource = readWorkingFile(dirname(manifestPath), 'package.json');
   const manifest = parseOrThrow(pnpmManifest, JSON.parse(manifestSource));
   const limit = AbortSignal.timeout(lockfileLimit);
-  const exit = await run.host.spawn(
+  const child = run.host.spawn(
     join(dirname(manifestPath), manifest.bin.pnpm),
     [
       'install',
@@ -67,7 +67,11 @@ async function updateLockfile(run: RunHost, root: string) {
       '--config.frozen-lockfile=false',
     ],
     { cwd: root, signal: AbortSignal.any([run.signal, limit]) },
-  ).exited;
+  );
+  const removeKill = run.onShutdown(() => {
+    child.kill('SIGKILL');
+  });
+  const exit = await child.exited.finally(removeKill);
   if (exit.kind === 'unstarted') {
     throw exit.error;
   }
@@ -85,7 +89,8 @@ async function updateLockfile(run: RunHost, root: string) {
 /**
  * The lockfile the release writes: the checkout's tracked files, or the files at `ref`, copied into
  * a scratch folder under the run's temporary folder with each library at the release version, and
- * prepared there by pnpm.
+ * prepared there by pnpm. The folder is removed once the lockfile is read, or when a shutdown ends
+ * before the run has unwound.
  */
 export async function prepareLockfile(
   checkout: Checkout,
@@ -93,6 +98,10 @@ export async function prepareLockfile(
   ref?: string,
 ) {
   const stage = mkdtempSync(join(checkout.host.tmpdir, 'loom-release-'));
+  const removeStage = () => {
+    rmSync(stage, { force: true, recursive: true });
+  };
+  const removeCleanup = checkout.onShutdown(removeStage);
   try {
     const paths = await git(
       checkout,
@@ -107,7 +116,8 @@ export async function prepareLockfile(
     }
     return await updateLockfile(checkout, stage);
   } finally {
-    rmSync(stage, { force: true, recursive: true });
+    removeCleanup();
+    removeStage();
   }
 }
 

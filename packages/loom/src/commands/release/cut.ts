@@ -102,6 +102,10 @@ async function installRelease(checkout: Checkout, release: Release) {
   }
 }
 
+/**
+ * Installs the release under the checkout's release lock. The lock is removed once the install
+ * ends, or when a shutdown ends before the run has unwound, so a cancelled cut leaves none.
+ */
 async function writeRelease(checkout: Checkout, release: Release) {
   const lockPath = await git(checkout, ['rev-parse', '--git-path', 'release-cut.lock']);
   const lock = resolve(checkout.root, lockPath.trim());
@@ -116,10 +120,15 @@ async function writeRelease(checkout: Checkout, release: Release) {
     }
     throw error;
   }
+  const removeLock = () => {
+    rmSync(lock, { force: true, recursive: true });
+  };
+  const removeCleanup = checkout.onShutdown(removeLock);
   try {
     await installRelease(checkout, release);
   } finally {
-    rmSync(lock, { recursive: true });
+    removeCleanup();
+    removeLock();
   }
 }
 
@@ -176,9 +185,9 @@ export const cut = new Command('cut', {
     description: 'Read the release narrative from this Markdown file.',
     type: 'string',
   })
-  .action(async ({ host, options, out, passthrough, signal }) => {
+  .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
     await report(out, passthrough, async () => {
-      const checkout = { host, root: host.cwd, signal };
+      const checkout = { host, onShutdown, root: host.cwd, signal };
       const release = await prepare(checkout, options);
       if (!options['dry-run']) {
         await writeRelease(checkout, release);

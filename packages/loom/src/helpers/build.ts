@@ -13,7 +13,7 @@ import { definePair } from './build-facts.js';
 import type { BuildFacts } from './build-facts.js';
 import type { BuildTarget } from './build-target.js';
 import { superviseBun } from './bun.js';
-import type { Stoppable } from './bun.js';
+import type { RunHost } from './run-host.js';
 
 /**
  * A child a signal ended reports a code above this one, 128 plus the signal's number. A watcher a
@@ -146,7 +146,7 @@ export function removeCreatedDirectories(directory: string, created: string | un
  * moves are synchronous, so a signal that arrives during them is handled once they complete, and
  * output is never partly replaced.
  */
-export async function build(plan: BuildPlan, run: Stoppable): Promise<void> {
+export async function build(plan: BuildPlan, run: RunHost): Promise<void> {
   const outDirectory = outputDirectory(plan);
   const created = mkdirSync(outDirectory, { recursive: true });
   const staging = mkdtempSync(join(outDirectory, '.loom-build-'));
@@ -192,7 +192,7 @@ export async function build(plan: BuildPlan, run: Stoppable): Promise<void> {
  * stops Bun and the watch removes what it left, synchronously at a shutdown's end when that comes
  * first. A watcher Bun ends with a failure fails the command, and one a signal ended was stopped.
  */
-export async function watch(plan: BuildPlan, run: Stoppable): Promise<void> {
+export async function watch(plan: BuildPlan, run: RunHost): Promise<void> {
   const outDirectory = outputDirectory(plan);
   const created = mkdirSync(outDirectory, { recursive: true });
   const compiles = plan.target.kind === 'compile';

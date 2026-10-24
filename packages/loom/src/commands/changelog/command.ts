@@ -12,9 +12,14 @@ export const changelog = new Command('changelog', {
   .command(
     new Command('check', {
       description: 'Check every fragment in .changes/ and count them.',
-    }).action(async ({ host, out, passthrough, signal }) => {
+    }).action(async ({ host, onShutdown, out, passthrough, signal }) => {
       await report(out, passthrough, async () => {
-        const fragments = await readFragments({ host, root: packageDirectory(host.cwd), signal });
+        const fragments = await readFragments({
+          host,
+          onShutdown,
+          root: packageDirectory(host.cwd),
+          signal,
+        });
         return `Checked ${fragments.length} fragment${fragments.length === 1 ? '' : 's'}.\n`;
       });
     }),
@@ -36,11 +41,11 @@ export const changelog = new Command('changelog', {
         description: 'Print the section and the next version, and write nothing.',
         type: 'boolean',
       })
-      .action(async ({ host, options, out, passthrough, signal }) => {
+      .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
         await report(out, passthrough, async () => {
           const directory = packageDirectory(host.cwd);
           const cut = await preparePackageCut(
-            { host, root: directory, signal },
+            { host, onShutdown, root: directory, signal },
             {
               date: releaseDate(options.date),
               narrative: readNarrative(host.cwd, options.narrative),

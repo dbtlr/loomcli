@@ -27,10 +27,10 @@ export const pr = new Command('pr', { description: 'Check a pull request.', hidd
       multiple: true,
       type: 'string',
     })
-    .action(async ({ host, options, out, passthrough, signal }) => {
+    .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
       await report(out, passthrough, async () => {
         await checkPullRequest(
-          { host, root: host.cwd, signal },
+          { host, onShutdown, root: host.cwd, signal },
           {
             base: options.base,
             head: options.head,

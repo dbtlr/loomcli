@@ -462,6 +462,7 @@ async function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; t
     force: run.force,
     host: run.host,
     line: run.line,
+    onShutdown: run.onShutdown,
     signal: run.signal,
     tooling: run.tooling,
     warn: run.warn,
@@ -535,7 +536,7 @@ export const init = new Command('init', {
     type: 'boolean',
   })
   .action(async (context) => {
-    const { host, options, out, passthrough, signal, supplied } = context;
+    const { host, onShutdown, options, out, passthrough, signal, supplied } = context;
     await report(out, passthrough, async () => {
       const target = initTarget(host.cwd);
       const existing = existingTooling(target);
@@ -567,6 +568,7 @@ export const init = new Command('init', {
         force: options.force,
         host,
         line: (text) => host.stdout.write(`${text}\n`),
+        onShutdown,
         only: options.only,
         signal,
         target,

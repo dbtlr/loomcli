@@ -63,10 +63,10 @@ export const release = new Command('release', {
         type: 'string',
         validate: count,
       })
-      .action(async ({ host, options, out, passthrough, signal }) => {
+      .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
         await report(out, passthrough, async () => {
           const plan = await planRelease({
-            checkout: { host, root: host.cwd, signal },
+            checkout: { host, onShutdown, root: host.cwd, signal },
             githubApi: options['github-api'],
             head: options.head,
             policy: { requestTimeoutMs: options['request-timeout-ms'] },
@@ -121,7 +121,7 @@ export const release = new Command('release', {
         type: 'string',
         validate: count,
       })
-      .action(async ({ host, options, out, passthrough, signal }) => {
+      .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
         await report(out, passthrough, async () => {
           const token = host.env.GH_TOKEN;
           if (token === undefined || token === '') {
@@ -129,7 +129,7 @@ export const release = new Command('release', {
           }
           const source: unknown = JSON.parse(readFileSync(resolve(host.cwd, options.plan), 'utf8'));
           return recordRelease({
-            checkout: { host, root: host.cwd, signal },
+            checkout: { host, onShutdown, root: host.cwd, signal },
             githubApi: options['github-api'],
             plan: parseOrThrow(planSchema, source),
             registry: options.registry,

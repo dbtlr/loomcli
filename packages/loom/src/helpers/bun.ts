@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream';
 import { StringDecoder } from 'node:string_decoder';
 
-import type { OnShutdown, ProcessSignal } from '@loomcli/core';
+import type { ProcessSignal } from '@loomcli/core';
 
 import type { RunHost } from './run-host.js';
 
@@ -50,15 +50,6 @@ function collector() {
   return { stderr: stream(), stdout: stream(), text: () => written };
 }
 
-/**
- * What a supervised Bun reads from the run that started it: the host it starts through, the run's
- * signal, which stops Bun, and its `onShutdown`, which the work registers the synchronous undo of
- * what it wrote through.
- */
-export interface Stoppable extends RunHost {
-  readonly onShutdown: OnShutdown;
-}
-
 /** One finished Bun process: its exit code and everything it wrote. */
 export interface BunResult {
   readonly code: number;
@@ -67,7 +58,7 @@ export interface BunResult {
 
 /**
  * Runs Bun from the PATH with the arguments, in the directory, through the run's host, and waits
- * for it. The run's signal ends Bun once the run is cancelled. Its stdout and stderr are collected,
+ * for it. The run's signal ends Bun once the run is cancelled, and a shutdown that ends while Bun still runs kills it. Its stdout and stderr are collected,
  * stdout first, and the output is unbounded, as git's is. A missing Bun fails with a sentence that
  * names it.
  */
@@ -76,7 +67,12 @@ export async function runBun(
   args: readonly string[],
   cwd: string,
 ): Promise<BunResult> {
-  const exit = await run.host.spawn('bun', args, { cwd, signal: run.signal }).exited;
+  const child = run.host.spawn('bun', args, { cwd, signal: run.signal });
+  // A shutdown that ends while Bun still runs ends it, whatever it does with the SIGTERM it received.
+  const removeKill = run.onShutdown(() => {
+    child.kill('SIGKILL');
+  });
+  const exit = await child.exited.finally(removeKill);
   if (exit.kind === 'unstarted') {
     throw unstartedError(exit.error);
   }
@@ -95,7 +91,7 @@ export async function superviseBun(
   args: readonly string[],
   cwd: string,
   output: 'collect' | 'inherit',
-  run: Stoppable,
+  run: RunHost,
 ): Promise<BunResult> {
   const collected = output === 'collect' ? collector() : undefined;
   const child = run.host.spawn('bun', args, {
