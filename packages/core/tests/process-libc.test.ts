@@ -45,8 +45,8 @@ test('the real handle reads the report once with its network section left out, t
   });
   await app.run({ process: processHandle({ argv: [] }) });
   await app.run({ process: processHandle({ argv: [] }) });
-  // Off Linux the handle reads no report and answers undefined. Bun's report has no network
-  // Section to leave out, so it has no setting to change.
+  // Off Linux the handle reads no report and answers undefined.
+  // Bun's report has no network section to leave out, so it has no setting to change.
   const linux = process.platform === 'linux';
   expect({ calls: spy.mock.calls.length, excludedDuring, seen }).toEqual({
     calls: linux ? 1 : 0,
