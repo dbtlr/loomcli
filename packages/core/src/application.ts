@@ -98,7 +98,7 @@ import { bakedFacts, isDevelopment } from './release.js';
 import { capabilities, plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { shutdownTimeout } from './shutdown.js';
-import type { LaneHandlers, SharedLane } from './signal-lane.js';
+import type { LaneHandlers, OnShutdown, SharedLane } from './signal-lane.js';
 import { bracketRun, cancellationCode, isCancellationEcho, placeHandlers } from './signals.js';
 import type { CancellationCode, LaneEntry, ParentRun, SignalBracket } from './signals.js';
 import { installedSource } from './sources.js';
@@ -909,10 +909,13 @@ class ApplicationBuilder<
         output = invocationOutput;
         // A closed reader on stdout ends the run as a cancellation does, with its own reason.
         invocationOutput.useClosedPipe((cause) => signals?.closePipe(cause));
-        // The run's live regions erase on a suspend and redraw on the resume.
-        invocationOutput.useSuspension(
-          placeHandlers(bracket.place, { resume: dropped, shutdown: dropped, suspend: dropped }),
-        );
+        // Core's own handlers on the run's place: the live regions and the background query.
+        const ownHandlers = placeHandlers(bracket.place, {
+          resume: dropped,
+          shutdown: dropped,
+          suspend: dropped,
+        });
+        invocationOutput.useSuspension(ownHandlers);
         // The constructor validated the declared policy, which the build hands over after the overrides.
         let policy: RenderingPolicy = {};
         // The installed theme, which the run's background resolves to a palette once it settles.
@@ -939,6 +942,7 @@ class ApplicationBuilder<
           choice: backgroundSpellings && backgroundChoice(host.argv, backgroundSpellings),
           detects: backgroundSpellings !== undefined || themeAdapts(theme),
           host,
+          onShutdown: ownHandlers.onShutdown,
           policy,
           signal: controller.signal,
         });
@@ -1255,6 +1259,8 @@ interface RunEntry {
 interface BackgroundRead {
   /** Cancels the run, as the action's `cancel()` does, for an interrupt key nothing raised. */
   cancel: () => void;
+  /** Registers a handler on the run's place, which restores the terminal if a signal ends the wait. */
+  onShutdown: OnShutdown;
   choice: Background | undefined;
   detects: boolean;
   host: Host;
@@ -1323,7 +1329,7 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
     enter: () => {
       const { publishEnv } = handle;
       return {
-        background: ({ cancel, choice, detects, host, policy, signal }) =>
+        background: ({ cancel, choice, detects, host, onShutdown, policy, signal }) =>
           settleBackground(
             {
               choice,
@@ -1338,7 +1344,7 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
                 (stream) => host.terminal[stream].isTTY,
               ),
             },
-            () => askTerminal(host, { cancel, signal }),
+            () => askTerminal(host, { cancel, onShutdown, signal }),
           ),
         host: (reached) => captureHost(application, handle, reached),
         publishEnvironment: publishEnv,

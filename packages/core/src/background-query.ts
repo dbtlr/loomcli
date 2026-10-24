@@ -4,6 +4,7 @@ import { setImmediate as nextTurn } from 'node:timers/promises';
 import { backgroundQuery, queryAllowed, readReplies } from './background.js';
 import type { Background, InterruptSignal } from './background.js';
 import { inBackgroundJob } from './process-handle.js';
+import type { OnShutdown } from './signal-lane.js';
 import type { Host } from './types.js';
 
 /**
@@ -59,8 +60,9 @@ interface ReplyWait {
 }
 
 /**
- * Calls `ask` once stdin is read, then reads it until the DA1 reply, the deadline, an abort of
- * `signal`, or the end of stdin. The deadline is one unreferenced timer, so it never keeps the
+ * Calls `ask` once stdin is read, then reads it until the DA1 reply, an interrupt key, the
+ * deadline, an abort of `signal`, or the end of stdin. An interrupt key ends the wait at once, as
+ * an abort does, so Ctrl-C never waits on the deadline. The deadline is one unreferenced timer, so it never keeps the
  * process alive. `stop` clears it, removes every listener the wait added, and stops stdin flowing,
  * so a terminal's handle stops reading and the stream returns to the flowing state it was found in.
  */
@@ -75,7 +77,8 @@ function waitForReplies(stdin: Readable, signal: AbortSignal, ask: () => void): 
     timer.unref();
     const data = (chunk: unknown) => {
       received += bytesOf(chunk);
-      if (readReplies(received).ended) {
+      const read = readReplies(received);
+      if (read.ended || read.signals.length > 0) {
         clearTimeout(timer);
         end();
       }
@@ -96,30 +99,49 @@ function waitForReplies(stdin: Readable, signal: AbortSignal, ask: () => void): 
   return { done, received: () => received, stop: () => stop() };
 }
 
-/** Switches a stream to raw mode, answering whether it switched; a stream that throws stays as it was. */
-function enterRaw(raw: (mode: boolean) => unknown): boolean {
+/**
+ * Switches stdin to raw mode and answers the call that restores the mode found, or `undefined` when
+ * the stream throws, which leaves it as it was. Until that call, an `onShutdown` handler restores
+ * the mode if a signal ends the process first.
+ */
+function enterRaw(
+  stdin: Readable,
+  raw: (mode: boolean) => unknown,
+  onShutdown: OnShutdown,
+): (() => void) | undefined {
+  const found = Reflect.get(stdin, 'isRaw') === true;
   try {
     raw(true);
-    return true;
   } catch {
-    return false;
+    return undefined;
   }
+  const restore = () => {
+    raw(found);
+  };
+  const remove = onShutdown(restore);
+  return () => {
+    remove();
+    restore();
+  };
 }
 
 /**
  * Writes the background query in raw mode and returns every byte read until the wait ends, or
- * nothing when the stream refuses raw mode. The mode found is restored in a `finally`, and stdin is
- * left in the flowing state it was found in, with no listener of core's.
+ * nothing when the stream refuses raw mode. The mode found is restored in a `finally`, and through
+ * an `onShutdown` handler while the read is open, so a signal that ends the process during the wait
+ * leaves the terminal as it was found. Stdin is left in the flowing state it was found in, with no
+ * listener of core's.
  */
 async function exchange(terminal: {
   readonly destination: Writable;
+  readonly onShutdown: OnShutdown;
   readonly raw: (mode: boolean) => unknown;
   readonly signal: AbortSignal;
   readonly stdin: Readable;
 }): Promise<string> {
   const { destination, raw, signal, stdin } = terminal;
-  const found = Reflect.get(stdin, 'isRaw') === true;
-  if (!enterRaw(raw)) {
+  const restore = enterRaw(stdin, raw, terminal.onShutdown);
+  if (restore === undefined) {
     return '';
   }
   const wait = waitForReplies(stdin, signal, () => destination.write(backgroundQuery));
@@ -127,7 +149,7 @@ async function exchange(terminal: {
     await wait.done;
   } finally {
     wait.stop();
-    raw(found);
+    restore();
   }
   return wait.received();
 }
@@ -192,7 +214,11 @@ async function signalsDelivered(): Promise<void> {
  */
 async function askTerminal(
   host: Host,
-  run: { readonly cancel: () => void; readonly signal: AbortSignal },
+  run: {
+    readonly cancel: () => void;
+    readonly onShutdown: OnShutdown;
+    readonly signal: AbortSignal;
+  },
 ): Promise<Background | undefined> {
   const { signal } = run;
   const raw = rawModeOf(host.stdin);
@@ -207,6 +233,7 @@ async function askTerminal(
   return readBackground({
     cancel: run.cancel,
     destination: host.stderr,
+    onShutdown: run.onShutdown,
     raise: host.raise,
     raw,
     signal,
