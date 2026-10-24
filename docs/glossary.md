@@ -385,6 +385,10 @@ _Avoid_: Grace period, deadline (for the setting), timeout (alone, for the conce
 A synchronous function registered through `onShutdown`, on the action or middleware context for a run or exported from `@loomcli/core` for the process, that restores what must not outlive the process, such as raw mode or the cursor. It runs once, at the shutdown's end or at the process's own `exit` event, newest first. A run's handler is removed when the run ends outside a shutdown.
 _Avoid_: Cleanup, defer, disposer, finalizer, exit handler, process event
 
+**Signal lane**:
+What one signal source's listeners, live runs, and shutdown, suspend, and resume handlers are kept in. Core listens and re-raises through the lane of each run's signal source, so a shutdown aborts every run that shares it. The real process's lane lives under `globalThis[Symbol.for('loomcli.processLane')]`, shared by every copy of `@loomcli/core`, and holds a map from every other source, such as a mock's, to its lane, so one source has one lane however many copies of core ask. Its shape is a contract across versions of core that only grows.
+_Avoid_: Process lane (for the lane of any other source), process events, signal registry
+
 **Suspend**:
 What `SIGTSTP` does while core listens for it, from Ctrl-Z at a cooked terminal or a reader that raises it for a raw Ctrl-Z byte: core calls each `onSuspend` handler, newest first, which restores cooked mode and shows the cursor, then removes its listener and re-raises `SIGTSTP`, so the default action stops the process. It cancels no run.
 _Avoid_: Pause, background (for the event)

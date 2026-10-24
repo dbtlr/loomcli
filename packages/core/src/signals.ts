@@ -1,6 +1,6 @@
 import { InternalError } from './errors.js';
 import { signalCodes } from './signal-lane.js';
-import type { EndingSignal, Lane, LanePlace, LaneRun } from './signal-lane.js';
+import type { EndingSignal, SharedLane, LanePlace, LaneRun } from './signal-lane.js';
 
 /**
  * What aborted one run's private controller. Core owns this value, so a middleware reads `source`
@@ -125,7 +125,7 @@ function bracketRun(
   causes: {
     caller: AbortSignal | undefined;
     parent?: ParentRun | undefined;
-    lane: Lane;
+    lane: SharedLane;
     entry: LaneEntry;
   },
 ): SignalBracket {

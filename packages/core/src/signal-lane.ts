@@ -68,7 +68,7 @@ interface LanePlace {
  * fields beside the earlier ones. A later copy checks that a lane it found has a member it adds
  * before calling it, because an earlier copy may have built that lane.
  */
-interface Lane {
+interface SharedLane {
   readonly source: SignalSource;
   enter(run: LaneRun): LanePlace;
   /** Registers a handler scoped to the process, and answers the call that removes it. */
@@ -93,7 +93,7 @@ function isSignalSource(value: unknown): value is SignalSource {
 }
 
 /** Whether a value another copy of core stored is a lane this copy can call. */
-function isLane(value: unknown): value is Lane {
+function isSharedLane(value: unknown): value is SharedLane {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -114,7 +114,7 @@ const absentPlace: LanePlace = { leave: () => undefined, onShutdown: nothingHeld
  * The lane a copy of core uses over a source whose shared lane lacks the members it would call: it
  * goes without them, so it listens for nothing and holds nothing, and builds no second lane.
  */
-function absentLane(source: SignalSource): Lane {
+function absentLane(source: SignalSource): SharedLane {
   return {
     enter: () => absentPlace,
     onResume: nothingHeld,
@@ -228,7 +228,7 @@ function callCaught(call: () => unknown, failed?: (thrown: unknown) => void): vo
  * a second ending signal. At its end the lane flushes each live run's terminal, calls every
  * pending shutdown handler newest first, removes its listeners, and re-raises the first signal.
  */
-class SignalLane implements Lane {
+class SignalLane implements SharedLane {
   readonly source: SignalSource;
   readonly #places = new Set<Place>();
   readonly #shutdownHandlers = new Set<PendingShutdown>();
@@ -528,7 +528,7 @@ class SignalLane implements Lane {
 export type {
   EndingSignal,
   HandlerRegistration,
-  Lane,
+  SharedLane,
   LanePlace,
   LaneRun,
   OnShutdown,
@@ -536,4 +536,12 @@ export type {
   ShutdownRegistration,
   Synchronous,
 };
-export { absentLane, endingSignals, isLane, isSignalSource, laneMembers, signalCodes, SignalLane };
+export {
+  absentLane,
+  endingSignals,
+  isSharedLane,
+  isSignalSource,
+  laneMembers,
+  signalCodes,
+  SignalLane,
+};

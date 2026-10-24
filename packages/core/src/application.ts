@@ -98,7 +98,7 @@ import { bakedFacts, isDevelopment } from './release.js';
 import { capabilities, plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { shutdownTimeout } from './shutdown.js';
-import type { Lane, OnShutdown } from './signal-lane.js';
+import type { SharedLane, OnShutdown } from './signal-lane.js';
 import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
 import type { CancellationCode, LaneEntry, ParentRun, SignalBracket } from './signals.js';
 import { installedSource } from './sources.js';
@@ -1213,7 +1213,7 @@ interface ActionCall {
   destination: LogDestination;
   fields: HandleFacts;
   /** The lane of the run's signal source, which the call takes its own place in. */
-  lane: Lane;
+  lane: SharedLane;
   /** Whether the run keeps its lane listening, which the call then does too. */
   listens: boolean;
   parent: ParentRun;
@@ -1262,7 +1262,7 @@ interface BackgroundRead {
 interface RunDoor {
   readonly invokedBy: InvokedBy;
   /** The lane of the run's signal source. */
-  readonly lane: Lane;
+  readonly lane: SharedLane;
   /** Whether the run keeps its lane listening: `run()`, or an action's call under it. */
   readonly listens: boolean;
   /**
@@ -1370,7 +1370,7 @@ function nameDoor<Mapped>(
     declared: RenderingPolicy;
     fields: () => HandleFacts;
     /** The lane of the call's signal source: its handle's, or its action's run's. */
-    lane: Lane;
+    lane: SharedLane;
     /** The caller's progress observer, which the run's output hands each event to. */
     observe: ((event: ProgressEvent) => void) | undefined;
     streams: { stderr: Writable; stdout: Writable };
