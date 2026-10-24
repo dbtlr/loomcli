@@ -20,6 +20,8 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly out: Out;
   readonly signal: AbortSignal;
   readonly onShutdown: OnShutdown; // see onShutdown
+  readonly onSuspend: OnSuspend; // see Suspend and resume
+  readonly onResume: OnResume; // see Suspend and resume
   readonly log: Log; // see Logging
   readonly next: () => Promise<ChainOutcome>;
 }

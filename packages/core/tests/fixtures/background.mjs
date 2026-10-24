@@ -14,9 +14,10 @@ import { theme } from '@loomcli/plugins/theme';
  * reads stdin, `listen`, whether the action reads stdin through a bare data listener instead of
  * `read()`, `prepare`, variables an onEnvironment hook imports, `fail`, whether the action
  * fails, `invoke`, whether the run is an invocation by name, `kill: 'record'`, which records the
- * signals core raises on the process instead of sending them, and `piped`, whether the scripted stdin
- * is a stream given to `processHandle` rather than its signal source's own terminal. It prints what
- * happened as JSON.
+ * signals core raises on the process instead of sending them, `piped`, whether the scripted stdin
+ * is a stream given to `processHandle` rather than its signal source's own terminal, and `signal`,
+ * `{ after, name }`, a signal the process receives `after` milliseconds in. It prints what happened
+ * as JSON.
  */
 const scenario = JSON.parse(process.argv[2]);
 
@@ -217,6 +218,9 @@ if (scenario.abort === 0) {
   controller.abort();
 } else if (scenario.abort !== undefined) {
   realSetTimeout(() => controller.abort(), scenario.abort);
+}
+if (scenario.signal !== undefined) {
+  realSetTimeout(() => process.emit(scenario.signal.name), scenario.signal.after);
 }
 
 // A real terminal's stdin keeps the process alive while core waits; the scripted one holds nothing.

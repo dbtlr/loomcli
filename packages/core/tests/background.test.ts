@@ -204,6 +204,22 @@ describe('interrupt keys during the wait', () => {
     expect(suspended.stdinRead).toBe('a');
   });
 
+  it('raise one SIGTSTP for two Ctrl-Z keys in one read, as a cooked terminal suspends once', () => {
+    const report = run({ kill: 'record', replies: `${ctrlZ}${ctrlZ}${light}` });
+    expect(report.raised).toEqual([{ raw: false, self: true, signal: 'SIGTSTP' }]);
+  });
+
+  it('end the wait at once, with no reply, as an abort does', () => {
+    const raised = run({ kill: 'record', replies: `a${ctrlC}` });
+    expect([raised.elapsed, raised.raised, raised.modes]).toEqual([
+      'prompt',
+      [{ raw: false, self: true, signal: 'SIGINT' }],
+      [true, false],
+    ]);
+    const cancelled = run({ kill: 'record', piped: true, replies: ctrlC });
+    expect([cancelled.elapsed, cancelled.code]).toEqual(['prompt', 130]);
+  });
+
   it('Ctrl-C ends the run by SIGINT, which a shell reports as status 130', () => {
     const scenario = JSON.stringify({ replies: `${ctrlC}${light}` });
     const result = spawnSync(
@@ -219,6 +235,16 @@ describe('interrupt keys during the wait', () => {
       seen: { action: 'unread', middleware: 'unread', view: 'unread' },
       stdout: '',
     });
+  });
+});
+
+describe('a shutdown during the wait', () => {
+  it('leaves raw mode before the signal is raised again', () => {
+    const report = run({ kill: 'record', signal: { after: 50, name: 'SIGQUIT' } });
+    expect([report.code, report.raised]).toEqual([
+      131,
+      [{ raw: false, self: true, signal: 'SIGQUIT' }],
+    ]);
   });
 });
 

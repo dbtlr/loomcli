@@ -89,6 +89,14 @@ const throwing: Middleware<Plugin> = async ({ next, onShutdown: register }) => {
   await next();
 };
 
+/** A middleware whose resume handler throws, then continues the chain. */
+const breaking: Middleware<Plugin> = async ({ next, onResume }) => {
+  onResume(() => {
+    throw new Error('the middleware handler broke');
+  });
+  await next();
+};
+
 /** Resolves once `signal` aborts. */
 function aborted(signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
@@ -762,13 +770,17 @@ describe('the lane', () => {
         }),
       ]);
     }
-    for (const [member, label] of [
-      ['onSuspend', 'suspend'],
-      ['onResume', 'resume'],
+    for (const [holder, member, label] of [
+      [lane, 'onSuspend', 'suspend'],
+      [lane, 'onResume', 'resume'],
+      [place, 'onSuspend', 'run-suspend'],
+      [place, 'onResume', 'run-resume'],
     ] as const) {
-      const hold: unknown = Reflect.get(lane, member);
+      const hold: unknown = Reflect.get(holder, member);
       if (typeof hold === 'function') {
-        Reflect.apply(hold, lane, [recorded(label, { handler: () => undefined })]);
+        Reflect.apply(hold, holder, [
+          recorded(label, { failed: () => undefined, handler: () => undefined }),
+        ]);
       }
     }
     mock.signals.raise('SIGTSTP');
@@ -776,14 +788,24 @@ describe('the lane', () => {
     expect([...new Set(read)].toSorted()).toEqual([
       'registration.failed',
       'registration.handler',
+      'resume.failed',
       'resume.handler',
+      'run-resume.failed',
+      'run-resume.handler',
+      'run-suspend.failed',
+      'run-suspend.handler',
       'run.cancel',
       'run.flush',
       'run.listens',
       'run.timeout',
+      'suspend.failed',
       'suspend.handler',
     ]);
-    expect(handed).toEqual(['place:leave,onShutdown', 'cancel:signal', 'shutdown:cause,code']);
+    expect(handed).toEqual([
+      'place:leave,onResume,onShutdown,onSuspend',
+      'cancel:signal',
+      'shutdown:cause,code',
+    ]);
   });
 
   it('the exported onShutdown is scoped to the process and listens on the real process', () => {
@@ -884,5 +906,204 @@ describe('suspend and resume', () => {
       ['raise:SIGCONT:0,0,0,0,0,1,1', ...suspend, ...suspend, 'raise:SIGCONT:0,0,0,0,0,1,1'],
       '0,0,0,0,0,0,0',
     ]);
+  });
+
+  it("a context's onSuspend and onResume run on its run's source and go when the run ends", async () => {
+    const mock = mockProcess();
+    const count = listening(mock);
+    const lines: string[] = [];
+    const counts: string[] = [];
+    const watching: Middleware<Plugin> = async ({ next, onResume, onSuspend }) => {
+      onSuspend(() => {
+        lines.push('suspend:middleware');
+      });
+      onResume(() => {
+        lines.push('resume:middleware');
+      });
+      await next();
+    };
+    const plugins = [
+      plugin('@fixture/watching', {
+        middleware: { activate: 'always', load: async () => ({ default: watching }) },
+      }),
+    ];
+    const app = new Application('app', { plugins }).action(({ onResume, onSuspend }) => {
+      onSuspend(() => {
+        lines.push('suspend:action');
+      });
+      const remove = onResume(() => {
+        lines.push('resume:action');
+      });
+      counts.push(count());
+      mock.signals.raise('SIGTSTP');
+      remove();
+      mock.signals.raise('SIGTSTP');
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    // A suspend after the run ended reaches no handler of the run's.
+    mock.signals.raise('SIGTSTP');
+    expect([lines, counts, count()]).toEqual([
+      [
+        'suspend:action',
+        'suspend:middleware',
+        'resume:middleware',
+        'resume:action',
+        'suspend:action',
+        'suspend:middleware',
+        'resume:middleware',
+      ],
+      ['1,1,1,1,1,1,1'],
+      '0,0,0,0,0,0,0',
+    ]);
+  });
+
+  it('a throwing suspend or resume handler is caught, logged naming its plugin, and the rest still run', async () => {
+    const mock = mockProcess();
+    const lines: string[] = [];
+    const app = new Application('app', {
+      plugins: [
+        plugin('@fixture/breaking', {
+          middleware: { activate: 'always', load: async () => ({ default: breaking }) },
+          onLog: (event) => {
+            lines.push(`log:${event.level}:${event.message}:${String(event.plugin)}`);
+          },
+        }),
+      ],
+    }).action(({ onResume, onSuspend }) => {
+      onSuspend(() => {
+        lines.push('suspend:older');
+      });
+      onSuspend(() => {
+        throw new Error('the action handler broke');
+      });
+      onResume(() => {
+        lines.push('resume:newer');
+      });
+      mock.signals.raise('SIGTSTP');
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(lines).toEqual([
+      'log:error:A suspend handler failed.:null',
+      'suspend:older',
+      'log:error:A resume handler failed.:@fixture/breaking',
+      'resume:newer',
+    ]);
+  });
+
+  it('a suspend erases the open regions and shows the cursor before the process stops, and the resume redraws them', async () => {
+    const mock = mockProcess({ terminal: { columns: 80, rows: 24 } });
+    const count = listening(mock);
+    const view = { render: (text: string) => text };
+    const raised: string[] = [];
+    const counts: string[] = [];
+    let before = 0;
+    const deliver = mock.signals.raise.bind(mock.signals);
+    // Each raise is recorded with what stderr shows since the frame at that moment, then delivered.
+    vi.spyOn(mock.signals, 'raise').mockImplementation((signal) => {
+      raised.push(`${signal}:${JSON.stringify(mock.stderr.text.slice(before))}`);
+      deliver(signal);
+    });
+    const app = new Application('app').action(async ({ out }) => {
+      counts.push(count());
+      const region = out.region();
+      await region.draw('WORKING-FRAME\n', view);
+      counts.push(count());
+      before = mock.stderr.text.length;
+      mock.signals.raise('SIGTSTP');
+      await nextTurn();
+      raised.push(`resumed:${JSON.stringify(mock.stderr.text.slice(before))}`);
+      await region.end();
+      counts.push(count());
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect([raised, counts]).toEqual([
+      [
+        'SIGTSTP:""',
+        `SIGTSTP:${JSON.stringify('\r\u001B[1A\u001B[J\u001B[?25h')}`,
+        `resumed:${JSON.stringify('\r\u001B[1A\u001B[J\u001B[?25hWORKING-FRAME\n')}`,
+      ],
+      ['1,1,1,1,1,0,0', '1,1,1,1,1,1,1', '1,1,1,1,1,0,0'],
+    ]);
+  });
+
+  it('a write queued before a suspend lands where the erase left the cursor, and the resume draws below it', async () => {
+    const mock = mockProcess({ terminal: { columns: 80, rows: 24 } });
+    const view = { render: (text: string) => text };
+    let before = 0;
+    const app = new Application('app').action(async ({ out }) => {
+      // The region opens below a partial row, so the stack starts on the row after it.
+      await out.draw('Fetching ', view);
+      const region = out.region();
+      await region.draw('SPIN\n', view);
+      before = mock.stderr.text.length;
+      const pending = out.draw('MIDDLE\n', view);
+      mock.signals.raise('SIGTSTP');
+      await pending;
+      await nextTurn();
+      await region.end();
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(mock.stderr.text.slice(before)).toBe('\r\u001B[1A\u001B[J\u001B[?25hMIDDLE\nSPIN\n');
+  });
+
+  it('an app.invoke never starts listening for its suspend handlers, which run while a run() listens', async () => {
+    const mock = mockProcess();
+    const count = listening(mock);
+    const lines: string[] = [];
+    const during: string[] = [];
+    const reached = deferred();
+    const release = deferred();
+    const invoked = new Application('invoked').action(({ onResume, onSuspend }) => {
+      onSuspend(() => {
+        lines.push('suspend:invoked');
+      });
+      onResume(() => {
+        lines.push('resume:invoked');
+      });
+      during.push(count());
+      mock.signals.raise('SIGTSTP');
+    });
+    await expect(invoked.invoke([], {}, { process: mock })).resolves.toMatchObject({
+      status: 'completed',
+    });
+    const holder = new Application('holder').action(async ({ onSuspend }) => {
+      onSuspend(() => {
+        lines.push('suspend:holder');
+      });
+      reached.resolve();
+      await release.promise;
+    });
+    const holding = holder.run({ process: mock });
+    await reached.promise;
+    const call = new Application('called').action(({ onSuspend }) => {
+      onSuspend(() => {
+        lines.push('suspend:called');
+      });
+      mock.signals.raise('SIGTSTP');
+    });
+    await call.invoke([], {}, { process: mock });
+    release.resolve();
+    await expect(holding).resolves.toBe(0);
+    expect([during, lines, count()]).toEqual([
+      ['0,0,0,0,0,0,0'],
+      ['suspend:called', 'suspend:holder'],
+      '0,0,0,0,0,0,0',
+    ]);
+  });
+
+  it('a handler a context registers after its run ended holds nothing', async () => {
+    const mock = mockProcess();
+    const count = listening(mock);
+    const late: { onSuspend?: (handler: () => void) => () => void } = {};
+    const app = new Application('app').action(({ onSuspend }) => {
+      late.onSuspend = onSuspend;
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    const lines: string[] = [];
+    late.onSuspend?.(() => {
+      lines.push('suspend');
+    });
+    mock.signals.raise('SIGTSTP');
+    expect([lines, count()]).toEqual([[], '0,0,0,0,0,0,0']);
   });
 });

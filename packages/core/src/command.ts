@@ -80,6 +80,7 @@ import type { ParsedInvocation } from './parse.js';
 import { snapshot } from './plain.js';
 import { brokenAttachHook } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
+import type { LaneHandlers } from './signal-lane.js';
 import { fillInputs } from './sources.js';
 import type { SourceOutcome } from './sources.js';
 import type { ContextualStyle } from './style.js';
@@ -153,6 +154,8 @@ export interface ArgumentSlot {
 export interface DispatchInput {
   cancel: () => void;
   onShutdown: ActionContext<unknown>['onShutdown'];
+  onSuspend: ActionContext<unknown>['onSuspend'];
+  onResume: ActionContext<unknown>['onResume'];
   interactive: boolean;
   supplied: ActionContext<unknown>['supplied'];
   stdin: Content | undefined;
@@ -875,7 +878,9 @@ export function declareAction<Args, Options, Globals, Result, Stdin extends Stdi
       interactive: context.interactive,
       invoke: context.invoke,
       log: context.log,
+      onResume: context.onResume,
       onShutdown: context.onShutdown,
+      onSuspend: context.onSuspend,
       options: context.options,
       out: declaredChannel(context.out),
       passthrough: context.passthrough,
@@ -1847,7 +1852,9 @@ function bindDispatch<Args, Options, Globals>(
 ) {
   return ({
     cancel,
+    onResume,
     onShutdown,
+    onSuspend,
     interactive,
     supplied,
     command,
@@ -1883,7 +1890,9 @@ function bindDispatch<Args, Options, Globals>(
       interactive,
       invoke,
       log,
+      onResume,
       onShutdown,
+      onSuspend,
       options: { ...globalOptions, ...bound.options },
       out,
       passthrough,
@@ -2372,8 +2381,11 @@ export function inputPlaces(graph: BuiltGraph): InputPlaces {
 /** What one invocation reaches the middleware chain with. */
 export interface DispatchInvocation {
   cancel: () => void;
-  /** The `onShutdown` of one context of the run, bound to the plugin core is calling, or to none. */
-  onShutdown: (plugin: string | null) => DispatchInput['onShutdown'];
+  /**
+   * The `onShutdown`, `onSuspend`, and `onResume` of one context of the run, bound to the plugin
+   * core is calling, or to none.
+   */
+  laneHandlers: (plugin: string | null) => LaneHandlers;
   /** The channel the action receives, which the results lane builds from the routed node. */
   channel: (binding: ResultBinding) => ActionChannel;
   host: Host;
@@ -2714,7 +2726,7 @@ function readyDispatch(
           interactive,
           invoke: invocation.invoke,
           log: invocation.logFor(null),
-          onShutdown: invocation.onShutdown(null),
+          ...invocation.laneHandlers(null),
           out: channel.out,
           passthrough: local.passthrough,
           signal: invocation.signal,

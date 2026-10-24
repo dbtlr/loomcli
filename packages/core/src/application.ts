@@ -98,8 +98,8 @@ import { bakedFacts, isDevelopment } from './release.js';
 import { capabilities, plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { shutdownTimeout } from './shutdown.js';
-import type { SharedLane, OnShutdown } from './signal-lane.js';
-import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
+import type { LaneHandlers, OnShutdown, SharedLane } from './signal-lane.js';
+import { bracketRun, cancellationCode, isCancellationEcho, placeHandlers } from './signals.js';
 import type { CancellationCode, LaneEntry, ParentRun, SignalBracket } from './signals.js';
 import { installedSource } from './sources.js';
 import { themeAdapts, themePalette } from './theme.js';
@@ -154,6 +154,9 @@ export type ApplicationMethod = Exclude<CommandMethod, 'alias'> | 'globalOption'
 
 /** The registry a failure is reported through when the application's own could not be built. */
 const noViews: ViewRegistry = [];
+
+/** Drops what a handler of core's own threw, which nothing an operator does could change. */
+const dropped = (): void => undefined;
 
 /**
  * What one preparation hands back as each stage of the build passes, in the order it passes them.
@@ -906,6 +909,13 @@ class ApplicationBuilder<
         output = invocationOutput;
         // A closed reader on stdout ends the run as a cancellation does, with its own reason.
         invocationOutput.useClosedPipe((cause) => signals?.closePipe(cause));
+        // Core's own handlers on the run's place: the live regions and the background query.
+        const ownHandlers = placeHandlers(bracket.place, {
+          resume: dropped,
+          shutdown: dropped,
+          suspend: dropped,
+        });
+        invocationOutput.useSuspension(ownHandlers);
         // The constructor validated the declared policy, which the build hands over after the overrides.
         let policy: RenderingPolicy = {};
         // The installed theme, which the run's background resolves to a palette once it settles.
@@ -932,6 +942,7 @@ class ApplicationBuilder<
           choice: backgroundSpellings && backgroundChoice(host.argv, backgroundSpellings),
           detects: backgroundSpellings !== undefined || themeAdapts(theme),
           host,
+          onShutdown: ownHandlers.onShutdown,
           policy,
           signal: controller.signal,
         });
@@ -971,18 +982,20 @@ class ApplicationBuilder<
             parent: { reason: () => bracket.reason(), signal: controller.signal },
           };
           /**
-           * A context's `onShutdown` registers through the run's place, and a handler's throw is an
-           * `error` log event naming the plugin whose middleware registered it, or none.
+           * A context's `onShutdown`, `onSuspend`, and `onResume` register through the run's place,
+           * and a handler's throw is an `error` log event naming the plugin whose middleware
+           * registered it, or none.
            */
-          const onShutdown =
-            (plugin: string | null): OnShutdown =>
-            (handler) =>
-              bracket.place.onShutdown({
-                failed: (thrown) => {
-                  logs().bind(plugin).error('A shutdown handler failed.', { error: thrown });
-                },
-                handler,
-              });
+          const laneHandlers = (plugin: string | null): LaneHandlers => {
+            const failed = (sentence: string) => (thrown: unknown) => {
+              logs().bind(plugin).error(sentence, { error: thrown });
+            };
+            return placeHandlers(bracket.place, {
+              resume: failed('A resume handler failed.'),
+              shutdown: failed('A shutdown handler failed.'),
+              suspend: failed('A suspend handler failed.'),
+            });
+          };
           await runInvocation({
             cancel: bracket.cancel,
             channel: (binding) => invocationOutput.channel(binding),
@@ -993,9 +1006,9 @@ class ApplicationBuilder<
             inspected,
             invoke: (path, values, options) => this.#invoke({ options, path, values }, action),
             invokedBy: door.invokedBy,
+            laneHandlers,
             logFor: (plugin) => logs().bind(plugin),
             offer,
-            onShutdown,
             out: output.out,
             places,
             plugins: built.plugins,
@@ -1246,6 +1259,8 @@ interface RunEntry {
 interface BackgroundRead {
   /** Cancels the run, as the action's `cancel()` does, for an interrupt key nothing raised. */
   cancel: () => void;
+  /** Registers a handler on the run's place, which restores the terminal if a signal ends the wait. */
+  onShutdown: OnShutdown;
   choice: Background | undefined;
   detects: boolean;
   host: Host;
@@ -1314,7 +1329,7 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
     enter: () => {
       const { publishEnv } = handle;
       return {
-        background: ({ cancel, choice, detects, host, policy, signal }) =>
+        background: ({ cancel, choice, detects, host, onShutdown, policy, signal }) =>
           settleBackground(
             {
               choice,
@@ -1329,7 +1344,7 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
                 (stream) => host.terminal[stream].isTTY,
               ),
             },
-            () => askTerminal(host, { cancel, signal }),
+            () => askTerminal(host, { cancel, onShutdown, signal }),
           ),
         host: (reached) => captureHost(application, handle, reached),
         publishEnvironment: publishEnv,

@@ -66,9 +66,12 @@ function asking<Options>(
     { once: true },
   );
   let hidden = false;
+  // A suspend shows the cursor before the process stops, so the resume hides it again.
+  let unhide: (() => void) | undefined = undefined;
   return {
     /** The answered or cancelled line, then the region's close and the cursor shown again. */
     async finish(answer: { value: string | undefined } | undefined) {
+      unhide?.();
       try {
         if (region.closedBy === undefined) {
           await (answer
@@ -84,6 +87,9 @@ function asking<Options>(
       await region.draw(data, questionFrame);
       if (!hidden) {
         hidden = true;
+        unhide = context.onResume(() => {
+          void context.out.draw(hideCursor, controls);
+        });
         await context.out.draw(hideCursor, controls);
       }
     },
@@ -119,7 +125,7 @@ async function askText<Options, Output>(
     await frame();
     while (true) {
       const key = await reader.read();
-      if (key.kind === 'cancel' || (key.kind === 'eof' && typed === '')) {
+      if (key.kind === 'eof' && typed === '') {
         context.cancel();
         context.signal.throwIfAborted();
       }
@@ -196,7 +202,7 @@ async function askSelect<Options, Choice extends string>(
     await frame();
     while (true) {
       const key = await reader.read();
-      if (key.kind === 'cancel' || key.kind === 'eof') {
+      if (key.kind === 'eof') {
         context.cancel();
         context.signal.throwIfAborted();
       }

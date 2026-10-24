@@ -12,7 +12,7 @@ import type { FailureForm } from './form.js';
 import type { CommandGraph, CommandNode, ResultNode } from './inspect.js';
 import type { Log } from './log.js';
 import type { RenderingPolicy } from './rendering.js';
-import type { OnShutdown } from './signal-lane.js';
+import type { OnResume, OnShutdown, OnSuspend } from './signal-lane.js';
 import type { ContextualStyle } from './style.js';
 
 type LowercaseLetter =
@@ -1208,6 +1208,10 @@ export interface ActionContext<Args, Options = {}, Result = unknown> {
    * is removed when the run ends while no shutdown is under way. Answers the call that removes it.
    */
   readonly onShutdown: OnShutdown;
+  /** Registers a synchronous handler that runs when Ctrl-Z suspends the process, until the run ends. */
+  readonly onSuspend: OnSuspend;
+  /** Registers a synchronous handler that runs when the process resumes, until the run ends. */
+  readonly onResume: OnResume;
   /** Runs another Command of the graph this run built, by name, and captures what it writes. */
   readonly invoke: <Mapped = LoomError>(
     path: readonly string[],

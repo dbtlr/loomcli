@@ -1,6 +1,6 @@
 import { InternalError } from './errors.js';
 import { signalCodes } from './signal-lane.js';
-import type { EndingSignal, SharedLane, LanePlace, LaneRun } from './signal-lane.js';
+import type { EndingSignal, LaneHandlers, LanePlace, LaneRun, SharedLane } from './signal-lane.js';
 
 /**
  * What aborted one run's private controller. Core owns this value, so a middleware reads `source`
@@ -161,5 +161,17 @@ function bracketRun(
   };
 }
 
+/** The handlers one context registers through its run's place, each throw going to its `failed`. */
+function placeHandlers(
+  place: LanePlace,
+  failed: Readonly<Record<'resume' | 'shutdown' | 'suspend', (thrown: unknown) => void>>,
+): LaneHandlers {
+  return {
+    onResume: (handler) => place.onResume({ failed: failed.resume, handler }),
+    onShutdown: (handler) => place.onShutdown({ failed: failed.shutdown, handler }),
+    onSuspend: (handler) => place.onSuspend({ failed: failed.suspend, handler }),
+  };
+}
+
 export type { CancellationCode, CancellationReason, LaneEntry, ParentRun, SignalBracket };
-export { bracketRun, cancellationCode, isCancellationEcho };
+export { bracketRun, cancellationCode, isCancellationEcho, placeHandlers };

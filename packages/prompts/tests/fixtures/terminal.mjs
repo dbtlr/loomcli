@@ -31,6 +31,13 @@ const app = new Application('setup', {
   })
   .option('install', { description: 'Install the service.', type: 'boolean' })
   .action(async (context) => {
+    // A test that signals the process reads its id, and one that ends it mid-question sets a delay.
+    if (process.env.PROMPT_ANNOUNCE === '1') {
+      process.stdout.write(`ready:${process.pid}:\n`);
+    }
+    if (process.env.PROMPT_EXIT_AFTER !== undefined) {
+      setTimeout(() => process.exit(3), Number(process.env.PROMPT_EXIT_AFTER));
+    }
     if (scenario === 'select') {
       const answer = await select(context, {
         choices: Array.from({ length: 10 }, (_value, index) => `choice-${index}`),
