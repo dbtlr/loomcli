@@ -152,6 +152,7 @@ export interface ArgumentSlot {
  */
 export interface DispatchInput {
   cancel: () => void;
+  onShutdown: ActionContext<unknown>['onShutdown'];
   interactive: boolean;
   supplied: ActionContext<unknown>['supplied'];
   stdin: Content | undefined;
@@ -874,6 +875,7 @@ export function declareAction<Args, Options, Globals, Result, Stdin extends Stdi
       interactive: context.interactive,
       invoke: context.invoke,
       log: context.log,
+      onShutdown: context.onShutdown,
       options: context.options,
       out: declaredChannel(context.out),
       passthrough: context.passthrough,
@@ -1845,6 +1847,7 @@ function bindDispatch<Args, Options, Globals>(
 ) {
   return ({
     cancel,
+    onShutdown,
     interactive,
     supplied,
     command,
@@ -1880,6 +1883,7 @@ function bindDispatch<Args, Options, Globals>(
       interactive,
       invoke,
       log,
+      onShutdown,
       options: { ...globalOptions, ...bound.options },
       out,
       passthrough,
@@ -2368,6 +2372,8 @@ export function inputPlaces(graph: BuiltGraph): InputPlaces {
 /** What one invocation reaches the middleware chain with. */
 export interface DispatchInvocation {
   cancel: () => void;
+  /** The `onShutdown` of one context of the run, bound to the plugin core is calling, or to none. */
+  onShutdown: (plugin: string | null) => DispatchInput['onShutdown'];
   /** The channel the action receives, which the results lane builds from the routed node. */
   channel: (binding: ResultBinding) => ActionChannel;
   host: Host;
@@ -2708,6 +2714,7 @@ function readyDispatch(
           interactive,
           invoke: invocation.invoke,
           log: invocation.logFor(null),
+          onShutdown: invocation.onShutdown(null),
           out: channel.out,
           passthrough: local.passthrough,
           signal: invocation.signal,

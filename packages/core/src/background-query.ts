@@ -1,7 +1,8 @@
 import type { Readable, Writable } from 'node:stream';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 
 import { backgroundQuery, queryAllowed, readReplies } from './background.js';
-import type { Background } from './background.js';
+import type { Background, InterruptSignal } from './background.js';
 import { inBackgroundJob } from './process-handle.js';
 import type { Host } from './types.js';
 
@@ -147,12 +148,40 @@ async function readBackground(
   if (typeahead !== '' && !stdin.readableEnded) {
     stdin.unshift(Buffer.from(typeahead, 'latin1'));
   }
+  if (raiseKeys(terminal, signals)) {
+    await signalsDelivered();
+  }
+  return answer;
+}
+
+/**
+ * Raises the signal each interrupt key stands for, in arrival order, or cancels the run for Ctrl-C
+ * and Ctrl-\ where nothing is raised, and answers whether any signal was raised.
+ */
+function raiseKeys(
+  terminal: Pick<Host, 'raise'> & { readonly cancel: () => void },
+  signals: readonly InterruptSignal[],
+): boolean {
+  let raised = false;
   for (const signal of signals) {
-    if (!terminal.raise(signal) && signal !== 'SIGTSTP') {
+    if (terminal.raise(signal)) {
+      raised = true;
+    } else if (signal !== 'SIGTSTP') {
       terminal.cancel();
     }
   }
-  return answer;
+  return raised;
+}
+
+/**
+ * Waits until a signal raised on the process has reached its listeners. A signal a process raises
+ * on itself waits for the event loop to poll, and the run would otherwise go on past the query in
+ * the meantime, so a shutdown the key started would find the action already running. Two turns
+ * hold at least one poll that starts after this call.
+ */
+async function signalsDelivered(): Promise<void> {
+  await nextTurn();
+  await nextTurn();
 }
 
 /**

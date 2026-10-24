@@ -16,10 +16,6 @@ function build(scenario: string, mode: 'inspect' | 'rule' | 'run') {
  */
 const thrown = [
   [
-    'signals-second-claim',
-    'Plugin "@acme/trace" claims the signals slot, which plugin "@loomcli/signals" already holds. Install one owner.',
-  ],
-  [
     'installed-twice',
     'The Application installs plugin "@loomcli/help" twice. Install each plugin once.',
   ],
@@ -240,14 +236,6 @@ test('one class overridden by the application and by a plugin resolves first-in-
     status: 1,
     stderr: 'plugin fatal: the action stopped the invocation\n',
     stdout: 'resolved:1\n',
-  });
-});
-
-test('an empty signals claim leaves the slot free for the next plugin', () => {
-  expect(build('signals-empty-claim', 'inspect')).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: 'inspected\n',
   });
 });
 

@@ -22,6 +22,7 @@ import {
   viewSelection,
   viewSelectionCorrection,
 } from './rules.js';
+import type { OnShutdown } from './signal-lane.js';
 import type { ContextualStyle } from './style.js';
 import { handled } from './thenable.js';
 import type {
@@ -75,6 +76,11 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   /** Records a log event under the plugin's identity. */
   readonly log: Log;
   readonly signal: AbortSignal;
+  /**
+   * Registers a synchronous handler that runs once, at the end of a shutdown or of the process, and
+   * is removed when the run ends while no shutdown is under way. Answers the call that removes it.
+   */
+  readonly onShutdown: OnShutdown;
   readonly next: () => Promise<ChainOutcome>;
 }
 
@@ -263,6 +269,8 @@ interface EntryState {
  */
 interface Invocation {
   cancel: () => void;
+  /** The `onShutdown` of one context of the run, bound to the plugin core is calling, or to none. */
+  onShutdown: (plugin: string | null) => OnShutdown;
   style: ContextualStyle;
   /** The action's own channel, built from the routed Command's declaration when it dispatches. */
   channel: (binding: ResultBinding) => ActionChannel;
@@ -502,6 +510,7 @@ async function runChain(
       host: invocation.host,
       log: invocation.logFor(entry.identity),
       next,
+      onShutdown: invocation.onShutdown(entry.identity),
       options: prepared.options,
       out: invocation.out,
       ownOptions: prepared.own(entry.identity, entry.inputs),

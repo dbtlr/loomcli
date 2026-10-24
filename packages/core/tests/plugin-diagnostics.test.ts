@@ -130,12 +130,6 @@ const cases: Record<string, RuleParts> = {
     sentence:
       'Diagnostic rule "Retry Limit" has no package part, or a subpath or rule name that is not kebab-case.',
   },
-  'signals-slot': {
-    correction: 'Install one owner.',
-    rule: 'slot-taken',
-    sentence:
-      'Plugin "@acme/trace" claims the signals slot, which plugin "@acme/signals" already holds.',
-  },
   'theme-slot': {
     correction: 'Install one owner.',
     rule: 'slot-taken',

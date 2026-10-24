@@ -102,6 +102,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Invalid release facts.** The build bakes the release facts into \_\_LOOM\_RELEASE\_\_: a build of source, development, or distributed, and an optional release group with a semantic version, a repository as owner/name, and an optional asset name. A malformed value leaves the build unknown, so core shows the author this diagnostic in every build.
 
+### @loomcli/core/invalid-shutdown-timeout
+
+**Invalid shutdown timeout.** After an ending signal, core gives the runs shutdown.timeout milliseconds to unwind and then ends the process. A timer waits a whole number of milliseconds from 0 through 2147483647, so the budget is one of those.
+
 ### @loomcli/core/missing-input-name
 
 **Unknown missing input.** A missing input names a local option of the routed Command.
@@ -160,7 +164,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/slot-taken
 
-**Slot already claimed.** A slot is a position exactly one plugin claims: the theme, the process signals, and the configuration source. A second claim would leave two plugins answering where core asks one.
+**Slot already claimed.** A slot is a position exactly one plugin claims: the theme and the configuration source. A second claim would leave two plugins answering where core asks one.
 
 ### @loomcli/core/source-answers
 

@@ -33,7 +33,7 @@ async function mapped(): Promise<string> {
       return `${String(code)} ${message} ${outcome.messages}`;
     }
     case 'cancelled': {
-      const code: 130 | 141 | 143 = outcome.exitCode;
+      const code: 129 | 130 | 131 | 141 | 143 = outcome.exitCode;
       // @ts-expect-error TS2339: A cancelled outcome carries no captured text.
       void outcome.output;
       return String(code);

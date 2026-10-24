@@ -90,15 +90,17 @@ import type { OptionSpelling } from './options.js';
 import { Output, reportPlainly } from './output.js';
 import type { WriteState } from './output.js';
 import { parseInvocation } from './parse.js';
-import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
+import { installPlugins, pluginViews } from './plugin.js';
 import type { BuiltPlugin, InstalledOptionValues, Plugin } from './plugin.js';
 import { prepareEnvironment } from './prepare-environment.js';
-import { processHandle } from './process-handle.js';
+import { laneOf, processHandle } from './process-handle.js';
 import { bakedFacts, isDevelopment } from './release.js';
 import { capabilities, plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
-import { bracketCall, bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
-import type { CancellationCode, ParentRun, SignalBracket } from './signals.js';
+import { shutdownTimeout } from './shutdown.js';
+import type { Lane, OnShutdown } from './signal-lane.js';
+import { bracketRun, cancellationCode, isCancellationEcho } from './signals.js';
+import type { CancellationCode, LaneEntry, ParentRun, SignalBracket } from './signals.js';
 import { installedSource } from './sources.js';
 import { themeAdapts, themePalette } from './theme.js';
 import type { BuiltTheme } from './theme.js';
@@ -236,6 +238,8 @@ function echoesCancellation(thrown: unknown, controller: AbortController): boole
 
 export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
   rendering?: RenderingPolicy;
+  /** How a signal ends the process: `timeout` is the shutdown budget, 500 milliseconds by default. */
+  shutdown?: { readonly timeout?: number };
   views?: readonly ViewOverride[];
   translators?: readonly Translation[];
   plugins?: Plugins;
@@ -258,6 +262,8 @@ interface ApplicationConfig {
   owners: ReadonlyMap<CommandNodeHandle, ChildOwner>;
   plugins: readonly BuiltPlugin[];
   rendering: RenderingPolicy;
+  /** The milliseconds a run gets to unwind after an ending signal, which the constructor checked. */
+  shutdown: number;
   /** The application's translations, then each installed plugin's, in resolution order. */
   translators: TranslatorRegistry;
   /** The application's own view overrides. */
@@ -722,13 +728,14 @@ class ApplicationBuilder<
     const sinks = { stderr: captureSink(), stdout: captureSink() };
     const streams = { stderr: sinks.stderr.stream, stdout: sinks.stdout.stream };
     const progress = guardedObserver(read.onProgress);
+    // An action's call reads no handle, because its facts and its lane are its run's.
+    const handle = call.options?.process ?? processHandle();
     const end = await this.#execute(
       nameDoor(read, {
         action,
         declared: this.#config.rendering,
-        // An action's call reads no handle, because its facts are its run's.
-        fields: () =>
-          action?.fields ?? handleFacts(this.#name, call.options?.process ?? processHandle()),
+        fields: () => action?.fields ?? handleFacts(this.#name, handle),
+        lane: action?.lane ?? laneOf(handle.signals),
         observe: progress.observe,
         streams,
       }),
@@ -878,6 +885,14 @@ class ApplicationBuilder<
      */
     try {
       try {
+        // The run takes its place in its lane before its first await, so a signal from now reaches it.
+        const bracket = door.bracket(controller, {
+          flush: () => {
+            output?.flushTerminal();
+          },
+          timeout: this.#config.shutdown,
+        });
+        signals = bracket;
         const entered = door.enter();
         const capture = entered.host(stderr);
         useReportHost(capture.report);
@@ -895,7 +910,6 @@ class ApplicationBuilder<
         let policy: RenderingPolicy = {};
         // The installed theme, which the run's background resolves to a palette once it settles.
         let theme: BuiltTheme = new Map();
-        signals = entered.bracket(controller);
         const { bound } = door;
         const stage: PrepareStage = {
           plugins: (plugins) => {
@@ -914,7 +928,7 @@ class ApplicationBuilder<
         this.stage(stage);
         // The run's background settles once, before graph build, so the first themed byte knows it.
         const settled = await entered.background({
-          cancel: () => signals?.cancel(),
+          cancel: bracket.cancel,
           choice: backgroundSpellings && backgroundChoice(host.argv, backgroundSpellings),
           detects: backgroundSpellings !== undefined || themeAdapts(theme),
           host,
@@ -947,22 +961,30 @@ class ApplicationBuilder<
           bound?.declaredValues ?? (await prepareDeclaredValues(inputs, host, places));
         graphBuilt = true;
         if (!controller.signal.aborted) {
-          /**
-           * The listeners the validated signals owner claimed. A build failure installs none, and
-           * neither does a run the caller had already cancelled: it touches the process not at all.
-           * An invocation by name's bracket installs none either.
-           */
-          signals.install(ownedSignals(built.plugins));
-          const run = signals;
-          // An action's own call reuses this run's graph, host fields, and signal.
+          // An action's own call reuses this run's graph, host fields, signal, and lane.
           const action: ActionCall = {
             bound: { declaredValues, graph, inspected, places },
             destination: logs().destination,
             fields: fieldsOf(host),
-            parent: { reason: () => run.reason(), signal: controller.signal },
+            lane: door.lane,
+            listens: door.listens,
+            parent: { reason: () => bracket.reason(), signal: controller.signal },
           };
+          /**
+           * A context's `onShutdown` registers through the run's place, and a handler's throw is an
+           * `error` log event naming the plugin whose middleware registered it, or none.
+           */
+          const onShutdown =
+            (plugin: string | null): OnShutdown =>
+            (handler) =>
+              bracket.place.onShutdown({
+                failed: (thrown) => {
+                  logs().bind(plugin).error('A shutdown handler failed.', { error: thrown });
+                },
+                handler,
+              });
           await runInvocation({
-            cancel: run.cancel,
+            cancel: bracket.cancel,
             channel: (binding) => invocationOutput.channel(binding),
             declaredValues,
             graph,
@@ -973,6 +995,7 @@ class ApplicationBuilder<
             invokedBy: door.invokedBy,
             logFor: (plugin) => logs().bind(plugin),
             offer,
+            onShutdown,
             out: output.out,
             places,
             plugins: built.plugins,
@@ -1138,6 +1161,8 @@ class ApplicationBuilder<
        */
       const cancelled = cancellation();
       const exitCode: ExitCode = cancelled ?? code;
+      // The run's reasons for core to listen end before its status is set.
+      signals?.finish();
       door.settle(exitCode);
       if (cancelled !== undefined) {
         return { exitCode: cancelled, kind: 'cancelled' };
@@ -1187,6 +1212,10 @@ interface ActionCall {
   /** Where the run's log events are delivered, which its nested runs deliver to as well. */
   destination: LogDestination;
   fields: HandleFacts;
+  /** The lane of the run's signal source, which the call takes its own place in. */
+  lane: Lane;
+  /** Whether the run keeps its lane listening, which the call then does too. */
+  listens: boolean;
   parent: ParentRun;
 }
 
@@ -1199,8 +1228,6 @@ interface RunEntry {
    * directory that cannot be read raised beside the facts its report writes through.
    */
   host: (stderr: Writable) => HostCapture;
-  /** Subscribes the run's controller to whatever cancels it. */
-  bracket: (controller: AbortController) => SignalBracket;
   /** Reads the run's inputs against the built graph. */
   read: (host: Host) => Invocation['read'];
   /** The run's verbosity, settled against the built graph from what the run reads its inputs from. */
@@ -1228,12 +1255,21 @@ interface BackgroundRead {
 
 /**
  * What differs between `run()` and an invocation by name, so one run body serves both. A run reads
- * argv and makes its process handle's effects: it captures the handle's streams, installs the
- * signals owner's listeners on its signal source, and writes its `exitCode`. An invocation by name
- * reads named values, writes to capture sinks, resolves its output plain, and makes no effect.
+ * argv and makes its process handle's effects: it captures the handle's streams, keeps its signal
+ * source's lane listening while it is live, and writes its `exitCode`. An invocation by name reads
+ * named values, writes to capture sinks, resolves its output plain, and makes no effect.
  */
 interface RunDoor {
   readonly invokedBy: InvokedBy;
+  /** The lane of the run's signal source. */
+  readonly lane: Lane;
+  /** Whether the run keeps its lane listening: `run()`, or an action's call under it. */
+  readonly listens: boolean;
+  /**
+   * Subscribes the run's controller to whatever cancels it and takes the run's place in its lane,
+   * at the run's entry, before its first await.
+   */
+  bracket: (controller: AbortController, entry: Omit<LaneEntry, 'listens'>) => SignalBracket;
   /** Whether a failure the run reports passes through the failure-encoding stage: `run()` alone. */
   readonly encodes: boolean;
   /** The stream a report reaches until the run's host names its own. */
@@ -1267,9 +1303,11 @@ interface RunDoor {
  */
 function argvDoor(application: string, options: RunOptions | undefined): RunDoor {
   const handle = options?.process ?? processHandle();
-  const { signals } = handle;
+  const lane = laneOf(handle.signals);
   return {
     bound: undefined,
+    bracket: (controller, entry) =>
+      bracketRun(controller, { caller: options?.signal, entry: { ...entry, listens: true }, lane }),
     destination: ({ env, home, platform, stderr }) =>
       Object.freeze({ env, home, platform, stderr }),
     encodes: true,
@@ -1293,7 +1331,6 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
             },
             () => askTerminal(host, { cancel, signal }),
           ),
-        bracket: (controller) => bracketRun(controller, { caller: options?.signal, signals }),
         host: (reached) => captureHost(application, handle, reached),
         publishEnvironment: publishEnv,
         read: (host) => (graph, walked) => parseInvocation(graph, host.argv, walked),
@@ -1303,6 +1340,8 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
     },
     fallback: (reached) => captureHost(application, handle, reached).report,
     invokedBy: 'argv',
+    lane,
+    listens: true,
     output: (host, signal, early) => {
       const output = new Output(host, signal);
       output.configure(early, new Map());
@@ -1330,15 +1369,25 @@ function nameDoor<Mapped>(
     action: ActionCall | undefined;
     declared: RenderingPolicy;
     fields: () => HandleFacts;
+    /** The lane of the call's signal source: its handle's, or its action's run's. */
+    lane: Lane;
     /** The caller's progress observer, which the run's output hands each event to. */
     observe: ((event: ProgressEvent) => void) | undefined;
     streams: { stderr: Writable; stdout: Writable };
   },
 ): RunDoor {
-  const { action, declared, streams } = setup;
+  const { action, declared, lane, streams } = setup;
   const host = () => invocationHost(setup.fields(), streams);
+  const listens = action?.listens ?? false;
   return {
     bound: action?.bound,
+    bracket: (controller, entry) =>
+      bracketRun(controller, {
+        caller: call.signal,
+        entry: { ...entry, listens },
+        lane,
+        parent: action?.parent,
+      }),
     // An invocation by name writes to no process stream, so a call of the application has no stderr.
     destination: ({ env, home, platform }) =>
       action?.destination ?? Object.freeze({ env, home, platform, stderr: null }),
@@ -1346,8 +1395,6 @@ function nameDoor<Mapped>(
     enter: () => ({
       // An invocation by name settles no background and writes no query.
       background: async () => undefined,
-      bracket: (controller) =>
-        bracketCall(controller, { caller: call.signal, parent: action?.parent }),
       host,
       publishEnvironment: undefined,
       read: () => (graph, walked) => lowerInvocation(graph, call.named, walked),
@@ -1357,6 +1404,8 @@ function nameDoor<Mapped>(
     }),
     fallback: () => host().report,
     invokedBy: 'name',
+    lane,
+    listens,
     // A call's host.argv is empty, so it reads no choice, and its plain policy holds color off.
     output: (captured, signal) => {
       const output = new Output(captured, signal);
@@ -1507,6 +1556,7 @@ function declareApplication<Plugins extends readonly Plugin[]>(
     slot?.translators,
   );
   const rendering = renderingPolicy(slot?.rendering);
+  const shutdown = shutdownTimeout(name, slot?.shutdown);
   const facts = applicationFacts(slot);
   const installed = installPlugins(name, slot?.plugins ?? []);
   const { plugins } = installed;
@@ -1546,6 +1596,7 @@ function declareApplication<Plugins extends readonly Plugin[]>(
       owners,
       plugins,
       rendering,
+      shutdown,
       translators: [translations, ...plugins.map((entry) => entry.translators)],
       views,
     },

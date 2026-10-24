@@ -18,8 +18,8 @@
  *   above the failure report, and one that returns with a line open writes its success line. A line
  *   a middleware opens before `next()` and leaves open is still running after the action returns
  *   and writes its success line once the chain has unwound.
- * - Cancellation. `SIGINT` under a signals owner writes each open line's cancelled line, exits 130,
- *   and leaves no timer that holds the process open.
+ * - Cancellation. `SIGINT` writes each open line's cancelled line, the run resolves 130, and the
+ *   process dies by the signal.
  * - Off a terminal. With stderr piped, the run writes exactly the plain lines the Progress section
  *   shows. Under `-q` with the verbose plugin, it writes only failure lines. Under `app.invoke`,
  *   the lines land in `messages`, and the observer reads every progress event in order. The end
@@ -260,12 +260,13 @@ test("under app.invoke a line's fail and track's failed message is its failed ev
   ]);
 });
 
-test("SIGINT under a signals owner writes the line's cancelled line, exits 130, and leaves no timer", async () => {
+test("SIGINT writes the line's cancelled line, the run resolves 130, and the process dies by it", async () => {
   const running = start(fixture, ['signal', 'tty'], { env: plain });
   await running.announced('READY');
   running.child.kill('SIGINT');
   const exit = await running.exit;
-  expect(exit.signal).toBeNull();
+  // The code after `run()` reports before the shutdown ends and re-raises the signal.
+  expect(exit.signal).toBe('SIGINT');
   const run: Run = JSON.parse(exit.stdout.slice(exit.stdout.indexOf('{')));
   expect(run.code).toBe(130);
   await expect(screen(run)).resolves.toEqual(['■ Waiting for SIGINT (cancelled)']);

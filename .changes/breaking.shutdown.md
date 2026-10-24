@@ -1,0 +1,62 @@
+- Change how a signal ends a run. `SIGINT`, `SIGTERM`, and `SIGHUP` each start one bounded shutdown while a `run()` is live, from the moment it is called: core aborts the signal of every live run on the signal source, `run()` and `app.invoke` alike, with the signal's name as the source, gives the runs the shutdown budget to unwind, and then calls every pending `onShutdown` handler and re-raises the signal, so the process dies by it with the shell's status. A second ending signal ends the shutdown at once, and `SIGQUIT` skips the budget. See [Signals, cancellation, and shutdown](docs/core/signals.md#the-shutdown).
+- Add `shutdown: { timeout }` to the Application options: the milliseconds the runs get to unwind after an ending signal, 500 by default. A value other than a whole number from 0 through 2147483647 is the declaration error `@loomcli/core/invalid-shutdown-timeout`.
+- Add `onShutdown(handler)` to the action and middleware contexts, scoped to the run, and export `onShutdown`, `onSuspend`, and `onResume` from `@loomcli/core`, scoped to the process, with the types `OnShutdown`, `ShutdownEvent`, and `Synchronous`. A handler is synchronous by type, runs once, newest first, at the end of a shutdown or at the process's own end, and receives the cause and the status the shell sees. Each call returns a function that removes its handler.
+- Add the cancellation codes 129 for `SIGHUP` and 131 for `SIGQUIT` to `ExitCode`, to a cancelled invocation outcome's `exitCode`, and to `CancellationReason`'s `source`, and the two rows to the manifest's exit-code table.
+- Remove the plugin `signals` field and the signals slot. Core listens for every ending signal itself, so no plugin claims one, and `@loomcli/core/slot-taken` no longer covers signals.
+- Change `mockProcess` from `@loomcli/testing` to end on the signal a shutdown re-raises: once a run on the mock resolves inside a shutdown, the next turn of the event loop ends the shutdown and `endedBy` records its signal.
+- Change `loom build` and `loom build --watch` to stop Bun and undo what the build wrote within the shutdown budget when a signal stops `loom`, and to remove Bun's leftovers synchronously when the budget runs out first.
+
+### Migration
+
+**Affected surface.** A plugin that declares `signals`, such as `plugin('@acme/signals', { signals: ['SIGINT', 'SIGTERM'] })`, and code that relied on that claim to keep a process alive after a signal, or that relied on `run()` resolving 130 or 143 and the process then exiting with that code.
+
+**Why.** A cooperative claim let an action that ignores its signal hold the process without bound, and a claim beside `signal-exit` never ended it. Core now listens for every ending signal while a run is live and ends the process within one bounded shutdown, under [ADR-0106](docs/decisions/0106-a-signal-ends-the-process-within-one-bounded-shutdown.md).
+
+**Before and after.**
+
+Before:
+
+```ts
+import { Application, plugin } from '@loomcli/core';
+
+const signals = plugin('@acme/signals', { signals: ['SIGINT', 'SIGTERM'] });
+export const app = new Application('notes', { plugins: [signals] }).action(async ({ signal }) => {
+  const scratch = createScratch();
+  try {
+    await convert(scratch, { signal });
+  } finally {
+    await removeScratch(scratch);
+  }
+});
+```
+
+After:
+
+```ts
+import { Application } from '@loomcli/core';
+
+export const app = new Application('notes', { shutdown: { timeout: 500 } }).action(
+  async ({ onShutdown, signal }) => {
+    const scratch = createScratch();
+    // Synchronous, so it completes even when the shutdown's budget runs out.
+    const remove = onShutdown(() => {
+      removeScratchSync(scratch);
+    });
+    try {
+      await convert(scratch, { signal });
+    } finally {
+      remove();
+      removeScratchSync(scratch);
+    }
+  },
+);
+```
+
+**Steps.**
+
+1. Remove the `signals` field from every plugin definition, and remove a plugin that declared nothing else.
+2. Move the wind-down a signal needs into the run's own cancellation handling: read `signal` and finish within the budget, raising `shutdown.timeout` on the Application when a supervisor waits longer.
+3. Move anything that must be restored however the process ends, such as raw mode, the cursor, a child process, or a scratch file, into a synchronous `onShutdown` handler, and remove the handler once the work no longer needs it.
+4. In a test that raises a signal on a `mockProcess`, read `endedBy` after the next turn of the event loop rather than right after `run()` resolves.
+
+**Validation.** Run the TypeScript compiler over the application and its plugins: no plugin definition declares `signals`. Run the application, press Ctrl-C during a long action, and check that the shell reports status 130 within the budget and that the terminal and any scratch files are restored. Run the application's tests.

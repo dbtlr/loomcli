@@ -1,26 +1,19 @@
 import { spawnSync } from 'node:child_process';
 
-import { Application, plugin, processHandle } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { config } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { loomTheme } from '@loomcli/plugins/theme';
 
 import { confirm, secret, select, text } from '../../dist/index.js';
 
-const signals = () => plugin('@fixture/signals', { signals: ['SIGINT', 'SIGTERM'] });
-
 const scenario = process.argv[2];
-const kind = scenario.replace(/-signals$/u, '');
 spawnSync('stty', ['rows', process.env.PROMPT_ROWS ?? '24', 'cols', '80'], {
   stdio: ['inherit', 'ignore', 'inherit'],
 });
 const app = new Application('setup', {
   description: 'Configure the service.',
-  plugins: [
-    config({ file: '.loom-test-prompts.json' }),
-    loomTheme(),
-    ...(scenario.endsWith('-signals') ? [signals()] : []),
-  ],
+  plugins: [config({ file: '.loom-test-prompts.json' }), loomTheme()],
 })
   .option('port', {
     default: '4000',
@@ -38,7 +31,7 @@ const app = new Application('setup', {
   })
   .option('install', { description: 'Install the service.', type: 'boolean' })
   .action(async (context) => {
-    if (kind === 'select') {
+    if (scenario === 'select') {
       const answer = await select(context, {
         choices: Array.from({ length: 10 }, (_value, index) => `choice-${index}`),
         default: 'choice-3',
@@ -47,7 +40,7 @@ const app = new Application('setup', {
       process.stdout.write(`ANSWER:${JSON.stringify(answer)}\n`);
       return;
     }
-    if (kind === 'confirm') {
+    if (scenario === 'confirm') {
       const first = await confirm(context, { message: 'Install service?' });
       const second = await confirm(context, { default: true, message: 'Continue?' });
       process.stdout.write(`ANSWERS:${JSON.stringify([first, second])}\n`);

@@ -446,12 +446,8 @@ if (scenario === 'isolation') {
   // A sentinel host: every stream records its writes, so a write the call leaked would show.
   const stdout = sink();
   const stderr = sink();
-  const owner = plugin('@fixture/owner', { signals: ['SIGINT', 'SIGTERM'] });
   const real = { stderr: 0, stdout: 0 };
-  const app = new Application('probe', {
-    ...probe,
-    plugins: [owner],
-  })
+  const app = new Application('probe', probe)
     .command(
       new Command('child', {
         description: 'The child command.',
@@ -631,7 +627,6 @@ if (scenario === 'sigterm' || scenario === 'own-abort' || scenario === 'pre-abor
           },
         }),
     },
-    signals: ['SIGINT', 'SIGTERM'],
   });
   const handled = [];
   const failure = (value) => {

@@ -12,8 +12,6 @@
  * - A plugin whose loader is pending when a caller abort lands, so a test shows the run resolves
  *   130 once the loader settles and the middleware never runs
  *   (packages/core/tests/cancellation.test.ts).
- * - A plugin that claims the signals slot, with a second claimant failing at construction and no
- *   listener surviving a run (packages/core/tests/plugins.test.ts).
  * - A plugin that defines an extension both examples attach to a Command
  *   (packages/core/tests/extensions.test.ts).
  */

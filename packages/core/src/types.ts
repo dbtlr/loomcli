@@ -12,6 +12,7 @@ import type { FailureForm } from './form.js';
 import type { CommandGraph, CommandNode, ResultNode } from './inspect.js';
 import type { Log } from './log.js';
 import type { RenderingPolicy } from './rendering.js';
+import type { OnShutdown } from './signal-lane.js';
 import type { ContextualStyle } from './style.js';
 
 type LowercaseLetter =
@@ -245,7 +246,7 @@ export type NameConstraint<Name extends string, Whole extends string = Name> =
       : LiteralNameFault;
 
 /** The status `run()` resolves: success, a failure class's code, or a cancellation code. */
-export type ExitCode = 0 | FailureExitCode | 130 | 141 | 143;
+export type ExitCode = 0 | FailureExitCode | 129 | 130 | 131 | 141 | 143;
 export interface InputTerminal {
   isTTY: boolean;
 }
@@ -1175,7 +1176,7 @@ export type InvocationOutcome<Mapped = LoomError> =
       readonly output: string;
       readonly messages: string;
     }
-  | { readonly status: 'cancelled'; readonly exitCode: 130 | 141 | 143 };
+  | { readonly status: 'cancelled'; readonly exitCode: 129 | 130 | 131 | 141 | 143 };
 
 /**
  * What an action receives. `graph` is the frozen graph `inspect()` returns for this run, and
@@ -1197,8 +1198,13 @@ export interface ActionContext<Args, Options = {}, Result = unknown> {
   host: Host;
   /** Records a log event for every installed plugin's `onLog` hook, under no plugin. */
   readonly log: Log;
-  /** The run's cancellation signal, which a caller or an installed signals owner aborts. */
+  /** The run's cancellation signal, which a caller, a shutdown, the action, or a closed pipe aborts. */
   signal: AbortSignal;
+  /**
+   * Registers a synchronous handler that runs once, at the end of a shutdown or of the process, and
+   * is removed when the run ends while no shutdown is under way. Answers the call that removes it.
+   */
+  readonly onShutdown: OnShutdown;
   /** Runs another Command of the graph this run built, by name, and captures what it writes. */
   readonly invoke: <Mapped = LoomError>(
     path: readonly string[],

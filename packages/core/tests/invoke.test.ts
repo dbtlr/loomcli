@@ -35,11 +35,11 @@
  *   it. An unknown name and a view on a Command with no result each report their `invoke()`
  *   sentence with exit 1.
  * - Process isolation. A parent run with a sentinel host whose streams record every write calls
- *   `invoke` from its action, with a signals owner installed. The process's listener counts,
- *   `process.exitCode`, and real stdout and stderr are unchanged, and the parent's own streams
- *   receive nothing from the call. `app.invoke` with a `host` override reads only the five fields.
+ *   `invoke` from its action. The process's listener counts, `process.exitCode`, and real stdout
+ *   and stderr are unchanged, and the parent's own streams receive nothing from the call.
+ *   `app.invoke` with a `host` override reads only the five fields.
  * - Cancellation. A parent run cancelled by `SIGTERM` resolves a call in flight as `cancelled` with
- *   143, and the call's own abort resolves 130. A pre-aborted signal runs no action, and a
+ *   143, and the process then dies by the signal. The call's own abort resolves 130. A pre-aborted signal runs no action, and a
  *   cancelled call never reaches the handler.
  * - Concurrency and nesting. Two overlapping calls from one action capture their own bytes with no
  *   interleaving, and an invoked action that calls `invoke` resolves its inner outcome.
@@ -393,8 +393,8 @@ test('a SIGTERM to the parent run resolves its call in flight as cancelled with 
   await running.announced('ready');
   running.child.kill('SIGTERM');
   await expect(running.exit).resolves.toEqual({
-    signal: null,
-    status: 143,
+    signal: 'SIGTERM',
+    status: null,
     stderr: '',
     stdout: [
       'ready',

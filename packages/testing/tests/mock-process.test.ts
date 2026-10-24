@@ -672,11 +672,9 @@ describe('a run on a mock', () => {
     ]);
   });
 
-  it('a signal raised during a run reaches the plugin that claims it, and the run resolves 130', async () => {
+  it('a signal raised during a run cancels it, the run resolves 130, and the re-raise ends the mock', async () => {
     const mock = mockProcess();
-    const app = new Application('app', {
-      plugins: [plugin('fixture/interrupts', { signals: ['SIGINT'] })],
-    }).action(async ({ signal }) => {
+    const app = new Application('app').action(async ({ signal }) => {
       const aborted = new Promise<void>((resolve) => {
         signal.addEventListener('abort', () => resolve());
       });
@@ -685,5 +683,10 @@ describe('a run on a mock', () => {
     });
     const code = await app.run({ process: mock });
     expect([code, mock.exitCode, mock.endedBy]).toEqual([130, 130, undefined]);
+    // The shutdown ends on the next turn once the run resolved, and re-raises on the mock's source.
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    expect(mock.endedBy).toBe('SIGINT');
   });
 });

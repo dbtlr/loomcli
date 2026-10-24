@@ -303,10 +303,7 @@ const scenarios = {
         );
       });
     },
-    plugins: [
-      progressStyle({ spinner: still }),
-      plugin('@fixture/signals', { signals: ['SIGINT'] }),
-    ],
+    plugins: [progressStyle({ spinner: still })],
   },
   /** The style's spinner, a call's own spinner over it, and the default without the plugin. */
   style: {

@@ -1,8 +1,6 @@
 import { InternalError } from './errors.js';
-import type { SignalSource } from './types.js';
-
-/** The signals a plugin may claim, which is the closed set core installs listeners for. */
-type ClaimedSignal = 'SIGINT' | 'SIGTERM';
+import { signalCodes } from './signal-lane.js';
+import type { EndingSignal, Lane, LanePlace, LaneRun } from './signal-lane.js';
 
 /**
  * What aborted one run's private controller. Core owns this value, so a middleware reads `source`
@@ -11,15 +9,16 @@ type ClaimedSignal = 'SIGINT' | 'SIGTERM';
  * cause to abort fixes the reason and the code, and a later cause changes neither.
  */
 interface CancellationReason {
-  source: ClaimedSignal | 'caller' | 'action' | 'closed-pipe';
-  cause?: unknown;
+  readonly source: EndingSignal | 'caller' | 'action' | 'closed-pipe';
+  readonly cause?: unknown;
 }
 
 /**
- * The status each cause resolves. A script that saw 0 after an interrupt would carry on. A closed
- * pipe resolves 141, the status a process ended by `SIGPIPE` reports, as `git` and `yes` do.
+ * The status each cause resolves. A script that saw 0 after an interrupt would carry on. A signal
+ * resolves the status a shell reports for a process it ended, and a closed pipe 141, the status a
+ * process ended by `SIGPIPE` reports, as `git` and `yes` do.
  */
-const codes = { SIGINT: 130, SIGTERM: 143, action: 130, caller: 130, 'closed-pipe': 141 } as const;
+const codes = { ...signalCodes, action: 130, caller: 130, 'closed-pipe': 141 } as const;
 
 /** The status one cancelled run resolves, which is the part of `ExitCode` a signal decides. */
 type CancellationCode = (typeof codes)[CancellationReason['source']];
@@ -45,20 +44,24 @@ function isCancellationEcho(thrown: unknown, reason: unknown): boolean {
 }
 
 /**
- * The process listeners one run holds, and the caller subscription it opened at run entry. Install
- * and removal sit together so the bracket a run keeps is readable in one place.
+ * What cancels one run, and its place in its signal source's lane: the caller subscription it
+ * opened at run entry and the place it holds until it resolves. Entry and removal sit together so
+ * the bracket a run keeps is readable in one place.
  */
 interface SignalBracket {
   cancel: () => void;
   /** Aborts the run because the reader of its stdout closed the pipe, which `cause` failed on. */
   closePipe: (cause: unknown) => void;
-  /** Installs one listener per claimed signal, once the graph has built and validated. */
-  install: (owned: readonly ClaimedSignal[]) => void;
+  /** The run's place in its lane, which its `onShutdown` handlers are registered through. */
+  place: LanePlace;
   /** The reason the first cause fixed, or `undefined` while nothing has aborted the run. */
   reason: () => CancellationReason | undefined;
-  /** Removes every listener this run holds. Called on the run's last exit path. */
+  /** Leaves the lane and ends the caller subscription. Called on the run's last exit path. */
   finish: () => void;
 }
+
+/** What one run's place in its lane reads beside its cancellation. */
+type LaneEntry = Omit<LaneRun, 'cancel'>;
 
 /**
  * The first cause to abort one run's private controller, which fixes the reason and the code; a
@@ -100,62 +103,6 @@ function subscribe(signal: AbortSignal | undefined, listener: () => void): () =>
 }
 
 /**
- * The bracket for one run. Core subscribes to a caller's signal at run entry, and installs its own
- * listeners on the run's signal source only for the plugin that owns the signals slot, only after
- * the graph has built, and only until the run resolves. A signal that arrives once the run is
- * already cancelled is the force path: core removes its own listeners and re-raises on the source,
- * so the default disposition ends the process when no other listener remains. Core does not own
- * the process.
- */
-function bracketRun(
-  controller: AbortController,
-  causes: { caller: AbortSignal | undefined; signals: SignalSource },
-): SignalBracket {
-  const { caller, signals } = causes;
-  const first = firstCause(controller);
-  let held: { handler: () => void; signal: ClaimedSignal }[] = [];
-
-  const release = () => {
-    for (const entry of held) {
-      signals.off(entry.signal, entry.handler);
-    }
-    held = [];
-  };
-
-  const received = (signal: ClaimedSignal) => {
-    if (first.reason()) {
-      release();
-      signals.raise(signal);
-      return;
-    }
-    first.cancel({ source: signal });
-  };
-
-  const unsubscribe = subscribe(caller, () => {
-    first.cancel({ cause: caller?.reason, source: 'caller' });
-  });
-
-  return {
-    cancel: () => first.cancel({ source: 'action' }),
-    closePipe: (cause) => first.cancel({ cause, source: 'closed-pipe' }),
-    finish: () => {
-      release();
-      unsubscribe();
-    },
-    install: (owned) => {
-      for (const signal of owned) {
-        const handler = () => {
-          received(signal);
-        };
-        signals.on(signal, handler);
-        held.push({ handler, signal });
-      }
-    },
-    reason: first.reason,
-  };
-}
-
-/**
  * The run an action belongs to, as a call it makes reads it: the run's signal, and the reason the
  * run's first cause fixed.
  */
@@ -165,17 +112,24 @@ interface ParentRun {
 }
 
 /**
- * The bracket for one invocation by name. Its signal derives from the parent run's, when an action
- * made the call, and from the caller's own, and the first to abort fixes the reason: a parent's
- * abort carries the parent's reason, so the call resolves the parent's code, and the caller's own
- * abort reads as a caller abort. It installs no process listener, whatever the signals owner
- * claimed, so the call touches no process.
+ * The bracket for one run. Core subscribes to a caller's signal at run entry and, for an action's
+ * call, to its parent run's, and the first to abort fixes the reason: a parent's abort carries the
+ * parent's reason, so the call resolves the parent's code, and the caller's own abort reads as a
+ * caller abort. The run takes its place in the lane of its process handle's signal source, which
+ * cancels it with the signal as its source when a shutdown begins and calls its handlers. A
+ * `run()`, and a call whose outermost run is one, keep the lane listening from this moment;
+ * `app.invoke` makes no process effect, so it never does.
  */
-function bracketCall(
+function bracketRun(
   controller: AbortController,
-  causes: { caller: AbortSignal | undefined; parent: ParentRun | undefined },
+  causes: {
+    caller: AbortSignal | undefined;
+    parent?: ParentRun | undefined;
+    lane: Lane;
+    entry: LaneEntry;
+  },
 ): SignalBracket {
-  const { caller, parent } = causes;
+  const { caller, entry, lane, parent } = causes;
   const first = firstCause(controller);
   // A parent's signal aborts only after its own first cause fixed the reason it carries.
   const subscriptions = [
@@ -186,18 +140,26 @@ function bracketCall(
       first.cancel({ cause: caller?.reason, source: 'caller' });
     }),
   ];
+  // A run that enters during a shutdown starts cancelled, unless an earlier cause already did.
+  const place = lane.enter({
+    ...entry,
+    cancel: ({ signal }) => {
+      first.cancel({ source: signal });
+    },
+  });
   return {
     cancel: () => first.cancel({ source: 'action' }),
     closePipe: (cause) => first.cancel({ cause, source: 'closed-pipe' }),
     finish: () => {
+      place.leave();
       for (const unsubscribe of subscriptions) {
         unsubscribe();
       }
     },
-    install: () => undefined,
+    place,
     reason: first.reason,
   };
 }
 
-export type { CancellationCode, CancellationReason, ClaimedSignal, ParentRun, SignalBracket };
-export { bracketCall, bracketRun, cancellationCode, isCancellationEcho };
+export type { CancellationCode, CancellationReason, LaneEntry, ParentRun, SignalBracket };
+export { bracketRun, cancellationCode, isCancellationEcho };

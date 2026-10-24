@@ -28,7 +28,6 @@ import {
 } from './plugin-rules.js';
 import type { EnvironmentHook } from './prepare-environment.js';
 import { pluginLoaderFailed } from './rules.js';
-import type { ClaimedSignal } from './signals.js';
 import type { ContextualStyle, ThemeConstraint, ThemeMapping } from './style.js';
 import { buildTheme } from './theme.js';
 import type { BuiltTheme } from './theme.js';
@@ -92,7 +91,6 @@ interface DeclaredPlugin {
   views?: readonly ViewContribution[] | undefined;
   translators?: readonly Translation[] | undefined;
   failureEncoders?: readonly FailureEncoding[] | undefined;
-  signals?: readonly ClaimedSignal[] | undefined;
   source?: { binding: AnyExtension; load: () => unknown } | undefined;
   commands?: readonly unknown[] | undefined;
 }
@@ -218,7 +216,6 @@ interface PluginDefinition<
   translators?: readonly Translation[];
   /** The encoders a failed `run()` writes its failure through, one per media type. */
   failureEncoders?: readonly FailureEncoding[];
-  signals?: readonly ('SIGINT' | 'SIGTERM')[];
   source?: {
     binding: AnyExtension & { readonly target: 'option' };
     load: () => Promise<{ default: SourceResolver<Plugin<Options>> }>;
@@ -281,17 +278,12 @@ interface InstalledPlugins {
 }
 
 /** The slots one plugin at most may claim. */
-type Slot = 'signals' | 'source' | 'theme';
+type Slot = 'source' | 'theme';
 
 /** How a second claim on one slot reads: its clause, the note on the owner's entry, and the fix. */
 const slotWords: Readonly<
   Record<Slot, { clause: (owner: string) => string; held: string; correction: string }>
 > = {
-  signals: {
-    clause: (owner) => `claims the signals slot, which plugin ${quoted(owner)} already holds.`,
-    correction: 'Install one owner.',
-    held: 'holds the signals slot',
-  },
   source: {
     clause: (owner) =>
       `declares a configuration source, which plugin ${quoted(owner)} already declares.`,
@@ -325,10 +317,9 @@ function slotFault(
 
 /**
  * The installed list in composition order, with every rule that reads two plugins together: an
- * identity installed twice, a second claim on the theme slot, the signals slot, or the
- * configuration source, and two distinct descriptors under one identity. Each plugin's own rules
- * already ran at its `plugin()` call. A plugin another installed copy of `@loomcli/core` built
- * misses this copy's registry.
+ * identity installed twice, a second claim on the theme slot or the configuration source, and two
+ * distinct descriptors under one identity. Each plugin's own rules already ran at its `plugin()`
+ * call. A plugin another installed copy of `@loomcli/core` built misses this copy's registry.
  */
 function installPlugins(application: string, plugins: readonly Plugin[]): InstalledPlugins {
   const site = slotSite(
@@ -382,10 +373,6 @@ function installPlugins(application: string, plugins: readonly Plugin[]): Instal
         identity: key,
         place: partFinding(site, [index]),
       });
-    }
-    // An empty claim leaves the signals slot free.
-    if (entry.signals.length > 0) {
-      claim('signals', index);
     }
     if (entry.source) {
       claim('source', index);
@@ -582,7 +569,6 @@ interface BuiltPlugin {
   identity: string;
   inputs: readonly OptionInput[];
   middleware: BuiltMiddleware | undefined;
-  signals: readonly ClaimedSignal[];
   source: BuiltSource | undefined;
   /** The Commands the plugin attaches to the root, in list order. */
   commands: readonly AttachedChild[];
@@ -617,8 +603,7 @@ function defineExtensions(
  * Every rule one definition carries on its own, in the order the definition's slots are read. The
  * plugin's own extensions register before any declaration carries a value, so a duplicated package
  * copy is reported from the list that defines it. The views list is read against core's view
- * identities, and the Application reads it again against every other contributor's. A signal
- * claimed twice is claimed once.
+ * identities, and the Application reads it again against every other contributor's.
  */
 function readPlugin(identity: string, declaration: DeclaredPlugin): BuiltPlugin {
   const theme = declaration.theme === undefined ? undefined : buildTheme(declaration.theme);
@@ -650,17 +635,11 @@ function readPlugin(identity: string, declaration: DeclaredPlugin): BuiltPlugin 
     onGraphBuilt: declaration.onGraphBuilt,
     onLog: declaration.onLog,
     records: build.records,
-    signals: [...new Set(declaration.signals)],
     source,
     theme,
     translators,
     views: declaration.views,
   };
-}
-
-/** The signals the one slot owner claimed, or none when no installed plugin claims the slot. */
-function ownedSignals(plugins: readonly BuiltPlugin[]): readonly ClaimedSignal[] {
-  return plugins.find((entry) => entry.signals.length > 0)?.signals ?? [];
 }
 
 /** One plugin's own spellings for one run, frozen, so no plugin writes what another reads. */
@@ -698,12 +677,4 @@ export type {
   PluginOptionSpellings,
   PluginOptionValues,
 };
-export {
-  installPlugins,
-  loadDefault,
-  ownedSignals,
-  plugin,
-  pluginSentence,
-  pluginSpellings,
-  pluginViews,
-};
+export { installPlugins, loadDefault, plugin, pluginSentence, pluginSpellings, pluginViews };

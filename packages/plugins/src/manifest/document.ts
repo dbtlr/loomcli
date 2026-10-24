@@ -126,7 +126,9 @@ const coreExitCodes: Readonly<Record<string, string>> = {
   '0': 'Successful execution and core output',
   '1': 'Expected action failure, internal failure, or invalid declarations',
   '2': 'Invalid invocation inputs',
+  '129': 'Cancelled by SIGHUP',
   '130': "Cancelled by SIGINT, a caller-supplied abort, or the action's cancel()",
+  '131': 'Cancelled by SIGQUIT',
   '141': 'Stopped because the reader of stdout closed the pipe',
   '143': 'Cancelled by SIGTERM',
 };
@@ -332,7 +334,7 @@ function applicationFailures(root: CommandNode): ManifestFailure[] {
 }
 
 /**
- * The exit-code table: core's five rows, and a row for each other exit code a failure declared
+ * The exit-code table: core's seven rows, and a row for each other exit code a failure declared
  * anywhere in the application carries, naming its failure codes in the order the walk first meets
  * them. An exit code core's own row explains, 1 or 2, adds no row. JavaScript enumerates integer
  * keys in ascending order, so the rows print that way.
