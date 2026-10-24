@@ -694,6 +694,65 @@ describe('the lane', () => {
     );
   });
 
+  it('the shapes that cross between copies through a lane are pinned', () => {
+    const mock = mockProcess();
+    laneOf(mock.signals);
+    // Another copy resolves a mock's lane through the map the real lane holds, as this test does.
+    const shared: unknown = Reflect.get(globalThis, Symbol.for('loomcli.processLane'));
+    const lanes: unknown =
+      typeof shared === 'object' && shared !== null ? Reflect.get(shared, 'lanes') : undefined;
+    const lane: unknown = lanes instanceof WeakMap ? lanes.get(mock.signals) : undefined;
+    if (typeof lane !== 'object' || lane === null) {
+      throw new Error('The mock has no shared lane.');
+    }
+    const read: string[] = [];
+    /** An object of this copy's, recording each member the lane reads from it under a label. */
+    const recorded = <Shape extends object>(label: string, shape: Shape): Shape =>
+      new Proxy(shape, {
+        get: (target, key, receiver) => {
+          read.push(`${label}.${String(key)}`);
+          return Reflect.get(target, key, receiver);
+        },
+      });
+    const handed: string[] = [];
+    const run = recorded('run', {
+      cancel: (event: object) => {
+        handed.push(`cancel:${Object.keys(event).join(',')}`);
+      },
+      flush: () => undefined,
+      listens: true,
+      timeout: 0,
+    });
+    const enter: unknown = Reflect.get(lane, 'enter');
+    const place: unknown =
+      typeof enter === 'function' ? Reflect.apply(enter, lane, [run]) : undefined;
+    if (typeof place !== 'object' || place === null) {
+      throw new Error('The lane answered no place.');
+    }
+    handed.push(`place:${Object.keys(place).toSorted().join(',')}`);
+    const register: unknown = Reflect.get(place, 'onShutdown');
+    if (typeof register === 'function') {
+      Reflect.apply(register, place, [
+        recorded('registration', {
+          failed: () => undefined,
+          handler: (event: object) => {
+            handed.push(`shutdown:${Object.keys(event).toSorted().join(',')}`);
+          },
+        }),
+      ]);
+    }
+    mock.signals.raise('SIGTERM');
+    expect([...new Set(read)].toSorted()).toEqual([
+      'registration.failed',
+      'registration.handler',
+      'run.cancel',
+      'run.flush',
+      'run.listens',
+      'run.timeout',
+    ]);
+    expect(handed).toEqual(['place:leave,onShutdown', 'cancel:signal', 'shutdown:cause,code']);
+  });
+
   it('the exported onShutdown is scoped to the process and listens on the real process', () => {
     const before = process.listenerCount('SIGTERM');
     const remove = onShutdown(() => undefined);

@@ -41,7 +41,12 @@ interface HandlerRegistration {
   readonly handler: () => unknown;
 }
 
-/** What a lane reads from one live run. */
+/**
+ * What a lane reads from one live run, which the copy of core that started the run builds and may
+ * hand to a lane another copy built. Its shape grows as the lane's does, so a lane checks that a
+ * run has a member before it reads or calls it, and a run an earlier copy built goes without what
+ * a later member provides.
+ */
 interface LaneRun {
   /** Aborts the run with the signal as its source. A run already cancelled keeps its reason. */
   readonly cancel: (event: { readonly signal: EndingSignal }) => void;
@@ -53,7 +58,10 @@ interface LaneRun {
   readonly timeout: number;
 }
 
-/** One live run's place in its lane, which it registers its own handlers through and leaves by. */
+/**
+ * One live run's place in its lane, which it registers its own handlers through and leaves by. The
+ * lane builds it, so a copy that calls a member a later version added checks for it first.
+ */
 interface LanePlace {
   /** Registers a handler scoped to the run, and answers the call that removes it. */
   readonly onShutdown: (registration: ShutdownRegistration) => () => void;
@@ -62,11 +70,17 @@ interface LanePlace {
 }
 
 /**
- * What every copy of core reads from a lane another copy may have built, which is why this shape is
- * a contract across versions of core: it only grows. No version removes a member or changes what
- * one accepts or answers, and every member takes one object argument, so a later version adds
+ * What every copy of core reads from a lane another copy may have built, which is why this shape,
+ * and every shape that crosses between copies through it, is a contract across versions of core:
+ * the run a copy enters (`LaneRun`: `cancel`, `flush`, `listens`, `timeout`), the place the lane
+ * answers (`LanePlace`: `leave`, `onShutdown`), a registration (`ShutdownRegistration`: `handler`,
+ * `failed`; `HandlerRegistration`: `handler`), the cancel event (`{ signal }`), and the shutdown
+ * event (`ShutdownEvent`: `cause`, `code`). Each only grows. No version removes a member or changes
+ * what one accepts or answers, and every member takes one object argument, so a later version adds
  * fields beside the earlier ones. A later copy checks that a lane it found has a member it adds
- * before calling it, because an earlier copy may have built that lane.
+ * before calling it, because an earlier copy may have built that lane, and a lane checks a run's
+ * member before reading or calling it, because an earlier copy may have built that run. Core's own
+ * tests pin each shape.
  */
 interface SharedLane {
   readonly source: SignalSource;
@@ -165,7 +179,7 @@ function snapshot<Entry>(entries: Iterable<Entry>): Entry[] {
 
 /** The budget one shutdown takes: none for `SIGQUIT`, else the longest timeout among the runs. */
 function budgetOf(signal: EndingSignal, live: readonly Place[]): number {
-  return signal === 'SIGQUIT' ? 0 : Math.max(0, ...live.map((place) => place.run.timeout));
+  return signal === 'SIGQUIT' ? 0 : Math.max(0, ...live.map((place) => timeoutOf(place.run)));
 }
 
 /** Adds or removes one listener on a source so it is held exactly when `wanted`. */
@@ -198,7 +212,26 @@ function holdForDelivery(): void {
  * handler makes the lane listen again.
  */
 function listensFor(place: Place): boolean {
-  return place.run.listens && !place.cutOff;
+  return typeof place.run.listens === 'boolean' && place.run.listens && !place.cutOff;
+}
+
+/** A run's shutdown budget, or none when the run states no whole number of milliseconds. */
+function timeoutOf(run: LaneRun): number {
+  return typeof run.timeout === 'number' ? run.timeout : 0;
+}
+
+/** Cancels a run with the signal as its source, when the run has the member that does it. */
+function cancelRun(run: LaneRun, signal: EndingSignal): void {
+  if (typeof run.cancel === 'function') {
+    run.cancel({ signal });
+  }
+}
+
+/** Flushes a run's terminal, when the run has the member that does it. */
+function flushRun(run: LaneRun): void {
+  if (typeof run.flush === 'function') {
+    run.flush();
+  }
 }
 
 /** Clears the timer and the turn that would have ended a shutdown, which ends now. */
@@ -298,7 +331,7 @@ class SignalLane implements SharedLane {
     // A run that starts during a shutdown starts cancelled, and does not extend the budget.
     if (shutdown !== undefined) {
       callCaught(() => {
-        run.cancel({ signal: shutdown.signal });
+        cancelRun(run, shutdown.signal);
       });
     }
     return {
@@ -402,7 +435,7 @@ class SignalLane implements SharedLane {
     this.#shutdown = shutdown;
     for (const place of live) {
       callCaught(() => {
-        place.run.cancel({ signal });
+        cancelRun(place.run, signal);
       });
     }
     // An abort listener that raised a second signal on the source has ended the shutdown already.
@@ -455,7 +488,9 @@ class SignalLane implements SharedLane {
     for (const place of snapshot(this.#places)) {
       // A run still live at the end is cut off: it keeps core listening no more.
       place.cutOff = true;
-      callCaught(place.run.flush);
+      callCaught(() => {
+        flushRun(place.run);
+      });
     }
   }
 
