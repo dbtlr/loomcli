@@ -218,7 +218,7 @@ export const buildCommand = new Command('build', {
         applicationName(manifest, options.name),
       );
       const plan = { application, directory, entry, facts, out: output, target };
-      const run = { onShutdown, signal };
+      const run = { host, onShutdown, signal };
       if (options.watch) {
         await watch(plan, run);
         return '';

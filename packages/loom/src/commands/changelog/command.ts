@@ -12,9 +12,9 @@ export const changelog = new Command('changelog', {
   .command(
     new Command('check', {
       description: 'Check every fragment in .changes/ and count them.',
-    }).action(async ({ host, out, passthrough }) => {
-      await report(out, passthrough, () => {
-        const fragments = readFragments(packageDirectory(host.cwd));
+    }).action(async ({ host, out, passthrough, signal }) => {
+      await report(out, passthrough, async () => {
+        const fragments = await readFragments({ host, root: packageDirectory(host.cwd), signal });
         return `Checked ${fragments.length} fragment${fragments.length === 1 ? '' : 's'}.\n`;
       });
     }),
@@ -36,13 +36,16 @@ export const changelog = new Command('changelog', {
         description: 'Print the section and the next version, and write nothing.',
         type: 'boolean',
       })
-      .action(async ({ host, options, out, passthrough }) => {
-        await report(out, passthrough, () => {
+      .action(async ({ host, options, out, passthrough, signal }) => {
+        await report(out, passthrough, async () => {
           const directory = packageDirectory(host.cwd);
-          const cut = preparePackageCut(directory, {
-            date: releaseDate(options.date),
-            narrative: readNarrative(host.cwd, options.narrative),
-          });
+          const cut = await preparePackageCut(
+            { host, root: directory, signal },
+            {
+              date: releaseDate(options.date),
+              narrative: readNarrative(host.cwd, options.narrative),
+            },
+          );
           if (!options['dry-run']) {
             writePackageCut(directory, cut);
           }

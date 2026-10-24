@@ -4,19 +4,23 @@ import { placedSection, releaseDate, releaseInsertion } from './changelog.js';
 import { checkDecisions } from './release-decisions.js';
 import { prepareLockfile } from './release-files.js';
 import { prepareRelease, requireReleaseNotes } from './release.js';
-import { currentVersion, git, readLibraries, readRegularFile } from './repository.js';
+import { currentVersion, git, gitLine, readLibraries, readRegularFile } from './repository.js';
+import type { Checkout } from './repository.js';
 
-export function checkRelease(
-  root: string,
+export async function checkRelease(
+  checkout: Checkout,
   base: string,
   head: string,
   version: string,
   changed: string[],
 ) {
-  const previous = readLibraries(root, base);
-  const libraries = readLibraries(root, head);
-  const changelog = readRegularFile(root, 'CHANGELOG.md', head);
-  const { after, before } = releaseInsertion(readRegularFile(root, 'CHANGELOG.md', base), version);
+  const previous = await readLibraries(checkout, base);
+  const libraries = await readLibraries(checkout, head);
+  const changelog = await readRegularFile(checkout, 'CHANGELOG.md', head);
+  const { after, before } = releaseInsertion(
+    await readRegularFile(checkout, 'CHANGELOG.md', base),
+    version,
+  );
   if (
     !changelog.startsWith(before) ||
     !changelog.endsWith(after) ||
@@ -39,11 +43,11 @@ export function checkRelease(
     since: undefined,
     target: version,
   };
-  const release = prepareRelease(root, options, base);
+  const release = await prepareRelease(checkout, options, base);
   if (currentVersion(libraries).text !== version) {
     throw new Error(`Every participating library must carry title version ${version}.`);
   }
-  if (git(root, ['tag', '--list', `v${version}`]).trim()) {
+  if (await gitLine(checkout, ['tag', '--list', `v${version}`])) {
     throw new Error(`Tag v${version} already exists.`);
   }
   if (
@@ -60,7 +64,13 @@ export function checkRelease(
       throw new Error(`${library.path}: release cuts change only the version field.`);
     }
   }
-  const decisions = checkDecisions(root, base, head, { date: options.date, version }, changed);
+  const decisions = await checkDecisions(
+    checkout,
+    base,
+    head,
+    { date: options.date, version },
+    changed,
+  );
   const allowed = new Set([
     'CHANGELOG.md',
     'pnpm-lock.yaml',
@@ -72,13 +82,18 @@ export function checkRelease(
     if (!allowed.has(path)) {
       throw new Error(`${path}: outside the release cut.`);
     }
-    const oldMode = git(root, ['ls-tree', base, '--', path]).slice(0, 6);
-    const newMode = git(root, ['ls-tree', head, '--', path]).slice(0, 6);
+    const oldEntry = await git(checkout, ['ls-tree', base, '--', path]);
+    const newEntry = await git(checkout, ['ls-tree', head, '--', path]);
+    const oldMode = oldEntry.slice(0, 6);
+    const newMode = newEntry.slice(0, 6);
     if (oldMode && newMode && oldMode !== newMode) {
       throw new Error(`${path}: release cuts cannot change a file mode.`);
     }
   }
-  if (readRegularFile(root, 'pnpm-lock.yaml', head) !== prepareLockfile(root, release, base)) {
+  if (
+    (await readRegularFile(checkout, 'pnpm-lock.yaml', head)) !==
+    (await prepareLockfile(checkout, release, base))
+  ) {
     throw new Error(
       'pnpm-lock.yaml must match the version writer; unrelated lockfile changes need an ordinary PR.',
     );
@@ -89,7 +104,11 @@ export function checkRelease(
     throw new Error('CHANGELOG.md must contain the compiler output for the consumed fragments.');
   }
   const narrative = section.slice(heading.length, section.length - entries.length);
-  const compiled = prepareRelease(root, { ...options, narrative: narrative || undefined }, base);
+  const compiled = await prepareRelease(
+    checkout,
+    { ...options, narrative: narrative || undefined },
+    base,
+  );
   if (placed !== placedSection(compiled.section, after)) {
     throw new Error('CHANGELOG.md must contain exactly one compiled release section.');
   }

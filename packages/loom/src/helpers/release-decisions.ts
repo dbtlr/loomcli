@@ -1,4 +1,5 @@
 import { git, readRegularFile } from './repository.js';
+import type { Checkout } from './repository.js';
 
 const decisionsDirectory = 'docs/decisions/';
 const decisionIndex = `${decisionsDirectory}README.md`;
@@ -73,8 +74,8 @@ function acceptedIndex(source: string, names: string[]) {
   return lines.join('\n');
 }
 
-function present(root: string, ref: string, path: string) {
-  return git(root, ['ls-tree', ref, '--', path]) !== '';
+async function present(checkout: Checkout, ref: string, path: string) {
+  return (await git(checkout, ['ls-tree', ref, '--', path])) !== '';
 }
 
 /**
@@ -82,8 +83,8 @@ function present(root: string, ref: string, path: string) {
  * row of each one. Any other change to a record or the index throws naming the file. Returns the
  * admitted paths.
  */
-export function checkDecisions(
-  root: string,
+export async function checkDecisions(
+  checkout: Checkout,
   base: string,
   head: string,
   release: { date: string; version: string },
@@ -95,10 +96,10 @@ export function checkDecisions(
   );
   for (const path of records) {
     const expected =
-      present(root, base, path) && present(root, head, path)
-        ? acceptedRecord(readRegularFile(root, path, base), release.version, release.date)
+      (await present(checkout, base, path)) && (await present(checkout, head, path))
+        ? acceptedRecord(await readRegularFile(checkout, path, base), release.version, release.date)
         : undefined;
-    if (expected === undefined || readRegularFile(root, path, head) !== expected) {
+    if (expected === undefined || (await readRegularFile(checkout, path, head)) !== expected) {
       throw new Error(
         `${path}: a release cut changes a decision record only to mark a proposed decision accepted, with status accepted, modified ${release.date}, and a Status section that reads "Accepted in ${release.version}.". Make any other change in an ordinary PR.`,
       );
@@ -107,16 +108,16 @@ export function checkDecisions(
   if (records.length === 0 && !changed.includes(decisionIndex)) {
     return [];
   }
-  const expected = present(root, base, decisionIndex)
+  const expected = (await present(checkout, base, decisionIndex))
     ? acceptedIndex(
-        readRegularFile(root, decisionIndex, base),
+        await readRegularFile(checkout, decisionIndex, base),
         records.map((path) => path.slice(decisionsDirectory.length)),
       )
     : undefined;
   if (
     expected === undefined ||
-    !present(root, head, decisionIndex) ||
-    readRegularFile(root, decisionIndex, head) !== expected
+    !(await present(checkout, head, decisionIndex)) ||
+    (await readRegularFile(checkout, decisionIndex, head)) !== expected
   ) {
     throw new Error(
       `${decisionIndex}: a release cut changes the decision index only to mark each decision it accepts from proposed to accepted. Make any other change in an ordinary PR.`,

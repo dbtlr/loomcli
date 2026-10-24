@@ -14,7 +14,8 @@ import { object, safeParse, string } from 'valibot';
 import { highestKind, insertSection, landedFragments, renderSection } from './changelog.js';
 import { withVersion } from './manifest.js';
 import { withoutByteOrderMark } from './markdown.js';
-import { isRepository, isShallow, readRegularFile } from './repository.js';
+import { isRepository, isShallow, readWorkingFile } from './repository.js';
+import type { Checkout } from './repository.js';
 import { nextVersion, parseVersion } from './version.js';
 
 function manifestVersion(source: string) {
@@ -43,13 +44,13 @@ function packageVersion(source: string) {
 }
 
 // Write orders fragments by the commits that added them, so it reads the full history of a repository.
-function requireHistory(directory: string) {
-  if (!isRepository(directory)) {
+async function requireHistory(checkout: Checkout) {
+  if (!(await isRepository(checkout))) {
     throw new Error(
       'loom changelog write orders fragments by the commits that added them, so run it inside a git repository with the fragments committed.',
     );
   }
-  if (isShallow(directory)) {
+  if (await isShallow(checkout)) {
     throw new Error(
       'loom changelog write needs full git history to order the fragments, so fetch it with git fetch --unshallow and run it again.',
     );
@@ -60,14 +61,15 @@ function requireHistory(directory: string) {
  * A package's next cut, prepared without writing: the section its pending fragments render, the
  * version they decide, and the new contents of `CHANGELOG.md` and `package.json`.
  */
-export function preparePackageCut(
-  directory: string,
+export async function preparePackageCut(
+  checkout: Checkout,
   options: { date: string; narrative: string | undefined },
 ) {
-  const manifest = readRegularFile(directory, 'package.json');
+  const directory = checkout.root;
+  const manifest = readWorkingFile(directory, 'package.json');
   const current = packageVersion(manifest);
-  requireHistory(directory);
-  const { fragments } = landedFragments(directory);
+  await requireHistory(checkout);
+  const { fragments } = await landedFragments(checkout);
   if (fragments.length === 0) {
     throw new Error('No fragments to release, so add a fragment to .changes/ first.');
   }
@@ -79,7 +81,7 @@ export function preparePackageCut(
     version,
   });
   const changelog = existsSync(join(directory, 'CHANGELOG.md'))
-    ? readRegularFile(directory, 'CHANGELOG.md')
+    ? readWorkingFile(directory, 'CHANGELOG.md')
     : '# Changelog\n';
   return {
     changelog: insertSection(changelog, section, version),
@@ -90,13 +92,16 @@ export function preparePackageCut(
   };
 }
 
+/** A package's next cut, prepared without writing. */
+export type PackageCut = Awaited<ReturnType<typeof preparePackageCut>>;
+
 /**
  * Installs a prepared cut. The new files are staged in a temporary directory beside the originals,
  * so a failure while staging changes nothing. The replacement then moves each original and each
  * consumed fragment into that directory and the staged files into place, and a failure undoes every
  * move made so far. Only when the undo itself fails does the directory stay, holding the originals.
  */
-export function writePackageCut(directory: string, cut: ReturnType<typeof preparePackageCut>) {
+export function writePackageCut(directory: string, cut: PackageCut) {
   const stage = mkdtempSync(join(directory, '.loom-changelog-'));
   const moves: { from: string; to: string }[] = [];
   const move = (from: string, to: string) => {

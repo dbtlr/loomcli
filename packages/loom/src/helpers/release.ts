@@ -1,10 +1,14 @@
 import { highestKind, landedFragments, renderSection } from './changelog.js';
 import { materialBaseline, unchangedLibraries } from './material.js';
 import { currentVersion, readLibraries } from './repository.js';
+import type { Checkout } from './repository.js';
 import { nextVersion, parseVersion } from './version.js';
 
-export function prepareRelease(
-  root: string,
+/** One prepared release: its fragments, the head, the libraries, the section, and the version. */
+export type Release = Awaited<ReturnType<typeof prepareRelease>>;
+
+export async function prepareRelease(
+  checkout: Checkout,
   options: {
     date: string;
     initial: boolean;
@@ -14,8 +18,8 @@ export function prepareRelease(
   },
   ref?: string,
 ) {
-  const { fragments, head } = landedFragments(root, ref);
-  const libraries = readLibraries(root, ref);
+  const { fragments, head } = await landedFragments(checkout, ref);
+  const libraries = await readLibraries(checkout, ref);
   const current = currentVersion(libraries);
   if (options.initial && current.text !== '0.0.0') {
     throw new Error('--initial requires library version 0.0.0.');
@@ -50,10 +54,10 @@ export function prepareRelease(
   const unchanged =
     current.text === '0.0.0'
       ? []
-      : unchangedLibraries(
-          root,
+      : await unchangedLibraries(
+          checkout,
           libraries,
-          options.since ?? materialBaseline(root, libraries, current.text, head),
+          options.since ?? (await materialBaseline(checkout, libraries, current.text, head)),
           ref,
         );
   if (unchanged.length > 0) {
@@ -64,7 +68,7 @@ export function prepareRelease(
 
 // A release must carry notes, because the release plan refuses a changelog section that says nothing.
 // Only an initial cut can reach that state: every other cut consumes at least one fragment.
-export function requireReleaseNotes(release: ReturnType<typeof prepareRelease>) {
+export function requireReleaseNotes(release: Release) {
   const body = release.section.slice(release.section.indexOf('\n') + 1);
   if (body.trim() === '') {
     throw new Error(

@@ -1,20 +1,16 @@
 import { posix } from 'node:path';
 
-import type { readLibraries } from './repository.js';
+import type { Checkout, Libraries } from './repository.js';
 import {
   currentVersion,
   git,
+  gitLine,
   readParticipants,
   requireCoherentLibraries,
   requireFullHistory,
 } from './repository.js';
 
-function dependencyName(
-  directory: string,
-  name: string,
-  range: string,
-  libraries: ReturnType<typeof readLibraries>,
-) {
+function dependencyName(directory: string, name: string, range: string, libraries: Libraries) {
   if (!range.startsWith('workspace:')) {
     return name;
   }
@@ -29,11 +25,11 @@ function dependencyName(
 
 // Only a commit that carries no participating manifest has no synchronized version.
 // Every other failure of the walk is a defect or a damaged repository, and it propagates.
-function synchronizedVersion(root: string, ref: string | undefined) {
+async function synchronizedVersion(checkout: Checkout, ref: string | undefined) {
   if (ref === undefined) {
     return undefined;
   }
-  const [first, ...rest] = readParticipants(root, ref);
+  const [first, ...rest] = await readParticipants(checkout, ref);
   if (first === undefined) {
     return undefined;
   }
@@ -42,30 +38,29 @@ function synchronizedVersion(root: string, ref: string | undefined) {
 
 // An abandoned version never receives a tag, so the baseline is the commit that set the current version.
 // The walk visits the first-parent commits that touched a participating manifest, newest first.
-export function materialBaseline(
-  root: string,
-  libraries: ReturnType<typeof readLibraries>,
+export async function materialBaseline(
+  checkout: Checkout,
+  libraries: Libraries,
   version: string,
   head: string,
 ) {
-  requireFullHistory(root);
-  const candidates = git(root, [
+  await requireFullHistory(checkout);
+  const log = await git(checkout, [
     'log',
     '--first-parent',
     '--format=%H %P',
     head,
     '--',
     ...libraries.map((library) => library.path),
-  ])
-    .split('\n')
-    .flatMap((line) => {
-      const [commit, parent] = line.split(' ').filter(Boolean);
-      return commit === undefined ? [] : [{ commit, parent }];
-    });
+  ]);
+  const candidates = log.split('\n').flatMap((line) => {
+    const [commit, parent] = line.split(' ').filter(Boolean);
+    return commit === undefined ? [] : [{ commit, parent }];
+  });
   for (const { commit, parent } of candidates) {
     if (
-      synchronizedVersion(root, commit) === version &&
-      synchronizedVersion(root, parent) !== version
+      (await synchronizedVersion(checkout, commit)) === version &&
+      (await synchronizedVersion(checkout, parent)) !== version
     ) {
       return commit;
     }
@@ -78,15 +73,20 @@ export function isBuildAffectingPath(path: string) {
   return !path.startsWith('docs/') && !(!path.includes('/') && /\.md$/iu.test(path));
 }
 
-export function unchangedLibraries(
-  root: string,
-  libraries: ReturnType<typeof readLibraries>,
+export async function unchangedLibraries(
+  checkout: Checkout,
+  libraries: Libraries,
   since: string,
   head?: string,
 ) {
-  const base = git(root, ['rev-parse', '--verify', '--end-of-options', `${since}^{commit}`]).trim();
-  git(root, ['merge-base', '--is-ancestor', base, head ?? 'HEAD']);
-  const paths = git(root, [
+  const base = await gitLine(checkout, [
+    'rev-parse',
+    '--verify',
+    '--end-of-options',
+    `${since}^{commit}`,
+  ]);
+  await git(checkout, ['merge-base', '--is-ancestor', base, head ?? 'HEAD']);
+  const diff = await git(checkout, [
     'diff',
     '--no-renames',
     '--name-only',
@@ -94,14 +94,13 @@ export function unchangedLibraries(
     base,
     ...(head === undefined ? [] : [head]),
     '--',
-  ])
-    .split('\0')
-    .filter(Boolean);
-  const untracked = (
-    head === undefined ? git(root, ['ls-files', '--others', '--exclude-standard', '-z']) : ''
-  )
-    .split('\0')
-    .filter(Boolean);
+  ]);
+  const paths = diff.split('\0').filter(Boolean);
+  const others =
+    head === undefined
+      ? await git(checkout, ['ls-files', '--others', '--exclude-standard', '-z'])
+      : '';
+  const untracked = others.split('\0').filter(Boolean);
   const changed = new Set<string>();
   for (const path of [...paths, ...untracked].filter(
     (candidate) => !candidate.startsWith('.changes/') && isBuildAffectingPath(candidate),

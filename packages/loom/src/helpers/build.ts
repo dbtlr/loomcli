@@ -16,6 +16,12 @@ import { superviseBun } from './bun.js';
 import type { Stoppable } from './bun.js';
 
 /**
+ * A child a signal ended reports a code above this one, 128 plus the signal's number. A watcher a
+ * signal ended was stopped, which is no failure of the watch.
+ */
+const signalBase = 128;
+
+/**
  * The argument that has Bun read the package's `bunfig.toml`, when the package holds one. Bun reads
  * only the `bunfig.toml` in its working directory, which for a build is a directory loom owns rather
  * than the package. `--config` takes its value after `=`, because a value after a space reads as an
@@ -156,7 +162,7 @@ export async function build(plan: BuildPlan, run: Stoppable): Promise<void> {
       undo();
       return;
     }
-    if (result.status !== 0) {
+    if (result.code !== 0) {
       throw new Error(
         `${result.output.trim()}\n\nBun could not build the application, so no output changed.`,
       );
@@ -184,7 +190,7 @@ export async function build(plan: BuildPlan, run: Stoppable): Promise<void> {
  * each output directory the watch created that nothing has filled is removed. A build never writes
  * a `.bun-build` file there, because it runs Bun in its own temporary directory. A cancelled run
  * stops Bun and the watch removes what it left, synchronously at a shutdown's end when that comes
- * first. A watcher Bun ends with a failure fails the command.
+ * first. A watcher Bun ends with a failure fails the command, and one a signal ended was stopped.
  */
 export async function watch(plan: BuildPlan, run: Stoppable): Promise<void> {
   const outDirectory = outputDirectory(plan);
@@ -210,7 +216,7 @@ export async function watch(plan: BuildPlan, run: Stoppable): Promise<void> {
     removeTidy();
     tidy();
   });
-  if (result.status !== 0 && result.status !== null && !run.signal.aborted) {
-    throw new Error(`bun build --watch exited with ${result.status}.`);
+  if (result.code !== 0 && result.code <= signalBase && !run.signal.aborted) {
+    throw new Error(`bun build --watch exited with ${result.code}.`);
   }
 }

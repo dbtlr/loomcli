@@ -11,7 +11,8 @@ import {
   requireClosedBlocks,
   withoutByteOrderMark,
 } from './markdown.js';
-import { git, requireFullHistory } from './repository.js';
+import { git, gitLine, requireFullHistory } from './repository.js';
+import type { Checkout } from './repository.js';
 
 function compareNames(left: string, right: string) {
   if (left < right) {
@@ -58,38 +59,39 @@ export function releaseDate(input: string | undefined) {
  * the fragment's first position and commit dates never enter. A shallow clone hides those commits,
  * and a fragment no commit added has no position, so both fail.
  */
-export function landedFragments(root: string, ref?: string) {
-  requireFullHistory(root);
-  const head = ref ?? git(root, ['rev-parse', 'HEAD']).trim();
-  const chain = git(root, ['rev-list', '--first-parent', head]).split('\n').filter(Boolean);
+export async function landedFragments(checkout: Checkout, ref?: string) {
+  await requireFullHistory(checkout);
+  const head = ref ?? (await gitLine(checkout, ['rev-parse', 'HEAD']));
+  const history = await git(checkout, ['rev-list', '--first-parent', head]);
+  const chain = history.split('\n').filter(Boolean);
   const positions = new Map(chain.map((commit, index) => [commit, chain.length - index]));
-  const fragments = readFragments(root, ref)
-    .map((fragment) => {
-      const commit = git(root, [
-        'log',
-        '--first-parent',
-        '--diff-filter=A',
-        '-1',
-        '--format=%H',
-        head,
-        '--',
-        `.changes/${fragment.name}`,
-      ]).trim();
-      const added = positions.get(commit);
-      if (added === undefined) {
-        throw new Error(
-          `.changes/${fragment.name}: commit the fragment before preparing a release.`,
-        );
-      }
-      return {
-        added,
-        body: fragment.body,
-        kind: fragment.kind,
-        name: fragment.name,
-        source: fragment.source,
-      };
-    })
-    .toSorted((left, right) => left.added - right.added || compareNames(left.name, right.name));
+  const landed = [];
+  for (const fragment of await readFragments(checkout, ref)) {
+    const commit = await gitLine(checkout, [
+      'log',
+      '--first-parent',
+      '--diff-filter=A',
+      '-1',
+      '--format=%H',
+      head,
+      '--',
+      `.changes/${fragment.name}`,
+    ]);
+    const added = positions.get(commit);
+    if (added === undefined) {
+      throw new Error(`.changes/${fragment.name}: commit the fragment before preparing a release.`);
+    }
+    landed.push({
+      added,
+      body: fragment.body,
+      kind: fragment.kind,
+      name: fragment.name,
+      source: fragment.source,
+    });
+  }
+  const fragments = landed.toSorted(
+    (left, right) => left.added - right.added || compareNames(left.name, right.name),
+  );
   return { fragments, head };
 }
 

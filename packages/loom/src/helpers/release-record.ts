@@ -12,7 +12,8 @@ import { readBytes, until } from './http.js';
 import type { RetryPolicy } from './http.js';
 import { readProvenance, readPublished, tarballName, verifyIntegrity } from './registry.js';
 import type { ReleasePlan } from './release-plan.js';
-import { git } from './repository.js';
+import { git, gitLine } from './repository.js';
+import type { Checkout } from './repository.js';
 
 // The bytes, the build commit, and the asset name of one published library.
 async function readUpload(
@@ -46,13 +47,18 @@ async function readUpload(
 }
 
 // Provenance attests a commit of this repository, and the checkout proves it is one this branch carries.
-function requireCommitInCheckout(root: string, commit: string, subject: string) {
-  const head = git(root, ['rev-parse', '--verify', '--end-of-options', 'HEAD^{commit}']).trim();
+async function requireCommitInCheckout(checkout: Checkout, commit: string, subject: string) {
+  const head = await gitLine(checkout, [
+    'rev-parse',
+    '--verify',
+    '--end-of-options',
+    'HEAD^{commit}',
+  ]);
   if (head === commit) {
     return;
   }
   try {
-    git(root, ['merge-base', '--is-ancestor', commit, head]);
+    await git(checkout, ['merge-base', '--is-ancestor', commit, head]);
   } catch {
     throw new Error(
       `${subject} was published from ${commit}, which is neither the head ${head} of the checkout nor an ancestor of it.`,
@@ -61,12 +67,12 @@ function requireCommitInCheckout(root: string, commit: string, subject: string) 
 }
 
 export interface RecordRequest {
+  checkout: Checkout;
   githubApi: string;
   plan: ReleasePlan;
   registry: string;
   repository: string;
   retry: RetryPolicy;
-  root: string;
   token: string;
 }
 
@@ -95,7 +101,7 @@ export async function recordRelease(request: RecordRequest): Promise<string> {
     uploads.push(upload);
   }
   const commit = first.commit;
-  requireCommitInCheckout(request.root, commit, tag);
+  await requireCommitInCheckout(request.checkout, commit, tag);
   const tagged = await readTagCommit(target, tag);
   if (tagged === undefined) {
     await createTag(target, tag, commit);

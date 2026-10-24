@@ -7,26 +7,41 @@ import { insertSection, readNarrative, releaseDate } from '../../helpers/changel
 import { withVersion } from '../../helpers/manifest.js';
 import { prepareLockfile } from '../../helpers/release-files.js';
 import { prepareRelease, requireReleaseNotes } from '../../helpers/release.js';
+import type { Release } from '../../helpers/release.js';
 import { report } from '../../helpers/report.js';
-import { git, readRegularFile } from '../../helpers/repository.js';
+import { git, gitLine, readWorkingFile } from '../../helpers/repository.js';
+import type { Checkout } from '../../helpers/repository.js';
 
-// Stage package-manager work before touching the checkout; handled write failures restore originals.
-function installRelease(root: string, release: ReturnType<typeof prepareRelease>) {
-  if (git(root, ['rev-parse', '--show-prefix']).trim() !== '') {
+/** Whether the checkout's HEAD or working tree moved away from the prepared release. */
+async function checkoutMoved(checkout: Checkout, release: Release) {
+  if ((await gitLine(checkout, ['rev-parse', 'HEAD'])) !== release.head) {
+    return true;
+  }
+  return (await gitLine(checkout, ['status', '--porcelain', '--untracked-files=all'])) !== '';
+}
+
+/**
+ * Stages package-manager work before touching the checkout; handled write failures restore
+ * originals. Every git and pnpm call comes first, so the check of each file, the writes, and the
+ * restore run together without waiting, and an ending signal is handled only once they are done.
+ */
+async function installRelease(checkout: Checkout, release: Release) {
+  const { root } = checkout;
+  if ((await gitLine(checkout, ['rev-parse', '--show-prefix'])) !== '') {
     throw new Error('Run release cut from the repository root.');
   }
-  if (git(root, ['status', '--porcelain', '--untracked-files=all']).trim()) {
+  if (await gitLine(checkout, ['status', '--porcelain', '--untracked-files=all'])) {
     throw new Error('release cut requires a clean checkout. Commit the release inputs first.');
   }
-  if (git(root, ['tag', '--list', `v${release.version}`]).trim()) {
+  if (await gitLine(checkout, ['tag', '--list', `v${release.version}`])) {
     throw new Error(`Tag v${release.version} already exists.`);
   }
   const original = new Map<string, string | undefined>();
   const updates = new Map<string, string | undefined>();
-  original.set('CHANGELOG.md', readRegularFile(root, 'CHANGELOG.md'));
+  original.set('CHANGELOG.md', readWorkingFile(root, 'CHANGELOG.md'));
   updates.set(
     'CHANGELOG.md',
-    insertSection(readRegularFile(root, 'CHANGELOG.md'), release.section, release.version),
+    insertSection(readWorkingFile(root, 'CHANGELOG.md'), release.section, release.version),
   );
   for (const library of release.libraries) {
     original.set(library.path, library.source);
@@ -38,19 +53,16 @@ function installRelease(root: string, release: ReturnType<typeof prepareRelease>
   }
   original.set(
     'pnpm-lock.yaml',
-    existsSync(join(root, 'pnpm-lock.yaml')) ? readRegularFile(root, 'pnpm-lock.yaml') : undefined,
+    existsSync(join(root, 'pnpm-lock.yaml')) ? readWorkingFile(root, 'pnpm-lock.yaml') : undefined,
   );
   const installed: string[] = [];
-  updates.set('pnpm-lock.yaml', prepareLockfile(root, release));
+  updates.set('pnpm-lock.yaml', await prepareLockfile(checkout, release));
+  if (await checkoutMoved(checkout, release)) {
+    throw new Error('Checkout changed during release preparation.');
+  }
   try {
-    if (
-      git(root, ['rev-parse', 'HEAD']).trim() !== release.head ||
-      git(root, ['status', '--porcelain', '--untracked-files=all']).trim()
-    ) {
-      throw new Error('Checkout changed during release preparation.');
-    }
     for (const [path, contents] of original) {
-      const current = existsSync(join(root, path)) ? readRegularFile(root, path) : undefined;
+      const current = existsSync(join(root, path)) ? readWorkingFile(root, path) : undefined;
       if (current !== contents) {
         throw new Error(`${path}: changed during release preparation.`);
       }
@@ -68,7 +80,7 @@ function installRelease(root: string, release: ReturnType<typeof prepareRelease>
     for (const path of installed.toReversed()) {
       try {
         const contents = original.get(path);
-        const current = existsSync(join(root, path)) ? readRegularFile(root, path) : undefined;
+        const current = existsSync(join(root, path)) ? readWorkingFile(root, path) : undefined;
         if (current !== contents) {
           if (contents === undefined) {
             rmSync(join(root, path), { force: true });
@@ -90,8 +102,9 @@ function installRelease(root: string, release: ReturnType<typeof prepareRelease>
   }
 }
 
-function writeRelease(root: string, release: ReturnType<typeof prepareRelease>) {
-  const lock = resolve(root, git(root, ['rev-parse', '--git-path', 'release-cut.lock']).trim());
+async function writeRelease(checkout: Checkout, release: Release) {
+  const lockPath = await git(checkout, ['rev-parse', '--git-path', 'release-cut.lock']);
+  const lock = resolve(checkout.root, lockPath.trim());
   try {
     mkdirSync(lock);
   } catch (error) {
@@ -104,14 +117,14 @@ function writeRelease(root: string, release: ReturnType<typeof prepareRelease>) 
     throw error;
   }
   try {
-    installRelease(root, release);
+    await installRelease(checkout, release);
   } finally {
     rmSync(lock, { recursive: true });
   }
 }
 
-function prepare(
-  root: string,
+async function prepare(
+  checkout: Checkout,
   options: {
     date: string | undefined;
     initial: boolean;
@@ -120,10 +133,10 @@ function prepare(
     target: string | undefined;
   },
 ) {
-  const release = prepareRelease(root, {
+  const release = await prepareRelease(checkout, {
     date: releaseDate(options.date),
     initial: options.initial,
-    narrative: readNarrative(root, options.narrative),
+    narrative: readNarrative(checkout.root, options.narrative),
     since: options.since,
     target: options.target,
   });
@@ -163,11 +176,12 @@ export const cut = new Command('cut', {
     description: 'Read the release narrative from this Markdown file.',
     type: 'string',
   })
-  .action(async ({ host, options, out, passthrough }) => {
-    await report(out, passthrough, () => {
-      const release = prepare(host.cwd, options);
+  .action(async ({ host, options, out, passthrough, signal }) => {
+    await report(out, passthrough, async () => {
+      const checkout = { host, root: host.cwd, signal };
+      const release = await prepare(checkout, options);
       if (!options['dry-run']) {
-        writeRelease(host.cwd, release);
+        await writeRelease(checkout, release);
       }
       return release.section;
     });
