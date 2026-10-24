@@ -3,7 +3,7 @@ import { object, safeParse, string, union } from 'valibot';
 import type { BuildTarget } from './build-target.js';
 import { jsonObject } from './json-object.js';
 import { withoutByteOrderMark } from './markdown.js';
-import { readRegularFile } from './repository.js';
+import { readWorkingFile } from './repository.js';
 
 /** A semantic version, as semver.org's grammar states it and core reads it. */
 const semanticVersion =
@@ -251,5 +251,5 @@ export function manifestOf(source: string): Manifest {
 
 /** Reads the standard fields of the `package.json` in a package directory. */
 export function readManifest(directory: string): Manifest {
-  return manifestOf(readRegularFile(directory, 'package.json'));
+  return manifestOf(readWorkingFile(directory, 'package.json'));
 }

@@ -38,6 +38,7 @@ import { loomVersion, typescriptRange } from '../../helpers/loom-version.js';
 import { driftWarning, hasDrifted, readManaged, renderManaged } from '../../helpers/managed.js';
 import { nearestPackageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
+import type { RunHost } from '../../helpers/run-host.js';
 import {
   addMissingKeys,
   applicationIdentifier,
@@ -117,7 +118,7 @@ const executableMode = 0o755;
  * failure later in the run follows the lines of what was already written. Every path a line names
  * is relative to the package directory.
  */
-interface Run {
+interface Run extends RunHost {
   readonly directory: string;
   readonly force: boolean;
   readonly line: (text: string) => void;
@@ -281,15 +282,17 @@ function writeKeys(run: Run) {
  * `unloaded` with the reason, and one that loads but exports no single Application reads
  * `unexported`.
  */
-function authoredImport(run: Run, name: string): AuthoredImport {
+async function authoredImport(run: Run, name: string): Promise<AuthoredImport> {
   let result: ApplicationExports | undefined = undefined;
   try {
-    result = readApplicationExports({
+    result = await readApplicationExports(run, {
       directory: run.directory,
       module: applicationPath,
       path: join(run.directory, applicationPath),
     });
   } catch (error) {
+    // A cancelled read stops init where it is, with no warning and nothing more written.
+    run.signal.throwIfAborted();
     return { kind: 'unloaded', reason: error instanceof Error ? error.message : String(error) };
   }
   if ('failure' in result) {
@@ -316,12 +319,12 @@ function reasonLine(reason: string) {
  * needs it: the scaffold's identifier when init writes the application module too, and what the
  * module exports when the author already holds one.
  */
-function applicationImporter(run: Run, authored: boolean): () => AuthoredImport {
+function applicationImporter(run: Run, authored: boolean): () => Promise<AuthoredImport> {
   let outcome: AuthoredImport | undefined = undefined;
-  return () => {
+  return async () => {
     const name = scaffoldName(readManifest(run.directory));
     outcome ??= authored
-      ? authoredImport(run, name)
+      ? await authoredImport(run, name)
       : {
           imported: { identifier: applicationIdentifier(name), kind: 'named' },
           kind: 'read',
@@ -356,22 +359,22 @@ function importedApplication(
 }
 
 /** Writes the entry when it is missing. */
-function writeEntry(run: Run, importing: () => AuthoredImport) {
+async function writeEntry(run: Run, importing: () => Promise<AuthoredImport>) {
   if (existsSync(join(run.directory, entryPath))) {
     return;
   }
-  const imported = importedApplication(run, { noun: 'entry', path: entryPath }, importing());
+  const imported = importedApplication(run, { noun: 'entry', path: entryPath }, await importing());
   if (imported !== undefined) {
     write(run, entryPath, entryModule(imported));
   }
 }
 
 /** Writes the test of the assembly check when it is missing, for the run's test runner. */
-function writeTest(run: Run, importing: () => AuthoredImport) {
+async function writeTest(run: Run, importing: () => Promise<AuthoredImport>) {
   if (existsSync(join(run.directory, testPath))) {
     return;
   }
-  const imported = importedApplication(run, { noun: 'test', path: testPath }, importing());
+  const imported = importedApplication(run, { noun: 'test', path: testPath }, await importing());
   if (imported !== undefined) {
     write(run, testPath, applicationTest(run.tooling.runner, imported));
   }
@@ -454,12 +457,15 @@ function neededQuestions(
 }
 
 /** One init run over the pieces it is limited to, all of them by default. */
-function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; target: Target }) {
+async function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; target: Target }) {
   const { directory, fresh } = run.target;
   const context: Run = {
     directory,
     force: run.force,
+    host: run.host,
     line: run.line,
+    onShutdown: run.onShutdown,
+    signal: run.signal,
     tooling: run.tooling,
     warn: run.warn,
   };
@@ -480,13 +486,13 @@ function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; target:
     write(context, applicationPath, applicationModule(name, applicationIdentifier(name)));
   }
   if (selected('entry')) {
-    writeEntry(context, importing);
+    await writeEntry(context, importing);
   }
   if (selected('tsconfig') && !existsSync(join(directory, typescriptConfigPath))) {
     write(context, typescriptConfigPath, typescriptConfig);
   }
   if (selected('test')) {
-    writeTest(context, importing);
+    await writeTest(context, importing);
   }
   if (selected('lint')) {
     writeLint(context);
@@ -532,8 +538,8 @@ export const init = new Command('init', {
     type: 'boolean',
   })
   .action(async (context) => {
-    const { host, options, out, passthrough, supplied } = context;
-    await report(out, passthrough, async () => {
+    const { host, onShutdown, options, out, passthrough, signal, supplied } = context;
+    await report({ out, passthrough, signal }, async () => {
       const target = initTarget(host.cwd);
       const existing = existingTooling(target);
       const needed = neededQuestions(target, options.only);
@@ -560,10 +566,13 @@ export const init = new Command('init', {
           skipIfSupplied: true,
         });
       }
-      runInit({
+      await runInit({
         force: options.force,
+        host,
         line: (text) => host.stdout.write(`${text}\n`),
+        onShutdown,
         only: options.only,
+        signal,
         target,
         tooling: { linter, runner },
         warn: (text) => host.stderr.write(`${text}\n`),

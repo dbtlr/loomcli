@@ -1,5 +1,4 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,6 +7,7 @@ import type { InferOutput } from 'valibot';
 
 import { runBun } from './bun.js';
 import { parseOrThrow } from './parse-or-throw.js';
+import type { RunHost } from './run-host.js';
 
 /** The names a module exports its Application under. */
 const names = array(string());
@@ -32,25 +32,32 @@ export type ApplicationExports = InferOutput<typeof exportsResult>;
  * process writes its result to a file, so nothing the module prints while it loads can be mistaken
  * for the result. A process that ends without a result fails with what it wrote. Bun runs with
  * `--no-install`, because a package with no `node_modules` would otherwise resolve core and the
- * module's imports from Bun's global cache, which the package never installed.
+ * module's imports from Bun's global cache, which the package never installed. The result file lives
+ * in a scratch folder under the run's temporary folder, removed once it is read or when a shutdown
+ * ends before the run has unwound. A cancelled run fails with the signal's reason.
  */
-export function readApplicationExports(options: {
-  directory: string;
-  module: string;
-  path: string;
-}): ApplicationExports {
-  const temporary = mkdtempSync(join(tmpdir(), 'loom-init-'));
+export async function readApplicationExports(
+  run: RunHost,
+  options: { directory: string; module: string; path: string },
+): Promise<ApplicationExports> {
+  const temporary = mkdtempSync(join(run.host.tmpdir, 'loom-init-'));
+  const removeTemporary = () => {
+    rmSync(temporary, { force: true, recursive: true });
+  };
+  const removeCleanup = run.onShutdown(removeTemporary);
   try {
     const resultFile = join(temporary, 'result.json');
-    const run = runBun(
+    const read = await runBun(
+      run,
       ['--no-install', script, resultFile, options.directory, options.path, options.module],
       options.directory,
     );
-    if (run.status !== 0 || !existsSync(resultFile)) {
-      throw new Error(`${run.output.trim()}\n\nBun could not read ${options.module}.`.trim());
+    if (read.code !== 0 || !existsSync(resultFile)) {
+      throw new Error(`${read.output.trim()}\n\nBun could not read ${options.module}.`.trim());
     }
     return parseOrThrow(exportsResult, JSON.parse(readFileSync(resultFile, 'utf8')));
   } finally {
-    rmSync(temporary, { force: true, recursive: true });
+    removeCleanup();
+    removeTemporary();
   }
 }

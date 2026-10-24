@@ -36,16 +36,8 @@ const config: Linter.Config[] = [
   },
   {
     // These are the exceptions the repository's own process rule names (ADR-0107).
-    // They are the YAML guard, the toolchain's application reader, and its Bun signal forwarding.
-    // The toolchain's git, pnpm, bun, and scratch-folder modules move onto the host in PR B (LM-409).
-    files: [
-      'packages/plugins/src/config/yaml.ts',
-      'packages/loom/src/read-application.ts',
-      'packages/loom/src/helpers/application-exports.ts',
-      'packages/loom/src/helpers/bun.ts',
-      'packages/loom/src/helpers/release-files.ts',
-      'packages/loom/src/helpers/repository.ts',
-    ],
+    // They are the YAML guard and the toolchain's application reader, which is its own program.
+    files: ['packages/plugins/src/config/yaml.ts', 'packages/loom/src/read-application.ts'],
     rules: { '@loomcli/host-bypass': 'off' },
   },
 ];

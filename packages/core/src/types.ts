@@ -351,8 +351,11 @@ export type ChildExit =
 export interface Child {
   /** Resolves once the child has ended and its streams have closed; it never rejects. */
   readonly exited: Promise<ChildExit>;
-  /** Delivers a signal to the child, `SIGTERM` when omitted; does nothing once it has exited. */
-  kill(signal?: ProcessSignal): void;
+  /**
+   * Delivers a signal to the child, `SIGTERM` when omitted, or `SIGKILL`, which the child cannot
+   * handle; does nothing once it has exited.
+   */
+  kill(signal?: ProcessSignal | 'SIGKILL'): void;
 }
 /**
  * Every process fact a run reads and every process effect it makes. A run binds one at entry and

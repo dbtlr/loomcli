@@ -303,6 +303,27 @@ test('kill delivers the signal it names, and the code is 128 plus its number', a
   child.kill();
 });
 
+test('kill of SIGKILL ends a child that ignores SIGTERM, with the code 137', async () => {
+  // The child says ready once it ignores SIGTERM, so the kills never land before its handler.
+  const ready = Promise.withResolvers<undefined>();
+  const output = new Writable({
+    write(_chunk, _encoding, callback) {
+      ready.resolve(undefined);
+      callback();
+    },
+  });
+  const child = startReal(
+    script(
+      "process.on('SIGTERM', () => undefined); process.stdout.write('ready'); setTimeout(() => undefined, 30_000);",
+    ),
+    { stdout: output },
+  );
+  await ready.promise;
+  child.kill('SIGTERM');
+  child.kill('SIGKILL');
+  await expect(exitOf(child)).resolves.toMatchObject({ code: 137 });
+});
+
 test('a command no program answers to is unstarted with the runtime error, and spawn does not throw', async () => {
   const handle = processHandle();
   const missing = handle.spawn('loom-test-no-such-program', [], {

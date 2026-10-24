@@ -20,10 +20,12 @@ import type { RegistryTarget } from './registry.js';
 import {
   currentVersion,
   git,
+  gitLine,
   readLibraries,
   readRegularFile,
   requireFullHistory,
 } from './repository.js';
+import type { Checkout, Libraries, Participant } from './repository.js';
 
 type ReleaseAssets = NonNullable<Awaited<ReturnType<typeof readRelease>>>['assets'];
 
@@ -82,9 +84,7 @@ function abandon(version: string, reason: string) {
 }
 
 // Every participating library, named without a registry read, because the unreleased version is never published.
-function unreleasedLibraries(
-  participants: ReturnType<typeof readLibraries>,
-): ReleasePlan['libraries'] {
+function unreleasedLibraries(participants: Libraries): ReleasePlan['libraries'] {
   const [first, ...others] = participants;
   const libraries: ReleasePlan['libraries'] = [
     { directory: first.directory, name: first.manifest.name, published: false },
@@ -98,7 +98,7 @@ function unreleasedLibraries(
 // The registry facts of one participating library at the released version.
 async function describeLibrary(
   registry: RegistryTarget,
-  participant: ReturnType<typeof readLibraries>[number],
+  participant: Participant,
   version: string,
 ) {
   const name = participant.manifest.name;
@@ -188,26 +188,27 @@ export const planSchema = pipe(
 export type ReleasePlan = InferOutput<typeof planSchema>;
 
 export interface PlanRequest {
+  checkout: Checkout;
   githubApi: string;
   head: string;
   policy: HttpPolicy;
   registry: string;
   repository: string;
-  root: string;
   token: string | undefined;
 }
 
 export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
-  requireFullHistory(request.root);
-  const head = git(request.root, [
+  const { checkout } = request;
+  await requireFullHistory(checkout);
+  const head = await gitLine(checkout, [
     'rev-parse',
     '--verify',
     '--end-of-options',
     `${request.head}^{commit}`,
-  ]).trim();
-  const participants = readLibraries(request.root, head);
+  ]);
+  const participants = await readLibraries(checkout, head);
   const version = currentVersion(participants).text;
-  const cutCommit = materialBaseline(request.root, participants, version, head);
+  const cutCommit = await materialBaseline(checkout, participants, version, head);
   // The unreleased version has no registry record, no changelog section, and nothing to reconcile.
   if (version === unreleasedVersion) {
     return {
@@ -223,7 +224,7 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
       version,
     };
   }
-  const changelog = readRegularFile(request.root, 'CHANGELOG.md', head);
+  const changelog = await readRegularFile(checkout, 'CHANGELOG.md', head);
   const notes = changelogSection(changelog, version);
   const [participant, ...others] = participants;
   const registry = { policy: request.policy, registry: request.registry };
@@ -245,7 +246,7 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
   const publish = libraries.some((library) => !library.published);
   let provenanceCommit: string | null = null;
   if (publish) {
-    const changed = git(request.root, [
+    const diff = await git(checkout, [
       'diff',
       '--name-only',
       '-z',
@@ -254,9 +255,8 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
       '--',
       ...libraries.map((library) => library.directory),
       ...sharedBuildInputs,
-    ])
-      .split('\0')
-      .filter(Boolean);
+    ]);
+    const changed = diff.split('\0').filter(Boolean);
     if (changed.length > 0) {
       const paths = changed.join(', ');
       throw abandon(

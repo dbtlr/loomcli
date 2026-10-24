@@ -1,6 +1,4 @@
-import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,8 +7,10 @@ import { parseAllDocuments } from 'yaml';
 
 import { withVersion } from './manifest.js';
 import { parseOrThrow } from './parse-or-throw.js';
-import type { prepareRelease } from './release.js';
-import { git, readRegularFile, readRegularFileBytes } from './repository.js';
+import type { Release } from './release.js';
+import { git, readRegularFileBytes, readWorkingFile } from './repository.js';
+import type { Checkout } from './repository.js';
+import type { RunHost } from './run-host.js';
 
 /**
  * The installed pnpm manifest's path. pnpm is an optional peer dependency, because only lockfile
@@ -33,10 +33,18 @@ const lockfile = object({ lockfileVersion: union([string(), number()]) });
 
 const pnpmManifest = object({ bin: object({ pnpm: string() }) });
 
-function updateLockfile(root: string) {
+/** How long pnpm may take to prepare the lockfile before it is stopped. */
+const lockfileLimit = 60_000;
+
+/**
+ * Prepares the lockfile in the staged copy at `root` with the installed pnpm, which starts through
+ * the run's host. The run's cancellation and the time limit each stop pnpm, a cancelled run fails
+ * with the signal's reason, and a shutdown that ends while pnpm still runs kills it.
+ */
+async function updateLockfile(run: RunHost, root: string) {
   const lock = join(root, 'pnpm-lock.yaml');
   if (existsSync(lock)) {
-    for (const document of parseAllDocuments(readRegularFile(root, 'pnpm-lock.yaml'))) {
+    for (const document of parseAllDocuments(readWorkingFile(root, 'pnpm-lock.yaml'))) {
       if (document.errors.length > 0) {
         throw new Error('pnpm-lock.yaml is invalid YAML.');
       }
@@ -44,9 +52,11 @@ function updateLockfile(root: string) {
     }
   }
   const manifestPath = pnpmManifestPath();
-  const manifestSource = readRegularFile(dirname(manifestPath), 'package.json');
+  const manifestSource = readWorkingFile(dirname(manifestPath), 'package.json');
   const manifest = parseOrThrow(pnpmManifest, JSON.parse(manifestSource));
-  const result = spawnSync(
+  const limit = AbortSignal.timeout(lockfileLimit);
+  run.signal.throwIfAborted();
+  const child = run.host.spawn(
     join(dirname(manifestPath), manifest.bin.pnpm),
     [
       'install',
@@ -58,42 +68,59 @@ function updateLockfile(root: string) {
       '--ignore-pnpmfile',
       '--config.frozen-lockfile=false',
     ],
-    {
-      cwd: root,
-      encoding: 'utf8',
-      timeout: 60_000,
-    },
+    { cwd: root, signal: AbortSignal.any([run.signal, limit]) },
   );
-  if (result.error) {
-    throw result.error;
+  const removeKill = run.onShutdown(() => {
+    child.kill('SIGKILL');
+  });
+  const exit = await child.exited.finally(removeKill);
+  run.signal.throwIfAborted();
+  if (exit.kind === 'unstarted') {
+    throw exit.error;
   }
-  if (result.status !== 0) {
-    throw new Error(`Lockfile preparation failed:\n${result.stdout}${result.stderr}`);
+  if (limit.aborted) {
+    throw new Error(
+      `Lockfile preparation did not finish within ${lockfileLimit / 1000} seconds, so pnpm was stopped.`,
+    );
   }
-  return readRegularFile(root, 'pnpm-lock.yaml');
+  if (exit.code !== 0) {
+    throw new Error(`Lockfile preparation failed:\n${exit.stdout.text}${exit.stderr.text}`);
+  }
+  return readWorkingFile(root, 'pnpm-lock.yaml');
 }
 
-export function prepareLockfile(
-  root: string,
-  release: Pick<ReturnType<typeof prepareRelease>, 'libraries' | 'version'>,
+/**
+ * The lockfile the release writes: the checkout's tracked files, or the files at `ref`, copied into
+ * a scratch folder under the run's temporary folder with each library at the release version, and
+ * prepared there by pnpm. The folder is removed once the lockfile is read, or when a shutdown ends
+ * before the run has unwound.
+ */
+export async function prepareLockfile(
+  checkout: Checkout,
+  release: Pick<Release, 'libraries' | 'version'>,
   ref?: string,
 ) {
-  const stage = mkdtempSync(join(tmpdir(), 'loom-release-'));
+  const stage = mkdtempSync(join(checkout.host.tmpdir, 'loom-release-'));
+  const removeStage = () => {
+    rmSync(stage, { force: true, recursive: true });
+  };
+  const removeCleanup = checkout.onShutdown(removeStage);
   try {
-    const paths = git(
-      root,
+    const paths = await git(
+      checkout,
       ref === undefined ? ['ls-files', '-z'] : ['ls-tree', '-r', '--name-only', '-z', ref],
     );
     for (const path of paths.split('\0').filter(Boolean)) {
       mkdirSync(dirname(join(stage, path)), { recursive: true });
-      writeFileSync(join(stage, path), readRegularFileBytes(root, path, ref));
+      writeFileSync(join(stage, path), await readRegularFileBytes(checkout, path, ref));
     }
     for (const library of release.libraries) {
       writeFileSync(join(stage, library.path), withVersion(library.source, release.version));
     }
-    return updateLockfile(stage);
+    return await updateLockfile(checkout, stage);
   } finally {
-    rmSync(stage, { force: true, recursive: true });
+    removeCleanup();
+    removeStage();
   }
 }
 

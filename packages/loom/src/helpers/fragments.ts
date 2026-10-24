@@ -5,6 +5,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { requireClosedBlocks, withoutByteOrderMark } from './markdown.js';
 import { readDirectory, readRegularFile } from './repository.js';
+import type { Checkout } from './repository.js';
 
 // Undefined for a name outside the grammar: a bare kind prefix, an empty slug, or another extension.
 function fragmentKind(name: string): FragmentKind | undefined {
@@ -75,9 +76,9 @@ function validateBody(name: string, kind: FragmentKind, body: string) {
 }
 
 // One fragment, read and validated. An invalid entry throws the sentence that names it.
-function readFragment(
-  root: string,
-  entry: ReturnType<typeof readDirectory>[number],
+async function readFragment(
+  checkout: Checkout,
+  entry: Awaited<ReturnType<typeof readDirectory>>[number],
   ref: string | undefined,
 ) {
   const { name } = entry;
@@ -92,7 +93,7 @@ function readFragment(
       `.changes/${name}: expected <slug>.md, feature.<slug>.md, or breaking.<slug>.md.`,
     );
   }
-  const source = readRegularFile(root, `.changes/${name}`, ref);
+  const source = await readRegularFile(checkout, `.changes/${name}`, ref);
   const body = withoutByteOrderMark(source);
   validateBody(name, kind, body);
   return { body, kind, name, source };
@@ -107,22 +108,25 @@ export type FragmentKind = 'breaking' | 'feature' | 'fix';
  * with `.`, is ignored, and a missing working-tree directory holds no fragments. One error names
  * every invalid entry, so a single run reports them all.
  */
-export function readFragments(root: string, ref?: string) {
-  if (ref === undefined && !existsSync(join(root, '.changes'))) {
+export async function readFragments(checkout: Checkout, ref?: string) {
+  if (ref === undefined && !existsSync(join(checkout.root, '.changes'))) {
     return [];
   }
   const failures: string[] = [];
-  const fragments = readDirectory(root, '.changes', ref)
+  const fragments = [];
+  const listed = await readDirectory(checkout, '.changes', ref);
+  const entries = listed
     .filter((entry) => !entry.name.startsWith('.'))
-    .filter((entry) => entry.name !== 'README.md' || !entry.isFile())
-    .flatMap((entry) => {
-      try {
-        return [readFragment(root, entry, ref)];
-      } catch (error) {
-        failures.push(error instanceof Error ? error.message : String(error));
-        return [];
-      }
-    });
+    .filter((entry) => entry.name !== 'README.md' || !entry.isFile());
+  for (const entry of entries) {
+    try {
+      fragments.push(await readFragment(checkout, entry, ref));
+    } catch (error) {
+      // A cancelled run reads no further fragment and reports none.
+      checkout.signal.throwIfAborted();
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
+  }
   if (failures.length > 0) {
     throw new Error(failures.join('\n'));
   }

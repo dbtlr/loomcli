@@ -136,23 +136,7 @@ export default defineConfig({
         ],
         // A run reads every process fact and makes every process effect through its process handle
         // (ADR-0107), so the code that runs inside a run never reaches the process around the handle.
-        rules: {
-          'eslint/no-restricted-globals': ['error', processGlobal],
-          'eslint/no-restricted-imports': ['error', { paths: processImports }],
-          'eslint/no-restricted-properties': ['error', ...processProperties],
-        },
-      },
-      {
-        // The toolchain's git, pnpm, and bun children and its scratch folders move onto the host in PR B.
-        // Until then (LM-409), packages/loom/src is held to the process rules above alone.
-        files: [
-          'packages/core/src/**',
-          'packages/plugins/src/**',
-          'packages/prompts/src/**',
-          'packages/testing/src/**',
-          'packages/validators/src/**',
-        ],
-        // The home, the user, and the temporary folder are host facts (ADR-0107).
+        // The home, the user, and the temporary folder are host facts.
         // Every child program starts through host.spawn, so these packages never ask the machine.
         rules: {
           'eslint/no-restricted-globals': ['error', processGlobal, requireGlobal],
@@ -182,14 +166,13 @@ export default defineConfig({
         },
       },
       {
-        files: [
-          // The toolchain's application reader is its own child program.
-          'packages/loom/src/read-application.ts',
-        ],
+        // The toolchain's application reader is its own child program, so it reads its own process.
+        // It still imports no child-process module and asks node:os for none of the user's folders.
+        files: ['packages/loom/src/read-application.ts'],
         rules: {
-          'eslint/no-restricted-globals': 'off',
-          'eslint/no-restricted-imports': 'off',
-          'eslint/no-restricted-properties': 'off',
+          'eslint/no-restricted-globals': ['error', requireGlobal],
+          'eslint/no-restricted-imports': ['error', { paths: [...osImports, ...childImports] }],
+          'eslint/no-restricted-properties': ['error', ...osProperties],
         },
       },
       {

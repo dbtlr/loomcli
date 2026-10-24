@@ -63,15 +63,15 @@ export const release = new Command('release', {
         type: 'string',
         validate: count,
       })
-      .action(async ({ host, options, out, passthrough }) => {
-        await report(out, passthrough, async () => {
+      .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
+        await report({ out, passthrough, signal }, async () => {
           const plan = await planRelease({
+            checkout: { host, onShutdown, root: host.cwd, signal },
             githubApi: options['github-api'],
             head: options.head,
             policy: { requestTimeoutMs: options['request-timeout-ms'] },
             registry: options.registry,
             repository: options.repository,
-            root: host.cwd,
             token: host.env.GH_TOKEN,
           });
           writeFileSync(resolve(host.cwd, options.output), `${JSON.stringify(plan, null, 2)}\n`);
@@ -121,14 +121,15 @@ export const release = new Command('release', {
         type: 'string',
         validate: count,
       })
-      .action(async ({ host, options, out, passthrough }) => {
-        await report(out, passthrough, async () => {
+      .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
+        await report({ out, passthrough, signal }, async () => {
           const token = host.env.GH_TOKEN;
           if (token === undefined || token === '') {
             throw new Error('Recording a release requires GH_TOKEN.');
           }
           const source: unknown = JSON.parse(readFileSync(resolve(host.cwd, options.plan), 'utf8'));
           return recordRelease({
+            checkout: { host, onShutdown, root: host.cwd, signal },
             githubApi: options['github-api'],
             plan: parseOrThrow(planSchema, source),
             registry: options.registry,
@@ -138,7 +139,6 @@ export const release = new Command('release', {
               delayMs: options['retry-delay-ms'],
               requestTimeoutMs: options['request-timeout-ms'],
             },
-            root: host.cwd,
             token,
           });
         });
