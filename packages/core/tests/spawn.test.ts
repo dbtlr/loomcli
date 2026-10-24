@@ -304,13 +304,23 @@ test('kill delivers the signal it names, and the code is 128 plus its number', a
 });
 
 test('kill of SIGKILL ends a child that ignores SIGTERM, with the code 137', async () => {
+  // The child says ready once it ignores SIGTERM, so the kills never land before its handler.
+  const ready = Promise.withResolvers<undefined>();
+  const output = new Writable({
+    write(_chunk, _encoding, callback) {
+      ready.resolve(undefined);
+      callback();
+    },
+  });
   const child = startReal(
-    script("process.on('SIGTERM', () => undefined); setTimeout(() => undefined, 30_000);"),
+    script(
+      "process.on('SIGTERM', () => undefined); process.stdout.write('ready'); setTimeout(() => undefined, 30_000);",
+    ),
+    { stdout: output },
   );
-  setTimeout(() => {
-    child.kill('SIGTERM');
-    child.kill('SIGKILL');
-  }, 200);
+  await ready.promise;
+  child.kill('SIGTERM');
+  child.kill('SIGKILL');
   await expect(exitOf(child)).resolves.toMatchObject({ code: 137 });
 });
 
