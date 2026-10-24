@@ -20,6 +20,8 @@ process.exitCode = await app.run({
   process: processHandle({
     argv: ['skills', 'install'],
     env: { HOME: 'relative' },
+    // A supplied home wins, so the relative one reaches the plugin rather than the user database's.
+    home: 'relative',
     platform: 'linux',
   }),
 });
