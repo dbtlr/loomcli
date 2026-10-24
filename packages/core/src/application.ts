@@ -69,8 +69,8 @@ import type { GlobalsState, GlobalTable } from './globals.js';
 import { judgeGraph, judgesGraph } from './graph-hooks.js';
 import { destinationDefect, destinationReport, reportFailure } from './hints.js';
 import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
-import { captureHost, settleTerminal, statedBackground } from './host.js';
-import type { HostCapture, ReportHost } from './host.js';
+import { captureHost, handleFacts, settleTerminal, statedBackground } from './host.js';
+import type { HandleFacts, HostCapture, ReportHost } from './host.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
 import {
@@ -79,10 +79,9 @@ import {
   guardedObserver,
   invocationHost,
   mappedFailure,
-  processFields,
   readCall,
 } from './invoke.js';
-import type { CapturedFields, InvokeCall } from './invoke.js';
+import type { InvokeCall } from './invoke.js';
 import { coreViews } from './lanes.js';
 import { RunLog } from './log.js';
 import type { LogDestination } from './log.js';
@@ -729,7 +728,7 @@ class ApplicationBuilder<
         declared: this.#config.rendering,
         // An action's call reads no handle, because its facts are its run's.
         fields: () =>
-          action?.fields ?? processFields(this.#name, call.options?.process ?? processHandle()),
+          action?.fields ?? handleFacts(this.#name, call.options?.process ?? processHandle()),
         observe: progress.observe,
         streams,
       }),
@@ -1187,7 +1186,7 @@ interface ActionCall {
   bound: BoundGraph;
   /** Where the run's log events are delivered, which its nested runs deliver to as well. */
   destination: LogDestination;
-  fields: CapturedFields;
+  fields: HandleFacts;
   parent: ParentRun;
 }
 
@@ -1329,7 +1328,7 @@ function nameDoor<Mapped>(
   setup: {
     action: ActionCall | undefined;
     declared: RenderingPolicy;
-    fields: () => CapturedFields;
+    fields: () => HandleFacts;
     /** The caller's progress observer, which the run's output hands each event to. */
     observe: ((event: ProgressEvent) => void) | undefined;
     streams: { stderr: Writable; stdout: Writable };

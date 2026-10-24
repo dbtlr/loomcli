@@ -129,21 +129,56 @@ export type HostCapture =
   | { readonly host: Host; readonly report: Host }
   | { readonly failure: InternalError | WorkingDirectoryError; readonly report: ReportHost };
 
-/** What one capture read beside the host's other facts: the release facts and the working directory. */
-export interface CapturedFacts {
+/**
+ * The facts every run copies from its process handle, `run()` and an invocation by name alike, with
+ * the working directory and the release facts as the capture read them. A new host fact a handle
+ * supplies is copied here, in one place.
+ */
+export interface HandleFacts {
+  readonly arch: string;
   readonly directory: WorkingDirectory;
+  readonly env: Host['env'];
+  readonly libc: Host['libc'];
+  readonly platform: string;
+  readonly program: readonly string[];
+  readonly readSource?: NonNullable<Host['readSource']>;
   readonly release: CapturedRelease;
+  readonly timeZone: string;
+  readonly uid: number | undefined;
 }
 
 /**
- * The capture one set of host facts makes around the release facts and the working directory read
- * beside them. Malformed release facts are the author's defect and report first.
+ * The facts one run copies from its process handle at entry, each read once. The application's
+ * name finds its installation record.
  */
-export function capturedHost(
-  facts: Omit<Host, 'cwd' | 'release'>,
-  captured: CapturedFacts,
-): HostCapture {
-  const { directory, release } = captured;
+export function handleFacts(application: string, handle: ProcessHandle): HandleFacts {
+  const env = { ...handle.env };
+  const { platform, readSource } = handle;
+  const facts = {
+    arch: handle.arch,
+    directory: captureWorkingDirectory(handle),
+    env,
+    libc: handle.libc,
+    platform,
+    program: Object.freeze([...handle.program]),
+    release: handleRelease(handle, { application, env, platform }),
+    timeZone: handle.timeZone,
+    uid: handle.uid,
+  };
+  return readSource === undefined ? facts : { ...facts, readSource };
+}
+
+/** The facts a run holds beside its handle's: its argv, its streams, its terminal, and its raise. */
+export type RunFacts = Pick<Host, 'argv' | 'raise' | 'stderr' | 'stdin' | 'stdout' | 'terminal'>;
+
+/**
+ * The host one run captures from its own facts and its handle's, around the release facts and the
+ * working directory the handle's capture read. Malformed release facts are the author's defect and
+ * report first.
+ */
+export function capturedHost(run: RunFacts, shared: HandleFacts): HostCapture {
+  const { directory, release, ...copied } = shared;
+  const facts = { ...run, ...copied };
   const cwd = 'cwd' in directory ? directory.cwd : undefined;
   if ('failure' in release) {
     return { failure: release.failure, report: { ...facts, cwd, release: undefined } };
@@ -156,43 +191,32 @@ export function capturedHost(
 }
 
 /**
- * The host `run()` captures from its process handle at entry, each fact read once. The
- * application's name finds its installation record.
+ * The host `run()` captures from its process handle at entry: the facts every run copies, and the
+ * argv, streams, terminal facts, and raise of an argv run.
  */
 export function captureHost(
   application: string,
   handle: ProcessHandle,
   stderr: Writable,
 ): HostCapture {
-  const env = { ...handle.env };
-  const { platform, signals, stdin } = handle;
-  const captured = {
-    directory: captureWorkingDirectory(handle),
-    release: handleRelease(handle, { application, env, platform }),
-  };
-  const terminal = handle.terminal;
-  const { readSource } = handle;
-  const facts = {
-    arch: handle.arch,
-    argv: [...handle.argv],
-    env,
-    libc: handle.libc,
-    platform,
-    program: Object.freeze([...handle.program]),
-    raise: raiseOn(signals, stdin),
-    stderr,
-    stdin,
-    stdout: handle.stdout,
-    terminal: settlingTerminal({
-      background: terminal.background,
-      stderr: suppliedTerminal(terminal.stderr),
-      stdin: { isTTY: terminal.stdin.isTTY },
-      stdout: suppliedTerminal(terminal.stdout),
-    }),
-    timeZone: handle.timeZone,
-    uid: handle.uid,
-  };
-  return capturedHost(readSource === undefined ? facts : { ...facts, readSource }, captured);
+  const shared = handleFacts(application, handle);
+  const { signals, stdin, terminal } = handle;
+  return capturedHost(
+    {
+      argv: [...handle.argv],
+      raise: raiseOn(signals, stdin),
+      stderr,
+      stdin,
+      stdout: handle.stdout,
+      terminal: settlingTerminal({
+        background: terminal.background,
+        stderr: suppliedTerminal(terminal.stderr),
+        stdin: { isTTY: terminal.stdin.isTTY },
+        stdout: suppliedTerminal(terminal.stdout),
+      }),
+    },
+    shared,
+  );
 }
 
 /**

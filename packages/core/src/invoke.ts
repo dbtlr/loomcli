@@ -2,27 +2,10 @@ import { Readable, Writable } from 'node:stream';
 
 import type { StartingView } from './chain.js';
 import type { LoomError } from './errors.js';
-import { capturedHost, captureWorkingDirectory, settlingTerminal } from './host.js';
-import type { CapturedFacts, HostCapture } from './host.js';
+import { capturedHost, settlingTerminal } from './host.js';
+import type { HandleFacts, HostCapture } from './host.js';
 import type { NamedCall } from './lower.js';
-import { handleRelease } from './process-handle.js';
-import type {
-  Host,
-  InvocationValues,
-  InvokeOptions,
-  ProcessHandle,
-  ProgressEvent,
-} from './types.js';
-
-/**
- * The facts one invocation by name runs on, with its working directory and its release facts as
- * its capture read them.
- */
-type CapturedFields = Pick<
-  Host,
-  'arch' | 'env' | 'libc' | 'platform' | 'program' | 'readSource' | 'timeZone' | 'uid'
-> &
-  CapturedFacts;
+import type { Host, InvocationValues, InvokeOptions, ProgressEvent } from './types.js';
 
 /** The entries of one `args` or `options` record, a key whose value is `undefined` left out. */
 function definedEntries(record: InvocationValues['args']): (readonly [string, unknown])[] {
@@ -104,32 +87,10 @@ function guardedObserver(onProgress: InvokeOptions['onProgress']): GuardedObserv
 }
 
 /**
- * The facts `app.invoke` captures from its process handle at entry. The working directory and the
- * release facts are read through the steps `run()` shares, the application's name finding its
- * installation record. It reads no argv, stream, or terminal fact.
+ * The facts an action's call reads from its run's host, which it never reads again, as the facts
+ * another call copies from its handle.
  */
-function processFields(application: string, handle: ProcessHandle): CapturedFields {
-  const env = { ...handle.env };
-  const { platform, readSource } = handle;
-  const captured = {
-    arch: handle.arch,
-    directory: captureWorkingDirectory(handle),
-    env,
-    libc: handle.libc,
-    platform,
-    program: Object.freeze([...handle.program]),
-    release: handleRelease(handle, { application, env, platform }),
-    timeZone: handle.timeZone,
-    uid: handle.uid,
-  };
-  return readSource === undefined ? captured : { ...captured, readSource };
-}
-
-/**
- * The facts an action's call reads from its run's host, which it never reads again, and the
- * run's program.
- */
-function fieldsOf(host: Host): CapturedFields {
+function fieldsOf(host: Host): HandleFacts {
   const { arch, cwd, env, libc, platform, program, readSource, timeZone, uid } = host;
   const captured = {
     arch,
@@ -175,28 +136,20 @@ const noTerminal = (): Host['terminal'] =>
  * its place.
  */
 function invocationHost(
-  fields: CapturedFields,
+  fields: HandleFacts,
   sinks: { stderr: Writable; stdout: Writable },
 ): HostCapture {
-  const facts = {
-    arch: fields.arch,
-    argv: [],
-    env: { ...fields.env },
-    libc: fields.libc,
-    platform: fields.platform,
-    program: fields.program,
-    // Its stdin is no terminal's, so a raw-mode reader raises nothing and cancels the call itself.
-    raise: () => false,
-    stderr: sinks.stderr,
-    stdin: Readable.from([]),
-    stdout: sinks.stdout,
-    terminal: noTerminal(),
-    timeZone: fields.timeZone,
-    uid: fields.uid,
-  };
   return capturedHost(
-    fields.readSource === undefined ? facts : { ...facts, readSource: fields.readSource },
-    fields,
+    {
+      argv: [],
+      // Its stdin is no terminal's, so a raw-mode reader raises nothing and cancels the call itself.
+      raise: () => false,
+      stderr: sinks.stderr,
+      stdin: Readable.from([]),
+      stdout: sinks.stdout,
+      terminal: noTerminal(),
+    },
+    { ...fields, env: { ...fields.env } },
   );
 }
 
@@ -220,13 +173,5 @@ function mappedFailure<Mapped>(
   return failure as Mapped;
 }
 
-export type { CapturedFields, InvokeCall };
-export {
-  captureSink,
-  fieldsOf,
-  guardedObserver,
-  invocationHost,
-  mappedFailure,
-  processFields,
-  readCall,
-};
+export type { InvokeCall };
+export { captureSink, fieldsOf, guardedObserver, invocationHost, mappedFailure, readCall };
