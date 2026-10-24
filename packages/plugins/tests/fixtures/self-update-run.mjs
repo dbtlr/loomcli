@@ -11,6 +11,8 @@ import { refreshManpages } from '@loomcli/plugins/manpage';
 import { selfUpdate } from '@loomcli/plugins/self-update';
 import { refreshSkills } from '@loomcli/plugins/skills';
 
+import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
+
 /**
  * One run of an application that installs `selfUpdate()`, against a fake GitHub that replaces
  * `fetch`. The scenario file names the release facts, the hook, where the run aborts, and what
@@ -389,9 +391,8 @@ process.exitCode = await app.run({
       ...scenario.env,
       ...(child ? {} : { FIXTURE_RUN_PID: String(process.pid) }),
     },
-    // The test's HOME is the handle's home as given, so a relative or missing one reaches the
-    // Plugin unresolved rather than as the user database's home, and nothing lands in the real home.
-    home: { ...process.env, ...scenario.env }.HOME ?? '',
+    // The test's HOME, as given, so the user database's home is never the fixture's.
+    home: fixtureHome({ ...process.env, ...scenario.env }),
     platform: 'linux',
     release: scenario.release,
     stderr,

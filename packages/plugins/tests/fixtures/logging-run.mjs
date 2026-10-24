@@ -3,6 +3,8 @@ import { chmodSync } from 'node:fs';
 import { Application, Command, FatalError, processHandle } from '@loomcli/core';
 import { logging } from '@loomcli/plugins/logging';
 
+import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
+
 const [scenario, ...argv] = process.argv.slice(2);
 
 /**
@@ -37,9 +39,8 @@ function host() {
   const parsed = env === undefined ? undefined : JSON.parse(env);
   return {
     ...(parsed === undefined ? {} : { env: parsed }),
-    // The test's HOME is the handle's home as given, so a relative or missing one reaches the
-    // Plugin unresolved rather than as the user database's home, and nothing lands in the real home.
-    home: (parsed ?? process.env).HOME ?? '',
+    // The test's HOME, as given, so the user database's home is never the fixture's.
+    home: fixtureHome(parsed),
     ...(platform === undefined ? {} : { platform }),
   };
 }
