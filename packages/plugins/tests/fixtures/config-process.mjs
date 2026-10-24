@@ -1,5 +1,6 @@
 import { processHandle } from '@loomcli/core';
 
+import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
 import { application } from './config-run.ts';
 
 /**
@@ -19,6 +20,8 @@ const code = await application({
   process: processHandle({
     argv: process.argv.slice(2),
     ...(FIXTURE_CWD === undefined ? {} : { cwd: FIXTURE_CWD }),
+    // The handle's home is the test's HOME as given, never the user database's.
+    home: fixtureHome(),
   }),
 });
 process.stdout.write(`resolved:${code}\n`);

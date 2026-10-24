@@ -27,6 +27,7 @@ Put the plugin's `configs.oxlint` object in `.oxlintrc.json`, as it is:
   ],
   "rules": {
     "@loomcli/discarded-declaration": "error",
+    "@loomcli/host-bypass": "error",
     "@loomcli/name-shape": "error",
     "@loomcli/undescribed": "error"
   }
@@ -73,7 +74,7 @@ The rules read source text and scope analysis. They use no type information. A v
 
 Type assertions around a value (`as`, `satisfies`, `!`) do not change what it is.
 
-A rule reports only what it can trace. A parameter, a `let` variable, a destructured binding, a spread options object, a computed name, a name held in a variable, and a `Command` that does not come from `@loomcli/core` all get no report. A false report is worse than a missed one.
+A rule reports only what it can trace. Apart from what [`host-bypass`](#host-bypass) traces through a destructure, a parameter, a `let` variable, a destructured binding, a spread options object, a computed name, a name held in a variable, and a `Command` that does not come from `@loomcli/core` all get no report. A false report is worse than a missed one.
 
 `host-bypass` judges no declaration. It reads scope analysis and import declarations, under the forms [its section](#host-bypass) lists.
 
@@ -171,7 +172,7 @@ Each message names what the code reached and the member to use instead:
 | `child_process` | `host.spawn` |
 
 - **On by default.** `configs.recommended` and `configs.oxlint` turn the rule on at `error`, as they do every rule.
-- **The forms.** The rule reports the global `process`, `globalThis.process`, and `global.process`; an import of `process` or `node:process`, by default, namespace, or named import; `homedir`, `tmpdir`, and `userInfo` from `os` or `node:os`, as a named import or as a member of the module's default or namespace import; and any import of `child_process` or `node:child_process`. An `import()` with a literal specifier counts as an import.
+- **The forms.** The rule reports the global `process`, `globalThis.process`, and `global.process`; an import of `process` or `node:process`, by default, namespace, or named import; `homedir`, `tmpdir`, and `userInfo` from `os` or `node:os`, as a named import or as a member of the module's default or namespace import; and any import of `child_process` or `node:child_process`. An `import()` with a literal specifier counts as an import. A re-export, `export { homedir } from 'node:os'` or `export * from 'node:child_process'`, is reported as the import it passes on, and a member destructured off an `os` binding or an awaited `import('node:os')`, as in `const { homedir } = os`, is reported as the member read it is. A type-only import or re-export, `import type` or one whose every specifier is a type, is not reported, because it runs nothing.
 - **The global alone.** The rule reads scope analysis, so a binding the code declares itself, such as a parameter named `process` or a destructured `{ process }`, is not reported. A use it cannot trace, such as `Reflect.get(globalThis, 'process')` or an `import()` with a computed specifier, is not reported either.
 - **The entry module.** `app.run()` given no handle binds the real process, so an entry module needs no `process` of its own and no exception.
 - **Tests.** A file whose name holds `.test.` or `.spec.` is not linted by this rule. A test runs outside any run, and it is where a real folder or the machine's environment is handed to a mock, such as `tmpdir: mkdtempSync(join(tmpdir(), 'notes-'))`.

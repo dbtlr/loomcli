@@ -1270,7 +1270,8 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
   const { signals } = handle;
   return {
     bound: undefined,
-    destination: ({ env, platform, stderr }) => Object.freeze({ env, platform, stderr }),
+    destination: ({ env, home, platform, stderr }) =>
+      Object.freeze({ env, home, platform, stderr }),
     encodes: true,
     enter: () => {
       const { publishEnv } = handle;
@@ -1339,8 +1340,8 @@ function nameDoor<Mapped>(
   return {
     bound: action?.bound,
     // An invocation by name writes to no process stream, so a call of the application has no stderr.
-    destination: ({ env, platform }) =>
-      action?.destination ?? Object.freeze({ env, platform, stderr: null }),
+    destination: ({ env, home, platform }) =>
+      action?.destination ?? Object.freeze({ env, home, platform, stderr: null }),
     encodes: false,
     enter: () => ({
       // An invocation by name settles no background and writes no query.

@@ -12,18 +12,20 @@ type ApplicationDirectory = 'installation' | 'logs' | 'cache';
 type DirectoryLookup = { readonly path: string } | { readonly variable: string };
 
 /** A variable's value when it is an absolute path by the running process's rules. */
-function absoluteVariable(env: Host['env'], name: string): string | undefined {
+function absoluteVariable(env: Readonly<Host['env']>, name: string): string | undefined {
   const value = env[name];
   return value !== undefined && isAbsolute(value) ? value : undefined;
 }
 
-/** The directory under one variable, or that variable's name when it cannot give it. */
-function under(env: Host['env'], name: string, segments: readonly string[]): DirectoryLookup {
-  const base = absoluteVariable(env, name);
-  return base === undefined ? { variable: name } : { path: join(base, ...segments) };
+/**
+ * The directory under the home, or `HOME`, the variable an operator sets to fix it, when the home
+ * is empty or not an absolute path.
+ */
+function underHome(home: string, segments: readonly string[]): DirectoryLookup {
+  return isAbsolute(home) ? { path: join(home, ...segments) } : { variable: 'HOME' };
 }
 
-/** The folder under `$HOME/Library` on darwin, for each kind. */
+/** The folder under `<home>/Library` on darwin, for each kind. */
 const darwinFolders: Readonly<Record<ApplicationDirectory, string>> = {
   cache: 'Caches',
   installation: 'Application Support',
@@ -45,30 +47,32 @@ function xdgBase(kind: ApplicationDirectory): {
 
 /**
  * The directory an application keeps its installation record, its logs, or its cache in, resolved
- * from a run's `env` and `platform` alone. Darwin keeps it under `$HOME/Library`, and every other
- * platform under the XDG base directories and `$HOME`. The running process's
- * path rules judge an absolute path and join the segments. It reads no file and creates nothing.
+ * from a run's `env`, `home`, and `platform` alone. Darwin keeps it under `<home>/Library`, and
+ * every other platform under the XDG base directories from `env`, an absolute one winning, and
+ * the home. The home is `from.home`, the run's `host.home`, never `HOME` in `env`. The running
+ * process's path rules judge an absolute path and join the segments. It reads no file and creates
+ * nothing.
  */
 function applicationDirectory(
   kind: ApplicationDirectory,
   application: string,
-  from: { readonly env: Host['env']; readonly platform: string },
+  from: { readonly env: Host['env']; readonly home: string; readonly platform: string },
 ): DirectoryLookup {
-  const { env, platform } = from;
+  const { env, home, platform } = from;
   const segments = kind === 'installation' ? [application, 'installation'] : [application];
   switch (platform) {
     case 'darwin': {
-      return under(env, 'HOME', ['Library', darwinFolders[kind], ...segments]);
+      return underHome(home, ['Library', darwinFolders[kind], ...segments]);
     }
     default: {
       const base = xdgBase(kind);
       const absolute = absoluteVariable(env, base.variable);
       return absolute === undefined
-        ? under(env, 'HOME', [...base.home, ...segments])
+        ? underHome(home, [...base.home, ...segments])
         : { path: join(absolute, ...segments) };
     }
   }
 }
 
 export type { ApplicationDirectory, DirectoryLookup };
-export { applicationDirectory };
+export { absoluteVariable, applicationDirectory };

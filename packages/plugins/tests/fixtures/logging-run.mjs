@@ -3,6 +3,8 @@ import { chmodSync } from 'node:fs';
 import { Application, Command, FatalError, processHandle } from '@loomcli/core';
 import { logging } from '@loomcli/plugins/logging';
 
+import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
+
 const [scenario, ...argv] = process.argv.slice(2);
 
 /**
@@ -34,8 +36,11 @@ function settings() {
 function host() {
   const env = process.env.FIXTURE_HOST_ENV;
   const platform = process.env.FIXTURE_PLATFORM;
+  const parsed = env === undefined ? undefined : JSON.parse(env);
   return {
-    ...(env === undefined ? {} : { env: JSON.parse(env) }),
+    ...(parsed === undefined ? {} : { env: parsed }),
+    // The handle's home is the test's HOME as given, never the user database's.
+    home: fixtureHome(parsed),
     ...(platform === undefined ? {} : { platform }),
   };
 }

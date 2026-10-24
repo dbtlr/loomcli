@@ -176,7 +176,11 @@ test(
       XDG_STATE_HOME: state,
     };
     // The binary runs on this platform, so its cache is where applicationDirectory puts it here.
-    const lookup = applicationDirectory('cache', 'probe', { env, platform: process.platform });
+    const lookup = applicationDirectory('cache', 'probe', {
+      env,
+      home: env.HOME,
+      platform: process.platform,
+    });
     if (!('path' in lookup)) {
       throw new Error(`The cache directory needs ${lookup.variable}.`);
     }

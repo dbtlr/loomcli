@@ -1,10 +1,12 @@
+import { Writable } from 'node:stream';
+
 import { Application, Command, plugin } from '@loomcli/core';
-import type { ProcessSignal } from '@loomcli/core';
+import type { Host, ProcessSignal } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
-import { describe, expect, it } from 'vite-plus/test';
+import { describe, expect, it, vi } from 'vite-plus/test';
 
 import { mockProcess } from '../src/index.js';
-import type { MockProcess } from '../src/index.js';
+import type { MockProcess, ProgramAnswer, ProgramCall } from '../src/index.js';
 
 /** The text a Readable yields before it ends. */
 async function drained(stream: NodeJS.ReadableStream): Promise<string> {
@@ -20,6 +22,8 @@ describe('the sealed defaults', () => {
     ['argv', (mock) => mock.argv, []],
     ['env', (mock) => mock.env, {}],
     ['cwd', (mock) => mock.cwd(), '/loom-test'],
+    ['home', (mock) => mock.home, '/loom-test/home'],
+    ['tmpdir', (mock) => mock.tmpdir, '/loom-test/tmp'],
     ['platform', (mock) => mock.platform, 'linux'],
     ['arch', (mock) => mock.arch, 'x64'],
     ['libc', (mock) => mock.libc, 'glibc'],
@@ -108,6 +112,263 @@ describe('supplied fields', () => {
     });
     expect(() => failing.cwd()).toThrow('ENOENT');
     expect(mockProcess({ cwd: () => '/live' }).cwd()).toBe('/live');
+  });
+});
+
+describe('folders', () => {
+  it('home and tmpdir follow an absolute HOME and TMPDIR in env', () => {
+    const mock = mockProcess({ env: { HOME: '/srv/home', TMPDIR: '/srv/tmp' } });
+    expect([mock.home, mock.tmpdir]).toEqual(['/srv/home', '/srv/tmp']);
+  });
+
+  it.each([
+    ['empty', ''],
+    ['relative', 'notes'],
+  ])('a HOME and TMPDIR that are %s fall back to the fixed folders', (_case, value) => {
+    const mock = mockProcess({ env: { HOME: value, TMP: '/srv/tmp', TMPDIR: value } });
+    expect([mock.home, mock.tmpdir]).toEqual(['/loom-test/home', '/loom-test/tmp']);
+  });
+
+  it('a supplied home and tmpdir win over env', () => {
+    const mock = mockProcess({
+      env: { HOME: '/srv/home', TMPDIR: '/srv/tmp' },
+      home: '/home/me',
+      tmpdir: '/var/tmp',
+    });
+    expect([mock.home, mock.tmpdir]).toEqual(['/home/me', '/var/tmp']);
+  });
+
+  it('a run reads the mock folders, and a TMPDIR environment preparation adds moves neither', async () => {
+    const mock = mockProcess({ argv: [], env: { HOME: '/srv/home' } });
+    const dotenv = plugin('fixture/dotenv', {
+      onEnvironment: () => ({ TMPDIR: '/moved/tmp' }),
+    });
+    const app = new Application('app', { plugins: [dotenv] }).action(({ host, out }) =>
+      out.print(`${host.home} ${host.tmpdir} ${host.env.TMPDIR ?? ''}`),
+    );
+    await app.run({ process: mock });
+    expect(mock.stdout.text).toBe('/srv/home /loom-test/tmp /moved/tmp\n');
+  });
+});
+
+/** An application whose root action starts one child and prints how it ended. */
+function starting(
+  command: string,
+  options: Parameters<Host['spawn']>[2] = {},
+  words: readonly string[] = ['status'],
+) {
+  return new Application('app').action(async ({ host, out }) => {
+    const exit = await host.spawn(command, words, options).exited;
+    await out.print(
+      exit.kind === 'exited'
+        ? `${exit.code} [${exit.stdout.text}] [${exit.stderr.text}]`
+        : `unstarted: ${exit.error.message}`,
+    );
+  });
+}
+
+describe('child programs', () => {
+  it('a script answers the code and the captured output, from the call core filled in', async () => {
+    const calls: ProgramCall[] = [];
+    const mock = mockProcess({
+      cwd: '/work',
+      env: { PATH: '/bin' },
+      programs: {
+        git: (call) => {
+          calls.push(call);
+          return { code: 3, stderr: new TextEncoder().encode('warned'), stdout: 'answer' };
+        },
+      },
+    });
+    await starting('git', { cwd: 'notes', input: 'typed' }).run({ process: mock });
+    expect(mock.stdout.text).toBe('3 [answer] [warned]\n');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      args: ['status'],
+      command: 'git',
+      cwd: '/work/notes',
+      detached: false,
+      env: { PATH: '/bin' },
+      input: 'typed',
+    });
+    expect(calls[0]?.signal.aborted).toBe(false);
+  });
+
+  it('an answer that omits its members exits 0 with no output', async () => {
+    const mock = mockProcess({ programs: { git: () => ({}) } });
+    await starting('git').run({ process: mock });
+    expect(mock.stdout.text).toBe('0 [] []\n');
+  });
+
+  it('an inherited stream writes to the mock own stream, a Writable receives, and ignore drops', async () => {
+    const received: string[] = [];
+    const writable = new Writable({
+      write(chunk, _encoding, done) {
+        received.push(String(chunk));
+        done();
+      },
+    });
+    const mock = mockProcess({
+      programs: { git: () => ({ stderr: 'to-writable', stdout: 'to-stdout' }) },
+    });
+    await starting('git', { stderr: writable, stdout: 'inherit' }).run({ process: mock });
+    expect(mock.transcript[0]).toEqual({ stream: 'stdout', text: 'to-stdout' });
+    expect(received).toEqual(['to-writable']);
+    const ignoring = mockProcess({ programs: { git: () => ({ stderr: 'e', stdout: 'o' }) } });
+    await starting('git', { stderr: 'ignore', stdout: 'ignore' }).run({ process: ignoring });
+    expect(ignoring.stdout.text).toBe('0 [] []\n');
+  });
+
+  it("under stdin: 'inherit' the call's input is the mock stdin text", async () => {
+    const inputs: string[] = [];
+    const mock = mockProcess({
+      programs: {
+        cat: ({ input }) => {
+          inputs.push(input);
+          return {};
+        },
+      },
+      stdin: 'piped',
+    });
+    await starting('cat', { stdin: 'inherit' }).run({ process: mock });
+    await starting('cat').run({ process: mock });
+    expect(inputs).toEqual(['piped', '']);
+  });
+
+  it('under app.invoke an inherited stream reaches the outcome, not the mock', async () => {
+    const mock = mockProcess({ programs: { git: () => ({ stdout: 'through' }) } });
+    const outcome = await starting('git', { stdout: 'inherit' }).invoke([], {}, { process: mock });
+    expect(outcome).toMatchObject({ output: 'through0 [] []\n', status: 'completed' });
+    expect(mock.transcript).toEqual([]);
+  });
+
+  it('a command with no script throws from spawn, naming the command, so the run fails', async () => {
+    const mock = mockProcess({ programs: { '/usr/bin/git': () => ({}) } });
+    expect(() => mock.spawn('git', [], { cwd: '/', env: {} })).toThrow(
+      'mockProcess has no program for "git". Add a "git" entry to programs.',
+    );
+    const code = await starting('git').run({ process: mock });
+    expect(code).toBe(1);
+    expect(mock.stderr.text).toContain('mockProcess has no program for "git".');
+  });
+
+  it('a script that throws is a program that could not start', async () => {
+    const mock = mockProcess({
+      programs: {
+        git: () => {
+          throw new Error('spawn git ENOENT');
+        },
+      },
+    });
+    await starting('git').run({ process: mock });
+    expect(mock.stdout.text).toBe('unstarted: spawn git ENOENT\n');
+  });
+
+  it('exited resolves after the script answers, never before spawn returns', async () => {
+    const order: string[] = [];
+    const mock = mockProcess({
+      programs: {
+        git: () => {
+          order.push('script');
+          return {};
+        },
+      },
+    });
+    const child = mock.spawn('git', [], { cwd: '/', env: {} });
+    order.push('returned');
+    await child.exited;
+    expect(order).toEqual(['returned', 'script']);
+  });
+
+  it('an abort of the spawn signal ends the child with SIGTERM, and the call signal aborts', async () => {
+    const controller = new AbortController();
+    const seen: { call?: ProgramCall } = {};
+    const mock = mockProcess({
+      programs: {
+        sleep: (received) => {
+          seen.call = received;
+          return new Promise(() => undefined);
+        },
+      },
+    });
+    const child = mock.spawn('sleep', [], { cwd: '/', env: {}, signal: controller.signal });
+    await vi.waitFor(() => expect(seen.call).toBeDefined());
+    controller.abort();
+    await expect(child.exited).resolves.toMatchObject({ code: 143, kind: 'exited' });
+    expect(seen.call?.signal.aborted).toBe(true);
+  });
+
+  it('a kill of an ending signal ends the child with 128 plus its number, whatever the script answers later', async () => {
+    const pending: { answer?: (value: ProgramAnswer) => void } = {};
+    const mock = mockProcess({
+      programs: {
+        sleep: () =>
+          new Promise<ProgramAnswer>((resolve) => {
+            pending.answer = resolve;
+          }),
+      },
+    });
+    const ended: [ProcessSignal, number][] = [
+      ['SIGHUP', 129],
+      ['SIGINT', 130],
+      ['SIGQUIT', 131],
+      ['SIGTERM', 143],
+    ];
+    for (const [signal, code] of ended) {
+      const child = mock.spawn('sleep', [], { cwd: '/', env: {} });
+      await Promise.resolve();
+      child.kill(signal);
+      pending.answer?.({ code: 0, stdout: 'late' });
+      await expect(child.exited).resolves.toEqual({
+        code,
+        kind: 'exited',
+        stderr: { bytes: new Uint8Array(), text: '' },
+        stdout: { bytes: new Uint8Array(), text: '' },
+      });
+    }
+  });
+
+  it('a kill of SIGTSTP or SIGCONT aborts nothing and does not end the child', async () => {
+    const seen: { call?: ProgramCall } = {};
+    const mock = mockProcess({
+      programs: {
+        sleep: async (received) => {
+          seen.call = received;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          return { code: 0, stdout: 'done' };
+        },
+      },
+    });
+    const child = mock.spawn('sleep', [], { cwd: '/', env: {} });
+    child.kill('SIGTSTP');
+    child.kill('SIGCONT');
+    await expect(child.exited).resolves.toMatchObject({ code: 0, stdout: { text: 'done' } });
+    expect(seen.call?.signal.aborted).toBe(false);
+  });
+
+  it('a kill once the child has exited does nothing', async () => {
+    const mock = mockProcess({ programs: { git: () => ({ code: 0 }) } });
+    const child = mock.spawn('git', [], { cwd: '/', env: {} });
+    await child.exited;
+    child.kill();
+    await expect(child.exited).resolves.toMatchObject({ code: 0 });
+  });
+
+  it('a detached child is a call with detached set and no input, and its output is ignored', async () => {
+    const calls: ProgramCall[] = [];
+    const mock = mockProcess({
+      programs: {
+        notes: (call) => {
+          calls.push(call);
+          return { stdout: 'lost' };
+        },
+      },
+      stdin: 'unread',
+    });
+    const child = mock.spawn('notes', ['refresh'], { cwd: '/cache', detached: true, env: {} });
+    await expect(child.exited).resolves.toMatchObject({ code: 0, stdout: { text: '' } });
+    expect(calls[0]).toMatchObject({ args: ['refresh'], cwd: '/cache', detached: true, input: '' });
+    expect(mock.transcript).toEqual([]);
   });
 });
 

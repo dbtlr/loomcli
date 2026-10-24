@@ -1,7 +1,7 @@
 /**
- * The folders the installing plugins read from the host's environment, and the refusals of an
- * environment that cannot name one: the operator's home folder and the installation record's
- * directory. The skills, completion, and manpage plugins share them, so each says the same thing.
+ * The folders the installing plugins read from the host, and the refusals of a host that cannot
+ * name one: the operator's home folder, `host.home`, and the installation record's directory. The
+ * skills, completion, and manpage plugins share them, so each says the same thing.
  */
 import { isAbsolute } from 'node:path';
 
@@ -21,12 +21,15 @@ function absoluteVariable(host: Host, variable: string): string | undefined {
   return value !== undefined && isAbsolute(value) ? value : undefined;
 }
 
-/** The absolute home folder `HOME` names on every platform, or none. */
-function homeOf(host: Host): string | undefined {
-  return absoluteVariable(host, 'HOME');
+/**
+ * The home folder, `host.home` or a log destination's `home`, on every platform, when it is an
+ * absolute path by the running process's rules, or none.
+ */
+function homeOf(from: { readonly home: string }): string | undefined {
+  return isAbsolute(from.home) ? from.home : undefined;
 }
 
-/** The home folder the host's environment names, or the refusal of one that is not absolute. */
+/** The host's home folder, or the refusal of one that is not absolute. */
 function requiredHome(name: string, host: Host): string {
   const home = homeOf(host);
   if (home === undefined) {

@@ -54,11 +54,13 @@ interface Log {
 }
 
 /**
- * Where a hook writes: the outermost run's environment, platform, and stderr, which is `null`
- * under an invocation by name, because that writes to no process stream.
+ * Where a hook writes: the outermost run's environment, home, platform, and stderr, which is
+ * `null` under an invocation by name, because that writes to no process stream.
  */
 interface LogDestination {
   readonly env: Readonly<Record<string, string | undefined>>;
+  /** The outermost run's `host.home`. */
+  readonly home: string;
   readonly platform: string;
   readonly stderr: Writable | null;
 }

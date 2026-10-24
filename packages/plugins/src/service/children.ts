@@ -1,8 +1,7 @@
-import { isAbsolute } from 'node:path';
-
 import { applicationDirectory } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 
+import { homeOf } from '../application-folders.js';
 import { digestOf, observe } from '../installation/disk.js';
 import { install, readRecorded, targetRefusals, uninstall } from '../installation/files.js';
 import type { Refusal } from '../installation/files.js';
@@ -76,7 +75,7 @@ function managerEnv(host: Host, uid: number): Host['env'] {
   return { ...host.env, XDG_RUNTIME_DIR: `/run/user/${uid}` };
 }
 
-/** The record directory, which an absolute `HOME` always resolves. */
+/** The record directory, which an absolute home always resolves. */
 function recordDirectory(run: ChildRun): string {
   const directory = applicationDirectory('installation', run.name, run.host);
   if ('variable' in directory) {
@@ -94,10 +93,10 @@ function backendOf(run: ChildRun): Backend {
   return backend;
 }
 
-/** The absolute `HOME` the unit runs from, or the refusal of any other. */
-function homeOf(run: ChildRun): string {
-  const home = run.host.env.HOME;
-  if (home === undefined || !isAbsolute(home)) {
+/** The absolute home, `host.home`, the unit runs from, or the refusal of any other. */
+function unitHome(run: ChildRun): string {
+  const home = homeOf(run.host);
+  if (home === undefined) {
     throw refusals.home(run.name);
   }
   return home;
@@ -105,14 +104,14 @@ function homeOf(run: ChildRun): string {
 
 /**
  * The checks every child makes, in order, before it reads or writes anything else: the platform,
- * which selects the backend, and an absolute `HOME`.
+ * which selects the backend, and an absolute home.
  */
 function prepare(run: ChildRun): Prepared {
   const { host, label, name, signal } = run;
   const backend = backendOf(run);
-  const home = homeOf(run);
+  const home = unitHome(run);
   const uid = userId(name, host);
-  const manager = { env: managerEnv(host, uid), name, signal };
+  const manager = { env: managerEnv(host, uid), name, signal, spawn: host.spawn };
   const unit = backend.unitPath(label, home, host.env);
   const service = { label, manager, name, uid, unit };
   return { backend, home, record: recordDirectory(run), run, service };

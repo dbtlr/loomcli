@@ -1,5 +1,6 @@
 import { processHandle } from '@loomcli/core';
 
+import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
 import { textstat } from '../../dist/application.js';
 
 /**
@@ -12,6 +13,8 @@ await textstat.run({
   process: processHandle({
     argv,
     env: {},
+    // The run's environment holds no HOME, so it has no home, never the developer's own.
+    home: fixtureHome({}),
     terminal: {
       stderr: { columns: undefined, isTTY: false, rows: undefined },
       stdin: { isTTY: false },

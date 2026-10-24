@@ -10,6 +10,7 @@ import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@loomcli/core';
 import { describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { sealedShellEnvironment } from '../../../scripts/test-shell.js';
 import { answer } from '../src/completion/answer.js';
 import { bashScript } from '../src/completion/bash.js';
 import { fishScript } from '../src/completion/fish.js';
@@ -388,8 +389,15 @@ interface ScriptShell {
  * set, when it fails the case, as it fails the conformance suites.
  */
 function shellRuns(shell: string): boolean {
-  if (spawnSync(shell, ['-c', 'true']).error === undefined) {
-    return true;
+  const home = mkdtempSync(join(tmpdir(), 'loom-shell-home-'));
+  try {
+    // The probe starts the shell under a home of its own, so its first launch writes nothing real.
+    const probe = spawnSync(shell, ['-c', 'true'], { env: sealedShellEnvironment(home) });
+    if (probe.error === undefined) {
+      return true;
+    }
+  } finally {
+    rmSync(home, { force: true, recursive: true });
   }
   if (process.env.LOOM_REQUIRE_SHELLS) {
     throw new Error(`LOOM_REQUIRE_SHELLS is set, but ${shell} not installed.`);
@@ -411,7 +419,7 @@ function sourceScript({ flags, shell, source }: ScriptShell, text: string, after
     const result = spawnSync(shell, [...flags, '-c', `${source} '${file}'${after}`], {
       cwd: directory,
       encoding: 'utf8',
-      env: { HOME: directory, PATH: process.env.PATH },
+      env: sealedShellEnvironment(directory),
     });
     return { pwned: existsSync(join(directory, 'pwned')), result };
   } finally {

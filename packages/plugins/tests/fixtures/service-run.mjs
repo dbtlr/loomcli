@@ -4,6 +4,8 @@ import { Application, Command, processHandle } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { service } from '@loomcli/plugins/service';
 
+import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
+
 /**
  * One run of an application that installs `service()`, against fake service managers the test puts
  * first on `PATH`. The scenario file names the platform, the program, the release facts, the label
@@ -88,6 +90,8 @@ process.exitCode = await app.run({
   process: processHandle({
     argv,
     env: scenario.env,
+    // The handle's home is the test's HOME as given, never the user database's.
+    home: fixtureHome(scenario.env),
     platform: scenario.platform,
     program: scenario.program,
     release: scenario.release,

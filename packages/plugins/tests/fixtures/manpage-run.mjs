@@ -4,6 +4,8 @@ import { Application, Command, processHandle } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { manpage } from '@loomcli/plugins/manpage';
 
+import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
+
 /**
  * One run of an application that installs `manpage()`. The scenario file, named by
  * `MANPAGE_SCENARIO`, holds the names of the Commands the application declares, its version, the
@@ -33,6 +35,8 @@ process.exitCode = await app.run({
     argv,
     cwd: scenario.cwd,
     env: scenario.env,
+    // The handle's home is the test's HOME as given, never the user database's.
+    home: fixtureHome(scenario.env),
     platform: scenario.platform ?? 'linux',
     release: scenario.release ?? { build: 'distributed' },
   }),

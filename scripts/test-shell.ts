@@ -826,7 +826,38 @@ function useSession(
   };
 }
 
-export { homeEnvironment, openSession, runInHome, shellSuite, shellSuites, shells, useSession };
+/**
+ * The whole environment of a bare shell a test starts outside a session: `PATH`, a home the test
+ * owns with every XDG folder under it, and Fish's flag that keeps its detached man-page completion
+ * generator from writing. Nothing else of the test's environment reaches it, so no shell a test
+ * starts reads or writes the developer's home.
+ */
+function sealedShellEnvironment(
+  home: string,
+  extra: Record<string, string | undefined> = {},
+): Record<string, string | undefined> {
+  return {
+    FISH_UNIT_TESTS_RUNNING: '1',
+    HOME: home,
+    PATH: process.env.PATH,
+    XDG_CACHE_HOME: join(home, '.cache'),
+    XDG_CONFIG_HOME: join(home, '.config'),
+    XDG_DATA_HOME: join(home, '.local', 'share'),
+    XDG_STATE_HOME: join(home, '.local', 'state'),
+    ...extra,
+  };
+}
+
+export {
+  homeEnvironment,
+  openSession,
+  runInHome,
+  sealedShellEnvironment,
+  shellSuite,
+  shellSuites,
+  shells,
+  useSession,
+};
 export type {
   Completed,
   HomeRun,

@@ -671,6 +671,7 @@ test('the oxlint file holds the configuration @loomcli/eslint-plugin ships, and 
     jsPlugins: ['@loomcli/eslint-plugin'],
     rules: {
       '@loomcli/discarded-declaration': 'error',
+      '@loomcli/host-bypass': 'error',
       '@loomcli/name-shape': 'error',
       '@loomcli/undescribed': 'error',
     },

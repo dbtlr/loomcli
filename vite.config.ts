@@ -2,7 +2,59 @@ import { defineConfig } from 'vite-plus';
 
 // A worker that runs a process test waits on its child, so one worker per core leaves cores idle.
 // Vitest caps a percentage at the core count, so the worker count is computed from this ratio.
-const workersPerCore = 1.5;
+const workersPerCore = 1.5,
+  /** The message every ban of the process global names: the run's host or its handle (ADR-0107). */
+  processMessage = 'Read the host of the run, or its process handle, instead (ADR-0107).',
+  /** The global `process`, which only the real handle's module reads. */
+  processGlobal = { message: processMessage, name: 'process' },
+  /** The global `require`, which would load node:child_process around the bans below. */
+  requireGlobal = {
+    message: 'Import the module instead, and start a child program through host.spawn (ADR-0107).',
+    name: 'require',
+  },
+  /** The imports of the process module. */
+  processImports = [
+    { message: processMessage, name: 'node:process' },
+    { message: processMessage, name: 'process' },
+  ],
+  /** The process global read through the global object. */
+  processProperties = [
+    { message: processMessage, object: 'globalThis', property: 'process' },
+    { message: processMessage, object: 'global', property: 'process' },
+  ],
+  /** What each node:os call that reads the user's folders is replaced by. */
+  osReplacements = {
+    homedir: 'Read host.home instead (ADR-0107).',
+    tmpdir: 'Read host.tmpdir instead (ADR-0107).',
+    userInfo:
+      'Read host.uid for who the user is, and host.env.USER for the name to show, instead (ADR-0107).',
+  },
+  /** The named imports of the node:os calls, under both specifiers. */
+  osImports = ['node:os', 'os'].flatMap((name) =>
+    Object.entries(osReplacements).map(([member, message]) => ({
+      importNames: [member],
+      message,
+      name,
+    })),
+  ),
+  /** The node:os calls read off the module's default or namespace import, conventionally `os`. */
+  osProperties = Object.entries(osReplacements).map(([property, message]) => ({
+    message,
+    object: 'os',
+    property,
+  })),
+  /** Every import of the child-process module, and the require that would load it. */
+  childMessage = 'Start the child program through host.spawn instead (ADR-0107).',
+  childImports = [
+    { message: childMessage, name: 'node:child_process' },
+    { message: childMessage, name: 'child_process' },
+    {
+      importNames: ['createRequire'],
+      message:
+        'Import the module instead, and start a child program through host.spawn (ADR-0107).',
+      name: 'node:module',
+    },
+  ];
 
 export default defineConfig({
   fmt: {
@@ -85,49 +137,52 @@ export default defineConfig({
         // A run reads every process fact and makes every process effect through its process handle
         // (ADR-0107), so the code that runs inside a run never reaches the process around the handle.
         rules: {
-          'eslint/no-restricted-globals': [
-            'error',
-            {
-              message: 'Read the host of the run, or its process handle, instead (ADR-0107).',
-              name: 'process',
-            },
-          ],
+          'eslint/no-restricted-globals': ['error', processGlobal],
+          'eslint/no-restricted-imports': ['error', { paths: processImports }],
+          'eslint/no-restricted-properties': ['error', ...processProperties],
+        },
+      },
+      {
+        // The toolchain's git, pnpm, and bun children and its scratch folders move onto the host in PR B.
+        // Until then (LM-409), packages/loom/src is held to the process rules above alone.
+        files: [
+          'packages/core/src/**',
+          'packages/plugins/src/**',
+          'packages/prompts/src/**',
+          'packages/testing/src/**',
+          'packages/validators/src/**',
+        ],
+        // The home, the user, and the temporary folder are host facts (ADR-0107).
+        // Every child program starts through host.spawn, so these packages never ask the machine.
+        rules: {
+          'eslint/no-restricted-globals': ['error', processGlobal, requireGlobal],
           'eslint/no-restricted-imports': [
             'error',
-            {
-              paths: [
-                {
-                  message: 'Read the host of the run, or its process handle, instead (ADR-0107).',
-                  name: 'node:process',
-                },
-                {
-                  message: 'Read the host of the run, or its process handle, instead (ADR-0107).',
-                  name: 'process',
-                },
-              ],
-            },
+            { paths: [...processImports, ...osImports, ...childImports] },
           ],
-          'eslint/no-restricted-properties': [
-            'error',
-            {
-              message: 'Read the host of the run, or its process handle, instead (ADR-0107).',
-              object: 'globalThis',
-              property: 'process',
-            },
-            {
-              message: 'Read the host of the run, or its process handle, instead (ADR-0107).',
-              object: 'global',
-              property: 'process',
-            },
-          ],
+          'eslint/no-restricted-properties': ['error', ...processProperties, ...osProperties],
+        },
+      },
+      {
+        // Core's one module that builds the real process's handle.
+        // It reads the process, asks node:os for the user's folders, and starts real children.
+        files: ['packages/core/src/process-handle.ts'],
+        rules: {
+          'eslint/no-restricted-globals': 'off',
+          'eslint/no-restricted-imports': 'off',
+          'eslint/no-restricted-properties': 'off',
+        },
+      },
+      {
+        // The YAML library reads its debug variables from the global, so the guard must touch it.
+        files: ['packages/plugins/src/config/yaml.ts'],
+        rules: {
+          'eslint/no-restricted-globals': ['error', requireGlobal],
+          'eslint/no-restricted-properties': ['error', ...osProperties],
         },
       },
       {
         files: [
-          // Core's one module that builds the real process's handle.
-          'packages/core/src/process-handle.ts',
-          // The YAML library reads its debug variables from the global, so the guard must touch it.
-          'packages/plugins/src/config/yaml.ts',
           // The toolchain's application reader is its own child program.
           'packages/loom/src/read-application.ts',
           // The toolchain's Bun signal forwarding, until it moves onto onShutdown.
@@ -411,6 +466,8 @@ export default defineConfig({
     '*': 'vp check --fix',
   },
   test: {
+    // The run fails when a test wrote under the developer's home.
+    globalSetup: ['scripts/home-guard-setup.ts'],
     include: ['packages/*/tests/**/*.test.ts', 'examples/*/tests/**/*.test.ts'],
     maxWorkers: Math.ceil(navigator.hardwareConcurrency * workersPerCore),
     // A documentation-only pull request runs only the tests tagged docs, which read files under docs/.

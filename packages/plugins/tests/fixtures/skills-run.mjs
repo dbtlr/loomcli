@@ -1,6 +1,8 @@
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { basename, dirname, isAbsolute, relative, sep } from 'node:path';
 
+import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
+
 /**
  * One run of an application that installs `skills()`. The scenario file, named by
  * `SKILLS_SCENARIO`, holds the skills with the files each loader answers, the host's environment,
@@ -75,6 +77,8 @@ process.exitCode = await app.run({
     argv,
     cwd: scenario.cwd,
     env: scenario.env,
+    // The handle's home is the test's HOME as given, never the user database's.
+    home: fixtureHome(scenario.env),
     platform: scenario.platform ?? 'linux',
     release: scenario.release ?? { build: 'distributed' },
     // A scenario with `columns` runs on a terminal that wide, so lanes wrap.

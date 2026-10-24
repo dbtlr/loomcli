@@ -10,13 +10,14 @@ import type { Host, ReleaseFacts } from './types.js';
 type Installation = NonNullable<ReleaseFacts['installation']>;
 
 /**
- * What finds a run's installation record: the application's name and the run's env and platform,
- * and the path of the running executable the record must name.
+ * What finds a run's installation record: the application's name and the run's env, home, and
+ * platform, and the path of the running executable the record must name.
  */
 interface InstallationLookup {
   readonly application: string;
   readonly env: Host['env'];
   readonly executable: string;
+  readonly home: string;
   readonly platform: string;
 }
 
