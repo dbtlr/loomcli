@@ -12,7 +12,7 @@ type ApplicationDirectory = 'installation' | 'logs' | 'cache';
 type DirectoryLookup = { readonly path: string } | { readonly variable: string };
 
 /** A variable's value when it is an absolute path by the running process's rules. */
-function absoluteVariable(env: Host['env'], name: string): string | undefined {
+function absoluteVariable(env: Readonly<Host['env']>, name: string): string | undefined {
   const value = env[name];
   return value !== undefined && isAbsolute(value) ? value : undefined;
 }
@@ -75,4 +75,4 @@ function applicationDirectory(
 }
 
 export type { ApplicationDirectory, DirectoryLookup };
-export { applicationDirectory };
+export { absoluteVariable, applicationDirectory };

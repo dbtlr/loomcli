@@ -3,6 +3,7 @@ import { isAbsolute, join } from 'node:path';
 import { applicationDirectory } from '@loomcli/core';
 import type { LogDestination } from '@loomcli/core';
 
+import { homeOf } from '../application-folders.js';
 import { LoggingError } from './error.js';
 
 /** The failure of a path the variable `name` cannot give. */
@@ -21,7 +22,7 @@ function defaultDirectory(application: string, destination: LogDestination): str
  * `host.home`, when it is absolute, on every platform.
  */
 function homeDirectory(destination: LogDestination): string | LoggingError {
-  return isAbsolute(destination.home) ? destination.home : unresolved('HOME');
+  return homeOf(destination) ?? unresolved('HOME');
 }
 
 const homePrefix = '~/';

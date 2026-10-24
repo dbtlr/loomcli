@@ -1,9 +1,10 @@
 import { readFile, stat } from 'node:fs/promises';
-import { isAbsolute, resolve } from 'node:path';
+import { resolve } from 'node:path';
 
 import { escapeControlCharacters, InputError, nowrap } from '@loomcli/core';
 import type { ContextualStyle, Host, Out } from '@loomcli/core';
 
+import { homeOf } from '../application-folders.js';
 import { parseFile } from './formats.js';
 import type { Clause, Reading } from './reading.js';
 
@@ -96,15 +97,6 @@ function configFile(path: string, shown: string): ConfigFile {
 }
 
 /**
- * The operator's home directory, `host.home` on every platform, or `undefined` when it is empty or
- * a relative path by the running process's path rules.
- */
-function homeDirectory(host: Host): string | undefined {
-  const { home } = host;
-  return isAbsolute(home) ? home : undefined;
-}
-
-/**
  * The files one directory holds for each candidate, in candidate order. A file in the working
  * directory shows as the candidate names it, and one in the home directory as its full path.
  */
@@ -113,7 +105,7 @@ function candidateFiles(lookup: Lookup): ConfigFile[][] {
   const working = candidates.map((candidate) =>
     configFile(resolve(host.cwd, candidate), candidate),
   );
-  const home = homeDirectory(host);
+  const home = homeOf(host);
   if (home === undefined || resolve(home) === resolve(host.cwd)) {
     return [working];
   }

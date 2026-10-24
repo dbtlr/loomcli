@@ -13,11 +13,13 @@ import { isAbsolute, relative, resolve as resolvePath, sep } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import { isatty, ReadStream } from 'node:tty';
 
+import { absoluteVariable } from './directory.js';
 import { readSmallFile } from './files.js';
 import type { InstallationLookup } from './installation.js';
 import { isPlainObject } from './plain.js';
 import { bakedFacts, captureRelease, isCompiled } from './release.js';
 import type { CapturedRelease } from './release.js';
+import { unstartedChild } from './spawn.js';
 import type {
   Child,
   ChildExit,
@@ -252,12 +254,6 @@ function heldSource(lane: object): SignalSource {
   return source;
 }
 
-/** A variable of an environment when it holds an absolute path, which alone counts as set. */
-function absoluteOf(env: ProcessHandle['env'], name: string): string | undefined {
-  const value = env[name];
-  return value !== undefined && isAbsolute(value) ? value : undefined;
-}
-
 /** The home `/etc/passwd` holds for a user, or none. */
 function passwdHome(uid: number | undefined): string | undefined {
   if (uid === undefined) {
@@ -436,12 +432,6 @@ function connectInput(child: ChildProcess, options: HandleSpawnOptions, own: Rea
   stdin.end(options.input);
 }
 
-/** A child that never started, with the runtime's error. */
-function unstartedChild(reason: Error): Child {
-  const exit: ChildExit = { error: reason, kind: 'unstarted' };
-  return { exited: Promise.resolve(exit), kill: () => undefined };
-}
-
 /** Delivers a signal to a child the runtime still holds; a child that is already gone takes none. */
 function signalChild(child: ChildProcess, signal: NodeJS.Signals): void {
   try {
@@ -610,7 +600,7 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
       process.exitCode = code;
     },
     get home() {
-      return home ?? absoluteOf(handle.env, 'HOME') ?? databaseHome();
+      return home ?? absoluteVariable(handle.env, 'HOME') ?? databaseHome();
     },
     get libc() {
       return libc === undefined ? processLibc() : libc.value;
@@ -643,7 +633,7 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
       return timeZone ?? processTimeZone();
     },
     get tmpdir() {
-      return tmpdir ?? absoluteOf(handle.env, 'TMPDIR') ?? defaultTmpdir;
+      return tmpdir ?? absoluteVariable(handle.env, 'TMPDIR') ?? defaultTmpdir;
     },
     get uid() {
       return uid === undefined ? process.getuid?.() : uid.value;

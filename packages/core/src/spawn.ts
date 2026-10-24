@@ -40,8 +40,8 @@ function outputFor(choice: OutputChoice, run: Writable, own: Writable | undefine
   return run === own ? 'inherit' : run;
 }
 
-/** A child that never started, for a run whose working directory could not be read. */
-function unstarted(reason: Error): Child {
+/** A child that never started: the runtime refused it, or the run's cwd could not be read. */
+function unstartedChild(reason: Error): Child {
   const exit: ChildExit = { error: reason, kind: 'unstarted' };
   return { exited: Promise.resolve(exit), kill: () => undefined };
 }
@@ -96,7 +96,7 @@ function hostSpawn(scene: SpawnScene): Host['spawn'] {
   return (command, args, options = {}) => {
     const cwd = childDirectory(scene.cwd, options.cwd);
     if (cwd === undefined) {
-      return unstarted(new Error('The current working directory cannot be read.'));
+      return unstartedChild(new Error('The current working directory cannot be read.'));
     }
     const place = { cwd, env: { ...(options.env ?? scene.env) } };
     if (options.detached === true) {
@@ -107,4 +107,4 @@ function hostSpawn(scene: SpawnScene): Host['spawn'] {
 }
 
 export type { OwnStreams };
-export { hostSpawn };
+export { hostSpawn, unstartedChild };

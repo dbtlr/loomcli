@@ -21,9 +21,12 @@ function absoluteVariable(host: Host, variable: string): string | undefined {
   return value !== undefined && isAbsolute(value) ? value : undefined;
 }
 
-/** The home folder, `host.home` on every platform, when it is absolute, or none. */
-function homeOf(host: Host): string | undefined {
-  return isAbsolute(host.home) ? host.home : undefined;
+/**
+ * The home folder, `host.home` or a log destination's `home`, on every platform, when it is an
+ * absolute path by the running process's rules, or none.
+ */
+function homeOf(from: { readonly home: string }): string | undefined {
+  return isAbsolute(from.home) ? from.home : undefined;
 }
 
 /** The host's home folder, or the refusal of one that is not absolute. */

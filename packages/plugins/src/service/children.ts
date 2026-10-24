@@ -1,8 +1,7 @@
-import { isAbsolute } from 'node:path';
-
 import { applicationDirectory } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 
+import { homeOf } from '../application-folders.js';
 import { digestOf, observe } from '../installation/disk.js';
 import { install, readRecorded, targetRefusals, uninstall } from '../installation/files.js';
 import type { Refusal } from '../installation/files.js';
@@ -95,9 +94,9 @@ function backendOf(run: ChildRun): Backend {
 }
 
 /** The absolute home, `host.home`, the unit runs from, or the refusal of any other. */
-function homeOf(run: ChildRun): string {
-  const { home } = run.host;
-  if (!isAbsolute(home)) {
+function unitHome(run: ChildRun): string {
+  const home = homeOf(run.host);
+  if (home === undefined) {
     throw refusals.home(run.name);
   }
   return home;
@@ -110,7 +109,7 @@ function homeOf(run: ChildRun): string {
 function prepare(run: ChildRun): Prepared {
   const { host, label, name, signal } = run;
   const backend = backendOf(run);
-  const home = homeOf(run);
+  const home = unitHome(run);
   const uid = userId(name, host);
   const manager = { env: managerEnv(host, uid), name, signal, spawn: host.spawn };
   const unit = backend.unitPath(label, home, host.env);
