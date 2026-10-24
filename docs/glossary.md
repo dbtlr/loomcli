@@ -318,12 +318,16 @@ _Avoid_: Slot (a single-owner contribution), cursor context, completion state
 Handing the validated invocation to the selected Command's action.
 _Avoid_: Routing (for the handoff), execution
 
+**Child program**:
+A program a run starts through `host.spawn`, with no shell, in the run's working directory and environment unless the call names others. The real process's handle starts it for real, and a mock answers it from the script the test gives for its command.
+_Avoid_: Child process (for what a run starts), subprocess
+
 **Host**:
-The facts of the process an invocation runs in, copied from the run's process handle: argument tokens, working directory, environment, platform, architecture, C library, user ID, the standard streams, terminal facts, and the release facts. Core copies the facts once per run, except that it reads terminal width and height live and settles the terminal's background rather than copying it, and retains the streams; installed environment hooks may then add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
+The facts of the process an invocation runs in, copied from the run's process handle: argument tokens, working directory, home folder, temporary folder, environment, platform, architecture, C library, user ID, the standard streams, terminal facts, and the release facts, with `spawn`, the run's one way to start a child program. Core copies the facts once per run, except that it reads terminal width and height live and settles the terminal's background rather than copying it, and retains the streams; installed environment hooks may then add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Process handle**:
-The one object a run reads every process fact from and sends every process effect to, such as its exit status and the signals core listens for and re-raises, bound when the run enters and never replaced during it. `processHandle()` builds the real process's handle, and `@loomcli/testing`'s `mockProcess()` builds a sealed one that reads nothing from the process a test runs in.
+The one object a run reads every process fact from and sends every process effect to, such as its exit status, the signals core listens for and re-raises, and the child programs the run starts, bound when the run enters and never replaced during it. It owns no clock, timer, randomness, network, or file system. `processHandle()` builds the real process's handle, and `@loomcli/testing`'s `mockProcess()` builds a sealed one that reads nothing from the process a test runs in and scripts each child program instead of running it.
 _Avoid_: Host (for the handle), process object, host overrides
 
 **Signal source**:

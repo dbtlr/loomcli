@@ -10,11 +10,11 @@ This page states the installation record, the per-application directory that say
 type ApplicationDirectory = 'installation' | 'logs' | 'cache';
 type DirectoryLookup =
   | { readonly path: string } // the absolute directory
-  | { readonly variable: string }; // the variable it needs that is unset, empty, or not absolute
+  | { readonly variable: string }; // the variable it needs that is unset, empty, or not absolute; HOME for the home
 declare function applicationDirectory(
   kind: ApplicationDirectory,
   application: string,
-  from: { readonly env: Host['env']; readonly platform: string },
+  from: { readonly env: Host['env']; readonly home: string; readonly platform: string },
 ): DirectoryLookup;
 ```
 
@@ -32,14 +32,14 @@ return out.print(installation === undefined ? 'Installed some other way.' : `Ins
 
 The installation record is one directory per application and per user that says how the application was installed and which files its installers wrote. It holds `install.json`, the installation, and one file for each first-party plugin that installs files, named for the plugin, such as `service.json`, or one for each of its targets when a plugin installs into independent targets, named for the plugin and the target, such as `skills.claude.json`. Each file has its own writers, and each writer replaces only its own file, whole, through a temporary file in the same directory and a rename, so no writer reads or merges another's. Core reads `install.json` and writes nothing. [ADR-0071](../decisions/0071-an-installation-record-per-application-says-how-it-was-installed-and-what-its-installers-wrote.md) records the decision.
 
-- **The directory.** `applicationDirectory('installation', name, host)` resolves it from `env` and `platform` alone, `applicationDirectory('logs', name, host)` resolves the [logging plugin's](../plugins/logging.md) default directory, and `applicationDirectory('cache', name, host)` resolves the directory of data the application can lose, such as the [update notices'](../plugins/self-update.md#update-notices) cache:
+- **The directory.** `applicationDirectory('installation', name, host)` resolves it from `env`, `home`, and `platform` alone, `applicationDirectory('logs', name, host)` resolves the [logging plugin's](../plugins/logging.md) default directory, and `applicationDirectory('cache', name, host)` resolves the directory of data the application can lose, such as the [update notices'](../plugins/self-update.md#update-notices) cache:
 
   | Platform | `installation` | `logs` | `cache` |
   | --- | --- | --- | --- |
-  | `darwin` | `$HOME/Library/Application Support/<app>/installation/` | `$HOME/Library/Logs/<app>/` | `$HOME/Library/Caches/<app>/` |
+  | `darwin` | `<home>/Library/Application Support/<app>/installation/` | `<home>/Library/Logs/<app>/` | `<home>/Library/Caches/<app>/` |
   | any other | `$XDG_STATE_HOME/<app>/installation/` | `$XDG_STATE_HOME/<app>/` | `$XDG_CACHE_HOME/<app>/` |
 
-  On any other platform, an `XDG_STATE_HOME` that is unset, empty, or not an absolute path is replaced by `$HOME/.local/state`, and such an `XDG_CACHE_HOME` by `$HOME/.cache`. A `HOME` that is unset, empty, or not an absolute path cannot give the directory, and the lookup answers `{ variable }` with its name. `<app>` is the application's name, which the [portable name](../glossary.md#names-and-routing) grammar keeps safe as one path segment. The platform chooses the row and its variables; the running process's path rules judge an absolute path and join the segments. The function reads no file and creates nothing.
+  `<home>` is `from.home`, the run's [`host.home`](host.md#the-home-and-temporary-folders), never `HOME` in `env`. On any other platform, an `XDG_STATE_HOME` in `env` that is unset, empty, or not an absolute path is replaced by `<home>/.local/state`, and such an `XDG_CACHE_HOME` by `<home>/.cache`, so an absolute XDG variable still wins over the home. A `home` that is empty or not an absolute path cannot give the directory, and the lookup answers `{ variable: 'HOME' }`, the variable an operator sets to fix it. `<app>` is the application's name, which the [portable name](../glossary.md#names-and-routing) grammar keeps safe as one path segment. The platform chooses the row and its variables; the running process's path rules judge an absolute path and join the segments. The function reads no file and creates nothing.
 - **`install.json`.** One line: `{"format":1,"method":"<method>","path":"<path>","digest":"sha256:<hex>"}` and a newline, the members in that order, where `path` is the absolute path of the installed binary and `<hex>` the 64 lowercase hexadecimal digits of its SHA-256 digest. The method `script` means an installer script put the binary there, and a plugin that replaces the binary may replace it. Two writers write the file: the installer script, after it moves a verified binary into place, and self-update, after it replaces the binary, each through the recipe's temporary file and rename.
 - **The shell recipe.** An installer script writes `install.json` with POSIX `sh` under `set -e` and no JSON parser, on Linux and macOS:
 
@@ -74,7 +74,7 @@ The installation record is one directory per application and per user that says 
 Core fills `host.release.installation` during host capture for `run()` and `app.invoke`, once per run:
 
 - **When it reads.** Only when the run has no `release` override and the baked facts hold a release with an `asset`, which a compiled binary built with `loom build --release` alone carries. Every other run reads no file and has no installation.
-- **What it reads.** `install.json` in the directory `applicationDirectory('installation', name, host)` gives for the run's `env` and `platform`, read synchronously when it is a regular file no larger than 1 MiB. Its content must be a JSON object whose `format` is `1`, whose `method` is a nonempty string, whose `path` is an absolute path, and whose `digest` is `sha256:` and 64 lowercase hexadecimal digits. Core ignores every other member, in any order.
+- **What it reads.** `install.json` in the directory `applicationDirectory('installation', name, host)` gives for the run's `env`, `home`, and `platform`, read synchronously when it is a regular file no larger than 1 MiB. Its content must be a JSON object whose `format` is `1`, whose `method` is a nonempty string, whose `path` is an absolute path, and whose `digest` is `sha256:` and 64 lowercase hexadecimal digits. Core ignores every other member, in any order.
 - **Whom it trusts.** Core sets `installation` to `{ method, path, digest }` as recorded only when `path` and `process.execPath`, each resolved through symbolic links, are the same path. A copy of the application run from another path, through Node or Bun, or from source has no installation.
 - **What never fails.** A variable the directory needs, a missing file, a read that fails, content that is not that object, a `format` core does not know, and a path that is not the running executable each leave `installation` absent. Core reports none of them, and the run continues.
 - **No hashing.** Core never computes the running binary's digest. A plugin that replaces the binary compares it with `digest` first.

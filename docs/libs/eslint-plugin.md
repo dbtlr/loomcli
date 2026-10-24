@@ -1,10 +1,10 @@
 ---
-description: The @loomcli/eslint-plugin reference. The lint rules that guide an application author where a type cannot, how to load them in oxlint and ESLint, how the rules find a declaration, and what each rule reports and leaves alone.
+description: The @loomcli/eslint-plugin reference. The lint rules that guide an application author where a type cannot, how to load them in oxlint and ESLint, how the rules find a declaration and a read of the process, and what each rule reports and leaves alone.
 ---
 
 # ESLint plugin reference
 
-`@loomcli/eslint-plugin` ships the [lint rules](../glossary.md) for Loom applications. A lint rule guides an author where a type cannot express the guidance, and it reports in the editor and in CI before anything runs. [ADR-0098](../decisions/0098-lint-is-the-author-guidance-lane.md) records the decision. The plugin is ESLint-compatible, so oxlint loads it through its `jsPlugins` setting and ESLint loads it as a flat-config plugin. Both tools run the same three rules.
+`@loomcli/eslint-plugin` ships the [lint rules](../glossary.md) for Loom applications. A lint rule guides an author where a type cannot express the guidance, and it reports in the editor and in CI before anything runs. [ADR-0098](../decisions/0098-lint-is-the-author-guidance-lane.md) records the decision. The plugin is ESLint-compatible, so oxlint loads it through its `jsPlugins` setting and ESLint loads it as a flat-config plugin. Both tools run the same rules.
 
 The package has a peer dependency on `@loomcli/core`, because the `name-shape` rule calls the same name predicates core does. It needs no type information, so it runs under oxlint, which provides none.
 
@@ -61,7 +61,7 @@ typescript-eslint supports TypeScript below 6.1 and reads the TypeScript 6 API, 
 
 `loom init --linter eslint` writes both keys in a new scaffold, and an application that already declares `typescript` adds them by hand. The alias goes once typescript-eslint supports TypeScript 7.
 
-`configs.recommended` registers the plugin under `@loomcli` and turns all three rules on at `error`. To change a rule, set it in a later config object, such as `'@loomcli/name-shape': 'warn'`.
+`configs.recommended` registers the plugin under `@loomcli` and turns every rule on at `error`. To change a rule, set it in a later config object, such as `'@loomcli/name-shape': 'warn'`.
 
 ## How the rules find a declaration
 
@@ -74,6 +74,8 @@ The rules read source text and scope analysis. They use no type information. A v
 Type assertions around a value (`as`, `satisfies`, `!`) do not change what it is.
 
 A rule reports only what it can trace. A parameter, a `let` variable, a destructured binding, a spread options object, a computed name, a name held in a variable, and a `Command` that does not come from `@loomcli/core` all get no report. A false report is worse than a missed one.
+
+`host-bypass` judges no declaration. It reads scope analysis and import declarations, under the forms [its section](#host-bypass) lists.
 
 ## Rules
 
@@ -127,6 +129,52 @@ base.option('--verbose', { description: 'Print more.', type: 'boolean' });
 ```
 
 The rule judges a string literal and a template literal with no substitution. It skips a name held in a variable, and it skips an `aliases` array that holds a spread or is not a literal.
+
+### `host-bypass`
+
+Reports code that reaches the process around the run's [host](../core/host.md). A run reads every process fact and starts every child program through its [process handle](../core/host.md#the-process-handle), which a test replaces with a [mock](testing.md#mockprocess). Code that reads the global `process`, asks `node:os` for the user's folders, or starts a child through `node:child_process` reads the machine the test runs on instead, so its result changes from one machine to the next. [ADR-0107](../decisions/0107-a-run-reads-the-process-through-one-process-handle.md) records the decision.
+
+```ts
+import { homedir } from 'node:os';
+
+import { Command } from '@loomcli/core';
+
+export const where = new Command('where', { description: 'Print where notes keeps its files.' }).action(
+  async ({ host, out }) => {
+    // Reported: homedir() reads the machine around the run. Use host.home instead.
+    await out.print(homedir());
+    // Reported: process.env reads the machine around the run. Use host.env instead.
+    await out.print(process.env.NOTES_DIR ?? host.home);
+    // Not reported: the run's host.
+    await out.print(host.env.NOTES_DIR ?? host.home);
+  },
+);
+```
+
+Each message names what the code reached and the member to use instead:
+
+| Reported | Use instead |
+| --- | --- |
+| `process.env` | `host.env` |
+| `process.argv` | `host.argv` |
+| `process.cwd()` | `host.cwd` |
+| `process.platform`, `process.arch` | `host.platform`, `host.arch` |
+| `process.getuid()` | `host.uid` |
+| `process.stdin` | `host.stdin` |
+| `process.stdout`, `process.stderr` | `out` |
+| `process.exit()`, `process.exitCode` | a result the action returns, or a failure it throws |
+| `process.on()`, `process.once()` | `onShutdown`, and the run's `signal` |
+| any other use of `process` | the run's host |
+| `homedir()` from `os` | `host.home` |
+| `tmpdir()` from `os` | `host.tmpdir` |
+| `userInfo()` from `os` | `host.uid` for who the user is, and `host.env.USER` for the name to show |
+| `child_process` | `host.spawn` |
+
+- **On by default.** `configs.recommended` and `configs.oxlint` turn the rule on at `error`, as they do every rule.
+- **The forms.** The rule reports the global `process`, `globalThis.process`, and `global.process`; an import of `process` or `node:process`, by default, namespace, or named import; `homedir`, `tmpdir`, and `userInfo` from `os` or `node:os`, as a named import or as a member of the module's default or namespace import; and any import of `child_process` or `node:child_process`. An `import()` with a literal specifier counts as an import.
+- **The global alone.** The rule reads scope analysis, so a binding the code declares itself, such as a parameter named `process` or a destructured `{ process }`, is not reported. A use it cannot trace, such as `Reflect.get(globalThis, 'process')` or an `import()` with a computed specifier, is not reported either.
+- **The entry module.** `app.run()` given no handle binds the real process, so an entry module needs no `process` of its own and no exception.
+- **Tests.** A file whose name holds `.test.` or `.spec.` is not linted by this rule. A test runs outside any run, and it is where a real folder or the machine's environment is handed to a mock, such as `tmpdir: mkdtempSync(join(tmpdir(), 'notes-'))`.
 
 ## Add a rule
 
