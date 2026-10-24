@@ -179,7 +179,7 @@ async function readBackground(
 /**
  * Raises the signal each interrupt key stands for, in arrival order, or cancels the run for Ctrl-C
  * and Ctrl-\ where nothing is raised, and answers whether any signal was raised. Several Ctrl-Z
- * keys raise one SIGTSTP, as a cooked terminal suspends once and hands the rest to the shell.
+ * keys raise one SIGTSTP, as a cooked terminal suspends once and discards the input still unread.
  */
 function raiseKeys(
   terminal: Pick<Host, 'raise'> & { readonly cancel: () => void },

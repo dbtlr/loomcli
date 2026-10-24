@@ -178,6 +178,27 @@ test.skipIf(zsh === undefined)(
   },
 );
 
+test.skipIf(zsh === undefined)(
+  'keys typed after Ctrl-Z in the same read are dropped, and the question asks again after fg',
+  async () => {
+    const shell = drive(['zsh', '-f', '-i'], { NO_COLOR: '1' });
+    try {
+      await shell.expect('%');
+      shell.send(String.raw`${command('text')}\n`);
+      await shell.expect('Service port');
+      shell.send(String.raw`\x1a8080\r`);
+      await shell.expect('suspended');
+      await shell.expect('%');
+      shell.send(String.raw`fg\n`);
+      await shell.expect('Service port');
+      shell.send(String.raw`5000\r`);
+      await expect(shell.expect('EXIT:0 cooked:true')).resolves.toContain('ANSWER:"5000"');
+    } finally {
+      await shell.close();
+    }
+  },
+);
+
 test.skipIf(zsh === undefined).each([
   { ending: 'kill -TERM', env: { PROMPT_ANNOUNCE: '1' }, status: 143 },
   { ending: 'process.exit()', env: { PROMPT_EXIT_AFTER: '300' }, status: 3 },

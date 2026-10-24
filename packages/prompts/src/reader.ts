@@ -99,10 +99,14 @@ const sessions = new WeakMap<AbortSignal, Session>();
  * the key would at a cooked terminal: Ctrl-C starts the shutdown, Ctrl-\\ ends the process, and
  * Ctrl-Z suspends it. Where stdin is not its signal source's own terminal nothing is raised: Ctrl-C
  * and Ctrl-\\ cancel the run, as the action's `cancel()` does, and Ctrl-Z does nothing. Several
- * Ctrl-Z keys in one read raise one SIGTSTP, as a cooked terminal suspends once. Answers whether a
- * signal that ends the process was raised, which reaches the run a moment later.
+ * Ctrl-Z keys in one read raise one SIGTSTP, as a cooked terminal suspends once. Answers which
+ * kind of signal was raised, which reaches the run a moment later: one that ends the process, one
+ * that suspends it, or none.
  */
-function raiseInterrupts<Options>(context: PromptContext<Options>, queue: InputQueue): boolean {
+function raiseInterrupts<Options>(
+  context: PromptContext<Options>,
+  queue: InputQueue,
+): 'ending' | 'suspending' | undefined {
   const interrupts: InterruptSignal[] = [];
   queue.keys = queue.keys.filter((key) => {
     if (key.kind !== 'interrupt') {
@@ -113,15 +117,15 @@ function raiseInterrupts<Options>(context: PromptContext<Options>, queue: InputQ
     }
     return false;
   });
-  let ending = false;
+  let raised: 'ending' | 'suspending' | undefined = undefined;
   for (const signal of interrupts) {
     if (context.host.raise(signal)) {
-      ending ||= signal !== 'SIGTSTP';
+      raised = signal === 'SIGTSTP' && raised !== 'ending' ? 'suspending' : 'ending';
     } else if (signal !== 'SIGTSTP') {
       context.cancel();
     }
   }
-  return ending;
+  return raised;
 }
 
 /**
@@ -191,16 +195,18 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
       queue.keys.unshift(key);
     }
   };
-  // Once Ctrl-C or Ctrl-\\ raised its signal, every key still unread is dropped until it arrives, as a
-  // Cooked terminal flushes its input on an interrupt, so no key answers the question first.
+  // A raised interrupt drops every key still unread, as a cooked terminal flushes its input, so no
+  // Key answers the question before the signal arrives. After Ctrl-C or Ctrl-\\ every later key is
+  // Dropped too, until the run's abort; after Ctrl-Z the question reads on once the process resumes.
   let interrupted = false;
   const data = (chunk: Buffer | string) => {
     if (interrupted) {
       return;
     }
     feed(queue, chunk);
-    if (raiseInterrupts(context, queue)) {
-      interrupted = true;
+    const raised = raiseInterrupts(context, queue);
+    if (raised !== undefined) {
+      interrupted = raised === 'ending';
       queue.keys.length = 0;
       return;
     }
