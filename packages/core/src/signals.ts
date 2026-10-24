@@ -1,6 +1,6 @@
 import { InternalError } from './errors.js';
 import { signalCodes } from './signal-lane.js';
-import type { EndingSignal, SharedLane, LanePlace, LaneRun } from './signal-lane.js';
+import type { EndingSignal, LaneHandlers, LanePlace, LaneRun, SharedLane } from './signal-lane.js';
 
 /**
  * What aborted one run's private controller. Core owns this value, so a middleware reads `source`
@@ -161,5 +161,27 @@ function bracketRun(
   };
 }
 
+/**
+ * The handlers one context registers through its run's place, each throw going to its `failed`.
+ * A place an earlier copy of core built may lack the suspend and resume members, and a handler
+ * registered through a member it lacks holds nothing.
+ */
+function placeHandlers(
+  place: LanePlace,
+  failed: Readonly<Record<'resume' | 'shutdown' | 'suspend', (thrown: unknown) => void>>,
+): LaneHandlers {
+  const held =
+    (member: 'onResume' | 'onSuspend', onFailure: (thrown: unknown) => void) =>
+    (handler: () => unknown): (() => void) =>
+      typeof place[member] === 'function'
+        ? place[member]({ failed: onFailure, handler })
+        : () => undefined;
+  return {
+    onResume: held('onResume', failed.resume),
+    onShutdown: (handler) => place.onShutdown({ failed: failed.shutdown, handler }),
+    onSuspend: held('onSuspend', failed.suspend),
+  };
+}
+
 export type { CancellationCode, CancellationReason, LaneEntry, ParentRun, SignalBracket };
-export { bracketRun, cancellationCode, isCancellationEcho };
+export { bracketRun, cancellationCode, isCancellationEcho, placeHandlers };

@@ -73,6 +73,8 @@ class Screen {
    * that write ended partway along it. Text written above the stack continues that row.
    */
   #opened: number | undefined = undefined;
+  /** Whether a suspend erased the stack, which shows nothing until the resume draws it again. */
+  #suspended = false;
 
   constructor(private readonly measure: Measure) {}
 
@@ -88,6 +90,9 @@ class Screen {
 
   /** The frames the terminal shows, top to bottom, each starting on a row of its own. */
   #stack(): { marked: string; text: string } | undefined {
+    if (this.#suspended) {
+      return undefined;
+    }
     const frames = this.#slots.flatMap(({ shown }) =>
       shown === undefined || shown.text === '' ? [] : [shown],
     );
@@ -145,6 +150,34 @@ class Screen {
     this.#opened = this.#column;
     this.#column = 0;
     return `\n${stack.text}`;
+  }
+
+  /**
+   * A suspend: the bytes that erase the stack, which then shows nothing until `resume`. The cursor
+   * is left at the start of the stack's first row, where the shell writes while the process stops.
+   */
+  suspend(): string {
+    if (this.#suspended) {
+      return '';
+    }
+    const erase = this.#erase();
+    this.#suspended = true;
+    return erase;
+  }
+
+  /**
+   * A resume: the bytes that draw the stack again. The shell wrote while the process was stopped
+   * and leaves the cursor at the start of a row, so the stack starts there, and text written above
+   * it later starts a row of its own.
+   */
+  resume(): string {
+    if (!this.#suspended) {
+      return '';
+    }
+    this.#suspended = false;
+    this.#opened = undefined;
+    this.#column = 0;
+    return this.#draw();
   }
 
   /** Text written to the terminal above the stack: what to write before it and after it. */
@@ -250,6 +283,11 @@ interface RegionHost {
   ledger: ProgressLedger;
   /** Whether the run has been cancelled already. */
   cancelled: () => boolean;
+  /**
+   * Erases the regions on a suspend and redraws them on the resume, from now until the call it
+   * answers, which the regions make while any live region is open.
+   */
+  holdSuspend: () => () => void;
 }
 
 /** One region a run opened, as its handle answers and as the run closes it. */
@@ -332,6 +370,9 @@ class Regions {
   readonly #open = new Set<LiveRegion>();
   readonly #waiting: LiveRegion[] = [];
   #inputOwner: LiveRegion | undefined = undefined;
+  /** The live regions that opened and have not closed, which hold the suspend handlers. */
+  #live = 0;
+  #releaseSuspend: (() => void) | undefined = undefined;
 
   constructor(
     private readonly host: RegionHost,
@@ -402,6 +443,9 @@ class Regions {
     const closing = region.live
       ? this.host.write(() => this.screen.close(region.slot))
       : Promise.resolve();
+    if (region.live) {
+      this.#leaveLive();
+    }
     if (region === this.#inputOwner) {
       this.#inputOwner = undefined;
       const next = this.#waiting.shift();
@@ -418,6 +462,7 @@ class Regions {
     if (!region.live) {
       return;
     }
+    this.#enterLive();
     if (region.input) {
       this.#inputOwner = region;
     }
@@ -438,6 +483,23 @@ class Regions {
       }
     };
     void release();
+  }
+
+  /** A live region opened: the first one makes a suspend erase the regions. */
+  #enterLive(): void {
+    this.#live += 1;
+    if (this.#live === 1) {
+      this.#releaseSuspend = this.host.holdSuspend();
+    }
+  }
+
+  /** A live region closed: once none is open, a suspend has nothing to erase. */
+  #leaveLive(): void {
+    this.#live -= 1;
+    if (this.#live === 0) {
+      this.#releaseSuspend?.();
+      this.#releaseSuspend = undefined;
+    }
   }
 }
 

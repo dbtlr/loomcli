@@ -6,7 +6,7 @@ import { registerRule } from './diagnostic-text.js';
 import { quoted } from './errors.js';
 import { factFault, slotSite } from './facts.js';
 import { processLane } from './process-handle.js';
-import type { OnShutdown, Synchronous } from './signal-lane.js';
+import type { OnResume, OnShutdown, OnSuspend } from './signal-lane.js';
 
 const invalidShutdownTimeout = registerRule('@loomcli/core/invalid-shutdown-timeout', {
   explanation:
@@ -50,14 +50,10 @@ function shutdownTimeout(application: string, shutdown: { readonly timeout?: num
  */
 const onShutdown: OnShutdown = (handler) => processLane().onShutdown({ handler });
 
-/** Registers a synchronous handler that runs when Ctrl-Z suspends the process, newest first. */
-function onSuspend<Returned>(handler: () => Synchronous<Returned>): () => void {
-  return processLane().onSuspend({ handler });
-}
+/** Registers a synchronous handler scoped to the process that runs when Ctrl-Z suspends it, newest first. */
+const onSuspend: OnSuspend = (handler) => processLane().onSuspend({ handler });
 
-/** Registers a synchronous handler that runs when the process resumes, in registration order. */
-function onResume<Returned>(handler: () => Synchronous<Returned>): () => void {
-  return processLane().onResume({ handler });
-}
+/** Registers a synchronous handler scoped to the process that runs when it resumes, in registration order. */
+const onResume: OnResume = (handler) => processLane().onResume({ handler });
 
 export { onResume, onShutdown, onSuspend, shutdownTimeout };

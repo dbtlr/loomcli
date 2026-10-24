@@ -22,7 +22,7 @@ import {
   viewSelection,
   viewSelectionCorrection,
 } from './rules.js';
-import type { OnShutdown } from './signal-lane.js';
+import type { LaneHandlers, OnResume, OnShutdown, OnSuspend } from './signal-lane.js';
 import type { ContextualStyle } from './style.js';
 import { handled } from './thenable.js';
 import type {
@@ -81,6 +81,10 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
    * is removed when the run ends while no shutdown is under way. Answers the call that removes it.
    */
   readonly onShutdown: OnShutdown;
+  /** Registers a synchronous handler that runs when Ctrl-Z suspends the process, until the run ends. */
+  readonly onSuspend: OnSuspend;
+  /** Registers a synchronous handler that runs when the process resumes, until the run ends. */
+  readonly onResume: OnResume;
   readonly next: () => Promise<ChainOutcome>;
 }
 
@@ -269,8 +273,11 @@ interface EntryState {
  */
 interface Invocation {
   cancel: () => void;
-  /** The `onShutdown` of one context of the run, bound to the plugin core is calling, or to none. */
-  onShutdown: (plugin: string | null) => OnShutdown;
+  /**
+   * The `onShutdown`, `onSuspend`, and `onResume` of one context of the run, bound to the plugin
+   * core is calling, or to none.
+   */
+  laneHandlers: (plugin: string | null) => LaneHandlers;
   style: ContextualStyle;
   /** The action's own channel, built from the routed Command's declaration when it dispatches. */
   channel: (binding: ResultBinding) => ActionChannel;
@@ -510,7 +517,7 @@ async function runChain(
       host: invocation.host,
       log: invocation.logFor(entry.identity),
       next,
-      onShutdown: invocation.onShutdown(entry.identity),
+      ...invocation.laneHandlers(entry.identity),
       options: prepared.options,
       out: invocation.out,
       ownOptions: prepared.own(entry.identity, entry.inputs),

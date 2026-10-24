@@ -14,6 +14,7 @@ import { capabilities, columns, plainPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { writeSequence } from './sequence.js';
 import type { SequenceView } from './sequence.js';
+import type { LaneHandlers } from './signal-lane.js';
 import { drawnRows, nextColumn, resolveText, width } from './style-resolve.js';
 import type { Palette } from './style-state.js';
 import { expandTabsMarked, wrapMarked } from './style-wrap.js';
@@ -251,10 +252,10 @@ class Destination {
    * then `after`, synchronously. A write that fails is dropped: this is a best-effort write the
    * process makes on its way out.
    */
-  flushComposed(after: string): void {
+  flushComposed(after: () => string): void {
     const queued = [...this.#composed];
     this.#composed.clear();
-    const text = queued.map(({ produce }) => produce()).join('') + after;
+    const text = queued.map(({ produce }) => produce()).join('') + after();
     if (text === '' || this.state.kind !== 'ok' || this.stream.destroyed) {
       return;
     }
@@ -460,6 +461,8 @@ export class Output {
   };
   // Aborts the run's signal with the closed-pipe reason, once the run has a signal bracket.
   private closePipe: (cause: unknown) => void = () => undefined;
+  // Registers the run's suspend and resume handlers, once the run has a place in its lane.
+  private suspension: Pick<LaneHandlers, 'onResume' | 'onSuspend'> | undefined = undefined;
   // Whether the reader of stdout closed the pipe, after which no incomplete-result line is written.
   private pipeClosed = false;
   /**
@@ -495,6 +498,7 @@ export class Output {
           const frame = this.frame(data, view);
           return 'failed' in frame ? { failed: this.hand(frame.failed) } : frame;
         },
+        holdSuspend: () => this.holdSuspend(),
         ledger: new ProgressLedger({
           deliver: (event) => {
             this.progressObserver?.(event);
@@ -664,6 +668,38 @@ export class Output {
     this.closePipe = close;
   }
 
+  /** The run's own suspend and resume registration, which its live regions hold while open. */
+  useSuspension(handlers: Pick<LaneHandlers, 'onResume' | 'onSuspend'>): void {
+    this.suspension = handlers;
+  }
+
+  /**
+   * Erases the live regions on a suspend and redraws them on the resume until the call it answers.
+   * The erase is written straight to the terminal, after every region frame still queued, with the
+   * cursor shown, because the process stops as the suspend handlers return. The redraw is queued,
+   * so a write queued before the suspend reaches the screen first.
+   */
+  private holdSuspend(): () => void {
+    const { suspension } = this;
+    if (suspension === undefined) {
+      return () => undefined;
+    }
+    const destination = this.destination(this.host.stderr);
+    const removers = [
+      suspension.onSuspend(() => {
+        destination.flushComposed(() => this.screen.suspend() + showCursor);
+      }),
+      suspension.onResume(() => {
+        void handled(destination.compose(() => this.screen.resume()));
+      }),
+    ];
+    return () => {
+      for (const remove of removers) {
+        remove();
+      }
+    };
+  }
+
   /** The registry one invocation resolves through, republished as each contributor is read. */
   useViews(registry: ViewRegistry): void {
     this.registry = registry;
@@ -690,7 +726,7 @@ export class Output {
    */
   flushTerminal(): void {
     if (this.host.terminal.stderr.isTTY) {
-      this.destination(this.host.stderr).flushComposed(showCursor);
+      this.destination(this.host.stderr).flushComposed(() => showCursor);
     }
   }
 

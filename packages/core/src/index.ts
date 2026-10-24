@@ -54,7 +54,7 @@ export { override, view } from './view.js';
 export { plugin } from './plugin.js';
 export { processHandle } from './process-handle.js';
 export { onResume, onShutdown, onSuspend } from './shutdown.js';
-export type { OnShutdown, ShutdownEvent, Synchronous } from './signal-lane.js';
+export type { OnResume, OnShutdown, OnSuspend, ShutdownEvent, Synchronous } from './signal-lane.js';
 export { translate } from './translators.js';
 export { encodeFailure } from './encoders.js';
 export { glyph } from './glyphs.generated.js';
