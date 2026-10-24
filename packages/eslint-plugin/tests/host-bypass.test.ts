@@ -150,3 +150,70 @@ tester.run('host-bypass', hostBypass, {
     },
   ],
 });
+
+tester.run('host-bypass destructuring and re-exports', hostBypass, {
+  invalid: [
+    {
+      // A member destructured off a traced os binding reads it as a member read does.
+      code: `import os from 'node:os';
+        const { userInfo, cpus } = os;
+        userInfo();`,
+      errors: [
+        bypass(
+          'userInfo()',
+          'host.uid for who the user is, and host.env.USER for the name to show',
+        ),
+      ],
+    },
+    {
+      code: `import * as nodeOs from 'os';
+        const { homedir: home, tmpdir } = nodeOs;`,
+      errors: [bypass('homedir()', 'host.home instead'), bypass('tmpdir()', 'host.tmpdir instead')],
+    },
+    {
+      code: `async function load() {
+          const { homedir: h, 'tmpdir': t, ...rest } = await import('node:os');
+          return [h, t, rest];
+        }`,
+      errors: [bypass('homedir()', 'host.home instead'), bypass('tmpdir()', 'host.tmpdir instead')],
+    },
+    {
+      code: `export { homedir, cpus } from 'node:os';
+        export { tmpdir as scratch } from 'os';
+        export * from 'node:os';`,
+      errors: [
+        bypass('homedir()', 'host.home instead'),
+        bypass('tmpdir()', 'host.tmpdir instead'),
+        bypass('node:os', 'host.home, host.tmpdir, and host.uid instead'),
+      ],
+    },
+    {
+      code: `export { spawn } from 'node:child_process';
+        export * from 'child_process';
+        export * as child from 'node:child_process';`,
+      errors: [
+        bypass('node:child_process', 'host.spawn instead'),
+        bypass('child_process', 'host.spawn instead'),
+        bypass('node:child_process', 'host.spawn instead'),
+      ],
+    },
+    {
+      code: `export { env } from 'node:process';
+        export * from 'process';`,
+      errors: [
+        bypass('process.env', 'host.env instead'),
+        bypass('process', "the run's host instead"),
+      ],
+    },
+  ],
+  valid: [
+    // A type-only re-export runs nothing.
+    `export type { ChildProcess } from 'node:child_process';`,
+    `export { type ChildProcess } from 'node:child_process';`,
+    `export type * from 'node:os';`,
+    // A member destructured off an os binding that reads no folder.
+    `import os from 'node:os'; const { cpus, EOL } = os;`,
+    // A destructure of something else.
+    `const { homedir } = settings;`,
+  ],
+});

@@ -1,7 +1,15 @@
 import { basename } from 'node:path';
 
 import type { Rule, Scope, SourceCode } from 'eslint';
-import type { ImportDeclaration, ImportExpression, Node, Program } from 'estree';
+import type {
+  ExportAllDeclaration,
+  ExportNamedDeclaration,
+  ImportDeclaration,
+  ImportExpression,
+  Node,
+  Pattern,
+  Program,
+} from 'estree';
 
 import { ruleUrl } from '../docs.js';
 
@@ -77,10 +85,20 @@ function typeOnly(node: object): boolean {
   return Reflect.get(node, 'importKind') === 'type';
 }
 
-/** The literal specifier of a static or dynamic import, when it is a string. */
-function specifierOf(node: ImportDeclaration | ImportExpression): string | undefined {
+/** The literal specifier of a static or dynamic import or a re-export, when it is a string. */
+function specifierOf(
+  node: ImportDeclaration | ImportExpression | ExportNamedDeclaration | ExportAllDeclaration,
+): string | undefined {
   const { source } = node;
-  return source.type === 'Literal' && typeof source.value === 'string' ? source.value : undefined;
+  return source?.type === 'Literal' && typeof source.value === 'string' ? source.value : undefined;
+}
+
+/** The name an identifier or a string literal spells, as an import or export specifier holds it. */
+function spelled(node: Node): string | undefined {
+  if (node.type === 'Identifier') {
+    return node.name;
+  }
+  return node.type === 'Literal' && typeof node.value === 'string' ? node.value : undefined;
 }
 
 /** The name an import specifier imports, or none for a default or namespace import. */
@@ -174,6 +192,79 @@ function checkProcess(check: Check, node: ImportDeclaration): void {
   }
 }
 
+/** Reports each banned `os` member an object pattern destructures, by the key it reads. */
+function checkOsPattern(check: Check, pattern: Pattern): void {
+  if (pattern.type !== 'ObjectPattern') {
+    return;
+  }
+  for (const property of pattern.properties) {
+    const key =
+      property.type === 'Property' && !property.computed ? spelled(property.key) : undefined;
+    if (key !== undefined && Object.hasOwn(osMembers, key)) {
+      check.report(property, osReach(key));
+    }
+  }
+}
+
+/** What re-exporting all of `os` reaches: every folder the rule names. */
+const allOsReach = { instead: 'host.home, host.tmpdir, and host.uid instead' };
+
+/** The named re-exports that run, or `undefined` for a re-export of the whole module. */
+type Reexported = ExportNamedDeclaration['specifiers'] | undefined;
+
+/** Reports a re-export of `process`: each named member as the table names it, or the whole module. */
+function reexportProcess(check: Check, node: Node, named: Reexported): void {
+  if (named === undefined) {
+    check.report(node, processReach('process', undefined));
+  }
+  for (const part of named ?? []) {
+    check.report(part, processReach('process', spelled(part.local)));
+  }
+}
+
+/** Reports a re-export of `os`: each banned member it passes on, or the whole module. */
+function reexportOs(
+  check: Check,
+  node: ExportNamedDeclaration | ExportAllDeclaration,
+  named: Reexported,
+): void {
+  if (named === undefined) {
+    check.report(node, { ...allOsReach, reached: specifierOf(node) ?? 'os' });
+  }
+  for (const part of named ?? []) {
+    const member = spelled(part.local);
+    if (member !== undefined && Object.hasOwn(osMembers, member)) {
+      check.report(part, osReach(member));
+    }
+  }
+}
+
+/**
+ * Reports a re-export of a module the rule names, as an import of it is reported: each banned
+ * member a named re-export passes on, and a re-export of the whole module. A type-only re-export
+ * runs nothing.
+ */
+function checkReexport(check: Check, node: ExportNamedDeclaration | ExportAllDeclaration): void {
+  const specifier = specifierOf(node);
+  if (specifier === undefined || Reflect.get(node, 'exportKind') === 'type') {
+    return;
+  }
+  const named: Reexported =
+    node.type === 'ExportNamedDeclaration'
+      ? node.specifiers.filter((part) => Reflect.get(part, 'exportKind') !== 'type')
+      : undefined;
+  if (named?.length === none) {
+    return;
+  }
+  if (childModules.has(specifier)) {
+    check.report(node, { instead: 'host.spawn instead', reached: specifier });
+  } else if (processModules.has(specifier)) {
+    reexportProcess(check, node, named);
+  } else if (osModules.has(specifier)) {
+    reexportOs(check, node, named);
+  }
+}
+
 /** Reports a static import of a module the rule names. A type-only import runs nothing. */
 function checkImport(check: Check, node: ImportDeclaration): void {
   const specifier = specifierOf(node);
@@ -202,7 +293,11 @@ function checkAwaitedOs(check: Check, awaited: Rule.Node): void {
   if (member !== undefined && Object.hasOwn(osMembers, member)) {
     check.report(holder, osReach(member));
   } else if (holder.type === 'VariableDeclarator') {
-    traceOs(check, check.sourceCode.getDeclaredVariables(holder));
+    if (holder.id.type === 'ObjectPattern') {
+      checkOsPattern(check, holder.id);
+    } else {
+      traceOs(check, check.sourceCode.getDeclaredVariables(holder));
+    }
   }
 }
 
@@ -229,6 +324,16 @@ function checkGlobalProcess(check: Check, holder: Rule.Node, name: string): void
   check.report(reported, processReach(`${name}.process`, read));
 }
 
+/** Reports a use of a traced `os` binding: a banned member read off it, or destructured from it. */
+function checkOsUse(check: Check, node: Rule.Node, member: string | undefined): void {
+  const { parent } = node;
+  if (member !== undefined && Object.hasOwn(osMembers, member)) {
+    check.report(parent ?? node, osReach(member));
+  } else if (parent?.type === 'VariableDeclarator' && parent.init === node) {
+    checkOsPattern(check, parent.id);
+  }
+}
+
 /** Reports a traced identifier's use: the global `process`, a member of `os`, or `globalThis.process`. */
 function checkTraced(check: Check, node: Rule.Node, held: Traced): void {
   const { parent } = node;
@@ -239,9 +344,7 @@ function checkTraced(check: Check, node: Rule.Node, held: Traced): void {
   if (held.kind === 'process') {
     check.report(member === undefined ? node : parent, processReach('process', member));
   } else if (held.kind === 'os') {
-    if (member !== undefined && Object.hasOwn(osMembers, member)) {
-      check.report(parent, osReach(member));
-    }
+    checkOsUse(check, node, member);
   } else if (member === 'process') {
     checkGlobalProcess(check, parent, held.name);
   }
@@ -281,6 +384,8 @@ const hostBypass: Rule.RuleModule = {
       traced: new Map(),
     };
     return {
+      ExportAllDeclaration: (node) => checkReexport(check, node),
+      ExportNamedDeclaration: (node) => checkReexport(check, node),
       Identifier(node) {
         const held = check.traced.get(node);
         if (held !== undefined) {
