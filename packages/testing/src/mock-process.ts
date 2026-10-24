@@ -111,52 +111,50 @@ class Recorder extends Writable implements RecordingStream {
     }
     done();
   }
+
+  /** Flushes a character the last write left incomplete, so `text` holds everything written. */
+  override _final(done: (error?: Error | null) => void) {
+    if (this.#life.ended === undefined) {
+      const text = this.#decoder.end();
+      if (text !== '') {
+        this.#text += text;
+        this.#transcript.push({ stream: this.#name, text });
+      }
+    }
+    done();
+  }
 }
 
-/** Whether a listener belongs to the `exit` event. */
-function isExitListener(
-  event: ProcessSignal | 'exit',
-  _listener: unknown,
-): _listener is SignalListener<'exit'> {
-  return event === 'exit';
-}
-
-/** Whether a listener belongs to a signal. */
-function isSignalListener(
-  event: ProcessSignal | 'exit',
-  _listener: unknown,
-): _listener is SignalListener<ProcessSignal> {
-  return event !== 'exit';
-}
+/** The listeners held for each event, each set typed by its own event. */
+type Registry = { [Event in ProcessSignal | 'exit']: Set<SignalListener<Event>> };
 
 /** A signal source of its own, which ends the mock's life on an ending signal nobody listens for. */
 function mockSignals(life: Life): SignalSource {
-  const signalListeners = new Map<ProcessSignal, Set<() => void>>();
-  const exitListeners = new Set<(code: number) => void>();
+  const registry: Registry = {
+    SIGCONT: new Set(),
+    SIGHUP: new Set(),
+    SIGINT: new Set(),
+    SIGQUIT: new Set(),
+    SIGTERM: new Set(),
+    SIGTSTP: new Set(),
+    exit: new Set(),
+  };
   return {
     off<Event extends ProcessSignal | 'exit'>(event: Event, listener: SignalListener<Event>) {
-      if (isExitListener(event, listener)) {
-        exitListeners.delete(listener);
-      } else if (isSignalListener(event, listener) && event !== 'exit') {
-        signalListeners.get(event)?.delete(listener);
-      }
+      registry[event].delete(listener);
     },
     on<Event extends ProcessSignal | 'exit'>(event: Event, listener: SignalListener<Event>) {
-      if (isExitListener(event, listener)) {
-        exitListeners.add(listener);
-      } else if (isSignalListener(event, listener) && event !== 'exit') {
-        const held = signalListeners.get(event) ?? new Set();
-        held.add(listener);
-        signalListeners.set(event, held);
-      }
+      registry[event].add(listener);
     },
     raise(signal: ProcessSignal) {
       if (life.ended !== undefined) {
         return;
       }
-      const held = signalListeners.get(signal);
-      if (held !== undefined && held.size > noListeners) {
-        for (const listener of held) {
+      const held = registry[signal];
+      if (held.size > noListeners) {
+        // A copy, so a listener added during this raise waits for the next one.
+        // oxlint-disable-next-line unicorn/no-useless-spread
+        for (const listener of [...held]) {
           listener();
         }
       } else if (endingSignals.has(signal)) {

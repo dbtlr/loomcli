@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, plugin } from '@loomcli/core';
 import type { ProcessSignal } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { describe, expect, it } from 'vite-plus/test';
@@ -158,7 +158,7 @@ describe('the terminal', () => {
         rows: 1,
       },
     });
-    expect(mock.terminal.background).toBeDefined();
+    expect(mock.terminal.background).toBe('dark');
   });
 });
 
@@ -169,6 +169,16 @@ describe('recording', () => {
     mock.stdout.write(bytes.subarray(0, 1));
     mock.stdout.write(bytes.subarray(1));
     expect(mock.stdout.text).toBe('é');
+  });
+
+  it('end flushes a character the last write left incomplete', async () => {
+    const mock = mockProcess();
+    const bytes = Buffer.from('aé');
+    mock.stdout.write(bytes.subarray(0, 2));
+    expect(mock.stdout.text).toBe('a');
+    await new Promise<void>((resolve) => mock.stdout.end(resolve));
+    expect(mock.stdout.text).toBe('a\uFFFD');
+    expect(mock.transcript.map(({ text }) => text)).toEqual(['a', '\uFFFD']);
   });
 
   it('keeps each write in order, tagged by stream', () => {
@@ -211,6 +221,19 @@ describe('signals', () => {
     mock.signals.raise(signal);
     expect(heard).toEqual([signal]);
     expect(mock.endedBy).toBeUndefined();
+  });
+
+  it('a listener added during a raise runs on the next raise, not this one', () => {
+    const mock = mockProcess();
+    const heard: string[] = [];
+    mock.signals.on('SIGINT', () => {
+      heard.push('first');
+      mock.signals.on('SIGINT', () => heard.push('added'));
+    });
+    mock.signals.raise('SIGINT');
+    expect(heard).toEqual(['first']);
+    mock.signals.raise('SIGINT');
+    expect(heard).toEqual(['first', 'first', 'added']);
   });
 
   it('off removes a listener, so the signal then finds none', () => {
@@ -388,12 +411,18 @@ describe('a run on a mock', () => {
     ]);
   });
 
-  it('a signal raised on the mock reaches a listener the code installed', async () => {
+  it('a signal raised during a run reaches the plugin that claims it, and the run resolves 130', async () => {
     const mock = mockProcess();
-    const heard: string[] = [];
-    mock.signals.on('SIGINT', () => heard.push('SIGINT'));
-    mock.signals.raise('SIGINT');
-    expect(heard).toEqual(['SIGINT']);
-    expect(mock.endedBy).toBeUndefined();
+    const app = new Application('app', {
+      plugins: [plugin('fixture/interrupts', { signals: ['SIGINT'] })],
+    }).action(async ({ signal }) => {
+      const aborted = new Promise<void>((resolve) => {
+        signal.addEventListener('abort', () => resolve());
+      });
+      mock.signals.raise('SIGINT');
+      await aborted;
+    });
+    const code = await app.run({ process: mock });
+    expect([code, mock.exitCode, mock.endedBy]).toEqual([130, 130, undefined]);
   });
 });
