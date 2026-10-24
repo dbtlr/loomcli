@@ -3,12 +3,15 @@
 - Add `onShutdown(handler)` to the action and middleware contexts, scoped to the run, and export `onShutdown`, `onSuspend`, and `onResume` from `@loomcli/core`, scoped to the process, with the types `OnShutdown`, `ShutdownEvent`, and `Synchronous`. A handler is synchronous by type, runs once, newest first, at the end of a shutdown or at the process's own end, and receives the cause and the status the shell sees. Each call returns a function that removes its handler.
 - Add the cancellation codes 129 for `SIGHUP` and 131 for `SIGQUIT` to `ExitCode`, to a cancelled invocation outcome's `exitCode`, and to `CancellationReason`'s `source`, and the two rows to the manifest's exit-code table.
 - Remove the plugin `signals` field and the signals slot. Core listens for every ending signal itself, so no plugin claims one, and `@loomcli/core/slot-taken` no longer covers signals.
-- Change `mockProcess` from `@loomcli/testing` to end on the signal a shutdown re-raises: once a run on the mock resolves inside a shutdown, the next turn of the event loop ends the shutdown and `endedBy` records its signal.
 - Change `loom build` and `loom build --watch` to stop Bun and undo what the build wrote within the shutdown budget when a signal stops `loom`, and to remove Bun's leftovers synchronously when the budget runs out first.
 
 ### Migration
 
-**Affected surface.** A plugin that declares `signals`, such as `plugin('@acme/signals', { signals: ['SIGINT', 'SIGTERM'] })`, and code that relied on that claim to keep a process alive after a signal, or that relied on `run()` resolving 130 or 143 and the process then exiting with that code.
+**Affected surface.**
+
+- A plugin that declares `signals`, such as `plugin('@acme/signals', { signals: ['SIGINT', 'SIGTERM'] })`, and code that relied on that claim to keep a process alive after a signal.
+- A raw `process.on('SIGINT')`, `process.on('SIGTERM')`, or `process.on('SIGHUP')` listener in an application's entry. It now runs beside core: its runs are cancelled by the signal, and it hears each signal twice, once as it arrives and once when core re-raises it at the shutdown's end.
+- Code after `await app.run()` in an entry. After an ending signal it gets only its synchronous part, because the shutdown ends on the next turn of the event loop and the process dies by the signal, where before the run resolved 130 or 143 and the process went on to exit with that code.
 
 **Why.** A cooperative claim let an action that ignores its signal hold the process without bound, and a claim beside `signal-exit` never ended it. Core now listens for every ending signal while a run is live and ends the process within one bounded shutdown, under [ADR-0106](docs/decisions/0106-a-signal-ends-the-process-within-one-bounded-shutdown.md).
 
@@ -57,6 +60,7 @@ export const app = new Application('notes', { shutdown: { timeout: 500 } }).acti
 1. Remove the `signals` field from every plugin definition, and remove a plugin that declared nothing else.
 2. Move the wind-down a signal needs into the run's own cancellation handling: read `signal` and finish within the budget, raising `shutdown.timeout` on the Application when a supervisor waits longer.
 3. Move anything that must be restored however the process ends, such as raw mode, the cursor, a child process, or a scratch file, into a synchronous `onShutdown` handler, and remove the handler once the work no longer needs it.
-4. In a test that raises a signal on a `mockProcess`, read `endedBy` after the next turn of the event loop rather than right after `run()` resolves.
+4. Remove a raw `process.on` listener for `SIGINT`, `SIGTERM`, or `SIGHUP` from the entry, and move its wind-down into an `onShutdown` handler or the run's own cancellation handling. A listener that stays hears each signal twice.
+5. Move work that code after `await app.run()` does on the way out, such as a final write or a cleanup, into an `onShutdown` handler or the action's `finally`, because after an ending signal only the synchronous part of that code runs.
 
 **Validation.** Run the TypeScript compiler over the application and its plugins: no plugin definition declares `signals`. Run the application, press Ctrl-C during a long action, and check that the shell reports status 130 within the budget and that the terminal and any scratch files are restored. Run the application's tests.
