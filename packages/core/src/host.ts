@@ -16,8 +16,8 @@ import type {
 } from './types.js';
 
 /**
- * Each run's background, by the terminal facts it belongs to: the background an override stated,
- * if any, and the settled one, written once at settlement.
+ * Each run's background, by the terminal facts it belongs to: the background its process handle's
+ * terminal stated, if any, and the settled one, written once at settlement.
  */
 const settlements = new WeakMap<
   HostTerminal,

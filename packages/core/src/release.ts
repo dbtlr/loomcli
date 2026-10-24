@@ -123,7 +123,7 @@ function readBaked(): CapturedRelease {
 /**
  * Whether the build baked `compiled: true`, which marks a compiled binary, the whole program. The
  * release facts never repeat it. A value core cannot read marks none, and the run reports it as
- * malformed release facts unless an override replaced them.
+ * malformed release facts unless a supplied `release` replaced them.
  */
 function isCompiled(): boolean {
   if (typeof __LOOM_RELEASE__ === 'undefined') {
@@ -167,8 +167,8 @@ function captureRelease(lookup: InstallationLookup): CapturedRelease {
 }
 
 /**
- * Whether one run's facts make it a development build: any build but `distributed`. An override is
- * taken as given, so facts core cannot read, like malformed baked facts, leave the build unknown,
+ * Whether one run's facts make it a development build: any build but `distributed`. A supplied
+ * `release` is taken as given, so facts core cannot read, like malformed baked facts, leave the build unknown,
  * and the author reads their defect.
  */
 function isDevelopment(release: unknown): boolean {

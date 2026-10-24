@@ -320,8 +320,9 @@ export interface ProcessHandle {
   readonly publishEnv?: (name: string, value: string) => void;
 }
 /**
- * The fields `processHandle` takes, each replacing its whole field. A `cwd` string never throws,
- * and a `cwd` function throws as it chooses.
+ * The fields `processHandle` takes, each replacing its whole field. An absolute `cwd` string never
+ * throws; a relative one resolves against the process's working directory at each read, so it
+ * throws when that directory cannot be read; and a `cwd` function throws as it chooses.
  */
 export type ProcessFields = Partial<
   Omit<ProcessHandle, 'cwd' | 'exitCode' | 'publishEnv' | 'signals'>
@@ -372,15 +373,15 @@ export interface Host {
   /**
    * The runtime and script prefix `argv` omits: the words that start this application again, so
    * `[...program, ...argv]` reruns it. A compiled binary reads its own path alone, and any other
-   * run reads the runtime's path and the absolute path of the script it ran. Frozen; an override
-   * replaces the whole list, and an action's `invoke` keeps its run's.
+   * run reads the runtime's path and the absolute path of the script it ran. Frozen; a supplied
+   * `program` replaces the whole list, and an action's `invoke` keeps its run's.
    */
   program: readonly string[];
   cwd: string;
   /**
    * The operator's IANA time zone, such as `America/New_York`, which a validator reads to place a
-   * local time. Process capture takes the zone `Intl` resolves, which honours `TZ`; an override
-   * replaces it, and an action's `invoke` keeps its run's.
+   * local time. The real process's handle reads the zone `Intl` resolves, which honours `TZ`; a
+   * supplied `timeZone` replaces it, and an action's `invoke` keeps its run's.
    */
   timeZone: string;
   env: Record<string, string | undefined>;
@@ -391,14 +392,14 @@ export interface Host {
   /**
    * Reads one source file for a defect's Developer Diagnostic, or answers `undefined`. Core calls
    * it only in a development build, only while it reports a defect, and only for a path under the
-   * working directory. Process capture supplies a reader that refuses a file outside `cwd` after
-   * resolving symbolic links, and answers `undefined` for a path that is not a regular file or
-   * that exceeds 1 MiB.
+   * working directory. The real process's handle supplies a reader that refuses a file outside
+   * `cwd` after resolving symbolic links, and answers `undefined` for a path that is not a regular
+   * file or that exceeds 1 MiB.
    */
   readSource?: (path: string, cwd: string) => string | undefined;
   /**
    * The release facts the build baked in, or `{ build: 'source' }` when it baked none, frozen when
-   * core read them. An override is taken as given, neither validated nor frozen.
+   * core read them. A supplied `release` is taken as given, neither validated nor frozen.
    */
   release: ReleaseFacts;
   /**
