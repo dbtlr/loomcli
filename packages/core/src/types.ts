@@ -508,7 +508,7 @@ export interface RunOptions {
   process?: ProcessHandle;
   /**
    * A caller-owned signal that cancels the run. Core subscribes to it at run entry and honors an
-   * abort at every phase boundary; it composes with an installed signals owner.
+   * abort at every phase boundary; a shutdown aborts the run as well, and the first cause decides.
    */
   signal?: AbortSignal;
 }

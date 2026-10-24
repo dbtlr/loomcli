@@ -721,7 +721,7 @@ if (scenario === 'spellings') {
   );
 }
 
-/** The listeners the process holds on each signal a signals owner claims. */
+/** The listeners the process holds for SIGINT and SIGTERM, which a live run() adds. */
 function counts() {
   return [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')];
 }
