@@ -5,12 +5,16 @@
  *
  * Each run is on a mock process. git answers through the machine's git in a temporary repository,
  * and the child the cancel lands in raises the signal on the mock and waits until it is ended.
+ *
+ * SIGQUIT skips the shutdown's budget, so core calls the run's onShutdown handlers inside the
+ * raise, before any `finally` of the run has run. What a child sees the moment its raise returns
+ * is what those handlers left: no lock, no scratch folder, and the child itself killed.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import type { ProcessSignal } from '@loomcli/core';
+import type { ProcessHandle, ProcessSignal } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import type { MockProcess, ProgramAnswer, ProgramCall } from '@loomcli/testing';
 import { afterEach, expect, test } from 'vite-plus/test';
@@ -138,4 +142,95 @@ test('a SIGTERM while release cut prepares the lockfile prints nothing, resolves
   expect(existsSync(join(root, '.git/release-cut.lock'))).toBe(false);
   expect(readdirSync(tmpdir)).toEqual([]);
   expect(git(root, ['status', '--porcelain'])).toBe('');
+});
+
+/**
+ * A handle over the mock that records every signal a run's `kill` sends to the children it starts,
+ * which the mock's own children do not report once a child has ended.
+ */
+function recordingKills(mock: MockProcess) {
+  const kills: string[] = [];
+  const handle: ProcessHandle = {
+    ...mock,
+    spawn(command, args, options) {
+      const child = mock.spawn(command, args, options);
+      return {
+        exited: child.exited,
+        kill(signal) {
+          kills.push(signal ?? 'SIGTERM');
+          child.kill(signal);
+        },
+      };
+    },
+  };
+  return { handle, kills };
+}
+
+/** What a child saw the moment the SIGQUIT it raised returned. */
+interface Seen {
+  kills?: string[];
+  lock?: boolean;
+  scratch?: string[];
+}
+
+test('a SIGQUIT while release cut prepares the lockfile removes the lock and the stage and kills pnpm before the run unwinds', async () => {
+  const { root } = repository({
+    files: {
+      '.changes/README.md': '# Guide\n',
+      '.changes/add.md': '- Add input.\n',
+      'CHANGELOG.md': '# Changelog\n',
+      'package.json': '{"name":"fixture","private":true,"version":"9.0.0"}\n',
+      'packages/core/package.json': '{"name":"@sample/core","version":"0.0.0"}\n',
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+    },
+    prefix: 'loom-cancel-',
+  });
+  const home = temporaryRoot('loom-cancel-home-');
+  const tmpdir = temporaryRoot('loom-cancel-tmp-');
+  const seen: Seen = {};
+  const mock: MockProcess = mockProcess({
+    argv: ['release', 'cut', '--date', '2026-09-07'],
+    cwd: root,
+    programs: {
+      git: realGit(home),
+      [pnpmCommand()]: () => {
+        mock.signals.raise('SIGQUIT');
+        seen.lock = existsSync(join(root, '.git/release-cut.lock'));
+        seen.scratch = readdirSync(tmpdir);
+        seen.kills = [...recorded.kills];
+        return { code: 0 };
+      },
+    },
+    tmpdir,
+  });
+  const recorded = recordingKills(mock);
+  await expect(loom.run({ process: recorded.handle })).resolves.toBe(131);
+  expect(seen).toEqual({ kills: ['SIGKILL'], lock: false, scratch: [] });
+  expect(mock.stderr.text).toBe('');
+  expect(git(root, ['status', '--porcelain'])).toBe('');
+});
+
+test('a SIGQUIT while loom init reads the application with Bun removes its scratch folder and kills Bun before the run unwinds', async () => {
+  const root = temporaryRoot('loom-cancel-');
+  const tmpdir = temporaryRoot('loom-cancel-tmp-');
+  put(root, 'package.json', '{ "name": "notes", "version": "1.0.0" }\n');
+  put(root, 'src/application.ts', 'export const notes = undefined;\n');
+  const seen: Seen = {};
+  const mock: MockProcess = mockProcess({
+    argv: ['init'],
+    cwd: root,
+    programs: {
+      bun: () => {
+        mock.signals.raise('SIGQUIT');
+        seen.scratch = readdirSync(tmpdir);
+        seen.kills = [...recorded.kills];
+        return { code: 0 };
+      },
+    },
+    tmpdir,
+  });
+  const recorded = recordingKills(mock);
+  await expect(loom.run({ process: recorded.handle })).resolves.toBe(131);
+  expect(seen).toEqual({ kills: ['SIGKILL'], scratch: [] });
+  expect(mock.stderr.text).toBe('');
 });
