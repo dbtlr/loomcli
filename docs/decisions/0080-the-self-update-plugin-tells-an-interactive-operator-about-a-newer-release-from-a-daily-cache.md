@@ -4,7 +4,7 @@ title: ADR-0080 - The self-update plugin tells an interactive operator about a n
 description: The self-update plugin gains update notices. After the action of a run at a terminal, its middleware reads a cache file and prints one out.info line when the cache names a newer release on the running binary's release channel. A cache older than a day is refreshed by a detached copy of the application, started through host.program and the hidden self-update --refresh-notice, which the run never waits for, so no run waits on the network. The cache lives in a new cache kind of applicationDirectory. The author turns notices off with notices false or names an extra variable, and the operator sets NO_UPDATE_NOTIFIER.
 status: accepted
 created: 2026-10-14
-modified: 2026-10-20
+modified: 2026-10-24
 ---
 
 # ADR-0080 - The self-update plugin tells an interactive operator about a newer release from a daily cache
@@ -55,3 +55,4 @@ Accepted in 0.12.0.
 - 2026-10-14: Proposed with the update notices contract.
 - 2026-10-17: [ADR-0086](0086-renders-fit-the-destinations-live-columns-and-tables-shrink-to-fit.md), proposed, narrows the notice's line: it stays one `out.info` message, and the info lane wraps it with its gutter on a terminal whose `columns` is narrower than the message, which includes an 80-column terminal. Every other rule here stands. It binds when that record is accepted.
 - 2026-10-20: [ADR-0100](0100-acceptance-plans-live-beside-the-tests.md), proposed, removes the `%LOCALAPPDATA%\<app>\Cache\` cache directory, because no CI job runs Windows. Windows resolves the cache from `XDG_CACHE_HOME` and `HOME` as other platforms do. It binds when that record is accepted.
+- 2026-10-24: [ADR-0107](0107-a-run-reads-the-process-through-one-process-handle.md), proposed, resolves the cache directory's home from `host.home` through `applicationDirectory`, with `XDG_CACHE_HOME` still read from `env`, and starts the refresh as a detached child through `host.spawn`, so a mock's run starts no refresh unless the test scripts one. It binds when that record is accepted.

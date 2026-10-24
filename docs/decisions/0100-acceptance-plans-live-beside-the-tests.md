@@ -4,7 +4,7 @@ title: ADR-0100 - Acceptance plans live beside the tests
 description: Acceptance plans move out of the core reference into the test suites that prove them, and each example application's README states what that example covers. Support that no CI entry runs is not shipped, so every win32 branch comes out in 0.15.0. ADR-0103 holds the evidence rules.
 status: accepted
 created: 2026-10-20
-modified: 2026-10-22
+modified: 2026-10-24
 ---
 
 # ADR-0100 - Acceptance plans live beside the tests
@@ -53,3 +53,4 @@ Accepted in 0.15.0.
 
 - 2026-10-20: Proposed with the 0.15.0 rescope.
 - 2026-10-21: [ADR-0103](0103-process-acceptance-comes-from-looms-own-pipeline-and-the-packed-consumer.md), accepted, supersedes ADR-0014 in place of this record and holds the evidence rules this record restated: evidence through the public API, the packed consumer, the type consumer, and human review of SDK syntax. Under it the examples run in-process, so this record drops its first two Decision rules, its supersession of ADR-0014, and a process run of the built application as something only an example shows. Acceptance plans beside the tests, each example's stated coverage, and the removal of unverified support are unchanged.
+- 2026-10-24: [ADR-0107](0107-a-run-reads-the-process-through-one-process-handle.md), proposed, makes the home the plugins read `host.home` in place of `HOME`, on every platform. It binds when that record is accepted.

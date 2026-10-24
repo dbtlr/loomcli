@@ -95,9 +95,25 @@ interface MockTerminal {
   readonly background?: Background; // settles the run's background, so no query runs
   readonly streams?: readonly ('stdout' | 'stderr')[]; // the streams on the terminal; stdout and stderr when omitted
 }
+interface ProgramCall {
+  readonly command: string; // as the run's spawn named it
+  readonly args: readonly string[];
+  readonly cwd: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly input: string; // what the spawn wrote to the child's stdin, decoded as UTF-8; empty when nothing
+  readonly detached: boolean;
+  readonly signal: AbortSignal; // aborts when the child is ended, by the spawn's signal or by kill
+}
+interface ProgramAnswer {
+  readonly code?: number; // 0 when omitted
+  readonly stdout?: string | Uint8Array; // empty when omitted
+  readonly stderr?: string | Uint8Array; // empty when omitted
+}
+type Program = (call: ProgramCall) => ProgramAnswer | Promise<ProgramAnswer>;
 interface MockFields extends Omit<ProcessFields, 'stdin' | 'stdout' | 'stderr' | 'terminal'> {
   readonly stdin?: string; // piped text; empty when omitted
   readonly terminal?: MockTerminal; // no terminal when omitted
+  readonly programs?: Readonly<Record<string, Program>>; // each child program by its command; none when omitted
 }
 interface RecordingStream extends Writable {
   readonly text: string; // everything written to the stream, decoded as UTF-8
@@ -136,6 +152,22 @@ test('the usage error fits an 80-column terminal', async () => {
   await application.run({ process: mock });
   expect(mock.exitCode).toBe(2);
 });
+
+test('revision prints the commit git reports, with no git run', async () => {
+  const calls: (readonly string[])[] = [];
+  const mock = mockProcess({
+    argv: ['revision'],
+    programs: {
+      git: ({ args }) => {
+        calls.push(args);
+        return { stdout: '3f2a9c1\n' };
+      },
+    },
+  });
+  await application.run({ process: mock });
+  expect(calls).toEqual([['rev-parse', 'HEAD']]);
+  expect(mock.stdout.text).toBe('3f2a9c1\n');
+});
 ```
 
 `mockProcess(fields)` builds a [process handle](../core/host.md#the-process-handle) that reads nothing from the process the test runs in. A test passes it to `run({ process })`, then reads what the run wrote and the exit code it set from the mock. A test may pass it to `app.invoke(path, values, { process })` too, for its facts alone: an invocation by name writes to none of the handle's streams and sets no exit code, so the test reads the outcome's `output` and `messages`. The run is core's own `run()`, so the package adds no second way to run an Application.
@@ -147,6 +179,8 @@ test('the usage error fits an 80-column terminal', async () => {
   | `argv`      | `[]`, which runs the root                                        |
   | `env`       | `{}`                                                             |
   | `cwd`       | `/loom-test`, a path that does not exist, so no file is found by accident |
+  | `home`      | `env.HOME` when it is absolute, else `/loom-test/home`, a path that does not exist |
+  | `tmpdir`    | `env.TMPDIR` when it is absolute, else `/loom-test/tmp`, a path that does not exist |
   | `platform`  | `linux`                                                          |
   | `arch`      | `x64`                                                            |
   | `libc`      | `glibc` when `platform` is `linux`, and `undefined` otherwise    |
@@ -157,12 +191,16 @@ test('the usage error fits an 80-column terminal', async () => {
   | `readSource`| none, so a defect's Developer Diagnostic quotes no source line   |
   | `stdin`     | empty and already ended, not a terminal                          |
   | `stdout`, `stderr` | recording streams, not terminals                          |
+  | `programs`  | none, so a run that starts a child program fails                 |
   | `exitCode`  | `undefined` until a run writes it                                |
 
-- **Supplied fields.** A supplied field replaces its default whole, as `processHandle`'s fields replace the process's, so `env: { HOME: home }` is the run's entire environment. A `cwd` function stands in for the read, so `cwd: () => { throw new Error('ENOENT'); }` fails the run with the unreadable working directory. A test that wants the machine's environment passes `env: process.env` itself. Give `cwd` as an absolute path: a relative one reaches the file system relative to the test process's own working directory, as any relative path does.
+- **Supplied fields.** A supplied field replaces its default whole, as `processHandle`'s fields replace the process's, so `env: { HOME: home }` is the run's entire environment, and its home is that `HOME`, as the real handle's is. A supplied `home` or `tmpdir` wins over the environment. A `cwd` function stands in for the read, so `cwd: () => { throw new Error('ENOENT'); }` fails the run with the unreadable working directory. A test that wants the machine's environment passes `env: process.env` itself. Give `cwd` as an absolute path: a relative one reaches the file system relative to the test process's own working directory, as any relative path does.
+- **Folders.** By default `home` and `tmpdir` name folders that do not exist, so a run that reads its home finds nothing and a run that writes a scratch file fails. A test whose run writes files supplies real ones, such as `env: { HOME: mkdtempSync(join(tmpdir(), 'notes-home-')) }`, and removes them itself.
 - **Piped stdin.** `stdin` is text the run reads as piped input: the stream yields it, then ends, once over the mock's life, so a second run on the mock reads an ended stdin. Stdin is never a terminal, so the run's [interaction decision](../core/interaction.md) is off.
 - **The terminal.** The mock's `terminal` is a `ProcessTerminal` over its own streams, in which no stream is a terminal, no width or height is reported, and no background is stated unless `terminal` says otherwise. `terminal` puts the streams it names, stdout and stderr when `streams` is omitted, on a terminal `columns` wide and `rows` high, so a stream it leaves out reads as piped, as `app | less` pipes stdout. The width and height are live: `resize(columns, rows)` changes what the next read returns, as a window resize does. A stated `background` settles the run's background, so no query runs. Color follows the run's own rules, so a test sets it as an operator does, through `FORCE_COLOR`, `NO_COLOR`, or a `--color` spelling.
 - **What it records.** `stdout.text` and `stderr.text` hold everything written to each stream, decoded as UTF-8, and `transcript` holds each write in the order the run made it, tagged by stream. `exitCode` holds the code `run()` wrote; `app.invoke` writes none. Recording reads no clock and adds no timeout, so a run that never resolves leaves the test to its runner's own timeout.
+- **Child programs.** No child program runs. A run's [`host.spawn`](../core/host.md#child-programs) calls the script `programs` holds under the exact command the run named, with no `PATH` lookup, so `git` and `/usr/bin/git` are two scripts. The script receives the call, with the `cwd` and `env` core filled in, and answers the child's exit code and output: a `capture` stream holds it in the exit, an `inherit` stream writes it to the mock's own stream, so `transcript` holds it, a `Writable` receives it, and `ignore` drops it. `exited` resolves after the script answers, never before `spawn` returns. A script that throws stands for a program that could not start, and the exit is `unstarted` with what it threw as its `error`. When the call's `signal` aborts, the child ends at once by the signal that ended it, `SIGTERM` for the spawn's `signal` and the named one for `kill`, with code 128 plus that signal's number and no output, whatever the script answers later. A command with no script throws from `spawn`, `mockProcess has no program for "git". Add a "git" entry to programs.`, naming the command, so the run fails with it.
+- **What it does not seal.** A mock seals the process, not the machine. Clocks, timers, randomness, the network, and the file system stay real, so a run reads the real time, and a test that compares output holding a timestamp or an elapsed time masks it before comparing.
 - **Signals.** The mock's `signals` is a source of its own. `mock.signals.raise(signal)` delivers the signal to the runs that hold the mock and reaches no other run and no real process. An ending signal, `SIGHUP`, `SIGINT`, `SIGQUIT`, or `SIGTERM`, raised while nothing listens for it, as the re-raise that ends a shutdown is, ends the mock's process: `endedBy` records the signal, and the mock delivers no later signal and records no later write or exit status, as an ended process writes nothing. `run()` still resolves when its run ends, so a test of a run that ignores its signal reads `endedBy` and does not await the run. A `SIGTSTP` or `SIGCONT` raised while nothing listens does nothing, so a test that suspends raises `SIGCONT` itself. A `run()` listens on the mock's source from the moment it is called, so a signal raised right after the call reaches the run. The mock accepts `exit` listeners and never calls them, because its process never ends except by a signal no listener heard. The mock has no `publishEnv`, so environment preparation changes no environment outside the run.
 - **One run or several.** A mock records every run given it, in order, so a test that runs twice reads both runs' writes. A test that wants each run apart builds a mock per run.
-- **Names.** `mockProcess` is exported from `@loomcli/testing`, and so are the types `MockFields`, `MockTerminal`, `MockProcess`, and `RecordingStream`.
+- **Names.** `mockProcess` is exported from `@loomcli/testing`, and so are the types `MockFields`, `MockTerminal`, `MockProcess`, `RecordingStream`, `Program`, `ProgramCall`, and `ProgramAnswer`.

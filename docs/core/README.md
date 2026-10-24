@@ -22,7 +22,7 @@ Every `Invalid declaration: ` and `Internal error: ` line a page shows quotes th
 
 - [Invocation](invocation.md): open it when you follow one run from argv to exit, or call a Command by name with `invoke()`.
 - [Graph inspection](graph-inspection.md): open it when a projection reads the built command graph, locates a word, or checks the declarations.
-- [Host](host.md): open it when you give a run its process handle or read what core captures from it into the host: the working directory, the environment, and the streams.
+- [Host](host.md): open it when you give a run its process handle, read what core captures from it into the host, such as the working directory, the home folder, the environment, and the streams, or start a child program.
 - [Interaction](interaction.md): open it when a run decides whether it may ask the operator, or an input is required only when it cannot ask.
 - [Color](color.md): open it when you need to know how the operator's color choice settles for a run.
 - [Verbosity](verbosity.md): open it when you write debug or trace lines, or mark an option that raises or lowers the run's verbosity.

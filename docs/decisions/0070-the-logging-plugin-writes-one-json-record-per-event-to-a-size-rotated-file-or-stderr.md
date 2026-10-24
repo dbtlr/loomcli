@@ -4,7 +4,7 @@ title: ADR-0070 - The logging plugin writes one JSON record per event to a size-
 description: The first-party logging plugin, @loomcli/plugins/logging, is an onLog hook that writes each log event as one JSON line, appended synchronously to a per-application file in the platform's state or log directory that rotates by size with numbered copies and no timer, or written to stderr for a system that captures logs. A failure to write the file goes to the author's onError, and is ignored without one.
 status: accepted
 created: 2026-10-10
-modified: 2026-10-21
+modified: 2026-10-24
 ---
 
 # ADR-0070 - The logging plugin writes one JSON record per event to a size-rotated file or stderr
@@ -49,3 +49,4 @@ Accepted in 0.11.0.
 - 2026-10-19: [ADR-0090](0090-an-operators-v-or-q-settles-the-runs-verbosity-right-after-graph-build.md), proposed, settles the verbose mode this record defers to: `out.debug` and `out.trace` write for the operator and never render a log event, so a readable console rendering of log events has no home there. The console destination stays JSON lines. It binds when accepted.
 - 2026-10-20: [ADR-0100](0100-acceptance-plans-live-beside-the-tests.md), proposed, removes the `%LOCALAPPDATA%\<app>\Logs\` default directory and the `USERPROFILE` home for a `~/` file, because no CI job runs Windows. Windows resolves the directory from `XDG_STATE_HOME` and `HOME` as other platforms do. It binds when that record is accepted.
 - 2026-10-21: [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md), proposed, removes the plugin's settings checks, and `keep: 0` now means no copies: before a write that would pass `maxBytes`, the plugin deletes the file and a new one starts, as logrotate's `rotate 0` does, in place of renaming it to a first copy. A negative or fractional `keep` gets no rule.
+- 2026-10-24: [ADR-0107](0107-a-run-reads-the-process-through-one-process-handle.md), proposed, reads the home from the destination's `home`, the outermost run's `host.home`, in place of `HOME` in its `env`, for the default directory through `applicationDirectory` and for a `~/` file. `XDG_STATE_HOME` is still read from `env` and still wins when it is absolute, and an unresolved home is still `unresolved-directory` with the variable `HOME`. It binds when that record is accepted.

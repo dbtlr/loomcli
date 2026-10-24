@@ -104,7 +104,7 @@ Text imports are Bun's: a compiled binary and a Bun bundle inline each file the 
   | `claude` | `<claude>/skills/<name>/`, where `<claude>` is `CLAUDE_CONFIG_DIR` when it is an absolute path, else `<home>/.claude` | `<root>/.claude/skills/<name>/` |
   | `agents` | `<home>/.agents/skills/<name>/` | `<root>/.agents/skills/<name>/` |
 
-  `<home>` is `HOME`, read from `host.env`, on every platform.
+  `<home>` is [`host.home`](../core/host.md#the-home-and-temporary-folders) on every platform, and `CLAUDE_CONFIG_DIR` is read from `host.env`.
 - **File modes.** Each file is written with mode `755` when `executable` is true and `644` otherwise, whatever the umask, at both scopes. Folders are created with the process's default mode.
 - **Any build.** Every child acts from a `source`, `development`, or `distributed` build alike, because a skill does not depend on the binary's path.
 
@@ -131,7 +131,7 @@ Text imports are Bun's: a compiled binary and a Bun bundle inline each file the 
 
 `refreshSkills` is an `afterReplace` function for the [self-update plugin](self-update.md), which passes it a context that holds every member `RefreshContext` names. It runs in the replaced process, which holds the old version's skills, so it runs the new binary, and `update` decides what to refresh:
 
-- **The child.** It runs `path` with the words `skills update` as a child process, with `host.env` as its environment and `host.cwd` as its working directory, no shell, no input, and its standard output and standard error piped into `host.stdout` and `host.stderr`, so the child reads neither as a terminal. It adds no time limit; the run signal ends the child with `SIGTERM`.
+- **The child.** It runs `path` with the words `skills update` as a child program through [`host.spawn`](../core/host.md#child-programs), with `host.env` as its environment and `host.cwd` as its working directory, no shell, no input, and its standard output and standard error piped into `host.stdout` and `host.stderr`, so the child reads neither as a terminal. It adds no time limit; the run signal ends the child with `SIGTERM`.
 - **Never a failure.** A child that exits with any code but 0, or that cannot be started, adds a `warn` [log event](../core/logging.md), `Skills were not refreshed after the update.`, with the fields `path` and `code`, or `error` for a child that cannot start, and `refreshSkills` resolves. The child's own failure sentence, which says what to do, has already reached `host.stderr`. A child that cannot be started writes none, so `refreshSkills` writes one line to `host.stderr` itself: `The skills were not refreshed because /home/me/.local/bin/notes could not start. Run notes skills update.`, with the path passed through `escapeControlCharacters` and the program named by the path's last segment. A child ended by the run signal resolves the same way, and the run resolves its cancellation code under [Signals, cancellation, and shutdown](../core/signals.md).
 
 - **Composing.** An application that runs more after a replace calls `refreshSkills(context)` from its own `afterReplace` and awaits it. With nothing recorded, the child prints `update`'s nothing-to-update line, which names the install Command.

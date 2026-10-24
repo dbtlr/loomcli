@@ -15,7 +15,6 @@ A signal ends a Loom application within its budget, 500 ms unless the Applicatio
 
 ```ts
 import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { Command } from '@loomcli/core';
@@ -23,8 +22,8 @@ import { Command } from '@loomcli/core';
 import { convertInto } from './convert.js';
 
 export const convert = new Command('convert', { description: 'Convert every file in a folder.' }).action(
-  async ({ onShutdown, signal }) => {
-    const scratch = mkdtempSync(join(tmpdir(), 'convert-'));
+  async ({ host, onShutdown, signal }) => {
+    const scratch = mkdtempSync(join(host.tmpdir, 'convert-'));
     const remove = () => {
       rmSync(scratch, { force: true, recursive: true });
     };

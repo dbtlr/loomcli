@@ -4,7 +4,7 @@ title: ADR-0098 - Lint is the author-guidance lane
 description: Author guidance that a type cannot express runs as lint rules in an ESLint plugin Loom ships, which oxlint loads through its jsPlugins slot, so an author sees it in the editor and in CI. Loom builds no check framework of its own, and a new lint rule is a contract change. @loomcli/core/undescribed leaves core's runs and becomes a lint rule. The starting rule set, shipped in 0.15.0, covers undescribed members, a discarded authoring-call result, and name shapes.
 status: accepted
 created: 2026-10-20
-modified: 2026-10-22
+modified: 2026-10-24
 ---
 
 # ADR-0098 - Lint is the author-guidance lane
@@ -50,3 +50,4 @@ Accepted in 0.15.0.
 ## Changelog
 
 - 2026-10-20: Proposed with the 0.15.0 rescope.
+- 2026-10-24: [ADR-0107](0107-a-run-reads-the-process-through-one-process-handle.md), proposed, adds a fourth rule to the plugin's recommended set, `host-bypass`, which reports the global `process`, an import of `process`, `homedir`, `tmpdir`, and `userInfo` from `os`, and an import of `child_process` in an application's source, each message naming the host member to use instead. It is a contract change under this record's rule. It binds when that record is accepted.
