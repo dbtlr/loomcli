@@ -1,4 +1,4 @@
-import { Application, Command } from '../../dist/index.js';
+import { Application, Command, processHandle } from '../../dist/index.js';
 
 const [scenario, ...argv] = process.argv.slice(2);
 const command = new Command('export', { description: 'Export a document.' })
@@ -7,4 +7,4 @@ const command = new Command('export', { description: 'Export a document.' })
 const grouped = command[scenario]('json', 'yaml').action(({ out }) => out.print('action'));
 process.exitCode = await new Application('groups', { description: 'Group probe.' })
   .command(grouped)
-  .run({ host: { argv: ['export', ...argv], env: {} } });
+  .run({ process: processHandle({ argv: ['export', ...argv], env: {} }) });

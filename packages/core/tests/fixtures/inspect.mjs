@@ -1,4 +1,4 @@
-import { Application, Command, DeclarationError } from '@loomcli/core';
+import { Application, Command, DeclarationError, processHandle } from '@loomcli/core';
 
 import { ruleText } from './rule-text.mjs';
 
@@ -181,7 +181,9 @@ if (mode === 'catch') {
     );
   }
 } else if (mode === 'run') {
-  const code = await build().run({ host: { argv: [], release: { build: 'distributed' } } });
+  const code = await build().run({
+    process: processHandle({ argv: [], release: { build: 'distributed' } }),
+  });
   process.stdout.write(`${encode({ code })}\n`);
 } else if (mode === 'freeze') {
   const graph = build().inspect();

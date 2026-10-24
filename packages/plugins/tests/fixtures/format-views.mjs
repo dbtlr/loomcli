@@ -1,4 +1,4 @@
-import { Application, InternalError, override } from '@loomcli/core';
+import { Application, InternalError, override, processHandle } from '@loomcli/core';
 import { json, jsonl } from '@loomcli/plugins/format/views';
 
 const [scenario, color] = process.argv.slice(2);
@@ -69,5 +69,5 @@ const app = new Application('format-views', {
 
 // A test that reads a defect's own sentence runs the fixture as a development build.
 const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
-const code = await app.run({ host: { argv: [], release } });
+const code = await app.run({ process: processHandle({ argv: [], release }) });
 process.stdout.write(`resolved:${String(code)}\n`);

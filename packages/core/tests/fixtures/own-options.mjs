@@ -1,4 +1,4 @@
-import { Application, Command, extension, InputError, plugin } from '@loomcli/core';
+import { Application, Command, extension, InputError, plugin, processHandle } from '@loomcli/core';
 import { z } from 'zod';
 
 // Each run prints the `ownOptions` record the fixture plugin's middleware reads, then its exit code,
@@ -101,5 +101,7 @@ const app = new Application('owns', { plugins })
       .action(() => undefined),
   );
 
-const code = await app.run({ host: { argv: words, release: { build: 'distributed' } } });
+const code = await app.run({
+  process: processHandle({ argv: words, release: { build: 'distributed' } }),
+});
 process.stdout.write(`exit:${String(code)}\n${JSON.stringify(calls)}\n`);

@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import type { Plugin } from '@loomcli/core';
 import { suggestions } from '@loomcli/plugins/suggestions';
 
@@ -9,4 +9,4 @@ const app = new Application('packed-suggestions', { plugins: [installed] }).comm
   new Command('get').action(({ out }) => out.print('got')),
 );
 
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ process: processHandle({ argv: process.argv.slice(2) }) });

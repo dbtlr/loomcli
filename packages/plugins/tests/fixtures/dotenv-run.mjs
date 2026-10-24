@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { dotenv } from '@loomcli/plugins/dotenv';
 
 const [mode] = process.argv.slice(2);
@@ -59,12 +59,12 @@ const app = new Application('app', {
   });
 
 if (mode === 'invoke') {
-  const outcome = await app.invoke([], {}, { host: hostOverride });
+  const outcome = await app.invoke([], {}, { process: processHandle(hostOverride) });
   process.stdout.write(`${JSON.stringify(outcome)}\n`);
 } else if (mode === 'process') {
-  await app.run({ host: { argv: [] } });
+  await app.run({ process: processHandle({ argv: [] }) });
 } else if (mode !== 'settings') {
   await app.run({
-    host: { ...hostOverride, argv: [] },
+    process: processHandle({ ...hostOverride, argv: [] }),
   });
 }

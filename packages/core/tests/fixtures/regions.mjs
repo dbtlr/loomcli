@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, extension, FatalError, plugin } from '@loomcli/core';
+import { Application, Command, extension, FatalError, plugin, processHandle } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 
 /**
@@ -513,7 +513,7 @@ if (terminal === 'invoke') {
   messages = outcome.messages;
 } else {
   code = await app.run({
-    host: {
+    process: processHandle({
       argv,
       env: {},
       stderr,
@@ -533,7 +533,7 @@ if (terminal === 'invoke') {
           rows: 24,
         },
       },
-    },
+    }),
     signal: caller.signal,
   });
 }

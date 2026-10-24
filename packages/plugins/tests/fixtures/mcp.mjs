@@ -5,6 +5,7 @@ import {
   EX_DATAERR,
   FatalError,
   override,
+  processHandle,
 } from '@loomcli/core';
 import { json, jsonl } from '@loomcli/plugins/format/views';
 import { mcp } from '@loomcli/plugins/mcp';
@@ -464,7 +465,10 @@ try {
     if (process.env.FIXTURE_CALLER_SIGNAL !== undefined) {
       process.once('SIGUSR2', () => caller.abort());
     }
-    process.exitCode = await application.run({ host: { argv, release }, signal: caller.signal });
+    process.exitCode = await application.run({
+      process: processHandle({ argv, release }),
+      signal: caller.signal,
+    });
   }
 } catch (error) {
   if (!(error instanceof DeclarationError)) {

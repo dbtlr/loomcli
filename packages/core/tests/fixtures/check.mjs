@@ -1,4 +1,11 @@
-import { Application, Command, DeclarationError, diagnosticRule, plugin } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  DeclarationError,
+  diagnosticRule,
+  plugin,
+  processHandle,
+} from '@loomcli/core';
 
 // Prints what check(), run(), or inspect() answers for one declaration, from source or a bundle.
 const [scenario, mode] = process.argv.slice(2);
@@ -102,7 +109,9 @@ const declarations = {
 
 const app = declarations[scenario]();
 if (mode === 'run') {
-  process.exitCode = await app.run({ host: { argv: scenario === 'faults' ? ['get'] : [] } });
+  process.exitCode = await app.run({
+    process: processHandle({ argv: scenario === 'faults' ? ['get'] : [] }),
+  });
 } else if (mode === 'inspect') {
   try {
     app.inspect();

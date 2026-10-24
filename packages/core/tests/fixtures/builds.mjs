@@ -13,6 +13,7 @@ import {
   locate,
   override,
   plugin,
+  processHandle,
   UsageError,
 } from '@loomcli/core';
 
@@ -371,7 +372,7 @@ if (scenario === 'captured-reader') {
     const app = new Application('probe', { description: 'Probe a build.' }).action(({ host }) => {
       captured.reader = host.readSource;
     });
-    await app.run({ host: { argv: [], cwd: linked } });
+    await app.run({ process: processHandle({ argv: [], cwd: linked }) });
     const read = (path) => captured.reader(path, linked) ?? null;
     const answers = {
       escape: read(join(linked, 'escape.js')),
@@ -399,7 +400,7 @@ if (scenario === 'captured-reader') {
     symlinkSync(real, linked);
     const { fails } = await import(pathToFileURL(join(linked, 'fails.mjs')).href);
     const app = new Application('probe', { description: 'Probe a build.' }).action(fails);
-    await app.run({ host: { argv: [], cwd: linked } });
+    await app.run({ process: processHandle({ argv: [], cwd: linked }) });
   } finally {
     rmSync(root, { force: true, recursive: true });
   }
@@ -414,7 +415,7 @@ if (scenario === 'captured-reader') {
   // A build the test names replaces the facts; a source run reads its own.
   const release = build === 'source' ? {} : { release: { build } };
   const code = await app.run({
-    host: { argv, ...release, ...host },
+    process: processHandle({ argv, ...release, ...host }),
     ...(signal ? { signal } : {}),
   });
   process.stdout.write(`resolved:${code}\n`);

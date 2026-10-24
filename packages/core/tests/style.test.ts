@@ -72,7 +72,7 @@
  * - `COLUMNS` on a terminal that reports no width: it reads `COLUMNS=60` as 60 and reads
  *   `undefined` without `COLUMNS`. `COLUMNS=60` on a pipe leaves `undefined`.
  * - The host facts stay real: `host.terminal.stdout.columns` and `host.terminal.stderr.columns`
- *   read the real width and never reflect `COLUMNS`. A host override of plain numbers stays fixed
+ *   read the real width and never reflect `COLUMNS`. A handle's terminal of plain numbers stays fixed
  *   across renders, and an override that supplies a getter is read each time. `isTTY` is captured
  *   once.
  * - `out.draw` resolves the row count for the real stderr width read at that draw, under
@@ -153,7 +153,7 @@
  *   breaker as `context.wrap`, and a word wider than that width keeps its own line. On a 100-column
  *   stderr terminal the banner fills 100 columns and the explanation wraps at 100, and under
  *   `COLUMNS=60` they fill 60. With no width, they use 80, and so does a stderr that is not a
- *   terminal even when a host override reports a width. An explanation with wide characters wraps
+ *   terminal even when a handle's terminal reports a width. An explanation with wide characters wraps
  *   by display width, not by string length.
  *
  * Process fixtures run on Node and Bun. Named-theme whole-token replacement belongs to Loom theme

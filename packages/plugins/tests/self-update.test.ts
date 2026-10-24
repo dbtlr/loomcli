@@ -3,7 +3,7 @@
  *
  * The plugin is proven when process tests under Node and Bun produce these results. Each fixture
  * sets `HOME` and `XDG_STATE_HOME` to temporary directories and runs an application that installs
- * `selfUpdate()` through `run({ host: { release } })`, whose installation names a binary in a
+ * `selfUpdate()` through `run({ process: processHandle({ release }) })`, whose installation names a binary in a
  * temporary directory and whose record lies where `applicationDirectory` resolves for that
  * environment, with a preload that replaces `fetch` with a fake GitHub that serves fixture
  * releases, redirects asset downloads to another HTTPS host as GitHub does, and records each

@@ -8,6 +8,7 @@ import {
   InternalError,
   override,
   plugin,
+  processHandle,
 } from '@loomcli/core';
 import { help as packHelp } from '@loomcli/plugins/help';
 import { version as packVersion } from '@loomcli/plugins/version';
@@ -226,13 +227,17 @@ if (mode === 'inspect') {
 } else if (mode === 'twice') {
   // One Application, run twice, so each run reads its declarations and its defaults anew.
   const app = application();
-  const first = await app.run({ host: { argv } });
-  const second = await app.run({ host: { argv } });
+  const first = await app.run({ process: processHandle({ argv }) });
+  const second = await app.run({ process: processHandle({ argv }) });
   process.stdout.write(`resolved:${first}:${second}\n`);
 } else if (mode === 'development') {
-  const code = await application().run({ host: { argv, release: { build: 'development' } } });
+  const code = await application().run({
+    process: processHandle({ argv, release: { build: 'development' } }),
+  });
   process.stdout.write(`resolved:${code}\n`);
 } else {
-  const code = await application().run({ host: { argv, release: { build: 'distributed' } } });
+  const code = await application().run({
+    process: processHandle({ argv, release: { build: 'distributed' } }),
+  });
   process.stdout.write(`resolved:${code}\n`);
 }

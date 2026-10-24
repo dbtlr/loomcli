@@ -1,6 +1,6 @@
 import { Readable, Writable } from 'node:stream';
 
-import { Application, LoomError, override, plugin, style } from '@loomcli/core';
+import { Application, LoomError, override, plugin, processHandle, style } from '@loomcli/core';
 import { background } from '@loomcli/plugins/background';
 import { theme } from '@loomcli/plugins/theme';
 
@@ -13,8 +13,10 @@ import { theme } from '@loomcli/plugins/theme';
  * a delay after which the caller aborts the run, `wait`, how long the action waits before it
  * reads stdin, `listen`, whether the action reads stdin through a bare data listener instead of
  * `read()`, `prepare`, variables an onEnvironment hook imports, `fail`, whether the action
- * fails, `invoke`, whether the run is an invocation by name, and `kill: 'record'`, which records the
- * signals core raises on the process instead of sending them. It prints what happened as JSON.
+ * fails, `invoke`, whether the run is an invocation by name, `kill: 'record'`, which records the
+ * signals core raises on the process instead of sending them, and `piped`, whether the scripted stdin
+ * is a stream given to `processHandle` rather than its signal source's own terminal. It prints what
+ * happened as JSON.
  */
 const scenario = JSON.parse(process.argv[2]);
 
@@ -222,19 +224,30 @@ const keepAlive = setInterval(() => undefined, 60_000);
 const started = performance.now();
 let code = undefined;
 if (scenario.invoke) {
-  const outcome = await app.invoke([], {}, { host: { env: scenario.env ?? {} } });
+  const outcome = await app.invoke([], {}, { process: processHandle({ env: scenario.env ?? {} }) });
   code = outcome.status === 'failed' ? outcome.messages : outcome.status;
 } else {
+  const real = processHandle({
+    argv: scenario.argv ?? [],
+    env: scenario.env ?? { COLORTERM: 'truecolor', TERM: 'xterm-256color' },
+    platform: scenario.platform ?? 'linux',
+    stderr: stderr.stream,
+    stdin,
+    stdout: stdout.stream,
+    terminal,
+  });
+  /**
+   * The scripted stdin stands for the process's own terminal: the handle's signal source names it
+   * as its terminal, so core raises each interrupt key on the process, as at a real terminal.
+   */
+  const signals = {
+    off: (event, listener) => process.off(event, listener),
+    on: (event, listener) => process.on(event, listener),
+    raise: (signal) => process.kill(process.pid, signal),
+    terminal: stdin,
+  };
   code = await app.run({
-    host: {
-      argv: scenario.argv ?? [],
-      env: scenario.env ?? { COLORTERM: 'truecolor', TERM: 'xterm-256color' },
-      platform: scenario.platform ?? 'linux',
-      stderr: stderr.stream,
-      stdin,
-      stdout: stdout.stream,
-      terminal,
-    },
+    process: scenario.piped ? real : Object.create(real, { signals: { value: signals } }),
     rendering: scenario.rendering,
     signal: controller.signal,
   });

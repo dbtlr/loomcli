@@ -30,11 +30,11 @@ test.each(['development', 'source'] as const)(
     // Node reports the failing read itself.
     // Bun folds `value` into `(void 0).length` and reports a line of the action at or above the read.
     // So the marked line is one of the action's, and the failing line shows in the excerpt.
-    expect(stderr).toMatch(/^packages\/core\/tests\/fixtures\/builds\.mjs:6[4-6]:\d+$/mu);
+    expect(stderr).toMatch(/^packages\/core\/tests\/fixtures\/builds\.mjs:6[5-7]:\d+$/mu);
     expect(stderr).toMatch(
-      /^> 6[4-6] \| .*(?:\.action\(\(\) => \{|const value = undefined;|return value\.length;)$/mu,
+      /^> 6[5-7] \| .*(?:\.action\(\(\) => \{|const value = undefined;|return value\.length;)$/mu,
     );
-    expect(stderr).toMatch(/^(?:> | {2})66 \| {11}return value\.length;$/mu);
+    expect(stderr).toMatch(/^(?:> | {2})67 \| {11}return value\.length;$/mu);
     expect(stderr).toMatch(/^ {5}\| +\^$/mu);
     expect(stderr).toMatch(/^TypeError: .+$/mu);
     expect(stderr).toMatch(/^ {4}at .+builds\.mjs:6\d:\d+\)?$/mu);

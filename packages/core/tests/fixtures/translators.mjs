@@ -10,6 +10,7 @@ import {
   LoomError,
   override,
   plugin,
+  processHandle,
   translate,
 } from '@loomcli/core';
 import { z } from 'zod';
@@ -586,7 +587,7 @@ if (scenario === 'error-options') {
 } else {
   const application = build();
   const host = stdout === undefined ? { argv, release } : { argv, release, stdout };
-  const code = await application.run({ host, signal: controller.signal });
+  const code = await application.run({ process: processHandle(host), signal: controller.signal });
   for (const call of calls) {
     process.stdout.write(`${call}\n`);
   }

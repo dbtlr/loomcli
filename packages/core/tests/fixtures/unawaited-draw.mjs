@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 const app = new Application('draw').action(({ out }) => {
   out.draw('value', {
@@ -7,6 +7,8 @@ const app = new Application('draw').action(({ out }) => {
     },
   });
 });
-const code = await app.run({ host: { argv: [], release: { build: 'distributed' } } });
+const code = await app.run({
+  process: processHandle({ argv: [], release: { build: 'distributed' } }),
+});
 await new Promise((resolve) => setImmediate(resolve));
 process.stdout.write(`CODE:${code}\n`);

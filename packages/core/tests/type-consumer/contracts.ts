@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 new Application('inline')
   .argument('files', { required: true, variadic: true })
@@ -43,8 +43,8 @@ new Application('async-return').action(async () => Promise.resolve('ignored'));
 new Application<{ forged: number }>('forged');
 
 void new Application('host-override').run({
-  host: {
+  process: processHandle({
     // @ts-expect-error TS2353: Host overrides cannot control the exit code.
     setExitCode() {},
-  },
+  }),
 });

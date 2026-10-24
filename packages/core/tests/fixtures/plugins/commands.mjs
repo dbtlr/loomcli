@@ -1,4 +1,4 @@
-import { Application, Command, DeclarationError, plugin } from '@loomcli/core';
+import { Application, Command, DeclarationError, plugin, processHandle } from '@loomcli/core';
 
 import { declare } from '../declare.mjs';
 
@@ -122,7 +122,7 @@ if (mode === 'inspect') {
   }
 } else {
   const code = await app.run({
-    host: { argv: process.argv.slice(4) },
+    process: processHandle({ argv: process.argv.slice(4) }),
   });
   process.stdout.write(`resolved:${code}\n`);
 }

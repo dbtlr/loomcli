@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { manpage, refreshManpages } from '@loomcli/plugins/manpage';
 import type { RefreshContext } from '@loomcli/plugins/manpage';
 import { selfUpdate } from '@loomcli/plugins/self-update';
@@ -21,11 +21,11 @@ const app = new Application('packed-man', {
 const quiet = new Writable({ write: (_chunk, _encoding, done) => done() });
 const folder = join(process.cwd(), 'packed-man');
 process.exitCode = await app.run({
-  host: {
+  process: processHandle({
     argv: ['manpage', 'generate', '--out', folder],
     platform: 'linux',
     stderr: quiet,
-  },
+  }),
 });
 const count = readdirSync(folder).length;
 const title = readFileSync(join(folder, 'packed-man-greet.1'), 'utf8').split('\n')[0];

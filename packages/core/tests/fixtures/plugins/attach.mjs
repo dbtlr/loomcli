@@ -1,4 +1,4 @@
-import { Application, Command, plugin } from '@loomcli/core';
+import { Application, Command, plugin, processHandle } from '@loomcli/core';
 
 const scenario = process.argv[2];
 const mode = process.argv[3];
@@ -180,6 +180,6 @@ const application = scenarios[scenario];
 if (mode === 'inspect') {
   note(inspected(application().inspect()));
 } else {
-  const code = await application().run({ host: { argv } });
+  const code = await application().run({ process: processHandle({ argv }) });
   process.stdout.write(`resolved:${code}\n`);
 }

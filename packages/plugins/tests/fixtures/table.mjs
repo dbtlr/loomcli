@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { table } from '@loomcli/plugins/table';
 
 const scenario = process.argv[2] ?? 'explicit';
@@ -93,5 +93,5 @@ const app = selected.declared
 const stdout = selected.discardOutput
   ? new Writable({ write: (_chunk, _encoding, done) => done() })
   : process.stdout;
-const code = await app.run({ host: { argv: [], stdout } });
+const code = await app.run({ process: processHandle({ argv: [], stdout }) });
 process.stdout.write(`resolved:${String(code)}\n`);

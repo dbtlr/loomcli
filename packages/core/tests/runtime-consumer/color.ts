@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import type { Plugin } from '@loomcli/core';
 import { color } from '@loomcli/plugins/color';
 import type { ColorOptions } from '@loomcli/plugins/color';
@@ -12,5 +12,5 @@ const app = new Application('packed-color', { plugins: [installed] }).action(({ 
 
 // No variable speaks for color, so only the operator's choice turns it on for piped output.
 await app.run({
-  host: { argv: process.argv.slice(2), env: {} },
+  process: processHandle({ argv: process.argv.slice(2), env: {} }),
 });

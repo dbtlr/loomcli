@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { z } from 'zod';
 
 // A source run is a development build, so an author's fault prints its Developer Diagnostic.
@@ -112,8 +112,8 @@ switch (scenario) {
     throw new Error(`Unknown scenario: ${scenario}`);
   }
 }
-await app.run({ host: { argv } });
+await app.run({ process: processHandle({ argv }) });
 // A second run proves each invocation receives its own copy of a declared array default.
 if (scenario === 'tail-default') {
-  await app.run({ host: { argv } });
+  await app.run({ process: processHandle({ argv }) });
 }

@@ -1,4 +1,4 @@
-import { Application, validationContext } from '@loomcli/core';
+import { Application, processHandle, validationContext } from '@loomcli/core';
 
 const [scenario, ...argv] = process.argv.slice(2);
 const calls = [];
@@ -59,4 +59,4 @@ switch (scenario) {
     throw new Error(`Unknown scenario: ${scenario}`);
   }
 }
-await app.action(report).run({ host: { argv } });
+await app.action(report).run({ process: processHandle({ argv }) });

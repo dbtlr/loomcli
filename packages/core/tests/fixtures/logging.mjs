@@ -1,6 +1,14 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, extension, FatalError, InternalError, plugin } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  extension,
+  FatalError,
+  InternalError,
+  plugin,
+  processHandle,
+} from '@loomcli/core';
 import { z } from 'zod';
 
 const [scenario, ...argv] = process.argv.slice(2);
@@ -304,7 +312,7 @@ const release =
 /** A stdout that fails every write, for the scenarios whose destination breaks. */
 const stdout = scenario.startsWith('stdout-broken') ? { stdout: fullDisk() } : {};
 const code = await app.run({
-  host: { argv, ...release, ...stdout },
+  process: processHandle({ argv, ...release, ...stdout }),
   signal: controller.signal,
 });
 if (scenario === 'runs') {

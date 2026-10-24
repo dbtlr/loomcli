@@ -61,6 +61,7 @@ import { Writable } from 'node:stream';
 import { setTimeout as after } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
+import { processHandle } from '@loomcli/core';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { childEnvironment, start } from '../../../scripts/test-process.js';
@@ -457,7 +458,13 @@ test('a build with no --target on a host Bun names no target for fails and says 
     },
   });
   const status = await toolchain.run({
-    host: { argv: ['build'], cwd: root, platform: 'win32', stderr: sink, stdout: sink },
+    process: processHandle({
+      argv: ['build'],
+      cwd: root,
+      platform: 'win32',
+      stderr: sink,
+      stdout: sink,
+    }),
   });
   expect(status).toBe(1);
   expect(written.join('')).toContain(

@@ -1,4 +1,4 @@
-import { Application, nowrap, style } from '@loomcli/core';
+import { Application, nowrap, processHandle, style } from '@loomcli/core';
 
 const input = JSON.parse(process.argv[2]);
 const message = input.message
@@ -14,11 +14,11 @@ const output = { columns: input.columns ?? undefined, isTTY: tty, rows: 24 };
 await new Application('lanes', { description: 'Write one lane message.' })
   .action(({ out }) => out[input.lane](message))
   .run({
-    host: {
+    process: processHandle({
       argv: [],
       env: input.env ?? {},
       platform: 'linux',
       terminal: { stderr: output, stdin: { isTTY: false }, stdout: output },
-    },
+    }),
     rendering: input.rendering,
   });

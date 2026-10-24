@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 
+import { processHandle } from '@loomcli/core';
+
 import { jsonkit } from '../../dist/application.js';
 
 const scenario = process.argv[2];
@@ -42,14 +44,14 @@ async function viaArgv(argv, cwd) {
   const stdout = sink();
   const stderr = sink();
   const code = await jsonkit.run({
-    host: {
+    process: processHandle({
       argv,
       cwd,
       stderr: stderr.stream,
       stdin: Readable.from([]),
       stdout: stdout.stream,
       terminal: piped,
-    },
+    }),
   });
   return { code, stderr: stderr.text(), stdout: stdout.text() };
 }
@@ -100,7 +102,10 @@ if (scenario === 'wedge') {
     const results = [];
     for (const { argv, options, path, values } of wedge) {
       const argvResult = await viaArgv(argv, cwd);
-      const named = await jsonkit.invoke(path, values, { ...options, host: { cwd } });
+      const named = await jsonkit.invoke(path, values, {
+        ...options,
+        process: processHandle({ cwd }),
+      });
       results.push({ argv: argvResult, named });
     }
     process.stdout.write(`${JSON.stringify(results)}\n`);
@@ -111,11 +116,23 @@ if (scenario === 'wedge') {
   await withDocuments(async (cwd) => {
     const host = { cwd };
     const results = {
-      alias: await jsonkit.invoke(['ls'], { options: { file: 'doc.json' } }, { host }),
-      argument: await jsonkit.invoke(['get'], { args: { pth: 'name' } }, { host }),
-      help: await jsonkit.invoke(['get'], { options: { help: true } }, { host }),
+      alias: await jsonkit.invoke(
+        ['ls'],
+        { options: { file: 'doc.json' } },
+        { process: processHandle(host) },
+      ),
+      argument: await jsonkit.invoke(
+        ['get'],
+        { args: { pth: 'name' } },
+        { process: processHandle(host) },
+      ),
+      help: await jsonkit.invoke(
+        ['get'],
+        { options: { help: true } },
+        { process: processHandle(host) },
+      ),
       helpArgv: await viaArgv(['get', '--help'], cwd),
-      unknown: await jsonkit.invoke(['nope'], {}, { host }),
+      unknown: await jsonkit.invoke(['nope'], {}, { process: processHandle(host) }),
     };
     process.stdout.write(`${JSON.stringify(results)}\n`);
   });

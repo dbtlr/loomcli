@@ -27,15 +27,15 @@
  *   `[]`, a release group whose version is `one`, and `"compiled":1` each exits 1 with the
  *   Developer Diagnostic of `@loomcli/core/invalid-release-facts` and runs no action. `app.invoke`
  *   from the same bundle resolves `failed` with exit 1, `inspect()` throws the `InternalError`, and
- *   `run({ host: { release: { build: 'distributed' } } })` runs, because the override replaces the
+ *   `run({ process: processHandle({ release: { build: 'distributed' } }) })` runs, because the override replaces the
  *   baked value. A baked member core does not know reads as the known members alone.
- * - Overrides by build. From source, `run({ host: { release: { build: 'distributed' } } })` writes
+ * - Overrides by build. From source, `run({ process: processHandle({ release: { build: 'distributed' } }) })` writes
  *   the generic message for a defect and `{ build: 'development' }` writes the Developer
  *   Diagnostic. An application override of `InternalError` renders a defect in a distributed build
  *   and is not consulted in a development build; a plugin override of `InternalError` is likewise
  *   not consulted in development. An `onFailure` hint prints under the generic message and under
  *   the Developer Diagnostic. An action's `invoke` reads its run's facts, and `app.invoke` with
- *   `host: { release }` reads the override.
+ *   `process: processHandle({ release })` reads the override.
  * - Build faults. A root with neither children nor an action writes the generic message from a
  *   distributed bundle and its Developer Diagnostic from source, both with exit 1, and `inspect()`
  *   throws the `DeclarationError` in both.
@@ -318,7 +318,7 @@ test('a release override core cannot read is a development build, and the run st
   expect(printed(fromSource('override-null-invoke'))).toEqual({ exitCode: 1, status: 'failed' });
 });
 
-test("app.invoke reads the source's facts, or its host override as given, and an action's invoke reads its run's", () => {
+test("app.invoke reads the source's facts, or its handle's facts as given, and an action's invoke reads its run's", () => {
   expect(printed(fromSource('invoke'))).toMatchObject({
     output: `${JSON.stringify({ facts: { build: 'source' }, frozen: true })}\n`,
     status: 'completed',

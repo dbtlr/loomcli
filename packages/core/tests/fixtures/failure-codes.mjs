@@ -10,13 +10,14 @@ import {
   MisplacedOptionError,
   MissingValueError,
   NonCallableCommandError,
+  plugin,
+  processHandle,
   RepeatedOptionError,
   ResultError,
   UnexpectedArgumentError,
   UnexpectedValueError,
   UnknownCommandError,
   UnknownOptionError,
-  plugin,
   UsageError,
   WorkingDirectoryError,
 } from '@loomcli/core';
@@ -121,7 +122,7 @@ const judging = plugin('@fixture/judging', {
 
 /** The form of the failure one run by name resolves with, or the outcome when it did not fail. */
 async function formOf(app, path = [], values = {}) {
-  const outcome = await app.invoke(path, values, { host: { release } });
+  const outcome = await app.invoke(path, values, { process: processHandle({ release }) });
   return outcome.status === 'failed' ? outcome.form : outcome;
 }
 
@@ -213,7 +214,7 @@ const scenarios = {
   /** An invalid class constructed inside a run reports the fault by build. */
   invalid: async () => {
     const code = await raising(() => new invalid[process.env.FIXTURE_CLASS]('Never.')).run({
-      host: { argv: [], release },
+      process: processHandle({ argv: [], release }),
     });
     process.stdout.write(`resolved:${String(code)}\n`);
   },

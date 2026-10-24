@@ -4,7 +4,7 @@ import { Writable } from 'node:stream';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
-import { Application, Command, FatalError, lanes, override } from '@loomcli/core';
+import { Application, Command, FatalError, lanes, override, processHandle } from '@loomcli/core';
 import { refreshCompletion } from '@loomcli/plugins/completion';
 import { help } from '@loomcli/plugins/help';
 import { refreshManpages } from '@loomcli/plugins/manpage';
@@ -381,7 +381,7 @@ function terminal() {
 
 process.exitCode = await app.run({
   // The platform is pinned so the record directory reads the same row on every machine.
-  host: {
+  process: processHandle({
     argv,
     // A run tells the child it starts which process to wait for.
     env: {
@@ -394,6 +394,6 @@ process.exitCode = await app.run({
     stderr,
     ...(scenario.program === undefined ? {} : { program: program() }),
     ...(scenario.tty === undefined ? {} : { terminal: terminal() }),
-  },
+  }),
   signal: controller.signal,
 });

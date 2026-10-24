@@ -6,6 +6,7 @@ import {
   LoomError,
   override,
   plugin,
+  processHandle,
   UnknownCommandError,
   UnknownOptionError,
   UsageError,
@@ -391,7 +392,10 @@ const app = declare(build);
 const release = {
   build: process.env.FIXTURE_BUILD ?? (scenario === 'converter-fault' ? 'source' : 'distributed'),
 };
-const code = await app.run({ host: { argv, release }, signal: controller.signal });
+const code = await app.run({
+  process: processHandle({ argv, release }),
+  signal: controller.signal,
+});
 for (const call of calls) {
   process.stdout.write(`${call}\n`);
 }

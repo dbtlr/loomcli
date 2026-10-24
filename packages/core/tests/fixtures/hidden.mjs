@@ -3,6 +3,7 @@ import {
   Command,
   NonCallableCommandError,
   override,
+  processHandle,
   UnknownCommandError,
 } from '@loomcli/core';
 
@@ -76,6 +77,6 @@ function currentRootGraph() {
 const graphs = { current: currentRootGraph, graph, root: rootGraph };
 const build = graphs[process.argv[2]];
 const code = await build().run({
-  host: { argv: process.argv.slice(3) },
+  process: processHandle({ argv: process.argv.slice(3) }),
 });
 process.stdout.write(`resolved:${code}\n`);

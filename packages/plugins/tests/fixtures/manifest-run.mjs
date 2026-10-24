@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { json } from '@loomcli/plugins/format/views';
 import { help } from '@loomcli/plugins/help';
@@ -199,6 +199,6 @@ const [scenario, ...argv] = process.argv.slice(2);
 // `COLOR=always` forces color and modifiers on, so a test compares the bytes under both settings.
 const forced = process.env.COLOR === 'always';
 await scenarios[scenario]().run({
-  host: { argv, release },
+  process: processHandle({ argv, release }),
   ...(forced ? { rendering: { color: 'always', modifiers: 'always' } } : {}),
 });

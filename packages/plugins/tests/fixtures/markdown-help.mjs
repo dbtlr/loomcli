@@ -1,4 +1,4 @@
-import { Application, readExtension, style } from '@loomcli/core';
+import { Application, processHandle, readExtension, style } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
 import { manifest } from '@loomcli/plugins/manifest';
@@ -18,7 +18,7 @@ if (input.inspect) {
   console.log(JSON.stringify(value));
 } else {
   await app.run({
-    host: { argv: input.argv ?? ['--help'], env: {} },
+    process: processHandle({ argv: input.argv ?? ['--help'], env: {} }),
     rendering: input.rendering ?? { color: 'never', modifiers: 'never' },
   });
 }

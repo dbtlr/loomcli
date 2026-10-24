@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { box } from '@loomcli/plugins/box';
 import { rule } from '@loomcli/plugins/rule';
 
@@ -28,6 +28,6 @@ await new Application('pty-pack-views', {
     await out.print('@@DONE@@');
   })
   .run({
-    host: { argv: [] },
+    process: processHandle({ argv: [] }),
     rendering: { color: 'never', modifiers: 'never' },
   });

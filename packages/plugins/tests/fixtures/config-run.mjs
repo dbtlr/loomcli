@@ -1,4 +1,4 @@
-import { Application, InputError, override } from '@loomcli/core';
+import { Application, InputError, override, processHandle } from '@loomcli/core';
 import { config } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { help } from '@loomcli/plugins/help';
@@ -96,7 +96,7 @@ const [mode, ...argv] = process.argv.slice(2);
 /** One variable's value, or "absent" when the process environment does not hold it. */
 const state = (name) => (name in process.env ? process.env[name] : 'absent');
 
-/** The host overrides a test sets: the working directory the files resolve in, and the terminal. */
+/** The handle fields a test sets: the working directory the files resolve in, and the terminal. */
 function host() {
   const overrides = { argv };
   if (process.env.FIXTURE_CWD !== undefined) {
@@ -118,11 +118,11 @@ try {
     const { argv: _argv, ...fields } = host();
     const values = JSON.parse(argv[0] ?? '{}');
     const { exitCode, messages, output, status } = await application().invoke([], values, {
-      host: fields,
+      process: processHandle(fields),
     });
     process.stdout.write(`${JSON.stringify({ exitCode, messages, output, status })}\n`);
   } else {
-    const code = await application().run({ host: host() });
+    const code = await application().run({ process: processHandle(host()) });
     process.stdout.write(`resolved:${code}\n`);
     // The state of yaml's debug variables after the run, which reading a YAML file leaves as it was.
     if (process.env.FIXTURE_DEBUG_VARIABLES !== undefined) {

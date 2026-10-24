@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { service } from '@loomcli/plugins/service';
 
@@ -85,13 +85,13 @@ const app = new Application('notes', {
   );
 
 process.exitCode = await app.run({
-  host: {
+  process: processHandle({
     argv,
     env: scenario.env,
     platform: scenario.platform,
     program: scenario.program,
     release: scenario.release,
     ...(scenario.terminal === undefined ? {} : { terminal: scenario.terminal }),
-  },
+  }),
   signal: controller.signal,
 });

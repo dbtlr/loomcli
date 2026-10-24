@@ -1,4 +1,4 @@
-import { Application, style, pad, glyph, nowrap, plugin } from '@loomcli/core';
+import { Application, glyph, nowrap, pad, plugin, processHandle, style } from '@loomcli/core';
 
 const input = JSON.parse(process.argv[2]);
 // A development build, so a broken color helper prints its Developer Diagnostic.
@@ -73,7 +73,7 @@ const app = new Application('resolve', {
   }
 });
 await app.run({
-  host: {
+  process: processHandle({
     argv: [],
     env: input.env ?? {},
     platform: input.platform ?? 'linux',
@@ -82,6 +82,6 @@ await app.run({
       stdin: { isTTY: false },
       stdout: { isTTY: input.tty ?? false },
     },
-  },
+  }),
   rendering: input.runRendering,
 });

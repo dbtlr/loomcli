@@ -2,12 +2,12 @@ import type {
   AdaptiveStyle,
   Background,
   Host,
-  HostOverrides,
   HostTerminal,
   OptionConfig,
+  ProcessTerminal,
   ViewContext,
 } from '@loomcli/core';
-import { Application, Command, plugin, style } from '@loomcli/core';
+import { Application, Command, plugin, processHandle, style } from '@loomcli/core';
 import { background } from '@loomcli/plugins/background';
 import type { BackgroundOptions } from '@loomcli/plugins/background';
 import { loomTheme, theme } from '@loomcli/plugins/theme';
@@ -32,14 +32,14 @@ const overridden = loomTheme({ highlight: accent, identifier: accent });
 /** A view reads the settled background from its context. */
 const shade = (context: ViewContext): Background | undefined => context.background;
 
-/** A test host written before the background still compiles: its terminal omits it. */
-const terminal: HostOverrides['terminal'] = {
+/** A handle's terminal written before the background still compiles: it omits it. */
+const terminal: ProcessTerminal = {
   stderr: { columns: 80, isTTY: true, rows: 24 },
   stdin: { isTTY: true },
   stdout: { columns: 80, isTTY: true, rows: 24 },
 };
-await themed.run({ host: { argv: [], terminal } });
-await themed.run({ host: { terminal: { ...terminal, background: 'light' } } });
+await themed.run({ process: processHandle({ argv: [], terminal }) });
+await themed.run({ process: processHandle({ terminal: { ...terminal, background: 'light' } }) });
 await themed.run({ rendering: { background: 'dark' } });
 
 /** The application's own marked option, with an alias and a validator. */

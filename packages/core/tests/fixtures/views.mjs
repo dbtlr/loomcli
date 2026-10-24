@@ -6,6 +6,7 @@ import {
   lanes,
   override,
   plugin,
+  processHandle,
   UsageError,
   view,
 } from '@loomcli/core';
@@ -191,5 +192,5 @@ function build() {
 }
 
 const app = declare(build);
-const code = await app.run({ host: { argv, release: { build: 'distributed' } } });
+const code = await app.run({ process: processHandle({ argv, release: { build: 'distributed' } }) });
 process.stdout.write(`resolved:${code}\n`);

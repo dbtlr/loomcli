@@ -1,4 +1,11 @@
-import { Application, DeclarationError, override, plugin, style } from '@loomcli/core';
+import {
+  Application,
+  DeclarationError,
+  override,
+  plugin,
+  processHandle,
+  style,
+} from '@loomcli/core';
 
 const scenario = process.argv[2];
 const invalid = override(DeclarationError, {
@@ -22,4 +29,6 @@ const app = new Application('theme-preparation', {
 });
 // A root with neither children nor an action is final only at build, so both scenarios build and fail.
 const configured = scenario === 'hook' ? app.action(() => undefined) : app;
-await configured.run({ host: { argv: [], env: {}, release: { build: 'distributed' } } });
+await configured.run({
+  process: processHandle({ argv: [], env: {}, release: { build: 'distributed' } }),
+});

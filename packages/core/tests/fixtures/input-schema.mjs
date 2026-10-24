@@ -1,4 +1,4 @@
-import { Application, Command, plugin } from '@loomcli/core';
+import { Application, Command, plugin, processHandle } from '@loomcli/core';
 import { z } from 'zod';
 
 /** Every action stays silent, so a mode's one JSON line is the whole of stdout. */
@@ -148,7 +148,7 @@ const mode = process.argv[3];
 
 if (mode === 'run') {
   const code = await build().run({
-    host: { argv: process.argv.slice(4) },
+    process: processHandle({ argv: process.argv.slice(4) }),
   });
   process.stdout.write(`${encode({ code })}\n`);
 } else if (mode === 'calls') {
@@ -156,11 +156,13 @@ if (mode === 'run') {
   const before = nested.calls.length;
   build().inspect();
   const inspected = nested.calls.length - before;
-  const code = await build().run({ host: { argv: [], release: { build: 'distributed' } } });
+  const code = await build().run({
+    process: processHandle({ argv: [], release: { build: 'distributed' } }),
+  });
   const ran = nested.calls.length - before - inspected;
   process.stdout.write(`${encode({ code, inspected, options: nested.calls[0], ran })}\n`);
 } else if (mode === 'distributed') {
-  await build().run({ host: { argv: [], release: { build: 'distributed' } } });
+  await build().run({ process: processHandle({ argv: [], release: { build: 'distributed' } }) });
 } else {
   process.stdout.write(`${encode(build().inspect())}\n`);
 }

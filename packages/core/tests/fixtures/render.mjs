@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 import { ruleText } from './rule-text.mjs';
 
@@ -70,5 +70,7 @@ const app = new Application('render').action(async ({ out }) => {
   }
 });
 
-const code = await app.run({ host: { argv: [], release: { build: 'distributed' } } });
+const code = await app.run({
+  process: processHandle({ argv: [], release: { build: 'distributed' } }),
+});
 process.stdout.write(`resolved:${code}\n`);

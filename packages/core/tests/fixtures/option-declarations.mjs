@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 import { declare } from './declare.mjs';
 
@@ -34,5 +34,5 @@ function build() {
 
 const app = declare(build);
 process.stdout.write('assembled\n');
-const code = await app.run({ host: { argv: ['--unknown'] } });
+const code = await app.run({ process: processHandle({ argv: ['--unknown'] }) });
 process.stdout.write(`resolved:${code}\n`);

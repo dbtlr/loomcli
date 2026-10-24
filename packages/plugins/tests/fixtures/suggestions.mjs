@@ -5,6 +5,7 @@ import {
   InputError,
   override,
   plugin,
+  processHandle,
   UnknownCommandError,
   UsageError,
 } from '@loomcli/core';
@@ -131,5 +132,7 @@ const scenarios = {
   'plugin-before': () => kit({ plugins: [overriding('before'), suggestions()] }),
 };
 
-const code = await scenarios[scenario]().run({ host: { argv, release: { build: 'distributed' } } });
+const code = await scenarios[scenario]().run({
+  process: processHandle({ argv, release: { build: 'distributed' } }),
+});
 process.exitCode = code;

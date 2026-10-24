@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 const app = new Application('options')
   .argument('files', { required: true, variadic: true })
@@ -10,4 +10,4 @@ const app = new Application('options')
     out.print(JSON.stringify({ args, argv: host.argv, options, passthrough }));
   });
 
-await app.run({ host: { argv: process.argv.slice(3) } });
+await app.run({ process: processHandle({ argv: process.argv.slice(3) }) });

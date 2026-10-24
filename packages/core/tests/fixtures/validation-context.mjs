@@ -1,4 +1,10 @@
-import { Application, Command, validationContext, validationContextKey } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  processHandle,
+  validationContext,
+  validationContextKey,
+} from '@loomcli/core';
 import { z } from 'zod';
 
 const [scenario, ...argv] = process.argv.slice(2);
@@ -141,5 +147,5 @@ switch (scenario) {
   }
 }
 if (app) {
-  await app.run({ host: { argv, cwd: '/loom/context' } });
+  await app.run({ process: processHandle({ argv, cwd: '/loom/context' }) });
 }

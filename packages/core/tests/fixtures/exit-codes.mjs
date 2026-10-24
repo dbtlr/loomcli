@@ -6,6 +6,7 @@ import {
   LoomError,
   override,
   plugin,
+  processHandle,
   UsageError,
 } from '@loomcli/core';
 
@@ -162,11 +163,13 @@ if (scenario === 'statics') {
     throw new RegistryUnavailableError(503);
   });
   const code = await app.run({
-    host: { argv },
+    process: processHandle({ argv }),
     signal: controller.signal,
   });
   process.stdout.write(`resolved:${code}\n`);
 } else {
-  const code = await build().run({ host: { argv, release: { build: 'distributed' } } });
+  const code = await build().run({
+    process: processHandle({ argv, release: { build: 'distributed' } }),
+  });
   process.stdout.write(`resolved:${code}\n`);
 }

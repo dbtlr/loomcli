@@ -2,7 +2,7 @@ import { Writable } from 'node:stream';
 
 import { expect, test, vi } from 'vite-plus/test';
 
-import { Application, Command } from '../src/index.js';
+import { Application, Command, processHandle } from '../src/index.js';
 
 /** An Application, a Command, an option, and an argument, none of them described. */
 const app = new Application('store').command(
@@ -24,8 +24,14 @@ test('a development run and app.invoke() run a graph with an undescribed Command
   });
   const stderr = vi.spyOn(process.stderr, 'write');
   try {
-    const code = await app.run({ host: { argv: ['get', 'name'], release, stdout } });
-    const outcome = await app.invoke(['get'], { args: { path: 'other' } }, { host: { release } });
+    const code = await app.run({
+      process: processHandle({ argv: ['get', 'name'], release, stdout }),
+    });
+    const outcome = await app.invoke(
+      ['get'],
+      { args: { path: 'other' } },
+      { process: processHandle({ release }) },
+    );
     expect(code).toBe(0);
     expect(written.join('')).toBe('name\n');
     expect(outcome.status).toBe('completed');

@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 
 import { declare } from './declare.mjs';
 import { ruleText } from './rule-text.mjs';
@@ -76,7 +76,7 @@ if (mode === 'inspect') {
   }
 } else {
   const code = await app.run({
-    host: { argv: scenario === 'root' ? [] : ['paths'] },
+    process: processHandle({ argv: scenario === 'root' ? [] : ['paths'] }),
   });
   process.stdout.write(`resolved:${code}\n`);
 }

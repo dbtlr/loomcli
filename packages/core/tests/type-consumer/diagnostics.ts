@@ -1,4 +1,10 @@
-import { Application, DeclarationError, diagnosticRule, InternalError } from '@loomcli/core';
+import {
+  Application,
+  DeclarationError,
+  diagnosticRule,
+  InternalError,
+  processHandle,
+} from '@loomcli/core';
 import type { DiagnosticParts, DiagnosticRule, Finding, Host, ReleaseFacts } from '@loomcli/core';
 
 // An action reads its run's release facts from its host, and narrows on the build.
@@ -13,13 +19,13 @@ const about = new Application('app', { description: 'Print how this copy was bui
   },
 );
 
-// A test supplies the facts through the host override, of run() and app.invoke alike.
+// A test supplies the facts through the process handle, of run() and app.invoke alike.
 const supplied: ReleaseFacts = {
   build: 'distributed',
   release: { channel: 'next', repository: 'acme/notes', version: '1.1.0-next.3' },
 };
-void about.run({ host: { release: supplied } });
-void about.invoke([], {}, { host: { release: supplied } });
+void about.run({ process: processHandle({ release: supplied }) });
+void about.invoke([], {}, { process: processHandle({ release: supplied }) });
 
 // @ts-expect-error TS2322: a build is source, development, or distributed.
 const staging: ReleaseFacts = { build: 'staging' };
@@ -67,7 +73,7 @@ const defectFields: [unknown, string, string | readonly string[] | undefined] = 
 // @ts-expect-error TS2769: a structured defect carries its cause, even an undefined one.
 new InternalError(rule, { sentence: 'It broke.' });
 
-// A host override may supply its own source reader, or leave process capture's in place.
+// A process handle may supply its own source reader, or leave process capture's in place.
 const reader: Host['readSource'] = (path, cwd) => (path.startsWith(cwd) ? '' : undefined);
 const host: Partial<Host> = { readSource: reader };
 

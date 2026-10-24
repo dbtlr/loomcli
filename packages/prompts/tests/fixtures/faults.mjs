@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 import { confirm, select, text } from '../../dist/index.js';
 
@@ -33,4 +33,4 @@ const app = new Application('faults', { description: 'Exercise malformed questio
       );
     }
   });
-process.exitCode = await app.run({ host: { argv: [] } });
+process.exitCode = await app.run({ process: processHandle({ argv: [] }) });

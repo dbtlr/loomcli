@@ -1,4 +1,11 @@
-import { Application, Command, DeclarationError, extension, plugin } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  DeclarationError,
+  extension,
+  plugin,
+  processHandle,
+} from '@loomcli/core';
 import { z } from 'zod';
 
 import { declare } from '../declare.mjs';
@@ -315,6 +322,8 @@ if (mode === 'rule') {
     process.stdout.write(`${kind}:${error.exitCode}: ${ruleText(error)}\n`);
   }
 } else {
-  const code = await app.run({ host: { argv: [], release: { build: 'distributed' } } });
+  const code = await app.run({
+    process: processHandle({ argv: [], release: { build: 'distributed' } }),
+  });
   process.stdout.write(`resolved:${code}\n`);
 }

@@ -1,4 +1,11 @@
-import { Application, Command, DeclarationError, plugin, readExtension } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  DeclarationError,
+  plugin,
+  processHandle,
+  readExtension,
+} from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
@@ -282,9 +289,9 @@ function completing() {
 }
 
 const scenarios = {
-  'child-order': () => childOrder().run({ host: { argv } }),
-  commands: () => commands().run({ host: { argv } }),
-  completion: () => completing().run({ host: { argv } }),
+  'child-order': () => childOrder().run({ process: processHandle({ argv }) }),
+  commands: () => commands().run({ process: processHandle({ argv }) }),
+  completion: () => completing().run({ process: processHandle({ argv }) }),
   graph: () => {
     process.stdout.write(
       `${JSON.stringify(
@@ -296,15 +303,15 @@ const scenarios = {
   },
   invalid,
   metadata,
-  'named-only': () => commands(false).run({ host: { argv } }),
-  options: () => options().run({ host: { argv } }),
-  ordered: () => ordered().run({ host: { argv } }),
-  'parent-order': () => ordered(true).run({ host: { argv } }),
-  scoped: () => scoped().run({ host: { argv } }),
-  wide: () => wide().run({ host: { argv } }),
+  'named-only': () => commands(false).run({ process: processHandle({ argv }) }),
+  options: () => options().run({ process: processHandle({ argv }) }),
+  ordered: () => ordered().run({ process: processHandle({ argv }) }),
+  'parent-order': () => ordered(true).run({ process: processHandle({ argv }) }),
+  scoped: () => scoped().run({ process: processHandle({ argv }) }),
+  wide: () => wide().run({ process: processHandle({ argv }) }),
   'wide-styled': () =>
     wide().run({
-      host: { argv, env: {} },
+      process: processHandle({ argv, env: {} }),
       rendering: { color: 'always', modifiers: 'always' },
     }),
 };

@@ -1,4 +1,4 @@
-import { Application, Command, DeclarationError, plugin } from '@loomcli/core';
+import { Application, Command, DeclarationError, plugin, processHandle } from '@loomcli/core';
 
 const act = () => undefined;
 const leaf = (name) => new Command(name, { description: 'Probe.' }).action(act);
@@ -252,7 +252,8 @@ const [scenario, mode] = process.argv.slice(2);
 const build = scenario.endsWith('-distributed') ? 'distributed' : 'source';
 
 /** One reported scenario's run, with its words and its build. */
-const run = (app) => app.run({ host: { argv: argvOf[scenario] ?? ['get'], release: { build } } });
+const run = (app) =>
+  app.run({ process: processHandle({ argv: argvOf[scenario] ?? ['get'], release: { build } }) });
 
 /** The graph a scenario reads: `inspect()`'s from source, and a distributed run's otherwise. */
 async function graphOf(app) {

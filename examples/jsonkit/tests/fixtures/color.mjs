@@ -1,3 +1,5 @@
+import { processHandle } from '@loomcli/core';
+
 import { jsonkit } from '../../dist/application.js';
 
 /**
@@ -9,8 +11,8 @@ const [terminal, ...argv] = process.argv.slice(2);
 const stream = terminal === 'tty' ? { columns: 100, isTTY: true, rows: 24 } : { isTTY: false };
 
 await jsonkit.run({
-  host: {
+  process: processHandle({
     argv,
     terminal: { stderr: stream, stdin: { isTTY: false }, stdout: stream },
-  },
+  }),
 });

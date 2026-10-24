@@ -1,4 +1,4 @@
-import { Application, plugin, style } from '@loomcli/core';
+import { Application, plugin, processHandle, style } from '@loomcli/core';
 
 const scenario = process.argv[2];
 const env = { FORCE_COLOR: scenario === 'fresh' ? '1' : '', TERM: 'linux' };
@@ -39,7 +39,7 @@ const app = new Application('styles', {
   throw new Error(`Unknown scenario: ${scenario}`);
 });
 const options = {
-  host: {
+  process: processHandle({
     argv: [],
     env,
     platform: 'linux',
@@ -48,7 +48,7 @@ const options = {
       stdin: { isTTY: false },
       stdout: { isTTY: false },
     },
-  },
+  }),
 };
 await app.run(options);
 if (scenario === 'fresh') {

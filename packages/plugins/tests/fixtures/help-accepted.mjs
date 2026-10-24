@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpArgument, helpInput } from '@loomcli/plugins/help/extension';
 
@@ -148,4 +148,4 @@ const app = variadics.reduce(
   (built, command) => built.command(command),
   new Application('app', { plugins: [help()] }).command(shapes).command(pick),
 );
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ process: processHandle({ argv: process.argv.slice(2) }) });

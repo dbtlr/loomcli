@@ -1,4 +1,10 @@
-import { Application, DeclarationError, diagnosticRule, InternalError } from '@loomcli/core';
+import {
+  Application,
+  DeclarationError,
+  diagnosticRule,
+  InternalError,
+  processHandle,
+} from '@loomcli/core';
 
 const scenario = process.argv[2];
 
@@ -196,12 +202,12 @@ switch (scenario) {
         retry(50);
       })
       .run({
-        host: {
+        process: processHandle({
           argv: [],
           env: input.env ?? {},
           release: { build: 'source' },
           terminal: input.terminal,
-        },
+        }),
       });
     break;
   }

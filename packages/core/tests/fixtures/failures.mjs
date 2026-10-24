@@ -6,6 +6,7 @@ import {
   InputError,
   InternalError,
   override,
+  processHandle,
   UsageError,
 } from '@loomcli/core';
 import { z } from 'zod';
@@ -245,5 +246,5 @@ function build() {
 // An unusable destination proves the fallback path stops reporting without changing the status.
 const host = scenario === 'broken-fallback' ? { argv, release, stderr: {} } : { argv, release };
 const app = declare(build);
-const code = await app.run({ host });
+const code = await app.run({ process: processHandle(host) });
 process.stdout.write(`resolved:${code}\n`);

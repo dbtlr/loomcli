@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 import { declare } from './declare.mjs';
 
@@ -15,4 +15,4 @@ const scenarios = {
   original: () => base.action(action),
 };
 const app = declare(scenarios[scenario]);
-process.exitCode = await app.run({ host: { argv: [] } });
+process.exitCode = await app.run({ process: processHandle({ argv: [] }) });

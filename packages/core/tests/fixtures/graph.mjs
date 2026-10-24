@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 
 import { declare } from './declare.mjs';
 
@@ -170,6 +170,10 @@ const stderr = new Writable({
 });
 const app = declare(build);
 const code = await app.run({
-  host: { argv: process.argv.slice(3), release: { build: 'distributed' }, stderr },
+  process: processHandle({
+    argv: process.argv.slice(3),
+    release: { build: 'distributed' },
+    stderr,
+  }),
 });
 process.stdout.write(`${JSON.stringify({ chunks, code })}\n`);

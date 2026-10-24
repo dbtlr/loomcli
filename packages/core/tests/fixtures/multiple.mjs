@@ -1,4 +1,4 @@
-import { Application, Command, validationContext } from '@loomcli/core';
+import { Application, Command, processHandle, validationContext } from '@loomcli/core';
 import { z } from 'zod';
 
 // A source run is a development build, so an author's fault prints its Developer Diagnostic.
@@ -214,7 +214,7 @@ switch (scenario) {
     throw new Error(`Unknown scenario: ${scenario}`);
   }
 }
-const code = await app.run({ host: { argv }, signal: controller.signal });
+const code = await app.run({ process: processHandle({ argv }), signal: controller.signal });
 if (scenario === 'abort-mid-list') {
   process.stdout.write(`calls:${calls}:code:${code}\n`);
 }

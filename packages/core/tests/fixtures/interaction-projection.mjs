@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { interaction } from '@loomcli/plugins/interaction';
 import { manifest } from '@loomcli/plugins/manifest';
@@ -12,5 +12,5 @@ const app = new Application('setup', {
 if (process.argv[2] === 'inspect') {
   process.stdout.write(JSON.stringify(app.inspect()));
 } else {
-  process.exitCode = await app.run({ host: { argv: [process.argv[2]] } });
+  process.exitCode = await app.run({ process: processHandle({ argv: [process.argv[2]] }) });
 }

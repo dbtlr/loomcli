@@ -5,6 +5,7 @@ import {
   lanes,
   override,
   plugin,
+  processHandle,
   validationContext,
 } from '@loomcli/core';
 import { z } from 'zod';
@@ -280,15 +281,21 @@ if (mode === 'inspect') {
   // The caller cancelled the run before it started.
   const controller = new AbortController();
   controller.abort();
-  const code = await application().run({ host: { argv, release }, signal: controller.signal });
+  const code = await application().run({
+    process: processHandle({ argv, release }),
+    signal: controller.signal,
+  });
   process.stdout.write(`resolved:${code}\n`);
 } else if (mode === 'cancel') {
   // The source aborts the caller's signal from inside its own call, so the abort lands in flight.
   const controller = new AbortController();
   globalThis.fixtureAbort = () => controller.abort();
-  const code = await application().run({ host: { argv, release }, signal: controller.signal });
+  const code = await application().run({
+    process: processHandle({ argv, release }),
+    signal: controller.signal,
+  });
   process.stdout.write(`resolved:${code}\n`);
 } else {
-  const code = await application().run({ host: { argv, release } });
+  const code = await application().run({ process: processHandle({ argv, release }) });
   process.stdout.write(`resolved:${code}\n`);
 }

@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 
 // One probe per scenario, which a test runs from source or from a bundle that bakes release facts.
 const [scenario] = process.argv.slice(2);
@@ -131,10 +131,10 @@ const supplied = {
 
 const scenarios = {
   // The build fault through every door.
-  'build-fault': () => unfinished().run({ host }),
+  'build-fault': () => unfinished().run({ process: processHandle(host) }),
   'build-fault-inspect': () => print(inspected(unfinished())),
   // The converter fault through run() and inspect(), and the schema a build reads.
-  converter: () => converter().run({ host }),
+  converter: () => converter().run({ process: processHandle(host) }),
   'converter-inspect': () => {
     try {
       print({ schema: converter().inspect().root.options[0].schema });
@@ -142,23 +142,30 @@ const scenarios = {
       print({ rule: error.rule?.identity, thrown: error.name });
     }
   },
-  facts: () => facts().run({ host }),
+  facts: () => facts().run({ process: processHandle(host) }),
   inspect: () => print(inspected(facts())),
   invoke: async () => print(outcomeOf(await facts().invoke([], {}))),
-  'invoke-override': async () =>
-    print(outcomeOf(await facts().invoke([], {}, { host: { release: supplied } }))),
-  nested: () => nested().run({ host: { argv: ['outer'], release: { build: 'development' } } }),
-  override: () => facts().run({ host: { ...host, release: { build: 'distributed' } } }),
-  'override-defect': () => throwing().run({ host: { ...host, release: { build: 'distributed' } } }),
+  'invoke-override': async () => {
+    const handle = processHandle({ release: supplied });
+    return print(outcomeOf(await facts().invoke([], {}, { process: handle })));
+  },
+  nested: () =>
+    nested().run({
+      process: processHandle({ argv: ['outer'], release: { build: 'development' } }),
+    }),
+  override: () =>
+    facts().run({ process: processHandle({ ...host, release: { build: 'distributed' } }) }),
+  'override-defect': () =>
+    throwing().run({ process: processHandle({ ...host, release: { build: 'distributed' } }) }),
   'override-development': () =>
-    throwing().run({ host: { ...host, release: { build: 'development' } } }),
-  'override-null': () => throwing().run({ host: { ...host, release: null } }),
+    throwing().run({ process: processHandle({ ...host, release: { build: 'development' } }) }),
+  'override-null': () => throwing().run({ process: processHandle({ ...host, release: null }) }),
   'override-null-invoke': async () => {
-    const outcome = await throwing().invoke([], {}, { host: { release: null } });
+    const outcome = await throwing().invoke([], {}, { process: processHandle({ release: null }) });
     print({ exitCode: outcome.exitCode, status: outcome.status });
     return 0;
   },
-  program: () => program().run({ host }),
+  program: () => program().run({ process: processHandle(host) }),
   'program-invoke': async () => {
     const outcome = await program().invoke([], {});
     print(outcome.status === 'completed' ? JSON.parse(outcome.output) : outcome.status);
@@ -166,15 +173,19 @@ const scenarios = {
   },
   'program-nested': () =>
     nestedProgram().run({
-      host: { argv: ['outer'], program: ['/opt/runtime', '/srv/main.js'], release: supplied },
+      process: processHandle({
+        argv: ['outer'],
+        program: ['/opt/runtime', '/srv/main.js'],
+        release: supplied,
+      }),
     }),
   'program-override': () => {
     const words = ['/opt/runtime', '/srv/main.js'];
-    const run = program().run({ host: { ...host, program: words } });
+    const run = program().run({ process: processHandle({ ...host, program: words }) });
     words.push('changed after the call');
     return run;
   },
-  throw: () => throwing().run({ host }),
+  throw: () => throwing().run({ process: processHandle(host) }),
 };
 
 process.exitCode = await scenarios[scenario]();

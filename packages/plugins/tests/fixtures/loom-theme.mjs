@@ -1,4 +1,4 @@
-import { Application, style, plugin } from '@loomcli/core';
+import { Application, plugin, processHandle, style } from '@loomcli/core';
 import { loomTheme, theme } from '@loomcli/plugins/theme';
 
 const input = JSON.parse(process.argv[2]);
@@ -49,7 +49,7 @@ const app = new Application('palette', { plugins }).action(({ out, style: contex
   out.render(text, { render: (value) => value });
 });
 await app.run({
-  host: {
+  process: processHandle({
     argv: [],
     env: input.env ?? {},
     terminal: {
@@ -58,6 +58,6 @@ await app.run({
       stdout: { isTTY: input.tty ?? false },
       ...(input.background === undefined ? {} : { background: input.background }),
     },
-  },
+  }),
   rendering: input.rendering,
 });

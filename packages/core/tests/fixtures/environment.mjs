@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 process.env.LOOM_MiXeD_CASE = 'captured';
 const nativeUppercase = process.env.LOOM_MIXED_CASE;
@@ -13,4 +13,4 @@ await new Application('environment')
       }),
     );
   })
-  .run({ host: { argv: [] } });
+  .run({ process: processHandle({ argv: [] }) });

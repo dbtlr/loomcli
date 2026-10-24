@@ -1,4 +1,12 @@
-import { Application, Command, DeclarationError, FatalError, plugin, style } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  DeclarationError,
+  FatalError,
+  plugin,
+  processHandle,
+  style,
+} from '@loomcli/core';
 
 const [scenario, build = 'distributed'] = process.argv.slice(2);
 
@@ -45,7 +53,7 @@ const scenarios = {
       description: 'The forms application.',
       plugins: [breaking],
     }).command(new Command('get', { description: 'The get command.' }).action(() => undefined));
-    const outcome = await app.invoke(['nope'], {}, { host: { release } });
+    const outcome = await app.invoke(['nope'], {}, { process: processHandle({ release }) });
     print({ exitCode: outcome.exitCode, form: outcome.form });
   },
   /** A build fault runs no hook, so its form holds no hint. */
@@ -59,7 +67,7 @@ const scenarios = {
     const outcome = await raising(() => new FatalError('Never.'), [judging]).invoke(
       [],
       {},
-      { host: { release } },
+      { process: processHandle({ release }) },
     );
     print({ exitCode: outcome.exitCode, form: outcome.form });
   },
@@ -68,7 +76,7 @@ const scenarios = {
     const outcome = await raising(() => new TypeError('Cannot read the value.')).invoke(
       [],
       {},
-      { host: { release } },
+      { process: processHandle({ release }) },
     );
     print(outcome.form);
   },
@@ -83,7 +91,7 @@ const scenarios = {
           handled = context.form;
           return failure;
         },
-        host: { release },
+        process: processHandle({ release }),
       },
     );
     print({
@@ -99,7 +107,7 @@ const scenarios = {
     const outcome = await raising(() => new FatalError('Failed.')).invoke(
       [],
       {},
-      { host: { release } },
+      { process: processHandle({ release }) },
     );
     try {
       outcome.form.code = 'other';
@@ -116,7 +124,7 @@ const scenarios = {
         hinting('@fixture/first', () => 'First hint.'),
         hinting('@fixture/second', () => ['Second.', 'Third.']),
       ],
-    ).invoke([], {}, { host: { release } });
+    ).invoke([], {}, { process: processHandle({ release }) });
     print(outcome.form.hints);
   },
   /** A marked message and a marked hint read as plain text. */
@@ -127,7 +135,7 @@ const scenarios = {
     const outcome = await raising(
       () => new FatalError(`The ${style.bold('registry')} is down.`),
       [marking],
-    ).invoke([], {}, { host: { release } });
+    ).invoke([], {}, { process: processHandle({ release }) });
     print(outcome.form);
   },
   /** An input error that reports two problems holds both lines. */
@@ -136,7 +144,11 @@ const scenarios = {
       .option('limit', { description: 'The limit.', type: 'string', validate: digits })
       .argument('path', { description: 'The path.', required: true })
       .action(() => undefined);
-    const outcome = await app.invoke([], { options: { limit: 'x' } }, { host: { release } });
+    const outcome = await app.invoke(
+      [],
+      { options: { limit: 'x' } },
+      { process: processHandle({ release }) },
+    );
     print(outcome.form);
   },
 };

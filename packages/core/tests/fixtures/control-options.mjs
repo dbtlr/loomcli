@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, plugin } from '@loomcli/core';
+import { Application, Command, plugin, processHandle } from '@loomcli/core';
 
 const scenario = process.argv[2];
 
@@ -87,13 +87,13 @@ if (scenario === 'marks') {
     const { app, seen } = declared(control);
     const stderr = sink();
     const exitCode = await app.run({
-      host: { argv, stderr: stderr.stream },
+      process: processHandle({ argv, stderr: stderr.stream }),
     });
     const rejected = await app.run({
-      host: {
+      process: processHandle({
         argv: ['get', '--depth', 'deep'],
         stderr: stderr.stream,
-      },
+      }),
     });
     outcomes[label] = { exitCode, rejected, seen, stderr: stderr.text() };
   }

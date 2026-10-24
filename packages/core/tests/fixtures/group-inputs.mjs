@@ -1,6 +1,14 @@
 import { z } from 'zod';
 
-import { Application, Command, extension, InputError, override, plugin } from '../../dist/index.js';
+import {
+  Application,
+  Command,
+  extension,
+  InputError,
+  override,
+  plugin,
+  processHandle,
+} from '../../dist/index.js';
 
 const [scenario, ...argv] = process.argv.slice(2);
 const binding = extension('@fixture/groups/key', { schema: z.string(), target: 'option' });
@@ -38,7 +46,7 @@ if (scenario === 'hook') {
     plugins: [hook],
   })
     .action(() => {})
-    .run({ host: { argv, env: {} } });
+    .run({ process: processHandle({ argv, env: {} }) });
 } else {
   const configured = new Application('groups', {
     description: 'Groups probe.',
@@ -115,10 +123,10 @@ if (scenario === 'hook') {
       );
     } else {
       process.exitCode = await app.run({
-        host: {
+        process: processHandle({
           argv: scenario === 'source' ? ['--second', 'typed'] : argv,
           env: scenario === 'env' ? { GROUP_FIRST: 'configured' } : {},
-        },
+        }),
       });
     }
   }

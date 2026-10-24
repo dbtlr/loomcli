@@ -1,6 +1,6 @@
 import { interaction } from '@loomcli/plugins/interaction';
 
-import { Application } from '../../dist/index.js';
+import { Application, processHandle } from '../../dist/index.js';
 
 const scenario = process.argv[2];
 try {
@@ -26,7 +26,7 @@ try {
       process.stdout.write(outcome.output);
     } else {
       process.exitCode = await app.run({
-        host: {
+        process: processHandle({
           argv:
             { disabled: ['--no-input', '--port', '8080'], env: ['--port', '8080'] }[scenario] ?? [],
           env: scenario === 'env' ? { SETUP_INPUT: 'false' } : {},
@@ -35,7 +35,7 @@ try {
             stdin: { isTTY: true },
             stdout: { columns: undefined, isTTY: false, rows: undefined },
           },
-        },
+        }),
       });
     }
   }

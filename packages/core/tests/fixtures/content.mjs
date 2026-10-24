@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
 
-import { Application, Command, plugin } from '@loomcli/core';
+import { Application, Command, plugin, processHandle } from '@loomcli/core';
 
 const [scenario, ...argv] = process.argv.slice(2);
 const [path] = argv;
@@ -220,7 +220,7 @@ if (['collection', 'collection-max', 'terminal'].includes(scenario)) {
       await out.print(JSON.stringify(sources));
     });
   await app.run({
-    host: {
+    process: processHandle({
       argv,
       ...(scenario === 'terminal'
         ? {
@@ -231,7 +231,7 @@ if (['collection', 'collection-max', 'terminal'].includes(scenario)) {
             },
           }
         : {}),
-    },
+    }),
   });
 }
 
@@ -240,7 +240,7 @@ if (['scalar', 'named-empty', 'named-dash'].includes(scenario)) {
     .option('file', { description: 'The source.', required: true, stdin: true, type: 'content' })
     .action(async ({ options, out }) => out.print(await options.file.text()));
   if (scenario === 'scalar') {
-    await app.run({ host: { argv } });
+    await app.run({ process: processHandle({ argv }) });
   } else {
     process.stdout.write(
       JSON.stringify(
@@ -269,7 +269,7 @@ if (scenario === 'unread') {
     .action(() => {
       throw new Error('The action must not run.');
     });
-  await app.run({ host: { argv: [], stdin } });
+  await app.run({ process: processHandle({ argv: [], stdin }) });
   process.stdout.write(JSON.stringify({ reads }));
 }
 
@@ -296,7 +296,7 @@ if (['stdin', 'stdin-missing', 'stdin-help', 'stdin-help-optional'].includes(sce
   await app
     .action(async ({ stdin, out }) => out.print(await stdin.text()))
     .run({
-      host: {
+      process: processHandle({
         argv: scenario.startsWith('stdin-help') ? ['--help'] : argv,
         ...(scenario === 'stdin-missing'
           ? {
@@ -307,6 +307,6 @@ if (['stdin', 'stdin-missing', 'stdin-help', 'stdin-help-optional'].includes(sce
               },
             }
           : {}),
-      },
+      }),
     });
 }

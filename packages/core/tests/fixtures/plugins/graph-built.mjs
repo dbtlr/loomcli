@@ -1,6 +1,13 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, DeclarationError, diagnosticRule, plugin } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  DeclarationError,
+  diagnosticRule,
+  plugin,
+  processHandle,
+} from '@loomcli/core';
 
 const scenario = process.argv[2];
 const build = process.argv[3] ?? 'distributed';
@@ -33,7 +40,7 @@ async function runCaptured(app, argv) {
   const stdout = sink();
   const stderr = sink();
   const exitCode = await app.run({
-    host: { argv, release, stderr: stderr.stream, stdout: stdout.stream },
+    process: processHandle({ argv, release, stderr: stderr.stream, stdout: stdout.stream }),
   });
   return { exitCode, stderr: stderr.text(), stdout: stdout.text() };
 }
@@ -91,9 +98,9 @@ if (scenario === 'order') {
   const sameAsAction = graphs.at(-1) === readByAction && graphs.at(-2) === readByAction;
   app.inspect();
   mark('inspect');
-  await app.invoke(['count'], {}, { host: { release } });
+  await app.invoke(['count'], {}, { process: processHandle({ release }) });
   mark('app.invoke');
-  await app.invoke(['caller'], {}, { host: { release } });
+  await app.invoke(['caller'], {}, { process: processHandle({ release }) });
   mark('app.invoke with an action invoke');
   print({ calls: calls.slice(0, 2), marks, sameAsAction });
 } else if (scenario === 'reject') {

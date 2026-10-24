@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { records } from '@loomcli/plugins/records';
 
 const scenario = process.argv[2] ?? 'default';
@@ -60,5 +60,5 @@ const app = selected.declared
       .action(({ out }) => out.results(selected.rows))
   : new Application('records').action(({ out }) => out.render(selected.rows, selected.view));
 
-const code = await app.run({ host: { argv: [] } });
+const code = await app.run({ process: processHandle({ argv: [] }) });
 process.stdout.write(`resolved:${String(code)}\n`);

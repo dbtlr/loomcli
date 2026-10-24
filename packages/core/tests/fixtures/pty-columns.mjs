@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 /** Resizes the pseudo-terminal this process runs on, then waits until stdout reports the width. */
 async function resize(columns) {
@@ -28,6 +28,6 @@ await new Application('pty', { description: 'Render either side of a resize.' })
     await out.print('@@DONE@@');
   })
   .run({
-    host: { argv: [] },
+    process: processHandle({ argv: [] }),
     rendering: { color: 'never', modifiers: 'never' },
   });

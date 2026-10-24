@@ -376,7 +376,7 @@ test('a call from an action touches no process listener, exit status, or real st
   });
 });
 
-test('app.invoke with a host override reads the four fields and nothing of the process', () => {
+test('app.invoke with a process handle reads its facts and nothing of the process', () => {
   expect(echoed(JSON.parse(report('host')))).toEqual({
     argv: [],
     cwd: '/virtual',

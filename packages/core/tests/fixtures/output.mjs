@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 const scenario = process.argv[2];
 const events = [];
@@ -67,12 +67,12 @@ const app = new Application('output').action(async ({ out }) => {
   }
 });
 const code = await app.run({
-  host: {
+  process: processHandle({
     argv: [],
     release: { build: 'distributed' },
     stderr: scenario === 'diagnostic-write' ? destination : stderr,
     stdout: destination,
-  },
+  }),
 });
 process.stdout.write(
   `${JSON.stringify({

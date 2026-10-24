@@ -1,6 +1,6 @@
 import { Readable, Writable } from 'node:stream';
 
-import { Application, override } from '@loomcli/core';
+import { Application, override, processHandle } from '@loomcli/core';
 
 import { text, secret } from '../../dist/index.js';
 import { questionFrame } from '../../dist/views.js';
@@ -70,7 +70,7 @@ const app = new Application('setup', {
   await context.out.print(answer);
 });
 const code = await app.run({
-  host: {
+  process: processHandle({
     argv: [],
     env: {},
     stderr,
@@ -81,7 +81,7 @@ const code = await app.run({
       stdin: { isTTY: true },
       stdout: { columns: undefined, isTTY: false, rows: undefined },
     },
-  },
+  }),
   signal: caller.signal,
 });
 process.stdout.write(

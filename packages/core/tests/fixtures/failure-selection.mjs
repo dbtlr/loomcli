@@ -6,6 +6,7 @@ import {
   LoomError,
   override,
   plugin,
+  processHandle,
 } from '@loomcli/core';
 
 // Each run prints what a failure view and an `onFailure` hook read of the run's selection.
@@ -116,7 +117,7 @@ const shapes = {
 
 const app = shapes[shape]();
 if (process.env.FIXTURE_BY_NAME === undefined) {
-  await app.run({ host: { argv: words, release: { build: 'distributed' } } });
+  await app.run({ process: processHandle({ argv: words, release: { build: 'distributed' } }) });
 } else {
   const [path, view] = JSON.parse(process.env.FIXTURE_BY_NAME);
   const outcome = await app.invoke(path, {}, { view });

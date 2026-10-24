@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 
 const report =
   (command) =>
@@ -15,4 +15,4 @@ const app = new Application('nested-root')
   .command(get)
   .command(keys);
 
-await app.run({ host: { argv: process.argv.slice(3) } });
+await app.run({ process: processHandle({ argv: process.argv.slice(3) }) });
