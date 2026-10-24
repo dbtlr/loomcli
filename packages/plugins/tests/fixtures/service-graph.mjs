@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { service } from '@loomcli/plugins/service';
 
 /**
@@ -43,6 +43,9 @@ if (mode === 'check') {
   }
 } else {
   process.exitCode = await app.run({
-    host: { argv: ['serve'], release: { build: process.env.FIXTURE_BUILD ?? 'distributed' } },
+    process: processHandle({
+      argv: ['serve'],
+      release: { build: process.env.FIXTURE_BUILD ?? 'distributed' },
+    }),
   });
 }

@@ -1,6 +1,6 @@
 import { Readable, Writable } from 'node:stream';
 
-import { Application, FatalError, override, plugin } from '@loomcli/core';
+import { Application, FatalError, override, plugin, processHandle } from '@loomcli/core';
 import { verbose } from '@loomcli/plugins/verbose';
 
 import { progress, progressStyle, text } from '../../dist/index.js';
@@ -394,7 +394,7 @@ if (terminal === 'invoke') {
   messages = outcome.messages;
 } else {
   code = await app.run({
-    host: {
+    process: processHandle({
       argv: scenario === 'style' ? [] : argv,
       env: { NO_COLOR: process.env.NO_COLOR, TERM: process.env.TERM },
       stderr,
@@ -404,7 +404,7 @@ if (terminal === 'invoke') {
         stdin: { isTTY: true },
         stdout: { columns: undefined, isTTY: false, rows: undefined },
       },
-    },
+    }),
     signal: caller.signal,
   });
 }

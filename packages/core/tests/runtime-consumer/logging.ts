@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { logging } from '@loomcli/plugins/logging';
 import type { LoggingError } from '@loomcli/plugins/logging';
 
@@ -23,5 +23,5 @@ const app = new Application('packed-logging', {
 });
 
 await app.run({
-  host: { argv: process.argv.slice(2), platform: 'linux' },
+  process: processHandle({ argv: process.argv.slice(2), platform: 'linux' }),
 });

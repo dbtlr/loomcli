@@ -9,6 +9,7 @@ import {
   lanes,
   override,
   plugin,
+  processHandle,
   ResultError,
   style,
   view,
@@ -344,7 +345,7 @@ function argv() {
 }
 
 const code = await build().run({
-  host: {
+  process: processHandle({
     argv: argv(),
     env: { TERM: 'linux' },
     platform: 'linux',
@@ -356,7 +357,7 @@ const code = await build().run({
       stdin: { isTTY: false },
       stdout: { isTTY: false },
     },
-  },
+  }),
 });
 if (events.length > 0) {
   process.stdout.write(`${JSON.stringify(events)}\n`);

@@ -1,4 +1,4 @@
-import { Application, FatalError } from '@loomcli/core';
+import { Application, FatalError, processHandle } from '@loomcli/core';
 
 import { declare } from './declare.mjs';
 
@@ -57,6 +57,6 @@ function build() {
 const app = declare(build);
 process.stdout.write('assembled\n');
 const code = await app.run({
-  host: { argv: process.argv.slice(3), release: { build: 'distributed' } },
+  process: processHandle({ argv: process.argv.slice(3), release: { build: 'distributed' } }),
 });
 process.stdout.write(`resolved:${code}\n`);

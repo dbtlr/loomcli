@@ -44,7 +44,7 @@ const dropped: LineStep = { lines: [], loaded: [], notices: [], release: [], ste
  */
 function lineStep(run: ChildRun, recorded: StartupLine, line: string): LineStep {
   const { path } = recorded;
-  const judgement = judgeStartup(path, line);
+  const judgement = judgeStartup(path, line, run.host.uid);
   if (judgement.kind === 'not-file') {
     return dropped;
   }

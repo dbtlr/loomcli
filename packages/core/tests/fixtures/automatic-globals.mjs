@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 
 const read = new Command('read')
   .argument('path', { required: true })
@@ -19,4 +19,4 @@ const app = new Application('example')
   })
   .command(read);
 
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ process: processHandle({ argv: process.argv.slice(2) }) });

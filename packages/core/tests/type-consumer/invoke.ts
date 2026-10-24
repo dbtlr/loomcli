@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import type {
   FailureExitCode,
   InvocationOutcome,
@@ -58,18 +58,22 @@ const nullish: InvocationValues = { options: { name: null } };
 // @ts-expect-error TS2353: An object is outside the value union.
 const nested: InvocationValues = { args: { path: { deep: 'x' } } };
 
-// The four host fields are whole replacements on `app.invoke`.
-const hosted = app.invoke([], {}, { host: { cwd: '/virtual', env: {}, platform: 'linux' } });
+// `app.invoke` reads its facts from a process handle, each supplied field a whole replacement.
+const hosted = app.invoke(
+  [],
+  {},
+  { process: processHandle({ cwd: '/virtual', env: {}, platform: 'linux' }) },
+);
 
-// @ts-expect-error TS2353: A host field outside the four is rejected.
+// @ts-expect-error TS2353: `app.invoke` takes no host overrides, only a process handle.
 const argv = app.invoke([], {}, { host: { argv: ['get'] } });
 
-// An action runs another Command of its own graph, and its call takes no host.
+// An action runs another Command of its own graph, and its call takes no process handle.
 const caller = new Command('caller').action(async ({ invoke }) => {
   const outcome = await invoke(['get'], { args: { path: 'name' } }, { view: 'json' });
   const failure: LoomError | undefined = outcome.status === 'failed' ? outcome.failure : undefined;
-  // @ts-expect-error TS2353: An action's call reads its run's host fields, so it takes no host.
-  await invoke([], {}, { host: { cwd: '/' } });
+  // @ts-expect-error TS2353: An action's call keeps its run's process handle, so it takes none.
+  await invoke([], {}, { process: processHandle({ cwd: '/' }) });
   return failure;
 });
 

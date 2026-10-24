@@ -1,4 +1,4 @@
-import { Application, Command, plugin } from '@loomcli/core';
+import { Application, Command, plugin, processHandle } from '@loomcli/core';
 
 // The graph and routed node the middleware received in this run, which the action compares against.
 const seen = { command: undefined, graph: undefined };
@@ -48,4 +48,4 @@ const scenarios = {
 };
 
 const [scenario, ...argv] = process.argv.slice(2);
-await scenarios[scenario]().run({ host: { argv } });
+await scenarios[scenario]().run({ process: processHandle({ argv }) });

@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 
 const report =
   (command) =>
@@ -26,5 +26,5 @@ const shared = new Application('empty')
 
 const declarations = { aliased, composed, forked, plain, root, shared };
 await declarations[process.argv[2]].run({
-  host: { argv: process.argv.slice(3) },
+  process: processHandle({ argv: process.argv.slice(3) }),
 });

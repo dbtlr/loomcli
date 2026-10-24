@@ -1,4 +1,4 @@
-import { Application, Command, plugin } from '@loomcli/core';
+import { Application, Command, plugin, processHandle } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 
@@ -66,6 +66,6 @@ if (name === 'inspect') {
   }
 } else {
   process.exitCode = await scenarios[name]().run({
-    host: { argv, release: { build: 'distributed' } },
+    process: processHandle({ argv, release: { build: 'distributed' } }),
   });
 }

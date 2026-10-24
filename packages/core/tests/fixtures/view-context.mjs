@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application, glyph, style } from '@loomcli/core';
+import { Application, glyph, processHandle, style } from '@loomcli/core';
 
 let plain = '';
 let cells = 0;
@@ -23,5 +23,5 @@ const app = new Application('view', {
   await out.print(JSON.stringify({ cells, plain }));
 });
 process.exitCode = await app.run({
-  host: { argv: [], env: { TERM: 'linux' }, platform: 'linux', stderr: sink },
+  process: processHandle({ argv: [], env: { TERM: 'linux' }, platform: 'linux', stderr: sink }),
 });

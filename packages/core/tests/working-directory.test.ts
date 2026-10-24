@@ -13,7 +13,7 @@
  * - Embedding. `jsonkit.invoke(['keys'], …)` from a removed directory resolves `failed` with exit
  *   1, a `WorkingDirectoryError`, the form `{ code: 'working-directory-unreadable', exitCode: 1,
  *   message, hints: [] }`, and the line in `messages`, and never rejects.
- * - Overrides. `run({ host: { cwd } })` and `app.invoke` with `host: { cwd }` from a removed
+ * - Overrides. `run({ process: processHandle({ cwd }) })` and `app.invoke` with `process: processHandle({ cwd })` from a removed
  *   directory complete, and an action's `invoke` in such a run completes with its run's `cwd`.
  * - The class. `WorkingDirectoryError.code` reads `working-directory-unreadable` and
  *   `WorkingDirectoryError.exitCode` reads 1 without an instance.

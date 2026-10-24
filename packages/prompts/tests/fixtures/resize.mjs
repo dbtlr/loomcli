@@ -1,6 +1,6 @@
 import { Readable, Writable } from 'node:stream';
 
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 import { select } from '../../dist/index.js';
 import { questionFrame } from '../../dist/views.js';
@@ -81,7 +81,7 @@ const app = new Application('resize', { description: 'Ask a select across resize
   },
 );
 const code = await app.run({
-  host: {
+  process: processHandle({
     argv: [],
     env: {},
     stderr: sink,
@@ -97,6 +97,6 @@ const code = await app.run({
       stdin: { isTTY: true },
       stdout: { columns: undefined, isTTY: false, rows: undefined },
     },
-  },
+  }),
 });
 process.stdout.write(JSON.stringify({ code, shown }));

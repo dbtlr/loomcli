@@ -38,6 +38,8 @@ export const probe = new Application('probe', { description: 'Probe the installa
  * release override when it is \`override\`.
  */
 const entry = `#!/usr/bin/env node
+import { processHandle } from '@loomcli/core';
+
 import { probe } from './application.js';
 
 const door = process.env.PROBE_DOOR;
@@ -46,7 +48,7 @@ if (door === 'invoke') {
   process.stdout.write(outcome.output);
 } else if (door === 'override') {
   const release = { asset: 'probe-test', channel: 'stable', repository: 'acme/probe', version: '1.0.0' };
-  await probe.run({ host: { release: { build: 'distributed', release } } });
+  await probe.run({ process: processHandle({ release: { build: 'distributed', release } }) });
 } else {
   await probe.run();
 }

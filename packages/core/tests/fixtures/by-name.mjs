@@ -1,6 +1,14 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, FatalError, override, plugin, translate } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  FatalError,
+  override,
+  plugin,
+  processHandle,
+  translate,
+} from '@loomcli/core';
 
 const scenario = process.argv[2];
 const build = process.argv[3] ?? 'distributed';
@@ -106,12 +114,12 @@ if (scenario === 'lowering') {
         args: { files: [], target: 't' },
         options: { flag: false, keep: true, tag: [], verbose: 0 },
       },
-      { host: { release } },
+      { process: processHandle({ release }) },
     ),
     bound: await app.invoke(
       ['echo'],
       { args: { target: 't' }, options: { flag: false } },
-      { host: { env, release } },
+      { process: processHandle({ env, release }) },
     ),
     every: await app.invoke(
       ['echo'],
@@ -129,16 +137,20 @@ if (scenario === 'lowering') {
           versions: true,
         },
       },
-      { host: { release } },
+      { process: processHandle({ release }) },
     ),
-    missing: await app.invoke(['need'], { options: { item: [] } }, { host: { release } }),
+    missing: await app.invoke(
+      ['need'],
+      { options: { item: [] } },
+      { process: processHandle({ release }) },
+    ),
     single: await app.invoke(
       ['echo'],
       {
         args: { files: 'f', target: 7 },
         options: { color: true, name: 5, tag: 'one' },
       },
-      { host: { release } },
+      { process: processHandle({ release }) },
     ),
     unlowerable: await app.invoke(
       ['echo'],
@@ -154,7 +166,7 @@ if (scenario === 'lowering') {
           versions: false,
         },
       },
-      { host: { release } },
+      { process: processHandle({ release }) },
     ),
     unlowerableMore: await app.invoke(
       ['echo'],
@@ -162,7 +174,7 @@ if (scenario === 'lowering') {
         args: { target: ['a'] },
         options: { flag: 'yes', name: {}, ratio: true, verbose: true },
       },
-      { host: { release } },
+      { process: processHandle({ release }) },
     ),
   };
   print(outcomes);
@@ -211,18 +223,32 @@ if (scenario === 'lowering') {
     );
   const env = { PROBE_MIN_BYTES: 'many' };
   print({
-    byName: await app.invoke(['pair'], { args: { second: 'x' } }, { host: { release } }),
-    group: await app.invoke(['cache'], {}, { host: { release } }),
-    hidden: await app.invoke(['cache', 'purge'], {}, { host: { release } }),
+    byName: await app.invoke(
+      ['pair'],
+      { args: { second: 'x' } },
+      { process: processHandle({ release }) },
+    ),
+    group: await app.invoke(['cache'], {}, { process: processHandle({ release }) }),
+    hidden: await app.invoke(['cache', 'purge'], {}, { process: processHandle({ release }) }),
     seen,
-    source: await app.invoke(['get'], {}, { host: { env, release } }),
+    source: await app.invoke(['get'], {}, { process: processHandle({ env, release }) }),
     sourceArgv: await (async () => {
       const stderr = sink();
-      const code = await app.run({ host: { argv: ['get'], env, release, stderr: stderr.stream } });
+      const code = await app.run({
+        process: processHandle({ argv: ['get'], env, release, stderr: stderr.stream }),
+      });
       return { code, stderr: stderr.text() };
     })(),
-    unknownArgument: await app.invoke(['get'], { args: { pth: 'x' } }, { host: { release } }),
-    unknownOption: await app.invoke(['get'], { options: { verbos: true } }, { host: { release } }),
+    unknownArgument: await app.invoke(
+      ['get'],
+      { args: { pth: 'x' } },
+      { process: processHandle({ release }) },
+    ),
+    unknownOption: await app.invoke(
+      ['get'],
+      { options: { verbos: true } },
+      { process: processHandle({ release }) },
+    ),
   });
   process.exitCode = 0;
 } else if (scenario === 'capture') {
@@ -261,8 +287,8 @@ if (scenario === 'lowering') {
       }),
     );
   print({
-    plain: await app.invoke(['plain'], {}, { host: { release } }),
-    report: await app.invoke(['report'], {}, { host: { release } }),
+    plain: await app.invoke(['plain'], {}, { process: processHandle({ release }) }),
+    report: await app.invoke(['report'], {}, { process: processHandle({ release }) }),
   });
 } else if (scenario === 'failures') {
   const broken = process.argv[4] === 'broken-view';
@@ -329,20 +355,30 @@ if (scenario === 'lowering') {
   };
   const thrown = new Error('the handler broke');
   print({
-    defect: await app.invoke(['defect'], {}, { failure: handler, host: { release } }),
-    foreign: await app.invoke(['foreign'], {}, { failure: handler, host: { release } }),
+    defect: await app.invoke(
+      ['defect'],
+      {},
+      { failure: handler, process: processHandle({ release }) },
+    ),
+    foreign: await app.invoke(
+      ['foreign'],
+      {},
+      { failure: handler, process: processHandle({ release }) },
+    ),
     lateFault: await app.invoke(
       ['quiet'],
       { options: { late: true } },
-      { failure: (failure) => failure.rule.identity, host: { release } },
+      { failure: (failure) => failure.rule.identity, process: processHandle({ release }) },
     ),
-    noHandler: await app.invoke(['foreign'], {}, { host: { release } }).then((outcome) => ({
-      ...outcome,
-      failure: {
-        isTranslated: outcome.failure instanceof TranslatedError,
-        message: outcome.failure.message,
-      },
-    })),
+    noHandler: await app
+      .invoke(['foreign'], {}, { process: processHandle({ release }) })
+      .then((outcome) => ({
+        ...outcome,
+        failure: {
+          isTranslated: outcome.failure instanceof TranslatedError,
+          message: outcome.failure.message,
+        },
+      })),
     received,
     rejected: await app
       .invoke(
@@ -352,7 +388,7 @@ if (scenario === 'lowering') {
           failure: () => {
             throw thrown;
           },
-          host: { release },
+          process: processHandle({ release }),
         },
       )
       .then(
@@ -398,11 +434,11 @@ if (scenario === 'lowering') {
     assigned: await app.invoke(
       ['count'],
       { options: { later: true } },
-      { host: { release }, view: 'json' },
+      { process: processHandle({ release }), view: 'json' },
     ),
-    json: await app.invoke(['count'], {}, { host: { release }, view: 'json' }),
-    noResult: await app.invoke(['get'], {}, { host: { release }, view: 'json' }),
-    unknown: await app.invoke(['count'], {}, { host: { release }, view: 'yaml' }),
+    json: await app.invoke(['count'], {}, { process: processHandle({ release }), view: 'json' }),
+    noResult: await app.invoke(['get'], {}, { process: processHandle({ release }), view: 'json' }),
+    unknown: await app.invoke(['count'], {}, { process: processHandle({ release }), view: 'yaml' }),
   });
 }
 
@@ -444,13 +480,13 @@ if (scenario === 'isolation') {
       }),
     );
   const code = await app.run({
-    host: {
+    process: processHandle({
       argv: ['parent'],
       cwd: '/sentinel',
       release,
       stderr: stderr.stream,
       stdout: stdout.stream,
-    },
+    }),
   });
   print({ code, stderr: stderr.text(), stdout: stdout.text() });
   process.exitCode = 0;
@@ -472,7 +508,15 @@ if (scenario === 'isolation') {
     await app.invoke(
       [],
       {},
-      { host: { cwd: '/virtual', env: { ONLY: 'x' }, platform: 'plan9', readSource, release } },
+      {
+        process: processHandle({
+          cwd: '/virtual',
+          env: { ONLY: 'x' },
+          platform: 'plan9',
+          readSource,
+          release,
+        }),
+      },
     ),
   );
 } else if (scenario === 'nesting') {
@@ -496,8 +540,8 @@ if (scenario === 'isolation') {
       }),
     );
   print({
-    both: await app.invoke(['both'], {}, { host: { release } }),
-    inner: await app.invoke(['inner'], {}, { host: { release } }),
+    both: await app.invoke(['both'], {}, { process: processHandle({ release }) }),
+    inner: await app.invoke(['inner'], {}, { process: processHandle({ release }) }),
   });
 } else if (scenario === 'graph') {
   const calls = { attach: 0, built: 0 };
@@ -530,9 +574,9 @@ if (scenario === 'isolation') {
         await out.print(`${calls.attach - before.attach} ${calls.built - before.built}`);
       }),
     );
-  const ran = await app.invoke(['caller'], {}, { host: { release } });
+  const ran = await app.invoke(['caller'], {}, { process: processHandle({ release }) });
   const afterOne = { ...calls };
-  await app.invoke(['leaf'], {}, { host: { release } });
+  await app.invoke(['leaf'], {}, { process: processHandle({ release }) });
   const failing = plugin('@fixture/failing', {
     onCommandAttach: () => {
       throw new Error('the hook broke');
@@ -543,7 +587,7 @@ if (scenario === 'isolation') {
     plugins: [failing],
   })
     .action(() => undefined)
-    .invoke([], {}, { host: { release } });
+    .invoke([], {}, { process: processHandle({ release }) });
   print({
     broken,
     fromAction: ran.output,
@@ -568,8 +612,8 @@ if (scenario === 'isolation') {
     ],
   }).action(({ out }) => out.fatal('Stopped.'));
   const stderr = sink();
-  await app.run({ host: { argv: [], release, stderr: stderr.stream } });
-  const named = await app.invoke([], {}, { host: { release } });
+  await app.run({ process: processHandle({ argv: [], release, stderr: stderr.stream }) });
+  const named = await app.invoke([], {}, { process: processHandle({ release }) });
   print({ argv: stderr.text(), named: named.messages, seen });
   process.exitCode = 0;
 }
@@ -623,14 +667,14 @@ if (scenario === 'sigterm' || scenario === 'own-abort' || scenario === 'pre-abor
       }),
     );
   if (scenario === 'sigterm') {
-    const code = await app.run({ host: { argv: ['parent'], release } });
+    const code = await app.run({ process: processHandle({ argv: ['parent'], release }) });
     print({ code });
   } else if (scenario === 'own-abort') {
     const controller = new AbortController();
     const pending = app.invoke(
       ['slow'],
       {},
-      { failure, host: { release }, signal: controller.signal },
+      { failure, process: processHandle({ release }), signal: controller.signal },
     );
     while (!marks.includes('action')) {
       await new Promise((resolve) => setTimeout(resolve, 1));
@@ -642,7 +686,11 @@ if (scenario === 'sigterm' || scenario === 'own-abort' || scenario === 'pre-abor
     controller.abort();
     print({
       marks,
-      outcome: await app.invoke(['slow'], {}, { host: { release }, signal: controller.signal }),
+      outcome: await app.invoke(
+        ['slow'],
+        {},
+        { process: processHandle({ release }), signal: controller.signal },
+      ),
     });
   }
 }
@@ -673,7 +721,7 @@ if (scenario === 'spellings') {
     await app.invoke(
       [],
       { options: { loud: true, quiet: false, tiny: true } },
-      { host: { release } },
+      { process: processHandle({ release }) },
     ),
   );
 }

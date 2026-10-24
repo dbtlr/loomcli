@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application, readExtension, style } from '@loomcli/core';
+import { Application, processHandle, readExtension, style } from '@loomcli/core';
 import type { RenderingPolicy } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
@@ -42,7 +42,7 @@ async function render(
   ];
   const app = new Application('app', { plugins }).extend(helpCommand({ details })).action(() => {});
   const status = await app.run({
-    host: { argv, env: {}, stderr: errors, stdout: output },
+    process: processHandle({ argv, env: {}, stderr: errors, stdout: output }),
     rendering: { color: themed ? 'always' : 'never', modifiers },
   });
   expect({ status, stderr }).toEqual({ status: 0, stderr: '' });

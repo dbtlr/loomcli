@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { help } from '@loomcli/plugins/help';
 
@@ -33,7 +33,7 @@ const app = new Application('jsonkit', {
 }).command(new Command('ping', { description: 'Answer.' }).action(({ out }) => out.print('pong')));
 
 process.exitCode = await app.run({
-  host: {
+  process: processHandle({
     argv: process.argv.slice(2),
     cwd: scenario.cwd,
     env: scenario.env,
@@ -48,6 +48,6 @@ process.exitCode = await app.run({
             stdout: { columns: scenario.columns, isTTY: true, rows: 24 },
           },
         }),
-  },
+  }),
   signal: controller.signal,
 });

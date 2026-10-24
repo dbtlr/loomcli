@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { Application, extension, plugin } from '../../dist/index.js';
+import { Application, extension, plugin, processHandle } from '../../dist/index.js';
 
 const kind = process.argv[2];
 const binding = extension('@fixture/group-source/key', { schema: z.string(), target: 'option' });
@@ -41,4 +41,6 @@ const argv = ['--config', 'bad', '--second', 'given'];
 if (kind === 'exclusive') {
   argv.push('--third', 'given');
 }
-process.exitCode = await grouped.action(() => {}).run({ host: { argv, env: {} } });
+process.exitCode = await grouped
+  .action(() => {})
+  .run({ process: processHandle({ argv, env: {} }) });

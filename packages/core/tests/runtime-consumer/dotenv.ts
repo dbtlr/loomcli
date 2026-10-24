@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { dotenv } from '@loomcli/plugins/dotenv';
 import type { DotenvSettings } from '@loomcli/plugins/dotenv';
 
@@ -24,6 +24,6 @@ const app = new Application('dotenv', {
     ),
   );
 
-const named = await app.invoke([], {}, { host: { cwd: process.cwd(), env: {} } });
+const named = await app.invoke([], {}, { process: processHandle({ cwd: process.cwd(), env: {} }) });
 process.stdout.write(`${JSON.stringify(named)}\n`);
-await app.run({ host: { argv: [] } });
+await app.run({ process: processHandle({ argv: [] }) });

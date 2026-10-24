@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Writable } from 'node:stream';
 
-import { Application, style } from '@loomcli/core';
+import { Application, processHandle, style } from '@loomcli/core';
 import { table } from '@loomcli/plugins/table';
 
 /*
@@ -114,7 +114,7 @@ async function run(input, view) {
     description: 'Wrap and fit long text at a fixed width.',
   }).action(({ out }) => out.render(input, view));
   const status = await app.run({
-    host: {
+    process: processHandle({
       argv: [],
       env: {},
       platform: 'linux',
@@ -124,7 +124,7 @@ async function run(input, view) {
         stdin: { isTTY: false },
         stdout: { columns, isTTY: true, rows: 24 },
       },
-    },
+    }),
     rendering: { color: 'always', modifiers: 'always' },
   });
   return { output: Buffer.concat(written).toString(), status };

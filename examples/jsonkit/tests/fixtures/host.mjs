@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 
+import { processHandle } from '@loomcli/core';
+
 import { jsonkit } from '../../dist/application.js';
 
 const scenario = process.argv[2];
@@ -32,33 +34,35 @@ async function withDocument(name, run) {
 
 if (scenario === 'cwd') {
   await withDocument('-data.json', (cwd) =>
-    jsonkit.run({ host: { argv: ['get', 'name', '--file', './-data.json'], cwd } }),
+    jsonkit.run({
+      process: processHandle({ argv: ['get', 'name', '--file', './-data.json'], cwd }),
+    }),
   );
 } else if (scenario === 'stdin') {
   await jsonkit.run({
-    host: { argv: ['get', 'name'], stdin: documentStream(), terminal: piped },
+    process: processHandle({ argv: ['get', 'name'], stdin: documentStream(), terminal: piped }),
   });
 } else if (scenario === 'terminal') {
   await jsonkit.run({
-    host: {
+    process: processHandle({
       argv: ['get', 'name'],
       stdin: documentStream(),
       terminal: { ...piped, stdin: { isTTY: true } },
-    },
+    }),
   });
 } else if (scenario === 'terminal-doctor') {
   await jsonkit.run({
-    host: { argv: ['doctor'], terminal: { ...piped, stdin: { isTTY: true } } },
+    process: processHandle({ argv: ['doctor'], terminal: { ...piped, stdin: { isTTY: true } } }),
   });
 } else if (scenario === 'terminal-file') {
   await withDocument('data.json', (cwd) =>
     jsonkit.run({
-      host: {
+      process: processHandle({
         argv: ['get', 'name', '--file', 'data.json'],
         cwd,
         stdin: documentStream(),
         terminal: { ...piped, stdin: { isTTY: true } },
-      },
+      }),
     }),
   );
 } else if (scenario === 'unreadable') {
@@ -67,7 +71,7 @@ if (scenario === 'cwd') {
       this.destroy(new Error('The connection failed.'));
     },
   });
-  await jsonkit.run({ host: { argv: ['get', 'name'], stdin, terminal: piped } });
+  await jsonkit.run({ process: processHandle({ argv: ['get', 'name'], stdin, terminal: piped }) });
 } else if (scenario === 'closed-early') {
   // A connection destroyed without an error emits "close" and never "end".
   let sent = false;
@@ -81,7 +85,7 @@ if (scenario === 'cwd') {
       this.push(contents);
     },
   });
-  await jsonkit.run({ host: { argv: ['get', 'name'], stdin, terminal: piped } });
+  await jsonkit.run({ process: processHandle({ argv: ['get', 'name'], stdin, terminal: piped }) });
 } else if (scenario === 'file-only') {
   let reads = 0;
   const stdin = new Readable({
@@ -92,7 +96,12 @@ if (scenario === 'cwd') {
   });
   await withDocument('data.json', (cwd) =>
     jsonkit.run({
-      host: { argv: ['get', 'name', '--file', 'data.json'], cwd, stdin, terminal: piped },
+      process: processHandle({
+        argv: ['get', 'name', '--file', 'data.json'],
+        cwd,
+        stdin,
+        terminal: piped,
+      }),
     }),
   );
   process.stdout.write(`${reads}\treads\n`);

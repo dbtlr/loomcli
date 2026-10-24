@@ -1,6 +1,7 @@
+import { isAbsolute, relative } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 const scenario = process.argv[2];
 if (scenario === 'capture') {
@@ -70,9 +71,9 @@ if (scenario === 'capture') {
     out.print('fail');
   });
   const code = await app.run({
-    get host() {
+    get process() {
       hostReads++;
-      return overrides;
+      return processHandle(overrides);
     },
   });
   process.stdout.write(
@@ -104,6 +105,8 @@ if (scenario === 'capture') {
   const app = new Application('host')
     .argument('values', { required: true, variadic: true })
     .action(({ args, host, out }) => {
+      // A relative cwd resolves against the process's working directory.
+      const cwd = isAbsolute(host.cwd) ? relative(process.cwd(), host.cwd) : null;
       argv.push('mutation');
       env.ONLY = 'mutation';
       terminal.stdout.columns = 1;
@@ -111,7 +114,7 @@ if (scenario === 'capture') {
         JSON.stringify({
           args,
           argv: host.argv,
-          cwd: host.cwd,
+          cwd,
           env: host.env,
           reads,
           sameInput: stdin === host.stdin,
@@ -120,13 +123,13 @@ if (scenario === 'capture') {
       );
     });
   await app.run({
-    host: {
+    process: processHandle({
       argv,
       cwd: 'virtual-workspace',
       env,
       stdin,
       terminal,
-    },
+    }),
   });
 } else if (scenario === 'terminal-getter') {
   let columns = 100;
@@ -151,7 +154,7 @@ if (scenario === 'capture') {
       stdout.rows = 10;
       out.print(reading());
     })
-    .run({ host: { argv: [], env: {}, terminal } });
+    .run({ process: processHandle({ argv: [], env: {}, terminal }) });
 } else if (scenario === 'build-output') {
   const chunks = [];
   const stderr = new Writable({
@@ -161,20 +164,22 @@ if (scenario === 'capture') {
     },
   });
   const app = new Application('bad');
-  const code = await app.run({ host: { release: { build: 'distributed' }, stderr } });
+  const code = await app.run({
+    process: processHandle({ release: { build: 'distributed' }, stderr }),
+  });
   process.stdout.write(`${JSON.stringify({ chunks, code })}\n`);
 } else if (scenario === 'reuse') {
   const app = new Application('reuse')
     .argument('values', { required: true, variadic: true })
     .action(({ args, out }) => out.print(args.values.join(',')));
-  await app.run({ host: { argv: ['one'] } });
-  await app.run({ host: { argv: ['two'] } });
+  await app.run({ process: processHandle({ argv: ['one'] }) });
+  await app.run({ process: processHandle({ argv: ['two'] }) });
 } else if (scenario === 'time-zone') {
   const app = new Application('zone').action(({ host, out }) => out.print(host.timeZone));
-  await app.run({ host: { argv: [] } });
+  await app.run({ process: processHandle({ argv: [] }) });
 } else if (scenario === 'time-zone-override') {
   const app = new Application('zone').action(({ host, out }) => out.print(host.timeZone));
   await app.run({
-    host: { argv: [], timeZone: 'Pacific/Auckland' },
+    process: processHandle({ argv: [], timeZone: 'Pacific/Auckland' }),
   });
 }

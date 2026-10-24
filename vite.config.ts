@@ -74,6 +74,71 @@ export default defineConfig({
         },
       },
       {
+        files: [
+          'packages/core/src/**',
+          'packages/loom/src/**',
+          'packages/plugins/src/**',
+          'packages/prompts/src/**',
+          'packages/validators/src/**',
+        ],
+        // A run reads every process fact and makes every process effect through its process handle
+        // (ADR-0107), so the code that runs inside a run never reaches the process around the handle.
+        rules: {
+          'eslint/no-restricted-globals': [
+            'error',
+            {
+              message: 'Read the host of the run, or its process handle, instead (ADR-0107).',
+              name: 'process',
+            },
+          ],
+          'eslint/no-restricted-imports': [
+            'error',
+            {
+              paths: [
+                {
+                  message: 'Read the host of the run, or its process handle, instead (ADR-0107).',
+                  name: 'node:process',
+                },
+                {
+                  message: 'Read the host of the run, or its process handle, instead (ADR-0107).',
+                  name: 'process',
+                },
+              ],
+            },
+          ],
+          'eslint/no-restricted-properties': [
+            'error',
+            {
+              message: 'Read the host of the run, or its process handle, instead (ADR-0107).',
+              object: 'globalThis',
+              property: 'process',
+            },
+            {
+              message: 'Read the host of the run, or its process handle, instead (ADR-0107).',
+              object: 'global',
+              property: 'process',
+            },
+          ],
+        },
+      },
+      {
+        files: [
+          // Core's one module that builds the real process's handle.
+          'packages/core/src/process-handle.ts',
+          // The YAML library reads its debug variables from the global, so the guard must touch it.
+          'packages/plugins/src/config/yaml.ts',
+          // The toolchain's application reader is its own child program.
+          'packages/loom/src/read-application.ts',
+          // The toolchain's Bun signal forwarding, until it moves onto onShutdown.
+          'packages/loom/src/helpers/bun.ts',
+        ],
+        rules: {
+          'eslint/no-restricted-globals': 'off',
+          'eslint/no-restricted-imports': 'off',
+          'eslint/no-restricted-properties': 'off',
+        },
+      },
+      {
         files: ['packages/prompts/src/**'],
         rules: {
           // Keep reader and question state transitions together; numeric values are terminal protocol offsets and viewport rows.

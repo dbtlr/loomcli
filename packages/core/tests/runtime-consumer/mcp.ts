@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import type { Plugin } from '@loomcli/core';
 import { mcp } from '@loomcli/plugins/mcp';
 import { mcpArgument, mcpCommand } from '@loomcli/plugins/mcp/extension';
@@ -21,4 +21,4 @@ const app = new Application('packed-mcp', { plugins: [installed], version: '1.0.
   greet,
 );
 
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ process: processHandle({ argv: process.argv.slice(2) }) });

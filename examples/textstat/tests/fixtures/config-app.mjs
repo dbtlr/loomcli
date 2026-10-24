@@ -1,4 +1,4 @@
-import { Application, InputError, override } from '@loomcli/core';
+import { Application, InputError, override, processHandle } from '@loomcli/core';
 import { config } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { integer } from '@loomcli/validators';
@@ -47,7 +47,7 @@ try {
       type: 'string',
     })
     .action(({ options, out }) => out.print(JSON.stringify(options)));
-  await app.run({ host: { argv, cwd } });
+  await app.run({ process: processHandle({ argv, cwd }) });
 } catch (error) {
   process.stdout.write(`${error.name}: ${error.rule?.identity ?? error.message}\n`);
 }

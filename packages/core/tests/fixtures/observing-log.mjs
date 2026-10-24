@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, plugin } from '@loomcli/core';
+import { Application, Command, plugin, processHandle } from '@loomcli/core';
 
 import { declare } from './declare.mjs';
 
@@ -155,14 +155,14 @@ const app = declare(build);
 const release =
   process.env.FIXTURE_BUILD === undefined ? {} : { release: { build: process.env.FIXTURE_BUILD } };
 const code = await app.run({
-  host: {
+  process: processHandle({
     argv,
     env: { PROBE: 'run' },
     platform: 'probe-os',
     stderr,
     ...(scenario === 'stdout-and-hook-broken' ? { stdout: fullDisk() } : {}),
     ...release,
-  },
+  }),
   signal: controller.signal,
 });
 if (scenario === 'app-invoke') {
@@ -170,7 +170,7 @@ if (scenario === 'app-invoke') {
   const outcome = await app.invoke(
     ['inner'],
     {},
-    { host: { env: { PROBE: 'invoked' }, platform: 'named-os' } },
+    { process: processHandle({ env: { PROBE: 'invoked' }, platform: 'named-os' }) },
   );
   printed.push({ messages: outcome.messages, output: outcome.output });
 }

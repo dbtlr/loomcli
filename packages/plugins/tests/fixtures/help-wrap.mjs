@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { loomTheme } from '@loomcli/plugins/theme';
@@ -61,7 +61,7 @@ const app = declare(
 );
 const width = input.columns;
 await app.run({
-  host: {
+  process: processHandle({
     argv: input.argv ?? ['--help'],
     env: input.env ?? {},
     platform: 'linux',
@@ -70,6 +70,6 @@ await app.run({
       stdin: { isTTY: false },
       stdout: { columns: width ?? undefined, isTTY: width !== null, rows: 24 },
     },
-  },
+  }),
   rendering: input.rendering ?? { color: 'never', hyperlinks: 'never', modifiers: 'never' },
 });

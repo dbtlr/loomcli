@@ -38,7 +38,7 @@ if (scenario.ceiling !== undefined) {
   syncBuiltinESMExports();
 }
 
-const { Application, Command } = await import('@loomcli/core');
+const { Application, Command, processHandle } = await import('@loomcli/core');
 const { help } = await import('@loomcli/plugins/help');
 const { skills } = await import('@loomcli/plugins/skills');
 
@@ -71,7 +71,7 @@ const app = new Application('notes', {
 }).command(new Command('ping', { description: 'Answer.' }).action(({ out }) => out.print('pong')));
 
 process.exitCode = await app.run({
-  host: {
+  process: processHandle({
     argv,
     cwd: scenario.cwd,
     env: scenario.env,
@@ -87,5 +87,5 @@ process.exitCode = await app.run({
             stdout: { columns: scenario.columns, isTTY: true, rows: 24 },
           },
         }),
-  },
+  }),
 });

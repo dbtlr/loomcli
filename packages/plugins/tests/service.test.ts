@@ -5,7 +5,7 @@
  * sets `HOME`, `XDG_CONFIG_HOME`, and `XDG_STATE_HOME` to temporary directories, puts fake
  * `systemctl`, `loginctl`, and `launchctl` programs first on `PATH` that answer from a scenario
  * file and record each call, and runs an application that installs `service()` through
- * `run({ host: { platform, program, release } })`, so both backends run on either CI platform:
+ * `run({ process: processHandle({ platform, program, release }) })`, so both backends run on either CI platform:
  *
  * - Installing. A distributed run on `linux` writes the pinned unit, records it in `service.json`,
  *   and calls `daemon-reload`, `enable`, and `restart` in that order; a second install calls no

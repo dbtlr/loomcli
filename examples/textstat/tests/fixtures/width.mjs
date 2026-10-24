@@ -1,3 +1,5 @@
+import { processHandle } from '@loomcli/core';
+
 import { textstat } from '../../dist/application.js';
 
 /**
@@ -7,7 +9,7 @@ import { textstat } from '../../dist/application.js';
 const [width, ...argv] = process.argv.slice(2);
 
 await textstat.run({
-  host: {
+  process: processHandle({
     argv,
     env: {},
     terminal: {
@@ -15,6 +17,6 @@ await textstat.run({
       stdin: { isTTY: false },
       stdout: { columns: Number(width), isTTY: true, rows: 24 },
     },
-  },
+  }),
   rendering: { color: 'never', hyperlinks: 'never', modifiers: 'never' },
 });

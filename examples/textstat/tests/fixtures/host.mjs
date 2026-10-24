@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 
+import { processHandle } from '@loomcli/core';
+
 import { textstat } from '../../dist/application.js';
 
 const [scenario, metric = 'words'] = process.argv.slice(2);
@@ -27,35 +29,36 @@ if (scenario === 'cwd') {
   const directory = mkdtempSync(join(tmpdir(), 'loom-host-'));
   try {
     writeFileSync(join(directory, '-notes.txt'), 'three');
-    await textstat.run({ host: { argv: ['./-notes.txt'], cwd: directory } });
+    await textstat.run({ process: processHandle({ argv: ['./-notes.txt'], cwd: directory }) });
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
 } else if (scenario === 'words-across-chunks') {
   await textstat.run({
-    host: {
+    process: processHandle({
       argv: ['--metric', 'words'],
       stdin: chunkStream(['hel', 'lo world']),
       terminal: piped,
-    },
+    }),
   });
 } else if (scenario === 'character-across-chunks') {
   // The split falls inside the two bytes of "ï", so a decoder that forgets it would count twice.
   const text = Buffer.from('naïve café');
+  const stdin = chunkStream([text.subarray(0, 3), text.subarray(3)]);
   await textstat.run({
-    host: {
+    process: processHandle({
       argv: ['--metric', metric],
-      stdin: chunkStream([text.subarray(0, 3), text.subarray(3)]),
+      stdin,
       terminal: piped,
-    },
+    }),
   });
 } else if (scenario === 'terminal' || scenario === 'terminal-hyphen') {
   await textstat.run({
-    host: {
+    process: processHandle({
       argv: scenario === 'terminal-hyphen' ? ['-'] : [],
       stdin: chunkStream([]),
       terminal: { ...piped, stdin: { isTTY: true } },
-    },
+    }),
   });
 } else if (scenario === 'long-token') {
   // One unbroken token across many chunks, so a counter that keeps the open word grows with it.
@@ -67,7 +70,9 @@ if (scenario === 'cwd') {
       this.push(remaining >= 0 ? chunk : null);
     },
   });
-  await textstat.run({ host: { argv: ['--metric', 'words'], stdin, terminal: piped } });
+  await textstat.run({
+    process: processHandle({ argv: ['--metric', 'words'], stdin, terminal: piped }),
+  });
 } else if (scenario === 'closed-early') {
   // A connection destroyed without an error emits "close" and never "end".
   let sent = false;
@@ -81,14 +86,16 @@ if (scenario === 'cwd') {
       this.push('one two');
     },
   });
-  await textstat.run({ host: { argv: ['--metric', 'words'], stdin, terminal: piped } });
+  await textstat.run({
+    process: processHandle({ argv: ['--metric', 'words'], stdin, terminal: piped }),
+  });
 } else if (scenario === 'unreadable') {
   const stdin = new Readable({
     read() {
       this.destroy(new Error('The connection failed.'));
     },
   });
-  await textstat.run({ host: { argv: [], stdin, terminal: piped } });
+  await textstat.run({ process: processHandle({ argv: [], stdin, terminal: piped }) });
 } else if (scenario === 'terminal-files') {
   let reads = 0;
   const stdin = new Readable({
@@ -101,12 +108,12 @@ if (scenario === 'cwd') {
   try {
     writeFileSync(join(directory, 'notes.txt'), 'three');
     await textstat.run({
-      host: {
+      process: processHandle({
         argv: ['notes.txt'],
         cwd: directory,
         stdin,
         terminal: { ...piped, stdin: { isTTY: true } },
-      },
+      }),
     });
   } finally {
     rmSync(directory, { force: true, recursive: true });

@@ -1,6 +1,6 @@
 import { chmodSync } from 'node:fs';
 
-import { Application, Command, FatalError } from '@loomcli/core';
+import { Application, Command, FatalError, processHandle } from '@loomcli/core';
 import { logging } from '@loomcli/plugins/logging';
 
 const [scenario, ...argv] = process.argv.slice(2);
@@ -107,8 +107,10 @@ const app = new Application('heimdall', {
 
 if (scenario === 'invoke') {
   // An invocation by name writes to no process stream. Its host may replace the captured env and platform.
-  const outcome = await app.invoke(argv, {}, { host: host() });
+  const outcome = await app.invoke(argv, {}, { process: processHandle(host()) });
   process.stdout.write(`invoked:${outcome.status}\n`);
 } else {
-  process.exitCode = await app.run({ host: { argv: [scenario, ...argv], ...host() } });
+  process.exitCode = await app.run({
+    process: processHandle({ argv: [scenario, ...argv], ...host() }),
+  });
 }

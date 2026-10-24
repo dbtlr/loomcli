@@ -1,4 +1,4 @@
-import { Application, style } from '@loomcli/core';
+import { Application, processHandle, style } from '@loomcli/core';
 import type { Ansi16Color, Ansi256Fallbacks, ColorFallbacks } from '@loomcli/core';
 import { loomTheme, theme } from '@loomcli/plugins/theme';
 import type { LoomThemeOverrides } from '@loomcli/plugins/theme';
@@ -33,13 +33,13 @@ const app = new Application('palette', { plugins: [named] }).action(({ out, styl
 );
 for (const env of [{}, { TERM: 'xterm-256color' }, { COLORTERM: 'truecolor' }]) {
   await app.run({
-    host: { argv: [], env },
+    process: processHandle({ argv: [], env }),
     rendering: { color: 'always', modifiers: 'always' },
   });
 }
 await new Application('bare', { plugins: [bare] })
   .action(({ out, style: contextual }) => out.print(contextual.success('bare')))
   .run({
-    host: { argv: [], env: {} },
+    process: processHandle({ argv: [], env: {} }),
     rendering: { color: 'always' },
   });

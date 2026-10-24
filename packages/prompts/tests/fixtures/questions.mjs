@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 import { confirm, text } from '../../dist/index.js';
 
@@ -46,5 +46,5 @@ if (scenario.startsWith('named-')) {
   });
   process.stdout.write(JSON.stringify(outcome));
 } else {
-  process.exitCode = await app.run({ host: { argv: process.argv.slice(3) } });
+  process.exitCode = await app.run({ process: processHandle({ argv: process.argv.slice(3) }) });
 }

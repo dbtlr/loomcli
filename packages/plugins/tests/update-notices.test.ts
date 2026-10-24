@@ -4,7 +4,7 @@
  * Update notices are proven when process tests under Node and Bun produce these results. Each
  * fixture sets `HOME` and `XDG_CACHE_HOME` to temporary directories and runs an application that
  * installs `selfUpdate()` and declares a Command that prints one line through `out.success`,
- * through `run({ host: { release, terminal, program } })`, whose release group holds an asset and
+ * through `run({ process: processHandle({ release, terminal, program }) })`, whose release group holds an asset and
  * an installation with the method `script`, whose stdout and stderr terminals report `isTTY: true`
  * and 80 columns, with an `env` that holds no `COLUMNS`, and whose `program` starts the same
  * fixture with its scenario, so the child reads the same release facts and the fake GitHub of

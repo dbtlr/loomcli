@@ -1,7 +1,7 @@
 /*
  * Acceptance plan for the list, heading, rule, prose, and box views (docs/plugins/pack-views.md#list).
  *
- * Each case runs under Node and Bun, at a fixed width through a host override of plain numbers and
+ * Each case runs under Node and Bun, at a fixed width through a handle's terminal of plain numbers and
  * with `columns` undefined, and checks exact bytes. The acceptance tests cover:
  *
  * - Each factory twice. Each view as the second argument of `out.render`, and the list and the text

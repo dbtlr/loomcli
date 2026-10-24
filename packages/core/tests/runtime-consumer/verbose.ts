@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import type { Plugin } from '@loomcli/core';
 import { verbose } from '@loomcli/plugins/verbose';
 import type { VerboseOptions } from '@loomcli/plugins/verbose';
@@ -13,5 +13,5 @@ const app = new Application('packed-verbose', { plugins: [installed] }).action(a
 });
 
 await app.run({
-  host: { argv: process.argv.slice(2), env: {} },
+  process: processHandle({ argv: process.argv.slice(2), env: {} }),
 });

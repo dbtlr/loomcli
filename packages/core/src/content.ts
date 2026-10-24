@@ -1,12 +1,13 @@
-import { constants, createReadStream, fstatSync, open } from 'node:fs';
+import { constants, createReadStream, open } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
-import { isAbsolute, join, sep } from 'node:path';
+import { isAbsolute, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
+import { aliasesProcessStdin } from './process-handle.js';
 import type { Host } from './types.js';
 
 /** A prepared source whose contents are read only when the action asks for them. */
@@ -77,55 +78,24 @@ function openFile(path: string): Promise<number> {
   });
 }
 
-function sameSource(left: BigIntStats, right: BigIntStats): boolean {
-  return left.dev === right.dev && left.ino === right.ino;
-}
-
-/** Darwin's fd-path stat can report a pipe inode differently from descriptor stat. */
-async function aliasesDarwinStdin(source: BigIntStats): Promise<boolean> {
-  if (process.platform !== 'darwin') {
-    return false;
-  }
-  try {
-    return sameSource(source, await stat('/dev/fd/0', { bigint: true }));
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      'code' in error &&
-      typeof error.code === 'string' &&
-      (error.code === 'EBADF' || verdicts.has(error.code))
-    ) {
-      return false;
-    }
-    throw error;
-  }
-}
-
-/** Named calls cannot reopen the process stream through a filesystem alias. */
-async function aliasesProcessStdin(source: BigIntStats): Promise<boolean> {
-  try {
-    return sameSource(source, fstatSync(0, { bigint: true })) || (await aliasesDarwinStdin(source));
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'EBADF') {
-      return false;
-    }
-    throw error;
-  }
-}
-
-async function acceptsSource(source: BigIntStats, named: boolean): Promise<boolean> {
+/**
+ * Whether a source may be read: a file, or a pipe or a device that is not, in a named call, the
+ * process's own stdin reached through a filesystem alias. A path reaches the real file system,
+ * so the check applies whatever the run's process handle.
+ */
+async function acceptsSource(source: BigIntStats, scope: ContentScope): Promise<boolean> {
   return (
     source.isFile() ||
     ((source.isFIFO() || source.isCharacterDevice() || source.isBlockDevice()) &&
-      (!named || !(await aliasesProcessStdin(source))))
+      !(scope.named && (await aliasesProcessStdin(source))))
   );
 }
 
 /** Metadata and access checks do not open a FIFO or consume an input stream. */
-async function readableSource(path: string, named: boolean): Promise<boolean> {
+async function readableSource(path: string, scope: ContentScope): Promise<boolean> {
   try {
     const info = await stat(path, { bigint: true });
-    if (!(await acceptsSource(info, named))) {
+    if (!(await acceptsSource(info, scope))) {
       return false;
     }
     await access(path, constants.R_OK);
@@ -144,14 +114,14 @@ async function readableSource(path: string, named: boolean): Promise<boolean> {
 }
 
 /**
- * The operand as an absolute path under the running process's path rules, joined to the cwd
- * without normalizing, so its dot segments and trailing separators reach filesystem resolution.
+ * The operand as a path under the run's working directory, joined to it without normalizing, so
+ * its dot segments and trailing separators reach filesystem resolution.
  */
 function absoluteSource(name: string, host: Host): string {
   if (isAbsolute(name)) {
     return name;
   }
-  const cwd = isAbsolute(host.cwd) ? host.cwd : join(process.cwd(), host.cwd);
+  const { cwd } = host;
   return `${cwd}${cwd.endsWith(sep) ? '' : sep}${name}`;
 }
 
@@ -164,14 +134,14 @@ async function* fileChunks(path: string): AsyncGenerator {
 /** A successful probe leaves opening the file to the action's first read. */
 async function fileContent(
   name: string,
-  { host, named }: ContentScope,
+  scope: ContentScope,
 ): Promise<StandardSchemaV1.Result<Content>> {
   const issues = [{ message: 'Expected a readable file that exists.' }];
   if (name.length === 0 || name.includes('\0')) {
     return { issues };
   }
-  const path = absoluteSource(name, host);
-  if (!(await readableSource(path, named))) {
+  const path = absoluteSource(name, scope.host);
+  if (!(await readableSource(path, scope))) {
     return { issues };
   }
   const stream = () => Readable.from(fileChunks(path), { objectMode: false });

@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { selfUpdate } from '@loomcli/plugins/self-update';
 import { refreshSkills, skills } from '@loomcli/plugins/skills';
 import type { RefreshContext, Skill, SkillFile, SkillsSettings } from '@loomcli/plugins/skills';
@@ -17,9 +17,9 @@ const app = new Application('packed-skills', {
 });
 
 process.exitCode = await app.run({
-  host: {
+  process: processHandle({
     argv: ['skills', 'install'],
     env: { HOME: 'relative' },
     platform: 'linux',
-  },
+  }),
 });

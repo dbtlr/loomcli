@@ -1,4 +1,4 @@
-import { Application, DeclarationError } from '@loomcli/core';
+import { Application, DeclarationError, processHandle } from '@loomcli/core';
 
 import { declare } from './declare.mjs';
 import { ruleText } from './rule-text.mjs';
@@ -26,6 +26,6 @@ if (mode === 'inspect') {
     process.stdout.write(`${kind}:${error.exitCode}: ${ruleText(error)}\n`);
   }
 } else {
-  const code = await app.run({ host: { argv: [] } });
+  const code = await app.run({ process: processHandle({ argv: [] }) });
   process.stdout.write(`resolved:${code}\n`);
 }

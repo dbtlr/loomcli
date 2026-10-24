@@ -1,6 +1,6 @@
 import { Readable, Writable } from 'node:stream';
 
-import { Application, FatalError } from '@loomcli/core';
+import { Application, FatalError, processHandle } from '@loomcli/core';
 
 import { confirm, secret, select, text } from '../../dist/index.js';
 import { questionFrame } from '../../dist/views.js';
@@ -172,7 +172,7 @@ const app = new Application('live', { description: 'Ask on a recorded terminal.'
   scenarios[scenario],
 );
 const code = await app.run({
-  host: {
+  process: processHandle({
     argv: [],
     env: {},
     stderr,
@@ -188,7 +188,7 @@ const code = await app.run({
       stdin: { isTTY: true },
       stdout: { columns: undefined, isTTY: false, rows: undefined },
     },
-  },
+  }),
 });
 notes.dataListeners = keyboard.listenerCount('data');
 process.stdout.write(JSON.stringify({ answers, code, events, notes }));

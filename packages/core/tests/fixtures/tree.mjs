@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 
 const dispatch = ({ out }) => out.print('dispatched');
 const leaf = (name) => new Command(name).action(dispatch);
@@ -36,27 +36,27 @@ first.inspect();
 first.inspect();
 codes.push(
   await first.run({
-    host: { argv: ['cache', 'clear'], stderr, stdout },
+    process: processHandle({ argv: ['cache', 'clear'], stderr, stdout }),
   }),
 );
 codes.push(
   await first.run({
-    host: { argv: ['cache', 'clear'], stderr, stdout },
+    process: processHandle({ argv: ['cache', 'clear'], stderr, stdout }),
   }),
 );
 codes.push(
   await second.run({
-    host: { argv: ['cache', 'clear'], stderr, stdout },
+    process: processHandle({ argv: ['cache', 'clear'], stderr, stdout }),
   }),
 );
 codes.push(
   await second.run({
-    host: { argv: ['store', 'clear'], stderr, stdout },
+    process: processHandle({ argv: ['store', 'clear'], stderr, stdout }),
   }),
 );
 codes.push(
   await second.run({
-    host: { argv: ['extra', 'clear'], stderr, stdout },
+    process: processHandle({ argv: ['extra', 'clear'], stderr, stdout }),
   }),
 );
 second.inspect();

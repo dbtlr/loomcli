@@ -1,4 +1,4 @@
-import { Application, Command, plugin } from '@loomcli/core';
+import { Application, Command, plugin, processHandle } from '@loomcli/core';
 import { format, json } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { version } from '@loomcli/plugins/version';
@@ -89,6 +89,6 @@ if (name === 'inspect') {
   process.stdout.write(`${JSON.stringify(scenarios[scenario]().inspect())}\n`);
 } else {
   process.exitCode = await scenarios[name]().run({
-    host: { argv },
+    process: processHandle({ argv }),
   });
 }

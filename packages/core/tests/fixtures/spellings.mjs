@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { z } from 'zod';
 
 // One name and one alias, three value shapes. The globals put -f beside every local -F.
@@ -33,4 +33,4 @@ const app = new Application('spellings')
   .command(cache)
   .action(report('root'));
 
-await app.run({ host: { argv: process.argv.slice(3) } });
+await app.run({ process: processHandle({ argv: process.argv.slice(3) }) });

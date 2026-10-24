@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { records } from '@loomcli/plugins/records';
 import { table } from '@loomcli/plugins/table';
 
@@ -44,6 +44,6 @@ await new Application('pty-table', { description: 'Render a table either side of
     await out.print('@@DONE@@');
   })
   .run({
-    host: { argv: [] },
+    process: processHandle({ argv: [] }),
     rendering: { color: 'never', modifiers: 'never' },
   });

@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 
-import { Application, plugin } from '@loomcli/core';
+import { Application, plugin, processHandle } from '@loomcli/core';
 import { config } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { loomTheme } from '@loomcli/plugins/theme';
@@ -108,5 +108,7 @@ const app = new Application('setup', {
     });
     process.stdout.write(`ANSWER:${JSON.stringify(answer)}\n`);
   });
-const code = await app.run({ host: { argv: JSON.parse(process.env.PROMPT_ARGV ?? '[]') } });
+const code = await app.run({
+  process: processHandle({ argv: JSON.parse(process.env.PROMPT_ARGV ?? '[]') }),
+});
 process.stdout.write(`EXIT:${code} cooked:${!process.stdin.isRaw}\n`);

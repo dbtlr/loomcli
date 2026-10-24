@@ -69,8 +69,8 @@ import type { GlobalsState, GlobalTable } from './globals.js';
 import { judgeGraph, judgesGraph } from './graph-hooks.js';
 import { destinationDefect, destinationReport, reportFailure } from './hints.js';
 import type { BuildReports, BuiltRun, FailureScene } from './hints.js';
-import { captureHost, settleTerminal, statedBackground } from './host.js';
-import type { HostCapture, ReportHost } from './host.js';
+import { captureHost, handleFacts, settleTerminal, statedBackground } from './host.js';
+import type { HandleFacts, HostCapture, ReportHost } from './host.js';
 import { inspectGraph } from './inspect.js';
 import type { CommandGraph } from './inspect.js';
 import {
@@ -79,10 +79,9 @@ import {
   guardedObserver,
   invocationHost,
   mappedFailure,
-  processFields,
   readCall,
 } from './invoke.js';
-import type { CapturedFields, InvocationFields, InvokeCall } from './invoke.js';
+import type { InvokeCall } from './invoke.js';
 import { coreViews } from './lanes.js';
 import { RunLog } from './log.js';
 import type { LogDestination } from './log.js';
@@ -94,6 +93,7 @@ import { parseInvocation } from './parse.js';
 import { installPlugins, ownedSignals, pluginViews } from './plugin.js';
 import type { BuiltPlugin, InstalledOptionValues, Plugin } from './plugin.js';
 import { prepareEnvironment } from './prepare-environment.js';
+import { processHandle } from './process-handle.js';
 import { bakedFacts, isDevelopment } from './release.js';
 import { capabilities, plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
@@ -129,6 +129,7 @@ import type {
   ResultViews,
   ResultViewsOf,
   RowViews,
+  ProcessHandle,
   RunOptions,
   ValidateOmittedConstraint,
   ArgumentKeyConstraint,
@@ -697,7 +698,8 @@ class ApplicationBuilder<
     path: readonly string[],
     values: InvocationValues,
     options?: InvokeOptions<Mapped> & {
-      readonly host?: Partial<Pick<Host, 'env' | 'cwd' | 'platform' | 'readSource' | 'release'>>;
+      /** The process the call reads its facts from: `processHandle()` when omitted. */
+      readonly process?: ProcessHandle;
     },
   ): Promise<InvocationOutcome<Mapped>> {
     return this.#invoke({ options, path, values }, undefined);
@@ -712,21 +714,21 @@ class ApplicationBuilder<
     call: {
       path: readonly string[];
       values: InvocationValues;
-      options: (InvokeOptions<Mapped> & { readonly host?: Partial<InvocationFields> }) | undefined;
+      options: (InvokeOptions<Mapped> & { readonly process?: ProcessHandle }) | undefined;
     },
     action: ActionCall | undefined,
   ): Promise<InvocationOutcome<Mapped>> {
     const read = readCall(call);
     const sinks = { stderr: captureSink(), stdout: captureSink() };
     const streams = { stderr: sinks.stderr.stream, stdout: sinks.stdout.stream };
-    // An action's call reads no host, because its five fields are its run's.
-    const overrides = call.options?.host ?? {};
     const progress = guardedObserver(read.onProgress);
     const end = await this.#execute(
       nameDoor(read, {
         action,
         declared: this.#config.rendering,
-        fields: () => action?.fields ?? processFields(this.#name, overrides),
+        // An action's call reads no handle, because its facts are its run's.
+        fields: () =>
+          action?.fields ?? handleFacts(this.#name, call.options?.process ?? processHandle()),
         observe: progress.observe,
         streams,
       }),
@@ -766,7 +768,7 @@ class ApplicationBuilder<
     };
     const spellings = this.#markedSpellings.color;
     const backgroundSpellings = this.#markedSpellings.background;
-    let stderr: Writable = door.stderr;
+    const { stderr } = door;
     let output: Output | undefined = undefined;
     let code: 0 | FailureExitCode = 0;
     let reportingFailed = false;
@@ -877,7 +879,6 @@ class ApplicationBuilder<
     try {
       try {
         const entered = door.enter();
-        stderr = entered.stderr ?? stderr;
         const capture = entered.host(stderr);
         useReportHost(capture.report);
         if ('failure' in capture) {
@@ -913,6 +914,7 @@ class ApplicationBuilder<
         this.stage(stage);
         // The run's background settles once, before graph build, so the first themed byte knows it.
         const settled = await entered.background({
+          cancel: () => signals?.cancel(),
           choice: backgroundSpellings && backgroundChoice(host.argv, backgroundSpellings),
           detects: backgroundSpellings !== undefined || themeAdapts(theme),
           host,
@@ -1184,16 +1186,14 @@ interface ActionCall {
   bound: BoundGraph;
   /** Where the run's log events are delivered, which its nested runs deliver to as well. */
   destination: LogDestination;
-  fields: CapturedFields;
+  fields: HandleFacts;
   parent: ParentRun;
 }
 
 /** What one run reads at its entry, before the graph is built. */
 interface RunEntry {
-  /** Only argv with process cwd and env may publish environment additions to the process. */
-  publishEnvironment: boolean;
-  /** The stderr the caller's host names, if it names one. */
-  stderr: Writable | undefined;
+  /** Where an argv run copies its environment additions out: its handle's `publishEnv`, if any. */
+  publishEnvironment: ((name: string, value: string) => void) | undefined;
   /**
    * The run's host, captured around the stderr the run writes to, or the failure a working
    * directory that cannot be read raised beside the facts its report writes through.
@@ -1217,6 +1217,8 @@ interface RunEntry {
  * query's wait.
  */
 interface BackgroundRead {
+  /** Cancels the run, as the action's `cancel()` does, for an interrupt key nothing raised. */
+  cancel: () => void;
   choice: Background | undefined;
   detects: boolean;
   host: Host;
@@ -1226,9 +1228,9 @@ interface BackgroundRead {
 
 /**
  * What differs between `run()` and an invocation by name, so one run body serves both. A run reads
- * argv and touches the process: it captures the real streams, installs the signals owner's
- * listeners, and sets `process.exitCode`. An invocation by name reads named values, writes to
- * capture sinks, resolves its output plain, and touches no process.
+ * argv and makes its process handle's effects: it captures the handle's streams, installs the
+ * signals owner's listeners on its signal source, and writes its `exitCode`. An invocation by name
+ * reads named values, writes to capture sinks, resolves its output plain, and makes no effect.
  */
 interface RunDoor {
   readonly invokedBy: InvokedBy;
@@ -1259,16 +1261,21 @@ interface RunDoor {
   settle: (code: ExitCode) => void;
 }
 
-/** The door `run()` enters by: argv and the process's own host, signals, and exit status. */
+/**
+ * The door `run()` enters by: argv and its process handle's facts, signals, and exit status. The
+ * run binds the handle once, and the real process's when it was given none.
+ */
 function argvDoor(application: string, options: RunOptions | undefined): RunDoor {
+  const handle = options?.process ?? processHandle();
+  const { signals } = handle;
   return {
     bound: undefined,
     destination: ({ env, platform, stderr }) => Object.freeze({ env, platform, stderr }),
     encodes: true,
     enter: () => {
-      const overrides = options?.host;
+      const { publishEnv } = handle;
       return {
-        background: ({ choice, detects, host, policy, signal }) =>
+        background: ({ cancel, choice, detects, host, policy, signal }) =>
           settleBackground(
             {
               choice,
@@ -1283,18 +1290,17 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
                 (stream) => host.terminal[stream].isTTY,
               ),
             },
-            () => askTerminal(host, signal),
+            () => askTerminal(host, { cancel, signal }),
           ),
-        bracket: (controller) => bracketRun(controller, options?.signal),
-        host: (stderr) => captureHost(application, overrides, stderr),
-        publishEnvironment: overrides?.cwd === undefined && overrides?.env === undefined,
+        bracket: (controller) => bracketRun(controller, { caller: options?.signal, signals }),
+        host: (reached) => captureHost(application, handle, reached),
+        publishEnvironment: publishEnv,
         read: (host) => (graph, walked) => parseInvocation(graph, host.argv, walked),
         start: undefined,
-        stderr: overrides?.stderr,
         verbosity: (graph, host) => argvVerbosity(graph, host.argv),
       };
     },
-    fallback: (stderr) => captureHost(application, undefined, stderr).report,
+    fallback: (reached) => captureHost(application, handle, reached).report,
     invokedBy: 'argv',
     output: (host, signal, early) => {
       const output = new Output(host, signal);
@@ -1306,9 +1312,9 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
       return { ...declared, ...renderingPolicy(rendering) };
     },
     settle: (code) => {
-      process.exitCode = code;
+      handle.exitCode = code;
     },
-    stderr: process.stderr,
+    stderr: handle.stderr,
   };
 }
 
@@ -1322,7 +1328,7 @@ function nameDoor<Mapped>(
   setup: {
     action: ActionCall | undefined;
     declared: RenderingPolicy;
-    fields: () => CapturedFields;
+    fields: () => HandleFacts;
     /** The caller's progress observer, which the run's output hands each event to. */
     observe: ((event: ProgressEvent) => void) | undefined;
     streams: { stderr: Writable; stdout: Writable };
@@ -1342,10 +1348,9 @@ function nameDoor<Mapped>(
       bracket: (controller) =>
         bracketCall(controller, { caller: call.signal, parent: action?.parent }),
       host,
-      publishEnvironment: false,
+      publishEnvironment: undefined,
       read: () => (graph, walked) => lowerInvocation(graph, call.named, walked),
       start: call.view,
-      stderr: undefined,
       // A call settles its own verbosity from the values it lowers, and inherits none.
       verbosity: (graph) => namedVerbosity(graph, call.named),
     }),

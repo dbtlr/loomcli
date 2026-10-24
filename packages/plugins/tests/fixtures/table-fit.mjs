@@ -1,4 +1,4 @@
-import { Application, nowrap, pad } from '@loomcli/core';
+import { Application, nowrap, pad, processHandle } from '@loomcli/core';
 import { records } from '@loomcli/plugins/records';
 import { table } from '@loomcli/plugins/table';
 
@@ -77,16 +77,16 @@ const app = new Application('table-fit', { description: 'Render rows at a live w
 
 if (input.invoke) {
   const host = { env: input.env ?? {}, platform: 'linux' };
-  const outcome = await app.invoke([], {}, { host });
+  const outcome = await app.invoke([], {}, { process: processHandle(host) });
   process.stdout.write(outcome.output);
 } else {
   await app.run({
-    host: {
+    process: processHandle({
       argv: [],
       env: input.env ?? {},
       platform: 'linux',
       terminal: { stderr: { isTTY: false }, stdin: { isTTY: false }, stdout: output },
-    },
+    }),
     rendering: input.rendering ?? { color: 'never', modifiers: 'never' },
   });
 }

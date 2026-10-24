@@ -6,8 +6,8 @@
  * - Order and reach. Two fixture plugins receive each event in installation order, the same frozen
  *   object. Events of an action's `invoke` reach both with the parent run's destination, and the
  *   nested run's captured `messages` hold nothing either wrote to `destination.stderr`. An
- *   `app.invoke` passes `stderr` `null` and the `env` its `host` replaced, and a `run({ host: { env
- *   } })` override reaches `destination.env`.
+ *   `app.invoke` passes `stderr` `null` and the `env` its handle supplied, and a `run({ process: processHandle({ env
+ *   }) })` override reaches `destination.env`.
  * - Broken hooks. A hook that throws a `TypeError` on every event is reported once, receives every
  *   later event, the fatal event of its own report included, leaves a second plugin's hook
  *   receiving every event, and makes a run that would exit 0 exit 1; such a hook in a run a caller
@@ -76,7 +76,7 @@ test('two plugins receive each event in installation order, the same frozen obje
   expect(written).toBe('fixture/first:one\nfixture/second:one\n');
 });
 
-test('a run({ host }) override reaches the destination env, platform, and stderr', () => {
+test('a run({ process }) handle reaches the destination env, platform, and stderr', () => {
   expect(destinations(run('order').printed)).toEqual([
     { env: 'run', platform: 'probe-os', stderr: 'stream' },
     { env: 'run', platform: 'probe-os', stderr: 'stream' },

@@ -1,4 +1,4 @@
-import { Application, Command, pad } from '@loomcli/core';
+import { Application, Command, pad, processHandle } from '@loomcli/core';
 
 // The application each bundler bundles with no define, so nothing bakes release facts into it.
 // `measure` pads wide, combining, and emoji text, so it reads core's Unicode tables.
@@ -18,4 +18,4 @@ await new Application('bundled', { description: 'Measure bundled text.' })
       throw new TypeError('The bundle failed.');
     }),
   )
-  .run({ host: { argv: process.argv.slice(2) } });
+  .run({ process: processHandle({ argv: process.argv.slice(2) }) });

@@ -1,7 +1,7 @@
 /*
  * Acceptance plan for the table and records fit (docs/plugins/pack-views.md#table).
  *
- * The fit is proven under Node and Bun with a host override of plain numbers for the width, and
+ * The fit is proven under Node and Bun with a handle's terminal of plain numbers for the width, and
  * again under a pty-backed host for the resize cases. The acceptance tests cover:
  *
  * - At natural width. A table whose natural width is less than `columns`, one exactly equal to it,

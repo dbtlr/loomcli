@@ -1,4 +1,4 @@
-import { Application, override } from '@loomcli/core';
+import { Application, override, processHandle } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpArgument, helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { helpPage } from '@loomcli/plugins/help/views';
@@ -55,6 +55,6 @@ const greeter = new Application('greeter', {
 
 const styled = process.env.LOOM_PACKED_STYLES === '1';
 await greeter.run({
-  host: { env: {} },
+  process: processHandle({ env: {} }),
   rendering: { color: styled ? 'always' : 'never', modifiers: styled ? 'always' : 'never' },
 });

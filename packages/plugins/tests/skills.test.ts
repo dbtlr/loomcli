@@ -4,7 +4,7 @@
  * The plugin is proven when process tests under Node and Bun produce these results. Each fixture
  * sets `HOME`, `XDG_STATE_HOME`, and the working directory to temporary directories, clears
  * `CLAUDE_CONFIG_DIR` unless a case sets it, and runs an application that installs `skills()` with
- * fixture skills through `run({ host })`:
+ * fixture skills through `run({ process })`:
  *
  * - Installing globally. `skills install` writes every skill's folder to both global folders with
  *   the pinned modes under umask `002` and `077`, records each target's folders in its own plugin's

@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 Object.defineProperties(process.stdout, {
   columns: { configurable: true, value: 0, writable: true },
@@ -20,4 +20,4 @@ await new Application('terminal')
     process.stdout.isTTY = false;
     out.print(JSON.stringify({ after: host.terminal, before: JSON.parse(before) }));
   })
-  .run({ host: { argv: [] } });
+  .run({ process: processHandle({ argv: [] }) });

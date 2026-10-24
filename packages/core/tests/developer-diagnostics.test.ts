@@ -197,10 +197,10 @@ test("a defect prints its sentence, the thrown value's source and stack, then th
   const framed = result.stderr.replaceAll(/(?:^ {4}at .+\n)+/gmu, '    at …\n');
   // Node reports the throw's column at `new` and Bun at the class name, so the golden reads the
   // Column the runtime reported and pins the caret beneath it.
-  const column = Number(/translators\.mjs:146:(?<column>\d+)$/mu.exec(framed)?.groups?.column);
+  const column = Number(/translators\.mjs:147:(?<column>\d+)$/mu.exec(framed)?.groups?.column);
   expect(column).toBeGreaterThan(0);
   const stderr = framed
-    .replace(`translators.mjs:146:${column}`, 'translators.mjs:146:9')
+    .replace(`translators.mjs:147:${column}`, 'translators.mjs:147:9')
     .replace(`      | ${' '.repeat(column - 1)}^\n`, `      | ${' '.repeat(8)}^\n`);
   expect(stderr).toBe(
     [
@@ -208,14 +208,14 @@ test("a defect prints its sentence, the thrown value's source and stack, then th
       '',
       'The translator failed.',
       '',
-      'packages/core/tests/fixtures/translators.mjs:146:9',
+      'packages/core/tests/fixtures/translators.mjs:147:9',
       '',
-      "  144 | /** A translator that throws, which is a foreign throw from the author's code. */",
-      '  145 | const throwingTranslator = () => {',
-      "> 146 |   throw new Error('The translator failed.');",
+      "  145 | /** A translator that throws, which is a foreign throw from the author's code. */",
+      '  146 | const throwingTranslator = () => {',
+      "> 147 |   throw new Error('The translator failed.');",
       '      |         ^',
-      '  147 | };',
-      '  148 |',
+      '  148 | };',
+      '  149 |',
       '',
       'Error: The translator failed.',
       '    at …',

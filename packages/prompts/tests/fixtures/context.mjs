@@ -1,6 +1,6 @@
 import { Readable, Writable } from 'node:stream';
 
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { dateTime, path } from '@loomcli/validators';
 
 import { text } from '../../dist/index.js';
@@ -50,7 +50,7 @@ const app = new Application('questions', { description: 'Validate question answe
   },
 );
 const code = await app.run({
-  host: {
+  process: processHandle({
     argv: [],
     cwd: '/workspace',
     env: {},
@@ -63,6 +63,6 @@ const code = await app.run({
       stdout: { columns: undefined, isTTY: false, rows: undefined },
     },
     timeZone: 'Europe/Berlin',
-  },
+  }),
 });
 process.stdout.write(JSON.stringify({ code, messages, output }));

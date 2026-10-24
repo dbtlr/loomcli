@@ -22,7 +22,7 @@
  * - Faults. Each listed fault throws `DeclarationError` from the factory call, under the rule
  *   Shared rules names, and each rule pins its rendered Developer Diagnostic.
  * - Context. A context-free factory validates when called directly; `path` called directly throws
- *   the context sentence; `path` inside a run resolves against a host override's `cwd`, using
+ *   the context sentence; `path` inside a run resolves against a handle's `cwd`, using
  *   temporary directories for the `read` and `write` checks.
  * - Multiple options and variadic arguments. Core runs the validator once per value, reports each
  *   issue at its position, validates each default value, publishes the validator's schema

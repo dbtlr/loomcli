@@ -1,9 +1,9 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { path } from '@loomcli/validators';
 
 /**
  * One run of an application whose `--target` option validates with `path()`.
- * The arguments are the factory options as JSON, the host override's cwd and platform, then argv.
+ * The arguments are the factory options as JSON, the handle's cwd and platform, then argv.
  */
 const [declared, cwd, platform, ...argv] = process.argv.slice(2);
 
@@ -12,5 +12,5 @@ const app = new Application('probe')
   .action(({ options, out }) => out.print(JSON.stringify(options.target)));
 
 process.exitCode = await app.run({
-  host: { argv, cwd, platform },
+  process: processHandle({ argv, cwd, platform }),
 });

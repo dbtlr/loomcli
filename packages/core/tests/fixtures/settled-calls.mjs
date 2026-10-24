@@ -2,7 +2,7 @@ import { Writable } from 'node:stream';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 // A full collection, under Bun through its own call and under Node through the flag V8 reads once set.
 function collect() {
@@ -42,6 +42,11 @@ const app = new Application('settled').action(async ({ out }) => {
   retained = references.filter((reference) => reference.deref() !== undefined).length;
 });
 const code = await app.run({
-  host: { argv: [], release: { build: 'distributed' }, stderr: discard, stdout: discard },
+  process: processHandle({
+    argv: [],
+    release: { build: 'distributed' },
+    stderr: discard,
+    stdout: discard,
+  }),
 });
 process.stdout.write(`${JSON.stringify({ code, retained })}\n`);

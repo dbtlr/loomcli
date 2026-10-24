@@ -1,4 +1,4 @@
-import { Application, nowrap, override, style, view } from '@loomcli/core';
+import { Application, nowrap, override, processHandle, style, view } from '@loomcli/core';
 import { box } from '@loomcli/plugins/box';
 import { heading } from '@loomcli/plugins/heading';
 import { list } from '@loomcli/plugins/list';
@@ -132,17 +132,17 @@ const app = application();
 
 if (input.invoke) {
   const host = { env: {}, platform: 'linux', release };
-  const outcome = await app.invoke([], {}, { host });
+  const outcome = await app.invoke([], {}, { process: processHandle(host) });
   process.stdout.write(outcome.output);
 } else {
   await app.run({
-    host: {
+    process: processHandle({
       argv: [],
       env: {},
       platform: 'linux',
       release,
       terminal: { stderr: { isTTY: false }, stdin: { isTTY: false }, stdout: output },
-    },
+    }),
     rendering: input.rendering ?? { color: 'never', modifiers: 'never' },
   });
 }

@@ -6,6 +6,7 @@ import {
   EX_UNAVAILABLE,
   FatalError,
   plugin,
+  processHandle,
 } from '@loomcli/core';
 import { manifest } from '@loomcli/plugins/manifest';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
@@ -254,4 +255,4 @@ const scenarios = {
 };
 
 const [scenario, ...argv] = process.argv.slice(2);
-await scenarios[scenario]().run({ host: { argv, release } });
+await scenarios[scenario]().run({ process: processHandle({ argv, release }) });

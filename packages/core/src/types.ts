@@ -264,12 +264,70 @@ export interface HostTerminal {
   stderr: OutputTerminal;
   readonly background: Background | undefined;
 }
+/** A signal a signal source delivers and raises. */
+export type ProcessSignal = 'SIGHUP' | 'SIGINT' | 'SIGQUIT' | 'SIGTERM' | 'SIGTSTP' | 'SIGCONT';
+/** A listener for one signal source event: the `exit` event passes the exit code, a signal nothing. */
+export type SignalListener<Event extends ProcessSignal | 'exit'> = Event extends 'exit'
+  ? (code: number) => void
+  : () => void;
 /**
- * The host fields `run()` accepts in place of process capture. A terminal may omit `background`;
- * one that states it supplies the run's background unless the operator or the author names one.
+ * Where a run's signals come from and where core raises them: the real process's own, which every
+ * handle `processHandle` builds shares, or a source a handle holds of its own.
  */
-export type HostOverrides = Partial<Omit<Host, 'terminal'>> & {
-  terminal?: Omit<HostTerminal, 'background'> & { readonly background?: Background | undefined };
+export interface SignalSource {
+  /** The stdin of the terminal this source's process is attached to, or `undefined` for none. */
+  readonly terminal: Readable | undefined;
+  on<Event extends ProcessSignal | 'exit'>(event: Event, listener: SignalListener<Event>): void;
+  off<Event extends ProcessSignal | 'exit'>(event: Event, listener: SignalListener<Event>): void;
+  /** Delivers the signal to this source's process. */
+  raise(signal: ProcessSignal): void;
+}
+/**
+ * The terminal facts of a process handle's streams. Output `columns` and `rows` may be getters,
+ * which core reads live. A stated `background` settles the run's background, with no query.
+ */
+export interface ProcessTerminal {
+  readonly stdin: InputTerminal;
+  readonly stdout: OutputTerminal;
+  readonly stderr: OutputTerminal;
+  readonly background?: Background | undefined;
+}
+/**
+ * Every process fact a run reads and every process effect it makes. A run binds one at entry and
+ * never replaces it, and core copies its facts into the run's host.
+ */
+export interface ProcessHandle {
+  readonly argv: readonly string[];
+  readonly program: readonly string[];
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** The working directory, which throws when it cannot be read. */
+  cwd(): string;
+  readonly platform: string;
+  readonly arch: string;
+  readonly libc: 'glibc' | 'musl' | undefined;
+  readonly uid: number | undefined;
+  readonly timeZone: string;
+  readonly release: ReleaseFacts;
+  readonly readSource?: (path: string, cwd: string) => string | undefined;
+  readonly stdin: Readable;
+  readonly stdout: Writable;
+  readonly stderr: Writable;
+  readonly terminal: ProcessTerminal;
+  readonly signals: SignalSource;
+  /** The one member core writes: `run()` writes the run's code once it is final. */
+  exitCode: ExitCode | undefined;
+  /** Receives each variable an argv run's environment preparation copies out. */
+  readonly publishEnv?: (name: string, value: string) => void;
+}
+/**
+ * The fields `processHandle` takes, each replacing its whole field. An absolute `cwd` string never
+ * throws; a relative one resolves against the process's working directory at each read, so it
+ * throws when that directory cannot be read; and a `cwd` function throws as it chooses.
+ */
+export type ProcessFields = Partial<
+  Omit<ProcessHandle, 'cwd' | 'exitCode' | 'publishEnv' | 'signals'>
+> & {
+  readonly cwd?: string | (() => string);
 };
 /**
  * How the running application was built, released, and installed. The build bakes the build and
@@ -302,19 +360,28 @@ export interface ReleaseFacts {
 }
 export interface Host {
   platform: string;
+  /** The process's CPU architecture, such as `x64` or `arm64`. */
+  arch: string;
+  /**
+   * `glibc` or `musl` on Linux, and `undefined` elsewhere. Core copies it from the handle on the
+   * run's first read, because the real process's answer comes from a costly runtime report.
+   */
+  readonly libc: 'glibc' | 'musl' | undefined;
+  /** The process's user ID, or `undefined` on a runtime with none. */
+  uid: number | undefined;
   argv: string[];
   /**
    * The runtime and script prefix `argv` omits: the words that start this application again, so
    * `[...program, ...argv]` reruns it. A compiled binary reads its own path alone, and any other
-   * run reads the runtime's path and the absolute path of the script it ran. Frozen; an override
-   * replaces the whole list, and an action's `invoke` keeps its run's.
+   * run reads the runtime's path and the absolute path of the script it ran. Frozen; a supplied
+   * `program` replaces the whole list, and an action's `invoke` keeps its run's.
    */
   program: readonly string[];
   cwd: string;
   /**
    * The operator's IANA time zone, such as `America/New_York`, which a validator reads to place a
-   * local time. Process capture takes the zone `Intl` resolves, which honours `TZ`; an override
-   * replaces it, and an action's `invoke` keeps its run's.
+   * local time. The real process's handle reads the zone `Intl` resolves, which honours `TZ`; a
+   * supplied `timeZone` replaces it, and an action's `invoke` keeps its run's.
    */
   timeZone: string;
   env: Record<string, string | undefined>;
@@ -325,20 +392,27 @@ export interface Host {
   /**
    * Reads one source file for a defect's Developer Diagnostic, or answers `undefined`. Core calls
    * it only in a development build, only while it reports a defect, and only for a path under the
-   * working directory. Process capture supplies a reader that refuses a file outside `cwd` after
-   * resolving symbolic links, and answers `undefined` for a path that is not a regular file or
-   * that exceeds 1 MiB.
+   * working directory. The real process's handle supplies a reader that refuses a file outside
+   * `cwd` after resolving symbolic links, and answers `undefined` for a path that is not a regular
+   * file or that exceeds 1 MiB.
    */
   readSource?: (path: string, cwd: string) => string | undefined;
   /**
    * The release facts the build baked in, or `{ build: 'source' }` when it baked none, frozen when
-   * core read them. An override is taken as given, neither validated nor frozen.
+   * core read them. A supplied `release` is taken as given, neither validated nor frozen.
    */
   release: ReleaseFacts;
+  /**
+   * Raises the signal a key read in raw mode stands for on the run's signal source and answers
+   * `true` when `stdin` is that source's own terminal; otherwise it raises nothing and answers
+   * `false`, and the reader cancels the run itself.
+   */
+  raise: (signal: 'SIGINT' | 'SIGQUIT' | 'SIGTSTP') => boolean;
 }
 export interface RunOptions {
   rendering?: RenderingPolicy;
-  host?: HostOverrides;
+  /** The process the run reads its facts from and makes its effects on: `processHandle()` when omitted. */
+  process?: ProcessHandle;
   /**
    * A caller-owned signal that cancels the run. Core subscribes to it at run entry and honors an
    * abort at every phase boundary; it composes with an installed signals owner.

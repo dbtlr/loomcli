@@ -1,4 +1,4 @@
-import { Application, Command, UnknownOptionError } from '@loomcli/core';
+import { Application, Command, processHandle, UnknownOptionError } from '@loomcli/core';
 import { suggestions } from '@loomcli/plugins/suggestions';
 
 /** One failure instance an application keeps and throws from two actions, in two runs. */
@@ -23,6 +23,8 @@ for (const name of runs) {
       },
     });
   } else {
-    process.exitCode = await app.run({ host: { argv: [name], release: { build: 'distributed' } } });
+    process.exitCode = await app.run({
+      process: processHandle({ argv: [name], release: { build: 'distributed' } }),
+    });
   }
 }

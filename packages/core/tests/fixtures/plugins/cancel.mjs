@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream';
 import { setTimeout as after } from 'node:timers/promises';
 
-import { Application, FatalError, override, plugin } from '@loomcli/core';
+import { Application, FatalError, override, plugin, processHandle } from '@loomcli/core';
 
 import { callerReason, controller } from './caller.mjs';
 
@@ -348,8 +348,10 @@ function hostOf() {
 
 /** The run options one scenario supplies, which is where a caller-owned signal enters. */
 function options() {
-  const host = hostOf();
-  return callerSignal.has(scenario) ? { host, signal: controller.signal } : { host };
+  const host = processHandle(hostOf());
+  return callerSignal.has(scenario)
+    ? { process: host, signal: controller.signal }
+    : { process: host };
 }
 
 process.stdout.write(`${counts('before')}\n`);
@@ -380,7 +382,7 @@ if (scenario === 'pre-aborted') {
     signal.addEventListener('abort', () => {
       void new Application('app', { plugins: [plugins.bracket()] })
         .action(holding)
-        .run({ host: { argv } });
+        .run({ process: processHandle({ argv }) });
     });
     await out.print(counts('first'));
     await out.print('ready');
@@ -388,14 +390,14 @@ if (scenario === 'pre-aborted') {
   };
   await new Application('app', { plugins: [plugins.bracket()] })
     .action(branching)
-    .run({ host: { argv } });
+    .run({ process: processHandle({ argv }) });
   process.stdout.write('resolved\n');
 } else if (scenario === 'twice') {
   // One Application, run twice, so each run installs its own listeners and removes them.
   const app = application();
-  const first = await app.run({ host: { argv } });
+  const first = await app.run({ process: processHandle({ argv }) });
   process.stdout.write(`${counts('between')}\n`);
-  const second = await app.run({ host: { argv } });
+  const second = await app.run({ process: processHandle({ argv }) });
   process.stdout.write(`${counts('after')}\n`);
   process.stdout.write(`resolved:${first}:${second}\n`);
 } else {

@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { manpage } from '@loomcli/plugins/manpage';
 
 /**
@@ -20,4 +20,4 @@ const scenarios = {
 };
 
 const [name, ...argv] = process.argv.slice(2);
-process.exitCode = await scenarios[name]().run({ host: { argv, release } });
+process.exitCode = await scenarios[name]().run({ process: processHandle({ argv, release }) });

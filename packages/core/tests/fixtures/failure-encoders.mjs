@@ -9,6 +9,7 @@ import {
   FatalError,
   override,
   plugin,
+  processHandle,
   style,
 } from '@loomcli/core';
 
@@ -203,7 +204,9 @@ function declare(build) {
 
 const scenarios = {
   build: async () => {
-    const code = await application([encoding, judging]).run({ host: { argv: words, release } });
+    const code = await application([encoding, judging]).run({
+      process: processHandle({ argv: words, release }),
+    });
     process.stdout.write(`exit:${String(code)}\n`);
   },
   'by-name': async () => {
@@ -219,7 +222,7 @@ const scenarios = {
     const outcome = await application([counting]).invoke(
       ['list'],
       { options: { depth: 'x' } },
-      { host: { release }, view: 'json' },
+      { process: processHandle({ release }), view: 'json' },
     );
     process.stdout.write(
       `${JSON.stringify({ encoded, form: outcome.form, messages: outcome.messages })}\n`,
@@ -228,7 +231,7 @@ const scenarios = {
   run: async () => {
     const stdout = process.env.FIXTURE_STDOUT === 'full' ? fullDisk() : undefined;
     const code = await application().run({
-      host: { argv: words, release, ...(stdout ? { stdout } : {}) },
+      process: processHandle({ argv: words, release, ...(stdout ? { stdout } : {}) }),
       signal: caller.signal,
     });
     process.stdout.write(`exit:${String(code)}\n`);

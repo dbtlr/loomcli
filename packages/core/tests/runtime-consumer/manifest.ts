@@ -1,4 +1,4 @@
-import { Application, Command, readExtension } from '@loomcli/core';
+import { Application, Command, processHandle, readExtension } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
 import { manifest } from '@loomcli/plugins/manifest';
@@ -26,4 +26,4 @@ const supplier = new Application('supplier', {
 
 const [read] = supplier.inspect().root.children;
 process.stdout.write(`${JSON.stringify(read ? readExtension(read, manifestCommand) : null)}\n`);
-await supplier.run({ host: { argv: ['read', '-M'] } });
+await supplier.run({ process: processHandle({ argv: ['read', '-M'] }) });

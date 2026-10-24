@@ -7,6 +7,7 @@ import {
   lanes,
   override,
   plugin,
+  processHandle,
 } from '@loomcli/core';
 import { dotenv } from '@loomcli/plugins/dotenv';
 import { logging } from '@loomcli/plugins/logging';
@@ -244,12 +245,12 @@ if (terminal === 'invoke') {
 }
 
 process.exitCode = await fetchit.run({
-  host: {
+  process: processHandle({
     argv,
     ...(process.env.PROBE_CWD === undefined ? {} : { cwd: process.env.PROBE_CWD }),
     release: { build: variant === 'graph' ? 'development' : 'distributed' },
     terminal: terminals[terminal],
-  },
+  }),
 });
 if (variant === 'logged') {
   process.stdout.write(`heard ${JSON.stringify(heard)}\n`);

@@ -5,6 +5,7 @@ import {
   locate,
   override,
   plugin,
+  processHandle,
   UsageError,
   validationContext,
 } from '@loomcli/core';
@@ -228,6 +229,6 @@ if (mode === 'inspect') {
     `${JSON.stringify({ counts, kind: position.kind, lead: position.lead, option: position.option?.name, prefix: position.prefix, supplied: position.supplied })}\n`,
   );
 } else {
-  const code = await app.run({ host: { argv } });
+  const code = await app.run({ process: processHandle({ argv }) });
   process.stdout.write(`resolved:${code}\n`);
 }

@@ -40,6 +40,8 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
+import { processHandle } from '@loomcli/core';
+
 import { probe } from './application.js';
 
 const child = process.argv.includes('--refresh-notice');
@@ -77,7 +79,9 @@ globalThis.fetch = async (input: string | URL | Request) => {
 
 const tty = { columns: 80, isTTY: true, rows: 24 };
 const env = child ? process.env : { ...process.env, PROBE_RUN_PID: String(process.pid) };
-await probe.run({ host: { env, terminal: { stderr: tty, stdin: { isTTY: false }, stdout: tty } } });
+await probe.run({
+  process: processHandle({ env, terminal: { stderr: tty, stdin: { isTTY: false }, stdout: tty } }),
+});
 `;
 
 /** The compiled probe, built once for the file. */

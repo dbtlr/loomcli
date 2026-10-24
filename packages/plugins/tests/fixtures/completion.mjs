@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { help } from '@loomcli/plugins/help';
 
@@ -133,4 +133,4 @@ const app = new Application('kit', { plugins: [help(), completion()] })
   .command(quotes)
   .command(backups);
 
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ process: processHandle({ argv: process.argv.slice(2) }) });

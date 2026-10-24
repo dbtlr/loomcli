@@ -8,6 +8,7 @@ import {
   incompleteResult,
   InputError,
   override,
+  processHandle,
 } from '@loomcli/core';
 
 const scenario = process.argv[2];
@@ -394,12 +395,12 @@ function stderr() {
 }
 
 const code = await build().run({
-  host: {
+  process: processHandle({
     argv: scenario === 'root' ? [] : ['count'],
     release: { build: 'distributed' },
     stderr: stderr(),
     stdout: stdout(),
-  },
+  }),
   signal: controller.signal,
 });
 if (scenario === 'action-fails' || scenario === 'action-fails-render') {

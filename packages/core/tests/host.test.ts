@@ -31,7 +31,7 @@ test('automatic capture occurs at run entry and preserves argv and environment s
   });
 });
 
-test('host overrides replace fields, copy values, and never consume stdin', () => {
+test('process handle fields replace fields, copy values, and never consume stdin', () => {
   const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['overrides']);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
@@ -120,7 +120,7 @@ test.each(['', 'UTC0', 'Bogus/Zone'])('host.timeZone falls back to UTC when TZ i
   expect(result).toEqual({ status: 0, stderr: '', stdout: 'UTC\n' });
 });
 
-test('a host override replaces the captured time zone', () => {
+test("a handle's time zone replaces the captured one", () => {
   const result = invoke(new URL('fixtures/host.mjs', import.meta.url), ['time-zone-override'], {
     env: { TZ: 'Asia/Tokyo' },
   });

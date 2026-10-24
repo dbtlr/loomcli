@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { logging } from '@loomcli/plugins/logging';
 
 const [turn, other, baton, rounds, batch] = process.argv.slice(2);
@@ -43,4 +43,4 @@ const app = new Application('heimdall', {
   }
 });
 
-process.exitCode = await app.run({ host: { argv: [], platform: 'linux' } });
+process.exitCode = await app.run({ process: processHandle({ argv: [], platform: 'linux' }) });

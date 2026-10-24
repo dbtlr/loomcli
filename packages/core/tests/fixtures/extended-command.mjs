@@ -1,4 +1,4 @@
-import { Application, Command, extension, readExtension } from '@loomcli/core';
+import { Application, Command, extension, processHandle, readExtension } from '@loomcli/core';
 import { z } from 'zod';
 
 import { ruleText } from './rule-text.mjs';
@@ -26,7 +26,7 @@ const app = new Application('example')
 const mode = process.argv[2];
 if (mode === 'invoke') {
   await app.run({
-    host: { argv: ['r', 'document', '--raw', '--quiet'] },
+    process: processHandle({ argv: ['r', 'document', '--raw', '--quiet'] }),
   });
 } else if (mode === 'inspect') {
   const before = new Application('library').command(original).inspect().root.children[0];

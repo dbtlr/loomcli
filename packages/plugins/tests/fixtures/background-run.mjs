@@ -1,6 +1,6 @@
 import { Readable, Writable } from 'node:stream';
 
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { background } from '@loomcli/plugins/background';
 import { help } from '@loomcli/plugins/help';
 import { manifest } from '@loomcli/plugins/manifest';
@@ -50,7 +50,7 @@ const stderr = new Writable({
 
 const keepAlive = setInterval(() => undefined, 60_000);
 await app.run({
-  host: {
+  process: processHandle({
     argv,
     env: { COLORTERM: 'truecolor', TERM: 'xterm-256color' },
     stderr,
@@ -60,7 +60,7 @@ await app.run({
       stdin: { isTTY: true },
       stdout: { columns: 200, isTTY: true, rows: 24 },
     },
-  },
+  }),
   rendering: { color: 'always' },
 });
 clearInterval(keepAlive);

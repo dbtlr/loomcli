@@ -5,6 +5,7 @@ import {
   diagnosticRule,
   override,
   plugin,
+  processHandle,
   UsageError,
 } from '@loomcli/core';
 import { config } from '@loomcli/plugins/config';
@@ -108,11 +109,11 @@ if (terminal === 'invoke') {
 }
 
 process.exitCode = await notes.run({
-  host: {
+  process: processHandle({
     argv,
     ...(cwd === undefined ? {} : { cwd }),
     ...(capture ? {} : { release: { build: variant === 'graph' ? 'development' : 'distributed' } }),
     terminal: terminals[terminal],
-  },
+  }),
   rendering: run[variant],
 });

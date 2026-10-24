@@ -1,4 +1,4 @@
-import { Application, Command, override } from '@loomcli/core';
+import { Application, Command, override, processHandle } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { helpPage } from '@loomcli/plugins/help/views';
@@ -474,5 +474,5 @@ await recordLoads();
 const [name, ...argv] = process.argv.slice(2);
 
 process.exitCode = await scenarios[name]().run({
-  host: { argv, release: { build: 'distributed' } },
+  process: processHandle({ argv, release: { build: 'distributed' } }),
 });

@@ -1,4 +1,4 @@
-import { Application, Command, plugin } from '@loomcli/core';
+import { Application, Command, plugin, processHandle } from '@loomcli/core';
 import { integer, oneOf } from '@loomcli/validators';
 
 import { configKey } from './extension.mjs';
@@ -43,6 +43,6 @@ const app = new Application('app', { plugins: [profiles] })
   .action(({ options, out }) => out.print(`root:${JSON.stringify(options)}`));
 
 const code = await app.run({
-  host: { argv: process.argv.slice(2) },
+  process: processHandle({ argv: process.argv.slice(2) }),
 });
 process.stdout.write(`resolved:${code}\n`);

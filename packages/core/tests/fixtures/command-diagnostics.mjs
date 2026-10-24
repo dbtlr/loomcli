@@ -1,4 +1,4 @@
-import { Application, Command, DeclarationError, plugin } from '@loomcli/core';
+import { Application, Command, DeclarationError, plugin, processHandle } from '@loomcli/core';
 
 const act = () => undefined;
 const leaf = (name) => new Command(name).action(act);
@@ -48,7 +48,7 @@ const scenario = process.argv[2];
 
 if (scenario === 'root-without-action') {
   // A root fault waits for build, which run() reports with the application name in a development build.
-  process.exitCode = await new Application('probe').run({ host: { argv: [] } });
+  process.exitCode = await new Application('probe').run({ process: processHandle({ argv: [] }) });
 } else {
   try {
     scenarios[scenario]();

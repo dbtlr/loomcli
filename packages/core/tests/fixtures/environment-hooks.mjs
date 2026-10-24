@@ -1,4 +1,11 @@
-import { Application, Command, FatalError, plugin, validationContext } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  FatalError,
+  plugin,
+  processHandle,
+  validationContext,
+} from '@loomcli/core';
 
 const [scenario, answer] = process.argv.slice(2);
 
@@ -97,25 +104,27 @@ if (scenario === 'inspect') {
   if (answer === 'before') {
     controller.abort();
   }
-  await app.run({ host: { argv: [] }, signal: controller.signal });
+  await app.run({ process: processHandle({ argv: [] }), signal: controller.signal });
   process.stdout.write(
     `${JSON.stringify({ events, process: process.env.LOOM_DOTENV_TOKEN ?? null })}\n`,
   );
 } else if (scenario === 'timing') {
-  await app.run({ host: { argv: [], env: {} } });
+  await app.run({ process: processHandle({ argv: [], env: {} }) });
 } else if (scenario === 'dashed') {
-  await app.run({ host: { argv: [], env: {} } });
+  await app.run({ process: processHandle({ argv: [], env: {} }) });
 } else if (scenario === 'precedence') {
-  await app.run({ host: { argv: [], env: { EMPTY: '', SET: 'shell', UNDEFINED: undefined } } });
+  await app.run({
+    process: processHandle({ argv: [], env: { EMPTY: '', SET: 'shell', UNDEFINED: undefined } }),
+  });
 } else if (scenario === 'process-name' || scenario === 'nested') {
   const outcome = await app.invoke([], {});
   process.stdout.write(outcome.output);
 } else {
   await app.run({
-    host: {
+    process: processHandle({
       argv: [],
       ...(scenario === 'process-env' ? { env: {} } : {}),
       ...(scenario === 'process-cwd' ? { cwd: process.cwd() } : {}),
-    },
+    }),
   });
 }

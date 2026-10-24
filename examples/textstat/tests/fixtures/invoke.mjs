@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { processHandle } from '@loomcli/core';
+
 import { textstat } from '../../dist/application.js';
 
 // `textstat --metric nope one.txt`, run by name, with no view and with the json view.
@@ -10,8 +12,8 @@ try {
   writeFileSync(join(directory, 'one.txt'), 'hello\n');
   const values = { args: { files: ['one.txt'] }, options: { metric: 'nope' } };
   const host = { cwd: directory };
-  const plain = await textstat.invoke([], values, { host });
-  const json = await textstat.invoke([], values, { host, view: 'json' });
+  const plain = await textstat.invoke([], values, { process: processHandle(host) });
+  const json = await textstat.invoke([], values, { process: processHandle(host), view: 'json' });
   process.stdout.write(`${JSON.stringify({ json, plain })}\n`);
 } finally {
   rmSync(directory, { force: true, recursive: true });

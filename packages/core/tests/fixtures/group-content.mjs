@@ -1,4 +1,4 @@
-import { Application } from '../../dist/index.js';
+import { Application, processHandle } from '../../dist/index.js';
 
 const [kind, ...argv] = process.argv.slice(2);
 const declaration = new Application('groups', { description: 'Groups probe.' })
@@ -7,4 +7,4 @@ const declaration = new Application('groups', { description: 'Groups probe.' })
 const app = declaration[kind]('file', 'url').action(({ options, out }) =>
   out.print(options.file?.kind ?? 'absent'),
 );
-process.exitCode = await app.run({ host: { argv, env: {} } });
+process.exitCode = await app.run({ process: processHandle({ argv, env: {} }) });

@@ -1,4 +1,4 @@
-import { Application, Command, override, plugin, UsageError } from '@loomcli/core';
+import { Application, Command, override, plugin, processHandle, UsageError } from '@loomcli/core';
 
 const [scenario, ...argv] = process.argv.slice(2);
 
@@ -126,6 +126,6 @@ function rooted() {
 }
 
 const code = await (scenario === 'rooted' ? rooted() : kit()).run({
-  host: { argv },
+  process: processHandle({ argv }),
 });
 process.stdout.write(`resolved:${code}\n`);

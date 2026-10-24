@@ -22,7 +22,7 @@
  *   the directory's variable is unset; each run exits with its own code and writes nothing to
  *   stderr. A bundle built for Node with `--release`, and the source run, print none and read no
  *   file. `install.json` with an extra member and its members reordered reads the same
- *   installation. `run({ host: { release } })` reads the override and no file.
+ *   installation. `run({ process: processHandle({ release }) })` reads the override and no file.
  * - Installing. Installing two files into a temporary directory writes both and a `committed` file
  *   with their digests and the created directory. A second install with new content replaces both,
  *   and one that lists only the first removes the second. An install over an unrecorded file, a

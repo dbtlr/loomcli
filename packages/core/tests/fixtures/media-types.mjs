@@ -1,4 +1,4 @@
-import { Application, Command, plugin, view } from '@loomcli/core';
+import { Application, Command, plugin, processHandle, view } from '@loomcli/core';
 
 const scenario = process.argv[2];
 
@@ -63,5 +63,5 @@ if (scenario === 'stores') {
   await new Application('probe')
     .result({ views: { json: { mediaType: 'application/json', render: () => 'not json\n' } } })
     .action(({ out }) => out.results({}))
-    .run({ host: { argv: [] } });
+    .run({ process: processHandle({ argv: [] }) });
 }

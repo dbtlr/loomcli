@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import type { ReleaseFacts } from '@loomcli/core';
 
 /**
@@ -19,4 +19,4 @@ const probe = new Application('release-probe', { description: 'Probe the release
     }),
   );
 
-await probe.run({ host: { argv: process.argv.slice(2) } });
+await probe.run({ process: processHandle({ argv: process.argv.slice(2) }) });

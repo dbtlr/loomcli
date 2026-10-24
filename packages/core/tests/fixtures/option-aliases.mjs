@@ -1,4 +1,4 @@
-import { Application, Command, locate, plugin } from '@loomcli/core';
+import { Application, Command, locate, plugin, processHandle } from '@loomcli/core';
 
 const [scenario, ...argv] = process.argv.slice(2);
 
@@ -72,10 +72,10 @@ const scenarios = {
       .action(report([]));
     const [bytes, color] = app.inspect().root.options;
     process.stdout.write(`${JSON.stringify([bytes?.aliases, color?.aliases])}\n`);
-    await app.run({ host: { argv } });
+    await app.run({ process: processHandle({ argv }) });
   },
   run: async () => {
-    process.exitCode = await sizes().run({ host: { argv } });
+    process.exitCode = await sizes().run({ process: processHandle({ argv }) });
   },
 };
 

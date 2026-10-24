@@ -19,7 +19,7 @@
  *   whose theme holds no adaptive entry and that declares no background mark writes no query and
  *   reads `undefined` in the action and in a view; the same Application with `background()`
  *   installed writes the query and reads `'light'`; and with neither, `rendering: { background:
- *   'light' }` and a host override that states `'light'` each still read `'light'`.
+ *   'light' }` and a handle's terminal that states `'light'` each still read `'light'`.
  * - Settled once, before preparation. With `NO_COLOR=1` in the captured environment and a dotenv
  *   hook that imports `FORCE_COLOR=1`, on a scripted light terminal, the run writes no query,
  *   `host.terminal.background` reads `undefined`, and the colored output prints each adaptive
@@ -48,7 +48,7 @@
  *   `options.background` reads `'light'`, `'dark'`, or `undefined`; and `--background --verbose`
  *   and `--background --` supply no choice.
  * - Where it reads. `host.terminal.background` and a view's `context.background` read the settled
- *   value in the action, a middleware, and a failure view, a host override's stated value is
+ *   value in the action, a middleware, and a failure view, a handle's stated value is
  *   overruled by an operator's choice, an invocation by name reads `undefined` under `rendering: {
  *   background: 'light' }`, a failure view rendering a failed host capture reads `undefined`, and a
  *   piped run whose theme adapts reads `undefined`.
@@ -57,7 +57,7 @@
  *   the negative type checks reject the rules the types state; mutating the object passed to
  *   `style.adaptive` after the call changes no emitted byte; a bare `theme()` accepts an adaptive
  *   entry and a custom token named `adaptive`; and a compiler check imports the four exported
- *   types, compiles a `run({ host: { terminal } })` whose terminal omits `background`, and rejects
+ *   types, compiles a `run({ process: processHandle({ terminal }) })` whose terminal omits `background`, and rejects
  *   a write to `host.terminal.background`.
  * - The terminal itself. A test drives an interactive zsh with job control on a real
  *   pseudo-terminal under Node and Bun: a foreground run of an application whose theme adapts
@@ -70,7 +70,7 @@
  *   both runtimes, which is why the foreground check exists, as ADR-0092 records.
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vite-plus/test';
@@ -158,6 +158,23 @@ describe('the answered path', () => {
   });
 });
 
+describe('the foreground check', () => {
+  it('runs for any terminal stream, whatever the handle, and is skipped for a stream that is none', async () => {
+    // A session of its own has no controlling terminal, so a check that runs reads background.
+    const child = spawn(
+      process.env.LOOM_TEST_RUNTIME ?? 'node',
+      [fileURLToPath(new URL('fixtures/foreground.mjs', import.meta.url))],
+      { detached: true, stdio: ['ignore', 'pipe', 'inherit'] },
+    );
+    let output = '';
+    child.stdout.on('data', (chunk) => {
+      output += String(chunk);
+    });
+    await new Promise((resolve) => child.once('close', resolve));
+    expect(JSON.parse(output)).toEqual({ scripted: false, terminal: true });
+  });
+});
+
 describe('interrupt keys during the wait', () => {
   const [ctrlC, ctrlBackslash, ctrlZ] = [3, 28, 26].map((code) => String.fromCodePoint(code));
 
@@ -171,6 +188,20 @@ describe('interrupt keys during the wait', () => {
     ]);
     expect(report.stdinRead).toBe('ab');
     expect(report.seen.action).toBe('light');
+  });
+
+  it("raise nothing on a stdin that is not the source's terminal: Ctrl-C cancels, Ctrl-Z drops", () => {
+    const cancelled = run({ kill: 'record', piped: true, replies: `a${ctrlC}${light}` });
+    expect(cancelled.raised).toEqual([]);
+    expect(cancelled.code).toBe(130);
+    expect(cancelled.seen.action).toBe('unread');
+    const quit = run({ kill: 'record', piped: true, replies: `${ctrlBackslash}${light}` });
+    expect(quit.raised).toEqual([]);
+    expect(quit.code).toBe(130);
+    const suspended = run({ kill: 'record', piped: true, replies: `a${ctrlZ}${light}` });
+    expect(suspended.raised).toEqual([]);
+    expect(suspended.code).toBe(0);
+    expect(suspended.stdinRead).toBe('a');
   });
 
   it('Ctrl-C ends the run by SIGINT, which a shell reports as status 130', () => {

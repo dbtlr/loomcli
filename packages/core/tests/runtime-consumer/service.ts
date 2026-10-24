@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { service } from '@loomcli/plugins/service';
 import type { ProbeContext, ServiceDetail, ServiceStatus } from '@loomcli/plugins/service';
 
@@ -19,5 +19,5 @@ const app = new Application('packed-service', {
 );
 
 process.exitCode = await app.run({
-  host: { argv: ['service', 'status'], platform: 'win32' },
+  process: processHandle({ argv: ['service', 'status'], platform: 'win32' }),
 });

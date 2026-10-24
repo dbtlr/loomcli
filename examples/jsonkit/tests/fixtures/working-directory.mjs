@@ -1,5 +1,7 @@
 import { Writable } from 'node:stream';
 
+import { processHandle } from '@loomcli/core';
+
 import { jsonkit } from '../../dist/application.js';
 
 const [scenario, file] = process.argv.slice(2);
@@ -44,17 +46,17 @@ const scenarios = {
     const stdout = sink();
     const stderr = sink();
     const code = await jsonkit.run({
-      host: {
+      process: processHandle({
         argv: ['keys', '-f', file],
         cwd: '/srv/override',
         stderr: stderr.stream,
         stdout: stdout.stream,
-      },
+      }),
     });
     const named = await jsonkit.invoke(
       ['keys'],
       { options: { file } },
-      { host: { cwd: '/srv/override' } },
+      { process: processHandle({ cwd: '/srv/override' }) },
     );
     const ran = { code, stderr: stderr.text(), stdout: stdout.text() };
     process.stdout.write(`${JSON.stringify({ named: described(named), ran })}\n`);

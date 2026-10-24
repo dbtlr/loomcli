@@ -1,4 +1,4 @@
-import { Application, InputError, issuePath, override } from '@loomcli/core';
+import { Application, InputError, issuePath, override, processHandle } from '@loomcli/core';
 import { integer, integerRangeIssue, oneOf } from '@loomcli/validators';
 
 /**
@@ -37,5 +37,5 @@ const app = new Application('serve', {
   .action(({ options, out }) => out.print(`served ${String(options.workers)}`));
 
 process.exitCode = await app.run({
-  host: { argv: process.argv.slice(2) },
+  process: processHandle({ argv: process.argv.slice(2) }),
 });

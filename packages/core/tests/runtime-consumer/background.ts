@@ -1,4 +1,4 @@
-import { Application, style } from '@loomcli/core';
+import { Application, processHandle, style } from '@loomcli/core';
 import type { Background, Plugin } from '@loomcli/core';
 import { background } from '@loomcli/plugins/background';
 import type { BackgroundOptions } from '@loomcli/plugins/background';
@@ -17,5 +17,5 @@ const app = new Application('packed-background', {
 
 // Piped output has no terminal to query, so only the operator's choice settles the background.
 await app.run({
-  host: { argv: process.argv.slice(2), env: {} },
+  process: processHandle({ argv: process.argv.slice(2), env: {} }),
 });

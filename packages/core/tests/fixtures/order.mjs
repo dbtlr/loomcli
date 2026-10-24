@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 
 /** Every supplied value fails, so the diagnostic lines report the validation order alone. */
 const reject = (label) => ({
@@ -25,4 +25,4 @@ await new Application('order')
   .command(order)
   .command(pair)
   .action(({ out }) => out.print('root'))
-  .run({ host: { argv: process.argv.slice(2) } });
+  .run({ process: processHandle({ argv: process.argv.slice(2) }) });

@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import type { Plugin } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 
@@ -9,4 +9,4 @@ const app = new Application('packed-completion', { plugins: [installed] }).actio
   out.print('root'),
 );
 
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ process: processHandle({ argv: process.argv.slice(2) }) });

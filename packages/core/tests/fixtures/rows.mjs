@@ -1,7 +1,14 @@
 import { Writable } from 'node:stream';
 import { setTimeout as after } from 'node:timers/promises';
 
-import { Application, Command, FatalError, incompleteResult, override } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  FatalError,
+  incompleteResult,
+  override,
+  processHandle,
+} from '@loomcli/core';
 
 const scenario = process.argv[2];
 
@@ -201,11 +208,11 @@ function build() {
 }
 
 const code = await build().run({
-  host: {
+  process: processHandle({
     argv: scenario === 'root' ? [] : ['count'],
     release: { build: 'distributed' },
     stdout: stdout(),
-  },
+  }),
   signal: controller.signal,
 });
 if (events.length > 0) {

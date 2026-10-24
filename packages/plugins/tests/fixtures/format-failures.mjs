@@ -1,4 +1,4 @@
-import { Application, Command, FatalError } from '@loomcli/core';
+import { Application, Command, FatalError, processHandle } from '@loomcli/core';
 import { format, json } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { version } from '@loomcli/plugins/version';
@@ -49,5 +49,5 @@ const scenarios = {
 
 const [name, ...argv] = process.argv.slice(2);
 process.exitCode = await scenarios[name]().run({
-  host: { argv },
+  process: processHandle({ argv }),
 });

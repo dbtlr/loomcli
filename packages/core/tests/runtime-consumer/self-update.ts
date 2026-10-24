@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { selfUpdate } from '@loomcli/plugins/self-update';
 import type { AfterReplaceContext, NoticeSettings } from '@loomcli/plugins/self-update';
 
@@ -13,5 +13,5 @@ const app = new Application('packed-update', {
 });
 
 process.exitCode = await app.run({
-  host: { argv: ['self-update'], platform: 'linux' },
+  process: processHandle({ argv: ['self-update'], platform: 'linux' }),
 });

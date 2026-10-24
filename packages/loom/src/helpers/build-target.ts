@@ -1,6 +1,6 @@
+import type { Host } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 import type { ParseResult } from '@loomcli/validators';
-import { object, optional, safeParse, string } from 'valibot';
 
 /**
  * A Bun compile target, as Bun 1.4.2 documents them, for the platforms CI runs: `bun-<os>-<arch>`
@@ -34,11 +34,6 @@ function readTarget(value: string): BuildTarget | { readonly refused: string } {
   return { refused: `${JSON.stringify(value)} is not a target. ${acceptedTargets}` };
 }
 
-/** The glibc version a Node-compatible runtime reports, which a musl host leaves out. */
-const header = object({ glibcVersionRuntime: optional(string()) });
-
-const report = object({ header });
-
 /**
  * The one target a build writes: a JavaScript bundle for a runtime, or a single binary that Bun
  * compiles for a platform. `platform` is the compile target without its `bun-` prefix, such as
@@ -58,15 +53,12 @@ export const targetOption = createValidator({
 });
 
 /**
- * The compile target Bun names for the host: the run's platform, the process's architecture, and
- * musl on Alpine.
+ * The compile target Bun names for the host: the run's platform and architecture, and musl on a
+ * Linux host whose C library is musl, such as Alpine.
  */
-export function hostTarget(platform: string): BuildTarget {
-  const os = platform;
-  const reported = safeParse(report, process.report.getReport());
-  const glibc = reported.success ? reported.output.header.glibcVersionRuntime : undefined;
-  const variant = os === 'linux' && glibc === undefined ? '-musl' : '';
-  const name = `bun-${os}-${process.arch}${variant}`;
+export function hostTarget(host: Pick<Host, 'arch' | 'libc' | 'platform'>): BuildTarget {
+  const variant = host.libc === 'musl' ? '-musl' : '';
+  const name = `bun-${host.platform}-${host.arch}${variant}`;
   const target = readTarget(name);
   if ('refused' in target) {
     throw new Error(`Bun compiles for no target on this host (${name}), so pass --target.`);

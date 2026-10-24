@@ -13,7 +13,7 @@ import {
 } from '../src/background.js';
 import type { BackgroundSources } from '../src/background.js';
 import { captureHost } from '../src/host.js';
-import type { HostOverrides } from '../src/types.js';
+import { processHandle } from '../src/process-handle.js';
 
 const escape = String.fromCodePoint(27);
 const bell = String.fromCodePoint(7);
@@ -233,7 +233,7 @@ describe('the precedence', () => {
 describe('the captured terminal', () => {
   it('reads undefined until the run settles it, even when the override states one', () => {
     const stderr = new Writable({ write: (_chunk, _encoding, done) => done() });
-    const overrides: HostOverrides = {
+    const handle = processHandle({
       cwd: '/work',
       terminal: {
         background: 'light',
@@ -241,8 +241,8 @@ describe('the captured terminal', () => {
         stdin: { isTTY: true },
         stdout: { columns: 80, isTTY: true, rows: 24 },
       },
-    };
+    });
     // A failed capture's report is this host, so a failure view rendering it reads undefined.
-    expect(captureHost('notes', overrides, stderr).report.terminal.background).toBeUndefined();
+    expect(captureHost('notes', handle, stderr).report.terminal.background).toBeUndefined();
   });
 });

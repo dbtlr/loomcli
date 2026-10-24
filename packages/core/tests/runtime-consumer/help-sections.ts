@@ -1,4 +1,4 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, processHandle } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 
@@ -39,5 +39,5 @@ const app = new Application('grouped', {
   .command(read);
 
 process.exitCode = await app.run({
-  host: { argv: process.argv.slice(2) },
+  process: processHandle({ argv: process.argv.slice(2) }),
 });

@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application, plugin } from '@loomcli/core';
+import { Application, plugin, processHandle } from '@loomcli/core';
 
 const [scenario] = process.argv.slice(2);
 
@@ -156,7 +156,7 @@ if (build === undefined) {
 }
 const { after, app, host } = build();
 const code = await app.run({
-  host: { argv: [], release: { build: 'distributed' }, ...host },
+  process: processHandle({ argv: [], release: { build: 'distributed' }, ...host }),
   signal: controller.signal,
 });
 after?.();

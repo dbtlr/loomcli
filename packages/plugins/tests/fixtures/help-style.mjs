@@ -1,4 +1,4 @@
-import { Application, Command, style } from '@loomcli/core';
+import { Application, Command, processHandle, style } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { loomTheme, theme } from '@loomcli/plugins/theme';
@@ -86,7 +86,7 @@ function pageOf() {
 }
 const app = pages[pageOf()];
 await app.run({
-  host: {
+  process: processHandle({
     argv: input.argv ?? ['--version'],
     env: input.env ?? {},
     terminal: {
@@ -94,6 +94,6 @@ await app.run({
       stdin: { isTTY: false },
       stdout: { columns: input.columns, isTTY: input.tty ?? false },
     },
-  },
+  }),
   rendering: input.rendering,
 });

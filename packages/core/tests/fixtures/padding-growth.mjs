@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application, pad } from '@loomcli/core';
+import { Application, pad, processHandle } from '@loomcli/core';
 
 // Run after building. Compare unchanged wrappers with a combining mark appended at each level.
 const mode = process.argv[2] ?? 'concatenated';
@@ -26,7 +26,7 @@ for (const depth of depths) {
     description: 'Resolve nested padding frames.',
   }).action(({ out }) => out.render(input, { render: (value) => value }));
   const started = performance.now();
-  const status = await app.run({ host: { argv: [], env: {}, stdout } });
+  const status = await app.run({ process: processHandle({ argv: [], env: {}, stdout }) });
   const elapsedMs = Math.round(performance.now() - started);
   console.log(
     JSON.stringify({ depth, elapsedMs, inputUnits: input.length, mode, outputBytes, status }),

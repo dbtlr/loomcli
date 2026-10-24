@@ -1,4 +1,4 @@
-import { Application, Command, plugin } from '@loomcli/core';
+import { Application, Command, plugin, processHandle } from '@loomcli/core';
 
 // A test that reads a defect's own sentence runs the fixture as a development build.
 const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
@@ -266,5 +266,8 @@ function application() {
     .action(({ out }) => out.print('root'));
 }
 
-const code = await application().run({ host: { argv, release }, signal: controller.signal });
+const code = await application().run({
+  process: processHandle({ argv, release }),
+  signal: controller.signal,
+});
 process.stdout.write(`resolved:${code}\n`);

@@ -1,6 +1,6 @@
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 
-import { Application, Command, plugin } from '@loomcli/core';
+import { Application, Command, plugin, processHandle } from '@loomcli/core';
 import { refreshManpages } from '@loomcli/plugins/manpage';
 
 /**
@@ -34,5 +34,5 @@ const app = new Application('notes', {
 );
 
 process.exitCode = await app.run({
-  host: { argv: ['refresh'], cwd: scenario.cwd, env: scenario.env },
+  process: processHandle({ argv: ['refresh'], cwd: scenario.cwd, env: scenario.env }),
 });

@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 
 const config = { polarity: 'negative', short: 'n', type: 'boolean' };
 const base = new Application('state')
@@ -19,9 +19,9 @@ function report({ options, passthrough, out }) {
 const first = left.action(report);
 const second = right.action(report);
 await first.run({
-  host: {
+  process: processHandle({
     argv: ['-nl', '--__proto__=safe', '--dryRun', '--', '--', '', 'two words'],
-  },
+  }),
 });
-await first.run({ host: { argv: [] } });
-await second.run({ host: { argv: ['-l'] } });
+await first.run({ process: processHandle({ argv: [] }) });
+await second.run({ process: processHandle({ argv: ['-l'] }) });

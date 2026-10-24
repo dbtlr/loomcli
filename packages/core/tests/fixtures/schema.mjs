@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { z } from 'zod';
 
 // A source run is a development build, so an author's fault prints its Developer Diagnostic.
@@ -229,10 +229,10 @@ switch (scenario) {
       options.__proto__.size = 55;
     });
     await Promise.all([
-      app.run({ host: { argv: [] } }),
-      app.run({ host: { argv: ['--__proto__', '20'] } }),
+      app.run({ process: processHandle({ argv: [] }) }),
+      app.run({ process: processHandle({ argv: ['--__proto__', '20'] }) }),
     ]);
-    await app.run({ host: { argv: [] } });
+    await app.run({ process: processHandle({ argv: [] }) });
     break;
   }
   case 'throw-controls': {
@@ -253,5 +253,5 @@ if (!['absence', 'async', 'each', 'undefined-output', 'rerun'].includes(scenario
   app = app.action(({ options, out }) => out.print(JSON.stringify(options)));
 }
 if (scenario !== 'rerun') {
-  await app.run({ host: { argv } });
+  await app.run({ process: processHandle({ argv }) });
 }

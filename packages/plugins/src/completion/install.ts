@@ -98,7 +98,9 @@ const none = 0;
  * removes by hand, and in any other the module's to remove.
  */
 function otherLines(run: ChildRun, others: readonly StartupLine[]): LinePlacement {
-  const released = others.filter((entry) => mustRelease(judgeStartup(entry.path, entry.line)));
+  const released = others.filter((entry) =>
+    mustRelease(judgeStartup(entry.path, entry.line, run.host.uid)),
+  );
   return {
     lines: [],
     loaded: [],
@@ -120,7 +122,7 @@ function planLines(
   if (startup === undefined) {
     return { ...otherLines(run, recorded), steady: recorded.length === none };
   }
-  const judgement = judgeStartup(startup.path, startup.line);
+  const judgement = judgeStartup(startup.path, startup.line, run.host.uid);
   if (judgement.kind === 'not-file') {
     throw refusals.notAFile(run.name, startup.path);
   }

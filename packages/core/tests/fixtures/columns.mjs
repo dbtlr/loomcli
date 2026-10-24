@@ -9,6 +9,7 @@ import {
   lanes,
   nowrap,
   override,
+  processHandle,
 } from '@loomcli/core';
 
 const input = JSON.parse(process.argv[2] ?? '{}');
@@ -22,7 +23,7 @@ const reading = (label) => ({
 });
 
 if (scenario === 'destinations') {
-  // Each destination reads its own width, from a host override or from process capture.
+  // Each destination reads its own width, from a supplied terminal or from the real process.
   const app = new Application('columns').action(async ({ host, out }) => {
     await out.render(null, reading('stdout'));
     await out.draw(null, reading('stderr'));
@@ -31,11 +32,11 @@ if (scenario === 'destinations') {
     );
   });
   await app.run({
-    host: {
+    process: processHandle({
       argv: [],
       ...(input.env === undefined ? {} : { env: input.env }),
       ...(input.terminal === undefined ? {} : { terminal: input.terminal }),
-    },
+    }),
   });
 } else if (scenario === 'invoke') {
   // An invocation by name has no terminal, whatever COLUMNS the process holds.
@@ -125,11 +126,11 @@ if (scenario === 'destinations') {
       }),
     );
   process.exitCode = await app.run({
-    host: {
+    process: processHandle({
       argv: input.argv,
       env: {},
       terminal: { stderr: live, stdin: { isTTY: false }, stdout: live },
-    },
+    }),
   });
 } else if (scenario === 'failure') {
   // Core's default failure text on a narrow terminal, and an override that wraps its own text.
@@ -178,12 +179,12 @@ if (scenario === 'destinations') {
       ),
     );
   process.exitCode = await app.run({
-    host: {
+    process: processHandle({
       argv: input.argv,
       env: {},
       release: { build: 'distributed' },
       terminal: { stderr: narrow, stdin: { isTTY: false }, stdout: narrow },
-    },
+    }),
   });
 } else if (scenario === 'draw') {
   // Out.draw counts rows against the real stderr width, never the COLUMNS-narrowed one.
@@ -211,14 +212,14 @@ if (scenario === 'destinations') {
       counted.push(await out.draw(line, view));
     })
     .run({
-      host: {
+      process: processHandle({
         argv: [],
         env: { COLUMNS: '60' },
         stderr: new Writable({
           write: (_chunk, _encoding, done) => done(),
         }),
         terminal: { stderr: live, stdin: { isTTY: false }, stdout: live },
-      },
+      }),
     });
   process.stdout.write(JSON.stringify({ counted, seen }));
 }

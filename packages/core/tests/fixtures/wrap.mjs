@@ -1,4 +1,4 @@
-import { Application, glyph, nowrap, pad, style } from '@loomcli/core';
+import { Application, glyph, nowrap, pad, processHandle, style } from '@loomcli/core';
 
 const input = JSON.parse(process.argv[2]);
 // JSON holds no NaN or Infinity, so a width spelled as a string is read as a number.
@@ -46,7 +46,7 @@ const app = new Application('wrap', { description: 'Wrap text.' }).action(({ out
   }),
 );
 await app.run({
-  host: {
+  process: processHandle({
     argv: [],
     env: input.env ?? {},
     platform: 'linux',
@@ -55,6 +55,6 @@ await app.run({
       stdin: { isTTY: false },
       stdout: { columns: undefined, isTTY: input.tty ?? false, rows: undefined },
     },
-  },
+  }),
   rendering: input.rendering,
 });

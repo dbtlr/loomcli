@@ -1,4 +1,4 @@
-import { Application, override } from '@loomcli/core';
+import { Application, override, processHandle } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpPage } from '@loomcli/plugins/help/views';
 
@@ -26,5 +26,5 @@ const application = new Application('jsonkit', {
 }).action(({ out }) => out.print('summarized'));
 
 process.exitCode = await application.run({
-  host: { argv: ['--help'], release: { build: 'distributed' } },
+  process: processHandle({ argv: ['--help'], release: { build: 'distributed' } }),
 });

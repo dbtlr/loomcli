@@ -21,7 +21,8 @@ interface EnvironmentSetup {
   log: LogBinder;
   out: Pick<Out, 'warn'>;
   plugins: readonly BuiltPlugin[];
-  publish: boolean;
+  /** Where an argv run copies each accepted addition out: its process handle's `publishEnv`. */
+  publish: ((name: string, value: string) => void) | undefined;
   signal: AbortSignal;
 }
 
@@ -53,9 +54,7 @@ function mergeAdditions(setup: EnvironmentSetup, additions: readonly [string, st
         value,
         writable: true,
       });
-      if (publish && (!Object.hasOwn(process.env, name) || process.env[name] === undefined)) {
-        process.env[name] = value;
-      }
+      publish?.(name, value);
     }
   }
 }

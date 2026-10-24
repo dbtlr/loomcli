@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-import { Application } from '../../dist/index.js';
+import { Application, processHandle } from '../../dist/index.js';
 
 const scenario = process.argv[2];
 let text = '';
@@ -25,7 +25,7 @@ const app = new Application('draw', { description: 'Draw terminal output.' }).ac
   },
 );
 process.exitCode = await app.run({
-  host: {
+  process: processHandle({
     argv: [],
     env: {},
     stderr,
@@ -34,6 +34,6 @@ process.exitCode = await app.run({
       stdin: { isTTY: false },
       stdout: { columns: undefined, isTTY: false, rows: undefined },
     },
-  },
+  }),
 });
 process.stdout.write(JSON.stringify({ rows, text }));

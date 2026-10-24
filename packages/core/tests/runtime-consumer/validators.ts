@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, processHandle } from '@loomcli/core';
 import { integer, oneOf, port, text } from '@loomcli/validators';
 
 // The packed catalog validates, transforms, and types each option the way the reference states.
@@ -15,4 +15,4 @@ const app = new Application('validators')
     return out.print(JSON.stringify({ listen, mode, tags, workers }));
   });
 
-await app.run({ host: { argv: process.argv.slice(2) } });
+await app.run({ process: processHandle({ argv: process.argv.slice(2) }) });

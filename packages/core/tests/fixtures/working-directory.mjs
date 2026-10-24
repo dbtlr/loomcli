@@ -6,6 +6,7 @@ import {
   LoomError,
   override,
   plugin,
+  processHandle,
   WorkingDirectoryError,
 } from '@loomcli/core';
 
@@ -86,7 +87,13 @@ async function runOn(host) {
   const stdout = sink();
   const stderr = sink();
   const code = await application().run({
-    host: { argv: ['where'], release, stderr: stderr.stream, stdout: stdout.stream, ...host },
+    process: processHandle({
+      argv: ['where'],
+      release,
+      stderr: stderr.stream,
+      stdout: stdout.stream,
+      ...host,
+    }),
   });
   return { code, exitCode: process.exitCode, stderr: stderr.text(), stdout: stdout.text() };
 }
@@ -114,7 +121,11 @@ const scenarios = {
   },
   /** `app.invoke` from a working directory that cannot be read resolves failed. */
   invoke: async () => {
-    const outcome = await application().invoke(['where'], {}, { host: { release } });
+    const outcome = await application().invoke(
+      ['where'],
+      {},
+      { process: processHandle({ release }) },
+    );
     process.stdout.write(`${JSON.stringify({ calls, reads, ...described(outcome) })}\n`);
   },
   /** A `host.cwd` override replaces the capture at both doors. */
@@ -123,7 +134,7 @@ const scenarios = {
     const named = await application().invoke(
       ['where'],
       {},
-      { host: { cwd: '/srv/named', release } },
+      { process: processHandle({ cwd: '/srv/named', release }) },
     );
     process.stdout.write(`${JSON.stringify({ calls, named, ran, reads })}\n`);
   },
