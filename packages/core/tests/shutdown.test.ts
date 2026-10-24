@@ -335,6 +335,36 @@ describe('the shutdown', () => {
     expect(sources).toEqual([]);
   });
 
+  it('a run cut off by a shutdown keeps no listener, and a later run makes core listen again', async () => {
+    const mock = mockProcess();
+    const count = listening(mock);
+    const reached = deferred();
+    const kept: { register?: (handler: () => void) => () => void } = {};
+    const hung = new Application('app', { shutdown: { timeout: 0 } }).action(
+      async ({ onShutdown: register }) => {
+        kept.register = register;
+        reached.resolve();
+        await forever();
+      },
+    );
+    void hung.run({ process: mock });
+    await reached.promise;
+    mock.signals.raise('SIGINT');
+    const counts = [count()];
+    // The cut-off run is still running, and a handler it registers now starts nothing listening.
+    kept.register?.(() => undefined);
+    counts.push(count());
+    const later = new Application('app').action(() => {
+      counts.push(count());
+    });
+    await later.run({ process: mock });
+    counts.push(count());
+    expect([mock.endedBy, counts]).toEqual([
+      'SIGINT',
+      ['0,0,0,0,0,0,0', '0,0,0,0,0,0,0', '1,1,1,1,1,0,0', '0,0,0,0,0,0,0'],
+    ]);
+  });
+
   it('a second ending signal ends the shutdown at once and re-raises the first', async () => {
     const mock = mockProcess();
     const reached = deferred();

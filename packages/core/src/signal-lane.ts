@@ -130,6 +130,8 @@ interface Place {
   /** The run's own pending handlers. */
   readonly handlers: Set<PendingShutdown>;
   left: boolean;
+  /** Whether a shutdown ended while the run was still live, after which it keeps no listener. */
+  cutOff: boolean;
 }
 
 /** One pending shutdown handler, the run it belongs to, and whether it keeps the lane listening. */
@@ -188,6 +190,15 @@ function holdForDelivery(): void {
   setImmediate(() => {
     setImmediate(() => undefined);
   });
+}
+
+/**
+ * Whether a run keeps its lane listening: a run that listens, until a shutdown has cut it off.
+ * Listening again for a cut-off run would catch core's own re-raise, so only a later run or
+ * handler makes the lane listen again.
+ */
+function listensFor(place: Place): boolean {
+  return place.run.listens && !place.cutOff;
 }
 
 /** Clears the timer and the turn that would have ended a shutdown, which ends now. */
@@ -280,7 +291,7 @@ class SignalLane implements Lane {
   }
 
   enter(run: LaneRun): LanePlace {
-    const place: Place = { handlers: new Set(), left: false, run };
+    const place: Place = { cutOff: false, handlers: new Set(), left: false, run };
     this.#places.add(place);
     this.#refresh();
     const shutdown = this.#shutdown;
@@ -330,7 +341,7 @@ class SignalLane implements Lane {
       return () => undefined;
     }
     const pending: PendingShutdown = {
-      listens: place === undefined || place.run.listens,
+      listens: place === undefined || listensFor(place),
       place,
       registration: { failed: registration.failed, handler: registration.handler },
     };
@@ -442,6 +453,8 @@ class SignalLane implements Lane {
   /** Writes every live run's queued region frames straight to its terminal and shows the cursor. */
   #flushTerminals(): void {
     for (const place of snapshot(this.#places)) {
+      // A run still live at the end is cut off: it keeps core listening no more.
+      place.cutOff = true;
       callCaught(place.run.flush);
     }
   }
@@ -459,7 +472,7 @@ class SignalLane implements Lane {
   /** Whether anyone asks the lane to listen for the ending signals and the `exit` event. */
   #wantsEnding(): boolean {
     return (
-      snapshot(this.#places).some((place) => place.run.listens) ||
+      snapshot(this.#places).some(listensFor) ||
       snapshot(this.#shutdownHandlers).some((pending) => pending.listens)
     );
   }
