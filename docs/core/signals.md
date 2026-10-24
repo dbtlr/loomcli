@@ -135,7 +135,7 @@ export function hideCursor(stream: NodeJS.WriteStream): () => void {
 }
 ```
 
-`onShutdown(handler)` registers a handler that restores what must not outlive the process, such as raw mode, the cursor, a child process, or a scratch file, and returns a function that removes it.
+`onShutdown(handler)` registers a handler that restores what must not outlive the process, such as raw mode, the cursor, a [child program](../glossary.md#compilation-and-invocation), or a scratch file, and returns a function that removes it.
 
 - **Synchronous by type.** A handler that returns a promise does not compile, so `onShutdown(async () => …)` is a type error. Core calls a handler synchronously and never awaits what it returns. A handler does its restoring at once, as `setRawMode`, `child.kill`, and `rmSync` do, and keeps it short: it runs while the operator waits for the prompt back.
 - **When it runs.** Once, at the end of a [shutdown](#the-shutdown), or at the process's own `exit` event, for a normal end, a `process.exit()` call, or an uncaught exception, whichever comes first. Core calls every pending handler newest first, so code that set up last tears down first. `cause` is the ending signal's name, or `'exit'` at the process's own end, and `code` is the status the shell sees: 129, 130, 131, or 143 for a signal, and the exit status otherwise.

@@ -4,7 +4,7 @@ description: The @loomcli/eslint-plugin reference. The lint rules that guide an 
 
 # ESLint plugin reference
 
-`@loomcli/eslint-plugin` ships the [lint rules](../glossary.md) for Loom applications. A lint rule guides an author where a type cannot express the guidance, and it reports in the editor and in CI before anything runs. [ADR-0098](../decisions/0098-lint-is-the-author-guidance-lane.md) records the decision. The plugin is ESLint-compatible, so oxlint loads it through its `jsPlugins` setting and ESLint loads it as a flat-config plugin. Both tools run the same four rules.
+`@loomcli/eslint-plugin` ships the [lint rules](../glossary.md) for Loom applications. A lint rule guides an author where a type cannot express the guidance, and it reports in the editor and in CI before anything runs. [ADR-0098](../decisions/0098-lint-is-the-author-guidance-lane.md) records the decision. The plugin is ESLint-compatible, so oxlint loads it through its `jsPlugins` setting and ESLint loads it as a flat-config plugin. Both tools run the same rules.
 
 The package has a peer dependency on `@loomcli/core`, because the `name-shape` rule calls the same name predicates core does. It needs no type information, so it runs under oxlint, which provides none.
 
@@ -61,7 +61,7 @@ typescript-eslint supports TypeScript below 6.1 and reads the TypeScript 6 API, 
 
 `loom init --linter eslint` writes both keys in a new scaffold, and an application that already declares `typescript` adds them by hand. The alias goes once typescript-eslint supports TypeScript 7.
 
-`configs.recommended` registers the plugin under `@loomcli` and turns all four rules on at `error`. To change a rule, set it in a later config object, such as `'@loomcli/name-shape': 'warn'`.
+`configs.recommended` registers the plugin under `@loomcli` and turns every rule on at `error`. To change a rule, set it in a later config object, such as `'@loomcli/name-shape': 'warn'`.
 
 ## How the rules find a declaration
 
@@ -170,7 +170,7 @@ Each message names what the code reached and the member to use instead:
 | `userInfo()` from `os` | `host.uid` for who the user is, and `host.env.USER` for the name to show |
 | `child_process` | `host.spawn` |
 
-- **On by default.** `configs.recommended` and `configs.oxlint` turn the rule on at `error`, so an `.oxlintrc.json` holds `"@loomcli/host-bypass": "error"` beside the other rules.
+- **On by default.** `configs.recommended` and `configs.oxlint` turn the rule on at `error`, as they do every rule.
 - **The forms.** The rule reports the global `process`, `globalThis.process`, and `global.process`; an import of `process` or `node:process`, by default, namespace, or named import; `homedir`, `tmpdir`, and `userInfo` from `os` or `node:os`, as a named import or as a member of the module's default or namespace import; and any import of `child_process` or `node:child_process`. An `import()` with a literal specifier counts as an import.
 - **The global alone.** The rule reads scope analysis, so a binding the code declares itself, such as a parameter named `process` or a destructured `{ process }`, is not reported. A use it cannot trace, such as `Reflect.get(globalThis, 'process')` or an `import()` with a computed specifier, is not reported either.
 - **The entry module.** `app.run()` given no handle binds the real process, so an entry module needs no `process` of its own and no exception.

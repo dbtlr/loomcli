@@ -24,7 +24,7 @@ An env-bound option reads imported values through its ordinary environment tier,
 An empty variable still supplies no option value, so option resolution can fall through to another name, configuration, or a default.
 Failures identify the variable without `.env` provenance.
 
-Only an argv `run()` whose [process handle](../core/host.md#the-process-handle) has a `publishEnv` copies additions out, and a handle `processHandle` builds has one, which copies them into `process.env` for libraries and child processes, only when it was given neither `env` nor `cwd`.
+Only an argv `run()` whose [process handle](../core/host.md#the-process-handle) has a `publishEnv` copies additions out, and a handle `processHandle` builds has one, which copies them into `process.env` for libraries and the programs a library starts itself, only when it was given neither `env` nor `cwd`.
 Other supplied fields do not suppress that copy, and it preserves every existing process variable, including an empty one. A hand-built handle's `publishEnv` decides for itself what it does with each addition.
 A run whose handle has no `publishEnv` changes only its snapshot, and so does every invocation by name: `app.invoke()` never calls `publishEnv`.
 An action's `invoke()` inherits its parent's prepared environment without reading the file again.

@@ -318,6 +318,10 @@ _Avoid_: Slot (a single-owner contribution), cursor context, completion state
 Handing the validated invocation to the selected Command's action.
 _Avoid_: Routing (for the handoff), execution
 
+**Child program**:
+A program a run starts through `host.spawn`, with no shell, in the run's working directory and environment unless the call names others. The real process's handle starts it for real, and a mock answers it from the script the test gives for its command.
+_Avoid_: Child process (for what a run starts), subprocess
+
 **Host**:
 The facts of the process an invocation runs in, copied from the run's process handle: argument tokens, working directory, home folder, temporary folder, environment, platform, architecture, C library, user ID, the standard streams, terminal facts, and the release facts, with `spawn`, the run's one way to start a child program. Core copies the facts once per run, except that it reads terminal width and height live and settles the terminal's background rather than copying it, and retains the streams; installed environment hooks may then add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
 _Avoid_: Environment (for the whole object), process, platform, context
