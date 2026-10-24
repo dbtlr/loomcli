@@ -79,6 +79,36 @@ function suppliedTerminal(supplied: OutputTerminal): OutputTerminal {
   });
 }
 
+/** A read that runs once, on its first call, and answers that value from then on. */
+function once<Value>(read: () => Value): () => Value {
+  let held: { value: Value } | undefined = undefined;
+  return () => {
+    held ??= { value: read() };
+    return held.value;
+  };
+}
+
+/**
+ * One host or report: its facts, working directory, and release facts, with `libc` a getter, so
+ * no spread reads the C library before the run's own code does.
+ */
+function assembled<Facts extends object, Cwd, Release>(parts: {
+  readonly cwd: Cwd;
+  readonly facts: Facts;
+  readonly libc: () => Host['libc'];
+  readonly release: Release;
+}) {
+  const { cwd, facts, libc, release } = parts;
+  return {
+    ...facts,
+    cwd,
+    get libc() {
+      return libc();
+    },
+    release,
+  };
+}
+
 /**
  * The roots a defect's frame may lie under: the working directory as the host names it, and the
  * path it resolves to through symbolic links, because a runtime names a module by its resolved
@@ -138,7 +168,8 @@ export interface HandleFacts {
   readonly arch: string;
   readonly directory: WorkingDirectory;
   readonly env: Host['env'];
-  readonly libc: Host['libc'];
+  /** Reads the C library once, on the run's first read of `host.libc`, which can be costly. */
+  readonly libc: () => Host['libc'];
   readonly platform: string;
   readonly program: readonly string[];
   readonly readSource?: NonNullable<Host['readSource']>;
@@ -158,7 +189,7 @@ export function handleFacts(application: string, handle: ProcessHandle): HandleF
     arch: handle.arch,
     directory: captureWorkingDirectory(handle),
     env,
-    libc: handle.libc,
+    libc: once(() => handle.libc),
     platform,
     program: Object.freeze([...handle.program]),
     release: handleRelease(handle, { application, env, platform }),
@@ -177,16 +208,22 @@ export type RunFacts = Pick<Host, 'argv' | 'raise' | 'stderr' | 'stdin' | 'stdou
  * report first.
  */
 export function capturedHost(run: RunFacts, shared: HandleFacts): HostCapture {
-  const { directory, release, ...copied } = shared;
+  const { directory, libc, release, ...copied } = shared;
   const facts = { ...run, ...copied };
   const cwd = 'cwd' in directory ? directory.cwd : undefined;
   if ('failure' in release) {
-    return { failure: release.failure, report: { ...facts, cwd, release: undefined } };
+    return {
+      failure: release.failure,
+      report: assembled({ cwd, facts, libc, release: undefined }),
+    };
   }
   if ('failure' in directory) {
-    return { failure: directory.failure, report: { ...facts, cwd, release: release.facts } };
+    return {
+      failure: directory.failure,
+      report: assembled({ cwd, facts, libc, release: release.facts }),
+    };
   }
-  const host: Host = { ...facts, cwd: directory.cwd, release: release.facts };
+  const host: Host = assembled({ cwd: directory.cwd, facts, libc, release: release.facts });
   return { host, report: host };
 }
 

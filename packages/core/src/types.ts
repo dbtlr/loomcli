@@ -361,8 +361,11 @@ export interface Host {
   platform: string;
   /** The process's CPU architecture, such as `x64` or `arm64`. */
   arch: string;
-  /** `glibc` or `musl` on Linux, and `undefined` elsewhere. */
-  libc: 'glibc' | 'musl' | undefined;
+  /**
+   * `glibc` or `musl` on Linux, and `undefined` elsewhere. Core copies it from the handle on the
+   * run's first read, because the real process's answer comes from a costly runtime report.
+   */
+  readonly libc: 'glibc' | 'musl' | undefined;
   /** The process's user ID, or `undefined` on a runtime with none. */
   uid: number | undefined;
   argv: string[];

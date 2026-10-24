@@ -101,6 +101,24 @@ function processTimeZone(): string {
   }
 }
 
+/**
+ * The runtime's diagnostic report without its network section where the runtime can leave it out,
+ * because Node resolves the name of every open socket's peer to fill it, which can take seconds.
+ */
+function networkFreeReport(): unknown {
+  const { report } = process;
+  if (!('excludeNetwork' in report)) {
+    return report.getReport();
+  }
+  const excluded: unknown = Reflect.get(report, 'excludeNetwork');
+  Reflect.set(report, 'excludeNetwork', true);
+  try {
+    return report.getReport();
+  } finally {
+    Reflect.set(report, 'excludeNetwork', excluded);
+  }
+}
+
 /** The C library the process runs on, which cannot change during its life, once read. */
 let readLibc: { value: 'glibc' | 'musl' | undefined } | undefined = undefined;
 
@@ -111,7 +129,7 @@ let readLibc: { value: 'glibc' | 'musl' | undefined } | undefined = undefined;
 function processLibc(): 'glibc' | 'musl' | undefined {
   if (readLibc === undefined) {
     if (process.platform === 'linux') {
-      const report: unknown = process.report.getReport();
+      const report = networkFreeReport();
       const header: unknown = isPlainObject(report) ? report.header : undefined;
       const glibc = isPlainObject(header) ? header.glibcVersionRuntime : undefined;
       readLibc = { value: glibc === undefined ? 'musl' : 'glibc' };

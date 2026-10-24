@@ -232,6 +232,32 @@ test('app.invoke reads env, cwd, platform, and release from its handle and write
   expect(written).toEqual([]);
 });
 
+test('a run reads the handle libc only when its code reads host.libc, and then once', async () => {
+  let reads = 0;
+  const counting = () =>
+    Object.create(handBuilt().handle, {
+      libc: {
+        get: () => {
+          reads += 1;
+          return 'glibc';
+        },
+      },
+    });
+  const quiet = new Application('notes').action(({ out }) => out.print('done'));
+  await quiet.run({ process: counting() });
+  await quiet.invoke([], {}, { process: counting() });
+  expect(reads).toBe(0);
+  const seen: Host['libc'][] = [];
+  const reading = new Application('notes').action(({ host }) => {
+    seen.push(host.libc, host.libc);
+  });
+  await reading.run({ process: counting() });
+  expect(reads).toBe(1);
+  await reading.invoke([], {}, { process: counting() });
+  expect(reads).toBe(2);
+  expect(seen).toEqual(['glibc', 'glibc', 'glibc', 'glibc']);
+});
+
 test('the host copies arch, libc, and uid from the handle, in run() and app.invoke alike', async () => {
   const read: Pick<Host, 'arch' | 'libc' | 'uid'>[] = [];
   const app = new Application('notes').action(({ host }) => {
