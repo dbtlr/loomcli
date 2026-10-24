@@ -266,21 +266,6 @@ const scenarios = {
     withOutput('@fixture/schema/throws', () => {
       throw new Error('the schema threw');
     }),
-  // An empty claim leaves the slot free, so the second plugin owns it and the build succeeds.
-  'signals-empty-claim': () =>
-    new Application('app', {
-      plugins: [
-        named('@loomcli/signals', { signals: [] }),
-        named('@acme/trace', { signals: ['SIGINT'] }),
-      ],
-    }).action(dispatch),
-  'signals-second-claim': () =>
-    new Application('app', {
-      plugins: [
-        named('@loomcli/signals', { signals: ['SIGINT', 'SIGTERM'] }),
-        named('@acme/trace', { signals: ['SIGINT'] }),
-      ],
-    }).action(dispatch),
   'twin-descriptors': () => {
     const get = new Command('get', { extensions: [twin({ details: 'one' })] }).action(dispatch);
     return new Application('app', {

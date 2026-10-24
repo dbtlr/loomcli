@@ -158,7 +158,7 @@ export function start(
   const child = spawn(executable, [fileURLToPath(file), ...args], {
     ...(cwd === undefined ? {} : { cwd }),
     env: childEnvironment(env),
-    // A fixture that owns the signals slot would absorb a SIGTERM as its first cooperative signal.
+    // A fixture's run starts a shutdown on SIGTERM, which a handler or a host listener can outlast.
     // The harness therefore ends a stuck child with a signal no listener can absorb.
     killSignal: 'SIGKILL',
     stdio: ['ignore', 'pipe', 'pipe'],

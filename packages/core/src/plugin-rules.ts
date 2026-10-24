@@ -24,10 +24,10 @@ const pluginInstalledTwice = registerRule('@loomcli/core/plugin-installed-twice'
   headline: 'Plugin installed twice',
 });
 
-/** A second plugin claiming the theme, the signals, or the configuration source slot. */
+/** A second plugin claiming the theme or the configuration source slot. */
 const slotTaken = registerRule('@loomcli/core/slot-taken', {
   explanation:
-    'A slot is a position exactly one plugin claims: the theme, the process signals, and the configuration source. A second claim would leave two plugins answering where core asks one.',
+    'A slot is a position exactly one plugin claims: the theme and the configuration source. A second claim would leave two plugins answering where core asks one.',
   headline: 'Slot already claimed',
 });
 

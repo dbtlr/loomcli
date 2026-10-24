@@ -97,6 +97,9 @@ const shownFrom: Readonly<Record<Lane, number>> = {
 /** The opener a reservation holds until its own gate publishes the real one. */
 const unopened = (): void => undefined;
 
+/** The control sequence that shows the terminal's cursor, which a shutdown's end writes. */
+const showCursor = '\u001B[?25h';
+
 /** One sequence's hold on a destination: the pieces it writes, and the end of its place. */
 interface Reservation {
   write: (text: string) => Promise<void>;
@@ -139,6 +142,8 @@ class Destination {
   turn: Turn | undefined = undefined;
   /** How many sequences hold a place in this destination's order and have not closed. */
   #sequences = 0;
+  /** The compositions queued and not yet sent, which a flush writes at once. */
+  readonly #composed = new Set<{ produce: () => string }>();
 
   constructor(
     readonly stream: Writable,
@@ -217,18 +222,47 @@ class Destination {
 
   /**
    * Text composed once it reaches the stream, so it reads the state every earlier write left, and
-   * sent as it is, outside the passage. Nothing is sent for the empty string.
+   * sent as it is, outside the passage. Nothing is sent for the empty string. A composition still
+   * queued when `flushComposed` runs is written there instead, and sends nothing when its turn comes.
    */
   compose(produce: () => string): Promise<void> {
+    const queued = { produce };
+    this.#composed.add(queued);
     return this.run(() => {
+      if (!this.#composed.has(queued)) {
+        return Promise.resolve();
+      }
       if (this.state.kind !== 'ok') {
+        this.#composed.delete(queued);
         throw refusal(this.state);
       }
       return this.send(() => {
+        if (!this.#composed.delete(queued)) {
+          return Promise.resolve();
+        }
         const text = produce();
         return text === '' ? Promise.resolve() : this.writeText(text);
       });
     });
+  }
+
+  /**
+   * Writes every composition still queued straight to the stream, in the order it was queued, and
+   * then `after`, synchronously. A write that fails is dropped: this is a best-effort write the
+   * process makes on its way out.
+   */
+  flushComposed(after: string): void {
+    const queued = [...this.#composed];
+    this.#composed.clear();
+    const text = queued.map(({ produce }) => produce()).join('') + after;
+    if (text === '' || this.state.kind !== 'ok' || this.stream.destroyed) {
+      return;
+    }
+    try {
+      this.stream.write(text, () => undefined);
+    } catch {
+      // A terminal that has hung up drops the write.
+    }
   }
 
   /** Sends text now, inside an operation this destination is running, recording any failure. */
@@ -648,6 +682,16 @@ export class Output {
   /** Whoever observes this run's progress events, each delivered inside the call that built it. */
   observeProgress(observer: (event: ProgressEvent) => void): void {
     this.progressObserver = observer;
+  }
+
+  /**
+   * Writes every region frame still in stderr's write queue straight to the terminal and shows the
+   * cursor, synchronously, which a shutdown does at its end. Only a terminal stderr holds regions.
+   */
+  flushTerminal(): void {
+    if (this.host.terminal.stderr.isTTY) {
+      this.destination(this.host.stderr).flushComposed(showCursor);
+    }
   }
 
   /**

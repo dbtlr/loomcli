@@ -211,7 +211,7 @@ async function settleBackground(
   return (await query()) ?? colorFgBg(env.COLORFGBG);
 }
 
-export type { Background, BackgroundSources, Replies };
+export type { Background, BackgroundSources, InterruptSignal, Replies };
 export {
   backgroundOfLuminance,
   backgroundQuery,

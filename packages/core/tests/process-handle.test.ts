@@ -10,8 +10,8 @@
  *   so one handle reused across runs reads current facts. Every handle shares the real process's
  *   one signal source, and has `publishEnv` only when it was given neither `env` nor `cwd`.
  * - Effects. `run()` writes its code to its handle's `exitCode` and never to `process.exitCode`
- *   for a hand-built handle, and `app.invoke` writes none. Core's signal bracket listens and
- *   re-raises on the handle's signal source.
+ *   for a hand-built handle, and `app.invoke` writes none. Core's lane listens and re-raises on
+ *   the handle's signal source.
  * - Host facts. `arch`, `libc`, and `uid` copy from the handle, and `app.invoke` reads `env`,
  *   `cwd`, `platform`, and `release` from it. `host.raise` raises on the source and answers true only
  *   when stdin is the source's own terminal.
@@ -20,7 +20,7 @@ import { Readable, Writable } from 'node:stream';
 
 import { afterEach, expect, test, vi } from 'vite-plus/test';
 
-import { Application, plugin, processHandle, WorkingDirectoryError } from '../src/index.js';
+import { Application, processHandle, WorkingDirectoryError } from '../src/index.js';
 import type { ExitCode, Host, ProcessHandle, ProcessSignal, SignalSource } from '../src/index.js';
 
 /** A stream that keeps what a run writes to it. */
@@ -332,12 +332,10 @@ test('processHandle has publishEnv only when it was given neither env nor cwd', 
   expect(processHandle({ cwd: '/work' }).publishEnv).toBeUndefined();
 });
 
-test("core's signal bracket listens on the handle's source and re-raises a repeated signal there", async () => {
+test("core's lane listens on the handle's source and re-raises there at a second signal", async () => {
   const { listeners, off, on, raised, source } = ownSource();
   const { handle } = handBuilt({ signals: source });
-  const app = new Application('notes', {
-    plugins: [plugin('@fixture/signals', { signals: ['SIGINT'] })],
-  }).action(({ signal }) => {
+  const app = new Application('notes').action(({ signal }) => {
     expect(on).toHaveBeenCalledWith('SIGINT', expect.any(Function));
     listeners.get('SIGINT')?.();
     expect(signal.aborted).toBe(true);

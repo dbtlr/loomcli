@@ -212,7 +212,13 @@ describe('interrupt keys during the wait', () => {
       { encoding: 'utf8', timeout: 30_000 },
     );
     expect(result.signal).toBe('SIGINT');
-    expect(result.stdout).toBe('');
+    // The shutdown ends a turn after the run resolves, so the code after `run()` reports first.
+    const report: unknown = JSON.parse(result.stdout);
+    expect(report).toMatchObject({
+      code: 130,
+      seen: { action: 'unread', middleware: 'unread', view: 'unread' },
+      stdout: '',
+    });
   });
 });
 

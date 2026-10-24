@@ -21,8 +21,7 @@
  *   unlinked question fails with `InteractionUnavailableError` and exit 1. A piped stdout with
  *   stdin and stderr terminals still asks, and stdout holds no question byte.
  * - Leaving. Ctrl-C at each kind exits 130 and leaves the terminal in cooked mode with the cursor
- *   shown, with and without an installed signals owner, and stdin closing and Ctrl-D on empty input
- *   at a question do the same. A caller's abort while a question waits resolves 130 and restores
+ *   shown, and stdin closing and Ctrl-D on empty input at a question do the same. A caller's abort while a question waits resolves 130 and restores
  *   the terminal. After every path, the process exits once the run resolves, with nothing left
  *   reading stdin.
  * - Typeahead. `8080` Enter `yes` Enter written in one chunk answers a text question and the
@@ -110,34 +109,28 @@ test('select scrolls seven choices without wrapping and honors a matching defaul
   }
 });
 
-test.each([
-  'text',
-  'secret',
-  'confirm',
-  'select',
-  'text-signals',
-  'secret-signals',
-  'confirm-signals',
-  'select-signals',
-])('Ctrl-C cancels %s, shows the cursor, and restores cooked mode', async (kind) => {
-  const tty = terminal(kind, { NO_COLOR: '1' });
-  try {
-    await tty.expect(
-      {
-        confirm: 'Install service?',
-        secret: 'Postgres URL',
-        select: 'Backend',
-        text: 'Service port',
-      }[kind.replace(/-signals$/u, '')] ?? '',
-    );
-    tty.send(String.raw`\x03`);
-    const result = await tty.expect('EXIT:130 cooked:true');
-    expect(result).toContain('cancelled');
-    expect(result).toContain('\u001b[?25h');
-  } finally {
-    await tty.close();
-  }
-});
+test.each(['text', 'secret', 'confirm', 'select'])(
+  'Ctrl-C cancels %s, shows the cursor, and restores cooked mode',
+  async (kind) => {
+    const tty = terminal(kind, { NO_COLOR: '1' });
+    try {
+      await tty.expect(
+        {
+          confirm: 'Install service?',
+          secret: 'Postgres URL',
+          select: 'Backend',
+          text: 'Service port',
+        }[kind] ?? '',
+      );
+      tty.send(String.raw`\x03`);
+      const result = await tty.expect('EXIT:130 cooked:true');
+      expect(result).toContain('cancelled');
+      expect(result).toContain('\u001b[?25h');
+    } finally {
+      await tty.close();
+    }
+  },
+);
 
 test.each([
   ['blank', String.raw`\r`, '""'],
@@ -208,7 +201,7 @@ test('a skipped supplied link prints no question or answered line', async () => 
   }
 });
 
-test.each(['text', 'secret', 'confirm', 'select', 'secret-signals'])(
+test.each(['text', 'secret', 'confirm', 'select'])(
   'Ctrl-D on empty %s cancels the run',
   async (kind) => {
     const tty = terminal(kind, { NO_COLOR: '1' });
@@ -217,7 +210,6 @@ test.each(['text', 'secret', 'confirm', 'select', 'secret-signals'])(
         {
           confirm: 'Install service?',
           secret: 'Postgres URL',
-          'secret-signals': 'Postgres URL',
           select: 'Backend',
           text: 'Service port',
         }[kind] ?? '',

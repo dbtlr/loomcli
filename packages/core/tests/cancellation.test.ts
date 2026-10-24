@@ -20,7 +20,7 @@ test('a caller abort during a run resolves 130 with the caller as its source', (
     stderr: '',
     stdout: [
       'before:0:0',
-      'during:0:0',
+      'during:1:1',
       'ready',
       'action:caller:the caller stopped the run',
       'after:0:0',
@@ -50,29 +50,29 @@ test('a cancelled run with an unemitted result resolves the signal code and repo
 test('a caller signal already aborted at entry resolves 130 having loaded nothing', () => {
   /**
    * The graph still builds and validates, so a declaration fault would still be reported; the
-   * plugin's loader is never called, no middleware or action runs, and the probe shows that no
-   * listener was added at any point, which a count taken after the run could not tell.
+   * plugin's loader is never called and no middleware or action runs. The run listened from the
+   * moment it was called, as every `run()` does, and holds no listener once it resolved.
    */
   expect(run('pre-aborted')).toEqual({
     status: 130,
     stderr: '',
-    stdout: 'before:0:0\nadded:none\nafter:0:0\nresolved:130\n',
+    stdout: 'before:0:0\nadded:SIGINT,SIGTERM\nafter:0:0\nresolved:130\n',
   });
 });
 
-test('a run that fails to build installs no listener and keeps its declaration diagnostic', () => {
+test('a run that fails to build leaves no listener behind and keeps its declaration diagnostic', () => {
   expect(run('build-fault')).toEqual({
     status: 1,
     stderr: 'app: Something went wrong.\n',
-    stdout: 'before:0:0\nadded:none\nresolved:1\n',
+    stdout: 'before:0:0\nadded:SIGINT,SIGTERM\nresolved:1\n',
   });
 });
 
-test('a declared default its validator rejects installs no listener and still resolves 1', () => {
+test('a declared default its validator rejects leaves no listener behind and still resolves 1', () => {
   expect(run('default-fault')).toEqual({
     status: 1,
     stderr: 'app: Something went wrong.\n',
-    stdout: 'before:0:0\nadded:none\nresolved:1\n',
+    stdout: 'before:0:0\nadded:SIGINT,SIGTERM\nresolved:1\n',
   });
 });
 
@@ -113,7 +113,7 @@ test('a cancelled run whose failure view throws still resolves the cancellation 
     stderr: 'the action stopped the invocation\napp: Something went wrong.\n',
     stdout: [
       'before:0:0',
-      'during:0:0',
+      'during:1:1',
       'ready',
       'action:caller:the caller stopped the run',
       'after:0:0',
@@ -129,7 +129,7 @@ test('a thrown cancellation is silent after the abort, and any other failure is 
     stderr: '',
     stdout: [
       'before:0:0',
-      'during:0:0',
+      'during:1:1',
       'ready',
       'action:caller:the caller stopped the run',
       'after:0:0',
@@ -145,13 +145,14 @@ test('a thrown cancellation is silent after the abort, and any other failure is 
   });
 });
 
-test('a SIGINT during a cooperative action resolves 130 and names its source', async () => {
-  const running = spawnRun('owner');
+test('a SIGINT during a cooperative action resolves 130, names its source, and the process dies by it', async () => {
+  const running = spawnRun('watching');
   await running.announced('ready');
   running.child.kill('SIGINT');
+  // The code after `run()` runs its synchronous part before the shutdown ends and re-raises.
   await expect(running.exit).resolves.toEqual({
-    signal: null,
-    status: 130,
+    signal: 'SIGINT',
+    status: null,
     stderr: '',
     stdout: [
       'before:0:0',
@@ -159,20 +160,20 @@ test('a SIGINT during a cooperative action resolves 130 and names its source', a
       'ready',
       'aborted:SIGINT',
       'action:SIGINT:none',
-      'after:0:0',
+      'after:1:1',
       'resolved:130',
       '',
     ].join('\n'),
   });
 });
 
-test('a SIGTERM resolves 143 and leaves no listener behind', async () => {
-  const running = spawnRun('owner');
+test('a SIGTERM resolves 143, and the process dies by it', async () => {
+  const running = spawnRun('watching');
   await running.announced('ready');
   running.child.kill('SIGTERM');
   await expect(running.exit).resolves.toEqual({
-    signal: null,
-    status: 143,
+    signal: 'SIGTERM',
+    status: null,
     stderr: '',
     stdout: [
       'before:0:0',
@@ -180,18 +181,18 @@ test('a SIGTERM resolves 143 and leaves no listener behind', async () => {
       'ready',
       'aborted:SIGTERM',
       'action:SIGTERM:none',
-      'after:0:0',
+      'after:1:1',
       'resolved:143',
       '',
     ].join('\n'),
   });
 });
 
-test('a repeated SIGINT ends the process through the default disposition', async () => {
-  const running = spawnRun('owner', { LOOM_FIXTURE_ACTION: 'ignoring' });
+test('a second SIGINT ends the shutdown at once when the action ignores the first', async () => {
+  const running = spawnRun('watching', { LOOM_FIXTURE_ACTION: 'ignoring' });
   await running.announced('ready');
   running.child.kill('SIGINT');
-  // The first signal cancelled the run, the action ignores it, and core keeps awaiting the chain.
+  // The first signal cancelled the run, the action ignores it, and the budget has not run out.
   await running.announced('aborted:SIGINT');
   running.child.kill('SIGINT');
   const result = await running.exit;
@@ -202,8 +203,8 @@ test('a repeated SIGINT ends the process through the default disposition', async
   expect(result.stdout).toBe('before:0:0\nduring:1:1\nready\naborted:SIGINT\n');
 });
 
-test('a run with no owner and no caller signal installs no listener', async () => {
-  const running = spawnRun('no-owner');
+test('a run with no plugin listens all the same, so SIGINT unwinds it', async () => {
+  const running = spawnRun('unwatched');
   await running.announced('ready');
   running.child.kill('SIGINT');
   const result = await running.exit;
@@ -211,7 +212,9 @@ test('a run with no owner and no caller signal installs no listener', async () =
     signal: 'SIGINT',
     status: null,
   });
-  expect(result.stdout).toBe('before:0:0\nduring:0:0\nready\n');
+  expect(result.stdout).toBe(
+    'before:0:0\nduring:1:1\nready\naction:SIGINT:none\nafter:1:1\nresolved:130\n',
+  );
 });
 
 test('the first cause fixes the reason and the code, and a later cause changes neither', async () => {
@@ -219,8 +222,8 @@ test('the first cause fixes the reason and the code, and a later cause changes n
   await running.announced('ready');
   running.child.kill('SIGTERM');
   await expect(running.exit).resolves.toEqual({
-    signal: null,
-    status: 143,
+    signal: 'SIGTERM',
+    status: null,
     stderr: '',
     stdout: [
       'before:0:0',
@@ -228,20 +231,21 @@ test('the first cause fixes the reason and the code, and a later cause changes n
       'ready',
       'aborted:SIGTERM',
       'action:SIGTERM:none',
-      'after:0:0',
+      'after:1:1',
       'resolved:143',
       '',
     ].join('\n'),
   });
 });
 
-test('a caller abort holds its reason against a later signal, which takes the force path', async () => {
+test("a caller abort holds its reason against a later signal, and a host's own listener keeps the process", async () => {
   const running = spawnRun('caller-then-signal', { LOOM_FIXTURE_ACTION: 'absorbing' });
   await running.announced('ready');
   running.child.kill('SIGINT');
   /**
-   * The embedding host's own listener absorbs the signal and the re-raise, so the process survives
-   * both and the run resolves the code its first cause fixed. Core's own listeners are gone.
+   * The signal starts a shutdown that finds the run cancelled by its caller, so the run resolves
+   * the code its first cause fixed. The embedding host's own listener receives the signal and
+   * core's re-raise after the shutdown, so the process survives both and ends with that code.
    */
   await expect(running.exit).resolves.toEqual({
     signal: null,
@@ -253,7 +257,7 @@ test('a caller abort holds its reason against a later signal, which takes the fo
       'aborted:caller',
       'ready',
       'action:caller:the caller stopped the run',
-      'after:1:0',
+      'after:2:1',
       'resolved:130',
       '',
     ].join('\n'),
@@ -265,35 +269,33 @@ test('a first signal after the chain settled still cancels the run and decides i
   await running.announced('ready');
   running.child.kill('SIGINT');
   await expect(running.exit).resolves.toEqual({
-    signal: null,
-    status: 130,
+    signal: 'SIGINT',
+    status: null,
     stderr: '',
     stdout: [
       'before:0:0',
       'during:1:1',
       'ready',
       'aborted:SIGINT',
-      'after:0:0',
+      'after:1:1',
       'resolved:130',
       '',
     ].join('\n'),
   });
 });
 
-test('two cancelled slot-owning runs re-raise in turn until no listener remains', async () => {
+test('a run an abort listener starts during the shutdown starts cancelled and extends nothing', async () => {
   const running = spawnRun('two-runs');
   await running.announced('ready');
-  // The first signal cancels run A, whose synchronous abort listener starts run B.
-  running.child.kill('SIGINT');
-  await running.announced('second:2:2');
-  // The second signal cancels B and makes A re-raise; B, cancelled by then, re-raises in turn.
+  // The signal cancels run A, whose synchronous abort listener starts run B.
   running.child.kill('SIGINT');
   const result = await running.exit;
+  // B resolves 130 without reaching its action, and A, which ignores its signal, ends at the budget.
   expect({ signal: result.signal, status: result.status }).toEqual({
     signal: 'SIGINT',
     status: null,
   });
-  expect(result.stdout).toBe('before:0:0\nfirst:1:1\nready\nsecond:2:2\n');
+  expect(result.stdout).toBe('before:0:0\nfirst:1:1\nready\nsecond:130\n');
 });
 
 test('two runs of one Application each install and remove their own listeners', () => {

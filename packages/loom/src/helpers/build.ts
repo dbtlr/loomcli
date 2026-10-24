@@ -12,7 +12,8 @@ import { basename, dirname, join, relative } from 'node:path';
 import { definePair } from './build-facts.js';
 import type { BuildFacts } from './build-facts.js';
 import type { BuildTarget } from './build-target.js';
-import { holdingSignals, superviseBun } from './bun.js';
+import { superviseBun } from './bun.js';
+import type { Stoppable } from './bun.js';
 
 /**
  * The argument that has Bun read the package's `bunfig.toml`, when the package holds one. Bun reads
@@ -134,43 +135,44 @@ export function removeCreatedDirectories(directory: string, created: string | un
  * compile writes into Bun's working directory lands there too, and builds that run at once in one
  * package never share one. A failed build removes the temporary directory and each output directory
  * it created that nothing else has filled, so earlier output, every file the build does not write,
- * and the work of a build running beside it stay as they were. SIGINT
- * and SIGTERM are held from before the build creates anything until it has finished or undone its
- * work. A signal stops Bun; one that arrives before the moves start cleans up as a failure does,
- * and one that arrives during them lets them complete, so output is never partly replaced. Either
- * way `loom` then ends with that signal.
+ * and the work of a build running beside it stay as they were. A cancelled run stops Bun and undoes
+ * the build as a failure does, and a shutdown that ends before that undoes it synchronously. The
+ * moves are synchronous, so a signal that arrives during them is handled once they complete, and
+ * output is never partly replaced.
  */
-export async function build(plan: BuildPlan): Promise<void> {
-  await holdingSignals(async (signals) => {
-    const outDirectory = outputDirectory(plan);
-    const created = mkdirSync(outDirectory, { recursive: true });
-    const staging = mkdtempSync(join(outDirectory, '.loom-build-'));
-    try {
-      const out = plan.target.kind === 'compile' ? join(staging, basename(plan.out)) : staging;
-      const result = await superviseBun(bunArguments(plan, out), staging, 'collect', signals);
-      if (signals.received !== undefined) {
-        rmSync(staging, { force: true, recursive: true });
-        removeCreatedDirectories(outDirectory, created);
-        return;
-      }
-      if (result.status !== 0) {
-        throw new Error(
-          `${result.output.trim()}\n\nBun could not build the application, so no output changed.`,
-        );
-      }
-      for (const file of filesUnder(staging)) {
-        const target = plan.target.kind === 'compile' ? plan.out : join(outDirectory, file);
-        mkdirSync(dirname(target), { recursive: true });
-        renameSync(join(staging, file), target);
-      }
-    } catch (error) {
-      rmSync(staging, { force: true, recursive: true });
-      removeCreatedDirectories(outDirectory, created);
-      throw error;
-    } finally {
-      rmSync(staging, { force: true, recursive: true });
+export async function build(plan: BuildPlan, run: Stoppable): Promise<void> {
+  const outDirectory = outputDirectory(plan);
+  const created = mkdirSync(outDirectory, { recursive: true });
+  const staging = mkdtempSync(join(outDirectory, '.loom-build-'));
+  const undo = () => {
+    rmSync(staging, { force: true, recursive: true });
+    removeCreatedDirectories(outDirectory, created);
+  };
+  const removeUndo = run.onShutdown(undo);
+  try {
+    const out = plan.target.kind === 'compile' ? join(staging, basename(plan.out)) : staging;
+    const result = await superviseBun(bunArguments(plan, out), staging, 'collect', run);
+    if (run.signal.aborted) {
+      undo();
+      return;
     }
-  });
+    if (result.status !== 0) {
+      throw new Error(
+        `${result.output.trim()}\n\nBun could not build the application, so no output changed.`,
+      );
+    }
+    for (const file of filesUnder(staging)) {
+      const target = plan.target.kind === 'compile' ? plan.out : join(outDirectory, file);
+      mkdirSync(dirname(target), { recursive: true });
+      renameSync(join(staging, file), target);
+    }
+  } catch (error) {
+    undo();
+    throw error;
+  } finally {
+    removeUndo();
+    rmSync(staging, { force: true, recursive: true });
+  }
 }
 
 /**
@@ -180,30 +182,35 @@ export async function build(plan: BuildPlan): Promise<void> {
  * file into that directory, so when a compile target's watch ends the `.bun-build` files that were
  * not there before it began are removed. A bundle's watch writes none and removes none. Either way,
  * each output directory the watch created that nothing has filled is removed. A build never writes
- * a `.bun-build` file there, because it runs Bun in its own temporary directory. SIGINT and
- * SIGTERM are held for the whole watch: a signal stops Bun, the watch removes what it left, and
- * `loom` then ends with that signal. A watcher Bun ends with a failure fails the command.
+ * a `.bun-build` file there, because it runs Bun in its own temporary directory. A cancelled run
+ * stops Bun and the watch removes what it left, synchronously at a shutdown's end when that comes
+ * first. A watcher Bun ends with a failure fails the command.
  */
-export async function watch(plan: BuildPlan): Promise<void> {
-  const result = await holdingSignals(async (signals) => {
-    const outDirectory = outputDirectory(plan);
-    const created = mkdirSync(outDirectory, { recursive: true });
-    const compiles = plan.target.kind === 'compile';
-    const earlier = compiles ? bunBuildFiles(plan.directory) : new Set<string>();
-    try {
-      const args = [...bunArguments(plan, plan.out), '--watch'];
-      return await superviseBun(args, plan.directory, 'inherit', signals);
-    } finally {
-      const left = compiles ? bunBuildFiles(plan.directory) : new Set<string>();
-      for (const name of left) {
-        if (!earlier.has(name)) {
-          rmSync(join(plan.directory, name), { force: true });
-        }
+export async function watch(plan: BuildPlan, run: Stoppable): Promise<void> {
+  const outDirectory = outputDirectory(plan);
+  const created = mkdirSync(outDirectory, { recursive: true });
+  const compiles = plan.target.kind === 'compile';
+  const earlier = compiles ? bunBuildFiles(plan.directory) : new Set<string>();
+  const tidy = () => {
+    const left = compiles ? bunBuildFiles(plan.directory) : new Set<string>();
+    for (const name of left) {
+      if (!earlier.has(name)) {
+        rmSync(join(plan.directory, name), { force: true });
       }
-      removeCreatedDirectories(outDirectory, created);
     }
+    removeCreatedDirectories(outDirectory, created);
+  };
+  const removeTidy = run.onShutdown(tidy);
+  const result = await superviseBun(
+    [...bunArguments(plan, plan.out), '--watch'],
+    plan.directory,
+    'inherit',
+    run,
+  ).finally(() => {
+    removeTidy();
+    tidy();
   });
-  if (result.status !== 0 && result.status !== null) {
+  if (result.status !== 0 && result.status !== null && !run.signal.aborted) {
     throw new Error(`bun build --watch exited with ${result.status}.`);
   }
 }

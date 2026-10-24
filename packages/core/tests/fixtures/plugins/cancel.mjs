@@ -5,14 +5,14 @@ import { Application, FatalError, override, plugin, processHandle } from '@loomc
 
 import { callerReason, controller } from './caller.mjs';
 
-/** How many listeners core holds on each claimed signal, read where a test wants the count. */
+/** How many listeners the process holds for SIGINT and SIGTERM, read where a test wants the count. */
 function counts(label) {
   return `${label}:${process.listenerCount('SIGINT')}:${process.listenerCount('SIGTERM')}`;
 }
 
 /**
  * Watches every signal listener added while it is armed, whatever removed it afterward, so a run
- * that installs none reads `added:none` where a count taken after the run could not tell.
+ * reads the listeners it added where a count taken after the run could not tell.
  */
 function probeSignals() {
   const added = [];
@@ -90,8 +90,6 @@ function cancelled(signal) {
 const marking = () => import('./modules/cancelling.mjs');
 
 const plugins = {
-  /** Claims the slot and nothing else, for a scenario that watches the listener bracket alone. */
-  bracket: () => plugin('@fixture/bracket', { signals: ['SIGINT', 'SIGTERM'] }),
   /** Cancels the run from inside the chain, then takes over or continues the chain. */
   cancelling: () =>
     plugin('@fixture/cancelling', { middleware: { activate: 'always', load: marking } }),
@@ -101,12 +99,6 @@ const plugins = {
       onCommandAttach: () => {
         throw new Error('the hook broke');
       },
-    }),
-  /** Claims the signals slot, and adds the synchronous abort listener the contract describes. */
-  owner: () =>
-    plugin('@fixture/owner', {
-      middleware: { activate: 'always', load: () => import('./modules/watching.mjs') },
-      signals: ['SIGINT', 'SIGTERM'],
     }),
   /** Its loader is still pending when the caller's abort lands, so its middleware is skipped. */
   pending: () =>
@@ -130,7 +122,11 @@ const plugins = {
           return marking();
         },
       },
-      signals: ['SIGINT', 'SIGTERM'],
+    }),
+  /** Adds the synchronous abort listener the contract describes, at the moment of the signal. */
+  watching: () =>
+    plugin('@fixture/watching', {
+      middleware: { activate: 'always', load: () => import('./modules/watching.mjs') },
     }),
   /** An always-on wrapper that reports the outcome its own `next()` resolved. */
   wrapper: () =>
@@ -143,20 +139,19 @@ const plugins = {
 const installed = {
   'abort-error': [],
   'broken-renderer': [],
-  'build-fault': ['owner', 'failing'],
+  'build-fault': ['watching', 'failing'],
   'caller-abort': [],
-  'caller-then-signal': ['owner'],
-  'default-fault': ['owner'],
-  'first-cause': ['owner'],
-  'hostile-stderr': ['owner'],
-  'no-owner': [],
-  owner: ['owner'],
+  'caller-then-signal': ['watching'],
+  'default-fault': ['watching'],
+  'first-cause': ['watching'],
+  'hostile-stderr': ['watching'],
   'pending-loader': ['pending'],
   'pre-aborted': ['reporting'],
   'result-unemitted': [],
-  'slow-flush': ['owner'],
-  twice: ['owner'],
-  'two-runs': ['bracket'],
+  'slow-flush': ['watching'],
+  twice: ['watching'],
+  unwatched: [],
+  watching: ['watching'],
   wrapped: ['wrapper', 'cancelling'],
 };
 
@@ -212,7 +207,7 @@ async function waiting({ out, signal }) {
   raise(out, signal);
 }
 
-/** An action that never reads the signal, so only a repeated signal can end the process. */
+/** An action that never reads the signal, so only the budget or a second signal ends the process. */
 async function ignoring({ out }) {
   await out.print(counts('during'));
   await out.print('ready');
@@ -267,6 +262,20 @@ async function racing({ out, signal }) {
   await out.print(`action:${describe(signal.reason)}`);
 }
 
+/** An action that writes once it runs and then holds, so a run that never reaches it writes nothing. */
+async function holding({ out }) {
+  await out.print('second:action');
+  await after(20_000);
+}
+
+/** Starts a second run, and writes the code it resolves. */
+async function startSecond() {
+  const code = await new Application('app')
+    .action(holding)
+    .run({ process: processHandle({ argv }) });
+  process.stdout.write(`second:${code}\n`);
+}
+
 /** Resolves when the embedding host's own listener sees a signal core re-raised. */
 let absorbed = () => undefined;
 const embedded = new Promise((resolve) => {
@@ -274,8 +283,9 @@ const embedded = new Promise((resolve) => {
 });
 
 /**
- * The caller cancels first, so the process signal that follows is the force path. An embedding
- * host's own listener absorbs both the signal and the re-raise, so the process survives them.
+ * The caller cancels first, so the shutdown the process signal starts finds the run cancelled. An
+ * embedding host's own listener absorbs both the signal and core's re-raise after the shutdown, so
+ * the process survives them and ends with the run's status.
  */
 async function absorbing({ out, signal }) {
   await out.print(counts('during'));
@@ -314,9 +324,13 @@ const actions = {
   waiting,
 };
 
+/** The shutdown budget one scenario declares: a slow flush outlasts the default. */
+const shutdowns = { 'slow-flush': { timeout: 4000 } };
+
 function application() {
   const declared = new Application('app', {
     plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
+    shutdown: shutdowns[scenario],
     views: (registered[scenario] ?? (() => []))(),
   });
   // A declared default its schema rejects is the one build rule that runs after the graph is built.
@@ -371,26 +385,18 @@ if (scenario === 'pre-aborted') {
   process.stdout.write(`resolved:${code}\n`);
 } else if (scenario === 'two-runs') {
   /**
-   * Run A owns the slot. A synchronous listener on its own abort starts run B, which claims the
-   * slot in its turn, so both runs hold listeners when the second signal arrives.
+   * A synchronous listener on run A's abort starts run B during the shutdown, so B starts
+   * cancelled, reaches no action, and does not extend the budget A's ignoring action runs out.
    */
-  const holding = async ({ out }) => {
-    await out.print(counts('second'));
-    await after(20_000);
-  };
   const branching = async ({ out, signal }) => {
     signal.addEventListener('abort', () => {
-      void new Application('app', { plugins: [plugins.bracket()] })
-        .action(holding)
-        .run({ process: processHandle({ argv }) });
+      void startSecond();
     });
     await out.print(counts('first'));
     await out.print('ready');
     await after(20_000);
   };
-  await new Application('app', { plugins: [plugins.bracket()] })
-    .action(branching)
-    .run({ process: processHandle({ argv }) });
+  await new Application('app').action(branching).run({ process: processHandle({ argv }) });
   process.stdout.write('resolved\n');
 } else if (scenario === 'twice') {
   // One Application, run twice, so each run installs its own listeners and removes them.

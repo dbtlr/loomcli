@@ -179,13 +179,6 @@ const scenarios = {
   },
   'rule-identity': () =>
     diagnosticRule('Retry Limit', { explanation: 'Each retry repeats.', headline: 'Retry limit' }),
-  'signals-slot': () =>
-    new Application('probe', {
-      plugins: [
-        plugin('@acme/signals', { signals: ['SIGINT'] }),
-        plugin('@acme/trace', { signals: ['SIGTERM'] }),
-      ],
-    }),
   'theme-slot': () =>
     new Application('probe', {
       plugins: [

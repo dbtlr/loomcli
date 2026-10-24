@@ -164,7 +164,7 @@ export const buildCommand = new Command('build', {
     description: 'Print the define pair __LOOM_RELEASE__=<json> and build nothing.',
     type: 'boolean',
   })
-  .action(async ({ host, options, out, passthrough }) => {
+  .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
     if (options.facts && options.define) {
       throw optionError('define', '--facts and --define exclude each other, so pass one of them.');
     }
@@ -218,11 +218,13 @@ export const buildCommand = new Command('build', {
         applicationName(manifest, options.name),
       );
       const plan = { application, directory, entry, facts, out: output, target };
+      const run = { onShutdown, signal };
       if (options.watch) {
-        await watch(plan);
+        await watch(plan, run);
         return '';
       }
-      await build(plan);
-      return `Built ${shown(cwd, output)} for ${target.name}.\n`;
+      await build(plan, run);
+      // A cancelled build undid what it wrote, so it reports nothing built.
+      return signal.aborted ? '' : `Built ${shown(cwd, output)} for ${target.name}.\n`;
     });
   });

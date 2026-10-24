@@ -19,6 +19,8 @@ import type { InstallationLookup } from './installation.js';
 import { isPlainObject } from './plain.js';
 import { bakedFacts, captureRelease, isCompiled } from './release.js';
 import type { CapturedRelease } from './release.js';
+import { absentLane, isSharedLane, isSignalSource, SignalLane } from './signal-lane.js';
+import type { SharedLane } from './signal-lane.js';
 import { unstartedChild } from './spawn.js';
 import type {
   Child,
@@ -201,57 +203,80 @@ function processSource(): SignalSource {
   };
 }
 
-/** Whether a value another copy of core stored is a signal source this copy can call. */
-function isSignalSource(value: unknown): value is SignalSource {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'terminal' in value &&
-    typeof Reflect.get(value, 'on') === 'function' &&
-    typeof Reflect.get(value, 'off') === 'function' &&
-    typeof Reflect.get(value, 'raise') === 'function'
-  );
-}
-
 /**
- * The global object every copy of core shares for the real process, under one registered symbol.
- * The first copy to load creates it, and every later copy uses the one it finds.
+ * The real process's lane, which every copy of core shares, under one registered symbol: the
+ * first copy to load creates it, and every later copy uses the one it finds. It holds the real
+ * process's one signal source and a `WeakMap` from every other source to its lane, so every copy
+ * resolves the same lane for any source and a mock's lane goes once nothing holds the mock.
  */
 const laneKey = Symbol.for('loomcli.processLane');
 
-/** The real process's one signal source, which this copy found or stored on the shared object. */
-let sharedSource: SignalSource | undefined = undefined;
+/** What this copy resolved from the shared object: the real lane and the map of every other one. */
+interface LaneRegistry {
+  readonly real: SharedLane;
+  readonly others: WeakMap<WeakKey, unknown>;
+}
+
+/** The shared lanes this copy found or created, read once. */
+let shared: LaneRegistry | undefined = undefined;
+
+/** The lanes this copy reads from a shared object an earlier copy stored. */
+function foundLanes(found: object): LaneRegistry {
+  const held: unknown = Reflect.get(found, 'lanes');
+  const others = held instanceof WeakMap ? held : new WeakMap<WeakKey, unknown>();
+  if (isSharedLane(found)) {
+    return { others, real: found };
+  }
+  // An object without the lane's members still holds the real process's source: this copy uses it
+  // And goes without the lane rather than creating a second one.
+  const source: unknown = Reflect.get(found, 'source');
+  return { others, real: absentLane(isSignalSource(source) ? source : processSource()) };
+}
+
+/** The lanes this copy creates and stores on the shared object, when no copy has stored one. */
+function createdLanes(): LaneRegistry {
+  const created = new SignalLane(processSource());
+  const others = new WeakMap<WeakKey, unknown>();
+  Reflect.set(created, 'lanes', others);
+  Reflect.set(globalThis, laneKey, created);
+  return { others, real: created };
+}
+
+/** The lanes every copy of core shares, read once. */
+function sharedLanes(): LaneRegistry {
+  if (shared === undefined) {
+    const found: unknown = Reflect.get(globalThis, laneKey);
+    shared = typeof found === 'object' && found !== null ? foundLanes(found) : createdLanes();
+  }
+  return shared;
+}
+
+/** The real process's one signal source, which every handle `processHandle` builds shares. */
+function realSignals(): SignalSource {
+  return sharedLanes().real.source;
+}
+
+/** The lane of the real process's signal source, where a handler scoped to the process lives. */
+function processLane(): SharedLane {
+  return sharedLanes().real;
+}
 
 /**
- * The real process's one signal source: the one the shared object holds, or a new one stored
- * there when it holds none, so every copy of core and every handle `processHandle` builds listens
- * and raises on the same source.
+ * The one lane of a signal source: the real process's for its source, and for any other source the
+ * one the shared map holds, created there the first time any copy of core asks.
  */
-function realSignals(): SignalSource {
-  sharedSource ??= heldSource(sharedLane());
-  return sharedSource;
-}
-
-/** The shared object for the real process: the one an earlier copy stored, or a new one stored now. */
-function sharedLane(): object {
-  const found: unknown = Reflect.get(globalThis, laneKey);
-  if (typeof found === 'object' && found !== null) {
-    return found;
+function laneOf(source: SignalSource): SharedLane {
+  const { others, real } = sharedLanes();
+  if (source === real.source) {
+    return real;
   }
-  const lane = {};
-  Reflect.set(globalThis, laneKey, lane);
-  return lane;
-}
-
-/** The signal source the shared object holds, or a new one stored there when it holds none. */
-function heldSource(lane: object): SignalSource {
-  const held: unknown = Reflect.get(lane, 'source');
-  if (isSignalSource(held)) {
+  const held: unknown = others.get(source);
+  if (isSharedLane(held)) {
     return held;
   }
-  const source = processSource();
-  Reflect.set(lane, 'source', source);
-  return source;
+  const created = new SignalLane(source);
+  others.set(source, created);
+  return created;
 }
 
 /** The home `/etc/passwd` holds for a user, or none. */
@@ -767,4 +792,12 @@ async function aliasesProcessStdin(source: BigIntStats): Promise<boolean> {
   }
 }
 
-export { aliasesProcessStdin, handleRelease, inBackgroundJob, processHandle, userDatabaseHome };
+export {
+  aliasesProcessStdin,
+  handleRelease,
+  inBackgroundJob,
+  laneOf,
+  processHandle,
+  processLane,
+  userDatabaseHome,
+};

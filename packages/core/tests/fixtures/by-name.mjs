@@ -446,12 +446,8 @@ if (scenario === 'isolation') {
   // A sentinel host: every stream records its writes, so a write the call leaked would show.
   const stdout = sink();
   const stderr = sink();
-  const owner = plugin('@fixture/owner', { signals: ['SIGINT', 'SIGTERM'] });
   const real = { stderr: 0, stdout: 0 };
-  const app = new Application('probe', {
-    ...probe,
-    plugins: [owner],
-  })
+  const app = new Application('probe', probe)
     .command(
       new Command('child', {
         description: 'The child command.',
@@ -631,7 +627,6 @@ if (scenario === 'sigterm' || scenario === 'own-abort' || scenario === 'pre-abor
           },
         }),
     },
-    signals: ['SIGINT', 'SIGTERM'],
   });
   const handled = [];
   const failure = (value) => {
@@ -726,7 +721,7 @@ if (scenario === 'spellings') {
   );
 }
 
-/** The listeners the process holds on each signal a signals owner claims. */
+/** The listeners the process holds for SIGINT and SIGTERM, which a live run() adds. */
 function counts() {
   return [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')];
 }
