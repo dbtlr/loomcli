@@ -466,6 +466,8 @@ export default defineConfig({
     '*': 'vp check --fix',
   },
   test: {
+    // The run fails when a test wrote under the developer's home.
+    globalSetup: ['scripts/home-guard-setup.ts'],
     include: ['packages/*/tests/**/*.test.ts', 'examples/*/tests/**/*.test.ts'],
     maxWorkers: Math.ceil(navigator.hardwareConcurrency * workersPerCore),
     // A documentation-only pull request runs only the tests tagged docs, which read files under docs/.
