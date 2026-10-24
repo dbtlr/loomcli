@@ -65,11 +65,15 @@ function handBuilt(fields: Partial<ProcessHandle> = {}) {
     cwd: () => '/work',
     env: {},
     exitCode: undefined,
+    home: '/home/notes',
     libc: 'musl',
     platform: 'linux',
     program: ['/bin/notes'],
     release: { build: 'distributed' },
     signals: ownSource().source,
+    spawn: () => {
+      throw new Error('This handle starts no child.');
+    },
     stderr: sink().stream,
     stdin: Readable.from([]),
     stdout: stdout.stream,
@@ -79,6 +83,7 @@ function handBuilt(fields: Partial<ProcessHandle> = {}) {
       stdout: { columns: undefined, isTTY: false, rows: undefined },
     },
     timeZone: 'UTC',
+    tmpdir: '/tmp',
     uid: 501,
     ...fields,
   };

@@ -293,6 +293,67 @@ export interface ProcessTerminal {
   readonly background?: Background | undefined;
 }
 /**
+ * Where one child program runs and what it reads and writes. `cwd` and `env` default to the run's;
+ * a relative `cwd` resolves against the run's, and a supplied `env` is the child's whole
+ * environment. An attached child takes `input`, its whole stdin, or `stdin: 'inherit'`, the run's
+ * own, never both; each of `stdout` and `stderr` is captured when omitted. A detached child starts
+ * in a process group of its own with every stream ignored, and nothing in the run ends it.
+ */
+export type SpawnOptions = {
+  /** The run's `cwd` when omitted; a relative path resolves against it. */
+  readonly cwd?: string;
+  /** The run's `env` when omitted, replaced whole when given. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+} & (
+  | ({
+      readonly detached?: false;
+      /** `capture` when omitted. */
+      readonly stdout?: 'capture' | 'ignore' | 'inherit' | Writable;
+      /** `capture` when omitted. */
+      readonly stderr?: 'capture' | 'ignore' | 'inherit' | Writable;
+      /** An abort ends the child with `SIGTERM`. */
+      readonly signal?: AbortSignal;
+    } & (
+      | {
+          /** Written to the child's stdin, which then ends; an empty stdin when omitted. */
+          readonly input?: string | Uint8Array;
+          readonly stdin?: never;
+        }
+      | {
+          /** The run's own stdin. */
+          readonly stdin: 'inherit';
+          readonly input?: never;
+        }
+    ))
+  | { readonly detached: true }
+);
+/** What a child wrote to one captured stream: empty for a stream that was not captured. */
+export interface ChildOutput {
+  readonly bytes: Uint8Array;
+  /** The bytes decoded as UTF-8. */
+  readonly text: string;
+}
+/**
+ * How a child ended: its exit code, 128 plus the signal's number for a child a signal ended, and
+ * its captured output; or that it never started, because no program answered to the command or
+ * the runtime refused it, with the runtime's error.
+ */
+export type ChildExit =
+  | {
+      readonly kind: 'exited';
+      readonly code: number;
+      readonly stdout: ChildOutput;
+      readonly stderr: ChildOutput;
+    }
+  | { readonly kind: 'unstarted'; readonly error: Error };
+/** A child program a run started. */
+export interface Child {
+  /** Resolves once the child has ended and its streams have closed; it never rejects. */
+  readonly exited: Promise<ChildExit>;
+  /** Delivers a signal to the child, `SIGTERM` when omitted; does nothing once it has exited. */
+  kill(signal?: ProcessSignal): void;
+}
+/**
  * Every process fact a run reads and every process effect it makes. A run binds one at entry and
  * never replaces it, and core copies its facts into the run's host.
  */
@@ -302,6 +363,10 @@ export interface ProcessHandle {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** The working directory, which throws when it cannot be read. */
   cwd(): string;
+  /** The operator's home folder. */
+  readonly home: string;
+  /** The folder for temporary files. */
+  readonly tmpdir: string;
   readonly platform: string;
   readonly arch: string;
   readonly libc: 'glibc' | 'musl' | undefined;
@@ -314,6 +379,18 @@ export interface ProcessHandle {
   readonly stderr: Writable;
   readonly terminal: ProcessTerminal;
   readonly signals: SignalSource;
+  /**
+   * Starts one child program. Core fills `cwd` and `env` from the run before it calls the handle,
+   * and passes `inherit` only for a stream that is the handle's own.
+   */
+  spawn(
+    command: string,
+    args: readonly string[],
+    options: SpawnOptions & {
+      readonly cwd: string;
+      readonly env: Readonly<Record<string, string | undefined>>;
+    },
+  ): Child;
   /** The one member core writes: `run()` writes the run's code once it is final. */
   exitCode: ExitCode | undefined;
   /** Receives each variable an argv run's environment preparation copies out. */
@@ -325,7 +402,7 @@ export interface ProcessHandle {
  * throws when that directory cannot be read; and a `cwd` function throws as it chooses.
  */
 export type ProcessFields = Partial<
-  Omit<ProcessHandle, 'cwd' | 'exitCode' | 'publishEnv' | 'signals'>
+  Omit<ProcessHandle, 'cwd' | 'exitCode' | 'publishEnv' | 'signals' | 'spawn'>
 > & {
   readonly cwd?: string | (() => string);
 };
@@ -379,6 +456,16 @@ export interface Host {
   program: readonly string[];
   cwd: string;
   /**
+   * The operator's home folder, copied from the handle at entry: its absolute `HOME` unless a
+   * `home` was supplied. Environment preparation never moves it.
+   */
+  home: string;
+  /**
+   * The folder for temporary files, copied from the handle at entry: its absolute `TMPDIR`, else
+   * `/tmp`, unless a `tmpdir` was supplied. It names a folder and creates nothing.
+   */
+  tmpdir: string;
+  /**
    * The operator's IANA time zone, such as `America/New_York`, which a validator reads to place a
    * local time. The real process's handle reads the zone `Intl` resolves, which honours `TZ`; a
    * supplied `timeZone` replaces it, and an action's `invoke` keeps its run's.
@@ -408,6 +495,11 @@ export interface Host {
    * `false`, and the reader cancels the run itself.
    */
   raise: (signal: 'SIGINT' | 'SIGQUIT' | 'SIGTSTP') => boolean;
+  /**
+   * Starts a child program through the run's process handle, with no shell, in the run's `cwd` and
+   * with its `env` unless the options name others. It returns the child at once.
+   */
+  spawn: (command: string, args: readonly string[], options?: SpawnOptions) => Child;
 }
 export interface RunOptions {
   rendering?: RenderingPolicy;

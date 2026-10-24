@@ -1,13 +1,16 @@
 /**
  * The real process's handle, and the checks only the real process can answer. This module is the
- * one place core reads the global `process`; every other module reads a run's process handle.
+ * one place core reads the global `process`, asks `node:os` for the user's folders, and starts a
+ * child through `node:child_process`; every other module reads a run's process handle.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn as startProcess } from 'node:child_process';
+import type { ChildProcess, StdioOptions } from 'node:child_process';
 import { fstatSync, readFileSync, realpathSync } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
-import type { Readable } from 'node:stream';
+import { constants, userInfo } from 'node:os';
+import { isAbsolute, relative, resolve as resolvePath, sep } from 'node:path';
+import type { Readable, Writable } from 'node:stream';
 import { isatty, ReadStream } from 'node:tty';
 
 import { readSmallFile } from './files.js';
@@ -16,6 +19,9 @@ import { isPlainObject } from './plain.js';
 import { bakedFacts, captureRelease, isCompiled } from './release.js';
 import type { CapturedRelease } from './release.js';
 import type {
+  Child,
+  ChildExit,
+  ChildOutput,
   ExitCode,
   OutputTerminal,
   ProcessFields,
@@ -68,7 +74,7 @@ function scriptPath(script: string): string {
     return script;
   }
   try {
-    return resolve(script);
+    return resolvePath(script);
   } catch {
     return script;
   }
@@ -172,7 +178,7 @@ function workingDirectory(cwd: ProcessFields['cwd']): string {
     return cwd;
   }
   const own = process.cwd();
-  return cwd === undefined ? own : resolve(own, cwd);
+  return cwd === undefined ? own : resolvePath(own, cwd);
 }
 
 /** The real process's signals, which every copy of core shares. */
@@ -246,6 +252,282 @@ function heldSource(lane: object): SignalSource {
   return source;
 }
 
+/** A variable of an environment when it holds an absolute path, which alone counts as set. */
+function absoluteOf(env: ProcessHandle['env'], name: string): string | undefined {
+  const value = env[name];
+  return value !== undefined && isAbsolute(value) ? value : undefined;
+}
+
+/** The home `/etc/passwd` holds for a user, or none. */
+function passwdHome(uid: number | undefined): string | undefined {
+  if (uid === undefined) {
+    return undefined;
+  }
+  const homeField = 5;
+  try {
+    const entry = readFileSync('/etc/passwd', 'utf8')
+      .split('\n')
+      .map((line) => line.split(':'))
+      .find((fields) => fields[2] === String(uid));
+    return entry?.[homeField];
+  } catch {
+    return undefined;
+  }
+}
+
+/** What Node's `os.userInfo()` reads from the user database, or none when it holds no entry. */
+function reportedHome(): string | undefined {
+  try {
+    return userInfo().homedir;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The home the user database holds for the process's user, which is `os.homedir()`'s fallback, or
+ * the empty string when there is none. Node's `os.userInfo()` reads the database; Bun's answers
+ * the `HOME` the process started with when it held one, so under Bun with a `HOME` the local
+ * database, `/etc/passwd`, answers instead.
+ */
+function databaseHome(): string {
+  const answered =
+    process.versions.bun === undefined || process.env.HOME === undefined
+      ? reportedHome()
+      : passwdHome(process.getuid?.());
+  return answered !== undefined && isAbsolute(answered) ? answered : '';
+}
+
+/** The folder for temporary files when the environment names none, on Linux and macOS alike. */
+const defaultTmpdir = '/tmp';
+
+/** The options the real handle's `spawn` receives: the run's place filled in. */
+type HandleSpawnOptions = Parameters<ProcessHandle['spawn']>[2];
+
+/** One output stream's choice, as an attached child's options name it. */
+type OutputChoice = 'capture' | 'ignore' | 'inherit' | Writable;
+
+/** The streams a handle answers `inherit` with: its own, which may be the process's. */
+interface HandleStreams {
+  readonly stdin: Readable;
+  readonly stdout: Writable;
+  readonly stderr: Writable;
+}
+
+/** One child to start: its command and words, its options, and the handle's own streams. */
+interface ChildStart {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly options: HandleSpawnOptions;
+  readonly own: HandleStreams;
+}
+
+/** The shell's status for a process a signal ended, 128 plus the signal's number. */
+const signalBase = 128;
+
+/** The code a child reports: its exit code, or the shell's status for the signal that ended it. */
+function codeOf(code: number | null, ended: NodeJS.Signals | null): number {
+  if (code !== null) {
+    return code;
+  }
+  return ended === null ? signalBase : signalBase + constants.signals[ended];
+}
+
+/** What a stream that was not captured holds. */
+function noOutput(): ChildOutput {
+  return { bytes: new Uint8Array(), text: '' };
+}
+
+/** The output one captured stream collected, as bytes and as UTF-8 text. */
+function outputOf(chunks: readonly Buffer[]): ChildOutput {
+  const collected = Buffer.concat(chunks);
+  return { bytes: new Uint8Array(collected), text: collected.toString('utf8') };
+}
+
+/** Each output stream's choice: both ignored for a detached child, and captured when omitted. */
+function outputChoices(options: HandleSpawnOptions): {
+  stdout: OutputChoice;
+  stderr: OutputChoice;
+} {
+  if (options.detached === true) {
+    return { stderr: 'ignore', stdout: 'ignore' };
+  }
+  return { stderr: options.stderr ?? 'capture', stdout: options.stdout ?? 'capture' };
+}
+
+/**
+ * The descriptor setting one output stream starts with: none for an ignored stream, the process's
+ * own descriptor for an inherited stream that is the process's, and a pipe for any other.
+ */
+function outputStdio(
+  choice: OutputChoice,
+  own: Writable,
+  processStream: Writable,
+): 'ignore' | 'inherit' | 'pipe' {
+  if (choice === 'ignore') {
+    return 'ignore';
+  }
+  return choice === 'inherit' && own === processStream ? 'inherit' : 'pipe';
+}
+
+/** The descriptor setting the child's stdin starts with: an ended one when it reads nothing. */
+function inputStdio(options: HandleSpawnOptions, own: Readable): 'ignore' | 'inherit' | 'pipe' {
+  if (options.detached === true) {
+    return 'ignore';
+  }
+  if (options.stdin === 'inherit') {
+    return own === process.stdin ? 'inherit' : 'pipe';
+  }
+  return options.input === undefined ? 'ignore' : 'pipe';
+}
+
+/** Connects one piped output stream: collected when captured, else piped into its stream, never ended. */
+function connectOutput(
+  piped: Readable | null,
+  choice: OutputChoice,
+  own: Writable,
+): () => ChildOutput {
+  if (piped === null || choice === 'ignore') {
+    return noOutput;
+  }
+  if (choice === 'capture') {
+    const chunks: Buffer[] = [];
+    piped.on('data', (chunk: Buffer) => chunks.push(chunk));
+    return () => outputOf(chunks);
+  }
+  piped.pipe(choice === 'inherit' ? own : choice, { end: false });
+  return noOutput;
+}
+
+/** Feeds the child's piped stdin: the input and then its end, or the handle's own stdin. */
+function connectInput(child: ChildProcess, options: HandleSpawnOptions, own: Readable): void {
+  const { stdin } = child;
+  if (stdin === null || options.detached === true) {
+    return;
+  }
+  // A child that exits before it reads its input closes the pipe, which is no failure of the run.
+  stdin.on('error', () => undefined);
+  if (options.stdin === 'inherit') {
+    own.pipe(stdin);
+    child.once('close', () => own.unpipe(stdin));
+    return;
+  }
+  stdin.end(options.input);
+}
+
+/** A child that never started, with the runtime's error. */
+function unstartedChild(reason: Error): Child {
+  const exit: ChildExit = { error: reason, kind: 'unstarted' };
+  return { exited: Promise.resolve(exit), kill: () => undefined };
+}
+
+/** Delivers a signal to a child the runtime still holds; a child that is already gone takes none. */
+function signalChild(child: ChildProcess, signal: NodeJS.Signals): void {
+  try {
+    child.kill(signal);
+  } catch {
+    // The child ended between the check and the delivery.
+  }
+}
+
+/** The outputs a started child's exit reports. */
+interface Outputs {
+  readonly stdout: () => ChildOutput;
+  readonly stderr: () => ChildOutput;
+}
+
+/**
+ * When a started process ends: once it has ended and its streams have closed, or once the runtime
+ * reports it could not start. An error once the child has a process id is a failed signal
+ * delivery, not a failed start. It never rejects.
+ */
+function exitOf(child: ChildProcess, outputs: Outputs): Promise<ChildExit> {
+  return new Promise<ChildExit>((resolve) => {
+    child.on('error', (error) => {
+      if (child.pid === undefined) {
+        resolve({ error, kind: 'unstarted' });
+      }
+    });
+    child.on('close', (code, signal) => {
+      const { stderr, stdout } = outputs;
+      resolve({ code: codeOf(code, signal), kind: 'exited', stderr: stderr(), stdout: stdout() });
+    });
+  });
+}
+
+/** The child a started process is; an abort of the signal ends it with SIGTERM. */
+function trackedChild(
+  child: ChildProcess,
+  outputs: Outputs,
+  signal: AbortSignal | undefined,
+): Child {
+  const state = { ended: false };
+  const kill = (sent: NodeJS.Signals = 'SIGTERM') => {
+    if (!state.ended) {
+      signalChild(child, sent);
+    }
+  };
+  const end = () => kill('SIGTERM');
+  const exited = exitOf(child, outputs).then((exit) => {
+    state.ended = true;
+    signal?.removeEventListener('abort', end);
+    return exit;
+  });
+  signal?.addEventListener('abort', end, { once: true });
+  if (signal?.aborted === true) {
+    end();
+  }
+  return { exited, kill };
+}
+
+/** Starts the process with no shell, or answers the runtime's synchronous refusal. */
+function startProcessOf(
+  start: ChildStart,
+  choices: ReturnType<typeof outputChoices>,
+): ChildProcess | Error {
+  const { args, command, options, own } = start;
+  const stdio: StdioOptions = [
+    inputStdio(options, own.stdin),
+    outputStdio(choices.stdout, own.stdout, process.stdout),
+    outputStdio(choices.stderr, own.stderr, process.stderr),
+  ];
+  try {
+    return startProcess(command, [...args], {
+      cwd: options.cwd,
+      detached: options.detached === true,
+      env: { ...options.env },
+      shell: false,
+      stdio,
+    });
+  } catch (error) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+}
+
+/**
+ * Starts one real child program, with no shell. A detached child runs in a process group of its own
+ * with every stream ignored, and the process does not wait for it. It never throws: a child the
+ * runtime refuses arrives through `exited` as `unstarted`.
+ */
+function startChild(start: ChildStart): Child {
+  const { options, own } = start;
+  const choices = outputChoices(options);
+  const child = startProcessOf(start, choices);
+  if (child instanceof Error) {
+    return unstartedChild(child);
+  }
+  connectInput(child, options, own.stdin);
+  const outputs = {
+    stderr: connectOutput(child.stderr, choices.stderr, own.stderr),
+    stdout: connectOutput(child.stdout, choices.stdout, own.stdout),
+  };
+  if (options.detached === true) {
+    child.unref();
+  }
+  // Nothing in the run ends a detached child, so it takes no signal.
+  return trackedChild(child, outputs, 'signal' in options ? options.signal : undefined);
+}
+
 /** The handles `processHandle` built that read their release facts from the build. */
 const readsBuild = new WeakSet<ProcessHandle>();
 
@@ -261,9 +543,11 @@ function publishToProcess(name: string, value: string): void {
 
 /**
  * A handle over the process it runs in. Each supplied field replaces its whole field, and each
- * fact it was not given reads the process at the moment core reads it. Every handle shares the
- * real process's signal source, writes `exitCode` to `process.exitCode`, and has `publishEnv`
- * only when it was given neither `env` nor `cwd`.
+ * fact it was not given reads the process at the moment core reads it. `home` and `tmpdir` follow
+ * the handle's own environment, a supplied one included: its absolute `HOME`, else the user
+ * database's home, and its absolute `TMPDIR`, else `/tmp`. Every handle shares the real process's
+ * signal source, writes `exitCode` to `process.exitCode`, starts real children, and has
+ * `publishEnv` only when it was given neither `env` nor `cwd`.
  */
 function processHandle(fields: ProcessFields = {}): ProcessHandle {
   const {
@@ -271,6 +555,7 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
     argv,
     cwd,
     env,
+    home,
     platform,
     program,
     readSource,
@@ -280,6 +565,7 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
     stdout,
     terminal,
     timeZone,
+    tmpdir,
   } = fields;
   const uid = 'uid' in fields ? { value: fields.uid } : undefined;
   const libc = 'libc' in fields ? { value: fields.libc } : undefined;
@@ -302,6 +588,9 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
       written = code;
       process.exitCode = code;
     },
+    get home() {
+      return home ?? absoluteOf(handle.env, 'HOME') ?? databaseHome();
+    },
     get libc() {
       return libc === undefined ? processLibc() : libc.value;
     },
@@ -316,6 +605,7 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
       return release ?? bakedFacts();
     },
     signals: realSignals(),
+    spawn: (command, args, options) => startChild({ args, command, options, own: handle }),
     get stderr() {
       return stderr ?? process.stderr;
     },
@@ -330,6 +620,9 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
     },
     get timeZone() {
       return timeZone ?? processTimeZone();
+    },
+    get tmpdir() {
+      return tmpdir ?? absoluteOf(handle.env, 'TMPDIR') ?? defaultTmpdir;
     },
     get uid() {
       return uid === undefined ? process.getuid?.() : uid.value;

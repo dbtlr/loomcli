@@ -563,7 +563,12 @@ test.each(spellings.flatMap((xdg) => spellings.map((home) => [xdg, home] as cons
     };
     const directory = join(box.root, 'bin');
     const result = runScript(box, ['--dir', directory], env);
-    const lookup = applicationDirectory('installation', app, { env, platform: process.platform });
+    // The installer script reads HOME as it is, so the lookup's home is that HOME.
+    const lookup = applicationDirectory('installation', app, {
+      env,
+      home: env.HOME ?? '',
+      platform: process.platform,
+    });
     const recorded = 'path' in lookup ? join(lookup.path, 'install.json') : undefined;
     expect({
       downloads: requested(box).length,

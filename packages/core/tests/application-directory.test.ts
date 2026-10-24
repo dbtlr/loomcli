@@ -32,13 +32,17 @@ function sandbox() {
   };
 }
 
-/** One lookup of the notes application's directory from an overridden env and platform. */
+/**
+ * One lookup of the notes application's directory from an overridden env and platform. The home is
+ * `HOME` from the env, or empty when it holds none, as a host's home follows an absolute `HOME`.
+ */
 function lookup(
   kind: ApplicationDirectory,
   platform: string,
   env: Record<string, string | undefined>,
+  home = env.HOME ?? '',
 ): DirectoryLookup {
-  return applicationDirectory(kind, 'notes', { env, platform });
+  return applicationDirectory(kind, 'notes', { env, home, platform });
 }
 
 test.each([
@@ -93,6 +97,17 @@ test.each([
       variable: 'HOME',
     });
   }
+});
+
+test('the home comes from `home`, never from HOME in env', () => {
+  const env = { HOME: '/home/other' };
+  expect(lookup('installation', 'linux', env, fixed.home)).toEqual({
+    path: join(fixed.home, '.local', 'state', 'notes', 'installation'),
+  });
+  expect(lookup('cache', 'darwin', env, fixed.home)).toEqual({
+    path: join(fixed.home, 'Library', 'Caches', 'notes'),
+  });
+  expect(lookup('logs', 'linux', { HOME: fixed.home }, '')).toEqual({ variable: 'HOME' });
 });
 
 test('an absolute XDG_STATE_HOME or XDG_CACHE_HOME needs no HOME for its kinds', () => {

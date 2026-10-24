@@ -6,6 +6,8 @@ import { WorkingDirectoryError } from './errors.js';
 import type { InternalError } from './errors.js';
 import { handleRelease } from './process-handle.js';
 import type { CapturedRelease } from './release.js';
+import { hostSpawn } from './spawn.js';
+import type { OwnStreams } from './spawn.js';
 import type {
   Host,
   HostTerminal,
@@ -168,13 +170,19 @@ export interface HandleFacts {
   readonly arch: string;
   readonly directory: WorkingDirectory;
   readonly env: Host['env'];
+  /** The home folder, copied at entry, before environment preparation can add a `HOME`. */
+  readonly home: string;
   /** Reads the C library once, on the run's first read of `host.libc`, which can be costly. */
   readonly libc: () => Host['libc'];
   readonly platform: string;
   readonly program: readonly string[];
   readonly readSource?: NonNullable<Host['readSource']>;
   readonly release: CapturedRelease;
+  /** Starts a child through the run's handle, once core filled its place and mapped its streams. */
+  readonly spawn: ProcessHandle['spawn'];
   readonly timeZone: string;
+  /** The folder for temporary files, copied at entry as the home is. */
+  readonly tmpdir: string;
   readonly uid: number | undefined;
 }
 
@@ -184,16 +192,19 @@ export interface HandleFacts {
  */
 export function handleFacts(application: string, handle: ProcessHandle): HandleFacts {
   const env = { ...handle.env };
-  const { platform, readSource } = handle;
+  const { home, platform, readSource } = handle;
   const facts = {
     arch: handle.arch,
     directory: captureWorkingDirectory(handle),
     env,
+    home,
     libc: once(() => handle.libc),
     platform,
     program: Object.freeze([...handle.program]),
-    release: handleRelease(handle, { application, env, platform }),
+    release: handleRelease(handle, { application, env, home, platform }),
+    spawn: handle.spawn.bind(handle),
     timeZone: handle.timeZone,
+    tmpdir: handle.tmpdir,
     uid: handle.uid,
   };
   return readSource === undefined ? facts : { ...facts, readSource };
@@ -204,13 +215,19 @@ export type RunFacts = Pick<Host, 'argv' | 'raise' | 'stderr' | 'stdin' | 'stdou
 
 /**
  * The host one run captures from its own facts and its handle's, around the release facts and the
- * working directory the handle's capture read. Malformed release facts are the author's defect and
- * report first.
+ * working directory the handle's capture read. Its `spawn` passes `inherit` to the handle only for
+ * a run stream that is one of `own`, the handle's streams. Malformed release facts are the
+ * author's defect and report first.
  */
-export function capturedHost(run: RunFacts, shared: HandleFacts): HostCapture {
-  const { directory, libc, release, ...copied } = shared;
-  const facts = { ...run, ...copied };
+export function capturedHost(
+  run: RunFacts,
+  shared: HandleFacts,
+  own: OwnStreams = {},
+): HostCapture {
+  const { directory, libc, release, spawn: handleSpawn, ...copied } = shared;
   const cwd = 'cwd' in directory ? directory.cwd : undefined;
+  const scene = { ...run, cwd, env: copied.env, own, spawn: handleSpawn };
+  const facts = { ...run, ...copied, spawn: hostSpawn(scene) };
   if ('failure' in release) {
     return {
       failure: release.failure,
@@ -253,6 +270,7 @@ export function captureHost(
       }),
     },
     shared,
+    { stderr: handle.stderr, stdin, stdout: handle.stdout },
   );
 }
 
