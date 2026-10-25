@@ -194,6 +194,7 @@ async function host(scenario: string) {
   const caller = new AbortController();
   let secretVisible = false;
   let abortRestored = false;
+  let rawBeforeEof = false;
   let scheduled = false;
   const app = new Application('setup', {
     description: 'Configure the service.',
@@ -216,12 +217,17 @@ async function host(scenario: string) {
           return;
         }
         scheduled = true;
-        if (scenario === 'abort') {
-          caller.abort('stop');
-          abortRestored = !mock.stdin.isRaw;
-        } else if (scenario === 'eof') {
-          mock.stdin.push(null);
-        }
+        // One turn later, the question's read is pending, so the cancel reaches a waiting read.
+        setImmediate(() => {
+          if (scenario === 'abort') {
+            const wasRaw = mock.stdin.isRaw;
+            caller.abort('stop');
+            abortRestored = wasRaw && !mock.stdin.isRaw;
+          } else if (scenario === 'eof') {
+            rawBeforeEof = mock.stdin.isRaw;
+            mock.stdin.push(null);
+          }
+        });
       }),
     };
     const answer =
@@ -240,6 +246,7 @@ async function host(scenario: string) {
     output: mock.stdout.text,
     paused: mock.stdin.isPaused(),
     raw: mock.stdin.isRaw,
+    rawBeforeEof,
     secretVisible,
   };
 }
@@ -260,6 +267,7 @@ test.each(['abort', 'eof'])(
     expect(observed.messages).toContain('cancelled');
     expect(observed.messages).toContain('\u001b[?25h');
     expect(observed.abortRestored).toBe(scenario === 'abort');
+    expect(observed.rawBeforeEof).toBe(scenario === 'eof');
   },
 );
 
@@ -303,7 +311,8 @@ async function embedded(keys: string) {
         out: observing(context.out, () => {
           if (!typed) {
             typed = true;
-            stdin.push(keys);
+            // One turn later, the question's read is pending when the keys arrive.
+            setImmediate(() => stdin.push(keys));
           }
         }),
       };
@@ -324,11 +333,12 @@ async function embedded(keys: string) {
   });
   // The handle writes the run's code to the test process's exit code, which the test restores.
   const exitCode = process.exitCode;
-  const kill = vi.spyOn(process, 'kill');
+  const kill = vi.spyOn(process, 'kill').mockReturnValue(true);
   try {
     const code = await app.run({ process: handle });
     return {
       code,
+      exitCode: handle.exitCode,
       killed: kill.mock.calls.length,
       listeners: ['data', 'end', 'close', 'error'].map((name) => stdin.listenerCount(name)),
       messages,
@@ -352,6 +362,7 @@ test.each([
     const observed = await embedded(keys);
     expect(observed).toMatchObject({
       code: 130,
+      exitCode: 130,
       killed: 0,
       listeners: [0, 0, 0, 0],
       modes: [true, false],
@@ -366,7 +377,7 @@ test.each([
 
 test('Ctrl-Z on a stdin that is not the process terminal does nothing, and the question goes on', async () => {
   const observed = await embedded('\u001a8080\r');
-  expect(observed).toMatchObject({ code: 0, killed: 0, output: '8080\n', raw: false });
+  expect(observed).toMatchObject({ code: 0, exitCode: 0, killed: 0, output: '8080\n', raw: false });
 });
 
 test('a frame override can add rows while secret text stays out of view data', async () => {
