@@ -1,10 +1,12 @@
 // Acceptance plan: see packages/prompts/tests/interactive.test.ts.
 
-import { Application, DeclarationError, override } from '@loomcli/core';
+import { Readable, Writable } from 'node:stream';
+
+import { Application, DeclarationError, override, processHandle } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { dateTime, path } from '@loomcli/validators';
-import { expect, test } from 'vite-plus/test';
+import { expect, test, vi } from 'vite-plus/test';
 
 import { confirm, secret, select, text } from '../src/index.js';
 import type { PromptContext } from '../src/types.js';
@@ -177,12 +179,9 @@ test.each([
   },
 );
 
-/** The keys each host scenario types: nothing for an abort or end of input, or the interrupt key. */
+/** The keys each host scenario types: nothing for an abort or end of input. */
 const hostKeys: Record<string, string[]> = {
   abort: [''],
-  'ctrl-backslash': ['\u001c'],
-  'ctrl-c': ['\u0003'],
-  'ctrl-z': ['\u001a', '8080\r'],
   eof: [''],
   secret: ['secret-value\r'],
 };
@@ -245,20 +244,14 @@ async function host(scenario: string) {
   };
 }
 
-// Ctrl-\\ at a terminal raises SIGQUIT, whose cancellation code is 131, and it ends the mock's process.
-test.each([
-  ['abort', 130, 130, undefined],
-  ['eof', 130, 130, undefined],
-  ['ctrl-c', 130, 130, undefined],
-  ['ctrl-backslash', 131, undefined, 'SIGQUIT'],
-] as const)(
+test.each(['abort', 'eof'])(
   'an embedding host cancels and synchronously restores terminal input on %s',
-  async (scenario, code, exitCode, endedBy) => {
+  async (scenario) => {
     const observed = await host(scenario);
-    expect(observed.mock.exitCode).toBe(exitCode);
-    expect(observed.mock.endedBy).toBe(endedBy);
+    expect(observed.mock.exitCode).toBe(130);
+    expect(observed.mock.endedBy).toBeUndefined();
     expect(observed).toMatchObject({
-      code,
+      code: 130,
       listeners: [0, 0, 0, 0],
       output: '',
       paused: true,
@@ -270,9 +263,110 @@ test.each([
   },
 );
 
-test('Ctrl-Z suspends and resumes the run at the terminal, and the question goes on', async () => {
-  const observed = await host('ctrl-z');
-  expect(observed).toMatchObject({ code: 0, output: '8080\n', raw: false });
+// An embedding host's scripted raw-mode stdin, not a mock's keyboard: it is not the real process's
+// Terminal, so the branch of a reader whose stdin is another stream is reachable only through it.
+class ScriptedStdin extends Readable {
+  modes: boolean[] = [];
+  get isRaw() {
+    return this.modes.at(-1) === true;
+  }
+  _read() {}
+  setRawMode(value: boolean) {
+    this.modes.push(value);
+    return this;
+  }
+}
+
+/** One run of a question on an embedding host's stdin, which types `keys` once the question opens. */
+async function embedded(keys: string) {
+  const stdin = new ScriptedStdin();
+  let messages = '';
+  let output = '';
+  let typed = false;
+  const stderr = new Writable({
+    write(chunk, _encoding, done) {
+      messages += String(chunk);
+      done();
+    },
+  });
+  const stdout = new Writable({
+    write(chunk, _encoding, done) {
+      output += String(chunk);
+      done();
+    },
+  });
+  const app = new Application('setup', { description: 'Configure the service.' }).action(
+    async (context) => {
+      // The first frame is the question's opening, so the keys come after it.
+      const asked = {
+        ...context,
+        out: observing(context.out, () => {
+          if (!typed) {
+            typed = true;
+            stdin.push(keys);
+          }
+        }),
+      };
+      await context.out.print(await text(asked, { message: 'Port' }));
+    },
+  );
+  const handle = processHandle({
+    argv: [],
+    env: {},
+    stderr,
+    stdin,
+    stdout,
+    terminal: {
+      stderr: { columns: 80, isTTY: true, rows: 24 },
+      stdin: { isTTY: true },
+      stdout: { columns: undefined, isTTY: false, rows: undefined },
+    },
+  });
+  // The handle writes the run's code to the test process's exit code, which the test restores.
+  const exitCode = process.exitCode;
+  const kill = vi.spyOn(process, 'kill');
+  try {
+    const code = await app.run({ process: handle });
+    return {
+      code,
+      killed: kill.mock.calls.length,
+      listeners: ['data', 'end', 'close', 'error'].map((name) => stdin.listenerCount(name)),
+      messages,
+      modes: stdin.modes,
+      output,
+      paused: stdin.isPaused(),
+      raw: stdin.isRaw,
+    };
+  } finally {
+    kill.mockRestore();
+    process.exitCode = exitCode;
+  }
+}
+
+test.each([
+  ['ctrl-c', '\u0003'],
+  ['ctrl-backslash', '\u001c'],
+])(
+  'on a stdin that is not the process terminal, %s cancels the run through the action and raises no signal',
+  async (_key, keys) => {
+    const observed = await embedded(keys);
+    expect(observed).toMatchObject({
+      code: 130,
+      killed: 0,
+      listeners: [0, 0, 0, 0],
+      modes: [true, false],
+      output: '',
+      paused: true,
+      raw: false,
+    });
+    expect(observed.messages).toContain('cancelled');
+    expect(observed.messages).toContain('\u001b[?25h');
+  },
+);
+
+test('Ctrl-Z on a stdin that is not the process terminal does nothing, and the question goes on', async () => {
+  const observed = await embedded('\u001a8080\r');
+  expect(observed).toMatchObject({ code: 0, killed: 0, output: '8080\n', raw: false });
 });
 
 test('a frame override can add rows while secret text stays out of view data', async () => {
