@@ -9,7 +9,8 @@
  *   terminal at a budget of 0.
  * - The status a shell sees. A cooperative run sent SIGHUP, SIGINT, SIGQUIT, or SIGTERM dies by it,
  *   and `sh` reports 129, 130, 131, or 143.
- * - The budget. An action that ignores its signal ends within its budget, not before it.
+ * - The budget. An action that ignores its signal ends within its budget, not before it, and so
+ *   does a run whose provider's asynchronous close never settles.
  * - signal-exit. Installed beside core, it still ends the process: with an action that ignores its
  *   signal and with one that honours it, both core's handler and signal-exit's run, and the process
  *   dies by the signal.
@@ -233,6 +234,21 @@ test.each([
     expect(output.split('\n').slice(2)).toEqual([...unwound, `status=${String(status)}`, '']);
   },
 );
+
+test("a Ctrl-C during a provider's asynchronous close ends within the budget, and not before it", async () => {
+  const running = start(fixtureUrl, ['closing'], { env: { LOOM_FIXTURE_TIMEOUT: '400' } });
+  await running.announced(`ready:${String(running.child.pid)}:`);
+  const sent = performance.now();
+  running.child.kill('SIGINT');
+  const result = await running.exit;
+  const elapsed = performance.now() - sent;
+  expect({ signal: result.signal, stdout: result.stdout }).toEqual({
+    signal: 'SIGINT',
+    stdout: `before:0,0,0,0,0\nready:${String(running.child.pid)}:\nhandler:SIGINT:130\n`,
+  });
+  expect(elapsed).toBeGreaterThanOrEqual(350);
+  expect(elapsed).toBeLessThan(3000);
+});
 
 test('an action that ignores its signal ends within its budget, and not before it', async () => {
   const running = start(fixtureUrl, ['ignoring'], { env: { LOOM_FIXTURE_TIMEOUT: '400' } });

@@ -23,6 +23,9 @@ type RegisteredEnvironment = Register extends { environment: infer Environment }
 
 type RegisteredGlobals = RegisteredEnvironment['globals'];
 
+/** Whether an Application's registration is visible in this compilation context. */
+type RegistrationVisible = Register extends { environment: unknown } ? true : false;
+
 /** A private type marker avoids pretending parsed global values exist before an invocation. */
 declare const applicationEnvironment: unique symbol;
 
@@ -38,5 +41,6 @@ export type {
   Register,
   RegisteredEnvironment,
   RegisteredGlobals,
+  RegistrationVisible,
   applicationEnvironment,
 };

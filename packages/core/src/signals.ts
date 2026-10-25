@@ -44,6 +44,22 @@ function isCancellationEcho(thrown: unknown, reason: unknown): boolean {
 }
 
 /**
+ * Whether a throw in a cancelled run echoes its cancellation, so no translator is offered it and no
+ * report renders it. A value that cannot be read, such as an Error whose `name` getter throws,
+ * counts as an echo, so it keeps its cancellation code and no translator replaces it.
+ */
+function echoesCancellation(thrown: unknown, signal: AbortSignal): boolean {
+  if (!signal.aborted) {
+    return false;
+  }
+  try {
+    return isCancellationEcho(thrown, signal.reason);
+  } catch {
+    return true;
+  }
+}
+
+/**
  * What cancels one run, and its place in its signal source's lane: the caller subscription it
  * opened at run entry and the place it holds until it resolves. Entry and removal sit together so
  * the bracket a run keeps is readable in one place.
@@ -174,4 +190,4 @@ function placeHandlers(
 }
 
 export type { CancellationCode, CancellationReason, LaneEntry, ParentRun, SignalBracket };
-export { bracketRun, cancellationCode, isCancellationEcho, placeHandlers };
+export { bracketRun, cancellationCode, echoesCancellation, isCancellationEcho, placeHandlers };

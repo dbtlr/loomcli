@@ -191,11 +191,12 @@ test('a failure closes every region before the report, which follows each last f
   const run = regions('failure');
   expect(run.code).toBe(1);
   expect(run.notes).toEqual({ failure: 'failure', middleware: 'failure', source: 'failure' });
+  // The action's regions close as it settles, as they do when it returns, and the others before the report.
   await expect(screen(run)).resolves.toEqual([
-    'source failed frame',
-    'middleware failed frame',
     'action failed frame',
     'action frame',
+    'source failed frame',
+    'middleware failed frame',
     'It failed.',
   ]);
 });

@@ -177,6 +177,15 @@ const scenarios = {
     const log = plugin('@acme/log', {});
     return new Application('probe', { plugins: [log, log] });
   },
+  // A provider another installed copy of core built carries no definition this copy can read.
+  'provider-entry': () =>
+    new Command('get', {
+      uses: [Object.freeze({ lifetime: 'ephemeral', name: 'pool', uses: [] })],
+    }),
+  'provider-root-entry': () =>
+    new Application('probe', {
+      uses: [Object.freeze({ lifetime: 'persistent', name: 'pool', uses: [] })],
+    }),
   'rule-identity': () =>
     diagnosticRule('Retry Limit', { explanation: 'Each retry repeats.', headline: 'Retry limit' }),
   'theme-slot': () =>

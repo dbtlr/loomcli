@@ -53,6 +53,16 @@ export { incompleteResult, lanes } from './lanes.js';
 export { override, view } from './view.js';
 export { plugin } from './plugin.js';
 export { processHandle } from './process-handle.js';
+export { provider } from './providers.js';
+export type {
+  AnyProvider,
+  Lifetime,
+  Opener,
+  ProvidedValues,
+  Provider,
+  ProviderContext,
+  ProviderDefinition,
+} from './providers.js';
 export { onResume, onShutdown, onSuspend } from './shutdown.js';
 export type { OnResume, OnShutdown, OnSuspend, ShutdownEvent, Synchronous } from './signal-lane.js';
 export { translate } from './translators.js';

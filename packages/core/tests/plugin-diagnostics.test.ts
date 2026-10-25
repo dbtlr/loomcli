@@ -123,6 +123,19 @@ const cases: Record<string, RuleParts> = {
     rule: 'plugin-installed-twice',
     sentence: 'The Application installs plugin "@acme/log" twice.',
   },
+  // A provider another installed copy of core built misses this copy's registry as this value does.
+  'provider-entry': {
+    correction:
+      'Install one copy of @loomcli/core, so the Application and every plugin package share it.',
+    rule: 'foreign-value',
+    sentence: 'Command "get" lists a provider another installed copy of @loomcli/core built.',
+  },
+  'provider-root-entry': {
+    correction:
+      'Install one copy of @loomcli/core, so the Application and every plugin package share it.',
+    rule: 'foreign-value',
+    sentence: 'The Application lists a provider another installed copy of @loomcli/core built.',
+  },
   'rule-identity': {
     correction:
       'Name it <package>[/<subpath>...]/<kebab-case-rule>, such as "@acme/retry/retry-limit".',

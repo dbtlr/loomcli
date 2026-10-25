@@ -9,7 +9,7 @@ import { registerRule } from './diagnostic-text.js';
 /** A value another installed copy of `@loomcli/core` built, which this copy's registry misses. */
 const foreignValue = registerRule('@loomcli/core/foreign-value', {
   explanation:
-    'Core reads a plugin, an extension value, a declared view, a view override, a translation, and a failure encoding through facts the copy of @loomcli/core that built it recorded. When two copies of @loomcli/core are installed, a value one copy built carries no facts the other copy can read.',
+    'Core reads a plugin, an extension value, a declared view, a view override, a translation, a failure encoding, and a provider through facts the copy of @loomcli/core that built it recorded. When two copies of @loomcli/core are installed, a value one copy built carries no facts the other copy can read.',
   headline: 'Value from another copy of core',
 });
 
