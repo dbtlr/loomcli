@@ -1,10 +1,9 @@
 // Acceptance plan: see packages/validators/tests/catalog.test.ts.
 
-import { validationOptions } from '@loomcli/core';
+import { Application, validationOptions } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { describe, expect, it } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { dateTime } from '../src/index.js';
 import { conforms, declarationFault, faultOf, published, verdict } from './support.js';
 
@@ -30,21 +29,27 @@ async function instantOf(validator: Parameters<typeof verdict>[0], token: string
   return 'value' in result && result.value instanceof Date ? result.value.toISOString() : undefined;
 }
 
-const fixture = new URL('fixtures/date-time-run.mjs', import.meta.url);
-
-interface Outcome {
-  status: number;
-  stderr: string;
-  stdout: string;
-}
-
-/** The ISO instant each token reads as in a run on a host in `zone`, or its rejection's stderr. */
+/**
+ * The ISO instant each token reads as in a run on a host in `zone`, or its rejection's messages.
+ * The validator is called with the options `validationOptions` builds over a mock in that zone.
+ */
 function readIn(zone: string, tokens: string[], options: object = {}) {
-  const result = invoke(fixture, [JSON.stringify(options), zone, ...tokens]);
-  expect(result.status).toBe(0);
-  expect(result.stderr).toBe('');
-  const records: Outcome[] = JSON.parse(result.stdout);
-  return records.map((record) => (record.status === 0 ? record.stdout.trim() : record.stderr));
+  const validator = dateTime(options)['~standard'];
+  const mock = mockProcess({ timeZone: zone });
+  return Promise.all(
+    tokens.map(async (token) => {
+      const result = await validator.validate(
+        token,
+        validationOptions(mock, {
+          input: { global: false, kind: 'option', name: 'at' },
+          phase: 'invocation',
+        }),
+      );
+      return result.issues === undefined
+        ? result.value.toISOString()
+        : result.issues.map((issue) => issue.message);
+    }),
+  );
 }
 
 describe('a token that names its offset', () => {
@@ -138,14 +143,16 @@ describe('a token with no offset is read in the pinned zone, and needs no run', 
 });
 
 describe('a token with no offset in a run is read in the host time zone', () => {
-  it('reads the host zone, and the pinned zone replaces it', () => {
-    expect(readIn('America/New_York', ['2026-09-25T14:30:00'])).toEqual([
+  it('reads the host zone, and the pinned zone replaces it', async () => {
+    await expect(readIn('America/New_York', ['2026-09-25T14:30:00'])).resolves.toEqual([
       '2026-09-25T18:30:00.000Z',
     ]);
-    expect(readIn('Asia/Tokyo', ['2026-09-25T14:30:00'])).toEqual(['2026-09-25T05:30:00.000Z']);
-    expect(readIn('Asia/Tokyo', ['2026-09-25T14:30:00'], { timeZone: 'America/New_York' })).toEqual(
-      ['2026-09-25T18:30:00.000Z'],
-    );
+    await expect(readIn('Asia/Tokyo', ['2026-09-25T14:30:00'])).resolves.toEqual([
+      '2026-09-25T05:30:00.000Z',
+    ]);
+    await expect(
+      readIn('Asia/Tokyo', ['2026-09-25T14:30:00'], { timeZone: 'America/New_York' }),
+    ).resolves.toEqual(['2026-09-25T18:30:00.000Z']);
   });
 
   it('a test reads it in the mock time zone with the options validationOptions builds', async () => {
@@ -157,14 +164,14 @@ describe('a token with no offset in a run is read in the host time zone', () => 
     expect(result).toEqual({ value: new Date('2026-06-01T07:00:00.000Z') });
   });
 
-  it('leaves an offset the token names alone', () => {
-    expect(readIn('Asia/Tokyo', ['2026-09-25T14:30:00+02:00'])).toEqual([
+  it('leaves an offset the token names alone', async () => {
+    await expect(readIn('Asia/Tokyo', ['2026-09-25T14:30:00+02:00'])).resolves.toEqual([
       '2026-09-25T12:30:00.000Z',
     ]);
   });
 
-  it('resolves a time in a gap forward and an overlap to the earlier instant', () => {
-    expect(
+  it('resolves a time in a gap forward and an overlap to the earlier instant', async () => {
+    await expect(
       readIn('America/New_York', [
         '2026-03-08T01:59:00',
         '2026-03-08T02:00:00',
@@ -177,7 +184,7 @@ describe('a token with no offset in a run is read in the host time zone', () => 
         '2026-11-01T01:59:59',
         '2026-11-01T02:00:00',
       ]),
-    ).toEqual([
+    ).resolves.toEqual([
       '2026-03-08T06:59:00.000Z',
       '2026-03-08T07:00:00.000Z',
       '2026-03-08T07:30:00.000Z',
@@ -191,19 +198,27 @@ describe('a token with no offset in a run is read in the host time zone', () => 
     ]);
   });
 
-  it('applies the same rules in the southern hemisphere and in Europe', () => {
-    expect(readIn('Australia/Sydney', ['2026-10-04T02:30:00', '2026-04-05T02:30:00'])).toEqual([
-      '2026-10-03T16:30:00.000Z',
-      '2026-04-04T15:30:00.000Z',
-    ]);
-    expect(readIn('Europe/London', ['2026-03-29T01:30:00', '2026-10-25T01:30:00'])).toEqual([
-      '2026-03-29T01:30:00.000Z',
-      '2026-10-25T00:30:00.000Z',
-    ]);
+  it('applies the same rules in the southern hemisphere and in Europe', async () => {
+    await expect(
+      readIn('Australia/Sydney', ['2026-10-04T02:30:00', '2026-04-05T02:30:00']),
+    ).resolves.toEqual(['2026-10-03T16:30:00.000Z', '2026-04-04T15:30:00.000Z']);
+    await expect(
+      readIn('Europe/London', ['2026-03-29T01:30:00', '2026-10-25T01:30:00']),
+    ).resolves.toEqual(['2026-03-29T01:30:00.000Z', '2026-10-25T00:30:00.000Z']);
   });
 
-  it('rejects a bad token with the sentence and without the token', () => {
-    expect(readIn('UTC', ['2026-02-30T10:00:00'])).toEqual([`probe: Option "--at": ${sentence}\n`]);
+  it('rejects a bad token with the sentence and without the token', async () => {
+    await expect(readIn('UTC', ['2026-02-30T10:00:00'])).resolves.toEqual([[sentence]]);
+  });
+
+  it('a run reports a rejected token as invalid input, with the sentence', async () => {
+    const mock = mockProcess({ argv: ['--at=2026-02-30T10:00:00'], timeZone: 'UTC' });
+    const app = new Application('probe')
+      .option('at', { required: true, type: 'string', validate: dateTime() })
+      .action(({ options, out }) => out.print(options.at.toISOString()));
+    await expect(app.run({ process: mock })).resolves.toBe(2);
+    expect(mock.stdout.text).toBe('');
+    expect(mock.stderr.text).toBe(`probe: Option "--at": ${sentence}\n`);
   });
 });
 
