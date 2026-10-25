@@ -58,7 +58,7 @@ The handler a Command registers after its inputs, aliases, and children, which r
 _Avoid_: Handler, run function, executor
 
 **Action context**:
-The single object an action receives, carrying its validated inputs, the supplied record as `supplied`, the interaction decision as `interactive`, any stdin-only input as `stdin`, the passthrough tail, the output channel, the host, the signal, `cancel`, which aborts the signal, the style, the graph, the routed Command, `invoke`, which runs another Command of the same graph by name, and `log`, which records log events.
+The single object an action receives, carrying its validated inputs, the supplied record as `supplied`, the interaction decision as `interactive`, any stdin-only input as `stdin`, the passthrough tail, the output channel, the host, the signal, `cancel`, which aborts the signal, the style, the graph, the routed Command, `invoke`, which runs another Command of the same graph by name, `log`, which records log events, and `provided`, which holds the provided values of the providers its Command opts in to.
 _Avoid_: Invocation object, props, request (which is what a middleware reads)
 
 **Global options**:
@@ -299,7 +299,7 @@ The read-only snapshot of the routed Command's validated argument, local option,
 _Avoid_: Parsed invocation, parsed input, raw input (which is the pre-validation form)
 
 **Dispatch boundary**:
-The point the middleware chain reaches when it continues past its last middleware: core raises the fault it held, or reads the selected view and dispatches the action. A takeover never reaches it.
+The point the middleware chain reaches when it continues past its last middleware: core raises the fault it held, or reads the selected view, builds the providers the routed Command opted in to, and dispatches the action. A takeover never reaches it.
 _Avoid_: Terminal step, end of chain, action phase
 
 **Routing**:
@@ -751,6 +751,22 @@ _Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
 **Activation**:
 A middleware's declared condition for running and loading: a list of its plugin's own option names, any of which being present activates it, or always. Present means supplied as a token or filled by the input-source stage, never by a default.
 _Avoid_: Trigger, gate, filter
+
+**Provider**:
+A value of its own that hands an action a typed value, such as a database pool, a session, or data derived from validated global options. It has a name, a lifetime, the providers it uses, and an opener, the function its `load` imports, which builds the value from the global options it states, and it may declare a `close`. A Command or the Application's root opts in to a provider through `uses`; no plugin or Application installs one. A provider gives a value, where a middleware wraps a run.
+_Avoid_: Context provider, service, resource, contribution, dependency injection
+
+**Provided value**:
+The value a provider's opener built, which an action reads under `provided` by its provider's name when its Command opts in. Core builds it at the dispatch boundary and closes it at the end of its lifetime, through the provider's `close` or the disposal protocol.
+_Avoid_: Context value, injected value, resource
+
+**Ephemeral**:
+The default provider lifetime: the value is built at a run's dispatch boundary and closed when that run's action settles, so each nested `invoke` builds its own.
+_Avoid_: Per-request, transient, scoped
+
+**Persistent**:
+The provider lifetime of the outermost run, the `run()` or `app.invoke` call that every action's `invoke` nests inside: the value is built the first time a run inside it needs it, shared by every nested `invoke`, and closed when the outermost run's action settles. It never outlives the outermost run, so it is not a process lifetime.
+_Avoid_: Singleton, global, process-wide, cached
 
 **Extension**:
 A typed fact a plugin defines for one target, Command, option, or argument, and a declaration carries as a branded value keyed by the extension's identity. Command-targeted values can be replaced after action registration through immutable `extend()` calls, except a collecting extension's, which accumulate.

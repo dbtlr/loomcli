@@ -16,7 +16,7 @@ New to Loom? Read the [jsonkit example](../examples/jsonkit/README.md), then [Ap
 
 ## Building an application
 
-- [Core reference](core/README.md) is the contract of `@loomcli/core`: declaring an application, running it, output, failures, the plugin contract, and the facts a shipped application reads. One page per concept. Its [diagnostics reference](core/diagnostics.md) lists every Developer Diagnostic rule by identity, with why it exists.
+- [Core reference](core/README.md) is the contract of `@loomcli/core`: declaring an application, running it, output, failures, the plugin contract, providers, and the facts a shipped application reads. One page per concept. Its [diagnostics reference](core/diagnostics.md) lists every Developer Diagnostic rule by identity, with why it exists.
 - [First-party plugins](plugins/README.md) document each plugin in `@loomcli/plugins`, such as help, completion, configuration, and MCP, plus the pack views.
 - [Libraries](libs/README.md) document the packages an application uses beside core:
   - [Validators](libs/validators.md): the `@loomcli/validators` catalog of Standard Schema validators.
