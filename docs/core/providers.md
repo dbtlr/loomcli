@@ -27,17 +27,22 @@ interface Provider<
   readonly [providerTypes]: { value: Value; globals: (value: Globals) => void };
 }
 type AnyProvider = Provider<string, unknown, never, Lifetime, readonly AnyProvider[]>;
+type PersistentProvider = Provider<string, unknown, never, 'persistent', readonly AnyProvider[]>;
 /** Each provider in a list mapped to its value under its name. */
 type ProvidedValues<Uses extends readonly AnyProvider[]> = {
   readonly [P in Uses[number] as P['name']]: P[typeof providerTypes]['value'];
 };
 
-interface ProviderDefinition<P extends AnyProvider> {
-  lifetime?: P['lifetime'];
-  uses?: P['uses'];
-  load: () => Promise<{ default: Opener<P> }>;
-  close?: (value: P[typeof providerTypes]['value']) => void | PromiseLike<void>;
-}
+/** `lifetime` is required unless it is ephemeral, and `uses` unless the list is empty. */
+type ProviderDefinition<P extends AnyProvider> = ('ephemeral' extends P['lifetime']
+  ? { lifetime?: 'ephemeral' }
+  : { lifetime: P['lifetime'] }) &
+  (P['uses'] extends readonly []
+    ? { uses?: readonly [] }
+    : { uses: P['uses'] & (P['lifetime'] extends 'persistent' ? readonly PersistentProvider[] : unknown) }) & {
+    load: () => Promise<{ default: Opener<P> }>;
+    close?: (value: P[typeof providerTypes]['value']) => void | PromiseLike<void>;
+  };
 
 declare function provider<const P extends AnyProvider>(name: P['name'], definition: ProviderDefinition<P>): P;
 ```
@@ -63,7 +68,7 @@ export const session: Provider<'session', Session, { token: string | undefined }
 
 `provider(name, definition)` returns a frozen provider value. The declaration's type annotation states the provider's types, as a plugin factory's return type states its options under [Plugin contract](plugin-contract.md), and `provider()` checks the definition against it.
 
-- **The annotation.** `Provider<Name, Value, Globals, Lifetime, Uses>` names the key the value reads under in `provided`, the value's type, the [global options](commands.md) the provider reads, its lifetime, and the providers it uses. `provider()` takes its types from the annotation: a `name`, a `lifetime`, or a `uses` list that differs from it is a type error at the call, and so is an opener whose value or context differs, under [The opener](#the-opener). The globals are checked where a Command that opts in attaches, under [Opting in](#opting-in).
+- **The annotation.** `Provider<Name, Value, Globals, Lifetime, Uses>` names the key the value reads under in `provided`, the value's type, the [global options](commands.md) the provider reads, its lifetime, and the providers it uses. `provider()` takes its types from the annotation: a `name`, a `lifetime`, or a `uses` list that differs from it is a type error at the call, and so is an omitted `lifetime` on a persistent annotation, an omitted `uses` when the annotation lists providers, and an opener whose value or context differs, under [The opener](#the-opener). The globals are checked where a Command that opts in attaches, under [Opting in](#opting-in).
 - **The name.** The name is the key the value reads under in an action's `provided`, so a name that reads as a JavaScript identifier, such as `pool`, reads as `provided.pool`. Core sets no grammar of its own on it.
 - **The lifetime.** `'ephemeral'`, the default, lasts one run. `'persistent'` lasts the outermost run and is shared by every nested `invoke` inside it, under [Lifetimes](#lifetimes).
 - **`uses`.** The providers this provider reads, whose values reach its opener under `provided`. A provider opts in to another the same way a Command does, and the lists' types compose, under [Opting in](#opting-in).
@@ -145,10 +150,12 @@ A Command opts in through `uses` in its options object, and the Application opts
 
 - **`provided` holds the opt-ins.** `provided` holds the value of each provider the Command's `uses` lists, typed from the list, and nothing else. A provider those providers use is built but not provided: a Command that reads `pool` lists `pool`. `provided` is one member of the action context, so a member core adds to the context later never collides with a provider's name. An action whose Command opts in to nothing reads `{}`.
 - **Globals are a requirement.** Opting in adds the global options of every provider the list reaches, the providers they use included, to the Command's global requirements. `command()` already rejects a child whose global requirements its parent does not satisfy, so a Command that opts in to a provider whose option-declaring plugin the Application no longer installs fails to compile where it attaches. That is the author's ordinary error, which the types report. An action's `options` include those globals, because the Application declares them.
+- **Requirements pass up.** `command()` adds a child's global requirements to its parent's, so the requirement meets the Application wherever the child sits, and a library's group that holds a Command that opts in compiles without the Application. The type error surfaces where the requirement first meets globals that do not hold it: the Application, or a Command built where the Application's registration is visible.
 - **The root's own action.** The Application's `uses` covers the root's action alone. Its globals are checked at the root's `action()` call, once `globalOption()` is closed.
+- **Plugin Commands.** A plugin's [`commands`](plugin-contract.md#plugin-commands) accepts a Command whose global requirements its own plugin's options meet, checked at `plugin()`, so a database plugin ships `db migrate` that opts in to the pool its own `--database-url` configures. A plugin compiles without the Application, so it cannot require another plugin's options or the application's.
 - **No inheritance.** A child Command does not inherit its parent's opt-ins, because a child is declared and typed before it attaches. Commands that share opt-ins share a constant list: `uses: databaseProviders`.
-- **One name per closure.** Two different providers with one name, anywhere among the providers a list reaches, are a type error at that `uses`. One provider value reached twice, as when a Command lists `session` and `pool` and `session` uses `pool`, is one provider and is built once.
-- **Lifetime direction.** An ephemeral provider may use a persistent one. A persistent provider may not use an ephemeral one, because it would hold a value of one run inside a value that outlives it: its `uses` is a type error.
+- **One name per closure.** Two different providers with one name, anywhere among the providers a list reaches, are a type error at that `uses`, on `new Command()`, `new Application()`, and `provider()` alike. One provider value reached twice, as when a Command lists `session` and `pool` and `session` uses `pool`, is one provider and is built once.
+- **Lifetime direction.** An ephemeral provider may use a persistent one. A persistent provider may not use an ephemeral one, because it would hold a value of one run inside a value that outlives it: `provider()` rejects that `uses`.
 - **Not a graph fact.** An opt-in is not part of the [command graph](graph-inspection.md), so no projection reads it, under [ADR-0010](../decisions/0010-one-graph-serves-runtime-and-projections.md). The globals a provider reads are ordinary global options, which every projection already reads.
 - **Middleware is unchanged.** A middleware never sees a provided value, and `next()` takes no argument.
 
@@ -166,7 +173,7 @@ Core builds at the dispatch boundary, the point the chain reaches when its last 
 
 - **Nothing before the boundary.** A takeover, `--help` included, builds nothing, and so does a run with a held fault or a bad view selection, a run cancelled before the boundary, and a run whose Command opts in to nothing.
 - **Order.** Core builds one value at a time, each provider after the providers it uses, in the order each `uses` list names them. A persistent value already built in the outermost run is reused.
-- **Cancellation during a build.** An opener reads the run's signal. When the signal aborts during a build, core lets the opener in flight settle, starts no further build, closes what it built under [Closing](#closing), and never dispatches the action, so `next()` resolves `'cancelled'` and the run resolves its cancellation code.
+- **Cancellation during a build.** An opener reads the run's signal. When the signal aborts during a build, core lets the opener in flight settle, starts no further build, closes what it built under [Closing](#closing), and never dispatches the action, so `next()` resolves `'cancelled'` and the run resolves its cancellation code, whatever the opener in flight settles with. An opener that rejects with the signal's reason or an `AbortError` is silent, and any other rejection is rendered as a failure after cancellation with the signal's code, under [The run signal](signals.md#the-run-signal).
 - **A failing opener.** An opener or a `load` that throws or rejects takes the [ordinary failure path](failures.md#the-ordinary-failure-path): a `FatalError` keeps its code, and a translator is offered any other throw. Core first closes what it built under [Closing](#closing), and the action never runs. The failure rejects `next()` as an action's failure does.
 
 ## Closing
