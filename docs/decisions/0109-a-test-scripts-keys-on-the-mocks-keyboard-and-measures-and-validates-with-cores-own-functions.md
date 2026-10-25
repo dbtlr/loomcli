@@ -20,10 +20,10 @@ A validator that reads its validation context, such as `path()` reading the work
 ## Decision
 
 - **The keyboard.** `mockProcess`'s `terminal.keys` puts stdin on the mock's terminal as its keyboard: stdin is a terminal, accepts raw mode, and is the mock's signal source's own terminal. `keys: []` is a keyboard with nothing typed. The types make `keys` and piped `stdin` exclusive. The mock's `stdin.isRaw` reads whether a reader holds it in raw mode.
-- **One entry per raw-mode switch.** The keyboard hands over its next entry each time a reader switches stdin to raw mode: when a question opens, and when a run resumes after Ctrl-Z, because the resume enters raw mode again. An entry holds every key typed while one reader holds the keyboard, an answer a question rejects and the one after it included. Nothing is handed on a timer or in answer to printed text.
+- **One entry per raw-mode switch.** The keyboard hands over its next entry each time a reader other than core's background query switches stdin to raw mode: when a question opens, and when a run resumes after Ctrl-Z, because the resume enters raw mode again. An entry holds every key typed while one reader holds the keyboard, an answer a question rejects and the one after it included. Nothing is handed on a timer or in answer to printed text.
 - **Interrupt keys raise on the mock.** Because the keyboard is the mock's signal source's own terminal, `host.raise` raises a scripted Ctrl-C, Ctrl-\, or Ctrl-Z on the mock's signal source, so a scripted Ctrl-C starts the run's shutdown and the run resolves 130, as at a real terminal.
-- **The background query.** A keyboard mock answers core's background query at once, as a terminal that reports no background, so the background settles `undefined`, no entry is used, and nothing waits on the query's deadline. A test that wants a background states it.
-- **Running out of keys.** A switch to raw mode with no entry left throws `mockProcess has no keys left for this read. Add an entry to terminal.keys.` inside the run, so the run fails through the ordinary failure path, as a child program with no script does.
+- **The background query.** A keyboard mock answers core's background query at once with the DA1 reply alone, as a terminal that reports no background, so the query has no answer and settlement continues at `COLORFGBG`, no entry is used, and nothing waits on the query's deadline. A test that wants a background states it.
+- **Running out of keys.** A switch to raw mode with no entry left fails the keyboard with `mockProcess has no keys left for this read. Add an entry to terminal.keys.`: the switch throws it when a reader opens, and stdin emits it as an `error` on a resume's switch, whose handler's throw core would only log, so the pending read rejects with it. Either way the run fails through the ordinary failure path, as a child program with no script does.
 - **`width(text)`.** `@loomcli/core` exports `width`, which counts the columns a terminal shows for written text: it skips every terminal control sequence and counts what remains as the view context's `width` does, with the same grapheme widths, tab stops, and widest-line rule. It reads no marked-string frame.
 - **`validationOptions(process, context)`.** `@loomcli/core` exports `validationOptions`, which returns the Standard Schema options a run passes to a validator in the `default` or `invocation` phase, with a host captured from the handle as a run captures it at entry, and `[]`, `[]`, and an empty supplied record for an `invocation` context's omitted `command`, `passthrough`, and `supplied`. `validationContext()` recognizes the context it builds.
 
@@ -40,8 +40,12 @@ The rules are stated in the [testing reference](../libs/testing.md#mockprocess),
 
 ## Consequences
 
-Loom's prompts, draw, and interaction fixtures move in-process onto the keyboard, and its validator fixtures onto `validationOptions`, so their hand-written keyboards and fixture applications go. A real terminal, a pseudo-terminal, and a real signal stay what a process test proves, under [ADR-0103](0103-process-acceptance-comes-from-looms-own-pipeline-and-the-packed-consumer.md). The `@loomcli/validators/context-outside-run` explanation names `validationOptions` as the way a test supplies a context. `MockFields` becomes a union type, so code that extends it as an interface changes to an intersection. ADR-0107 carries a dated entry.
+Loom's prompts, draw, and interaction fixtures move in-process onto the keyboard, and its validator fixtures onto `validationOptions`, so their hand-written keyboards and fixture applications go. A real terminal, a pseudo-terminal, and a real signal stay what a process test proves, under [ADR-0103](0103-process-acceptance-comes-from-looms-own-pipeline-and-the-packed-consumer.md). The `@loomcli/validators/context-outside-run` explanation names `validationOptions` as the way a test supplies a context. `MockFields` becomes a union type, so code that extends it as an interface changes to an intersection; `MockTerminal` keeps its members, and the keyboard's `keys` belongs to `MockFields`'s keyboard branch. ADR-0107 carries a dated entry.
 
 ## Status
 
 Proposed. It moves to accepted with the release that ships the keyboard, `width`, and `validationOptions`, once Loom's prompts, draw, interaction, and validator fixtures run in-process on them under Node and Bun with their assertions unchanged.
+
+## Changelog
+
+- 2026-10-25: Proposed. ADR-0107 carries a dated entry.
