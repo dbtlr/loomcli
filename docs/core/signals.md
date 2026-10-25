@@ -82,7 +82,7 @@ export const notes = new Application('notes', { shutdown: { timeout: 2000 } });
 `SIGINT` (Ctrl-C), `SIGTERM` (a supervisor or `kill`), and `SIGHUP` (a closed terminal window or a dropped SSH session) each start the process's shutdown while core [listens](#listening).
 
 1. **Begin.** Core aborts the signal of every live run whose process handle shares the signal source, `run()` and `app.invoke` alike, with the signal's name as the source. Each abort listener runs synchronously: each open [region](output.md#live-region) draws its cancelled line, and each question leaves raw mode.
-2. **Unwind.** The runs unwind on their own terms: a middleware's work after `next()` and its `finally`, an action's own `finally`, and each run's failure report and output all run as they do on any cancellation.
+2. **Unwind.** The runs unwind on their own terms: a middleware's work after `next()` and its `finally`, an action's own `finally`, the [provided values](providers.md#closing) closing, and each run's failure report and output all run as they do on any cancellation.
 3. **End.** The shutdown ends at the first of three points: every live run has resolved, the budget has run out, or a second `SIGINT`, `SIGTERM`, or `SIGHUP` arrives. When the last run resolves first, the shutdown ends on the next turn of the event loop, so code that awaited `run()` runs its synchronous part. Core then writes every region frame still in its write queue, the cancelled lines drawn at the abort included, straight to the terminal and shows the cursor, calls every pending [`onShutdown`](#onshutdown) handler synchronously, newest first, removes its listeners, and re-raises the first signal, so the default action ends the process with the shell's status: 129, 130, or 143. Work still running is cut off.
 
 The rules:
@@ -110,7 +110,7 @@ type OnShutdown = <Returned>(
   handler: (event: ShutdownEvent) => Synchronous<Returned>,
 ) => () => void;
 
-interface ActionContext<Args, Options = {}, Result = unknown> {
+interface ActionContext<Args, Options = {}, Result = unknown, Provided = {}> {
   readonly onShutdown: OnShutdown;
   // ...
 }
@@ -150,7 +150,7 @@ export function hideCursor(stream: NodeJS.WriteStream): () => void {
 type OnSuspend = <Returned>(handler: () => Synchronous<Returned>) => () => void;
 type OnResume = <Returned>(handler: () => Synchronous<Returned>) => () => void;
 
-interface ActionContext<Args, Options = {}, Result = unknown> {
+interface ActionContext<Args, Options = {}, Result = unknown, Provided = {}> {
   readonly onSuspend: OnSuspend;
   readonly onResume: OnResume;
   // ...

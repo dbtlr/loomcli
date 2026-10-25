@@ -28,8 +28,11 @@ interface CommandOptions {
   hidden?: boolean;
   deprecated?: string;
   extensions?: readonly ExtensionValue<'command'>[];
+  uses?: readonly AnyProvider[]; // see Providers
 }
 ```
+
+`uses` lists the [providers](providers.md) whose values the Command's action reads under `provided`, and adds the global options those providers read to the Command's global requirements.
 
 The action `options` object is the intersection of the global values and the selected Command's local values. A sibling Command's local options never appear in it. `.option()` rejects a name the globals already own. `.globalOption()` rejects a name already declared as a root-local option. Both checks apply at compile time and at the call.
 

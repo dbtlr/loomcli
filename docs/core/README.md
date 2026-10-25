@@ -46,6 +46,7 @@ Every `Invalid declaration: ` and `Internal error: ` line a page shows quotes th
 
 - [Plugin contract](plugin-contract.md): open it when you write a plugin: its identity, options, settings, Commands, activation, and environment preparation.
 - [Middleware](middleware.md): open it when a plugin acts on an invocation through the middleware chain.
+- [Providers](providers.md): open it when an action needs a typed value such as a database pool or a session, built for the Commands that opt in and closed when the action settles.
 - [Lifecycle hooks](lifecycle-hooks.md): open it when a plugin observes the run through an `on<Event>` hook, judges the built graph, or adds failure hints.
 - [Extensions](extensions.md): open it when a plugin attaches typed facts to Commands and inputs, or collects values from other plugins.
 
