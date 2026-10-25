@@ -26,7 +26,8 @@ const cases: Record<string, Expected> = {
     sentence: 'integer() min 5 is above max 1.',
   },
   'context-outside-run': {
-    correction: 'Call the validator through an Application run, or leave the context unread.',
+    correction:
+      'Call the validator through an Application run or with the options validationOptions builds, or leave the context unread.',
     rule: 'context-outside-run',
     sentence: 'This validator reads the validation context, which only exists during a Loom run.',
   },

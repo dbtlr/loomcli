@@ -1,5 +1,7 @@
 // Acceptance plan: see packages/validators/tests/catalog.test.ts.
 
+import { validationOptions } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
 import { describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
@@ -11,7 +13,7 @@ const dialect = 'https://json-schema.org/draft/2020-12/schema';
 const sentence = 'Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.';
 
 const outsideRun =
-  'This validator reads the validation context, which only exists during a Loom run. Call the validator through an Application run, or leave the context unread.';
+  'This validator reads the validation context, which only exists during a Loom run. Call the validator through an Application run or with the options validationOptions builds, or leave the context unread.';
 
 const zoneFault =
   'dateTime() timeZone is not an IANA time zone name. Supply a name such as America/New_York.';
@@ -144,6 +146,15 @@ describe('a token with no offset in a run is read in the host time zone', () => 
     expect(readIn('Asia/Tokyo', ['2026-09-25T14:30:00'], { timeZone: 'America/New_York' })).toEqual(
       ['2026-09-25T18:30:00.000Z'],
     );
+  });
+
+  it('a test reads it in the mock time zone with the options validationOptions builds', async () => {
+    const options = validationOptions(mockProcess({ timeZone: 'Europe/Paris' }), {
+      input: { global: false, kind: 'option', name: 'at' },
+      phase: 'default',
+    });
+    const result = await dateTime()['~standard'].validate('2026-06-01 09:00', options);
+    expect(result).toEqual({ value: new Date('2026-06-01T07:00:00.000Z') });
   });
 
   it('leaves an offset the token names alone', () => {

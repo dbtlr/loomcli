@@ -5,6 +5,8 @@ import { emptyAttributes, transition } from './style-state.js';
 import type { Palette } from './style-state.js';
 import { clusterColumns, graphemeWidths } from './style-width.js';
 import { parseText } from './style-wire.js';
+import type { ParsedText } from './style-wire.js';
+import { plainCaps, plainParsed } from './style-wrap.js';
 
 /**
  * The width of a flat text: its widest line, each line the columns of the clusters between its
@@ -47,12 +49,26 @@ function resolveText(text: string, palette: Palette, caps: Capabilities): string
   }
   return result.join('');
 }
-function width(text: string, palette: Palette, caps: Capabilities): number {
-  const parsed = parseText(text, palette, caps);
+/** The columns of parsed text: its widest line, with every command it holds counting none. */
+function parsedWidth(parsed: ParsedText, caps: Capabilities): number {
   if (isFlat(parsed)) {
     return flatWidth(parsed.text);
   }
   return blockWidth(layout(scanAnsi(parsed, caps)));
+}
+
+/** The columns of marked text, as a view context measures it for its destination. */
+function markedWidth(text: string, palette: Palette, caps: Capabilities): number {
+  return parsedWidth(parseText(text, palette, caps), caps);
+}
+
+/**
+ * The columns of text a stream received, as the view context's `width` counts them, with no
+ * marked-string frame read: every terminal control sequence is skipped and none is emulated, so a
+ * cursor movement or a carriage return moves nothing back.
+ */
+function width(text: string): number {
+  return parsedWidth(plainParsed(text), plainCaps);
 }
 
 /**
@@ -113,4 +129,4 @@ function nextColumn(visible: string, columns: number | undefined, column: number
   return reached.column === columns ? 0 : reached.column;
 }
 
-export { drawnRows, nextColumn, resolveText, width };
+export { drawnRows, markedWidth, nextColumn, resolveText, width };

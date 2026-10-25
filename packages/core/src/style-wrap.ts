@@ -353,16 +353,21 @@ const plainCaps: Capabilities = {
   terminalControls: false,
 };
 
-/** Plain text as line breaking reads it: literal characters, each traced to itself. */
-function breakablePlain(text: string): Breakable {
+/** Plain text as literal characters, with no marked-string frame read and no palette. */
+function plainParsed(text: string): ParsedText {
   const root = { attributes: emptyAttributes, operations: [], parent: undefined };
-  const parsed: ParsedText = {
+  return {
     boundaries: new Map(),
     palette: new Map(),
     root,
     scopes: Array.from({ length: text.length }, () => root),
     text,
   };
+}
+
+/** Plain text as line breaking reads it: literal characters, each traced to itself. */
+function breakablePlain(text: string): Breakable {
+  const parsed = plainParsed(text);
   const trace: WireTrace = {
     origins: Array.from({ length: text.length }, (_unit, index) => index),
     whole: Array.from({ length: text.length }, () => false),
@@ -388,6 +393,7 @@ export {
   measurerFor,
   padTracker,
   plainCaps,
+  plainParsed,
   runsOf,
   visibleOf,
   wrapMarked,

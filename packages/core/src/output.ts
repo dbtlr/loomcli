@@ -15,7 +15,7 @@ import type { RenderingPolicy } from './rendering.js';
 import { writeSequence } from './sequence.js';
 import type { SequenceView } from './sequence.js';
 import type { LaneHandlers } from './signal-lane.js';
-import { drawnRows, nextColumn, resolveText, width } from './style-resolve.js';
+import { drawnRows, markedWidth, nextColumn, resolveText } from './style-resolve.js';
 import type { Palette } from './style-state.js';
 import { expandTabsMarked, wrapMarked } from './style-wrap.js';
 import { createStyle, tokens } from './style.js';
@@ -873,7 +873,7 @@ export class Output {
           terminalControls: false,
         }),
       style: this.style,
-      width: (text: string) => width(text, this.palette, caps),
+      width: (text: string) => markedWidth(text, this.palette, caps),
       wrap: (text: string, limit: number | undefined) => wrapMarked(text, limit, { caps, palette }),
     });
   }

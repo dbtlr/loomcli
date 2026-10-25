@@ -6,6 +6,7 @@
 import { isAbsolute } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { StringDecoder } from 'node:string_decoder';
+import { setImmediate } from 'node:timers';
 
 import type {
   Background,
@@ -63,20 +64,47 @@ interface ProgramAnswer {
 /** The script of one child program; a throw stands for a program that could not start. */
 type Program = (call: ProgramCall) => ProgramAnswer | Promise<ProgramAnswer>;
 
-/** The facts a test supplies; each replaces its default whole. */
-interface MockFields extends Omit<ProcessFields, 'stdin' | 'stdout' | 'stderr' | 'terminal'> {
-  /** Piped text; empty when omitted. */
-  readonly stdin?: string;
-  /** No terminal when omitted. */
-  readonly terminal?: MockTerminal;
+/** The facts a test supplies beside its stdin and terminal; each replaces its default whole. */
+interface MockFacts extends Omit<ProcessFields, 'stdin' | 'stdout' | 'stderr' | 'terminal'> {
   /** Each child program by its command; none when omitted. */
   readonly programs?: Readonly<Record<string, Program>>;
 }
+
+/**
+ * The facts a test supplies; each replaces its default whole. A run's stdin is piped text or the
+ * terminal's keyboard, never both.
+ */
+type MockFields = MockFacts &
+  (
+    | {
+        /** Piped text; empty when omitted. */
+        readonly stdin: string;
+        /** No terminal when omitted. */
+        readonly terminal?: MockTerminal & { readonly keys?: undefined };
+      }
+    | {
+        /** Piped text; empty when omitted. */
+        readonly stdin?: undefined;
+        /**
+         * No terminal when omitted. With `keys`, puts stdin on the terminal as its keyboard; each entry
+         * is what the operator types while one reader holds it.
+         */
+        readonly terminal?: MockTerminal & { readonly keys?: readonly string[] | undefined };
+      }
+  );
 
 /** A writable stream that keeps what it was given. */
 interface RecordingStream extends Writable {
   /** Everything written to the stream, decoded as UTF-8. */
   readonly text: string;
+}
+
+/** The mock's stdin: piped text, or the terminal's keyboard. */
+interface MockStdin extends Readable {
+  /** True for a keyboard. */
+  readonly isTTY: boolean;
+  /** Whether a reader holds the keyboard in raw mode; false for piped text. */
+  readonly isRaw: boolean;
 }
 
 /** One write a run made, tagged by the stream it went to. */
@@ -87,7 +115,7 @@ interface Write {
 
 /** The mock handle and what a test reads from it. */
 interface MockProcess extends ProcessHandle {
-  readonly stdin: Readable;
+  readonly stdin: MockStdin;
   readonly stdout: RecordingStream;
   readonly stderr: RecordingStream;
   readonly transcript: readonly Write[];
@@ -119,6 +147,9 @@ interface Life {
   ended: ProcessSignal | undefined;
 }
 
+/** What a write's text reaches beside the recording: the keyboard, when the stream is on its terminal. */
+type Hearing = (text: string) => void;
+
 /** A writable that decodes what it receives as UTF-8 and reports each write unless the mock ended. */
 class Recorder extends Writable implements RecordingStream {
   #text = '';
@@ -126,12 +157,21 @@ class Recorder extends Writable implements RecordingStream {
   readonly #life: Life;
   readonly #name: 'stdout' | 'stderr';
   readonly #transcript: Write[];
+  readonly #hearing: Hearing | undefined;
 
-  constructor(name: 'stdout' | 'stderr', life: Life, transcript: Write[]) {
+  constructor(
+    name: 'stdout' | 'stderr',
+    mock: {
+      readonly life: Life;
+      readonly transcript: Write[];
+      readonly hearing: Hearing | undefined;
+    },
+  ) {
     super();
     this.#name = name;
-    this.#life = life;
-    this.#transcript = transcript;
+    this.#life = mock.life;
+    this.#transcript = mock.transcript;
+    this.#hearing = mock.hearing;
   }
 
   get text(): string {
@@ -144,6 +184,7 @@ class Recorder extends Writable implements RecordingStream {
       if (text !== '') {
         this.#text += text;
         this.#transcript.push({ stream: this.#name, text });
+        this.#hearing?.(text);
       }
     }
     done();
@@ -165,8 +206,11 @@ class Recorder extends Writable implements RecordingStream {
 /** The listeners held for each event, each set typed by its own event. */
 type Registry = { [Event in ProcessSignal | 'exit']: Set<SignalListener<Event>> };
 
-/** A signal source of its own, which ends the mock's life on an ending signal nobody listens for. */
-function mockSignals(life: Life): SignalSource {
+/**
+ * A signal source of its own, which ends the mock's life on an ending signal nobody listens for.
+ * Its terminal is the keyboard when the mock has one.
+ */
+function mockSignals(life: Life, terminal: Readable | undefined): SignalSource {
   const registry: Registry = {
     SIGCONT: new Set(),
     SIGHUP: new Set(),
@@ -198,13 +242,95 @@ function mockSignals(life: Life): SignalSource {
         life.ended = signal;
       }
     },
-    terminal: undefined,
+    terminal,
   };
 }
 
-/** The mock's stdin: the text once as a byte chunk, then the end. */
-function mockStdin(text: string): Readable {
-  return Readable.from(text === '' ? [] : [Buffer.from(text)], { objectMode: false });
+/** The mock's piped stdin: the text once as a byte chunk, then the end. Never a terminal. */
+function pipedStdin(text: string): MockStdin {
+  const stream = Readable.from(text === '' ? [] : [Buffer.from(text)], { objectMode: false });
+  return Object.assign(stream, { isRaw: false, isTTY: false });
+}
+
+/** The opening of core's background query, OSC 11 asking for the background color. */
+const backgroundQuery = '\u001b]11;?';
+
+/** A Primary Device Attributes reply with no background before it, as a terminal that reports none sends. */
+const attributesAlone = '\u001b[?1;2c';
+
+/** The sentence a raw-mode switch with no entry left fails the keyboard with. */
+const noKeysLeft = 'mockProcess has no keys left for this read. Add an entry to terminal.keys.';
+
+/**
+ * The terminal's keyboard. Each switch to raw mode hands over the next entry, once the switch has
+ * returned, so a reader that switches inside its own data handler, as a resume after Ctrl-Z does,
+ * receives the entry after the handler drops the keys its interrupt left unread. A switch whose
+ * reader then writes the background query is answered with the attributes reply alone and uses no
+ * entry. The hand-over waits one turn because both of core's raw-mode readers act in the turn they
+ * switch: the prompts reader attaches its `data` and `error` listeners, and the background query
+ * writes its query (`background-query.ts`, `exchange`). By the hand-over, the keyboard knows whose
+ * hold it is, and the reader is listening for the entry or the error. A switch with no entry left
+ * emits the error that fails the reader's pending read.
+ */
+class Keyboard extends Readable implements MockStdin {
+  readonly isTTY = true;
+  readonly #entries: string[];
+  #raw = false;
+  /** The current hold, which each switch to raw mode begins, so a hand-over belongs to its own. */
+  #hold: object | undefined = undefined;
+  /** Whether the background query was written during the current hold. */
+  #asked = false;
+
+  constructor(keys: readonly string[]) {
+    super();
+    this.#entries = [...keys];
+  }
+
+  get isRaw(): boolean {
+    return this.#raw;
+  }
+
+  override _read() {
+    // Keys arrive only when a reader switches to raw mode.
+  }
+
+  setRawMode(mode: boolean): this {
+    const switched = mode && !this.#raw;
+    this.#raw = mode;
+    if (switched) {
+      const hold = {};
+      this.#hold = hold;
+      this.#asked = false;
+      setImmediate(() => {
+        this.#handOver(hold);
+      });
+    }
+    return this;
+  }
+
+  /** Hears text the run wrote to the terminal, and notes the background query. */
+  hear(text: string): void {
+    if (this.#raw && text.includes(backgroundQuery)) {
+      this.#asked = true;
+    }
+  }
+
+  /** Hands the hold its entry, unless the reader let go of the keyboard first. */
+  #handOver(hold: object): void {
+    if (hold !== this.#hold || !this.#raw) {
+      return;
+    }
+    if (this.#asked) {
+      this.push(attributesAlone);
+      return;
+    }
+    const entry = this.#entries.shift();
+    if (entry === undefined) {
+      this.emit('error', new Error(noKeysLeft));
+      return;
+    }
+    this.push(Buffer.from(entry));
+  }
 }
 
 /** The live width and height a resize changes. */
@@ -226,12 +352,21 @@ function outputTerminal(on: boolean, size: Size): OutputTerminal {
   };
 }
 
+/** The output streams a stated terminal puts on it: stdout and stderr when it names none. */
+function onTerminal(terminal: MockTerminal | undefined): readonly ('stdout' | 'stderr')[] {
+  return terminal === undefined ? [] : (terminal.streams ?? ['stdout', 'stderr']);
+}
+
 /** The terminal facts over the mock's streams, from the terminal a test stated or none. */
-function mockTerminal(terminal: MockTerminal | undefined, size: Size): ProcessTerminal {
-  const named = terminal === undefined ? [] : (terminal.streams ?? ['stdout', 'stderr']);
+function mockTerminal(
+  terminal: MockTerminal | undefined,
+  size: Size,
+  keyboard: boolean,
+): ProcessTerminal {
+  const named = onTerminal(terminal);
   return {
     stderr: outputTerminal(named.includes('stderr'), size),
-    stdin: { isTTY: false },
+    stdin: { isTTY: keyboard },
     stdout: outputTerminal(named.includes('stdout'), size),
     ...(terminal?.background === undefined ? {} : { background: terminal.background }),
   };
@@ -452,6 +587,27 @@ function unscripted(command: string): Error {
   );
 }
 
+/**
+ * The mock's stdin and the streams that record a run's writes: the terminal's keyboard when it has
+ * `keys`, which hears what the run writes to the streams on its terminal, and piped text otherwise.
+ */
+function mockStreams(
+  fields: MockFields,
+  mock: { readonly life: Life; readonly transcript: Write[] },
+) {
+  const { terminal } = fields;
+  const keyboard = terminal?.keys === undefined ? undefined : new Keyboard(terminal.keys);
+  const named = onTerminal(terminal);
+  const hearing = (name: 'stdout' | 'stderr'): Hearing | undefined =>
+    keyboard !== undefined && named.includes(name) ? (text) => keyboard.hear(text) : undefined;
+  return {
+    keyboard,
+    stderr: new Recorder('stderr', { ...mock, hearing: hearing('stderr') }),
+    stdin: keyboard ?? pipedStdin(fields.stdin ?? ''),
+    stdout: new Recorder('stdout', { ...mock, hearing: hearing('stdout') }),
+  };
+}
+
 /** `glibc` on Linux, and no C library elsewhere. */
 function defaultLibc(platform: string): 'glibc' | undefined {
   return platform === 'linux' ? 'glibc' : undefined;
@@ -462,7 +618,8 @@ function defaultLibc(platform: string): 'glibc' | undefined {
  * their defaults whole, and `home` and `tmpdir` follow an absolute `HOME` and `TMPDIR` in `env`.
  * The streams record what a run writes, `exitCode` records what `run()` writes, the signal source
  * is the mock's own, and each child program a run starts is answered by its script in `programs`,
- * with no program run. The handle has no `publishEnv`.
+ * with no program run. A terminal with `keys` puts stdin on it as its keyboard, which is also the
+ * signal source's terminal. The handle has no `publishEnv`.
  */
 function mockProcess(fields: MockFields = {}): MockProcess {
   const { cwd = '/loom-test', env = {}, platform = 'linux', programs = {}, terminal } = fields;
@@ -472,10 +629,7 @@ function mockProcess(fields: MockFields = {}): MockProcess {
   const libc = 'libc' in fields ? fields.libc : defaultLibc(platform);
   const uid = 'uid' in fields ? fields.uid : defaultUid;
   const stdinText = fields.stdin ?? '';
-  const streams = {
-    stderr: new Recorder('stderr', life, transcript),
-    stdout: new Recorder('stdout', life, transcript),
-  };
+  const streams = mockStreams(fields, { life, transcript });
   let written: ExitCode | undefined = undefined;
   return {
     arch: fields.arch ?? 'x64',
@@ -502,7 +656,7 @@ function mockProcess(fields: MockFields = {}): MockProcess {
       size.columns = columns;
       size.rows = rows;
     },
-    signals: mockSignals(life),
+    signals: mockSignals(life, streams.keyboard),
     spawn(command, args, options) {
       const program = Object.hasOwn(programs, command) ? programs[command] : undefined;
       if (program === undefined) {
@@ -515,9 +669,9 @@ function mockProcess(fields: MockFields = {}): MockProcess {
       );
     },
     stderr: streams.stderr,
-    stdin: mockStdin(stdinText),
+    stdin: streams.stdin,
     stdout: streams.stdout,
-    terminal: mockTerminal(terminal, size),
+    terminal: mockTerminal(terminal, size, streams.keyboard !== undefined),
     timeZone: fields.timeZone ?? 'UTC',
     tmpdir: fields.tmpdir ?? absoluteOf(env, 'TMPDIR') ?? defaultTmpdir,
     transcript,
@@ -530,6 +684,7 @@ export { mockProcess };
 export type {
   MockFields,
   MockProcess,
+  MockStdin,
   MockTerminal,
   Program,
   ProgramAnswer,

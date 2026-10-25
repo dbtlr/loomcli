@@ -1,12 +1,14 @@
 import { Writable } from 'node:stream';
 
 import { Application, Command, plugin } from '@loomcli/core';
-import type { Host, ProcessSignal } from '@loomcli/core';
+import type { Host, Plugin, ProcessSignal, StandardSchemaV1 } from '@loomcli/core';
+import { background } from '@loomcli/plugins/background';
 import { help } from '@loomcli/plugins/help';
+import { text as ask } from '@loomcli/prompts';
 import { describe, expect, it, vi } from 'vite-plus/test';
 
 import { mockProcess } from '../src/index.js';
-import type { MockProcess, ProgramAnswer, ProgramCall } from '../src/index.js';
+import type { MockProcess, MockTerminal, ProgramAnswer, ProgramCall } from '../src/index.js';
 
 /** The text a Readable yields before it ends. */
 async function drained(stream: NodeJS.ReadableStream): Promise<string> {
@@ -689,5 +691,164 @@ describe('a run on a mock', () => {
       setImmediate(resolve);
     });
     expect(mock.endedBy).toBe('SIGINT');
+  });
+});
+
+/** A validator that accepts digits alone, as a port question does. */
+const digits: StandardSchemaV1<string, number> = {
+  '~standard': {
+    validate: (value: unknown) =>
+      typeof value === 'string' && /^\d+$/u.test(value)
+        ? { value: Number(value) }
+        : { issues: [{ message: 'Supply a number.' }] },
+    vendor: 'test',
+    version: 1,
+  },
+};
+
+/** An application that asks for a port and then a name, and prints both. */
+function setup(plugins: Plugin[] = []) {
+  return new Application('setup', { plugins }).action(async (context) => {
+    const port = await ask(context, { message: 'Port', validate: digits });
+    const name = await ask(context, { message: 'Name' });
+    await context.out.print(`Saved ${String(port)} for ${name}.`);
+  });
+}
+
+/** A terminal 80 columns wide with the keys given on its keyboard. */
+function keyboard(keys: readonly string[]) {
+  return { columns: 80, keys, rows: 24 };
+}
+
+/** A mock whose terminal has a keyboard only when keys are given. */
+function withKeys(argv: string[], keys?: string[]) {
+  return mockProcess({ argv, terminal: { columns: 80, keys, rows: 24 } });
+}
+
+/** The sentence a raw-mode switch with no entry left fails the keyboard with. */
+const noKeysLeft = 'mockProcess has no keys left for this read. Add an entry to terminal.keys.';
+
+describe('the keyboard', () => {
+  it('answers two questions from two entries', async () => {
+    const mock = mockProcess({ terminal: keyboard(['8080\r', 'ann\r']) });
+    const code = await setup().run({ process: mock });
+    expect([code, mock.stdout.text]).toEqual([0, 'Saved 8080 for ann.\n']);
+  });
+
+  it('holds a rejected answer and its retry in one entry', async () => {
+    const mock = mockProcess({ terminal: keyboard(['bad\r\u007f\u007f\u007f8080\r', 'ann\r']) });
+    const code = await setup().run({ process: mock });
+    expect([code, mock.stdout.text]).toEqual([0, 'Saved 8080 for ann.\n']);
+    expect(mock.stderr.text).toContain('Supply a number.');
+  });
+
+  it('one entry answers two questions an action opens at once', async () => {
+    const mock = mockProcess({ terminal: keyboard(['8080\r9090\r']) });
+    const app = new Application('app').action(async (context) => {
+      const [first, second] = await Promise.all([
+        ask(context, { message: 'First' }),
+        ask(context, { message: 'Second' }),
+      ]);
+      await context.out.print(`${first} ${second}`);
+    });
+    const code = await app.run({ process: mock });
+    expect([code, mock.stdout.text]).toEqual([0, '8080 9090\n']);
+  });
+
+  it('Ctrl-C at the second question ends the run with 130, and the re-raise ends the mock', async () => {
+    const mock = mockProcess({ terminal: keyboard(['8080\r', '\u0003']) });
+    const code = await setup().run({ process: mock });
+    expect([code, mock.exitCode, mock.stdout.text]).toEqual([130, 130, '']);
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    expect(mock.endedBy).toBe('SIGINT');
+  });
+
+  it('Ctrl-Z suspends and resumes the question, and the resume takes the next entry', async () => {
+    const mock = mockProcess({ terminal: keyboard(['\u001a', '8080\r', 'ann\r']) });
+    const code = await setup().run({ process: mock });
+    expect([code, mock.stdout.text, mock.endedBy]).toEqual([0, 'Saved 8080 for ann.\n', undefined]);
+  });
+
+  it('keys: [] is a terminal stdin and the signal source terminal, so the run is interactive', async () => {
+    const mock = mockProcess({ terminal: keyboard([]) });
+    const app = new Application('app').action(({ interactive, out }) =>
+      out.print(String(interactive)),
+    );
+    const code = await app.run({ process: mock });
+    expect([mock.stdin.isTTY, mock.terminal.stdin.isTTY, mock.signals.terminal]).toEqual([
+      true,
+      true,
+      mock.stdin,
+    ]);
+    expect([code, mock.stdout.text]).toEqual([0, 'true\n']);
+  });
+
+  it('isRaw reads whether a reader holds the keyboard in raw mode', async () => {
+    const mock = mockProcess({ terminal: keyboard(['8080\r']) });
+    const seen: boolean[] = [mock.stdin.isRaw];
+    // The question's validator runs while the question holds the keyboard.
+    const holding: StandardSchemaV1<string, string> = {
+      '~standard': {
+        validate: (value: unknown) => {
+          seen.push(mock.stdin.isRaw);
+          return { value: String(value) };
+        },
+        vendor: 'test',
+        version: 1,
+      },
+    };
+    const app = new Application('app').action(async (context) => {
+      await ask(context, { message: 'Port', validate: holding });
+      seen.push(mock.stdin.isRaw);
+    });
+    await app.run({ process: mock });
+    expect(seen).toEqual([false, true, false]);
+  });
+
+  it('answers the background query at once with no answer, and uses no entry', async () => {
+    const mock = mockProcess({
+      env: { TERM: 'xterm-256color' },
+      terminal: keyboard(['8080\r', 'ann\r']),
+    });
+    const started = performance.now();
+    const code = await setup([background()]).run({ process: mock });
+    const elapsed = performance.now() - started;
+    expect(mock.stderr.text).toContain('\u001b]11;?');
+    expect([code, mock.stdout.text]).toEqual([0, 'Saved 8080 for ann.\n']);
+    // The query's deadline is one second, which the run would reach had the mock not answered.
+    expect(elapsed).toBeLessThan(1000);
+  });
+
+  it('a switch to raw mode with no entry left fails an opening question with exit 1', async () => {
+    const mock = mockProcess({ terminal: keyboard(['8080\r']) });
+    const code = await setup().run({ process: mock });
+    expect([code, mock.exitCode, mock.stdout.text]).toEqual([1, 1, '']);
+    expect(mock.stderr.text).toContain(noKeysLeft);
+  });
+
+  it('a resume with no entry left fails the run the same way and does not hang', async () => {
+    const mock = mockProcess({ terminal: keyboard(['\u001a']) });
+    const code = await setup().run({ process: mock });
+    expect([code, mock.exitCode, mock.stdout.text]).toEqual([1, 1, '']);
+    expect(mock.stderr.text).toContain(noKeysLeft);
+  });
+
+  it('the types make keys and piped stdin exclusive, and a MockTerminal still passes', () => {
+    const terminal: MockTerminal = { columns: 80, rows: 24 };
+    expect(mockProcess({ stdin: 'x', terminal }).stdin.isTTY).toBe(false);
+    // @ts-expect-error A keyboard is the run's stdin, so piped text cannot stand beside it.
+    mockProcess({ stdin: 'x', terminal: keyboard([]) });
+  });
+
+  it('the types accept a terminal whose keys may be absent', () => {
+    expect(withKeys(['a']).stdin.isTTY).toBe(false);
+    const keys: string[] | undefined = undefined as string[] | undefined;
+    const conditional = mockProcess({
+      terminal: keys ? { columns: 80, keys, rows: 24 } : { columns: 80, rows: 24 },
+    });
+    expect(conditional.stdin.isTTY).toBe(false);
+    expect(mockProcess({ terminal: { columns: 80, keys: [], rows: 24 } }).stdin.isTTY).toBe(true);
   });
 });
