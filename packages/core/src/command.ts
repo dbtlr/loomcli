@@ -13,7 +13,7 @@ import { stdinClaimedTwice } from './content-rules.js';
 import type { Content } from './content.js';
 import { elided, quoteString, spelled } from './diagnostic-text.js';
 import type { DiagnosticRule, Finding } from './diagnostic-text.js';
-import type { RegisteredGlobals } from './environment.js';
+import type { RegisteredGlobals, RegistrationVisible } from './environment.js';
 import {
   asSentence,
   commandSentence,
@@ -80,7 +80,20 @@ import type { ParsedInvocation } from './parse.js';
 import { snapshot } from './plain.js';
 import { brokenAttachHook } from './plugin-rules.js';
 import type { BuiltPlugin } from './plugin.js';
+import { providedBinder, readUses } from './providers.js';
+import type {
+  BuildOutcome,
+  OpenerScope,
+  RunValues,
+  AnyProvider,
+  OptIn,
+  BuiltValues,
+  ProvidedValues,
+  ProviderGlobals,
+  WithProviderGlobals,
+} from './providers.js';
 import type { LaneHandlers } from './signal-lane.js';
+import { echoesCancellation } from './signals.js';
 import { fillInputs } from './sources.js';
 import type { SourceOutcome } from './sources.js';
 import type { ContextualStyle } from './style.js';
@@ -170,6 +183,8 @@ export interface DispatchInput {
   /** The action's channel, whose `results` accepts whatever the routed declaration named. */
   out: Out<OpenResult>;
   passthrough: string[];
+  /** The values core built for the routed Command's opt-ins, under each provider's name. */
+  provided: BuiltValues;
   signal: AbortSignal;
   values: ValidatedInputs;
 }
@@ -209,6 +224,8 @@ export interface BuiltCommand {
   hidden: boolean;
   inputs: readonly InputDeclaration[];
   name: string | null;
+  /** The providers the action reads, which core builds at the dispatch boundary. */
+  uses: readonly AnyProvider[];
   /**
    * The call that attached this Command, opening with the whole path to its parent, or nothing for
    * the root, which no call attaches.
@@ -434,7 +451,7 @@ export interface CommandState<Args, Options, Globals> {
    * result, so a handler typed from its own declaration stores here and the channel that carries
    * the result is built for it at dispatch.
    */
-  action: Action<Args, Globals & Options, OpenResult> | undefined;
+  action: Action<Args, Globals & Options, OpenResult, StdinContext, BuiltValues> | undefined;
   aliases: readonly string[];
   bind: (values: ValidatedInputs) => { args: Args; options: Options };
   children: readonly AttachedChild[];
@@ -452,6 +469,8 @@ export interface CommandState<Args, Options, Globals> {
   records: InputRecords;
   // Every results-lane call in call order, which build reads as one declaration.
   results: readonly ResultCall[];
+  /** The providers the action reads, which core builds at the dispatch boundary. */
+  uses: readonly AnyProvider[];
 }
 
 /** The untyped part of a declaration, which every attach and build check reads. */
@@ -482,6 +501,7 @@ export function freshState<Globals>(declaration: {
   extensions: ExtensionStore;
   facts: CommandFacts;
   name: string | null;
+  uses: readonly AnyProvider[] | undefined;
 }): CommandState<{}, {}, Globals> {
   return {
     action: undefined,
@@ -496,6 +516,7 @@ export function freshState<Globals>(declaration: {
     optionGroups: [],
     records: new Map(),
     results: [],
+    uses: Object.freeze([...(declaration.uses ?? [])]),
   };
 }
 
@@ -505,7 +526,7 @@ export function freshState<Globals>(declaration: {
  */
 function namedState<Globals>(
   name: string,
-  options: CommandOptions | undefined,
+  options: (Omit<CommandOptions, 'uses'> & { uses?: readonly AnyProvider[] }) | undefined,
 ): { name: string; state: CommandState<{}, {}, Globals> } {
   if (!isPortableName(name)) {
     // The options are read after the name is judged, so the name's finding prints them elided.
@@ -540,6 +561,7 @@ function namedState<Globals>(
         hidden: options?.hidden ?? false,
       },
       name,
+      uses: readUses({ ...site, at: '1.uses' }, options?.uses),
     }),
   };
 }
@@ -858,13 +880,18 @@ function declaredChannel<Result>(out: Out<OpenResult>): Out<Result> {
  * The handler is typed against the result its own declaration carries, and the state holds one
  * action for every declaration, so the context the handler receives is read back at the call.
  */
-export function declareAction<Args, Options, Globals, Result, Stdin extends StdinContext>(
+export function declareAction<Args, Options, Globals, Result, Stdin extends StdinContext, Provided>(
   state: CommandState<Args, Options, Globals>,
-  handler: Action<Args, Globals & Options, Result, Stdin>,
-  stdinBind: (source: Content | undefined) => Stdin,
+  handler: Action<Args, Globals & Options, Result, Stdin, Provided>,
+  binds: {
+    stdin: (source: Content | undefined) => Stdin;
+    provided: (values: BuiltValues) => Provided;
+  },
 ): CommandState<Args, Options, Globals> {
   // The graph and the routed node stay getters, because a spread would build the graph on every run.
-  const stored = (context: ActionContext<Args, Globals & Options, OpenResult>): unknown =>
+  const stored = (
+    context: ActionContext<Args, Globals & Options, OpenResult, BuiltValues>,
+  ): unknown =>
     handler({
       args: context.args,
       cancel: context.cancel,
@@ -884,8 +911,9 @@ export function declareAction<Args, Options, Globals, Result, Stdin extends Stdi
       options: context.options,
       out: declaredChannel(context.out),
       passthrough: context.passthrough,
+      provided: binds.provided(context.provided),
       signal: context.signal,
-      ...stdinBind(context.stdin),
+      ...binds.stdin(context.stdin),
       style: context.style,
       supplied: context.supplied,
     });
@@ -1847,7 +1875,7 @@ function checkAttachedInputs(
 /** Binds one Command's declarations to its action, so an action reads only validated values. */
 function bindDispatch<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
-  action: Action<Args, Globals & Options>,
+  action: Action<Args, Globals & Options, OpenResult, StdinContext, BuiltValues>,
   globals: BuiltGlobals,
 ) {
   return ({
@@ -1864,6 +1892,7 @@ function bindDispatch<Args, Options, Globals>(
     log,
     out,
     passthrough,
+    provided,
     signal,
     style,
     stdin,
@@ -1896,6 +1925,7 @@ function bindDispatch<Args, Options, Globals>(
       options: { ...globalOptions, ...bound.options },
       out,
       passthrough,
+      provided,
       signal,
       stdin,
       style,
@@ -2036,6 +2066,7 @@ export function buildCommand<Args, Options, Globals>(
     routes,
     stdin: state.stdin,
     table,
+    uses: state.uses,
   };
 }
 
@@ -2105,20 +2136,27 @@ export class CommandBuilder<
   State extends CommandMethod = CommandMethod,
   Result = unknown,
   Stdin extends StdinContext = StdinContext,
+  Provided = {},
 > {
   declare readonly [commandValue]: true;
-  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin>;
+  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
 
   readonly #name: string;
   readonly #state: CommandState<Args, Options, Globals>;
   readonly #stdinBind: (source: Content | undefined) => Stdin;
+  /** Reads the values core built for the Command's opt-ins as the type its `uses` names. */
+  readonly #providedBind: (values: BuiltValues) => Provided;
 
   constructor(
     name: string,
     state: CommandState<Args, Options, Globals>,
-    stdinBind: (source: Content | undefined) => Stdin,
+    binds: {
+      stdin: (source: Content | undefined) => Stdin;
+      provided: (values: BuiltValues) => Provided;
+    },
   ) {
-    this.#stdinBind = stdinBind;
+    this.#stdinBind = binds.stdin;
+    this.#providedBind = binds.provided;
     this.#name = name;
     this.#state = state;
     nodes.set(this, nodeHandle(name, state));
@@ -2126,14 +2164,21 @@ export class CommandBuilder<
 
   stdin(
     config: StdinConfig & { required: true },
-  ): Command<Args, Options, Globals, State, Result, { readonly stdin: Content }>;
-  stdin(config: StdinConfig): Command<Args, Options, Globals, State, Result>;
-  stdin(config: StdinConfig): Command<Args, Options, Globals, State, Result> {
+  ): Command<Args, Options, Globals, State, Result, { readonly stdin: Content }, Provided>;
+  stdin(
+    config: StdinConfig,
+  ): Command<Args, Options, Globals, State, Result, StdinContext, Provided>;
+  stdin(
+    config: StdinConfig,
+  ): Command<Args, Options, Globals, State, Result, StdinContext, Provided> {
     const state = declareStdin(this.#state, config);
-    return new CommandBuilder<Args, Options, Globals, State, Result>(
+    return new CommandBuilder<Args, Options, Globals, State, Result, StdinContext, Provided>(
       this.#name,
       state,
-      state.stdin?.required ? requiredStdinContext : (source) => ({ stdin: source }),
+      {
+        provided: this.#providedBind,
+        stdin: state.stdin?.required ? requiredStdinContext : (source) => ({ stdin: source }),
+      },
     );
   }
 
@@ -2151,7 +2196,8 @@ export class CommandBuilder<
     Globals,
     AfterArgument<State>,
     Result,
-    Stdin
+    Stdin,
+    Provided
   > {
     const input: ArgumentInput<Name, Config> = {
       config,
@@ -2171,7 +2217,15 @@ export class CommandBuilder<
       NoInfer<ImpliedConstraint<Config>> &
       NoInfer<PerValueConstraint<Config>> &
       NoInfer<ValidateOmittedConstraint<Config>>,
-  ): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Result, Stdin> {
+  ): Command<
+    Args,
+    Options & Record<Name, OptionValue<Config>>,
+    Globals,
+    State,
+    Result,
+    Stdin,
+    Provided
+  > {
     const input: OptionInput<Name, Config> = {
       config,
       kind: 'option',
@@ -2186,7 +2240,7 @@ export class CommandBuilder<
       Extract<keyof Options, string>,
       ...Extract<keyof Options, string>[],
     ]
-  ): Command<Args, Options, Globals, State, Result, Stdin> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
     return this.#derive(declareOptionGroup(this.#state, 'exclusive', names));
   }
 
@@ -2196,7 +2250,7 @@ export class CommandBuilder<
       Extract<keyof Options, string>,
       ...Extract<keyof Options, string>[],
     ]
-  ): Command<Args, Options, Globals, State, Result, Stdin> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
     return this.#derive(declareOptionGroup(this.#state, 'oneRequired', names));
   }
 
@@ -2206,7 +2260,7 @@ export class CommandBuilder<
       Extract<keyof Options, string>,
       ...Extract<keyof Options, string>[],
     ]
-  ): Command<Args, Options, Globals, State, Result, Stdin> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
     return this.#derive(declareOptionGroup(this.#state, 'requiredTogether', names));
   }
 
@@ -2214,15 +2268,30 @@ export class CommandBuilder<
    * Aliases are other portable names that route to this Command. They invalidate no call, and the
    * tuple rest parameter rejects a call that names none.
    */
-  alias(...names: [string, ...string[]]): Command<Args, Options, Globals, State, Result, Stdin> {
+  alias(
+    ...names: [string, ...string[]]
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
     return this.#derive(declareAlias(this.#state, names));
   }
 
-  /** A child arrives in any type state, because its own action is the call that finished it. */
-  command<const Child extends Command<unknown, unknown, Globals>>(
+  /**
+   * A child arrives in any type state, because its own action is the call that finished it. Its
+   * global requirements join this Command's, so they meet the Application wherever the child sits.
+   */
+  command<const Child extends Command<unknown, unknown, never>>(
     child: Child & NoInfer<AttachmentConstraint<Globals, Child>>,
-  ): Command<Args, Options, Globals, AfterCommand<State>, Result, Stdin> {
-    return this.#derive(attachChild(this.#state, child));
+  ): Command<
+    Args,
+    Options,
+    PassedUp<Globals, Child>,
+    AfterCommand<State>,
+    Result,
+    Stdin,
+    Provided
+  > {
+    return this.#derive<Args, Options, AfterCommand<State>, Result, PassedUp<Globals, Child>>(
+      attachChild(this.#state, child),
+    );
   }
 
   /**
@@ -2231,7 +2300,15 @@ export class CommandBuilder<
    */
   result<Value>(declaration: {
     views: ResultViews<NoInfer<Value>>;
-  }): Command<Args, Options, Globals, AfterResult<State>, { kind: 'value'; value: Value }, Stdin> {
+  }): Command<
+    Args,
+    Options,
+    Globals,
+    AfterResult<State>,
+    { kind: 'value'; value: Value },
+    Stdin,
+    Provided
+  > {
     return this.#derive<Args, Options, AfterResult<State>, { kind: 'value'; value: Value }>(
       declareResult(this.#state, 'value', declaration),
     );
@@ -2240,7 +2317,15 @@ export class CommandBuilder<
   /** The same declaration over a sequence, whose type argument is one row. */
   rows<Row>(declaration: {
     views: RowViews<NoInfer<Row>>;
-  }): Command<Args, Options, Globals, AfterResult<State>, { kind: 'rows'; row: Row }, Stdin> {
+  }): Command<
+    Args,
+    Options,
+    Globals,
+    AfterResult<State>,
+    { kind: 'rows'; row: Row },
+    Stdin,
+    Provided
+  > {
     return this.#derive<Args, Options, AfterResult<State>, { kind: 'rows'; row: Row }>(
       declareResult(this.#state, 'rows', declaration),
     );
@@ -2254,20 +2339,22 @@ export class CommandBuilder<
   views<const Replacements extends ResultViewsOf<Result>>(
     replacements: Replacements,
     options?: { default?: keyof Replacements & string },
-  ): Command<Args, Options, Globals, State, Result, Stdin> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
     return this.#derive(declareResultViews(this.#state, replacements, options));
   }
 
   /** The action closes input authoring; `extend()` remains outside this state transition. */
   action(
-    handler: Action<Args, Globals & Options, Result, Stdin>,
-  ): Command<Args, Options, Globals, AfterAction, Result, Stdin> {
-    return this.#derive(declareAction(this.#state, handler, this.#stdinBind));
+    handler: Action<Args, Globals & Options, Result, Stdin, Provided>,
+  ): Command<Args, Options, Globals, AfterAction, Result, Stdin, Provided> {
+    return this.#derive(
+      declareAction(this.#state, handler, { provided: this.#providedBind, stdin: this.#stdinBind }),
+    );
   }
 
   extend(
     ...values: readonly ExtensionValue<'command'>[]
-  ): Command<Args, Options, Globals, State, Result, Stdin> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
     return this.#derive(declareExtensions(this.#state, values));
   }
 
@@ -2275,14 +2362,24 @@ export class CommandBuilder<
    * The same runtime value in the state the calling method's return type names. Each call states
    * its own transition, and the declared result travels with it unless the call replaces it.
    */
-  #derive<DerivedArgs, DerivedOptions, Next extends CommandMethod, DerivedResult = Result>(
-    state: CommandState<DerivedArgs, DerivedOptions, Globals>,
-  ): Command<DerivedArgs, DerivedOptions, Globals, Next, DerivedResult, Stdin> {
-    return new CommandBuilder<DerivedArgs, DerivedOptions, Globals, Next, DerivedResult, Stdin>(
-      this.#name,
-      state,
-      this.#stdinBind,
-    );
+  #derive<
+    DerivedArgs,
+    DerivedOptions,
+    Next extends CommandMethod,
+    DerivedResult = Result,
+    DerivedGlobals = Globals,
+  >(
+    state: CommandState<DerivedArgs, DerivedOptions, DerivedGlobals>,
+  ): Command<DerivedArgs, DerivedOptions, DerivedGlobals, Next, DerivedResult, Stdin, Provided> {
+    return new CommandBuilder<
+      DerivedArgs,
+      DerivedOptions,
+      DerivedGlobals,
+      Next,
+      DerivedResult,
+      Stdin,
+      Provided
+    >(this.#name, state, { provided: this.#providedBind, stdin: this.#stdinBind });
   }
 }
 
@@ -2300,8 +2397,9 @@ export type Command<
   State extends CommandMethod = AfterAction,
   Result = unknown,
   Stdin extends StdinContext = StdinContext,
+  Provided = {},
 > = Pick<
-  CommandBuilder<Args, Options, Globals, State, Result, Stdin>,
+  CommandBuilder<Args, Options, Globals, State, Result, Stdin, Provided>,
   typeof commandValue | typeof declaredTypes | 'extend' | State | ResultMethod<Result>
 >;
 
@@ -2315,12 +2413,28 @@ export type ResultMethod<Result> = unknown extends Result ? never : 'views';
 /**
  * The core facts and initial extension values a named Command carries.
  */
-export interface CommandOptions {
+export interface CommandOptions<Uses extends readonly AnyProvider[] = []> {
   description?: string;
   hidden?: boolean;
   deprecated?: string;
   extensions?: readonly ExtensionValue<'command'>[];
+  /** The providers whose values the action reads under `provided`. */
+  uses?: MetByRegistration<Uses, OptIn<Uses>>;
 }
+
+/**
+ * The opt-in list as it stands outside a registered compilation, where the requirement passes up
+ * to the Application. Where an Application's registration is visible, the Command's globals are
+ * that Application's, so a list whose providers read an option it does not declare is rejected at
+ * the Command.
+ */
+type MetByRegistration<Uses extends readonly AnyProvider[], List> = RegistrationVisible extends true
+  ? [RegisteredGlobals] extends [ProviderGlobals<Uses>]
+    ? List
+    : List & {
+        readonly 'The registered Application declares no global option these providers read': ProviderGlobals<Uses>;
+      }
+  : List;
 
 /** Collect every union member's known local keys before testing for a global collision. */
 type LocalKeys<Child> = Child extends {
@@ -2332,19 +2446,55 @@ type LocalKeys<Child> = Child extends {
 export type AttachmentConstraint<Globals, Child> =
   Extract<keyof Globals, LocalKeys<Child>> extends never ? unknown : never;
 
-type CommandConstructor = new (
+/**
+ * The global options a Command requires of the Application it attaches to. A child typed by the
+ * widest annotation, whose requirement reads `never`, states none this parent can carry.
+ */
+type RequirementOf<Child> = Child extends {
+  readonly [declaredTypes]: { globals: (value: infer Globals) => void };
+}
+  ? [Globals] extends [never]
+    ? {}
+    : Globals
+  : never;
+
+/** A parent's requirements once a child's join them, unchanged when the parent's already hold them. */
+export type PassedUp<Globals, Child> = [Globals] extends [RequirementOf<Child>]
+  ? Globals
+  : Globals & RequirementOf<Child>;
+
+type CommandConstructor = new <const Uses extends readonly AnyProvider[] = []>(
   name: string,
-  options?: CommandOptions,
-) => Command<{}, {}, RegisteredGlobals, CommandMethod>;
+  options?: CommandOptions<Uses>,
+) => Command<
+  {},
+  {},
+  WithProviderGlobals<RegisteredGlobals, Uses>,
+  CommandMethod,
+  unknown,
+  StdinContext,
+  ProvidedValues<Uses>
+>;
 
 /**
  * The constructor uses the Application registration; public type defaults stay library-neutral.
  * Every rule on the name and the options slot throws before the value exists.
  */
-class CommandDeclaration extends CommandBuilder<{}, {}, RegisteredGlobals> {
-  constructor(name: string, options?: CommandOptions) {
-    const declared = namedState<RegisteredGlobals>(name, options);
-    super(declared.name, declared.state, (source) => ({ stdin: source }));
+class CommandDeclaration<const Uses extends readonly AnyProvider[] = []> extends CommandBuilder<
+  {},
+  {},
+  WithProviderGlobals<RegisteredGlobals, Uses>,
+  CommandMethod,
+  unknown,
+  StdinContext,
+  ProvidedValues<Uses>
+> {
+  constructor(name: string, options?: CommandOptions<Uses>) {
+    const declared = namedState<WithProviderGlobals<RegisteredGlobals, Uses>>(name, options);
+    super(declared.name, declared.state, {
+      provided: providedBinder<Uses>(options?.uses),
+      stdin: (source) => ({ stdin: source }),
+    });
   }
 }
 
@@ -2407,7 +2557,20 @@ export interface DispatchInvocation {
   /** The channel a configuration source writes through. */
   out: Out<OpenResult>;
   style: ContextualStyle;
+  /**
+   * The provided values of this run, whose openers read the scope given: this run's ephemeral
+   * values, and the persistent values of its outermost run.
+   */
+  providers: (scope: OpenerScope) => RunValues;
+  /**
+   * Rejects with a failure core holds, which the run reports after the chain settles when no code
+   * observes the rejection, as an opener's rejection after its run was cancelled is.
+   */
+  handFailure: (fault: unknown) => Promise<never>;
 }
+
+/** Whether the boundary dispatched the action, or a cancellation during the build stopped it first. */
+export type DispatchOutcome = 'dispatched' | 'cancelled';
 
 /**
  * One invocation prepared ahead of the middleware chain. `'ready'` carries the request a middleware
@@ -2427,7 +2590,11 @@ export type Prepared = {
   own: (identity: string, inputs: readonly OptionInput[]) => Readonly<Record<string, unknown>>;
   result: DeclaredResult | undefined;
 } & (
-  | { dispatch: (view: string | null) => Promise<void>; kind: 'ready'; request: Request }
+  | {
+      dispatch: (view: string | null) => Promise<DispatchOutcome>;
+      kind: 'ready';
+      request: Request;
+    }
   | { fault: unknown; kind: 'held'; request: null }
 );
 
@@ -2705,14 +2872,38 @@ function readyDispatch(
   { invocation, interactive, routed }: Preparation,
   local: LocalPhase & { kind: 'parsed' },
   {
+    options,
     values,
     stdin,
     supplied,
-  }: Pick<Validation, 'values' | 'stdin'> & { supplied: ActionContext<unknown>['supplied'] },
-): { dispatch: (view: string | null) => Promise<void>; request: Request } {
+  }: Pick<Validation, 'values' | 'stdin'> & {
+    options: Readonly<Record<string, unknown>> | null;
+    supplied: ActionContext<unknown>['supplied'];
+  },
+): { dispatch: (view: string | null) => Promise<DispatchOutcome>; request: Request } {
   const { command, path } = routed;
   return {
     dispatch: async (view) => {
+      const { signal } = invocation;
+      const runValues = invocation.providers({
+        host: invocation.host,
+        log: invocation.logFor(null),
+        onShutdown: invocation.laneHandlers(null).onShutdown,
+        options: options ?? Object.freeze({}),
+        signal,
+      });
+      const built = await buildProvided(runValues, command.uses);
+      if (built.kind === 'cancelled') {
+        /**
+         * The action is never dispatched. A rejection that echoes the cancellation is silent, and
+         * any other is reported once the chain settles, with the signal's code.
+         */
+        const { rejected } = built;
+        if (rejected !== undefined && !echoesCancellation(rejected.thrown, signal)) {
+          void invocation.handFailure(rejected.thrown);
+        }
+        return 'cancelled';
+      }
       // The channel is built at the boundary, because the view a middleware selected is read there.
       const channel = invocation.channel({ path, result: command.result, view });
       try {
@@ -2729,6 +2920,7 @@ function readyDispatch(
           ...invocation.laneHandlers(null),
           out: channel.out,
           passthrough: local.passthrough,
+          provided: built.values,
           signal: invocation.signal,
           stdin,
           style: invocation.style,
@@ -2750,11 +2942,38 @@ function readyDispatch(
         // The action's failure is the invocation's outcome.
         // A sequence it left pending is stopped where it stands rather than drained to its end.
         channel.stop();
+        // Each region the action left open writes its last frame before its values close.
+        channel.fail();
+        await runValues.close(false);
         throw error;
       }
+      // A close that throws fails a run that had otherwise succeeded, as an action's throw does.
+      const closed = await runValues.close(!signal.aborted);
+      if (closed !== undefined) {
+        throw closed.thrown;
+      }
+      return 'dispatched';
     },
     request: requestOf(command, values, { passthrough: local.passthrough, stdin }),
   };
+}
+
+/**
+ * Builds the routed Command's opt-ins. A build that throws on a live run closes what it built and
+ * rejects, so the failure takes the ordinary failure path; a cancelled one closes what it built.
+ */
+async function buildProvided(
+  runValues: RunValues,
+  uses: readonly AnyProvider[],
+): Promise<BuildOutcome> {
+  const built = await runValues.build(uses).catch(async (error: unknown) => {
+    await runValues.close(false);
+    throw error;
+  });
+  if (built.kind === 'cancelled') {
+    await runValues.close(false);
+  }
+  return built;
 }
 
 /**
@@ -2812,6 +3031,7 @@ export async function prepareDispatch(
     }
     const ready = readyDispatch(preparation, local, {
       ...validation,
+      options,
       supplied: suppliedInputs(
         [...graph.globals.inputs, ...routed.command.inputs],
         {

@@ -16,6 +16,7 @@ import type {
   PluginOptionSpellings,
   PluginOptionValues,
 } from './plugin.js';
+import type { OpenerScope, RunValues } from './providers.js';
 import {
   invokeViewCorrection,
   nextMisuse,
@@ -330,10 +331,16 @@ interface Invocation {
   /** Gives a context of the run its `log`, bound to the plugin core is calling, or to none. */
   logFor: LogBinder;
   /**
-   * Rejects with a fault core raised in a call the code made, which the run reports after the
-   * chain settles when no code observed the call, as it reports an unobserved output call.
+   * Rejects with a failure core holds, which the run reports after the chain settles when no code
+   * observes the rejection, as it reports an unobserved output call: a `next()` misuse, or an
+   * opener's rejection after its run was cancelled.
    */
-  handFailure: (fault: InternalError) => Promise<never>;
+  handFailure: (fault: unknown) => Promise<never>;
+  /**
+   * The provided values of this run, whose openers read the scope given: this run's ephemeral
+   * values, and the persistent values of its outermost run.
+   */
+  providers: (scope: OpenerScope) => RunValues;
 }
 
 /** The state one chain shares: what it reached and how it continues. */
@@ -496,8 +503,7 @@ async function runChain(
     }
     const view = selection.resolve(routed.path);
     run.invoked = true;
-    await prepared.dispatch(view);
-    return 'dispatched';
+    return prepared.dispatch(view);
   };
   const cancelled = () => invocation.signal.aborted;
   if (entries.length === 0) {

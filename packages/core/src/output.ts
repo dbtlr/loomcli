@@ -550,6 +550,9 @@ export class Output {
         this.regions.closeAll('completion', emission.regions);
       },
       emitted: () => emission.calls > 0,
+      fail: () => {
+        this.regions.closeAll('failure', emission.regions);
+      },
       out: {
         ...this.out,
         print: (message) => this.hand(this.emit('print', message, destination)),

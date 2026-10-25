@@ -3,7 +3,15 @@ import { writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { Application, onResume, onShutdown, onSuspend, plugin, processHandle } from '@loomcli/core';
+import {
+  Application,
+  onResume,
+  onShutdown,
+  onSuspend,
+  plugin,
+  processHandle,
+  provider,
+} from '@loomcli/core';
 
 /**
  * The shutdown on a real process, one scenario per run: `process.argv[2]` names it. Every line is
@@ -75,6 +83,19 @@ const registering = plugin('@fixture/registering', {
 });
 
 const scenarios = {
+  /** A provider whose asynchronous close never settles, so a signal during it meets the budget. */
+  closing: () => {
+    const held = provider('held', {
+      close: () => {
+        line(`ready:${process.pid}:`);
+        return holdOpen();
+      },
+      load: async () => ({ default: () => 'value' }),
+    });
+    return new Application('app', { shutdown, uses: [held] }).action(({ onShutdown: register }) => {
+      register(writing('handler'));
+    });
+  },
   /** A cooperative action: it waits for its cancellation and returns. */
   cooperative: () =>
     new Application('app', { shutdown }).action(async ({ signal }) => {

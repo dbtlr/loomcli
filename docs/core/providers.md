@@ -17,34 +17,44 @@ interface Provider<
   Name extends string = string,
   Value = unknown,
   Globals = {},
-  L extends Lifetime = 'ephemeral',
+  Life extends Lifetime = 'ephemeral',
   Uses extends readonly AnyProvider[] = [],
 > {
   readonly name: Name;
-  readonly lifetime: L;
+  readonly lifetime: Life;
   readonly uses: Uses;
   /** Phantom key: it carries the value and globals types and holds no runtime value. */
   readonly [providerTypes]: { value: Value; globals: (value: Globals) => void };
 }
 type AnyProvider = Provider<string, unknown, never, Lifetime, readonly AnyProvider[]>;
 type PersistentProvider = Provider<string, unknown, never, 'persistent', readonly AnyProvider[]>;
+type ValueOf<Declared extends AnyProvider> = Declared[typeof providerTypes]['value'];
+type GlobalsOf<Declared extends AnyProvider> = Declared[typeof providerTypes]['globals'] extends (value: infer Globals) => void
+  ? Globals
+  : never;
 /** Each provider in a list mapped to its value under its name. */
 type ProvidedValues<Uses extends readonly AnyProvider[]> = {
-  readonly [P in Uses[number] as P['name']]: P[typeof providerTypes]['value'];
+  readonly [Listed in Uses[number] as Listed['name']]: ValueOf<Listed>;
 };
 
 /** `lifetime` is required unless it is ephemeral, and `uses` unless the list is empty. */
-type ProviderDefinition<P extends AnyProvider> = ('ephemeral' extends P['lifetime']
+type ProviderDefinition<Declared extends AnyProvider> = ('ephemeral' extends Declared['lifetime']
   ? { lifetime?: 'ephemeral' }
-  : { lifetime: P['lifetime'] }) &
-  (P['uses'] extends readonly []
+  : { lifetime: Declared['lifetime'] }) &
+  (Declared['uses'] extends readonly []
     ? { uses?: readonly [] }
-    : { uses: P['uses'] & (P['lifetime'] extends 'persistent' ? readonly PersistentProvider[] : unknown) }) & {
-    load: () => Promise<{ default: Opener<P> }>;
-    close?: (value: P[typeof providerTypes]['value']) => void | PromiseLike<void>;
+    : {
+        uses: OptIn<Declared['uses']> & // no two different providers with one name in its closure
+          (Declared['lifetime'] extends 'persistent' ? readonly PersistentProvider[] : unknown);
+      }) & {
+    load: () => Promise<{ default: Opener<Declared> }>;
+    close?: (value: ValueOf<Declared>) => void | PromiseLike<void>;
   };
 
-declare function provider<const P extends AnyProvider>(name: P['name'], definition: ProviderDefinition<P>): P;
+declare function provider<const Declared extends AnyProvider>(
+  name: Declared['name'],
+  definition: ProviderDefinition<Declared>,
+): Declared;
 ```
 
 ```ts
@@ -74,7 +84,7 @@ export const session: Provider<'session', Session, { token: string | undefined }
 - **`uses`.** The providers this provider reads, whose values reach its opener under `provided`. A provider opts in to another the same way a Command does, and the lists' types compose, under [Opting in](#opting-in).
 - **`load`.** Imports the module whose default export is the provider's [opener](#the-opener). Core calls it only when it builds the value, so a run that never builds the value never imports the module. `load` is the only way to give a provider its code.
 - **`close`.** Closes the value at the end of its lifetime, in place of the disposal protocol, under [Closing](#closing). It receives the value the opener returned.
-- **Names.** `provider`, `Provider`, `AnyProvider`, `Lifetime`, `ProviderDefinition`, `ProviderContext`, and `Opener` are exported.
+- **Names.** `provider`, `Provider`, `AnyProvider`, `Lifetime`, `ProviderDefinition`, `ProviderContext`, `ProvidedValues`, and `Opener` are exported.
 
 ## The opener
 
@@ -90,10 +100,9 @@ interface ProviderContext<Globals = {}, Provided = {}> {
   readonly onShutdown: OnShutdown;
 }
 
-type Opener<P extends AnyProvider> =
-  P extends Provider<string, infer Value, infer Globals, Lifetime, infer Uses>
-    ? (context: ProviderContext<Globals, ProvidedValues<Uses>>) => Value | Promise<Value>
-    : never;
+type Opener<Declared extends AnyProvider> = (
+  context: ProviderContext<GlobalsOf<Declared>, ProvidedValues<Declared['uses']>>,
+) => ValueOf<Declared> | Promise<ValueOf<Declared>>;
 ```
 
 ```ts
@@ -109,7 +118,7 @@ const open: Opener<typeof session> = async ({ options, provided, signal }) =>
 export default open;
 ```
 
-The opener is the function that builds a provider's value. It types itself from its own declaration, `Opener<typeof session>`, through a type-only import. The declaration's annotation is the boundary that breaks the type cycle: the declaration names the opener's module only inside `load`, and the opener's `import type` is erased, so the module graph runs one way at run time.
+The opener is the function that builds a provider's value. It types itself from its own declaration, `Opener<typeof session>`, through a type-only import. `Opener` reads the declaration's members, so a factory that returns a provider whose name is a type parameter types its opener too. The declaration's annotation is the boundary that breaks the type cycle: the declaration names the opener's module only inside `load`, and the opener's `import type` is erased, so the module graph runs one way at run time.
 
 - **`options`.** Every global option's validated value, typed by the globals the provider states, and frozen to every depth, as a middleware's `options` is. An ephemeral provider reads its own run's values; a persistent provider reads the outermost run's. A provider never reads a Command's local arguments or options, because every Command that opts in shares the global options alone.
 - **`provided`.** The value of each provider this provider uses, under that provider's name.
@@ -149,8 +158,8 @@ export const get = new Command('get', { uses: [session] })
 A Command opts in through `uses` in its options object, and the Application opts in for its own root action through `uses` in its constructor's options. The action reads each value under `provided`, keyed by its provider's name.
 
 - **`provided` holds the opt-ins.** `provided` holds the value of each provider the Command's `uses` lists, typed from the list, and nothing else. A provider those providers use is built but not provided: a Command that reads `pool` lists `pool`. `provided` is one member of the action context, so a member core adds to the context later never collides with a provider's name. An action whose Command opts in to nothing reads `{}`.
-- **Globals are a requirement.** Opting in adds the global options of every provider the list reaches, the providers they use included, to the Command's global requirements. `command()` already rejects a child whose global requirements its parent does not satisfy, so a Command that opts in to a provider whose option-declaring plugin the Application no longer installs fails to compile where it attaches. That is the author's ordinary error, which the types report. An action's `options` include those globals, because the Application declares them.
-- **Requirements pass up.** `command()` adds a child's global requirements to its parent's, so the requirement meets the Application wherever the child sits, and a library's group that holds a Command that opts in compiles without the Application. The type error surfaces where the requirement first meets globals that do not hold it: the Application, or a Command built where the Application's registration is visible.
+- **Globals are a requirement.** Opting in adds the global options of every provider the list reaches, the providers they use included, to the Command's global requirements. The Application's `command()` already rejects a Command whose global requirements its globals do not hold, and so does `plugin()` for a plugin's Commands, so a Command that opts in to a provider whose option-declaring plugin the Application no longer installs fails to compile where it reaches the Application. That is the author's ordinary error, which the types report. An action's `options` include those globals, because the Application declares them.
+- **Requirements pass up.** A Command's `command()` adds a child's global requirements to its parent's and checks none of them, so the requirement meets the Application wherever the child sits, and a library's group that holds a Command that opts in compiles without the Application. The type error surfaces where the requirement first meets globals that do not hold it: the Application's `command()`, `plugin()`, or, where an Application's registration is visible, the `uses` of the Command that opts in, because such a Command's globals are that Application's. A `uses` list shared as a constant reaches the same requirement whether it is typed as a tuple or as an array.
 - **The root's own action.** The Application's `uses` covers the root's action alone. Its globals are checked at the root's `action()` call, once `globalOption()` is closed.
 - **Plugin Commands.** A plugin's [`commands`](plugin-contract.md#plugin-commands) accepts a Command whose global requirements its own plugin's options meet, checked at `plugin()`, so a database plugin ships `db migrate` that opts in to the pool its own `--database-url` configures. A plugin compiles without the Application, so it cannot require another plugin's options or the application's.
 - **No inheritance.** A child Command does not inherit its parent's opt-ins, because a child is declared and typed before it attaches. Commands that share opt-ins share a constant list: `uses: databaseProviders`.
@@ -181,7 +190,7 @@ Core builds at the dispatch boundary, the point the chain reaches when its last 
 Core closes each value it built at the end of its lifetime.
 
 - **How.** Core calls the provider's `close(value)` when it declares one. Otherwise it calls the value's `[Symbol.asyncDispose]()`, or else its `[Symbol.dispose]()`. A value with none of them is left as it is. `close` serves a value that lacks the protocol, so the action reads the value itself rather than a wrapper around it.
-- **When.** Every value closes at the point the action settles, before the chain unwinds. Once the action settles, core closes the [live regions](output.md#live-region) the action left open, so each region's last frame is written, then that run's ephemeral values, then, on the outermost run, the persistent values. Then the chain unwinds and any failure report renders. When a build fails or is cancelled, the same closes happen at the boundary in place of the action. A middleware's code after `await next()` therefore runs after every value of its run has closed.
+- **When.** Every value closes at the point the action settles, before the chain unwinds. Once the action settles, core closes the [live regions](output.md#live-region) the action left open, so each region's last frame is written, then that run's ephemeral values, then, on the outermost run, the persistent values. Then the chain unwinds and any failure report renders. When the action throws, the regions it left open close with `'failure'`, and then its values close the same way. When a build fails or is cancelled, the same closes happen at the boundary in place of the action. A middleware's code after `await next()` therefore runs after every value of its run has closed.
 - **Order.** Within a lifetime, values close in reverse build order, so a value closes before the values it used. Each close is awaited before the next starts.
 - **A shutdown.** On a [shutdown](signals.md#the-shutdown), the closes run inside the shutdown budget like the rest of the run's unwind, and a close still running when the budget runs out is cut off. Every region already drew its cancelled line at the abort, before any close starts. On an ordinary end, a close takes as long as it takes.
 - **A failing close.** Every value still closes when one close throws or rejects. On a run that had otherwise succeeded, the first throw fails the run through the ordinary failure path, as an action's throw does, and rejects `next()`. A close that throws on a run that already failed, or was cancelled, or after an earlier close threw, is an `error` [log event](logging.md), `A provider's close failed.`, with the thrown value under `error` and the provider's name under `provider`.

@@ -852,6 +852,8 @@ export interface ActionChannel {
   stop: () => void;
   /** Closes every region the action opened that is still open, because the action returned. */
   complete: () => void;
+  /** Closes every region the action opened that is still open, because the action threw. */
+  fail: () => void;
 }
 export type StringOption = UnmarkedStringOption | BackgroundOption;
 /** A string option that carries no run-wide mark. */
@@ -1186,7 +1188,7 @@ export type InvocationOutcome<Mapped = LoomError> =
  * `command` is the routed node inside it: the same two values the run's middleware receive.
  * `invoke` runs another Command of that graph by name.
  */
-export interface ActionContext<Args, Options = {}, Result = unknown> {
+export interface ActionContext<Args, Options = {}, Result = unknown, Provided = {}> {
   readonly interactive: boolean;
   readonly supplied: SuppliedInputs;
   readonly cancel: () => void;
@@ -1212,6 +1214,8 @@ export interface ActionContext<Args, Options = {}, Result = unknown> {
   readonly onSuspend: OnSuspend;
   /** Registers a synchronous handler that runs when the process resumes, until the run ends. */
   readonly onResume: OnResume;
+  /** The value of each provider the Command's `uses` lists, under its provider's name. */
+  readonly provided: Provided;
   /** Runs another Command of the graph this run built, by name, and captures what it writes. */
   readonly invoke: <Mapped = LoomError>(
     path: readonly string[],
@@ -1224,7 +1228,8 @@ export type Action<
   Options = {},
   Result = unknown,
   Stdin extends StdinContext = StdinContext,
-> = (context: Omit<ActionContext<Args, Options, Result>, 'stdin'> & Stdin) => unknown;
+  Provided = {},
+> = (context: Omit<ActionContext<Args, Options, Result, Provided>, 'stdin'> & Stdin) => unknown;
 
 /** Phantom key. It keeps the inferred declaration types exact and holds no runtime value. */
 export declare const declaredTypes: unique symbol;
@@ -1239,11 +1244,14 @@ export interface DeclaredTypes<
   Globals,
   Result = unknown,
   Stdin extends StdinContext = StdinContext,
+  Provided = {},
 > {
   stdin: Stdin;
   args: Args;
   globals: (value: Globals) => void;
   options: Options;
+  /** The values the Command's opt-ins provide. A plain field keeps it covariant, as `result` is. */
+  provided: Provided;
   /**
    * The result the Command declares, or `unknown` where it declares none. A plain field keeps it
    * covariant, so a child that carries one still satisfies a neutral `Command` annotation.
@@ -1261,10 +1269,11 @@ export type ActionHandler<Declaration> = Declaration extends {
     infer Options,
     infer Globals,
     infer Result,
-    infer Stdin
+    infer Stdin,
+    infer Provided
   >;
 }
-  ? Action<Args, Globals & Options, Result, Stdin>
+  ? Action<Args, Globals & Options, Result, Stdin, Provided>
   : never;
 /** The args object an extracted handler receives for this declaration. */
 export type ActionArgs<Declaration> =

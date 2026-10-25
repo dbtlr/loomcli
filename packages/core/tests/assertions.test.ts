@@ -15,12 +15,16 @@ const packages = new URL('../../', import.meta.url);
  * `invoke.ts` hands a call with no failure handler the failure itself as the outcome's `Mapped`,
  * which such a call infers as its default, `LoomError`. The MCP plugin's `plugin.ts` hands
  * `invoke` a client's named values, which `invoke` judges at run time as it judges any caller's.
+ * `providers.ts` returns the provider value as the type its declaration's annotation states, and
+ * reads the values core built for a `uses` list, which reach it from openers as unknown, as the
+ * record that list's type names.
  */
 const allowed = {
   'core/src/command.ts': 1,
   'core/src/extension.ts': 1,
   'core/src/invoke.ts': 1,
   'core/src/output.ts': 1,
+  'core/src/providers.ts': 2,
   'core/src/style.ts': 1,
   'core/src/validation.ts': 1,
   'core/src/view.ts': 1,

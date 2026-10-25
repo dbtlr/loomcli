@@ -94,12 +94,26 @@ import { installPlugins, pluginViews } from './plugin.js';
 import type { BuiltPlugin, InstalledOptionValues, Plugin } from './plugin.js';
 import { prepareEnvironment } from './prepare-environment.js';
 import { laneOf, processHandle } from './process-handle.js';
+import { PersistentValues, RunValues, providedBinder, readUses } from './providers.js';
+import type {
+  AnyProvider,
+  OptIn,
+  BuiltValues,
+  ProvidedValues,
+  ProviderGlobals,
+} from './providers.js';
 import { bakedFacts, isDevelopment } from './release.js';
 import { capabilities, plainPolicy, renderingPolicy } from './rendering.js';
 import type { RenderingPolicy } from './rendering.js';
 import { shutdownTimeout } from './shutdown.js';
 import type { LaneHandlers, OnShutdown, SharedLane } from './signal-lane.js';
-import { bracketRun, cancellationCode, isCancellationEcho, placeHandlers } from './signals.js';
+import {
+  bracketRun,
+  cancellationCode,
+  echoesCancellation,
+  isCancellationEcho,
+  placeHandlers,
+} from './signals.js';
 import type { CancellationCode, LaneEntry, ParentRun, SignalBracket } from './signals.js';
 import { installedSource } from './sources.js';
 import { themeAdapts, themePalette } from './theme.js';
@@ -223,23 +237,17 @@ function answeredWrite(writes: WriteState, answered: unknown): WriteState {
 }
 
 /**
- * Whether a throw in a cancelled run echoes its cancellation, so no translator is offered it. A
- * value that cannot be read, such as an Error whose `name` getter throws, counts as an echo, so
- * it keeps its cancellation code and no translator replaces it.
+ * Nothing when the Application's globals hold what its root's opt-ins read, and otherwise a member
+ * no handler carries, so the `action()` call is rejected.
  */
-function echoesCancellation(thrown: unknown, controller: AbortController): boolean {
-  const { signal } = controller;
-  if (!signal.aborted) {
-    return false;
-  }
-  try {
-    return isCancellationEcho(thrown, signal.reason);
-  } catch {
-    return true;
-  }
-}
+type RootRequirement<Globals, Requires> = [Globals] extends [Requires]
+  ? unknown
+  : { readonly 'The Application declares no global option its root providers read': Requires };
 
-export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[]> {
+export interface ApplicationOptions<
+  Plugins extends readonly Plugin[] = readonly Plugin[],
+  Uses extends readonly AnyProvider[] = [],
+> {
   rendering?: RenderingPolicy;
   /** How a signal ends the process: `timeout` is the shutdown budget, 500 milliseconds by default. */
   shutdown?: { readonly timeout?: number };
@@ -249,6 +257,8 @@ export interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly
   extensions?: readonly ExtensionValue<'command'>[];
   description?: string;
   version?: string;
+  /** The providers whose values the root's own action reads under `provided`. */
+  uses?: OptIn<Uses>;
 }
 
 /**
@@ -285,11 +295,15 @@ class ApplicationBuilder<
   Plugins extends readonly Plugin[] = readonly [],
   Result = unknown,
   Stdin extends StdinContext = StdinContext,
+  Provided = {},
+  Requires = {},
 > {
   declare readonly [applicationEnvironment]: ApplicationEnvironment<Globals, Plugins>;
-  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin>;
+  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
 
   readonly #stdinBind: (source: Content | undefined) => Stdin;
+  /** Reads the values core built for the root's opt-ins as the type the Application's `uses` names. */
+  readonly #providedBind: (values: BuiltValues) => Provided;
   readonly #name: string;
   readonly #root: CommandState<Args, Options, Globals>;
   readonly #globals: GlobalsState;
@@ -313,9 +327,13 @@ class ApplicationBuilder<
       globals: GlobalsState;
       root: CommandState<Args, Options, Globals>;
     },
-    stdinBind: (source: Content | undefined) => Stdin,
+    binds: {
+      stdin: (source: Content | undefined) => Stdin;
+      provided: (values: BuiltValues) => Provided;
+    },
   ) {
-    this.#stdinBind = stdinBind;
+    this.#stdinBind = binds.stdin;
+    this.#providedBind = binds.provided;
     this.#name = name;
     this.#config = declared.config;
     this.#globals = declared.globals;
@@ -328,14 +346,41 @@ class ApplicationBuilder<
 
   stdin(
     config: StdinConfig & { required: true },
-  ): Application<Args, Options, Globals, State, Plugins, Result, { readonly stdin: Content }>;
-  stdin(config: StdinConfig): Application<Args, Options, Globals, State, Plugins, Result>;
-  stdin(config: StdinConfig): Application<Args, Options, Globals, State, Plugins, Result> {
+  ): Application<
+    Args,
+    Options,
+    Globals,
+    State,
+    Plugins,
+    Result,
+    { readonly stdin: Content },
+    Provided,
+    Requires
+  >;
+  stdin(
+    config: StdinConfig,
+  ): Application<Args, Options, Globals, State, Plugins, Result, StdinContext, Provided, Requires>;
+  stdin(
+    config: StdinConfig,
+  ): Application<Args, Options, Globals, State, Plugins, Result, StdinContext, Provided, Requires> {
     const root = declareStdin(this.#root, config);
-    return new ApplicationBuilder<Args, Options, Globals, State, Plugins, Result>(
+    return new ApplicationBuilder<
+      Args,
+      Options,
+      Globals,
+      State,
+      Plugins,
+      Result,
+      StdinContext,
+      Provided,
+      Requires
+    >(
       this.#name,
       { config: this.#config, globals: this.#globals, root },
-      root.stdin?.required ? requiredStdinContext : (source) => ({ stdin: source }),
+      {
+        provided: this.#providedBind,
+        stdin: root.stdin?.required ? requiredStdinContext : (source) => ({ stdin: source }),
+      },
     );
   }
 
@@ -354,7 +399,9 @@ class ApplicationBuilder<
     AfterArgument<State>,
     Plugins,
     Result,
-    Stdin
+    Stdin,
+    Provided,
+    Requires
   > {
     const input: ArgumentInput<Name, Config> = {
       config,
@@ -381,7 +428,9 @@ class ApplicationBuilder<
     State,
     Plugins,
     Result,
-    Stdin
+    Stdin,
+    Provided,
+    Requires
   > {
     const input: OptionInput<Name, Config> = {
       config,
@@ -397,7 +446,7 @@ class ApplicationBuilder<
       Extract<keyof Options, string>,
       ...Extract<keyof Options, string>[],
     ]
-  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
     return this.derive(declareOptionGroup(this.#root, 'exclusive', names));
   }
 
@@ -407,7 +456,7 @@ class ApplicationBuilder<
       Extract<keyof Options, string>,
       ...Extract<keyof Options, string>[],
     ]
-  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
     return this.derive(declareOptionGroup(this.#root, 'oneRequired', names));
   }
 
@@ -417,7 +466,7 @@ class ApplicationBuilder<
       Extract<keyof Options, string>,
       ...Extract<keyof Options, string>[],
     ]
-  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
     return this.derive(declareOptionGroup(this.#root, 'requiredTogether', names));
   }
 
@@ -440,7 +489,9 @@ class ApplicationBuilder<
     State,
     Plugins,
     Result,
-    Stdin
+    Stdin,
+    Provided,
+    Requires
   > {
     const input: OptionInput<Name, Config> = {
       config,
@@ -467,15 +518,31 @@ class ApplicationBuilder<
       State,
       Plugins,
       Result,
-      Stdin
-    >(this.#name, { config: this.#config, globals, root }, this.#stdinBind);
+      Stdin,
+      Provided,
+      Requires
+    >(
+      this.#name,
+      { config: this.#config, globals, root },
+      {
+        provided: this.#providedBind,
+        stdin: this.#stdinBind,
+      },
+    );
   }
 
-  /** Registering the action closes input authoring; extension configuration remains available. */
+  /**
+   * Registering the action closes input authoring; extension configuration remains available. The
+   * globals the root's own opt-ins read are checked here, once `globalOption()` has closed.
+   */
   action(
-    handler: Action<Args, Globals & Options, Result, Stdin>,
-  ): Application<Args, Options, Globals, AfterAction, Plugins, Result, Stdin> {
-    return this.derive(declareAction(this.#root, handler, this.#stdinBind), { composed: true });
+    handler: Action<Args, Globals & Options, Result, Stdin, Provided> &
+      RootRequirement<Globals, Requires>,
+  ): Application<Args, Options, Globals, AfterAction, Plugins, Result, Stdin, Provided, Requires> {
+    return this.derive(
+      declareAction(this.#root, handler, { provided: this.#providedBind, stdin: this.#stdinBind }),
+      { composed: true },
+    );
   }
 
   /** A child arrives in any type state, because its own action is the call that finished it. */
@@ -488,7 +555,9 @@ class ApplicationBuilder<
     AfterCommand<Exclude<State, 'globalOption'>>,
     Plugins,
     Result,
-    Stdin
+    Stdin,
+    Provided,
+    Requires
   > {
     const scope = {
       descriptors: new Map(this.#root.descriptors),
@@ -517,7 +586,9 @@ class ApplicationBuilder<
     AfterResult<State>,
     Plugins,
     { kind: 'value'; value: Value },
-    Stdin
+    Stdin,
+    Provided,
+    Requires
   > {
     return this.derive<Args, Options, AfterResult<State>, { kind: 'value'; value: Value }>(
       declareResult(this.#root, 'value', declaration),
@@ -534,7 +605,9 @@ class ApplicationBuilder<
     AfterResult<State>,
     Plugins,
     { kind: 'rows'; row: Row },
-    Stdin
+    Stdin,
+    Provided,
+    Requires
   > {
     return this.derive<Args, Options, AfterResult<State>, { kind: 'rows'; row: Row }>(
       declareResult(this.#root, 'rows', declaration),
@@ -545,13 +618,13 @@ class ApplicationBuilder<
   views<const Replacements extends ResultViewsOf<Result>>(
     replacements: Replacements,
     options?: { default?: keyof Replacements & string },
-  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
     return this.derive(declareResultViews(this.#root, replacements, options));
   }
 
   extend(
     ...values: readonly ExtensionValue<'command'>[]
-  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
     return this.derive(declareExtensions(this.#root, values));
   }
 
@@ -568,7 +641,17 @@ class ApplicationBuilder<
   private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod, Declared = Result>(
     root: CommandState<DerivedArgs, DerivedOptions, Globals>,
     changed: Partial<Pick<ApplicationConfig, 'composed' | 'owners'>> = {},
-  ): Application<DerivedArgs, DerivedOptions, Globals, Next, Plugins, Declared, Stdin> {
+  ): Application<
+    DerivedArgs,
+    DerivedOptions,
+    Globals,
+    Next,
+    Plugins,
+    Declared,
+    Stdin,
+    Provided,
+    Requires
+  > {
     return new ApplicationBuilder<
       DerivedArgs,
       DerivedOptions,
@@ -576,11 +659,13 @@ class ApplicationBuilder<
       Next,
       Plugins,
       Declared,
-      Stdin
+      Stdin,
+      Provided,
+      Requires
     >(
       this.#name,
       { config: { ...this.#config, ...changed }, globals: this.#globals, root },
-      this.#stdinBind,
+      { provided: this.#providedBind, stdin: this.#stdinBind },
     );
   }
 
@@ -873,7 +958,7 @@ class ApplicationBuilder<
      * cancellation echo are never offered, because each already names what it is.
      */
     const offer = (thrown: unknown): LoomError | undefined => {
-      if (output?.raisedByView(thrown) === true || echoesCancellation(thrown, controller)) {
+      if (output?.raisedByView(thrown) === true || echoesCancellation(thrown, controller.signal)) {
         return undefined;
       }
       const failure = translateThrow(this.#config.translators, thrown);
@@ -972,6 +1057,11 @@ class ApplicationBuilder<
           bound?.declaredValues ?? (await prepareDeclaredValues(inputs, host, places));
         graphBuilt = true;
         if (!controller.signal.aborted) {
+          /**
+           * The persistent values every run nested in this one shares: its outermost run's, or, on
+           * the outermost run, the ones its own dispatch boundary opens with its opener scope.
+           */
+          let persistent = door.persistent;
           // An action's own call reuses this run's graph, host fields, signal, and lane.
           const action: ActionCall = {
             bound: { declaredValues, graph, inspected, places },
@@ -980,6 +1070,7 @@ class ApplicationBuilder<
             lane: door.lane,
             listens: door.listens,
             parent: { reason: () => bracket.reason(), signal: controller.signal },
+            persistent: () => persistent,
           };
           /**
            * A context's `onShutdown`, `onSuspend`, and `onResume` register through the run's place,
@@ -1012,6 +1103,10 @@ class ApplicationBuilder<
             out: output.out,
             places,
             plugins: built.plugins,
+            providers: (scope) => {
+              persistent ??= new PersistentValues(scope);
+              return new RunValues(scope, persistent, door.persistent === undefined);
+            },
             read: entered.read(host),
             route: (path) => {
               walked = path;
@@ -1230,6 +1325,11 @@ interface ActionCall {
   /** Whether the run keeps its lane listening, which the call then does too. */
   listens: boolean;
   parent: ParentRun;
+  /**
+   * The persistent values of the outermost run, which every run nested in it shares. The outermost
+   * run opens them at its dispatch boundary, before its action can call.
+   */
+  persistent: () => PersistentValues | undefined;
 }
 
 /** What one run reads at its entry, before the graph is built. */
@@ -1308,6 +1408,11 @@ interface RunDoor {
   rendering: (declared: RenderingPolicy) => RenderingPolicy;
   /** The graph an action's run built, which this run reuses, or none for a run that builds. */
   bound: BoundGraph | undefined;
+  /**
+   * The persistent values of the outermost run when this run is nested in an action's run, or none
+   * for the outermost run, which holds its own.
+   */
+  persistent: PersistentValues | undefined;
   /** The process effect the run ends with, once its code is final. */
   settle: (code: ExitCode) => void;
 }
@@ -1362,6 +1467,7 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
       output.configure(early, new Map());
       return output;
     },
+    persistent: undefined,
     rendering: (declared) => {
       const rendering = options?.rendering;
       return { ...declared, ...renderingPolicy(rendering) };
@@ -1431,6 +1537,7 @@ function nameDoor<Mapped>(
       }
       return output;
     },
+    persistent: action?.persistent(),
     rendering: plainPolicy,
     settle: () => undefined,
     stderr: streams.stderr,
@@ -1453,8 +1560,10 @@ export type Application<
   Plugins extends readonly Plugin[] = readonly Plugin[],
   Result = unknown,
   Stdin extends StdinContext = StdinContext,
+  Provided = {},
+  Requires = {},
 > = Pick<
-  ApplicationBuilder<Args, Options, Globals, State, Plugins, Result, Stdin>,
+  ApplicationBuilder<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>,
   | typeof applicationEnvironment
   | typeof declaredTypes
   | 'check'
@@ -1474,10 +1583,23 @@ export type Application<
  */
 interface ApplicationConstructor {
   new (name: string): Application<{}, {}, {}, ApplicationMethod, readonly []>;
-  new <const Plugins extends readonly Plugin[] = readonly []>(
+  new <
+    const Plugins extends readonly Plugin[] = readonly [],
+    const Uses extends readonly AnyProvider[] = [],
+  >(
     name: string,
-    options: ApplicationOptions<Plugins>,
-  ): Application<{}, {}, InstalledOptionValues<Plugins>, ApplicationMethod, Plugins>;
+    options: ApplicationOptions<Plugins, Uses>,
+  ): Application<
+    {},
+    {},
+    InstalledOptionValues<Plugins>,
+    ApplicationMethod,
+    Plugins,
+    unknown,
+    StdinContext,
+    ProvidedValues<Uses>,
+    ProviderGlobals<Uses>
+  >;
   /**
    * Holds for an Application in every authoring state, and narrows to the default `Application`,
    * which publishes `check()`, `inspect()`, `run()`, `invoke()`, `extend()`, and `name` and no
@@ -1498,7 +1620,9 @@ function optionSite(name: string, key: string, value: unknown): FactSite {
 }
 
 /** The facts the Application's options declare. `options` is `undefined` for none. */
-function applicationFacts(options: ApplicationOptions | undefined): ApplicationFacts {
+function applicationFacts(
+  options: Pick<ApplicationOptions, 'description' | 'version'> | undefined,
+): ApplicationFacts {
   return { description: options?.description, version: options?.version ?? '0.0.0' };
 }
 
@@ -1550,7 +1674,9 @@ function checkPluginMarkBindings(plugins: readonly BuiltPlugin[]): void {
  */
 function declareApplication<Plugins extends readonly Plugin[]>(
   name: string,
-  declared: ApplicationOptions<Plugins> | undefined,
+  declared:
+    | (Omit<ApplicationOptions<Plugins>, 'uses'> & { uses?: readonly AnyProvider[] })
+    | undefined,
 ): {
   config: ApplicationConfig;
   globals: GlobalsState;
@@ -1594,6 +1720,7 @@ function declareApplication<Plugins extends readonly Plugin[]>(
     extensions,
     facts: { deprecated: undefined, description: undefined, hidden: false },
     name: null,
+    uses: readUses(optionSite(name, 'uses', slot?.uses), slot?.uses),
   });
   const owners = new Map<CommandNodeHandle, ChildOwner>();
   for (const command of plugins.flatMap((entry) => entry.commands)) {
@@ -1638,7 +1765,18 @@ function checkApplicationName(name: string): string {
  */
 class ApplicationDeclaration<
   const Plugins extends readonly Plugin[] = readonly [],
-> extends ApplicationBuilder<{}, {}, InstalledOptionValues<Plugins>, ApplicationMethod, Plugins> {
+  const Uses extends readonly AnyProvider[] = [],
+> extends ApplicationBuilder<
+  {},
+  {},
+  InstalledOptionValues<Plugins>,
+  ApplicationMethod,
+  Plugins,
+  unknown,
+  StdinContext,
+  ProvidedValues<Uses>,
+  ProviderGlobals<Uses>
+> {
   /**
    * Each declaring call returns a new builder rather than an instance of this class, so
    * `instanceof Application` reads the builder's prototype chain, and holds for an Application in
@@ -1653,10 +1791,13 @@ class ApplicationDeclaration<
     return value instanceof ApplicationBuilder;
   }
 
-  constructor(name: string, options?: ApplicationOptions<Plugins>) {
+  constructor(name: string, options?: ApplicationOptions<Plugins, Uses>) {
     // The arguments evaluate in order, so the name is checked before any option is read.
     const checked = checkApplicationName(name);
-    super(checked, declareApplication(checked, options), (source) => ({ stdin: source }));
+    super(checked, declareApplication(checked, options), {
+      provided: providedBinder<Uses>(options?.uses),
+      stdin: (source) => ({ stdin: source }),
+    });
   }
 }
 

@@ -220,7 +220,11 @@ interface PluginDefinition<
     binding: AnyExtension & { readonly target: 'option' };
     load: () => Promise<{ default: SourceResolver<Plugin<Options>> }>;
   };
-  commands?: readonly Command<unknown, unknown>[];
+  /**
+   * The Commands the plugin attaches to the root. Each may require this plugin's own options, which
+   * a provider it opts in to reads, and no other global option.
+   */
+  commands?: readonly Command<unknown, unknown, NoInfer<PluginOptionValues<Options>>>[];
 }
 
 /**
