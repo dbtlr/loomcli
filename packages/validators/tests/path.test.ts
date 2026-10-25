@@ -4,6 +4,8 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { validationOptions } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
 import { afterAll, beforeAll, describe, expect, it, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
@@ -20,7 +22,7 @@ import {
 const dialect = 'https://json-schema.org/draft/2020-12/schema';
 
 const outsideRun =
-  'This validator reads the validation context, which only exists during a Loom run. Call the validator through an Application run, or leave the context unread.';
+  'This validator reads the validation context, which only exists during a Loom run. Call the validator through an Application run or with the options validationOptions builds, or leave the context unread.';
 
 const fixture = new URL('fixtures/path-run.mjs', import.meta.url);
 
@@ -142,6 +144,18 @@ describe('inside a run with access', () => {
   const writeDirectory =
     'Expected a writable directory, or a new directory in a writable directory.';
   const writeAny = 'Expected a writable path, or a new path in a writable directory.';
+
+  it('a test calls it alone with the options validationOptions builds over a mock', async () => {
+    const options = validationOptions(mockProcess({ cwd: root }), {
+      input: { global: false, kind: 'option', name: 'target' },
+      phase: 'invocation',
+    });
+    const validator = path({ access: 'read' })['~standard'];
+    const found = await validator.validate('a.txt', options);
+    expect(found).toEqual({ value: join(root, 'a.txt') });
+    const missing = await validator.validate('missing', options);
+    expect(missing.issues?.map((issue) => issue.message)).toEqual([readFile]);
+  });
 
   it('read accepts a readable file, following a symbolic link', () => {
     expect(run({ access: 'read' }, root, 'a.txt')).toEqual(accepted(join(root, 'a.txt')));

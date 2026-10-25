@@ -272,7 +272,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/validators/context-outside-run
 
-**Context outside a run.** Core attaches the validation context to each call it makes to a validator. A call from anywhere else, such as a unit test, carries none, so a validator that reads it runs inside an Application run.
+**Context outside a run.** Core attaches the validation context to each call it makes to a validator. A call from anywhere else, such as a unit test, carries none, so a validator that reads it runs inside an Application run, or a test passes it the options validationOptions builds.
 
 ### @loomcli/validators/input-schema
 

@@ -10,7 +10,7 @@ import { declarationFault, faultOf, published, verdict } from './support.js';
 const dialect = 'https://json-schema.org/draft/2020-12/schema';
 
 const outsideRun =
-  'This validator reads the validation context, which only exists during a Loom run. Call the validator through an Application run, or leave the context unread.';
+  'This validator reads the validation context, which only exists during a Loom run. Call the validator through an Application run or with the options validationOptions builds, or leave the context unread.';
 
 const lowercase = createValidator({
   inputSchema: { pattern: '^[a-z]+$', type: 'string' },

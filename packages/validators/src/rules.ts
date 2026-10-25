@@ -81,7 +81,7 @@ const inputSchema = catalogRule('input-schema', {
 /** A validator that read the validation context outside a Loom run. */
 const contextOutsideRun = catalogRule('context-outside-run', {
   explanation:
-    'Core attaches the validation context to each call it makes to a validator. A call from anywhere else, such as a unit test, carries none, so a validator that reads it runs inside an Application run.',
+    'Core attaches the validation context to each call it makes to a validator. A call from anywhere else, such as a unit test, carries none, so a validator that reads it runs inside an Application run, or a test passes it the options validationOptions builds.',
   headline: 'Context outside a run',
 });
 

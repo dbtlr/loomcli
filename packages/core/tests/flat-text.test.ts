@@ -6,7 +6,7 @@ import type { Capabilities } from '../src/rendering.js';
 import { scanAnsi } from '../src/style-ansi.js';
 import { blockWidth, isFlat, layout, renderedUnits } from '../src/style-layout.js';
 import { lastLineHasText } from '../src/style-lines.js';
-import { resolveText, width } from '../src/style-resolve.js';
+import { markedWidth, resolveText } from '../src/style-resolve.js';
 import { emptyAttributes, transition } from '../src/style-state.js';
 import { parseText } from '../src/style-wire.js';
 import { plainCaps } from '../src/style-wrap.js';
@@ -65,7 +65,7 @@ test('a flat text measures as the layout measures it', () => {
     destinations
       .filter(
         (caps) =>
-          width(text, palette, caps) !==
+          markedWidth(text, palette, caps) !==
           blockWidth(layout(scanAnsi(parseText(text, palette, caps), caps))),
       )
       .map(() => text),

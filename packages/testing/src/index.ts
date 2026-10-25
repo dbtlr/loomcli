@@ -3,6 +3,7 @@ export { mockProcess } from './mock-process.js';
 export type {
   MockFields,
   MockProcess,
+  MockStdin,
   MockTerminal,
   Program,
   ProgramAnswer,

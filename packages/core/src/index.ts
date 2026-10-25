@@ -5,7 +5,13 @@ export { Command, isPortableName } from './command.js';
 export { escapeControlCharacters } from './controls.js';
 export { applicationDirectory } from './directory.js';
 export type { ApplicationDirectory, DirectoryLookup } from './directory.js';
-export { questionValidationOptions, validationContext, validationContextKey } from './context.js';
+export {
+  questionValidationOptions,
+  validationContext,
+  validationContextKey,
+  validationOptions,
+} from './context.js';
+export type { ValidationOptionsContext } from './context.js';
 export { diagnosticRule } from './diagnostic.js';
 export { isFailureCode, isRuleIdentity } from './identity.js';
 export { isDeclaredName } from './options.js';
@@ -73,6 +79,7 @@ export type { ViewContext } from './types.js';
 export type { Background } from './background.js';
 export { nowrap, pad, style } from './style.js';
 export { splitLines } from './style-lines.js';
+export { width } from './style-resolve.js';
 export { reportedSpelling } from './inspect.js';
 export { issuePath } from './validation.js';
 export type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec';

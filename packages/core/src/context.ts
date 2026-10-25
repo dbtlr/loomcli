@@ -1,6 +1,13 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import type { ActionContext, SuppliedInputs, ValidationContext } from './types.js';
+import { captureHost, settleTerminal, statedBackground } from './host.js';
+import type {
+  ActionContext,
+  InputIdentity,
+  ProcessHandle,
+  SuppliedInputs,
+  ValidationContext,
+} from './types.js';
 
 /** The `libraryOptions` key core writes its context under. It names the package that owns it. */
 const validationContextKey = '@loomcli/core';
@@ -52,6 +59,59 @@ function questionValidationOptions(
   });
 }
 
+/** A context a test builds outside a run: the default or the invocation phase, with its fields. */
+type ValidationOptionsContext =
+  | { readonly phase: 'default'; readonly input: InputIdentity }
+  | {
+      readonly phase: 'invocation';
+      readonly input: InputIdentity;
+      /** `[]` when omitted, the root. */
+      readonly command?: readonly string[];
+      /** `[]` when omitted. */
+      readonly passthrough?: readonly string[];
+      /** `{ args: {}, options: {} }` when omitted. */
+      readonly supplied?: SuppliedInputs;
+    };
+
+/**
+ * The application name the host capture looks up an installation record under. Outside a run no
+ * Application names one, and only a compiled binary with a baked release asset reads the record,
+ * so the empty name stands for none: the record it would find, `installation/install.json` right
+ * under the base folder, belongs to no application. A test running from source reads no record.
+ */
+const noApplication = '';
+
+/**
+ * The Standard Schema options a run passes to a validator in the default or invocation phase,
+ * built over a process handle, so a test calls one validator with no Application. The host is
+ * captured as `run()` captures it at entry, and nothing a run adds later applies: no environment
+ * preparation, and no background query, so the background is the one the handle's terminal states.
+ * A handle a run would fail to capture throws the failure the run would report.
+ */
+function validationOptions(
+  handle: ProcessHandle,
+  context: ValidationOptionsContext,
+): StandardSchemaV1.Options {
+  const capture = captureHost(noApplication, handle, handle.stderr);
+  if ('failure' in capture) {
+    throw capture.failure;
+  }
+  const { host } = capture;
+  settleTerminal(host.terminal, statedBackground(host.terminal));
+  const input = { ...context.input };
+  if (context.phase === 'default') {
+    return schemaOptions({ host, input, phase: 'default' });
+  }
+  return schemaOptions({
+    command: [...(context.command ?? [])],
+    host,
+    input,
+    passthrough: [...(context.passthrough ?? [])],
+    phase: 'invocation',
+    supplied: copiedSupplied(context.supplied ?? { args: {}, options: {} }),
+  });
+}
+
 /** Reads the context core attached to a schema call, or undefined when another caller ran it. */
 function validationContext(
   options: StandardSchemaV1.Options | undefined,
@@ -60,4 +120,11 @@ function validationContext(
   return carried !== null && typeof carried === 'object' ? emitted.get(carried) : undefined;
 }
 
-export { questionValidationOptions, schemaOptions, validationContext, validationContextKey };
+export type { ValidationOptionsContext };
+export {
+  questionValidationOptions,
+  schemaOptions,
+  validationContext,
+  validationContextKey,
+  validationOptions,
+};

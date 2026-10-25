@@ -29,7 +29,8 @@ const dialect = 'https://json-schema.org/draft/2020-12/schema';
 /** A read of the context outside a run, which no declaration call stands for. */
 function unavailable(): never {
   throw new DeclarationError(contextOutsideRun, {
-    correction: 'Call the validator through an Application run, or leave the context unread.',
+    correction:
+      'Call the validator through an Application run or with the options validationOptions builds, or leave the context unread.',
     sentence: 'This validator reads the validation context, which only exists during a Loom run.',
   });
 }
