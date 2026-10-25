@@ -8,7 +8,7 @@ Core exports the style helpers, rendering context, and rendering policy describe
 
 ## Strings and composition
 
-Core exports `style`, `glyph`, `pad`, `nowrap`, `splitLines`, and `escapeControlCharacters`. Style calls accept one string and return an ordinary string containing internal markup. Interpolation, concatenation, arrays, and `join()` work without a wrapper type or a conversion step. `style.adaptive` is the one member that styles no text: it builds a theme entry for each background, under [Background](background.md).
+Core exports `style`, `glyph`, `pad`, `nowrap`, `splitLines`, `escapeControlCharacters`, and `width`. Style calls accept one string and return an ordinary string containing internal markup. Interpolation, concatenation, arrays, and `join()` work without a wrapper type or a conversion step. `style.adaptive` is the one member that styles no text: it builds a theme entry for each background, under [Background](background.md).
 
 ```ts
 import { glyph, pad, style } from '@loomcli/core';
@@ -368,6 +368,23 @@ splitLines(style.red('one\ntwo'));
 ```
 
 Lane views receive the original message string, including line breaks and authored styles. Core does not split it into a new data structure or infer that later lines are details. A lane view owns its glyph gutter and continuation indentation. It measures the selected glyph form rather than assuming one column. The built-in `info`, `success`, `warn`, and `error` lanes prefix the first line with the matching glyph and one space. The `debug` lane prefixes it with `glyph.pointerSmall` and one space, and the `trace` lane with two spaces, `glyph.lineVerticalDashed0`, and one space, so a trace line's gutter measures the glyph plus three. The `debug` lane styles its glyph and the message `dim` and the `trace` lane styles them `dim.faint`, the spaces of either gutter unstyled, and the message keeps its author's styles inside that frame. Continuation lines use spaces for that gutter without repeating the glyph. Those six lanes also wrap the message with `wrap` at `columns` minus the measured gutter, which fits the message in the columns right of the gutter, and every continuation line carries the gutter, whether the break is authored or wrapped. When `columns` is defined, before they wrap, they expand each tab in the message to spaces with `expandTabs`, counted from the start of its own line of the message, inside style and `nowrap` frames too, so the gutter moves no tab stop and lane output on a terminal holds no tab. With `columns` undefined, as on a pipe or under an invocation by name, lane output is byte for byte what it would be without wrapping, tabs included. With no column left after the gutter, the message is not wrapped, and its tabs still expand. `print` remains prefix-free and never wraps. An application that wants unwrapped lanes replaces the lane view, as it can replace any lane view. The semantic methods retain their string-only call shape and newline contract. Each lane is a declared view core exports under `lanes`, and an application replaces its function through `views` as [Views](views.md) describes; the newline the semantic method appends is outside the view and survives any override.
+
+### Measuring written text
+
+```ts
+function width(text: string): number;
+```
+
+```ts
+import { width } from '@loomcli/core';
+
+width('\u001b[1mName\u001b[22m  \u001b]8;;https://example.com\u001b\\docs\u001b]8;;\u001b\\'); // 10
+width('名前\tok'); // 10
+```
+
+- **What it measures.** `width` counts the columns of the printable text a stream received, after it removes every control sequence, such as a mock's [`stdout.text`](../libs/testing.md#mockprocess), so a test checks a render against a width with the measure core renders with.
+- **The same columns.** It skips every terminal control sequence, an SGR style, an OSC 8 hyperlink, and a cursor movement alike, and counts what remains as the view context's `width` counts it: the same grapheme widths, the same tab stops, the widest line, and LF and CRLF as line breaks. It does not emulate a terminal, so text that moves the cursor back and overwrites itself measures as if nothing were overwritten, as the view context's `width` does.
+- **Written text, not marked text.** It reads no marked-string frame and resolves no glyph. A view measures its own marked text with the view context's `width`, which resolves the glyph forms of its destination first.
 
 ## When author code fails
 

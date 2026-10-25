@@ -330,6 +330,10 @@ _Avoid_: Environment (for the whole object), process, platform, context
 The one object a run reads every process fact from and sends every process effect to, such as its exit status, the signals core listens for and re-raises, and the child programs the run starts, bound when the run enters and never replaced during it. It owns no clock, timer, randomness, network, or file system. `processHandle()` builds the real process's handle, and `@loomcli/testing`'s `mockProcess()` builds a sealed one that reads nothing from the process a test runs in and scripts each child program instead of running it.
 _Avoid_: Host (for the handle), process object, host overrides
 
+**Mock keyboard**:
+The stdin a mock process handle has in place of piped text when a test gives its terminal scripted keys: a terminal of the mock's own signal source, which hands one scripted entry each time a reader switches it to raw mode, so a question reads what the operator would type once it appears.
+_Avoid_: Fake stdin, input script, typeahead
+
 **Signal source**:
 The part of a process handle that delivers process signals and the process's own end. Every handle over the real process shares its one signal source, a mock has its own, and a signal reaches only the runs whose handle shares the source it was raised on.
 _Avoid_: Process lane (for the source), signal bus

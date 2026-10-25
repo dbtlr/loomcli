@@ -137,6 +137,47 @@ A default and an [implied value](options.md#implied-values) validate before any 
 
 An omitted Boolean or counted option reads as `undefined` here, because the polarity value and `0` are absent values, not supplied tokens. A count an input source filled reads as the number it filled, so `SuppliedInputs.options`, the exported type of `supplied.options`, admits a `number` for a counted option. A bare spelling of a string option with an implied value reads as the raw implied string, before its validator, as a Boolean's entry holds the value of its spelling, because the operator supplied the option. Absence rules do not change: an omitted optional value with no default never reaches its validator, and no context is produced for it, unless its declaration asks for that call with `validateOmitted: true`.
 
+### Validation options outside a run
+
+```ts
+import type { InputIdentity, ProcessHandle, StandardSchemaV1, SuppliedInputs } from '@loomcli/core';
+
+type ValidationOptionsContext =
+  | { readonly phase: 'default'; readonly input: InputIdentity }
+  | {
+      readonly phase: 'invocation';
+      readonly input: InputIdentity;
+      readonly command?: readonly string[]; // [] when omitted, the root
+      readonly passthrough?: readonly string[]; // [] when omitted
+      readonly supplied?: SuppliedInputs; // { args: {}, options: {} } when omitted
+    };
+
+function validationOptions(
+  process: ProcessHandle,
+  context: ValidationOptionsContext,
+): StandardSchemaV1.Options;
+```
+
+```ts
+import { validationOptions } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
+import { dateTime } from '@loomcli/validators';
+
+const options = validationOptions(mockProcess({ timeZone: 'Europe/Paris' }), {
+  input: { global: false, kind: 'option', name: 'at' },
+  phase: 'default',
+});
+const result = await dateTime()['~standard'].validate('2026-06-01 09:00', options);
+// { value: 2026-06-01T07:00:00.000Z }, read in the mock's time zone
+```
+
+- **What it builds.** `validationOptions` returns the Standard Schema options a run passes to a validator in the `default` or `invocation` phase, so a test calls one validator with no Application, and `validationContext(options)` reads the context back as it does inside a run.
+- **The host.** The context's `host` is captured from `process` as a run captures its host at entry: the same facts, read once. Nothing a run adds after entry is applied: no [environment preparation](plugin-contract.md#environment-preparation) runs, the background is the one the handle's terminal states, or `undefined`, and no query is written.
+- **Capture failures.** A handle a run would fail to capture throws the error the run would report, such as a `WorkingDirectoryError` for a working directory `cwd()` cannot read.
+- **Omitted fields.** An `invocation` context's omitted `command` is `[]`, the root, its omitted `passthrough` is `[]`, and its omitted `supplied` holds no supplied value, `{ args: {}, options: {} }`. A supplied `supplied` is copied, as each call of a run is given its own copy.
+- **One call's options.** Each call builds a fresh context, and its `host` belongs to that call alone.
+- **Questions.** The `question` phase has its own builder, `questionValidationOptions`, above.
+
 ## Absence and defaults
 
 | Declaration and input                           | Action value or failure                           |
