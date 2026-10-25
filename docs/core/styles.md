@@ -382,8 +382,8 @@ width('\u001b[1mName\u001b[22m  \u001b]8;;https://example.com\u001b\\docs\u001b]
 width('名前\tok'); // 10
 ```
 
-- **What it measures.** `width` counts the columns a terminal shows for text as a stream received it, such as a mock's [`stdout.text`](../libs/testing.md#mockprocess), so a test checks a render against a width with the measure core renders with.
-- **The same columns.** It skips every terminal control sequence, an SGR style, an OSC 8 hyperlink, and a cursor movement alike, and counts what remains as the view context's `width` counts it: the same grapheme widths, the same tab stops, the widest line, and LF and CRLF as line breaks.
+- **What it measures.** `width` counts the columns of the printable text a stream received, after it removes every control sequence, such as a mock's [`stdout.text`](../libs/testing.md#mockprocess), so a test checks a render against a width with the measure core renders with.
+- **The same columns.** It skips every terminal control sequence, an SGR style, an OSC 8 hyperlink, and a cursor movement alike, and counts what remains as the view context's `width` counts it: the same grapheme widths, the same tab stops, the widest line, and LF and CRLF as line breaks. It does not emulate a terminal, so text that moves the cursor back and overwrites itself measures as if nothing were overwritten, as the view context's `width` does.
 - **Written text, not marked text.** It reads no marked-string frame and resolves no glyph. A view measures its own marked text with the view context's `width`, which resolves the glyph forms of its destination first.
 
 ## When author code fails

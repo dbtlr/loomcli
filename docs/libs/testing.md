@@ -270,13 +270,21 @@ A signal raised on the mock reaches the runs that hold it, so a test cancels whe
 `app.invoke(path, values, { process: mock, onProgress })` runs one Command with typed values on the mock's facts and returns the [invocation outcome](../core/invocation.md#invocation-by-name), with the run's output and messages as text. `onProgress` receives each [progress event](../core/output.md#progress-events) in order, so a test collects them in an array and compares it.
 
 ```ts
-const events: ProgressEvent[] = [];
-const outcome = await application.invoke(['sync'], { options: { all: true } }, {
-  onProgress: (event) => events.push(event),
-  process: mockProcess(),
+import type { ProgressEvent } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
+import { expect, test } from 'vitest';
+
+import { application } from './application.js';
+
+test('sync reports its progress to the end', async () => {
+  const events: ProgressEvent[] = [];
+  const outcome = await application.invoke(['sync'], { options: { all: true } }, {
+    onProgress: (event) => events.push(event),
+    process: mockProcess(),
+  });
+  expect(outcome.status).toBe('completed');
+  expect(events.at(-1)?.state).toBe('ended');
 });
-expect(outcome.status).toBe('completed');
-expect(events.at(-1)?.state).toBe('ended');
 ```
 
 ### Checking that output fits the screen
@@ -287,13 +295,23 @@ A test reads the bytes the run wrote, so it measures them with core's [`width`](
 import { stripVTControlCharacters } from 'node:util';
 
 import { width } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
+import { expect, test } from 'vitest';
 
-const mock = mockProcess({ argv: ['list'], env: { FORCE_COLOR: '1' }, terminal: { columns: 60, rows: 24 } });
-await application.run({ process: mock });
-for (const line of mock.stdout.text.split('\n')) {
-  expect(width(line)).toBeLessThanOrEqual(60);
-}
-expect(stripVTControlCharacters(mock.stdout.text)).toContain('NAME');
+import { application } from './application.js';
+
+test('the colored list fits a 60-column terminal', async () => {
+  const mock = mockProcess({
+    argv: ['list'],
+    env: { FORCE_COLOR: '1' },
+    terminal: { columns: 60, rows: 24 },
+  });
+  await application.run({ process: mock });
+  for (const line of mock.stdout.text.split('\n')) {
+    expect(width(line)).toBeLessThanOrEqual(60);
+  }
+  expect(stripVTControlCharacters(mock.stdout.text)).toContain('NAME');
+});
 ```
 
 ### Testing a validator alone
@@ -302,14 +320,20 @@ A validator that reads its [validation context](../core/validation.md#validation
 
 ```ts
 import { validationOptions } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
 import { path } from '@loomcli/validators';
+import { expect, test } from 'vitest';
 
-const options = validationOptions(mockProcess({ cwd: fixture }), {
-  input: { global: false, kind: 'option', name: 'file' },
-  phase: 'invocation',
+const fixture = new URL('./fixtures/doc', import.meta.url).pathname;
+
+test('path rejects a file the working directory does not hold', async () => {
+  const options = validationOptions(mockProcess({ cwd: fixture }), {
+    input: { global: false, kind: 'option', name: 'file' },
+    phase: 'invocation',
+  });
+  const result = await path({ access: 'read' })['~standard'].validate('missing.json', options);
+  expect(result.issues?.[0]?.message).toBe('Expected a readable file that exists.');
 });
-const result = await path({ access: 'read' })['~standard'].validate('missing.json', options);
-expect(result.issues?.[0]?.message).toBe('Expected a readable file that exists.');
 ```
 
 ### Substituting a provider
