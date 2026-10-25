@@ -720,6 +720,11 @@ function keyboard(keys: readonly string[]) {
   return { columns: 80, keys, rows: 24 };
 }
 
+/** A mock whose terminal has a keyboard only when keys are given. */
+function withKeys(argv: string[], keys?: string[]) {
+  return mockProcess({ argv, terminal: { columns: 80, keys, rows: 24 } });
+}
+
 /** The sentence a raw-mode switch with no entry left fails the keyboard with. */
 const noKeysLeft = 'mockProcess has no keys left for this read. Add an entry to terminal.keys.';
 
@@ -735,6 +740,19 @@ describe('the keyboard', () => {
     const code = await setup().run({ process: mock });
     expect([code, mock.stdout.text]).toEqual([0, 'Saved 8080 for ann.\n']);
     expect(mock.stderr.text).toContain('Supply a number.');
+  });
+
+  it('one entry answers two questions an action opens at once', async () => {
+    const mock = mockProcess({ terminal: keyboard(['8080\r9090\r']) });
+    const app = new Application('app').action(async (context) => {
+      const [first, second] = await Promise.all([
+        ask(context, { message: 'First' }),
+        ask(context, { message: 'Second' }),
+      ]);
+      await context.out.print(`${first} ${second}`);
+    });
+    const code = await app.run({ process: mock });
+    expect([code, mock.stdout.text]).toEqual([0, '8080 9090\n']);
   });
 
   it('Ctrl-C at the second question ends the run with 130, and the re-raise ends the mock', async () => {
@@ -822,5 +840,15 @@ describe('the keyboard', () => {
     expect(mockProcess({ stdin: 'x', terminal }).stdin.isTTY).toBe(false);
     // @ts-expect-error A keyboard is the run's stdin, so piped text cannot stand beside it.
     mockProcess({ stdin: 'x', terminal: keyboard([]) });
+  });
+
+  it('the types accept a terminal whose keys may be absent', () => {
+    expect(withKeys(['a']).stdin.isTTY).toBe(false);
+    const keys: string[] | undefined = undefined as string[] | undefined;
+    const conditional = mockProcess({
+      terminal: keys ? { columns: 80, keys, rows: 24 } : { columns: 80, rows: 24 },
+    });
+    expect(conditional.stdin.isTTY).toBe(false);
+    expect(mockProcess({ terminal: { columns: 80, keys: [], rows: 24 } }).stdin.isTTY).toBe(true);
   });
 });

@@ -78,18 +78,18 @@ type MockFields = MockFacts &
   (
     | {
         /** Piped text; empty when omitted. */
-        readonly stdin?: string;
+        readonly stdin: string;
         /** No terminal when omitted. */
         readonly terminal?: MockTerminal & { readonly keys?: undefined };
       }
     | {
-        /** A keyboard is the run's stdin, so no piped text. */
+        /** Piped text; empty when omitted. */
         readonly stdin?: undefined;
         /**
-         * Puts stdin on the terminal as its keyboard; each entry is what the operator types while one
-         * reader holds it.
+         * No terminal when omitted. With `keys`, puts stdin on the terminal as its keyboard; each entry
+         * is what the operator types while one reader holds it.
          */
-        readonly terminal: MockTerminal & { readonly keys: readonly string[] };
+        readonly terminal?: MockTerminal & { readonly keys?: readonly string[] | undefined };
       }
   );
 
@@ -266,7 +266,11 @@ const noKeysLeft = 'mockProcess has no keys left for this read. Add an entry to 
  * returned, so a reader that switches inside its own data handler, as a resume after Ctrl-Z does,
  * receives the entry after the handler drops the keys its interrupt left unread. A switch whose
  * reader then writes the background query is answered with the attributes reply alone and uses no
- * entry. A switch with no entry left emits the error that fails the reader's pending read.
+ * entry. The hand-over waits one turn because both of core's raw-mode readers act in the turn they
+ * switch: the prompts reader attaches its `data` and `error` listeners, and the background query
+ * writes its query (`background-query.ts`, `exchange`). By the hand-over, the keyboard knows whose
+ * hold it is, and the reader is listening for the entry or the error. A switch with no entry left
+ * emits the error that fails the reader's pending read.
  */
 class Keyboard extends Readable implements MockStdin {
   readonly isTTY = true;

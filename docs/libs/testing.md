@@ -116,12 +116,12 @@ interface MockFacts extends Omit<ProcessFields, 'stdin' | 'stdout' | 'stderr' | 
 type MockFields = MockFacts &
   (
     | {
-        readonly stdin?: string; // piped text; empty when omitted
+        readonly stdin: string; // piped text; empty when omitted
         readonly terminal?: MockTerminal & { readonly keys?: undefined }; // no terminal when omitted
       }
     | {
-        readonly stdin?: undefined; // a keyboard is the run's stdin, so no piped text
-        readonly terminal: MockTerminal & { readonly keys: readonly string[] }; // puts stdin on the terminal as its keyboard; each entry is what the operator types while one reader holds it
+        readonly stdin?: undefined; // piped text; empty when omitted
+        readonly terminal?: MockTerminal & { readonly keys?: readonly string[] | undefined }; // no terminal when omitted; with keys, puts stdin on the terminal as its keyboard; each entry is what the operator types while one reader holds it
       }
   );
 interface RecordingStream extends Writable {
