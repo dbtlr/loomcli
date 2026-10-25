@@ -23,12 +23,12 @@ A global option declares no presence rule. Its validation runs on every Command,
 `new Command(name, options?)` declares a named Command with `argument()`, `option()`, `alias()`, `command()`, `action()`, and `extend()`. A Command name is a portable name, the rule [Application declarations](application.md) states, because an operator types it at the prompt the way the application name is typed. Names stay plain strings; no handler object is keyed by command name. `configured.command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth, as [Nested Commands and groups](#nested-commands-and-groups) states. A Command takes one options object like the Application does: `description` is the core fact every projection reads under the rule [Extensions](extensions.md) states, `hidden` and `deprecated` are the two core facts [Hidden and deprecated members](#hidden-and-deprecated-members) describes, and `extensions` carries the [extension values](extensions.md) plugins define. Globals are declared on the Application, which registers its environment as shown below.
 
 ```ts
-interface CommandOptions {
+interface CommandOptions<Uses extends readonly AnyProvider[] = []> {
   description?: string;
   hidden?: boolean;
   deprecated?: string;
   extensions?: readonly ExtensionValue<'command'>[];
-  uses?: readonly AnyProvider[]; // see Providers
+  uses?: Uses; // see Providers
 }
 ```
 
