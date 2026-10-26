@@ -1,9 +1,11 @@
 // Acceptance plan: see packages/validators/tests/catalog.test.ts.
 
+import { Application, issuePath, override, InputError } from '@loomcli/core';
 import type { InputProblem, StandardSchemaV1 } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
 import { describe, expect, expectTypeOf, it, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { integer, integerRangeIssue, oneOf } from '../src/index.js';
 import type { IssueCode } from '../src/index.js';
 import { declarationFault, faultOf, foreignIssue, verdict } from './support.js';
 
@@ -11,7 +13,49 @@ const catalog = await import('../src/index.js');
 
 const prefix = '@loomcli/validators/';
 
-const fixture = new URL('fixtures/override-run.mjs', import.meta.url);
+/**
+ * One run of an application whose `InputError` view rewords the catalog's `integer-range`
+ * sentence and keeps every other issue's sentence, as the validators reference shows.
+ */
+async function serve(argv: string[]) {
+  const app = new Application('serve', {
+    views: [
+      override(InputError, {
+        render: (failure, { hints, style }) =>
+          [
+            ...failure.problems
+              .flatMap((problem) => {
+                if (problem.reason === 'missing') {
+                  return [`${problem.spelling} is required. Supply a value.`];
+                }
+                if (problem.reason !== 'invalid') {
+                  return [];
+                }
+                return problem.issues.map((issue) => {
+                  const at = issuePath(issue);
+                  const subject =
+                    at === undefined ? problem.spelling : `${problem.spelling} at ${at}`;
+                  const range = integerRangeIssue.read(issue);
+                  return range === undefined
+                    ? `${subject}: ${issue.message}`
+                    : `${subject} takes from ${String(range.min)} to ${String(range.max)} workers.`;
+                });
+              })
+              .map((line) => `serve: ${style.escape(line)}`),
+            ...hints,
+          ]
+            .map((line) => `${line}\n`)
+            .join(''),
+      }),
+    ],
+  })
+    .option('workers', { type: 'string', validate: integer({ max: 64, min: 1 }) })
+    .option('mode', { type: 'string', validate: oneOf(['dev', 'prod']) })
+    .action(({ options, out }) => out.print(`served ${String(options.workers)}`));
+  const mock = mockProcess({ argv });
+  const status = await app.run({ process: mock });
+  return { status, stderr: mock.stderr.text, stdout: mock.stdout.text };
+}
 
 /** One catalog code: its descriptor, the validator and token that earn it, and what it carries. */
 type Row = [
@@ -372,16 +416,16 @@ test('read types the parameters an InputError view receives', () => {
 });
 
 describe('an InputError override rewords one code through run()', () => {
-  it('reads integer-range and writes its own sentence', () => {
-    expect(invoke(fixture, ['--workers', '99'])).toEqual({
+  it('reads integer-range and writes its own sentence', async () => {
+    await expect(serve(['--workers', '99'])).resolves.toEqual({
       status: 2,
       stderr: 'serve: --workers takes from 1 to 64 workers.\n',
       stdout: '',
     });
   });
 
-  it('leaves every other issue its catalog sentence', () => {
-    expect(invoke(fixture, ['--workers', 'many', '--mode', 'test'])).toEqual({
+  it('leaves every other issue its catalog sentence', async () => {
+    await expect(serve(['--workers', 'many', '--mode', 'test'])).resolves.toEqual({
       status: 2,
       stderr:
         'serve: --workers takes from 1 to 64 workers.\nserve: --mode: Expected one of: dev, prod.\n',
@@ -389,8 +433,8 @@ describe('an InputError override rewords one code through run()', () => {
     });
   });
 
-  it('runs the action for accepted input', () => {
-    expect(invoke(fixture, ['--workers', '8'])).toEqual({
+  it('runs the action for accepted input', async () => {
+    await expect(serve(['--workers', '8'])).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: 'served 8\n',

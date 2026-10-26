@@ -4,11 +4,10 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { validationOptions } from '@loomcli/core';
+import { Application, validationOptions } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { afterAll, beforeAll, describe, expect, it, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { path } from '../src/index.js';
 import {
   conforms,
@@ -24,24 +23,36 @@ const dialect = 'https://json-schema.org/draft/2020-12/schema';
 const outsideRun =
   'This validator reads the validation context, which only exists during a Loom run. Call the validator through an Application run or with the options validationOptions builds, or leave the context unread.';
 
-const fixture = new URL('fixtures/path-run.mjs', import.meta.url);
-
 /** Whether the process bypasses permission bits, so an unreadable entry would still read. */
 const privileged = process.getuid?.() === 0;
 
-/** One run of the fixture application with `--target` validated by `path(options)`. */
-function run(options: object, cwd: string, token: string, platform: string = process.platform) {
-  return invoke(fixture, [JSON.stringify(options), cwd, platform, `--target=${token}`]);
+/** What one validation of `token` by `path(options)` answered over a mock whose cwd is `cwd`. */
+async function validate(
+  options: object,
+  cwd: string,
+  token: string,
+  platform: NodeJS.Platform = process.platform,
+) {
+  const result = await path(options)['~standard'].validate(
+    token,
+    validationOptions(mockProcess({ cwd, platform }), {
+      input: { global: false, kind: 'option', name: 'target' },
+      phase: 'invocation',
+    }),
+  );
+  return result.issues === undefined
+    ? { value: result.value }
+    : { messages: result.issues.map((issue) => issue.message) };
 }
 
-/** The run of an accepted token: the action prints the path the validator output. */
+/** The validation of an accepted token: the validator output the resolved path. */
 function accepted(resolved: string) {
-  return { status: 0, stderr: '', stdout: `${JSON.stringify(resolved)}\n` };
+  return { value: resolved };
 }
 
-/** The run of a rejected token: core reports the one sentence as invalid input. */
+/** The validation of a rejected token: the one sentence the validator reports. */
 function refused(message: string) {
-  return { status: 2, stderr: `probe: Option "--target": ${message}\n`, stdout: '' };
+  return { messages: [message] };
 }
 
 test('path() publishes a nonempty string and nothing about the filesystem', () => {
@@ -64,8 +75,8 @@ test.each([
   'dir/',
   '\u{1F600}.txt',
   ' ',
-])('path() accepts %j in a run and the token satisfies its published schema', (token) => {
-  expect(run({}, '/loom/work', token, 'linux').status).toBe(0);
+])('path() accepts %j in a run and the token satisfies its published schema', async (token) => {
+  await expect(validate({}, '/loom/work', token, 'linux')).resolves.toHaveProperty('value');
   expect(conforms(path(), token)).toBe(true);
 });
 
@@ -94,21 +105,39 @@ test('a kind without an access is a type error, because kind narrows the access 
 });
 
 describe('inside a run with no access', () => {
-  it('a relative token resolves against the host cwd and normalizes', () => {
-    expect(run({}, '/loom/work', 'a/../b/./c', 'linux')).toEqual(accepted('/loom/work/b/c'));
+  it('a relative token resolves against the host cwd and normalizes', async () => {
+    await expect(validate({}, '/loom/work', 'a/../b/./c', 'linux')).resolves.toEqual(
+      accepted('/loom/work/b/c'),
+    );
   });
 
-  it('an absolute token keeps its own root', () => {
-    expect(run({}, '/loom/work', '/etc//hosts', 'linux')).toEqual(accepted('/etc/hosts'));
+  it('an absolute token keeps its own root', async () => {
+    await expect(validate({}, '/loom/work', '/etc//hosts', 'linux')).resolves.toEqual(
+      accepted('/etc/hosts'),
+    );
   });
 
-  it('nothing on the filesystem is read', () => {
-    expect(run({}, '/loom/missing', 'nowhere', 'linux')).toEqual(accepted('/loom/missing/nowhere'));
+  it('nothing on the filesystem is read', async () => {
+    await expect(validate({}, '/loom/missing', 'nowhere', 'linux')).resolves.toEqual(
+      accepted('/loom/missing/nowhere'),
+    );
   });
 
-  it('the empty string is rejected', () => {
-    expect(run({}, '/loom/work', '')).toEqual(
+  it('the empty string is rejected', async () => {
+    await expect(validate({}, '/loom/work', '')).resolves.toEqual(
       refused('Expected a nonempty path with no NUL character.'),
+    );
+  });
+
+  it('a run reports a rejected path as invalid input, with the sentence', async () => {
+    const mock = mockProcess({ argv: ['--target='], cwd: '/loom/work', platform: 'linux' });
+    const app = new Application('probe')
+      .option('target', { type: 'string', validate: path() })
+      .action(({ options, out }) => out.print(JSON.stringify(options.target)));
+    await expect(app.run({ process: mock })).resolves.toBe(2);
+    expect(mock.stdout.text).toBe('');
+    expect(mock.stderr.text).toBe(
+      'probe: Option "--target": Expected a nonempty path with no NUL character.\n',
     );
   });
 });
@@ -157,9 +186,11 @@ describe('inside a run with access', () => {
     expect(missing.issues?.map((issue) => issue.message)).toEqual([readFile]);
   });
 
-  it('read accepts a readable file, following a symbolic link', () => {
-    expect(run({ access: 'read' }, root, 'a.txt')).toEqual(accepted(join(root, 'a.txt')));
-    expect(run({ access: 'read', kind: 'file' }, root, 'link')).toEqual(
+  it('read accepts a readable file, following a symbolic link', async () => {
+    await expect(validate({ access: 'read' }, root, 'a.txt')).resolves.toEqual(
+      accepted(join(root, 'a.txt')),
+    );
+    await expect(validate({ access: 'read', kind: 'file' }, root, 'link')).resolves.toEqual(
       accepted(join(root, 'link')),
     );
   });
@@ -171,80 +202,102 @@ describe('inside a run with access', () => {
     ['a dangling link', 'dangling'],
     ['a link loop', 'loop'],
     ['a name too long', 'n'.repeat(300)],
-  ])('read of a file rejects %s', (_name, token) => {
-    expect(run({ access: 'read' }, root, token)).toEqual(refused(readFile));
+  ])('read of a file rejects %s', async (_name, token) => {
+    await expect(validate({ access: 'read' }, root, token)).resolves.toEqual(refused(readFile));
   });
 
-  it.skipIf(privileged)('read rejects a file the process cannot read', () => {
-    expect(run({ access: 'read' }, root, 'secret.txt')).toEqual(refused(readFile));
+  it.skipIf(privileged)('read rejects a file the process cannot read', async () => {
+    await expect(validate({ access: 'read' }, root, 'secret.txt')).resolves.toEqual(
+      refused(readFile),
+    );
   });
 
-  it('read of a directory accepts a directory and rejects a file', () => {
-    expect(run({ access: 'read', kind: 'directory' }, root, 'sub')).toEqual(
+  it('read of a directory accepts a directory and rejects a file', async () => {
+    await expect(validate({ access: 'read', kind: 'directory' }, root, 'sub')).resolves.toEqual(
       accepted(join(root, 'sub')),
     );
-    expect(run({ access: 'read', kind: 'directory' }, root, 'a.txt')).toEqual(
+    await expect(validate({ access: 'read', kind: 'directory' }, root, 'a.txt')).resolves.toEqual(
       refused(readDirectory),
     );
   });
 
-  it('read of any accepts a file and a directory and rejects a missing entry', () => {
-    expect(run({ access: 'read', kind: 'any' }, root, 'a.txt')).toEqual(
+  it('read of any accepts a file and a directory and rejects a missing entry', async () => {
+    await expect(validate({ access: 'read', kind: 'any' }, root, 'a.txt')).resolves.toEqual(
       accepted(join(root, 'a.txt')),
     );
-    expect(run({ access: 'read', kind: 'any' }, root, 'sub/')).toEqual(accepted(join(root, 'sub')));
-    expect(run({ access: 'read', kind: 'any' }, root, 'missing')).toEqual(refused(readAny));
+    await expect(validate({ access: 'read', kind: 'any' }, root, 'sub/')).resolves.toEqual(
+      accepted(join(root, 'sub')),
+    );
+    await expect(validate({ access: 'read', kind: 'any' }, root, 'missing')).resolves.toEqual(
+      refused(readAny),
+    );
   });
 
-  it('write accepts an existing file and a new file in a writable directory', () => {
-    expect(run({ access: 'write' }, root, 'a.txt')).toEqual(accepted(join(root, 'a.txt')));
-    expect(run({ access: 'write' }, root, 'new.txt')).toEqual(accepted(join(root, 'new.txt')));
-    expect(run({ access: 'write' }, root, 'sub/new.txt')).toEqual(
+  it('write accepts an existing file and a new file in a writable directory', async () => {
+    await expect(validate({ access: 'write' }, root, 'a.txt')).resolves.toEqual(
+      accepted(join(root, 'a.txt')),
+    );
+    await expect(validate({ access: 'write' }, root, 'new.txt')).resolves.toEqual(
+      accepted(join(root, 'new.txt')),
+    );
+    await expect(validate({ access: 'write' }, root, 'sub/new.txt')).resolves.toEqual(
       accepted(join(root, 'sub', 'new.txt')),
     );
   });
 
-  it('write creates nothing', () => {
-    expect(run({ access: 'write' }, root, 'created.txt')).toEqual(
+  it('write creates nothing', async () => {
+    await expect(validate({ access: 'write' }, root, 'created.txt')).resolves.toEqual(
       accepted(join(root, 'created.txt')),
     );
-    expect(run({ access: 'read', kind: 'any' }, root, '.')).toEqual(accepted(root));
-    expect(run({ access: 'read', kind: 'any' }, root, 'created.txt')).toEqual(refused(readAny));
+    await expect(validate({ access: 'read', kind: 'any' }, root, '.')).resolves.toEqual(
+      accepted(root),
+    );
+    await expect(validate({ access: 'read', kind: 'any' }, root, 'created.txt')).resolves.toEqual(
+      refused(readAny),
+    );
   });
 
   it.each([
     ['a directory', 'sub'],
     ['a new file under a missing directory', 'missing/new.txt'],
     ['a new file under a file', 'a.txt/new.txt'],
-  ])('write of a file rejects %s', (_name, token) => {
-    expect(run({ access: 'write' }, root, token)).toEqual(refused(writeFile));
+  ])('write of a file rejects %s', async (_name, token) => {
+    await expect(validate({ access: 'write' }, root, token)).resolves.toEqual(refused(writeFile));
   });
 
-  it.skipIf(privileged)('write rejects a read-only file and a locked directory', () => {
-    expect(run({ access: 'write' }, root, 'readonly.txt')).toEqual(refused(writeFile));
-    expect(run({ access: 'write' }, root, 'locked/new.txt')).toEqual(refused(writeFile));
+  it.skipIf(privileged)('write rejects a read-only file and a locked directory', async () => {
+    await expect(validate({ access: 'write' }, root, 'readonly.txt')).resolves.toEqual(
+      refused(writeFile),
+    );
+    await expect(validate({ access: 'write' }, root, 'locked/new.txt')).resolves.toEqual(
+      refused(writeFile),
+    );
   });
 
-  it('write of a directory accepts an existing and a new directory and rejects a file', () => {
-    expect(run({ access: 'write', kind: 'directory' }, root, 'sub')).toEqual(
+  it('write of a directory accepts an existing and a new directory and rejects a file', async () => {
+    await expect(validate({ access: 'write', kind: 'directory' }, root, 'sub')).resolves.toEqual(
       accepted(join(root, 'sub')),
     );
-    expect(run({ access: 'write', kind: 'directory' }, root, 'fresh')).toEqual(
+    await expect(validate({ access: 'write', kind: 'directory' }, root, 'fresh')).resolves.toEqual(
       accepted(join(root, 'fresh')),
     );
-    expect(run({ access: 'write', kind: 'directory' }, root, 'a.txt')).toEqual(
+    await expect(validate({ access: 'write', kind: 'directory' }, root, 'a.txt')).resolves.toEqual(
       refused(writeDirectory),
     );
   });
 
-  it('write of any accepts a file, a directory, and a new path', () => {
-    expect(run({ access: 'write', kind: 'any' }, root, 'a.txt')).toEqual(
+  it('write of any accepts a file, a directory, and a new path', async () => {
+    await expect(validate({ access: 'write', kind: 'any' }, root, 'a.txt')).resolves.toEqual(
       accepted(join(root, 'a.txt')),
     );
-    expect(run({ access: 'write', kind: 'any' }, root, 'sub')).toEqual(accepted(join(root, 'sub')));
-    expect(run({ access: 'write', kind: 'any' }, root, 'fresh')).toEqual(
+    await expect(validate({ access: 'write', kind: 'any' }, root, 'sub')).resolves.toEqual(
+      accepted(join(root, 'sub')),
+    );
+    await expect(validate({ access: 'write', kind: 'any' }, root, 'fresh')).resolves.toEqual(
       accepted(join(root, 'fresh')),
     );
-    expect(run({ access: 'write', kind: 'any' }, root, 'missing/fresh')).toEqual(refused(writeAny));
+    await expect(
+      validate({ access: 'write', kind: 'any' }, root, 'missing/fresh'),
+    ).resolves.toEqual(refused(writeAny));
   });
 });

@@ -1,12 +1,15 @@
 // Acceptance plan: see packages/prompts/tests/interactive.test.ts.
 
+import { Application, FatalError } from '@loomcli/core';
+import type { ActionContext, RegionOptions, View } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { replay, until } from '../../../scripts/test-screen.js';
 import type { Recorded } from '../../../scripts/test-screen.js';
-
-const fixture = new URL('fixtures/live.mjs', import.meta.url);
+import { confirm, secret, select, text } from '../src/index.js';
+import { questionFrame } from '../src/views.js';
+import { observing, recording } from './support.js';
 
 interface Run {
   answers: unknown[];
@@ -15,13 +18,146 @@ interface Run {
   notes: Record<string, unknown>;
 }
 
-/** One run of a scenario, with the keys it presses last. */
-function live(scenario: string, ending = 'enter'): Run {
-  const result = invoke(fixture, [scenario, ending], {
-    env: { FORCE_COLOR: undefined, NO_COLOR: '1', TERM: 'xterm' },
-  });
-  expect(result.stderr).toBe('');
-  return JSON.parse(result.stdout);
+/** What a scenario's action reads and writes while it runs on the recorded terminal. */
+interface Scene {
+  answers: unknown[];
+  readonly ending: string;
+  readonly notes: Record<string, unknown>;
+  readonly screen: ReturnType<typeof recording>;
+  readonly signals: { raise(signal: 'SIGINT'): void };
+}
+
+type Context = ActionContext<unknown>;
+
+/** The keys a scenario types, and the key it ends with when Ctrl-C is not raised as a signal. */
+const typed: Record<string, (ending: string) => string[]> = {
+  kinds: () => ['\r', '\r', '\r', '\r'],
+  sibling: () => [''],
+  timer: () => ['8080\r'],
+  together: () => ['one\rtwo\r'],
+};
+
+/**
+ * A text question whose frame starts at `start` columns, then the terminal resizes to `width`, a
+ * key is pressed and its frame drawn, and then the ending keys are pressed. The key is typed with
+ * the others, so the resize happens at the first frame, before the key is read. Ctrl-C raises
+ * SIGINT at the second frame, as the reader does for the key.
+ */
+function edge(message: string, start: number, width: number) {
+  return (scene: Scene) => async (context: Context) => {
+    scene.screen.resize(start);
+    await context.out.info('earlier output');
+    let frames = 0;
+    const out = observing(context.out, async ({ view }) => {
+      if (view !== questionFrame) {
+        return;
+      }
+      frames += 1;
+      if (frames === 1) {
+        scene.screen.mark('first');
+        if (width !== start) {
+          scene.screen.resize(width);
+        }
+      } else if (frames === 2) {
+        scene.screen.mark('key');
+        if (scene.ending === 'ctrl-c') {
+          scene.signals.raise('SIGINT');
+        }
+      }
+    });
+    scene.answers = [await text({ ...context, out }, { message })];
+  };
+}
+
+const scenarios: Record<string, (scene: Scene) => (context: Context) => Promise<void>> = {
+  /** Each kind asked once, with every out.draw call and every region it opens recorded. */
+  kinds: (scene) => async (context) => {
+    const drawn: string[] = [];
+    const regions: unknown[] = [];
+    const out = {
+      ...context.out,
+      draw: <Data>(data: Data, view: View<Data>) => {
+        drawn.push(view === questionFrame ? 'questionFrame' : JSON.stringify(data));
+        return context.out.draw(data, view);
+      },
+      region: (options?: RegionOptions) => {
+        regions.push(options);
+        return context.out.region(options);
+      },
+    };
+    const asked = { ...context, out };
+    scene.answers = [
+      await text(asked, { default: 'a', message: 'Text' }),
+      await secret(asked, { message: 'Secret' }),
+      await confirm(asked, { default: true, message: 'Confirm' }),
+      await select(asked, { choices: ['one', 'two'], message: 'Select' }),
+    ];
+    scene.notes.drawn = [...new Set(drawn)];
+    scene.notes.regions = regions;
+  },
+  /** A question beside work that fails once the question's first frame is drawn. */
+  sibling: () => async (context) => {
+    const lookup = Promise.withResolvers<never>();
+    const out = observing(context.out, () => {
+      lookup.reject(new FatalError('The lookup failed.'));
+    });
+    await Promise.all([text({ ...context, out }, { message: 'Name?' }), lookup.promise]);
+  },
+  /**
+   * A lane message written while a question asks. The scripted key waits behind the first frame's
+   * hook, which writes the message and marks the point before the question reads it.
+   */
+  timer: (scene) => async (context) => {
+    const out = observing(context.out, async ({ view }) => {
+      if (view === questionFrame && scene.notes.asked === undefined) {
+        scene.notes.asked = true;
+        await context.out.info('from a timer');
+        scene.screen.mark('timer');
+      }
+    });
+    scene.answers = [await text({ ...context, out }, { message: 'Port' })];
+  },
+  /** Two questions started at once, with the keys for both typed in one entry. */
+  together: (scene) => async (context) => {
+    scene.answers = await Promise.all([
+      text(context, { message: 'First' }),
+      text(context, { message: 'Second' }),
+    ]);
+  },
+
+  // The edge cases: `? `, ` › `, and the cursor cell add 6 columns to the message.
+  /** A frame exactly as wide as the terminal, which the key makes wrap. */
+  full: edge('f'.repeat(34), 40, 40),
+  /** A one-row frame the terminal narrows until it wraps onto a second row. */
+  narrow: edge('n'.repeat(30), 40, 20),
+  /** A wide glyph that does not fit the last cell of the first row. */
+  wide: edge(`${'g'.repeat(37)}界`, 40, 40),
+  /** A two-row frame the terminal widens until it fits on one row. */
+  widen: edge('w'.repeat(30), 20, 40),
+};
+
+/** One run of a scenario on a recorded terminal, with the ending its edge cases press last. */
+async function live(scenario: string, ending = 'enter'): Promise<Run> {
+  const keys = typed[scenario]?.(ending) ?? [ending === 'enter' ? 'x\r' : 'x'];
+  const mock = mockProcess({ terminal: { columns: 40, keys, rows: 24, streams: ['stderr'] } });
+  const scene: Scene = {
+    answers: [],
+    ending,
+    notes: {},
+    screen: recording(mock),
+    signals: mock.signals,
+  };
+  const action = scenarios[scenario]?.(scene);
+  if (action === undefined) {
+    throw new Error(`No scenario named ${scenario}.`);
+  }
+  const code = await new Application('live', { description: 'Ask on a recorded terminal.' })
+    .action(action)
+    .run({ process: mock });
+  expect(mock.stdout.text).toBe('');
+  scene.notes.dataListeners = mock.stdin.listenerCount('data');
+  scene.notes.raw = mock.stdin.isRaw;
+  return { answers: scene.answers, code, events: scene.screen.events(), notes: scene.notes };
 }
 
 /** The rows the emulator shows once it has taken every event up to the mark, or all of them. */
@@ -41,8 +177,8 @@ function rows(line: string, columns: number): string[] {
   return cut;
 }
 
-test('each kind draws in an input region and writes no frame through out.draw', () => {
-  const run = live('kinds');
+test('each kind draws in an input region and writes no frame through out.draw', async () => {
+  const run = await live('kinds');
   expect(run.code).toBe(0);
   expect(run.answers).toEqual(['a', '', true, 'one']);
   expect(run.notes.regions).toEqual([
@@ -55,13 +191,13 @@ test('each kind draws in an input region and writes no frame through out.draw', 
 });
 
 test('a lane message a timer writes while a question asks lands above the whole frame', async () => {
-  const run = live('timer');
+  const run = await live('timer');
   await expect(lines(run, 'timer')).resolves.toEqual(['ℹ from a timer', '? Port ›']);
   await expect(lines(run)).resolves.toEqual(['ℹ from a timer', '? Port · 8080']);
 });
 
 test('a question whose region a failure closes leaves raw mode, removes its listener, and shows the cursor after its cancelled line', async () => {
-  const run = live('sibling');
+  const run = await live('sibling');
   expect(run.code).toBe(1);
   expect(run.notes).toMatchObject({ dataListeners: 0, raw: false });
   const written = run.events.map((event) => ('write' in event ? event.write : '')).join('');
@@ -70,7 +206,7 @@ test('a question whose region a failure closes leaves raw mode, removes its list
 });
 
 test('two questions started at once ask one after the other, each with its own keys', async () => {
-  const run = live('together');
+  const run = await live('together');
   expect(run.answers).toEqual(['one', 'two']);
   await expect(lines(run)).resolves.toEqual(['? First · one', '? Second · two']);
 });
@@ -85,7 +221,7 @@ const edges = [
 test.each(edges)(
   'after %s, a key redraws the frame whole below the earlier output',
   async (_case, scenario, message, width) => {
-    await expect(lines(live(scenario), 'key')).resolves.toEqual([
+    await expect(lines(await live(scenario), 'key')).resolves.toEqual([
       'ℹ earlier output',
       ...rows(`? ${message} › x`, width),
     ]);
@@ -95,7 +231,7 @@ test.each(edges)(
 test.each(edges)(
   'after %s and a key, Enter leaves the earlier output and the answered line alone',
   async (_case, scenario, message, width) => {
-    const run = live(scenario, 'enter');
+    const run = await live(scenario, 'enter');
     expect(run.code).toBe(0);
     await expect(lines(run)).resolves.toEqual([
       'ℹ earlier output',
@@ -107,7 +243,7 @@ test.each(edges)(
 test.each(edges)(
   'after %s and a key, Ctrl-C leaves the earlier output and the cancelled line alone',
   async (_case, scenario, message, width) => {
-    const run = live(scenario, 'ctrl-c');
+    const run = await live(scenario, 'ctrl-c');
     expect(run.code).toBe(130);
     await expect(lines(run)).resolves.toEqual([
       'ℹ earlier output',
@@ -120,7 +256,7 @@ test.each(edges)(
 const wideMessage = `${'g'.repeat(37)}界`;
 
 test('a wide glyph at the edge wraps whole, and a key redraws the frame with no stray row', async () => {
-  await expect(lines(live('wide'), 'key')).resolves.toEqual([
+  await expect(lines(await live('wide'), 'key')).resolves.toEqual([
     'ℹ earlier output',
     `? ${'g'.repeat(37)}`,
     '界 › x',
@@ -133,7 +269,7 @@ test.each([
 ] as const)(
   'a wide glyph at the edge, a key, then %s leaves one last line',
   async (ending, code, line) => {
-    const run = live('wide', ending);
+    const run = await live('wide', ending);
     expect(run.code).toBe(code);
     await expect(lines(run)).resolves.toEqual([
       'ℹ earlier output',

@@ -1,11 +1,74 @@
 // Acceptance plan: see packages/validators/tests/catalog.test.ts.
 
+import { DeclarationError } from '@loomcli/core';
+import type { StandardSchemaV1 } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { registeredRules, ruleContract, ruleParts } from '../../../scripts/test-rules.js';
+import {
+  createValidator,
+  dateTime,
+  duration,
+  integer,
+  issueCode,
+  oneOf,
+  text,
+  url,
+} from '../src/index.js';
 
-const fixture = new URL('fixtures/catalog-diagnostics.mjs', import.meta.url);
+const parse = (raw: unknown) => ({ value: raw });
+
+/** The parameters of the fixture issue code, whatever a call passes. */
+interface Shout {
+  readonly word: unknown;
+}
+
+/** A Standard Schema over the issue code's parameters that answers each value with `answer`. */
+function schema(
+  answer: (value: unknown) => StandardSchemaV1.Result<Shout>,
+): StandardSchemaV1<Shout, Shout> {
+  return { '~standard': { validate: answer, vendor: 'fixture', version: 1 } };
+}
+
+const message = ({ word }: Shout) => `Expected ${String(word)} in capitals.`;
+
+/** One faulty factory call per scenario, each reachable from JavaScript alone. */
+const scenarios: Record<string, () => unknown> = {
+  'bound-value': () => integer({ min: Number.POSITIVE_INFINITY }),
+  'bounds-order': () => integer({ max: 1, min: 5 }),
+  'context-outside-run': () =>
+    createValidator({ parse: (_raw, context) => ({ value: context.host }) })['~standard'].validate(
+      'x',
+    ),
+  'duration-bound-value': () => duration({ min: 'abc' }),
+  'duration-bounds-order': () => duration({ max: '30s', min: '1h' }),
+  'input-schema': () => createValidator({ inputSchema: { $schema: 'x', type: 'string' }, parse }),
+  'issue-code-name': () =>
+    issueCode('Bad Code', { message, schema: schema((value) => ({ value: { word: value } })) }),
+  'issue-parameters': () =>
+    issueCode('@acme/checks/shout', {
+      message,
+      schema: schema(() => ({ issues: [{ message: 'Expected a string.' }] })),
+    }).issue({ word: 7 }),
+  'one-of-twice': () => oneOf(['dev', 'prod', 'dev']),
+  'text-bounds-order': () => text({ maxLength: 0 }),
+  'text-pattern': () => text({ message: 'Expected letters.', pattern: /[a-z]+/g }),
+  'time-zone': () => dateTime({ timeZone: 'Mars/Olympus' }),
+  'url-protocols': () => url({ protocols: ['https', 'https:'] }),
+};
+
+/** The Developer Diagnostic the scenario's call throws as a declaration fault. */
+function diagnosticOf(scenario: string): string {
+  try {
+    scenarios[scenario]?.();
+  } catch (error) {
+    if (!(error instanceof DeclarationError)) {
+      throw error;
+    }
+    return `${error.message}\n`;
+  }
+  return 'returned\n';
+}
 
 /** One fault by the parts its rule's test pins: the rule under the catalog's name, the sentence, the fix. */
 interface Expected {
@@ -88,9 +151,7 @@ const cases: Record<string, Expected> = {
 test.each(Object.entries(cases))(
   'the %s fault throws its rule’s diagnostic',
   (scenario, expected) => {
-    const result = invoke(fixture, [scenario]);
-    expect(result).toMatchObject({ status: 0, stderr: '' });
-    expect(ruleParts(result.stdout)).toEqual({
+    expect(ruleParts(diagnosticOf(scenario))).toEqual({
       correction: expected.correction,
       identity: `@loomcli/validators/${expected.rule}`,
       sentence: expected.sentence,
