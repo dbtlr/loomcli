@@ -321,6 +321,7 @@ test('list prints each title the pool returns', async () => {
 - **`args` and `options`.** The values the handler reads after validation: its own arguments, and its options with every registered global option's value included.
 - **`provided`.** The test's own values, under each provider's name, typed from the handler's context, and `{}` for a Command that opts in to no provider. No opener loads and no value is closed. A run still takes no provided value, under [Substituting a provider](#substituting-a-provider).
 - **`stdin`.** Typed as the handler's context types it: required, as a `Content`, when the Command declares a required stdin, and an optional key otherwise. The test writes the `Content` itself, such as `{ kind: 'stdin', name: 'stdin', path: undefined, stream: () => Readable.from(['{}']), text: async () => '{}' }`.
+- **`host` and `passthrough`.** Each throws its sentence when read unstated. The context types both as assignable, so a handler that assigns one reads back the value it assigned.
 - **`out.results`.** It resolves and keeps nothing, so a test that reads the result states `out: { results }` with its own function.
 - **`invoke`.** A stated `invoke` may answer a `completed` or a `cancelled` outcome. Its type is generic over the failure handler's `Mapped`, so a function that answers `failed` does not compile. Give a mock its return type, as `vi.fn(async (): Promise<{ readonly status: 'completed'; readonly output: string; readonly messages: string }> => ({ status: 'completed', output: '', messages: '' }))` does.
 
