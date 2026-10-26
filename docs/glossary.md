@@ -901,7 +901,7 @@ The check from `@loomcli/testing` that a test runs to prove an Application assem
 _Avoid_: `loom check`, smoke test, health check
 
 **Built context**:
-The context `@loomcli/testing` builds for one author function, an extracted action handler, a middleware, an `onFailure` hook, a provider's opener, or a view, so a unit test calls that function with no Application. The test states the function's own data, typed as the function reads it, and the builder fills every other member with one that does nothing, an empty answer, or a member that throws a sentence telling the test to state it. Nothing in it comes from core's run machinery.
+The context `@loomcli/testing` builds for one author function, an extracted action handler, a middleware, an `onFailure` hook, a provider's opener, or a view, so a unit test calls that function with no Application. The test states the function's input records whole, typed as the context types them, and every member it does not state does nothing, gives an inert answer, or throws a sentence telling the test to state it. Nothing in it comes from core: no host, style, measure, or default.
 _Avoid_: Fake context, stub context, mock context (a mock is a process handle)
 
 **Process test**:
