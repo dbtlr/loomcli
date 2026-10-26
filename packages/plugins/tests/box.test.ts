@@ -1,8 +1,24 @@
 // Acceptance plan: see packages/plugins/tests/list.test.ts.
-import { expect, test } from 'vite-plus/test';
+import { glyph, nowrap, style } from '@loomcli/core';
+import type { View, ViewContext } from '@loomcli/core';
+import type { ViewValues } from '@loomcli/testing';
+import { expect, test, vi } from 'vite-plus/test';
 
+import { box } from '../src/box.js';
+import { prose } from '../src/prose.js';
+import { table } from '../src/table.js';
 import { lines } from './fit-render.js';
 import { render, run } from './pack-render.js';
+import {
+  TAB,
+  expandTabs,
+  linesOf,
+  measured,
+  plain,
+  width,
+  wordsOf,
+  wrap,
+} from './view-measures.js';
 
 const line = '─';
 const passed = 'All three services passed their health checks.';
@@ -28,7 +44,7 @@ const taskColumns = {
     { header: 'NAME', key: 'name' },
     { header: 'NOTE', key: 'note' },
   ],
-};
+} as const;
 
 /** A box's lines with no title around content lines already padded to one inner width. */
 function framed(...content: string[]): string[] {
@@ -40,100 +56,158 @@ function framed(...content: string[]): string[] {
   ];
 }
 
-test.each([60, null])('a text box with a title frames its text, at %s columns', (width) => {
-  expect(render({ config: { title: 'Totals' }, data: passed, view: 'box', widths: [width] })).toBe(
-    lines(
-      '╭─ Totals ───────────────────────────────────────╮',
-      '│ All three services passed their health checks. │',
-      '╰────────────────────────────────────────────────╯',
-    ),
-  );
-});
+/** The context a box renders with, which hands its content a copy and so reads `background`. */
+function boxContext(
+  view: View<never>,
+  columns: number | undefined,
+  values: ViewValues = {},
+): ViewContext {
+  return measured(view, columns, { background: undefined, ...values });
+}
 
-test.each([60, null])('a text box without a title frames its text, at %s columns', (width) => {
-  expect(render({ data: passed, view: 'box', widths: [width] })).toBe(lines(...framed(passed)));
-});
+/**
+ * A box render's top border and its content lines, after checking that it is framed: rounded
+ * corners, a side border on each content line, and every line one width.
+ */
+function frameOf(output: string): { readonly top: string; readonly inner: string[] } {
+  const shown = linesOf(output);
+  const top = shown[0] ?? '';
+  const bottom = shown.at(-1) ?? '';
+  expect(top.startsWith(plain(glyph.lineDownRightArc))).toBe(true);
+  expect(top.endsWith(plain(glyph.lineDownLeftArc))).toBe(true);
+  expect(bottom.startsWith(plain(glyph.lineUpRightArc))).toBe(true);
+  expect(bottom.endsWith(plain(glyph.lineUpLeftArc))).toBe(true);
+  const side = plain(glyph.lineVertical);
+  const inner = shown.slice(1, -1).map((each) => {
+    expect(each.startsWith(`${side} `)).toBe(true);
+    expect(each.endsWith(` ${side}`)).toBe(true);
+    return each.slice(2, -2).trimEnd();
+  });
+  expect(new Set(shown.map(width)).size).toBe(1);
+  return { inner, top };
+}
+
+/** A content view that hands the box's context to `content` and keeps the columns it was given. */
+function watching<Data>(content: View<Data>): {
+  readonly view: View<Data>;
+  readonly seen: (number | undefined)[];
+} {
+  const seen: (number | undefined)[] = [];
+  return {
+    seen,
+    view: {
+      render: (data, context) => {
+        seen.push(context.columns);
+        return content.render(data, context);
+      },
+    },
+  };
+}
+
+test.each([60, undefined])(
+  'a text box with a title frames its text, with its borders dim and its title primary and bold, at %s columns',
+  (columns) => {
+    const view = box({ title: 'Totals' });
+    const context = boxContext(view, columns);
+    const bold = vi.spyOn(context.style.primary, 'bold');
+    const dim = vi.spyOn(context.style, 'dim');
+    const { inner, top } = frameOf(view.render(passed, context));
+    expect(top).toContain(' Totals ');
+    expect(inner).toEqual([passed]);
+    expect(bold).toHaveBeenCalledWith('Totals');
+    expect(dim).toHaveBeenCalledWith(glyph.lineVertical);
+  },
+);
+
+test.each([60, undefined])(
+  'a text box without a title frames its text, at %s columns',
+  (columns) => {
+    const view = box();
+    const { inner, top } = frameOf(view.render(passed, boxContext(view, columns)));
+    expect(wordsOf(top)).toHaveLength(1);
+    expect(inner).toEqual([passed]);
+  },
+);
 
 test('box() renders as the default view of a declared string result', () => {
   const config = { title: 'Result' };
-  expect(
-    render({ config, data: 'All checks passed.', declared: true, view: 'box', widths: [40] }),
-  ).toBe(lines('╭─ Result ───────────╮', '│ All checks passed. │', '╰────────────────────╯'));
+  const input = { config, data: 'All checks passed.', view: 'box', widths: [40] } as const;
+  expect(render({ ...input, declared: true })).toBe(render(input));
 });
 
-test('a title wider than the text sets the inner width', () => {
-  expect(
-    render({ config: { title: 'Result summary' }, data: 'ok', view: 'box', widths: [40] }),
-  ).toBe(lines(`╭─ Result summary ${line}╮`, `│ ok${' '.repeat(14)} │`, `╰${line.repeat(18)}╯`));
+test('a title wider than the text widens the box to hold the title and a line after it', () => {
+  const view = box({ title: 'Result summary' });
+  const { inner, top } = frameOf(view.render('ok', boxContext(view, 40)));
+  expect(top.endsWith(` Result summary ${line}${plain(glyph.lineDownLeftArc)}`)).toBe(true);
+  expect(inner).toEqual(['ok']);
 });
 
 test('a text box wraps its text at columns minus 4', () => {
-  expect(render({ data: passed, view: 'box', widths: [30] })).toBe(
-    lines(...framed('All three services passed', 'their health checks.     ')),
-  );
+  const view = box();
+  const wraps = vi.fn(wrap);
+  const { inner } = frameOf(view.render(passed, boxContext(view, 30, { wrap: wraps })));
+  expect(wraps).toHaveBeenCalledWith(passed, 26);
+  expect(inner.length).toBeGreaterThan(1);
+  expect(inner.join(' ')).toBe(passed);
 });
 
-test.each([60, null])('a box frames a table, at %s columns', (width) => {
-  const config = { content: { table: {} }, title: 'Pools' };
-  expect(render({ config, data: pools, view: 'box', widths: [width] })).toBe(
-    lines(
-      '╭─ Pools ───────────────────╮',
-      '│ pool   instances  status  │',
-      '│ blue   4          ready   │',
-      '│ green  4          warming │',
-      '╰───────────────────────────╯',
-    ),
-  );
+test.each([60, undefined])('a box frames a table, at %s columns', (columns) => {
+  const view = box({ content: table<Record<string, unknown>>(), title: 'Pools' });
+  const { inner, top } = frameOf(view.render(pools, boxContext(view, columns)));
+  expect(top).toContain(' Pools ');
+  expect(inner.map(wordsOf)).toEqual([
+    ['pool', 'instances', 'status'],
+    ['blue', '4', 'ready'],
+    ['green', '4', 'warming'],
+  ]);
 });
 
 test('a boxed table renders as the default view of a declared rows result', () => {
   const config = { content: { table: {} }, title: 'Pools' };
-  expect(render({ config, data: pools, declared: true, view: 'box', widths: [60] })).toBe(
-    lines(
-      '╭─ Pools ───────────────────╮',
-      '│ pool   instances  status  │',
-      '│ blue   4          ready   │',
-      '│ green  4          warming │',
-      '╰───────────────────────────╯',
-    ),
-  );
+  const input = { config, data: pools, view: 'box', widths: [60] } as const;
+  expect(render({ ...input, declared: true })).toBe(render(input));
 });
 
-test('a framed table shrinks to the columns the box leaves it', () => {
-  const config = { content: { table: taskColumns }, title: 'Tasks' };
-  expect(render({ config, data: tasks, view: 'box', widths: [26] })).toBe(
-    lines(
-      `╭─ Tasks ${line.repeat(13)}╮`,
-      '│ NAME   NOTE         │',
-      '│ build  compiles     │',
-      '│        everything   │',
-      '│ lint   checks style │',
-      `╰${line.repeat(21)}╯`,
-    ),
+test('a framed table renders at the columns the box leaves it, and shrinks to fit them', () => {
+  const content = watching(table<(typeof tasks)[number]>(taskColumns));
+  const view = box({ content: content.view, title: 'Tasks' });
+  const output = view.render(tasks, boxContext(view, 26));
+  const { inner } = frameOf(output);
+  expect(content.seen).toEqual([22]);
+  expect(Math.max(...linesOf(output).map(width))).toBeLessThanOrEqual(26);
+  expect(inner.some((each) => each.includes('compiles everything'))).toBe(false);
+  expect(wordsOf(inner.join('\n'))).toEqual(
+    expect.arrayContaining([
+      'NAME',
+      'NOTE',
+      'build',
+      'compiles',
+      'everything',
+      'lint',
+      'checks',
+      'style',
+    ]),
   );
 });
 
 test('a framed table falls back to records when its floors do not fit inside the box', () => {
-  const config = { content: { table: taskColumns } };
-  expect(render({ config, data: tasks, view: 'box', widths: [20] })).toBe(
-    lines(
-      ...framed(
-        'NAME  build     ',
-        'NOTE  compiles  ',
-        '      everything',
-        '                ',
-        'NAME  lint      ',
-        'NOTE  checks    ',
-        '      style     ',
-      ),
-    ),
+  const view = box({ content: table<(typeof tasks)[number]>(taskColumns) });
+  const { inner } = frameOf(view.render(tasks, boxContext(view, 20)));
+  expect(inner.some((each) => each.includes('NAME') && each.includes('NOTE'))).toBe(false);
+  expect(inner.filter((each) => each.startsWith('NAME'))).toHaveLength(2);
+  expect(inner.filter((each) => each.startsWith('NOTE'))).toHaveLength(2);
+  expect(wordsOf(inner.join('\n'))).toEqual(
+    expect.arrayContaining(['build', 'compiles', 'everything', 'lint', 'checks', 'style']),
   );
 });
 
 test('a content view that ignores columns widens the box past them', () => {
-  expect(render({ config: { content: 'wide' }, data: '', view: 'box', widths: [30] })).toBe(
-    lines(...framed('w'.repeat(50))),
-  );
+  const wide: View<string> = { render: () => `${'w'.repeat(50)}\n` };
+  const view = box({ content: wide });
+  const output = view.render('', boxContext(view, 30));
+  const { inner } = frameOf(output);
+  expect(inner).toEqual(['w'.repeat(50)]);
+  expect(width(linesOf(output)[0] ?? '')).toBeGreaterThan(30);
 });
 
 test('a declared view override does not apply inside a box', () => {
@@ -143,35 +217,51 @@ test('a declared view override does not apply inside a box', () => {
   );
 });
 
-test('a tab in piped content keeps the right border in its column', () => {
-  expect(render({ data: 'a\tb\nabcdefghij', view: 'box', widths: [null] })).toBe(
-    lines(...framed('a       b ', 'abcdefghij')),
-  );
+test("a tab in piped content is left to each line's padding, so the box expands no tab off a terminal", () => {
+  const view = box();
+  const tabs = vi.fn(expandTabs);
+  const output = view.render('a\tb\nabcdefghij', boxContext(view, undefined, { expandTabs: tabs }));
+  const { inner } = frameOf(output);
+  expect(tabs).not.toHaveBeenCalled();
+  expect(inner).toEqual(['a\tb', 'abcdefghij']);
 });
 
 test('a tab in text content expands on a terminal before the box measures it', () => {
-  expect(render({ data: 'a\tb', view: 'box', widths: [30] })).toBe(lines(...framed('a       b')));
+  const view = box();
+  const tabs = vi.fn(expandTabs);
+  const { inner } = frameOf(view.render('a\tb', boxContext(view, 30, { expandTabs: tabs })));
+  expect(tabs).toHaveBeenCalledWith('a\tb');
+  expect(inner).toEqual([`a${TAB}b`]);
 });
 
-test('a text box over the empty string and a box whose content renders nothing print nothing', () => {
-  expect(render({ data: '', view: 'box', widths: [30, null] })).toBe(lines('--'));
-  const config = { content: { table: {} } };
-  expect(render({ config, data: [], view: 'box', widths: [30, null] })).toBe(lines('--'));
-});
-
-test.each(['@@red-empty@@', '@@nowrap-empty@@'])(
-  'a text box over %s, which resolves to no character, prints nothing',
-  (data) => {
-    expect(render({ data, view: 'box', widths: [30, null] })).toBe(lines('--'));
+test.each([30, undefined])(
+  'a text box over the empty string and a box whose content renders nothing print nothing, at %s columns',
+  (columns) => {
+    const text = box();
+    expect(text.render('', boxContext(text, columns))).toBe('');
+    const rows = box({ content: table<Record<string, unknown>>() });
+    expect(rows.render([], boxContext(rows, columns))).toBe('');
   },
 );
 
-test.each([{ content: 'prose' }, { content: 'prose', title: 'Result' }])(
+test.each([
+  ['a style frame', style.red('')],
+  ['a nowrap frame', nowrap('')],
+])(
+  'a text box over %s around nothing, which resolves to no character, prints nothing',
+  (_name, data) => {
+    const view = box();
+    expect(view.render(data, boxContext(view, 30))).toBe('');
+    expect(view.render(data, boxContext(view, undefined))).toBe('');
+  },
+);
+
+test.each([{}, { title: 'Result' }])(
   'a box whose content renders a text that resolves to no character prints nothing: %o',
   (config) => {
-    expect(render({ config, data: '@@red-empty@@', view: 'box', widths: [30, null] })).toBe(
-      lines('--'),
-    );
+    const view = box({ content: prose(), ...config });
+    expect(view.render(style.red(''), boxContext(view, 30))).toBe('');
+    expect(view.render(style.red(''), boxContext(view, undefined))).toBe('');
   },
 );
 

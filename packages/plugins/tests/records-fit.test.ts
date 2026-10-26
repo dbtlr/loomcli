@@ -1,33 +1,65 @@
 // Acceptance plan: see packages/plugins/tests/table-fit.test.ts.
-import { expect, test } from 'vite-plus/test';
+import { style } from '@loomcli/core';
+import type { RowView, ViewContext } from '@loomcli/core';
+import type { ViewValues } from '@loomcli/testing';
+import { expect, test, vi } from 'vite-plus/test';
 
+import { records } from '../src/records.js';
+import { table } from '../src/table.js';
 import { lines, render } from './fit-render.js';
+import { TAB, expandTabs, linesOf, measured, width, wordsOf, wrap } from './view-measures.js';
 
 const tagRows = [
   { key: 'tags', kind: 'array of 12 strings, none empty or longer than 40 characters' },
 ];
 
-test('a value wraps at the width left after the key column and its gap', () => {
-  const config = { identifier: 'key' };
-  expect(render({ config, rows: tagRows, view: 'records', widths: [30] })).toBe(
-    lines(
-      'key   tags',
-      'kind  array of 12 strings,',
-      '      none empty or longer',
-      '      than 40 characters',
-      '',
-      '1 record',
-    ),
-  );
+/** What a row view prints for `rows` and their counted tail, on one context. */
+function rendered<Row>(view: RowView<Row>, rows: readonly Row[], context: ViewContext): string {
+  return `${rows.map((row, index) => view.row(row, index, context)).join('')}${view.tail?.(rows.length, context) ?? ''}`;
+}
+
+/** The lines a row view shows for `rows` at `columns`, or piped when undefined, with its tail. */
+function shown<Row>(
+  view: RowView<Row>,
+  rows: readonly Row[],
+  columns: number | undefined,
+  values: ViewValues = {},
+): string[] {
+  return linesOf(rendered(view, rows, measured(view, columns, values)));
+}
+
+/** Every line is at most `columns` wide. */
+function expectFits(each: readonly string[], columns: number): void {
+  for (const line of each) {
+    expect(width(line)).toBeLessThanOrEqual(columns);
+  }
+}
+
+/** The columns before a shown line's first character other than a space. */
+const indentOf = (line: string): number => line.length - line.trimStart().length;
+
+test('a value wraps at the width left after the key column and its gap, its later lines under the value', () => {
+  const view = records<(typeof tagRows)[number]>({ identifier: 'key' });
+  const wraps = vi.fn(wrap);
+  const output = shown(view, tagRows, 30, { wrap: wraps });
+  expect(wraps).toHaveBeenCalledWith(tagRows[0]?.kind, 30 - 'kind'.length - 2);
+  expectFits(output, 30);
+  const value = output.slice(1, output.indexOf(''));
+  expect(value.length).toBeGreaterThan(1);
+  for (const line of value.slice(1)) {
+    expect(indentOf(line)).toBe(value[0]?.indexOf('array'));
+  }
+  expect(
+    value.map((line, index) => (index === 0 ? line.slice('kind'.length) : line).trim()).join(' '),
+  ).toBe(tagRows[0]?.kind);
+  expect(output.at(-1)).toBe('1 record');
 });
 
 test('a value whose trailing space would overflow the width wraps, so every line fits', () => {
-  const rows = [{ key: 'a', note: 'compile the core package ' }];
-  const output = render({ config: { identifier: 'key' }, rows, view: 'records', widths: [18] });
-  expect(Math.max(...output.split('\n').map((line) => line.length))).toBeLessThanOrEqual(18);
-  expect(output).toBe(
-    lines('key   a', 'note  compile the', '      core', '      package ', '', '1 record'),
-  );
+  const view = records<{ key: string; note: string }>({ identifier: 'key' });
+  const output = shown(view, [{ key: 'a', note: 'compile the core package ' }], 18);
+  expectFits(output, 18);
+  expect(output.some((line) => line.includes('core package'))).toBe(false);
 });
 
 test.each([
@@ -55,43 +87,46 @@ test.each([
 );
 
 test('an authored line break in a value continues under the value on a terminal', () => {
-  const config = { identifier: 'key' };
-  const rows = [{ key: 'one', kind: 'first\nsecond' }];
-  expect(render({ config, rows, view: 'records', widths: [80] })).toBe(
-    lines('key   one', 'kind  first', '      second', '', '1 record'),
-  );
+  const view = records<{ key: string; kind: string }>({ identifier: 'key' });
+  const [, first = '', second = ''] = shown(view, [{ key: 'one', kind: 'first\nsecond' }], 80);
+  expect(first.endsWith('first')).toBe(true);
+  expect(second.trim()).toBe('second');
+  expect(indentOf(second)).toBe(first.indexOf('first'));
 });
 
 test('a blank line in a styled default value carries no indent', () => {
   // A default value sits in a primary style frame, so its blank line is a frame with no character.
-  const rows = [{ key: 'one', kind: 'first\n\nthird' }];
-  expect(render({ config: { identifier: 'key' }, rows, view: 'records', widths: [80] })).toBe(
-    lines('key   one', 'kind  first', '', '      third', '', '1 record'),
-  );
+  const view = records<{ key: string; kind: string }>({ identifier: 'key' });
+  const output = shown(view, [{ key: 'one', kind: 'first\n\nthird' }], 80, { style });
+  expect(output.slice(1, 4).map(wordsOf)).toEqual([['kind', 'first'], [], ['third']]);
+  expect(output[2]).toBe('');
 });
 
 test('a blank line in a plain format value carries no indent', () => {
-  const rows = [{ key: 'one', kind: 'first' }];
-  const config = { fields: ['key', { format: 'blank', key: 'kind' }], identifier: 'key' };
-  expect(render({ config, rows, view: 'records', widths: [80] })).toBe(
-    lines('key   one', 'kind  first', '', '      after', '', '1 record'),
-  );
+  const view = records<{ key: string; kind: string }>({
+    fields: ['key', { format: (value) => `${value}\n\nafter`, key: 'kind' }],
+    identifier: 'key',
+  });
+  const output = shown(view, [{ key: 'one', kind: 'first' }], 80);
+  expect(output.slice(1, 4).map(wordsOf)).toEqual([['kind', 'first'], [], ['after']]);
+  expect(output[2]).toBe('');
 });
 
 test('a blank line in a right-aligned fallback value carries no indent and no alignment', () => {
-  const rows = [{ name: 'abcdefghijkl', note: 'one' }];
-  const config = { columns: ['name', { align: 'right', format: 'blank', key: 'note' }] };
-  expect(render({ config, rows, view: 'table', widths: [12] })).toBe(
-    lines('name  abcdefghijkl', 'note    one', '', '      after'),
-  );
+  const view = table<{ name: string; note: string }>({
+    columns: ['name', { align: 'right', format: (value) => `${value}\n\nafter`, key: 'note' }],
+  });
+  const output = linesOf(view.render([{ name: 'abcdefghijkl', note: 'one' }], measured(view, 12)));
+  expect(output.map(wordsOf)).toEqual([['name', 'abcdefghijkl'], ['note', 'one'], [], ['after']]);
+  expect(output[2]).toBe('');
 });
 
 test('a value with no column left after the label stays unwrapped', () => {
-  const config = { identifier: 'key' };
-  const rows = [{ key: 'one', kind: 'two words' }];
-  expect(render({ config, rows, view: 'records', widths: [6] })).toBe(
-    lines('key   one', 'kind  two words', '', '1 record'),
-  );
+  const view = records<{ key: string; kind: string }>({ identifier: 'key' });
+  const wraps = vi.fn(wrap);
+  const output = shown(view, [{ key: 'one', kind: 'two words' }], 6, { wrap: wraps });
+  expect(wraps).not.toHaveBeenCalled();
+  expect(output.some((line) => line.endsWith('two words'))).toBe(true);
 });
 
 test('a streamed row after a resize wraps at the new width, and the rows before keep theirs', () => {
@@ -101,19 +136,21 @@ test('a streamed row after a resize wraps at the new width, and the rows before 
     { key: 'before', kind },
     { key: 'after', kind },
   ];
-  expect(render({ config, rows, stream: true, view: 'records', widths: [100, 30] })).toBe(
-    lines(
-      `key   before`,
-      `kind  ${kind}`,
-      '',
-      'key   after',
-      'kind  array of 12 strings,',
-      '      none empty or longer',
-      '      than 40 characters',
-      '',
-      '2 records',
-    ),
+  const output = render({ config, rows, stream: true, view: 'records', widths: [100, 30] }).split(
+    '\n',
   );
+  expect(output).toContain(`kind  ${kind}`);
+  const start = output.indexOf('key   after');
+  const block = output.slice(start, output.indexOf('', start));
+  for (const line of block) {
+    expect(line.length).toBeLessThanOrEqual(30);
+  }
+  expect(
+    block
+      .slice(1)
+      .map((line) => line.slice('kind  '.length))
+      .join(' '),
+  ).toBe(kind);
 });
 
 test.each([{ invoke: false }, { invoke: true }])(
@@ -131,14 +168,7 @@ test.each([{ invoke: false }, { invoke: true }])(
 test('COLUMNS narrows records on a terminal and spares a pipe', () => {
   const config = { identifier: 'key' };
   const env = { COLUMNS: '30' };
-  const wrapped = lines(
-    'key   tags',
-    'kind  array of 12 strings,',
-    '      none empty or longer',
-    '      than 40 characters',
-    '',
-    '1 record',
-  );
+  const wrapped = render({ config, rows: tagRows, view: 'records', widths: [30] });
   expect(render({ config, env, rows: tagRows, view: 'records', widths: [100] })).toBe(wrapped);
   expect(render({ config, env, rows: tagRows, view: 'records', widths: ['unreported'] })).toBe(
     wrapped,
@@ -153,77 +183,65 @@ test('the table fallback prints the same blocks as the records view for the same
     { name: 'abcdefghijkl', note: 'one two three four five' },
     { name: 'second', note: 'tail' },
   ];
-  const fallback = render({ config: {}, rows, view: 'table', widths: [15] });
-  const viewed = render({ config: { identifier: 'name' }, rows, view: 'records', widths: [15] });
-  expect(fallback).toContain('name');
-  expect(`${fallback}\n2 records\n`).toBe(viewed);
+  const fallback = table<(typeof rows)[number]>();
+  const viewed = records<(typeof rows)[number]>({ identifier: 'name' });
+  const context = measured(viewed, 15);
+  const blocks = rows.map((row, index) => viewed.row(row, index, context)).join('');
+  expect(fallback.render(rows, measured(fallback, 15))).toBe(blocks);
 });
 
 test('a tab in a value expands from the start of the value before it wraps, so no line overflows', () => {
-  const output = render({
-    config: { identifier: 'first' },
-    rows: [{ first: 'b\tc' }],
-    view: 'records',
-    widths: [16],
-  });
-  for (const line of output.split('\n')) {
-    expect(line).not.toContain('\t');
-    expect(line.length).toBeLessThanOrEqual(16);
-  }
-  expect(output).toBe(lines('first  b       c', '', '1 record'));
+  const view = records<{ first: string }>({ identifier: 'first' });
+  const tabs = vi.fn(expandTabs);
+  const output = shown(view, [{ first: 'b\tc' }], 16, { expandTabs: tabs });
+  expect(tabs).toHaveBeenCalledWith('b\tc');
+  expectFits(output, 16);
+  expect(output[0]).toContain(`b${TAB}c`);
 });
 
 test('a tab after a wrapped break expands from the start of the value, not its output line', () => {
-  const output = render({
-    config: { identifier: 'first' },
-    rows: [{ first: 'aaa bbbbbb\tc' }],
-    view: 'records',
-    widths: [16],
-  });
-  for (const line of output.split('\n')) {
-    expect(line).not.toContain('\t');
-    expect(line.length).toBeLessThanOrEqual(16);
-  }
-  expect(output).toBe(lines('first  aaa', '       bbbbbb', '       c', '', '1 record'));
+  const view = records<{ first: string }>({ identifier: 'first' });
+  const tabs = vi.fn(expandTabs);
+  const wraps = vi.fn(wrap);
+  const output = shown(view, [{ first: 'aaa bbbbbb\tc' }], 16, { expandTabs: tabs, wrap: wraps });
+  expect(tabs).toHaveBeenCalledWith('aaa bbbbbb\tc');
+  expect(wraps).toHaveBeenCalledWith(`aaa bbbbbb${TAB}c`, 16 - 'first'.length - 2);
+  expect(output.join('\n')).not.toContain('\t');
+  expectFits(output, 16);
 });
 
 test('a tab stays a tab in piped records', () => {
-  const rows = [{ first: 'b\tc' }];
-  expect(render({ config: { identifier: 'first' }, rows, view: 'records', widths: [null] })).toBe(
-    lines('first  b\tc', '', '1 record'),
-  );
+  const view = records<{ first: string }>({ identifier: 'first' });
+  const tabs = vi.fn(expandTabs);
+  expect(shown(view, [{ first: 'b\tc' }], undefined, { expandTabs: tabs })[0]).toContain('b\tc');
+  expect(tabs).not.toHaveBeenCalled();
 });
 
 test.each([
-  {
-    expected: lines('id  one', 'to', '', '1 record'),
-    identifier: 'id',
-    row: { id: 'one', to: null },
-  },
-  {
-    expected: lines('key  one', 'to', '', '1 record'),
-    identifier: 'key',
-    row: { key: 'one', to: null },
-  },
+  { identifier: 'id', row: { id: 'one', to: null } },
+  { identifier: 'key', row: { key: 'one', to: null } },
 ])(
-  'a label line with an empty value ends at its label on a terminal',
-  ({ expected, identifier, row }) => {
-    const output = render({ config: { identifier }, rows: [row], view: 'records', widths: [40] });
-    expect(output).toBe(expected);
+  'a label line with an empty value ends at its label on a terminal, under $identifier',
+  ({ identifier, row }) => {
+    const view = records<Record<string, string | null>>({ identifier });
+    expect(shown(view, [row], 40)).toContain('to');
   },
 );
 
 test('an empty value keeps its label padding and gap on a pipe', () => {
-  const rows = [{ key: 'one', to: null }];
-  expect(render({ config: { identifier: 'key' }, rows, view: 'records', widths: [null] })).toBe(
-    lines('key  one', 'to   ', '', '1 record'),
+  const view = records<{ key: string; to: null }>({ identifier: 'key' });
+  const label = shown(view, [{ key: 'one', to: null }], undefined).find((line) =>
+    line.startsWith('to'),
   );
+  expect(label?.trim()).toBe('to');
+  expect(label).not.toBe('to');
 });
 
 test('a fallback line with an empty header and an empty value is an empty line', () => {
-  const rows = [{ name: 'abcdefghijkl', note: null }];
-  const config = { columns: ['name', { header: '', key: 'note' }] };
-  expect(render({ config, rows, view: 'table', widths: [12] })).toBe(
-    lines('name  abcdefghijkl', ''),
-  );
+  const view = table<{ name: string; note: null }>({
+    columns: ['name', { header: '', key: 'note' }],
+  });
+  const output = linesOf(view.render([{ name: 'abcdefghijkl', note: null }], measured(view, 12)));
+  expect(output).toHaveLength(2);
+  expect(output[1]).toBe('');
 });

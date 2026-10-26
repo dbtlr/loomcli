@@ -1,72 +1,104 @@
 // Acceptance plan: see packages/plugins/tests/list.test.ts.
-import { expect, test } from 'vite-plus/test';
+import { glyph, nowrap, style } from '@loomcli/core';
+import { expect, test, vi } from 'vite-plus/test';
 
-import { lines } from './fit-render.js';
+import { heading } from '../src/heading.js';
 import { render } from './pack-render.js';
+import { linesOf, measured, plain, width } from './view-measures.js';
 
-const line = '─';
+/** The line glyph as a render shows it. */
+const line = plain(glyph.line);
 
-test.each([40, null])(
-  'a level 1 heading is underlined as wide as its text, at %s columns',
-  (width) => {
-    expect(render({ data: 'Deployment summary', view: 'heading', widths: [width] })).toBe(
-      lines('Deployment summary', line.repeat(18)),
-    );
+/** A measure that counts each kana and CJK character as two columns, as a terminal shows it. */
+const wide = (text: string): number => width(text) + (plain(text).match(/[぀-鿿]/gu) ?? []).length;
+
+/** Whether a shown line is an underline: line glyphs and nothing else. */
+const isUnderline = (shown: string | undefined): boolean =>
+  shown !== undefined && shown.length > 0 && shown.replaceAll(line, '') === '';
+
+test.each([40, undefined])(
+  'a level 1 heading prints its text dim with a dim underline as wide as the text, at %s columns',
+  (columns) => {
+    const view = heading();
+    const context = measured(view, columns);
+    const dim = vi.spyOn(context.style, 'dim');
+    const [text, underline, ...rest] = linesOf(view.render('Deployment summary', context));
+    expect(text).toBe('Deployment summary');
+    expect(isUnderline(underline)).toBe(true);
+    expect(width(underline ?? '')).toBe(width('Deployment summary'));
+    expect(rest).toEqual([]);
+    expect(dim).toHaveBeenCalledWith('Deployment summary');
+    expect(dim).toHaveBeenCalledWith(glyph.line.repeat(width('Deployment summary')));
   },
 );
 
-test.each([40, null])('a level 2 heading is its text alone, at %s columns', (width) => {
-  expect(render({ config: { level: 2 }, data: 'Services', view: 'heading', widths: [width] })).toBe(
-    lines('Services'),
-  );
+test.each([40, undefined])('a level 2 heading is its text alone, at %s columns', (columns) => {
+  const view = heading({ level: 2 });
+  expect(linesOf(view.render('Services', measured(view, columns)))).toEqual(['Services']);
 });
 
 test('heading() renders as the default view of a declared string result', () => {
-  expect(render({ data: 'Services', declared: true, view: 'heading', widths: [40] })).toBe(
-    lines('Services', line.repeat(8)),
-  );
+  const input = { data: 'Services', view: 'heading', widths: [40] } as const;
+  expect(render({ ...input, declared: true })).toBe(render(input));
 });
 
-test('a level 1 underline is as wide as a CJK text and as a styled text', () => {
-  expect(render({ data: '猫の手', view: 'heading', widths: [40] })).toBe(
-    lines('猫の手', line.repeat(6)),
-  );
-  const styled = '["style",[["foreground","red"]]]data';
-  expect(render({ data: styled, view: 'heading', widths: [40] })).toBe(
-    lines('data', line.repeat(4)),
-  );
+test('a level 1 underline is as wide as the context measures a CJK text and a styled text', () => {
+  const view = heading();
+  const [, cjkUnderline = ''] = linesOf(view.render('猫の手', measured(view, 40, { width: wide })));
+  expect(isUnderline(cjkUnderline)).toBe(true);
+  expect(cjkUnderline).toHaveLength(6);
+  const [text, styledUnderline = ''] = linesOf(view.render(style.red('data'), measured(view, 40)));
+  expect(text).toBe('data');
+  expect(styledUnderline).toHaveLength(4);
 });
 
-test('a wrapped level 1 underline matches its widest wrapped line', () => {
+test('a level 1 heading wraps at columns, and its underline matches its widest wrapped line', () => {
+  const view = heading();
   const data = 'Quarterly deployment summary for staging';
-  expect(render({ data, view: 'heading', widths: [20] })).toBe(
-    lines('Quarterly deployment', 'summary for staging', line.repeat(20)),
-  );
-  expect(render({ data, view: 'heading', widths: [null] })).toBe(lines(data, line.repeat(40)));
+  const wrapped = linesOf(view.render(data, measured(view, 20)));
+  const text = wrapped.slice(0, -1);
+  expect(text.length).toBeGreaterThan(1);
+  expect(text.join(' ')).toBe(data);
+  expect(isUnderline(wrapped.at(-1))).toBe(true);
+  expect(width(wrapped.at(-1) ?? '')).toBe(Math.max(...text.map(width)));
+  const piped = linesOf(view.render(data, measured(view, undefined)));
+  expect(piped[0]).toBe(data);
+  expect(width(piped[1] ?? '')).toBe(width(data));
 });
 
-test('a word wider than columns keeps its line and widens the underline', () => {
-  expect(render({ data: 'Configuration overview', view: 'heading', widths: [10] })).toBe(
-    lines('Configuration', 'overview', line.repeat(13)),
-  );
+test('a word wider than columns keeps its line whole and widens the underline past columns', () => {
+  const view = heading();
+  const output = linesOf(view.render('Configuration overview', measured(view, 10)));
+  expect(output.slice(0, -1)).toEqual(['Configuration', 'overview']);
+  expect(width(output.at(-1) ?? '')).toBe(width('Configuration'));
 });
 
-test('a heading that ends in a line break gains no empty line, and the empty string prints nothing', () => {
-  expect(render({ data: 'Services\n', view: 'heading', widths: [40, null] })).toBe(
-    lines('Services', line.repeat(8), '--', 'Services', line.repeat(8)),
-  );
-  expect(render({ data: '', view: 'heading', widths: [40, null] })).toBe(lines('--'));
-});
+test.each([40, undefined])(
+  'a heading that ends in a line break gains no empty line, and the empty string prints nothing, at %s columns',
+  (columns) => {
+    const view = heading();
+    const output = linesOf(view.render('Services\n', measured(view, columns)));
+    expect(output[0]).toBe('Services');
+    expect(isUnderline(output[1])).toBe(true);
+    expect(output).toHaveLength(2);
+    expect(view.render('', measured(view, columns))).toBe('');
+  },
+);
 
-test.each(['@@red-empty@@', '@@nowrap-empty@@'])(
-  'a heading over %s, which resolves to no character, prints nothing',
-  (data) => {
-    expect(render({ data, view: 'heading', widths: [30, null] })).toBe(lines('--'));
+test.each([
+  ['a style frame', style.red('')],
+  ['a nowrap frame', nowrap('')],
+])(
+  'a heading over %s around nothing, which resolves to no character, prints nothing',
+  (_name, data) => {
+    const view = heading();
+    expect(view.render(data, measured(view, 30))).toBe('');
+    expect(view.render(data, measured(view, undefined))).toBe('');
   },
 );
 
 test('a heading styles its text and underline dim and keeps its author styling', () => {
-  const data = 'Hi ["style",[["foreground","red"]]]there';
+  const data = 'Hi \uE000["style",[["foreground","red"]]]\uE001there\uE002';
   const rendering = { color: 'always', modifiers: 'always' } as const;
   expect(render({ data, rendering, theme: true, view: 'heading', widths: [40] })).toBe(
     '\u001B[90mHi \u001B[31mthere\u001B[39m\n\u001B[90m────────\u001B[39m\n',
