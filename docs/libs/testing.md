@@ -291,7 +291,7 @@ type ActionValues<Args, Options, Result, Stdin extends StdinContext, Provided> =
 
 function actionContext<Args, Options, Result, Stdin extends StdinContext, Provided>(
   handler: Action<Args, Options, Result, Stdin, Provided>,
-  values: ActionValues<Args, Options, Result, Stdin, Provided>,
+  values: NoInfer<ActionValues<Args, Options, Result, Stdin, Provided>>,
 ): Omit<ActionContext<Args, Options, Result, Provided>, 'stdin'> & Stdin;
 ```
 
@@ -425,7 +425,7 @@ type ProviderValues<Globals, Provided> = Pick<
 
 function providerContext<Globals, Provided>(
   opener: (context: ProviderContext<Globals, Provided>) => unknown,
-  values: ProviderValues<Globals, Provided>,
+  values: NoInfer<ProviderValues<Globals, Provided>>,
 ): ProviderContext<Globals, Provided>;
 ```
 
