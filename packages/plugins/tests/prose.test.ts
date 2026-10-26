@@ -1,22 +1,22 @@
 // Acceptance plan: see packages/plugins/tests/list.test.ts.
-import { expect, test } from 'vite-plus/test';
+import { nowrap, style } from '@loomcli/core';
+import { expect, test, vi } from 'vite-plus/test';
 
+import { prose } from '../src/prose.js';
 import { lines } from './fit-render.js';
 import { render } from './pack-render.js';
+import { TAB, expandTabs, linesOf, measured, width, wordsOf } from './view-measures.js';
 
 const summary =
   'Three services rolled out to the staging cluster. One health check is still warming up.';
 
-test('prose() wraps at 34 columns and prints as written when piped', () => {
-  expect(render({ data: summary, view: 'prose', widths: [34, null] })).toBe(
-    lines(
-      'Three services rolled out to the',
-      'staging cluster. One health check',
-      'is still warming up.',
-      '--',
-      summary,
-    ),
-  );
+test('prose() wraps at the columns on a terminal and prints as written when piped', () => {
+  const view = prose();
+  const wrapped = linesOf(view.render(summary, measured(view, 34)));
+  expect(wrapped.length).toBeGreaterThan(1);
+  expect(Math.max(...wrapped.map(width))).toBeLessThanOrEqual(34);
+  expect(wrapped.join(' ')).toBe(summary);
+  expect(view.render(summary, measured(view, undefined))).toBe(`${summary}\n`);
 });
 
 test('prose() renders as the default view of a declared string result', () => {
@@ -30,32 +30,49 @@ test('prose() renders as the default view of a declared string result', () => {
 });
 
 test('a blank line separates two paragraphs', () => {
-  const data = 'First paragraph here.\n\nSecond paragraph.';
-  expect(render({ data, view: 'prose', widths: [12] })).toBe(
-    lines('First', 'paragraph', 'here.', '', 'Second', 'paragraph.'),
-  );
+  const view = prose();
+  const output = view.render('First paragraph here.\n\nSecond paragraph.', measured(view, 12));
+  const [first = '', second = '', ...rest] = output.split('\n\n');
+  expect(rest).toEqual([]);
+  expect(wordsOf(first)).toEqual(['First', 'paragraph', 'here.']);
+  expect(wordsOf(second)).toEqual(['Second', 'paragraph.']);
 });
 
-test('a leading indent stays on the first line and continuation lines start at column 0', () => {
-  expect(render({ data: '    Indented text wraps here', view: 'prose', widths: [14] })).toBe(
-    lines('    Indented', 'text wraps', 'here'),
+test('a leading indent stays on the first line, and continuation lines are not indented', () => {
+  const view = prose();
+  const [first = '', ...rest] = linesOf(
+    view.render('    Indented text wraps here', measured(view, 14)),
   );
+  expect(first.startsWith('    Indented')).toBe(true);
+  expect(rest.length).toBeGreaterThan(0);
+  for (const line of rest) {
+    expect(line).toBe(line.trimStart());
+  }
 });
 
 test('a tab expands on a terminal and is kept when piped', () => {
-  expect(render({ data: 'a\tb', view: 'prose', widths: [30, null] })).toBe(
-    lines('a       b', '--', 'a\tb'),
-  );
+  const view = prose();
+  const tabs = vi.fn(expandTabs);
+  expect(view.render('a\tb', measured(view, 30, { expandTabs: tabs }))).toBe(`a${TAB}b\n`);
+  expect(tabs).toHaveBeenCalledWith('a\tb');
+  expect(view.render('a\tb', measured(view, undefined))).toBe('a\tb\n');
 });
 
 test.each(['Done.', 'Done.\n'])('the text %j ends in exactly one line break', (data) => {
-  expect(render({ data, view: 'prose', widths: [30, null] })).toBe(lines('Done.', '--', 'Done.'));
+  const view = prose();
+  expect(view.render(data, measured(view, 30))).toBe('Done.\n');
+  expect(view.render(data, measured(view, undefined))).toBe('Done.\n');
 });
 
-test.each(['@@red-empty@@', '@@nowrap-empty@@'])(
-  'prose over %s, which resolves to no character, prints nothing',
-  (data) => {
-    expect(render({ data, view: 'prose', widths: [30, null] })).toBe(lines('--'));
+test.each([
+  ['a style frame', style.red('')],
+  ['a nowrap frame', nowrap('')],
+])(
+  'prose over %s around nothing, which resolves to no character, prints nothing',
+  (_name, data) => {
+    const view = prose();
+    expect(view.render(data, measured(view, 30))).toBe('');
+    expect(view.render(data, measured(view, undefined))).toBe('');
   },
 );
 
@@ -68,7 +85,9 @@ test('prose adds no styling and keeps its author styling', () => {
 });
 
 test('the empty string prints nothing', () => {
-  expect(render({ data: '', view: 'prose', widths: [30, null] })).toBe(lines('--'));
+  const view = prose();
+  expect(view.render('', measured(view, 30))).toBe('');
+  expect(view.render('', measured(view, undefined))).toBe('');
 });
 
 test('an OSC 8 hyperlink closes at the end of each wrapped line', () => {

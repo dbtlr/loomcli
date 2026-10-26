@@ -1,8 +1,13 @@
 /*
  * Acceptance plan for the list, heading, rule, prose, and box views (docs/plugins/pack-views.md#list).
  *
- * Each case runs under Node and Bun, at a fixed width through a handle's terminal of plain numbers and
- * with `columns` undefined, and checks exact bytes. The acceptance tests cover:
+ * Each case runs under Node and Bun. A case about one view at a width calls the view through
+ * viewContext, at a terminal width and with `columns` undefined, with the simple measures of
+ * view-measures.ts, and checks the branch the view took and the content it printed, not its layout.
+ * A case about the run around a view, a declared result, the theme, an invocation by name, build
+ * mode, or a declared override, renders in a child process and checks exact bytes, and
+ * pack-fit.test.ts checks once per view that a real render fits a narrow terminal. The acceptance
+ * tests cover:
  *
  * - Each factory twice. Each view as the second argument of `out.render`, and the list and the text
  *   views as entries of a declared result under `rows<Item>` and `result<string>()`.
@@ -40,24 +45,52 @@
  *   `result<Summary>()`, and a column the row does not carry inside a boxed table.
  */
 
-import { expect, test } from 'vite-plus/test';
+import { glyph } from '@loomcli/core';
+import { expect, test, vi } from 'vite-plus/test';
 
+import { list } from '../src/list.js';
 import { lines } from './fit-render.js';
 import { render } from './pack-render.js';
+import { TAB, expandTabs, linesOf, measured, plain, width } from './view-measures.js';
 
-const services = [
+interface Service {
+  readonly name: string;
+  readonly parts?: readonly Service[];
+}
+
+const services: readonly Service[] = [
   { name: 'api-gateway' },
   { name: 'billing', parts: [{ name: 'invoices' }, { name: 'refunds' }] },
   { name: 'search' },
 ];
 
-test.each([40, null])(
-  'list() prints bullets with nested items at their parent text column, at %s columns',
-  (width) => {
-    const config = { children: true, format: 'name' };
-    expect(render({ config, data: services, view: 'list', widths: [width] })).toBe(
-      lines('● api-gateway', '● billing', '  ● invoices', '  ● refunds', '● search'),
+/** The bullet as a render shows it. */
+const bullet = plain(glyph.bullet);
+
+/** A list of services by name, each with its parts nested under it. */
+const named = (ordered = false) =>
+  list<Service>({ children: (item) => item.parts, format: (item) => item.name, ordered });
+
+/** The columns before a shown line's first character other than a space. */
+const indentOf = (shown: string): number => shown.length - shown.trimStart().length;
+
+test.each([40, undefined])(
+  'list() bullets each item with its nested items indented past their parent marker, at %s columns',
+  (columns) => {
+    const view = named();
+    const context = measured(view, columns);
+    const dim = vi.spyOn(context.style, 'dim');
+    const shown = linesOf(view.render(services, context));
+    expect(shown.map((each) => each.trim())).toEqual(
+      ['api-gateway', 'billing', 'invoices', 'refunds', 'search'].map(
+        (name) => `${bullet} ${name}`,
+      ),
     );
+    const [gateway = '', billing = '', invoices = '', refunds = '', search = ''] = shown;
+    expect([gateway, billing, search].map(indentOf)).toEqual([0, 0, 0]);
+    expect(indentOf(invoices)).toBeGreaterThan(0);
+    expect(indentOf(refunds)).toBe(indentOf(invoices));
+    expect(dim).toHaveBeenCalledTimes(5);
   },
 );
 
@@ -67,81 +100,134 @@ test('list() renders as the default view of a declared rows result', () => {
   );
 });
 
-test('an ordered list right-aligns its markers from 9. to 10.', () => {
-  const data = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
-  const output = render({ config: { ordered: true }, data, view: 'list', widths: [40] });
-  expect(output).toBe(
-    lines(' 1. a', ' 2. b', ' 3. c', ' 4. d', ' 5. e', ' 6. f', ' 7. g', ' 8. h', ' 9. i', '10. j'),
+test('an ordered list numbers its items from 1. to 10. and right-aligns the markers, so every text starts in one column', () => {
+  const view = list<string>({ ordered: true });
+  const items = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+  const shown = linesOf(view.render(items, measured(view, 40)));
+  expect(shown.map((each) => each.trim())).toEqual(
+    items.map((item, index) => `${String(index + 1)}. ${item}`),
   );
+  expect(new Set(shown.map((each, index) => each.indexOf(items[index] ?? ''))).size).toBe(1);
 });
 
-test('two levels of children start at their parent text column, and a nested ordered list counts from 1', () => {
-  const data = [
+test('two levels of children nest under their parents, and a nested ordered list counts from 1', () => {
+  const data: Service[] = [
     ...['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9'].map((name) => ({ name })),
     { name: 's10', parts: [{ name: 'a' }, { name: 'b', parts: [{ name: 'c' }] }] },
   ];
-  const config = { children: true, format: 'name', ordered: true };
-  const output = render({ config, data, view: 'list', widths: [40] }).split('\n');
-  expect(output.slice(8)).toEqual([' 9. s9', '10. s10', '    1. a', '    2. b', '       1. c', '']);
+  const view = named(true);
+  const shown = linesOf(view.render(data, measured(view, 40))).slice(9);
+  expect(shown.map((each) => each.trim())).toEqual(['10. s10', '1. a', '2. b', '1. c']);
+  const [parent = 0, first = 0, second = 0, deeper = 0] = shown.map(indentOf);
+  expect(first).toBeGreaterThan(parent);
+  expect(second).toBe(first);
+  expect(deeper).toBeGreaterThan(second);
 });
 
-test.each([40, null])(
+test.each([40, undefined])(
   'null and undefined items print their marker alone, at %s columns',
-  (width) => {
-    const data = [null, 'x', '@@undefined@@'];
-    expect(render({ data, view: 'list', widths: [width] })).toBe(lines('●', '● x', '●'));
-    expect(render({ config: { ordered: true }, data, view: 'list', widths: [width] })).toBe(
-      lines('1.', '2. x', '3.'),
-    );
+  (columns) => {
+    const data = [null, 'x', undefined];
+    const bullets = list<string | null | undefined>();
+    expect(linesOf(bullets.render(data, measured(bullets, columns)))).toEqual([
+      bullet,
+      `${bullet} x`,
+      bullet,
+    ]);
+    const numbers = list<string | null | undefined>({ ordered: true });
+    expect(linesOf(numbers.render(data, measured(numbers, columns)))).toEqual(['1.', '2. x', '3.']);
   },
 );
 
-test('a default item is escaped while a format item is the author marked text', () => {
+test('a default item is escaped and styled primary, while a format item is the author text as written', () => {
   const marker = '["style",[["foreground","red"]]]data';
-  expect(render({ data: [marker], view: 'list', widths: [null] })).toBe(lines(`● ${marker}`));
-  expect(render({ config: { format: 'raw' }, data: [marker], view: 'list', widths: [null] })).toBe(
-    lines('● data'),
-  );
+  const plainItems = list<string>();
+  const context = measured(plainItems, undefined);
+  const escape = vi.spyOn(context.style, 'escape');
+  const primary = vi.spyOn(context.style, 'primary');
+  plainItems.render([marker], context);
+  expect(escape).toHaveBeenCalledWith(marker);
+  expect(primary).toHaveBeenCalledWith(marker);
+  const formatted = list<string>({ format: (item) => item });
+  const authored = measured(formatted, undefined);
+  const unescaped = vi.spyOn(authored.style, 'escape');
+  expect(linesOf(formatted.render([marker], authored))).toEqual([`${bullet} data`]);
+  expect(unescaped).not.toHaveBeenCalled();
 });
 
 test('format receives each item index among its siblings', () => {
-  const config = { children: true, format: 'index' };
-  expect(render({ config, data: services, view: 'list', widths: [40] })).toBe(
-    lines('● 0:api-gateway', '● 1:billing', '  ● 0:invoices', '  ● 1:refunds', '● 2:search'),
-  );
+  const format = vi.fn((item: Service, _index: number) => item.name);
+  const view = list<Service>({ children: (item) => item.parts, format });
+  view.render(services, measured(view, 40));
+  expect(format.mock.calls.map(([item, index]) => `${String(index)}:${item.name}`)).toEqual([
+    '0:api-gateway',
+    '1:billing',
+    '0:invoices',
+    '1:refunds',
+    '2:search',
+  ]);
 });
 
-test('a wrapped item hangs under its text at 30 columns', () => {
-  const data = ['refunds, whose retry policy lands with this deploy'];
-  expect(render({ data, view: 'list', widths: [30] })).toBe(
-    lines('● refunds, whose retry policy', '  lands with this deploy'),
-  );
+test('a wrapped item hangs its later lines under its text, and every line fits', () => {
+  const view = list<string>();
+  const item = 'refunds, whose retry policy lands with this deploy';
+  const [first = '', ...rest] = linesOf(view.render([item], measured(view, 30)));
+  expect(first.startsWith(`${bullet} refunds,`)).toBe(true);
+  expect(rest.length).toBeGreaterThan(0);
+  for (const each of [first, ...rest]) {
+    expect(width(each)).toBeLessThanOrEqual(30);
+  }
+  for (const each of rest) {
+    expect(indentOf(each)).toBe(first.indexOf('refunds'));
+  }
+  expect([first.slice(2), ...rest.map((each) => each.trim())].join(' ')).toBe(item);
 });
 
-test('a nested item wraps at the columns left after its own text column', () => {
+test('a nested item wraps at the columns left after its own text column, so every line fits', () => {
   const data = [{ name: 'billing', parts: [{ name: 'refunds, whose retry policy lands' }] }];
-  const config = { children: true, format: 'name', ordered: true };
-  expect(render({ config, data, view: 'list', widths: [24] })).toBe(
-    lines('1. billing', '   1. refunds, whose', '      retry policy lands'),
-  );
+  const view = named(true);
+  const shown = linesOf(view.render(data, measured(view, 24)));
+  expect(shown.length).toBeGreaterThan(2);
+  for (const each of shown) {
+    expect(width(each)).toBeLessThanOrEqual(24);
+  }
+  expect(
+    shown
+      .slice(1)
+      .map((each) => each.trim())
+      .join(' '),
+  ).toBe('1. refunds, whose retry policy lands');
 });
 
 test('an authored line break hangs under its text when piped', () => {
-  expect(render({ data: ['first line\nsecond line'], view: 'list', widths: [null] })).toBe(
-    lines('● first line', '  second line'),
+  const view = list<string>();
+  const [first = '', second = '', ...rest] = linesOf(
+    view.render(['first line\nsecond line'], measured(view, undefined)),
   );
+  expect(rest).toEqual([]);
+  expect(first).toBe(`${bullet} first line`);
+  expect(second.trim()).toBe('second line');
+  expect(indentOf(second)).toBe(first.indexOf('first'));
 });
 
-test.each([30, null])('a blank line inside an item carries no indent, at %s columns', (width) => {
-  expect(render({ data: ['above\n\nbelow'], view: 'list', widths: [width] })).toBe(
-    lines('● above', '', '  below'),
-  );
-});
+test.each([30, undefined])(
+  'a blank line inside an item carries no indent, at %s columns',
+  (columns) => {
+    const view = list<string>();
+    const shown = linesOf(view.render(['above\n\nbelow'], measured(view, columns)));
+    expect(shown).toHaveLength(3);
+    expect(shown[1]).toBe('');
+  },
+);
 
 test('a tab in an item expands on a terminal and is kept when piped', () => {
-  expect(render({ data: ['a\tb'], view: 'list', widths: [30, null] })).toBe(
-    lines('● a       b', '--', '● a\tb'),
-  );
+  const view = list<string>();
+  const tabs = vi.fn(expandTabs);
+  expect(linesOf(view.render(['a\tb'], measured(view, 30, { expandTabs: tabs })))).toEqual([
+    `${bullet} a${TAB}b`,
+  ]);
+  expect(tabs).toHaveBeenCalledWith('a\tb');
+  expect(linesOf(view.render(['a\tb'], measured(view, undefined)))).toEqual([`${bullet} a\tb`]);
 });
 
 test('a list styles its markers dim and a default item primary', () => {
@@ -156,5 +242,7 @@ test('a list styles its markers dim and a default item primary', () => {
 });
 
 test('an empty sequence prints nothing, on a terminal and piped', () => {
-  expect(render({ data: [], view: 'list', widths: [30, null] })).toBe(lines('--'));
+  const view = list<string>();
+  expect(view.render([], measured(view, 30))).toBe('');
+  expect(view.render([], measured(view, undefined))).toBe('');
 });

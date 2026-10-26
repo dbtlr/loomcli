@@ -1,8 +1,13 @@
 /*
  * Acceptance plan for the table and records fit (docs/plugins/pack-views.md#table).
  *
- * The fit is proven under Node and Bun with a handle's terminal of plain numbers for the width, and
- * again under a pty-backed host for the resize cases. The acceptance tests cover:
+ * Each case runs under Node and Bun. A case about one view at a width calls the view through
+ * viewContext with the simple measures of view-measures.ts and checks the branch the view took and
+ * the content it printed, not its layout; the levelling formula is checked on `levelWidths` itself.
+ * A case about the run around a view, embedded color and hyperlinks under a rendering policy, a
+ * resize, `COLUMNS`, a pipe, an invocation by name, or a streamed row, renders in a child process
+ * and checks exact bytes, pack-fit.test.ts checks once per view that a real render fits a narrow
+ * terminal, and a pty-backed host checks the resize cases. The acceptance tests cover:
  *
  * - At natural width. A table whose natural width is less than `columns`, one exactly equal to it,
  *   and one under `columns` undefined each print the natural-width bytes.
@@ -72,10 +77,22 @@
  *   `columns` is defined.
  */
 
-import { expect, test } from 'vite-plus/test';
+import type { View } from '@loomcli/core';
+import type { ViewValues } from '@loomcli/testing';
+import { expect, test, vi } from 'vite-plus/test';
 
 import { levelWidths } from '../src/table-fit.js';
+import { table } from '../src/table.js';
 import { filler, lines, render } from './fit-render.js';
+import {
+  TAB,
+  expandTabs,
+  linesOf,
+  measured,
+  width as measure,
+  wordsOf,
+  wrap,
+} from './view-measures.js';
 
 const noteRows = [
   { name: 'build', note: 'compiles every package and bundles the examples' },
@@ -86,61 +103,103 @@ const noteColumns = {
     { header: 'NAME', key: 'name' },
     { header: 'NOTE', key: 'note' },
   ],
-};
+} as const;
 
-test('a table that fits prints its natural width, exactly at the limit or under it', () => {
-  const rows = [{ name: 'build', note: 'compiles' }];
-  const expected = lines('name   note', 'build  compiles');
-  const config = { columns: ['name', 'note'] };
-  for (const width of [15, 40, null, 'unreported'] as const) {
-    expect(render({ config, rows, view: 'table', widths: [width] })).toBe(expected);
+/** The lines a table shows for `rows` at `columns`, or piped when undefined. */
+function shown<Row>(
+  view: View<readonly Row[]>,
+  rows: readonly Row[],
+  columns: number | undefined,
+  values: ViewValues = {},
+): string[] {
+  return linesOf(view.render(rows, measured(view, columns, values)));
+}
+
+/** Every line is at most `columns` wide. */
+function expectFits(each: readonly string[], columns: number): void {
+  for (const line of each) {
+    expect(measure(line)).toBeLessThanOrEqual(columns);
   }
+}
+
+/** Whether `text` sits whole on one line. */
+const onOneLine = (each: readonly string[], text: string): boolean =>
+  each.some((line) => line.includes(text));
+
+/** The columns at which the line holding `fragment` has it end, for each fragment. */
+const endsOf = (each: readonly string[], fragments: readonly string[]): number[] =>
+  fragments.map((fragment) => {
+    const line = each.find((candidate) => candidate.includes(fragment)) ?? '';
+    return line.indexOf(fragment) + fragment.length;
+  });
+
+/** The middle column of the line holding each fragment, doubled so it stays whole. */
+const middlesOf = (each: readonly string[], fragments: readonly string[]): number[] =>
+  fragments.map((fragment) => {
+    const line = each.find((candidate) => candidate.includes(fragment)) ?? '';
+    return 2 * line.indexOf(fragment) + fragment.length;
+  });
+
+/** The row blocks of a records render: its lines between blank lines. */
+const blocksOf = (each: readonly string[]): string[][] =>
+  each
+    .join('\n')
+    .split('\n\n')
+    .map((block) => block.split('\n'));
+
+test('a table that fits prints its natural width, exactly at the limit, under it, or piped', () => {
+  const view = table<{ name: string; note: string }>({ columns: ['name', 'note'] });
+  const rows = [{ name: 'build', note: 'compiles' }];
+  const outputs = [15, 40, undefined].map((columns) => view.render(rows, measured(view, columns)));
+  expect(new Set(outputs).size).toBe(1);
+  expect(linesOf(outputs[0] ?? '').map(wordsOf)).toEqual([
+    ['name', 'note'],
+    ['build', 'compiles'],
+  ]);
 });
 
-test('a table one column too wide shrinks and wraps every value whole', () => {
-  expect(render({ config: noteColumns, rows: noteRows, view: 'table', widths: [30] })).toBe(
-    lines(
-      'NAME   NOTE',
-      'build  compiles every package',
-      '       and bundles the',
-      '       examples',
-      'check  runs the formatter, the',
-      '       linter, and the type',
-      '       checker',
-    ),
-  );
+test('a table one column too wide shrinks, wraps its long values, and keeps every value whole', () => {
+  const view = table<(typeof noteRows)[number]>(noteColumns);
+  const output = shown(view, noteRows, 30);
+  expectFits(output, 30);
+  expect(wordsOf(output[0] ?? '')).toEqual(['NAME', 'NOTE']);
+  for (const { note } of noteRows) {
+    expect(onOneLine(output, note)).toBe(false);
+  }
+  const every = [
+    'NAME',
+    'NOTE',
+    ...noteRows
+      .flatMap(({ name, note }) => [name, note])
+      .join(' ')
+      .split(' '),
+  ];
+  expect(wordsOf(output.join('\n')).toSorted()).toEqual(every.toSorted());
 });
 
 /** The three-column table whose natural widths are 40, 20, and 6, the last right-aligned. */
-const levelled = {
-  config: {
-    columns: [
-      { header: 'A', key: 'wide' },
-      { header: 'B', key: 'middle' },
-      { align: 'right', header: 'C', key: 'narrow' },
-    ],
-  },
-  rows: [{ middle: filler(20, 'b'), narrow: 'cccccc', wide: filler(40, 'a') }],
-  view: 'table',
-} as const;
+const levelled = table<{ middle: string; narrow: string; wide: string }>({
+  columns: [
+    { header: 'A', key: 'wide' },
+    { header: 'B', key: 'middle' },
+    { align: 'right', header: 'C', key: 'narrow' },
+  ],
+});
+const levelledRows = [{ middle: filler(20, 'b'), narrow: 'cccccc', wide: filler(40, 'a') }];
 
 test.each([
   { cells: 46, widths: [20, 20, 6] },
   { cells: 40, widths: [17, 17, 6] },
   { cells: 39, widths: [17, 16, 6] },
 ])(
-  'levelling from the top gives $widths with $cells columns for cells, and totals the width',
+  'levelling from the top gives $widths with $cells columns for cells, and the table fills the width',
   ({ cells, widths }) => {
-    const columns = cells + 4;
-    const output = render({ ...levelled, widths: [columns] }).split('\n');
-    const [first = 0, second = 0] = widths;
-    const header = output[0] ?? '';
-    expect(header.indexOf('B')).toBe(first + 2);
-    // C is right-aligned in its 6 columns, so it lands on the last one.
-    expect(header.indexOf('C')).toBe(first + 2 + second + 2 + 5);
-    expect(Math.max(...output.map((line) => line.length))).toBe(columns);
-    const wide = output.slice(1, -1).map((line) => line.slice(0, first).trim());
-    expect(wide.join(' ')).toBe(filler(40, 'a'));
+    expect(levelWidths([40, 20, 6], [5, 5, 6], cells)).toEqual(widths);
+    const output = shown(levelled, levelledRows, cells + 4);
+    expect(Math.max(...output.map(measure))).toBe(cells + 4);
+    expect(wordsOf(output.join('\n')).filter((word) => word.startsWith('a'))).toEqual(
+      filler(40, 'a').split(' '),
+    );
   },
 );
 
@@ -157,37 +216,41 @@ test.each([
 );
 
 test('the remainder goes one column each from the left to the tied columns', () => {
-  const text = filler(30, 'x');
-  const rows = [{ left: text, middle: text, right: text }];
-  const config = { columns: ['left', 'middle', 'right'] };
-  const header = render({ config, rows, view: 'table', widths: [84] }).split('\n')[0] ?? '';
-  expect(header.indexOf('middle')).toBe(27 + 2);
-  expect(header.indexOf('right')).toBe(27 + 2 + 27 + 2);
+  expect(levelWidths([30, 30, 30], [5, 6, 5], 80)).toEqual([27, 27, 26]);
 });
 
-test('a column held at its floor by a long word stays there while the others narrow', () => {
-  const rows = [{ tail: filler(40, 't'), word: 'abcdefghijklmnopqrst uv' }];
-  const config = { columns: ['word', 'tail'] };
-  const output = render({ config, rows, view: 'table', widths: [40] });
-  expect(output.split('\n').slice(1, 3)).toEqual([
-    `abcdefghijklmnopqrst  ${filler(40, 't').slice(0, 14)}`,
-    `uv${' '.repeat(20)}${filler(40, 't').slice(15, 29)}`,
-  ]);
+test('a column held at its floor by a long word stays whole while the others narrow', () => {
+  const view = table<{ tail: string; word: string }>({ columns: ['word', 'tail'] });
+  const output = shown(view, [{ tail: filler(40, 't'), word: 'abcdefghijklmnopqrst uv' }], 40);
+  expectFits(output, 40);
+  expect(onOneLine(output, 'abcdefghijklmnopqrst')).toBe(true);
+  expect(onOneLine(output, filler(40, 't'))).toBe(false);
 });
 
-test('a cell whose trailing space would overflow its column wraps, so every line fits and columns align', () => {
+test('a cell whose trailing space would overflow its column wraps, so every line fits', () => {
+  const view = table<{ name: string; role: string }>();
   const rows = [
     { name: 'Ada Lovelace ', role: 'math' },
     { name: 'Bo', role: 'ops' },
   ];
-  const output = render({ config: {}, rows, view: 'table', widths: [18] }).split('\n');
-  expect(Math.max(...output.map((line) => line.length))).toBeLessThanOrEqual(18);
-  // The name column levels to 12, so the role column starts at 14 on every line it has text.
-  expect(output[0]?.indexOf('role')).toBe(14);
-  expect(output[1]).toBe(`Ada${' '.repeat(11)}math`);
-  expect(output[2]?.trimEnd()).toBe('Lovelace');
-  expect(output[3]).toBe(`Bo${' '.repeat(12)}ops`);
+  const output = shown(view, rows, 18);
+  expectFits(output, 18);
+  expect(onOneLine(output, 'Ada Lovelace')).toBe(false);
+  expect(wordsOf(output.join('\n')).toSorted()).toEqual(
+    ['name', 'role', 'Ada', 'Lovelace', 'math', 'Bo', 'ops'].toSorted(),
+  );
 });
+
+/**
+ * The row blocks of a records render, each as the labels its lines start with, after checking
+ * that no line is a header line holding every label.
+ */
+function recordLabels(output: readonly string[], labels: readonly string[]): string[][] {
+  expect(output.some((line) => labels.every((label) => line.includes(label)))).toBe(false);
+  return blocksOf(output).map((block) =>
+    labels.filter((label) => block.some((line) => line.startsWith(label))),
+  );
+}
 
 /*
  * The floor of the word column is 10, the whole of `abcd      `, because an input line's trailing
@@ -195,168 +258,174 @@ test('a cell whose trailing space would overflow its column wraps, so every line
  * 16 columns, more than 12, so the rows print as records blocks instead of a shrunk table.
  */
 test('a word with trailing spaces is one unit at its full width, so its floor can force the fallback', () => {
+  const view = table<{ tail: string; word: string }>({ columns: ['word', 'tail'] });
   const rows = [
     { tail: 'efgh', word: 'abcd      ' },
     { tail: 'kl', word: 'ij' },
   ];
-  const config = { columns: ['word', 'tail'] };
-  expect(render({ config, rows, view: 'table', widths: [12] })).toBe(
-    lines('word  abcd      ', 'tail  efgh', '', 'word  ij', 'tail  kl'),
-  );
-});
-
-test('a word with leading spaces is one unit, so its column floor counts the spaces', () => {
-  const rows = [{ tail: filler(40, 't'), word: '    abcdef gh' }];
-  const output = render({
-    config: { columns: ['word', 'tail'] },
-    rows,
-    view: 'table',
-    widths: [20],
-  });
-  // The word column's floor is 10, the width of '    abcdef', so the tail column starts at 12.
-  expect(output.split('\n').slice(0, 3)).toEqual([
-    'word        tail',
-    `    abcdef  ${filler(40, 't').slice(0, 4)}`,
-    `gh${' '.repeat(10)}${filler(40, 't').slice(5, 9)}`,
+  expect(recordLabels(shown(view, rows, 12), ['word', 'tail'])).toEqual([
+    ['word', 'tail'],
+    ['word', 'tail'],
   ]);
 });
 
-test('a padding frame is one unit at its padded width, so it sets its column floor', () => {
-  const rows = [{ tail: filler(40, 't'), word: 'ab cd' }];
-  const config = { columns: [{ format: 'pad', key: 'word' }, 'tail'] };
-  const output = render({ config, rows, view: 'table', widths: [20] }).split('\n');
-  // The word cell pads 'ab cd' to 12 columns, one unit, so the tail column starts at 14.
-  expect(output[0]).toBe(`word${' '.repeat(10)}tail`);
-  expect(output[1]).toBe(`ab cd${' '.repeat(9)}${filler(40, 't').slice(0, 4)}`);
+test('a word with leading spaces is one unit, so its column floor counts the spaces', () => {
+  const view = table<{ tail: string; word: string }>({ columns: ['word', 'tail'] });
+  const output = shown(view, [{ tail: filler(40, 't'), word: '    abcdef gh' }], 20);
+  expectFits(output, 20);
+  expect(output.some((line) => line.startsWith('    abcdef'))).toBe(true);
 });
 
-test('a nowrap cell raises its column floor to the whole cell', () => {
-  const rows = [{ note: filler(40, 'n'), path: 'a b c d e f' }];
-  const config = {
-    columns: [{ format: 'nowrap', header: 'P', key: 'path' }, 'note'],
-  };
-  const output = render({ config, rows, view: 'table', widths: [30] }).split('\n');
-  expect(output[1]).toBe(`a b c d e f  ${filler(40, 'n').slice(0, 14)}`);
+test('a unit wrap keeps whole, such as a pad or nowrap frame, sets its column floor, so the column never narrows below it', () => {
+  const view = table<{ note: string; path: string }>({
+    columns: [{ header: 'P', key: 'path' }, 'note'],
+  });
+  const keeps = vi.fn((text: string, limit: number | undefined) =>
+    text === 'a b c d e f' ? text : wrap(text, limit),
+  );
+  const output = shown(view, [{ note: filler(40, 'n'), path: 'a b c d e f' }], 30, { wrap: keeps });
+  expect(keeps).toHaveBeenCalledWith('a b c d e f', 1);
+  expectFits(output, 30);
+  expect(output.some((line) => line.startsWith('a b c d e f'))).toBe(true);
+  expect(onOneLine(output, filler(40, 'n'))).toBe(false);
 });
 
-test.each([
-  {
-    align: 'right',
-    expected: lines('     N  note', ' aaa b  x', '    cc', '  dddd'),
+test.each(['right', 'center'] as const)(
+  'each line of a wrapped %s-aligned cell keeps the column alignment',
+  (align) => {
+    const view = table<{ note: string; text: string }>({
+      columns: [{ align, header: 'N', key: 'text' }, 'note'],
+    });
+    const output = shown(view, [{ note: 'x', text: 'aaa b cc dddd' }], 12);
+    expectFits(output, 12);
+    const fragments = ['N', 'aaa b', 'cc', 'dddd'];
+    const placed = align === 'right' ? endsOf(output, fragments) : middlesOf(output, fragments);
+    expect(Math.max(...placed) - Math.min(...placed)).toBeLessThanOrEqual(
+      align === 'right' ? 0 : 2,
+    );
   },
-  {
-    align: 'center',
-    expected: lines('  N     note', 'aaa b   x', '  cc', ' dddd'),
-  },
-])('each line of a wrapped $align cell keeps the column alignment', ({ align, expected }) => {
-  const rows = [{ note: 'x', text: 'aaa b cc dddd' }];
-  const config = { columns: [{ align, header: 'N', key: 'text' }, 'note'] };
-  expect(render({ config, rows, view: 'table', widths: [12] })).toBe(expected);
-});
+);
 
 test('a line ends at its rightmost cell with text, which carries no padding, and an earlier shorter cell pads blank lines', () => {
   const rows = [{ long: 'one two three', short: 'x' }];
-  const long = { header: 'L', key: 'long' };
-  const short = { header: 'S', key: 'short' };
-  expect(render({ config: { columns: [long, short] }, rows, view: 'table', widths: [10] })).toBe(
-    lines('L        S', 'one two  x', 'three'),
-  );
-  expect(render({ config: { columns: [short, long] }, rows, view: 'table', widths: [10] })).toBe(
-    lines('S  L', 'x  one two', '   three'),
-  );
+  const long = { header: 'L', key: 'long' } as const;
+  const short = { header: 'S', key: 'short' } as const;
+  const after = shown(table<(typeof rows)[number]>({ columns: [long, short] }), rows, 10);
+  const before = shown(table<(typeof rows)[number]>({ columns: [short, long] }), rows, 10);
+  for (const line of [...after, ...before]) {
+    expect(line).toBe(line.trimEnd());
+  }
+  expect(after.find((line) => line.includes('three'))).not.toContain('x');
+  const continued = before.find((line) => line.includes('three')) ?? '';
+  expect(continued.startsWith(' ')).toBe(true);
+  expect(continued.trim()).toBe('three');
 });
 
 test('a middle cell taller than the last ends its extra lines at its own text, with no gap or padding after', () => {
-  const rows = [{ first: 'x', last: 'z', middle: 'one two three' }];
-  const config = {
+  const view = table<{ first: string; last: string; middle: string }>({
     columns: [
       { header: 'a', key: 'first' },
       { header: 'b', key: 'middle' },
       { header: 'c', key: 'last' },
     ],
-  };
-  const output = render({ config, rows, view: 'table', widths: [14] });
-  expect(output).toBe(lines('a  b         c', 'x  one two   z', '   three'));
-  for (const line of output.split('\n')) {
+  });
+  const output = shown(view, [{ first: 'x', last: 'z', middle: 'one two three' }], 14);
+  for (const line of output) {
     expect(line).toBe(line.trimEnd());
   }
+  expect(output.find((line) => line.includes('three'))?.trim()).toBe('three');
 });
 
 test('a header wider than its cells sets the natural width and wraps like a cell', () => {
+  const view = table<{ small: string; text: string }>({
+    columns: [{ header: 'ENORMOUS HEADER', key: 'small' }, 'text'],
+  });
   const rows = [{ small: 'x', text: filler(30, 'b') }];
-  const config = { columns: [{ header: 'ENORMOUS HEADER', key: 'small' }, 'text'] };
-  expect(
-    render({ config, rows, view: 'table', widths: [30] })
-      .split('\n')
-      .slice(0, 3),
-  ).toEqual(['ENORMOUS        text', 'HEADER', `x               ${filler(30, 'b').slice(0, 14)}`]);
+  const [header = '', row = ''] = shown(view, rows, undefined);
+  expect(header).toContain('ENORMOUS HEADER');
+  expect(row.indexOf(filler(30, 'b'))).toBe(header.indexOf('text'));
+  const narrow = shown(view, rows, 30);
+  expectFits(narrow, 30);
+  expect(onOneLine(narrow, 'ENORMOUS HEADER')).toBe(false);
+  expect(onOneLine(narrow, 'HEADER')).toBe(true);
 });
 
-test('a header word longer than every cell word sets the floor', () => {
-  const rows = [{ small: 'x y', text: filler(40, 'b') }];
-  const config = { columns: [{ header: 'SUPERCALIFRAGILISTIC', key: 'small' }, 'text'] };
-  const output = render({ config, rows, view: 'table', widths: [30] }).split('\n');
-  expect(output[0]).toBe('SUPERCALIFRAGILISTIC  text');
+test('a header word longer than every cell word sets the floor, so every line still fits', () => {
+  const view = table<{ small: string; text: string }>({
+    columns: [{ header: 'SUPERCALIFRAGILISTIC', key: 'small' }, 'text'],
+  });
+  const output = shown(view, [{ small: 'x y', text: filler(40, 'b') }], 30);
+  expectFits(output, 30);
+  expect(onOneLine(output, 'SUPERCALIFRAGILISTIC')).toBe(true);
 });
 
 test('an empty sequence prints its header line at the fitted widths', () => {
-  const config = {
+  const view = table<{ first: string; last: string }>({
     columns: [
       { header: 'FIRST NAME', key: 'first' },
       { header: 'LAST NAME', key: 'last' },
     ],
-  };
-  expect(render({ config, rows: [], view: 'table', widths: [12] })).toBe(
-    lines('FIRST  LAST', 'NAME   NAME'),
-  );
-  expect(render({ config, rows: [], view: 'table', widths: [40] })).toBe(
-    lines('FIRST NAME  LAST NAME'),
-  );
+  });
+  const narrow = shown(view, [], 12);
+  expectFits(narrow, 12);
+  expect(narrow.length).toBeGreaterThan(1);
+  expect(wordsOf(narrow.join('\n')).toSorted()).toEqual(['FIRST', 'LAST', 'NAME', 'NAME']);
+  const wide = shown(view, [], 40);
+  expect(wide).toHaveLength(1);
+  expect(wide[0]).toContain('FIRST NAME');
+  expect(wide[0]).toContain('LAST NAME');
 });
 
 test('an empty sequence overflows at its floors rather than taking the records fallback', () => {
-  const config = { columns: ['ALPHA', 'BETA'] };
-  expect(render({ config, rows: [], view: 'table', widths: [5] })).toBe(lines('ALPHA  BETA'));
+  const view = table<{ ALPHA: string; BETA: string }>({ columns: ['ALPHA', 'BETA'] });
+  const output = shown(view, [], 5);
+  expect(output).toHaveLength(1);
+  expect(wordsOf(output[0] ?? '')).toEqual(['ALPHA', 'BETA']);
 });
 
 test('an empty sequence with no columns list prints nothing', () => {
-  expect(render({ config: {}, rows: [], view: 'table', widths: [30] })).toBe('');
+  const view = table<Record<string, unknown>>();
+  expect(view.render([], measured(view, 30))).toBe('');
 });
 
-test('a table whose floors do not fit renders as records blocks', () => {
+test('a table whose floors do not fit renders as records blocks with every value', () => {
+  const view = table<{ name: string; note: string }>(noteColumns);
   const rows = [
     { name: 'abcdefghijkl', note: 'one two three four five' },
     { name: 'second', note: 'tail' },
   ];
-  expect(render({ config: noteColumns, rows, view: 'table', widths: [15] })).toBe(
-    lines(
-      'NAME  abcdefghijkl',
-      'NOTE  one two',
-      '      three',
-      '      four five',
-      '',
-      'NAME  second',
-      'NOTE  tail',
-    ),
+  const output = shown(view, rows, 15);
+  expect(recordLabels(output, ['NAME', 'NOTE'])).toEqual([
+    ['NAME', 'NOTE'],
+    ['NAME', 'NOTE'],
+  ]);
+  expect(onOneLine(output, rows[0]?.note ?? '')).toBe(false);
+  expect(wordsOf(output.join('\n')).filter((word) => !['NAME', 'NOTE'].includes(word))).toEqual(
+    rows
+      .flatMap(({ name, note }) => [name, note])
+      .join(' ')
+      .split(' '),
   );
 });
 
-test('the records fallback aligns a value within its own widest wrapped line', () => {
-  const rows = [{ text: 'aaa b cc dddd', wide: 'zzzzzzzzzzzzzzz' }];
-  const labelled = (align: 'center' | 'right') =>
-    render({
-      config: { columns: [{ align, key: 'text' }, 'wide'] },
-      rows,
-      view: 'table',
-      widths: [12],
+test.each(['right', 'center'] as const)(
+  'the records fallback aligns a %s-aligned value within its own widest wrapped line',
+  (align) => {
+    const view = table<{ text: string; wide: string }>({
+      columns: [{ align, key: 'text' }, 'wide'],
     });
-  expect(labelled('right')).toBe(
-    lines('text  aaa b', '         cc', '       dddd', 'wide  zzzzzzzzzzzzzzz'),
-  );
-  expect(labelled('center')).toBe(
-    lines('text  aaa b', '       cc', '      dddd', 'wide  zzzzzzzzzzzzzzz'),
-  );
-});
+    const output = shown(view, [{ text: 'aaa b cc dddd', wide: 'zzzzzzzzzzzzzzz' }], 12);
+    expect(recordLabels(output, ['text', 'wide'])).toEqual([['text', 'wide']]);
+    const fragments = ['aaa b', 'cc', 'dddd'];
+    const placed = align === 'right' ? endsOf(output, fragments) : middlesOf(output, fragments);
+    expect(Math.max(...placed) - Math.min(...placed)).toBeLessThanOrEqual(
+      align === 'right' ? 0 : 2,
+    );
+    for (const line of output) {
+      expect(line).toBe(line.trimEnd());
+    }
+  },
+);
 
 test('the records fallback keeps a format cell and its color, with every indent bare', () => {
   const rows = [{ name: 'abcdefghijkl', note: 'one two three four five' }];
@@ -378,11 +447,14 @@ test('the records fallback keeps a format cell and its color, with every indent 
 });
 
 test('a format cell is measured and wrapped by its output', () => {
-  const rows = [{ first: 'x', second: 'hello world' }];
-  const config = { columns: ['first', { format: 'red', key: 'second' }] };
-  expect(render({ config, rows, view: 'table', widths: [16] })).toBe(
-    lines('first  second', 'x      hello', '       world'),
-  );
+  const view = table<{ first: string; second: string }>({
+    columns: ['first', { format: (value) => `<${value}>`, key: 'second' }],
+  });
+  const output = shown(view, [{ first: 'x', second: 'hello world' }], 16);
+  expectFits(output, 16);
+  expect(onOneLine(output, '<hello')).toBe(true);
+  expect(onOneLine(output, 'world>')).toBe(true);
+  expect(onOneLine(output, '<hello world>')).toBe(false);
 });
 
 test('a styled cell that wraps closes its style on each line, so no style leaks into a neighbor', () => {
@@ -482,27 +554,26 @@ test.each([{ invoke: false }, { invoke: true }])(
   },
 );
 
+test('a tab in a cell expands from the start of the cell before it fits, so no line overflows', () => {
+  const view = table<{ first: string; last: string }>();
+  const tabs = vi.fn(expandTabs);
+  const output = shown(view, [{ first: 'abcde', last: 'b\tc d' }], 16, { expandTabs: tabs });
+  expect(tabs).toHaveBeenCalledWith('b\tc d');
+  expectFits(output, 16);
+  expect(output.join('\n')).not.toContain('\t');
+  expect(onOneLine(output, `b${TAB}c`)).toBe(true);
+});
+
 /** The two SGR commands a red span writes removed, so a line measures as the terminal shows it. */
 const unstyled = (text: string) => text.replaceAll('\u001B[31m', '').replaceAll('\u001B[39m', '');
 
 /** Each line holds no tab and is at most `columns` wide, as the terminal shows it. */
-function expectFits(output: string, columns: number): void {
+function expectShownFits(output: string, columns: number): void {
   for (const line of unstyled(output).split('\n')) {
     expect(line).not.toContain('\t');
     expect(line.length).toBeLessThanOrEqual(columns);
   }
 }
-
-test('a tab in a cell expands from the start of the cell before it fits, so no line overflows', () => {
-  const output = render({
-    config: {},
-    rows: [{ first: 'abcde', last: 'b\tc d' }],
-    view: 'table',
-    widths: [16],
-  });
-  expectFits(output, 16);
-  expect(output).toBe(lines('first  last', 'abcde  b       c', '       d'));
-});
 
 test('a tab in a styled cell expands inside its style', () => {
   const rows = [{ first: 'abcde', last: 'b\tc d' }];
@@ -514,7 +585,7 @@ test('a tab in a styled cell expands inside its style', () => {
   };
   const rendering = { color: 'always', modifiers: 'never' } as const;
   const output = render({ config, rendering, rows, view: 'table', widths: [16] });
-  expectFits(output, 16);
+  expectShownFits(output, 16);
   expect(output.split('\n').slice(1)).toEqual([
     'abcde  \u001B[31mb       c\u001B[39m',
     '       \u001B[31md\u001B[39m',
@@ -522,25 +593,31 @@ test('a tab in a styled cell expands inside its style', () => {
   ]);
 });
 
-test('a tab inside a nowrap cell expands, and the cell stays whole', () => {
-  const rows = [{ first: 'abcde', last: 'b\tc d' }];
-  const config = { columns: ['first', { format: 'nowrap', key: 'last' }] };
-  const output = render({ config, rows, view: 'table', widths: [18] });
-  expectFits(output, 18);
-  expect(output).toBe(lines('first  last', 'abcde  b       c d'));
+test("a tab in a format cell's output expands as a default cell's does", () => {
+  const view = table<{ first: string; last: string }>({
+    columns: ['first', { format: (value) => value.toUpperCase(), key: 'last' }],
+  });
+  const tabs = vi.fn(expandTabs);
+  const output = shown(view, [{ first: 'abcde', last: 'b\tc d' }], 18, { expandTabs: tabs });
+  expect(tabs).toHaveBeenCalledWith('B\tC D');
+  expect(output.join('\n')).not.toContain('\t');
 });
 
 test('a tab in a header expands as a cell does', () => {
-  const rows = [{ first: 'abcde', last: 'x' }];
-  const config = { columns: ['first', { header: 'b\tc', key: 'last' }] };
-  const output = render({ config, rows, view: 'table', widths: [16] });
+  const view = table<{ first: string; last: string }>({
+    columns: ['first', { header: 'b\tc', key: 'last' }],
+  });
+  const tabs = vi.fn(expandTabs);
+  const output = shown(view, [{ first: 'abcde', last: 'x' }], 16, { expandTabs: tabs });
+  expect(tabs).toHaveBeenCalledWith('b\tc');
   expectFits(output, 16);
-  expect(output).toBe(lines('first  b       c', 'abcde  x'));
+  expect(output[0]).toContain(`b${TAB}c`);
 });
 
 test('a tab stays a tab in a piped table', () => {
-  const rows = [{ first: 'abcde', last: 'b\tc d' }];
-  expect(render({ config: {}, env: { COLUMNS: '16' }, rows, view: 'table', widths: [null] })).toBe(
-    lines('first  last', 'abcde  b\tc d'),
-  );
+  const view = table<{ first: string; last: string }>();
+  const tabs = vi.fn(expandTabs);
+  const output = shown(view, [{ first: 'abcde', last: 'b\tc d' }], undefined, { expandTabs: tabs });
+  expect(tabs).not.toHaveBeenCalled();
+  expect(output[1]).toContain('b\tc d');
 });

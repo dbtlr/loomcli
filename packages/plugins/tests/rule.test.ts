@@ -1,21 +1,42 @@
 // Acceptance plan: see packages/plugins/tests/list.test.ts.
-import { expect, test } from 'vite-plus/test';
+import { glyph, nowrap, style } from '@loomcli/core';
+import { expect, test, vi } from 'vite-plus/test';
 
+import { rule } from '../src/rule.js';
 import { lines } from './fit-render.js';
 import { render } from './pack-render.js';
+import { TAB, expandTabs, linesOf, measured, plain, width, wordsOf } from './view-measures.js';
 
-const line = '─';
+/** The line glyph as a render shows it. */
+const line = plain(glyph.line);
 
-test('a labelled rule spans 60 columns on a terminal and 80 when piped', () => {
-  expect(render({ data: 'Checks', view: 'rule', widths: [60, null] })).toBe(
-    lines(`── Checks ${line.repeat(50)}`, '--', `── Checks ${line.repeat(70)}`),
-  );
+/** Whether a shown line is line glyphs and nothing else. */
+const isBare = (shown: string | undefined): boolean =>
+  shown !== undefined && shown.length > 0 && shown.replaceAll(line, '') === '';
+
+test.each([
+  [60, 60],
+  [undefined, 80],
+])('a labelled rule spans %s columns, %s wide, with its label after the lead', (columns, spans) => {
+  const view = rule();
+  const shown = linesOf(view.render('Checks', measured(view, columns)));
+  expect(shown).toHaveLength(1);
+  expect(shown[0]?.startsWith(`${line}${line} Checks ${line}`)).toBe(true);
+  expect(width(shown[0] ?? '')).toBe(spans);
 });
 
-test('a bare rule spans 60 columns on a terminal and 80 when piped', () => {
-  expect(render({ data: '', view: 'rule', widths: [60, null] })).toBe(
-    lines(line.repeat(60), '--', line.repeat(80)),
-  );
+test.each([
+  [60, 60],
+  [undefined, 80],
+])('a bare rule spans %s columns, %s wide, and styles its line dim', (columns, spans) => {
+  const view = rule();
+  const context = measured(view, columns);
+  const dim = vi.spyOn(context.style, 'dim');
+  const shown = linesOf(view.render('', context));
+  expect(shown).toHaveLength(1);
+  expect(isBare(shown[0])).toBe(true);
+  expect(width(shown[0] ?? '')).toBe(spans);
+  expect(dim).toHaveBeenCalledWith(glyph.line.repeat(spans));
 });
 
 test('rule() renders as the default view of a declared string result', () => {
@@ -24,51 +45,75 @@ test('rule() renders as the default view of a declared string result', () => {
   );
 });
 
-test('a label wrapped at a narrow width continues under the label, with the line on its last line alone', () => {
-  expect(render({ data: 'Checks for the staging cluster', view: 'rule', widths: [20] })).toBe(
-    lines('── Checks for the', `   staging cluster ${line}`),
+test('a label wrapped at a narrow width hangs its later lines under the label, and only its last line carries the line', () => {
+  const view = rule();
+  const label = 'Checks for the staging cluster';
+  const shown = linesOf(view.render(label, measured(view, 20)));
+  expect(shown.length).toBeGreaterThan(1);
+  expect(wordsOf(shown.join('\n')).filter((word) => !isBare(word))).toEqual(label.split(' '));
+  expect(shown[0]?.startsWith(`${line}${line} Checks`)).toBe(true);
+  expect(Math.max(...shown.map(width))).toBeLessThanOrEqual(20);
+  expect(shown.map((each) => each.endsWith(line))).toEqual(
+    shown.map((_each, index) => index === shown.length - 1),
   );
+  expect(shown.slice(1).every((each) => each.startsWith(' '))).toBe(true);
 });
 
 test('a label word too wide to fit overflows with one line glyph after it', () => {
-  expect(render({ data: 'Extraordinary', view: 'rule', widths: [12] })).toBe(
-    lines(`── Extraordinary ${line}`),
-  );
+  const view = rule();
+  const shown = linesOf(view.render('Extraordinary', measured(view, 12)));
+  expect(shown).toHaveLength(1);
+  expect(shown[0]?.endsWith(`Extraordinary ${line}`)).toBe(true);
+  expect(shown[0]?.endsWith(`${line}${line}`)).toBe(false);
 });
 
-test('an authored line break in a piped label takes the wrapped layout', () => {
-  expect(render({ data: 'Checks\nstaging', view: 'rule', widths: [null] })).toBe(
-    lines('── Checks', `   staging ${line.repeat(69)}`),
+test('an authored line break in a piped label takes the wrapped layout, the last line spanning 80', () => {
+  const view = rule();
+  const [first = '', last = '', ...rest] = linesOf(
+    view.render('Checks\nstaging', measured(view, undefined)),
   );
+  expect(rest).toEqual([]);
+  expect(first).toBe(`${line}${line} Checks`);
+  expect(last.trimStart().startsWith('staging')).toBe(true);
+  expect(last).not.toBe(last.trimStart());
+  expect(width(last)).toBe(80);
 });
 
-test('a blank line inside a label carries no indent and stays empty, on a terminal and piped', () => {
-  expect(render({ data: 'Checks\n\nstaging', view: 'rule', widths: [30, null] })).toBe(
-    lines(
-      '── Checks',
-      '',
-      `   staging ${line.repeat(19)}`,
-      '--',
-      '── Checks',
-      '',
-      `   staging ${line.repeat(69)}`,
-    ),
-  );
-});
+test.each([30, undefined])(
+  'a blank line inside a label carries no indent and stays empty, at %s columns',
+  (columns) => {
+    const view = rule();
+    const shown = linesOf(view.render('Checks\n\nstaging', measured(view, columns)));
+    expect(shown).toHaveLength(3);
+    expect(shown[1]).toBe('');
+  },
+);
 
-test.each(['@@red-empty@@', '@@nowrap-empty@@'])(
-  'a rule over %s, which resolves to no character, draws a bare line',
-  (data) => {
-    expect(render({ data, view: 'rule', widths: [30, null] })).toBe(
-      lines(line.repeat(30), '--', line.repeat(80)),
-    );
+test.each([
+  ['a style frame', style.red('')],
+  ['a nowrap frame', nowrap('')],
+])(
+  'a rule over %s around nothing, which resolves to no character, draws a bare line',
+  (_name, data) => {
+    const view = rule();
+    for (const [columns, spans] of [
+      [30, 30],
+      [undefined, 80],
+    ] as const) {
+      const shown = linesOf(view.render(data, measured(view, columns)));
+      expect(shown).toHaveLength(1);
+      expect(isBare(shown[0])).toBe(true);
+      expect(width(shown[0] ?? '')).toBe(spans);
+    }
   },
 );
 
 test('a blank last label line carries the line after it', () => {
-  expect(render({ data: 'a\n\n', view: 'rule', widths: [20] })).toBe(
-    lines('── a', `    ${line.repeat(16)}`),
-  );
+  const view = rule();
+  const shown = linesOf(view.render('a\n\n', measured(view, 20)));
+  expect(shown).toHaveLength(2);
+  expect(shown[0]).toBe(`${line}${line} a`);
+  expect(isBare(shown[1]?.trimStart())).toBe(true);
 });
 
 test('a rule styles its lines dim and adds no style to its label', () => {
@@ -85,7 +130,10 @@ test('an invocation by name has no width, so the rule draws 80', () => {
 });
 
 test('a tab in a label expands on a terminal', () => {
-  expect(render({ data: 'a\tb', view: 'rule', widths: [30] })).toBe(
-    lines(`── a       b ${line.repeat(17)}`),
-  );
+  const view = rule();
+  const tabs = vi.fn(expandTabs);
+  const shown = linesOf(view.render('a\tb', measured(view, 30, { expandTabs: tabs })));
+  expect(tabs).toHaveBeenCalledWith('a\tb');
+  expect(shown[0]).toContain(`a${TAB}b`);
+  expect(shown[0]).not.toContain('\t');
 });
