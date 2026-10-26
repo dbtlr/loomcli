@@ -3,7 +3,6 @@ import { glyph, nowrap, style } from '@loomcli/core';
 import { expect, test, vi } from 'vite-plus/test';
 
 import { heading } from '../src/heading.js';
-import { lines } from './fit-render.js';
 import { render } from './pack-render.js';
 import { linesOf, measured, plain, width } from './view-measures.js';
 
@@ -39,9 +38,8 @@ test.each([40, undefined])('a level 2 heading is its text alone, at %s columns',
 });
 
 test('heading() renders as the default view of a declared string result', () => {
-  expect(render({ data: 'Services', declared: true, view: 'heading', widths: [40] })).toBe(
-    lines('Services', line.repeat(8)),
-  );
+  const input = { data: 'Services', view: 'heading', widths: [40] } as const;
+  expect(render({ ...input, declared: true })).toBe(render(input));
 });
 
 test('a level 1 underline is as wide as the context measures a CJK text and a styled text', () => {

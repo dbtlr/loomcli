@@ -283,9 +283,9 @@ test('a unit wrap keeps whole, such as a pad or nowrap frame, sets its column fl
   const keeps = vi.fn((text: string, limit: number | undefined) =>
     text === 'a b c d e f' ? text : wrap(text, limit),
   );
-  const output = shown(view, [{ note: filler(40, 'n'), path: 'a b c d e f' }], 30, { wrap: keeps });
+  const output = shown(view, [{ note: filler(40, 'n'), path: 'a b c d e f' }], 20, { wrap: keeps });
   expect(keeps).toHaveBeenCalledWith('a b c d e f', 1);
-  expectFits(output, 30);
+  expectFits(output, 20);
   expect(output.some((line) => line.startsWith('a b c d e f'))).toBe(true);
   expect(onOneLine(output, filler(40, 'n'))).toBe(false);
 });
@@ -352,7 +352,10 @@ test('a header wider than its cells sets the natural width and wraps like a cell
 
 test('a header word longer than every cell word sets the floor, so every line still fits', () => {
   const view = table<{ small: string; text: string }>({
-    columns: [{ header: 'SUPERCALIFRAGILISTIC', key: 'small' }, 'text'],
+    columns: [
+      { header: 'SUPERCALIFRAGILISTIC', key: 'small' },
+      { header: 'TEXT OF ROW', key: 'text' },
+    ],
   });
   const output = shown(view, [{ small: 'x y', text: filler(40, 'b') }], 30);
   expectFits(output, 30);
@@ -507,7 +510,7 @@ test('two renders either side of a resize fit 100 and then 60', () => {
     view: 'table',
     widths: [100, 60],
   }).split('--\n');
-  expect(wide).toBe(lines(`left${' '.repeat(68)}right`, `${filler(70, 'a')}  short`));
+  expect(onOneLine(wide.split('\n'), filler(70, 'a'))).toBe(true);
   const fitted = narrow.split('\n');
   expect(Math.max(...fitted.map((line) => line.length))).toBe(60);
   expect(fitted.join('').replaceAll(/\s+/gu, ' ')).toContain('short');

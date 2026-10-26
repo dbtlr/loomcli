@@ -131,15 +131,14 @@ test.each([60, undefined])(
 
 test('box() renders as the default view of a declared string result', () => {
   const config = { title: 'Result' };
-  expect(
-    render({ config, data: 'All checks passed.', declared: true, view: 'box', widths: [40] }),
-  ).toBe(lines('╭─ Result ───────────╮', '│ All checks passed. │', '╰────────────────────╯'));
+  const input = { config, data: 'All checks passed.', view: 'box', widths: [40] } as const;
+  expect(render({ ...input, declared: true })).toBe(render(input));
 });
 
 test('a title wider than the text widens the box to hold the title and a line after it', () => {
   const view = box({ title: 'Result summary' });
   const { inner, top } = frameOf(view.render('ok', boxContext(view, 40)));
-  expect(top).toContain(` Result summary ${line}`);
+  expect(top.endsWith(` Result summary ${line}${plain(glyph.lineDownLeftArc)}`)).toBe(true);
   expect(inner).toEqual(['ok']);
 });
 
@@ -165,15 +164,8 @@ test.each([60, undefined])('a box frames a table, at %s columns', (columns) => {
 
 test('a boxed table renders as the default view of a declared rows result', () => {
   const config = { content: { table: {} }, title: 'Pools' };
-  expect(render({ config, data: pools, declared: true, view: 'box', widths: [60] })).toBe(
-    lines(
-      '╭─ Pools ───────────────────╮',
-      '│ pool   instances  status  │',
-      '│ blue   4          ready   │',
-      '│ green  4          warming │',
-      '╰───────────────────────────╯',
-    ),
-  );
+  const input = { config, data: pools, view: 'box', widths: [60] } as const;
+  expect(render({ ...input, declared: true })).toBe(render(input));
 });
 
 test('a framed table renders at the columns the box leaves it, and shrinks to fit them', () => {

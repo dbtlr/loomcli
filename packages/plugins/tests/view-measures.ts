@@ -6,11 +6,12 @@ import type { ViewValues } from '@loomcli/testing';
  * The measures a pack view's unit tests state through viewContext. They are simple on purpose, so a
  * test reads which branch a view took and what it printed, not core's layout: every character is one
  * column, `wrap` breaks only at spaces, `expandTabs` turns a tab into four spaces, and `plain`
- * resolves Loom's frames: a `pad` frame to its padded width, a glyph to one character, and any
- * other frame to its body.
+ * resolves Loom's frames: a `pad` frame to its padded width, a glyph to one character, and a style or
+ * `nowrap` frame to its body. A frame or glyph it does not know throws, so a view that draws
+ * something new fails the test loudly.
  */
 
-/** The character each glyph the pack views draw shows as, and any other glyph as `?`. */
+/** The character each glyph the pack views draw shows as,; the measures draw no other glyph. */
 const glyphs: Readonly<Record<string, string>> = {
   bullet: '●',
   line: '─',
@@ -50,22 +51,38 @@ function padded(body: string, size: number, align: string): string {
     .join('\n');
 }
 
+/** The shown text of one innermost frame, or an error when the frame is not one the views draw. */
+function resolved(header: string, body: string): string {
+  const [kind, detail, align]: unknown[] = JSON.parse(header);
+  if (kind === 'pad') {
+    if (typeof detail !== 'number') {
+      throw new TypeError(`A pad frame needs a numeric width, not ${header}`);
+    }
+    return padded(body, detail, String(align));
+  }
+  if (kind === 'glyph') {
+    const shown = typeof detail === 'string' ? glyphs[detail] : undefined;
+    if (shown === undefined) {
+      throw new TypeError(`The measures do not draw the glyph ${header}`);
+    }
+    return shown;
+  }
+  if (kind === 'style' || kind === 'nowrap') {
+    return body;
+  }
+  throw new TypeError(`The measures do not know the frame ${header}`);
+}
+
 /** Marked text resolved to what it shows: each `pad` frame padded, and every other frame its body. */
 function plain(text: string): string {
-  let resolved = text;
-  for (let found = innermostFrame.exec(resolved); found; found = innermostFrame.exec(resolved)) {
+  let current = text;
+  for (let found = innermostFrame.exec(current); found; found = innermostFrame.exec(current)) {
     const [whole] = found;
     const { body = '', header = '[]' } = found.groups ?? {};
-    const [kind, size, align]: unknown[] = JSON.parse(header);
-    let shown = body;
-    if (kind === 'pad' && typeof size === 'number') {
-      shown = padded(body, size, String(align));
-    } else if (kind === 'glyph') {
-      shown = glyphs[String(size)] ?? '?';
-    }
-    resolved = resolved.replace(whole, shown);
+    const shown = resolved(header, body);
+    current = current.replace(whole, () => shown);
   }
-  return resolved.replaceAll(strayMarks, '');
+  return current.replaceAll(strayMarks, '');
 }
 
 /** The characters, counted as UTF-16 units, in the widest line of the resolved text. */
@@ -136,6 +153,11 @@ function linesOf(output: string): string[] {
   return output.endsWith('\n') ? lines.slice(0, -1) : lines;
 }
 
+/** The columns before a shown line's first character other than a space. */
+function indentOf(shown: string): number {
+  return shown.length - shown.trimStart().length;
+}
+
 /** The words a render shows, in order. */
 function wordsOf(output: string): string[] {
   return plain(output)
@@ -143,4 +165,4 @@ function wordsOf(output: string): string[] {
     .filter((word) => word !== '');
 }
 
-export { TAB, expandTabs, linesOf, measured, plain, width, wordsOf, wrap };
+export { TAB, expandTabs, indentOf, linesOf, measured, plain, width, wordsOf, wrap };

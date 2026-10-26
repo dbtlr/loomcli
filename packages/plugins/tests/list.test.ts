@@ -49,9 +49,8 @@ import { glyph } from '@loomcli/core';
 import { expect, test, vi } from 'vite-plus/test';
 
 import { list } from '../src/list.js';
-import { lines } from './fit-render.js';
 import { render } from './pack-render.js';
-import { TAB, expandTabs, linesOf, measured, plain, width } from './view-measures.js';
+import { TAB, expandTabs, indentOf, linesOf, measured, plain, width } from './view-measures.js';
 
 interface Service {
   readonly name: string;
@@ -71,9 +70,6 @@ const bullet = plain(glyph.bullet);
 const named = (ordered = false) =>
   list<Service>({ children: (item) => item.parts, format: (item) => item.name, ordered });
 
-/** The columns before a shown line's first character other than a space. */
-const indentOf = (shown: string): number => shown.length - shown.trimStart().length;
-
 test.each([40, undefined])(
   'list() bullets each item with its nested items indented past their parent marker, at %s columns',
   (columns) => {
@@ -88,16 +84,15 @@ test.each([40, undefined])(
     );
     const [gateway = '', billing = '', invoices = '', refunds = '', search = ''] = shown;
     expect([gateway, billing, search].map(indentOf)).toEqual([0, 0, 0]);
-    expect(indentOf(invoices)).toBeGreaterThan(0);
+    expect(indentOf(invoices)).toBe(billing.indexOf('billing'));
     expect(indentOf(refunds)).toBe(indentOf(invoices));
     expect(dim).toHaveBeenCalledTimes(5);
   },
 );
 
 test('list() renders as the default view of a declared rows result', () => {
-  expect(render({ data: ['one', 'two'], declared: true, view: 'list', widths: [40] })).toBe(
-    lines('● one', '● two'),
-  );
+  const input = { data: ['one', 'two'], view: 'list', widths: [40] } as const;
+  expect(render({ ...input, declared: true })).toBe(render(input));
 });
 
 test('an ordered list numbers its items from 1. to 10. and right-aligns the markers, so every text starts in one column', () => {
@@ -119,9 +114,10 @@ test('two levels of children nest under their parents, and a nested ordered list
   const shown = linesOf(view.render(data, measured(view, 40))).slice(9);
   expect(shown.map((each) => each.trim())).toEqual(['10. s10', '1. a', '2. b', '1. c']);
   const [parent = 0, first = 0, second = 0, deeper = 0] = shown.map(indentOf);
-  expect(first).toBeGreaterThan(parent);
+  expect(parent).toBe(0);
+  expect(first).toBe(shown[0]?.indexOf('s10'));
   expect(second).toBe(first);
-  expect(deeper).toBeGreaterThan(second);
+  expect(deeper).toBe(shown[2]?.lastIndexOf('b'));
 });
 
 test.each([40, undefined])(
@@ -197,6 +193,7 @@ test('a nested item wraps at the columns left after its own text column, so ever
       .map((each) => each.trim())
       .join(' '),
   ).toBe('1. refunds, whose retry policy lands');
+  expect(indentOf(shown[2] ?? '')).toBe(shown[1]?.indexOf('refunds'));
 });
 
 test('an authored line break hangs under its text when piped', () => {

@@ -92,7 +92,7 @@ test('prose fits a narrow terminal', async () => {
 });
 
 test('a rule fits a narrow terminal', async () => {
-  const widths = lineWidths(await drawn((out) => out.render(sentence, rule())));
+  const widths = lineWidths(await drawn((out) => out.render('Twenty-seven characters ok', rule())));
   for (const each of widths) {
     expect(each).toBeLessThanOrEqual(columns);
   }

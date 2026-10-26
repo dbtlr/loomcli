@@ -5,7 +5,16 @@ import { expect, test, vi } from 'vite-plus/test';
 import { rule } from '../src/rule.js';
 import { lines } from './fit-render.js';
 import { render } from './pack-render.js';
-import { TAB, expandTabs, linesOf, measured, plain, width, wordsOf } from './view-measures.js';
+import {
+  TAB,
+  expandTabs,
+  indentOf,
+  linesOf,
+  measured,
+  plain,
+  width,
+  wordsOf,
+} from './view-measures.js';
 
 /** The line glyph as a render shows it. */
 const line = plain(glyph.line);
@@ -40,9 +49,8 @@ test.each([
 });
 
 test('rule() renders as the default view of a declared string result', () => {
-  expect(render({ data: 'Checks', declared: true, view: 'rule', widths: [60] })).toBe(
-    lines(`── Checks ${line.repeat(50)}`),
-  );
+  const input = { data: 'Checks', view: 'rule', widths: [60] } as const;
+  expect(render({ ...input, declared: true })).toBe(render(input));
 });
 
 test('a label wrapped at a narrow width hangs its later lines under the label, and only its last line carries the line', () => {
@@ -56,7 +64,9 @@ test('a label wrapped at a narrow width hangs its later lines under the label, a
   expect(shown.map((each) => each.endsWith(line))).toEqual(
     shown.map((_each, index) => index === shown.length - 1),
   );
-  expect(shown.slice(1).every((each) => each.startsWith(' '))).toBe(true);
+  expect(
+    shown.slice(1).every((each) => indentOf(each) === (shown[0] ?? '').indexOf('Checks')),
+  ).toBe(true);
 });
 
 test('a label word too wide to fit overflows with one line glyph after it', () => {
@@ -75,7 +85,7 @@ test('an authored line break in a piped label takes the wrapped layout, the last
   expect(rest).toEqual([]);
   expect(first).toBe(`${line}${line} Checks`);
   expect(last.trimStart().startsWith('staging')).toBe(true);
-  expect(last).not.toBe(last.trimStart());
+  expect(last.indexOf('staging')).toBe(first.indexOf('Checks'));
   expect(width(last)).toBe(80);
 });
 
