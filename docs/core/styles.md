@@ -404,6 +404,8 @@ wrap('Copy the file to /srv/x and restart.', 20); // 'Copy the file to\n/srv/x a
 expandTabs('a\tb'); // 'a' and seven spaces, then 'b'
 ```
 
+This example belongs to the Application compilation context that declares `identifier`, as the view above does.
+
 Core exports the view context's `plain`, `wrap`, and `expandTabs` as pure functions, and `contextualStyle`, the style a context carries outside a run. `@loomcli/testing`'s [`viewContext`](../libs/testing.md#viewcontext) and the other [built contexts](../libs/testing.md#testing-one-function-alone) are made from them, and any code that holds marked text with no run, such as a test, calls them directly.
 
 - **Marked text.** Each reads its input as marked text, as the view context's members do: every style frame, whatever token it names, every `pad` and `nowrap` frame, every glyph, and every escape. A token with no theme mapping styles nothing, as in a run with no theme.
