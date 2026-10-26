@@ -56,7 +56,7 @@ A test states every input and every other member its function reads, so a test's
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships the five builders, once each builder returns its core context with no type assertion but the style's and Loom's own tests call a first-party middleware, `onFailure` hook, opener, and view through them under Node and Bun.
+Proposed. It moves to accepted with the release that ships the five builders, once each builder returns its core context with no type assertion but the style's and Loom's own tests call a first-party middleware, `onFailure` hook, and view through the builders, and an opener a test declares, as no first-party provider ships, under Node and Bun.
 
 ## Changelog
 

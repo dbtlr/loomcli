@@ -17,7 +17,8 @@ const packages = new URL('../../', import.meta.url);
  * `invoke` a client's named values, which `invoke` judges at run time as it judges any caller's.
  * `providers.ts` returns the provider value as the type its declaration's annotation states, and
  * reads the values core built for a `uses` list, which reach it from openers as unknown, as the
- * record that list's type names.
+ * record that list's type names. The testing package's `unstated-style.ts` types the proxy an
+ * unstated style is as core's `ContextualStyle`, whose brand core does not export.
  */
 const allowed = {
   'core/src/command.ts': 1,
@@ -29,6 +30,7 @@ const allowed = {
   'core/src/validation.ts': 1,
   'core/src/view.ts': 1,
   'plugins/src/mcp/plugin.ts': 1,
+  'testing/src/unstated-style.ts': 1,
 };
 
 /**
