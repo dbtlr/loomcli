@@ -13,7 +13,8 @@ import { unstatedStyle } from './unstated-style.js';
 type ViewValues = OptionalMembers<ViewContext>;
 
 /**
- * Builds the context a view or a row view takes from the values the test states. A stated
+ * Builds the context a view or a row view takes from the values the test states. The builder
+ * never reads the view's data, so a view over any data type is accepted. A stated
  * `columns: undefined` is a destination that is not a terminal.
  *
  * ```ts
@@ -21,7 +22,7 @@ type ViewValues = OptionalMembers<ViewContext>;
  * heading.render('Notes', context);
  * ```
  */
-function viewContext<Data>(view: View<Data> | RowView<Data>, values: ViewValues): ViewContext {
+function viewContext(view: View<never> | RowView<never>, values: ViewValues): ViewContext {
   return {
     ...values,
     get background() {

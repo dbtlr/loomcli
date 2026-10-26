@@ -31,13 +31,19 @@ function answering(): (text: string) => string {
 }
 
 /**
+ * The names the style leaves unanswered: `then`, so it is never a thenable, and `_isMockFunction`,
+ * so a test runner never reads it as a mock and walks its calls.
+ */
+const unanswered: ReadonlySet<string> = new Set(['then', '_isMockFunction']);
+
+/**
  * Keeps the answer to a name on the path's function the first time the name is asked for, so every
  * later read, a spy, and an assignment meet the same property. A name the function already has,
- * such as `call`, `bind`, `name`, or `length`, stays the function's, and `then` answers nothing, so
- * the style is never a thenable.
+ * such as `call`, `bind`, `name`, or `length`, stays the function's, and a name in `unanswered`
+ * answers nothing.
  */
 function answer(target: (text: string) => string, key: string | symbol): void {
-  if (typeof key !== 'string' || key === 'then' || key in target) {
+  if (typeof key !== 'string' || unanswered.has(key) || key in target) {
     return;
   }
   const style = answering();

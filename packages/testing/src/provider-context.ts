@@ -4,7 +4,7 @@
  */
 import type { ProviderContext } from '@loomcli/core';
 
-import { logWith, neverAborts, registers, unstated } from './unstated-members.js';
+import { logWith, neverAborts, registersNothing, unstated } from './unstated-members.js';
 import type { OptionalMembers } from './unstated-members.js';
 
 /**
@@ -39,7 +39,7 @@ function providerContext<Globals, Provided>(
       return values.host ?? unstated('providerContext', 'host');
     },
     log: logWith(values.log),
-    onShutdown: values.onShutdown ?? registers,
+    onShutdown: values.onShutdown ?? registersNothing,
     signal: values.signal ?? neverAborts(),
   };
 }

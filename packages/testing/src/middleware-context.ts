@@ -4,7 +4,14 @@
  */
 import type { MiddlewareContext, PluginOptions } from '@loomcli/core';
 
-import { logWith, neverAborts, outWith, registers, unstated } from './unstated-members.js';
+import {
+  logWith,
+  neverAborts,
+  outWith,
+  registersNothing,
+  unstated,
+  unstatedNext,
+} from './unstated-members.js';
 import type { OptionalMembers } from './unstated-members.js';
 
 /** The inputs a middleware reads, each stated whole. */
@@ -54,17 +61,10 @@ function middlewareContext<Options extends PluginOptions>(
       return values.host ?? unstated('middlewareContext', 'host');
     },
     log: logWith(values.log),
-    next:
-      values.next ??
-      (() =>
-        Promise.reject(
-          new Error(
-            "middlewareContext has no next for this middleware to call. Add next to its values, such as next: async () => 'dispatched'.",
-          ),
-        )),
-    onResume: values.onResume ?? registers,
-    onShutdown: values.onShutdown ?? registers,
-    onSuspend: values.onSuspend ?? registers,
+    next: values.next ?? unstatedNext,
+    onResume: values.onResume ?? registersNothing,
+    onShutdown: values.onShutdown ?? registersNothing,
+    onSuspend: values.onSuspend ?? registersNothing,
     out: outWith(values.out),
     signal: values.signal ?? neverAborts(),
     get view(): string | null {

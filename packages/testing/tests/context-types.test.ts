@@ -7,7 +7,7 @@ import type {
   FailureHookContext,
   Middleware,
   Opener,
-  PluginOptions,
+  OptionsOf,
   Provider,
   View,
   ViewContext,
@@ -77,7 +77,14 @@ const heading: View<string> = { render: (title) => title };
 describe('the builders infer from the function alone', () => {
   it('actionContext returns the context an extracted ActionHandler takes', () => {
     expectTypeOf(actionContext(getValue, stated)).toEqualTypeOf<GetContext>();
-    expectTypeOf<ActionValues<{ path: string }, {}, unknown, {}, {}>>().toHaveProperty('args');
+    const values: ActionValues<
+      GetContext['args'],
+      GetContext['options'],
+      unknown,
+      Pick<GetContext, 'stdin'>,
+      GetContext['provided']
+    > = stated;
+    expectTypeOf(actionContext(getValue, values)).toEqualTypeOf<GetContext>();
   });
 
   it('actionContext rejects values that miss a required input', () => {
@@ -112,7 +119,16 @@ describe('the builders infer from the function alone', () => {
       view: null,
     });
     expectTypeOf(context).toEqualTypeOf<Parameters<typeof middleware>[0]>();
-    expectTypeOf<MiddlewareValues<PluginOptions>>().toHaveProperty('next');
+    const values: MiddlewareValues<OptionsOf<typeof dryRun>> = {
+      options: null,
+      ownOptions: {},
+      request: null,
+      spellings: {},
+      view: null,
+    };
+    expectTypeOf(middlewareContext(middleware, values)).toEqualTypeOf<
+      Parameters<typeof middleware>[0]
+    >();
     // @ts-expect-error The view input is stated whole.
     middlewareContext(middleware, { options: null, ownOptions: {}, request: null, spellings: {} });
   });
@@ -133,7 +149,11 @@ describe('the builders infer from the function alone', () => {
   it('providerContext returns the context the opener takes', () => {
     const context = providerContext(open, { options: { token: undefined }, provided: {} });
     expectTypeOf(context).toEqualTypeOf<Parameters<typeof open>[0]>();
-    expectTypeOf<ProviderValues<{}, {}>>().toHaveProperty('host');
+    const values: ProviderValues<{ token: string | undefined }, {}> = {
+      options: { token: undefined },
+      provided: {},
+    };
+    expectTypeOf(providerContext(open, values)).toEqualTypeOf<Parameters<typeof open>[0]>();
     // @ts-expect-error A global option the provider does not read is an excess key.
     providerContext(open, { options: { other: '', token: undefined }, provided: {} });
     // @ts-expect-error The opener's globals are stated whole.
@@ -153,5 +173,14 @@ describe('the builders infer from the function alone', () => {
     }>();
     // @ts-expect-error A member the view context does not have is an excess key.
     viewContext(heading, { rows: 24 });
+  });
+
+  it('viewContext takes a view over any data, a string or a number', () => {
+    const count: View<number> = { render: (value) => String(value) };
+    expectTypeOf(viewContext(count, {})).toEqualTypeOf<ViewContext>();
+    expectTypeOf(viewContext({ render: (text: string) => text }, {})).toEqualTypeOf<ViewContext>();
+    expectTypeOf(
+      viewContext({ render: (value: number) => String(value) }, {}),
+    ).toEqualTypeOf<ViewContext>();
   });
 });

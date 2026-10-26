@@ -54,7 +54,25 @@ function neverAborts(): AbortSignal {
 }
 
 /** Keeps no handler and answers a remover that does nothing. */
-const registers: OnShutdown & OnSuspend & OnResume = () => nothing;
+const registersNothing: OnShutdown & OnSuspend & OnResume = () => nothing;
+
+/** An `invoke` the test did not state, which rejects with its sentence. */
+function unstatedInvoke(path: readonly string[]): Promise<never> {
+  return Promise.reject(
+    new Error(
+      `actionContext has no invoke for "${path.join(' ')}". Add invoke to its values, such as invoke: async () => ({ status: 'completed', output: '', messages: '' }).`,
+    ),
+  );
+}
+
+/** A `next` the test did not state, which rejects with its sentence. */
+function unstatedNext(): Promise<never> {
+  return Promise.reject(
+    new Error(
+      "middlewareContext has no next for this middleware to call. Add next to its values, such as next: async () => 'dispatched'.",
+    ),
+  );
+}
 
 /** A region that is not live: it draws, ends, and reports nothing, and never closes. */
 function inertRegion(): Region {
@@ -105,5 +123,15 @@ function logWith(stated: Partial<Log> | undefined): Log {
   };
 }
 
-export { logWith, neverAborts, nothing, outWith, registers, unstated, unstatedMeasure };
+export {
+  logWith,
+  neverAborts,
+  nothing,
+  outWith,
+  registersNothing,
+  unstated,
+  unstatedInvoke,
+  unstatedMeasure,
+  unstatedNext,
+};
 export type { OptionalMembers };

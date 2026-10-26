@@ -96,6 +96,23 @@ describe('an unstated style', () => {
     expect(style.name).toBeTypeOf('string');
   });
 
+  it('leaves _isMockFunction unanswered, so no test runner reads the style as a mock', () => {
+    const style = unstated();
+    expect(Reflect.get(style, '_isMockFunction')).toBeUndefined();
+    expect('_isMockFunction' in style).toBe(false);
+    expect(Reflect.get(style.bold, '_isMockFunction')).toBeUndefined();
+  });
+
+  it('serializes in a snapshot without recursing', () => {
+    const style = unstated();
+    style.bold.primary('text');
+    expect({ style }).toMatchInlineSnapshot(`
+      {
+        "style": [Function],
+      }
+    `);
+  });
+
   it('stated by the test replaces the proxy whole', () => {
     const style = unstated();
     const context = viewContext(plainView, { style });

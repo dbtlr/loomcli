@@ -4,7 +4,15 @@
  */
 import type { Action, ActionContext, StdinContext } from '@loomcli/core';
 
-import { logWith, neverAborts, nothing, outWith, registers, unstated } from './unstated-members.js';
+import {
+  logWith,
+  neverAborts,
+  nothing,
+  outWith,
+  registersNothing,
+  unstated,
+  unstatedInvoke,
+} from './unstated-members.js';
 import type { OptionalMembers } from './unstated-members.js';
 import { unstatedStyle } from './unstated-style.js';
 
@@ -59,18 +67,11 @@ function actionContext<Args, Options, Result, Stdin extends StdinContext, Provid
     get interactive() {
       return values.interactive ?? unstated('actionContext', 'interactive');
     },
-    invoke:
-      values.invoke ??
-      ((path) =>
-        Promise.reject(
-          new Error(
-            `actionContext has no invoke for "${path.join(' ')}". Add invoke to its values, such as invoke: async () => ({ status: 'completed', output: '', messages: '' }).`,
-          ),
-        )),
+    invoke: values.invoke ?? unstatedInvoke,
     log: logWith(values.log),
-    onResume: values.onResume ?? registers,
-    onShutdown: values.onShutdown ?? registers,
-    onSuspend: values.onSuspend ?? registers,
+    onResume: values.onResume ?? registersNothing,
+    onShutdown: values.onShutdown ?? registersNothing,
+    onSuspend: values.onSuspend ?? registersNothing,
     out: outWith(values.out),
     get passthrough() {
       return passthrough ?? unstated('actionContext', 'passthrough');

@@ -1,8 +1,14 @@
-import { Command, FatalError, plugin } from '@loomcli/core';
-import type { ActionHandler, Middleware, View } from '@loomcli/core';
+import { Command, FatalError, plugin, provider } from '@loomcli/core';
+import type { ActionHandler, FailureHook, Middleware, Opener, Provider, View } from '@loomcli/core';
 import { describe, expect, it, vi } from 'vite-plus/test';
 
-import { actionContext, middlewareContext, viewContext } from '../src/index.js';
+import {
+  actionContext,
+  failureHookContext,
+  middlewareContext,
+  providerContext,
+  viewContext,
+} from '../src/index.js';
 
 /** Renders a value as its own text. */
 const plainView: View<string> = { render: (text) => text };
@@ -19,6 +25,13 @@ function bare() {
   return actionContext(getValue, { args: { path: 'name' }, options: {}, provided: {} });
 }
 
+const hook: FailureHook = () => undefined;
+const pool: Provider<'pool', object, {}, 'persistent'> = provider('pool', {
+  lifetime: 'persistent',
+  load: async () => ({ default: open }),
+});
+const open: Opener<typeof pool> = () => ({});
+
 const quiet = plugin('test/quiet', {});
 const pass: Middleware<typeof quiet> = async ({ next }) => {
   await next();
@@ -32,7 +45,10 @@ describe('an unstated member', () => {
     const context = actionContext(getValue, { args, options, provided });
     expect([context.args, context.options, context.provided]).toEqual([args, options, provided]);
     expect(context.args).toBe(args);
-    expect('stdin' in context).toBe(false);
+  });
+
+  it('fills no stdin the test did not state', () => {
+    expect('stdin' in bare()).toBe(false);
   });
 
   it('that is a function returning nothing does nothing', async () => {
@@ -107,38 +123,68 @@ describe('an unstated member', () => {
     );
   });
 
-  it('that is any other fact throws its sentence when read', () => {
-    const context = bare();
-    const facts = {
-      command: () => context.command,
-      graph: () => context.graph,
-      host: () => context.host,
-      interactive: () => context.interactive,
-      passthrough: () => context.passthrough,
-      supplied: () => context.supplied,
-    };
-    for (const [member, read] of Object.entries(facts)) {
-      expect(read).toThrow(
-        new Error(`actionContext has no ${member}. Add ${member} to its values.`),
-      );
-    }
-    const view = viewContext(plainView, {});
-    expect(() => view.columns).toThrow(
-      new Error('viewContext has no columns. Add columns to its values.'),
-    );
-    expect(() => view.background).toThrow(
-      new Error('viewContext has no background. Add background to its values.'),
-    );
-    const middleware = middlewareContext(pass, {
+  describe('that is any other fact', () => {
+    const noMiddleware = {
       options: null,
       ownOptions: {},
       request: null,
       spellings: {},
       view: null,
-    });
-    expect(() => middleware.host).toThrow(
-      new Error('middlewareContext has no host. Add host to its values.'),
+    };
+    const noHook = {
+      application: 'notes',
+      invokedBy: 'argv',
+      mediaType: undefined,
+      path: [],
+      view: undefined,
+    } as const;
+    const builders = {
+      actionContext: bare(),
+      failureHookContext: failureHookContext(hook, noHook),
+      middlewareContext: middlewareContext(pass, noMiddleware),
+      providerContext: providerContext(open, { options: {}, provided: {} }),
+      viewContext: viewContext(plainView, {}),
+    };
+    const facts = [
+      ['actionContext', ['command', 'graph', 'host', 'interactive', 'passthrough', 'supplied']],
+      ['middlewareContext', ['command', 'graph', 'host']],
+      ['failureHookContext', ['command', 'graph']],
+      ['providerContext', ['host']],
+      ['viewContext', ['columns', 'background']],
+    ] as const;
+    const cases = facts.flatMap(([builder, members]) =>
+      members.map((member) => [builder, member] as const),
     );
+
+    it.each(cases)('throws its sentence when %s reads %s', (builder, member) => {
+      expect(() => Reflect.get(builders[builder], member)).toThrow(
+        new Error(`${builder} has no ${member}. Add ${member} to its values.`),
+      );
+    });
+  });
+
+  it('of a provider context is inert: log, signal, and onShutdown', () => {
+    const context = providerContext(open, { options: {}, provided: {} });
+    for (const level of ['trace', 'debug', 'info', 'warn', 'error'] as const) {
+      expect(context.log[level]('text')).toBeUndefined();
+    }
+    expect(context.signal.aborted).toBe(false);
+    const handler = vi.fn(() => {});
+    expect(context.onShutdown(handler)()).toBeUndefined();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('of a failure hook context has an inert log', () => {
+    const context = failureHookContext(hook, {
+      application: 'notes',
+      invokedBy: 'argv',
+      mediaType: undefined,
+      path: [],
+      view: undefined,
+    });
+    for (const level of ['trace', 'debug', 'info', 'warn', 'error'] as const) {
+      expect(context.log[level]('text')).toBeUndefined();
+    }
   });
 
   it('of out and log is stated member by member', async () => {

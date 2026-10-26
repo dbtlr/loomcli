@@ -1,10 +1,10 @@
 import { Readable } from 'node:stream';
 
-import { Command } from '@loomcli/core';
-import type { ActionHandler, Content } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
+import type { ActionHandler, Content, Host } from '@loomcli/core';
 import { describe, expect, it, vi } from 'vite-plus/test';
 
-import { actionContext } from '../src/index.js';
+import { actionContext, mockProcess } from '../src/index.js';
 
 const get = new Command('get')
   .argument('path', { required: true })
@@ -114,5 +114,25 @@ describe('actionContext', () => {
     });
     context.passthrough = ['--', 'rest'];
     expect(context.passthrough).toEqual(['--', 'rest']);
+  });
+
+  it('a handler may assign an unstated host, as its context types it', async () => {
+    const hosts: Host[] = [];
+    await new Application('app')
+      .action(({ host }) => {
+        hosts.push(host);
+      })
+      .run({ process: mockProcess({ argv: [] }) });
+    const [host] = hosts;
+    if (host === undefined) {
+      throw new TypeError('The run did not reach its action.');
+    }
+    const context = actionContext(getValue, {
+      args: { path: 'name' },
+      options: { verbose: 0 },
+      provided: {},
+    });
+    context.host = host;
+    expect(context.host).toBe(host);
   });
 });
