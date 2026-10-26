@@ -169,7 +169,7 @@ export const getValue: ActionHandler<typeof get> = async ({ args, options, out }
 };
 ```
 
-`ActionHandler<typeof declaration>` works for a Command and for the root alike. `ActionArgs<typeof declaration>` and `ActionOptions<typeof declaration>` derive the same two objects for a handler that names its parameters separately, as `textstat` does. A handler written inline in `action()` needs no helper, because it infers its context from the declaration it receives.
+`ActionHandler<typeof declaration>` works for a Command and for the root alike. `ActionArgs<typeof declaration>` and `ActionOptions<typeof declaration>` derive the same two objects for a handler that names its parameters separately, as `textstat` does. A handler written inline in `action()` needs no helper, because it infers its context from the declaration it receives. An extracted handler is also what a unit test calls, with the context `@loomcli/testing`'s [`actionContext`](../libs/testing.md#actioncontext) builds for it; an inline handler has no public way to reach it.
 
 ## Global consumption and routing
 

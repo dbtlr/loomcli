@@ -207,3 +207,5 @@ vi.mock('../src/open-pool.js', () => ({
 ```
 
 A provider's opener loads through `import()`, so the test runner's module mocking substitutes it: `vi.mock` in Vitest or `mock.module` in Bun, on the opener's module or on the driver beneath it. Core has no member that supplies a provided value to `run()` or `invoke`.
+
+A unit test of an extracted handler states its provided values through `@loomcli/testing`'s [`actionContext`](../libs/testing.md#actioncontext), which builds the handler's context with no run, so no opener loads. The rule for a run is unchanged: `run()` and `invoke` still take no provided value.
