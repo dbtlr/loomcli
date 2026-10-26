@@ -1,10 +1,10 @@
 ---
-description: "The MCP plugin: serving an application's opted-in Commands as MCP tools over stdio, and the private protocol package behind it."
+description: "The MCP plugin: serving an application's opted-in Commands as MCP tools over stdio, registering that server with coding agents, and the private protocol package behind it."
 ---
 
 # MCP plugin
 
-This page documents the MCP plugin, which serves an application's opted-in Commands as tools of a Model Context Protocol server over stdio, and the private protocol package behind it. An author installs it so an agent client can call those Commands as tools.
+This page documents the MCP plugin, which serves an application's opted-in Commands as tools of a Model Context Protocol server over stdio and registers that server with coding agents, and the private protocol package behind it. An author installs it so an agent client can call those Commands as tools.
 
 ```ts
 // @loomcli/plugins/mcp
@@ -70,7 +70,7 @@ An MCP client launches `jsonkit mcp` and speaks one JSON-RPC message per line ov
 
 `mcp()` is the MCP plugin. It serves every Command that opts in as one tool of a [Model Context Protocol](https://modelcontextprotocol.io/specification/2026-07-28) server over stdio, and it runs each tool call through [`invoke`](../core/invocation.md#invocation-by-name), so a call is the Command's own run with the same validation, failures, and exit codes. MCP is a projection: a tool listing is the graph's facts for the Commands that opted in, and nothing in core knows the protocol. The protocol itself lives in a private package the plugin pack compiles into its own files. [ADR-0063](../decisions/0063-the-mcp-plugin-serves-opted-in-commands-as-tools.md) records the decision.
 
-- **The plugin.** Its identity is `@loomcli/plugins/mcp`. `mcp()` takes no settings and declares no option, no middleware, and no view, and it claims no slot. It contributes one [plugin Command](../core/plugin-contract.md#plugin-commands), the three extensions above, and an [`onGraphBuilt`](../core/lifecycle-hooks.md#judging-the-built-graph) hook. The Command is `mcp`, visible, with the description `Serve this application's tools to an MCP client over stdin and stdout.`, no arguments, no options, and no result. A root that declares arguments cannot hold children, so such an application cannot install the plugin, the limit [completion](completion.md) has under [ADR-0033](../decisions/0033-a-plugin-attaches-ordinary-commands-to-the-root.md).
+- **The plugin.** Its identity is `@loomcli/plugins/mcp`. `mcp()` takes no settings and declares no option, no middleware, and no view, and it claims no slot. It contributes one [plugin Command](../core/plugin-contract.md#plugin-commands), the three extensions above, and an [`onGraphBuilt`](../core/lifecycle-hooks.md#judging-the-built-graph) hook. The Command is `mcp`, visible, with the description `Serve this application's tools to an MCP client over stdin and stdout.`, no arguments, no options, and no result, and its action serves when routing selects none of its three children, which [Registering with an agent](#registering-with-an-agent) states. A root that declares arguments cannot hold children, so such an application cannot install the plugin, the limit [completion](completion.md) has under [ADR-0033](../decisions/0033-a-plugin-attaches-ordinary-commands-to-the-root.md).
 - **Opt-in.** A Command is a tool when it carries an `mcpCommand` value, and only then. The root opts in through the Application's `extensions`. An explicit opt-in wins over `hidden`, so a hidden Command that carries the value is a tool, and the listing in help, the manifest, and completion still omits it. A deprecated Command that opts in is a tool whose description opens with its migration message. An alias is never a tool and never a second name. A Command with no action cannot serve a call, so `mcpCommand` on a group is a build fault.
 - **Tool names.** A tool's name is the Command's path joined by `_`, with each `-` written as `_`, so `scratch create` is `scratch_create` and `cache clear-all` is `cache_clear_all`. The root's tool is the application name written the same way, so `git-lfs` serves `git_lfs`. A [portable name](../glossary.md#names-and-routing) holds nothing else the protocol's tool-name characters exclude, and `.` stays. There is no name override. Two opted-in Commands that give one name, such as the root and a child named like the application, are a build fault that names both.
 - **The description.** A tool's description is the `mcpCommand` value's `description`, or else the Command's core `description`, the Application's at the root. With neither, the tool carries no description. A deprecated Command's description opens with `Deprecated: ` and its migration message, then a line break and the rest. The `mcpCommand` value's `description` is prose under the pack's prose rule: every line holds a character other than whitespace, and line breaks are kept. A core description and a migration message are one line each, so each line break the author wrote in one, CRLF or a single terminator, reads as one space; an input's core description and the server identity's description read the same way.
@@ -111,6 +111,82 @@ The plugin's `onGraphBuilt` hook judges the opted-in Commands on every build, a 
 ## When author code fails
 
 An action that throws or rejects during a tool call takes the [ordinary failure path](../core/failures.md#the-ordinary-failure-path), and an action's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). The call answers as the failed call above does: `isError` is `true`, the text is the failure's own report, and `structuredContent` is `{ exitCode, failure }` with its failure form under `failure`, so a defect in a distributed build reads `internal` and `Something went wrong.` A throw while the protocol package handles a request is answered with `-32603`, and the server keeps serving.
+
+## Registering with an agent
+
+An agent finds an MCP server only when its own configuration names the command that starts it. The `mcp` Command's children write that registration through each agent's own command-line interface, remove it, or print it for an agent that has no such interface. [ADR-0111](../decisions/0111-the-mcp-plugin-registers-its-server-with-claude-code-and-codex-through-each-agents-cli.md) records the decision.
+
+```text
+$ jsonkit mcp install
+Registered jsonkit with claude to run /home/me/.local/bin/jsonkit mcp.
+Skipped codex, because codex could not start.
+$ jsonkit mcp uninstall
+Removed jsonkit from claude.
+$ jsonkit mcp config
+{
+  "mcpServers": {
+    "jsonkit": {
+      "command": "/home/me/.local/bin/jsonkit",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}
+```
+
+- **The Commands.** `mcp` keeps its action, which serves as [MCP plugin](#mcp-plugin) states whenever routing selects no child, so the command line every client launches is unchanged. It is a Command with an action and children under [Nested Commands and groups](../core/commands.md#nested-commands-and-groups), and its three children are each visible with no arguments:
+  - `install`, `Register this application's MCP server with your coding agents.`, with the string option `--agent`, `The agent to register with: claude or codex. Every agent that starts when left out.`, validated to `claude` or `codex`, and the Boolean option `--force`, `Replace a registration of this name that mcp install did not make.`
+  - `uninstall`, `Remove this application's MCP server from your coding agents.`, with `--agent`, `The agent to remove it from: claude or codex. Every agent it is registered with when left out.`, validated the same way.
+  - `config`, `Print a client configuration that starts this application's MCP server.`, with no options.
+
+  An `--agent` value outside the set is core's usage error for that input, with exit 2. No child declares a result, and none carries `mcpCommand`, so none is a tool.
+- **The registration.** An [MCP registration](../glossary.md#product-surface) names the application's name and its command line, [`host.program`](../core/host.md#host-facts)'s words followed by `mcp`, the words that start this application's server again. Every registration is at the agent's user scope, so one registration serves every directory the agent starts in, and no option names a scope.
+- **Agents.** `claude` and `codex`, in that order, which every child follows. Each agent is one program with a registration CLI, so they are not the skills plugin's [agent targets](skills.md), which are folder layouts, and each plugin keeps its own list. `<name>` is the application's name, and `<command line>` is the registration's words.
+
+  | Agent | Starts | Name check | Register | Remove |
+  | --- | --- | --- | --- | --- |
+  | `claude` | `claude --version` | none | `claude mcp add -s user <name> -- <command line>` | `claude mcp remove -s user <name>` |
+  | `codex` | `codex --version` | `codex mcp get <name> --json` | `codex mcp add <name> -- <command line>` | `codex mcp remove <name>` |
+- **The agent's programs.** Each call in the table is a child program started through [`host.spawn`](../core/host.md#child-programs) by the agent's name, which the `PATH` of `host.env` resolves, with `host.env` as its environment and `host.cwd` as its working directory, no shell, no input, and its standard output and standard error captured. It adds no time limit; the run signal ends the child with `SIGTERM`. An agent whose `--version` call comes back `unstarted` is an agent whose CLI cannot start, whatever the reason; one that starts is present, whatever its exit code. The plugin never reads or writes an agent's configuration file, so the agent keeps its format, scope precedence, backups, and approval rules, and a variable such as `CLAUDE_CONFIG_DIR` or `CODEX_HOME` in `host.env` reaches the agent as it would from a shell.
+- **The record.** Each agent's registration is recorded in the plugin's file for that agent in the installation record, `mcp.claude.json` and `mcp.codex.json`, through the module [Installed files](../core/installation-record.md#installed-files) defines, as a registration by its name and command line. A child writes the file `pending` before it runs an agent's `add` or `remove`, and `committed` after, and a pending file is read as recorded: its registration is the one it intended, or the one it held before when it was removing. Before it acts, a child reads each selected agent's plugin's file, and one that is damaged or holds an unknown `format` fails with `<record> cannot be read, so jsonkit will not change the registration it lists. Remove it, then run jsonkit mcp install again.`, with `uninstall` in place of `install` for that child.
+
+### Checks first
+
+`install` and `uninstall` check, in this order, before they start any program, and fail with a `FatalError` and exit 1 at the first that fails:
+
+- **Not on Windows.** On `win32`: `jsonkit mcp install registers with claude and codex on Linux and macOS. Print a client configuration with jsonkit mcp config and add it to your agent yourself.`, with `uninstall` in place of `install` for that child. `host.spawn` runs no shell, and an agent CLI installed as a `.cmd` file cannot start without one, so a present agent would read as one that cannot start.
+- **A control character.** For `install`, a word of the command line that holds a control character: `jsonkit cannot register its MCP server because its path holds a control character. Install jsonkit where its path has none.`
+- **The record's directory.** `applicationDirectory('installation', name, host)`, which answering `{ variable }` fails: `jsonkit cannot find its installation record because XDG_STATE_HOME is not an absolute path. Set XDG_STATE_HOME to an absolute path, then run the command again.`, naming the variable the lookup answers.
+- **The record.** Each selected agent's plugin's file, as The record states.
+
+### Install
+
+- **Which agents.** With `--agent`, `install` acts on that agent, and one whose CLI cannot start fails: `jsonkit mcp install cannot register with codex, because codex could not start. Install codex, or leave out --agent.` With no `--agent`, it acts on every agent whose CLI starts, in table order, and prints `Skipped codex, because codex could not start.` for each other one; with none that starts, it fails: `jsonkit mcp install found no agent to register with, because neither claude nor codex could start. Install one of them, then run jsonkit mcp install again.` It starts every selected agent's `--version` before it writes anything.
+- **A name the record does not list.** For each agent it acts on whose plugin's file records no registration, `install` checks whether the agent already holds the name, before it writes to any agent. Codex holds it when `codex mcp get <name> --json` exits 0. Claude has no check that does not start the server, so its own `add` refuses a name it holds, as A failed call states. Without `--force`, each agent that holds the name prints `codex already has an MCP server named jsonkit, which jsonkit mcp install did not register.` through `out.warn`, then the child fails: `jsonkit mcp install changed nothing, because a registration it did not make is in the way.`, corrected by `Remove it with codex mcp remove jsonkit, or run jsonkit mcp install --force to replace it.`
+- **Registering.** For each agent in table order, `install` writes the plugin's file pending, runs the agent's calls, and commits the registration:
+  - `claude`, recorded or under `--force`, runs `remove` and then `add`, and a `remove` that fails falls through to `add`; otherwise it runs `add`.
+  - `codex` runs `add`, which replaces a registration of that name.
+
+  Each agent registered prints `Registered jsonkit with claude to run /home/me/.local/bin/jsonkit mcp.` Under `--force`, an agent that held a name the record did not list first prints `Replaced the jsonkit server codex had, which jsonkit mcp install did not register.`
+- **A failed call.** An `add` that exits with any code but 0, or that cannot start, prints the agent's captured standard error and then its standard output through `out.warn`, one line each, leaves that agent's plugin's file pending, and fails: `jsonkit could not register with claude, because claude mcp add exited with code 1.`, or `because claude mcp add could not start.` For `claude` the correction is `If claude already has a server named jsonkit, remove it with claude mcp remove jsonkit -s user, or run jsonkit mcp install --force to replace it.`, and for `codex` it is `Fix what codex reported, then run jsonkit mcp install again.` An agent earlier in table order stays registered and recorded, and no later agent is attempted.
+- **Any build.** `install` registers from a `source`, `development`, or `distributed` build alike, because an agent starts the server on demand. When the build is not `distributed`, it then prints `jsonkit is a development build, so the registration runs it from this checkout. Run mcp install from an installed jsonkit to register that one instead.`, with `a source build` for a source build.
+- **No update.** There is no `update` child, and a self-update refreshes nothing, because it replaces the binary at the path the registration names. A re-run of `install` registers a program that moved.
+
+### Uninstall
+
+- **Which agents.** `uninstall` acts on each agent whose plugin's file records a registration, a pending one included, in table order, or on the one `--agent` names. With none, it prints `jsonkit is not registered with any agent by jsonkit mcp install, so there is nothing to remove.`, or `jsonkit is not registered with codex by jsonkit mcp install, so there is nothing to remove.` under `--agent`, and exits 0. A registration the record does not list is never removed.
+- **Removing.** For each agent whose CLI starts, `uninstall` writes the plugin's file pending, runs `remove`, and deletes the file whatever `remove` answers. A `remove` that exits 0 prints `Removed jsonkit from claude.` One that exits with any other code prints the agent's captured standard error and standard output through `out.warn`, then `jsonkit is no longer recorded as registered with claude.` A registration still held is then one the record does not list, which `install --force` takes back.
+- **An agent that cannot start.** A recorded agent whose `--version` call comes back `unstarted` keeps its plugin's file as it was and prints `claude could not start, so jsonkit stays registered with it.` through `out.warn`. Once every other agent is done, the child fails: `jsonkit mcp uninstall could not remove every registration.`, corrected by `Make claude available and run jsonkit mcp uninstall again, or remove jsonkit from claude's MCP configuration yourself.`, naming each agent that could not start.
+
+### Config
+
+- **The object.** `config` writes `JSON.stringify({ mcpServers: { [name]: { command, args } } }, null, 2)` and a line feed to stdout, where `command` is the command line's first word and `args` the rest, `mcp` last. The bytes reach stdout as the plugin built them, through `out.render` with a view that escapes the text's markup delimiters, as the [completion](completion.md) plugin's print children write their scripts, and a reader that closes stdout early ends the run with 141.
+- **Nothing else.** It starts no program, reads no record, writes no file, and runs from every build and every platform. JSON escapes a control character, so no word is refused.
+
+### Output
+
+The `Registered`, `Removed`, and nothing-to lines go through `out.success`; the `Skipped`, `Replaced`, `no longer recorded`, and build lines through `out.info`; and the held-name, agent-output, and could-not-start lines through `out.warn`, so stdout stays empty for `install` and `uninstall`, and `config` writes stdout alone. The examples above omit the glyph each lane view adds. Every path, name, and line of an agent's output a sentence repeats passes through [`escapeControlCharacters`](../core/styles.md#strings-and-composition), and a command line is shown as its words joined by single spaces. Every refusal and check failure above is a `FatalError` that exits 1.
 
 ## The protocol package
 

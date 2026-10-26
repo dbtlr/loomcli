@@ -672,6 +672,10 @@ _Avoid_: Manual page, manpage (outside the plugin's name), roff page, help page
 One opted-in Command as the MCP plugin serves it to a Model Context Protocol client: a name that is the Command's path joined with `_`, or the application name for the root, with each `-` written as `_`, a description for an agent, the Command's inputs as one object keyed by declared name, and the effect hints its author set. A Command is a tool only when it carries an `mcpCommand` value, and an alias never is. A call of the tool is an invocation by name of its Command.
 _Avoid_: Endpoint, function, MCP command, tool (for a Command that has not opted in)
 
+**MCP registration**:
+An entry in one coding agent's own MCP configuration that names the application and the command line that starts its MCP server, made and removed through that agent's own command-line interface. The MCP plugin replaces or removes only the registrations the installation record lists. The agent is one program, not an agent target.
+_Avoid_: Installation (for the registration), host configuration, agent target, MCP install
+
 **Formatter**:
 The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`, and failure encoders for their two media types. A result has no encoding outside the view model: a machine view is a view like a table is.
 _Avoid_: Format plugin, encoder (for the plugin), serializer, format (for the view), output mode
