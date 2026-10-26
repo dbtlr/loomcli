@@ -1,10 +1,10 @@
 ---
-description: The @loomcli/testing reference. The assembly check, assertAssembles, which a bun test or vitest test calls with the Application, and mockProcess, the sealed process handle a test runs an Application on in its own process and reads the run's output and exit code from, with a keyboard that answers questions from scripted keys. Recipes for cancelling at a named point, typed calls through invoke, checking that output fits the screen, testing a validator alone, and substituting a provider.
+description: The @loomcli/testing reference. The assembly check, assertAssembles, which a bun test or vitest test calls with the Application, mockProcess, the sealed process handle a test runs an Application on in its own process and reads the run's output and exit code from, with a keyboard that answers questions from scripted keys, and the five builders, actionContext, middlewareContext, failureHookContext, providerContext, and viewContext, that build the context one author function reads so a test calls that function with no Application. Recipes for cancelling at a named point, typed calls through invoke, checking that output fits the screen, testing a validator alone, and substituting a provider.
 ---
 
 # Testing reference
 
-`@loomcli/testing` ships the test helpers for a Loom application. [ADR-0099](../decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md) records the decision: the assembly check is a test, so the author's own test runner runs it while the author works and in CI. [ADR-0107](../decisions/0107-a-run-reads-the-process-through-one-process-handle.md) adds `mockProcess`, the process handle a test runs the Application on, and [ADR-0109](../decisions/0109-a-test-scripts-keys-on-the-mocks-keyboard-and-measures-and-validates-with-cores-own-functions.md) its keyboard and the core functions the recipes use. The package imports no test runner. Its functions only return, record, or throw, so they run under `bun test`, vitest, and `node:test` alike.
+`@loomcli/testing` ships the test helpers for a Loom application. [ADR-0099](../decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md) records the decision: the assembly check is a test, so the author's own test runner runs it while the author works and in CI. [ADR-0107](../decisions/0107-a-run-reads-the-process-through-one-process-handle.md) adds `mockProcess`, the process handle a test runs the Application on, and [ADR-0109](../decisions/0109-a-test-scripts-keys-on-the-mocks-keyboard-and-measures-and-validates-with-cores-own-functions.md) its keyboard and the core functions the recipes use. [ADR-0110](../decisions/0110-a-test-calls-one-author-function-with-a-context-the-testing-package-builds.md) adds the builders a test calls one author function with. The package imports no test runner. Its functions only return, record, or throw, so they run under `bun test`, vitest, and `node:test` alike.
 
 ## Install
 
@@ -223,6 +223,311 @@ test('revision prints the commit git reports, with no git run', async () => {
 - **One run or several.** A mock records every run given it, in order, so a test that runs twice reads both runs' writes. A test that wants each run apart builds a mock per run.
 - **Names.** `mockProcess` is exported from `@loomcli/testing`, and so are the types `MockFields`, `MockTerminal`, `MockProcess`, `MockStdin`, `RecordingStream`, `Program`, `ProgramCall`, and `ProgramAnswer`.
 
+## Testing one function alone
+
+```ts
+/** Each key whose type allows undefined may be omitted, and every other key is required. */
+type Stated<Values> = {
+  readonly [Key in keyof Values as undefined extends Values[Key] ? Key : never]?: Values[Key];
+} & {
+  readonly [Key in keyof Values as undefined extends Values[Key] ? never : Key]: Values[Key];
+};
+
+/** One record of the function's data, which may be omitted when every key in it may be. */
+type StatedRecord<Name extends string, Values> = {} extends Stated<Values>
+  ? { readonly [Key in Name]?: Stated<Values> }
+  : { readonly [Key in Name]: Stated<Values> };
+
+/** The members the builder fills: host, out, and log are stated member by member, every other member whole. */
+type Filled<Context> = {
+  readonly [Key in keyof Context]?: Key extends 'host' | 'out' | 'log'
+    ? Partial<Context[Key]>
+    : Context[Key];
+};
+
+/** The values argument, which may be omitted when every key in it may be. */
+type ValuesArgument<Values> = {} extends Values ? [values?: Values] : [values: Values];
+```
+
+```ts
+import { actionContext } from '@loomcli/testing';
+import { expect, test, vi } from 'vitest';
+
+import { getValue } from './actions/get-value.js';
+
+test('get prints the path it reads', async () => {
+  const print = vi.fn(async (_message: string) => {});
+  await getValue(actionContext(getValue, { args: { path: 'name' }, options: { verbose: 0 }, out: { print } }));
+  expect(print).toHaveBeenCalledWith('name');
+});
+```
+
+A unit test calls one author function with a context that `@loomcli/testing` builds for it, and no Application is assembled or run. An action is a function, and the test calls it with an input. The package has five builders, one for each kind of function: [`actionContext`](#actioncontext) for an extracted action handler, [`middlewareContext`](#middlewarecontext) for a middleware, [`failureHookContext`](#failurehookcontext) for an `onFailure` hook, [`providerContext`](#providercontext) for a provider's opener, and [`viewContext`](#viewcontext) for a view. `getValue` above is the extracted handler of [Modular authoring](../core/commands.md#modular-authoring).
+
+- **Typed from the function.** A builder takes the function under test and infers its type parameters from the function's own type, so `actionContext(getValue, values)` for a handler typed `ActionHandler<typeof get>` returns the exact context `getValue` takes. Each builder returns its concrete core context type, built with no type assertion. The builder never calls the function; the test does.
+- **The function's own data.** The test states the data the function reads, typed exactly as the function reads it, such as an action's `args`, `options`, and `provided`. No default, validator, input source, or environment preparation runs, and the builder copies, checks, and freezes nothing, so each member holds the value the test stated. A key whose type allows `undefined` may be omitted and reads `undefined`. Every other key is required, so an action's registered global options are required too. A record whose every key may be omitted, such as the `args` of a Command with no required argument, may itself be omitted and reads `{}`, and so may the whole values argument.
+- **The rest is filled.** The builder fills every other member of the context, and a member the test states replaces the builder's. `host`, `out`, and `log` are stated member by member, so `out: { print }` keeps the builder's other `out` methods. Every other member is stated whole.
+- **Members that return nothing do nothing.** `out`'s semantic lanes, `print`, `info`, `success`, `warn`, `error`, `debug`, and `trace`, and `out.render` and `out.results`, resolve and write nothing, and call no view. `log`'s levels do nothing. `cancel` does nothing. `onShutdown`, `onSuspend`, and `onResume` keep no handler and return a remover that does nothing.
+- **Members that answer, answer empty.** `out.draw` resolves `0`. `out.region()` returns a region whose `draw`, `end`, and `report` do nothing, whose `live` is `false`, whose `closedBy` stays `undefined`, and whose `signal` never aborts. The context's `signal` never aborts, so a test that wants `cancel` to abort it states both from one `AbortController`: `signal: controller.signal, cancel: () => controller.abort()`.
+- **Members whose answer the function reads throw.** `next`, `invoke`, and `host.spawn` return information the function goes on to read, so the builder invents none: each throws a sentence that names the member and tells the test to state its own, below. `graph` and `command` may be omitted, and a read of an omitted one throws the same way.
+- **`out.fatal`.** `out.fatal(message)` throws core's `FatalError` with the message, because its type is `never`, so the test expects the rejection: `await expect(handler(context)).rejects.toThrow(FatalError)`.
+- **`host`.** The `Host` a run on `mockProcess()` captures, under [its sealed defaults](#mockprocess): `argv` `[]`, `env` `{}`, `cwd` `/loom-test`, `home` `/loom-test/home`, `tmpdir` `/loom-test/tmp`, `platform` `linux`, `arch` `x64`, `libc` `glibc`, `uid` `1000`, `timeZone` `UTC`, `program` `['/loom-test/runtime', '/loom-test/app.js']`, `release` `{ build: 'source' }`, and no `readSource`. `stdin` is empty and already ended, `stdout` and `stderr` accept every write and keep nothing, and `terminal` reports no stream as a terminal, no width or height, and no background. `raise` answers `false`. A stated `host` replaces each field it names, whole, as `mockProcess`'s fields replace its defaults: `env: { HOME: home }` is the entire environment, `home` follows its absolute `HOME`, and a stated `home` wins.
+- **`style`.** Core's [`contextualStyle`](../core/styles.md#marked-text-outside-a-run), which marks text for every token name, a theme's included, so a function that names its theme's tokens runs with no theme installed. Nothing the builder holds resolves a color.
+- **The other defaults.** `interactive` is `false`, `passthrough` is `[]`, and `supplied` is `{ args: {}, options: {} }`.
+- **Nothing from a run.** No Application, Command, or plugin is the subject, and nothing comes from core's run machinery: no view registry, theme, settle step, dispatch boundary, activation, or close. A test that wants any of them runs the Application on a mock instead.
+- **Names.** `actionContext`, `middlewareContext`, `failureHookContext`, `providerContext`, and `viewContext` are exported from `@loomcli/testing`, and so are the types `ActionValues`, `MiddlewareValues`, `FailureHookValues`, `ProviderValues`, and `ViewValues`.
+
+Each throw is an `Error` whose message opens with the builder that built the context. `next()` and `invoke()` return a promise that rejects with it, and `host.spawn()` and a read of `graph` or `command` throw it:
+
+| Member | Message |
+| --- | --- |
+| `next()` | `middlewareContext has no next for this middleware to call. Add next to its values, such as next: async () => 'dispatched'.` |
+| `invoke(path, …)` | `actionContext has no invoke for "sync". Add invoke to its values, such as invoke: async () => ({ status: 'completed', output: '', messages: '' }).`, naming the path's words joined by spaces |
+| `host.spawn(command, …)` | `actionContext has no spawn for "git". Add spawn to host in its values.`, naming the command as the call named it |
+| `graph` | `actionContext has no graph. Add graph to its values, such as application.inspect().` |
+| `command` | `actionContext has no command. Add command to its values, such as the node at its path in application.inspect().` |
+
+### actionContext
+
+```ts
+import type { Action, ActionContext, StdinContext } from '@loomcli/core';
+
+type ActionValues<Args, Options, Result, Stdin extends StdinContext, Provided> =
+  StatedRecord<'args', Args> &
+  StatedRecord<'options', Options> &
+  StatedRecord<'provided', Provided> &
+  Stated<Stdin> &
+  Filled<Omit<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided' | 'stdin'>>;
+
+function actionContext<Args, Options, Result, Stdin extends StdinContext, Provided>(
+  handler: Action<Args, Options, Result, Stdin, Provided>,
+  ...values: ValuesArgument<ActionValues<Args, Options, Result, Stdin, Provided>>
+): Omit<ActionContext<Args, Options, Result, Provided>, 'stdin'> & Stdin;
+```
+
+```ts
+import { actionContext } from '@loomcli/testing';
+import { expect, test, vi } from 'vitest';
+
+import { listNotes } from './actions/list-notes.js';
+
+test('list prints each title the pool returns', async () => {
+  const print = vi.fn(async (_message: string) => {});
+  // The test's own pool, of the type the handler's provided pool has.
+  const pool = { query: async () => [{ title: 'Groceries' }, { title: 'Taxes' }] };
+  await listNotes(actionContext(listNotes, { options: { verbose: 0 }, out: { print }, provided: { pool } }));
+  expect(print.mock.calls).toEqual([['Groceries'], ['Taxes']]);
+});
+```
+
+- **The handler.** An extracted handler, typed `ActionHandler<typeof declaration>` as [Modular authoring](../core/commands.md#modular-authoring) writes it. An inline `.action()` handler has no public way to reach it, under [Functions with no builder](#functions-with-no-builder).
+- **`args` and `options`.** The values the handler reads after validation: its own arguments, and its options with the global options' values included.
+- **`provided`.** The test's own values, under each provider's name, typed from the handler's context. No opener loads and no value is closed. A run still takes no provided value, so a test of `run()` or `invoke` substitutes the opener, under [Substituting a provider](#substituting-a-provider).
+- **`stdin`.** Required when the Command declares a required stdin, because the handler's context types it `Content`, and otherwise it may be omitted. The test writes the `Content` itself, such as `{ kind: 'stdin', name: 'stdin', path: undefined, stream: () => Readable.from(['{}']), text: async () => '{}' }`.
+- **`out.results`.** It resolves and keeps nothing, so a test that reads the result states `out: { results }` with its own function.
+
+### middlewareContext
+
+```ts
+import type { MiddlewareContext, PluginOptions, Request } from '@loomcli/core';
+
+type MiddlewareValues<Options extends PluginOptions> = {
+  readonly options: MiddlewareContext<Options>['options'];
+  readonly request: Request | null;
+  readonly view: string | null;
+} & StatedRecord<'ownOptions', MiddlewareContext<Options>['ownOptions']> &
+  StatedRecord<'spellings', MiddlewareContext<Options>['spellings']> &
+  Filled<
+    Omit<MiddlewareContext<Options>, 'options' | 'ownOptions' | 'spellings' | 'request' | 'view'>
+  >;
+
+function middlewareContext<Options extends PluginOptions>(
+  middleware: (context: MiddlewareContext<Options>) => Promise<void> | void,
+  values: MiddlewareValues<Options>,
+): MiddlewareContext<Options>;
+```
+
+```ts
+import type { ChainOutcome } from '@loomcli/core';
+import { middlewareContext } from '@loomcli/testing';
+import { expect, test, vi } from 'vitest';
+
+import middleware from '../src/middleware.js';
+
+test('--dry-run takes over before the action', async () => {
+  const info = vi.fn(async (_message: string) => {});
+  const next = vi.fn(async (): Promise<ChainOutcome> => 'dispatched');
+  const context = middlewareContext(middleware, {
+    next,
+    options: { dryRun: true },
+    out: { info },
+    ownOptions: { dryRun: true },
+    request: { args: {}, options: {}, passthrough: [] },
+    view: null,
+  });
+  await middleware(context);
+  expect(next).not.toHaveBeenCalled();
+  expect(info).toHaveBeenCalledWith('Dry run: nothing was changed.');
+});
+```
+
+- **The middleware.** The default export of the module its plugin's `middleware.load` imports. The test imports that module itself, so no loader runs and no activation is checked.
+- **`options`, `request`, and `view`.** Required, each typed as the middleware reads it. `null` states the case core hands it in: `options` while a global option has a structural fault or was rejected, `request` while core holds a fault or on a group, and `view` on a Command that declares no view.
+- **`ownOptions` and `spellings`.** Each may be omitted and reads `{}`, because every key in it may be omitted.
+- **An assigned view.** The context keeps the last view the middleware assigns, and a read of `view` returns it, so a test reads `context.view` after the call. No check runs on it, because no dispatch boundary follows.
+- **`next`.** It rejects with its sentence unless the test states it. Give a mock its return type, as `vi.fn(async (): Promise<ChainOutcome> => 'dispatched')` does, because inside `vi.fn` a bare `async () => 'dispatched'` widens to `Promise<string>`.
+
+### failureHookContext
+
+```ts
+import type { FailureHook, FailureHookContext } from '@loomcli/core';
+
+type FailureHookValues = Stated<
+  Pick<FailureHookContext, 'application' | 'path' | 'invokedBy' | 'view' | 'mediaType'>
+> &
+  Filled<Pick<FailureHookContext, 'style' | 'log' | 'graph' | 'command'>>;
+
+function failureHookContext(hook: FailureHook, values: FailureHookValues): FailureHookContext;
+```
+
+```ts
+import { UnknownCommandError } from '@loomcli/core';
+import { failureHookContext } from '@loomcli/testing';
+import { expect, test } from 'vitest';
+
+import { hints } from '../src/hints.js';
+
+test('an unknown command at the command line points at help', () => {
+  const context = failureHookContext(hints, { application: 'notes', invokedBy: 'argv', path: [] });
+  expect(hints(new UnknownCommandError('lsit', ['list']), context)).toBe('Run notes --help to list the commands.');
+});
+```
+
+- **The hook.** An `onFailure` hook takes the failure and its context, so the builder returns the context, the second argument, and the test calls `hook(failure, context)` with a failure it constructs.
+- **The data.** `application`, `path`, and `invokedBy` are required, and `view` and `mediaType` may be omitted, as for a run that reached no Command's result.
+- **The rest.** `style` and `log` are filled as above, and `graph` and `command` may be omitted.
+
+### providerContext
+
+```ts
+import type { ProviderContext } from '@loomcli/core';
+
+type ProviderValues<Globals, Provided> = StatedRecord<'options', Globals> &
+  StatedRecord<'provided', Provided> &
+  Filled<Pick<ProviderContext<Globals, Provided>, 'host' | 'log' | 'signal' | 'onShutdown'>>;
+
+function providerContext<Globals, Provided>(
+  opener: (context: ProviderContext<Globals, Provided>) => unknown,
+  ...values: ValuesArgument<ProviderValues<Globals, Provided>>
+): ProviderContext<Globals, Provided>;
+```
+
+```ts
+import { providerContext } from '@loomcli/testing';
+import { expect, test } from 'vitest';
+
+import open from '../src/open-session.js';
+import { testPool } from './test-pool.js';
+
+test('the session starts with the token option', async () => {
+  const session = await open(
+    providerContext(open, { options: { token: 't0k3n' }, provided: { pool: testPool() } }),
+  );
+  expect(session.token).toBe('t0k3n');
+});
+```
+
+- **The opener.** The default export of the module its provider's `load` imports, typed `Opener<typeof declaration>` as [The opener](../core/providers.md#the-opener) writes it. The test imports that module itself, so no `load` runs. The builder calls no `close`, so a test closes what the opener built when that matters.
+- **`options` and `provided`.** The global option values the provider reads and the values of the providers it uses, typed as the opener reads them. A run freezes `options` to every depth; the builder holds what the test stated.
+- **The rest.** `host`, `log`, `signal`, and `onShutdown` are filled as above. The context has no `out`, as a run's has none.
+
+### viewContext
+
+```ts
+import type { RowView, View, ViewContext } from '@loomcli/core';
+
+type ViewValues = Filled<ViewContext>;
+
+function viewContext<Data>(view: View<Data> | RowView<Data>, values?: ViewValues): ViewContext;
+```
+
+```ts
+import { viewContext } from '@loomcli/testing';
+import { expect, test } from 'vitest';
+
+import { notice } from '../src/views/notice.js';
+
+test('the notice wraps at 30 columns and keeps the path whole', () => {
+  const message = 'Copy the file to /srv/releases/2026-10-17/archive.tar.gz and restart the service.';
+  expect(notice.render(message, viewContext(notice, { columns: 30 }))).toBe(
+    'Copy the file to\n/srv/releases/2026-10-17/archive.tar.gz\nand restart the service.\n',
+  );
+});
+```
+
+- **Either shape.** A whole view and a row view alike: the test calls `render`, or `head`, `row`, and `tail`, with the context. A declared view's own function runs, whatever override an Application would install, because no view registry is read.
+- **`columns`.** `undefined` unless the test states it, as for a destination that is not a terminal, so a test states `columns` to reach what a view does on a terminal.
+- **`background`.** `undefined` unless the test states it, as for a run where no source settled it.
+- **The measures.** `plain`, `wrap`, and `expandTabs` are core's own [exports](../core/styles.md#marked-text-outside-a-run), and `width(text)` is core's `width` of `plain(text)`, so all four read marked text as a run's view context does on a destination with main glyph forms. A test of a `linux` console's compatibility forms runs the Application on a mock whose `env` sets `TERM` to `linux`.
+
+### Functions with no builder
+
+- **An inline `.action()` handler.** It has no public way to reach it, so a test runs its Command through `app.invoke` on a mock, under [Typed calls through invoke](#typed-calls-through-invoke). To unit-test a handler, extract it, as [Modular authoring](../core/commands.md#modular-authoring) does, and call it with `actionContext`.
+- **`onCommandAttach` and `onGraphBuilt`.** They read the graph an Application builds, so a test installs the plugin on a small Application and reads `application.inspect()`, or checks that it assembles with [`assertAssembles`](#assertassembles).
+- **`onLog` and `onEnvironment`.** Their arguments are plain values and functions, so a test writes them by hand:
+
+```ts
+import { Writable } from 'node:stream';
+
+import type { LogEvent } from '@loomcli/core';
+import { expect, test } from 'vitest';
+
+import { writeEvent } from '../src/on-log.js';
+
+test('an error event writes one line to stderr', () => {
+  let written = '';
+  const stderr = new Writable({
+    write: (chunk, _encoding, done) => {
+      written += String(chunk);
+      done();
+    },
+  });
+  const event: LogEvent = {
+    application: { name: 'notes', version: '1.0.0' },
+    fields: {},
+    level: 'error',
+    message: 'Sync failed.',
+    path: ['sync'],
+    plugin: null,
+    run: '0'.repeat(32),
+    time: '2026-10-26T12:00:00.000Z',
+  };
+  writeEvent(event, { env: {}, home: '/loom-test/home', platform: 'linux', stderr });
+  expect(written).toBe('error: Sync failed.\n');
+});
+```
+
+```ts
+import { expect, test } from 'vitest';
+
+import { regionDefault } from '../src/on-environment.js';
+
+test('an unset region defaults to us-east-1', async () => {
+  const warnings: string[] = [];
+  const additions = await regionDefault({
+    host: { cwd: '/loom-test', env: {} },
+    log: { debug() {}, error() {}, info() {}, trace() {}, warn() {} },
+    out: {
+      warn: async (message) => {
+        warnings.push(message);
+      },
+    },
+  });
+  expect(additions).toEqual({ REGION: 'us-east-1' });
+  expect(warnings).toEqual([]);
+});
+```
+
 ## Recipes
 
 Each recipe uses core's own entry points with a mock, so none of them needs an API of its own.
@@ -338,4 +643,4 @@ test('path rejects a file the working directory does not hold', async () => {
 
 ### Substituting a provider
 
-A provider's opener loads through `import()`, so the test runner's module mocking substitutes it, under [Testing a Command that uses a provider](../core/providers.md#testing-a-command-that-uses-a-provider). Core has no member that supplies a provided value to a run.
+A provider's opener loads through `import()`, so the test runner's module mocking substitutes it, under [Testing a Command that uses a provider](../core/providers.md#testing-a-command-that-uses-a-provider). Core has no member that supplies a provided value to a run. A test that calls one extracted handler states its provided values through [`actionContext`](#actioncontext) instead, and no opener loads.

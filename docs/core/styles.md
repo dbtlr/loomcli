@@ -1,5 +1,5 @@
 ---
-description: How core resolves marked strings into styled output, covering style helpers, color fallbacks, theme plugins, glyphs, rendering policies, and the width, padding, and wrapping helpers a view receives.
+description: How core resolves marked strings into styled output, covering style helpers, color fallbacks, theme plugins, glyphs, rendering policies, the width, padding, and wrapping helpers a view receives, and the exports that measure written text and resolve marked text outside a run.
 ---
 
 # Styles and rendering policy
@@ -8,7 +8,7 @@ Core exports the style helpers, rendering context, and rendering policy describe
 
 ## Strings and composition
 
-Core exports `style`, `glyph`, `pad`, `nowrap`, `splitLines`, `escapeControlCharacters`, and `width`. Style calls accept one string and return an ordinary string containing internal markup. Interpolation, concatenation, arrays, and `join()` work without a wrapper type or a conversion step. `style.adaptive` is the one member that styles no text: it builds a theme entry for each background, under [Background](background.md).
+Core exports `style`, `glyph`, `pad`, `nowrap`, `splitLines`, `escapeControlCharacters`, `width`, and, for [marked text outside a run](#marked-text-outside-a-run), `plain`, `wrap`, `expandTabs`, and `contextualStyle`. Style calls accept one string and return an ordinary string containing internal markup. Interpolation, concatenation, arrays, and `join()` work without a wrapper type or a conversion step. `style.adaptive` is the one member that styles no text: it builds a theme entry for each background, under [Background](background.md).
 
 ```ts
 import { glyph, pad, style } from '@loomcli/core';
@@ -384,7 +384,35 @@ width('名前\tok'); // 10
 
 - **What it measures.** `width` counts the columns of the printable text a stream received, after it removes every control sequence, such as a mock's [`stdout.text`](../libs/testing.md#mockprocess), so a test checks a render against a width with the measure core renders with.
 - **The same columns.** It skips every terminal control sequence, an SGR style, an OSC 8 hyperlink, and a cursor movement alike, and counts what remains as the view context's `width` counts it: the same grapheme widths, the same tab stops, the widest line, and LF and CRLF as line breaks. It does not emulate a terminal, so text that moves the cursor back and overwrites itself measures as if nothing were overwritten, as the view context's `width` does.
-- **Written text, not marked text.** It reads no marked-string frame and resolves no glyph. A view measures its own marked text with the view context's `width`, which resolves the glyph forms of its destination first.
+- **Written text, not marked text.** It reads no marked-string frame and resolves no glyph. A view measures its own marked text with the view context's `width`, which resolves the glyph forms of its destination first, and code outside a run measures marked text with `width(plain(text))`, below.
+
+### Marked text outside a run
+
+```ts
+function plain(text: string): string;
+function wrap(text: string, columns: number | undefined): string;
+function expandTabs(text: string): string;
+const contextualStyle: ContextualStyle;
+```
+
+```ts
+import { contextualStyle as style, expandTabs, glyph, pad, plain, width, wrap } from '@loomcli/core';
+
+plain(`${style.identifier('notes')} ${glyph.success}`); // 'notes ✔'
+width(plain(pad(style.bold('cat'), 8))); // 8
+wrap('Copy the file to /srv/x and restart.', 20); // 'Copy the file to\n/srv/x and restart.'
+expandTabs('a\tb'); // 'a' and seven spaces, then 'b'
+```
+
+Core exports the view context's `plain`, `wrap`, and `expandTabs` as pure functions, and `contextualStyle`, the style a context carries outside a run. `@loomcli/testing`'s [`viewContext`](../libs/testing.md#viewcontext) and the other [built contexts](../libs/testing.md#testing-one-function-alone) are made from them, and any code that holds marked text with no run, such as a test, calls them directly.
+
+- **Marked text.** Each reads its input as marked text, as the view context's members do: every style frame, whatever token it names, every `pad` and `nowrap` frame, every glyph, and every escape. A token with no theme mapping styles nothing, as in a run with no theme.
+- **Main glyph forms.** A run selects a glyph's form from its environment, and these read none, so each resolves and measures every glyph in its main form, the form every destination selects unless `TERM` is `linux`. A test of the compatibility forms runs the Application on a [mock](../libs/testing.md#mockprocess) whose `env` sets `TERM` to `linux`.
+- **`plain(text)`.** It resolves marked text as the view context's `plain` does: no color, modifier, hyperlink, or terminal control, a hyperlink's label kept, and padding applied, with each glyph in its main form.
+- **`wrap` and `expandTabs`.** They follow the view context's rules above, measured with main glyph forms, and throw the same `TypeError` and `RangeError`. Neither reads a width of its own: `wrap` takes `columns` as its second argument and returns the text unchanged when it is `undefined`.
+- **Measuring marked text.** `width(plain(text))` counts marked text as the view context's `width` counts it on a destination with main glyph forms. `width` itself stays the measure of written text, under [Measuring written text](#measuring-written-text).
+- **Written text.** Text a stream received holds no frame, so a test strips its styles with the runtime's `stripVTControlCharacters`, as the [screen-fit recipe](../libs/testing.md#checking-that-output-fits-the-screen) does, rather than reading it as marked text.
+- **`contextualStyle`.** A contextual style built outside a run. It has the members `style` has, apart from `adaptive`, and every other name that is not a member of a function reads as a token, so a function that names its theme's tokens runs with no theme installed. A theme's key never collides, because no key may shadow a built-in or function member. `then` is not a token, so the style is never a thenable. Its type is `ContextualStyle`, the type the run's own style has, so it reads the names the registered Application's theme declares.
 
 ## When author code fails
 

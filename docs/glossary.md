@@ -900,6 +900,10 @@ _Avoid_: Diagnostic rule (for a lint rule), `loom check`
 The check from `@loomcli/testing` that a test runs to prove an Application assembles: it applies every build rule except the validation of declared defaults and implied values, and fails the test with each fault's Developer Diagnostic.
 _Avoid_: `loom check`, smoke test, health check
 
+**Built context**:
+The context `@loomcli/testing` builds for one author function, an extracted action handler, a middleware, an `onFailure` hook, a provider's opener, or a view, so a unit test calls that function with no Application. The test states the function's own data, typed as the function reads it, and the builder fills every other member with one that does nothing, an empty answer, or a member that throws a sentence telling the test to state it. Nothing in it comes from core's run machinery.
+_Avoid_: Fake context, stub context, mock context (a mock is a process handle)
+
 **Process test**:
-A test that starts the application as a child process, kept for behavior only a process has, such as a real signal and its exit status, a pseudo-terminal, a real shell, or stdio framing. Every other test runs the application in the test's own process through `run()` or `invoke` on a process handle, usually a mock.
+A test that starts the application as a child process, kept for behavior only a process has, such as a real signal and its exit status, a pseudo-terminal, a real shell, or stdio framing. Every other test runs the application in the test's own process through `run()` or `invoke` on a process handle, usually a mock, or calls one author function with a built context.
 _Avoid_: End-to-end test, integration test, acceptance test
