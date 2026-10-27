@@ -1,7 +1,10 @@
 /**
  * Help paging: whether a page goes to the operator's pager, and the pager run that shows it. The
- * pager is the operator's `PAGER` command line, run through `/bin/sh -c` behind `exec`, so the shell
- * replaces itself with the pager's program and ending the child ends the pager under dash too.
+ * pager is the operator's `PAGER` command line, run through `/bin/sh -c` behind `exec`, so for a
+ * `PAGER` that names one command the shell replaces itself with the pager's program, and ending the
+ * child ends the pager under dash too. A pipelined `PAGER` keeps the shell as the pipeline's parent,
+ * so ending the child ends the shell alone, the limit ADR-0115 accepts: a process group of its own
+ * would put the pager in the terminal's background, where reading a key stops it.
  */
 import type { Host, MiddlewareContext } from '@loomcli/core';
 
