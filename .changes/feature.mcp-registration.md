@@ -1,0 +1,1 @@
+- Add `mcp install`, `mcp uninstall`, and `mcp config` to the `mcp()` plugin. `install` registers the application's MCP server with Claude Code and Codex through each agent's own command-line interface, `uninstall` removes it, and `config` prints a client configuration for an agent that has no such interface. The `mcp` Command still serves when no child is named.
