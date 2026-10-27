@@ -1,7 +1,8 @@
 /**
  * A first-party plugin's file in the installation record, `<plugin>.json`: the directories the
  * installed-files module created, each file it installed with its digest, each installed folder by
- * its path alone, and each startup line by its startup file's path and its text. Only the module
+ * its path alone, each startup line by its startup file's path and its text, and each agent
+ * registration by its name and command line. Only the module
  * reads or writes it, and it replaces the file whole, through a staging file and a rename.
  */
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -53,6 +54,22 @@ interface PendingLine {
   readonly intended: string | null;
 }
 
+/** A registration an agent holds, recorded by its name and the command line it starts. */
+interface RecordedRegistration {
+  readonly name: string;
+  readonly command: readonly string[];
+}
+
+/**
+ * A registration an install or uninstall under way touches: the command line recorded before,
+ * `null` for none, and the one it will hold, `null` when the registration is being removed.
+ */
+interface PendingRegistration {
+  readonly name: string;
+  readonly prior: readonly string[] | null;
+  readonly intended: readonly string[] | null;
+}
+
 /** What the module recorded once its work finished. */
 interface Committed {
   readonly state: 'committed';
@@ -60,6 +77,7 @@ interface Committed {
   readonly files: readonly CommittedFile[];
   readonly folders: readonly RecordedFolder[];
   readonly lines: readonly StartupLine[];
+  readonly registrations: readonly RecordedRegistration[];
 }
 
 /** What the module was doing when it wrote the file: the work a later run recovers. */
@@ -69,6 +87,7 @@ interface Pending {
   readonly files: readonly PendingFile[];
   readonly folders: readonly RecordedFolder[];
   readonly lines: readonly PendingLine[];
+  readonly registrations: readonly PendingRegistration[];
 }
 
 type PluginFile = Committed | Pending;
@@ -91,6 +110,7 @@ const nothingRecorded: Committed = {
   files: [],
   folders: [],
   lines: [],
+  registrations: [],
   state: 'committed',
 };
 
@@ -182,6 +202,36 @@ function pendingLineOf(value: unknown): PendingLine | undefined {
     : { intended, path: value.path, prior };
 }
 
+/** A command line, a nonempty list of words, or `undefined` for anything else. */
+function commandLineOf(value: unknown): readonly string[] | undefined {
+  const words = everyOf(value, (word) => (typeof word === 'string' ? word : undefined));
+  return words === undefined || words.length === none ? undefined : words;
+}
+
+/** A command line or `null`, as a pending registration holds one, or `undefined` for anything else. */
+function commandLineOrNull(value: unknown): readonly string[] | null | undefined {
+  return value === null ? null : commandLineOf(value);
+}
+
+function recordedRegistrationOf(value: unknown): RecordedRegistration | undefined {
+  if (!isRecord(value) || typeof value.name !== 'string' || value.name === '') {
+    return undefined;
+  }
+  const command = commandLineOf(value.command);
+  return command === undefined ? undefined : { command, name: value.name };
+}
+
+function pendingRegistrationOf(value: unknown): PendingRegistration | undefined {
+  if (!isRecord(value) || typeof value.name !== 'string' || value.name === '') {
+    return undefined;
+  }
+  const prior = commandLineOrNull(value.prior);
+  const intended = commandLineOrNull(value.intended);
+  return prior === undefined || intended === undefined
+    ? undefined
+    : { intended, name: value.name, prior };
+}
+
 function pendingFileOf(value: unknown): PendingFile | undefined {
   if (!isRecord(value) || !isAbsolutePath(value.path)) {
     return undefined;
@@ -222,20 +272,35 @@ function recordedEntriesOf(
   rest: { directories: readonly string[]; folders: readonly RecordedFolder[] },
 ): PluginFile | undefined {
   if (value.state === 'committed') {
-    const files = everyOf(value.files, committedFileOf);
-    const lines = optionalOf(value.lines, startupLineOf);
-    return files === undefined || lines === undefined
-      ? undefined
-      : { ...rest, files, lines, state: 'committed' };
+    return committedEntriesOf(value, rest);
   }
-  if (value.state === 'pending') {
-    const files = everyOf(value.files, pendingFileOf);
-    const lines = optionalOf(value.lines, pendingLineOf);
-    return files === undefined || lines === undefined
-      ? undefined
-      : { ...rest, files, lines, state: 'pending' };
-  }
-  return undefined;
+  return value.state === 'pending' ? pendingEntriesOf(value, rest) : undefined;
+}
+
+/** The committed plugin's file, or `undefined` for files, lines, or registrations not that shape. */
+function committedEntriesOf(
+  value: Record<string, unknown>,
+  rest: { directories: readonly string[]; folders: readonly RecordedFolder[] },
+): Committed | undefined {
+  const files = everyOf(value.files, committedFileOf);
+  const lines = optionalOf(value.lines, startupLineOf);
+  const registrations = optionalOf(value.registrations, recordedRegistrationOf);
+  return files === undefined || lines === undefined || registrations === undefined
+    ? undefined
+    : { ...rest, files, lines, registrations, state: 'committed' };
+}
+
+/** The pending plugin's file, or `undefined` for files, lines, or registrations not that shape. */
+function pendingEntriesOf(
+  value: Record<string, unknown>,
+  rest: { directories: readonly string[]; folders: readonly RecordedFolder[] },
+): Pending | undefined {
+  const files = everyOf(value.files, pendingFileOf);
+  const lines = optionalOf(value.lines, pendingLineOf);
+  const registrations = optionalOf(value.registrations, pendingRegistrationOf);
+  return files === undefined || lines === undefined || registrations === undefined
+    ? undefined
+    : { ...rest, files, lines, registrations, state: 'pending' };
 }
 
 /** The plugin's file's text, or `undefined` when there is none. A failed read throws. */
@@ -276,26 +341,36 @@ function readPluginFile(path: string): PluginFileRead {
   return file === undefined ? { kind: 'refused', reason: 'damaged' } : { file, kind: 'read' };
 }
 
-/** The files and startup lines of a plugin's file, each entry's members in the contract's order. */
-function entryMembers(file: PluginFile): { files: object[]; lines: object[] } {
+/** The files, startup lines, and registrations of a plugin's file, each entry's members in the contract's order. */
+function entryMembers(file: PluginFile): {
+  files: object[];
+  lines: object[];
+  registrations: object[];
+} {
   if (file.state === 'committed') {
     return {
       files: file.files.map(({ path, digest }) => ({ path, digest })),
       lines: file.lines.map(({ path, line }) => ({ path, line })),
+      registrations: file.registrations.map(({ name, command }) => ({ name, command })),
     };
   }
   return {
     files: file.files.map(({ path, prior, intended }) => ({ path, prior, intended })),
     lines: file.lines.map(({ path, prior, intended }) => ({ path, prior, intended })),
+    registrations: file.registrations.map(({ name, prior, intended }) => ({
+      name,
+      prior,
+      intended,
+    })),
   };
 }
 
 /**
  * The plugin's file as one line of JSON, its members in the contract's order, then `folders` and
- * `lines`, each only when it lists any.
+ * `lines` and `registrations`, each only when it lists any.
  */
 function serialize(file: PluginFile): string {
-  const { files, lines } = entryMembers(file);
+  const { files, lines, registrations } = entryMembers(file);
   const { state, directories } = file;
   const folders = file.folders.map(({ path }) => ({ path }));
   const members = {
@@ -305,6 +380,7 @@ function serialize(file: PluginFile): string {
     files,
     ...(folders.length === none ? {} : { folders }),
     ...(lines.length === none ? {} : { lines }),
+    ...(registrations.length === none ? {} : { registrations }),
   };
   return `${JSON.stringify(members)}\n`;
 }
@@ -321,8 +397,10 @@ export type {
   Pending,
   PendingFile,
   PendingLine,
+  PendingRegistration,
   PluginFile,
   RecordedFolder,
+  RecordedRegistration,
   StartupLine,
 };
 export { isLineText, nothingRecorded, pluginFilePath, readPluginFile, writePluginFile };

@@ -1,8 +1,9 @@
 import { Command, locate, plugin } from '@loomcli/core';
-import type { ActionContext, Plugin, View } from '@loomcli/core';
+import type { ActionContext, Plugin } from '@loomcli/core';
 import { oneOf } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
+import { exactText } from '../exact-text.js';
 import { answer } from './answer.js';
 import { bashScript } from './bash.js';
 import { fishScript } from './fish.js';
@@ -13,14 +14,6 @@ import { shells } from './shells.js';
 import { uninstallShells } from './uninstall.js';
 import { updateShells } from './update.js';
 import { zshScript } from './zsh.js';
-
-/**
- * The text as it is, with no markup resolved and no newline added, because a shell sources these
- * bytes. It renders through `out`, so a reader that closes stdout ends the run as it does any write.
- */
-const exactText: View<string> = {
-  render: (text, { style }) => style.escape(text),
-};
 
 /** One child that prints the script its shell sources, for the application it is installed in. */
 function shellCommand(name: string, shell: string, script: (application: string) => string) {

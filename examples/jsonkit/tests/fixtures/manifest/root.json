@@ -423,7 +423,127 @@
         "arguments": [],
         "optionGroups": [],
         "options": [],
-        "children": []
+        "children": [
+          {
+            "name": "install",
+            "path": [
+              "mcp",
+              "install"
+            ],
+            "description": "Register this application's MCP server with your coding agents.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "optionGroups": [],
+            "options": [
+              {
+                "type": "string",
+                "name": "agent",
+                "description": "The agent to register with: claude or codex. Every agent that starts when left out.",
+                "deprecated": null,
+                "control": false,
+                "long": "--agent",
+                "short": null,
+                "required": false,
+                "requiredWhen": null,
+                "multiple": false,
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "enum": [
+                    "claude",
+                    "codex"
+                  ]
+                },
+                "env": [],
+                "default": null,
+                "implied": null,
+                "background": false
+              },
+              {
+                "type": "boolean",
+                "name": "force",
+                "description": "Replace a registration of this name that mcp install did not make.",
+                "deprecated": null,
+                "control": false,
+                "long": "--force",
+                "short": null,
+                "negative": null,
+                "polarity": "positive",
+                "interaction": false,
+                "color": false,
+                "schema": null,
+                "env": []
+              }
+            ],
+            "children": []
+          },
+          {
+            "name": "uninstall",
+            "path": [
+              "mcp",
+              "uninstall"
+            ],
+            "description": "Remove this application's MCP server from your coding agents.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "optionGroups": [],
+            "options": [
+              {
+                "type": "string",
+                "name": "agent",
+                "description": "The agent to remove it from: claude or codex. Every agent it is registered with when left out.",
+                "deprecated": null,
+                "control": false,
+                "long": "--agent",
+                "short": null,
+                "required": false,
+                "requiredWhen": null,
+                "multiple": false,
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "enum": [
+                    "claude",
+                    "codex"
+                  ]
+                },
+                "env": [],
+                "default": null,
+                "implied": null,
+                "background": false
+              }
+            ],
+            "children": []
+          },
+          {
+            "name": "config",
+            "path": [
+              "mcp",
+              "config"
+            ],
+            "description": "Print a client configuration that starts this application's MCP server.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "optionGroups": [],
+            "options": [],
+            "children": []
+          }
+        ]
       },
       {
         "name": "manpage",

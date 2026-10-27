@@ -3,7 +3,9 @@
  * share, such as a completion script, a manual page, an agent skill, or a service unit, and the
  * startup lines that load one. Each plugin records what it wrote in its own file in the
  * installation record, `<plugin>.json`, and never takes over a file it did not record; a startup
- * file is the operator's, and the module changes only the lines it records there. The module is
+ * file is the operator's, and the module changes only the lines it records there. The MCP plugin
+ * records a registration an agent's own CLI holds in its file instead of a file or a line, and the
+ * module writes that file pending before the agent's call and committed after it. The module is
  * internal to the pack: no subpath exports it.
  */
 import { rmSync } from 'node:fs';
@@ -39,7 +41,9 @@ import type {
   CommittedFile,
   Pending,
   PendingFile,
+  PendingRegistration,
   RecordedFolder,
+  RecordedRegistration,
   StartupLine,
 } from './record.js';
 
@@ -168,10 +172,20 @@ function recover(path: string, pending: Pending): Committed {
     files: pending.files.flatMap(recoveredFile),
     folders: pending.folders,
     lines: pending.lines.flatMap(recoveredLine),
+    registrations: pending.registrations.flatMap(recoveredRegistration),
     state: 'committed',
   };
   writePluginFile(path, committed);
   return committed;
+}
+
+/**
+ * A pending registration resolved without reading the agent: the command line it intended, or the
+ * one it held before when it was being removed, and none when that is `null` too.
+ */
+function recoveredRegistration(entry: PendingRegistration): RecordedRegistration[] {
+  const command = entry.intended ?? entry.prior;
+  return command === null ? [] : [{ command, name: entry.name }];
 }
 
 function recoveredFile(entry: PendingFile): CommittedFile[] {
@@ -304,6 +318,7 @@ function planInstall(
       files: written.map(({ intended, path }) => ({ digest: intended, path })),
       folders: folders.map(({ path }) => ({ path })),
       lines: [],
+      registrations: [],
       state: 'committed',
     },
     created,
@@ -314,6 +329,7 @@ function planInstall(
       files: pendingFiles,
       folders: everyFolder,
       lines: [],
+      registrations: [],
       state: 'pending',
     },
     removals,
@@ -660,6 +676,80 @@ function targetRefusals(
   return paths.flatMap((path) => refusalOf(path, observe(path), digests));
 }
 
+/** What a plugin's file lists as registered, or the refusal of its file. */
+type RegistrationRead =
+  | { readonly status: 'refused'; readonly refused: Refusal<RecordRefusalReason> }
+  | { readonly status: 'read'; readonly registration: RecordedRegistration | undefined };
+
+/**
+ * The registration the plugin's file records, read without writing: none for a missing file, and
+ * for a pending file the one recovery would keep. A damaged file or one of an unknown format
+ * refuses, as it refuses an install or uninstall.
+ */
+function readRegistration(request: RecordRequest): RegistrationRead {
+  const path = pluginFilePath(request.record, request.plugin);
+  const read = readPluginFile(path);
+  if (read.kind === 'refused') {
+    return { refused: { path, reason: read.reason }, status: 'refused' };
+  }
+  if (read.kind === 'missing') {
+    return { registration: undefined, status: 'read' };
+  }
+  const { file } = read;
+  const [registration] =
+    file.state === 'pending'
+      ? file.registrations.flatMap(recoveredRegistration)
+      : file.registrations;
+  return { registration, status: 'read' };
+}
+
+/** What a plugin says before it runs the agent's call: the command line held, and the one wanted. */
+interface PendingRegistrationRequest extends RecordRequest {
+  readonly name: string;
+  /** The command line recorded before, and none when the plugin's file recorded none. */
+  readonly prior: readonly string[] | undefined;
+  /** The command line the call will leave, and none when the call removes the registration. */
+  readonly intended: readonly string[] | undefined;
+}
+
+/** Writes the plugin's file pending, before the agent's call that adds or removes the registration. */
+function writePendingRegistration(request: PendingRegistrationRequest): void {
+  const { name, plugin, record } = request;
+  const prior = request.prior ?? null;
+  const intended = request.intended ?? null;
+  writePluginFile(pluginFilePath(record, plugin), {
+    directories: [],
+    files: [],
+    folders: [],
+    lines: [],
+    registrations: [{ intended, name, prior }],
+    state: 'pending',
+  });
+}
+
+/** Removes the staging files a killed write left beside the plugin's file, which it never reads. */
+function removeStagingOfPluginFile(request: RecordRequest): void {
+  removeStagingFiles(pluginFilePath(request.record, request.plugin));
+}
+
+/** Writes the plugin's file committed, once the agent's call settled, with what it holds now. */
+function writeCommittedRegistration(request: RecordRequest & RecordedRegistration): void {
+  const { command, name, plugin, record } = request;
+  writePluginFile(pluginFilePath(record, plugin), {
+    directories: [],
+    files: [],
+    folders: [],
+    lines: [],
+    registrations: [{ command, name }],
+    state: 'committed',
+  });
+}
+
+/** Deletes the plugin's file, which records nothing once nothing is registered. */
+function deletePluginFile(request: RecordRequest): void {
+  rmSync(pluginFilePath(request.record, request.plugin), { force: true });
+}
+
 export type {
   InstalledFile,
   InstalledFolder,
@@ -670,6 +760,7 @@ export type {
   RecordRequest,
   Refusal,
   RefusalReason,
+  RegistrationRead,
   UninstalledLines,
   UninstallOutcome,
   UninstallRequest,
@@ -680,11 +771,16 @@ export type { StartupEncoding, StartupFileState } from './startup.js';
 export { inspectStartupFile } from './startup.js';
 export {
   adoptDirectories,
+  deletePluginFile,
   folderRefusals,
   hasPendingRecord,
   install,
   readRecorded,
+  readRegistration,
   recordedDirectories,
+  removeStagingOfPluginFile,
   targetRefusals,
   uninstall,
+  writeCommittedRegistration,
+  writePendingRegistration,
 };

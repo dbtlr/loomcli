@@ -91,9 +91,13 @@ import { afterEach, expect, test } from 'vite-plus/test';
 import { invoke, start } from '../../../scripts/test-process.js';
 import { replaceFile } from '../src/installation/disk.js';
 import {
+  deletePluginFile,
   inspectStartupFile,
   install,
   readRecorded,
+  readRegistration,
+  writeCommittedRegistration,
+  writePendingRegistration,
   folderRefusals,
   targetRefusals,
   uninstall,
@@ -2128,4 +2132,103 @@ test('recovery removes the leftover staging files beside a linked startup fileâ€
   writeFileSync(join(dotfiles, '.zshrc.0123456789abcdef.loom-staging'), 'partial');
   expect(uninstalledLines(box)).toMatchObject({ status: 'uninstalled' });
   expect(readdirSync(dotfiles)).toEqual(['zshrc']);
+});
+
+// Registrations
+
+const mcpCommand = ['/home/me/.local/bin/notes', 'mcp'];
+
+test('a pending registration is written and a committed one replaces it, as the contract spells them', () => {
+  const box = sandbox();
+  const request = { plugin: 'mcp.claude', record: box.record };
+  const file = join(box.record, 'mcp.claude.json');
+  writePendingRegistration({ ...request, intended: mcpCommand, name: 'notes', prior: undefined });
+  expect(readFileSync(file, 'utf8')).toBe(
+    '{"format":1,"state":"pending","directories":[],"files":[],"registrations":[{"name":"notes","prior":null,"intended":["/home/me/.local/bin/notes","mcp"]}]}\n',
+  );
+  writeCommittedRegistration({ ...request, command: mcpCommand, name: 'notes' });
+  expect(readFileSync(file, 'utf8')).toBe(
+    '{"format":1,"state":"committed","directories":[],"files":[],"registrations":[{"name":"notes","command":["/home/me/.local/bin/notes","mcp"]}]}\n',
+  );
+  expect(readRegistration(request)).toEqual({
+    registration: { command: mcpCommand, name: 'notes' },
+    status: 'read',
+  });
+  expect(readdirSync(box.record)).toEqual(['mcp.claude.json']);
+});
+
+test('a pending registration resolves to its intended command line, or its prior one when removing', () => {
+  const box = sandbox();
+  const request = { plugin: 'mcp.codex', record: box.record };
+  writePendingRegistration({
+    ...request,
+    intended: mcpCommand,
+    name: 'notes',
+    prior: ['/old', 'mcp'],
+  });
+  expect(readRegistration(request)).toMatchObject({ registration: { command: mcpCommand } });
+  writePendingRegistration({
+    ...request,
+    intended: undefined,
+    name: 'notes',
+    prior: ['/old', 'mcp'],
+  });
+  expect(readRegistration(request)).toMatchObject({ registration: { command: ['/old', 'mcp'] } });
+  writePendingRegistration({ ...request, intended: undefined, name: 'notes', prior: undefined });
+  expect(readRegistration(request)).toEqual({ registration: undefined, status: 'read' });
+});
+
+test('a missing plugin file lists no registration, and deleting one removes it', () => {
+  const box = sandbox();
+  const request = { plugin: 'mcp.codex', record: box.record };
+  expect(readRegistration(request)).toEqual({ registration: undefined, status: 'read' });
+  writeCommittedRegistration({ ...request, command: mcpCommand, name: 'notes' });
+  deletePluginFile(request);
+  expect(existsSync(join(box.record, 'mcp.codex.json'))).toBe(false);
+  expect(() => deletePluginFile(request)).not.toThrow();
+});
+
+test.each([
+  ['not JSON', '{nope'],
+  ['an array', '[]'],
+  [
+    'an empty command line',
+    '{"format":1,"state":"committed","directories":[],"files":[],"registrations":[{"name":"notes","command":[]}]}',
+  ],
+  [
+    'a command word that is not text',
+    '{"format":1,"state":"committed","directories":[],"files":[],"registrations":[{"name":"notes","command":["a",1]}]}',
+  ],
+  [
+    'a pending entry without intended',
+    '{"format":1,"state":"pending","directories":[],"files":[],"registrations":[{"name":"notes","prior":null}]}',
+  ],
+])('a plugin file with %s refuses as damaged', (_label, text) => {
+  const box = sandbox();
+  mkdirSync(box.record, { recursive: true });
+  writeFileSync(join(box.record, 'mcp.claude.json'), text);
+  expect(readRegistration({ plugin: 'mcp.claude', record: box.record })).toMatchObject({
+    refused: { reason: 'damaged' },
+    status: 'refused',
+  });
+});
+
+test('a plugin file of an unknown format refuses', () => {
+  const box = sandbox();
+  mkdirSync(box.record, { recursive: true });
+  writeFileSync(join(box.record, 'mcp.claude.json'), '{"format":2}');
+  expect(readRegistration({ plugin: 'mcp.claude', record: box.record })).toMatchObject({
+    refused: { reason: 'unknown-format' },
+    status: 'refused',
+  });
+});
+
+test('a file with no registrations member still reads, and an install of files writes none', () => {
+  const box = sandbox();
+  installed(box, [{ content: 'test', path: box.first }]);
+  expect(JSON.parse(ownerText(box))).not.toHaveProperty('registrations');
+  expect(readRegistration({ plugin: 'skill', record: box.record })).toEqual({
+    registration: undefined,
+    status: 'read',
+  });
 });
