@@ -35,6 +35,8 @@
  *   reads `false` and an input region reads `true`, and with `CI` empty a region reads `true`.
  *   There, `out.draw` keeps the Application's `terminalControls` setting, so a cursor movement
  *   its text holds is dropped, while on a terminal that redraws the movement is kept.
+ *   A signal that ends a run there writes no control sequence, so no cursor is shown that nothing
+ *   hid.
  * - Resize. A two-row frame drawn at 80 columns, after the emulator is resized to 40 columns and
  *   reflows, is erased whole by the next draw, and no stale row remains.
  * - `out.draw`. Its count is unchanged for every frame the prompts acceptance once pinned, its text
@@ -284,6 +286,33 @@ test.each([
   await expect(app.run({ process: mock })).resolves.toBe(0);
   expect(mock.stderr.text).toBe(text);
 });
+
+test.each([{ TERM: 'dumb' }, { CI: 'true' }])(
+  'on a terminal stderr with %o, a signal that ends the run writes no control sequence',
+  async (env) => {
+    const ready = Promise.withResolvers<void>();
+    const app = new Application('regions').action(async ({ out, signal }) => {
+      await out.info('working');
+      ready.resolve();
+      await new Promise((resolve) => {
+        signal.addEventListener('abort', resolve, { once: true });
+      });
+    });
+    const mock = mockProcess({
+      env: { TERM: 'xterm', ...env },
+      terminal: { columns: 40, rows: 24, streams: ['stderr'] },
+    });
+    const running = app.run({ process: mock });
+    await ready.promise;
+    mock.signals.raise('SIGINT');
+    await expect(running).resolves.toBe(130);
+    // The shutdown ends, and restores the terminal, on the turn after the run resolves.
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    expect([mock.endedBy, mock.stderr.text]).toEqual(['SIGINT', 'ℹ working\n']);
+  },
+);
 
 test('a reflowing resize leaves no stale row when the region redraws', async () => {
   const shown = await replay(until(regions('resize').events), { columns: 80 });

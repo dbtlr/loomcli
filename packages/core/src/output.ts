@@ -701,7 +701,7 @@ export class Output {
     const destination = this.destination(this.host.stderr);
     const removers = [
       suspension.onSuspend(() => {
-        destination.flushComposed(() => this.screen.suspend() + showCursor);
+        destination.flushComposed(() => this.screen.suspend() + this.cursorShown());
       }),
       suspension.onResume(() => {
         void handled(destination.compose(() => this.screen.resume()));
@@ -740,8 +740,16 @@ export class Output {
    */
   flushTerminal(): void {
     if (this.host.terminal.stderr.isTTY) {
-      this.destination(this.host.stderr).flushComposed(() => showCursor);
+      this.destination(this.host.stderr).flushComposed(() => this.cursorShown());
     }
+  }
+
+  /**
+   * The control sequence that shows the cursor again, on a terminal that redraws in place. Where it
+   * does not, every `out.draw` that could hide the cursor kept the Application's setting.
+   */
+  private cursorShown(): string {
+    return redraws(this.host.env) ? showCursor : '';
   }
 
   /**
