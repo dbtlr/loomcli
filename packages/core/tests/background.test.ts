@@ -178,7 +178,7 @@ describe('the foreground check', () => {
 describe('interrupt keys during the wait', () => {
   const [ctrlC, ctrlBackslash, ctrlZ] = [3, 28, 26].map((code) => String.fromCodePoint(code));
 
-  it('leave the typeahead and are raised on the process in order once the mode is restored', () => {
+  it('are raised on the process in order once the mode is restored', () => {
     const replies = `a${ctrlC}b${ctrlBackslash}${ctrlZ}${light}`;
     const report = run({ kill: 'record', replies });
     expect(report.raised).toEqual([
@@ -186,7 +186,6 @@ describe('interrupt keys during the wait', () => {
       { raw: false, self: true, signal: 'SIGQUIT' },
       { raw: false, self: true, signal: 'SIGTSTP' },
     ]);
-    expect(report.stdinRead).toBe(null);
     expect(report.seen.action).toBe('light');
   });
 

@@ -149,9 +149,10 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
       queue.keys.unshift(key);
     }
   };
-  // A raised interrupt drops every key still unread, as a cooked terminal flushes its input, so no
-  // Key answers the question before the signal arrives. After Ctrl-C or Ctrl-\\ every later key is
-  // Dropped too, until the run's abort; after Ctrl-Z the question reads on once the process resumes.
+  // A raised interrupt drops every key still unread, as a cooked terminal flushes its input.
+  // That includes part of a key held from an earlier read, so no key answers the question before the signal arrives.
+  // After Ctrl-C or Ctrl-\ every later key is dropped too, until the run's abort.
+  // After Ctrl-Z the question reads on once the process resumes.
   let interrupted = false;
   const data = (chunk: Buffer | string) => {
     if (interrupted) {
