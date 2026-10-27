@@ -4,7 +4,7 @@ title: ADR-0087 - Help wraps its prose to the destination's columns and keeps it
 description: On a terminal, the help page wraps its prose at the full columns of its view context with hanging indents, keeps usage forms, left cells, code, and example commands whole, stacks the rows under a heading whose right cells cannot fit, and reflows Details paragraphs at Markdown's soft line breaks. Off a terminal, every page keeps its bytes. This supersedes ADR-0077's clause that help neither wraps nor reads the terminal width.
 status: accepted
 created: 2026-10-18
-modified: 2026-10-20
+modified: 2026-10-27
 ---
 
 # ADR-0087 - Help wraps its prose to the destination's columns and keeps its literals whole
@@ -60,3 +60,4 @@ Accepted in 0.14.0.
 - 2026-10-18: Amended before acceptance: a stacked row set's right cells start four columns past the furthest-in start of a left cell's text, so a long-only option's description no longer shares its spelling's column.
 - 2026-10-19: Amended before acceptance: consecutive Details lines that start with `|` keep their lines and never reflow, which grows ADR-0077's subset.
 - 2026-10-19: Amended before acceptance: a hanging text whose continuation indent and floor exceed `columns` continues at its block's base indent, indent 2 for the masthead description and the deprecation message and the list's own indent for a list item, while its first line keeps its place.
+- 2026-10-27: [ADR-0115](0115-help-pages-a-long-page-through-the-operators-pager-on-opt-in.md), proposed, reads the page this record lays out to decide paging: with help's `paging` setting on, a page whose wrapped lines reach the terminal's rows goes to the operator's pager. The page still lays out at stdout's `columns`, because the pager shows it on that terminal, and its bytes are unchanged. Off a terminal nothing pages, so every page there keeps its bytes as this record states. It binds when that record is accepted.

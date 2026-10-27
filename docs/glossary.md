@@ -414,7 +414,7 @@ _Avoid_: Control key, signal key, break key
 View, Token, Glyph, and Theme follow the [style contract](core/styles.md) and the [view registry contract](core/views.md). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, View name, and `ResultError` follow the [results contract](core/results.md), which is implemented under accepted ADR-0023. Column, Field, and Identifier follow the [table](plugins/pack-views.md#table) and [records](plugins/pack-views.md#records) contracts.
 
 **Out**:
-The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the region call that opens a live region on stderr, the draw call that draws one frame there, the result call, and the fatal path. On a Command that declares a result, the action's `print` and `render` move to stderr beside `info`, `success`, `warn`, `error`, `debug`, and `trace`, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
+The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the region call that opens a live region on stderr, the draw call that draws one frame there, the text call that returns what the render call would write without writing it, the result call, and the fatal path. On a Command that declares a result, the action's `print` and `render` move to stderr beside `info`, `success`, `warn`, `error`, `debug`, and `trace`, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
@@ -667,6 +667,14 @@ _Avoid_: Long help, full help, man page
 **Details**:
 A Command's teaching prose, written in Markdown inline or brought in from a file with a text import, which extended help renders as a stated subset after the masthead, keeping the author's lines off a terminal and reflowing its paragraphs to `columns` on one, and the manifest carries as written.
 _Avoid_: Long description, body, help text, Markdown asset
+
+**Help paging**:
+The help plugin's opt-in rule, `help({ paging: true })`, under which a help page that holds at least as many lines as the terminal has rows goes to the pager instead of straight to stdout, when stdout is a terminal, `TERM` is set, not empty, and not `dumb`, and the run is not under CI. Compact help and extended help page alike, a paged page holds the bytes help prints unpaged, and nothing else the application prints pages.
+_Avoid_: Pagination, paged output, more mode
+
+**Pager**:
+The program the operator's `PAGER` names, `less` when it is unset, which help runs through `/bin/sh -c` with the page on its standard input and the run's stdout and stderr as its own, ignoring every exit code but the shell's could-not-start codes, 126 and 127, which print the page unpaged. Ctrl-C cancels the run and ends the pager with it. A `PAGER` that is empty, holds only whitespace, or holds `cat` with surrounding whitespace alone turns help paging off.
+_Avoid_: Viewer, scroller, less (for the pager in general)
 
 **Completion**:
 The projection a shell reads while the operator types: a script, printed or installed, that calls back into the application on each Tab and inserts the offered words, the canonical Command names, option spellings, and closed-set values that fit the word under the cursor. It never offers an alias, a hidden member, or a deprecated member, and it never evaluates what was typed.

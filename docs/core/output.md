@@ -1,10 +1,10 @@
 ---
-description: "The out methods an action writes through: the semantic lanes, rendered and drawn views, live regions, and progress events."
+description: "The out methods an action writes through: the semantic lanes, rendered and drawn views, a view's text without a write, live regions, and progress events."
 ---
 
 # Output
 
-This page states the `out` methods an action writes through: the semantic lanes, rendered and drawn views, live regions, and progress events. An author uses it to decide what an action prints and where it goes.
+This page states the `out` methods an action writes through: the semantic lanes, rendered and drawn views, a view's text without a write, live regions, and progress events. An author uses it to decide what an action prints and where it goes.
 
 | Method                       | Default destination | Return          |
 | ---------------------------- | ------------------- | --------------- |
@@ -18,10 +18,11 @@ This page states the `out` methods an action writes through: the semantic lanes,
 | `out.render(data, view)`     | stdout              | `Promise<void>` |
 | `out.draw(data, view)`       | stderr              | `Promise<number>` |
 | `out.region(options?)`       | stderr              | `Region`        |
+| `out.text(data, view)`       | None; returns the text | `string`     |
 | `out.results(value)`         | stdout              | `Promise<void>` |
 | `out.fatal(message)`         | Failure path        | `never`         |
 
-The `results` row holds on a Command that declares a result, where the action's `print` and `render` move to stderr as [Results](results.md) describes; on every other Command `results` takes a `never` argument and the other rows hold as written. Messages are marked strings. The seven semantic methods render through core's lane views, described under [Views](views.md), and append one newline. `print` has no prefix. By default the other methods add their matching glyph and one space, `debug` and `trace` their gutters under [Verbosity](verbosity.md), and indent continuation lines by the measured gutter, without repeating the glyph; that gutter belongs to the lane view, which an application can override. Those six lanes also wrap the message at the destination's `columns`, as [Width, padding, and multiline lanes](styles.md#width-padding-and-multiline-lanes) states. The run's [verbosity](verbosity.md) decides whether `info`, `success`, `debug`, and `trace` write, and `print`, `warn`, and `error` write at every verbosity. Semantic method identity remains distinct inside core. `out.render` is the neutral render call, and [Rendered output](#rendered-output) describes it.
+The `results` row holds on a Command that declares a result, where the action's `print` and `render` move to stderr as [Results](results.md) describes; on every other Command `results` takes a `never` argument and the other rows hold as written. Messages are marked strings. The seven semantic methods render through core's lane views, described under [Views](views.md), and append one newline. `print` has no prefix. By default the other methods add their matching glyph and one space, `debug` and `trace` their gutters under [Verbosity](verbosity.md), and indent continuation lines by the measured gutter, without repeating the glyph; that gutter belongs to the lane view, which an application can override. Those six lanes also wrap the message at the destination's `columns`, as [Width, padding, and multiline lanes](styles.md#width-padding-and-multiline-lanes) states. The run's [verbosity](verbosity.md) decides whether `info`, `success`, `debug`, and `trace` write, and `print`, `warn`, and `error` write at every verbosity. Semantic method identity remains distinct inside core. `out.render` is the neutral render call, and [Rendered output](#rendered-output) describes it. `out.text` returns the text `out.render` would write and writes nothing, under [A view's text without a write](#a-views-text-without-a-write).
 
 Nonfatal labels do not change success. Calls can omit `await`; core still accounts for their output and failures before completion. Awaiting a call observes its write completion or rejection. What a caught rejection means for the run is under [the ordinary failure path](failures.md#the-ordinary-failure-path): a caught view rejection leaves the outcome to the code that caught it, and a failed destination write still fails the run.
 
@@ -79,6 +80,44 @@ The type parameter is inferred from the value, so `out.render(rows, table)` chec
 `out.draw(data, view)` renders a view to stderr for a frame an operator watches, which the caller erases and redraws itself. It takes the arguments `out.render` takes, a bare view or a declared view and its data, and it renders the same way: the view function, the application's override when one applies, runs synchronously inside the call, its marked text resolves under stderr's rendering policy, the result is queued on stderr in call order with every other `out` write to stderr, and no newline is added. Three things differ. The promise resolves, on write completion, to the number of terminal rows the drawn text moved down: its line breaks, plus the extra rows each line wraps onto at `host.terminal.stderr.columns`, the real width read at that draw and never the `COLUMNS`-narrowed one, because the terminal soft-wraps at its real width, measured as [`width`](styles.md#width-padding-and-multiline-lanes) measures, and its line breaks alone when the width is unknown; control sequences count no width. A caller that redraws what it drew, whatever view rendered it, returns the cursor to column 0, moves up exactly the rows it drew, and erases to the end of the screen. The destination is always stderr, on a Command that declares a result as on any other. And when `host.terminal.stderr.isTTY` is true and the terminal [redraws in place](#live-region), terminal control sequences the text holds, such as cursor movement and erasure, are kept for that call alone, as `terminalControls: 'preserve'` keeps them for the whole application; every other write site, and a draw to a stderr that is not a terminal or does not redraw, keeps the Application's setting, so a redirected stderr or an invocation by name's `messages` never receives a cursor movement core would otherwise strip. The types reject a row view, and core adds no rule for one: from JavaScript, it fails the call as a view that breaks does. The caller decides when to draw.
 
 On a terminal, `out.draw` is a region of one frame that core writes as it writes every other write to stderr: above every open [live region](#live-region), with no line break added, never held by an open input region, and at every verbosity. With no region open it writes exactly as before. Its count is still measured at the width read at its own draw, so a caller that erases by it keeps working, and its call order, its control sequences, and its bytes off a terminal are unchanged. A [question](../libs/prompts.md) opens an input region and does not draw through `out.draw`.
+
+### A view's text without a write
+
+```ts
+interface Out<Result = unknown> {
+  text<Data>(data: Data, view: View<Data>): string; // new: the text out.render would write, unwritten
+}
+```
+
+```ts
+import { Application } from '@loomcli/core';
+import type { View } from '@loomcli/core';
+
+const listing: View<readonly string[]> = {
+  render: (items, { style }) => items.map((item) => `${style.escape(item)}\n`).join(''),
+};
+const summary: View<readonly string[]> = {
+  render: (items) => `${String(items.length)} items. Pipe the output to list them.\n`,
+};
+
+const app = new Application('inventory')
+  .argument('items', { required: true, variadic: true })
+  .action(({ args, host, out }) => {
+    // The bytes out.render(args.items, listing) would write now, styled and laid out for stdout.
+    const text = out.text(args.items, listing);
+    const lines = text.split('\n').length - 1;
+    const rows = host.terminal.stdout.rows;
+    return out.render(args.items, rows !== undefined && lines >= rows ? summary : listing);
+  });
+```
+
+`out.text(data, view)` returns the text `out.render(data, view)` would write at that moment and writes nothing. A caller that needs the bytes before it decides where they go, such as [help paging](../plugins/help.md#help-paging) handing a long page to the operator's pager, reads them here, while core keeps sole ownership of how a view resolves. [ADR-0115](../decisions/0115-help-pages-a-long-page-through-the-operators-pager-on-opt-in.md) records the decision.
+
+- **The same resolution.** It takes the arguments `out.draw` takes, a bare view or a declared view and its data. The view function, the application's override when one applies, runs synchronously inside the call with a fresh view context for `out.render`'s destination, whose `columns` is read just before the call. The marked text resolves under that destination's rendering policy, with its color, depth, modifiers, hyperlinks, glyph forms, and terminal controls, as `out.render` resolves it. The destination is `out.render`'s: stdout, and stderr from the action of a Command that declares a [result](results.md), so a middleware's `out.text` always resolves for stdout.
+- **Nothing is written.** The call queues nothing on either stream, adds no newline, and holds no place in call order, so the run's completion waits on no write from it. Whatever the caller does with the text, writing it included, is the caller's.
+- **A view that throws.** The call throws the value the view function threw, synchronously, and core records nothing for it. Like any throw in an action or a middleware, it fails the run through [the ordinary failure path](failures.md#the-ordinary-failure-path) when it escapes.
+- **Whole views alone.** The types reject a row view, because a sequence resolves as its source yields and a string cannot wait for it, and core adds no rule for one: from JavaScript, it fails the call as a view that breaks does, as under `out.draw`.
+- **Every `out`.** Every `out` core builds carries it: an action's, a middleware's, and a configuration source's. Under an [invocation by name](invocation.md), the text is the plain text its destination's capture would hold, `output` for stdout and `messages` for stderr.
 
 ## Live region
 
