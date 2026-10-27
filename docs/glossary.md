@@ -405,6 +405,10 @@ _Avoid_: Pause, background (for the event)
 What follows a suspend once the process runs again, after the `SIGCONT` that `fg` sends or at once where nothing stops the process, as in an orphaned process group or on a mock: core calls each `onResume` handler in registration order, which enters raw mode again and redraws.
 _Avoid_: Continue, foreground (for the event)
 
+**Interrupt key**:
+Ctrl-C, Ctrl-\, or Ctrl-Z, which a cooked terminal turns into `SIGINT`, `SIGQUIT`, or `SIGTSTP` and raw mode delivers as the byte 0x03, 0x1c, or 0x1a. A reader that reads keys in raw mode passes what it read to `raiseInterruptKeys`, which raises each key's signal through `host.raise`, or, where the stdin is not its signal source's own terminal, cancels the run for Ctrl-C and Ctrl-\ and drops Ctrl-Z, and drops the unread keys once a signal is raised, as a cooked terminal does.
+_Avoid_: Control key, signal key, break key
+
 ## Output
 
 View, Token, Glyph, and Theme follow the [style contract](core/styles.md) and the [view registry contract](core/views.md). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, View name, and `ResultError` follow the [results contract](core/results.md), which is implemented under accepted ADR-0023. Column, Field, and Identifier follow the [table](plugins/pack-views.md#table) and [records](plugins/pack-views.md#records) contracts.
