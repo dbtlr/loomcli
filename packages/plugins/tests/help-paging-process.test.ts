@@ -8,6 +8,8 @@
  * - The shell. A `PAGER` that quotes a path holding a space runs that program, with `LESS=FRX`, and
  *   a `PAGER` that pipes through `tr a-z A-Z` hands the pager the page in capitals; the pager reads
  *   a key and quits, and the run exits 0.
+ * - A missing pager. A `PAGER` naming no program prints the shell's line and then the page, and
+ *   the run exits 0.
  * - An early quit. A pager that exits at once without reading a page larger than a pipe's buffer
  *   leaves the run at 0 with no error on the terminal and the page unprinted.
  */
@@ -148,6 +150,20 @@ test.skipIf(zsh === undefined)(
       expect(ended).toContain('status=0');
       expect(ended).not.toContain('Keep notes in a folder.');
       expect(ended).not.toMatch(/error|EPIPE/iu);
+    } finally {
+      await terminal.close();
+    }
+  },
+);
+
+test.skipIf(zsh === undefined)(
+  "a PAGER that names no program prints the shell's line, then the page, and the run exits 0",
+  async () => {
+    const terminal = helpOnTerminal({ PAGER: 'loom-no-such-pager' });
+    try {
+      const ended = await terminal.expect('@@DONE@@');
+      expect(ended).toMatch(/loom-no-such-pager: not found[\s\S]*Run add on the notes\./u);
+      expect(ended).toContain('status=0');
     } finally {
       await terminal.close();
     }

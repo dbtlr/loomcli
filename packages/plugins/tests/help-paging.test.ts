@@ -7,8 +7,9 @@
  *   `exec ` followed by the pager, and the page as input: exactly the bytes the run prints with
  *   paging off. Nothing of the page reaches stdout, and the run exits 0. `LESS` is `FRX` when the
  *   environment holds none and the operator's value, an empty one included, when it holds one.
- * - Not paged. A pipe, `TERM` unset, empty, or `dumb`, CI, unknown rows, a page shorter than the
- *   rows, and an empty, blank, or `cat` `PAGER` print the page as paging off does.
+ * - Not paged. A pipe, `TERM` unset, empty, or `dumb`, CI, a page shorter than the rows, and an
+ *   empty, blank, or `cat` `PAGER` print the page as paging off does. A mock terminal always has
+ *   rows, so unknown rows are not reachable here.
  * - Cannot start. A shell that cannot start, and exit 126 or 127, print the page unpaged and exit 0.
  * - The exit. Any other exit code of the pager leaves the run at 0.
  * - Cancellation. A run cancelled while the pager is open ends it and resolves 130.

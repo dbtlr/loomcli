@@ -7,6 +7,11 @@ import type { Host, MiddlewareContext } from '@loomcli/core';
 
 import { underCI } from '../ci.js';
 
+/** What showing a page reads of the middleware's context: the environment, the spawn, and the run's lifetime. */
+type PagerContext = Pick<MiddlewareContext, 'onShutdown' | 'signal'> & {
+  readonly host: Pick<Host, 'env' | 'spawn'>;
+};
+
 /** The pager when `PAGER` is unset. */
 const defaultPager = 'less';
 
@@ -51,7 +56,7 @@ export function outgrowsScreen(host: Host, page: string): boolean {
  * `SIGTERM`, on which less restores the terminal.
  */
 export async function showInPager(
-  { host, onShutdown, signal }: Pick<MiddlewareContext, 'host' | 'onShutdown' | 'signal'>,
+  { host, onShutdown, signal }: PagerContext,
   pager: string,
   page: string,
 ): Promise<boolean> {
@@ -64,7 +69,7 @@ export async function showInPager(
     stdout: 'inherit',
   });
   const remove = onShutdown(() => {
-    child.kill();
+    child.kill('SIGTERM');
   });
   try {
     const exit = await child.exited;

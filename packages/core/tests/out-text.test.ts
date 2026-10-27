@@ -17,10 +17,13 @@ import type { Middleware, Plugin, View } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
-/** A view whose bytes name the color depth and the width it resolved at. */
+/** The visible text `docs`, linked, which a terminal keeps and every other destination strips. */
+const link = '\u001B]8;;https://example.com\u0007docs\u001B]8;;\u0007';
+
+/** A view whose bytes name the color depth, the hyperlink policy, and the width it resolved at. */
 const banner: View<string> = {
   render: (name, { columns, style }) =>
-    `${style.hex('#C97B36', { ansi16: 'yellow', ansi256: 172 }).bold(style.escape(name))} ${String(columns)}\n`,
+    `${style.hex('#C97B36', { ansi16: 'yellow', ansi256: 172 }).bold(style.escape(name))} ${link} ${String(columns)}\n`,
 };
 
 /** What `out.text` returned and what `out.render` then wrote, from one action. */
@@ -91,6 +94,7 @@ test("on a Command that declares a result, the action's out.text resolves for st
   const texts: Record<string, string> = {};
   const recorder: Middleware<Plugin> = async ({ next, out }) => {
     texts.middleware = out.text('loom', banner);
+    await out.render('loom', banner);
     await next();
   };
   const app = new Application('banner', {
@@ -102,8 +106,9 @@ test("on a Command that declares a result, the action's out.text resolves for st
   }).command(
     new Command('get')
       .result<string>({ views: { plain: { render: (value) => `${value}\n` } } })
-      .action(({ out }) => {
+      .action(async ({ out }) => {
         texts.action = out.text('loom', banner);
+        await out.render('loom', banner);
         return out.results('done');
       }),
   );
@@ -113,9 +118,12 @@ test("on a Command that declares a result, the action's out.text resolves for st
     terminal: { columns: 80, rows: 24, streams: ['stderr'] },
   });
   await expect(app.run({ process: mock })).resolves.toBe(0);
-  // Stderr is the terminal and stdout a pipe, so each text names the stream it resolved for.
-  expect(texts.action).toBe('\u001B[38;5;172;1mloom\u001B[39;22m 80\n');
-  expect(texts.middleware).toBe('loom undefined\n');
+  // Stderr is the terminal and stdout a pipe, so each text names the stream it resolved for, and
+  // Each equals what the same call's out.render wrote there.
+  expect(texts.action).toBe(`\u001B[38;5;172;1mloom\u001B[39;22m ${link} 80\n`);
+  expect(mock.stderr.text).toBe(texts.action);
+  expect(texts.middleware).toBe('loom docs undefined\n');
+  expect(mock.stdout.text).toBe(`${texts.middleware ?? ''}done\n`);
 });
 
 test('an action that only calls out.text writes nothing and exits 0', async () => {
@@ -189,6 +197,6 @@ test('under app.invoke, out.text returns the plain text the capture holds', asyn
     await out.render('loom', banner);
   });
   const result = await app.invoke([], {});
-  expect(result).toMatchObject({ output: 'loom undefined\n', status: 'completed' });
-  expect(text).toBe('loom undefined\n');
+  expect(result).toMatchObject({ output: 'loom docs undefined\n', status: 'completed' });
+  expect(text).toBe('loom docs undefined\n');
 });
