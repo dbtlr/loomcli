@@ -900,6 +900,14 @@ _Avoid_: Generated file, owned file, vendored file
 The managed `install.sh` that `loom init` renders for an application with a GitHub repository. Under POSIX `sh` on Linux and macOS it installs the platform's release asset, verified against the release's `SHA256SUMS`, and writes `install.json` in the installation record with the method `script`, so self-update may later replace the binary.
 _Avoid_: Installer (alone), bootstrap script, setup script
 
+**Post-install command**:
+The one command an Application declares as argument words in `postInstall.command`, such as `setup`, that the installer script runs as the installed binary once the binary is verified, placed, and recorded. The script announces it first, gives it the operator's terminal or `/dev/null` as stdin, warns and still succeeds when it fails, and skips it under `--skip-post-install`; self-update never runs it. What it writes is the application's.
+_Avoid_: Post-install hook, setup hook, install script, lifecycle script
+
+**Post-install message**:
+The text an Application declares in `postInstall.message` that the installer script prints last, each line opening with the application's name, whether the post-install command ran, failed, or was skipped.
+_Avoid_: Caveats, notes, install notice
+
 **Lint rule**:
 A check over an application's source, shipped in Loom's lint plugin for ESLint and oxlint, that guides an author where a type cannot express the rule, in the editor and in CI. Unlike a diagnostic rule, it reports source before anything runs, and adding one is a contract change.
 _Avoid_: Diagnostic rule (for a lint rule), `loom check`

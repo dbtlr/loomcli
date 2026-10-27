@@ -26,6 +26,7 @@ interface CommandGraph {
   readonly description: string | undefined;
   readonly globals: readonly OptionNode[];
   readonly root: CommandNode;
+  readonly postInstall: PostInstall | undefined; // see The post-install declaration in Application declarations
 }
 interface CommandNode {
   readonly name: string | null;
