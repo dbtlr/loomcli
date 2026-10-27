@@ -6,6 +6,7 @@
 import { applicationDirectory, escapeControlCharacters } from '@loomcli/core';
 import type { Host, Middleware, Out } from '@loomcli/core';
 
+import { underCI } from '../ci.js';
 import { releaseBinary } from './binary.js';
 import { readCache, writeCache } from './cache.js';
 import type { CacheEntry, CacheReading, Lookup } from './cache.js';
@@ -49,8 +50,7 @@ function isEligible({ host, optOut, routed }: Candidate): boolean {
     (optOut !== undefined && isSet(env, optOut)) ||
     !terminal.stdout.isTTY ||
     !terminal.stderr.isTTY ||
-    // CI as ci-info reads it: set and nonempty, where `CI=false` says the run is not CI.
-    (isSet(env, 'CI') && env.CI !== 'false') ||
+    underCI(env) ||
     routed.join(' ') === commandName
   );
 }

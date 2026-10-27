@@ -72,7 +72,7 @@ function actionContext<Args, Options, Result, Stdin extends StdinContext, Provid
     onResume: values.onResume ?? registersNothing,
     onShutdown: values.onShutdown ?? registersNothing,
     onSuspend: values.onSuspend ?? registersNothing,
-    out: outWith(values.out),
+    out: outWith(values.out, 'actionContext'),
     get passthrough() {
       return passthrough ?? unstated('actionContext', 'passthrough');
     },

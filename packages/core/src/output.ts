@@ -542,6 +542,7 @@ export class Output {
         this.hand(this.renderValue(data, value, { destination: 'stdout' })),
       results: noResult,
       success: (message) => this.hand(this.emit('success', message, 'stderr')),
+      text: (data: never, value: View<never>) => this.text(data, value, 'stdout'),
       trace: (message) => this.hand(this.emit('trace', message, 'stderr')),
       warn: (message) => this.hand(this.emit('warn', message, 'stderr')),
     };
@@ -575,6 +576,7 @@ export class Output {
         render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
           this.hand(this.renderValue(data, value, target)),
         results: (value) => this.hand(this.results(binding, emission, value)),
+        text: (data: never, value: View<never>) => this.text(data, value, destination),
       },
       stop: () => {
         for (const stop of emission.live) {
@@ -994,6 +996,27 @@ export class Output {
     const rows = this.frameRows(frame.marked, controls);
     await this.write(this.host.stderr, frame.text);
     return rows;
+  }
+
+  /**
+   * One `out.text` call: the text `out.render` would queue on the destination, resolved the same
+   * way and queued nowhere. A view that throws throws to the caller, marked as a view's failure as
+   * one under `out.render` is.
+   */
+  private text(data: never, value: View<never>, destination: Stream): string {
+    const render = resolveView(this.registry, value);
+    const rendered = renderText(() => {
+      const marked = String(render(data, this.context(destination)));
+      return resolveText(marked, this.palette, capabilities(this.host, destination, this.policy));
+    });
+    if (!('text' in rendered)) {
+      const cause = rendered.failed;
+      if ((typeof cause === 'object' || typeof cause === 'function') && cause !== null) {
+        this.viewFaults.add(cause);
+      }
+      throw cause;
+    }
+    return rendered.text;
   }
 
   /** One `out.render` call, dispatched on the shape of the view it was handed. */

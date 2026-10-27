@@ -116,6 +116,36 @@ describe('an unstated member', () => {
     );
   });
 
+  it('out.text throws its sentence, naming the builder and the function', () => {
+    expect(() => bare().out.text('name', plainView)).toThrow(
+      new Error(
+        String.raw`actionContext has no out.text for this action to read. Add text to its out values, such as out: { text: () => 'page\n' }.`,
+      ),
+    );
+    const context = middlewareContext(pass, {
+      options: {},
+      ownOptions: {},
+      request: null,
+      spellings: {},
+      view: null,
+    });
+    expect(() => context.out.text('name', plainView)).toThrow(
+      new Error(
+        String.raw`middlewareContext has no out.text for this middleware to read. Add text to its out values, such as out: { text: () => 'page\n' }.`,
+      ),
+    );
+  });
+
+  it('out.text answers what the test stated', () => {
+    const context = actionContext(getValue, {
+      args: { path: 'name' },
+      options: {},
+      out: { text: () => 'page\n' },
+      provided: {},
+    });
+    expect(context.out.text('name', plainView)).toBe('page\n');
+  });
+
   it('that is a view measure throws its sentence when called', () => {
     const context = viewContext(plainView, {});
     expect(() => context.width('text')).toThrow(

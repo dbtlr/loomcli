@@ -65,7 +65,7 @@ function middlewareContext<Options extends PluginOptions>(
     onResume: values.onResume ?? registersNothing,
     onShutdown: values.onShutdown ?? registersNothing,
     onSuspend: values.onSuspend ?? registersNothing,
-    out: outWith(values.out),
+    out: outWith(values.out, 'middlewareContext'),
     signal: values.signal ?? neverAborts(),
     get view(): string | null {
       return view;
