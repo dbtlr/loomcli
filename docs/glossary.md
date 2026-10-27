@@ -351,7 +351,7 @@ The release line a version belongs to, which core derives from the version: its 
 _Avoid_: Lane (a lane is an output area), channel (alone, which names `out`), track, dist-tag
 
 **Installation record**:
-The directory, one per application and per user in the platform's state directory, that says how the application was installed and which files its installers wrote. Its `install.json` holds the installation, which an installer script and self-update write and core reads into the release facts when its path is the running executable; each first-party plugin that installs files keeps what it installed, files with their digests, whole folders, or startup lines, in files of its own there.
+The directory, one per application and per user in the platform's state directory, that says how the application was installed and which files its installers wrote. Its `install.json` holds the installation, which an installer script and self-update write and core reads into the release facts when its path is the running executable; each first-party plugin that installs files keeps what it installed, files with their digests, whole folders, or startup lines, in files of its own there. A file the application writes there under a name no first-party writer uses is the application's own.
 _Avoid_: Receipt, installation receipt, journal, ledger, manifest
 
 **Startup line**:
@@ -897,7 +897,7 @@ A file `loom init` keeps current, such as the fragment guide, marked by a header
 _Avoid_: Generated file, owned file, vendored file
 
 **Installer script**:
-The managed `install.sh` that `loom init` renders for an application with a GitHub repository. Under POSIX `sh` on Linux and macOS it installs the platform's release asset, verified against the release's `SHA256SUMS`, and writes `install.json` in the installation record with the method `script`, so self-update may later replace the binary.
+The managed `install.sh` that `loom init` renders for an application with a GitHub repository. Under POSIX `sh` on Linux and macOS it installs the platform's release asset, verified against the release's `SHA256SUMS`, and writes `install.json` in the installation record with the method `script`, so self-update may later replace the binary, and, when the Application declares them, runs its post-install command and prints its post-install message.
 _Avoid_: Installer (alone), bootstrap script, setup script
 
 **Post-install command**:
