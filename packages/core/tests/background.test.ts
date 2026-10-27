@@ -36,10 +36,9 @@
  *   bare `data` listener, with no `resume()` call, receives the typeahead and later input; an OSC
  *   11 reply with no DA1 reply settles the run from that reply at the deadline, without reaching
  *   step 7; a reply that arrives after the deadline reaches the action's stdin read; `Ctrl-C`,
- *   `Ctrl-\`, and `Ctrl-Z` read during the wait are raised on the
- *   process in arrival order after the mode is restored, and the typeahead is flushed with them, so
- *   the action's stdin read is empty; and `Ctrl-C` read during the wait ends the
- *   process by SIGINT.
+ *   `Ctrl-\`, and `Ctrl-Z` read during the wait are raised on the process in arrival order after the
+ *   mode is restored, and the typeahead is flushed with them, so the action's stdin read is empty;
+ *   and `Ctrl-C` read during the wait ends the process by SIGINT.
  * - Themed tokens. An adaptive token resolves to its light side under a light background and to its
  *   dark side under a dark one and under `undefined`, at truecolor, 256, and 16 colors, with each
  *   side's own fallbacks, and a plain token resolves to the same bytes under both.
