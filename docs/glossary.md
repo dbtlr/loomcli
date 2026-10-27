@@ -291,8 +291,12 @@ One `run()` or `invoke()` call: host capture, graph build, routing, parsing the 
 _Avoid_: Execution, call, request
 
 **Invocation by name**:
-An invocation that names its Command by path and its inputs by declared name instead of by argv, captures what the run writes, and resolves a structured outcome: completed, failed, or cancelled. It reports inputs by name and makes no process effect, following argv behavior except that no stdin is available for content. An action starts one through `invoke` on its context, and an embedding host through `app.invoke`.
+An invocation that names its Command by path and its inputs by declared name instead of by argv, captures what the run writes, and resolves a structured outcome: completed, failed, or cancelled. It reports inputs by name and makes no process effect, following argv behavior except that no stdin is available for content and the call may exclude options. An action starts one through `invoke` on its context, and an embedding host through `app.invoke`.
 _Avoid_: Programmatic run, child run, sub-invocation, tool call (for the invocation)
+
+**Excluded option**:
+An option an invocation by name leaves out of its run through `invoke`'s `exclude`. No tier supplies it, so a variable or a configuration key bound to it is a value no input reads, and it takes its declared default. The exclusion lasts for the one call, so help, the manifest, completion, and a command line still read the option. The MCP plugin excludes an option whose `mcpInput` value is `{ exclude: true }` from every tool and every tool call.
+_Avoid_: Omitted option (every excluded option is omitted, but an omitted one need not be excluded), hidden option (hidden keeps it off the listings), ignored option
 
 **Request**:
 The read-only snapshot of the routed Command's validated argument, local option, stdin-only input, and passthrough values that middleware reads through `request`. Global options are separate, and the request is `null` while core holds a fault or the routed Command is a group.
