@@ -751,7 +751,6 @@ function deletePluginFile(request: RecordRequest): void {
 }
 
 export type {
-  RegistrationRead,
   InstalledFile,
   InstalledFolder,
   InstallOutcome,
@@ -761,6 +760,7 @@ export type {
   RecordRequest,
   Refusal,
   RefusalReason,
+  RegistrationRead,
   UninstalledLines,
   UninstallOutcome,
   UninstallRequest,

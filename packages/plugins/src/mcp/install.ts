@@ -1,8 +1,8 @@
-import { holdsControlCharacter } from '../control-character.js';
 /*
  * `mcp install`: registers this application's server with each selected agent's own CLI, and
  * records each registration in the agent's plugin's file around the call that writes it.
  */
+import { holdsControlCharacter } from '../control-character.js';
 import {
   deletePluginFile,
   writeCommittedRegistration,

@@ -1,6 +1,7 @@
 /*
  * `mcp uninstall`: removes the registration of each agent whose plugin's file records one, through
- * the agent's own CLI, and deletes the file whatever the agent answers.
+ * the agent's own CLI, and deletes the file whatever the agent answers, except a removal the run
+ * signal ends, which leaves the file pending.
  */
 import { deletePluginFile, writePendingRegistration } from '../installation/files.js';
 import type { RecordedRegistration } from '../installation/record.js';
