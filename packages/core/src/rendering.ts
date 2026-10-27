@@ -1,4 +1,5 @@
 import type { Background } from './background.js';
+import { underCI } from './host.js';
 import type { Host } from './types.js';
 
 type SwitchPolicy = 'auto' | 'always' | 'never';
@@ -61,6 +62,25 @@ function enabled(policy: SwitchPolicy | undefined, automatic: boolean): boolean 
   return policy === 'always' || (policy !== 'never' && automatic);
 }
 
+/**
+ * The color depth a CI system's log viewer renders, as supports-color's CI block names them:
+ * truecolor for GitHub Actions, Gitea Actions, and CircleCI, 16 colors for Travis CI, AppVeyor,
+ * GitLab CI, Buildkite, Drone, and Codeship, and `undefined` for any other CI, which gets no color.
+ */
+function ciDepth(env: Host['env']): Capabilities['depth'] | undefined {
+  const present = (names: readonly string[]) => names.some((name) => env[name] !== undefined);
+  if (present(['GITHUB_ACTIONS', 'GITEA_ACTIONS', 'CIRCLECI'])) {
+    return 'truecolor';
+  }
+  if (
+    present(['TRAVIS', 'APPVEYOR', 'GITLAB_CI', 'BUILDKITE', 'DRONE']) ||
+    env.CI_NAME === 'codeship'
+  ) {
+    return 16;
+  }
+  return undefined;
+}
+
 /** A run owns captured facts; stdout and stderr each resolve this one policy independently. */
 function capabilities(
   host: Pick<Host, 'env' | 'terminal'>,
@@ -68,12 +88,15 @@ function capabilities(
   policy: RenderingPolicy,
 ): Capabilities {
   const tty = host.terminal[destination].isTTY;
-  const capable = tty && host.env.TERM !== 'dumb';
+  // Under CI, a terminal takes color only where the CI system's log viewer renders it.
+  const ci = underCI(host.env);
+  const logDepth = ci ? ciDepth(host.env) : undefined;
+  const capable = tty && host.env.TERM !== 'dumb' && (!ci || logDepth !== undefined);
   const forced = Boolean(host.env.FORCE_COLOR);
   return {
     color: enabled(policy.color, forced || (!host.env.NO_COLOR && capable)),
-    depth: colorDepth(host.env),
-    hyperlinks: enabled(policy.hyperlinks, tty),
+    depth: (capable ? logDepth : undefined) ?? colorDepth(host.env),
+    hyperlinks: enabled(policy.hyperlinks, tty && !ci),
     mainGlyphs: mainGlyphs(host.env),
     modifiers: enabled(policy.modifiers, forced || capable),
     terminalControls: policy.terminalControls === 'preserve',

@@ -72,4 +72,4 @@ Accepted in 0.14.0.
 
 - 2026-10-19: Proposed with the live region, typed progress events, and progress line contract.
 - 2026-10-20: A region's `end` takes an optional label that its end event carries, and a progress line's end messages pass to it, so an observer and an MCP client read the end text the terminal shows.
-- 2026-10-27: [ADR-0114](0114-a-ci-run-is-not-interactive-and-draws-no-live-region.md), proposed, narrows when a region is live: on a terminal stderr, a region without `input: true` is not live under CI or `TERM=dumb`, so a progress line writes plain lines, and `out.draw` there keeps the Application's `terminalControls` setting. It binds when that record is accepted.
+- 2026-10-27: [ADR-0114](0114-a-ci-run-is-not-interactive-draws-no-live-region-and-renders-as-the-standard-detectors-do.md), proposed, narrows when a region is live: on a terminal stderr, a region without `input: true` is not live under CI or `TERM=dumb`, so a progress line writes plain lines, and `out.draw` there keeps the Application's `terminalControls` setting. It binds when that record is accepted.

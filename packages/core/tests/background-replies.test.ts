@@ -134,6 +134,8 @@ describe('the environment a query needs', () => {
     ['GNU screen', { STY: '1234.pts-0.host', TERM: 'screen' }, false],
     ['an empty STY', { STY: '', TERM: 'screen' }, true],
     ['Emacs', { INSIDE_EMACS: '29.1,comint', TERM: 'xterm' }, false],
+    ['CI', { CI: 'true', TERM: 'xterm' }, false],
+    ['CI=false', { CI: 'false', TERM: 'xterm' }, true],
   ])('%s', (_case, env, allowed) => {
     expect(queryAllowed(env)).toBe(allowed);
   });
