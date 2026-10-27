@@ -106,7 +106,7 @@ integer(options?: { min?: number; max?: number }): Validator<number>
 - **Message.** `Expected a whole number.`, `Expected a whole number from 1 through 10.`, `Expected a whole number of at least 1.`, or `Expected a whole number of at most 10.`
 - **Faults.** A `min` or `max` that is not a finite number, because the published schema holds a number, and `min` above `max`.
 
-The parser reads a separate token that begins with `-` as an option spelling, so a negative value reaches an option only in the attached form, `--offset=-5`, and never reaches an argument.
+A negative number is a plain word, not an option word, because an option word after one hyphen starts with an ASCII letter ([String values and token consumption](../core/options.md#string-values-and-token-consumption)). So a negative value needs no escape: `--offset -5`, `--offset=-5`, and an argument such as `-5` in `shift -5` each reach the validator.
 
 ### number
 
