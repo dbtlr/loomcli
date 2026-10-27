@@ -52,6 +52,7 @@ const projects = [
   'states',
   'nested-states',
   'validate-omitted',
+  'scaffold-tsconfig',
 ];
 for (const project of projects) {
   const workspace = await compile(join(source, project), project === 'library');
@@ -76,6 +77,7 @@ try {
         '@loomcli/core': 'file:./core.tgz',
         '@loomcli/plugins': 'file:./plugins.tgz',
         '@loomcli/prompts': 'file:./prompts.tgz',
+        '@loomcli/validators': 'file:./validators.tgz',
         zod: zod.version,
       },
       private: true,
