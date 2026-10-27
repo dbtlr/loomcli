@@ -1,6 +1,8 @@
+import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { Application, Command, plugin } from '../src/index.js';
 
 /**
  * One plugin declaration scenario. A fault a call can judge throws from that call, and a build fault
@@ -245,6 +247,28 @@ test('a hook declares an option after the action, which the closures do not clos
     stderr: '',
     stdout: 'inspected\n',
   });
+});
+
+test('an alias of an option a hook declares binds that option', async () => {
+  const received: unknown[] = [];
+  const app = new Application('app', {
+    plugins: [
+      plugin('@acme/format', {
+        onCommandAttach: (command) =>
+          command.name === 'count'
+            ? command.option('shape', { aliases: ['form'], type: 'string' })
+            : command,
+      }),
+    ],
+  }).command(
+    new Command('count').action((context) => {
+      received.push(context.options);
+    }),
+  );
+  const mock = mockProcess({ argv: ['count', '--form', 'round'] });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(mock.stderr.text).toBe('');
+  expect(received).toEqual([{ shape: 'round' }]);
 });
 
 test('a plugin that declares nothing installs and costs the invocation nothing', () => {

@@ -50,6 +50,8 @@
  * - a negative spelling suggested for its own typo and never for the positive spelling's, a
  *   positive spelling never suggested for the negative spelling's, and both suggested for a typo as
  *   near to each;
+ * - a counted option and an implied-value option suggested by their long spelling alone, the
+ *   implied-value option's typo bare and with an attached value;
  * - a plugin's option suggested;
  * - a hidden child, a deprecated child, a hidden option, a deprecated option, and an alias never
  *   suggested, each with the typo one edit from the excluded name;
@@ -258,6 +260,15 @@ describe('the matcher', () => {
     );
     await expect(suggested(['tally', '--no-quietness'])).resolves.toBe(
       option('--no-quietness', 'Did you mean "--quietness"?'),
+    );
+  });
+
+  it('an implied-value option offers its long spelling alone', async () => {
+    await expect(suggested(['tally', '--bakup'])).resolves.toBe(
+      option('--bakup', 'Did you mean "--backup"?'),
+    );
+    await expect(suggested(['tally', '--bakup=numbered'])).resolves.toBe(
+      option('--bakup', 'Did you mean "--backup"?'),
     );
   });
 
