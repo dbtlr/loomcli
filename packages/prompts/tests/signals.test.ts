@@ -225,6 +225,28 @@ test.skipIf(zsh === undefined)(
   },
 );
 
+test.skipIf(zsh === undefined)(
+  'part of a character read with Ctrl-Z is dropped, so a character typed after fg reads as itself',
+  async () => {
+    const shell = drive(['zsh', '-f', '-i'], { NO_COLOR: '1' });
+    try {
+      await shell.expect('%');
+      shell.send(String.raw`${command('text')}\n`);
+      await shell.expect('Service port');
+      // Ctrl-Z, then the first byte of é's two UTF-8 bytes, in one read.
+      shell.send(String.raw`\x1a\xc3`);
+      await shell.expect('suspended');
+      await shell.expect('%');
+      shell.send(String.raw`fg\n`);
+      await shell.expect('Service port');
+      shell.send(String.raw`\xc3\xa9\r`);
+      await expect(shell.expect('EXIT:0 cooked:true')).resolves.toContain('ANSWER:"é"');
+    } finally {
+      await shell.close();
+    }
+  },
+);
+
 test.skipIf(zsh === undefined).each([
   { ending: 'kill -TERM', env: { PROMPT_ANNOUNCE: '1' }, status: 143 },
   { ending: 'process.exit()', env: { PROMPT_EXIT_AFTER: '300' }, status: 3 },

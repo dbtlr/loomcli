@@ -150,7 +150,7 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
     }
   };
   // A raised interrupt drops every key still unread, as a cooked terminal flushes its input.
-  // That includes part of a key held from an earlier read, so no key answers the question before the signal arrives.
+  // That includes part of a key or a character held from an earlier read, so no key answers the question before the signal arrives.
   // After Ctrl-C or Ctrl-\ every later key is dropped too, until the run's abort.
   // After Ctrl-Z the question reads on once the process resumes.
   let interrupted = false;
@@ -167,6 +167,7 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
       queue.keys.length = 0;
       queue.pending = '';
       queue.carriage = false;
+      queue.decoder = new StringDecoder('utf8');
       return;
     }
     feed(queue, rest);
