@@ -1,7 +1,13 @@
 import { DeclarationError } from '@loomcli/core';
-import type { CommandGraph, CommandNode, GraphBuiltHook } from '@loomcli/core';
+import type { CommandGraph, CommandNode, GraphBuiltHook, OptionNode } from '@loomcli/core';
 
-import { mcpPropertyNameTaken, mcpToolNameTaken, mcpToolWithoutAction } from '../rules.js';
+import {
+  mcpPropertyNameTaken,
+  mcpRequiredInputExcluded,
+  mcpToolNameTaken,
+  mcpToolWithoutAction,
+} from '../rules.js';
+import { excluded } from './exposure.js';
 import { propertiesOf, toolEntries } from './tools.js';
 import type { Property } from './tools.js';
 
@@ -55,6 +61,29 @@ function propertyFault(graph: CommandGraph, command: CommandNode): DeclarationEr
   });
 }
 
+const noMinimum = 0;
+
+/** Whether a call must supply the local option: it is required, or a content option takes at least one value. */
+function requiredLocal(option: OptionNode): boolean {
+  if (option.type !== 'string' && option.type !== 'content') {
+    return false;
+  }
+  const needsValues = option.type === 'content' && (option.min ?? noMinimum) > noMinimum;
+  return option.required || option.requiredWhen === 'non-interactive' || needsValues;
+}
+
+/** The fault, if any, of a required local option that the author excluded from the tool. */
+function requiredFault(command: CommandNode): DeclarationError | undefined {
+  const option = command.options.find((each) => excluded(each) && requiredLocal(each));
+  if (option === undefined) {
+    return undefined;
+  }
+  return new DeclarationError(mcpRequiredInputExcluded, {
+    correction: 'Make the option optional, or remove exclude from its mcpInput value.',
+    sentence: `${opening(command)} requires option "${option.name}" and excludes it from its MCP tool, which leaves every call without a value.`,
+  });
+}
+
 /** The fault, if any, of one opted-in Command alone: a tool needs an action to run. */
 function actionFault(command: CommandNode): DeclarationError | undefined {
   if (command.hasAction) {
@@ -79,7 +108,8 @@ function nameFault(earlier: CommandNode | undefined, command: CommandNode, name:
 
 /**
  * Judges the opted-in Commands of every build, a run that never serves a tool included: each has
- * an action, no two give one tool name, and no tool lists an argument and an option under one name.
+ * an action, no two give one tool name, no tool lists an argument and an option under one name, and no required
+ * local option is excluded from its tool.
  */
 const judgeTools: GraphBuiltHook = (graph) => {
   const named = new Map<string, CommandNode>();
@@ -87,7 +117,8 @@ const judgeTools: GraphBuiltHook = (graph) => {
     const fault =
       actionFault(command) ??
       nameFault(named.get(name), command, name) ??
-      propertyFault(graph, command);
+      propertyFault(graph, command) ??
+      requiredFault(command);
     if (fault !== undefined) {
       throw fault;
     }

@@ -228,6 +228,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **MCP property name taken.** An MCP tool takes its arguments and options as one object keyed by declared name, so an argument and an option that share a name leave the client no way to supply each one.
 
+### @loomcli/plugins/mcp/required-input-excluded
+
+**Required MCP input excluded.** An excluded option is off its Command's MCP tool, and a tool call reads no source for it, so a required option that is excluded leaves every call of the tool missing a value the Command needs.
+
 ### @loomcli/plugins/mcp/tool-name-taken
 
 **MCP tool name taken.** An MCP client calls a tool by its name: the Command path joined with underscores, or the application name for the root, with each hyphen written as an underscore. Two Commands that give one name leave the client no way to call either one.

@@ -1,5 +1,8 @@
 import type { CommandNode, OptionNode, OptionGroup } from '@loomcli/core';
 
+import { exposed } from './exposure.js';
+import { mcpArgument, mcpInput } from './extension.js';
+
 const noMembers = 0;
 const nextMember = 1;
 
@@ -21,9 +24,18 @@ function namedPresence(option: OptionNode): Schema {
   };
 }
 
-/** Extensions may include an arbitrary configuration binding, so uncertain requirements stay runtime-only. */
+/** The extensions this plugin owns, which bind nothing. */
+const ownExtensions: ReadonlySet<string> = new Set([mcpInput.identity, mcpArgument.identity]);
+
+/**
+ * Another plugin's extension may include an arbitrary configuration binding, so uncertain
+ * requirements stay runtime-only. This plugin's own extensions bind nothing.
+ */
 function externallyUnbound(option: OptionNode): boolean {
-  return option.env.length === noMembers && Object.keys(option.extensions).length === noMembers;
+  return (
+    option.env.length === noMembers &&
+    Object.keys(option.extensions).every((identity) => ownExtensions.has(identity))
+  );
 }
 
 function constraints(kind: OptionGroup['kind'], options: readonly OptionNode[]): Schema[] {
@@ -43,14 +55,10 @@ function constraints(kind: OptionGroup['kind'], options: readonly OptionNode[]):
 }
 
 export function groupSchemas(command: CommandNode): readonly Schema[] {
-  const exposed = new Map(
-    command.options
-      .filter((option) => !option.hidden && !option.control)
-      .map((option) => [option.name, option]),
-  );
+  const listed = new Map(command.options.filter(exposed).map((option) => [option.name, option]));
   return command.optionGroups.flatMap((group): Schema[] => {
     const options = group.options.flatMap((name) => {
-      const option = exposed.get(name);
+      const option = listed.get(name);
       return option === undefined ? [] : [option];
     });
     return options.length === group.options.length ? constraints(group.kind, options) : [];

@@ -1164,6 +1164,12 @@ export interface InvokeOptions<Mapped = LoomError> {
    * that built it. A throw stops it, and `invoke` rejects with that throw once the run settles.
    */
   readonly onProgress?: (event: ProgressEvent) => void;
+  /**
+   * Options the call leaves out of its run, by declared name: no tier supplies one, so a key of
+   * `options` that names one is an unknown option and the input-source stage reads nothing for it.
+   * A name the routed Command's table does not hold is an unknown option too.
+   */
+  readonly exclude?: readonly string[];
 }
 
 /**

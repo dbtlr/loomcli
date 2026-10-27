@@ -25,8 +25,8 @@ interface InvokeCall<Mapped> {
 }
 
 /**
- * Reads one `invoke()` call where it entered. The path and the passthrough tail are copied and
- * each record's defined entries read once, so a later change to the caller's path or passthrough array
+ * Reads one `invoke()` call where it entered. The path, the passthrough tail, and the exclusion are copied and
+ * each record's defined entries read once, so a later change to the caller's path, passthrough, or exclude array
  * changes nothing the run lowers. The types state each slot's kind.
  */
 function readCall<Mapped>(call: {
@@ -39,6 +39,7 @@ function readCall<Mapped>(call: {
     failure: options?.failure,
     named: {
       args: definedEntries(values.args),
+      exclude: [...(options?.exclude ?? [])],
       options: definedEntries(values.options),
       passthrough: [...(values.passthrough ?? [])],
       path: [...call.path],

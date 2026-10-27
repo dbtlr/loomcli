@@ -836,6 +836,11 @@ interface ParsedInvocation {
   /** What each argument slot received; an omitted argument binds nothing. */
   args: BoundArguments;
   command: BuiltCommand;
+  /**
+   * The declared names of the options an invocation by name excludes: the input-source stage reads
+   * nothing for them. Argv words leave it empty.
+   */
+  excluded: ReadonlySet<string>;
   /** The first structural fault in word order, which core holds to the dispatch boundary. */
   fault: LoomError | undefined;
   /**
@@ -916,6 +921,7 @@ function parseInvocation(
   return {
     args: bindArguments(command, positionals),
     command,
+    excluded: new Set(),
     fault: fault && heldFailure(read, fault),
     faulted: awaiting ? new Set([...read.faulted, awaiting.name]) : read.faulted,
     globalFault: read.globalFault || awaiting?.global === true,

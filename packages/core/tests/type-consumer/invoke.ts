@@ -111,3 +111,9 @@ void middleware;
 void observed;
 void relay;
 void unobserved;
+
+// A call excludes options by their declared names.
+export const excluding = app.invoke([], {}, { exclude: ['mode'] });
+
+// @ts-expect-error TS2322: The exclusion is a list of names, not a single name.
+export const excludingOne = app.invoke([], {}, { exclude: 'mode' });

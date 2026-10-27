@@ -57,6 +57,13 @@ const mcpPropertyNameTaken = diagnosticRule(`${packageName}/mcp/property-name-ta
   headline: 'MCP property name taken',
 });
 
+/** A required local option of an opted-in Command that `mcpInput({ exclude: true })` keeps off its tool. */
+const mcpRequiredInputExcluded = diagnosticRule(`${packageName}/mcp/required-input-excluded`, {
+  explanation:
+    "An excluded option is off its Command's MCP tool, and a tool call reads no source for it, so a required option that is excluded leaves every call of the tool missing a value the Command needs.",
+  headline: 'Required MCP input excluded',
+});
+
 /** A self-update `notices.env` setting that is not an environment variable name. */
 const selfUpdateSettings = diagnosticRule(`${packageName}/self-update/settings`, {
   explanation:
@@ -113,6 +120,7 @@ export {
   failureCodeConflict,
   manpagePageNameTaken,
   mcpPropertyNameTaken,
+  mcpRequiredInputExcluded,
   mcpToolNameTaken,
   mcpToolWithoutAction,
   selfUpdateSettings,

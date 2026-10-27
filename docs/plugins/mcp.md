@@ -113,7 +113,7 @@ The plugin's `onGraphBuilt` hook judges the opted-in Commands on every build, a 
 - **Tool name taken.** Two opted-in Commands never give one tool name, such as the Command `scratch create` and a Command named `scratch_create`: [`@loomcli/plugins/mcp/tool-name-taken`](../core/diagnostics.md#loomclipluginsmcptool-name-taken).
 - **Tool without action.** `mcpCommand` is never on a Command with no action, such as a group: [`@loomcli/plugins/mcp/tool-without-action`](../core/diagnostics.md#loomclipluginsmcptool-without-action).
 - **Property name taken.** A tool never lists an argument and an option under one name, a global option included: [`@loomcli/plugins/mcp/property-name-taken`](../core/diagnostics.md#loomclipluginsmcpproperty-name-taken).
-- **Required option excluded.** A tool's required local option is never excluded, one that declares `required: true` or `required: 'non-interactive'` or a content option whose `min` is positive, such as a `--file` that declares `required: true` and carries `mcpInput({ exclude: true })`: `@loomcli/plugins/mcp/required-input-excluded`.
+- **Required option excluded.** A tool's required local option is never excluded, one that declares `required: true` or `required: 'non-interactive'` or a content option whose `min` is positive, such as a `--file` that declares `required: true` and carries `mcpInput({ exclude: true })`: [`@loomcli/plugins/mcp/required-input-excluded`](../core/diagnostics.md#loomclipluginsmcprequired-input-excluded).
 
 ## When author code fails
 

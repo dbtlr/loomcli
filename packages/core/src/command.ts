@@ -2715,15 +2715,18 @@ async function fillScope(
     local.kind === 'parsed'
       ? { args: local.args, options: locals, passthrough: local.passthrough }
       : undefined;
+  // An option the call excludes is out of the stage's scope: no variable is read and no source asked.
+  const inScope = <Input extends { name: string }>(inputs: readonly Input[]) =>
+    inputs.filter((input) => !routed.excluded.has(input.name));
   const sources = await fillInputs({
     extensions: graph.extensions,
-    globals: { global: true, inputs: graph.globals.inputs, values: globals },
+    globals: { global: true, inputs: inScope(graph.globals.inputs), values: globals },
     host: invocation.host,
     inspected: invocation.inspected,
     invokedBy: invocation.invokedBy,
     locals:
       local.kind === 'parsed'
-        ? { global: false, inputs: optionsOf(routed.command.inputs), values: locals }
+        ? { global: false, inputs: inScope(optionsOf(routed.command.inputs)), values: locals }
         : undefined,
     log: invocation.logFor,
     offer: invocation.offer,

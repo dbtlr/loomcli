@@ -710,7 +710,11 @@ describe('progress', () => {
   });
 });
 
-type Rule = 'property-name-taken' | 'tool-name-taken' | 'tool-without-action';
+type Rule =
+  | 'property-name-taken'
+  | 'required-input-excluded'
+  | 'tool-name-taken'
+  | 'tool-without-action';
 
 describe('build faults', () => {
   it.each<[string, Rule, string, string]>([
@@ -750,6 +754,20 @@ describe('build faults', () => {
       'Command "get" declares argument "path" and global option "path", which one MCP tool lists under one name.',
       'Rename one of them, or remove mcpCommand.',
     ],
+    ...(['required-input-excluded', 'required-input-excluded-non-interactive'] as const).map(
+      (scenario): [string, Rule, string, string] => [
+        scenario,
+        'required-input-excluded',
+        'Command "get" requires option "file" and excludes it from its MCP tool, which leaves every call without a value.',
+        'Make the option optional, or remove exclude from its mcpInput value.',
+      ],
+    ),
+    [
+      'required-input-excluded-content',
+      'required-input-excluded',
+      'Command "get" requires option "file" and excludes it from its MCP tool, which leaves every call without a value.',
+      'Make the option optional, or remove exclude from its mcpInput value.',
+    ],
   ])('%s fails every build under its rule', (scenario, rule, sentence, correction) => {
     expect(invoke(fixture, [scenario, 'inspect'])).toEqual({
       status: 0,
@@ -775,6 +793,14 @@ describe('build faults', () => {
     }
   });
 
+  it('an excluded option that is optional raises no fault', () => {
+    expect(invoke(fixture, ['optional-input-excluded', 'inspect'])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'inspected\n',
+    });
+  });
+
   it('an application whose root declares arguments cannot install the plugin', () => {
     expect(invoke(fixture, ['root-arguments'])).toEqual({
       status: 0,
@@ -782,5 +808,72 @@ describe('build faults', () => {
       stdout:
         'thrown:1:@loomcli/core/arguments-beside-children: The root Command declares argument "files" and attaches child "mcp". Move the argument into a child Command or remove the children.\n',
     });
+  });
+});
+
+describe('excluded options', () => {
+  const secrets = { FIXTURE_REGION: 'from-env', FIXTURE_SECRET: 'from-env' };
+
+  /** One call of the excluded scenario's tool on a server whose environment binds both excluded options. */
+  async function shown(args: unknown): Promise<Message> {
+    const session = launch(fixture, ['excluded', 'mcp'], { env: childEnvironment(secrets) });
+    session.send(request(1, 'tools/call', { arguments: args, name: 'show' }));
+    const answer = await session.next();
+    await session.close();
+    return answer;
+  }
+
+  it('an excluded local option and an excluded global option leave properties and required', async () => {
+    const tool = Object(toolNamed(await toolsOf('excluded'), 'show'));
+    expect(Object.keys(tool.inputSchema.properties)).toEqual(['plain', 'left', 'right']);
+    expect(tool.inputSchema).not.toHaveProperty('required');
+  });
+
+  it('an option that carries only an mcpInput description keeps its group constraints', async () => {
+    const tool = Object(toolNamed(await toolsOf('excluded'), 'show'));
+    expect(tool.inputSchema.allOf).toHaveLength(1);
+    expect(JSON.stringify(tool.inputSchema.allOf)).toContain('"left"');
+  });
+
+  it('help and the manifest still show the excluded options', () => {
+    const help = invoke(fixture, ['excluded', 'show', '--help']);
+    expect(help).toMatchObject({ status: 0, stderr: '' });
+    expect(help.stdout).toContain('--secret');
+    const manifest = invoke(fixture, ['excluded', '--manifest']);
+    expect(manifest).toMatchObject({ status: 0, stderr: '' });
+    expect(manifest.stdout).toContain('"secret"');
+    expect(manifest.stdout).toContain('"region"');
+  });
+
+  it.each(['secret', 'region'])(
+    'a call naming the excluded option %s is the takes-no-argument error',
+    async (key) => {
+      const answer = await shown({ [key]: 'x', left: 'a' });
+      expect(Object(answer.result)).toMatchObject({
+        content: [
+          {
+            text: `Tool "show" takes no argument "${key}". Use a property its input schema lists.`,
+            type: 'text',
+          },
+        ],
+        isError: true,
+      });
+    },
+  );
+
+  it('a call reads the declared default although the server environment binds the option', async () => {
+    const answer = await shown({ left: 'a' });
+    const [item] = Object(answer.result).content;
+    expect(JSON.parse(item.text)).toMatchObject({
+      left: 'a',
+      region: 'default-region',
+      secret: 'default-secret',
+    });
+  });
+
+  it('an mcpInput value that holds a description and exclude is the invalid-extension-value fault', () => {
+    expect(invoke(fixture, ['both-keys', 'inspect']).stdout).toContain(
+      'thrown:1:@loomcli/core/invalid-extension-value:',
+    );
   });
 });
