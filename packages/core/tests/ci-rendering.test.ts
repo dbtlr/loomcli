@@ -5,7 +5,8 @@
  *   `GITHUB_ACTIONS`, `GITEA_ACTIONS`, and `CIRCLECI` resolve a hex style in truecolor; `TRAVIS`,
  *   `APPVEYOR`, `GITLAB_CI`, `BUILDKITE`, `DRONE`, and `CI_NAME=codeship` resolve it in 16 colors
  *   whatever `TERM` reports; any other CI writes the text with no color and no modifier. A nonempty
- *   `FORCE_COLOR` still turns color on at `TERM`'s depth, and `CI=false` leaves detection as it is.
+ *   `FORCE_COLOR` still turns color on at `TERM`'s depth under an unlisted CI, keeps the viewer's
+ *   depth under a listed one, and `CI=false` leaves detection as it is.
  * - Hyperlinks. On a terminal under CI, an embedded hyperlink is stripped to its visible text, as
  *   it is off a terminal, and outside CI it is kept.
  */
@@ -47,6 +48,7 @@ test.each([
   { env: { CI: 'true', CI_NAME: 'codeship' }, written: basic },
   { env: { CI: 'true' }, written: 'x\n' },
   { env: { CI: 'true', FORCE_COLOR: '1' }, written: indexed },
+  { env: { CI: 'true', FORCE_COLOR: '1', GITHUB_ACTIONS: 'true' }, written: truecolor },
   { env: { CI: 'false' }, written: indexed },
 ])(
   'on a terminal with TERM=xterm-256color and $env, a hex style writes $written',
