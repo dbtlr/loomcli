@@ -12,11 +12,11 @@ import type {
 import { oneOf } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
+import { exactText } from '../exact-text.js';
 import { singleLine } from '../lines.js';
 import { isRecord } from '../plain-data.js';
 import { agentNames } from './agents.js';
 import { clientConfiguration } from './config.js';
-import { exactText } from './exact-text.js';
 import { mcpArgument, mcpCommand, mcpInput } from './extension.js';
 import { judgeTools } from './faults.js';
 import { installRegistrations } from './install.js';
