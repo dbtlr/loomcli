@@ -756,6 +756,11 @@ export interface Out<Result = unknown> {
   /** Draws a view on stderr without a newline, preserving terminal controls at a terminal. */
   draw<Data>(data: Data, view: View<Data>): Promise<number>;
   /**
+   * The text `render` would write for a whole view at this moment, resolved for `render`'s
+   * destination, and written nowhere, so a caller can decide where the bytes go.
+   */
+  text<Data>(data: Data, view: View<Data>): string;
+  /**
    * Opens a live region at the bottom of stderr and returns its handle at once. Core keeps every
    * open region below every other write, in open order, and closes one left open when what opened
    * it finishes.

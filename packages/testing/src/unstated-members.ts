@@ -86,12 +86,34 @@ function inertRegion(): Region {
   };
 }
 
+/** The builders whose context carries an `out`, and the function each builds one for. */
+const outBuilders: Readonly<Record<'actionContext' | 'middlewareContext', string>> = {
+  actionContext: 'action',
+  middlewareContext: 'middleware',
+};
+
+/**
+ * An `out.text` the test did not state, which throws its sentence: the text is what the function
+ * goes on to read, so the builder invents none.
+ */
+function unstatedText(builder: keyof typeof outBuilders): () => never {
+  return () => {
+    throw new Error(
+      `${builder} has no out.text for this ${outBuilders[builder]} to read. Add text to its out values, such as out: { text: () => 'page\\n' }.`,
+    );
+  };
+}
+
 /**
  * The builder's `out`, with each member the test stated in place of its own. The semantic lanes,
  * `render`, and `results` resolve and write nothing, `draw` resolves `0`, `region()` answers an
- * inert region, and `fatal` throws core's `FatalError`, because its type is `never`.
+ * inert region, `text` asks to be stated, and `fatal` throws core's `FatalError`, because its type
+ * is `never`.
  */
-function outWith<Result>(stated: Partial<Out<Result>> | undefined): Out<Result> {
+function outWith<Result>(
+  stated: Partial<Out<Result>> | undefined,
+  builder: keyof typeof outBuilders,
+): Out<Result> {
   return {
     debug: resolved,
     draw: () => Promise.resolve(nothingDrawn),
@@ -105,6 +127,7 @@ function outWith<Result>(stated: Partial<Out<Result>> | undefined): Out<Result> 
     render: resolved,
     results: resolved,
     success: resolved,
+    text: unstatedText(builder),
     trace: resolved,
     warn: resolved,
     ...stated,

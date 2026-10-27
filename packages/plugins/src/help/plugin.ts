@@ -13,17 +13,30 @@ const options = {
 
 export type HelpOptions = typeof options;
 
+/** What an application tells the help plugin. */
+export interface HelpSettings {
+  /** Page a help page that outgrows the terminal through the operator's pager. Off by default. */
+  readonly paging?: boolean;
+}
+
 /**
  * A plugin that renders the help page of the routed Command and ends the invocation, whose attach
  * hook supplies each Command's help prose to the manifest's collecting extension, and whose failure
- * hook points every usage error at the page. The annotated
- * return type is the boundary that breaks the cycle between this module and the middleware module
- * `load` names.
+ * hook points every usage error at the page. With `paging`, a long page goes to the operator's
+ * pager. The annotated return type is the boundary that breaks the cycle between this module and the
+ * middleware module `load` names.
  */
-export function help(): Plugin<HelpOptions> {
+export function help(settings?: HelpSettings): Plugin<HelpOptions> {
+  const paging = settings?.paging ?? false;
   return plugin(`${packageName}/help`, {
     extensions: [helpArgument, helpCommand, helpInput],
-    middleware: { activate: ['help'], load: () => import('./middleware.js') },
+    middleware: {
+      activate: ['help'],
+      load: async () => {
+        const { helpMiddleware } = await import('./middleware.js');
+        return { default: helpMiddleware(paging) };
+      },
+    },
     onCommandAttach: attachHelp,
     onFailure: helpHint,
     options,
