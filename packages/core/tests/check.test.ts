@@ -13,6 +13,9 @@
  *   `inspect()` throws, and no hook runs.
  * - Whatever the build. The fixture bundled by `loom build`, which reads `distributed`, returns the
  *   same three faults.
+ * - The post-install command. From that bundle, `check()` returns
+ *   `@loomcli/core/post-install-unrouted` for words that route to no Command, and `inspect()` runs
+ *   no such check.
  * - Not the defaults. A fixture whose declared default its validator rejects returns an empty list,
  *   and `run()` reports the default.
  * - A broken hook. An `onGraphBuilt` hook that throws a `TypeError` adds the
@@ -130,16 +133,32 @@ test.each(runtimes)(
   },
 );
 
+/** The bundles of check.mjs built so far, by name, so each is built once whichever test needs it first. */
+const bundles = new Map<string, string>();
+
+/** The directory of check.mjs bundled under the baked facts, built on first use. */
+function bundled(name: string, facts: string) {
+  const known = bundles.get(name);
+  if (known !== undefined) {
+    return known;
+  }
+  const outdir = join(root, name);
+  const built = spawnSync('bun', [bundler, 'check.mjs', outdir, facts], { encoding: 'utf8' });
+  expect(built.stderr).toBe('');
+  expect(built.status).toBe(0);
+  bundles.set(name, outdir);
+  return outdir;
+}
+
+const distributedFacts = JSON.stringify({ build: 'distributed' });
+
 test.each([
-  ['distributed', JSON.stringify({ build: 'distributed' })],
+  ['distributed', distributedFacts],
   ['malformed', '[]'],
 ])(
   'check() returns the same faults from a bundle whose baked facts read %s, which it never reads',
-  (_name, facts) => {
-    const outdir = join(root, _name);
-    const built = spawnSync('bun', [bundler, 'check.mjs', outdir, facts], { encoding: 'utf8' });
-    expect(built.stderr).toBe('');
-    expect(built.status).toBe(0);
+  (name, facts) => {
+    const outdir = bundled(name, facts);
     for (const runtime of runtimes) {
       const result = spawnSync(runtime, [join(outdir, 'check.js'), 'faults'], { encoding: 'utf8' });
       expect(result.stderr).toBe('');
@@ -147,6 +166,24 @@ test.each([
     }
   },
 );
+
+test('from a bundle whose baked facts read distributed, check() reports an unrouted post-install command and inspect() does not', () => {
+  const outdir = bundled('distributed', distributedFacts);
+  for (const runtime of runtimes) {
+    const bundle = join(outdir, 'check.js');
+    const checked = spawnSync(runtime, [bundle, 'post-install'], { encoding: 'utf8' });
+    expect(checked.stderr).toBe('');
+    expect(JSON.parse(checked.stdout).faults).toEqual([
+      fault(
+        '@loomcli/core/post-install-unrouted',
+        'The post-install command "setup" routes to no Command with an action.',
+        'POST-INSTALL COMMAND UNROUTED',
+      ),
+    ]);
+    const inspected = spawnSync(runtime, [bundle, 'post-install', 'inspect'], { encoding: 'utf8' });
+    expect(inspected.stdout).toBe('inspected\n');
+  }
+});
 
 test.each(runtimes)(
   'check() leaves out a declared default its validator rejects, which run() reports, under %s',

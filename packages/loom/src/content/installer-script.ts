@@ -1,7 +1,118 @@
+import type { PostInstall } from '@loomcli/core';
+
 /** A value as one single-quoted shell word, so the script reads it back byte for byte. */
 function shellWord(value: string) {
   return `'${value.replaceAll("'", String.raw`'\''`)}'`;
 }
+
+/** The usage line, which names `--skip-post-install` only where the script declares a command. */
+function usageLine(skips: boolean) {
+  return skips
+    ? 'Usage: install.sh [--dir <directory>] [--skip-post-install] [<version>]'
+    : 'Usage: install.sh [--dir <directory>] [<version>]';
+}
+
+/**
+ * The lines `--help` prints after the usage line, each as a shell word for `printf`. The terms
+ * share one column, which `--skip-post-install` widens where the script declares a command.
+ */
+function helpWords(skips: boolean) {
+  const width = skips ? '--skip-post-install'.length : '--dir <directory>'.length;
+  const row = (term: string, text: string) => `  ${term.padEnd(width)}  ${text}`;
+  const lines = [
+    '       install.sh --help',
+    '',
+    'Arguments:',
+    row('<version>', 'The release to install, such as 1.4.0, with or without a leading v.'),
+    `${' '.repeat(width + 4)}By default, the latest release.`,
+    '',
+    'Options:',
+    row(
+      '--dir <directory>',
+      'The absolute directory to install into. By default, $HOME/.local/bin.',
+    ),
+    ...(skips
+      ? [row('--skip-post-install', 'Install without running the post-install command.')]
+      : []),
+    row('-h, --help', 'Print this help.'),
+  ];
+  return lines.map(shellWord).join(' \\\n    ');
+}
+
+/**
+ * The functions that run the post-install command, for its words. `with_post_install_words` holds
+ * the words once: it runs its arguments followed by them, so it prints the command line and runs
+ * the installed binary alike. A word prints bare when it holds only characters no shell reads
+ * specially, and single-quoted otherwise, so the operator can copy the line.
+ */
+function postInstallFunctions(words: readonly string[]) {
+  return `with_post_install_words() {
+  "$@" ${words.map(shellWord).join(' ')}
+}
+
+quote_word() {
+  quote="'"
+  case $1 in
+    '' | =* | *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./:=@%+,-]*)
+      rest=$1
+      quoted=
+      while :; do
+        case $rest in
+          *"$quote"*)
+            quoted=$quoted\${rest%%"$quote"*}"$quote\\\\$quote$quote"
+            rest=\${rest#*"$quote"}
+            ;;
+          *)
+            quoted=$quote$quoted$rest$quote
+            break
+            ;;
+        esac
+      done
+      ;;
+    *) quoted=$1 ;;
+  esac
+}
+
+print_command_line() {
+  line=
+  for word in "$target" "$@"; do
+    quote_word "$word"
+    line="$line $quoted"
+  done
+  printf '%s\\n' " $line" >&2
+}
+
+run_post_install() {
+  if [ -n "$skip_post_install" ]; then
+    say "Skipped the post-install command. Run it to finish setting up $app:"
+    with_post_install_words print_command_line
+    return 0
+  fi
+  say 'Running the post-install command:'
+  with_post_install_words print_command_line
+  status=0
+  if [ -t 0 ]; then
+    with_post_install_words "$target" || status=$?
+  elif (exec </dev/tty) 2>/dev/null; then
+    with_post_install_words "$target" </dev/tty || status=$?
+  else
+    with_post_install_words "$target" </dev/null || status=$?
+  fi
+  if [ "$status" -ne 0 ]; then
+    say "The post-install command failed with exit status $status, and $app is installed. Run it again to finish setting up $app:"
+    with_post_install_words print_command_line
+  fi
+}
+
+`;
+}
+
+/** The function that prints the post-install message, each of its lines opening with the name. */
+const printMessage = `print_message() {
+  printf '%s' "$message" | while IFS= read -r line || [ -n "$line" ]; do say "$line"; done
+}
+
+`;
 
 /**
  * The first part of the installation record's shell recipe in docs/core/installation-record.md, byte for byte: it
@@ -45,7 +156,22 @@ mv -f "$staging" "$record/install.json"
  * runs under POSIX `sh`, as dash and bash 3.2 in sh mode read it, so it uses no `local`, arrays,
  * `[[`, or `pipefail`.
  */
-export function installerScript(name: string, repository: string): string {
+export function installerScript(
+  name: string,
+  repository: string,
+  postInstall?: PostInstall,
+): string {
+  const words = postInstall?.command;
+  const message = postInstall?.message;
+  const skips = words !== undefined;
+  // Each part of the post-install step is empty where the application declares no such member.
+  const step = {
+    functions: `${words === undefined ? '' : postInstallFunctions(words)}${message === undefined ? '' : printMessage}`,
+    option: skips ? '\n      --skip-post-install)\n        skip_post_install=1\n        ;;' : '',
+    runs: `${skips ? '\n  run_post_install' : ''}${message === undefined ? '' : '\n  print_message'}`,
+    unset: skips ? '\n  skip_post_install=' : '',
+    values: message === undefined ? '' : `\n  message=${shellWord(message)}`,
+  };
   return `#!/bin/sh
 # Installs this application from its GitHub releases: it downloads the binary for this platform,
 # verifies it against the release's SHA256SUMS, moves it into place, and records the installation
@@ -64,22 +190,14 @@ fail() {
 }
 
 usage() {
-  printf '%s\\n' 'Usage: install.sh [--dir <directory>] [<version>]'
+  printf '%s\\n' ${shellWord(usageLine(skips))}
 }
 
 print_help() {
   printf '%s\\n' "Install $app from the GitHub releases of $repository, verified against the release's SHA256SUMS." ''
   usage
   printf '%s\\n' \\
-    '       install.sh --help' \\
-    '' \\
-    'Arguments:' \\
-    '  <version>          The release to install, such as 1.4.0, with or without a leading v.' \\
-    '                     By default, the latest release.' \\
-    '' \\
-    'Options:' \\
-    '  --dir <directory>  The absolute directory to install into. By default, $HOME/.local/bin.' \\
-    '  -h, --help         Print this help.'
+    ${helpWords(skips)}
 }
 
 argument_error() {
@@ -92,13 +210,13 @@ parse_arguments() {
   dir=
   dir_given=
   version=
-  version_given=
+  version_given=${step.unset}
   while [ $# -gt 0 ]; do
     case $1 in
       -h | --help)
         print_help
         exit 0
-        ;;
+        ;;${step.option}
       --dir)
         [ $# -ge 2 ] || argument_error '--dir needs a directory.'
         case $2 in
@@ -306,7 +424,7 @@ advise_path() {
   esac
 }
 
-cleanup() {
+${step.functions}cleanup() {
   if [ -n "\${download:-}" ]; then rm -f "$download"; fi
   if [ -n "\${sums:-}" ]; then rm -f "$sums"; fi
   if [ -n "\${staging:-}" ]; then rm -f "$staging"; fi
@@ -315,7 +433,7 @@ cleanup() {
 main() {
   set -e
   app=${shellWord(name)}
-  repository=${shellWord(repository)}
+  repository=${shellWord(repository)}${step.values}
   download=
   sums=
   staging=
@@ -330,7 +448,7 @@ main() {
   install_binary
   write_record
   say "Installed $target."
-  advise_path
+  advise_path${step.runs}
 }
 
 { main "$@"; }

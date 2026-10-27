@@ -122,6 +122,7 @@ export type {
   ViewOverride,
 } from './view.js';
 export type { ArgumentNode, CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
+export type { PostInstall } from './post-install.js';
 export type {
   Middleware,
   OptionsOf,

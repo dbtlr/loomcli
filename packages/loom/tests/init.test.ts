@@ -26,6 +26,13 @@
  *   script alone. With no `repository`, and with a `repository` on another host such as
  *   `gitlab:me/notes`, init writes no `install.sh`, prints the warning that names `repository`, and
  *   exits 0.
+ * - The post-install declaration. On a re-run where the entry and the test already exist, init
+ *   loads the application module and renders its `postInstall` into `install.sh`. A package with
+ *   no application module gets the script with no post-install step. A module that cannot be
+ *   loaded, and one that exports no Application, each draw their warning, write no script, and
+ *   leave an existing one alone. A declaration fault thrown while the module loads, and one the
+ *   build of its graph raises, print its Developer Diagnostic, write no script, and exit 1 once the
+ *   other pieces are written.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -605,6 +612,112 @@ test('an install.sh whose #! line was edited keeps its header and draws the drif
   });
   expect(read(root, 'install.sh')).toBe(edited);
 });
+
+/** A package named `notes` reading releases from `me/notes`, with the supplied files. */
+function installPackage(
+  files: Record<string, string>,
+  links?: Parameters<typeof fixturePackage>[1],
+) {
+  return fixturePackage(
+    {
+      'package.json': `${JSON.stringify({ name: 'notes', repository: 'me/notes', type: 'module' }, undefined, 2)}\n`,
+      ...files,
+    },
+    links,
+  );
+}
+
+/** An application module whose Application declares the supplied `postInstall` source. */
+function declaring(postInstall: string) {
+  return `import { Application, Command } from '@loomcli/core';
+
+export const notes = new Application('notes', {
+  description: 'Take notes.',
+  postInstall: ${postInstall},
+}).command(new Command('setup', { description: 'Set up notes.' }).action(() => undefined));
+`;
+}
+
+test('on a re-run where the entry and the test exist, init reads the post-install declaration into install.sh', () => {
+  const root = installPackage({
+    'src/application.test.ts': '// The test.\n',
+    'src/application.ts': declaring("{ command: ['setup'], message: 'Run notes init next.' }"),
+    'src/main.ts': '// The entry.\n',
+  });
+  expect(loom(root, ['init', '--only', 'entry', '--only', 'test', '--only', 'install'])).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Wrote install.sh.\n',
+  });
+  expect(read(root, 'install.sh')).toBe(
+    renderManaged(
+      installerScript('notes', 'me/notes', { command: ['setup'], message: 'Run notes init next.' }),
+    ),
+  );
+});
+
+test('a package with no application module gets install.sh with no post-install step', () => {
+  const root = installPackage({});
+  expect(loom(root, ['init', '--only', 'install']).stdout).toBe('Wrote install.sh.\n');
+  expect(read(root, 'install.sh')).toBe(renderManaged(installerScript('notes', 'me/notes')));
+});
+
+/** An install.sh an earlier run of init wrote, which a run that cannot read the module leaves alone. */
+const earlierScript = renderManaged(installerScript('notes', 'me/notes'));
+
+test.each([
+  [
+    'cannot be loaded',
+    { 'src/application.ts': declaring("{ command: ['setup'] }") },
+    [],
+    'warning: install.sh was not written because src/application.ts could not be loaded: @loomcli/core does not resolve from the package, so install it before init reads src/application.ts. Install the package and run loom init again.\n',
+  ],
+  [
+    'exports no Application',
+    { 'src/application.ts': 'export const value = 1;\n' },
+    undefined,
+    'warning: install.sh was not written because src/application.ts exports no Application loom can read. Export one Application from src/application.ts, then run loom init again.\n',
+  ],
+] as const)(
+  'an application module that %s draws its warning, writes no install.sh, and leaves an existing one alone',
+  (_case, files, links, stderr) => {
+    const fresh = installPackage(files, links);
+    expect(loom(fresh, ['init', '--only', 'install'])).toEqual({ status: 0, stderr, stdout: '' });
+    expect(existsSync(join(fresh, 'install.sh'))).toBe(false);
+    const existing = installPackage({ ...files, 'install.sh': earlierScript }, links);
+    expect(loom(existing, ['init', '--only', 'install'])).toEqual({
+      status: 0,
+      stderr,
+      stdout: '',
+    });
+    expect(read(existing, 'install.sh')).toBe(earlierScript);
+  },
+);
+
+test.each([
+  [
+    'thrown while the module loads',
+    "import { Application } from '@loomcli/core';\n\nexport const notes = new Application('no tes').action(() => undefined);\n",
+    '@loomcli/core/portable-name',
+  ],
+  [
+    'raised by the build of its graph',
+    declaring("{ command: ['sync'] }"),
+    '@loomcli/core/post-install-unrouted',
+  ],
+])(
+  'a declaration fault %s prints its Developer Diagnostic, writes no install.sh, and exits 1 once the other pieces are written',
+  (_case, module, rule) => {
+    const root = installPackage({ 'install.sh': earlierScript, 'src/application.ts': module });
+    const result = loom(root, ['init', '--only', 'changes', '--only', 'install']);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('Wrote .changes/README.md.\n');
+    expect(result.stderr).toMatch(
+      new RegExp(`^-- .+ ${rule.replaceAll('/', String.raw`\/`)}\n`, 'u'),
+    );
+    expect(read(root, 'install.sh')).toBe(earlierScript);
+  },
+);
 
 /** The `check` script, test import, and lint file a linter and test runner pair writes. */
 const toolingCases = [
