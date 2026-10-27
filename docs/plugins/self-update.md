@@ -119,7 +119,7 @@ Update notices tell an operator at a terminal that a newer release exists on the
   1. `next()` resolved `'dispatched'`, and the run signal has not aborted. A rejection propagates unchanged. `'dispatched'` says the action ran, not that the run will exit 0, because output can still fail. A failure a later middleware caught is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md), so that run's outcome is what the middleware produced, and the notice follows it.
   2. `NO_UPDATE_NOTIFIER`, and the author's `env` when there is one, are unset or empty in `host.env`.
   3. `host.terminal.stdout.isTTY` and `host.terminal.stderr.isTTY` are both `true`, so a pipe, a command substitution such as `source <(notes completion bash)` in a startup file, a redirect, `app.invoke`, and the [MCP plugin](mcp.md) print nothing.
-  4. `CI` is unset or empty in `host.env`.
+  4. `CI` is unset, empty, or `false` in `host.env`, as ci-info reads it.
   5. The routed Command is not the plugin's `self-update`.
   6. `host.release` holds a release group with an `asset` and an `installation` whose method is `script`. The middleware does not hash the binary.
   7. `applicationDirectory('cache', name, host)` answers a path.

@@ -49,7 +49,8 @@ function isEligible({ host, optOut, routed }: Candidate): boolean {
     (optOut !== undefined && isSet(env, optOut)) ||
     !terminal.stdout.isTTY ||
     !terminal.stderr.isTTY ||
-    isSet(env, 'CI') ||
+    // CI as ci-info reads it: set and nonempty, where `CI=false` says the run is not CI.
+    (isSet(env, 'CI') && env.CI !== 'false') ||
     routed.join(' ') === commandName
   );
 }
