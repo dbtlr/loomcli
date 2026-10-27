@@ -36,7 +36,7 @@
  *   There, `out.draw` keeps the Application's `terminalControls` setting, so a cursor movement
  *   its text holds is dropped, while on a terminal that redraws the movement is kept.
  *   A signal that ends a run there writes no control sequence, so no cursor is shown that nothing
- *   hid.
+ *   hid, unless the Application preserves terminal controls, when it shows the cursor again.
  * - Resize. A two-row frame drawn at 80 columns, after the emulator is resized to 40 columns and
  *   reflows, is erased whole by the next draw, and no stale row remains.
  * - `out.draw`. Its count is unchanged for every frame the prompts acceptance once pinned, its text
@@ -287,11 +287,16 @@ test.each([
   expect(mock.stderr.text).toBe(text);
 });
 
-test.each([{ TERM: 'dumb' }, { CI: 'true' }])(
-  'on a terminal stderr with %o, a signal that ends the run writes no control sequence',
-  async (env) => {
+test.each([
+  { env: { TERM: 'dumb' }, preserve: false, text: 'ℹ working\n' },
+  { env: { CI: 'true' }, preserve: false, text: 'ℹ working\n' },
+  { env: { TERM: 'dumb' }, preserve: true, text: 'ℹ working\n\u001B[?25h' },
+])(
+  'on a terminal stderr with $env, preserving controls $preserve, a signal that ends the run writes $text',
+  async ({ env, preserve, text }) => {
     const ready = Promise.withResolvers<void>();
-    const app = new Application('regions').action(async ({ out, signal }) => {
+    const rendering = preserve ? { terminalControls: 'preserve' as const } : {};
+    const app = new Application('regions', { rendering }).action(async ({ out, signal }) => {
       await out.info('working');
       ready.resolve();
       await new Promise((resolve) => {
@@ -310,7 +315,7 @@ test.each([{ TERM: 'dumb' }, { CI: 'true' }])(
     await new Promise((resolve) => {
       setImmediate(resolve);
     });
-    expect([mock.endedBy, mock.stderr.text]).toEqual(['SIGINT', 'ℹ working\n']);
+    expect([mock.endedBy, mock.stderr.text]).toEqual(['SIGINT', text]);
   },
 );
 

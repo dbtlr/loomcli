@@ -745,11 +745,12 @@ export class Output {
   }
 
   /**
-   * The control sequence that shows the cursor again, on a terminal that redraws in place. Where it
-   * does not, every `out.draw` that could hide the cursor kept the Application's setting.
+   * The control sequence that shows the cursor again, on a terminal that redraws in place or when
+   * the Application preserves terminal controls. Otherwise every `out.draw` that could hide the
+   * cursor dropped its control sequences, so nothing hid it.
    */
   private cursorShown(): string {
-    return redraws(this.host.env) ? showCursor : '';
+    return redraws(this.host.env) || this.policy.terminalControls === 'preserve' ? showCursor : '';
   }
 
   /**
