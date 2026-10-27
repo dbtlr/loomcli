@@ -3,7 +3,7 @@ import type { CommandGraph, CommandNode, OptionNode } from '@loomcli/core';
 
 import { mcpInput } from './extension.js';
 
-/** Which options a tool exposes and which the author keeps off every call. */
+/* Which options a tool exposes, which the author keeps off every call, and which a call must supply. */
 
 /** Whether the author excluded the option from every tool with `mcpInput({ exclude: true })`. */
 function excluded(option: OptionNode): boolean {
@@ -20,4 +20,16 @@ function excludedNames(graph: CommandGraph, command: CommandNode): readonly stri
   return [...command.options, ...graph.globals].filter(excluded).map(({ name }) => name);
 }
 
-export { excluded, excludedNames, exposed };
+/**
+ * Whether a call must supply the option: a string or content option that is required, a content
+ * option with a positive minimum included, or that is required when the run is not interactive,
+ * which a tool call never is.
+ */
+function requiredInCall(option: OptionNode): boolean {
+  return (
+    (option.type === 'string' || option.type === 'content') &&
+    (option.required || option.requiredWhen === 'non-interactive')
+  );
+}
+
+export { excluded, excludedNames, exposed, requiredInCall };

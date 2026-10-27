@@ -1,5 +1,5 @@
 import { DeclarationError } from '@loomcli/core';
-import type { CommandGraph, CommandNode, GraphBuiltHook, OptionNode } from '@loomcli/core';
+import type { CommandGraph, CommandNode, GraphBuiltHook } from '@loomcli/core';
 
 import {
   mcpPropertyNameTaken,
@@ -7,7 +7,7 @@ import {
   mcpToolNameTaken,
   mcpToolWithoutAction,
 } from '../rules.js';
-import { excluded } from './exposure.js';
+import { excluded, requiredInCall } from './exposure.js';
 import { propertiesOf, toolEntries } from './tools.js';
 import type { Property } from './tools.js';
 
@@ -61,20 +61,9 @@ function propertyFault(graph: CommandGraph, command: CommandNode): DeclarationEr
   });
 }
 
-const noMinimum = 0;
-
-/** Whether a call must supply the local option: it is required, or a content option takes at least one value. */
-function requiredLocal(option: OptionNode): boolean {
-  if (option.type !== 'string' && option.type !== 'content') {
-    return false;
-  }
-  const needsValues = option.type === 'content' && (option.min ?? noMinimum) > noMinimum;
-  return option.required || option.requiredWhen === 'non-interactive' || needsValues;
-}
-
 /** The fault, if any, of a required local option that the author excluded from the tool. */
 function requiredFault(command: CommandNode): DeclarationError | undefined {
-  const option = command.options.find((each) => excluded(each) && requiredLocal(each));
+  const option = command.options.find((each) => excluded(each) && requiredInCall(each));
   if (option === undefined) {
     return undefined;
   }

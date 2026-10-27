@@ -1,5 +1,5 @@
 import { extension } from '@loomcli/core';
-import { boolean, literal, never, object, optional, strictObject, string, union } from 'valibot';
+import { boolean, literal, never, object, optional, string, union } from 'valibot';
 
 import { packageName } from '../constants.js';
 import { prose } from '../lines.js';
@@ -23,10 +23,10 @@ const annotations = object({
 });
 
 /** The value that describes an option, which never also excludes it. */
-const described = strictObject({ description: string(), exclude: optional(never()) });
+const described = object({ description: string(), exclude: optional(never()) });
 
 /** The value that excludes an option, which never also describes it. */
-const excluding = strictObject({ description: optional(never()), exclude: literal(true) });
+const excluding = object({ description: optional(never()), exclude: literal(true) });
 
 /** Opts a Command in as a tool, with its description for an agent and its effect hints. */
 export const mcpCommand = extension(`${packageName}/mcp/command`, {

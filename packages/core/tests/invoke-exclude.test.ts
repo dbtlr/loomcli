@@ -2,9 +2,10 @@
  * Acceptance plan for the options an invocation by name excludes
  * (docs/core/invocation.md#invocation-by-name, docs/core/input-sources.md#input-sources).
  *
- * Every case runs an Application in process on a mock process. A fixture plugin declares a global
- * `region` option bound to a variable and to a configuration key, and a configuration source that
- * answers every key it holds, so a call that reads any source for an option shows it.
+ * Every case runs an Application in process on a mock process. A fixture configuration plugin
+ * declares a global `region` option bound to a variable, which its own source never fills, and a
+ * source that answers every key it holds. The Application declares a global `zone` option bound to a
+ * configuration key, so a call that reads any source for an option shows it.
  *
  * - Sources. An excluded option with its variable set and a configuration answer available reads
  *   its declared default, and the source is never asked for it. The same option without `exclude`
@@ -28,7 +29,11 @@ const asked: string[][] = [];
 
 /** What one call of the application resolves. */
 type Outcome = Awaited<ReturnType<ReturnType<typeof application>['invoke']>>;
-const answers: Record<string, string> = { 'app.mode': 'from-config', 'app.region': 'from-config' };
+const answers: Record<string, string> = {
+  'app.mode': 'from-config',
+  'app.region': 'from-config',
+  'app.zone': 'from-config',
+};
 
 const config = () =>
   plugin('@fixture/config', {
@@ -98,6 +103,12 @@ function application() {
     },
   );
   return new Application('app', { description: 'An app.', plugins: [config()] })
+    .globalOption('zone', {
+      default: 'default-zone',
+      description: 'The zone.',
+      extensions: [configKey('app.zone')],
+      type: 'string',
+    })
     .command(show)
     .command(nest);
 }
@@ -133,12 +144,20 @@ test('an excluded local option reads its default although its variable and confi
   expect(printed(await call(['show'], need)).mode).toBe('from-env');
 });
 
-test('an excluded global option reads its default and the source is never asked for it', async () => {
+test('an excluded plugin option reads its default although its variable holds a value', async () => {
   expect(printed(await call(['show'], need, { exclude: ['region'] })).region).toBe(
     'default-region',
   );
-  expect(asked.flat()).not.toContain('region');
   expect(printed(await call(['show'], need)).region).toBe('from-env');
+});
+
+test('an excluded global option reads its default and the source is never asked for it', async () => {
+  const excluded = printed(await call(['show'], need, { exclude: ['zone'] }));
+  expect(excluded.zone).toBe('default-zone');
+  expect(asked.flat()).not.toContain('zone');
+  const plain = printed(await call(['show'], need));
+  expect(plain.zone).toBe('from-config');
+  expect(asked.flat()).toContain('zone');
 });
 
 test('an excluded option falls to its default although only the configuration holds a value', async () => {
