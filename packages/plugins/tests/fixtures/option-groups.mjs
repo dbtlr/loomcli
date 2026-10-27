@@ -1,9 +1,17 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, extension } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { help } from '@loomcli/plugins/help';
 import { manifest } from '@loomcli/plugins/manifest';
 import { mcp } from '@loomcli/plugins/mcp';
 import { mcpCommand, mcpInput } from '@loomcli/plugins/mcp/extension';
+
+/** A binding another plugin owns, which might bind a configuration source. */
+const foreignBinding = extension('@fixture/binding', {
+  schema: {
+    '~standard': { validate: (value) => ({ value }), vendor: 'fixture', version: 1 },
+  },
+  target: 'option',
+});
 
 const choice = (name, kind) => {
   const declaration = new Command(name, { description: 'Choose inputs.' })
@@ -21,16 +29,38 @@ const bound = new Command('bound', { description: 'Read bound inputs.' })
   .oneRequired('first', 'second')
   .extend(mcpCommand({}))
   .action(() => {});
-const extended = new Command('extended', { description: 'Read extended inputs.' })
+const described = new Command('described', { description: 'Read described inputs.' })
   .option('first', {
     description: 'First input.',
-    extensions: [mcpInput({ description: 'Extended input.' })],
+    extensions: [mcpInput({ description: 'Described input.' })],
     type: 'string',
   })
   .option('second', { description: 'Second input.', type: 'string' })
   .requiredTogether('first', 'second')
   .extend(mcpCommand({}))
   .action(() => {});
+const extended = new Command('extended', { description: 'Read extended inputs.' })
+  .option('first', {
+    description: 'First input.',
+    extensions: [foreignBinding('first')],
+    type: 'string',
+  })
+  .option('second', { description: 'Second input.', type: 'string' })
+  .requiredTogether('first', 'second')
+  .extend(mcpCommand({}))
+  .action(() => {});
+
+const excluding = [mcpInput({ exclude: true })];
+const partial = new Command('partial', { description: 'Read partly excluded inputs.' })
+  .option('message', { description: 'The message.', type: 'string' })
+  .option('file', { description: 'The file.', extensions: excluding, type: 'string' })
+  .option('left', { description: 'Left input.', type: 'string' })
+  .option('right', { description: 'Right input.', type: 'string' })
+  .option('far', { description: 'Far input.', extensions: excluding, type: 'string' })
+  .oneRequired('message', 'file')
+  .exclusive('left', 'right', 'far')
+  .extend(mcpCommand({}))
+  .action(({ out }) => out.print('action'));
 
 const app = new Application('groups', {
   description: 'Export documents.',
@@ -56,7 +86,9 @@ const app = new Application('groups', {
   .command(choice('need', 'oneRequired'))
   .command(choice('together', 'requiredTogether'))
   .command(bound)
+  .command(described)
   .command(extended)
+  .command(partial)
   .action(({ out }) => out.print('action'));
 
 process.exitCode = await app.run();

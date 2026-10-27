@@ -16,6 +16,8 @@ interface NamedCall {
   path: readonly string[];
   args: readonly (readonly [string, unknown])[];
   options: readonly (readonly [string, unknown])[];
+  /** The declared names of the options the call leaves out of its run. */
+  exclude: readonly string[];
   passthrough: readonly string[];
 }
 
@@ -83,6 +85,7 @@ interface Reading {
   fault: LoomError | undefined;
   graph: BuiltGraph;
   path: readonly string[];
+  excluded: ReadonlySet<string>;
   unlowered: Map<InputDeclaration, string>;
   values: { globals: OptionValues; locals: OptionValues };
 }
@@ -246,15 +249,25 @@ function supplyArgument(read: Reading, slot: ArgumentSlot, value: unknown): void
 
 /**
  * Each `options` key read against the routed Command's table by declared name. A key the table
- * does not hold is the unknown option, held as argv holds one, and the first held fault wins.
+ * does not hold, or that names an excluded option, is the unknown option, held as argv holds one,
+ * and the first held fault wins.
  */
 function lowerOptions(read: Reading, entries: NamedCall['options']): void {
   for (const [name, value] of entries) {
     const forms = formsOf(read.command, name);
-    if (forms === undefined) {
+    if (forms === undefined || read.excluded.has(name)) {
       read.fault ??= unknownOptionName(name);
     } else {
       supplyOption(read, forms, value);
+    }
+  }
+}
+
+/** Each `exclude` name the routed Command's table does not hold is the unknown option. */
+function checkExcluded(read: Reading, names: NamedCall['exclude']): void {
+  for (const name of names) {
+    if (formsOf(read.command, name) === undefined) {
+      read.fault ??= unknownOptionName(name);
     }
   }
 }
@@ -279,7 +292,7 @@ function lowerArguments(read: Reading, entries: NamedCall['args']): void {
 /**
  * An invocation by name read into the result the parser produces for argv words: routing by path,
  * then each value lowered to the tokens a command line would give, once, with no argv text built.
- * The first held fault is the first in the order `options` keys and then `args` keys arrive. Only
+ * The first held fault is the first in the order `options` keys, then `exclude` names, then `args` keys arrive. Only
  * an unknown Command throws.
  */
 function lowerInvocation(
@@ -291,6 +304,7 @@ function lowerInvocation(
   const read: Reading = {
     args: new Map(),
     command,
+    excluded: new Set(call.exclude),
     fault: undefined,
     graph,
     path,
@@ -298,11 +312,13 @@ function lowerInvocation(
     values: { globals: emptyValues(), locals: emptyValues() },
   };
   lowerOptions(read, call.options);
+  checkExcluded(read, call.exclude);
   lowerArguments(read, call.args);
   const args: BoundArguments = read.args;
   return {
     args,
     command,
+    excluded: read.excluded,
     fault: read.fault,
     // A value no token spells is an input problem, never a faulted occurrence.
     faulted: new Set(),

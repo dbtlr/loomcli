@@ -17,6 +17,7 @@ import { singleLine } from '../lines.js';
 import { isRecord } from '../plain-data.js';
 import { agentNames } from './agents.js';
 import { clientConfiguration } from './config.js';
+import { excludedNames } from './exposure.js';
 import { mcpArgument, mcpCommand, mcpInput } from './extension.js';
 import { judgeTools } from './faults.js';
 import { installRegistrations } from './install.js';
@@ -172,7 +173,10 @@ async function callTool(
     return refused;
   }
   const view = jsonView(entry.command);
+  const exclude = excludedNames(context.graph, entry.command);
+  const [firstExcluded] = exclude;
   const outcome = await context.invoke(entry.command.path, invocationValues(received, properties), {
+    ...(firstExcluded === undefined ? {} : { exclude }),
     failure: (_failure, { exitCode, form }): FailedCall => ({ exitCode, failure: { ...form } }),
     signal: call.signal,
     ...(view === undefined ? {} : { view }),

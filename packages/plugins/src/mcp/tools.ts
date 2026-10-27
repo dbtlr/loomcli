@@ -3,6 +3,7 @@ import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from '@loomc
 
 import { singleLine, singleLineOf } from '../lines.js';
 import { isPlainJson } from '../plain-data.js';
+import { exposed, requiredInCall } from './exposure.js';
 import { mcpArgument, mcpCommand, mcpInput } from './extension.js';
 import { groupSchemas } from './groups.js';
 
@@ -64,14 +65,9 @@ function toolEntries(graph: CommandGraph): readonly ToolEntry[] {
     .map((command) => ({ command, name: toolName(graph, command) }));
 }
 
-/** An option a tool exposes: neither hidden nor a control option. */
-function exposed(option: OptionNode): boolean {
-  return !option.hidden && !option.control;
-}
-
 /**
  * The inputs a Command's tool lists: its arguments in declaration order, then its local options in
- * authoring order, then every global option in graph order, minus hidden and control options.
+ * authoring order, then every global option in graph order, minus hidden, control, and excluded options.
  */
 function propertiesOf(graph: CommandGraph, command: CommandNode): readonly Property[] {
   return [
@@ -195,11 +191,7 @@ function isRequired(property: Property): boolean {
   if (property.kind === 'argument') {
     return property.node.required;
   }
-  return (
-    !property.global &&
-    (property.node.type === 'string' || property.node.type === 'content') &&
-    (property.node.required || property.node.requiredWhen === 'non-interactive')
-  );
+  return !property.global && requiredInCall(property.node);
 }
 
 /** The object a tool's arguments form, keyed by each listed input's declared name. */

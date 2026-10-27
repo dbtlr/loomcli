@@ -8,6 +8,8 @@ import {
   processHandle,
 } from '@loomcli/core';
 import { json, jsonl } from '@loomcli/plugins/format/views';
+import { help } from '@loomcli/plugins/help';
+import { manifest } from '@loomcli/plugins/manifest';
 import { mcp } from '@loomcli/plugins/mcp';
 import { mcpArgument, mcpCommand, mcpInput } from '@loomcli/plugins/mcp/extension';
 import { records } from '@loomcli/plugins/records';
@@ -274,6 +276,51 @@ function calls() {
     .command(wait);
 }
 
+/**
+ * One tool with a local and a global option the author excluded, both bound to a variable and
+ * declaring a default, a group of two options that carry only an `mcpInput` description, and help
+ * and the manifest installed, which still show the excluded options.
+ */
+function excluded() {
+  const show = new Command('show', {
+    description: 'Show the values the action read.',
+    extensions: [mcpCommand({})],
+  })
+    .option('secret', {
+      default: 'default-secret',
+      description: 'A local option the tool leaves out.',
+      env: 'FIXTURE_SECRET',
+      extensions: [mcpInput({ exclude: true })],
+      type: 'string',
+    })
+    .option('plain', { description: 'An option the tool lists.', type: 'string' })
+    .option('left', {
+      description: 'The left choice.',
+      extensions: [mcpInput({ description: 'Choose left.' })],
+      type: 'string',
+    })
+    .option('right', {
+      description: 'The right choice.',
+      extensions: [mcpInput({ description: 'Choose right.' })],
+      type: 'string',
+    })
+    .oneRequired('left', 'right')
+    .action(({ options, out }) => out.print(JSON.stringify(options)));
+  return new Application('excl', {
+    description: 'Exclude options.',
+    plugins: [help(), manifest(), mcp()],
+    version: '1.0.0',
+  })
+    .globalOption('region', {
+      default: 'default-region',
+      description: 'A global option the tool leaves out.',
+      env: 'FIXTURE_REGION',
+      extensions: [mcpInput({ exclude: true })],
+      type: 'string',
+    })
+    .command(show);
+}
+
 /** Tools whose actions report progress, through progress lines and through regions drawn by hand. */
 function progress() {
   const opted = { extensions: [mcpCommand({})] };
@@ -331,7 +378,56 @@ function progress() {
 /** The options every fault's application shares: the build, a description, and the plugin. */
 const faulty = { description: 'A faulty fixture.', plugins: [mcp()] };
 
+/** A tool whose `file` option the author excluded, declared as the given settings say. */
+function requiredExcluded(settings) {
+  return new Application('app', faulty)
+    .command(
+      new Command('get', { description: 'Get.', extensions: [mcpCommand({})] })
+        .option('file', {
+          description: 'The file.',
+          extensions: [mcpInput({ exclude: true })],
+          type: 'string',
+          ...settings,
+        })
+        .action(dispatch),
+    )
+    .command(new Command('plain', { description: 'Plain.' }).action(dispatch));
+}
+
+/** A tool whose `message` and `file` options form one group of the given kind, with the named members excluded. */
+function groupExcluded(kind, outside) {
+  const declare = (name) => ({
+    description: `The ${name}.`,
+    ...(outside.includes(name) ? { extensions: [mcpInput({ exclude: true })] } : {}),
+    type: 'string',
+  });
+  const get = new Command('get', { description: 'Get.', extensions: [mcpCommand({})] })
+    .option('message', declare('message'))
+    .option('file', declare('file'));
+  const grouped =
+    kind === 'oneRequired'
+      ? get.oneRequired('message', 'file')
+      : get.requiredTogether('message', 'file');
+  return new Application('app', faulty)
+    .command(grouped.action(dispatch))
+    .command(new Command('plain', { description: 'Plain.' }).action(dispatch));
+}
+
 const faults = {
+  'both-keys': () =>
+    new Application('app', faulty).command(
+      new Command('get', { description: 'Get.', extensions: [mcpCommand({})] })
+        .option('file', {
+          description: 'The file.',
+          // The types reject both keys, and this untyped fixture reaches the schema anyway.
+          extensions: [mcpInput({ description: 'A file.', exclude: true })],
+          type: 'string',
+        })
+        .action(dispatch),
+    ),
+  'one-required-all-excluded': () => groupExcluded('oneRequired', ['message', 'file']),
+  'one-required-some-excluded': () => groupExcluded('oneRequired', ['file']),
+  'optional-input-excluded': () => requiredExcluded({}),
   'property-name-taken': () =>
     new Application('app', faulty)
       .command(
@@ -350,10 +446,16 @@ const faults = {
           .action(dispatch),
       )
       .command(new Command('plain', { description: 'Plain.' }).action(dispatch)),
+  'required-input-excluded': () => requiredExcluded({ required: true }),
+  'required-input-excluded-content': () => requiredExcluded({ min: 1, type: 'content' }),
+  'required-input-excluded-non-interactive': () =>
+    requiredExcluded({ required: 'non-interactive' }),
   'root-arguments': () =>
     new Application('app', faulty)
       .argument('files', { description: 'The files.', variadic: true })
       .action(dispatch),
+  'together-all-excluded': () => groupExcluded('requiredTogether', ['message', 'file']),
+  'together-some-excluded': () => groupExcluded('requiredTogether', ['file']),
   'tool-name-taken': () => {
     const create = new Command('create', {
       description: 'Create.',
@@ -449,7 +551,7 @@ function fitted() {
   }).command(grid);
 }
 
-const scenarios = { calls, columns, fitted, listing, multiline, progress, ...faults };
+const scenarios = { calls, columns, excluded, fitted, listing, multiline, progress, ...faults };
 
 const [name, ...argv] = process.argv.slice(2);
 

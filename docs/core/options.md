@@ -253,7 +253,7 @@ Help states each visible group in one plain sentence and the manifest publishes 
 Both omit groups with hidden members. Help notes when a group contains a stdin claim that piping does not count.
 Completion suppresses exclusive siblings after a member appears in the line, including aliases and negative spellings, without reading environment or configuration.
 
-MCP omits groups containing hidden, control, or excluded options. Its schemas use named supplied-value predicates for Boolean polarity, positive counts, and nonempty lists.
+MCP omits groups containing hidden or control options, and writes a group that holds an excluded option over its other members. Its schemas use named supplied-value predicates for Boolean polarity, positive counts, and nonempty lists.
 Exclusive constraints remain sound when external sources fill other options. Positive requirements are encoded only when every member has no environment binding or extensions.
 An extension might bind a configuration source, so uncertain groups remain runtime rules.
 [ADR-0085](../decisions/0085-a-command-declares-option-groups-over-supplied-local-options.md) records the contract.

@@ -115,6 +115,7 @@ const pinnedElsewhere = [
   'manifest/failure-code-conflict',
   'manpage/page-name-taken',
   'mcp/property-name-taken',
+  'mcp/required-input-excluded',
   'mcp/tool-name-taken',
   'mcp/tool-without-action',
   'service/run-unrouted',

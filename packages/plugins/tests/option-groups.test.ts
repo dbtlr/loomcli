@@ -94,7 +94,14 @@ test('MCP schemas describe named false, zero, and empty-list absence and omit un
   expect(schemas.need.allOf).toHaveLength(1);
   expect(schemas.together.allOf).toHaveLength(1);
   expect(schemas.bound).not.toHaveProperty('allOf');
+  // The plugin's own extension binds nothing, and another plugin's might.
+  expect(schemas.described.allOf).toHaveLength(1);
   expect(schemas.extended).not.toHaveProperty('allOf');
+  // An excluded member is never supplied in a call, so each group constrains the members listed.
+  expect(schemas.partial.allOf).toEqual([
+    { anyOf: [{ required: ['message'] }] },
+    { not: { allOf: [{ required: ['left'] }, { required: ['right'] }] } },
+  ]);
   session.send(
     request(2, 'tools/call', { arguments: { count: 0, flag: false, items: [] }, name: 'choice' }),
   );
