@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0111 - The MCP plugin registers its server with Claude Code and Codex through each agent's CLI
 description: The mcp Command keeps serving when routing selects no child and gains install, uninstall, and config. install registers the application's name and the command line host.program then mcp with Claude Code and Codex at user scope, through each agent's own registration CLI started with host.spawn, and never edits an agent's file. It records each registration in one record file per agent; it replaces a recorded registration, refuses a same-named one it did not record unless --force, and uninstall removes recorded registrations alone. Any build registers, and a build that is not distributed says the registration runs this checkout. config prints the mcpServers object for agents with no registration CLI. install and uninstall refuse on Windows.
-status: proposed
+status: accepted
 created: 2026-10-26
-modified: 2026-10-26
+modified: 2026-10-27
 ---
 
 # ADR-0111 - The MCP plugin registers its server with Claude Code and Codex through each agent's CLI
@@ -52,4 +52,4 @@ An application that serves MCP can register at install time through a setup Comm
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships `install`, `uninstall`, and `config`, once their tests run under Node and Bun on a mock whose programs stand in for `claude` and `codex`, and a probe against the real CLIs in throwaway home folders is recorded with their versions.
+Accepted in 0.16.0.

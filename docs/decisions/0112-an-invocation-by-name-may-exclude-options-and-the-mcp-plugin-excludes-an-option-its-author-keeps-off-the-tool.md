@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0112 - An invocation by name may exclude options, and the MCP plugin excludes an option its author keeps off the tool
 description: invoke's options gain exclude, the declared names of options the call leaves out of its run. No tier supplies an excluded option, a key of options that names one is an unknown option, and the input-source stage reads no variable for it and never asks the configuration source for it, so it takes its declared default. mcpInput takes { exclude: true } in place of a description, which keeps an option off every tool it would join and passes it under exclude on every tool call, while help, the manifest, completion, and a command line still read it. A required local option that is excluded, a `oneRequired` group whose every member is excluded, and a `requiredTogether` group that excludes some members are build faults.
-status: proposed
+status: accepted
 created: 2026-10-27
 modified: 2026-10-27
 ---
@@ -43,4 +43,4 @@ An application that kept an option off a tool through `hidden` can move it to `m
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships `exclude` and `mcpInput({ exclude: true })`, once their in-process tests run under Node and Bun.
+Accepted in 0.16.0.

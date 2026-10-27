@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0115 - Help pages a long page through the operator's pager on opt-in
 description: Core adds out.text(data, view), which returns the text out.render would write and writes nothing. With help's paging setting on, and only on a stdout terminal whose TERM is set, not empty, and not dumb, outside CI, help hands a page that holds at least the terminal's rows of lines to PAGER, less by default, run through /bin/sh -c exec with LESS=FRX when LESS is unset, through host.spawn. An empty PAGER or cat turns it off, a pager that cannot start leaves the page unpaged, and the run exits 0 whatever the pager does. Ctrl-C cancels the run as it does anywhere else and ends the pager with it.
-status: proposed
+status: accepted
 created: 2026-10-27
 modified: 2026-10-27
 ---
@@ -64,7 +64,7 @@ The glossary gains Help paging and Pager.
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships `out.text` and help paging. Tests prove `out.text` equal to `out.render`'s bytes for each destination and policy, help paging off by default, no paging on a pipe, below the row count, under `TERM=dumb`, under CI, or with an empty or `cat` `PAGER`, a pager receiving the exact page bytes and `LESS=FRX`, a missing pager printing unpaged, an early quit and a failing pager exiting 0, Ctrl-C while the pager waits ending it under dash and the run with the cancellation code, and the shell with a quoted path and a pipeline, under Node and Bun.
+Accepted in 0.16.0.
 
 ## Changelog
 

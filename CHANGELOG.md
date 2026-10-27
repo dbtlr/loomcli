@@ -6,6 +6,234 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.16.0 - 2026-10-27
+
+This release makes a run read the process through one process handle, ends a signalled process within one bounded shutdown, and gives tests, actions, and plugins new seams. A run reads its arguments, streams, environment, home, and temporary folder, and starts child programs, through `host`, which core builds from the `ProcessHandle` that `run({ process })` and `app.invoke` take. `run({ host })` and `HostOverrides` are removed. The new `@loomcli/host-bypass` lint rule names the host member to use where application code reaches the global `process`, `os`, or `child_process`.
+
+An ending signal now starts one bounded shutdown. Core cancels every live run, gives the runs `shutdown.timeout` to unwind, 500 milliseconds by default, calls the synchronous `onShutdown` handlers, and lets the signal end the process. The plugin `signals` field and its slot are removed. Ctrl-Z suspends a question or a live region, and `fg` draws it again.
+
+`mockProcess` from `@loomcli/testing` builds a process handle that reads nothing from the test's own process, and scripts keys and child programs. Five context builders call one action, middleware, failure hook, provider opener, or view with no Application. An action can opt in to providers, typed values such as a database pool that core builds and closes. The MCP plugin registers its server with Claude Code and Codex, an Application can declare a post-install command and message for `install.sh`, and help can page a long page through the operator's pager. A run under CI is not interactive, and it renders color and hyperlinks as supports-color and supports-hyperlinks do.
+
+Before upgrading, follow the three breaking migrations: the process handle, the shutdown, and the home read from `host.home`. Keep all installed `@loomcli` packages at the same exact version, `0.16.0`.
+
+### Breaking Changes
+
+- Remove `RunOptions.host`, the `HostOverrides` type, and `app.invoke`'s `host` option. A run reads every process fact and makes every process effect through one process handle: `run({ process })` and `app.invoke(path, values, { process })` take a `ProcessHandle`, and a run given none binds the real process's handle. See the [host reference](docs/core/host.md#the-process-handle).
+- Add `processHandle(fields)`, which builds the real process's handle with each supplied field replacing its whole field, and the types `ProcessHandle`, `ProcessFields`, `ProcessTerminal`, `SignalSource`, `SignalListener`, and `ProcessSignal`. `run()` writes its exit code to the handle's `exitCode`, which `processHandle` writes to `process.exitCode`, and core listens and re-raises on the handle's signal source.
+- Add `arch`, `libc`, `uid`, `home`, `tmpdir`, `raise`, and `spawn` to the host. `raise(signal)` raises the signal a key read in raw mode stands for on the run's signal source when stdin is that source's own terminal, and otherwise raises nothing and answers `false`.
+- Add `home` and `tmpdir` to the process handle and the host: the operator's home folder and the folder for temporary files. Each follows the handle's absolute `HOME` or `TMPDIR`, a supplied environment's included, and otherwise the user database's home and `/tmp` for the real process; a supplied `home` or `tmpdir` wins. Core copies both at entry, so a `HOME` or `TMPDIR` a `.env` file adds moves neither. See [The home and temporary folders](docs/core/host.md#the-home-and-temporary-folders).
+- Add `host.spawn(command, args, options)`, the run's one way to start a child program, with no shell, and the types `SpawnOptions`, `Child`, `ChildExit`, and `ChildOutput`. The child runs in `host.cwd` with `host.env` unless the options name others; `input` or `stdin: 'inherit'` feeds its stdin; each output stream is captured, ignored, inherited from the run's own stream, or piped into a `Writable`; and `detached: true` releases it to outlive the run. `exited` never rejects and answers the exit code, 128 plus the signal's number for a child a signal ended, or that the child could not start. An abort of `signal` ends the child with `SIGTERM`, and `kill(signal)` delivers a signal to it, `SIGKILL` included. Under `app.invoke`, an action's `invoke`, and an MCP tool call, an inherited stream is the call's captured output. See [Child programs](docs/core/host.md#child-programs).
+- Change a relative `cwd` given to the process handle to resolve against the process's working directory, so `host.cwd` is absolute.
+- Change the background query to raise an interrupt key it read only when stdin is its signal source's own terminal. On any other stdin, Ctrl-C and Ctrl-\ cancel the run with 130 and Ctrl-Z is dropped.
+
+### Migration
+
+**Affected surface.** Code that calls `run({ host })` or `app.invoke(path, values, { host })`, or that imports the `HostOverrides` type from `@loomcli/core`, such as a test or an embedding host that supplies argv, streams, environment, or terminal facts.
+
+**Why.** Host overrides left every fact a caller omitted, and every process effect, on the global `process`. The process handle holds every fact and receives every effect, under [ADR-0107](docs/decisions/0107-a-run-reads-the-process-through-one-process-handle.md).
+
+**Before and after.**
+
+Before:
+
+```ts
+import type { HostOverrides } from '@loomcli/core';
+
+const host: HostOverrides = { argv: ['keys', 'user'], stdout: panel };
+await jsonkit.run({ host });
+const outcome = await jsonkit.invoke(['keys'], values, { host: { cwd: '/srv/doc' } });
+```
+
+After:
+
+```ts
+import { processHandle } from '@loomcli/core';
+import type { ProcessFields } from '@loomcli/core';
+
+const fields: ProcessFields = { argv: ['keys', 'user'], stdout: panel };
+await jsonkit.run({ process: processHandle(fields) });
+const outcome = await jsonkit.invoke(['keys'], values, {
+  process: processHandle({ cwd: '/srv/doc' }),
+});
+```
+
+**Steps.**
+
+1. Replace each `run({ host: fields })` with `run({ process: processHandle(fields) })`. Where `fields` holds an `env` with no absolute `HOME`, also supply `home`, a temporary folder or `''`, because the handle's home otherwise falls back to the user database's, the operator's real home; a test can use `mockProcess` instead.
+2. Replace each `invoke(path, values, { host: fields })` with `invoke(path, values, { process: processHandle(fields) })`.
+3. Replace the `HostOverrides` type with `ProcessFields`, and `HostOverrides['terminal']` with `ProcessTerminal`.
+4. Where code read a relative `host.cwd` it supplied, read the absolute directory it resolves to.
+
+**Validation.** Run the TypeScript compiler over the application and its tests: no reference to `HostOverrides` or a `host` run option remains. Run the application's tests, which pass with the same results.
+
+- Change `applicationDirectory(kind, application, from)` to read the home from `from.home`, the run's `host.home`, in place of `HOME` in `from.env`. The XDG variables are still read from `from.env`, and an absolute one still wins over the folder under the home. A home that is empty or not an absolute path still answers `{ variable: 'HOME' }`. See the [installation record reference](docs/core/installation-record.md).
+- Change the configuration, completion, logging, manpage, service, skills, and self-update plugins to read the home from `host.home`, and the logging plugin from the log destination's new `home`, in place of `HOME` in the environment. An operator whose `HOME` is unset or relative now has the home the user database holds for them, where every lookup that needed a home used to refuse.
+- Change the service plugin's `systemctl`, `loginctl`, and `launchctl`, the completion plugin's PowerShell profile query, the skills, completion, and manpage refreshes, and the update notices' refresh to start through `host.spawn`, so a run on a mock process starts no real program. The service managers now run in `host.cwd`.
+
+### Migration
+
+**Affected surface.** Code that calls `applicationDirectory` with an object it builds itself, `{ env, platform }`, rather than the run's host. A test or embedding host that builds `processHandle({ env })` without an absolute `HOME`: its home is now the user database's, the operator's real home, so a plugin that installs or logs writes there.
+
+**Why.** The home is a host fact, `host.home`, which follows the process handle's absolute `HOME` and falls back to the user database, so every Loom lookup reads it in one place, under [ADR-0107](docs/decisions/0107-a-run-reads-the-process-through-one-process-handle.md).
+
+**Before and after.**
+
+Before:
+
+```ts
+const cache = applicationDirectory('cache', 'notes', { env: host.env, platform: host.platform });
+```
+
+After:
+
+```ts
+const cache = applicationDirectory('cache', 'notes', host);
+// or, from an object of your own:
+const logs = applicationDirectory('logs', 'notes', { env, home: '/home/me', platform: 'linux' });
+```
+
+**Steps.**
+
+1. Where a call passes the run's host, leave it as it is.
+2. Where a call builds its own `from`, pass the run's host instead, or add `home`, the run's `host.home`.
+3. Where code builds `processHandle({ env })` with no absolute `HOME`, supply `home`: a temporary folder for a run that writes files, or `''` for a run with no home. A test can use `mockProcess` from `@loomcli/testing` instead, whose home is a folder that does not exist.
+
+**Validation.** Run the TypeScript compiler over the application and its tests: every `applicationDirectory` call compiles. Run the application's tests, which pass with the same results.
+
+- Change how a signal ends a run. `SIGINT`, `SIGTERM`, and `SIGHUP` each start one bounded shutdown while a `run()` is live, from the moment it is called: core aborts the signal of every live run on the signal source, `run()` and `app.invoke` alike, with the signal's name as the source, gives the runs the shutdown budget to unwind, and then calls every pending `onShutdown` handler and re-raises the signal, so the process dies by it with the shell's status. A second ending signal ends the shutdown at once, and `SIGQUIT` skips the budget. See [Signals, cancellation, and shutdown](docs/core/signals.md#the-shutdown).
+- Add `shutdown: { timeout }` to the Application options: the milliseconds the runs get to unwind after an ending signal, 500 by default. A value other than a whole number from 0 through 2147483647 is the declaration error `@loomcli/core/invalid-shutdown-timeout`.
+- Add `onShutdown(handler)` to the action and middleware contexts, scoped to the run, and export `onShutdown` from `@loomcli/core`, scoped to the process, with the types `OnShutdown`, `ShutdownEvent`, and `Synchronous`. An `onShutdown` handler is synchronous by type, runs once, newest first, at the end of a shutdown or at the process's own end, and receives the cause and the status the shell sees. Add `onSuspend` and `onResume` to the action and middleware contexts, scoped to the run, and export them from `@loomcli/core`, scoped to the process, with the types `OnSuspend` and `OnResume`: on each Ctrl-Z core calls every suspend handler, newest first, and re-raises `SIGTSTP`, then calls every resume handler in registration order once the process runs again; they receive no event and run at every suspend and resume. Each call returns a function that removes its handler.
+- Add the cancellation codes 129 for `SIGHUP` and 131 for `SIGQUIT` to `ExitCode` and to a cancelled invocation outcome's `exitCode`, the signal names `'SIGHUP'` and `'SIGQUIT'` to `CancellationReason`'s `source`, and the two rows to the manifest's exit-code table.
+- Remove the plugin `signals` field and the signals slot. Core listens for every ending signal itself, so no plugin claims one, and `@loomcli/core/slot-taken` no longer covers signals.
+- Change `loom build` and `loom build --watch` to stop Bun and undo what the build wrote within the shutdown budget when a signal stops `loom`, and to remove Bun's leftovers synchronously when the budget runs out first.
+
+### Migration
+
+**Affected surface.**
+
+- A plugin that declares `signals`, such as `plugin('@acme/signals', { signals: ['SIGINT', 'SIGTERM'] })`, and code that relied on that claim to keep a process alive after a signal.
+- A raw `process.on('SIGINT')`, `process.on('SIGTERM')`, or `process.on('SIGHUP')` listener in an application's entry. It now runs beside core: its runs are cancelled by the signal, and it hears each signal twice, once as it arrives and once when core re-raises it at the shutdown's end.
+- Code after `await app.run()` in an entry. After an ending signal it gets only its synchronous part, because the shutdown ends on the next turn of the event loop and the process dies by the signal, where before the run resolved 130 or 143 and the process went on to exit with that code.
+
+**Why.** A cooperative claim let an action that ignores its signal hold the process without bound, and a claim beside `signal-exit` never ended it. Core now listens for every ending signal while a run is live and ends the process within one bounded shutdown, under [ADR-0106](docs/decisions/0106-a-signal-ends-the-process-within-one-bounded-shutdown.md).
+
+**Before and after.**
+
+Before:
+
+```ts
+import { Application, plugin } from '@loomcli/core';
+
+const signals = plugin('@acme/signals', { signals: ['SIGINT', 'SIGTERM'] });
+export const app = new Application('notes', { plugins: [signals] }).action(async ({ signal }) => {
+  const scratch = createScratch();
+  try {
+    await convert(scratch, { signal });
+  } finally {
+    await removeScratch(scratch);
+  }
+});
+```
+
+After:
+
+```ts
+import { Application } from '@loomcli/core';
+
+export const app = new Application('notes', { shutdown: { timeout: 500 } }).action(
+  async ({ onShutdown, signal }) => {
+    const scratch = createScratch();
+    // Synchronous, so it completes even when the shutdown's budget runs out.
+    const remove = onShutdown(() => {
+      removeScratchSync(scratch);
+    });
+    try {
+      await convert(scratch, { signal });
+    } finally {
+      remove();
+      removeScratchSync(scratch);
+    }
+  },
+);
+```
+
+**Steps.**
+
+1. Remove the `signals` field from every plugin definition, and remove a plugin that declared nothing else.
+2. Move the wind-down a signal needs into the run's own cancellation handling: read `signal` and finish within the budget, raising `shutdown.timeout` on the Application when a supervisor waits longer.
+3. Move anything that must be restored however the process ends, such as raw mode, the cursor, a child process, or a scratch file, into a synchronous `onShutdown` handler, and remove the handler once the work no longer needs it.
+4. Remove a raw `process.on` listener for `SIGINT`, `SIGTERM`, or `SIGHUP` from the entry, and move its wind-down into an `onShutdown` handler or the run's own cancellation handling. A listener that stays hears each signal twice.
+5. Move work that code after `await app.run()` does on the way out, such as a final write or a cleanup, into an `onShutdown` handler or the action's `finally`, because after an ending signal only the synchronous part of that code runs.
+
+**Validation.** Run `tsc --noEmit` in the application's package: it reports no `signals` field on a plugin definition. Run the application, press Ctrl-C during a long action, then run `echo $?`: it prints `130`, the prompt returns within the budget, and the terminal and any scratch files are restored. Run the application's tests with its own test command, such as `bun test` or `vitest run`.
+
+### Features
+
+- Add `mockProcess(fields)` to `@loomcli/testing`, with the types `MockFields`, `MockTerminal`, `MockProcess`, `RecordingStream`, `Program`, `ProgramCall`, and `ProgramAnswer`. It builds a [process handle](docs/core/host.md#the-process-handle) that reads nothing from the process the test runs in: every fact has a sealed default, `stdout` and `stderr` record what a run writes, `exitCode` records what `run()` writes, and its signal source is its own. A test runs an Application with `app.run({ process: mockProcess(...) })` and reads the mock. See the [testing reference](docs/libs/testing.md#mockprocess). When a shutdown on the mock's signal source ends and re-raises its signal, nothing listens any more, so the re-raise ends the mock: once a run resolves inside the shutdown, the next turn of the event loop ends it and `endedBy` records the signal.
+- Add `home` and `tmpdir` defaults to `mockProcess`: the mock's absolute `env.HOME` and `env.TMPDIR`, else `/loom-test/home` and `/loom-test/tmp`, neither of which exists. A supplied `home` or `tmpdir` wins.
+- Add `programs` to `mockProcess`, which scripts each child program a run starts through `host.spawn` by its exact command, answering its exit code and output with no program run. A command with no script throws `mockProcess has no program for "<command>". Add a "<command>" entry to programs.` from `spawn`, so the run fails; a script that throws stands for a program that could not start; and a spawn's abort or a `kill` of `SIGHUP`, `SIGINT`, `SIGKILL`, `SIGQUIT`, or `SIGTERM` ends the child with 128 plus the signal's number.
+
+- Add the `@loomcli/host-bypass` rule to `@loomcli/eslint-plugin`, on at `error` in `configs.recommended` and `configs.oxlint`, under [ADR-0107](docs/decisions/0107-a-run-reads-the-process-through-one-process-handle.md). It reports the global `process`, `globalThis.process`, and `global.process`, an import of `process` or `node:process`, `homedir`, `tmpdir`, and `userInfo` from `os` or `node:os`, and an import of `child_process` or `node:child_process` in an application's source, a re-export of any of these modules and an `os` member a destructure reads included, and each message names the host member to use instead, such as `host.env`, `host.home`, `host.tmpdir`, or `host.spawn`. A file whose name holds `.test.` or `.spec.` is not linted by it. `loom init` writes the rule into a new scaffold's lint file. See the [plugin reference](docs/libs/eslint-plugin.md#host-bypass).
+
+- Change Ctrl-C at a `@loomcli/prompts` question to end the process by `SIGINT` after the shutdown, so a shell loop that runs the application stops, as it does for any program Ctrl-C ends. Ctrl-\ at a question ends it by `SIGQUIT`, and Ctrl-Z suspends it: the question's frame is erased and the terminal restored before the process stops, and `fg` draws the frame again and the question goes on. On a stdin that is not the process's own terminal, such as one an embedding host gives `processHandle`, Ctrl-C and Ctrl-\ still cancel the run with 130 and Ctrl-Z does nothing. See [Leaving a question](docs/libs/prompts.md#leaving-a-question).
+- Add suspend and resume to live regions: Ctrl-Z erases the open regions and shows the cursor before the process stops, and `fg` redraws them. See [Raw-mode readers](docs/core/signals.md#raw-mode-readers).
+- Fix the background query so that Ctrl-C, Ctrl-\, or Ctrl-Z during its wait ends the wait at once instead of waiting up to a second for a terminal that does not answer, and so that a signal that ends the process during the wait leaves the terminal cooked.
+
+- Add providers: typed values, such as a database pool or a session, that an action opts in to and reads under `provided`. Core builds them when the action is about to run and closes them when it settles. See the [providers reference](docs/core/providers.md).
+  - Declare one with `provider(name, definition)` and annotate it `Provider<Name, Value, Globals, Lifetime, Uses>`. Its lazily loaded module's default export types itself as `Opener<typeof provider>`, and the opener reads the validated global options the annotation names, the values of the providers it uses, the host, `log`, the signal, and `onShutdown`.
+  - Opt in through `uses` in `new Command(name, options)`, or in `new Application(name, options)` for the root's own action. Opting in adds the global options the providers read to the Command's global requirements, and `command()` passes a child's requirements up to its parent, so an Application that does not declare them fails to compile where it attaches the Command. A plugin's `commands` accepts a Command that requires that plugin's own options.
+  - An `'ephemeral'` value, the default, lasts one run. A `'persistent'` value lasts the outermost run and is shared by every nested `invoke`, so an MCP server's tool calls share one pool.
+  - Core closes each value through the provider's `close`, else `Symbol.asyncDispose`, else `Symbol.dispose`, in reverse build order. A failing opener or close takes the ordinary failure path. A close that fails on a run that already failed is logged as `A provider's close failed.`
+  - Two different providers with one name anywhere among the providers a `uses` list reaches are rejected: by the types when their types differ, and as a declaration fault, `@loomcli/core/provider-name-taken`, when they share one type. A package that exports a provider prefixes its name with its own.
+
+- Add a keyboard to `mockProcess`: `terminal.keys` puts stdin on the mock's terminal, so a test answers questions in its own process. Each entry is what the operator types while one reader holds the keyboard, handed over each time a question opens or a run resumes after Ctrl-Z. Ctrl-C, Ctrl-\, and Ctrl-Z raise their signals on the mock's own signal source, so Ctrl-C at a question ends the run with 130. The mock answers core's background query at once as a terminal that reports no background, and a switch to raw mode with no entry left fails the run with `mockProcess has no keys left for this read. Add an entry to terminal.keys.` The types make `keys` and piped `stdin` exclusive, and `MockStdin` types the mock's `stdin` with `isTTY` and `isRaw`. See the [testing reference](docs/libs/testing.md#mockprocess).
+- Add `width(text)` to `@loomcli/core`, which counts the columns of text a stream received with the measure core renders with: it skips every terminal control sequence and counts the rest as the view context's `width` does. See [Measuring written text](docs/core/styles.md#measuring-written-text).
+- Add `validationOptions(process, context)` and the type `ValidationOptionsContext` to `@loomcli/core`, which build the options a run passes to a validator in the `default` or `invocation` phase over a process handle, so a test calls a validator that reads its validation context, such as `path()` or `dateTime()`, with no Application. The [`@loomcli/validators/context-outside-run`](docs/core/diagnostics.md#loomclivalidatorscontext-outside-run) diagnostic now names it as the way to call such a validator alone. See [Validation options outside a run](docs/core/validation.md#validation-options-outside-a-run).
+
+- Add five context builders to `@loomcli/testing`, so a test calls one author function with a context and assembles no Application: `actionContext` for an extracted action handler, `middlewareContext` for a middleware, `failureHookContext` for an `onFailure` hook, `providerContext` for a provider's opener, and `viewContext` for a view or a row view. Each infers its types from the function, such as a handler typed `ActionHandler<typeof get>`, and returns the context that function takes. See [Testing one function alone](docs/libs/testing.md#testing-one-function-alone).
+  - The test states the function's inputs whole, typed as its context types them, such as an action's `args`, `options`, and `provided`. No default, validator, or input source runs, and the types reject a missing input and a key the context does not have.
+  - Every other member is optional. `out` and `log` are stated member by member, and an unstated function that returns nothing does nothing. `out.draw` resolves `0`, `out.region()` answers a region that is not live, the signal never aborts, and `out.fatal` throws `FatalError`.
+  - An unstated `next`, `invoke`, or view measure throws or rejects when called, and any other unstated member, such as `host`, throws when read, with a sentence that names the member and tells the test to state it, such as `actionContext has no host. Add host to its values.`
+  - An unstated `style` answers every name with a style that returns its text unchanged, the same function on every read, so a test spies on the names its function asks for.
+  - The types `ActionValues`, `MiddlewareValues`, `FailureHookValues`, `ProviderValues`, and `ViewValues` name what each builder takes.
+
+- Add `mcp install`, `mcp uninstall`, and `mcp config` to the `mcp()` plugin. `install` registers the application's MCP server with Claude Code and Codex through each agent's own command-line interface, `uninstall` removes it, and `config` prints a client configuration for an agent that has no such interface. The `mcp` Command still serves when no child is named.
+
+- Add `exclude` to `invoke`'s options, a list of declared option names the call leaves out of its run. No tier supplies an excluded option, so a variable or a configuration key bound to it is never read, it takes its declared default, a key of `options` that names it is an unknown option, and a name the routed Command's table does not hold is an unknown option too. The exclusion lasts for the one call.
+- Add `mcpInput({ exclude: true })`, which keeps one option off an application's MCP tools while help, the manifest, and completion still show it. The server passes every excluded option under `exclude` on each tool call, so the action reads the declared default. An option group that holds an excluded option constrains the tool's schema through its other members, so a `oneRequired` group requires one of the options the tool lists. A required local option that is excluded, a `oneRequired` group whose every member is excluded, and a `requiredTogether` group that excludes some members are the `@loomcli/plugins/mcp/required-input-excluded` build fault.
+- Fix an MCP tool schema that dropped a `oneRequired` or `requiredTogether` group's constraints when a member carried only an `mcpInput({ description })` value.
+
+- Change how `loom init` handles a directory that is neither empty nor inside a package. At a terminal, init asks to create a `package.json` there and then scaffolds the directory. Off a terminal, or when declined, it fails and says to create one with `npm init -y`, or the package manager's equivalent. See [loom init](docs/toolchain/init.md).
+- Change every `loom` command's failure for a `package.json` it cannot read. The failure now names the file's path, the line and column where the JSON breaks, what JSON needs there, and the fix, on Node and Bun alike. Init checks `package.json` before it asks or writes anything, so an unreadable manifest, or one that names no application when a piece needs the name, leaves the package untouched.
+- Fix `loom init` and `loom build` reading a `bin` written as an array, such as `["dist/main.js"]`, as an application named `0`. Such a `bin` names no application, so init fails before it writes and says to set the name.
+
+- Add `raiseInterruptKeys(context, text)` and the `InterruptKeys` type to `@loomcli/core`, for an action that reads keys in raw mode. It raises the signal each Ctrl-C, Ctrl-\, and Ctrl-Z in `text` stands for on the run's signal source, in arrival order, so a key means in a picker what it means at the shell, and answers whether the process is `'ending'` or `'suspending'` and the `rest` of the text. See [raw-mode readers](docs/core/signals.md#raw-mode-readers).
+
+- Add the `postInstall` option to `new Application(name, options)`, which declares a post-install `command`, as argument words, and a post-install `message` for the installer script. `inspect()` reports it as `CommandGraph.postInstall`, and `@loomcli/core` exports its type as `PostInstall`. A development `inspect()` and `run()`, `check()`, and `assertAssembles` report `@loomcli/core/post-install-unrouted` when the words route to no Command with an action. See [the post-install declaration](docs/core/application.md#the-post-install-declaration).
+- Add the post-install step to the `install.sh` that `loom init` renders. Init now loads the application module on every run that writes `install.sh` and reads the Application's `postInstall` from its graph, so a module init cannot load, or one that exports no Application, leaves `install.sh` unwritten with a warning, and a declaration fault prints its Developer Diagnostic and fails init. Once the binary is installed and recorded, the script announces and runs the post-install command with the operator's terminal as its stdin when there is one and `/dev/null` otherwise, warns and still exits 0 when the command fails, skips it under `--skip-post-install`, and prints the post-install message last. An application that declares neither gets the same script as before. See [the installer script](docs/toolchain/install.md#the-post-install-command).
+
+- Add `out.text(data, view)`, which returns the text `out.render(data, view)` would write at that moment, resolved for the same destination with its styles, color depth, live `columns`, and the application's override, and writes nothing. A view that throws makes the call throw that value. In `@loomcli/testing`, an `actionContext` or `middlewareContext` whose `out.text` the test did not state throws a sentence asking for it. See [a view's text without a write](docs/core/output.md#a-views-text-without-a-write).
+- Add the `paging` setting to `help(settings?)` in `@loomcli/plugins/help`, exported with its type `HelpSettings`. With `help({ paging: true })`, a help page that holds at least as many lines as the terminal has rows goes to the operator's `PAGER`, `less` when it is unset, run through `/bin/sh -c` behind `exec` with `LESS=FRX` when `LESS` is unset, on a stdout terminal whose `TERM` is set and not `dumb`, outside CI. An empty or `cat` `PAGER` turns paging off, a pager that cannot start leaves the page printed as before, the run exits 0 whatever the pager exits with, and Ctrl-C ends the pager with the run. Without the setting, every page prints as before. See [help paging](docs/plugins/help.md#help-paging).
+
+### Fixes
+
+- Fix `loom` commands that ran on after an ending signal. `SIGINT`, `SIGTERM`, `SIGHUP`, and `SIGQUIT` now stop the git, pnpm, and Bun children `loom` starts, and the command with them, so `loom changelog write` and `loom init` stop before they write, and `loom release cut` leaves no lock or release stage behind. A cancelled command prints nothing and exits 129, 130, 131, or 143.
+
+- Change when a live region an action leaves open closes after the action throws: it closes with `'failure'` as the action settles, before the action's provided values close and before its middleware unwinds, where it used to stay open until the chain had unwound. A middleware that catches the action's failure now finds the action's regions already closed, and the action's last frames reach scrollback above those of the regions a middleware or a configuration source opened, as they already did when the action returned.
+
+- Fix keys typed with Ctrl-Z during the background query reaching the action after `fg`. A raised interrupt key now flushes the typeahead read with it, as a cooked terminal discards the input still unread.
+
+- Fix progress lines and other live regions redrawing in place on a terminal that cannot move its cursor. When stderr is a terminal and `TERM` is `dumb`, as in Emacs `M-x shell`, or `CI` is set, nonempty, and not `false`, a region opened without `input: true` reads `live` as `false`, so a progress line writes its plain start and end lines, `out.draw` keeps the Application's `terminalControls` setting, and a signal that ends the run writes no show-cursor sequence unless the Application preserves controls. A question still asks. See the [live region](docs/core/output.md#live-region) rules.
+- Fix update notices staying off under `CI=false`. The self-update plugin now reads `CI` as ci-info does, so `CI=false` says the run is not CI and notices show as usual.
+
+- Fix questions waiting for an answer in CI. A run whose `CI` is set, nonempty, and not `false` is not interactive, even when a CI runner gives it a terminal, so a question takes its supplied linked option or fails with the error that names the option to supply, and a `required: 'non-interactive'` option is required. `CI=false` asks as before. See [Interaction](docs/core/interaction.md).
+
+- Fix `createValidator` inferring `Output | undefined` when `parse` returns `{ issues }` or `{ value }` from one expression, such as a ternary, under a tsconfig without `exactOptionalPropertyTypes`, the one `loom init` writes included. The output type is now the `value` of the accepted branches, so a required argument's validated value types as the value alone, and a stated `createValidator<Output>(...)` still checks `parse` against it. See [createValidator](docs/libs/validators.md#createvalidator).
+
+- Fix color, hyperlinks, and the background query on a CI terminal. Under CI, read as ci-info reads `CI`, a terminal takes automatic color only where supports-color expects the CI system's log viewer to render it: truecolor on GitHub Actions, Gitea Actions, and CircleCI, 16 colors on Travis CI, AppVeyor, GitLab CI, Buildkite, Drone, and Codeship, and none on any other CI. Automatic hyperlinks are off, and core sends no background query, so a run no longer waits on a terminal that never answers. `FORCE_COLOR`, `NO_COLOR`, and `--color` keep their precedence. See [Styles](docs/core/styles.md).
+
+- Fix a view's throw that the action or a middleware lets propagate, or that no code awaited, skipping the translators. A view that calls a library whose error the application translates, such as a date library's `RangeError`, now reports the translated failure with its exit code instead of a defect with exit 1, as every other throw from the application's own work does. See [the ordinary failure path](docs/core/failures.md#the-ordinary-failure-path).
+
 ## v0.15.0 - 2026-10-22
 
 This release moves author guidance into types, lint rules, and an assembly test. Install `@loomcli/eslint-plugin` for oxlint or ESLint and call `assertAssembles` from `@loomcli/testing` in the application’s test runner. `loom init` writes these files for new applications. Existing applications must replace `loom check` in their scripts and CI, as the migration below describes.
