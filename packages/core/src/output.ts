@@ -101,6 +101,14 @@ const unopened = (): void => undefined;
 /** The control sequence that shows the terminal's cursor, which a shutdown's end writes. */
 const showCursor = '\u001B[?25h';
 
+/**
+ * Whether a terminal stderr redraws a region in place: not under `TERM=dumb`, which cannot move
+ * the cursor, and not with `CI` set and nonempty, where the terminal feeds a build log.
+ */
+function redraws(env: ReportHost['env']): boolean {
+  return env.TERM !== 'dumb' && (env.CI ?? '') === '';
+}
+
 /** One sequence's hold on a destination: the pieces it writes, and the end of its place. */
 interface Reservation {
   write: (text: string) => Promise<void>;
@@ -495,7 +503,7 @@ export class Output {
         cancelled: () => this.signal.aborted,
         // A region's draw hands its rejection to the code that drew, as every output call does.
         frame: (data, view) => {
-          const frame = this.frame(data, view);
+          const frame = this.frame(data, view, this.host.terminal.stderr.isTTY);
           return 'failed' in frame ? { failed: this.hand(frame.failed) } : frame;
         },
         holdSuspend: () => this.holdSuspend(),
@@ -505,7 +513,10 @@ export class Output {
           },
           plain: (text) => this.context('stderr').plain(text),
         }),
-        live: (input) => this.host.terminal.stderr.isTTY && (input || this.verbosity >= 0),
+        // An input region draws wherever stderr is a terminal, so a question still asks.
+        live: (input) =>
+          this.host.terminal.stderr.isTTY &&
+          (input || (this.verbosity >= 0 && redraws(this.host.env))),
         write: (compose) => this.destination(this.host.stderr).compose(compose),
       },
       this.screen,
@@ -690,7 +701,7 @@ export class Output {
     const destination = this.destination(this.host.stderr);
     const removers = [
       suspension.onSuspend(() => {
-        destination.flushComposed(() => this.screen.suspend() + showCursor);
+        destination.flushComposed(() => this.screen.suspend() + this.cursorShown());
       }),
       suspension.onResume(() => {
         void handled(destination.compose(() => this.screen.resume()));
@@ -729,8 +740,17 @@ export class Output {
    */
   flushTerminal(): void {
     if (this.host.terminal.stderr.isTTY) {
-      this.destination(this.host.stderr).flushComposed(() => showCursor);
+      this.destination(this.host.stderr).flushComposed(() => this.cursorShown());
     }
+  }
+
+  /**
+   * The control sequence that shows the cursor again, on a terminal that redraws in place or when
+   * the Application preserves terminal controls. Otherwise every `out.draw` that could hide the
+   * cursor dropped its control sequences, so nothing hid it.
+   */
+  private cursorShown(): string {
+    return redraws(this.host.env) || this.policy.terminalControls === 'preserve' ? showCursor : '';
   }
 
   /**
@@ -808,19 +828,22 @@ export class Output {
     };
   }
 
-  /** The rows a frame's marked text takes at stderr's current width, counted as it resolves. */
-  private frameRows(marked: string): number {
+  /**
+   * The rows a frame's marked text takes at stderr's current width, counted as it resolves, with
+   * its control sequences kept when `controls` is true.
+   */
+  private frameRows(marked: string, controls = this.host.terminal.stderr.isTTY): number {
     return drawnRows(marked, {
-      caps: this.drawCaps(),
+      caps: this.drawCaps(controls),
       columns: this.host.terminal.stderr.columns,
       palette: this.palette,
     });
   }
 
-  /** The capabilities a drawn frame resolves under: stderr's, with its controls kept at a terminal. */
-  private drawCaps() {
+  /** The capabilities a drawn frame resolves under: stderr's, with its controls kept when asked. */
+  private drawCaps(controls: boolean) {
     const caps = capabilities(this.host, 'stderr', this.policy);
-    caps.terminalControls ||= this.host.terminal.stderr.isTTY;
+    caps.terminalControls ||= controls;
     return caps;
   }
 
@@ -829,12 +852,16 @@ export class Output {
    * its marked text is kept so the frame's rows can be counted now and recounted at a later width,
    * and a view that throws fails this call.
    */
-  private frame(data: unknown, value: View<never>): Frame | { failed: Promise<void> } {
+  private frame(
+    data: unknown,
+    value: View<never>,
+    controls: boolean,
+  ): Frame | { failed: Promise<void> } {
     try {
       const marked = String(
         resolveView(this.registry, value)(erased(data), this.context('stderr')),
       );
-      return { marked, text: resolveText(marked, this.palette, this.drawCaps()) };
+      return { marked, text: resolveText(marked, this.palette, this.drawCaps(controls)) };
     } catch (error) {
       return { failed: this.renderFailed(error) };
     }
@@ -956,12 +983,14 @@ export class Output {
    * stderr's order, and resolving the rows it took at stderr's width when it rendered.
    */
   private async draw(data: unknown, value: View<never>): Promise<number> {
-    const frame = this.frame(data, value);
+    // A terminal that does not redraw keeps the Application's setting, as a redirected stderr does.
+    const controls = this.host.terminal.stderr.isTTY && redraws(this.host.env);
+    const frame = this.frame(data, value, controls);
     if ('failed' in frame) {
       await frame.failed;
       return 0;
     }
-    const rows = this.frameRows(frame.marked);
+    const rows = this.frameRows(frame.marked, controls);
     await this.write(this.host.stderr, frame.text);
     return rows;
   }

@@ -375,6 +375,24 @@ test.each([
   },
 );
 
+test('Ctrl-C at a question on a terminal whose TERM is dumb ends the run with no show-cursor sequence', async () => {
+  const mock = mockProcess({
+    env: { NO_COLOR: '1', TERM: 'dumb' },
+    terminal: { columns: 60, keys: ['\u0003'], rows: 24 },
+  });
+  const app = new Application('ask').action(async (context) => {
+    await text(context, { message: 'Service port' });
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(130);
+  // The shutdown ends, and restores the terminal, on the turn after the run resolves.
+  await new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+  expect(mock.endedBy).toBe('SIGINT');
+  expect(mock.stderr.text).toContain('Service port');
+  expect(mock.stderr.text).not.toContain('\u001B[?25h');
+});
+
 test('Ctrl-Z on a stdin that is not the process terminal does nothing, and the question goes on', async () => {
   const observed = await embedded('\u001a8080\r');
   expect(observed).toMatchObject({ code: 0, exitCode: 0, killed: 0, output: '8080\n', raw: false });

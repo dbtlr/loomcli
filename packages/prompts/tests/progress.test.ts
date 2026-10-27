@@ -21,7 +21,8 @@
  * - Cancellation. `SIGINT` writes each open line's cancelled line, the run resolves 130, and the
  *   process dies by the signal.
  * - Off a terminal. With stderr piped, the run writes exactly the plain lines the Progress section
- *   shows. Under `-q` with the verbose plugin, it writes only failure lines. Under `app.invoke`,
+ *   shows. On a terminal stderr whose `TERM` is `dumb`, or with `CI` set, it writes
+ *   the same plain lines and no control sequence, and a question asked beside two lines still asks. Under `-q` with the verbose plugin, it writes only failure lines. Under `app.invoke`,
  *   the lines land in `messages`, and the observer reads every progress event in order. The end
  *   event of a line ended by `end`, `fail`, or `track` with a `done` or `failed` message carries
  *   that message as its label, and one ended with no message carries the line's last label.
@@ -582,6 +583,29 @@ test('with stderr piped, the run writes one start line and one end line per prog
   expect(run.stderr).toBe(
     'ℹ Fetching records\n✔ Fetched 10 records\nℹ Building the index\n✔ Indexed 812 records\nℹ Uploading\n✘ Uploading\n',
   );
+});
+
+test.each([{ TERM: 'dumb' }, { CI: 'true' }])(
+  'on a terminal stderr with %o, the run writes the plain lines and no control sequence',
+  async (env) => {
+    const run = await lines('plain', 'tty', [], env);
+    expect(run.stderr).toBe(
+      'ℹ Fetching records\n✔ Fetched 10 records\nℹ Building the index\n✔ Indexed 812 records\nℹ Uploading\n✘ Uploading\n',
+    );
+  },
+);
+
+test('on a terminal stderr whose TERM is dumb, a question asked beside two plain lines still asks', async () => {
+  const run = await lines('question', 'tty', [], { TERM: 'dumb' });
+  expect(run.notes.asked).toBe(true);
+  const shown = await screen(run);
+  expect(shown.slice(0, 5)).toEqual([
+    'ℹ First',
+    'ℹ Second',
+    '? Continue · yes',
+    '✔ First moved',
+    '✔ Second',
+  ]);
 });
 
 test('under -q only the failure lines print', async () => {
