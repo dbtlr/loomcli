@@ -51,6 +51,7 @@ function postInstallFunctions(words: readonly string[]) {
 }
 
 quote_word() {
+  quote="'"
   case $1 in
     '' | =* | *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./:=@%+,-]*)
       rest=$1
@@ -108,7 +109,7 @@ run_post_install() {
 
 /** The function that prints the post-install message, each of its lines opening with the name. */
 const printMessage = `print_message() {
-  printf '%s\\n' "$message" | while IFS= read -r line; do say "$line"; done
+  printf '%s' "$message" | while IFS= read -r line || [ -n "$line" ]; do say "$line"; done
 }
 
 `;
@@ -169,7 +170,7 @@ export function installerScript(
     option: skips ? '\n      --skip-post-install)\n        skip_post_install=1\n        ;;' : '',
     runs: `${skips ? '\n  run_post_install' : ''}${message === undefined ? '' : '\n  print_message'}`,
     unset: skips ? '\n  skip_post_install=' : '',
-    values: `${message === undefined ? '' : `\n  message=${shellWord(message)}`}${skips ? `\n  quote="'"` : ''}`,
+    values: message === undefined ? '' : `\n  message=${shellWord(message)}`,
   };
   return `#!/bin/sh
 # Installs this application from its GitHub releases: it downloads the binary for this platform,

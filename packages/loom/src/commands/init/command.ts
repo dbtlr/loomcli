@@ -270,8 +270,7 @@ function writeManaged(run: Run, path: string, content: string, mode?: number) {
 /**
  * What the installer script renders of the application module: the post-install declaration,
  * `undefined` where it declares none; or the Developer Diagnostic of a declaration fault, which
- * fails the run once every other piece is written. A module init cannot read reads as `undefined`
- * after a warning, and the script is not written.
+ * fails the run once every other piece is written.
  */
 type InstallRead = { readonly declared: PostInstall | undefined } | { readonly diagnostic: string };
 
@@ -294,7 +293,10 @@ function graphDeclaration(run: Run, graph: GraphRead): InstallRead | undefined {
   return { declared: graph.postInstall };
 }
 
-/** What the installer script renders of the application module, under `InstallRead`. */
+/**
+ * What the installer script renders of the application module, under `InstallRead`. A module init
+ * cannot read reads as `undefined` after a warning, and the script is not written.
+ */
 function installRead(run: Run, read: ApplicationRead): InstallRead | undefined {
   switch (read.kind) {
     case 'scaffold': {

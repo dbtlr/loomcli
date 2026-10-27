@@ -152,16 +152,8 @@ test.each([
 );
 
 test('from a bundle whose baked facts read distributed, check() reports an unrouted post-install command and inspect() does not', () => {
-  const outdir = join(root, 'post-install');
-  const built = spawnSync(
-    'bun',
-    [bundler, 'check.mjs', outdir, JSON.stringify({ build: 'distributed' })],
-    {
-      encoding: 'utf8',
-    },
-  );
-  expect(built.stderr).toBe('');
-  expect(built.status).toBe(0);
+  // The bundle the distributed case above built, which this test reads and does not rebuild.
+  const outdir = join(root, 'distributed');
   for (const runtime of runtimes) {
     const bundle = join(outdir, 'check.js');
     const checked = spawnSync(runtime, [bundle, 'post-install'], { encoding: 'utf8' });

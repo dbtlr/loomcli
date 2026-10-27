@@ -99,7 +99,7 @@ The post-install command is one command the application declares as argument wor
 The post-install message is text the application declares in [`postInstall.message`](../core/application.md#the-post-install-declaration), such as what to run next. The script prints it last, after the post-install command ran, failed, or was skipped, and after the PATH advice when no command is declared.
 
 - **The text.** Init renders the message as a single-quoted shell word, so it prints byte for byte, and no character is rejected. It holds no placeholder; the installed path is in the lines above it.
-- **Each line.** The message goes to stderr, and each of its lines opens with `<name>: `.
+- **Each line.** The message goes to stderr, and each of its lines opens with `<name>: `. A line break at the end of the message ends its last line.
 
 ## The release shape
 

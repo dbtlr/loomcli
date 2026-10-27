@@ -4,6 +4,7 @@ import type {
   CommandGraph,
   CommandNode,
   OptionNode,
+  PostInstall,
   StandardJSONSchemaV1,
   StandardSchemaV1,
 } from '@loomcli/core';
@@ -27,8 +28,9 @@ const name: string | null = root.name;
 const path: readonly string[] = root.path;
 const aliases: readonly string[] = root.aliases;
 
-// `version` is never absent, and every other core fact reads as an optional string.
+// `version` is never absent, `postInstall` is absent where the Application declares none, and every other core fact reads as an optional string.
 const version: string = graph.version;
+const postInstall: PostInstall | undefined = graph.postInstall;
 const summary: string | undefined = graph.description;
 const rootSummary: string | undefined = root.description;
 const argumentSummary = (slot: ArgumentNode): string | undefined => slot.description;
@@ -54,6 +56,8 @@ graph.globals.map((option) => (option.type === 'boolean' ? null : option.default
 
 // @ts-expect-error TS2339: A boolean option publishes no default value.
 graph.globals.map((option) => (option.type === 'boolean' ? option.default : null));
+// @ts-expect-error TS2322: A post-install command holds at least one word.
+void new Application('x', { postInstall: { command: [] } });
 // @ts-expect-error TS2540: The graph is read-only data, so a consumer cannot rename it.
 graph.name = 'other';
 // @ts-expect-error TS2540: A node is read-only, so a consumer cannot restate its action.
@@ -117,6 +121,7 @@ void name;
 void path;
 void aliases;
 void version;
+void postInstall;
 void summary;
 void rootSummary;
 void argumentSummary;

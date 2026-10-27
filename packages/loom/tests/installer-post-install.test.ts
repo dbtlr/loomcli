@@ -107,6 +107,16 @@ test('the message prints last, after the PATH advice, each of its lines opening 
   expect(binaryRecord(box).argv).toBeUndefined();
 });
 
+test.each([
+  ['a trailing line break ends the last line', 'Run x.\n', ['notes: Run x.']],
+  ['a blank line inside the message stays', 'a\n\nb', ['notes: a', 'notes: ', 'notes: b']],
+])('the message: %s', (_name, message, lines) => {
+  const box = postInstallSandbox({ message });
+  const result = runScript(box);
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe([...installLines(box), ...lines, ''].join('\n'));
+});
+
 test('the command is announced and runs once with the declared words after install.json is written, and the message follows it', async () => {
   const box = postInstallSandbox({ command: ['setup'], message: 'Run notes init next.' });
   const result = await runDetached(box);

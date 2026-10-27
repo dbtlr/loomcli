@@ -2,7 +2,16 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { array, boolean, exactOptional, strictObject, string, tupleWithRest, union } from 'valibot';
+import {
+  array,
+  boolean,
+  exactOptional,
+  object,
+  strictObject,
+  string,
+  tupleWithRest,
+  union,
+} from 'valibot';
 import type { InferOutput } from 'valibot';
 
 import { runBun } from './bun.js';
@@ -16,7 +25,7 @@ const names = array(string());
 const words = tupleWithRest([string()], string());
 
 /** The post-install declaration as the Application's graph carries it. */
-const postInstall = strictObject({
+const postInstall = object({
   command: exactOptional(words),
   message: exactOptional(string()),
 });
@@ -29,7 +38,7 @@ const postInstall = strictObject({
 const graphRead = union([
   strictObject({ fault: string() }),
   strictObject({ failure: string() }),
-  strictObject({ postInstall: exactOptional(postInstall) }),
+  object({ postInstall: exactOptional(postInstall) }),
 ]);
 
 /**
