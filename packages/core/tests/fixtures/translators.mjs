@@ -238,6 +238,17 @@ const unreached = {
       },
       { translators: [catchAll] },
     ),
+  'render-unawaited': () =>
+    ending(
+      ({ out }) => {
+        void out.render('data', {
+          render: () => {
+            throw new Error('The view failed.');
+          },
+        });
+      },
+      { translators: [catchAll] },
+    ),
   string: () =>
     ending(
       () => {

@@ -431,9 +431,6 @@ interface Target {
 
 export class Output {
   private readonly destinations = new Map<Writable, Destination>();
-  // Every value a view failed with.
-  // A caller that lets one propagate never offers it to a translator.
-  private readonly viewFaults = new WeakSet();
   // Every failure an output call raised: a view's, a source's that stopped a sequence, and a second result.
   private readonly raised = new Set<unknown>();
   // Every output call that rejected with a failure core raised, which the run reads for one no code observed.
@@ -1000,23 +997,12 @@ export class Output {
 
   /**
    * One `out.text` call: the text `out.render` would queue on the destination, resolved the same
-   * way and queued nowhere. A view that throws throws to the caller, marked as a view's failure as
-   * one under `out.render` is.
+   * way and queued nowhere. A view that throws throws to the caller.
    */
   private text(data: never, value: View<never>, destination: Stream): string {
     const render = resolveView(this.registry, value);
-    const rendered = renderText(() => {
-      const marked = String(render(data, this.context(destination)));
-      return resolveText(marked, this.palette, capabilities(this.host, destination, this.policy));
-    });
-    if (!('text' in rendered)) {
-      const cause = rendered.failed;
-      if ((typeof cause === 'object' || typeof cause === 'function') && cause !== null) {
-        this.viewFaults.add(cause);
-      }
-      throw cause;
-    }
-    return rendered.text;
+    const marked = String(render(data, this.context(destination)));
+    return resolveText(marked, this.palette, capabilities(this.host, destination, this.policy));
   }
 
   /** One `out.render` call, dispatched on the shape of the view it was handed. */
@@ -1114,24 +1100,9 @@ export class Output {
    */
   private renderFailed(cause: unknown): Promise<void> {
     this.raised.add(cause);
-    if ((typeof cause === 'object' || typeof cause === 'function') && cause !== null) {
-      this.viewFaults.add(cause);
-    }
     const rejection = Promise.reject(cause);
     void handled(rejection);
     return rejection;
-  }
-
-  /**
-   * Whether one value is what a view failed with during this invocation, which already names what it
-   * is, so no translator is offered it.
-   */
-  raisedByView(value: unknown): boolean {
-    return (
-      (typeof value === 'object' || typeof value === 'function') &&
-      value !== null &&
-      this.viewFaults.has(value)
-    );
   }
 
   /**

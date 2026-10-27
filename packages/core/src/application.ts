@@ -964,11 +964,12 @@ class ApplicationBuilder<
       return reason ? cancellationCode(reason) : undefined;
     };
     /**
-     * Offers one throw from the application's work to the translators. A view's failure and a
-     * cancellation echo are never offered, because each already names what it is.
+     * Offers one throw from the application's work to the translators, a view's included, because
+     * a throw from a library a view calls is the author's to translate like any other. A
+     * cancellation echo is never offered, because it already names what it is.
      */
     const offer = (thrown: unknown): LoomError | undefined => {
-      if (output?.raisedByView(thrown) === true || echoesCancellation(thrown, controller.signal)) {
+      if (echoesCancellation(thrown, controller.signal)) {
         return undefined;
       }
       const failure = translateThrow(this.#config.translators, thrown);

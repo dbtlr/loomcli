@@ -4,7 +4,7 @@ title: ADR-0097 - One ordinary failure path, where an author's catch is final
 description: When author or plugin code catches a failure and continues, the run's outcome is what that code produces, and Loom adds no rule in either direction. A middleware that catches a held usage fault, an action's failure, or a next() misuse decides the outcome, an action that catches a view's rejection or a second out.results call decides its own, and a throw during unwinding is the middleware's failure like any other. A failure no code caught still fails the run. The fallbacks that keep Loom's own failure output intact stay.
 status: accepted
 created: 2026-10-20
-modified: 2026-10-23
+modified: 2026-10-27
 ---
 
 # ADR-0097 - One ordinary failure path, where an author's catch is final
@@ -70,3 +70,4 @@ Accepted in 0.15.0.
 - 2026-10-21: Corrected the `next()` misuse bullet in place: a misuse rejection no code observes fails the run, as an unobserved output call does under principle 5, and one the middleware catches stays final.
 - 2026-10-23: [ADR-0105](0105-core-is-the-only-process-listener-and-cleanup-runs-on-every-path-out.md), proposed, adds a cleanup to the author code that takes the ordinary failure path: the first cleanup that throws or rejects at the unwind of a run that would otherwise succeed is the run's failure, as if the action had thrown it. A cleanup failure in a run that already failed or was cancelled changes no outcome and is a log event. The cancellation codes read 129, 130, 131, 141, and 143. It binds when that record is accepted.
 - 2026-10-23: [ADR-0106](0106-a-signal-ends-the-process-within-one-bounded-shutdown.md), proposed, replaces ADR-0105's entry above. A handler registered with `onShutdown` is not author code on the ordinary failure path: handlers run only at a shutdown's end or the process's end, a throw is caught, a run-scoped handler's throw is logged, and no handler's throw becomes a run's failure. The cancellation codes read 129, 130, 131, 141, and 143. It binds when that record is accepted.
+- 2026-10-27: The implementation catches up with this record's dated entry on ADR-0049: core no longer skips a view's failure when it offers a throw, so an output view's throw that the action or a middleware lets propagate, or that no code awaited, reaches the translators like any other foreign throw. The output-view row of the ordinary failure path says so. A broken failure view keeps its fallback.
