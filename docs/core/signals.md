@@ -190,7 +190,51 @@ export const view = new Command('view', { description: 'Page through a log.' }).
 
 ## Raw-mode readers
 
-In raw mode the terminal sends a key as a byte instead of a signal, so a reader that reads keys from its signal source's own terminal, `process.stdin` for the real process, raises the signal the key stands for on that signal source through [`host.raise`](host.md#host-facts): `SIGINT` for Ctrl-C (0x03), `SIGQUIT` for Ctrl-\ (0x1c), and `SIGTSTP` for Ctrl-Z (0x1a). A key then means at a question what it means at a cooked terminal: Ctrl-C starts the shutdown, and Ctrl-Z suspends. Several Ctrl-Z keys in one read raise one `SIGTSTP`, because a cooked terminal suspends once and discards the input still unread. A reader whose stdin is any other stream, such as one an embedding host gives `processHandle` or a mock's piped stdin, raises no signal, because the process is not that terminal's, and `host.raise` answers `false`: Ctrl-C and Ctrl-\ call the action's `cancel()`, so the run ends with 130 and the process goes on, and Ctrl-Z does nothing. End of input, stdin closing or Ctrl-D with nothing typed, still ends the run through the action's `cancel()`. Core's own readers follow this rule, the [background query](background.md) and the [prompts library](../libs/prompts.md)'s questions, and so does a reader an author writes. A mock's [keyboard](../libs/testing.md#mockprocess) is its signal source's own terminal, so a key a test scripts raises its signal on the mock as a key at a real terminal does.
+```ts
+interface InterruptKeys {
+  /**
+   * What the raised signals do to the process: `'ending'` when Ctrl-C or Ctrl-\ raised its signal,
+   * `'suspending'` when only Ctrl-Z did, and `undefined` when none raised one.
+   */
+  readonly raised: 'ending' | 'suspending' | undefined;
+  /** The text with every interrupt key removed, or `''` once a signal was raised. */
+  readonly rest: string;
+}
+
+// @loomcli/core
+export declare function raiseInterruptKeys(
+  context: { readonly host: Pick<Host, 'raise'>; readonly cancel: () => void },
+  text: string,
+): InterruptKeys;
+```
+
+```ts
+import { Command, raiseInterruptKeys } from '@loomcli/core';
+
+import { openPicker } from './picker.js';
+
+// A picker reads the operator's keys in raw mode, and Ctrl-C still means what it means at the shell.
+export const pick = new Command('pick', { description: 'Pick a branch.' }).action(async (context) => {
+  const picker = openPicker(context.host);
+  for await (const chunk of picker.keys()) {
+    const { raised, rest } = raiseInterruptKeys(context, String(chunk));
+    if (raised === 'ending') {
+      break;
+    }
+    picker.type(rest);
+  }
+  picker.close();
+});
+```
+
+In raw mode the terminal sends a key as a byte instead of a signal, so a reader that reads keys from its signal source's own terminal, `process.stdin` for the real process, raises the signal the key stands for on that signal source through [`host.raise`](host.md#host-facts): `SIGINT` for Ctrl-C (0x03), `SIGQUIT` for Ctrl-\ (0x1c), and `SIGTSTP` for Ctrl-Z (0x1a). A key then means at a question what it means at a cooked terminal: Ctrl-C starts the shutdown, and Ctrl-Z suspends. `raiseInterruptKeys(context, text)` applies this rule to what one read returned, and core's own readers call it: the [background query](background.md) and the [prompts library](../libs/prompts.md)'s questions. A reader an author writes calls it with its action's or middleware's context.
+
+- **The keys.** `text` is what one read returned, decoded as UTF-8 or as latin1, which give the three bytes the same characters. Each interrupt key is removed, and its signal is raised in arrival order.
+- **One suspend per read.** Several Ctrl-Z keys in one `text` raise one `SIGTSTP`, at the first one's place, because a cooked terminal suspends once.
+- **The flush.** Once a signal is raised, `rest` is empty, as a cooked terminal discards the input still unread, so no key typed with Ctrl-C or Ctrl-Z answers anything. A reader that holds keys from an earlier read drops them too, and after `'ending'` it reads no further key, because the process is ending. After `'suspending'` it reads on once the process resumes.
+- **Another stream.** A reader whose stdin is any other stream, such as one an embedding host gives `processHandle` or a mock's piped stdin, raises no signal, because the process is not that terminal's, and `host.raise` answers `false`: Ctrl-C and Ctrl-\ call `context.cancel()`, so the run ends with 130 and the process goes on, and Ctrl-Z does nothing. `raised` is then `undefined`, and `rest` keeps every other key.
+- **End of input.** Stdin closing or Ctrl-D with nothing typed is the reader's own to read, and still ends the run through the action's `cancel()`.
+- **The mock keyboard.** A mock's [keyboard](../libs/testing.md#mockprocess) is its signal source's own terminal, so a key a test scripts raises its signal on the mock as a key at a real terminal does.
 
 Core's terminal users restore the terminal through these handlers:
 
@@ -210,7 +254,7 @@ Core listens for a signal only while someone has asked, so a library still insta
 A live `run()` asks from the moment it is called, before its first await, because the application that calls it owns the process for that run, so every run an application starts on argv unwinds within the budget on Ctrl-C, whatever it has open. An `app.invoke` makes no process effect, so it never asks. With none of these, core holds no listener, and every signal has its default effect: the process ends at once with the shell's status, or stops on `SIGTSTP`. Core adds a listener when the first reason appears and removes it when the last one ends, so an Application can run again and a test leaks no listener. A run still live when a shutdown ends has been cut off: it keeps no listener, and neither does a handler it registers afterward, because a listener core added right after its re-raise would catch that re-raise itself. A later `run()` or a handler from the exported `onShutdown` makes core listen again. Core's own terminal users register handlers too, so a question asked or progress drawn inside an `app.invoke` still restores the terminal when a shutdown comes.
 
 - **One lane per signal source.** The handlers and the listeners live in one lane per [signal source](host.md#the-process-handle), and core listens and re-raises on the source of each run's process handle. The real process's source keeps its lane under `globalThis[Symbol.for('loomcli.processLane')]`, shared by every handle `processHandle` builds. The first copy of `@loomcli/core` to load creates it, and every later copy uses the one it finds, so two installed copies listen once and re-raise once. It also holds the real process's one signal source, which every copy's `processHandle` uses, and a `WeakMap` from every other source to its lane, so every copy resolves the same lane for any source and a mock's lane goes once nothing holds the mock. Its shape is a contract across versions of core, and it only grows: no version removes a member or changes what one accepts, and every member takes one object argument, so a later version adds fields beside the earlier ones. A copy that finds the lane lacks a member it would call goes without what that member provides and never creates a second lane. Core's own tests pin the members. A mock's signal source has a lane of its own, so a signal raised on a mock reaches only the runs that hold it, and a shutdown on the real process never reaches them. A handler from the exported `onShutdown`, `onSuspend`, or `onResume` belongs to no run, so it lives in the real process's lane, and a handler from a context lives in the lane of its run's source. [ADR-0107](../decisions/0107-a-run-reads-the-process-through-one-process-handle.md) records the decision.
-- **Names.** `onShutdown`, `onSuspend`, and `onResume` are exported from `@loomcli/core`, and so are the types `OnShutdown`, `OnSuspend`, `OnResume`, `ShutdownEvent`, `Synchronous`, and `CancellationReason`.
+- **Names.** `onShutdown`, `onSuspend`, `onResume`, and `raiseInterruptKeys` are exported from `@loomcli/core`, and so are the types `OnShutdown`, `OnSuspend`, `OnResume`, `ShutdownEvent`, `Synchronous`, `InterruptKeys`, and `CancellationReason`.
 
 ## When author code fails
 
