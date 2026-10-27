@@ -234,10 +234,15 @@ path(
 ## createValidator
 
 ```ts
-createValidator<Output>(definition: {
-  parse: (raw: string, context: ValidationContext) => ParseResult<Output> | Promise<ParseResult<Output>>;
+createValidator<Output, Result extends ParseResult<Output> = ParseResult<Output>>(definition: {
+  parse: (raw: string, context: ValidationContext) => Result | Promise<Result>;
   inputSchema?: Readonly<Record<string, unknown>>;
-}): Validator<Output> // or StandardSchemaV1<string, Output> without inputSchema
+}): Validator<AcceptedOutput<Result>> // or StandardSchemaV1<string, AcceptedOutput<Result>> without inputSchema
+
+// The value of every branch of Result that is not { issues }.
+type AcceptedOutput<Result> = Result extends StandardSchemaV1.FailureResult
+  ? never
+  : Result extends { readonly value: infer Value } ? Value : never;
 
 type ParseResult<Output> = StandardSchemaV1.Result<Output>; // { value } or { issues }
 ```
@@ -252,7 +257,7 @@ const branch = createValidator({
 });
 ```
 
-- **`parse`** receives one raw string and the validation context, and returns the Standard Schema result, `{ value }` or `{ issues }`, directly or as a promise. The output type is inferred from `value`.
+- **`parse`** receives one raw string and the validation context, and returns the Standard Schema result, `{ value }` or `{ issues }`, directly or as a promise. The output type is the `value` of the branches that accept, so an `{ issues }` branch adds nothing to it under any compiler settings, `exactOptionalPropertyTypes` off included, and a ternary that returns `{ value: metres }` or `{ issues }` gives `number`. A stated `Output`, as in `createValidator<number>(...)`, checks `parse` against it instead.
 - **`inputSchema`** is the JSON Schema the validator publishes, stated as plain data. The author owns its soundness and its value, so a later change to the declared object changes what the validator publishes. Without it the value implements no `jsonSchema`, and the input schema reads `null`, unknown, under [Input schema](../core/validation.md#input-schema).
 - **Publishing.** With `inputSchema`, `'~standard'.jsonSchema.input({ target: 'draft-2020-12' })` returns a new plain object on every call: `$schema: 'https://json-schema.org/draft/2020-12/schema'` followed by the keywords of `inputSchema`. Any other target throws, as the standard permits. `'~standard'.jsonSchema.output` throws for every target, because the output side is the action's business and core never asks for it. These rules hold for every catalog factory, since each is built with `createValidator`.
 - **The context outside a run.** Core attaches the context to every call it makes. When `validate` is called any other way, such as in a unit test that passes no options from `validationOptions`, `parse` receives a context whose every field throws a `DeclarationError` under `@loomcli/validators/context-outside-run` when read, whose sentence reads `This validator reads the validation context, which only exists during a Loom run.` and whose correction reads `Call the validator through an Application run or with the options validationOptions builds, or leave the context unread.` A validator that never reads the context works anywhere; one that reads it fails at the read. A validator that reads the context is tested alone with the options core's [`validationOptions`](../core/validation.md#validation-options-outside-a-run) builds, or through an Application run on a [`mockProcess`](testing.md#mockprocess) handle.
