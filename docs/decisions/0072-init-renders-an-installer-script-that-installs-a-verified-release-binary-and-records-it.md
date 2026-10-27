@@ -4,7 +4,7 @@ title: ADR-0072 - init renders an installer script that installs a verified rele
 description: loom init renders install.sh, a managed file named for the application and its GitHub repository. Under POSIX sh on Linux and macOS it takes an optional version and --dir, picks the release asset for the platform, verifies it against the release's SHA256SUMS, moves it into place, and writes install.json through the installation record's recipe. It advises on PATH and never edits a shell profile, runs the binary, or takes a test-only input. The release shape it reads, a v<version> tag, <name>-<os>-<arch> assets, and sha256sum's output, is the shape every repository's own release workflow publishes.
 status: accepted
 created: 2026-10-12
-modified: 2026-10-13
+modified: 2026-10-27
 ---
 
 # ADR-0072 - init renders an installer script that installs a verified release binary and records it
@@ -52,3 +52,4 @@ Accepted in 0.11.0.
 - 2026-10-12: Proposed with the installer contract.
 - 2026-10-12: A shell file's header follows any `#!` line, so an edited `#!` line reads as drift rather than releasing the file.
 - 2026-10-12: The release lane is renamed the release channel under [ADR-0073](0073-the-self-update-plugin-replaces-a-script-installed-binary-with-a-verified-release.md), proposed.
+- 2026-10-27: [ADR-0113](0113-an-application-declares-a-post-install-message-and-command-that-the-installer-script-prints-and-runs.md), proposed, supersedes the clauses of "Nothing beyond the install" that the script never runs the downloaded binary and writes nothing but the binary and `install.json`, and the considered option "Running the binary to prove it works" for an application that declares a post-install command: after the binary is placed and `install.json` written, the script announces and runs the installed binary with the declared argument words, and that command's writes are the application's. It adds a post-install message the script prints last and the `--skip-post-install` option. An application that declares neither gets the script this record describes, byte for byte. The piece `install` now loads the application module to read the declaration, so a module init cannot load or read draws a warning and no script, and a declaration fault draws its Developer Diagnostic, no script, and exit 1. It binds when that record is accepted.
