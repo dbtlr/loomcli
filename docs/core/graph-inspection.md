@@ -223,7 +223,7 @@ test('the application assembles', () => {
 - **Whatever the build.** It runs the development checks whatever the [release facts](release-facts.md) read, and it reads no host and no baked facts, so it answers the same from source and from a bundle.
 - **Not the defaults.** It does not pass a declared default or an implied value through its validator, as `inspect()` does not. That call may be asynchronous, and its [validation context](validation.md#validation-context) carries the run's host, so its verdict belongs to the machine that runs the application. `run()` still reports a rejected default.
 - **Not a call or an attach.** A fault at an authoring call or an attach throws while the module loads, before any `check()` call, under [Declaration faults](declaration-faults.md). A tool that imports the module catches that throw itself.
-- **Nothing runs.** It routes no words, validates no value, and runs no middleware, input source, or action. It caches nothing, so each call builds the graph anew.
+- **Nothing runs.** It routes no words but the post-install command's, which it routes against the built graph and never runs, validates no value, and runs no middleware, input source, or action. It caches nothing, so each call builds the graph anew.
 - **The faults.** Each is the `DeclarationError` a run would report. Its `message` holds the whole [Developer Diagnostic](declaration-faults.md#developer-diagnostics) as plain text at 80 columns, and its `rule`, `sentence`, `findings`, and `correction` hold the parts.
 
 ## When author code fails
