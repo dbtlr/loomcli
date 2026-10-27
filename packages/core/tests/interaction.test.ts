@@ -5,7 +5,9 @@
  *   `false` with stdin piped, with stderr redirected, under `--no-input` from the interaction
  *   plugin, under its bound variable set to `false`, from the configuration source, under
  *   `app.invoke`, under an action's `invoke`, and in an MCP tool call. A piped stdout leaves it
- *   `true`, and a marked option that reads `true` with stdin piped leaves it `false`.
+ *   `true`, and a marked option that reads `true` with stdin piped leaves it `false`. With stdin and
+ *   stderr terminals, `CI` set to `true` makes it `false`, while `CI` empty or `false` leaves it
+ *   `true`, and under `CI=true` an omitted `required: 'non-interactive'` option fails with exit 2.
  * - Conditional requiredness. With interaction off, an omitted `required: 'non-interactive'` option
  *   fails with exit 2 before the action and the sentence the reference states, beside any other
  *   input problem in authoring order, by declared name under `invoke` and in an MCP tool call, and
@@ -64,6 +66,36 @@ test('conditional requiredness rejects missing input before dispatch without int
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain(
+    'Option "--port" is required when input is not interactive. Supply a value.',
+  );
+});
+
+test.each([
+  { env: { CI: 'true' }, interactive: false },
+  { env: { CI: '' }, interactive: true },
+  { env: { CI: 'false' }, interactive: true },
+])(
+  'with stdin and stderr terminals and $env, interactive reads $interactive',
+  async ({ env, interactive }) => {
+    const seen: boolean[] = [];
+    const app = new Application('setup').action(({ interactive: decided }) => {
+      seen.push(decided);
+    });
+    const mock = mockProcess({ env, terminal: { columns: 80, keys: [], rows: 24 } });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(seen).toEqual([interactive]);
+  },
+);
+
+test("under CI=true an omitted required: 'non-interactive' option fails before the action with exit 2", async () => {
+  const app = new Application('setup')
+    .option('port', { description: 'Service port.', required: 'non-interactive', type: 'string' })
+    .action(() => {
+      throw new Error('The action must not run.');
+    });
+  const mock = mockProcess({ env: { CI: 'true' }, terminal: { columns: 80, keys: [], rows: 24 } });
+  await expect(app.run({ process: mock })).resolves.toBe(2);
+  expect(mock.stderr.text).toContain(
     'Option "--port" is required when input is not interactive. Supply a value.',
   );
 });

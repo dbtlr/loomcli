@@ -56,6 +56,18 @@ async function runSetup(scenario: string, argv: string[] = []) {
   return { code, mock };
 }
 
+/** One run of a linked-question scenario at a terminal whose keyboard types `keys`, under `env`. */
+async function runAtTerminal(
+  scenario: string,
+  env: Record<string, string>,
+  argv: string[] = [],
+  keys: string[] = [],
+) {
+  const mock = mockProcess({ argv, env, terminal: { columns: 80, keys, rows: 24 } });
+  const code = await setup(scenario).run({ process: mock });
+  return { code, mock };
+}
+
 /** One malformed question per scenario, asked from an application that reports the fault it catches. */
 const faults: Record<
   string,
@@ -101,6 +113,25 @@ async function fault(scenario: string) {
   expect(mock.stderr.text).toBe('');
   return JSON.parse(mock.stdout.text);
 }
+
+test('under CI=true at a terminal, a linked question returns its supplied option without asking', async () => {
+  const { code, mock } = await runAtTerminal('linked', { CI: 'true' }, ['--port', '8080']);
+  expect([code, mock.stdout.text, mock.stderr.text]).toEqual([0, '8080\n', '']);
+});
+
+test('under CI=true at a terminal, a linked question whose option is omitted fails with exit 2', async () => {
+  const { code, mock } = await runAtTerminal('linked', { CI: 'true' });
+  expect(code).toBe(2);
+  expect(mock.stderr.text).toContain(
+    'Option "--port" is required when input is not interactive. Supply a value.',
+  );
+});
+
+test('under CI=false at a terminal, a question asks', async () => {
+  const { code, mock } = await runAtTerminal('unlinked', { CI: 'false' }, [], ['notes\r']);
+  expect(code).toBe(0);
+  expect(mock.stderr.text).toContain('Name');
+});
 
 test('a linked question returns the validated supplied option silently without prompt validation', async () => {
   const { code, mock } = await runSetup('linked', ['--port', '8080']);

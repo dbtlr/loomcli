@@ -52,6 +52,7 @@ import type {
   TableEntry,
 } from './globals.js';
 import { buildGlobals, checkLocalOptions, frozenValues } from './globals.js';
+import { underCI } from './host.js';
 import { nameSharedAcrossKinds, optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import { graphMismatch, nodeAt, resultNode } from './inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
@@ -3003,6 +3004,7 @@ export async function prepareDispatch(
   preparation.interactive =
     invocation.host.terminal.stdin.isTTY &&
     invocation.host.terminal.stderr.isTTY &&
+    !underCI(invocation.host.env) &&
     (marked === undefined || booleanValue(globals, marked.name, marked.config));
   const held = async (fault: unknown, options: Prepared['options']): Promise<Prepared> => {
     await validateOwn(preparation, globals);

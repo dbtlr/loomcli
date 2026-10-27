@@ -4,6 +4,7 @@ import { setImmediate } from 'node:timers/promises';
 import { FatalError, ResultError } from './errors.js';
 import { Handed } from './handed.js';
 import type { ReportHost } from './host.js';
+import { underCI } from './host.js';
 import { incompleteResult, lanes } from './lanes.js';
 import type { IncompleteResult, Lane } from './lanes.js';
 import type { LogDestination } from './log.js';
@@ -103,12 +104,10 @@ const showCursor = '\u001B[?25h';
 
 /**
  * Whether a terminal stderr redraws a region in place: not under `TERM=dumb`, which cannot move
- * the cursor, and not under CI, where the terminal feeds a build log. CI is read as ci-info reads
- * it: `CI` set and nonempty, with `CI=false` an operator's way of saying the run is not CI.
+ * the cursor, and not under CI, where the terminal feeds a build log.
  */
 function redraws(env: ReportHost['env']): boolean {
-  const ci = env.CI ?? '';
-  return env.TERM !== 'dumb' && (ci === '' || ci === 'false');
+  return env.TERM !== 'dumb' && !underCI(env);
 }
 
 /** One sequence's hold on a destination: the pieces it writes, and the end of its place. */

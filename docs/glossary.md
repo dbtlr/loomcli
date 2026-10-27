@@ -247,7 +247,7 @@ Reading the Command graph as plain frozen data through `inspect()`, without read
 _Avoid_: Introspection, reflection, dump
 
 **Interaction decision**:
-The one verdict per run, computed before validation, on whether the run may ask the operator questions: on only when stdin and stderr are terminals and the interaction mark does not turn it off. Conditional requiredness and every question read the same verdict.
+The one verdict per run, computed before validation, on whether the run may ask the operator questions: on only when stdin and stderr are terminals, the run is not under CI, and the interaction mark does not turn it off. Conditional requiredness and every question read the same verdict.
 _Avoid_: TTY check, interactive mode, host.interactive
 
 **Interaction mark**:
