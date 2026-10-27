@@ -50,6 +50,18 @@ const extended = new Command('extended', { description: 'Read extended inputs.' 
   .extend(mcpCommand({}))
   .action(() => {});
 
+const excluding = [mcpInput({ exclude: true })];
+const partial = new Command('partial', { description: 'Read partly excluded inputs.' })
+  .option('message', { description: 'The message.', type: 'string' })
+  .option('file', { description: 'The file.', extensions: excluding, type: 'string' })
+  .option('left', { description: 'Left input.', type: 'string' })
+  .option('right', { description: 'Right input.', type: 'string' })
+  .option('far', { description: 'Far input.', extensions: excluding, type: 'string' })
+  .oneRequired('message', 'file')
+  .exclusive('left', 'right', 'far')
+  .extend(mcpCommand({}))
+  .action(({ out }) => out.print('action'));
+
 const app = new Application('groups', {
   description: 'Export documents.',
   plugins: [help(), manifest(), completion(), mcp()],
@@ -76,6 +88,7 @@ const app = new Application('groups', {
   .command(bound)
   .command(described)
   .command(extended)
+  .command(partial)
   .action(({ out }) => out.print('action'));
 
 process.exitCode = await app.run();

@@ -230,7 +230,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/mcp/required-input-excluded
 
-**Required MCP input excluded.** An excluded option is off its Command's MCP tool, and a tool call reads no source for it, so a required option that is excluded leaves every call of the tool missing a value the Command needs.
+**Required MCP input excluded.** An excluded option is off its Command's MCP tool, and a tool call reads no source for it, so a required option that is excluded, a one-required group whose every member is excluded, and a required-together group that excludes some of its members leave calls of the tool missing a value the Command needs.
 
 ### @loomcli/plugins/mcp/tool-name-taken
 

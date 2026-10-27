@@ -394,6 +394,25 @@ function requiredExcluded(settings) {
     .command(new Command('plain', { description: 'Plain.' }).action(dispatch));
 }
 
+/** A tool whose `message` and `file` options form one group of the given kind, with the named members excluded. */
+function groupExcluded(kind, outside) {
+  const declare = (name) => ({
+    description: `The ${name}.`,
+    ...(outside.includes(name) ? { extensions: [mcpInput({ exclude: true })] } : {}),
+    type: 'string',
+  });
+  const get = new Command('get', { description: 'Get.', extensions: [mcpCommand({})] })
+    .option('message', declare('message'))
+    .option('file', declare('file'));
+  const grouped =
+    kind === 'oneRequired'
+      ? get.oneRequired('message', 'file')
+      : get.requiredTogether('message', 'file');
+  return new Application('app', faulty)
+    .command(grouped.action(dispatch))
+    .command(new Command('plain', { description: 'Plain.' }).action(dispatch));
+}
+
 const faults = {
   'both-keys': () =>
     new Application('app', faulty).command(
@@ -406,6 +425,8 @@ const faults = {
         })
         .action(dispatch),
     ),
+  'one-required-all-excluded': () => groupExcluded('oneRequired', ['message', 'file']),
+  'one-required-some-excluded': () => groupExcluded('oneRequired', ['file']),
   'optional-input-excluded': () => requiredExcluded({}),
   'property-name-taken': () =>
     new Application('app', faulty)
@@ -433,6 +454,8 @@ const faults = {
     new Application('app', faulty)
       .argument('files', { description: 'The files.', variadic: true })
       .action(dispatch),
+  'together-all-excluded': () => groupExcluded('requiredTogether', ['message', 'file']),
+  'together-some-excluded': () => groupExcluded('requiredTogether', ['file']),
   'tool-name-taken': () => {
     const create = new Command('create', {
       description: 'Create.',

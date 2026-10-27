@@ -768,6 +768,18 @@ describe('build faults', () => {
       'Command "get" requires option "file" and excludes it from its MCP tool, which leaves every call without a value.',
       'Make the option optional, or remove exclude from its mcpInput value.',
     ],
+    [
+      'one-required-all-excluded',
+      'required-input-excluded',
+      'Command "get" requires one of options "message" and "file" and excludes every one from its MCP tool, which leaves every call without a value.',
+      'Remove exclude from the mcpInput value of one of them.',
+    ],
+    [
+      'together-some-excluded',
+      'required-input-excluded',
+      'Command "get" requires options "message" and "file" together and excludes "file" from its MCP tool, so a call that supplies the rest always fails.',
+      'Exclude every option of the group from the tool, or none.',
+    ],
   ])('%s fails every build under its rule', (scenario, rule, sentence, correction) => {
     expect(invoke(fixture, [scenario, 'inspect'])).toEqual({
       status: 0,
@@ -793,13 +805,16 @@ describe('build faults', () => {
     }
   });
 
-  it('an excluded option that is optional raises no fault', () => {
-    expect(invoke(fixture, ['optional-input-excluded', 'inspect'])).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: 'inspected\n',
-    });
-  });
+  it.each(['optional-input-excluded', 'one-required-some-excluded', 'together-all-excluded'])(
+    '%s raises no fault, because a call can still satisfy every rule',
+    (scenario) => {
+      expect(invoke(fixture, [scenario, 'inspect'])).toEqual({
+        status: 0,
+        stderr: '',
+        stdout: 'inspected\n',
+      });
+    },
+  );
 
   it('an application whose root declares arguments cannot install the plugin', () => {
     expect(invoke(fixture, ['root-arguments'])).toEqual({

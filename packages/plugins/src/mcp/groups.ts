@@ -1,6 +1,6 @@
 import type { CommandNode, OptionNode, OptionGroup } from '@loomcli/core';
 
-import { exposed } from './exposure.js';
+import { excluded, exposed } from './exposure.js';
 import { mcpArgument, mcpInput } from './extension.js';
 
 const noMembers = 0;
@@ -54,13 +54,29 @@ function constraints(kind: OptionGroup['kind'], options: readonly OptionNode[]):
   return [{ anyOf: [{ not: { anyOf: presence } }, { allOf: presence }] }];
 }
 
+/**
+ * The constraints a tool's schema states for the Command's option groups. An excluded member is
+ * never supplied in a call, so a group constrains the members the tool lists. A group that also
+ * holds a hidden or control member, which a call may still fill from the server's sources, stays a
+ * rule the run checks alone, and so does a `requiredTogether` group that excludes some members,
+ * which the build-fault hook rejects.
+ */
 export function groupSchemas(command: CommandNode): readonly Schema[] {
-  const listed = new Map(command.options.filter(exposed).map((option) => [option.name, option]));
+  const declared = new Map(command.options.map((option) => [option.name, option]));
   return command.optionGroups.flatMap((group): Schema[] => {
-    const options = group.options.flatMap((name) => {
-      const option = listed.get(name);
+    const members = group.options.flatMap((name) => {
+      const option = declared.get(name);
       return option === undefined ? [] : [option];
     });
-    return options.length === group.options.length ? constraints(group.kind, options) : [];
+    const listed = members.filter((option) => !excluded(option));
+    const partial = listed.length !== members.length;
+    if (
+      listed.length === noMembers ||
+      !listed.every(exposed) ||
+      (partial && group.kind === 'requiredTogether')
+    ) {
+      return [];
+    }
+    return constraints(group.kind, listed);
   });
 }
