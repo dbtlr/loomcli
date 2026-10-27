@@ -59,7 +59,7 @@ test('loom init reads the authored exports with Bun through the host, with its r
         calls.push(call);
         const resultFile = call.args[2] ?? '';
         expect(dirname(dirname(resultFile))).toBe(tmpdir);
-        writeFileSync(resultFile, JSON.stringify({ names: ['notes'] }));
+        writeFileSync(resultFile, JSON.stringify({ graph: {}, names: ['notes'] }));
         return { code: 0 };
       },
     },
