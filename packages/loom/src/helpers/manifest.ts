@@ -1,3 +1,9 @@
+import { safeParse } from 'valibot';
+
+import { jsonFault } from './json-fault.js';
+import { jsonObject } from './json-object.js';
+import { withoutByteOrderMark } from './markdown.js';
+
 // The end of the JSON string that opens at the index, past its closing quote.
 function stringEnd(source: string, start: number) {
   let index = start + 1;
@@ -58,4 +64,34 @@ export function withVersion(source: string, version: string) {
     throw new Error('package.json: expected a version string.');
   }
   return source.slice(0, span.start) + JSON.stringify(version) + source.slice(span.end);
+}
+
+/**
+ * Parses a `package.json` source into its object, every key kept in its order and a leading byte
+ * order mark ignored. Every loom command reads a manifest through it, so a source that is not JSON
+ * fails with the file's path, the line and column where the JSON breaks, and the fix, and one that
+ * is not a JSON object fails with its path and the fix.
+ */
+export function parseManifest(source: string, path: string): Record<string, unknown> {
+  const text = withoutByteOrderMark(source);
+  let document: unknown = undefined;
+  try {
+    document = JSON.parse(text);
+  } catch (error) {
+    const fault = jsonFault(text);
+    const place =
+      fault === undefined
+        ? ''
+        : `: line ${fault.line}, column ${fault.column} needs ${fault.expected}`;
+    throw new Error(`${path} is not valid JSON${place}, so fix it there and run loom again.`, {
+      cause: error,
+    });
+  }
+  const parsed = safeParse(jsonObject, document);
+  if (!parsed.success) {
+    throw new Error(
+      `${path} is not a JSON object, so write its fields between { and } and run loom again.`,
+    );
+  }
+  return parsed.output;
 }

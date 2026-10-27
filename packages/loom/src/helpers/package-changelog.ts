@@ -12,28 +12,21 @@ import { join } from 'node:path';
 import { object, safeParse, string } from 'valibot';
 
 import { highestKind, insertSection, landedFragments, renderSection } from './changelog.js';
-import { withVersion } from './manifest.js';
-import { withoutByteOrderMark } from './markdown.js';
+import { parseManifest, withVersion } from './manifest.js';
 import { isRepository, isShallow, readWorkingFile } from './repository.js';
 import type { Checkout } from './repository.js';
 import { nextVersion, parseVersion } from './version.js';
 
-function manifestVersion(source: string) {
-  let document: unknown = undefined;
-  try {
-    document = JSON.parse(withoutByteOrderMark(source));
-  } catch (error) {
-    throw new Error('package.json: expected valid JSON.', { cause: error });
-  }
-  const parsed = safeParse(object({ version: string() }), document);
+function manifestVersion(source: string, path: string) {
+  const parsed = safeParse(object({ version: string() }), parseManifest(source, path));
   if (!parsed.success) {
     throw new Error('package.json: expected a version string.');
   }
   return parsed.output.version;
 }
 
-function packageVersion(source: string) {
-  const text = manifestVersion(source);
+function packageVersion(source: string, path: string) {
+  const text = manifestVersion(source, path);
   const version = parseVersion(text);
   if (version === undefined) {
     throw new Error(
@@ -67,7 +60,7 @@ export async function preparePackageCut(
 ) {
   const directory = checkout.root;
   const manifest = readWorkingFile(directory, 'package.json');
-  const current = packageVersion(manifest);
+  const current = packageVersion(manifest, join(directory, 'package.json'));
   await requireHistory(checkout);
   const { fragments } = await landedFragments(checkout);
   if (fragments.length === 0) {

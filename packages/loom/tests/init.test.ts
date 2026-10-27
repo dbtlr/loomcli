@@ -349,20 +349,6 @@ test('a managed file whose header was deleted stays byte-identical under --force
   expect(read(root, guidePath)).toBe(released);
 });
 
-test('a directory that is neither empty nor inside a package fails with exit 1 and says both', () => {
-  const directory = temporaryRoot('loom-init-');
-  put(directory, 'notes.txt', 'hello\n');
-  const result = loom(directory, ['init']);
-  expect(result.status).toBe(1);
-  expect(result.stdout).toBe('');
-  expect(result.stderr).toContain(
-    'is not empty and no package.json is at or above it, so run loom init in an empty directory or inside a package directory.',
-  );
-  expect(snapshot(directory)).toEqual(
-    new Map([['notes.txt', Buffer.from('hello\n').toString('base64')]]),
-  );
-});
-
 test('--only with a piece init does not know is an option error that names the pieces', () => {
   const result = loom(emptyNotes(), ['init', '--only', 'nonsense']);
   expect(result.status).toBe(2);

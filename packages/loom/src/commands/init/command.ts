@@ -9,7 +9,7 @@ import {
 import { basename, dirname, join, resolve } from 'node:path';
 
 import { Command } from '@loomcli/core';
-import { select } from '@loomcli/prompts';
+import { confirm, select } from '@loomcli/prompts';
 import { createValidator } from '@loomcli/validators';
 
 import { changelogSkill } from '../../content/changelog-skill.js';
@@ -30,12 +30,12 @@ import type { ApplicationExports } from '../../helpers/application-exports.js';
 import {
   githubRepository,
   manifestOf,
-  parseManifest,
   readManifest,
   scaffoldName,
 } from '../../helpers/build-facts.js';
 import { loomVersion, typescriptRange } from '../../helpers/loom-version.js';
 import { driftWarning, hasDrifted, readManaged, renderManaged } from '../../helpers/managed.js';
+import { parseManifest } from '../../helpers/manifest.js';
 import { nearestPackageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
 import type { RunHost } from '../../helpers/run-host.js';
@@ -73,6 +73,9 @@ const pieces = [
 ] as const;
 
 type Piece = (typeof pieces)[number];
+
+/** The pieces that read the application's name from `package.json`. */
+const namedPieces: readonly Piece[] = ['package', 'application', 'entry', 'test', 'install'];
 
 /**
  * A validator for one value of a string option out of a fixed set. A multiple option validates each
@@ -141,29 +144,73 @@ interface Target {
   readonly fresh: boolean;
 }
 
-/**
- * The package directory init acts on: the working directory when it is empty, so a new application
- * starts there whatever lies above it, else the nearest package directory. An empty directory whose
- * name npm or core would reject fails here, before anything is asked or written.
- */
-function initTarget(cwd: string): Target {
-  const directory = resolve(cwd);
-  if (readdirSync(directory).length === 0) {
-    const name = basename(directory);
-    if (!isNewPackageName(name)) {
-      throw new Error(
-        `The directory name "${name}" is not a valid package name, so rename the directory or write a package.json with the name to use.`,
-      );
-    }
-    return { directory, fresh: true };
-  }
-  const nearest = nearestPackageDirectory(directory);
-  if (nearest === undefined) {
+/** A directory init starts a new application in, which fails when npm or core would reject its name. */
+function newPackageDirectory(directory: string): Target {
+  const name = basename(directory);
+  if (!isNewPackageName(name)) {
     throw new Error(
-      `${cwd} is not empty and no package.json is at or above it, so run loom init in an empty directory or inside a package directory.`,
+      `The directory name "${name}" is not a valid package name, so rename the directory or write a package.json with the name to use.`,
     );
   }
-  return { directory: nearest, fresh: false };
+  return { directory, fresh: true };
+}
+
+/**
+ * The package directory init acts on: the working directory when it is empty, so a new application
+ * starts there whatever lies above it, else the nearest package directory, else `undefined` when
+ * the directory is neither empty nor inside a package.
+ */
+function initTarget(cwd: string): Target | undefined {
+  const directory = resolve(cwd);
+  if (readdirSync(directory).length === 0) {
+    return newPackageDirectory(directory);
+  }
+  const nearest = nearestPackageDirectory(directory);
+  return nearest === undefined ? undefined : { directory: nearest, fresh: false };
+}
+
+/** What a run's questions read from its action context, which `@loomcli/prompts` does not name. */
+type QuestionContext = Parameters<typeof confirm>[0];
+
+/**
+ * The package directory a run acts on. A directory that is neither empty nor inside a package
+ * becomes a new one only at a terminal, when the operator accepts the question; declined, off a
+ * terminal, or under `--no-input`, init fails and names the command that creates a `package.json`.
+ */
+async function chosenTarget(context: QuestionContext, cwd: string) {
+  const target = initTarget(cwd);
+  if (target !== undefined) {
+    return target;
+  }
+  const refusal = new Error(
+    `${cwd} is not empty and no package.json is at or above it, so create one with npm init -y, or your package manager's equivalent, and run loom init again.`,
+  );
+  if (!context.interactive) {
+    throw refusal;
+  }
+  const created = newPackageDirectory(resolve(cwd));
+  const accepted = await confirm(context, {
+    default: true,
+    message: 'No package.json is here or above it. Create one in this directory?',
+  });
+  if (!accepted) {
+    throw refusal;
+  }
+  return created;
+}
+
+/**
+ * Checks the package's `package.json` before init asks or writes anything: it must be a JSON
+ * object, and it must name the application when a piece the run writes reads the name.
+ */
+function checkManifest(target: Target, only: readonly Piece[]) {
+  if (target.fresh) {
+    return;
+  }
+  const manifest = readManifest(target.directory);
+  if (namedPieces.some((piece) => isSelected(only, piece))) {
+    scaffoldName(manifest);
+  }
 }
 
 /**
@@ -250,7 +297,7 @@ function warnPlainTypescript(run: Run, target: Target) {
   if (run.tooling.linter !== 'eslint' || target.fresh) {
     return;
   }
-  const range = declaredTypescript(parseManifest(manifestSource(target)));
+  const range = declaredTypescript(targetManifest(target));
   if (range === undefined || isTypescriptAlias(range)) {
     return;
   }
@@ -401,20 +448,26 @@ function isSelected(only: readonly Piece[], piece: Piece) {
   return only.length === 0 || only.includes(piece);
 }
 
-/** The `package.json` text a run starts from: the new manifest in an empty directory. */
+/** The `package.json` text a run starts from: the new manifest in a new package directory. */
 function manifestSource({ directory, fresh }: Target) {
   return fresh
     ? newManifest(basename(directory))
     : readFileSync(join(directory, 'package.json'), 'utf8');
 }
 
+/** The `package.json` object a run starts from. */
+function targetManifest(target: Target) {
+  return parseManifest(manifestSource(target), join(target.directory, 'package.json'));
+}
+
 /**
  * What a package already settles about its tooling, which init follows without asking: the linter
- * of a lint configuration file, and the runner a dependency field declares, vitest or Bun's types.
+ * of a lint configuration file, which a directory that gains its `package.json` may already hold,
+ * and the runner a dependency field declares, vitest or Bun's types.
  */
 function existingTooling(target: Target): Partial<Tooling> {
-  const linter = target.fresh ? undefined : existingLinter(target.directory);
-  const runner = target.fresh ? undefined : existingRunner(parseManifest(manifestSource(target)));
+  const linter = existingLinter(target.directory);
+  const runner = existingRunner(targetManifest(target));
   return {
     ...(linter === undefined ? {} : { linter }),
     ...(runner === undefined ? {} : { runner }),
@@ -427,7 +480,7 @@ function existingTooling(target: Target): Partial<Tooling> {
  */
 function keysDiffer(target: Target, first: Tooling, second: Tooling) {
   const source = manifestSource(target);
-  const name = scaffoldName(manifestOf(source));
+  const name = scaffoldName(manifestOf(source, join(target.directory, 'package.json')));
   const versions = { loom: loomVersion, typescript: typescriptRange };
   const textFor = (tooling: Tooling) =>
     addMissingKeys(source, scaffoldKeys(name, versions, tooling)).text;
@@ -540,7 +593,8 @@ export const init = new Command('init', {
   .action(async (context) => {
     const { host, onShutdown, options, out, passthrough, signal, supplied } = context;
     await report({ out, passthrough, signal }, async () => {
-      const target = initTarget(host.cwd);
+      const target = await chosenTarget(context, host.cwd);
+      checkManifest(target, options.only);
       const existing = existingTooling(target);
       const needed = neededQuestions(target, options.only);
       // Precedence: a supplied option, the package's own setting, a terminal question, the default.

@@ -5,6 +5,7 @@ import { boolean, looseObject, minLength, object, optional, pipe, string } from 
 import type { InferOutput } from 'valibot';
 
 import { stringMap } from './json-object.js';
+import { parseManifest } from './manifest.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import type { RunHost } from './run-host.js';
 import { parseVersion } from './version.js';
@@ -183,7 +184,7 @@ export async function readParticipants(checkout: Checkout, ref?: string) {
       const directory = `packages/${entry.name}`;
       const path = `${directory}/package.json`;
       const source = await readRegularFile(checkout, path, ref);
-      const input: unknown = JSON.parse(source);
+      const input = parseManifest(source, path);
       if (!parseOrThrow(visibility, input).private) {
         participants.push({
           directory,

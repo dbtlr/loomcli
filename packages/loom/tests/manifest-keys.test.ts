@@ -59,3 +59,12 @@ test('a participant with dependencies that are not strings names each dependency
       'dependencies.right: Invalid type: Expected string but received true',
   );
 });
+
+test('a participant whose package.json is not valid JSON names its path and where the JSON breaks', async () => {
+  const root = temporaryRoot('loom-keys-');
+  mkdirSync(join(root, 'packages/core'), { recursive: true });
+  writeFileSync(join(root, 'packages/core/package.json'), '{\n  "name": "@sample/core",\n}\n');
+  await expect(readParticipants(workingTree(root))).rejects.toThrow(
+    'packages/core/package.json is not valid JSON: line 3, column 1 needs a property name in double quotes, so fix it there and run loom again.',
+  );
+});
