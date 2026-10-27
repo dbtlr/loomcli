@@ -2,7 +2,7 @@ import { DeclarationError, quoted } from './errors.js';
 import { partFinding } from './facts.js';
 import type { FactSite } from './facts.js';
 import type { Log } from './log.js';
-import { foreignValue, foreignValueCorrection } from './plugin-rules.js';
+import { foreignValue, foreignValueCorrection, providerNameTaken } from './plugin-rules.js';
 import type { OnShutdown } from './signal-lane.js';
 import type { Host } from './types.js';
 
@@ -147,9 +147,40 @@ interface DefinitionRecord {
 /** Every provider value `provider()` returned, keyed to the parts of its definition core calls. */
 const definitions = new WeakMap<object, DefinitionRecord>();
 
+/** A name two different providers hold, and the index of the listed entry through which the second is reached. */
+interface NameClash {
+  readonly index: number;
+  readonly name: string;
+}
+
+/** The first name two different providers hold among those a list reaches, with where the second enters. */
+function findNameClash(listed: readonly AnyProvider[]): NameClash | undefined {
+  const names = new Set<string>();
+  const seen = new Set<AnyProvider>();
+  const clashIn = (reached: AnyProvider): string | undefined => {
+    if (seen.has(reached)) {
+      return undefined;
+    }
+    seen.add(reached);
+    if (names.has(reached.name)) {
+      return reached.name;
+    }
+    names.add(reached.name);
+    return reached.uses.map(clashIn).find((name) => name !== undefined);
+  };
+  for (const [index, entry] of listed.entries()) {
+    const name = clashIn(entry);
+    if (name !== undefined) {
+      return { index, name };
+    }
+  }
+  return undefined;
+}
+
 /**
  * One `uses` list, frozen, each entry a provider this copy of `@loomcli/core` built. A provider
- * another installed copy built carries no definition this copy can read.
+ * another installed copy built carries no definition this copy can read. No two different providers
+ * the list reaches share a name, which the types miss when one generic factory returns both.
  */
 function readUses(
   site: FactSite,
@@ -165,6 +196,15 @@ function readUses(
       });
     }
   });
+  const clash = findNameClash(listed);
+  if (clash !== undefined) {
+    throw new DeclarationError(providerNameTaken, {
+      correction:
+        'Give each provider its own name. A package that exports a provider prefixes its name with its own, such as "acmeToken", so it never meets another package\'s.',
+      findings: [partFinding(site, [clash.index])],
+      sentence: `${site.subject} reaches two different providers named ${quoted(clash.name)}.`,
+    });
+  }
   return Object.freeze(listed);
 }
 

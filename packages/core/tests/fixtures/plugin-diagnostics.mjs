@@ -7,6 +7,7 @@ import {
   extension,
   FatalError,
   plugin,
+  provider,
   readExtension,
   style,
   view,
@@ -23,6 +24,10 @@ function schema(answer) {
 }
 
 const accepting = schema((value) => ({ value }));
+/** A provider factory: every value it returns has one name and one type. */
+const secret = (name, variable) =>
+  provider(name, { load: async () => ({ default: () => variable }) });
+
 const note = extension('@acme/notes/command', { schema: accepting, target: 'command' });
 
 /**
@@ -182,6 +187,25 @@ const scenarios = {
     new Command('get', {
       uses: [Object.freeze({ lifetime: 'ephemeral', name: 'pool', uses: [] })],
     }),
+  // Two values one factory returns pass the types, so core rejects them where the list is declared.
+  'provider-name-taken': () =>
+    new Command('get', { uses: [secret('token', 'A_TOKEN'), secret('token', 'B_TOKEN')] }),
+  'provider-name-taken-closure': () => {
+    const first = provider('first', {
+      load: async () => ({ default: () => 1 }),
+      uses: [secret('token', 'A_TOKEN')],
+    });
+    const second = provider('second', {
+      load: async () => ({ default: () => 2 }),
+      uses: [secret('token', 'B_TOKEN')],
+    });
+    return provider('client', {
+      load: async () => ({ default: () => 3 }),
+      uses: [first, second],
+    });
+  },
+  'provider-name-taken-root': () =>
+    new Application('probe', { uses: [secret('token', 'A_TOKEN'), secret('token', 'B_TOKEN')] }),
   'provider-root-entry': () =>
     new Application('probe', {
       uses: [Object.freeze({ lifetime: 'persistent', name: 'pool', uses: [] })],

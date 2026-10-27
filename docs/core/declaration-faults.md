@@ -58,6 +58,9 @@ The call that receives a bad value throws, and so does a call that the receiver'
   - Two distinct descriptors that share an identity: [`@loomcli/core/two-package-copies`](diagnostics.md#loomclicoretwo-package-copies).
   - Two [failure encoders](failure-views.md#failure-encoders) for one media type: [`@loomcli/core/failure-encoder-taken`](diagnostics.md#loomclicorefailure-encoder-taken).
   - Each `commands` entry also meets the [attach](#at-attach) checks at `plugin()`, against the root it will join and the entries before it: a Command that is not finished ([`@loomcli/core/command-without-action`](diagnostics.md#loomclicorecommand-without-action)), and two entries with one name or an alias that repeats a sibling's ([`@loomcli/core/sibling-name-taken`](diagnostics.md#loomclicoresibling-name-taken)). A sibling diagnostic names the root Command, the parent the entries attach to.
+- **Providers.** `provider()`, `new Command()`, and `new Application()` apply two rules to a `uses` list.
+  - A provider another installed copy of core built: [`@loomcli/core/foreign-value`](diagnostics.md#loomclicoreforeign-value).
+  - Two different providers with one name anywhere among the providers the list reaches, which the types catch only when their types differ: [`@loomcli/core/provider-name-taken`](diagnostics.md#loomclicoreprovider-name-taken).
 - **The Application.** `new Application(name, options)` applies every rule on its own options and on the installed set.
   - A view, override, translation, or plugin another installed copy of core built: [`@loomcli/core/foreign-value`](diagnostics.md#loomclicoreforeign-value).
   - Two distinct declared-view objects that share an identity across the Application, its plugins, and core, and two distinct descriptors that share an identity across the plugins: [`@loomcli/core/two-package-copies`](diagnostics.md#loomclicoretwo-package-copies).

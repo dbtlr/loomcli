@@ -130,6 +130,24 @@ const cases: Record<string, RuleParts> = {
     rule: 'foreign-value',
     sentence: 'Command "get" lists a provider another installed copy of @loomcli/core built.',
   },
+  'provider-name-taken': {
+    correction:
+      'Give each provider its own name. A package that exports a provider prefixes its name with its own, such as "acmeToken", so it never meets another package\'s.',
+    rule: 'provider-name-taken',
+    sentence: 'Command "get" reaches two different providers named "token".',
+  },
+  'provider-name-taken-closure': {
+    correction:
+      'Give each provider its own name. A package that exports a provider prefixes its name with its own, such as "acmeToken", so it never meets another package\'s.',
+    rule: 'provider-name-taken',
+    sentence: 'Provider "client" reaches two different providers named "token".',
+  },
+  'provider-name-taken-root': {
+    correction:
+      'Give each provider its own name. A package that exports a provider prefixes its name with its own, such as "acmeToken", so it never meets another package\'s.',
+    rule: 'provider-name-taken',
+    sentence: 'The Application reaches two different providers named "token".',
+  },
   'provider-root-entry': {
     correction:
       'Install one copy of @loomcli/core, so the Application and every plugin package share it.',
