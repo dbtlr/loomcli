@@ -406,7 +406,7 @@ What follows a suspend once the process runs again, after the `SIGCONT` that `fg
 _Avoid_: Continue, foreground (for the event)
 
 **Interrupt key**:
-Ctrl-C, Ctrl-\, or Ctrl-Z, which a cooked terminal turns into `SIGINT`, `SIGQUIT`, or `SIGTSTP` and raw mode delivers as the byte 0x03, 0x1c, or 0x1a. A reader that reads keys in raw mode passes what it read to `raiseInterruptKeys`, which raises each key's signal through `host.raise`, or cancels the run where the stdin is not its signal source's own terminal, and drops the unread keys once a signal is raised, as a cooked terminal does.
+Ctrl-C, Ctrl-\, or Ctrl-Z, which a cooked terminal turns into `SIGINT`, `SIGQUIT`, or `SIGTSTP` and raw mode delivers as the byte 0x03, 0x1c, or 0x1a. A reader that reads keys in raw mode passes what it read to `raiseInterruptKeys`, which raises each key's signal through `host.raise`, or, where the stdin is not its signal source's own terminal, cancels the run for Ctrl-C and Ctrl-\ and drops Ctrl-Z, and drops the unread keys once a signal is raised, as a cooked terminal does.
 _Avoid_: Control key, signal key, break key
 
 ## Output

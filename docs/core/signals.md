@@ -218,7 +218,7 @@ export const pick = new Command('pick', { description: 'Pick a branch.' }).actio
   const picker = openPicker(context.host);
   for await (const chunk of picker.keys()) {
     const { raised, rest } = raiseInterruptKeys(context, String(chunk));
-    if (raised === 'ending') {
+    if (raised === 'ending' || context.signal.aborted) {
       break;
     }
     picker.type(rest);
@@ -227,12 +227,12 @@ export const pick = new Command('pick', { description: 'Pick a branch.' }).actio
 });
 ```
 
-In raw mode the terminal sends a key as a byte instead of a signal, so a reader that reads keys from its signal source's own terminal, `process.stdin` for the real process, raises the signal the key stands for on that signal source through [`host.raise`](host.md#host-facts): `SIGINT` for Ctrl-C (0x03), `SIGQUIT` for Ctrl-\ (0x1c), and `SIGTSTP` for Ctrl-Z (0x1a). A key then means at a question what it means at a cooked terminal: Ctrl-C starts the shutdown, and Ctrl-Z suspends. `raiseInterruptKeys(context, text)` applies this rule to what one read returned, and core's own readers call it: the [background query](background.md) and the [prompts library](../libs/prompts.md)'s questions. A reader an author writes calls it with its action's or middleware's context.
+In raw mode the terminal sends a key as a byte instead of a signal, so a reader that reads keys from its signal source's own terminal, `process.stdin` for the real process, raises the signal the key stands for on that signal source through [`host.raise`](host.md#host-facts): `SIGINT` for Ctrl-C (0x03), `SIGQUIT` for Ctrl-\ (0x1c), and `SIGTSTP` for Ctrl-Z (0x1a). A key then means at a question what it means at a cooked terminal: Ctrl-C starts the shutdown, and Ctrl-Z suspends. `raiseInterruptKeys(context, text)` applies this rule to what one read returned, and core's own readers call it: the [background query](background.md) and the [prompts library](../libs/prompts.md)'s questions. A reader an author writes calls it with its action's context.
 
-- **The keys.** `text` is what one read returned, decoded as UTF-8 or as latin1, which give the three bytes the same characters. Each interrupt key is removed, and its signal is raised in arrival order.
+- **The keys.** `text` is what the reader read, one read's chunk for a question and the whole wait's typeahead for the background query, decoded as UTF-8 or as latin1, which give the three bytes the same characters. Each interrupt key is removed, and its signal is raised in arrival order.
 - **One suspend per read.** Several Ctrl-Z keys in one `text` raise one `SIGTSTP`, at the first one's place, because a cooked terminal suspends once.
-- **The flush.** Once a signal is raised, `rest` is empty, as a cooked terminal discards the input still unread, so no key typed with Ctrl-C or Ctrl-Z answers anything. A reader that holds keys from an earlier read drops them too, and after `'ending'` it reads no further key, because the process is ending. After `'suspending'` it reads on once the process resumes.
-- **Another stream.** A reader whose stdin is any other stream, such as one an embedding host gives `processHandle` or a mock's piped stdin, raises no signal, because the process is not that terminal's, and `host.raise` answers `false`: Ctrl-C and Ctrl-\ call `context.cancel()`, so the run ends with 130 and the process goes on, and Ctrl-Z does nothing. `raised` is then `undefined`, and `rest` keeps every other key.
+- **The flush.** Once a signal is raised, `rest` is empty, as a cooked terminal discards the input still unread, so no key typed with Ctrl-C or Ctrl-Z answers anything. A reader that holds keys, or part of a key, from an earlier read drops them too, and after `'ending'` it reads no further key, because the process is ending. After `'suspending'` it reads on once the process resumes.
+- **Another stream.** A reader whose stdin is any other stream, such as one an embedding host gives `processHandle` or a mock's piped stdin, raises no signal, because the process is not that terminal's, and `host.raise` answers `false`: Ctrl-C and Ctrl-\ call `context.cancel()`, so the run ends with 130 and the process goes on, and Ctrl-Z does nothing. `raised` is then `undefined`, and `rest` keeps every other key, so a reader learns of the cancellation from `context.signal`.
 - **End of input.** Stdin closing or Ctrl-D with nothing typed is the reader's own to read, and still ends the run through the action's `cancel()`.
 - **The mock keyboard.** A mock's [keyboard](../libs/testing.md#mockprocess) is its signal source's own terminal, so a key a test scripts raises its signal on the mock as a key at a real terminal does.
 
