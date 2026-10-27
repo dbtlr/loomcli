@@ -9,6 +9,7 @@ import {
 import { basename, dirname, join, resolve } from 'node:path';
 
 import { Command } from '@loomcli/core';
+import type { PostInstall } from '@loomcli/core';
 import { confirm, select } from '@loomcli/prompts';
 import { createValidator } from '@loomcli/validators';
 
@@ -26,7 +27,7 @@ import {
 } from '../../content/scaffold.js';
 import type { ApplicationImport } from '../../content/scaffold.js';
 import { readApplicationExports } from '../../helpers/application-exports.js';
-import type { ApplicationExports } from '../../helpers/application-exports.js';
+import type { ApplicationExports, GraphRead } from '../../helpers/application-exports.js';
 import {
   githubRepository,
   manifestOf,
@@ -130,11 +131,16 @@ interface Run extends RunHost {
 }
 
 /**
- * What init learned from an authored application module: how the entry imports its Application,
- * that the module could not be loaded and why, or that it loaded and exports no single Application.
+ * What init learned of the application module, once for the run. A module init writes in the run,
+ * or one the package lacks, is read as the scaffold's, with no graph. An authored one that loads
+ * reads as how the entry imports its Application and what the build of its graph found. Otherwise
+ * it could not be loaded and why, it loaded and exports no single Application, or it threw a
+ * declaration fault while it loaded, with its Developer Diagnostic.
  */
-type AuthoredImport =
-  | { readonly imported: ApplicationImport; readonly kind: 'read' }
+type ApplicationRead =
+  | { readonly imported: ApplicationImport; readonly kind: 'scaffold' }
+  | { readonly graph: GraphRead; readonly imported: ApplicationImport; readonly kind: 'read' }
+  | { readonly diagnostic: string; readonly kind: 'fault' }
   | { readonly kind: 'unloaded'; readonly reason: string }
   | { readonly kind: 'unexported' };
 
@@ -262,26 +268,92 @@ function writeManaged(run: Run, path: string, content: string, mode?: number) {
 }
 
 /**
- * Keeps the installer script current for the application's name and the package's GitHub
- * repository, through `writeManaged`. Each write sets mode 755, and an unchanged script is left
- * alone, mode and all. A package that names no GitHub repository gets no script and a warning, so
- * an author who sets `repository` gets the script on the next run.
+ * What the installer script renders of the application module: the post-install declaration,
+ * `undefined` where it declares none; or the Developer Diagnostic of a declaration fault, which
+ * fails the run once every other piece is written. A module init cannot read reads as `undefined`
+ * after a warning, and the script is not written.
  */
-function writeInstaller(run: Run) {
+type InstallRead = { readonly declared: PostInstall | undefined } | { readonly diagnostic: string };
+
+/** The warning that the installer script was not written because the module could not be loaded. */
+function unloadedInstaller(run: Run, reason: string): undefined {
+  run.warn(
+    `warning: ${installerPath} was not written because ${applicationPath} could not be loaded: ${reasonLine(reason)}. Install the package and run loom init again.`,
+  );
+  return undefined;
+}
+
+/** What the installer script renders of what the build of the Application's graph found. */
+function graphDeclaration(run: Run, graph: GraphRead): InstallRead | undefined {
+  if ('fault' in graph) {
+    return { diagnostic: graph.fault };
+  }
+  if ('failure' in graph) {
+    return unloadedInstaller(run, graph.failure);
+  }
+  return { declared: graph.postInstall };
+}
+
+/** What the installer script renders of the application module, under `InstallRead`. */
+function installRead(run: Run, read: ApplicationRead): InstallRead | undefined {
+  switch (read.kind) {
+    case 'scaffold': {
+      return { declared: undefined };
+    }
+    case 'read': {
+      return graphDeclaration(run, read.graph);
+    }
+    case 'fault': {
+      return { diagnostic: read.diagnostic };
+    }
+    case 'unloaded': {
+      return unloadedInstaller(run, read.reason);
+    }
+    case 'unexported': {
+      run.warn(
+        `warning: ${installerPath} was not written because ${applicationPath} exports no Application loom can read. Export one Application from ${applicationPath}, then run loom init again.`,
+      );
+      return undefined;
+    }
+    default: {
+      const exhaustive: never = read;
+      return exhaustive;
+    }
+  }
+}
+
+/**
+ * Keeps the installer script current for the application's name, the package's GitHub repository,
+ * and the Application's post-install declaration, through `writeManaged`. Each write sets mode
+ * 755, and an unchanged script is left alone, mode and all. A package that names no GitHub
+ * repository gets no script and a warning, so an author who sets `repository` gets the script on
+ * the next run. An application module init cannot read gets no script either, and leaves an
+ * existing one alone. It answers the Developer Diagnostic of a declaration fault, which fails the
+ * run, or `undefined`.
+ */
+async function writeInstaller(
+  run: Run,
+  reading: () => Promise<ApplicationRead>,
+): Promise<string | undefined> {
   const manifest = readManifest(run.directory);
   const repository = githubRepository(manifest);
   if (repository === undefined) {
     run.warn(
       `warning: ${installerPath} was not written because package.json names no GitHub repository. Set repository to a GitHub address such as owner/name, then run loom init again.`,
     );
-    return;
+    return undefined;
+  }
+  const read = installRead(run, await reading());
+  if (read === undefined || 'diagnostic' in read) {
+    return read?.diagnostic;
   }
   writeManaged(
     run,
     installerPath,
-    installerScript(scaffoldName(manifest), repository),
+    installerScript(scaffoldName(manifest), repository, read.declared),
     executableMode,
   );
+  return undefined;
 }
 
 /** Where the side-by-side TypeScript install that typescript-eslint needs is described. */
@@ -323,13 +395,14 @@ function writeKeys(run: Run) {
 }
 
 /**
- * How the entry and the test import an application module the author already holds, learned by
- * loading it: the name it exports its one Application under, else its default export. A module that
- * could not be loaded, because core does not resolve, Bun is missing, or the module throws, reads
- * `unloaded` with the reason, and one that loads but exports no single Application reads
- * `unexported`.
+ * What an application module the author already holds gives, learned by loading it: the name the
+ * entry and the test import its one Application under, else its default export, and what the build
+ * of its graph found. A module that could not be loaded, because core does not resolve, Bun is
+ * missing, or the module throws, reads `unloaded` with the reason, one that threw a declaration
+ * fault reads `fault` with its Developer Diagnostic, and one that loads but exports no single
+ * Application reads `unexported`.
  */
-async function authoredImport(run: Run, name: string): Promise<AuthoredImport> {
+async function authoredRead(run: Run, name: string): Promise<ApplicationRead> {
   let result: ApplicationExports | undefined = undefined;
   try {
     result = await readApplicationExports(run, {
@@ -342,14 +415,19 @@ async function authoredImport(run: Run, name: string): Promise<AuthoredImport> {
     run.signal.throwIfAborted();
     return { kind: 'unloaded', reason: error instanceof Error ? error.message : String(error) };
   }
+  if ('fault' in result) {
+    return { diagnostic: result.fault, kind: 'fault' };
+  }
   if ('failure' in result) {
     return result.loaded ? { kind: 'unexported' } : { kind: 'unloaded', reason: result.failure };
   }
+  const { graph } = result;
   const named = result.names.find((exported) => exported !== 'default');
   if (named !== undefined) {
-    return { imported: { identifier: named, kind: 'named' }, kind: 'read' };
+    return { graph, imported: { identifier: named, kind: 'named' }, kind: 'read' };
   }
-  return { imported: { identifier: applicationIdentifier(name), kind: 'default' }, kind: 'read' };
+  const identifier = applicationIdentifier(name);
+  return { graph, imported: { identifier, kind: 'default' }, kind: 'read' };
 }
 
 /**
@@ -362,19 +440,19 @@ function reasonLine(reason: string) {
 }
 
 /**
- * How the entry and the test import the Application, learned once for the run and only when a file
- * needs it: the scaffold's identifier when init writes the application module too, and what the
- * module exports when the author already holds one.
+ * The application module as the entry, the test, and the installer script read it, learned once
+ * for the run and only when a file needs it: the scaffold's when init writes the application module
+ * too or the package holds none, and what loading it found when the author already holds one.
  */
-function applicationImporter(run: Run, authored: boolean): () => Promise<AuthoredImport> {
-  let outcome: AuthoredImport | undefined = undefined;
+function applicationReader(run: Run, authored: boolean): () => Promise<ApplicationRead> {
+  let outcome: ApplicationRead | undefined = undefined;
   return async () => {
     const name = scaffoldName(readManifest(run.directory));
     outcome ??= authored
-      ? await authoredImport(run, name)
+      ? await authoredRead(run, name)
       : {
           imported: { identifier: applicationIdentifier(name), kind: 'named' },
-          kind: 'read',
+          kind: 'scaffold',
         };
     return outcome;
   };
@@ -382,20 +460,22 @@ function applicationImporter(run: Run, authored: boolean): () => Promise<Authore
 
 /**
  * The import a file writes for the Application, or `undefined` after a warning that the file was
- * not written. An authored application module init cannot read draws a warning and no file.
+ * not written. An authored application module init cannot read draws a warning and no file, and a
+ * declaration fault it threw while it loaded reads as a module that could not be loaded.
  */
 function importedApplication(
   run: Run,
   file: { readonly noun: string; readonly path: string },
-  outcome: AuthoredImport,
+  outcome: ApplicationRead,
 ): ApplicationImport | undefined {
-  if (outcome.kind === 'read') {
+  if (outcome.kind === 'read' || outcome.kind === 'scaffold') {
     return outcome.imported;
   }
   const { noun, path } = file;
-  if (outcome.kind === 'unloaded') {
+  if (outcome.kind === 'unloaded' || outcome.kind === 'fault') {
+    const reason = outcome.kind === 'unloaded' ? outcome.reason : outcome.diagnostic;
     run.warn(
-      `warning: ${path} was not written because ${applicationPath} could not be loaded: ${reasonLine(outcome.reason)}. Install the package and run loom init again, or write the ${noun} by hand.`,
+      `warning: ${path} was not written because ${applicationPath} could not be loaded: ${reasonLine(reason)}. Install the package and run loom init again, or write the ${noun} by hand.`,
     );
   } else {
     run.warn(
@@ -406,22 +486,22 @@ function importedApplication(
 }
 
 /** Writes the entry when it is missing. */
-async function writeEntry(run: Run, importing: () => Promise<AuthoredImport>) {
+async function writeEntry(run: Run, reading: () => Promise<ApplicationRead>) {
   if (existsSync(join(run.directory, entryPath))) {
     return;
   }
-  const imported = importedApplication(run, { noun: 'entry', path: entryPath }, await importing());
+  const imported = importedApplication(run, { noun: 'entry', path: entryPath }, await reading());
   if (imported !== undefined) {
     write(run, entryPath, entryModule(imported));
   }
 }
 
 /** Writes the test of the assembly check when it is missing, for the run's test runner. */
-async function writeTest(run: Run, importing: () => Promise<AuthoredImport>) {
+async function writeTest(run: Run, reading: () => Promise<ApplicationRead>) {
   if (existsSync(join(run.directory, testPath))) {
     return;
   }
-  const imported = importedApplication(run, { noun: 'test', path: testPath }, await importing());
+  const imported = importedApplication(run, { noun: 'test', path: testPath }, await reading());
   if (imported !== undefined) {
     write(run, testPath, applicationTest(run.tooling.runner, imported));
   }
@@ -527,7 +607,7 @@ async function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; t
     writeNewManifest(context);
   }
   const authored = existsSync(join(directory, applicationPath));
-  const importing = applicationImporter(context, authored);
+  const reading = applicationReader(context, authored);
   if (selected('package') || selected('lint')) {
     warnPlainTypescript(context, run.target);
   }
@@ -539,13 +619,13 @@ async function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; t
     write(context, applicationPath, applicationModule(name, applicationIdentifier(name)));
   }
   if (selected('entry')) {
-    await writeEntry(context, importing);
+    await writeEntry(context, reading);
   }
   if (selected('tsconfig') && !existsSync(join(directory, typescriptConfigPath))) {
     write(context, typescriptConfigPath, typescriptConfig);
   }
   if (selected('test')) {
-    await writeTest(context, importing);
+    await writeTest(context, reading);
   }
   if (selected('lint')) {
     writeLint(context);
@@ -556,8 +636,10 @@ async function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; t
   if (selected('skill')) {
     writeManaged(context, '.agents/skills/loom-changelog/SKILL.md', changelogSkill);
   }
-  if (selected('install')) {
-    writeInstaller(context);
+  const fault = selected('install') ? await writeInstaller(context, reading) : undefined;
+  // A declaration fault fails the run once every other piece is written.
+  if (fault !== undefined) {
+    throw new Error(fault);
   }
 }
 
