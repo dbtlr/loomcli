@@ -19,7 +19,7 @@ The owner's ruling on 2026-10-27: "CI should effectively become non-interactive 
 
 ## Decision
 
-- **CI as ci-info reads it.** A run is under CI when `CI` in `host.env` is set, nonempty, and not `false`. Core reads it once, in one place, for both rules below.
+- **CI as ci-info reads it.** A run is under CI when `CI` in `host.env` is set, nonempty, and not `false`. Core reads it through one helper for both rules below.
 - **Not interactive.** Under CI, the interaction decision is off whatever the terminal facts say. A question whose linked option was supplied takes that value without asking, a linked question whose option was omitted fails with core's missing-input error and exit 2, an unlinked question fails with `InteractionUnavailableError` and exit 1, and an omitted `required: 'non-interactive'` option fails before the action with exit 2, exactly as with stdin piped.
 - **No live region.** On a terminal stderr, a region opened without `input: true` is not live under CI or under `TERM=dumb`, a terminal that cannot move its cursor, so a progress line writes the plain lines it writes to a pipe. On such a terminal, `out.draw` keeps the Application's `terminalControls` setting, as a draw to a stderr that is not a terminal does, and a shutdown or a suspend writes no show-cursor sequence unless the Application preserves controls. An input region still draws under `TERM=dumb`, so a question there still asks.
 - **The way back.** `CI=false` says the run is not CI, so questions ask and regions draw as the terminal facts allow. The interaction mark keeps ADR-0082's one-way rule: it can turn interaction off and never on.
