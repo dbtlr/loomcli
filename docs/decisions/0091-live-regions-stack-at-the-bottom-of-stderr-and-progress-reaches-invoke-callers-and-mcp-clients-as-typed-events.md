@@ -4,7 +4,7 @@ title: ADR-0091 - Live regions stack at the bottom of stderr, and progress reach
 description: Out gains region(options?), one call that opens a live region at the bottom of stderr and returns a handle with draw, end, a signal core aborts whenever the region closes, and report. Core keeps every open region below every other write, in open order, erases them before any other write and redraws them after it, recounts each last frame at the current width before it erases, freezes the others while an input region is open and opens one input region at a time, draws no region without input at verbosity -1, and closes every open region before it renders a failure. out.draw stays as a region of one frame and keeps its row count. A report builds a typed progress event that InvokeOptions.onProgress receives and the MCP plugin sends as notifications/progress. @loomcli/prompts moves its questions onto input regions and adds progress(context, settings), its progress view, and the optional progressStyle() plugin. Core never uses a timer to cancel or limit work; a timer that animates a frame belongs to its author or library.
 status: accepted
 created: 2026-10-19
-modified: 2026-10-20
+modified: 2026-10-27
 ---
 
 # ADR-0091 - Live regions stack at the bottom of stderr, and progress reaches invoke callers and MCP clients as typed events
@@ -72,3 +72,4 @@ Accepted in 0.14.0.
 
 - 2026-10-19: Proposed with the live region, typed progress events, and progress line contract.
 - 2026-10-20: A region's `end` takes an optional label that its end event carries, and a progress line's end messages pass to it, so an observer and an MCP client read the end text the terminal shows.
+- 2026-10-27: [ADR-0114](0114-a-ci-run-is-not-interactive-and-draws-no-live-region.md), proposed, narrows when a region is live: on a terminal stderr, a region without `input: true` is not live under CI or `TERM=dumb`, so a progress line writes plain lines, and `out.draw` there keeps the Application's `terminalControls` setting. It binds when that record is accepted.

@@ -112,6 +112,15 @@ function assembled<Facts extends object, Cwd, Release>(parts: {
 }
 
 /**
+ * Whether the run is under CI, read as ci-info reads `CI`: set and nonempty, where `CI=false` is an
+ * operator saying the run is not CI. A CI run is not interactive and draws no live region.
+ */
+export function underCI(env: Readonly<Record<string, string | undefined>>): boolean {
+  const ci = env.CI ?? '';
+  return ci !== '' && ci !== 'false';
+}
+
+/**
  * The roots a defect's frame may lie under: the working directory as the host names it, and the
  * path it resolves to through symbolic links, because a runtime names a module by its resolved
  * path. A directory that cannot be resolved is its own one root.
