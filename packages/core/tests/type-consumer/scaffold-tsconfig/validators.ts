@@ -22,6 +22,14 @@ const seconds = createValidator({
   },
 });
 
+/** A parse that rejects directly and accepts through a promise. */
+const size = createValidator({
+  parse: (raw) =>
+    raw === ''
+      ? { issues: [{ message: 'Name a file.' }] }
+      : Promise.resolve(raw.length).then((length) => ({ value: length })),
+});
+
 /** An annotated parse and a stated output type read as they did. */
 const annotated = createValidator({
   parse: (raw): ParseResult<number> => ({ value: Number(raw) }),
@@ -38,10 +46,12 @@ const label = createValidator({
 const pace = new Command('pace')
   .argument('distance', { required: true, validate: metres })
   .argument('time', { required: true, validate: seconds })
+  .argument('file', { required: true, validate: size })
   .action(({ args }) => {
     const distance: number = args.distance;
     const time: number = args.time;
-    return distance / time;
+    const file: number = args.file;
+    return distance / time + file;
   });
 
 declare const annotatedOutput: StandardSchemaV1.InferOutput<typeof annotated>;
@@ -55,7 +65,7 @@ const absent: StandardSchemaV1.InferOutput<typeof metres> = undefined;
 // @ts-expect-error TS2322: An accepted undefined stays in the output.
 const present: string = labelOutput;
 
-// @ts-expect-error TS2322: A parse returns `{ value }` or `{ issues }`.
+// @ts-expect-error TS2769: A parse returns `{ value }` or `{ issues }`.
 createValidator({ parse: (raw) => ({ raw }) });
 
 export { absent, outputs, pace, present };

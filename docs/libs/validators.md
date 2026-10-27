@@ -234,12 +234,14 @@ path(
 ## createValidator
 
 ```ts
-createValidator<Output, Result extends ParseResult<Output> = ParseResult<Output>>(definition: {
-  parse: (raw: string, context: ValidationContext) => Result | Promise<Result>;
+createValidator<Output, Return extends ParseReturn<Output> = ParseReturn<Output>>(definition: {
+  parse: (raw: string, context: ValidationContext) => Return;
   inputSchema?: Readonly<Record<string, unknown>>;
-}): Validator<AcceptedOutput<Result>> // or StandardSchemaV1<string, AcceptedOutput<Result>> without inputSchema
+}): Validator<AcceptedOutput<Awaited<Return>>> // or StandardSchemaV1<string, ...> without inputSchema
 
-// The value of every branch of Result that is not { issues }.
+type ParseReturn<Output> = ParseResult<Output> | Promise<ParseResult<Output>>;
+
+// Shown to explain the output, not exported: the value of every branch that is not { issues }.
 type AcceptedOutput<Result> = Result extends StandardSchemaV1.FailureResult
   ? never
   : Result extends { readonly value: infer Value } ? Value : never;
