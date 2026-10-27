@@ -1,6 +1,7 @@
 import { object, string } from 'valibot';
 
 import { readFragments } from './fragments.js';
+import { parseManifest } from './manifest.js';
 import { isBuildAffectingPath } from './material.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import { checkRelease } from './release-check.js';
@@ -65,7 +66,7 @@ export async function checkPullRequest(
     if (await git(checkout, ['ls-tree', head, '--', library.path])) {
       const manifest = parseOrThrow(
         object({ version: string() }),
-        JSON.parse(await readRegularFile(checkout, library.path, head)),
+        parseManifest(await readRegularFile(checkout, library.path, head), library.path),
       );
       if (manifest.version !== library.manifest.version) {
         throw new Error(`${library.path}: ordinary PR version must stay ${current.text}.`);

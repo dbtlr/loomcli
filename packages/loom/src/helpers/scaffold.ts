@@ -1,7 +1,7 @@
 import { safeParse } from 'valibot';
 
-import { parseManifest } from './build-facts.js';
 import { jsonObject } from './json-object.js';
+import { parseManifest } from './manifest.js';
 import { withoutByteOrderMark } from './markdown.js';
 import { checkScript, toolDependencies, toolRanges } from './tooling.js';
 import type { Tooling } from './tooling.js';
@@ -271,8 +271,9 @@ export function addMissingKeys(
   source: string,
   keys: readonly ManifestKey[],
 ): { added: string[]; text: string } {
-  const manifest = parseManifest(source);
-  const original = parseManifest(source);
+  // Init reads the package's manifest before it adds a key, so a path relative to the package suffices.
+  const manifest = parseManifest(source, 'package.json');
+  const original = parseManifest(source, 'package.json');
   const added: string[] = [];
   for (const key of keys) {
     if (addKey(manifest, original, key)) {

@@ -1,8 +1,9 @@
+import { join } from 'node:path';
+
 import { object, safeParse, string, union } from 'valibot';
 
 import type { BuildTarget } from './build-target.js';
-import { jsonObject } from './json-object.js';
-import { withoutByteOrderMark } from './markdown.js';
+import { parseManifest } from './manifest.js';
 import { readWorkingFile } from './repository.js';
 
 /** A semantic version, as semver.org's grammar states it and core reads it. */
@@ -225,31 +226,13 @@ export function definePair(facts: BuildFacts): string {
   return `__LOOM_RELEASE__=${JSON.stringify(facts)}`;
 }
 
-/**
- * Parses a `package.json` source into its object, every key kept in its order. A source that is
- * not JSON, or not a JSON object, fails and says so.
- */
-export function parseManifest(source: string): Record<string, unknown> {
-  let document: unknown = undefined;
-  try {
-    document = JSON.parse(withoutByteOrderMark(source));
-  } catch (error) {
-    throw new Error('package.json: expected valid JSON.', { cause: error });
-  }
-  const parsed = safeParse(jsonObject, document);
-  if (!parsed.success) {
-    throw new Error('package.json: expected a JSON object.');
-  }
-  return parsed.output;
-}
-
-/** Reads the standard fields of a `package.json` source. */
-export function manifestOf(source: string): Manifest {
-  const { bin, name, repository, version } = parseManifest(source);
+/** Reads the standard fields of a `package.json` source, the file at `path`. */
+export function manifestOf(source: string, path: string): Manifest {
+  const { bin, name, repository, version } = parseManifest(source, path);
   return { bin, name, repository, version };
 }
 
 /** Reads the standard fields of the `package.json` in a package directory. */
 export function readManifest(directory: string): Manifest {
-  return manifestOf(readWorkingFile(directory, 'package.json'));
+  return manifestOf(readWorkingFile(directory, 'package.json'), join(directory, 'package.json'));
 }
