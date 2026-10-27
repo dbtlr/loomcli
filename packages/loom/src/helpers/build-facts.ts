@@ -67,9 +67,13 @@ function repositoryField(field: unknown): string | undefined {
   return typeof parsed.output === 'string' ? parsed.output : parsed.output.url;
 }
 
-/** The key of a `bin` that is an object with exactly one key, which names the application. */
+/**
+ * The key of a `bin` that is an object with exactly one key, which names the application. An array
+ * is not one, so a `bin` of one path names nothing rather than an application called `0`.
+ */
 function singleBinKey(bin: unknown): string | undefined {
-  const keys = typeof bin === 'object' && bin !== null ? Object.keys(bin) : [];
+  const keys =
+    typeof bin === 'object' && bin !== null && !Array.isArray(bin) ? Object.keys(bin) : [];
   return keys.length === 1 ? keys[0] : undefined;
 }
 

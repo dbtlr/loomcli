@@ -191,3 +191,23 @@ test('a package that names no application still gets a piece that needs no name'
   const result = await runLoom(directory, ['init', '--only', 'changes']);
   expect(result).toEqual({ status: 0, stderr: '', stdout: 'Wrote .changes/README.md.\n' });
 });
+
+test('a package whose bin is an array names no application', async () => {
+  const directory = packageWith('{ "bin": ["dist/main.js"] }\n');
+  const before = snapshot(directory);
+  const result = await runLoom(directory, ['init', '--only', 'application']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(nameless);
+  expect(snapshot(directory)).toEqual(before);
+});
+
+test('at a terminal a directory that gains its package.json keeps the linter its lint configuration selects', async () => {
+  const directory = looseDirectory();
+  put(directory, 'eslint.config.js', 'export default [];\n');
+  const result = await runLoom(directory, ['init'], ['y\r', '\r']);
+  expect(result.status).toBe(0);
+  expect(result.stderr).not.toContain('Which linter');
+  expect(JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')).scripts.check).toBe(
+    'tsc --noEmit && eslint . && bun test',
+  );
+});
