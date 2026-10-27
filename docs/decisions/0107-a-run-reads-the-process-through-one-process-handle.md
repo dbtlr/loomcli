@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0107 - A run reads the process through one process handle
 description: Every run binds one process handle at entry and never replaces it. The handle holds every process fact core reads, the home and temporary folders included, receives every process effect core makes, and starts every child program a run starts. Core reads the global process only where it builds the real handle, and run() and app.invoke take { process } in place of host overrides. @loomcli/testing builds a sealed mock handle that scripts child programs, signals reach only the runs whose handle shares the signal source, and a lint rule holds an application's source to the handle.
-status: proposed
+status: accepted
 created: 2026-10-24
-modified: 2026-10-24
+modified: 2026-10-27
 ---
 
 # ADR-0107 - A run reads the process through one process handle
@@ -62,7 +62,7 @@ ADR-0009, ADR-0051, ADR-0054, ADR-0059, ADR-0065, ADR-0070, ADR-0071, ADR-0079, 
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships the process handle, `processHandle`, `mockProcess`, `host.spawn`, and the `host-bypass` rule, once the repository lint rule holds over the six packages with only the named exceptions, every child program Loom starts goes through `host.spawn` apart from the foreground check's `ps`, the real handle's own child, run inside the real handle's module, and a mock's run is proven to read nothing from the test's process and start no real program under Node and Bun.
+Accepted in 0.16.0.
 
 ## Changelog
 

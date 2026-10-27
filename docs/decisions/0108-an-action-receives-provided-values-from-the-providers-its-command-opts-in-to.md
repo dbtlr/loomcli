@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0108 - An action receives provided values from the providers its Command opts in to
 description: A provider is a value of its own that hands an action a typed value. A Command opts in through uses, and its action reads each value under provided. No plugin or Application installs a provider. An ephemeral value lasts one run and a persistent one the outermost run, shared by nested invoke. A provider reads global options alone. Core builds what the routed Command opted in to at the dispatch boundary and closes it when the action settles, through close or the disposal protocol. Middleware is unchanged.
-status: proposed
+status: accepted
 created: 2026-10-25
-modified: 2026-10-25
+modified: 2026-10-27
 ---
 
 # ADR-0108 - An action receives provided values from the providers its Command opts in to
@@ -50,7 +50,7 @@ A plugin package hands application code a typed value through a provider it expo
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships providers in core, proved by in-process tests that a takeover and a held fault build nothing, that a nested `invoke` shares a persistent value and rebuilds an ephemeral one, that values close in reverse build order, and that a throwing provider closes what was built; by type tests that an unmet global requirement fails where the Command attaches and that a persistent provider using an ephemeral one fails; and by a process test under Node and Bun that Ctrl-C during a provider's asynchronous close ends within the shutdown budget.
+Accepted in 0.16.0.
 
 ## Changelog
 

@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0114 - A CI run is not interactive, draws no live region, and renders as the standard detectors do
 description: Core reads CI as ci-info reads it, set and nonempty with CI=false meaning not CI, and a CI run is not interactive, draws no live region, renders color and hyperlinks as supports-color and supports-hyperlinks do under CI, and sends no background query. The interaction decision is off under CI whatever the terminal facts say, so a linked question takes its supplied option or fails with the missing-input error, an unlinked one fails with InteractionUnavailableError, and a required non-interactive option is required. A region opened without input true is not live on a terminal stderr under CI or TERM=dumb, so a progress line writes plain lines. CI=false is the operator's way back, and the interaction mark stays one-way.
-status: proposed
+status: accepted
 created: 2026-10-27
 modified: 2026-10-27
 ---
@@ -42,7 +42,7 @@ A run that a CI runner starts on a pseudo-terminal no longer waits for an answer
 
 ## Status
 
-Proposed. It moves to accepted with the 0.16.0 release, which ships it.
+Accepted in 0.16.0.
 
 ## Changelog
 

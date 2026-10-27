@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0106 - A signal ends the process within one bounded shutdown
 description: Every ending signal starts one shutdown. Core cancels every run, gives the runs a bounded budget to unwind, 500 ms unless the Application sets another, then calls each synchronous onShutdown handler once, newest first, and re-raises the signal so the process dies by it. onShutdown is the one cleanup registration, scoped to a run or to the process. The cooperative claim, the signals slot, defer, and processEvents go.
-status: proposed
+status: accepted
 created: 2026-10-23
-modified: 2026-10-24
+modified: 2026-10-27
 ---
 
 # ADR-0106 - A signal ends the process within one bounded shutdown
@@ -54,7 +54,7 @@ Ctrl-C ends a Loom application within its budget whatever its action does, and a
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships the shutdown, `onShutdown`, `onSuspend`, and `onResume`, with the prompts reader, live regions, and the background query on them. Process and pseudo-terminal tests prove under Node and Bun that a question sent `kill -TERM` or `SIGHUP` leaves the terminal cooked with the cursor shown, that an action ignoring its signal still ends within the budget, that a second signal ends the shutdown at once, that `signal-exit` and core together still end the process, that a region's cancelled line reaches the terminal, and that Ctrl-Z and `fg` at a question suspend and redraw under a job-control shell.
+Accepted in 0.16.0.
 
 ## Changelog
 

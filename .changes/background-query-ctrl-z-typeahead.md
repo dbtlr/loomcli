@@ -1,1 +1,0 @@
-- Fix keys typed with Ctrl-Z during the background query reaching the action after `fg`. A raised interrupt key now flushes the typeahead read with it, as a cooked terminal discards the input still unread.

@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0110 - A test calls one author function with a context the testing package builds
 description: '@loomcli/testing exports actionContext, middlewareContext, failureHookContext, providerContext, and viewContext. Each is typed from the function''s context parameter and returns its concrete core context; the unstated style is the one type assertion the package keeps. The test states the function''s input records whole, typed as the context types them. Every other member is optional: a function that returns nothing does nothing, out.draw, out.region, and signal give inert answers, out.fatal throws FatalError, and next, invoke, a view''s measures, and every other member throw or reject with a sentence telling the test to state them. A built context carries nothing from core.'
-status: proposed
+status: accepted
 created: 2026-10-26
-modified: 2026-10-26
+modified: 2026-10-27
 ---
 
 # ADR-0110 - A test calls one author function with a context the testing package builds
@@ -56,7 +56,7 @@ A test states every input and every other member its function reads, so a test's
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships the five builders, once each builder returns its core context with no type assertion but the style's and Loom's own tests call a first-party middleware, `onFailure` hook, and view through the builders, and an opener a test declares, as no first-party provider ships, under Node and Bun.
+Accepted in 0.16.0.
 
 ## Changelog
 

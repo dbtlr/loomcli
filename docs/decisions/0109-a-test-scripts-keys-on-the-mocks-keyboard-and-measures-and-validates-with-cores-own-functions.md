@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0109 - A test scripts keys on the mock's keyboard and measures and validates with core's own functions
 description: mockProcess gains terminal.keys, a keyboard that hands one scripted entry each time a reader switches stdin to raw mode, raises interrupt keys on the mock's own signal source, answers the background query as a terminal that reports no background, and fails the run with a sentence when it runs out. Core exports width, which measures written text with the measure core renders with, and validationOptions, which builds a default or invocation validation context over a process handle so a validator is tested with no Application.
-status: proposed
+status: accepted
 created: 2026-10-25
-modified: 2026-10-25
+modified: 2026-10-27
 ---
 
 # ADR-0109 - A test scripts keys on the mock's keyboard and measures and validates with core's own functions
@@ -44,7 +44,7 @@ Loom's prompts, draw, and interaction fixtures move in-process onto the keyboard
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships the keyboard, `width`, and `validationOptions`, once Loom's prompts, draw, interaction, and validator fixtures run in-process on them under Node and Bun with their assertions unchanged.
+Accepted in 0.16.0.
 
 ## Changelog
 
