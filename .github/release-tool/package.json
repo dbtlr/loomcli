@@ -3,6 +3,6 @@
   "private": true,
   "description": "Pins the published Loom CLI that the release workflow's plan and record jobs run.",
   "dependencies": {
-    "@loomcli/loom": "0.15.0"
+    "@loomcli/loom": "0.16.0"
   }
 }
