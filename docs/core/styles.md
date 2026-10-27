@@ -253,10 +253,12 @@ These rules follow [NO_COLOR](https://no-color.org/) and [FORCE_COLOR](https://f
 | --- | --- | --- | --- |
 | Capable TTY | On | On | Preserve |
 | Capable TTY with `NO_COLOR` | Off | On | Preserve |
+| TTY under CI, a log viewer that renders color | On, at that viewer's depth | On | Strip, retaining visible text |
+| TTY under any other CI | Off | Off | Strip, retaining visible text |
 | Pipe or file | Off | Off | Strip, retaining visible text |
 | Pipe or file with `FORCE_COLOR` | On | On | Strip, retaining visible text |
 
-For ANSI color and modifier detection, a capable TTY has `isTTY: true` and `TERM` other than `dumb`. Automatic modifiers follow that detection or a nonempty `FORCE_COLOR`; `NO_COLOR` never disables them. Automatic hyperlinks require `isTTY: true`. Explicit policy values override each column independently. Setting color to `'always'` alone does not change the modifier or hyperlink policy.
+For ANSI color and modifier detection, a capable TTY has `isTTY: true` and `TERM` other than `dumb`. Under [CI](interaction.md), read as ci-info reads `CI`, a TTY is capable only when the CI system's log viewer renders color, as supports-color's CI block lists them: `GITHUB_ACTIONS`, `GITEA_ACTIONS`, or `CIRCLECI` set renders truecolor, and `TRAVIS`, `APPVEYOR`, `GITLAB_CI`, `BUILDKITE`, `DRONE`, or `CI_NAME=codeship` renders 16 colors, whatever `TERM` or `COLORTERM` reports; any other CI renders none. A nonempty `FORCE_COLOR` still turns color on there, at the depth `TERM` reports. Automatic modifiers follow that detection or a nonempty `FORCE_COLOR`; `NO_COLOR` never disables them. Automatic hyperlinks require `isTTY: true` and no CI, as supports-hyperlinks reads it. [ADR-0114](../decisions/0114-a-ci-run-is-not-interactive-draws-no-live-region-and-renders-as-the-standard-detectors-do.md) records the CI rules. Explicit policy values override each column independently. Setting color to `'always'` alone does not change the modifier or hyperlink policy.
 
 When colors are enabled, core determines depth on each emission from the hints the run's environment holds, a variable [environment preparation](plugin-contract.md#environment-preparation) imported included, in this order:
 

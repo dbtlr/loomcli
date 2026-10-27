@@ -1,3 +1,5 @@
+import { underCI } from './host.js';
+
 /**
  * The run's background: the terminal's background color read as dark or light. Core settles it
  * once per run, and an adaptive theme entry resolves to the side that matches it.
@@ -150,12 +152,17 @@ function colorFgBg(value: string | undefined): Background | undefined {
 
 /**
  * Whether the environment lets core query the terminal: a `TERM` that is set, nonempty, and not
- * `dumb`, and no GNU screen or Emacs, neither of which passes the query through.
+ * `dumb`, no GNU screen or Emacs, neither of which passes the query through, and no CI, whose
+ * terminal feeds a build log that never answers.
  */
 function queryAllowed(env: Readonly<Record<string, string | undefined>>): boolean {
   const term = env.TERM ?? '';
   return (
-    term !== '' && term !== 'dumb' && (env.STY ?? '') === '' && (env.INSIDE_EMACS ?? '') === ''
+    term !== '' &&
+    term !== 'dumb' &&
+    (env.STY ?? '') === '' &&
+    (env.INSIDE_EMACS ?? '') === '' &&
+    !underCI(env)
   );
 }
 
