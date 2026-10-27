@@ -32,7 +32,8 @@
  *   and at verbosity -1 for a region without `input: true`. Its `draw` calls no override of its
  *   view and writes nothing. An input region at verbosity -1 on a terminal reads `true` and draws.
  *   On a terminal stderr whose `TERM` is `dumb`, or with `CI` set, a region without `input: true`
- *   reads `false` and an input region reads `true`, and with `CI` empty a region reads `true`.
+ *   reads `false` and an input region reads `true`, and with `CI` empty or `false` a region reads
+ *   `true`.
  *   There, `out.draw` keeps the Application's `terminalControls` setting, so a cursor movement
  *   its text holds is dropped, while on a terminal that redraws the movement is kept.
  *   A signal that ends a run there writes no control sequence, so no cursor is shown that nothing
@@ -254,6 +255,7 @@ test.each([
   { env: { TERM: 'dumb' }, input: true, live: false },
   { env: { CI: 'true' }, input: true, live: false },
   { env: { CI: '' }, input: true, live: true },
+  { env: { CI: 'false' }, input: true, live: true },
 ])(
   'on a terminal stderr with $env, a region reads live $live and an input region $input',
   async ({ env, input, live }) => {

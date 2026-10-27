@@ -41,7 +41,7 @@
  *   build, a release with no asset, an installation with the method `npm`, no installation, and a
  *   relative `HOME` with no `XDG_CACHE_HOME` each print no notice, write no cache, and start no
  *   child, with the cache naming `1.5.1` on the running channel. `NO_UPDATE_NOTIFIER` set to the
- *   empty string does not turn notices off. `selfUpdate({ notices: false })` declares no
+ *   empty string does not turn notices off, and neither does `CI=false`. `selfUpdate({ notices: false })` declares no
  *   middleware.
  * - Quiet. Under the verbose plugin's `-q`, a qualifying run prints no notice and still refreshes a
  *   stale cache.
@@ -766,6 +766,13 @@ test('NO_UPDATE_NOTIFIER and the author’s env set to the empty string do not t
     env: { NOTES_NO_UPDATE_NOTICE: '', NO_UPDATE_NOTIFIER: '' },
     notices: { env: 'NOTES_NO_UPDATE_NOTICE' },
   });
+  expect(lines(result.stderr)).toEqual(['Added note 12.', ...noticeLines]);
+});
+
+test('CI=false does not turn notices off, as ci-info reads it', () => {
+  const box = sandbox();
+  writeCache(box, cacheLine());
+  const result = run(box, ['add'], { env: { CI: 'false' } });
   expect(lines(result.stderr)).toEqual(['Added note 12.', ...noticeLines]);
 });
 

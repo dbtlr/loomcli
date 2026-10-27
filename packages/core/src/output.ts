@@ -103,10 +103,12 @@ const showCursor = '\u001B[?25h';
 
 /**
  * Whether a terminal stderr redraws a region in place: not under `TERM=dumb`, which cannot move
- * the cursor, and not with `CI` set and nonempty, where the terminal feeds a build log.
+ * the cursor, and not under CI, where the terminal feeds a build log. CI is read as ci-info reads
+ * it: `CI` set and nonempty, with `CI=false` an operator's way of saying the run is not CI.
  */
 function redraws(env: ReportHost['env']): boolean {
-  return env.TERM !== 'dumb' && (env.CI ?? '') === '';
+  const ci = env.CI ?? '';
+  return env.TERM !== 'dumb' && (ci === '' || ci === 'false');
 }
 
 /** One sequence's hold on a destination: the pieces it writes, and the end of its place. */
