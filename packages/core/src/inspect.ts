@@ -11,6 +11,7 @@ import type { OptionGroup } from './option-groups.js';
 import { distinctAliases, reportedOf, spellingsOf } from './options.js';
 import type { OptionSpelling } from './options.js';
 import { isPlainObject } from './plain.js';
+import type { PostInstall } from './post-install.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
 import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
@@ -169,12 +170,14 @@ interface ResultNode {
  * One built graph as plain data. The globals appear once here and in no `CommandNode`. `version`
  * and `description` are the Application's own core facts. `version` is the declared string, or
  * `0.0.0` when the Application declares none, so it is never `undefined`. `description` stays
- * `undefined` where the Application declares none.
+ * `undefined` where the Application declares none. `postInstall` is the Application's post-install
+ * declaration, frozen, or `undefined` where it declares neither member.
  */
 interface CommandGraph {
   readonly name: string;
   readonly version: string;
   readonly description: string | undefined;
+  readonly postInstall: PostInstall | undefined;
   readonly globals: readonly OptionNode[];
   readonly root: CommandNode;
 }
@@ -483,7 +486,12 @@ function resultNode(result: DeclaredResult | undefined): ResultNode | null {
 function inspectGraph(
   name: string,
   graph: BuiltGraph,
-  facts: { converterFault: ConverterFault; description: string | undefined; version: string },
+  facts: {
+    converterFault: ConverterFault;
+    description: string | undefined;
+    postInstall: PostInstall | undefined;
+    version: string;
+  },
 ): CommandGraph {
   const fault = facts.converterFault;
   const records = graph.extensions;
@@ -495,6 +503,7 @@ function inspectGraph(
     description: facts.description,
     globals: Object.freeze(optionNodes(graph.globals.inputs, { check, records, table })),
     name,
+    postInstall: facts.postInstall,
     root: commandNode(graph.root, {
       description: facts.description,
       fault,

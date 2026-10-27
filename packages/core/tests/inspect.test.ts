@@ -74,6 +74,7 @@ test('inspects a graph of globals, a root action, and three children', () => {
       },
     ],
     name: 'jsonkit',
+    postInstall: none,
     root: {
       aliases: [],
       arguments: [],
@@ -181,6 +182,7 @@ test('reports the version and every declared description, and the root reports t
       },
     ],
     name: 'described',
+    postInstall: none,
     root: {
       aliases: [],
       arguments: [],
@@ -276,6 +278,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
       },
     ],
     name: 'listing',
+    postInstall: none,
     root: {
       aliases: [],
       arguments: [],
@@ -330,6 +333,7 @@ test('inspects a group at two named levels below the root', () => {
     description: none,
     globals: [],
     name: 'store',
+    postInstall: none,
     root: {
       aliases: [],
       arguments: [],

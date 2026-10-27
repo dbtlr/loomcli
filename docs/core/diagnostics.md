@@ -142,6 +142,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Name not portable.** An operator types the application name, each Command name, and each alias as a command at a shell prompt. A character outside the POSIX portable filename set needs quoting there, a leading "-" reads as an option, and a leading "." names a file a shell hides.
 
+### @loomcli/core/post-install-unrouted
+
+**Post-install command unrouted.** The installer script runs the installed binary with the post-install command's words once it has installed the application. Words that route to no Command with an action fail on every operator's install, so a development build reports them before a release ships them.
+
 ### @loomcli/core/quiet-mark
 
 **Invalid quiet mark.** One counted global option may lower the run's verbosity by one step. Core settles the verbosity right after graph build, before it reads the environment or configuration, so the marked option takes no second source.
