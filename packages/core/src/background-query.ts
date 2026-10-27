@@ -2,7 +2,8 @@ import type { Readable, Writable } from 'node:stream';
 import { setImmediate as nextTurn } from 'node:timers/promises';
 
 import { backgroundQuery, queryAllowed, readReplies } from './background.js';
-import type { Background, InterruptSignal } from './background.js';
+import type { Background } from './background.js';
+import { hasInterruptKey, raiseInterruptKeys } from './interrupt-keys.js';
 import { inBackgroundJob } from './process-handle.js';
 import type { OnShutdown } from './signal-lane.js';
 import type { Host } from './types.js';
@@ -78,7 +79,7 @@ function waitForReplies(stdin: Readable, signal: AbortSignal, ask: () => void): 
     const data = (chunk: unknown) => {
       received += bytesOf(chunk);
       const read = readReplies(received);
-      if (read.ended || read.signals.length > 0) {
+      if (read.ended || hasInterruptKey(read.typeahead)) {
         clearTimeout(timer);
         end();
       }
@@ -155,48 +156,30 @@ async function exchange(terminal: {
 }
 
 /**
- * The answer the replies give, after every byte that is neither a reply nor an interrupt key is
- * pushed back onto the front of stdin in arrival order, so keys typed ahead reach the action's own
- * read. Raw mode turned each interrupt key into a byte, so once the mode is restored each one's
- * signal is raised through `host.raise` in arrival order, as if the key had come a moment later.
+ * The answer the replies give, after every byte that is not a reply is pushed back onto the front
+ * of stdin in arrival order, so keys typed ahead reach the action's own read. Raw mode turned each
+ * interrupt key into a byte, so once the mode is restored `raiseInterruptKeys` raises each one's
+ * signal through `host.raise` in arrival order, as if the key had come a moment later. Once a
+ * signal is raised nothing is pushed back, as a cooked terminal discards the input still unread.
  * When stdin is not its signal source's own terminal nothing is raised: Ctrl-C and Ctrl-\ cancel
  * the run, as the action's `cancel()` does, and Ctrl-Z is dropped.
  */
 async function readBackground(
   terminal: Parameters<typeof exchange>[0] & Pick<Host, 'raise'> & { readonly cancel: () => void },
 ): Promise<Background | undefined> {
-  const { answer, signals, typeahead } = readReplies(await exchange(terminal));
+  const { answer, typeahead } = readReplies(await exchange(terminal));
   const { stdin } = terminal;
-  if (typeahead !== '' && !stdin.readableEnded) {
-    stdin.unshift(Buffer.from(typeahead, 'latin1'));
+  const { raised, rest } = raiseInterruptKeys(
+    { cancel: terminal.cancel, host: { raise: terminal.raise } },
+    typeahead,
+  );
+  if (rest !== '' && !stdin.readableEnded) {
+    stdin.unshift(Buffer.from(rest, 'latin1'));
   }
-  if (raiseKeys(terminal, signals)) {
+  if (raised !== undefined) {
     await signalsDelivered();
   }
   return answer;
-}
-
-/**
- * Raises the signal each interrupt key stands for, in arrival order, or cancels the run for Ctrl-C
- * and Ctrl-\ where nothing is raised, and answers whether any signal was raised. Several Ctrl-Z
- * keys raise one SIGTSTP, as a cooked terminal suspends once and discards the input still unread.
- */
-function raiseKeys(
-  terminal: Pick<Host, 'raise'> & { readonly cancel: () => void },
-  signals: readonly InterruptSignal[],
-): boolean {
-  let raised = false;
-  const once = signals.filter(
-    (signal, index) => signal !== 'SIGTSTP' || signals.indexOf('SIGTSTP') === index,
-  );
-  for (const signal of once) {
-    if (terminal.raise(signal)) {
-      raised = true;
-    } else if (signal !== 'SIGTSTP') {
-      terminal.cancel();
-    }
-  }
-  return raised;
 }
 
 /**

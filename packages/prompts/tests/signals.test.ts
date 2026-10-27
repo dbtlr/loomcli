@@ -8,7 +8,9 @@
  * - Ctrl-\ at a question ends the process by SIGQUIT, with the terminal cooked and the cursor shown.
  * - Ctrl-Z at a question suspends the process under a job-control shell: the question's frame is
  *   erased and the cursor shown before it stops, and `fg` redraws the question, which then takes an
- *   answer and leaves the terminal cooked.
+ *   answer and leaves the terminal cooked. Part of a key held from an earlier read, such as the start
+ *   of an arrow key's sequence, is dropped with the keys still unread, so it never joins a key typed
+ *   after `fg`.
  * - A process that ends mid-question, by `kill -TERM` or by `process.exit()`, leaves the terminal
  *   cooked with the cursor shown.
  */
@@ -193,6 +195,52 @@ test.skipIf(zsh === undefined)(
       await shell.expect('Service port');
       shell.send(String.raw`5000\r`);
       await expect(shell.expect('EXIT:0 cooked:true')).resolves.toContain('ANSWER:"5000"');
+    } finally {
+      await shell.close();
+    }
+  },
+);
+
+test.skipIf(zsh === undefined)(
+  'part of a key read before Ctrl-Z is dropped, so a key typed after fg reads as itself',
+  async () => {
+    const shell = drive(['zsh', '-f', '-i'], { NO_COLOR: '1' });
+    try {
+      await shell.expect('%');
+      shell.send(String.raw`${command('text')}\n`);
+      await shell.expect('Service port');
+      // The start of an arrow key's sequence, then Ctrl-Z in a later read.
+      shell.send(String.raw`\x1b[`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      shell.send(String.raw`\x1a`);
+      await shell.expect('suspended');
+      await shell.expect('%');
+      shell.send(String.raw`fg\n`);
+      await shell.expect('Service port');
+      shell.send(String.raw`A\r`);
+      await expect(shell.expect('EXIT:0 cooked:true')).resolves.toContain('ANSWER:"A"');
+    } finally {
+      await shell.close();
+    }
+  },
+);
+
+test.skipIf(zsh === undefined)(
+  'part of a character read with Ctrl-Z is dropped, so a character typed after fg reads as itself',
+  async () => {
+    const shell = drive(['zsh', '-f', '-i'], { NO_COLOR: '1' });
+    try {
+      await shell.expect('%');
+      shell.send(String.raw`${command('text')}\n`);
+      await shell.expect('Service port');
+      // Ctrl-Z, then the first byte of é's two UTF-8 bytes, in one read.
+      shell.send(String.raw`\x1a\xc3`);
+      await shell.expect('suspended');
+      await shell.expect('%');
+      shell.send(String.raw`fg\n`);
+      await shell.expect('Service port');
+      shell.send(String.raw`\xc3\xa9\r`);
+      await expect(shell.expect('EXIT:0 cooked:true')).resolves.toContain('ANSWER:"é"');
     } finally {
       await shell.close();
     }

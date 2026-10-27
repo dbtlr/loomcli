@@ -10,14 +10,9 @@ interface Replies {
   readonly answer: Background | undefined;
   /** Whether the DA1 reply, the sentinel, has arrived, which ends the read. */
   readonly ended: boolean;
-  /** The signal each interrupt key read names, in arrival order. */
-  readonly signals: readonly InterruptSignal[];
-  /** Every byte that is neither a reply nor an interrupt key, in arrival order, as a latin1 string. */
+  /** Every byte that is not a reply, interrupt keys included, in arrival order, as a latin1 string. */
   readonly typeahead: string;
 }
-
-/** A signal a terminal's interrupt key raises: Ctrl-C, Ctrl-\, or Ctrl-Z. */
-type InterruptSignal = 'SIGINT' | 'SIGQUIT' | 'SIGTSTP';
 
 /**
  * Where each source of the run's background stands when core settles it. `detects` says whether
@@ -83,25 +78,6 @@ const lightIndices = new Set(['7', '15']);
 /** The color-scheme reply's modes. */
 const schemes: Readonly<Record<string, Background>> = { '1': 'dark', '2': 'light' };
 
-/**
- * The code points of Ctrl-C, Ctrl-\, and Ctrl-Z, which raw mode delivers as bytes, and the signal
- * each key raises at a terminal in its usual mode.
- */
-const ctrlC = 3;
-const ctrlBackslash = 28;
-const ctrlZ = 26;
-const interrupts: ReadonlyMap<number, InterruptSignal> = new Map([
-  [ctrlC, 'SIGINT'],
-  [ctrlBackslash, 'SIGQUIT'],
-  [ctrlZ, 'SIGTSTP'],
-]);
-
-/** Any one interrupt key. */
-const interruptKey = new RegExp(
-  `[${[...interrupts.keys()].map((code) => String.fromCodePoint(code)).join('')}]`,
-  'gu',
-);
-
 /** One channel of an sRGB color, from 0 through 1, made linear. */
 function linear(channel: number): number {
   return channel <= linearLimit
@@ -137,8 +113,8 @@ function colorAnswer(payload: string): Background | undefined {
 /**
  * What the bytes read so far say, read as latin1: the read ends at the first DA1 reply, the
  * OSC 11 and color-scheme replies before it are removed and answer, an OSC 11 reply that parses
- * winning, each interrupt key is removed and names its signal, and every other byte, before,
- * between, or after the replies, is typeahead.
+ * winning, and every other byte, before, between, or after the replies, is typeahead. An interrupt
+ * key is typeahead here, and the caller raises it.
  */
 function readReplies(received: string): Replies {
   const sentinel = sentinelReply.exec(received);
@@ -157,15 +133,8 @@ function readReplies(received: string): Replies {
     });
   const answer =
     colors.find((color) => color !== undefined) ?? modes.find((mode) => mode !== undefined);
-  const signals: InterruptSignal[] = [];
-  const typeahead = (remaining + after).replaceAll(interruptKey, (key) => {
-    const signal = interrupts.get(key.codePointAt(0) ?? 0);
-    if (signal !== undefined) {
-      signals.push(signal);
-    }
-    return '';
-  });
-  return { answer, ended: sentinel !== null, signals, typeahead };
+  const typeahead = remaining + after;
+  return { answer, ended: sentinel !== null, typeahead };
 }
 
 /**
@@ -211,7 +180,7 @@ async function settleBackground(
   return (await query()) ?? colorFgBg(env.COLORFGBG);
 }
 
-export type { Background, BackgroundSources, InterruptSignal, Replies };
+export type { Background, BackgroundSources, Replies };
 export {
   backgroundOfLuminance,
   backgroundQuery,

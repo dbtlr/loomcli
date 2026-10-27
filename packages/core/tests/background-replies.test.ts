@@ -37,7 +37,6 @@ describe('the reply parser', () => {
       expect(readReplies(`${osc11(payload, end)}${da1}`)).toEqual({
         answer,
         ended: true,
-        signals: [],
         typeahead: '',
       });
     }
@@ -48,21 +47,19 @@ describe('the reply parser', () => {
     expect(readReplies(received)).toEqual({
       answer: 'light',
       ended: true,
-      signals: [],
       typeahead: 'abcdef',
     });
   });
 
   it(
-    String.raw`Ctrl-C, Ctrl-\, and Ctrl-Z leave the typeahead and name their signals in arrival order`,
+    String.raw`Ctrl-C, Ctrl-\, and Ctrl-Z stay in the typeahead for the caller to raise, and the read has no signals`,
     () => {
       const keys = [26, 3, 28, 3].map((code) => String.fromCodePoint(code));
       const received = `a${keys[0]}${osc11('0/0/0')}b${keys[1]}${keys[2]}${da1}c${keys[3]}`;
       expect(readReplies(received)).toEqual({
         answer: 'dark',
         ended: true,
-        signals: ['SIGTSTP', 'SIGINT', 'SIGQUIT', 'SIGINT'],
-        typeahead: 'abc',
+        typeahead: `a${keys[0]}b${keys[1]}${keys[2]}c${keys[3]}`,
       });
     },
   );
@@ -71,7 +68,6 @@ describe('the reply parser', () => {
     expect(readReplies(`${da1}${osc11('ffff/ffff/ffff')}`)).toEqual({
       answer: undefined,
       ended: true,
-      signals: [],
       typeahead: osc11('ffff/ffff/ffff'),
     });
   });
@@ -92,7 +88,6 @@ describe('the reply parser', () => {
     expect(readReplies(received)).toEqual({
       answer: undefined,
       ended: true,
-      signals: [],
       typeahead: '',
     });
   });
@@ -101,7 +96,6 @@ describe('the reply parser', () => {
     expect(readReplies(`x${osc11('ffff/ffff/ffff')}`)).toEqual({
       answer: 'light',
       ended: false,
-      signals: [],
       typeahead: 'x',
     });
   });

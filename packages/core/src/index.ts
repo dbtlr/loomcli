@@ -16,6 +16,8 @@ export { diagnosticRule } from './diagnostic.js';
 export { isFailureCode, isRuleIdentity } from './identity.js';
 export { isDeclaredName } from './options.js';
 export { isProseLine } from './facts.js';
+export { raiseInterruptKeys } from './interrupt-keys.js';
+export type { InterruptKeys } from './interrupt-keys.js';
 export type { DiagnosticParts, DiagnosticRule, Finding } from './diagnostic-text.js';
 export {
   DeclarationError,
