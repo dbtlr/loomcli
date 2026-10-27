@@ -66,20 +66,20 @@ import type { DatabaseOptions } from './plugin.js';
 import type { Pool } from './pool.js';
 import type { Session } from './session.js';
 
-export const pool: Provider<'pool', Pool, PluginOptionValues<DatabaseOptions>, 'persistent'> = provider('pool', {
+export const acmePool: Provider<'acmePool', Pool, PluginOptionValues<DatabaseOptions>, 'persistent'> = provider('acmePool', {
   lifetime: 'persistent',
   load: () => import('./open-pool.js'),
   close: (pool) => pool.end(),
 });
 
-export const session: Provider<'session', Session, { token: string | undefined }, 'ephemeral', [typeof pool]> =
-  provider('session', { uses: [pool], load: () => import('./open-session.js') });
+export const acmeSession: Provider<'acmeSession', Session, { token: string | undefined }, 'ephemeral', [typeof acmePool]> =
+  provider('acmeSession', { uses: [acmePool], load: () => import('./open-session.js') });
 ```
 
 `provider(name, definition)` returns a frozen provider value. The declaration's type annotation states the provider's types, as a plugin factory's return type states its options under [Plugin contract](plugin-contract.md), and `provider()` checks the definition against it.
 
 - **The annotation.** `Provider<Name, Value, Globals, Lifetime, Uses>` names the key the value reads under in `provided`, the value's type, the [global options](commands.md) the provider reads, its lifetime, and the providers it uses. `provider()` takes its types from the annotation: a `name`, a `lifetime`, or a `uses` list that differs from it is a type error at the call, and so is an omitted `lifetime` on a persistent annotation, an omitted `uses` when the annotation lists providers, and an opener whose value or context differs, under [The opener](#the-opener). The globals are checked where a Command that opts in attaches, under [Opting in](#opting-in).
-- **The name.** The name is the key the value reads under in an action's `provided`, so a name that reads as a JavaScript identifier, such as `pool`, reads as `provided.pool`. Core sets no grammar of its own on it.
+- **The name.** The name is the key the value reads under in an action's `provided`, so a name that reads as a JavaScript identifier, such as `acmePool`, reads as `provided.acmePool`. Core sets no grammar of its own on it.
 - **The lifetime.** `'ephemeral'`, the default, lasts one run. `'persistent'` lasts the outermost run and is shared by every nested `invoke` inside it, under [Lifetimes](#lifetimes).
 - **`uses`.** The providers this provider reads, whose values reach its opener under `provided`. A provider opts in to another the same way a Command does, and the lists' types compose, under [Opting in](#opting-in).
 - **`load`.** Imports the module whose default export is the provider's [opener](#the-opener). Core calls it only when it builds the value, so a run that never builds the value never imports the module. `load` is the only way to give a provider its code.
@@ -109,16 +109,16 @@ type Opener<Declared extends AnyProvider> = (
 // src/open-session.ts, loaded only when a run builds the session
 import type { Opener } from '@loomcli/core';
 
-import type { session } from './providers.js';
+import type { acmeSession } from './providers.js';
 import { Session } from './session.js';
 
-const open: Opener<typeof session> = async ({ options, provided, signal }) =>
-  Session.start(provided.pool, options.token, { signal });
+const open: Opener<typeof acmeSession> = async ({ options, provided, signal }) =>
+  Session.start(provided.acmePool, options.token, { signal });
 
 export default open;
 ```
 
-The opener is the function that builds a provider's value. It types itself from its own declaration, `Opener<typeof session>`, through a type-only import. `Opener` reads the declaration's members, so a factory that returns a provider whose name is a type parameter types its opener too. The declaration's annotation is the boundary that breaks the type cycle: the declaration names the opener's module only inside `load`, and the opener's `import type` is erased, so the module graph runs one way at run time.
+The opener is the function that builds a provider's value. It types itself from its own declaration, `Opener<typeof acmeSession>`, through a type-only import. `Opener` reads the declaration's members, so a factory that returns a provider whose name is a type parameter types its opener too. The declaration's annotation is the boundary that breaks the type cycle: the declaration names the opener's module only inside `load`, and the opener's `import type` is erased, so the module graph runs one way at run time.
 
 - **`options`.** Every global option's validated value, typed by the globals the provider states, and frozen to every depth, as a middleware's `options` is. An ephemeral provider reads its own run's values; a persistent provider reads the outermost run's. A provider never reads a Command's local arguments or options, because every Command that opts in shares the global options alone.
 - **`provided`.** The value of each provider this provider uses, under that provider's name.
@@ -148,22 +148,23 @@ interface ActionContext<Args, Options = {}, Result = unknown, Provided = {}> {
 ```ts
 // src/commands/get.ts
 import { Command } from '@loomcli/core';
-import { session } from 'acme-database/providers';
+import { acmeSession } from 'acme-database/providers';
 
-export const get = new Command('get', { uses: [session] })
+export const get = new Command('get', { uses: [acmeSession] })
   .argument('id', { required: true })
-  .action(({ args, provided }) => provided.session.find(args.id));
+  .action(({ args, provided }) => provided.acmeSession.find(args.id));
 ```
 
 A Command opts in through `uses` in its options object, and the Application opts in for its own root action through `uses` in its constructor's options. The action reads each value under `provided`, keyed by its provider's name.
 
-- **`provided` holds the opt-ins.** `provided` holds the value of each provider the Command's `uses` lists, typed from the list, and nothing else. A provider those providers use is built but not provided: a Command that reads `pool` lists `pool`. `provided` is one member of the action context, so a member core adds to the context later never collides with a provider's name. An action whose Command opts in to nothing reads `{}`.
+- **`provided` holds the opt-ins.** `provided` holds the value of each provider the Command's `uses` lists, typed from the list, and nothing else. A provider those providers use is built but not provided: a Command that reads `acmePool` lists `acmePool`. `provided` is one member of the action context, so a member core adds to the context later never collides with a provider's name. An action whose Command opts in to nothing reads `{}`.
 - **Globals are a requirement.** Opting in adds the global options of every provider the list reaches, the providers they use included, to the Command's global requirements. The Application's `command()` already rejects a Command whose global requirements its globals do not hold, and so does `plugin()` for a plugin's Commands, so a Command that opts in to a provider whose option-declaring plugin the Application no longer installs fails to compile where it reaches the Application. That is the author's ordinary error, which the types report. An action's `options` include those globals, because the Application declares them.
 - **Requirements pass up.** A Command's `command()` adds a child's global requirements to its parent's and checks none of them, so the requirement meets the Application wherever the child sits, and a library's group that holds a Command that opts in compiles without the Application. The type error surfaces where the requirement first meets globals that do not hold it: the Application's `command()`, `plugin()`, or, where an Application's registration is visible, the `uses` of the Command that opts in, because such a Command's globals are that Application's. A `uses` list shared as a constant reaches the same requirement whether it is typed as a tuple or as an array.
 - **The root's own action.** The Application's `uses` covers the root's action alone. Its globals are checked at the root's `action()` call, once `globalOption()` is closed.
 - **Plugin Commands.** A plugin's [`commands`](plugin-contract.md#plugin-commands) accepts a Command whose global requirements its own plugin's options meet, checked at `plugin()`, so a database plugin ships `db migrate` that opts in to the pool its own `--database-url` configures. A plugin compiles without the Application, so it cannot require another plugin's options or the application's.
 - **No inheritance.** A child Command does not inherit its parent's opt-ins, because a child is declared and typed before it attaches. Commands that share opt-ins share a constant list: `uses: databaseProviders`.
-- **One name per closure.** Two different providers with one name, anywhere among the providers a list reaches, are a type error at that `uses`, on `new Command()`, `new Application()`, and `provider()` alike. One provider value reached twice, as when a Command lists `session` and `pool` and `session` uses `pool`, is one provider and is built once.
+- **One name per closure.** Two different providers with one name, anywhere among the providers a list reaches, are a type error at that `uses`, on `new Command()`, `new Application()`, and `provider()` alike, when their types differ. Two that share one type, such as two values one generic factory returns, pass the types, so core rejects them where the list is declared, as [`@loomcli/core/provider-name-taken`](diagnostics.md#loomclicoreprovider-name-taken). One provider value reached twice, as when a Command lists `acmeSession` and `acmePool` and `acmeSession` uses `acmePool`, is one provider and is built once.
+- **Name a distributed provider after its package.** A package that exports a provider prefixes its name with its own, such as `acmeSession` from `acme-database`, because an Application may opt in to providers from many packages and one name can mean only one provider.
 - **Lifetime direction.** An ephemeral provider may use a persistent one. A persistent provider may not use an ephemeral one, because it would hold a value of one run inside a value that outlives it: `provider()` rejects that `uses`.
 - **Not a graph fact.** An opt-in is not part of the [command graph](graph-inspection.md), so no projection reads it, under [ADR-0010](../decisions/0010-one-graph-serves-runtime-and-projections.md). The globals a provider reads are ordinary global options, which every projection already reads.
 - **Middleware is unchanged.** A middleware never sees a provided value, and `next()` takes no argument.

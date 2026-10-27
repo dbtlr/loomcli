@@ -146,6 +146,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Post-install command unrouted.** The installer script runs the installed binary with the post-install command's words once it has installed the application. Words that route to no Command with an action fail on every operator's install, so a development build reports them before a release ships them.
 
+### @loomcli/core/provider-name-taken
+
+**Provider name taken.** An action reads each provided value under its provider's name, so two different providers with one name among the providers a uses list reaches would leave one name for two values. The types reject two such providers whose types differ; core rejects two that share one type, such as two values one generic factory returns, where the list is declared.
+
 ### @loomcli/core/quiet-mark
 
 **Invalid quiet mark.** One counted global option may lower the run's verbosity by one step. Core settles the verbosity right after graph build, before it reads the environment or configuration, so the marked option takes no second source.

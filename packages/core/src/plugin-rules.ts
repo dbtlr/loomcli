@@ -17,6 +17,13 @@ const foreignValue = registerRule('@loomcli/core/foreign-value', {
 const foreignValueCorrection =
   'Install one copy of @loomcli/core, so the Application and every plugin package share it.';
 
+/** Two different providers sharing one name among the providers a `uses` list reaches. */
+const providerNameTaken = registerRule('@loomcli/core/provider-name-taken', {
+  explanation:
+    "An action reads each provided value under its provider's name, so two different providers with one name among the providers a uses list reaches would leave one name for two values. The types reject two such providers whose types differ; core rejects two that share one type, such as two values one generic factory returns, where the list is declared.",
+  headline: 'Provider name taken',
+});
+
 /** One plugin identity installed twice. */
 const pluginInstalledTwice = registerRule('@loomcli/core/plugin-installed-twice', {
   explanation:
@@ -82,6 +89,7 @@ export {
   foreignValueCorrection,
   invalidExtensionValue,
   pluginInstalledTwice,
+  providerNameTaken,
   slotTaken,
   twoPackageCopies,
 };

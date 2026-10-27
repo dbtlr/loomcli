@@ -132,6 +132,11 @@ declare const impostor: Provider<'pool', number>;
 declare const audit: Provider<'audit', number, {}, 'ephemeral', [typeof impostor]>;
 // @ts-expect-error TS2322: Two providers named pool reach this list.
 new Command('clash', { uses: [session, audit] });
+// Two providers with one name and one type, as one generic factory returns, pass the types.
+// Core rejects them where the list is declared.
+declare const firstToken: Provider<'token', string>;
+declare const secondToken: Provider<'token', string>;
+const twins = new Command('twins', { uses: [firstToken, secondToken] });
 // One provider reached twice is one provider.
 const diamond = new Command('diamond', { uses: [session, pool] }).action(({ provided }) =>
   provided.pool.end(),
@@ -160,6 +165,7 @@ export {
   library,
   complete,
   diamond,
+  twins,
   root,
   migrations,
   unstated,
