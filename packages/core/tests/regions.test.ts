@@ -31,6 +31,10 @@
  * - Not live. `live` reads `false` with stderr piped, under `app.invoke` and an action's `invoke`,
  *   and at verbosity -1 for a region without `input: true`. Its `draw` calls no override of its
  *   view and writes nothing. An input region at verbosity -1 on a terminal reads `true` and draws.
+ *   On a terminal stderr whose `TERM` is `dumb`, or with `CI` set, a region without `input: true`
+ *   reads `false` and an input region reads `true`, and with `CI` empty a region reads `true`.
+ *   There, `out.draw` keeps the Application's `terminalControls` setting, so a cursor movement
+ *   its text holds is dropped, while on a terminal that redraws the movement is kept.
  * - Resize. A two-row frame drawn at 80 columns, after the emulator is resized to 40 columns and
  *   reflows, is erased whole by the next draw, and no stale row remains.
  * - `out.draw`. Its count is unchanged for every frame the prompts acceptance once pinned, its text
@@ -40,6 +44,8 @@
  * - Faults. The negative type checks reject the calls the types forbid.
  */
 
+import { Application } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
@@ -240,6 +246,43 @@ test('at verbosity -1 a region without input is not live, and an input region st
   const run = regions('live', 'tty', ['-q']);
   expect(run.notes).toEqual({ calls: 1, inputLive: true, live: false });
   await expect(screen(run)).resolves.toEqual(['input frame']);
+});
+
+test.each([
+  { env: { TERM: 'dumb' }, input: true, live: false },
+  { env: { CI: 'true' }, input: true, live: false },
+  { env: { CI: '' }, input: true, live: true },
+])(
+  'on a terminal stderr with $env, a region reads live $live and an input region $input',
+  async ({ env, input, live }) => {
+    const seen: Record<string, boolean> = {};
+    const app = new Application('regions').action(({ out }) => {
+      seen.live = out.region().live;
+      seen.input = out.region({ input: true }).live;
+    });
+    const mock = mockProcess({
+      env: { TERM: 'xterm', ...env },
+      terminal: { columns: 40, rows: 24, streams: ['stderr'] },
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(seen).toEqual({ input, live });
+  },
+);
+
+test.each([
+  { env: { TERM: 'xterm' }, text: '\u001B[1Aup' },
+  { env: { TERM: 'dumb' }, text: 'up' },
+  { env: { CI: 'true' }, text: 'up' },
+])('on a terminal stderr with $env, out.draw writes $text', async ({ env, text }) => {
+  const app = new Application('regions').action(async ({ out }) => {
+    await out.draw(undefined, { render: () => '\u001B[1Aup' });
+  });
+  const mock = mockProcess({
+    env: { TERM: 'xterm', ...env },
+    terminal: { columns: 40, rows: 24, streams: ['stderr'] },
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(mock.stderr.text).toBe(text);
 });
 
 test('a reflowing resize leaves no stale row when the region redraws', async () => {

@@ -49,8 +49,9 @@ const sharedState = join(tmpdir(), 'loom-test-state');
 const sharedHome = join(tmpdir(), 'loom-test-home');
 
 /**
- * The environment a fixture starts from: the parent's, minus every variable an example binds.
- * A binding set in the developer's shell would otherwise fill an option the test never set.
+ * The environment a fixture starts from: the parent's, minus every variable an example binds and
+ * `CI`. A binding set in the developer's shell would otherwise fill an option the test never set,
+ * and a `CI` the runner sets would stop every live region a fixture draws.
  * The state and home directories are temporary ones, so a fixture writes nothing under the
  * developer's own home. The test's own variables and the capture marker apply on top.
  */
@@ -62,6 +63,7 @@ export function childEnvironment(env: Record<string, string | undefined> | undef
   );
   return {
     ...inherited,
+    CI: undefined,
     HOME: sharedHome,
     LOOM_CAPTURE_TEST: 'present',
     XDG_STATE_HOME: sharedState,
