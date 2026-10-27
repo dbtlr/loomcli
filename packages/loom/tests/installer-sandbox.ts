@@ -220,6 +220,8 @@ export interface Fakes {
 export interface Sandbox {
   /** The PATH of the fakes and the linked tools, nothing else. */
   readonly path: string;
+  /** The directory the fake downloaders serve each URL from, without `https://`. */
+  readonly release: string;
   readonly home: string;
   readonly log: string;
   readonly root: string;
@@ -255,6 +257,15 @@ export const defaultRelease = {
   ...release(tagged, { [`${app}-linux-x64`]: 'test' }),
 };
 
+/** Writes each URL's bytes where the fake downloaders serve it from. */
+export function publish(directory: string, files: Readonly<Record<string, string>>) {
+  for (const [url, bytes] of Object.entries(files)) {
+    const file = join(directory, url.replace(/^https:\/\//u, ''));
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, bytes);
+  }
+}
+
 /**
  * A fresh sandbox: a temporary home, state directory, and working directory, the fakes and the
  * linked tools as the whole PATH, the release fixture, and the script rendered as init writes it.
@@ -273,11 +284,7 @@ export function sandbox(fakes: Fakes = {}, rendered?: string): Sandbox {
     mkdirSync(directory);
   }
   const log = join(root, 'downloads.log');
-  for (const [url, bytes] of Object.entries(fakes.release ?? defaultRelease)) {
-    const file = join(directories.release, url.replace(/^https:\/\//u, ''));
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, bytes);
-  }
+  publish(directories.release, fakes.release ?? defaultRelease);
   writeFakes(directories.fakes, { log, release: directories.release }, fakes);
   linkTools(directories.tools, fakes.tools ?? scriptTools);
   const script = join(root, 'install.sh');
@@ -286,6 +293,7 @@ export function sandbox(fakes: Fakes = {}, rendered?: string): Sandbox {
     home: directories.home,
     log,
     path: `${directories.fakes}:${directories.tools}`,
+    release: directories.release,
     root,
     script,
     state: directories.state,
@@ -312,7 +320,8 @@ export function runScript(
 }
 
 /**
- * A run of the script that a `SIGTERM` ends once the sleeping download has begun. `group` signals
+ * A run of the script that a `SIGTERM` ends once the sleeping download, or the sleeping fake
+ * released binary, has begun. `group` signals
  * the whole process group, as a terminal's signal reaches both `sh` and the downloader; `shell`
  * signals `sh` alone, which runs its trap once the downloader exits. It resolves to the exit code
  * and what the script wrote to stderr.
@@ -320,11 +329,12 @@ export function runScript(
 export async function runScriptUntilSignal(
   box: Sandbox,
   reach: 'group' | 'shell',
+  env: Record<string, string | undefined> = {},
 ): Promise<{ status: number | null; stderr: string }> {
   const child = spawn('/bin/sh', [box.script], {
     cwd: box.work,
     detached: true,
-    env: environment(box, {}),
+    env: environment(box, env),
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   let stderr = '';
@@ -370,4 +380,96 @@ export function entries(directory: string): string[] | undefined {
   return readdirSync(directory, { recursive: true, withFileTypes: true })
     .map((entry) => join(entry.parentPath, entry.name).slice(directory.length + 1))
     .toSorted();
+}
+
+/**
+ * A fake released binary, the asset a post-install case installs. Each run writes, beside the
+ * sandbox's log, the words it received, each followed by a NUL; whether its stdin is a terminal, a
+ * device such as `/dev/null`, or another file; the line it read from stdin; its working directory;
+ * and the `install.json` it found. It prints `Set up notes.` and exits with `LOOM_FAKE_STATUS`, 0
+ * by default. The variables it reads are the test's, which reach it because the script passes its
+ * environment through.
+ */
+export function recordingBinary(box: Pick<Sandbox, 'log'>, record: string) {
+  const log = quoted(`${box.log}.binary`);
+  return `#!/bin/sh
+printf '%s\\000' "$@" >${log}.argv
+if [ -t 0 ]; then stdin=terminal; elif [ -c /dev/fd/0 ]; then stdin=device; else stdin=other; fi
+printf '%s\\n' "$stdin" >${log}.stdin
+printf '%s\\n' "$PWD" >${log}.cwd
+if [ -f ${quoted(record)} ]; then ${quoted(requiredTool('cat'))} ${quoted(record)} >${log}.record; fi
+if [ -n "\${LOOM_FAKE_PROMPT:-}" ]; then printf '%s\\n' "$LOOM_FAKE_PROMPT" >&2; fi
+if [ -n "\${LOOM_FAKE_SLEEP:-}" ]; then printf 'sleeping\\n' >>${quoted(`${box.log}.sleeping`)}; ${quoted(requiredTool('sleep'))} "$LOOM_FAKE_SLEEP"; fi
+line=
+IFS= read -r line || :
+printf '%s' "$line" >${log}.input
+echo 'Set up notes.'
+exit "\${LOOM_FAKE_STATUS:-0}"
+`;
+}
+
+/** What the fake released binary recorded of its runs, or `undefined` for a file it never wrote. */
+export function binaryRecord(box: Sandbox) {
+  const read = (suffix: string) => {
+    const path = `${box.log}.binary.${suffix}`;
+    return existsSync(path) ? readFileSync(path, 'utf8') : undefined;
+  };
+  const argv = read('argv');
+  return {
+    argv: argv === undefined ? undefined : argv.split('\0').slice(0, -1),
+    cwd: read('cwd')?.trimEnd(),
+    input: read('input'),
+    record: read('record'),
+    stdin: read('stdin')?.trimEnd(),
+  };
+}
+
+/** How a detached run of the script reads it: from its path, or from stdin as `curl | sh` does. */
+export type Reading = 'path' | 'stdin';
+
+/**
+ * One run of the script under `/bin/sh` in a session of its own, so it has no controlling terminal
+ * and `/dev/tty` does not open. Its stdin holds `input` when it reads the script from its path, and
+ * the script alone when it reads it from stdin. It resolves to the exit code and what the run wrote.
+ */
+export async function runDetached(
+  box: Sandbox,
+  options: {
+    args?: readonly string[];
+    env?: Record<string, string | undefined>;
+    input?: string;
+    reading?: Reading;
+  } = {},
+): Promise<{ status: number | null; stderr: string; stdout: string }> {
+  const { args = [], env = {}, input = '', reading = 'path' } = options;
+  const argv = reading === 'path' ? [box.script, ...args] : ['-s', '--', ...args];
+  const child = spawn('/bin/sh', argv, {
+    cwd: box.work,
+    detached: true,
+    env: environment(box, env),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => {
+    stdout += chunk;
+  });
+  child.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+  });
+  const exited = new Promise<number | null>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error(`The script did not finish within ${runTimeout} ms.`));
+    }, runTimeout);
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
+  });
+  child.stdin.on('error', () => undefined);
+  child.stdin.end(reading === 'stdin' ? readFileSync(box.script, 'utf8') : input);
+  return { status: await exited, stderr, stdout };
 }
