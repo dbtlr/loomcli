@@ -1,21 +1,12 @@
 import { StringDecoder } from 'node:string_decoder';
 
+import { raiseInterruptKeys } from '@loomcli/core';
+
 import type { PromptContext } from './types.js';
 
 type Key =
   | { kind: 'text'; value: string }
-  | { kind: 'interrupt'; signal: InterruptSignal }
   | { kind: 'enter' | 'backspace' | 'up' | 'down' | 'eof' };
-
-/** The signals the interrupt keys stand for, which raw mode turns into bytes. */
-type InterruptSignal = 'SIGINT' | 'SIGQUIT' | 'SIGTSTP';
-
-/** The byte each interrupt key sends in raw mode: Ctrl-C, Ctrl-\\, and Ctrl-Z. */
-const interruptKeys: Readonly<Record<string, InterruptSignal>> = {
-  '\u0003': 'SIGINT',
-  '\u001a': 'SIGTSTP',
-  '\u001c': 'SIGQUIT',
-};
 
 /** The control sequence that shows the terminal's cursor. */
 const showCursor = '\u001b[?25h';
@@ -28,9 +19,9 @@ interface InputQueue {
 /** Typeahead belongs to the run, not a question, and becomes unreachable once the run ends. */
 const queues = new WeakMap<AbortSignal, InputQueue>();
 
-/** Splits UTF-8 and terminal escape sequences across chunks without losing typed-ahead answers. */
-function feed(queue: InputQueue, chunk: Buffer | string): void {
-  queue.pending += typeof chunk === 'string' ? chunk : queue.decoder.write(chunk);
+/** Splits terminal escape sequences across reads without losing typed-ahead answers. */
+function feed(queue: InputQueue, text: string): void {
+  queue.pending += text;
   while (queue.pending !== '') {
     if (queue.pending.startsWith('\u001b')) {
       if (queue.pending.length === 1) {
@@ -65,11 +56,8 @@ function feed(queue: InputQueue, chunk: Buffer | string): void {
       continue;
     }
     queue.carriage = character === '\r';
-    const signal = interruptKeys[character];
     if (character === '\r' || character === '\n') {
       queue.keys.push({ kind: 'enter' });
-    } else if (signal !== undefined) {
-      queue.keys.push({ kind: 'interrupt', signal });
     } else if (character === '\u0004') {
       queue.keys.push({ kind: 'eof' });
     } else if (character === '\u007f' || character === '\b') {
@@ -93,40 +81,6 @@ interface Session {
   release: () => void;
 }
 const sessions = new WeakMap<AbortSignal, Session>();
-
-/**
- * Raises the signal each interrupt key stands for on the run's signal source, in arrival order, as
- * the key would at a cooked terminal: Ctrl-C starts the shutdown, Ctrl-\\ ends the process, and
- * Ctrl-Z suspends it. Where stdin is not its signal source's own terminal nothing is raised: Ctrl-C
- * and Ctrl-\\ cancel the run, as the action's `cancel()` does, and Ctrl-Z does nothing. Several
- * Ctrl-Z keys in one read raise one SIGTSTP, as a cooked terminal suspends once. Answers which
- * kind of signal was raised, which reaches the run a moment later: one that ends the process, one
- * that suspends it, or none.
- */
-function raiseInterrupts<Options>(
-  context: PromptContext<Options>,
-  queue: InputQueue,
-): 'ending' | 'suspending' | undefined {
-  const interrupts: InterruptSignal[] = [];
-  queue.keys = queue.keys.filter((key) => {
-    if (key.kind !== 'interrupt') {
-      return true;
-    }
-    if (key.signal !== 'SIGTSTP' || !interrupts.includes('SIGTSTP')) {
-      interrupts.push(key.signal);
-    }
-    return false;
-  });
-  let raised: 'ending' | 'suspending' | undefined = undefined;
-  for (const signal of interrupts) {
-    if (context.host.raise(signal)) {
-      raised = signal === 'SIGTSTP' && raised !== 'ending' ? 'suspending' : 'ending';
-    } else if (signal !== 'SIGTSTP') {
-      context.cancel();
-    }
-  }
-  return raised;
-}
 
 /**
  * Registers the run's handlers that restore the terminal while raw mode holds: a shutdown leaves
@@ -203,13 +157,18 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
     if (interrupted) {
       return;
     }
-    feed(queue, chunk);
-    const raised = raiseInterrupts(context, queue);
+    const { raised, rest } = raiseInterruptKeys(
+      context,
+      typeof chunk === 'string' ? chunk : queue.decoder.write(chunk),
+    );
     if (raised !== undefined) {
       interrupted = raised === 'ending';
       queue.keys.length = 0;
+      queue.pending = '';
+      queue.carriage = false;
       return;
     }
+    feed(queue, rest);
     settle();
   };
   const end = () => {

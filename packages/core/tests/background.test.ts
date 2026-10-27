@@ -7,8 +7,8 @@
  *
  * - Replies. OSC 11 replies with 1, 2, 3, and 4 hex digits in each component, each ended by BEL and
  *   by `ESC \`, parse to their colors; garbage before, between, and after the replies passes
- *   through as typeahead; `Ctrl-C`, `Ctrl-\`, and `Ctrl-Z` anywhere in what was read leave the
- *   typeahead and name SIGINT, SIGQUIT, and SIGTSTP in arrival order; a DA1 reply that arrives
+ *   through as typeahead; `Ctrl-C`, `Ctrl-\`, and `Ctrl-Z` anywhere in what was read stay in
+ *   the typeahead, which `readReplies` leaves for the caller to raise; a DA1 reply that arrives
  *   first ends the read with no answer; a `997` reply answers alone, and an OSC 11 reply beside it
  *   wins; and a luminance just above 0.5 answers light while exactly 0.5 answers dark.
  * - Precedence. Each of the eight steps settles a fixture run, and each beats every later step,
@@ -36,8 +36,9 @@
  *   bare `data` listener, with no `resume()` call, receives the typeahead and later input; an OSC
  *   11 reply with no DA1 reply settles the run from that reply at the deadline, without reaching
  *   step 7; a reply that arrives after the deadline reaches the action's stdin read; `Ctrl-C`,
- *   `Ctrl-\`, and `Ctrl-Z` read during the wait leave the action's typeahead and are raised on the
- *   process in arrival order after the mode is restored; and `Ctrl-C` read during the wait ends the
+ *   `Ctrl-\`, and `Ctrl-Z` read during the wait are raised on the
+ *   process in arrival order after the mode is restored, and the typeahead is flushed with them, so
+ *   the action's stdin read is empty; and `Ctrl-C` read during the wait ends the
  *   process by SIGINT.
  * - Themed tokens. An adaptive token resolves to its light side under a light background and to its
  *   dark side under a dark one and under `undefined`, at truecolor, 256, and 16 colors, with each
@@ -186,8 +187,14 @@ describe('interrupt keys during the wait', () => {
       { raw: false, self: true, signal: 'SIGQUIT' },
       { raw: false, self: true, signal: 'SIGTSTP' },
     ]);
-    expect(report.stdinRead).toBe('ab');
+    expect(report.stdinRead).toBe(null);
     expect(report.seen.action).toBe('light');
+  });
+
+  it('push no typeahead back once a key raised its signal, as a cooked terminal flushes', () => {
+    const report = run({ kill: 'record', replies: `a${ctrlZ}${light}` });
+    expect(report.stdinRead).toBe(null);
+    expect(report.raised).toEqual([{ raw: false, self: true, signal: 'SIGTSTP' }]);
   });
 
   it("raise nothing on a stdin that is not the source's terminal: Ctrl-C cancels, Ctrl-Z drops", () => {
