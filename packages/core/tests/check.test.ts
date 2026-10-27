@@ -133,16 +133,32 @@ test.each(runtimes)(
   },
 );
 
+/** The bundles of check.mjs built so far, by name, so each is built once whichever test needs it first. */
+const bundles = new Map<string, string>();
+
+/** The directory of check.mjs bundled under the baked facts, built on first use. */
+function bundled(name: string, facts: string) {
+  const known = bundles.get(name);
+  if (known !== undefined) {
+    return known;
+  }
+  const outdir = join(root, name);
+  const built = spawnSync('bun', [bundler, 'check.mjs', outdir, facts], { encoding: 'utf8' });
+  expect(built.stderr).toBe('');
+  expect(built.status).toBe(0);
+  bundles.set(name, outdir);
+  return outdir;
+}
+
+const distributedFacts = JSON.stringify({ build: 'distributed' });
+
 test.each([
-  ['distributed', JSON.stringify({ build: 'distributed' })],
+  ['distributed', distributedFacts],
   ['malformed', '[]'],
 ])(
   'check() returns the same faults from a bundle whose baked facts read %s, which it never reads',
-  (_name, facts) => {
-    const outdir = join(root, _name);
-    const built = spawnSync('bun', [bundler, 'check.mjs', outdir, facts], { encoding: 'utf8' });
-    expect(built.stderr).toBe('');
-    expect(built.status).toBe(0);
+  (name, facts) => {
+    const outdir = bundled(name, facts);
     for (const runtime of runtimes) {
       const result = spawnSync(runtime, [join(outdir, 'check.js'), 'faults'], { encoding: 'utf8' });
       expect(result.stderr).toBe('');
@@ -152,8 +168,7 @@ test.each([
 );
 
 test('from a bundle whose baked facts read distributed, check() reports an unrouted post-install command and inspect() does not', () => {
-  // The bundle the distributed case above built, which this test reads and does not rebuild.
-  const outdir = join(root, 'distributed');
+  const outdir = bundled('distributed', distributedFacts);
   for (const runtime of runtimes) {
     const bundle = join(outdir, 'check.js');
     const checked = spawnSync(runtime, [bundle, 'post-install'], { encoding: 'utf8' });
