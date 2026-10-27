@@ -128,7 +128,6 @@ test.each([
   ['hook', [], 1],
   ['loader', [], 1],
   ['null-prototype', [], 1],
-  ['render', [], 1],
   ['answers', [], 1],
   ['string', [], 1],
   ['validator', ['--level', 'high'], 1],
@@ -150,6 +149,13 @@ test("a cancelled run whose throw has an unreadable name keeps its cancellation 
     stdout: 'resolved:130\n',
   });
 });
+
+test.each(['render', 'render-unawaited'])(
+  "%s: an output view's throw the action lets escape is offered to the translators like any throw",
+  (scenario) => {
+    expect(run(scenario)).toEqual(translated('catch-all', ['catch-all:Error']));
+  },
+);
 
 test('a middleware throw during unwinding is offered to the translators like any middleware throw', () => {
   expect(run('unwinding')).toEqual(translated('catch-all', ['dispatched', 'catch-all:Error']));
