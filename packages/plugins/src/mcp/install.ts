@@ -1,3 +1,4 @@
+import { holdsControlCharacter } from '../control-character.js';
 /*
  * `mcp install`: registers this application's server with each selected agent's own CLI, and
  * records each registration in the agent's plugin's file around the call that writes it.
@@ -10,9 +11,19 @@ import {
 import { recordName, selectedAgents } from './agents.js';
 import type { Agent, AgentName } from './agents.js';
 import { lines, refusals } from './messages.js';
-import { callAgent, commandLine, holdsControlCharacter } from './registration.js';
+import { callAgent, commandLine } from './registration.js';
 import type { Answer } from './registration.js';
-import { namesOf, readRecords, recordOf, refuseWindows, starts, warnOutput } from './run.js';
+import {
+  namesOf,
+  none,
+  readRecords,
+  recordOf,
+  refuseWindows,
+  starts,
+  succeeded,
+  succeededAt,
+  warnOutput,
+} from './run.js';
 import type { ChildRun, Recorded, Target } from './run.js';
 
 /** What `install` was asked: the agent it is limited to, and whether it replaces a name in the way. */
@@ -26,10 +37,6 @@ interface Registering extends Target {
   readonly command: readonly string[];
 }
 
-/** The code of a call that succeeded, and the count of an empty set. */
-const succeeded = 0;
-const none = 0;
-
 /** The code `codex mcp get` answers for a name it does not hold. */
 const notHeld = 1;
 
@@ -38,22 +45,15 @@ function codeOf(answer: Answer): number | undefined {
   return answer.kind === 'exited' ? answer.code : undefined;
 }
 
-/** Whether a call exited 0. */
-function succeededAt(answer: Answer): boolean {
-  return answer.kind === 'exited' && answer.code === succeeded;
-}
-
-/** The agents split by whether their CLI starts. */
-async function partitionByStart(
-  run: ChildRun,
-  selected: readonly Agent[],
-): Promise<{ readonly started: readonly Agent[]; readonly skipped: readonly Agent[] }> {
+/** The agents whose CLI starts, in table order. */
+async function startedAmong(run: ChildRun, selected: readonly Agent[]): Promise<readonly Agent[]> {
   const started: Agent[] = [];
-  const skipped: Agent[] = [];
   for (const agent of selected) {
-    ((await starts(run, agent)) ? started : skipped).push(agent);
+    if (await starts(run, agent)) {
+      started.push(agent);
+    }
   }
-  return { skipped, started };
+  return started;
 }
 
 /**
@@ -65,13 +65,9 @@ async function startedAgents(
   selected: readonly Agent[],
   named: AgentName | undefined,
 ): Promise<readonly Agent[]> {
-  const { skipped, started } = await partitionByStart(run, selected);
-  const [first] = started;
-  if (first === undefined) {
+  const started = await startedAmong(run, selected);
+  if (started.length === none) {
     throw named === undefined ? refusals.noAgent(run.name) : refusals.agentMissing(run.name, named);
-  }
-  for (const agent of skipped) {
-    await run.info(lines.skipped(agent.name));
   }
   return started;
 }
@@ -229,20 +225,32 @@ function checkFirst(run: ChildRun, named: AgentName | undefined) {
   };
 }
 
-/** `install`: the checks, then each agent that starts registered in table order. */
+/** Registers with one agent that starts, and says first that it replaces a name in the way. */
+async function registerStarted(
+  registering: Registering,
+  held: ReadonlySet<Agent>,
+  force: boolean,
+): Promise<void> {
+  if (held.has(registering.agent)) {
+    await registering.run.info(lines.replaced(namesOf(registering.run), registering.agent.name));
+  }
+  await registerWith(registering, force);
+}
+
+/** `install`: the checks, then each agent in table order registered, or skipped when it cannot start. */
 async function installRegistrations(run: ChildRun, request: InstallRequest): Promise<void> {
   const { agents, command, record, recorded } = checkFirst(run, request.agent);
   const started = await startedAgents(run, agents, request.agent);
   const held = await agentsInTheWay(run, started, recorded);
   await refuseNameInTheWay(run, held, request.force);
-  for (const agent of started) {
-    if (held.has(agent)) {
-      await run.info(lines.replaced(namesOf(run), agent.name));
-    }
-    await registerWith(
-      { agent, command, record, recorded: recorded.get(agent), run },
-      request.force,
-    );
+  for (const agent of agents) {
+    await (started.includes(agent)
+      ? registerStarted(
+          { agent, command, record, recorded: recorded.get(agent), run },
+          held,
+          request.force,
+        )
+      : run.info(lines.skipped(agent.name)));
   }
   await noteBuild(run);
 }

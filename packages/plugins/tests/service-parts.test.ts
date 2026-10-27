@@ -3,7 +3,7 @@
 import { nowrap, style } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
 
-import { holdsControlCharacter } from '../src/service/children.js';
+import { holdsControlCharacter } from '../src/control-character.js';
 import { readPrinted } from '../src/service/launchd.js';
 import { isLabel } from '../src/service/settings.js';
 import { stateOf, statusOf, statusText } from '../src/service/status.js';

@@ -55,9 +55,15 @@ interface Options {
   readonly claude?: Replies | 'unstarted';
   readonly codex?: Replies | 'unstarted';
   readonly platform?: string;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly home?: string;
   readonly build?: 'development' | 'distributed' | 'source';
   readonly programWords?: readonly string[];
+  /** What happens inside a call, by `<agent> <words>`, before its script answers. */
+  readonly during?: Readonly<Record<string, (mock: MockProcess) => void>>;
 }
+
+type MockProcess = ReturnType<typeof mockProcess>;
 
 /** A temporary state folder, the record's home, removed after the test. */
 function stateFolder(): string {
@@ -67,10 +73,16 @@ function stateFolder(): string {
 }
 
 /** One agent's script: it records each call and answers by the call's words, 0 and silence otherwise. */
-function script(agent: string, replies: Replies | 'unstarted' | undefined, calls: string[]) {
+function script(
+  agent: string,
+  replies: Replies | 'unstarted' | undefined,
+  calls: string[],
+  during: (call: string) => void,
+) {
   return (call: ProgramCall): ProgramAnswer => {
     const words = call.args.join(' ');
     calls.push(`${agent} ${words}`);
+    during(`${agent} ${words}`);
     if (replies === 'unstarted') {
       throw new Error(`${agent} cannot start`);
     }
@@ -86,15 +98,16 @@ function script(agent: string, replies: Replies | 'unstarted' | undefined, calls
 async function run(argv: readonly string[], options: Options = {}, state = stateFolder()) {
   const calls: string[] = [];
   const name = options.name ?? 'jsonkit';
+  const during = (call: string): void => options.during?.[call]?.(mock);
   const mock = mockProcess({
     argv: ['mcp', ...argv],
-    env: { PATH: '/usr/bin', XDG_STATE_HOME: state },
-    home: state,
+    env: options.env ?? { PATH: '/usr/bin', XDG_STATE_HOME: state },
+    home: options.home ?? state,
     platform: options.platform ?? 'linux',
     program: options.programWords ?? [program],
     programs: {
-      claude: script('claude', options.claude, calls),
-      codex: script('codex', options.codex, calls),
+      claude: script('claude', options.claude, calls, during),
+      codex: script('codex', options.codex, calls, during),
     },
     release: { build: options.build ?? 'distributed' },
   });
@@ -109,6 +122,12 @@ async function run(argv: readonly string[], options: Options = {}, state = state
   return {
     calls,
     code,
+    // The glyph of the lane that wrote the sentence, '' when no line ends with it.
+    lane: (sentence: string): string | undefined =>
+      stripVTControlCharacters(mock.stderr.text)
+        .split('\n')
+        .find((line) => line.endsWith(sentence))
+        ?.replace(sentence, ''),
     record,
     state,
     stderr: stripVTControlCharacters(mock.stderr.text),
@@ -120,6 +139,13 @@ async function run(argv: readonly string[], options: Options = {}, state = state
 function writeRecord(state: string, agent: string, text: string, name = 'jsonkit'): void {
   mkdirSync(join(state, name, 'installation'), { recursive: true });
   writeFileSync(join(state, name, 'installation', `mcp.${agent}.json`), text);
+}
+
+/** An agent's plugin's file as it is on disk now, read from inside a call. */
+function recordNow(state: string, agent: string): unknown {
+  return JSON.parse(
+    readFileSync(join(state, 'jsonkit', 'installation', `mcp.${agent}.json`), 'utf8'),
+  );
 }
 
 const committed = (command: string[] = [program, 'mcp'], name = 'jsonkit') =>
@@ -534,5 +560,337 @@ describe('config', () => {
     expect(JSON.parse(result.stdout)).toEqual({
       mcpServers: { jsonkit: { args: ['/srv/main.js', 'mcp'], command: '/usr/bin/node' } },
     });
+  });
+});
+
+/** What a pending file holds while a call runs. */
+const pendingFile = (prior: string[] | null, intended: string[] | null) => ({
+  directories: [],
+  files: [],
+  format: 1,
+  registrations: [{ intended, name: 'jsonkit', prior }],
+  state: 'pending',
+});
+
+const oldCommand = ['/old/jsonkit', 'mcp'];
+const claudeRemove = 'mcp remove -s user jsonkit';
+
+describe('the file while a call runs', () => {
+  it('install writes the file pending with the prior and intended lines during add', async () => {
+    const state = stateFolder();
+    writeRecord(state, 'codex', committed(oldCommand));
+    const seen: unknown[] = [];
+    await run(
+      ['install', '--agent', 'codex'],
+      {
+        during: { [`codex ${codexAdd}`]: () => seen.push(recordNow(state, 'codex')) },
+      },
+      state,
+    );
+    expect(seen).toEqual([pendingFile(oldCommand, [program, 'mcp'])]);
+  });
+
+  it('install of an unrecorded name writes prior null during claude add', async () => {
+    const state = stateFolder();
+    const seen: unknown[] = [];
+    await run(
+      ['install', '--agent', 'claude'],
+      {
+        during: { [`claude ${claudeAdd}`]: () => seen.push(recordNow(state, 'claude')) },
+      },
+      state,
+    );
+    expect(seen).toEqual([pendingFile(null, [program, 'mcp'])]);
+  });
+
+  it('install keeps the file pending through claude remove', async () => {
+    const state = stateFolder();
+    writeRecord(state, 'claude', committed(oldCommand));
+    const seen: unknown[] = [];
+    await run(
+      ['install', '--agent', 'claude'],
+      {
+        during: { [`claude ${claudeRemove}`]: () => seen.push(recordNow(state, 'claude')) },
+      },
+      state,
+    );
+    expect(seen).toEqual([pendingFile(oldCommand, [program, 'mcp'])]);
+  });
+
+  it('uninstall writes the file pending with intended null during remove', async () => {
+    const state = stateFolder();
+    writeRecord(state, 'claude', committed(oldCommand));
+    const seen: unknown[] = [];
+    await run(
+      ['uninstall'],
+      {
+        during: { [`claude ${claudeRemove}`]: () => seen.push(recordNow(state, 'claude')) },
+      },
+      state,
+    );
+    expect(seen).toEqual([pendingFile(oldCommand, null)]);
+  });
+
+  it('install over a pending file treats it as recorded', async () => {
+    const state = stateFolder();
+    writeRecord(state, 'claude', pending(oldCommand, null));
+    writeRecord(state, 'codex', pending(oldCommand, null));
+    const result = await run(['install'], {}, state);
+    expect(result.code).toBe(0);
+    expect(result.calls).toEqual([
+      'claude --version',
+      'codex --version',
+      `claude ${claudeRemove}`,
+      `claude ${claudeAdd}`,
+      `codex ${codexAdd}`,
+    ]);
+  });
+});
+
+const both = (state: string) => {
+  writeRecord(state, 'claude', committed(oldCommand));
+  writeRecord(state, 'codex', committed(oldCommand));
+};
+const raising = (signal: 'SIGINT' | 'SIGTERM') => (mock: MockProcess) => mock.signals.raise(signal);
+
+describe('the run signal', () => {
+  it.each([
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ] as const)('%s during install --version starts no later call', async (signal, code) => {
+    const state = stateFolder();
+    both(state);
+    const result = await run(
+      ['install'],
+      { during: { 'claude --version': raising(signal) } },
+      state,
+    );
+    expect(result.code).toBe(code);
+    expect(result.calls).toEqual(['claude --version']);
+    expect(result.record('claude')).toEqual(JSON.parse(committed(oldCommand)));
+    expect(result.record('codex')).toEqual(JSON.parse(committed(oldCommand)));
+  });
+
+  it('SIGTERM during uninstall --version starts no later call and keeps both files', async () => {
+    const state = stateFolder();
+    both(state);
+    const result = await run(
+      ['uninstall'],
+      { during: { 'claude --version': raising('SIGTERM') } },
+      state,
+    );
+    expect(result.code).toBe(143);
+    expect(result.calls).toEqual(['claude --version']);
+    expect(result.record('claude')).toEqual(JSON.parse(committed(oldCommand)));
+    expect(result.record('codex')).toEqual(JSON.parse(committed(oldCommand)));
+  });
+
+  it('SIGTERM during uninstall remove leaves that file pending and the other untouched', async () => {
+    const state = stateFolder();
+    both(state);
+    const result = await run(
+      ['uninstall'],
+      { during: { [`claude ${claudeRemove}`]: raising('SIGTERM') } },
+      state,
+    );
+    expect(result.code).toBe(143);
+    expect(result.calls).toEqual(['claude --version', `claude ${claudeRemove}`]);
+    expect(result.record('claude')).toEqual(pendingFile(oldCommand, null));
+    expect(result.record('codex')).toEqual(JSON.parse(committed(oldCommand)));
+    expect(result.stderr).not.toContain('Removed');
+  });
+
+  it('SIGINT during install add leaves that file pending and attempts no later agent', async () => {
+    const state = stateFolder();
+    const result = await run(
+      ['install'],
+      {
+        codex: { [codexGet]: { code: 1 } },
+        during: { [`claude ${claudeAdd}`]: raising('SIGINT') },
+      },
+      state,
+    );
+    expect(result.code).toBe(130);
+    expect(result.calls).toEqual([
+      'claude --version',
+      'codex --version',
+      `codex ${codexGet}`,
+      `claude ${claudeAdd}`,
+    ]);
+    expect(result.record('claude')).toEqual(pendingFile(null, [program, 'mcp']));
+    expect(result.record('codex')).toBeUndefined();
+  });
+
+  it('SIGTERM during install claude remove leaves the file pending and runs no add', async () => {
+    const state = stateFolder();
+    writeRecord(state, 'claude', committed(oldCommand));
+    const result = await run(
+      ['install', '--agent', 'claude'],
+      {
+        during: { [`claude ${claudeRemove}`]: raising('SIGTERM') },
+      },
+      state,
+    );
+    expect(result.code).toBe(143);
+    expect(result.calls).toEqual(['claude --version', `claude ${claudeRemove}`]);
+    expect(result.record('claude')).toEqual(pendingFile(oldCommand, [program, 'mcp']));
+  });
+
+  it('SIGTERM during the codex name check writes nothing and starts no add', async () => {
+    const result = await run(['install'], {
+      during: { [`codex ${codexGet}`]: raising('SIGTERM') },
+    });
+    expect(result.code).toBe(143);
+    expect(result.calls.some((call) => call.includes(' mcp add'))).toBe(false);
+    expect(result.record('claude')).toBeUndefined();
+    expect(result.record('codex')).toBeUndefined();
+  });
+});
+
+describe('leftover staging files', () => {
+  const leftover = '.mcp.claude.json.0123456789abcdef.loom-staging';
+
+  it.each(['install', 'uninstall'])('%s removes them', async (child) => {
+    const state = stateFolder();
+    writeRecord(state, 'claude', committed());
+    const path = join(state, 'jsonkit', 'installation', leftover);
+    writeFileSync(path, 'half');
+    await run([child, '--agent', 'claude'], {}, state);
+    expect(existsSync(path)).toBe(false);
+  });
+
+  it('install removes them where no file was written', async () => {
+    const state = stateFolder();
+    mkdirSync(join(state, 'jsonkit', 'installation'), { recursive: true });
+    const path = join(state, 'jsonkit', 'installation', leftover);
+    writeFileSync(path, 'half');
+    await run(['install', '--agent', 'claude'], {}, state);
+    expect(existsSync(path)).toBe(false);
+  });
+});
+
+describe('the lane of each sentence', () => {
+  const success = '✔ ';
+  const info = 'ℹ ';
+  const warn = '⚠ ';
+  const free = { [codexGet]: { code: 1 } };
+
+  it('writes Registered as success and Skipped and build notes as info, in table order', async () => {
+    const result = await run(['install'], { build: 'source', claude: 'unstarted', codex: free });
+    expect(result.lane('Skipped claude, because claude could not start.')).toBe(info);
+    expect(result.lane(`Registered jsonkit with codex to run ${program} mcp.`)).toBe(success);
+    expect(
+      result.lane(
+        'jsonkit is a source build, so the registration runs it from this checkout. Run mcp install from an installed jsonkit to register that one instead.',
+      ),
+    ).toBe(info);
+    expect(
+      result.lane(
+        'The registration keeps no runtime flags, so a loader such as --import tsx is not passed on.',
+      ),
+    ).toBe(info);
+  });
+
+  it('skips claude before it registers codex, and registers claude before it skips codex', async () => {
+    const before = await run(['install'], { claude: 'unstarted', codex: free });
+    expect(before.stderr.indexOf('Skipped claude')).toBeLessThan(
+      before.stderr.indexOf('Registered'),
+    );
+    const after = await run(['install'], { codex: 'unstarted' });
+    expect(after.stderr.indexOf('Registered jsonkit with claude')).toBeLessThan(
+      after.stderr.indexOf('Skipped codex'),
+    );
+  });
+
+  it('writes the held-name sentence as a warning and Replaced as info', async () => {
+    const held = { [codexGet]: { code: 0 } };
+    const refused = await run(['install'], { codex: held });
+    expect(
+      refused.lane(
+        'codex already has an MCP server named jsonkit, which jsonkit mcp install did not register.',
+      ),
+    ).toBe(warn);
+    const forced = await run(['install', '--force'], { codex: held });
+    expect(
+      forced.lane(
+        'Replaced the jsonkit server codex had, which jsonkit mcp install did not register.',
+      ),
+    ).toBe(info);
+  });
+
+  it('writes the agent output as a warning on a failed add', async () => {
+    const result = await run(['install', '--agent', 'claude'], {
+      claude: { [claudeAdd]: { code: 1, stderr: 'oops\n' } },
+    });
+    expect(result.lane('oops')).toBe(warn);
+  });
+
+  it('writes an agent output ESC byte escaped', async () => {
+    const result = await run(['install', '--agent', 'claude'], {
+      claude: { [claudeAdd]: { code: 1, stderr: 'a\u001b[31mred\n' } },
+    });
+    expect(result.stderr).toContain(String.raw`a\u001b[31mred`);
+  });
+
+  it('writes Removed as success, and no-longer-recorded as info after the output as a warning', async () => {
+    const state = stateFolder();
+    writeRecord(state, 'claude', committed());
+    writeRecord(state, 'codex', committed());
+    const result = await run(
+      ['uninstall'],
+      { claude: { [claudeRemove]: { code: 1, stderr: 'oops\n' } } },
+      state,
+    );
+    expect(result.lane('oops')).toBe(warn);
+    expect(result.lane('jsonkit is no longer recorded as registered with claude.')).toBe(info);
+    expect(result.lane('Removed jsonkit from codex.')).toBe(success);
+  });
+
+  it('writes nothing-to-remove as success and could-not-start as a warning', async () => {
+    const none = await run(['uninstall']);
+    expect(
+      none.lane(
+        'jsonkit is not registered with any agent by jsonkit mcp install, so there is nothing to remove.',
+      ),
+    ).toBe(success);
+    const state = stateFolder();
+    writeRecord(state, 'claude', committed());
+    const result = await run(['uninstall'], { claude: 'unstarted' }, state);
+    expect(result.lane('claude could not start, so jsonkit stays registered with it.')).toBe(warn);
+  });
+});
+
+describe('the order of the checks', () => {
+  const damaged = '{not json';
+  const bell = { programWords: ['/srv/bin\u0007/jsonkit'] };
+  const relative = { env: { PATH: '/usr/bin', XDG_STATE_HOME: 'relative' }, home: '' };
+
+  it('refuses a record directory that is not absolute before any program starts', async () => {
+    const result = await run(['install'], relative);
+    expect(result.code).toBe(1);
+    expect(result.calls).toEqual([]);
+    expect(result.stderr).toContain(
+      'jsonkit cannot find its installation record because HOME is not an absolute path.',
+    );
+  });
+
+  it('checks Windows before a control character', async () => {
+    const result = await run(['install'], { ...bell, platform: 'win32' });
+    expect(result.stderr).toContain('registers with claude and codex on Linux and macOS');
+    expect(result.stderr).not.toContain('control character');
+  });
+
+  it('checks a control character before the record directory', async () => {
+    const result = await run(['install'], { ...bell, ...relative });
+    expect(result.stderr).toContain('holds a control character');
+    expect(result.stderr).not.toContain('installation record');
+  });
+
+  it('checks a control character before a damaged record', async () => {
+    const state = stateFolder();
+    writeRecord(state, 'claude', damaged);
+    const result = await run(['install'], bell, state);
+    expect(result.stderr).toContain('holds a control character');
+    expect(result.stderr).not.toContain('cannot be read');
   });
 });

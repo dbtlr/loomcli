@@ -3,7 +3,9 @@
  * share, such as a completion script, a manual page, an agent skill, or a service unit, and the
  * startup lines that load one. Each plugin records what it wrote in its own file in the
  * installation record, `<plugin>.json`, and never takes over a file it did not record; a startup
- * file is the operator's, and the module changes only the lines it records there. The module is
+ * file is the operator's, and the module changes only the lines it records there. The MCP plugin
+ * records a registration an agent's own CLI holds in its file instead of a file or a line, and the
+ * module writes that file pending before the agent's call and committed after it. The module is
  * internal to the pack: no subpath exports it.
  */
 import { rmSync } from 'node:fs';
@@ -701,14 +703,6 @@ function readRegistration(request: RecordRequest): RegistrationRead {
   return { registration, status: 'read' };
 }
 
-/** The command line a pending registration records, `null` for none. */
-function recordedCommand(command: readonly string[] | undefined): readonly string[] | null {
-  if (command === undefined) {
-    return null;
-  }
-  return command;
-}
-
 /** What a plugin says before it runs the agent's call: the command line held, and the one wanted. */
 interface PendingRegistrationRequest extends RecordRequest {
   readonly name: string;
@@ -721,8 +715,8 @@ interface PendingRegistrationRequest extends RecordRequest {
 /** Writes the plugin's file pending, before the agent's call that adds or removes the registration. */
 function writePendingRegistration(request: PendingRegistrationRequest): void {
   const { name, plugin, record } = request;
-  const prior = recordedCommand(request.prior);
-  const intended = recordedCommand(request.intended);
+  const prior = request.prior ?? null;
+  const intended = request.intended ?? null;
   writePluginFile(pluginFilePath(record, plugin), {
     directories: [],
     files: [],
@@ -731,6 +725,11 @@ function writePendingRegistration(request: PendingRegistrationRequest): void {
     registrations: [{ intended, name, prior }],
     state: 'pending',
   });
+}
+
+/** Removes the staging files a killed write left beside the plugin's file, which it never reads. */
+function removeStagingOfPluginFile(request: RecordRequest): void {
+  removeStagingFiles(pluginFilePath(request.record, request.plugin));
 }
 
 /** Writes the plugin's file committed, once the agent's call settled, with what it holds now. */
@@ -779,6 +778,7 @@ export {
   readRecorded,
   readRegistration,
   recordedDirectories,
+  removeStagingOfPluginFile,
   targetRefusals,
   uninstall,
   writeCommittedRegistration,

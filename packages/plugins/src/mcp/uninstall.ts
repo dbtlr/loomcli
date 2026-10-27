@@ -8,14 +8,17 @@ import { recordName, selectedAgents } from './agents.js';
 import type { Agent, AgentName } from './agents.js';
 import { lines, refusals } from './messages.js';
 import { callAgent } from './registration.js';
-import { namesOf, readRecords, recordOf, refuseWindows, starts, warnOutput } from './run.js';
+import {
+  namesOf,
+  none,
+  readRecords,
+  recordOf,
+  refuseWindows,
+  starts,
+  succeededAt,
+  warnOutput,
+} from './run.js';
 import type { ChildRun, Target } from './run.js';
-
-/** The code of a call that succeeded. */
-const succeeded = 0;
-
-/** The count of an empty list. */
-const none = 0;
 
 /** An agent whose file records a registration. */
 interface RecordedTarget extends Target {
@@ -28,14 +31,14 @@ async function removeFrom({ agent, record, recorded, run }: RecordedTarget): Pro
   const plugin = recordName(agent);
   writePendingRegistration({
     intended: undefined,
-    name: recorded.name,
+    name: names.registration,
     plugin,
     prior: recorded.command,
     record,
   });
   const answer = await callAgent(run, agent.name, agent.remove(names.registration));
   deletePluginFile({ plugin, record });
-  if (answer.kind === 'exited' && answer.code === succeeded) {
+  if (succeededAt(answer)) {
     await run.success(lines.removed(names, agent.name));
     return;
   }

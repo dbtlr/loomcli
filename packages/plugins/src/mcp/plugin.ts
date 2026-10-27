@@ -261,7 +261,8 @@ const configCommand = new Command('config', {
 }).action(({ graph, host, out }) => out.render(clientConfiguration(graph.name, host), exactText));
 
 // This package compiles outside any Application's registration, so the Command requires no globals.
-const mcpServeCommand = new Command('mcp', {
+/** The `mcp` Command: it serves the tools, and its children install, uninstall, and print a configuration. */
+const mcpCommandTree = new Command('mcp', {
   description: "Serve this application's tools to an MCP client over stdin and stdout.",
 })
   .command(installCommand)
@@ -271,12 +272,14 @@ const mcpServeCommand = new Command('mcp', {
 
 /**
  * A plugin that serves every Command carrying an `mcpCommand` value as one tool of a Model Context
- * Protocol server over stdio, each call run through `invoke`. It contributes the `mcp` Command, the
- * three extensions, and a hook that rejects a graph whose tools cannot be served.
+ * Protocol server over stdio, each call run through `invoke`. It contributes the `mcp` Command and
+ * its three children, `install` and `uninstall`, which register the server with Claude Code and
+ * Codex and record each registration, and `config`, the three extensions, and a hook that rejects a
+ * graph whose tools cannot be served.
  */
 export function mcp(): Plugin {
   return plugin(`${packageName}/mcp`, {
-    commands: [mcpServeCommand],
+    commands: [mcpCommandTree],
     extensions: [mcpCommand, mcpInput, mcpArgument],
     onGraphBuilt: judgeTools,
   });

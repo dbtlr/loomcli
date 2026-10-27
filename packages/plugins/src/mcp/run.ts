@@ -5,7 +5,7 @@
 import type { Host } from '@loomcli/core';
 
 import { recordDirectory } from '../application-folders.js';
-import { readRegistration } from '../installation/files.js';
+import { readRegistration, removeStagingOfPluginFile } from '../installation/files.js';
 import type { RecordedRegistration } from '../installation/record.js';
 import { recordName } from './agents.js';
 import type { Agent } from './agents.js';
@@ -42,6 +42,15 @@ interface Reading {
   readonly child: Child;
 }
 
+/** The code of a call that succeeded, and the count of an empty set. */
+const succeeded = 0;
+const none = 0;
+
+/** Whether a call exited 0. */
+function succeededAt(answer: Answer): boolean {
+  return answer.kind === 'exited' && answer.code === succeeded;
+}
+
 /** The names a sentence of the run uses. */
 function namesOf(run: ChildRun): Names {
   return { app: run.name, registration: registrationName(run.name) };
@@ -54,7 +63,10 @@ function refuseWindows(run: ChildRun, child: Child): void {
   }
 }
 
-/** The registration each agent's plugin's file records, or the refusal of one it cannot read. */
+/**
+ * The registration each agent's plugin's file records, or the refusal of one it cannot read. Once
+ * every file reads, the staging files a killed write left beside them are removed.
+ */
 function readRecords(run: ChildRun, { agents, child, record }: Reading): Recorded {
   const recorded = new Map<Agent, RecordedRegistration | undefined>();
   for (const agent of agents) {
@@ -63,6 +75,9 @@ function readRecords(run: ChildRun, { agents, child, record }: Reading): Recorde
       throw refusals.record(run.name, read.refused.path, child);
     }
     recorded.set(agent, read.registration);
+  }
+  for (const agent of agents) {
+    removeStagingOfPluginFile({ plugin: recordName(agent), record });
   }
   return recorded;
 }
@@ -96,4 +111,14 @@ async function warnOutput(run: ChildRun, answer: Answer): Promise<void> {
 }
 
 export type { ChildRun, Recorded, Target };
-export { namesOf, readRecords, recordOf, refuseWindows, starts, warnOutput };
+export {
+  namesOf,
+  none,
+  readRecords,
+  recordOf,
+  refuseWindows,
+  starts,
+  succeeded,
+  succeededAt,
+  warnOutput,
+};

@@ -4,14 +4,6 @@
  */
 import type { Host } from '@loomcli/core';
 
-/** A control character, U+0000 to U+001F or U+007F to U+009F. */
-const controlCharacter = /\p{Cc}/u;
-
-/** Whether the text holds a control character. */
-function holdsControlCharacter(text: string): boolean {
-  return controlCharacter.test(text);
-}
-
 /** The registration name: the application's name with each `.` written as `_`. */
 function registrationName(applicationName: string): string {
   return applicationName.replaceAll('.', '_');
@@ -38,12 +30,8 @@ interface Spawner {
   readonly signal: AbortSignal;
 }
 
-/**
- * Runs one agent call with the host's environment and working directory, no shell and no input,
- * its output captured, until it exits or the run signal ends it. A program that cannot start, and
- * a handle whose `spawn` throws for one, answer `unstarted`.
- */
-async function callAgent(
+/** The answer of one spawn, `unstarted` for a program that cannot start or a handle that throws. */
+async function spawned(
   { host, signal }: Spawner,
   program: string,
   args: readonly string[],
@@ -65,5 +53,22 @@ async function callAgent(
   return { kind: 'unstarted' };
 }
 
+/**
+ * Runs one agent call with the host's environment and working directory, no shell and no input,
+ * its output captured, until it exits or the run signal ends it. A program that cannot start, and
+ * a handle whose `spawn` throws for one, answer `unstarted`. A run signal that has aborted, before
+ * the call or by the time it ends, throws its reason in place of an answer, so no later call starts.
+ */
+async function callAgent(
+  { host, signal }: Spawner,
+  program: string,
+  args: readonly string[],
+): Promise<Answer> {
+  signal.throwIfAborted();
+  const answer = await spawned({ host, signal }, program, args);
+  signal.throwIfAborted();
+  return answer;
+}
+
 export type { Answer };
-export { callAgent, commandLine, holdsControlCharacter, registrationName };
+export { callAgent, commandLine, registrationName };
