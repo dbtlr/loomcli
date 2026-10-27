@@ -104,10 +104,12 @@ function kit(declared: ConstructorParameters<typeof Application>[1]) {
           .option('older', { deprecated: 'Use --keep instead.', type: 'boolean' })
           .action(dispatch),
       )
-      // A counted option has one long spelling and no negative one; the group is hidden from listings.
+      // A counted option and an implied-value option each have one long spelling and no negative one.
+      // The group is hidden from listings.
       .command(
         new Command('tally', { hidden: true })
           .option('quietness', { short: 'q', type: 'count' })
+          .option('backup', { implied: 'simple', type: 'string' })
           .action(dispatch),
       )
       .command(
