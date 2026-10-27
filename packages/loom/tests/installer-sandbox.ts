@@ -399,7 +399,7 @@ printf '%s\\n' "$stdin" >${log}.stdin
 printf '%s\\n' "$PWD" >${log}.cwd
 if [ -f ${quoted(record)} ]; then ${quoted(requiredTool('cat'))} ${quoted(record)} >${log}.record; fi
 if [ -n "\${LOOM_FAKE_PROMPT:-}" ]; then printf '%s\\n' "$LOOM_FAKE_PROMPT" >&2; fi
-if [ -n "\${LOOM_FAKE_SLEEP:-}" ]; then printf 'sleeping\\n' >>${quoted(`${box.log}.sleeping`)}; ${quoted(requiredTool('sleep'))} "$LOOM_FAKE_SLEEP"; fi
+if [ -n "\${LOOM_FAKE_SLEEP:-}" ]; then ${quoted(requiredTool('sleep'))} "$LOOM_FAKE_SLEEP" & printf 'sleeping\\n' >>${quoted(`${box.log}.sleeping`)}; wait "$!"; fi
 line=
 IFS= read -r line || :
 printf '%s' "$line" >${log}.input
