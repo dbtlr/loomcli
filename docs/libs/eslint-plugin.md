@@ -29,6 +29,7 @@ Put the plugin's `configs.oxlint` object in `.oxlintrc.json`, as it is:
     "@loomcli/discarded-declaration": "error",
     "@loomcli/host-bypass": "error",
     "@loomcli/name-shape": "error",
+    "@loomcli/strict-configuration-schema": "error",
     "@loomcli/undescribed": "error"
   }
 }
@@ -179,7 +180,7 @@ Each message names what the code reached and the member to use instead:
 
 ### `strict-configuration-schema`
 
-Reports a zod strict object in the schema an application gives the [configuration plugin](../plugins/config.md). zod reports an unknown key in a strict object as an issue on the object itself, so the plugin drops the whole object, and a key an operator added for a newer version of the application would empty the section it sits in, or the whole file at the top level. A loose object lets the plugin ignore unknown keys, as configuration files do. valibot and ArkType report the unknown key itself, so the plugin drops that key alone and a strict object there behaves as a loose one; the rule leaves them alone, because a false report is worse than a missed one. Standard Schema's types cannot tell a strict object from a loose one, so a lint rule carries the advice. [ADR-0118](../decisions/0118-the-configuration-plugin-reads-one-schema-described-file-through-a-provider-and-drops-what-the-schema-rejects.md) records the decision.
+Reports a zod strict object in the schema an application gives the [configuration plugin](../plugins/config.md). zod reports an unknown key in a strict object as an issue on the object itself, so the plugin drops the whole object, and a key an operator added for a newer version of the application would empty the section it sits in, or the whole file at the top level. `z.object`, which strips unknown keys, lets the plugin ignore them, as configuration files do. valibot and ArkType report the unknown key itself, so the plugin drops that key alone and a strict object there behaves as a loose one; the rule leaves them alone, because a false report is worse than a missed one. Standard Schema's types cannot tell a strict object from a loose one, so a lint rule carries the advice. [ADR-0118](../decisions/0118-the-configuration-plugin-reads-one-schema-described-file-through-a-provider-and-drops-what-the-schema-rejects.md) records the decision.
 
 ```ts
 import { configuration } from '@loomcli/plugins/config';
@@ -198,7 +199,7 @@ export const { plugin: configPlugin, values: config } = configuration({
 - **Where it looks.** The `schema` property of the settings object literal passed to `configuration`, where the binding is imported from `@loomcli/plugins/config`, a renamed import and a namespace import included. The rule judges that expression at every depth, and it follows an identifier whose `const` declaration in the same module initializes it, at any depth of the expression, so a section schema declared above the call is judged.
 - **The forms.** zod's `strictObject(...)`, called on a binding imported from `zod` or `zod/v4`, a namespace import such as `z.strictObject(...)` included, and a `.strict()` call in the expression the rule judges.
 - **What it leaves alone.** valibot's and ArkType's strict objects, a schema imported from another module, held in a `let` variable, passed through a parameter, or built by a call the rule cannot see into, and every strict object outside a `configuration` call's `schema`.
-- **The message.** `A strict object drops its whole section from the configuration when the file holds a key it does not list. Use a loose object; the configuration plugin ignores unknown keys.`
+- **The message.** `A zod strict object drops its whole section from the configuration when the file holds a key it does not list. Use z.object, which strips unknown keys.`
 
 ## Add a rule
 
