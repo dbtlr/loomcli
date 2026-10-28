@@ -76,7 +76,7 @@ Type assertions around a value (`as`, `satisfies`, `!`) do not change what it is
 
 A rule reports only what it can trace. Apart from what [`host-bypass`](#host-bypass) traces through a destructure, a parameter, a `let` variable, a destructured binding, a spread options object, a computed name, a name held in a variable, and a `Command` that does not come from `@loomcli/core` all get no report. A false report is worse than a missed one.
 
-`host-bypass` judges no declaration. It reads scope analysis and import declarations, under the forms [its section](#host-bypass) lists.
+`host-bypass` judges no declaration. It reads scope analysis and import declarations, under the forms [its section](#host-bypass) lists. `strict-configuration-schema` judges the schema passed to the configuration plugin, under the forms [its section](#strict-configuration-schema) lists.
 
 ## Rules
 
@@ -176,6 +176,29 @@ Each message names what the code reached and the member to use instead:
 - **The global alone.** The rule reads scope analysis, so a binding the code declares itself, such as a parameter named `process` or a destructured `{ process }`, is not reported. A use it cannot trace, such as `Reflect.get(globalThis, 'process')` or an `import()` with a computed specifier, is not reported either.
 - **The entry module.** `app.run()` given no handle binds the real process, so an entry module needs no `process` of its own and no exception.
 - **Tests.** A file whose name holds `.test.` or `.spec.` is not linted by this rule. A test runs outside any run, and it is where a real folder or the machine's environment is handed to a mock, such as `tmpdir: mkdtempSync(join(tmpdir(), 'notes-'))`.
+
+### `strict-configuration-schema`
+
+Reports a zod strict object in the schema an application gives the [configuration plugin](../plugins/config.md). zod reports an unknown key in a strict object as an issue on the object itself, so the plugin drops the whole object, and a key an operator added for a newer version of the application would empty the section it sits in, or the whole file at the top level. A loose object lets the plugin ignore unknown keys, as configuration files do. valibot and ArkType report the unknown key itself, so the plugin drops that key alone and a strict object there behaves as a loose one; the rule leaves them alone, because a false report is worse than a missed one. Standard Schema's types cannot tell a strict object from a loose one, so a lint rule carries the advice. [ADR-0118](../decisions/0118-the-configuration-plugin-reads-one-schema-described-file-through-a-provider-and-drops-what-the-schema-rejects.md) records the decision.
+
+```ts
+import { configuration } from '@loomcli/plugins/config';
+import { z } from 'zod';
+
+const updates = z.strictObject({ channel: z.string().optional() });
+
+export const { plugin: configPlugin, values: config } = configuration({
+  file: '.collector.toml',
+  // Reported: z.strictObject drops the whole updates table for one unknown key. Use z.object.
+  schema: z.object({ updates: updates.optional() }),
+});
+```
+
+- **On by default.** `configs.recommended` and `configs.oxlint` turn the rule on at `error`, as they do every rule. An author who wants a strict schema turns the rule off, and the plugin then drops what the schema reports, under the ordinary rule.
+- **Where it looks.** The `schema` property of the settings object literal passed to `configuration`, where the binding is imported from `@loomcli/plugins/config`, a renamed import and a namespace import included. The rule judges that expression at every depth, and it follows an identifier whose `const` declaration in the same module initializes it, at any depth of the expression, so a section schema declared above the call is judged.
+- **The forms.** zod's `strictObject(...)`, called on a binding imported from `zod` or `zod/v4`, a namespace import such as `z.strictObject(...)` included, and a `.strict()` call in the expression the rule judges.
+- **What it leaves alone.** valibot's and ArkType's strict objects, a schema imported from another module, held in a `let` variable, passed through a parameter, or built by a call the rule cannot see into, and every strict object outside a `configuration` call's `schema`.
+- **The message.** `A strict object drops its whole section from the configuration when the file holds a key it does not list. Use a loose object; the configuration plugin ignores unknown keys.`
 
 ## Add a rule
 
