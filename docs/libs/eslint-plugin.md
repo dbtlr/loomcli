@@ -29,7 +29,6 @@ Put the plugin's `configs.oxlint` object in `.oxlintrc.json`, as it is:
     "@loomcli/discarded-declaration": "error",
     "@loomcli/host-bypass": "error",
     "@loomcli/name-shape": "error",
-    "@loomcli/strict-configuration-schema": "error",
     "@loomcli/undescribed": "error"
   }
 }
