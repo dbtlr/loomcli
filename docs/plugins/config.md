@@ -66,14 +66,13 @@ export const configInput = extension(`${packageName}/config/input`, {
 ```ts
 // src/configuration.ts
 import { configuration } from '@loomcli/plugins/config';
-import { path } from '@loomcli/validators';
 import { z } from 'zod';
 
 const collectorConfig = z.object({
   minBytes: z.number().int().nonnegative().optional(),
   sessions: z
     .object({
-      sources: z.array(z.object({ harness: z.string(), dir: path().optional(), name: z.string().optional() })).optional(),
+      sources: z.array(z.object({ harness: z.string(), dir: z.string().optional(), name: z.string().optional() })).optional(),
     })
     .optional(),
 });
@@ -181,7 +180,7 @@ type EmptyFileGuard<Schema extends StandardSchemaV1> = EveryKeyOptional<Schema> 
 
 A value in the file never fails a run. The plugin removes what the schema rejects and keeps the rest.
 
-- **Drop and validate again.** The plugin calls the schema's `~standard.validate` with the parsed file and the options [`configurationValidationOptions`](../core/validation.md#validation-context) builds for the file. When the result holds issues, it removes the value at each issue's path and validates again, until the file passes. Each round removes at least one value, so the loop ends.
+- **Drop and validate again.** The plugin calls the schema's `~standard.validate` with the parsed file. When the result holds issues, it removes the value at each issue's path and validates again, until the file passes. Each round removes at least one value, so the loop ends.
 - **What a path removes.** A path segment is a key, or `{ key }` as Standard Schema allows. The plugin reads every issue's path against the file as it stood when the round began. A path that passes through an array item is cut at the outermost item it enters, and the whole item is removed, so an item with a missing required key or a wrong value at any depth below it is gone and the array keeps its other items. Any other path that ends at a value the file holds removes that value. A path that ends at a value the file does not hold, such as a missing key, removes the nearest enclosing value the file holds. A path with no segments removes every key, and the file then validates as an empty file. A target inside a value the same round already removes is skipped, and the plugin removes array items from the highest index down, so a removal never moves another target.
 - **Records.** At run time the plugin cannot tell a record from an object, so a wrong value inside a record's value removes that value alone. When the record's value then lacks a key it requires, the next round removes the whole entry and writes a second `-v` line for it.
 - **Where libraries put a path.** zod, valibot, and ArkType name the same path for a wrong value, a missing key in an array item, an array item, and a refinement on a nested object. A refinement on the top-level object has no path in all three, so it removes every key. A strict object differs: valibot and ArkType name the unknown key itself, while zod names the object that holds it, so one unknown key empties a zod strict object, the whole file at the top level. The [`strict-configuration-schema`](../libs/eslint-plugin.md#strict-configuration-schema) rule advises against strict objects for this reason.
@@ -200,9 +199,8 @@ A value in the file never fails a run. The plugin removes what the schema reject
 
 ## File-relative paths
 
-- **The schema.** The plugin validates the file with the options `configurationValidationOptions(host, { file, directory })` builds, where `directory` is the absolute directory of the file the lookup found. The context's `host.cwd` is that directory, so [`path()`](../libs/validators.md) and any validator that reads `host.cwd` resolve a relative value in the file against the file's directory, as tsconfig, git's `include.path`, and Cargo do. `provided.config` holds what the schema output.
-- **A run with no file.** A run whose lookup found no file, or skipped a broken one, validates an empty file with `file` as the pattern's first candidate in the start directory, shown as a label shows it, and `directory` as the start directory.
-- **A linked option.** Every answer the source gives carries the same `directory`, so the option's validator resolves the same way, under [Input sources](../core/input-sources.md).
+- **A linked option.** A relative path in the file resolves against the file's directory, as tsconfig, git's `include.path`, and Cargo resolve it, for an option linked to it. Every answer the source gives carries the file's absolute `directory`, so the option's validator, such as [`path()`](../libs/validators.md), reads that directory as `host.cwd`, under [Input sources](../core/input-sources.md).
+- **The schema keeps paths as written.** A Standard Schema library passes no options to the validators nested inside it, so the plugin cannot give the schema a host whose `cwd` is the file's directory, and `provided.config` holds each path as the file wrote it.
 - **No `~`.** The plugin expands no `~` in a value, and neither does `path()`. A value that holds `~/notes` resolves as a relative path that starts with a folder named `~`.
 
 ## Lookup

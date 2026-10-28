@@ -118,17 +118,6 @@ Core re-exports the `StandardSchemaV1` type, so a custom validator depends on `@
 
 A [question](../libs/prompts.md) validates its submitted answer with `phase: 'question'`. It carries the captured host, the routed path, the passthrough tail, and a separate copy of the run's supplied inputs. A linked question's `input` identifies its local option. An unlinked question's identity is `{ kind: 'question', name: message, global: false }`. Core's `questionValidationOptions(context, { message, option? })` builds these authenticated Standard Schema options for the prompts library. Context-dependent validators such as `path()` and `dateTime()` therefore use the same working directory and time zone as option validation.
 
-A configuration plugin validates its own schema with `phase: 'configuration'`. It carries `host` and `input: { kind: 'configuration', name, global: true }`, where `name` is the configuration file as the plugin's labels show it, and nothing else. Core's `configurationValidationOptions(host, { file, directory })` builds these authenticated Standard Schema options over the host it is given, with `cwd` replaced by `directory`, an absolute path, and every other field the host's, so `path()` resolves a relative value against the file's directory. The [configuration plugin](../plugins/config.md) passes them, and an option a configuration source fills with an answer that holds a `directory` validates with the same host, under [Input sources](input-sources.md). [ADR-0117](../decisions/0117-a-configuration-value-its-validator-rejects-falls-back-and-validates-against-its-files-directory.md) records the decision.
-
-```ts
-import type { Host, StandardSchemaV1 } from '@loomcli/core';
-
-declare function configurationValidationOptions(
-  host: Host,
-  file: { readonly file: string; readonly directory: string },
-): StandardSchemaV1.Options;
-```
-
 A default and an [implied value](options.md#implied-values) validate before any token is parsed, so their phase, `default`, reports the host and the declaration alone. A configuration source's own options validate before the source is called, so `supplied` holds no value the source fills, and `passthrough` is `[]` while a local fault is held. Every input validator call of one invocation, the globals and the routed Command's own declarations alike, reports the same route, passthrough, and supplied inputs. The route, the passthrough tail, and every collected value are copies made for each call, so a validator that writes to them changes nothing that a later validator or the action reads. `host` is the captured object itself, shared with the action, as the table states, except for an option a configuration answer with a `directory` filled, whose `host` replaces `cwd` with that directory.
 
 `supplied` holds the tokens as the parser read them, and the raw values the [input sources](input-sources.md) filled, before any validator runs and before any default applies; a bare spelling with an [implied value](options.md#implied-values) reads as the raw implied string. Every declared name of the routed Command, and every global name, is a key.
