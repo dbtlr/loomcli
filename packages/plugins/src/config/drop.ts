@@ -90,22 +90,26 @@ function pathKey(path: readonly Step[]): string {
   return JSON.stringify(path);
 }
 
-/** What one pruning holds: the paths it removes, and the copy made of each node it has met. */
+/**
+ * What one pruning holds: the paths it removes, and the copy in progress of each node on the path
+ * being copied, keyed by the original, so a node that is its own ancestor reuses that copy.
+ */
 interface Pruning {
   readonly doomed: ReadonlySet<string>;
-  readonly copies: Map<object, unknown>;
+  readonly ancestors: Map<object, unknown>;
 }
 
-/** The array copied without the items a removal names, each pruned; its copy is on record before an item is met. */
+/** The array copied without the items a removal names, each pruned at its own path. */
 function prunedList(node: readonly unknown[], path: readonly Step[], pruning: Pruning): unknown[] {
   const copy: unknown[] = [];
-  pruning.copies.set(node, copy);
+  pruning.ancestors.set(node, copy);
   node.forEach((item, index) => {
     const at = [...path, index];
     if (!pruning.doomed.has(pathKey(at))) {
       copy.push(prunedNode(item, at, pruning));
     }
   });
+  pruning.ancestors.delete(node);
   return copy;
 }
 
@@ -114,33 +118,34 @@ function ownData(value: unknown): PropertyDescriptor {
   return { configurable: true, enumerable: true, value, writable: true };
 }
 
-/** The record copied without the keys a removal names, each pruned; its copy is on record before a key is met. */
+/** The record copied without the keys a removal names, each pruned at its own path. */
 function prunedRecord(
   node: Record<string, unknown>,
   path: readonly Step[],
   pruning: Pruning,
 ): Record<string, unknown> {
   const copy: Record<string, unknown> = {};
-  pruning.copies.set(node, copy);
+  pruning.ancestors.set(node, copy);
   const kept = Object.entries(node).flatMap(([name, value]) => {
     const at = [...path, name];
     return pruning.doomed.has(pathKey(at)) ? [] : [[name, ownData(prunedNode(value, at, pruning))]];
   });
+  pruning.ancestors.delete(node);
   return Object.defineProperties(copy, Object.fromEntries(kept));
 }
 
 /**
  * The node without every value the pruning removes, copying as it goes so no array index shifts
- * under a removal. A node reached again, through a YAML alias, is copied once, so a shared or
- * cyclic value keeps its shape.
+ * under a removal. Each path gets its own copy, so a value two YAML aliases share loses a value
+ * only at the path an issue named. A node that is its own ancestor reuses that ancestor's copy, so
+ * a cyclic value keeps its cycle and the copy ends.
  */
 function prunedNode(node: unknown, path: readonly Step[], pruning: Pruning): unknown {
   if (typeof node !== 'object' || node === null) {
     return node;
   }
-  const known = pruning.copies.get(node);
-  if (known !== undefined) {
-    return known;
+  if (pruning.ancestors.has(node)) {
+    return pruning.ancestors.get(node);
   }
   if (Array.isArray(node)) {
     return prunedList(node, path, pruning);
@@ -154,7 +159,9 @@ function removeAll(
   removals: readonly Removal[],
 ): Record<string, unknown> {
   const doomed = new Set(removals.map((removal) => pathKey(removal.path)));
-  const made = doomed.has(pathKey([])) ? {} : prunedNode(file, [], { copies: new Map(), doomed });
+  const made = doomed.has(pathKey([]))
+    ? {}
+    : prunedNode(file, [], { ancestors: new Map(), doomed });
   return isRecord(made) ? made : {};
 }
 

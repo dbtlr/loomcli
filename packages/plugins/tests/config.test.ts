@@ -16,6 +16,7 @@ import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
 import { dropUntilPasses } from '../src/config/drop.js';
+import { isRecord } from '../src/plain-data.js';
 import { inspected as inspectGraph, invoked, run as runInProcess } from './fixtures/config-run.ts';
 import type { Declared, SchemaName, Settings } from './fixtures/config-run.ts';
 import { settingsFault } from './fixtures/config-settings.ts';
@@ -1674,17 +1675,69 @@ test(
   }),
 );
 
-test('a value reached twice by alias is copied once and stays shared after a drop', async () => {
-  const shared = { name: 'root' };
-  const file = { first: shared, retries: 'many', second: shared };
-  const passed = await dropUntilPasses(
-    z.looseObject({ retries: z.number().optional() }),
-    file,
-    () => Promise.resolve(),
-  );
-  expect(passed.file).toEqual({ first: shared, second: shared });
-  expect(passed.file.first).toBe(passed.file.second);
-  expect(passed.file.first).not.toBe(shared);
+/**
+ * The paths a drop announces, in order. A drop that announces more than ten removals fails the
+ * case, so a drop that never ends fails instead of hanging.
+ */
+async function dropCounted(schema: StandardSchemaV1, file: Record<string, unknown>) {
+  const removed: unknown[] = [];
+  const passed = await dropUntilPasses(schema, file, (removal) => {
+    removed.push(removal.path);
+    return removed.length > 10
+      ? Promise.reject(new Error('The drop announced a removal more than ten times.'))
+      : Promise.resolve();
+  });
+  return { file: passed.file, removed };
+}
+
+/** Two keys that hold one value, as a YAML alias makes them: `first: &s {name: hello}`, `second: *s`. */
+function aliased(): Record<string, unknown> {
+  const shared = { name: 'hello' };
+  return { first: shared, second: shared };
+}
+
+test('a value an alias reaches is removed at the second path alone, once', async () => {
+  const schema = z.looseObject({
+    first: z.looseObject({ name: z.string().optional() }).optional(),
+    second: z.looseObject({ name: z.number().optional() }).optional(),
+  });
+  const { file, removed } = await dropCounted(schema, aliased());
+  expect(removed).toEqual([['second', 'name']]);
+  expect(file).toEqual({ first: { name: 'hello' }, second: {} });
+});
+
+test('a value an alias reaches is removed at the first path alone, and the second keeps it', async () => {
+  const schema = z.looseObject({
+    first: z.looseObject({ name: z.number().optional() }).optional(),
+    second: z.looseObject({ name: z.string().optional() }).optional(),
+  });
+  const { file, removed } = await dropCounted(schema, aliased());
+  expect(removed).toEqual([['first', 'name']]);
+  expect(file).toEqual({ first: {}, second: { name: 'hello' } });
+});
+
+test('a template anchor the schema does not check keeps its value when its alias loses it', async () => {
+  const base = { port: 'wrong' };
+  const schema = z.looseObject({
+    defaults: z.unknown().optional(),
+    server: z.object({ port: z.number().optional() }).optional(),
+  });
+  const { file, removed } = await dropCounted(schema, { defaults: base, server: base });
+  expect(removed).toEqual([['server', 'port']]);
+  expect(file).toEqual({ defaults: { port: 'wrong' }, server: {} });
+});
+
+test('a self-referencing value keeps its cycle after a drop elsewhere', async () => {
+  const tree: Record<string, unknown> = { name: 'root' };
+  tree.child = tree;
+  const { file, removed } = await dropCounted(z.looseObject({ retries: z.number().optional() }), {
+    retries: 'many',
+    tree,
+  });
+  expect(removed).toEqual([['retries']]);
+  const copied = file.tree;
+  expect(copied).not.toBe(tree);
+  expect(isRecord(copied) && copied.child).toBe(copied);
 });
 
 test(
@@ -1971,6 +2024,16 @@ test('a link to a value the option cannot take is a build fault in every branch 
   expect(linkFault(configuration({ schema }).plugin, 'mixed', 'count')).toMatchObject({
     rule: '@loomcli/plugins/config/link-type',
   });
+});
+
+test('a union member that lists the key is judged, and an open member that does not list it stops the check', () => {
+  const listed = z.looseObject({ fast: z.boolean().optional() });
+  const judged = z.object({ pick: z.union([listed, z.object({})]).optional() });
+  expect(linkFault(configuration({ schema: judged }).plugin, 'pick.fast')).toMatchObject({
+    rule: '@loomcli/plugins/config/link-type',
+  });
+  const unchecked = z.object({ pick: z.union([listed, z.looseObject({})]).optional() });
+  expect(linkFault(configuration({ schema: unchecked }).plugin, 'pick.fast')).toBe('built');
 });
 
 test('a link into an open object, a record, an array, or a schema without a shape gets no check', () => {
