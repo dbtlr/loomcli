@@ -1,9 +1,14 @@
 import { Application, DeclarationError, plugin } from '@loomcli/core';
 import { color } from '@loomcli/plugins/color';
-import { config } from '@loomcli/plugins/config';
+import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
+import { z } from 'zod';
 
 import { ruleText } from './rule-text.mjs';
+
+/** The configuration plugin for a fixture that binds options to a file: a loose schema, and the given settings. */
+const configPlugin = (settings = {}) =>
+  configuration({ ...settings, schema: z.record(z.string(), z.unknown()) }).plugin;
 
 /** One marked Boolean global option, as an application declares its own. */
 const marked = { color: true, polarity: 'both', type: 'boolean' };
@@ -17,7 +22,7 @@ const declaring = (options) => plugin('@fixture/paint', { options });
  */
 const scenarios = {
   'binding-global': [
-    ['new Application', () => new Application('notes', { plugins: [config()] })],
+    ['new Application', () => new Application('notes', { plugins: [configPlugin()] })],
     [
       'globalOption',
       (app) =>
@@ -43,7 +48,7 @@ const scenarios = {
           options: { color: { ...marked, extensions: [configInput({ path: 'color' })] } },
         }),
     ],
-    ['new Application', (paint) => new Application('notes', { plugins: [config(), paint] })],
+    ['new Application', (paint) => new Application('notes', { plugins: [configPlugin(), paint] })],
   ],
   boolean: [['globalOption', () => new Application('notes').globalOption('color', marked)]],
   'two-global': [

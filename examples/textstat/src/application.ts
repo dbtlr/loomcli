@@ -1,7 +1,7 @@
 import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
 import { Application, FatalError, override } from '@loomcli/core';
-import { config } from '@loomcli/plugins/config';
+import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
@@ -13,6 +13,7 @@ import { table } from '@loomcli/plugins/table';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
 import { integer, oneOf } from '@loomcli/validators';
+import { z } from 'zod';
 
 import Package from '../package.json' with { type: 'json' };
 import { countFiles } from './count-files.js';
@@ -24,6 +25,21 @@ import { fatalError, rowCell } from './views.js';
  * deprecated one lives. It hands the action a non-negative whole number.
  */
 const byteThreshold = integer({ min: 0 });
+
+/**
+ * The configuration file's schema. Both keys are optional, because the file is written after the
+ * application already runs, and a value the schema rejects is dropped, not a failure.
+ */
+const textstatFile = z.object({
+  minBytes: z.union([z.number(), z.string()]).optional(),
+  total: z.boolean().optional(),
+});
+
+const { plugin: configPlugin } = configuration({
+  file: '.textstat.{toml,json}',
+  schema: textstatFile,
+  short: 'c',
+});
 
 export const textstat = new Application('textstat', {
   description: 'Count bytes, words, or lines across text sources.',
@@ -51,7 +67,7 @@ export const textstat = new Application('textstat', {
     version(),
     format({ short: 'f' }),
     manifest({ short: 'M' }),
-    config({ file: '.textstat.{toml,json}', short: 'c' }),
+    configPlugin,
     // Each run appends its records to textstat.jsonl in the platform's state or log directory.
     logging(),
     loomTheme(),

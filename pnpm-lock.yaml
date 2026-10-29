@@ -263,6 +263,9 @@ importers:
       '@loomcli/validators':
         specifier: workspace:*
         version: link:../../packages/validators
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
     devDependencies:
       '@loomcli/loom':
         specifier: workspace:*

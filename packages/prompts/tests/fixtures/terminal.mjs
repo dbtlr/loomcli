@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process';
 
 import { Application, processHandle } from '@loomcli/core';
-import { config } from '@loomcli/plugins/config';
+import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { loomTheme } from '@loomcli/plugins/theme';
+import { z } from 'zod';
 
 import { confirm, secret, select, text } from '../../dist/index.js';
 
@@ -11,9 +12,10 @@ const scenario = process.argv[2];
 spawnSync('stty', ['rows', process.env.PROMPT_ROWS ?? '24', 'cols', '80'], {
   stdio: ['inherit', 'ignore', 'inherit'],
 });
+const schema = z.record(z.string(), z.unknown());
 const app = new Application('setup', {
   description: 'Configure the service.',
-  plugins: [config({ file: '.loom-test-prompts.json' }), loomTheme()],
+  plugins: [configuration({ file: '.loom-test-prompts.json', schema }).plugin, loomTheme()],
 })
   .option('port', {
     default: '4000',

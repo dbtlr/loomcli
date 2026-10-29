@@ -2,7 +2,7 @@
  * Acceptance plan for the configuration plugin (docs/plugins/config.md#configuration-plugin).
  *
  * The configuration plugin is proven when textstat installs
- * `config({ file: '.textstat.{toml,json}', short: 'c' })` and binds `--min-bytes` to `minBytes` and
+ * `configuration({ file: '.textstat.{toml,json}', schema, short: 'c' })` and binds `--min-bytes` to `minBytes` and
  * `--total` to `total`, and public APIs alone produce these results under Node and Bun, with `HOME`
  * pointed at a temporary directory through `host.env`:
  *
@@ -10,7 +10,7 @@
  *   `<HOME>/.textstat.toml` when the working directory holds no candidate, and from no file when
  *   neither directory holds one. A file in the working directory hides the home file entirely, so a
  *   key only the home file holds is not read, and a broken file in the working directory warns and
- *   no later location answers. `config()` with no settings reads `.textstat.json`.
+ *   no later location answers. `configuration()` with only a schema reads `.textstat.json`.
  * - Precedence. `TEXTSTAT_MIN_BYTES` beats the file, and a flag beats both.
  * - `--config`. `--config` and `-c` each name a file that answers alone, so a file in the working
  *   directory is not read. A named file that does not exist, is not valid in its format, or holds
@@ -27,23 +27,23 @@
  *   file, and a YAML file with a second document or a `!!binary` tag each print their warning when
  *   discovered and fail with code 2 when named.
  * - Values. A counted option in a fixture reads `3` as `3` and `0` as `0`, and `"3"`, `-1`, and
- *   `1.5` print its wrong-value failure. `5` fills `--min-bytes` as `"5"`, a string for `--total`
- *   and an object for `--min-bytes` print their wrong-value failures with code 2, and a multiple
- *   option in a fixture reads an array, an empty array, and an array with an object at position 1.
+ *   `1.5` are not answered, and the option takes its default. `5` fills `--min-bytes` as `"5"`, a
+ *   string for `--total` and an object for `--min-bytes` are dropped by the schema and fill
+ *   nothing, with exit code 0, and a multiple option in a fixture reads an array and an empty
+ *   array, and an array with an object at position 1 fills nothing.
  *   A TOML date and a local time with one fractional digit fill their text as written, a TOML
- *   integer beyond the safe range fills its exact digits, and a YAML `no` for `--total` is a wrong
- *   value.
+ *   integer beyond the safe range fills its exact digits, and a YAML `no` for `--total` fills
+ *   nothing.
  * - Paths. `"limits": 5` leaves `limits.bytes` unanswered, so the option takes its default, and
  *   `configInput({ path: 'a..b' })` throws at the call.
  * - Escaping. A `--config` path that holds U+001B prints it as `\u001b` in its failure and in the
  *   label of a filled value a validator rejects, and a home directory that holds it prints it as
  *   `\u001b` in its warning.
- * - Edges. `config({ file: '/etc/textstat.json' })`, `config({ file: '*.json' })`, and
- *   `config({ file: '.textstat.{toml,ini}' })` throw from `config()` under their rules, a file that
- *   starts with a byte order mark reads, two wrong values print two lines in request order, each
- *   opening with the application name, the home file's label shows its full path, the `problems` of
- *   a source `InputError` reach an override of the `InputError` view, and a local structure fault
- *   outranks a source `InputError`.
+ * - Edges. `configuration({ file: '/etc/textstat.json' })`, `configuration({ file: '*.json' })`, and
+ *   `configuration({ file: '.textstat.{toml,ini}' })` throw from `configuration()` under their rules, a file that
+ *   starts with a byte order mark reads, two wrong values fill nothing and print nothing, the
+ *   `problems` of a source `InputError` reach an override of the `InputError` view, and a local
+ *   structure fault outranks a source `InputError`.
  * - Packed consumers. A consumer installs the packed pack, imports `@loomcli/plugins/config` and
  *   `@loomcli/plugins/config/extension`, compiles against their declarations, and reads a value
  *   from a file.
@@ -157,11 +157,6 @@ function skipped(file: string, clause: string): string {
   return `⚠ Skipped ${file}: the file ${clause}\n`;
 }
 
-/** The failure one wrong value prints, then the help hint. */
-function wrong(line: string): string {
-  return `textstat: ${line}\n${hint}`;
-}
-
 const files = ['one.txt', 'two.txt'];
 const both = 'COUNT  SOURCE\n    6  one.txt\n    2  two.txt\n    0  stdin\n';
 const filtered = 'COUNT  SOURCE\n    6  one.txt\n';
@@ -203,7 +198,7 @@ test(
 );
 
 test(
-  'Lookup: config() with no settings reads .textstat.json',
+  'Lookup: configuration() with only a schema reads .textstat.json',
   inWorkspace((space) => {
     space.write(space.project, '.textstat.toml', 'minBytes = 3\n');
     expect(received(space.app(undefined))).toEqual(fixtureDefaults);
@@ -469,29 +464,19 @@ test(
 );
 
 test(
-  'Values: a number fills as its text, and a value the option cannot take is a wrong value',
+  'Values: a number fills as its text, and a value the option cannot take fills nothing and fails nothing',
   inWorkspace((space) => {
     space.write(space.project, '.textstat.toml', 'minBytes = 5\n');
     expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: filtered });
     space.write(space.project, '.textstat.toml', 'total = "yes"\n');
-    expect(space.textstat(files)).toEqual({
-      status: 2,
-      stderr: wrong('Option "--total" (from total in .textstat.toml): Use true or false.'),
-      stdout: '',
-    });
+    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: both });
     space.write(space.project, '.textstat.toml', '[minBytes]\nmax = 5\n');
-    expect(space.textstat(files)).toEqual({
-      status: 2,
-      stderr: wrong(
-        'Option "--min-bytes" (from minBytes in .textstat.toml): Use a string or a number.',
-      ),
-      stdout: '',
-    });
+    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: both });
     space.write(space.project, 'settings.yaml', 'total: no\n');
     expect(space.textstat([...files, '--config', 'settings.yaml'])).toEqual({
-      status: 2,
-      stderr: wrong('Option "--total" (from total in settings.yaml): Use true or false.'),
-      stdout: '',
+      status: 0,
+      stderr: '',
+      stdout: both,
     });
   }),
 );
@@ -505,11 +490,7 @@ test(
     space.write(space.project, '.textstat.toml', 'fields = []\n');
     expect(received(space.app(toml))).toEqual(fixtureDefaults);
     space.write(space.project, '.textstat.toml', 'fields = ["a", {}]\n');
-    expect(space.app(toml)).toMatchObject({
-      status: 2,
-      stderr:
-        'textstat: Option "--field" (from fields in .textstat.toml) at 1: Use a string or a number.\n',
-    });
+    expect(received(space.app(toml))).toEqual(fixtureDefaults);
     for (const note of ['1979-05-27', '1979-05-27 07:32:00', '07:32:00.5']) {
       space.write(space.project, '.textstat.toml', `note = ${note}\n`);
       expect(received(space.app(toml))).toEqual({ ...fixtureDefaults, note });
@@ -543,7 +524,7 @@ test(
 );
 
 test(
-  'Edges: a bad file pattern throws from config() under its rule',
+  'Edges: a bad file pattern throws from configuration() under its rule',
   inWorkspace((space) => {
     const cases: readonly (readonly [unknown, string])[] = [
       [{ file: '/etc/textstat.json' }, '@loomcli/plugins/config/file-path'],
@@ -557,7 +538,7 @@ test(
 );
 
 test(
-  'Edges: a byte order mark reads, two wrong values print two lines, and the home label is a full path',
+  'Edges: a byte order mark reads, and two values the options cannot take fill nothing and print nothing',
   inWorkspace((space) => {
     space.write(
       space.project,
@@ -566,18 +547,7 @@ test(
     );
     expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: filtered });
     space.write(space.project, '.textstat.json', json({ minBytes: {}, total: 'yes' }));
-    expect(space.textstat(files)).toEqual({
-      status: 2,
-      stderr: [
-        'textstat: Option "--min-bytes" (from minBytes in .textstat.json): Use a string or a number.',
-        'textstat: Option "--total" (from total in .textstat.json): Use true or false.',
-        hint,
-      ].join('\n'),
-      stdout: '',
-    });
-    rmSync(join(space.project, '.textstat.json'));
-    const home = space.write(space.home, '.textstat.toml', 'minBytes = {}\n');
-    expect(space.textstat(files).stderr).toContain(`(from minBytes in ${home})`);
+    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: both });
   }),
 );
 

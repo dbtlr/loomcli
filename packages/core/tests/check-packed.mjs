@@ -384,6 +384,8 @@ try {
         '@loomcli/prompts': 'file:./prompts.tgz',
         '@loomcli/testing': 'file:./testing.tgz',
         '@loomcli/validators': 'file:./validators.tgz',
+        // The packed configuration consumer describes its file with a schema.
+        zod: devDependencies.zod,
       },
       // Rolldown bundles the plain fixture below, at the version the repository pins.
       devDependencies: { '@loomcli/loom': 'file:./loom.tgz', rolldown: devDependencies.rolldown },
