@@ -134,7 +134,12 @@ const source = async ({ graph, host, options, out, requests, style }) => {
     const key = readExtension(request, configKey);
     if (key !== undefined && Object.hasOwn(settings, key)) {
       const label = mode === 'bad-label' ? 'two\nlines' : `${key} in fixture.json`;
-      answers[request.name] = mode === 'bare' ? settings[key] : { label, value: settings[key] };
+      const answer = { label, value: settings[key] };
+      // A file-relative answer names the directory of the file the value came from.
+      if (host.env.FIXTURE_DIRECTORY !== undefined) {
+        answer.directory = JSON.parse(host.env.FIXTURE_DIRECTORY);
+      }
+      answers[request.name] = mode === 'bare' ? settings[key] : answer;
     }
   }
   return answers;

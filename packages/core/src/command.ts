@@ -74,6 +74,7 @@ import {
   mergeValues,
   spellingMark,
   tableEntries,
+  withdrawFill,
 } from './options.js';
 import type { CompileScope, OptionValues, SpellingOrigin, SpellingTable } from './options.js';
 import { candidatesOf } from './parse.js';
@@ -2890,11 +2891,14 @@ function readyDispatch(
     dispatch: async (view) => {
       const { signal } = invocation;
       const runValues = invocation.providers({
+        graph: invocation.inspected,
         host: invocation.host,
         log: invocation.logFor(null),
         onShutdown: invocation.laneHandlers(null).onShutdown,
         options: options ?? Object.freeze({}),
+        out: invocation.out,
         signal,
+        style: invocation.style,
       });
       const built = await buildProvided(runValues, command.uses);
       if (built.kind === 'cancelled') {
@@ -3031,21 +3035,29 @@ export async function prepareDispatch(
       routed.globalFault || rejectsGlobal(validation)
         ? null
         : frozenValues(graph.globals.inputs, validation.values);
-    if (local.kind === 'held' || validation.failure) {
+    // The supplied record keeps every value a source filled, so it is taken before a drop.
+    const supplied =
+      local.kind === 'held' || validation.failure
+        ? undefined
+        : suppliedInputs(
+            [...graph.globals.inputs, ...routed.command.inputs],
+            {
+              args: scope?.args ?? new Map(),
+              options: scope ? mergeValues(globals, scope.options) : globals,
+            },
+            true,
+          );
+    for (const [input, line] of validation.dropped) {
+      withdrawFill(globals, input.name);
+      if (scope) {
+        withdrawFill(scope.options, input.name);
+      }
+      await invocation.out.debug(line);
+    }
+    if (local.kind === 'held' || supplied === undefined) {
       return await held(validation.failure, options);
     }
-    const ready = readyDispatch(preparation, local, {
-      ...validation,
-      options,
-      supplied: suppliedInputs(
-        [...graph.globals.inputs, ...routed.command.inputs],
-        {
-          args: scope?.args ?? new Map(),
-          options: scope ? mergeValues(globals, scope.options) : globals,
-        },
-        true,
-      ),
-    });
+    const ready = readyDispatch(preparation, local, { ...validation, options, supplied });
     return {
       ...ready,
       globals,

@@ -13,7 +13,7 @@ import type { InputSite } from './facts.js';
 import { invalidDefault, invalidImplied } from './input-rules.js';
 import { groupReports } from './option-groups.js';
 import type { OptionGroup } from './option-groups.js';
-import { booleanValue, reportedOf, spellingsOf } from './options.js';
+import { booleanValue, copyValues, reportedOf, spellingsOf, withdrawFill } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
 import { defineEntry } from './plain.js';
 import { validatorFailed } from './rules.js';
@@ -83,6 +83,12 @@ interface ScopedInput {
  * because the operator's configuration may hold it.
  */
 export interface Provenance {
+  /**
+   * The options the configuration source filled, by option name, with the directory of the file
+   * each answer came from. A rejected one is dropped, and its validator reads that directory as
+   * `host.cwd`.
+   */
+  fills?: ReadonlyMap<string, { directory: string | undefined }>;
   labels: ReadonlyMap<string, string>;
   rejected: ReadonlyMap<string, string>;
   unanswered?: ReadonlySet<InputDeclaration>;
@@ -751,6 +757,11 @@ function orderedReports(
  * global options keeps them when only a local input was rejected.
  */
 export interface Validation {
+  /**
+   * The configuration fills the option's validator rejected. Each reads as unfilled in this pass,
+   * and the caller withdraws it and names it.
+   */
+  readonly dropped: ReadonlyMap<InputDeclaration, string>;
   readonly stdin: Content | undefined;
   readonly failure: InputError | undefined;
   readonly reports: ReadonlyMap<InputDeclaration, Report>;
@@ -787,6 +798,14 @@ export async function validateValues(invocation: Invocation): Promise<Validation
    * that never reads one never pays for it, however many values a list holds. The host is the
    * captured object itself, the one the action receives.
    */
+  const hostFor = ({ input }: ScopedInput): Host => {
+    const directory =
+      input.kind === 'option' ? sources.fills?.get(input.name)?.directory : undefined;
+    // The derived host reads every other member, getters included, from the run's own.
+    return directory === undefined
+      ? invocation.host
+      : Object.create(invocation.host, { cwd: { enumerable: true, value: directory } });
+  };
   const contextOf = (entry: ScopedInput): ValidationContext => {
     const copies: {
       command?: readonly string[];
@@ -798,7 +817,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
         copies.command ??= [...invocation.command];
         return copies.command;
       },
-      host: invocation.host,
+      host: hostFor(entry),
       input: identityOf(entry),
       get passthrough() {
         copies.passthrough ??= [...invocation.passthrough];
@@ -815,6 +834,8 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     };
   };
   const values = new Map<InputDeclaration, unknown>();
+  /** Each dropped configuration fill with the `out.debug` line that names it. */
+  const dropped = new Map<InputDeclaration, string>();
   // Each input reports at most once, so insertion order is the order this phase reaches them.
   const reports = new Map<InputDeclaration, Report>();
   /**
@@ -847,7 +868,12 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     });
   };
   /** One path for every value a validator reads, so a raw shape and its issues meet it once. */
-  const accept = async (entry: ScopedInput, raw: unknown, spelling: string) => {
+  const accept = async (
+    entry: ScopedInput,
+    raw: unknown,
+    named: { origin: string | undefined; spelling: string },
+  ) => {
+    const { origin, spelling } = named;
     const result = await validateDeclared(entry.input, raw, {
       context: () => contextOf(entry),
       implied: impliedPositions(entry.input, { declaredValues, options: supplied.options }),
@@ -858,11 +884,43 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       values.set(entry.input, result.value);
       return;
     }
-    reject(
-      entry,
-      reported(result.issues),
-      suppliedName(entry.input, spelling, originOf(entry.input)),
-    );
+    const issues = reported(result.issues);
+    if (origin !== undefined && sources.fills?.has(entry.input.name) === true) {
+      // A configuration fill its validator rejects falls back, as if no tier had supplied it.
+      const [first] = issues;
+      const path = first === undefined ? undefined : issuePath(first);
+      const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
+      dropped.set(
+        entry.input,
+        `Ignored option "${spelling}"${position} from ${origin}: ${first?.message}`,
+      );
+      await absent(entry, spelling, true);
+      return;
+    }
+    reject(entry, issues, suppliedName(entry.input, spelling, origin));
+  };
+  /** One input no tier supplied, or whose configuration fill was dropped: its default, or its absence rule. */
+  const absent = async (entry: ScopedInput, spelling: string, fellBack: boolean) => {
+    const { input } = entry;
+    const collected = collects(input);
+    if (
+      input.config.required === true ||
+      (input.config.required === 'non-interactive' && !invocation.interactive)
+    ) {
+      // An omitted required argument arrives here too, so omission has one class.
+      // One aggregated diagnostic covers an omitted argument and an omitted option alike.
+      omit(entry, spelling, missingMessage(input, spelling, { collected }));
+    } else if (collected && !defaults.has(input)) {
+      // No occurrence has no value to validate, so the action receives an empty array.
+      values.set(input, []);
+    } else if (validatesOmission(input) && (fellBack || sources.unanswered?.has(input) !== true)) {
+      // The flag sends the omission itself to the validator.
+      // An option a skipped configuration source would have filled is not judged absent.
+      // An absence rule reads the context a supplied value reads, and reports input issues.
+      await accept(entry, undefined, { origin: undefined, spelling });
+    } else {
+      values.set(input, freshDeclaredValue(defaults.get(input)));
+    }
   };
   /** One declaration's outcome: what an earlier pass settled, or this pass's own. */
   const settle = async (entry: ScopedInput) => {
@@ -915,24 +973,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
           reject(entry, result.issues, suppliedName(input, spelling, originOf(input)));
         }
       } else if (raw === undefined) {
-        if (
-          input.config.required === true ||
-          (input.config.required === 'non-interactive' && !invocation.interactive)
-        ) {
-          // An omitted required argument arrives here too, so omission has one class.
-          // One aggregated diagnostic covers an omitted argument and an omitted option alike.
-          omit(entry, spelling, missingMessage(input, spelling, { collected }));
-        } else if (collected && !defaults.has(input)) {
-          // No occurrence has no value to validate, so the action receives an empty array.
-          values.set(input, []);
-        } else if (validatesOmission(input) && sources.unanswered?.has(input) !== true) {
-          // The flag sends the omission itself to the validator.
-          // An option a skipped configuration source would have filled is not judged absent.
-          // An absence rule reads the context a supplied value reads, and reports input issues.
-          await accept(entry, undefined, spelling);
-        } else {
-          values.set(input, freshDeclaredValue(defaults.get(input)));
-        }
+        await absent(entry, spelling, false);
       } else if (input.config.required && Array.isArray(raw) && raw.length === 0) {
         // A filled list satisfies the at-least-one rule by its length, so an empty one is missing.
         omit(
@@ -941,7 +982,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
           missingMessage(input, spelling, { collected, origin: originOf(input) }),
         );
       } else {
-        await accept(entry, raw, spelling);
+        await accept(entry, raw, { origin: originOf(input), spelling });
       }
     }
   };
@@ -997,6 +1038,11 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     report: stdinReport,
   });
   const unanswered = new Set([...(sources.unanswered ?? [])].map((input) => input.name));
+  // A dropped fill is no value of the option, so no option group counts it.
+  const groupValues = copyValues(supplied.options);
+  for (const input of dropped.keys()) {
+    withdrawFill(groupValues, input.name);
+  }
   found.push(
     ...groupReports({
       groups: invocation.optionGroups,
@@ -1004,10 +1050,11 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       named: invocation.named !== undefined,
       table: invocation.table,
       unanswered,
-      values: supplied.options,
+      values: groupValues,
     }),
   );
   return {
+    dropped,
     failure:
       found.length > 0
         ? new InputError(
