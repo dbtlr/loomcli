@@ -56,3 +56,4 @@ Accepted in 0.16.0.
 
 - 2026-10-25: Proposed. Closes ADR-0017's deferred typed context contribution and lazily acquired resource, and ADR-0028's deferred typed context contributions from middleware into the action. Both carry dated entries.
 - 2026-10-27: Two different providers with one name and one type, such as two values one generic factory returns, pass the types, so core rejects them at the declaration (LM-412).
+- 2026-10-28: [ADR-0116](0116-a-providers-opener-receives-out-style-and-the-graph.md), proposed, replaces the clause that a provider receives no `out`: the opener's context gains `out`, the channel object a middleware receives, `style`, and `graph`, so a provider warns, writes a line at `-v`, and reads the application name. A provider still asks nothing and reads no request, and every other rule here stands. It binds when that record is accepted.

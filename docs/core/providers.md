@@ -95,6 +95,9 @@ interface ProviderContext<Globals = {}, Provided = {}> {
   /** The values of the providers this provider uses, each under its provider's name. */
   readonly provided: Provided;
   readonly host: Host;
+  readonly out: Out;
+  readonly style: ContextualStyle;
+  readonly graph: CommandGraph;
   readonly log: Log;
   readonly signal: AbortSignal;
   readonly onShutdown: OnShutdown;
@@ -123,7 +126,8 @@ The opener is the function that builds a provider's value. It types itself from 
 - **`options`.** Every global option's validated value, typed by the globals the provider states, and frozen to every depth, as a middleware's `options` is. An ephemeral provider reads its own run's values; a persistent provider reads the outermost run's. A provider never reads a Command's local arguments or options, because every Command that opts in shares the global options alone.
 - **`provided`.** The value of each provider this provider uses, under that provider's name.
 - **`host`, `log`, `signal`, and `onShutdown`.** The run's [host](host.md), a [`log`](logging.md) that names no plugin, the run's [signal](signals.md#the-run-signal), and a run-scoped [`onShutdown`](signals.md#onshutdown). An ephemeral provider receives its run's; a persistent provider receives the outermost run's, so a nested run's cancellation never aborts a persistent build. An opener that starts a child program or holds a terminal registers an `onShutdown` handler, as any other code does.
-- **No `out`, prompts, or request.** A provider writes nothing for the operator, asks nothing, and reads no request. A later member can add `out` or the prompts library without breaking an opener.
+- **`out`, `style`, and `graph`.** `out` is the channel object a [middleware](middleware.md) receives, with `results` typed with a `never` argument, because a result is the action's, so an opener warns through `out.warn` or writes a line at `-v` through `out.debug`, and `out.fatal()` throws a `FatalError` that takes the ordinary failure path. `style` is the contextual style a [configuration source](input-sources.md) receives, so an opener escapes raw data with `style.escape` before it writes it. `graph` is the frozen graph the run built, the one [`inspect()`](graph-inspection.md) returns, so an opener reads the application name as `graph.name`. An ephemeral provider receives its run's three, and a persistent provider the outermost run's. [ADR-0116](../decisions/0116-a-providers-opener-receives-out-style-and-the-graph.md) records the decision.
+- **No prompts or request.** A provider asks nothing and reads no request. A later member can add the prompts library without breaking an opener.
 - **No self-reference.** An opener types itself from its own declaration and from the value types it reads. Its declaration's type never depends on the opener's module.
 
 ## Opting in

@@ -451,7 +451,7 @@ test('the session starts with the token option', async () => {
 
 - **The opener.** The default export of the module its provider's `load` imports, typed `Opener<typeof declaration>` as [The opener](../core/providers.md#the-opener) writes it. The test imports that module itself, so no `load` runs. The builder calls no `close`, so a test closes what the opener built when that matters.
 - **The inputs.** `options`, the global option values the provider reads, and `provided`, the values of the providers it uses, each typed as the opener reads it. A run freezes `options` to every depth; the builder holds what the test stated.
-- **The rest.** `log`, `signal`, and `onShutdown` are inert unless stated, and `host` throws its sentence when read unstated. The context has no `out`, as a run's has none.
+- **The rest.** `out`, `log`, `signal`, and `onShutdown` are inert unless stated, `style` answers every name, and `host` and `graph` throw their sentences when read unstated, under the rules above.
 
 ### viewContext
 

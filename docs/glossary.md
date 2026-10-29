@@ -753,7 +753,7 @@ A core-declared position that exactly one plugin may claim. A second claim is a 
 _Avoid_: Singleton, capability (for the position)
 
 **Configuration source**:
-The one optional `source` a plugin definition declares, which answers for configuration-bound options: those carrying a value of the plugin's own binding extension. Core loads it lazily only when such an option is still unfilled after argv and the environment and holds no environment fault, calls it once, and fills each option it answers, with a label core prints in failure messages. Core holds no store, file format, or path grammar; the plugin owns what the binding means.
+The one optional `source` a plugin definition declares, which answers for configuration-bound options: those carrying a value of the plugin's own binding extension. Core loads it lazily only when such an option is still unfilled after argv and the environment and holds no environment fault, calls it once, and fills each option it answers, with a label core prints in failure messages. A fill the option's validator rejects is dropped and the option falls back as if no tier supplied it. Core holds no store, file format, or path grammar; the plugin owns what the binding means.
 _Avoid_: Config loader, config provider, settings store
 
 **Dotenv file**:
@@ -761,8 +761,20 @@ The `.env` file in the working directory from which the dotenv plugin imports ev
 _Avoid_: Configuration file (for this file), env source, input-source tier
 
 **Configuration file**:
-The one JSON, TOML, or YAML file the first-party configuration plugin answers from in a run, never merged with another: the file `--config` names, or else the first found of the author's `file` in the working directory and then the operator's home directory. `.toml` reads as TOML, `.yaml` and `.yml` as YAML, and every other name as JSON. A discovered file never breaks a run, while the named file and a wrong value in the file are usage failures.
+The one JSON, TOML, or YAML file the first-party configuration plugin reads in a run, never merged with another: the file `--config` names, or the file the author's variable names, or else the first found by the walk from the start directory up to the home directory, then the home file, then the XDG user file. Only the file `--config` names can fail a run; a broken file found any other way warns and leaves the run with no configuration.
 _Avoid_: Config, settings file, rc file, dotfile
+
+**Configuration schema**:
+The one Standard Schema an author writes for the whole configuration file, in which every object key outside an array item or a record value is optional so that an empty file passes. Application code reads its output as the configuration's provided value.
+_Avoid_: Section schema, config type, settings schema
+
+**Dropped value**:
+A value in the configuration file that is set aside so that its fallback applies: removed from the configuration when the configuration schema rejects it, and kept there but not given to an option that cannot take it or whose validator rejects it. It never fails the run and is named at `-v` alone.
+_Avoid_: Invalid config, lenient input, ignored key (for an unknown key, which is never reported)
+
+**Start directory**:
+The directory the configuration walk begins in: the value of the configuration plugin's directory option when the author declares one and the operator gives it, and the working directory otherwise. It never changes `host.cwd`.
+_Avoid_: Project root, base directory, cwd (for the start directory)
 
 **File pattern**:
 The configuration plugin's `file` setting: a file name or relative path whose last segment's extension alone may be `*` or a brace list such as `{toml,yaml}`, naming candidates in order. In each directory the plugin looks in, the first present candidate is the file it finds, and it warns about every other present one. A literal extension locks the file's format.
