@@ -91,9 +91,23 @@ function isOpen(shape: Shape): boolean {
   );
 }
 
-/** Whether a shape names no keyword at all, so it takes any value. */
+/** The keywords that annotate or identify a shape without constraining the value it takes. */
+const annotations = new Set([
+  '$comment',
+  '$id',
+  '$schema',
+  'default',
+  'deprecated',
+  'description',
+  'examples',
+  'readOnly',
+  'title',
+  'writeOnly',
+]);
+
+/** Whether a shape names no keyword but annotations, so it takes any value. */
 function isAny(shape: Shape): boolean {
-  return Object.keys(shape).every((keyword) => keyword === 'description' || keyword === 'title');
+  return Object.keys(shape).every((keyword) => annotations.has(keyword));
 }
 
 /** Whether a shape describes an array. */

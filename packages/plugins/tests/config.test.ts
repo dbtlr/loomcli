@@ -2036,6 +2036,18 @@ test('a union member that lists the key is judged, and an open member that does 
   expect(linkFault(configuration({ schema: unchecked }).plugin, 'pick.fast')).toBe('built');
 });
 
+test('a shape that names only annotations takes any value, so a link through it gets no check', () => {
+  const schema = z.object({
+    extra: z
+      .unknown()
+      .meta({ examples: [{ level: 'debug' }] })
+      .optional(),
+    fallback: z.unknown().default({}).optional(),
+  });
+  expect(linkFault(configuration({ schema }).plugin, 'extra.level')).toBe('built');
+  expect(linkFault(configuration({ schema }).plugin, 'fallback.level')).toBe('built');
+});
+
 test('a link into an open object, a record, an array, or a schema without a shape gets no check', () => {
   const schema = z.object({
     loose: z.looseObject({}).optional(),
