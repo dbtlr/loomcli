@@ -761,7 +761,7 @@ The `.env` file in the working directory from which the dotenv plugin imports ev
 _Avoid_: Configuration file (for this file), env source, input-source tier
 
 **Configuration file**:
-The one JSON, TOML, or YAML file the first-party configuration plugin reads in a run, never merged with another: the file `--config` names, or the file the author's variable names, or else the first found by the walk from the start directory up to the home directory, then the home file, then the XDG user file. Only the file `--config` names can fail a run; a broken file found any other way warns and leaves the run with no configuration.
+The one JSON, TOML, or YAML file the first-party configuration plugin reads in a run, never merged with another: the file `--config` names, or the file the author's variable names, or else the first found by the walk from the start directory up to the home directory, then the home file, then the XDG user file. A run under `--no-config` reads none. A JSON file may hold comments and trailing commas. Only the file `--config` names can fail a run; a broken file found any other way warns and leaves the run with no configuration.
 _Avoid_: Config, settings file, rc file, dotfile
 
 **Configuration schema**:

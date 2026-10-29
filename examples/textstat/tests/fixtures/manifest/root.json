@@ -82,6 +82,21 @@
     },
     {
       "type": "boolean",
+      "name": "no-config",
+      "description": "Read no configuration file.",
+      "deprecated": null,
+      "control": true,
+      "long": "--no-config",
+      "short": null,
+      "negative": null,
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
       "name": "explain",
       "description": "Explain the selected command and exit.",
       "deprecated": null,

@@ -1,3 +1,5 @@
+import { countedFrom, positionAt, textStart } from './position.js';
+import type { Position } from './position.js';
 import type { Reading } from './reading.js';
 
 /** A comment, from `#` to the end of its line. */
@@ -55,22 +57,37 @@ function quoteDates(text: string): string {
 }
 
 /**
+ * The position of the place `smol-toml` names by its line and its UTF-16 column, where its lines
+ * end at LF or CRLF, read again under the plugin's own rule.
+ */
+function positionOf(text: string, line: number, column: number): Position {
+  const before = text.split('\n').slice(textStart, line - countedFrom);
+  const lineStart = before.reduce((offset, each) => offset + each.length + '\n'.length, textStart);
+  return positionAt(text, lineStart + column - countedFrom);
+}
+
+/**
  * The table a TOML document holds, read through `smol-toml`, which loads only here. An integer
  * beyond the safe range reads as a `bigint`, so it neither rounds nor fails the document. The
  * parser reads a date or time as a date object that keeps no source text, so once the document
  * as written parses, which judges every literal, it is parsed again with each date literal
  * quoted, and the value is the text the file wrote. The parser's `useLegacyDate: false` option
  * does not help, because the Temporal values it returns normalize the text as well, and Temporal
- * is not on every runtime the pack supports. A TOML document is always a table.
+ * is not on every runtime the pack supports. A TOML document is always a table. A document that
+ * does not parse names the position the parser's error names.
  */
 export async function readToml(text: string): Promise<Reading> {
-  const { parse } = await import('smol-toml');
+  const { parse, TomlError } = await import('smol-toml');
   const read = (source: string) => parse(source, { integersAsBigInt: 'asNeeded' });
   try {
     const table = read(text);
     const quoted = quoteDates(text);
     return { kind: 'usable', object: quoted === text ? table : read(quoted) };
-  } catch {
-    return { clause: 'is not valid TOML.', kind: 'unusable' };
+  } catch (error) {
+    return {
+      ...(error instanceof TomlError ? { at: positionOf(text, error.line, error.column) } : {}),
+      clause: 'is not valid TOML.',
+      kind: 'unusable',
+    };
   }
 }

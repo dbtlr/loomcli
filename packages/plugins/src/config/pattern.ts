@@ -6,7 +6,7 @@ import { isVariableName } from '../variable-name.js';
 import { configIdentity as identity, splitExtension } from './names.js';
 
 /** The extensions a pattern may name, in the order `*` tries them. */
-const readable = ['toml', 'yaml', 'yml', 'json'];
+const readable = ['toml', 'yaml', 'yml', 'json', 'jsonc'];
 const readableSet = new Set(readable);
 
 /** The characters of glob syntax, which `file` holds only as the whole extension of its name. */
@@ -39,7 +39,7 @@ const strayGlob: FileFault = {
 };
 
 const unreadableExtension: FileFault = {
-  correction: 'List only json, toml, yaml, or yml in the braces, or use * for any of them.',
+  correction: 'List only json, jsonc, toml, yaml, or yml in the braces, or use * for any of them.',
   rule: configFilePattern,
   sentence: `Plugin "${identity}" file lists an extension the plugin cannot read.`,
 };

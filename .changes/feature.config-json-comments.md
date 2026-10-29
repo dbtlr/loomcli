@@ -1,0 +1,2 @@
+- Allow `//` and `/* */` comments and a trailing comma in every configuration file the configuration plugin reads as JSON, `.<app>.json` included, so a file can carry the reason for a value beside it. A strict JSON file reads as before.
+- Allow `jsonc` in a `configuration({ file })` brace list, such as `.collector.{toml,jsonc}`. A `*` pattern tries `jsonc` after `json`, and a `jsonc` candidate looks for `config.jsonc` in the XDG user folder.

@@ -1,4 +1,5 @@
 import { isRecord } from '../plain-data.js';
+import type { Position } from './position.js';
 
 /** The clause that says why a file cannot be used, after its name in a warning or a failure. */
 export type Clause =
@@ -10,10 +11,13 @@ export type Clause =
   | 'is not valid YAML.'
   | 'does not hold a YAML mapping.';
 
-/** What reading one file found: its top-level object, or the clause that says why it is skipped. */
+/**
+ * What reading one file found: its top-level object, or the clause that says why it is skipped,
+ * with the position where the file stops parsing when its parser names one.
+ */
 export type Reading =
   | { kind: 'usable'; object: Record<string, unknown> }
-  | { kind: 'unusable'; clause: Clause };
+  | { kind: 'unusable'; clause: Clause; at?: Position };
 
 /** The reading of a parsed value: usable when it is an object, and otherwise the clause given. */
 export function readingOf(value: unknown, notObject: Clause): Reading {

@@ -65,7 +65,8 @@ const settingsCases: Record<string, Expected> = {
       'Plugin "@loomcli/plugins/config" file holds glob syntax other than an extension of * or a brace list.',
   },
   'config-list': {
-    correction: 'List only json, toml, yaml, or yml in the braces, or use * for any of them.',
+    correction:
+      'List only json, jsonc, toml, yaml, or yml in the braces, or use * for any of them.',
     rule: 'config/file-pattern',
     sentence: 'Plugin "@loomcli/plugins/config" file lists an extension the plugin cannot read.',
   },

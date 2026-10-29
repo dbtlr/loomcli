@@ -7,6 +7,7 @@ import type { ContextualStyle, Host, Out } from '@loomcli/core';
 import { homeOf } from '../application-folders.js';
 import { parseFile } from './formats.js';
 import { splitExtension } from './names.js';
+import type { Position } from './position.js';
 import type { Clause, Reading } from './reading.js';
 
 /**
@@ -44,6 +45,8 @@ interface Lookup {
   readonly notice: boolean;
   /** The file `--config` named, which is the run's only file. */
   readonly named: string | undefined;
+  /** Whether `--no-config` asked the run to read no file. */
+  readonly ignored: boolean;
   /**
    * How a problem names the `config` option: by its spelling, `--config`, or, in an invocation by
    * name, by its declared name, as core names an option there.
@@ -92,6 +95,19 @@ const fixes: Readonly<Record<Clause, Fix>> = {
     named: 'Correct its syntax, or supply another file.',
   },
 };
+
+/** A reading that cannot be used: the clause that says why, and where the file breaks when known. */
+type Unusable = Extract<Reading, { kind: 'unusable' }>;
+
+/** A clause without its closing full stop, so the sentence can go on. */
+function withoutStop(clause: Clause): string {
+  return clause.replace(/\.$/u, '');
+}
+
+/** Where a file stops parsing, as the sentence names it, or nothing when the parser named no place. */
+function where(at: Position | undefined): string {
+  return at === undefined ? '' : ` at line ${at.line}, column ${at.column}`;
+}
 
 /** Whether a failure means nothing is at the path, a missing directory or a file in its place included. */
 function isAbsent(error: unknown): boolean {
@@ -144,7 +160,7 @@ function walkDirectories(start: string, home: string | undefined): string[] {
 }
 
 /** The extensions the user file may carry. */
-const userExtensions = new Set(['json', 'toml', 'yaml', 'yml']);
+const userExtensions = new Set(['json', 'jsonc', 'toml', 'yaml', 'yml']);
 
 /**
  * The user file's candidates, `config.<ext>`: each of the pattern's candidates names one extension,
@@ -204,10 +220,10 @@ async function read(file: ConfigFile): Promise<Reading> {
  */
 function namedFailure(
   file: ConfigFile,
-  clause: Clause,
+  { at, clause }: Unusable,
   invokedBy: Lookup['invokedBy'],
 ): InputError {
-  const message = `File "${file.shown}" ${clause} ${fixes[clause].named}`;
+  const message = `File "${file.shown}" ${withoutStop(clause)}${where(at)}. ${fixes[clause].named}`;
   const spelling = invokedBy === 'name' ? 'config' : '--config';
   return new InputError(`Option "${spelling}": ${message}`, [
     {
@@ -219,12 +235,38 @@ function namedFailure(
   ]);
 }
 
+/**
+ * The failure `--config` and `--no-config` together raise: a usage failure in the form core gives
+ * an exclusive option group, since the two cannot both hold.
+ */
+function bothFailure(invokedBy: Lookup['invokedBy']): InputError {
+  const names = ['config', 'no-config'];
+  const spellings = names.map((name) => (invokedBy === 'name' ? name : `--${name}`));
+  const members = spellings.map((spelling) => `"${spelling}"`).join(' and ');
+  return new InputError(`Options ${members} cannot be used together. Supply only one of them.`, [
+    {
+      inputs: names.map((name) => ({ global: true, kind: 'option', name })),
+      reason: 'exclusive',
+      spellings,
+      supplied: spellings,
+    },
+  ]);
+}
+
+/** The run under `--no-config`, which reads no file, and fails when `--config` names one too. */
+function ignoredFile(lookup: Lookup): undefined {
+  if (lookup.named !== undefined) {
+    throw bothFailure(lookup.invokedBy);
+  }
+  return undefined;
+}
+
 /** The file `--config` named, which answers alone, resolved against the host's working directory. */
 async function namedFile(named: string, lookup: Lookup): Promise<UsableFile> {
   const file = configFile(resolve(lookup.host.cwd, named), named);
   const reading = await read(file);
   if (reading.kind === 'unusable') {
-    throw namedFailure(file, reading.clause, lookup.invokedBy);
+    throw namedFailure(file, reading, lookup.invokedBy);
   }
   return { file, object: reading.object };
 }
@@ -259,14 +301,9 @@ async function warnSkipped(
 /** How a step of the lookup ended: with a file, or with no configuration and no later step. */
 type Outcome = { readonly kind: 'ended' } | { readonly kind: 'file'; readonly usable: UsableFile };
 
-/** A clause without its closing full stop, so the sentence can go on. */
-function withoutStop(clause: Clause): string {
-  return clause.replace(/\.$/u, '');
-}
-
 /** The warning text for a clause: the file's fault, and that the run then reads no configuration. */
-function skippedSentence(shown: string, clause: Clause, fix: string): string {
-  return `Skipped ${shown}: the file ${withoutStop(clause)}, so this run reads no configuration. ${fix}`;
+function skippedSentence(shown: string, { at, clause }: Unusable, fix: string): string {
+  return `Skipped ${shown}: the file ${withoutStop(clause)}${where(at)}, so this run reads no configuration. ${fix}`;
 }
 
 /**
@@ -283,7 +320,7 @@ async function discoveredFile(file: ConfigFile, channels: Channels): Promise<Out
     return undefined;
   }
   const shown = nowrap(channels.style.escape(file.shown));
-  await channels.out.warn(skippedSentence(shown, reading.clause, fix));
+  await channels.out.warn(skippedSentence(shown, reading, fix));
   return { kind: 'ended' };
 }
 
@@ -378,12 +415,16 @@ async function searched(lookup: Lookup, channels: Channels): Promise<Outcome | u
 }
 
 /**
- * The one file a run reads, or `undefined` when it finds none it can use. The named file answers
+ * The one file a run reads, or `undefined` when it finds none it can use. `--no-config` reads no
+ * file and writes no notice, and with `--config` beside it fails the run. The named file answers
  * alone and fails the run when it cannot be used. Then the variable's file answers alone, and the
  * walk, the home directory, and the user folder answer in that order. A file that cannot be used
  * ends the lookup with a warning, and no later step answers in its place.
  */
 async function findFile(lookup: Lookup, channels: Channels): Promise<UsableFile | undefined> {
+  if (lookup.ignored) {
+    return ignoredFile(lookup);
+  }
   if (lookup.named !== undefined) {
     return namedFile(lookup.named, lookup);
   }
