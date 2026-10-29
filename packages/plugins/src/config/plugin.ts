@@ -1,9 +1,20 @@
-import { plugin } from '@loomcli/core';
-import type { Plugin, PluginOptions, StringOption } from '@loomcli/core';
+import { plugin, provider } from '@loomcli/core';
+import type {
+  Host,
+  Plugin,
+  PluginOptions,
+  PluginOptionValues,
+  Provider,
+  StandardSchemaV1,
+  StringOption,
+} from '@loomcli/core';
 
 import { configInput } from './extension.js';
+import { judgeLinks } from './links.js';
 import { configIdentity as identity } from './names.js';
 import { envVariable, fileCandidates } from './pattern.js';
+import type { EmptyFileGuard } from './schema-types.js';
+import type { Loaded } from './shared.js';
 
 const options = {
   config: {
@@ -31,8 +42,13 @@ interface DirectorySetting<Name extends string> {
 type ConfigOptions<Directory extends string = never> = typeof options &
   Readonly<Record<Directory, { readonly description: string; readonly type: 'string' }>>;
 
-/** What an application tells the configuration plugin: the file it looks for, and how an operator points the lookup elsewhere. */
-interface ConfigSettings<Directory extends string = never> {
+/**
+ * What an application tells the configuration plugin: the schema of its file, the file it looks
+ * for, and how an operator points the lookup elsewhere.
+ */
+interface ConfigurationSettings<Schema extends StandardSchemaV1, Directory extends string = never> {
+  /** One Standard Schema for the whole file. Every key is optional outside an array item. */
+  readonly schema: Schema & EmptyFileGuard<Schema>;
   /** The configuration file's name or relative path, a file pattern. Defaults to `.<app>.json`. */
   readonly file?: string;
   /** The short spelling of `--config`, none by default. */
@@ -53,12 +69,13 @@ interface ConfigSettings<Directory extends string = never> {
  * The plugin's options for the settings: `--config`, with the short spelling the settings give, and
  * the directory option when they declare one.
  */
-function declaredOptions<const Directory extends string>(
-  settings: ConfigSettings<Directory> | undefined,
-): ConfigOptions<Directory> {
-  const short = settings?.short;
+function declaredOptions<const Directory extends string>(settings: {
+  readonly short?: Short;
+  readonly directory?: DirectorySetting<Directory>;
+}): ConfigOptions<Directory> {
+  const { short } = settings;
   const configOption = { ...options.config, ...(short === undefined ? {} : { short }) };
-  const directory = settings?.directory;
+  const { directory } = settings;
   const declared =
     directory === undefined
       ? {}
@@ -75,33 +92,70 @@ function declaredOptions<const Directory extends string>(
   return { config: configOption, ...declared } as ConfigOptions<Directory>;
 }
 
+/** The provider of the validated configuration, read as `provided.config`. */
+type ConfigProvider<Schema extends StandardSchemaV1, Directory extends string> = Provider<
+  'config',
+  StandardSchemaV1.InferOutput<Schema>,
+  PluginOptionValues<ConfigOptions<Directory>>
+>;
+
+/** What `configuration()` returns: the plugin the Application installs, and the provider a Command opts in to. */
+interface Configuration<Schema extends StandardSchemaV1, Directory extends string> {
+  /** The plugin the Application installs. */
+  readonly plugin: Plugin<ConfigOptions<Directory>>;
+  /** The validated configuration, read as provided.config. */
+  readonly values: ConfigProvider<Schema, Directory>;
+}
+
 /**
- * The configuration plugin, the first-party configuration source. It answers the configuration tier
- * from one JSON, TOML, or YAML file per run: the file `--config` names, or else the file the
- * settings' `env` variable names, or else the first found of the settings' `file` in the walk from
- * the start directory up to the home directory, in the home directory, and in the user folder. It
- * judges the settings' `file` and `env` at the call, which it reads once. The resolver module loads
- * only when core calls the source.
+ * The configuration plugin and the provider that reads it, built from one settings object. The
+ * plugin answers the configuration tier from one JSON, TOML, or YAML file per run: the file
+ * `--config` names, or else the file the settings' `env` variable names, or else the first found of
+ * the settings' `file` in the walk from the start directory up to the home directory, in the home
+ * directory, and in the user folder. The provider hands application code the schema's output for
+ * that file, after the plugin has dropped every value the schema rejects. The call judges the
+ * settings' `file` and `env`, which it reads once. The resolver and the opener load only when core
+ * calls them, and they share one read per run, keyed by the run's host.
  */
-function config<const Directory extends string = never>(
-  settings?: ConfigSettings<Directory>,
-): Plugin<ConfigOptions<Directory>> {
-  const candidates = fileCandidates(settings);
-  const env = envVariable(settings);
-  const directory = settings?.directory?.name;
-  const notice = settings?.notice === true;
-  return plugin(identity, {
+function configuration<
+  const Schema extends StandardSchemaV1,
+  const Directory extends string = never,
+>(settings: ConfigurationSettings<Schema, Directory>): Configuration<Schema, Directory> {
+  const shared = {
+    candidates: fileCandidates(settings),
+    directory: settings.directory?.name,
+    env: envVariable(settings),
+    notice: settings.notice === true,
+    reads: new WeakMap<Host, Promise<Loaded<Schema>>>(),
+    schema: settings.schema,
+  };
+  const installed: Plugin<ConfigOptions<Directory>> = plugin(identity, {
     extensions: [configInput],
-    options: declaredOptions(settings),
+    onGraphBuilt: judgeLinks(settings.schema),
+    options: declaredOptions<Directory>(settings),
     source: {
       binding: configInput,
       load: async () => {
         const { configSource } = await import('./source.js');
-        return { default: configSource({ candidates, directory, env, notice }) };
+        return { default: configSource<Schema, Directory>(shared) };
       },
     },
   });
+  const values: ConfigProvider<Schema, Directory> = provider('config', {
+    load: async () => {
+      const { configOpener } = await import('./opener.js');
+      return { default: configOpener<Schema, Directory>(shared) };
+    },
+  });
+  return { plugin: installed, values };
 }
 
-export { config };
-export type { ConfigOptions, ConfigSettings, DirectorySetting };
+export { configuration };
+export type {
+  ConfigOptions,
+  ConfigProvider,
+  Configuration,
+  ConfigurationSettings,
+  DirectorySetting,
+};
+export type { ConfigurationSchemaMustAcceptAnEmptyFile, EmptyFileGuard } from './schema-types.js';

@@ -4,12 +4,19 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { InvocationValues } from '@loomcli/core';
-import type { ConfigSettings } from '@loomcli/plugins/config';
+import { Application, DeclarationError } from '@loomcli/core';
+import type { InvocationValues, Plugin, StandardSchemaV1 } from '@loomcli/core';
+import { configuration } from '@loomcli/plugins/config';
+import type { ConfigurationSettings } from '@loomcli/plugins/config';
+import { configInput } from '@loomcli/plugins/config/extension';
+import { mockProcess } from '@loomcli/testing';
+import { number, object, optional } from 'valibot';
 import { expect, test } from 'vite-plus/test';
+import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
 import { inspected as inspectGraph, invoked, run as runInProcess } from './fixtures/config-run.ts';
+import type { Declared, SchemaName, Settings } from './fixtures/config-run.ts';
 import { settingsFault } from './fixtures/config-settings.ts';
 
 /**
@@ -30,10 +37,28 @@ interface Result {
 const settingsKey = Symbol('settings');
 
 /** A test's environment, which may also carry the settings the plugin is installed with. */
-type Overrides = Record<string, string | undefined> & { [settingsKey]?: ConfigSettings<'project'> };
+type Overrides = Record<string, string | undefined> & { [settingsKey]?: Settings };
 
 /** The names of the environment entries that configure the fixture application, not the run. */
-const fixtureNames = new Set(['FIXTURE_CWD', 'FIXTURE_LIMIT_PATH', 'FIXTURE_TTY', 'FIXTURE_VIEWS']);
+const fixtureNames = new Set([
+  'FIXTURE_CWD',
+  'FIXTURE_LIMIT_PATH',
+  'FIXTURE_LOUD',
+  'FIXTURE_PROVIDED',
+  'FIXTURE_SCHEMA',
+  'FIXTURE_TTY',
+  'FIXTURE_VIEWS',
+]);
+
+/** The schema a case names, which must be one the fixture declares. */
+function schemaNamed(name: string): SchemaName {
+  const known: readonly SchemaName[] = ['loose', 'refined', 'topRefined', 'typed'];
+  const found = known.find((entry) => entry === name);
+  if (found === undefined) {
+    throw new Error(`The fixture declares no schema named ${name}.`);
+  }
+  return found;
+}
 
 /**
  * Splits a test's environment into what configures the fixture application and what is the run's
@@ -42,14 +67,26 @@ const fixtureNames = new Set(['FIXTURE_CWD', 'FIXTURE_LIMIT_PATH', 'FIXTURE_TTY'
 function split(env: Overrides) {
   const entries = Object.entries(env);
   const own = Object.fromEntries(entries.filter(([name]) => !fixtureNames.has(name)));
-  const { FIXTURE_CWD, FIXTURE_LIMIT_PATH, FIXTURE_TTY, FIXTURE_VIEWS } = env;
+  const {
+    FIXTURE_CWD,
+    FIXTURE_LIMIT_PATH,
+    FIXTURE_LOUD,
+    FIXTURE_PROVIDED,
+    FIXTURE_SCHEMA,
+    FIXTURE_TTY,
+    FIXTURE_VIEWS,
+  } = env;
   const { [settingsKey]: installed } = env;
+  const declared: Declared = {
+    ...(FIXTURE_LIMIT_PATH === undefined ? {} : { limitPath: FIXTURE_LIMIT_PATH }),
+    ...(FIXTURE_LOUD === undefined ? {} : { loud: true }),
+    ...(FIXTURE_PROVIDED === undefined ? {} : { provided: true }),
+    ...(FIXTURE_SCHEMA === undefined ? {} : { schema: schemaNamed(FIXTURE_SCHEMA) }),
+    ...(installed === undefined ? {} : { settings: installed }),
+    ...(FIXTURE_VIEWS === undefined ? {} : { view: FIXTURE_VIEWS }),
+  };
   return {
-    declared: {
-      ...(FIXTURE_LIMIT_PATH === undefined ? {} : { limitPath: FIXTURE_LIMIT_PATH }),
-      ...(installed === undefined ? {} : { settings: installed }),
-      ...(FIXTURE_VIEWS === undefined ? {} : { view: FIXTURE_VIEWS }),
-    },
+    declared,
     env: own,
     ...(FIXTURE_CWD === undefined ? {} : { cwd: FIXTURE_CWD }),
     ...(FIXTURE_TTY === undefined ? {} : { columns: Number(FIXTURE_TTY) }),
@@ -144,7 +181,7 @@ function json(value: unknown): string {
 }
 
 /** The environment that installs the plugin with one settings object. */
-function settings(value: ConfigSettings<'project'>): Overrides {
+function settings(value: Settings): Overrides {
   return { [settingsKey]: value };
 }
 
@@ -176,10 +213,13 @@ function several(files: string, chosen: string): string {
   return `⚠ Skipped ${files}: ${chosen} matches the same pattern first. Keep one of the files, and remove the others.\n`;
 }
 
-/** The failure a wrong value prints. */
-function wrong(clause: string): string {
-  return `app: ${clause}\n${helpHint}`;
+/** The `-v` lines a value the option cannot take writes, one per line given. */
+function wrong(...lines: string[]): string {
+  return lines.map((line) => `› ${line}\n`).join('');
 }
+
+/** The environment of a run that shows `-v` lines: it installs the fixture's verbose mark. */
+const loudEnv: Overrides = { FIXTURE_LOUD: '1' };
 
 const invalidJson =
   'is not valid JSON, so this run reads no configuration. Correct its syntax, or remove it.';
@@ -324,6 +364,8 @@ test(
       'o',
       '-v',
       '--backup',
+      '--root',
+      '/r',
     ]);
     expect(filled).toMatchObject({ status: 0, stderr: '' });
     expect(received(filled.stdout)).toEqual({
@@ -335,6 +377,7 @@ test(
       limit: '1',
       owner: 'o',
       quiet: false,
+      root: '/r',
       title: 't',
       total: true,
       verbose: 1,
@@ -560,7 +603,7 @@ test(
 );
 
 test(
-  'a counted option takes a whole number of 0 or more, and any other value is a wrong value',
+  'a counted option takes a whole number of 0 or more, and any other value is ignored with a -v line',
   inWorkspace(async (space) => {
     space.write('.app.json', json({ verbose: 3 }));
     expect(received(await space.stdout([]))).toEqual({ ...defaults, verbose: 3 });
@@ -569,12 +612,11 @@ test(
     expect(received(await space.stdout(['-v']))).toEqual({ ...defaults, verbose: 1 });
     for (const value of ['3', -1, 1.5, true]) {
       space.write('.app.json', json({ verbose: value }));
-      await expect(space.run([])).resolves.toEqual({
-        status: 2,
+      await expect(space.run(['-L'], loudEnv)).resolves.toMatchObject({
+        status: 0,
         stderr: wrong(
-          'Option "--verbose" (from verbose in .app.json): Use a whole number of 0 or more.',
+          'Ignored option "--verbose" from verbose in .app.json: Use a whole number of 0 or more.',
         ),
-        stdout: 'resolved:2\n',
       });
     }
     const toml = settings({ file: '.app.toml' });
@@ -598,29 +640,41 @@ test(
       backup: 'simple',
     });
     space.write('.app.json', json({ backup: true }));
-    await expect(space.stderr([])).resolves.toBe(
-      wrong('Option "--backup" (from backup in .app.json): Use a string or a number.'),
+    await expect(space.stderr(['-L'], loudEnv)).resolves.toBe(
+      wrong('Ignored option "--backup" from backup in .app.json: Use a string or a number.'),
     );
   }),
 );
 
 test(
-  'a TOML value the option cannot take is a wrong value, and an invalid date is invalid TOML',
+  'a TOML value the option cannot take is ignored with a -v line, and an invalid date is invalid TOML',
   inWorkspace(async (space) => {
     const toml = settings({ file: '.app.toml' });
     const cases: Pairs = [
-      ['total = 1979-05-27\n', 'Option "--total" (from total in .app.toml): Use true or false.'],
-      ['title = inf\n', 'Option "--title" (from title in .app.toml): Use a string or a number.'],
-      ['title = nan\n', 'Option "--title" (from title in .app.toml): Use a string or a number.'],
-      ['[title]\n', 'Option "--title" (from title in .app.toml): Use a string or a number.'],
+      [
+        'total = 1979-05-27\n',
+        'Ignored option "--total" from total in .app.toml: Use true or false.',
+      ],
+      [
+        'title = inf\n',
+        'Ignored option "--title" from title in .app.toml: Use a string or a number.',
+      ],
+      [
+        'title = nan\n',
+        'Ignored option "--title" from title in .app.toml: Use a string or a number.',
+      ],
+      ['[title]\n', 'Ignored option "--title" from title in .app.toml: Use a string or a number.'],
       [
         'fields = [1, -inf]\n',
-        'Option "--fields" (from fields in .app.toml) at 1: Use a string or a number.',
+        'Ignored option "--fields" at 1 from fields in .app.toml: Use a string or a number.',
       ],
     ];
     for (const [content, line] of cases) {
       space.write('.app.toml', content);
-      await expect(space.run([], toml)).resolves.toMatchObject({ status: 2, stderr: wrong(line) });
+      await expect(space.run(['-L'], { ...toml, ...loudEnv })).resolves.toMatchObject({
+        status: 0,
+        stderr: wrong(line),
+      });
     }
     space.write('.app.toml', '');
     const empty = await space.run([], toml);
@@ -691,25 +745,37 @@ test(
 );
 
 test(
-  'a YAML value the option cannot take is a wrong value',
+  'a YAML value the option cannot take is ignored with a -v line',
   inWorkspace(async (space) => {
     const yaml = settings({ file: '.app.yaml' });
     const cases: Pairs = [
-      ['total: no\n', 'Option "--total" (from total in .app.yaml): Use true or false.'],
-      ['total: on\n', 'Option "--total" (from total in .app.yaml): Use true or false.'],
-      ['title: null\n', 'Option "--title" (from title in .app.yaml): Use a string or a number.'],
-      ['title: ~\n', 'Option "--title" (from title in .app.yaml): Use a string or a number.'],
-      ['title:\n', 'Option "--title" (from title in .app.yaml): Use a string or a number.'],
-      ['title: .inf\n', 'Option "--title" (from title in .app.yaml): Use a string or a number.'],
-      ['title: .nan\n', 'Option "--title" (from title in .app.yaml): Use a string or a number.'],
+      ['total: no\n', 'Ignored option "--total" from total in .app.yaml: Use true or false.'],
+      ['total: on\n', 'Ignored option "--total" from total in .app.yaml: Use true or false.'],
+      [
+        'title: null\n',
+        'Ignored option "--title" from title in .app.yaml: Use a string or a number.',
+      ],
+      ['title: ~\n', 'Ignored option "--title" from title in .app.yaml: Use a string or a number.'],
+      ['title:\n', 'Ignored option "--title" from title in .app.yaml: Use a string or a number.'],
+      [
+        'title: .inf\n',
+        'Ignored option "--title" from title in .app.yaml: Use a string or a number.',
+      ],
+      [
+        'title: .nan\n',
+        'Ignored option "--title" from title in .app.yaml: Use a string or a number.',
+      ],
       [
         'title: { a: 1 }\n',
-        'Option "--title" (from title in .app.yaml): Use a string or a number.',
+        'Ignored option "--title" from title in .app.yaml: Use a string or a number.',
       ],
     ];
     for (const [content, line] of cases) {
       space.write('.app.yaml', content);
-      await expect(space.run([], yaml)).resolves.toMatchObject({ status: 2, stderr: wrong(line) });
+      await expect(space.run(['-L'], { ...yaml, ...loudEnv })).resolves.toMatchObject({
+        status: 0,
+        stderr: wrong(line),
+      });
     }
   }),
 );
@@ -823,7 +889,7 @@ test(
 );
 
 test(
-  'a value follows the option type, and a wrong value is a usage failure naming the file',
+  'a value follows the option type, and a value the option cannot take is ignored with one -v line each',
   inWorkspace(async (space) => {
     space.write(
       '.app.json',
@@ -837,39 +903,40 @@ test(
       total: true,
       verbose: 0,
     });
-    space.write('.app.json', json({ total: 'yes' }));
-    await expect(space.run([])).resolves.toEqual({
-      status: 2,
-      stderr: wrong('Option "--total" (from total in .app.json): Use true or false.'),
-      stdout: 'resolved:2\n',
-    });
-    space.write('.app.json', json({ limits: { bytes: { max: 5 } } }));
-    await expect(space.stderr([])).resolves.toBe(
-      wrong('Option "--limit" (from limits.bytes in .app.json): Use a string or a number.'),
+    const lines = async (content: string) => {
+      space.write('.app.json', content);
+      const result = await space.run(['-L'], loudEnv);
+      expect(result.status).toBe(0);
+      return result.stderr;
+    };
+    await expect(lines(json({ total: 'yes' }))).resolves.toBe(
+      wrong('Ignored option "--total" from total in .app.json: Use true or false.'),
     );
-    space.write('.app.json', json({ quiet: 'no' }));
-    await expect(space.stderr([])).resolves.toBe(
-      wrong('Option "--no-quiet" (from quiet in .app.json): Use true or false.'),
+    await expect(lines(json({ limits: { bytes: { max: 5 } } }))).resolves.toBe(
+      wrong('Ignored option "--limit" from limits.bytes in .app.json: Use a string or a number.'),
     );
-    space.write('.app.json', json({ fields: 'a' }));
-    await expect(space.stderr([])).resolves.toBe(
-      wrong('Option "--fields" (from fields in .app.json): Use an array of strings or numbers.'),
+    await expect(lines(json({ quiet: 'no' }))).resolves.toBe(
+      wrong('Ignored option "--no-quiet" from quiet in .app.json: Use true or false.'),
     );
-    space.write('.app.json', json({ fields: ['a', {}, null] }));
-    await expect(space.stderr([])).resolves.toBe(
+    await expect(lines(json({ fields: 'a' }))).resolves.toBe(
       wrong(
-        'Option "--fields" (from fields in .app.json) at 1: Use a string or a number.\napp: Option "--fields" (from fields in .app.json) at 2: Use a string or a number.',
+        'Ignored option "--fields" from fields in .app.json: Use an array of strings or numbers.',
       ),
     );
-    space.write('.app.json', json({ title: null }));
-    await expect(space.stderr([])).resolves.toBe(
-      wrong('Option "--title" (from title in .app.json): Use a string or a number.'),
+    await expect(lines(json({ fields: ['a', {}, null] }))).resolves.toBe(
+      wrong(
+        'Ignored option "--fields" at 1 from fields in .app.json: Use a string or a number.',
+        'Ignored option "--fields" at 2 from fields in .app.json: Use a string or a number.',
+      ),
+    );
+    await expect(lines(json({ title: null }))).resolves.toBe(
+      wrong('Ignored option "--title" from title in .app.json: Use a string or a number.'),
     );
     // An overflowing literal parses as Infinity, which is no JSON number.
-    space.write('.app.json', '{"title": 1e400, "fields": [-0, 1e21, -1e400]}');
-    await expect(space.stderr([])).resolves.toBe(
+    await expect(lines('{"title": 1e400, "fields": [-0, 1e21, -1e400]}')).resolves.toBe(
       wrong(
-        'Option "--fields" (from fields in .app.json) at 2: Use a string or a number.\napp: Option "--title" (from title in .app.json): Use a string or a number.',
+        'Ignored option "--fields" at 2 from fields in .app.json: Use a string or a number.',
+        'Ignored option "--title" from title in .app.json: Use a string or a number.',
       ),
     );
     space.write('.app.json', '{"fields": [-0, 1e21]}');
@@ -878,18 +945,20 @@ test(
 );
 
 test(
-  'an empty array fills a multiple option, and two wrong values print in request order, each line opening with the application name',
+  'an empty array fills a multiple option, and a value the option cannot take falls through to its default',
   inWorkspace(async (space) => {
     space.write('.app.json', json({ fields: [] }));
     expect(received(await space.stdout([]))).toEqual(defaults);
     space.write('.app.json', json({ limits: { bytes: true }, log: { level: 7 }, title: false }));
-    await expect(space.stderr([])).resolves.toBe(
-      [
-        'app: Option "--limit" (from limits.bytes in .app.json): Use a string or a number.',
-        'app: Option "--title" (from title in .app.json): Use a string or a number.',
-        'Run "app --help" to see the usage.',
-        '',
-      ].join('\n'),
+    const result = await space.run(['-L'], loudEnv);
+    expect(result.status).toBe(0);
+    expect(received(result.stdout)).toMatchObject({ level: '7', limit: '10' });
+    expect(received(result.stdout)).not.toHaveProperty('title');
+    expect(result.stderr).toBe(
+      wrong(
+        'Ignored option "--limit" from limits.bytes in .app.json: Use a string or a number.',
+        'Ignored option "--title" from title in .app.json: Use a string or a number.',
+      ),
     );
     expect(received(await space.stdout(['--limit', '1', '--title', 't']))).toMatchObject({
       level: '7',
@@ -930,29 +999,6 @@ test(
       FIXTURE_LIMIT_PATH: '__proto__.bytes',
     });
     expect(received(proto)).toMatchObject({ limit: '7' });
-  }),
-);
-
-test(
-  'a wrong value problem carries whether the option is global, and reaches an InputError view',
-  inWorkspace(async (space) => {
-    space.write('.app.json', json({ limits: { bytes: false }, log: { level: true } }));
-    await expect(space.stderr([], { FIXTURE_VIEWS: 'input' })).resolves.toBe(
-      `${JSON.stringify([
-        {
-          input: { global: true, kind: 'option', name: 'level' },
-          issues: [{ message: 'Use a string or a number.' }],
-          reason: 'invalid',
-          spelling: '--level',
-        },
-        {
-          input: { global: false, kind: 'option', name: 'limit' },
-          issues: [{ message: 'Use a string or a number.' }],
-          reason: 'invalid',
-          spelling: '--limit',
-        },
-      ])}\n`,
-    );
   }),
 );
 
@@ -1023,14 +1069,14 @@ function inspected(env: Overrides) {
   return inspectGraph(split(env).declared);
 }
 
-/** The fault a `config()` call throws for the settings, or `"returned"` when it returns. */
-function callFault(value?: ConfigSettings<'project'>): unknown {
+/** The fault a `configuration()` call throws for the settings, or `"returned"` when it returns. */
+function callFault(value?: Settings): unknown {
   return settingsFault(value);
 }
 
 const pathFault = {
   correction: 'Supply a relative path such as .textstat.toml, with no empty, ., or .. segment.',
-  findings: [{ call: 'config', mark: '0.file' }],
+  findings: [{ call: 'configuration', mark: '0.file' }],
   rule: '@loomcli/plugins/config/file-path',
   sentence: 'Plugin "@loomcli/plugins/config" file is not a relative path.',
 };
@@ -1038,7 +1084,7 @@ const pathFault = {
 const globFault = {
   correction:
     'Write the name literally, and use * or a brace list only as the whole text after its last dot.',
-  findings: [{ call: 'config', mark: '0.file' }],
+  findings: [{ call: 'configuration', mark: '0.file' }],
   rule: '@loomcli/plugins/config/file-pattern',
   sentence:
     'Plugin "@loomcli/plugins/config" file holds glob syntax other than an extension of * or a brace list.',
@@ -1046,7 +1092,7 @@ const globFault = {
 
 const listFault = {
   correction: 'List only json, toml, yaml, or yml in the braces, or use * for any of them.',
-  findings: [{ call: 'config', mark: '0.file' }],
+  findings: [{ call: 'configuration', mark: '0.file' }],
   rule: '@loomcli/plugins/config/file-pattern',
   sentence: 'Plugin "@loomcli/plugins/config" file lists an extension the plugin cannot read.',
 };
@@ -1064,7 +1110,7 @@ test.each([
   [String.raw`a\.\b.json`],
   ['..'],
   ['/*.json'],
-])('config({ file: %j }) throws the file-path fault at its call', (file) => {
+])('configuration({ file: %j }) throws the file-path fault at its call', (file) => {
   expect(callFault({ file })).toEqual(pathFault);
 });
 
@@ -1082,7 +1128,7 @@ test.each([
   ['*'],
   ['.*'],
   ['.textstat.{toml,y.ml}'],
-])('config({ file: %j }) throws the glob fault of the file-pattern rule', (file) => {
+])('configuration({ file: %j }) throws the glob fault of the file-pattern rule', (file) => {
   expect(callFault({ file })).toEqual(globFault);
 });
 
@@ -1091,11 +1137,14 @@ test.each([
   ['.textstat.{toml,}'],
   ['.textstat.{}'],
   ['.textstat.{TOML}'],
-])('config({ file: %j }) throws the extension-list fault of the file-pattern rule', (file) => {
-  expect(callFault({ file })).toEqual(listFault);
-});
+])(
+  'configuration({ file: %j }) throws the extension-list fault of the file-pattern rule',
+  (file) => {
+    expect(callFault({ file })).toEqual(listFault);
+  },
+);
 
-test('config() judges the path before the pattern', () => {
+test('configuration() judges the path before the pattern', () => {
   expect(callFault({ file: 'a/../*.json' })).toEqual(pathFault);
 });
 
@@ -1111,7 +1160,7 @@ test.each([
   [{ file: '.textstat.conf' }],
   [{ file: '.textstatrc' }],
   [{ file: `.text${String.fromCodePoint(8232)}stat.json` }],
-] satisfies [ConfigSettings<'project'> | undefined][])('config(%j) returns its plugin', (value) => {
+] satisfies [Settings | undefined][])('configuration(%j) returns its plugin', (value) => {
   expect(callFault(value)).toBe('returned');
 });
 
@@ -1128,14 +1177,13 @@ function invokedRoot(
 }
 
 test(
-  'in an invocation by name, a wrong value from the file names its option by declared name, with no help hint',
+  'in an invocation by name, a value the file holds that the option cannot take names its option by declared name at -v',
   inWorkspace(async (space) => {
     space.write('.app.json', json({ limits: { bytes: true } }));
-    await expect(invokedRoot(space, {})).resolves.toEqual({
-      exitCode: 2,
-      messages: 'app: Option "limit" (from limits.bytes in .app.json): Use a string or a number.\n',
-      output: '',
-      status: 'failed',
+    await expect(invokedRoot(space, { options: { loud: 1 } }, loudEnv)).resolves.toMatchObject({
+      messages:
+        '› Ignored option "limit" from limits.bytes in .app.json: Use a string or a number.\n',
+      status: 'completed',
     });
   }),
 );
@@ -1232,15 +1280,15 @@ test(
   'a file found in an ancestor shows as its full path, a file in the working directory as file names it',
   inWorkspace(async (space) => {
     const start = nest(space.project, 'a');
-    // A value of the wrong type still fails the run, so its label reaches stderr.
+    // A value the option cannot take is named at -v, so its label reaches stderr.
     const found = space.write('.app.json', json({ limits: { bytes: {} } }));
-    const result = await space.run([], { FIXTURE_CWD: start });
+    const result = await space.run(['-L'], { ...loudEnv, FIXTURE_CWD: start });
     expect(result.stderr).toBe(
-      wrong(`Option "--limit" (from limits.bytes in ${found}): Use a string or a number.`),
+      wrong(`Ignored option "--limit" from limits.bytes in ${found}: Use a string or a number.`),
     );
     const near = space.write('.app.json', json({ limits: { bytes: {} } }), start);
-    await expect(space.stderr([], { FIXTURE_CWD: start })).resolves.toBe(
-      wrong(`Option "--limit" (from limits.bytes in .app.json): Use a string or a number.`),
+    await expect(space.stderr(['-L'], { ...loudEnv, FIXTURE_CWD: start })).resolves.toBe(
+      wrong(`Ignored option "--limit" from limits.bytes in .app.json: Use a string or a number.`),
     );
     expect(near).toBe(join(start, '.app.json'));
   }),
@@ -1508,19 +1556,19 @@ test(
 const variableFault = {
   correction:
     'Name a variable such as COLLECTOR_CONFIG: a letter or an underscore, then letters, digits, or underscores.',
-  findings: [{ call: 'config', mark: '0.env' }],
+  findings: [{ call: 'configuration', mark: '0.env' }],
   rule: '@loomcli/plugins/config/variable-name',
   sentence: 'Plugin "@loomcli/plugins/config" env is not a variable name.',
 };
 
 test.each([[''], ['1APP'], ['APP-CONFIG'], ['APP CONFIG'], ['APP=1'], ['É']])(
-  'config({ env: %j }) throws the variable-name fault at its call',
+  'configuration({ env: %j }) throws the variable-name fault at its call',
   (env) => {
     expect(callFault({ env })).toEqual(variableFault);
   },
 );
 
-test('config() judges the file rules before the env rule', () => {
+test('configuration() judges the file rules before the env rule', () => {
   expect(callFault({ env: '1', file: '/abs' })).toEqual(pathFault);
 });
 
@@ -1530,12 +1578,350 @@ test.each([
   [{ notice: true }],
   [{ directory: { name: 'project' } }],
   [{ directory: { description: 'The project.', name: 'project', short: 'p' } }],
-] satisfies [ConfigSettings<'project'>][])('config(%j) returns its plugin', (value) => {
+] satisfies [Settings][])('configuration(%j) returns its plugin', (value) => {
   expect(callFault(value)).toBe('returned');
 });
 
 test('the type rejects a directory named config, which would claim --config', () => {
-  // @ts-expect-error A directory option named config would claim the spelling --config.
-  const rejected: ConfigSettings<'config'> = { directory: { name: 'config' } };
+  const rejected: Omit<ConfigurationSettings<StandardSchemaV1, 'config'>, 'schema'> = {
+    // @ts-expect-error A directory option named config would claim the spelling --config.
+    directory: { name: 'config' },
+  };
   expect(rejected.directory?.name).toBe('config');
+});
+
+/** A run of the fixture with the schema it names, the provided value printed, and `-v` lines shown. */
+function shown(schema: SchemaName, extra: Overrides = {}): Overrides {
+  return { FIXTURE_LOUD: '1', FIXTURE_PROVIDED: '1', FIXTURE_SCHEMA: schema, ...extra };
+}
+
+/** The value the action read as provided.config, parsed from the one line it prints. */
+function provided(stdout: string): unknown {
+  const line = stdout.split('\n').find((entry) => entry.startsWith('config:'));
+  expect(line).toBeDefined();
+  return JSON.parse(line?.slice('config:'.length) ?? '');
+}
+
+test(
+  'provided.config is the schema output for the passed file, and for an empty file when no file is found',
+  inWorkspace(async (space) => {
+    const none = await space.run([], shown('typed'));
+    expect(none).toMatchObject({ status: 0, stderr: '' });
+    expect(provided(none.stdout)).toEqual({ retries: 3 });
+    space.write('.app.json', json({ mode: 'slow', title: 'abc', unknown: { value: 1 } }));
+    const found = await space.run(['-L'], shown('typed'));
+    expect(found.stderr).toBe('');
+    // The default fills and the transform runs. A key the schema does not describe is never reported,
+    // And this schema is a loose object, so it reaches the output.
+    expect(provided(found.stdout)).toEqual({
+      mode: 'slow',
+      retries: 3,
+      title: 'ABC',
+      unknown: { value: 1 },
+    });
+  }),
+);
+
+test(
+  'provided.config keeps a path as the file wrote it',
+  inWorkspace(async (space) => {
+    space.write(
+      '.app.json',
+      json({ root: '../out', sessions: { sources: [{ dir: './t', harness: 'a' }] } }),
+    );
+    const result = await space.run([], shown('typed'));
+    expect(provided(result.stdout)).toEqual({
+      retries: 3,
+      root: '../out',
+      sessions: { sources: [{ dir: './t', harness: 'a' }] },
+    });
+  }),
+);
+
+test(
+  'a value the schema rejects is dropped and named at -v alone, and the rest of the file stays',
+  inWorkspace(async (space) => {
+    space.write('.app.json', json({ mode: 'slow', updates: { interval: 'soon' } }));
+    const quiet = await space.run([], shown('typed', { FIXTURE_LOUD: undefined }));
+    expect(quiet).toMatchObject({ status: 0, stderr: '' });
+    expect(provided(quiet.stdout)).toEqual({ mode: 'slow', retries: 3, updates: {} });
+    const loudly = await space.run(['-L'], shown('typed'));
+    expect(loudly.stderr).toBe(
+      wrong(
+        'Ignored updates.interval in .app.json: Invalid input: expected number, received string',
+      ),
+    );
+    expect(provided(loudly.stdout)).toEqual({ mode: 'slow', retries: 3, updates: {} });
+  }),
+);
+
+test(
+  'a wrong value at a key falls back to the schema default',
+  inWorkspace(async (space) => {
+    space.write('.app.json', json({ retries: 'many' }));
+    const result = await space.run(['-L'], shown('typed'));
+    expect(provided(result.stdout)).toEqual({ retries: 3 });
+    expect(result.stderr).toBe(
+      wrong('Ignored retries in .app.json: Invalid input: expected number, received string'),
+    );
+  }),
+);
+
+test(
+  'an array item with a wrong or missing value is removed whole, and the array keeps its other items',
+  inWorkspace(async (space) => {
+    space.write(
+      '.app.json',
+      json({
+        sessions: { sources: [{ dir: 1 }, { harness: 'b' }, { harness: 2 }, { harness: 'd' }] },
+      }),
+    );
+    const result = await space.run(['-L'], shown('typed'));
+    expect(provided(result.stdout)).toEqual({
+      retries: 3,
+      sessions: { sources: [{ harness: 'b' }, { harness: 'd' }] },
+    });
+    expect(result.stderr).toBe(
+      wrong(
+        'Ignored sessions.sources[0] in .app.json: Invalid input: expected string, received number',
+        'Ignored sessions.sources[2] in .app.json: Invalid input: expected string, received number',
+      ),
+    );
+  }),
+);
+
+test(
+  'a wrong value inside a record removes that value, and the entry that then lacks a key goes the next round',
+  inWorkspace(async (space) => {
+    space.write(
+      '.app.json',
+      json({ owners: { alpha: { id: 1 }, beta: { extra: 1 }, gamma: { id: 'ok' } } }),
+    );
+    const result = await space.run(['-L'], shown('typed'));
+    expect(provided(result.stdout)).toEqual({ owners: { gamma: { id: 'ok' } }, retries: 3 });
+    expect(result.stderr).toBe(
+      wrong(
+        'Ignored owners.alpha.id in .app.json: Invalid input: expected string, received number',
+        'Ignored owners.beta in .app.json: Invalid input: expected string, received undefined',
+        'Ignored owners.alpha in .app.json: Invalid input: expected string, received undefined',
+      ),
+    );
+  }),
+);
+
+test(
+  'an issue with no path removes every key, and the file then passes as an empty file',
+  inWorkspace(async (space) => {
+    space.write('.app.json', json({ mode: 'bad', other: 1 }));
+    const result = await space.run(['-L'], shown('topRefined'));
+    expect(result.stderr).toBe(wrong('Ignored every key in .app.json: Pick another mode.'));
+    expect(provided(result.stdout)).toEqual({});
+  }),
+);
+
+test(
+  'a schema that still rejects an empty file is the defect of the author, with code 1',
+  inWorkspace(async (space) => {
+    const sentence = 'The configuration schema rejects an empty file: Add present.';
+    for (const content of [undefined, json({ other: 1 })]) {
+      if (content !== undefined) {
+        space.write('.app.json', content);
+      }
+      const result = await space.run([], shown('refined', { FIXTURE_PROVIDED: undefined }));
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(sentence);
+      expect(result.stderr).toContain('@loomcli/plugins/config/empty-file');
+    }
+    space.write('.app.json', json({ present: true }));
+    await expect(space.run([], shown('refined'))).resolves.toMatchObject({ status: 0, stderr: '' });
+  }),
+);
+
+test(
+  'a linked option takes the file value, not the schema output, and a value the schema removed fills nothing',
+  inWorkspace(async (space) => {
+    space.write('.app.json', json({ title: 'abc' }));
+    const kept = await space.run(['-L'], shown('typed'));
+    expect(received(kept.stdout)).toMatchObject({ title: 'abc' });
+    expect(provided(kept.stdout)).toMatchObject({ title: 'ABC' });
+    space.write('.app.json', json({ title: 5 }));
+    const dropped = await space.run(['-L'], shown('typed'));
+    expect(received(dropped.stdout)).not.toHaveProperty('title');
+    // The schema names the removal once, and the source names no second line for the same value.
+    expect(dropped.stderr).toBe(
+      wrong('Ignored title in .app.json: Invalid input: expected string, received number'),
+    );
+  }),
+);
+
+test(
+  'a schema default never fills a linked option',
+  inWorkspace(async (space) => {
+    const result = await space.run([], shown('typed'));
+    expect(received(result.stdout)).toEqual({ ...defaults, loud: 0 });
+  }),
+);
+
+test(
+  'a relative path in a linked option resolves against the directory of the file, and provided.config keeps it as written',
+  inWorkspace(async (space) => {
+    const found = space.write('.app.json', json({ root: 'out/dir' }), space.root);
+    expect(found).toBe(join(space.root, '.app.json'));
+    const walked = await space.run([], shown('typed'));
+    expect(received(walked.stdout)).toMatchObject({ root: join(space.root, 'out', 'dir') });
+    expect(provided(walked.stdout)).toMatchObject({ root: 'out/dir' });
+    space.write('named.json', json({ root: 'out/dir' }), space.elsewhere);
+    const named = await space.run(['--config', '../elsewhere/named.json'], shown('typed'));
+    expect(received(named.stdout)).toMatchObject({ root: join(space.elsewhere, 'out', 'dir') });
+    // An absolute path is the file's own, and the working directory never decides.
+    space.write('.app.json', json({ root: '/abs/dir' }), space.project);
+    const absolute = await space.run([], shown('typed'));
+    expect(received(absolute.stdout)).toMatchObject({ root: '/abs/dir' });
+  }),
+);
+
+test(
+  'the source and the provider share one read, so a warning about a broken file prints once',
+  inWorkspace(async (space) => {
+    space.write('.app.json', '{');
+    const result = await space.run([], shown('typed'));
+    expect(result.stderr).toBe(skipped('.app.json', invalidJson));
+    expect(provided(result.stdout)).toEqual({ retries: 3 });
+  }),
+);
+
+test(
+  'the provider reads the file when no linked option needs a value, and a run that opts in to nothing reads none',
+  inWorkspace(async (space) => {
+    space.write('.app.json', '{');
+    const { plugin: installed, values } = configuration({ schema: z.object({}) });
+    const reading = new Application('app', { plugins: [installed], uses: [values] }).action(
+      ({ out }) => out.print('ran'),
+    );
+    const idle = new Application('app', { plugins: [installed] }).action(({ out }) =>
+      out.print('ran'),
+    );
+    const read = mockProcess({ cwd: space.project, env: { HOME: space.home } });
+    await reading.run({ process: read });
+    expect(read.stderr.text).toBe(skipped('.app.json', invalidJson));
+    const none = mockProcess({ cwd: space.project, env: { HOME: space.home } });
+    await idle.run({ process: none });
+    expect(none.stderr.text).toBe('');
+    expect(none.stdout.text).toBe('ran\n');
+  }),
+);
+
+test(
+  'a --config file that cannot be used fails the run from the provider as it does from the source',
+  inWorkspace(async (space) => {
+    const { plugin: installed, values } = configuration({ schema: z.object({}) });
+    const reading = new Application('app', { plugins: [installed], uses: [values] }).action(
+      ({ out }) => out.print('ran'),
+    );
+    const mock = mockProcess({
+      argv: ['--config', 'missing.json'],
+      cwd: space.project,
+      env: { HOME: space.home },
+    });
+    await reading.run({ process: mock });
+    expect(mock.exitCode).toBe(2);
+    expect(mock.stderr.text).toContain(
+      'Option "--config": File "missing.json" does not exist. Supply the path of an existing file.',
+    );
+  }),
+);
+
+/** The fault the graph build throws for an application that links one option into the schema. */
+function linkFault(
+  installed: Plugin,
+  path: string,
+  kind: 'boolean' | 'count' | 'multiple' | 'string' = 'string',
+) {
+  const base = new Application('app', { plugins: [installed] });
+  const extensions = [configInput({ path })];
+  const declared = {
+    boolean: () => base.option('opt', { extensions, type: 'boolean' }),
+    count: () => base.option('opt', { extensions, type: 'count' }),
+    multiple: () => base.option('opt', { extensions, multiple: true, type: 'string' }),
+    string: () => base.option('opt', { extensions, type: 'string' }),
+  };
+  const linked = declared[kind]().action(() => undefined);
+  try {
+    linked.inspect();
+    return 'built';
+  } catch (error) {
+    if (!(error instanceof DeclarationError)) {
+      throw error;
+    }
+    return { correction: error.correction, rule: error.rule?.identity, sentence: error.sentence };
+  }
+}
+
+const pathCorrection = 'Link a path the schema describes, or add the key to the schema.';
+const typeCorrection =
+  'Link a key that holds a value the option takes: a string or a number for a string option, a Boolean for a Boolean option, a whole number for a counted option, or an array for a multiple option.';
+
+test('a link to a key the schema does not hold is a build fault, and a held key builds', () => {
+  const schema = z.object({
+    minBytes: z.number().optional(),
+    updates: z.object({ channel: z.string().optional() }).optional(),
+  });
+  expect(linkFault(configuration({ schema }).plugin, 'maxBytes')).toEqual({
+    correction: pathCorrection,
+    rule: '@loomcli/plugins/config/link-path',
+    sentence:
+      'The root Command option "opt" links to maxBytes, which the configuration schema does not hold.',
+  });
+  expect(linkFault(configuration({ schema }).plugin, 'updates.stable')).toMatchObject({
+    rule: '@loomcli/plugins/config/link-path',
+  });
+  expect(linkFault(configuration({ schema }).plugin, 'minBytes')).toBe('built');
+  expect(linkFault(configuration({ schema }).plugin, 'updates.channel')).toBe('built');
+});
+
+test('a link to a value the option cannot take is a build fault in every branch of a union', () => {
+  const schema = z.object({
+    flag: z.boolean().optional(),
+    list: z.array(z.string()).optional(),
+    mixed: z.union([z.boolean(), z.string()]).optional(),
+    sessions: z.object({ harness: z.string().optional() }).optional(),
+    size: z.number().int().optional(),
+    word: z.enum(['a', 'b']).optional(),
+  });
+  expect(linkFault(configuration({ schema }).plugin, 'sessions')).toEqual({
+    correction: typeCorrection,
+    rule: '@loomcli/plugins/config/link-type',
+    sentence: 'The root Command option "opt" links to sessions, which holds an object.',
+  });
+  expect(linkFault(configuration({ schema }).plugin, 'flag')).toMatchObject({
+    rule: '@loomcli/plugins/config/link-type',
+  });
+  expect(linkFault(configuration({ schema }).plugin, 'flag', 'boolean')).toBe('built');
+  expect(linkFault(configuration({ schema }).plugin, 'size', 'count')).toBe('built');
+  expect(linkFault(configuration({ schema }).plugin, 'list', 'multiple')).toBe('built');
+  expect(linkFault(configuration({ schema }).plugin, 'word')).toBe('built');
+  expect(linkFault(configuration({ schema }).plugin, 'size', 'multiple')).toMatchObject({
+    rule: '@loomcli/plugins/config/link-type',
+  });
+  expect(linkFault(configuration({ schema }).plugin, 'mixed', 'boolean')).toBe('built');
+  expect(linkFault(configuration({ schema }).plugin, 'mixed', 'count')).toMatchObject({
+    rule: '@loomcli/plugins/config/link-type',
+  });
+});
+
+test('a link into an open object, a record, an array, or a schema without a shape gets no check', () => {
+  const schema = z.object({
+    loose: z.looseObject({}).optional(),
+    records: z.record(z.string(), z.string()).optional(),
+    sources: z.array(z.object({ harness: z.string() })).optional(),
+  });
+  expect(linkFault(configuration({ schema }).plugin, 'loose.anything')).toBe('built');
+  expect(linkFault(configuration({ schema }).plugin, 'records.any.name')).toBe('built');
+  expect(linkFault(configuration({ schema }).plugin, 'sources.harness')).toBe('built');
+  expect(
+    linkFault(
+      configuration({ schema: object({ minBytes: optional(number()) }) }).plugin,
+      'nothing.here',
+    ),
+  ).toBe('built');
 });
