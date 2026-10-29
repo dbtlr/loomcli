@@ -30,7 +30,7 @@ interface Result {
 const settingsKey = Symbol('settings');
 
 /** A test's environment, which may also carry the settings the plugin is installed with. */
-type Overrides = Record<string, string | undefined> & { [settingsKey]?: ConfigSettings };
+type Overrides = Record<string, string | undefined> & { [settingsKey]?: ConfigSettings<'project'> };
 
 /** The names of the environment entries that configure the fixture application, not the run. */
 const fixtureNames = new Set(['FIXTURE_CWD', 'FIXTURE_LIMIT_PATH', 'FIXTURE_TTY', 'FIXTURE_VIEWS']);
@@ -65,6 +65,8 @@ interface Workspace {
   readonly root: string;
   readonly project: string;
   readonly home: string;
+  /** A directory the spawned process starts in, which is not the run's `cwd`. */
+  readonly elsewhere: string;
   /** Runs the fixture application with `HOME` pointed at the home directory. */
   run(argv: string[], env?: Overrides): Promise<Result>;
   /** What the run writes to stdout. */
@@ -81,19 +83,21 @@ function workspace(): Workspace {
   const root = mkdtempSync(join(tmpdir(), 'loom-config-'));
   const project = join(root, 'project');
   const home = join(root, 'home');
-  for (const directory of [project, home]) {
+  const elsewhere = join(root, 'elsewhere');
+  for (const directory of [project, home, elsewhere]) {
     mkdirSync(directory);
   }
   const run = (argv: string[], env: Overrides = {}) =>
     runInProcess({ argv, ...split({ FIXTURE_CWD: project, HOME: home, ...env }) });
   return {
+    elsewhere,
     home,
     project,
     root,
     run,
     spawn: (argv, env = {}) =>
       invoke(processFixture, argv, {
-        cwd: root,
+        cwd: elsewhere,
         env: {
           FIXTURE_CWD: project,
           HOME: home,
@@ -140,7 +144,7 @@ function json(value: unknown): string {
 }
 
 /** The environment that installs the plugin with one settings object. */
-function settings(value: ConfigSettings): Overrides {
+function settings(value: ConfigSettings<'project'>): Overrides {
   return { [settingsKey]: value };
 }
 
@@ -177,13 +181,16 @@ function wrong(clause: string): string {
   return `app: ${clause}\n${helpHint}`;
 }
 
-const invalidJson = 'is not valid JSON. Correct its syntax, or remove it.';
+const invalidJson =
+  'is not valid JSON, so this run reads no configuration. Correct its syntax, or remove it.';
 const notObject =
-  'does not hold a JSON object. Write its settings as one JSON object, or remove it.';
-const invalidToml = 'is not valid TOML. Correct its syntax, or remove it.';
-const invalidYaml = 'is not valid YAML. Correct its syntax, or remove it.';
+  'does not hold a JSON object, so this run reads no configuration. Write its settings as one JSON object, or remove it.';
+const invalidToml =
+  'is not valid TOML, so this run reads no configuration. Correct its syntax, or remove it.';
+const invalidYaml =
+  'is not valid YAML, so this run reads no configuration. Correct its syntax, or remove it.';
 const notMapping =
-  'does not hold a YAML mapping. Write its settings as one YAML mapping, or remove it.';
+  'does not hold a YAML mapping, so this run reads no configuration. Write its settings as one YAML mapping, or remove it.';
 
 test(
   'with no settings the plugin reads .<app>.json in the working directory, then in the home directory',
@@ -202,20 +209,21 @@ test(
 test(
   'the lookup never reads the process working directory',
   inWorkspace((space) => {
-    space.write('.app.json', json({ title: 'process' }), space.root);
+    space.write('.app.json', json({ title: 'process' }), space.elsewhere);
     expect(received(space.spawn([], { HOME: undefined }).stdout)).toEqual(defaults);
   }),
 );
 
 test(
-  'the lookup never reads a parent directory or a ~ path',
+  'the walk reads a parent directory, and no lookup expands a ~ path',
   inWorkspace(async (space) => {
     space.write('.app.json', json({ title: 'parent' }));
     const nested = join(space.project, 'nested');
     mkdirSync(nested);
-    expect(received(await space.stdout([], { FIXTURE_CWD: nested, HOME: undefined }))).toEqual(
-      defaults,
-    );
+    expect(received(await space.stdout([], { FIXTURE_CWD: nested, HOME: undefined }))).toEqual({
+      ...defaults,
+      title: 'parent',
+    });
     await expect(space.run(['--config', '~/.app.json'])).resolves.toMatchObject({
       status: 2,
       stderr: namedFailure('~/.app.json', 'does not exist. Supply the path of an existing file.'),
@@ -237,13 +245,13 @@ test(
 );
 
 test(
-  'a broken file in the working directory warns and the home file answers, and a home that is the working directory is read once',
+  'a broken file in the working directory warns and no later location answers, and a home that is the working directory is read once',
   inWorkspace(async (space) => {
     space.write('.app.json', '{');
     space.write('.app.json', json({ title: 'home' }), space.home);
     const result = await space.run([]);
     expect(result).toMatchObject({ status: 0, stderr: skipped('.app.json', invalidJson) });
-    expect(received(result.stdout)).toEqual({ ...defaults, title: 'home' });
+    expect(received(result.stdout)).toEqual(defaults);
     for (const home of [space.project, `${space.project}/`]) {
       const once = await space.run([], { HOME: home });
       expect(once).toMatchObject({ status: 0, stderr: skipped('.app.json', invalidJson) });
@@ -358,7 +366,10 @@ test(
     const directory = await space.run([]);
     expect(directory).toMatchObject({
       status: 0,
-      stderr: skipped('.app.json', 'could not be read. Make it readable, or remove it.'),
+      stderr: skipped(
+        '.app.json',
+        'could not be read, so this run reads no configuration. Make it readable, or remove it.',
+      ),
     });
     expect(received(directory.stdout)).toEqual(defaults);
     rmSync(join(space.project, '.app.json'), { recursive: true });
@@ -440,14 +451,14 @@ test(
     const toml = await space.run([], any);
     expect(toml.stderr).toBe(several('.app.yaml, .app.yml, .app.json', '.app.toml'));
     expect(received(toml.stdout)).toMatchObject({ title: 'toml' });
-    // A broken first candidate is never replaced by a later one, and the lookup goes on to home.
+    // A broken first candidate is never replaced by a later one, and no later location answers.
     space.write('.app.toml', 'title = ');
     space.write('.app.json', json({ title: 'home' }), space.home);
     const broken = await space.run([], any);
     expect(broken.stderr).toBe(
       `${several('.app.yaml, .app.yml, .app.json', '.app.toml')}${skipped('.app.toml', invalidToml)}`,
     );
-    expect(received(broken.stdout)).toMatchObject({ title: 'home' });
+    expect(received(broken.stdout)).toEqual(defaults);
   }),
 );
 
@@ -759,7 +770,7 @@ test(
       space.write('.app.yaml', content);
       const discovered = await space.run([], yaml);
       expect(discovered).toMatchObject({ status: 0, stderr: skipped('.app.yaml', invalidYaml) });
-      expect(received(discovered.stdout)).toEqual({ ...defaults, title: 'home' });
+      expect(received(discovered.stdout)).toEqual(defaults);
       await expect(space.run(['--config', '.app.yaml'])).resolves.toMatchObject({
         status: 2,
         stderr: namedFailure(
@@ -1019,7 +1030,7 @@ function inspected(env: Overrides) {
 }
 
 /** The fault a `config()` call throws for the settings, or `"returned"` when it returns. */
-function callFault(value?: ConfigSettings): unknown {
+function callFault(value?: ConfigSettings<'project'>): unknown {
   return settingsFault(value);
 }
 
@@ -1106,7 +1117,7 @@ test.each([
   [{ file: '.textstat.conf' }],
   [{ file: '.textstatrc' }],
   [{ file: `.text${String.fromCodePoint(8232)}stat.json` }],
-] satisfies [ConfigSettings | undefined][])('config(%j) returns its plugin', (value) => {
+] satisfies [ConfigSettings<'project'> | undefined][])('config(%j) returns its plugin', (value) => {
   expect(callFault(value)).toBe('returned');
 });
 
@@ -1157,3 +1168,379 @@ test(
     });
   }),
 );
+
+/** The notice line a run with no file writes, as `out.info` prints it. */
+function notice(file: string): string {
+  return `ℹ Found no configuration file. Create ${file} to configure app.\n`;
+}
+
+/** A nested directory under a base, created, for a run to start in. */
+function nest(base: string, ...segments: string[]): string {
+  const directory = join(base, ...segments);
+  mkdirSync(directory, { recursive: true });
+  return directory;
+}
+
+test(
+  'the walk ends at the home directory, which it includes, when the start is inside home',
+  inWorkspace(async (space) => {
+    const start = nest(space.home, 'work', 'deep');
+    // A file above home is never read.
+    space.write('.app.json', json({ title: 'above' }), space.root);
+    await expect(space.run([], { FIXTURE_CWD: start })).resolves.toMatchObject({ stderr: '' });
+    expect(received(await space.stdout([], { FIXTURE_CWD: start }))).toEqual(defaults);
+    // The home file answers from a start inside home, and a nearer ancestor wins over it.
+    space.write('.app.json', json({ title: 'home' }), space.home);
+    expect(received(await space.stdout([], { FIXTURE_CWD: start }))).toEqual({
+      ...defaults,
+      title: 'home',
+    });
+    space.write('.app.json', json({ title: 'work' }), join(space.home, 'work'));
+    expect(received(await space.stdout([], { FIXTURE_CWD: start }))).toEqual({
+      ...defaults,
+      title: 'work',
+    });
+    // Nothing merges: the nearer file's missing keys stay at their defaults.
+    space.write('.app.json', json({ total: true }), space.home);
+    space.write('.app.json', json({ title: 'work' }), join(space.home, 'work'));
+    expect(received(await space.stdout([], { FIXTURE_CWD: start }))).toEqual({
+      ...defaults,
+      title: 'work',
+    });
+  }),
+);
+
+test(
+  'the walk ends at the root when the start is outside home, and the home file answers after it',
+  inWorkspace(async (space) => {
+    const start = nest(space.project, 'a', 'b');
+    space.write('.app.json', json({ title: 'ancestor' }), space.root);
+    expect(received(await space.stdout([], { FIXTURE_CWD: start }))).toEqual({
+      ...defaults,
+      title: 'ancestor',
+    });
+    rmSync(join(space.root, '.app.json'));
+    space.write('.app.json', json({ title: 'home' }), space.home);
+    expect(received(await space.stdout([], { FIXTURE_CWD: start }))).toEqual({
+      ...defaults,
+      title: 'home',
+    });
+    // A home that is empty or relative is no home directory, so the walk is all there is.
+    for (const home of ['', 'home']) {
+      expect(received(await space.stdout([], { FIXTURE_CWD: start, HOME: home }))).toEqual(
+        defaults,
+      );
+    }
+  }),
+);
+
+test(
+  'a file found in an ancestor shows as its full path, a file in the working directory as file names it',
+  inWorkspace(async (space) => {
+    const start = nest(space.project, 'a');
+    const found = space.write('.app.json', json({ limits: { bytes: 'many' } }));
+    const result = await space.run([], { FIXTURE_CWD: start });
+    expect(result.stderr).toBe(
+      wrong(`Option "--limit" (from limits.bytes in ${found}): Supply a whole number.`),
+    );
+    const near = space.write('.app.json', json({ limits: { bytes: 'many' } }), start);
+    await expect(space.stderr([], { FIXTURE_CWD: start })).resolves.toBe(
+      wrong(`Option "--limit" (from limits.bytes in .app.json): Supply a whole number.`),
+    );
+    expect(near).toBe(join(start, '.app.json'));
+  }),
+);
+
+test(
+  'a broken file in an ancestor, the home directory, or the user folder warns once and no later location answers',
+  inWorkspace(async (space) => {
+    const start = nest(space.project, 'a');
+    const broken = space.write('.app.json', '{', space.project);
+    space.write('.app.json', json({ title: 'home' }), space.home);
+    space.write('.config/app/config.json', json({ title: 'user' }), space.home);
+    const ancestor = await space.run([], { FIXTURE_CWD: start });
+    expect(ancestor.stderr).toBe(skipped(broken, invalidJson));
+    expect(received(ancestor.stdout)).toEqual(defaults);
+    rmSync(broken);
+    const homeFile = space.write('.app.json', 'true', space.home);
+    const home = await space.run([], { FIXTURE_CWD: start });
+    expect(home.stderr).toBe(skipped(homeFile, notObject));
+    expect(received(home.stdout)).toEqual(defaults);
+    rmSync(homeFile);
+    const user = space.write('.config/app/config.json', '[', space.home);
+    const last = await space.run([], { FIXTURE_CWD: start });
+    expect(last.stderr).toBe(skipped(user, invalidJson));
+    expect(received(last.stdout)).toEqual(defaults);
+  }),
+);
+
+test(
+  'the user file shows as its full path when host.cwd is the user folder',
+  inWorkspace(async (space) => {
+    const user = space.write('.config/app/config.json', '[', space.home);
+    const result = await space.run([], { FIXTURE_CWD: join(space.home, '.config', 'app') });
+    expect(result.stderr).toBe(skipped(user, invalidJson));
+  }),
+);
+
+test(
+  'the user file is config.<ext> under XDG_CONFIG_HOME, or under ~/.config when it is unset, empty, or relative',
+  inWorkspace(async (space) => {
+    const xdg = join(space.root, 'xdg');
+    space.write('app/config.json', json({ title: 'xdg' }), xdg);
+    space.write('.config/app/config.json', json({ title: 'dot-config' }), space.home);
+    expect(received(await space.stdout([], { XDG_CONFIG_HOME: xdg }))).toEqual({
+      ...defaults,
+      title: 'xdg',
+    });
+    for (const value of [undefined, '', 'xdg']) {
+      expect(received(await space.stdout([], { XDG_CONFIG_HOME: value }))).toEqual({
+        ...defaults,
+        title: 'dot-config',
+      });
+    }
+    // With neither XDG_CONFIG_HOME nor a home directory there is no user file.
+    expect(received(await space.stdout([], { HOME: '', XDG_CONFIG_HOME: undefined }))).toEqual(
+      defaults,
+    );
+    // The walk and the home file come before the user file.
+    space.write('.app.json', json({ title: 'home' }), space.home);
+    expect(received(await space.stdout([], { XDG_CONFIG_HOME: xdg }))).toMatchObject({
+      title: 'home',
+    });
+  }),
+);
+
+test(
+  'each candidate of the pattern names one extension of the user file, and an extension named twice counts once',
+  inWorkspace(async (space) => {
+    const cases: Pairs = [
+      ['.app.toml', 'config.toml'],
+      ['.app.yaml', 'config.yaml'],
+      ['.app.yml', 'config.yml'],
+      ['.app.json', 'config.json'],
+      ['.apprc', 'config.json'],
+      ['.app.conf', 'config.json'],
+    ];
+    for (const [file, user] of cases) {
+      const content = user.endsWith('json') ? '{"title":"u"}' : 'title: u\n';
+      const path = space.write(`app/${user}`, content, space.root);
+      const result = await space.run([], { ...settings({ file }), XDG_CONFIG_HOME: space.root });
+      // YAML text is not TOML, so a TOML candidate that was read warns instead of answering.
+      expect([result.stderr, received(result.stdout)]).toEqual(
+        user.endsWith('toml')
+          ? [skipped(path, invalidToml), defaults]
+          : ['', { ...defaults, title: 'u' }],
+      );
+      rmSync(path);
+    }
+    // .app.{toml,json} looks for config.toml and then config.json; both present warns once.
+    const toml = space.write('app/config.toml', 'title = "t"\n', space.root);
+    const json5 = space.write('app/config.json', '{"title":"j"}', space.root);
+    const both = await space.run([], {
+      ...settings({ file: '.app.{toml,json,toml}' }),
+      XDG_CONFIG_HOME: space.root,
+    });
+    expect(both.stderr).toBe(several(json5, toml));
+    expect(received(both.stdout)).toMatchObject({ title: 't' });
+  }),
+);
+
+test(
+  'env names the one file a run reads from the environment, with no search',
+  inWorkspace(async (space) => {
+    const named = settings({ env: 'APP_CONFIG' });
+    space.write('.app.json', json({ title: 'walk' }));
+    space.write('chosen.json', json({ title: 'chosen' }));
+    // A relative value resolves against the working directory, and the file wins over the walk.
+    const set = await space.run([], { ...named, APP_CONFIG: 'chosen.json' });
+    expect(set.stderr).toBe('');
+    expect(received(set.stdout)).toEqual({ ...defaults, title: 'chosen' });
+    // The value is no pattern, and its extension chooses the parser.
+    space.write('weird.{toml,json}', json({ title: 'braces' }));
+    expect(
+      received(await space.stdout([], { ...named, APP_CONFIG: 'weird.{toml,json}' })),
+    ).toMatchObject({ title: 'braces' });
+    space.write('chosen.toml', 'title = "toml"\n');
+    expect(received(await space.stdout([], { ...named, APP_CONFIG: 'chosen.toml' }))).toMatchObject(
+      { title: 'toml' },
+    );
+    // --config comes first.
+    space.write('flag.json', json({ title: 'flag' }));
+    expect(
+      received(
+        await space.stdout(['--config', 'flag.json'], { ...named, APP_CONFIG: 'chosen.json' }),
+      ),
+    ).toMatchObject({ title: 'flag' });
+    // An empty or unset variable is skipped.
+    for (const value of [undefined, '']) {
+      expect(received(await space.stdout([], { ...named, APP_CONFIG: value }))).toMatchObject({
+        title: 'walk',
+      });
+    }
+    // Without the setting the variable means nothing.
+    expect(received(await space.stdout([], { APP_CONFIG: 'chosen.json' }))).toMatchObject({
+      title: 'walk',
+    });
+  }),
+);
+
+test(
+  'a variable naming a missing file is silent with no configuration, and one naming a broken file warns once',
+  inWorkspace(async (space) => {
+    const named = settings({ env: 'APP_CONFIG', notice: true });
+    space.write('.app.json', json({ title: 'walk' }));
+    space.write('.app.json', json({ title: 'home' }), space.home);
+    const missing = await space.run([], { ...named, APP_CONFIG: 'missing.json' });
+    expect(missing.stderr).toBe('');
+    expect(received(missing.stdout)).toEqual(defaults);
+    mkdirSync(join(space.project, 'missing'));
+    const beneath = await space.run([], { ...named, APP_CONFIG: 'missing/none.json' });
+    expect(beneath.stderr).toBe('');
+    expect(received(beneath.stdout)).toEqual(defaults);
+    space.write('broken.toml', 'title = ');
+    const broken = await space.run([], { ...named, APP_CONFIG: 'broken.toml' });
+    expect(broken.stderr).toBe(skipped('broken.toml', invalidToml));
+    expect(received(broken.stdout)).toEqual(defaults);
+  }),
+);
+
+test(
+  'the directory option starts the walk there, leaves host.cwd alone, and yields to --config and the variable',
+  inWorkspace(async (space) => {
+    const other = nest(space.root, 'other', 'deep');
+    space.write('.app.json', json({ title: 'other' }), join(space.root, 'other'));
+    space.write('.app.json', json({ title: 'cwd' }));
+    const named = settings({ directory: { name: 'project' } });
+    const absolute = await space.run(['--project', other], named);
+    expect(received(absolute.stdout)).toEqual({ ...defaults, project: other, title: 'other' });
+    // A relative value resolves against host.cwd, and the walk climbs from it.
+    const relative = await space.run(['--project', '../other/deep'], named);
+    expect(received(relative.stdout)).toMatchObject({ title: 'other' });
+    // A directory that does not exist starts the walk there and goes on through its ancestors.
+    const absent = await space.run(['--project', join(other, 'nowhere', 'deeper')], named);
+    expect(absent.stderr).toBe('');
+    expect(received(absent.stdout)).toMatchObject({ title: 'other' });
+    // Host.cwd is unchanged: a relative --config still resolves against it.
+    space.write('flag.json', json({ title: 'flag' }));
+    expect(
+      received(await space.stdout(['--project', other, '--config', 'flag.json'], named)),
+    ).toMatchObject({ title: 'flag' });
+    space.write('var.json', json({ title: 'var' }));
+    expect(
+      received(
+        await space.stdout(['--project', other], {
+          ...settings({ directory: { name: 'project' }, env: 'APP_CONFIG' }),
+          APP_CONFIG: 'var.json',
+        }),
+      ),
+    ).toMatchObject({ title: 'var' });
+    // Without the operator giving it, the start is host.cwd.
+    expect(received(await space.stdout([], named))).toMatchObject({ title: 'cwd' });
+  }),
+);
+
+test('the directory option is a global string option that is not a control, with its short and description', () => {
+  const plain = inspected(settings({ directory: { name: 'project' } })).globals.find(
+    (option: { name: string }) => option.name === 'project',
+  );
+  expect(plain).toMatchObject({
+    control: false,
+    description: 'Look for the configuration file from this directory.',
+    short: null,
+    type: 'string',
+  });
+  expect(plain?.env).toEqual([]);
+  const described = inspected(
+    settings({ directory: { description: 'The project.', name: 'project', short: 'p' } }),
+  ).globals.find((option: { name: string }) => option.name === 'project');
+  expect(described).toMatchObject({ description: 'The project.', short: '-p' });
+  expect(inspected({}).globals.some((option: { name: string }) => option.name === 'project')).toBe(
+    false,
+  );
+});
+
+test(
+  'notice writes one info line naming the first candidate in the start directory when nothing is found',
+  inWorkspace(async (space) => {
+    const on = settings({ notice: true });
+    await expect(space.stderr([], on)).resolves.toBe(notice('.app.json'));
+    // Off by default.
+    await expect(space.stderr([])).resolves.toBe('');
+    // The first candidate of the pattern, and the full path when the start is not host.cwd.
+    await expect(
+      space.stderr([], settings({ file: '.app.{yaml,json}', notice: true })),
+    ).resolves.toBe(notice('.app.yaml'));
+    const other = nest(space.root, 'other');
+    await expect(
+      space.stderr(
+        ['--project', other],
+        settings({ directory: { name: 'project' }, notice: true }),
+      ),
+    ).resolves.toBe(notice(join(other, '.app.json')));
+    // A file found, a broken file, and a variable naming a missing file write none.
+    space.write('.app.json', '{');
+    await expect(space.stderr([], on)).resolves.toBe(skipped('.app.json', invalidJson));
+    rmSync(join(space.project, '.app.json'));
+    space.write('.app.json', '{}', space.home);
+    await expect(space.stderr([], on)).resolves.toBe('');
+    await expect(
+      space.stderr([], {
+        ...settings({ env: 'APP_CONFIG', notice: true }),
+        APP_CONFIG: 'nope.json',
+      }),
+    ).resolves.toBe('');
+    // A missing --config fails and writes no notice.
+    await expect(space.stderr(['--config', 'nope.json'], on)).resolves.toBe(
+      namedFailure('nope.json', 'does not exist. Supply the path of an existing file.'),
+    );
+  }),
+);
+
+test(
+  'a tmp folder under a directory that holds .git changes no result',
+  inWorkspace(async (space) => {
+    mkdirSync(join(space.root, '.git'));
+    const start = nest(space.project, 'a');
+    space.write('.app.json', json({ title: 'project' }), space.project);
+    expect(received(await space.stdout([], { FIXTURE_CWD: start }))).toEqual({
+      ...defaults,
+      title: 'project',
+    });
+  }),
+);
+
+const variableFault = {
+  correction:
+    'Name a variable such as COLLECTOR_CONFIG: a letter or an underscore, then letters, digits, or underscores.',
+  findings: [{ call: 'config', mark: '0.env' }],
+  rule: '@loomcli/plugins/config/variable-name',
+  sentence: 'Plugin "@loomcli/plugins/config" env is not a variable name.',
+};
+
+test.each([[''], ['1APP'], ['APP-CONFIG'], ['APP CONFIG'], ['APP=1'], ['É']])(
+  'config({ env: %j }) throws the variable-name fault at its call',
+  (env) => {
+    expect(callFault({ env })).toEqual(variableFault);
+  },
+);
+
+test('config() judges the file rules before the env rule', () => {
+  expect(callFault({ env: '1', file: '/abs' })).toEqual(pathFault);
+});
+
+test.each([
+  [{ env: 'APP_CONFIG' }],
+  [{ env: '_x9' }],
+  [{ notice: true }],
+  [{ directory: { name: 'project' } }],
+  [{ directory: { description: 'The project.', name: 'project', short: 'p' } }],
+] satisfies [ConfigSettings<'project'>][])('config(%j) returns its plugin', (value) => {
+  expect(callFault(value)).toBe('returned');
+});
+
+test('the type rejects a directory named config, which would claim --config', () => {
+  // @ts-expect-error A directory option named config would claim the spelling --config.
+  const rejected: ConfigSettings<'config'> = { directory: { name: 'config' } };
+  expect(rejected.directory?.name).toBe('config');
+});

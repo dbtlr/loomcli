@@ -10,7 +10,7 @@
  *   `<HOME>/.textstat.toml` when the working directory holds no candidate, and from no file when
  *   neither directory holds one. A file in the working directory hides the home file entirely, so a
  *   key only the home file holds is not read, and a broken file in the working directory warns and
- *   the home file answers. `config()` with no settings reads `.textstat.json`.
+ *   no later location answers. `config()` with no settings reads `.textstat.json`.
  * - Precedence. `TEXTSTAT_MIN_BYTES` beats the file, and a flag beats both.
  * - `--config`. `--config` and `-c` each name a file that answers alone, so a file in the working
  *   directory is not read. A named file that does not exist, is not valid in its format, or holds
@@ -168,13 +168,16 @@ const filtered = 'COUNT  SOURCE\n    6  one.txt\n';
 const withTotal = `${both}    8  total\n`;
 const filteredTotal = `${filtered}    6  total\n`;
 
-const invalidJson = 'is not valid JSON. Correct its syntax, or remove it.';
-const invalidToml = 'is not valid TOML. Correct its syntax, or remove it.';
-const invalidYaml = 'is not valid YAML. Correct its syntax, or remove it.';
+const invalidJson =
+  'is not valid JSON, so this run reads no configuration. Correct its syntax, or remove it.';
+const invalidToml =
+  'is not valid TOML, so this run reads no configuration. Correct its syntax, or remove it.';
+const invalidYaml =
+  'is not valid YAML, so this run reads no configuration. Correct its syntax, or remove it.';
 const notObject =
-  'does not hold a JSON object. Write its settings as one JSON object, or remove it.';
+  'does not hold a JSON object, so this run reads no configuration. Write its settings as one JSON object, or remove it.';
 const notMapping =
-  'does not hold a YAML mapping. Write its settings as one YAML mapping, or remove it.';
+  'does not hold a YAML mapping, so this run reads no configuration. Write its settings as one YAML mapping, or remove it.';
 const fixtureDefaults = { field: [], limit: 'none', 'min-bytes': 0, total: false };
 
 test(
@@ -186,12 +189,12 @@ test(
     // A file in the working directory hides the home file, so its minBytes is not read.
     space.write(space.project, '.textstat.toml', 'total = true\n');
     expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: withTotal });
-    // A broken file in the working directory warns, and the home file answers.
+    // A broken file in the working directory warns, and the home file does not answer.
     space.write(space.project, '.textstat.toml', 'total = ');
     expect(space.textstat(files)).toEqual({
       status: 0,
       stderr: skipped('.textstat.toml', invalidToml),
-      stdout: filtered,
+      stdout: both,
     });
     rmSync(join(space.project, '.textstat.toml'));
     rmSync(join(space.home, '.textstat.toml'));
@@ -296,7 +299,10 @@ test(
     mkdirSync(join(space.project, '.textstat.json'));
     expect(space.textstat(files)).toEqual({
       status: 0,
-      stderr: skipped('.textstat.json', 'could not be read. Make it readable, or remove it.'),
+      stderr: skipped(
+        '.textstat.json',
+        'could not be read, so this run reads no configuration. Make it readable, or remove it.',
+      ),
       stdout: both,
     });
     rmSync(join(space.project, '.textstat.json'), { recursive: true });

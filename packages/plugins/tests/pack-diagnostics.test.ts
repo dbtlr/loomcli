@@ -74,6 +74,12 @@ const settingsCases: Record<string, Expected> = {
     rule: 'config/file-path',
     sentence: 'Plugin "@loomcli/plugins/config" file is not a relative path.',
   },
+  'config-variable': {
+    correction:
+      'Name a variable such as COLLECTOR_CONFIG: a letter or an underscore, then letters, digits, or underscores.',
+    rule: 'config/variable-name',
+    sentence: 'Plugin "@loomcli/plugins/config" env is not a variable name.',
+  },
   'dotenv-except': dotenvFault('except'),
   'dotenv-only': dotenvFault('only'),
   'self-update-notices-env': noticesFault,

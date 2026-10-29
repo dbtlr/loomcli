@@ -11,7 +11,7 @@ import { packageName } from './constants.js';
 /** A configuration plugin `file` setting that is not a relative path. */
 const configFilePath = diagnosticRule(`${packageName}/config/file-path`, {
   explanation:
-    'The configuration plugin looks for its file in the working directory and then in the home directory, so file is a relative path whose segments each name a directory or a file.',
+    'The configuration plugin looks for its file in the start directory, each of its ancestors, and the home directory, so file is a relative path whose segments each name a directory or a file.',
   headline: 'Invalid configuration file path',
 });
 
@@ -20,6 +20,13 @@ const configFilePattern = diagnosticRule(`${packageName}/config/file-pattern`, {
   explanation:
     "The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: * for any format the plugin reads, or a brace list of json, toml, yaml, and yml, tried in the order listed.",
   headline: 'Invalid configuration file pattern',
+});
+
+/** A configuration plugin `env` setting that is not an environment variable name. */
+const configVariableName = diagnosticRule(`${packageName}/config/variable-name`, {
+  explanation:
+    "The configuration plugin reads the variable that env names from the run's environment, and an environment variable's name is a letter or underscore followed by letters, digits, or underscores, so a name of another form can never hold a value.",
+  headline: 'Invalid configuration variable name',
 });
 
 /** Two findable Commands that give one man page name. */
@@ -116,6 +123,7 @@ const dotenvVariableName = diagnosticRule(`${packageName}/dotenv/variable-name`,
 export {
   dotenvVariableName,
   configFilePath,
+  configVariableName,
   configFilePattern,
   failureCodeConflict,
   manpagePageNameTaken,

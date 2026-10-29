@@ -228,21 +228,41 @@ function answerAll(
   return Object.fromEntries(entries);
 }
 
+/** What the plugin's call fixed for every run: the file pattern's candidates and the other settings. */
+interface SourceSettings {
+  readonly candidates: readonly string[] | undefined;
+  /** The directory option's name, when the settings declare one. */
+  readonly directory: string | undefined;
+  /** The variable that names the configuration file, when the settings name one. */
+  readonly env: string | undefined;
+  readonly notice: boolean;
+}
+
+/** The directory option's value, read as the one typed accessor over the plugin's option values. */
+function directoryValue(
+  options: Readonly<Record<string, unknown>>,
+  name: string | undefined,
+): string | undefined {
+  const value = name === undefined ? undefined : options[name];
+  return typeof value === 'string' ? value : undefined;
+}
+
 /**
- * The resolver for the candidates the settings' `file` names, or, with none, for `.<app>.json`,
- * derived from the graph's name when the source runs. It finds the one file the run reads, and
- * answers each request whose path leads to a value in it. A run with no usable file answers
- * nothing, and one wrong value fails the run in place of every answer.
+ * The resolver for the settings the call fixed. It finds the one file the run reads, and answers
+ * each request whose path leads to a value in it. A run with no usable file answers nothing, and
+ * one wrong value fails the run in place of every answer.
  */
-export function configSource(
-  candidates: readonly string[] | undefined,
-): SourceResolver<typeof config> {
+export function configSource(settings: SourceSettings): SourceResolver<typeof config> {
   return async ({ graph, host, invokedBy, options, out, requests, style }) => {
     const lookup = {
-      candidates: candidates ?? [`.${graph.name}.json`],
+      app: graph.name,
+      candidates: settings.candidates ?? [`.${graph.name}.json`],
+      directory: directoryValue(options, settings.directory),
+      fromVariable: settings.env === undefined ? undefined : host.env[settings.env],
       host,
       invokedBy,
       named: options.config,
+      notice: settings.notice,
     };
     const usable = await findFile(lookup, { out, style });
     return usable === undefined ? {} : answerAll(requests, usable, { graph, invokedBy });

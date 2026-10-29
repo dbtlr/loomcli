@@ -214,11 +214,15 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/config/file-path
 
-**Invalid configuration file path.** The configuration plugin looks for its file in the working directory and then in the home directory, so file is a relative path whose segments each name a directory or a file.
+**Invalid configuration file path.** The configuration plugin looks for its file in the start directory, each of its ancestors, and the home directory, so file is a relative path whose segments each name a directory or a file.
 
 ### @loomcli/plugins/config/file-pattern
 
 **Invalid configuration file pattern.** The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: \* for any format the plugin reads, or a brace list of json, toml, yaml, and yml, tried in the order listed.
+
+### @loomcli/plugins/config/variable-name
+
+**Invalid configuration variable name.** The configuration plugin reads the variable that env names from the run's environment, and an environment variable's name is a letter or underscore followed by letters, digits, or underscores, so a name of another form can never hold a value.
 
 ### @loomcli/plugins/dotenv/variable-name
 
