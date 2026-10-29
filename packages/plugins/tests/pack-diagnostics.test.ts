@@ -112,12 +112,16 @@ test.each(Object.entries(settingsCases))(
 );
 
 /**
- * The pack's rules a build raises rather than a factory call: the one `--manifest` raises, which
+ * The pack's rules a build raises rather than a factory call: the configuration plugin's empty-file
+ * fault and link faults, which the configuration test pins, the one `--manifest` raises, which
  * the manifest failures test pins, the MCP plugin's build faults, which the MCP test pins, the
  * service plugin's, which the service test pins, the skills plugin's file faults, which the
  * skills test pins, and the manpage plugin's page names, which the man page test pins.
  */
 const pinnedElsewhere = [
+  'config/empty-file',
+  'config/link-path',
+  'config/link-type',
   'manifest/failure-code-conflict',
   'manpage/page-name-taken',
   'mcp/property-name-taken',

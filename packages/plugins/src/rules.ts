@@ -29,6 +29,27 @@ const configVariableName = diagnosticRule(`${packageName}/config/variable-name`,
   headline: 'Invalid configuration variable name',
 });
 
+/** A configuration schema that rejects an empty file, which the types cannot see. */
+const configEmptyFile = diagnosticRule(`${packageName}/config/empty-file`, {
+  explanation:
+    'A command-line application runs before its operator has written any configuration, so the configuration schema accepts an empty file. The plugin drops every value the schema rejects and validates again, and a schema that still reports an issue once every key is gone, such as a refinement that fails for an empty object, leaves the plugin no file to give the application.',
+  headline: 'Configuration schema rejects an empty file',
+});
+
+/** An option linked to a configuration path whose keys the schema does not hold. */
+const configLinkPath = diagnosticRule(`${packageName}/config/link-path`, {
+  explanation:
+    'An option linked with configInput takes the value the configuration file holds at its path, and the configuration schema describes the whole file. A path whose keys the schema does not describe means the shape of the file and the option disagree, and the check catches a typo or a stale link at build time.',
+  headline: 'Option linked to a path the configuration schema does not hold',
+});
+
+/** An option linked to a configuration path that holds a value the option cannot take. */
+const configLinkType = diagnosticRule(`${packageName}/config/link-type`, {
+  explanation:
+    'An option linked with configInput takes a string or a number, a Boolean, a whole number, or an array, by its type. A path whose configuration schema holds no value of that kind can never fill the option, so the link is a mistake that only the assembled application reveals.',
+  headline: 'Option linked to a value it cannot take',
+});
+
 /** Two findable Commands that give one man page name. */
 const manpagePageNameTaken = diagnosticRule(`${packageName}/manpage/page-name-taken`, {
   explanation:
@@ -122,9 +143,12 @@ const dotenvVariableName = diagnosticRule(`${packageName}/dotenv/variable-name`,
 
 export {
   dotenvVariableName,
+  configEmptyFile,
   configFilePath,
-  configVariableName,
   configFilePattern,
+  configLinkPath,
+  configLinkType,
+  configVariableName,
   failureCodeConflict,
   manpagePageNameTaken,
   mcpPropertyNameTaken,

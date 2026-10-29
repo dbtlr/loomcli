@@ -2893,6 +2893,7 @@ function readyDispatch(
       const runValues = invocation.providers({
         graph: invocation.inspected,
         host: invocation.host,
+        invokedBy: invocation.invokedBy,
         log: invocation.logFor(null),
         onShutdown: invocation.laneHandlers(null).onShutdown,
         options: options ?? Object.freeze({}),

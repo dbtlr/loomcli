@@ -1,10 +1,15 @@
 import { Application, DeclarationError, plugin, style } from '@loomcli/core';
 import { background } from '@loomcli/plugins/background';
-import { config } from '@loomcli/plugins/config';
+import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { theme } from '@loomcli/plugins/theme';
+import { z } from 'zod';
 
 import { ruleText } from './rule-text.mjs';
+
+/** The configuration plugin for a fixture that binds options to a file: a loose schema, and the given settings. */
+const configPlugin = (settings = {}) =>
+  configuration({ ...settings, schema: z.record(z.string(), z.unknown()) }).plugin;
 
 /** The background-marked string global option, as an application declares its own. */
 const marked = { background: true, type: 'string' };
@@ -29,7 +34,7 @@ const scenarios = {
     ],
   ],
   'binding-global': [
-    ['new Application', () => new Application('notes', { plugins: [config()] })],
+    ['new Application', () => new Application('notes', { plugins: [configPlugin()] })],
     [
       'globalOption',
       (app) =>
@@ -57,7 +62,7 @@ const scenarios = {
           },
         }),
     ],
-    ['new Application', (shade) => new Application('notes', { plugins: [config(), shade] })],
+    ['new Application', (shade) => new Application('notes', { plugins: [configPlugin(), shade] })],
   ],
   string: [['globalOption', () => new Application('notes').globalOption('background', marked)]],
   'two-global': [

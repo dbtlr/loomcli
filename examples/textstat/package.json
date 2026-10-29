@@ -10,7 +10,8 @@
     "@loom/explain": "workspace:*",
     "@loomcli/core": "workspace:*",
     "@loomcli/plugins": "workspace:*",
-    "@loomcli/validators": "workspace:*"
+    "@loomcli/validators": "workspace:*",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@loomcli/loom": "workspace:*"

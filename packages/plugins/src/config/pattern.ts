@@ -44,11 +44,11 @@ const unreadableExtension: FileFault = {
   sentence: `Plugin "${identity}" file lists an extension the plugin cannot read.`,
 };
 
-/** The fault of one `config(settings)` call, which rebuilds the call and marks its `file`. */
+/** The fault of one `configuration(settings)` call, which rebuilds the call and marks its `file`. */
 function fileFault(settings: unknown, { correction, rule, sentence }: FileFault): DeclarationError {
   return new DeclarationError(rule, {
     correction,
-    findings: [{ arguments: [settings], call: 'config', mark: '0.file' }],
+    findings: [{ arguments: [settings], call: 'configuration', mark: '0.file' }],
     sentence,
   });
 }
@@ -131,7 +131,7 @@ export function envVariable(settings: { readonly env?: string } | undefined): st
   throw new DeclarationError(configVariableName, {
     correction:
       'Name a variable such as COLLECTOR_CONFIG: a letter or an underscore, then letters, digits, or underscores.',
-    findings: [{ arguments: [settings], call: 'config', mark: '0.env' }],
+    findings: [{ arguments: [settings], call: 'configuration', mark: '0.env' }],
     sentence: `Plugin "${identity}" env is not a variable name.`,
   });
 }

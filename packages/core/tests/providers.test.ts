@@ -393,6 +393,22 @@ describe('lifetimes', () => {
     expect(lines.slice(-2)).toEqual(['parent', 'close pool']);
   });
 
+  it('hands an opener invokedBy: name under invoke() and argv otherwise', async () => {
+    const seen: string[] = [];
+    const probe: Provider<'probe', string> = provider('probe', {
+      load: async () => ({
+        default: ({ invokedBy }) => {
+          seen.push(invokedBy);
+          return invokedBy;
+        },
+      }),
+    });
+    const app = new Application('app', { uses: [probe] }).action(() => undefined);
+    await app.run({ process: mockProcess() });
+    await app.invoke([], {}, { process: mockProcess() });
+    expect(seen).toEqual(['argv', 'name']);
+  });
+
   it('builds a persistent value again for each app.invoke', async () => {
     const lines = journal();
     const { pool } = scoped(lines);

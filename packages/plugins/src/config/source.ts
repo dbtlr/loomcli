@@ -1,30 +1,30 @@
-import {
-  escapeControlCharacters,
-  InputError,
-  issuePath,
-  readExtension,
-  reportedSpelling,
-} from '@loomcli/core';
+import { dirname } from 'node:path';
+
+import { escapeControlCharacters, issuePath, readExtension, reportedSpelling } from '@loomcli/core';
 import type {
-  CommandGraph,
+  ContextualStyle,
   InputProblem,
   OptionNode,
+  Out,
+  Plugin,
   SourceAnswer,
   SourceContext,
   SourceResolver,
+  StandardSchemaV1,
 } from '@loomcli/core';
 
 import { isRecord } from '../plain-data.js';
 import { configInput } from './extension.js';
-import { findFile } from './lookup.js';
 import type { UsableFile } from './lookup.js';
-import type { config } from './plugin.js';
+import type { ConfigOptions } from './plugin.js';
+import { loadOnce } from './shared.js';
+import type { Shared } from './shared.js';
 
 /**
- * The configuration plugin's resolver. Its rules are the plugin contract: find the one file the run
- * reads, answer every request from it, and fail the run on a value the option cannot take. Every
- * sentence it writes is fixed, so the bytes are the same under Node and Bun, and no file content
- * reaches the terminal.
+ * The configuration plugin's resolver. Its rules are the plugin contract: answer every request from
+ * the file the run read once it passed the schema, and name at `-v` a value the option cannot take.
+ * Every sentence it writes is fixed, so the bytes are the same under Node and Bun, and no file
+ * content reaches the terminal.
  */
 
 /** One issue of a wrong value, as the problem's `issues` carry it. */
@@ -35,10 +35,10 @@ type Shaped =
   | { kind: 'value'; value: string | boolean | number | readonly string[] }
   | { kind: 'wrong'; issues: readonly Issue[] };
 
-/** What one request came to: an answer, a wrong value with its reported lines, or nothing. */
+/** What one request came to: an answer, a value the option cannot take with its `-v` lines, or nothing. */
 type Answered =
   | { kind: 'answer'; answer: SourceAnswer }
-  | { kind: 'wrong'; problem: InputProblem; lines: readonly string[] }
+  | { kind: 'ignored'; lines: readonly string[] }
   | undefined;
 
 /** Marks where a path stops leading to a value, distinct from every value a file holds. */
@@ -133,51 +133,56 @@ function shape(request: OptionNode, value: unknown): Shaped {
     : { kind: 'value', value: text };
 }
 
-/**
- * The lines one wrong value reports, one per issue, each naming the option, its origin, and any
- * position. The position is read and escaped as core's own validation lines read it.
- */
-function wrongValueLines(subject: string, issues: readonly Issue[]): string[] {
-  return issues.map((issue) => {
-    const path = issuePath(issue);
-    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
-    return `${subject}${position}: ${issue.message}`;
-  });
-}
-
-/** How the run received its inputs, which decides how a problem names its option. */
+/** How the run received its inputs, which decides how a line names its option. */
 type InvokedBy = SourceContext['invokedBy'];
 
 /**
+ * The lines one value the option cannot take writes at `-v`, one per issue, in core's form for a
+ * dropped fill: the option by its reported spelling, any position, the label, and the message. The
+ * position is read and escaped as core's own lines read it.
+ */
+function ignoredLines(
+  subject: { label: string; spelling: string },
+  issues: readonly Issue[],
+  style: ContextualStyle,
+): string[] {
+  return issues.map((issue) => {
+    const path = issuePath(issue);
+    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
+    return `Ignored option "${subject.spelling}"${position} from ${style.escape(subject.label)}: ${issue.message}`;
+  });
+}
+
+/**
  * One request answered from the file when its path leads to a value. A request the file does not
- * answer comes to nothing, and a value the option cannot take is the problem core reports, which
- * names the option as core does: by its reported spelling, or, in an invocation by name, by its
- * declared name.
+ * answer comes to nothing, and a value the option cannot take comes to its `-v` lines and no answer,
+ * which names the option as core does: by its reported spelling, or, in an invocation by name, by
+ * its declared name.
  */
 function answer(
   request: OptionNode,
   usable: UsableFile,
-  scene: { graph: CommandGraph; invokedBy: InvokedBy },
+  scene: { invokedBy: InvokedBy; style: ContextualStyle },
 ): Answered {
-  const { graph, invokedBy } = scene;
   const located = locate(request, usable);
   if (located === undefined) {
     return undefined;
   }
   const shaped = shape(request, located.value);
   if (shaped.kind === 'value') {
-    return { answer: { label: located.label, value: shaped.value }, kind: 'answer' };
+    return {
+      answer: {
+        directory: dirname(usable.file.path),
+        label: located.label,
+        value: shaped.value,
+      },
+      kind: 'answer',
+    };
   }
-  const spelling = invokedBy === 'name' ? request.name : reportedSpelling(request);
+  const spelling = scene.invokedBy === 'name' ? request.name : reportedSpelling(request);
   return {
-    kind: 'wrong',
-    lines: wrongValueLines(`Option "${spelling}" (from ${located.label})`, shaped.issues),
-    problem: {
-      input: { global: graph.globals.includes(request), kind: 'option', name: request.name },
-      issues: shaped.issues,
-      reason: 'invalid',
-      spelling,
-    },
+    kind: 'ignored',
+    lines: ignoredLines({ label: located.label, spelling }, shaped.issues, scene.style),
   };
 }
 
@@ -201,70 +206,37 @@ function locate(
 }
 
 /**
- * Every request answered from the file, by option name. One wrong value fails the run with an
- * `InputError` that carries each wrong value as one problem, in request order, and answers nothing.
+ * Every request answered from the file, by option name. A value an option cannot take writes its
+ * lines at `-v` and answers nothing.
  */
-function answerAll(
+async function answerAll(
   requests: readonly OptionNode[],
   usable: UsableFile,
-  scene: { graph: CommandGraph; invokedBy: InvokedBy },
-): Record<string, SourceAnswer> {
-  const answered = requests.map((request) => ({
-    outcome: answer(request, usable, scene),
-    request,
-  }));
-  const wrong = answered.flatMap(({ outcome }) => (outcome?.kind === 'wrong' ? [outcome] : []));
-  const [first] = wrong;
-  if (first !== undefined) {
-    const lines = wrong.flatMap((entry) => entry.lines);
-    throw new InputError(
-      lines.join('\n'),
-      wrong.map((entry) => entry.problem),
-    );
+  scene: { invokedBy: InvokedBy; out: Out; style: ContextualStyle },
+): Promise<Record<string, SourceAnswer>> {
+  const answers: Record<string, SourceAnswer> = {};
+  for (const request of requests) {
+    const outcome = answer(request, usable, scene);
+    if (outcome?.kind === 'answer') {
+      answers[request.name] = outcome.answer;
+    }
+    for (const line of outcome?.kind === 'ignored' ? outcome.lines : []) {
+      await scene.out.debug(line);
+    }
   }
-  const entries: [string, SourceAnswer][] = answered.flatMap(({ outcome, request }) =>
-    outcome?.kind === 'answer' ? [[request.name, outcome.answer]] : [],
-  );
-  return Object.fromEntries(entries);
-}
-
-/** What the plugin's call fixed for every run: the file pattern's candidates and the other settings. */
-interface SourceSettings {
-  readonly candidates: readonly string[] | undefined;
-  /** The directory option's name, when the settings declare one. */
-  readonly directory: string | undefined;
-  /** The variable that names the configuration file, when the settings name one. */
-  readonly env: string | undefined;
-  readonly notice: boolean;
-}
-
-/** The directory option's value, read as the one typed accessor over the plugin's option values. */
-function directoryValue(
-  options: Readonly<Record<string, unknown>>,
-  name: string | undefined,
-): string | undefined {
-  const value = name === undefined ? undefined : options[name];
-  return typeof value === 'string' ? value : undefined;
+  return answers;
 }
 
 /**
- * The resolver for the settings the call fixed. It finds the one file the run reads, and answers
- * each request whose path leads to a value in it. A run with no usable file answers nothing, and
- * one wrong value fails the run in place of every answer.
+ * The resolver for the call's settings and schema. It answers each request whose path leads to a
+ * value in the file the run read, once the file passed the schema, so a value the schema removed
+ * fills nothing. A value the option cannot take writes its lines at `-v` and answers nothing.
  */
-export function configSource(settings: SourceSettings): SourceResolver<typeof config> {
+export function configSource<Schema extends StandardSchemaV1, Directory extends string>(
+  shared: Shared<Schema>,
+): SourceResolver<Plugin<ConfigOptions<Directory>>> {
   return async ({ graph, host, invokedBy, options, out, requests, style }) => {
-    const lookup = {
-      app: graph.name,
-      candidates: settings.candidates ?? [`.${graph.name}.json`],
-      directory: directoryValue(options, settings.directory),
-      fromVariable: settings.env === undefined ? undefined : host.env[settings.env],
-      host,
-      invokedBy,
-      named: options.config,
-      notice: settings.notice,
-    };
-    const usable = await findFile(lookup, { out, style });
-    return usable === undefined ? {} : answerAll(requests, usable, { graph, invokedBy });
+    const { usable } = await loadOnce(shared, { graph, host, invokedBy, options, out, style });
+    return usable === undefined ? {} : answerAll(requests, usable, { invokedBy, out, style });
   };
 }

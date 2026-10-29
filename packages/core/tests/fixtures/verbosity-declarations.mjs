@@ -1,9 +1,14 @@
 import { Application, DeclarationError, plugin } from '@loomcli/core';
-import { config } from '@loomcli/plugins/config';
+import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { verbose } from '@loomcli/plugins/verbose';
+import { z } from 'zod';
 
 import { ruleText } from './rule-text.mjs';
+
+/** The configuration plugin for a fixture that binds options to a file: a loose schema, and the given settings. */
+const configPlugin = (settings = {}) =>
+  configuration({ ...settings, schema: z.record(z.string(), z.unknown()) }).plugin;
 
 /** One marked counted global option of each kind, as an application declares its own. */
 const marks = { quiet: { quiet: true, type: 'count' }, verbose: { type: 'count', verbose: true } };
@@ -20,7 +25,7 @@ function scenariosOf(mark) {
   const marked = marks[mark];
   return {
     'binding-global': [
-      ['new Application', () => new Application('notes', { plugins: [config()] })],
+      ['new Application', () => new Application('notes', { plugins: [configPlugin()] })],
       [
         'globalOption',
         (app) =>
@@ -46,7 +51,7 @@ function scenariosOf(mark) {
             options: { [mark]: { ...marked, extensions: [configInput({ path: 'level' })] } },
           }),
       ],
-      ['new Application', (loud) => new Application('notes', { plugins: [config(), loud] })],
+      ['new Application', (loud) => new Application('notes', { plugins: [configPlugin(), loud] })],
     ],
     count: [['globalOption', () => new Application('notes').globalOption(mark, marked)]],
     short: [

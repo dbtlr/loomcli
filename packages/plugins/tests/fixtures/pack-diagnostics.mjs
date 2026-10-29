@@ -1,20 +1,23 @@
 import { DeclarationError } from '@loomcli/core';
-import { config } from '@loomcli/plugins/config';
+import { configuration } from '@loomcli/plugins/config';
 import { dotenv } from '@loomcli/plugins/dotenv';
 import { selfUpdate } from '@loomcli/plugins/self-update';
 import { service } from '@loomcli/plugins/service';
 import { skills } from '@loomcli/plugins/skills';
 import { version } from '@loomcli/plugins/version';
+import { z } from 'zod';
+
+const schema = z.object({});
 
 /**
  * One faulty call per scenario, each reachable from JavaScript alone. The fixture prints the
  * Developer Diagnostic its message holds.
  */
 const scenarios = {
-  'config-glob': () => config({ file: '*.json' }),
-  'config-list': () => config({ file: '.textstat.{toml,ini}' }),
-  'config-path': () => config({ file: '/etc/textstat.json' }),
-  'config-variable': () => config({ env: 'TEXTSTAT-CONFIG' }),
+  'config-glob': () => configuration({ file: '*.json', schema }),
+  'config-list': () => configuration({ file: '.textstat.{toml,ini}', schema }),
+  'config-path': () => configuration({ file: '/etc/textstat.json', schema }),
+  'config-variable': () => configuration({ env: 'TEXTSTAT-CONFIG', schema }),
   'dotenv-except': () => dotenv({ except: ['1X'] }),
   'dotenv-only': () => dotenv({ only: ['API_TOKEN', 'API-TOKEN'] }),
   'self-update-notices-env': () => selfUpdate({ notices: { env: '1X' } }),

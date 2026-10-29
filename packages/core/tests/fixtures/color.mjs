@@ -8,10 +8,15 @@ import {
   processHandle,
   UsageError,
 } from '@loomcli/core';
-import { config } from '@loomcli/plugins/config';
+import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { dotenv } from '@loomcli/plugins/dotenv';
 import { loomTheme } from '@loomcli/plugins/theme';
+import { z } from 'zod';
+
+/** The configuration plugin for a fixture that binds options to a file: a loose schema, and the given settings. */
+const configPlugin = (settings = {}) =>
+  configuration({ ...settings, schema: z.record(z.string(), z.unknown()) }).plugin;
 
 /**
  * One run of a notes application that marks its own `--[no-]color`, `--[no-]colour` included, or
@@ -65,7 +70,7 @@ const judge = plugin('@fixture/judge', {
 });
 
 const plugins = {
-  config: [config({ file: '.notes.json' })],
+  config: [configPlugin({ file: '.notes.json' })],
   dotenv: [dotenv({ only: ['NOTES_TOKEN'] })],
   graph: [judge],
 };

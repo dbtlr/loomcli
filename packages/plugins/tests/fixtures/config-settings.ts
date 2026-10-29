@@ -1,19 +1,17 @@
 import { DeclarationError } from '@loomcli/core';
-import { config } from '@loomcli/plugins/config';
-import type { ConfigSettings } from '@loomcli/plugins/config';
+import { configuration } from '@loomcli/plugins/config';
+import { z } from 'zod';
+
+import type { Settings } from './config-run.ts';
 
 /**
- * Calls `config()` with the settings given, or with none when they are absent, and answers the
- * fault the call throws as plain data: its rule, sentence, correction, and findings. A call that
- * returns answers "returned".
+ * Calls `configuration()` with the settings given, or with none beside the schema when they are
+ * absent, and answers the fault the call throws as plain data: its rule, sentence, correction, and
+ * findings. A call that returns answers "returned".
  */
-function settingsFault(settings?: ConfigSettings<'project'>) {
+function settingsFault(settings?: Settings) {
   try {
-    if (settings === undefined) {
-      config();
-    } else {
-      config(settings);
-    }
+    configuration({ ...settings, schema: z.object({}) });
     return 'returned';
   } catch (error) {
     if (!(error instanceof DeclarationError)) {

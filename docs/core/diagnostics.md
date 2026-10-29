@@ -212,6 +212,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ## @loomcli/plugins
 
+### @loomcli/plugins/config/empty-file
+
+**Configuration schema rejects an empty file.** A command-line application runs before its operator has written any configuration, so the configuration schema accepts an empty file. The plugin drops every value the schema rejects and validates again, and a schema that still reports an issue once every key is gone, such as a refinement that fails for an empty object, leaves the plugin no file to give the application.
+
 ### @loomcli/plugins/config/file-path
 
 **Invalid configuration file path.** The configuration plugin looks for its file in the start directory, each of its ancestors, and the home directory, so file is a relative path whose segments each name a directory or a file.
@@ -219,6 +223,14 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 ### @loomcli/plugins/config/file-pattern
 
 **Invalid configuration file pattern.** The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: \* for any format the plugin reads, or a brace list of json, toml, yaml, and yml, tried in the order listed.
+
+### @loomcli/plugins/config/link-path
+
+**Option linked to a path the configuration schema does not hold.** An option linked with configInput takes the value the configuration file holds at its path, and the configuration schema describes the whole file. A path whose keys the schema does not describe means the shape of the file and the option disagree, and the check catches a typo or a stale link at build time.
+
+### @loomcli/plugins/config/link-type
+
+**Option linked to a value it cannot take.** An option linked with configInput takes a string or a number, a Boolean, a whole number, or an array, by its type. A path whose configuration schema holds no value of that kind can never fill the option, so the link is a mistake that only the assembled application reveals.
 
 ### @loomcli/plugins/config/variable-name
 
