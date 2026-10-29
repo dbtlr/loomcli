@@ -7,7 +7,7 @@ import type { ConfigSettings } from '@loomcli/plugins/config';
  * fault the call throws as plain data: its rule, sentence, correction, and findings. A call that
  * returns answers "returned".
  */
-function settingsFault(settings?: ConfigSettings) {
+function settingsFault(settings?: ConfigSettings<'project'>) {
   try {
     if (settings === undefined) {
       config();

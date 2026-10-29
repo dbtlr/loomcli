@@ -23,7 +23,7 @@ const views: Record<string, ReturnType<typeof override>[]> = {
 /** What a case declares about the fixture application. */
 interface Declared {
   readonly limitPath?: string;
-  readonly settings?: ConfigSettings;
+  readonly settings?: ConfigSettings<'project'>;
   readonly view?: string;
 }
 

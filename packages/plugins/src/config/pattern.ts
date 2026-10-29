@@ -1,7 +1,8 @@
 import { DeclarationError } from '@loomcli/core';
 import type { DiagnosticRule } from '@loomcli/core';
 
-import { configFilePath, configFilePattern } from '../rules.js';
+import { configFilePath, configFilePattern, configVariableName } from '../rules.js';
+import { isVariableName } from '../variable-name.js';
 import { configIdentity as identity, splitExtension } from './names.js';
 
 /** The extensions a pattern may name, in the order `*` tries them. */
@@ -119,4 +120,18 @@ export function fileCandidates(
     throw fileFault(settings, candidates);
   }
   return candidates;
+}
+
+/** The variable the settings' `env` names, or `undefined` for none. A name of another form is a fault, marking `env`. */
+export function envVariable(settings: { readonly env?: string } | undefined): string | undefined {
+  const env = settings?.env;
+  if (env === undefined || isVariableName(env)) {
+    return env;
+  }
+  throw new DeclarationError(configVariableName, {
+    correction:
+      'Name a variable such as COLLECTOR_CONFIG: a letter or an underscore, then letters, digits, or underscores.',
+    findings: [{ arguments: [settings], call: 'config', mark: '0.env' }],
+    sentence: `Plugin "${identity}" env is not a variable name.`,
+  });
 }

@@ -22,6 +22,13 @@ const configFilePattern = diagnosticRule(`${packageName}/config/file-pattern`, {
   headline: 'Invalid configuration file pattern',
 });
 
+/** A configuration plugin `env` setting that is not an environment variable name. */
+const configVariableName = diagnosticRule(`${packageName}/config/variable-name`, {
+  explanation:
+    "The configuration plugin reads the variable that env names from the run's environment, and an environment variable's name is a letter or underscore followed by letters, digits, or underscores, so a name of another form can never hold a value.",
+  headline: 'Invalid configuration variable name',
+});
+
 /** Two findable Commands that give one man page name. */
 const manpagePageNameTaken = diagnosticRule(`${packageName}/manpage/page-name-taken`, {
   explanation:
@@ -116,6 +123,7 @@ const dotenvVariableName = diagnosticRule(`${packageName}/dotenv/variable-name`,
 export {
   dotenvVariableName,
   configFilePath,
+  configVariableName,
   configFilePattern,
   failureCodeConflict,
   manpagePageNameTaken,

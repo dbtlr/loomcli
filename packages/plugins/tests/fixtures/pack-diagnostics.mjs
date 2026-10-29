@@ -14,6 +14,7 @@ const scenarios = {
   'config-glob': () => config({ file: '*.json' }),
   'config-list': () => config({ file: '.textstat.{toml,ini}' }),
   'config-path': () => config({ file: '/etc/textstat.json' }),
+  'config-variable': () => config({ env: 'TEXTSTAT-CONFIG' }),
   'dotenv-except': () => dotenv({ except: ['1X'] }),
   'dotenv-only': () => dotenv({ only: ['API_TOKEN', 'API-TOKEN'] }),
   'self-update-notices-env': () => selfUpdate({ notices: { env: '1X' } }),
