@@ -29,6 +29,7 @@ Put the plugin's `configs.oxlint` object in `.oxlintrc.json`, as it is:
     "@loomcli/discarded-declaration": "error",
     "@loomcli/host-bypass": "error",
     "@loomcli/name-shape": "error",
+    "@loomcli/strict-configuration-schema": "error",
     "@loomcli/undescribed": "error"
   }
 }
@@ -196,8 +197,8 @@ export const { plugin: configPlugin, values: config } = configuration({
 
 - **On by default.** `configs.recommended` and `configs.oxlint` turn the rule on at `error`, as they do every rule. An author who wants a strict schema turns the rule off, and the plugin then drops what the schema reports, under the ordinary rule.
 - **Where it looks.** The `schema` property of the settings object literal passed to `configuration`, where the binding is imported from `@loomcli/plugins/config`, a renamed import and a namespace import included. The rule judges that expression at every depth, and it follows an identifier whose `const` declaration in the same module initializes it, at any depth of the expression, so a section schema declared above the call is judged.
-- **The forms.** zod's `strictObject(...)`, called on a binding imported from `zod` or `zod/v4`, a namespace import such as `z.strictObject(...)` included, and a `.strict()` call in the expression the rule judges.
-- **What it leaves alone.** valibot's and ArkType's strict objects, a schema imported from another module, held in a `let` variable, passed through a parameter, or built by a call the rule cannot see into, and every strict object outside a `configuration` call's `schema`.
+- **The forms.** zod's `strictObject(...)`, called on a binding imported from `zod`, `zod/v4`, `zod/mini`, or `zod/v4/mini`, through the whole module such as `z.strictObject(...)` included, and a `.strict()` call on a schema the rule traces to zod: a call on a zod import, a method call on one, or a `const` that holds one. The whole module is a namespace import, a default import, or the named `z` import.
+- **What it leaves alone.** valibot's and ArkType's strict objects, a `.strict()` whose receiver does not trace to zod, such as yup's, which turns off coercion, a schema imported from another module, held in a `let` variable, passed through a parameter, or built by a call the rule cannot see into, and every strict object outside a `configuration` call's `schema`.
 - **The message.** `A zod strict object drops its whole section from the configuration when the file holds a key it does not list. Use z.object, which strips unknown keys.`
 
 ## Add a rule

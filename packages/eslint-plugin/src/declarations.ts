@@ -297,12 +297,15 @@ function readProperty(object: ObjectExpression, name: string): PropertyReading {
 
 export {
   authoringCallOf,
+  constantInit,
   constructorOf,
   coreCalleeOf,
+  isNode,
   literalString,
   memberKey,
   positionalArguments,
   readProperty,
   unwrapped,
+  variableOf,
 };
 export type { Argument, AuthoringCall, PropertyReading };
