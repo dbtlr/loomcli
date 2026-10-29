@@ -97,6 +97,28 @@ tester.run('strict-configuration-schema', strictConfigurationSchema, {
         configuration({ file: '.tool.toml', schema: z.object({ a: z.strictObject({}), b: mini.strictObject({}) }) });`,
       errors: [strict, strict],
     },
+    {
+      // A recursive section: what z.lazy's function and a getter in an object shape return.
+      code: `${imports}
+        const Node = z.strictObject({ name: z.string() });
+        configuration({
+          file: '.tool.toml',
+          schema: z.object({
+            a: z.lazy(() => Node),
+            b: z.lazy(() => {
+              return z.strictObject({});
+            }),
+            get c() {
+              return z.strictObject({});
+            },
+          }),
+        });`,
+      errors: [
+        { ...strict, line: 3 },
+        { ...strict, line: 9 },
+        { ...strict, line: 12 },
+      ],
+    },
   ],
   valid: [
     {
@@ -112,6 +134,7 @@ tester.run('strict-configuration-schema', strictConfigurationSchema, {
             c: State.passthrough(),
             d: State.catchall(z.string()),
             e: State.shape.channel,
+            keys: z.array(State.keyof()),
             f: z.object({ ...State.shape }),
             g: z.string().refine((value) => State.safeParse({ channel: value }).success),
             h: z.string().default(import.meta.dirname),
@@ -188,7 +211,7 @@ tester.run('strict-configuration-schema', strictConfigurationSchema, {
         configuration({ file: '.tool.toml', schema: z.object({}) as z.ZodType<typeof strictSection> });`,
     },
     {
-      // A constant that names itself ends the walk.
+      // A constant that names itself, through the function z.lazy takes, ends the walk.
       code: `${imports}
         const loop: z.ZodType = z.lazy(() => z.object({ next: loop.optional() }));
         configuration({ file: '.tool.toml', schema: loop });`,

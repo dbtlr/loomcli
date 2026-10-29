@@ -20,8 +20,9 @@ import { ruleUrl } from '../docs.js';
  * valibot and ArkType name the unknown key itself, and a `.strict()` whose receiver does not trace
  * to zod means something else, such as yup's skip-coercion mode, so neither is reported: a false
  * report is worse than a missed one. For the same reason the walk stops where a strict object no
- * longer reaches the schema as one: at a property read such as `.shape`, at a method that makes
- * an object loose, and at a function body such as a `refine` callback.
+ * longer reaches the schema as one: at a property read such as `.shape`, at a method whose result
+ * is no strict object, such as `.loose()`, and at a function that runs on the parsed value, such
+ * as a `refine` callback.
  */
 
 /** The module the configuration plugin is imported from. */
@@ -37,9 +38,13 @@ const zodModules: ReadonlySet<string> = new Set([
   'zod/v4/mini',
 ]);
 
-/** The zod methods that return a loose copy of an object, which reports no unknown key on itself. */
-const looseningMethods: ReadonlySet<string> = new Set([
+/**
+ * The zod methods whose result is no strict object, so it reports no unknown key on itself: a
+ * loose copy of the object, or the enum of its keys.
+ */
+const unstrictMethods: ReadonlySet<string> = new Set([
   'catchall',
+  'keyof',
   'loose',
   'passthrough',
   'strip',
@@ -180,7 +185,8 @@ function valueChildren(node: Node): Node[] {
  * Whether a strict object inside a node cannot reach the schema as one. TypeScript type syntax is
  * not part of the value; the assertions that wrap a value unwrap to it, so they are walked. A
  * property read takes a field off a value, such as `.shape`, and a function body, such as a
- * `refine` callback, runs on the parsed value rather than describing it.
+ * `refine` callback, runs on the parsed value rather than describing it. The functions that do
+ * describe it, `z.lazy`'s and a getter's, are judged by what they return instead.
  */
 function isOutsideSchema(node: Node): boolean {
   return (
@@ -193,30 +199,62 @@ function isOutsideSchema(node: Node): boolean {
 
 /**
  * The receiver a call carries into its result, which the walk judges: the object of a method call,
- * unless the method makes an object loose. A plain function call carries none.
+ * unless the method's result is no strict object. A plain function call carries none.
  */
 function carriedReceiver(call: CallExpression): Node | undefined {
   const { callee } = call;
   if (callee.type !== 'MemberExpression') {
     return undefined;
   }
-  const loosens =
+  const unstricts =
     !callee.computed &&
     callee.property.type === 'Identifier' &&
-    looseningMethods.has(callee.property.name);
-  return loosens ? undefined : callee.object;
+    unstrictMethods.has(callee.property.name);
+  return unstricts ? undefined : callee.object;
 }
 
 /**
- * The children of a node a strict object can reach the schema through: a call's arguments and the
- * receiver it carries, or every value child of any other node.
+ * What a function returns: an arrow's expression body, or the argument of each `return` at the top
+ * of its block. Any other node stands for itself.
  */
-function schemaChildren(node: Node): Node[] {
-  if (node.type !== 'CallExpression') {
-    return valueChildren(node);
+function returnedValues(node: Node): Node[] {
+  if (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression') {
+    return [node];
   }
-  const receiver = carriedReceiver(node);
-  return receiver === undefined ? [...node.arguments] : [receiver, ...node.arguments];
+  const { body } = node;
+  if (body.type !== 'BlockStatement') {
+    return [body];
+  }
+  return body.body.flatMap((statement) =>
+    statement.type === 'ReturnStatement' && statement.argument ? [statement.argument] : [],
+  );
+}
+
+/**
+ * The children a call carries into its result: its arguments, with what a function returns in
+ * place of the function for `z.lazy`, and the receiver of a method call.
+ */
+function callChildren(sourceCode: SourceCode, call: CallExpression): Node[] {
+  const lazy = zodExportOf(sourceCode, call.callee) === 'lazy';
+  const values = call.arguments.flatMap((argument) =>
+    lazy ? returnedValues(argument) : [argument],
+  );
+  const receiver = carriedReceiver(call);
+  return receiver === undefined ? values : [receiver, ...values];
+}
+
+/**
+ * The children of a node a strict object can reach the schema through: what a call carries, what
+ * a getter in an object literal returns, or every value child of any other node.
+ */
+function schemaChildren(sourceCode: SourceCode, node: Node): Node[] {
+  if (node.type === 'CallExpression') {
+    return callChildren(sourceCode, node);
+  }
+  if (node.type === 'Property' && node.kind === 'get') {
+    return returnedValues(node.value);
+  }
+  return valueChildren(node);
 }
 
 /**
@@ -254,7 +292,7 @@ const strictConfigurationSchema: Rule.RuleModule = {
         return;
       }
       reportStrict(node);
-      for (const child of schemaChildren(node)) {
+      for (const child of schemaChildren(sourceCode, node)) {
         judge(child, traced);
       }
     }
