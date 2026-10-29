@@ -86,6 +86,7 @@ async function load<Schema extends StandardSchemaV1>(
       directory: stringOption(options, shared.directory),
       fromVariable: shared.env === undefined ? undefined : host.env[shared.env],
       host,
+      ignored: options['no-config'] === true,
       invokedBy,
       named: stringOption(options, 'config'),
       notice: shared.notice,

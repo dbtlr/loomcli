@@ -4,7 +4,7 @@ title: ADR-0119 - The configuration lookup walks to home, reads an author-named 
 description: Without --config, the configuration plugin reads the file an author-named variable names, or else the first file found by a walk from the start directory up to the home directory, or to the root outside home, then the home file, then the XDG user file. A discovered file that is broken warns once and the run has no configuration; no later location answers. A missing file is silent, and an author setting turns on a notice when nothing is found. An opt-in global option moves where the walk starts without changing host.cwd. This supersedes ADR-0054's lookup in the working directory and then the home directory, its fallback past a broken file, and its rejection of a per-user XDG file.
 status: proposed
 created: 2026-10-28
-modified: 2026-10-28
+modified: 2026-10-29
 ---
 
 # ADR-0119 - The configuration lookup walks to home, reads an author-named variable and the XDG user file, and never falls back after a broken file
@@ -24,7 +24,8 @@ The owner set the method: "This is not a space we're innovating in, so we are no
 
 ## Decision
 
-- **One file, the first found.** A run reads at most one file, and nothing merges, as ADR-0054 holds. The plugin tries these in order and stops at the first that yields a file:
+- **`--no-config`.** The plugin declares a global Boolean option, `--no-config`, marked `control: true`, that binds no variable and no configuration key. With it, a run reads no file: not the variable's, the walk's, the home file, or the user file, and it writes no notice. A Command that opts in reads the schema's output for an empty file. With `--config` beside it, the run fails with code 2 once some value is needed, in the form core gives an exclusive option group: `Options "--config" and "--no-config" cannot be used together. Supply only one of them.` CI, tests, and agents need a run that an operator's dotfile cannot change, as Prettier's `--no-config` and ESLint's `--no-config-lookup` give one.
+- **One file, the first found.** A run reads at most one file, and nothing merges, as ADR-0054 holds. Without `--no-config`, the plugin tries these in order and stops at the first that yields a file:
   1. **`--config <file>`.** That file alone, strict, as ADR-0054 states: missing or broken fails the run with code 2.
   2. **The author-named variable.** `configuration({ env })` names a variable the plugin reads from `host.env`. When it holds a nonempty value, that file alone is the configuration, with no search. A relative value resolves against `host.cwd`, and the value is not a pattern, so its extension chooses its parser as `--config`'s does. A missing file is silent and the run has no configuration. A broken file warns once and the run has no configuration. An empty or unset variable is skipped, as an empty variable is unset under [ADR-0032](0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md).
   3. **The walk.** The plugin looks for `file` in the start directory and then in each ancestor, up to and including the home directory when the start directory is the home directory or inside it, and up to the filesystem root otherwise. The start directory is the directory option's value when the author declares one and the operator gives it, and `host.cwd` otherwise. Paths compare lexically, as `node:path` resolves them, and a file that is a symbolic link is read through it. A run with no home directory walks to the root.
@@ -59,3 +60,4 @@ Proposed. It moves to accepted in the release PR of the release that ships the l
 ## Changelog
 
 - 2026-10-28: Proposed with the configuration contract (LM-426). It supersedes ADR-0054's lookup in the working directory and then the home directory, its clause that a broken discovered file is absent so the lookup goes on, and its rejection of a per-user XDG file. ADR-0054 carries a dated entry.
+- 2026-10-29: `--no-config` joins the decision (LM-378): a control option with which a run reads no file and writes no notice, and which fails with code 2 beside `--config`. [ADR-0120](0120-a-json-configuration-file-holds-comments-and-a-file-that-does-not-parse-names-its-line-and-column.md), proposed, adds the line and column where a file breaks to the broken-file sentences, and lets a candidate whose extension is `jsonc` name the user file `config.jsonc`. It binds when that record is accepted.

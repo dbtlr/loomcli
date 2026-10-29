@@ -18,7 +18,7 @@ const configFilePath = diagnosticRule(`${packageName}/config/file-path`, {
 /** A configuration plugin `file` setting whose glob syntax is not a whole extension it can read. */
 const configFilePattern = diagnosticRule(`${packageName}/config/file-pattern`, {
   explanation:
-    "The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: * for any format the plugin reads, or a brace list of json, toml, yaml, and yml, tried in the order listed.",
+    "The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: * for any format the plugin reads, or a brace list of json, jsonc, toml, yaml, and yml, tried in the order listed.",
   headline: 'Invalid configuration file pattern',
 });
 

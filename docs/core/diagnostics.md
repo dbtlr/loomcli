@@ -222,7 +222,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/config/file-pattern
 
-**Invalid configuration file pattern.** The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: \* for any format the plugin reads, or a brace list of json, toml, yaml, and yml, tried in the order listed.
+**Invalid configuration file pattern.** The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: \* for any format the plugin reads, or a brace list of json, jsonc, toml, yaml, and yml, tried in the order listed.
 
 ### @loomcli/plugins/config/link-path
 

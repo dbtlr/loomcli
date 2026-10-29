@@ -195,7 +195,15 @@ function received(stdout: string): unknown {
 }
 
 /** Every value the action receives when nothing supplies one, help's global option included. */
-const defaults = { fields: [], help: false, limit: '10', quiet: true, total: false, verbose: 0 };
+const defaults = {
+  fields: [],
+  help: false,
+  limit: '10',
+  'no-config': false,
+  quiet: true,
+  total: false,
+  verbose: 0,
+};
 
 /** The line help adds under every usage failure, since the fixture installs it. */
 const helpHint = 'Run "app --help" to see the usage.\n';
@@ -223,14 +231,15 @@ function wrong(...lines: string[]): string {
 /** The environment of a run that shows `-v` lines: it installs the fixture's verbose mark. */
 const loudEnv: Overrides = { FIXTURE_LOUD: '1' };
 
-const invalidJson =
-  'is not valid JSON, so this run reads no configuration. Correct its syntax, or remove it.';
+/** The clause of a discovered file that does not parse, at the line and column where it breaks. */
+const invalidJson = (at: string) =>
+  `is not valid JSON at ${at}, so this run reads no configuration. Correct its syntax, or remove it.`;
 const notObject =
   'does not hold a JSON object, so this run reads no configuration. Write its settings as one JSON object, or remove it.';
-const invalidToml =
-  'is not valid TOML, so this run reads no configuration. Correct its syntax, or remove it.';
-const invalidYaml =
-  'is not valid YAML, so this run reads no configuration. Correct its syntax, or remove it.';
+const invalidToml = (at: string) =>
+  `is not valid TOML at ${at}, so this run reads no configuration. Correct its syntax, or remove it.`;
+const invalidYaml = (at: string) =>
+  `is not valid YAML at ${at}, so this run reads no configuration. Correct its syntax, or remove it.`;
 const notMapping =
   'does not hold a YAML mapping, so this run reads no configuration. Write its settings as one YAML mapping, or remove it.';
 
@@ -292,11 +301,17 @@ test(
     space.write('.app.json', '{');
     space.write('.app.json', json({ title: 'home' }), space.home);
     const result = await space.run([]);
-    expect(result).toMatchObject({ status: 0, stderr: skipped('.app.json', invalidJson) });
+    expect(result).toMatchObject({
+      status: 0,
+      stderr: skipped('.app.json', invalidJson('line 1, column 2')),
+    });
     expect(received(result.stdout)).toEqual(defaults);
     for (const home of [space.project, `${space.project}/`]) {
       const once = await space.run([], { HOME: home });
-      expect(once).toMatchObject({ status: 0, stderr: skipped('.app.json', invalidJson) });
+      expect(once).toMatchObject({
+        status: 0,
+        stderr: skipped('.app.json', invalidJson('line 1, column 2')),
+      });
       expect(received(once.stdout)).toEqual(defaults);
     }
   }),
@@ -328,7 +343,7 @@ test(
       status: 2,
       stderr: namedFailure(
         'broken.json',
-        'is not valid JSON. Correct its syntax, or supply another file.',
+        'is not valid JSON at line 1, column 2. Correct its syntax, or supply another file.',
       ),
       stdout: 'resolved:2\n',
     });
@@ -377,6 +392,7 @@ test(
       help: false,
       level: 'x',
       limit: '1',
+      'no-config': false,
       owner: 'o',
       quiet: false,
       root: '/r',
@@ -419,8 +435,8 @@ test(
     expect(received(directory.stdout)).toEqual(defaults);
     rmSync(join(space.project, '.app.json'), { recursive: true });
     const broken: Pairs = [
-      ['', invalidJson],
-      ['{"limits": ', invalidJson],
+      ['', invalidJson('line 1, column 1')],
+      ['{"limits": ', invalidJson('line 1, column 12')],
       ['[1]', notObject],
     ];
     for (const [content, clause] of broken) {
@@ -469,12 +485,12 @@ test(
     // An extension compares as written, so .TOML reads as JSON.
     space.write('.app.TOML', 'total = true\n');
     await expect(space.stderr([], settings({ file: '.app.TOML' }))).resolves.toBe(
-      skipped('.app.TOML', invalidJson),
+      skipped('.app.TOML', invalidJson('line 1, column 1')),
     );
     // A leading dot starts the name, so .toml is a name with no extension and reads as JSON.
     space.write('.toml', 'total = true\n');
     await expect(space.stderr([], settings({ file: '.toml' }))).resolves.toBe(
-      skipped('.toml', invalidJson),
+      skipped('.toml', invalidJson('line 1, column 1')),
     );
   }),
 );
@@ -501,7 +517,7 @@ test(
     space.write('.app.json', json({ title: 'home' }), space.home);
     const broken = await space.run([], any);
     expect(broken.stderr).toBe(
-      `${several('.app.yaml, .app.yml, .app.json', '.app.toml')}${skipped('.app.toml', invalidToml)}`,
+      `${several('.app.yaml, .app.yml, .app.json', '.app.toml')}${skipped('.app.toml', invalidToml('line 1, column 9'))}`,
     );
     expect(received(broken.stdout)).toEqual(defaults);
   }),
@@ -682,11 +698,19 @@ test(
     const empty = await space.run([], toml);
     expect(empty).toMatchObject({ status: 0, stderr: '' });
     expect(received(empty.stdout)).toEqual(defaults);
-    for (const content of ['title = 1979-13-45\n', 'title = "open\n', 'a = 1\na = 2\n']) {
+    const invalid: Pairs = [
+      ['title = 1979-13-45\n', 'line 1, column 9'],
+      ['title = "open\n', 'line 1, column 14'],
+      ['a = 1\na = 2\n', 'line 2, column 1'],
+    ];
+    for (const [content, at] of invalid) {
       space.write('.app.toml', content);
-      await expect(space.stderr([], toml)).resolves.toBe(skipped('.app.toml', invalidToml));
+      await expect(space.stderr([], toml)).resolves.toBe(skipped('.app.toml', invalidToml(at)));
       await expect(space.stderr(['--config', '.app.toml'])).resolves.toBe(
-        namedFailure('.app.toml', 'is not valid TOML. Correct its syntax, or supply another file.'),
+        namedFailure(
+          '.app.toml',
+          `is not valid TOML at ${at}. Correct its syntax, or supply another file.`,
+        ),
       );
     }
   }),
@@ -712,6 +736,7 @@ test(
       help: false,
       level: 'debug',
       limit: '10',
+      'no-config': false,
       quiet: false,
       title: '2001-12-14',
       total: true,
@@ -786,23 +811,26 @@ test(
   'a YAML file outside one core-schema document with unique keys is not valid YAML, and no parser warning prints',
   inWorkspace(async (space) => {
     const yaml = settings({ file: '.app.yaml' });
-    const invalid = [
-      'title: a\n---\ntitle: b\n',
-      'title: a\ntitle: b\n',
-      'title: !!binary aGVsbG8=\n',
-      'title: !!timestamp 2001-12-14\n',
-      'title: !local value\n',
-      'title: !!set { a }\n',
-      'title: [\n',
+    const invalid: Pairs = [
+      ['title: a\n---\ntitle: b\n', 'line 2, column 1'],
+      ['title: a\ntitle: b\n', 'line 2, column 1'],
+      ['title: !!binary aGVsbG8=\n', 'line 1, column 8'],
+      ['title: !!timestamp 2001-12-14\n', 'line 1, column 8'],
+      ['title: !local value\n', 'line 1, column 8'],
+      ['title: !!set { a }\n', 'line 1, column 8'],
+      ['title: [\n', 'line 2, column 1'],
     ];
-    for (const content of invalid) {
+    for (const [content, at] of invalid) {
       space.write('.app.yaml', content);
       await expect(space.run([], yaml)).resolves.toMatchObject({
         status: 0,
-        stderr: skipped('.app.yaml', invalidYaml),
+        stderr: skipped('.app.yaml', invalidYaml(at)),
       });
       await expect(space.stderr(['--config', '.app.yaml'])).resolves.toBe(
-        namedFailure('.app.yaml', 'is not valid YAML. Correct its syntax, or supply another file.'),
+        namedFailure(
+          '.app.yaml',
+          `is not valid YAML at ${at}. Correct its syntax, or supply another file.`,
+        ),
       );
     }
     for (const content of ['', '# only a comment\n', '---\n', '- a\n', 'hello\n']) {
@@ -822,25 +850,28 @@ test(
 );
 
 test(
-  'an alias that names no preceding anchor, as a value or a key, is not valid YAML',
+  'an alias that names no preceding anchor, as a value or a key, is not valid YAML at the alias',
   inWorkspace(async (space) => {
     const yaml = settings({ file: '.app.yaml' });
     space.write('.app.yaml', 'title: home\n', space.home);
-    const unresolved = [
-      'defaults: &defaults 5\ntitle: *defualts\n',
-      'title: *later\nlater: &later 1\n',
-      '*nope : 1\ntitle: own\n',
+    const unresolved: Pairs = [
+      ['defaults: &defaults 5\ntitle: *defualts\n', 'line 2, column 8'],
+      ['title: *later\nlater: &later 1\n', 'line 1, column 8'],
+      ['*nope : 1\ntitle: own\n', 'line 1, column 1'],
     ];
-    for (const content of unresolved) {
+    for (const [content, at] of unresolved) {
       space.write('.app.yaml', content);
       const discovered = await space.run([], yaml);
-      expect(discovered).toMatchObject({ status: 0, stderr: skipped('.app.yaml', invalidYaml) });
+      expect(discovered).toMatchObject({
+        status: 0,
+        stderr: skipped('.app.yaml', invalidYaml(at)),
+      });
       expect(received(discovered.stdout)).toEqual(defaults);
       await expect(space.run(['--config', '.app.yaml'])).resolves.toMatchObject({
         status: 2,
         stderr: namedFailure(
           '.app.yaml',
-          'is not valid YAML. Correct its syntax, or supply another file.',
+          `is not valid YAML at ${at}. Correct its syntax, or supply another file.`,
         ),
       });
     }
@@ -854,7 +885,7 @@ test(
     space.write('.app.yaml', 'title: secret\n');
     // The action's line, with the options in declaration order, is all that reaches stdout.
     const expected =
-      'root:{"help":false,"limit":"10","total":false,"quiet":true,"fields":[],"title":"secret","verbose":0}\nresolved:0\n';
+      'root:{"no-config":false,"help":false,"limit":"10","total":false,"quiet":true,"fields":[],"title":"secret","verbose":0}\nresolved:0\n';
     expect(space.spawn([], { ...yaml, LOG_STREAM: '1', LOG_TOKENS: '1' })).toEqual({
       status: 0,
       stderr: '',
@@ -885,7 +916,10 @@ test(
     }
     space.write('empty.json', '');
     await expect(space.stderr(['--config', 'empty.json'])).resolves.toBe(
-      namedFailure('empty.json', 'is not valid JSON. Correct its syntax, or supply another file.'),
+      namedFailure(
+        'empty.json',
+        'is not valid JSON at line 1, column 1. Correct its syntax, or supply another file.',
+      ),
     );
   }),
 );
@@ -901,6 +935,7 @@ test(
       fields: ['a', '2'],
       help: false,
       limit: '5',
+      'no-config': false,
       quiet: false,
       total: true,
       verbose: 0,
@@ -1049,13 +1084,136 @@ test(
   }),
 );
 
-test('inspect() lists the --config option and the binding value on each bound option', () => {
+test(
+  'a JSON file holds comments and trailing commas, whatever its extension, and a broken one names where it breaks',
+  inWorkspace(async (space) => {
+    const commented = [
+      '{',
+      '  // The byte threshold, raised for the archive.',
+      '  "limits": { "bytes": 5, },',
+      '  /* The title shows in reports. */',
+      '  "title": "noted",',
+      '}',
+    ].join('\n');
+    for (const file of ['.app.json', '.app.jsonc', '.apprc']) {
+      space.write(file, commented);
+      expect(received(await space.stdout([], settings({ file })))).toEqual({
+        ...defaults,
+        limit: '5',
+        title: 'noted',
+      });
+    }
+    space.write('.app.json', '{\n  "title": "a",\n  "total": tru\n}');
+    await expect(space.stderr([])).resolves.toBe(
+      skipped('.app.json', invalidJson('line 3, column 12')),
+    );
+    await expect(space.stderr(['--config', '.app.json'])).resolves.toBe(
+      namedFailure(
+        '.app.json',
+        'is not valid JSON at line 3, column 12. Correct its syntax, or supply another file.',
+      ),
+    );
+  }),
+);
+
+test(
+  'a pattern may list jsonc, and * tries jsonc after json',
+  inWorkspace(async (space) => {
+    space.write('.app.jsonc', json({ title: 'jsonc' }));
+    for (const file of ['.app.{toml,jsonc}', '.app.*']) {
+      const result = await space.run([], settings({ file }));
+      expect(result.stderr).toBe('');
+      expect(received(result.stdout)).toMatchObject({ title: 'jsonc' });
+    }
+    space.write('.app.json', json({ title: 'json' }));
+    const both = await space.run([], settings({ file: '.app.*' }));
+    expect(both.stderr).toBe(several('.app.jsonc', '.app.json'));
+    expect(received(both.stdout)).toMatchObject({ title: 'json' });
+  }),
+);
+
+test(
+  "--no-config reads no file: not the variable's, the walk's, the home file, or the user file, and writes no notice",
+  inWorkspace(async (space) => {
+    const named = settings({ env: 'APP_CONFIG', notice: true });
+    space.write('pinned.json', json({ title: 'variable' }));
+    space.write('.app.json', json({ title: 'walk' }));
+    space.write('.app.json', json({ title: 'home' }), space.home);
+    space.write('.config/app/config.json', json({ title: 'user' }), space.home);
+    const variable = await space.run(['--no-config'], { ...named, APP_CONFIG: 'pinned.json' });
+    expect(variable).toMatchObject({ status: 0, stderr: '' });
+    expect(received(variable.stdout)).toEqual({ ...defaults, 'no-config': true });
+    for (const location of [space.project, space.home]) {
+      const ignored = await space.run(['--no-config'], { ...named, FIXTURE_CWD: location });
+      expect(ignored).toMatchObject({ status: 0, stderr: '' });
+      expect(received(ignored.stdout)).toEqual({ ...defaults, 'no-config': true });
+    }
+    rmSync(join(space.project, '.app.json'));
+    rmSync(join(space.home, '.app.json'));
+    rmSync(join(space.home, '.config'), { recursive: true });
+    await expect(space.stderr(['--no-config'], named)).resolves.toBe('');
+  }),
+);
+
+test(
+  '--no-config leaves a broken file unread, and provided.config is the schema output for an empty file',
+  inWorkspace(async (space) => {
+    space.write('.app.json', '{');
+    const result = await space.run(['--no-config'], shown('typed'));
+    expect(result).toMatchObject({ status: 0, stderr: '' });
+    expect(provided(result.stdout)).toEqual({ retries: 3 });
+  }),
+);
+
+test(
+  '--no-config beside --config fails the run with code 2, as an exclusive option group does',
+  inWorkspace(async (space) => {
+    space.write('pinned.json', json({ title: 'pinned' }));
+    for (const argv of [
+      ['--no-config', '--config', 'pinned.json'],
+      ['--config', 'missing.json', '--no-config'],
+    ]) {
+      await expect(space.run(argv)).resolves.toEqual({
+        status: 2,
+        stderr: `app: Options "--config" and "--no-config" cannot be used together. Supply only one of them.\n${helpHint}`,
+        stdout: 'resolved:2\n',
+      });
+    }
+    await expect(
+      invokedRoot(
+        space,
+        { options: { config: 'pinned.json', 'no-config': true } },
+        { FIXTURE_VIEWS: 'input' },
+      ),
+    ).resolves.toEqual({
+      exitCode: 2,
+      messages: `${json([
+        {
+          inputs: [
+            { global: true, kind: 'option', name: 'config' },
+            { global: true, kind: 'option', name: 'no-config' },
+          ],
+          reason: 'exclusive',
+          spellings: ['config', 'no-config'],
+          supplied: ['config', 'no-config'],
+        },
+      ])}\n`,
+      output: '',
+      status: 'failed',
+    });
+  }),
+);
+
+test('inspect() lists the --config and --no-config options and the binding value on each bound option', () => {
   const graph = inspected({});
   expect(graph.globals.find((option: { name: string }) => option.name === 'config')).toMatchObject({
     description: 'Read configuration from this file alone.',
     short: null,
     type: 'string',
   });
+  expect(
+    graph.globals.find((option: { name: string }) => option.name === 'no-config'),
+  ).toMatchObject({ description: 'Read no configuration file.', short: null, type: 'boolean' });
   expect(
     graph.root.options.find((option: { name: string }) => option.name === 'limit')?.extensions,
   ).toEqual({ '@loomcli/plugins/config/input': { path: 'limits.bytes' } });
@@ -1093,7 +1251,7 @@ const globFault = {
 };
 
 const listFault = {
-  correction: 'List only json, toml, yaml, or yml in the braces, or use * for any of them.',
+  correction: 'List only json, jsonc, toml, yaml, or yml in the braces, or use * for any of them.',
   findings: [{ call: 'configuration', mark: '0.file' }],
   rule: '@loomcli/plugins/config/file-pattern',
   sentence: 'Plugin "@loomcli/plugins/config" file lists an extension the plugin cannot read.',
@@ -1304,7 +1462,7 @@ test(
     space.write('.app.json', json({ title: 'home' }), space.home);
     space.write('.config/app/config.json', json({ title: 'user' }), space.home);
     const ancestor = await space.run([], { FIXTURE_CWD: start });
-    expect(ancestor.stderr).toBe(skipped(broken, invalidJson));
+    expect(ancestor.stderr).toBe(skipped(broken, invalidJson('line 1, column 2')));
     expect(received(ancestor.stdout)).toEqual(defaults);
     rmSync(broken);
     const homeFile = space.write('.app.json', 'true', space.home);
@@ -1314,7 +1472,7 @@ test(
     rmSync(homeFile);
     const user = space.write('.config/app/config.json', '[', space.home);
     const last = await space.run([], { FIXTURE_CWD: start });
-    expect(last.stderr).toBe(skipped(user, invalidJson));
+    expect(last.stderr).toBe(skipped(user, invalidJson('line 1, column 2')));
     expect(received(last.stdout)).toEqual(defaults);
   }),
 );
@@ -1324,7 +1482,7 @@ test(
   inWorkspace(async (space) => {
     const user = space.write('.config/app/config.json', '[', space.home);
     const result = await space.run([], { FIXTURE_CWD: join(space.home, '.config', 'app') });
-    expect(result.stderr).toBe(skipped(user, invalidJson));
+    expect(result.stderr).toBe(skipped(user, invalidJson('line 1, column 2')));
   }),
 );
 
@@ -1364,17 +1522,18 @@ test(
       ['.app.yaml', 'config.yaml'],
       ['.app.yml', 'config.yml'],
       ['.app.json', 'config.json'],
+      ['.app.jsonc', 'config.jsonc'],
       ['.apprc', 'config.json'],
       ['.app.conf', 'config.json'],
     ];
     for (const [file, user] of cases) {
-      const content = user.endsWith('json') ? '{"title":"u"}' : 'title: u\n';
+      const content = user.includes('.json') ? '{"title":"u"}' : 'title: u\n';
       const path = space.write(`app/${user}`, content, space.root);
       const result = await space.run([], { ...settings({ file }), XDG_CONFIG_HOME: space.root });
       // YAML text is not TOML, so a TOML candidate that was read warns instead of answering.
       expect([result.stderr, received(result.stdout)]).toEqual(
         user.endsWith('toml')
-          ? [skipped(path, invalidToml), defaults]
+          ? [skipped(path, invalidToml('line 1, column 6')), defaults]
           : ['', { ...defaults, title: 'u' }],
       );
       rmSync(path);
@@ -1445,7 +1604,7 @@ test(
     expect(received(beneath.stdout)).toEqual(defaults);
     space.write('broken.toml', 'title = ');
     const broken = await space.run([], { ...named, APP_CONFIG: 'broken.toml' });
-    expect(broken.stderr).toBe(skipped('broken.toml', invalidToml));
+    expect(broken.stderr).toBe(skipped('broken.toml', invalidToml('line 1, column 9')));
     expect(received(broken.stdout)).toEqual(defaults);
   }),
 );
@@ -1525,7 +1684,9 @@ test(
     ).resolves.toBe(notice(join(other, '.app.json')));
     // A file found, a broken file, and a variable naming a missing file write none.
     space.write('.app.json', '{');
-    await expect(space.stderr([], on)).resolves.toBe(skipped('.app.json', invalidJson));
+    await expect(space.stderr([], on)).resolves.toBe(
+      skipped('.app.json', invalidJson('line 1, column 2')),
+    );
     rmSync(join(space.project, '.app.json'));
     space.write('.app.json', '{}', space.home);
     await expect(space.stderr([], on)).resolves.toBe('');
@@ -1590,6 +1751,14 @@ test('the type rejects a directory named config, which would claim --config', ()
     directory: { name: 'config' },
   };
   expect(rejected.directory?.name).toBe('config');
+});
+
+test('the type rejects a directory named no-config, which would claim --no-config', () => {
+  const rejected: Omit<ConfigurationSettings<StandardSchemaV1, 'no-config'>, 'schema'> = {
+    // @ts-expect-error A directory option named no-config would claim the spelling --no-config.
+    directory: { name: 'no-config' },
+  };
+  expect(rejected.directory?.name).toBe('no-config');
 });
 
 /** A run of the fixture with the schema it names, the provided value printed, and `-v` lines shown. */
@@ -1870,7 +2039,7 @@ test(
   inWorkspace(async (space) => {
     space.write('.app.json', '{');
     const result = await space.run([], shown('typed'));
-    expect(result.stderr).toBe(skipped('.app.json', invalidJson));
+    expect(result.stderr).toBe(skipped('.app.json', invalidJson('line 1, column 2')));
     expect(provided(result.stdout)).toEqual({ retries: 3 });
   }),
 );
@@ -1888,7 +2057,7 @@ test(
     );
     const read = mockProcess({ cwd: space.project, env: { HOME: space.home } });
     await reading.run({ process: read });
-    expect(read.stderr.text).toBe(skipped('.app.json', invalidJson));
+    expect(read.stderr.text).toBe(skipped('.app.json', invalidJson('line 1, column 2')));
     const none = mockProcess({ cwd: space.project, env: { HOME: space.home } });
     await idle.run({ process: none });
     expect(none.stderr.text).toBe('');

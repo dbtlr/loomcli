@@ -16,13 +16,17 @@
  *   directory is not read. A named file that does not exist, is not valid in its format, or holds
  *   an array prints its failure with code 2, reports nothing under `--help`, and a run that fills
  *   every bound option from argv reads no file and exits 0.
+ * - `--no-config`. A run with `--no-config` reads neither the working directory's file nor the
+ *   home file, and `--no-config` beside `--config` fails with code 2.
  * - Discovered files. A missing file prints nothing. A directory in its place, an empty JSON file,
  *   invalid JSON, and a top-level array each print one warning and the run exits 0, and a broken
- *   home file under `--help` prints its warning before the page.
+ *   home file under `--help` prints its warning before the page. A file that does not parse names
+ *   the line and column where it breaks, in the warning and in the `--config` failure.
  * - Formats. `.textstat.toml`, `.textstat.yaml`, an extensionless file, and `.textstat.conf` each
  *   fill `--min-bytes` and `--total` under a `file` that names them, the last two as JSON, and a
  *   `--config` file reads by its extension. With `.textstat.toml` and `.textstat.json` both in one
- *   directory, the TOML file answers and the several-candidates warning prints once, and a run
+ *   directory, the TOML file answers and the several-candidates warning prints once, a
+ *   `.textstat.json` with comments and a trailing comma fills, and a run
  *   whose file is JSON loads neither parser. A broken TOML file, a broken YAML file, an empty YAML
  *   file, and a YAML file with a second document or a `!!binary` tag each print their warning when
  *   discovered and fail with code 2 when named.
@@ -163,17 +167,24 @@ const filtered = 'COUNT  SOURCE\n    6  one.txt\n';
 const withTotal = `${both}    8  total\n`;
 const filteredTotal = `${filtered}    6  total\n`;
 
-const invalidJson =
-  'is not valid JSON, so this run reads no configuration. Correct its syntax, or remove it.';
-const invalidToml =
-  'is not valid TOML, so this run reads no configuration. Correct its syntax, or remove it.';
-const invalidYaml =
-  'is not valid YAML, so this run reads no configuration. Correct its syntax, or remove it.';
+/** The clause of a discovered file that does not parse, at the line and column where it breaks. */
+const invalidJson = (at: string) =>
+  `is not valid JSON at ${at}, so this run reads no configuration. Correct its syntax, or remove it.`;
+const invalidToml = (at: string) =>
+  `is not valid TOML at ${at}, so this run reads no configuration. Correct its syntax, or remove it.`;
+const invalidYaml = (at: string) =>
+  `is not valid YAML at ${at}, so this run reads no configuration. Correct its syntax, or remove it.`;
 const notObject =
   'does not hold a JSON object, so this run reads no configuration. Write its settings as one JSON object, or remove it.';
 const notMapping =
   'does not hold a YAML mapping, so this run reads no configuration. Write its settings as one YAML mapping, or remove it.';
-const fixtureDefaults = { field: [], limit: 'none', 'min-bytes': 0, total: false };
+const fixtureDefaults = {
+  field: [],
+  limit: 'none',
+  'min-bytes': 0,
+  'no-config': false,
+  total: false,
+};
 
 test(
   'Lookup: textstat reads .textstat.toml in the working directory, then in the home directory',
@@ -188,7 +199,7 @@ test(
     space.write(space.project, '.textstat.toml', 'total = ');
     expect(space.textstat(files)).toEqual({
       status: 0,
-      stderr: skipped('.textstat.toml', invalidToml),
+      stderr: skipped('.textstat.toml', invalidToml('line 1, column 9')),
       stdout: both,
     });
     rmSync(join(space.project, '.textstat.toml'));
@@ -247,7 +258,7 @@ test(
       status: 2,
       stderr: namedFailure(
         'broken.toml',
-        'is not valid TOML. Correct its syntax, or supply another file.',
+        'is not valid TOML at line 1, column 12. Correct its syntax, or supply another file.',
       ),
       stdout: '',
     });
@@ -267,6 +278,31 @@ test(
     expect(
       space.textstat([...files, '--config', 'missing.json', '--min-bytes', '0', '--total']),
     ).toEqual({ status: 0, stderr: '', stdout: withTotal });
+  }),
+);
+
+test(
+  '--no-config: a run reads no file, and --no-config beside --config fails with code 2',
+  inWorkspace((space) => {
+    space.write(space.project, '.textstat.toml', 'total = true\n');
+    space.write(space.home, '.textstat.toml', 'minBytes = 5\n');
+    expect(space.textstat([...files, '--no-config'])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: both,
+    });
+    rmSync(join(space.project, '.textstat.toml'));
+    expect(space.textstat([...files, '--no-config'])).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: both,
+    });
+    space.write(space.project, 'pinned.json', json({ total: true }));
+    expect(space.textstat([...files, '--no-config', '-c', 'pinned.json'])).toEqual({
+      status: 2,
+      stderr: `textstat: Options "--config" and "--no-config" cannot be used together. Supply only one of them.\n${hint}`,
+      stdout: '',
+    });
   }),
 );
 
@@ -302,8 +338,8 @@ test(
     });
     rmSync(join(space.project, '.textstat.json'), { recursive: true });
     const broken: readonly (readonly [string, string])[] = [
-      ['', invalidJson],
-      ['{"minBytes": ', invalidJson],
+      ['', invalidJson('line 1, column 1')],
+      ['{"minBytes": ', invalidJson('line 1, column 14')],
       ['[5]', notObject],
     ];
     for (const [content, clause] of broken) {
@@ -324,13 +360,17 @@ test(
 );
 
 test(
-  'Formats: TOML, YAML, an extensionless file, and .textstat.conf each fill under a file that names them',
+  'Formats: TOML, YAML, an extensionless file, .textstat.conf, and JSON with comments each fill under a file that names them',
   inWorkspace((space) => {
     const formats: readonly (readonly [string, string])[] = [
       ['.textstat.toml', 'minBytes = 5\ntotal = true\n'],
       ['.textstat.yaml', 'minBytes: 5\ntotal: true\n'],
       ['.textstatrc', json({ minBytes: 5, total: true })],
       ['.textstat.conf', json({ minBytes: 5, total: true })],
+      [
+        '.textstat.json',
+        '{\n  // Skip empty files.\n  "minBytes": 5,\n  /* Sum the rows. */ "total": true,\n}\n',
+      ],
     ];
     for (const [file, content] of formats) {
       space.write(space.project, file, content);
@@ -424,39 +464,38 @@ test(
 test(
   'Formats: broken TOML and YAML files warn when discovered and fail with code 2 when named',
   inWorkspace((space) => {
-    const yamlFaults = [
-      'minBytes: [',
-      '',
-      'minBytes: 1\n---\nminBytes: 2\n',
-      'minBytes: !!binary aGk=\n',
+    const yamlFaults: readonly (readonly [string, string | undefined])[] = [
+      ['minBytes: [', 'line 1, column 12'],
+      ['', undefined],
+      ['minBytes: 1\n---\nminBytes: 2\n', 'line 2, column 1'],
+      ['minBytes: !!binary aGk=\n', 'line 1, column 11'],
     ];
     space.write(space.project, '.textstat.toml', 'minBytes = ');
     expect(space.textstat(files)).toEqual({
       status: 0,
-      stderr: skipped('.textstat.toml', invalidToml),
+      stderr: skipped('.textstat.toml', invalidToml('line 1, column 12')),
       stdout: both,
     });
     expect(space.textstat([...files, '--config', '.textstat.toml'])).toMatchObject({
       status: 2,
       stderr: namedFailure(
         '.textstat.toml',
-        'is not valid TOML. Correct its syntax, or supply another file.',
+        'is not valid TOML at line 1, column 12. Correct its syntax, or supply another file.',
       ),
     });
-    for (const content of yamlFaults) {
+    for (const [content, at] of yamlFaults) {
       space.write(space.project, '.textstat.yaml', content);
-      const empty = content === '';
       expect(space.app({ file: '.textstat.yaml' })).toMatchObject({
         status: 0,
-        stderr: skipped('.textstat.yaml', empty ? notMapping : invalidYaml),
+        stderr: skipped('.textstat.yaml', at === undefined ? notMapping : invalidYaml(at)),
       });
       expect(space.textstat([...files, '--config', '.textstat.yaml'])).toMatchObject({
         status: 2,
         stderr: namedFailure(
           '.textstat.yaml',
-          empty
+          at === undefined
             ? 'does not hold a YAML mapping. Write its settings as one YAML mapping.'
-            : 'is not valid YAML. Correct its syntax, or supply another file.',
+            : `is not valid YAML at ${at}. Correct its syntax, or supply another file.`,
         ),
       });
     }

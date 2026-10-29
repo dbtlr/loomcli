@@ -1,4 +1,6 @@
+import { scanJson } from './json.js';
 import { splitExtension } from './names.js';
+import { positionAt } from './position.js';
 import { readingOf } from './reading.js';
 import type { Reading } from './reading.js';
 import { readToml } from './toml.js';
@@ -21,13 +23,16 @@ function parserOf(path: string): (text: string) => Promise<Reading> | Reading {
   return extension === 'yaml' || extension === 'yml' ? readYaml : readJson;
 }
 
-/** The one JSON object a file's text holds. */
+/**
+ * The one JSON object a file's text holds, comments and trailing commas allowed. The scan judges
+ * the text and names where it breaks, and `JSON.parse` builds the value of a text that passes.
+ */
 function readJson(text: string): Reading {
-  try {
-    return readingOf(JSON.parse(text), 'does not hold a JSON object.');
-  } catch {
-    return { clause: 'is not valid JSON.', kind: 'unusable' };
+  const scan = scanJson(text);
+  if ('offset' in scan) {
+    return { at: positionAt(text, scan.offset), clause: 'is not valid JSON.', kind: 'unusable' };
   }
+  return readingOf(JSON.parse(scan.json), 'does not hold a JSON object.');
 }
 
 /**
