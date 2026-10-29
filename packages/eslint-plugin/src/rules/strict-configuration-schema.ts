@@ -39,8 +39,8 @@ const zodModules: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The zod methods whose result is no strict object, so it reports no unknown key on itself: a
- * loose copy of the object, or the enum of its keys.
+ * The zod methods, and zod mini's functions of the same names, whose result is no strict object,
+ * so it reports no unknown key on itself: a loose copy of the object, or the enum of its keys.
  */
 const unstrictMethods: ReadonlySet<string> = new Set([
   'catchall',
@@ -231,14 +231,25 @@ function returnedValues(node: Node): Node[] {
 }
 
 /**
- * The children a call carries into its result: its arguments, with what a function returns in
- * place of the function for `z.lazy`, and the receiver of a method call.
+ * The arguments a call carries into its result: every argument, with what a function returns in
+ * place of the function for `z.lazy`, and without the object for a zod function whose result is no
+ * strict object, such as zod mini's `z.keyof(object)` and `z.catchall(object, rest)`.
  */
+function carriedArguments(sourceCode: SourceCode, call: CallExpression): Node[] {
+  const exported = zodExportOf(sourceCode, call.callee);
+  if (exported === 'lazy') {
+    return call.arguments.flatMap((argument) => returnedValues(argument));
+  }
+  if (exported === undefined || !unstrictMethods.has(exported)) {
+    return [...call.arguments];
+  }
+  const [, ...rest] = call.arguments;
+  return rest;
+}
+
+/** The children a call carries into its result: its arguments, and the receiver of a method call. */
 function callChildren(sourceCode: SourceCode, call: CallExpression): Node[] {
-  const lazy = zodExportOf(sourceCode, call.callee) === 'lazy';
-  const values = call.arguments.flatMap((argument) =>
-    lazy ? returnedValues(argument) : [argument],
-  );
+  const values = carriedArguments(sourceCode, call);
   const receiver = carriedReceiver(call);
   return receiver === undefined ? values : [receiver, ...values];
 }

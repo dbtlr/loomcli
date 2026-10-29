@@ -135,6 +135,8 @@ tester.run('strict-configuration-schema', strictConfigurationSchema, {
             d: State.catchall(z.string()),
             e: State.shape.channel,
             keys: z.array(State.keyof()),
+            fnKeys: z.array(z.keyof(State)),
+            fnRest: z.catchall(State, z.string()),
             f: z.object({ ...State.shape }),
             g: z.string().refine((value) => State.safeParse({ channel: value }).success),
             h: z.string().default(import.meta.dirname),
