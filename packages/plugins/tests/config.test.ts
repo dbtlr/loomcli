@@ -1753,6 +1753,14 @@ test('the type rejects a directory named config, which would claim --config', ()
   expect(rejected.directory?.name).toBe('config');
 });
 
+test('the type rejects a directory named no-config, which would claim --no-config', () => {
+  const rejected: Omit<ConfigurationSettings<StandardSchemaV1, 'no-config'>, 'schema'> = {
+    // @ts-expect-error A directory option named no-config would claim the spelling --no-config.
+    directory: { name: 'no-config' },
+  };
+  expect(rejected.directory?.name).toBe('no-config');
+});
+
 /** A run of the fixture with the schema it names, the provided value printed, and `-v` lines shown. */
 function shown(schema: SchemaName, extra: Overrides = {}): Overrides {
   return { FIXTURE_LOUD: '1', FIXTURE_PROVIDED: '1', FIXTURE_SCHEMA: schema, ...extra };

@@ -54,7 +54,7 @@ test.each([
   ['an unterminated block comment', '{ "a": 1 /* never closed', 1, 10],
   ['a single slash', '{ "a": 1 / }', 1, 10],
   ['a second value', '{} {}', 1, 4],
-  ['a non-breaking space', '{ }', 1, 2],
+  ['a non-breaking space', `{${String.fromCodePoint(160)}}`, 1, 2],
   ['a mismatched bracket', '{ "a": [1} }', 1, 10],
   ['an unclosed object', '{ "a": 1', 1, 9],
 ])('a JSON file with %s names its line and column', async (_case, text, line, column) => {
@@ -79,7 +79,7 @@ test('a line ends at LF, at CRLF, or at a lone CR', async () => {
 });
 
 test('a leading byte order mark is not a column', async () => {
-  await expect(parseFile('.app.json', '﻿{ x }')).resolves.toEqual(
+  await expect(parseFile('.app.json', `${String.fromCodePoint(65_279)}{ x }`)).resolves.toEqual(
     broken('is not valid JSON.', 1, 3),
   );
 });

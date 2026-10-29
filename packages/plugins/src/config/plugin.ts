@@ -65,10 +65,13 @@ interface ConfigurationSettings<Schema extends StandardSchemaV1, Directory exten
   readonly env?: string;
   /**
    * A global option whose value is where the lookup's walk starts, none by default. A directory
-   * option named `config` would claim `--config`'s spelling, so the type rejects it.
+   * option named `config` or `no-config` would claim the plugin's own spelling, so the type
+   * rejects it.
    */
   readonly directory?: DirectorySetting<Directory> &
-    ('config' extends Directory ? { readonly name: never } : unknown);
+    ([Extract<'config' | 'no-config', Directory>] extends [never]
+      ? unknown
+      : { readonly name: never });
   /** Write one line when the lookup finds no file. Off by default. */
   readonly notice?: boolean;
 }
@@ -95,7 +98,7 @@ function declaredOptions<const Directory extends string>(settings: {
           },
         };
   // Last resort: no typed path exists, because TypeScript types a computed key as a string index and cannot map the generic `Directory` onto it.
-  // It holds because the only key added is `directory.name`, the `Directory` the settings were inferred from, and the type rejects `config`.
+  // It holds because the only key added is `directory.name`, the `Directory` the settings were inferred from, and the type rejects `config` and `no-config`.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return { ...options, config: configOption, ...declared } as ConfigOptions<Directory>;
 }
@@ -120,10 +123,11 @@ interface Configuration<Schema extends StandardSchemaV1, Directory extends strin
  * plugin answers the configuration tier from one JSON, TOML, or YAML file per run, and from none
  * under `--no-config`: the file `--config` names, or else the file the settings' `env` variable
  * names, or else the first found of the settings' `file` in the walk from the start directory up to
- * the home directory, in the home directory, and in the user folder. The provider hands application code the schema's output for
- * that file, after the plugin has dropped every value the schema rejects. The call judges the
- * settings' `file` and `env`, which it reads once. The resolver and the opener load only when core
- * calls them, and they share one read per run, keyed by the run's host.
+ * the home directory, in the home directory, and in the user folder. The provider hands
+ * application code the schema's output for that file, after the plugin has dropped every value the
+ * schema rejects. The call judges the settings' `file` and `env`, which it reads once. The resolver
+ * and the opener load only when core calls them, and they share one read per run, keyed by the
+ * run's host.
  */
 function configuration<
   const Schema extends StandardSchemaV1,

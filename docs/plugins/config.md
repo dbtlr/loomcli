@@ -34,8 +34,8 @@ interface ConfigurationSettings<Schema extends StandardSchemaV1, Directory exten
   /** A variable that names the configuration file, none by default. */
   readonly env?: string;
   /** A global option whose value is where the lookup's walk starts, none by default. */
-  /** A directory option named config would claim --config's spelling, so the type rejects it. */
-  readonly directory?: DirectorySetting<Directory> & ('config' extends Directory ? { readonly name: never } : unknown);
+  /** A directory option named config or no-config would claim the plugin's own spelling, so the type rejects it. */
+  readonly directory?: DirectorySetting<Directory> & ([Extract<'config' | 'no-config', Directory>] extends [never] ? unknown : { readonly name: never });
   /** Write one line when the lookup finds no file. Off by default. */
   readonly notice?: boolean;
 }
@@ -136,7 +136,7 @@ dir = "../transcripts"
 - **`file`.** The configuration file the lookup looks for. With none, the plugin looks for `.<app>.json`, where `<app>` is `graph.name`, which it reads when it runs, because `configuration()` cannot know the application name. `file` is a file name or a relative path, such as `.mimir.toml` or `.norn/config.toml`: a nonempty string that does not start with `/`, `\`, or a drive letter and a colon, and whose segments, split on `/` and `\`, are each nonempty and neither `.` nor `..`. Any other value throws a `DeclarationError` from `configuration()`: [`@loomcli/plugins/config/file-path`](../core/diagnostics.md#loomclipluginsconfigfile-path). The finding rebuilds the `configuration()` call and marks `file`.
 - **`short`.** Gives `--config` a short spelling under [Plugin settings](../core/plugin-contract.md#plugin-settings), so `short: 'c'` lets an operator type `-c`. With none, `--config` has no short spelling.
 - **`env`.** Names a variable whose value names the configuration file, under **Lookup**. The plugin reads it from `host.env` itself: it is not an environment binding on `--config`, so `inspect()` publishes no `env` for it. The name follows core's variable name rule, `[A-Za-z_][A-Za-z0-9_]*`, and any other value throws a `DeclarationError` from `configuration()`: `@loomcli/plugins/config/variable-name`, `Plugin "@loomcli/plugins/config" env is not a variable name.`, corrected by `Name a variable such as COLLECTOR_CONFIG: a letter or an underscore, then letters, digits, or underscores.`
-- **`directory`.** `{ name, short, description }` makes the plugin declare a global string option, `--<name>`, under **The directory option**. Core judges its name and short spelling as it judges every plugin option's, and the type rejects a `name` of `config`, which would claim `--config`'s spelling.
+- **`directory`.** `{ name, short, description }` makes the plugin declare a global string option, `--<name>`, under **The directory option**. Core judges its name and short spelling as it judges every plugin option's, and the type rejects a `name` of `config` or `no-config`, which would claim `--config`'s or `--no-config`'s spelling.
 - **`notice`.** With `true`, a run with no `--config`, no `--no-config`, and no variable whose search finds no file writes one line, under **Missing files**.
 - **Faults at the call.** `configuration()` judges its settings when it is called: the `file` rules above and below, then the `env` rule. The types reject a `short` that is not one ASCII letter.
 

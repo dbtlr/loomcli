@@ -120,6 +120,7 @@ OPTIONS
   -V, --version          Print the version.
   -M, --manifest         Print this command's manifest as JSON.
   -c, --config <config>  Read configuration from this file alone.
+      --no-config        Read no configuration file.
   -e, --explain          Explain the selected command and exit.
 
 EXAMPLES
@@ -152,6 +153,7 @@ OPTIONS
   -V, --version          Print the version.
   -M, --manifest         Print this command's manifest as JSON.
   -c, --config <config>  Read configuration from this file alone.
+      --no-config        Read no configuration file.
   -e, --explain          Explain the selected command and exit.
 
 Run textstat --help for details and examples.

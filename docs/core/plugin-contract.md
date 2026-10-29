@@ -147,6 +147,7 @@ Help, version, and verbose have fixed short spellings. Configuration, the format
 | Help | `--help` | `-h` | Fixed; selects compact help. |
 | Version | `--version` | `-V` | Fixed; leaves lowercase `-v` available. |
 | Configuration | `--config` | None by default; textstat chooses `-c`. | `configuration({ schema, short: 'c' })`. |
+| Configuration | `--no-config` | None | Fixed; long-only. |
 | Formatter | `--format` | None by default; textstat chooses `-f`, jsonkit chooses `-o`. | Keeps jsonkit's `-f` for its document. |
 | Manifest | `--manifest` | None by default; both examples choose `-M`. | Keeps textstat's `-m` for its metric. |
 | Private example plugin | `--explain` | `-e` | Fixed in the example plugin. |

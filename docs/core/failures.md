@@ -325,7 +325,7 @@ A failure message tells its reader what went wrong and what to do instead. This 
 
 ```text
 Before: textstat: Option "--config": File "settings.json" is not valid JSON.
-After:  textstat: Option "--config": File "settings.json" is not valid JSON. Correct its syntax, or supply another file.
+After:  textstat: Option "--config": File "settings.json" is not valid JSON at line 3, column 7. Correct its syntax, or supply another file.
 ```
 
 The rules below bind every operator message Loom ships: core, `@loomcli/plugins`, and `@loomcli/validators`. Loom cannot check a message an application writes.

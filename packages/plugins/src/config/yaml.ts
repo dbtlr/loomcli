@@ -84,9 +84,9 @@ function faultOffset(walk: typeof visit, document: Document): number | undefined
  * document with unique keys and only the core schema's tags. The parser's own errors, a tag outside
  * the core schema, and an alias that names no preceding anchor make it not valid YAML, at the
  * position of the first error, or else of the tag, or else of the alias, which the parser does not
- * report itself, so the reader finds it before `toJS()` would throw. A throw from `toJS()` that the
- * reader did not foresee makes the file not valid YAML with no position. The `error` log level keeps
- * the parser from printing a warning, so no file content reaches the terminal. An empty document,
+ * report itself, so the reader finds it before `toJS()` would throw. A throw from `toJS()` that
+ * the reader did not foresee makes the file not valid YAML with no position. The `error` log level
+ * keeps the parser from printing a warning, so no file content reaches the terminal. An empty document,
  * or one that holds only comments, holds no mapping. Every alias reads, with no alias count limit:
  * `toJS()` shares the value an anchor names among its aliases, so a profile reused across many
  * environments costs one value.
