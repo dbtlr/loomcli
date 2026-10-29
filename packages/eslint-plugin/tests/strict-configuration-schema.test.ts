@@ -218,5 +218,21 @@ tester.run('strict-configuration-schema', strictConfigurationSchema, {
         const loop: z.ZodType = z.lazy(() => z.object({ next: loop.optional() }));
         configuration({ file: '.tool.toml', schema: loop });`,
     },
+    {
+      // A TypeScript import-equals binding is not an import the rule traces, and it does not throw.
+      code: `import { configuration } from '@loomcli/plugins/config';
+        import z = require('zod');
+        configuration({ file: '.tool.toml', schema: z.strictObject({}) });`,
+    },
+    {
+      // A constant several sections share is walked once, so a deep doubling ends at once.
+      code: `${imports}
+        ${Array.from({ length: 40 }, (_entry, level) =>
+          level === 0
+            ? 'const s0 = z.object({});'
+            : `const s${level} = z.object({ a: s${level - 1}, b: s${level - 1} });`,
+        ).join('\n')}
+        configuration({ file: '.tool.toml', schema: s39 });`,
+    },
   ],
 });

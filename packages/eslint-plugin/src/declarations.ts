@@ -105,7 +105,13 @@ function importOf(
 ): { readonly specifier: ImportBinding; readonly source: unknown } | undefined {
   const variable = variableOf(sourceCode, identifier);
   const [definition, redeclaration] = variable?.defs ?? [];
-  if (!definition || redeclaration || definition.type !== 'ImportBinding') {
+  // An `import x = require()` binding is an import binding with no module specifier to read.
+  if (
+    !definition ||
+    redeclaration ||
+    definition.type !== 'ImportBinding' ||
+    definition.parent.type !== 'ImportDeclaration'
+  ) {
     return undefined;
   }
   return { source: definition.parent.source.value, specifier: definition.node };

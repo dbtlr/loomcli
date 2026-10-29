@@ -277,6 +277,17 @@ const strictConfigurationSchema: Rule.RuleModule = {
     const { sourceCode } = context;
     // A constant two schemas share holds one strict object, which is reported once.
     const reported = new Set<Node>();
+    // A constant several sections share is walked once, so shared sections cost no more than one.
+    const walked = new Set<Node>();
+
+    /** Whether the walk reaches a node for the first time, which it records. */
+    function firstWalk(node: Node): boolean {
+      if (walked.has(node)) {
+        return false;
+      }
+      walked.add(node);
+      return true;
+    }
 
     /** Reports a node that builds a zod strict object, once. */
     function reportStrict(node: Node): void {
@@ -299,7 +310,7 @@ const strictConfigurationSchema: Rule.RuleModule = {
         }
         return;
       }
-      if (isOutsideSchema(node)) {
+      if (isOutsideSchema(node) || !firstWalk(node)) {
         return;
       }
       reportStrict(node);
