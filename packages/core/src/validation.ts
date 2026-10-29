@@ -801,8 +801,9 @@ export async function validateValues(invocation: Invocation): Promise<Validation
   const hostFor = ({ input }: ScopedInput): Host => {
     const directory =
       input.kind === 'option' ? sources.fills?.get(input.name)?.directory : undefined;
+    // A dropped fill reads as unfilled, so its omission reads the run's own working directory.
     // The derived host reads every other member, getters included, from the run's own.
-    return directory === undefined
+    return directory === undefined || dropped.has(input)
       ? invocation.host
       : Object.create(invocation.host, { cwd: { enumerable: true, value: directory } });
   };
@@ -885,19 +886,38 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       return;
     }
     const issues = reported(result.issues);
-    if (origin !== undefined && sources.fills?.has(entry.input.name) === true) {
+    if (dropsFill(entry, issues, { origin, spelling })) {
       // A configuration fill its validator rejects falls back, as if no tier had supplied it.
-      const [first] = issues;
-      const path = first === undefined ? undefined : issuePath(first);
-      const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
-      dropped.set(
-        entry.input,
-        `Ignored option "${spelling}"${position} from ${origin}: ${first?.message}`,
-      );
       await absent(entry, spelling, true);
       return;
     }
     reject(entry, issues, suppliedName(entry.input, spelling, origin));
+  };
+  /**
+   * Drops a value the configuration source filled, recording the `out.debug` line that names its
+   * first issue, and says whether it did. A value from any other tier is never dropped.
+   */
+  const dropsFill = (
+    entry: ScopedInput,
+    issues: readonly StandardSchemaV1.Issue[],
+    named: { origin: string | undefined; spelling: string },
+  ): boolean => {
+    const { input } = entry;
+    if (
+      named.origin === undefined ||
+      input.kind !== 'option' ||
+      sources.fills?.has(input.name) !== true
+    ) {
+      return false;
+    }
+    const [first] = issues;
+    const path = first === undefined ? undefined : issuePath(first);
+    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
+    dropped.set(
+      entry.input,
+      `Ignored option "${named.spelling}"${position} from ${named.origin}: ${first?.message}`,
+    );
+    return true;
   };
   /** One input no tier supplied, or whose configuration fill was dropped: its default, or its absence rule. */
   const absent = async (entry: ScopedInput, spelling: string, fellBack: boolean) => {
@@ -959,18 +979,30 @@ export async function validateValues(invocation: Invocation): Promise<Validation
           ? supplied.args.get(input)
           : suppliedOption(supplied.options, input.name, collected);
       if (input.config.type === 'content') {
-        const result = await prepareContent(raw, input.config, {
-          collected,
-          host: invocation.host,
-          named: invocation.named !== undefined,
-          signal: invocation.signal,
-        });
+        const { config } = input;
+        // A relative path a configuration file holds reads against that file's directory.
+        const prepare = async (from: typeof raw) =>
+          prepareContent(from, config, {
+            collected,
+            host: hostFor(entry),
+            named: invocation.named !== undefined,
+            signal: invocation.signal,
+          });
+        const prepared = await prepare(raw);
+        // A configuration path its content option cannot read falls back, as if no tier had supplied it.
+        const result =
+          prepared.issues !== undefined &&
+          prepared.missing !== true &&
+          dropsFill(entry, prepared.issues, { origin: originOf(input), spelling })
+            ? await prepare(undefined)
+            : prepared;
         if (result.issues === undefined) {
           values.set(input, result.value);
         } else if (result.missing) {
           omit(entry, spelling, messages(suppliedName(input, spelling), result.issues).join('\n'));
         } else {
-          reject(entry, result.issues, suppliedName(input, spelling, originOf(input)));
+          const origin = dropped.has(input) ? undefined : originOf(input);
+          reject(entry, result.issues, suppliedName(input, spelling, origin));
         }
       } else if (raw === undefined) {
         await absent(entry, spelling, false);

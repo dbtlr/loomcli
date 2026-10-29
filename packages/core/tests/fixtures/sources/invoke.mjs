@@ -288,6 +288,18 @@ function application() {
       validate: tracing,
     })
     .action(print('traced'));
+  // A content option a configuration file may fill with a path.
+  const reading = new Command('reading', {
+    description: 'The reading command.',
+  })
+    .option('input', {
+      description: 'The input option.',
+      extensions: [configKey('input')],
+      type: 'content',
+    })
+    .action(({ options, out }) =>
+      out.print(`reading:${JSON.stringify({ path: options.input?.path ?? null })}`),
+    );
   const paint = new Command('paint', {
     description: 'The paint command.',
   })
@@ -335,6 +347,7 @@ function application() {
     .command(region)
     .command(fallback)
     .command(traced)
+    .command(reading)
     .command(paint)
     .command(cache)
     .command(inherited)

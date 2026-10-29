@@ -41,6 +41,9 @@
  *   Declared exit codes acceptance.
  */
 
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
@@ -311,6 +314,49 @@ test('a dropped fill validates as unfilled, and supplied keeps the raw value', (
     `schema:omitted:${JSON.stringify({ cwd: process.cwd(), supplied: 'bad' })}`,
   );
   expect(valueOf(result.stdout, 'traced', 'omitted')).toBeUndefined();
+});
+
+test("a dropped fill validates its omission against the run's working directory, not the file's", () => {
+  const env = {
+    ...settings({ omitted: 'bad' }),
+    FIXTURE_DIRECTORY: JSON.stringify('/srv/project'),
+  };
+  const calls = run(['traced'], env)
+    .stdout.split('\n')
+    .filter((entry) => entry.startsWith('schema:omitted:'));
+  expect(calls).toEqual([
+    `schema:omitted:${JSON.stringify({ cwd: '/srv/project', supplied: 'bad', value: 'bad' })}`,
+    `schema:omitted:${JSON.stringify({ cwd: process.cwd(), supplied: 'bad' })}`,
+  ]);
+});
+
+/** The fixtures folder, an absolute directory that holds `source.mjs`. */
+const fixtures = fileURLToPath(new URL('fixtures/sources', import.meta.url));
+
+test('a configuration path its content option cannot read falls back and is named at -v', () => {
+  const missing = settings({ input: 'absent.txt' });
+  const ran = run(['reading'], missing);
+  expect(ran.status).toBe(0);
+  expect(line(ran.stdout, 'reading')).toBe('reading:{"path":null}');
+  expect(ran.stderr).toBe('');
+  const verbose = run(['-v', 'reading'], { ...missing, ...chatty });
+  expect(verbose.status).toBe(0);
+  expect(verbose.stderr).toContain(
+    'Ignored option "--input" from input in fixture.json: Expected a readable file that exists.\n',
+  );
+  // A path typed on the command line still fails the run.
+  expect(run(['reading', '--input', 'absent.txt']).status).toBe(2);
+});
+
+test("a relative configuration path for a content option resolves against the answer's directory", () => {
+  const result = run(['reading'], {
+    ...settings({ input: 'source.mjs' }),
+    FIXTURE_DIRECTORY: JSON.stringify(fixtures),
+  });
+  expect(result.status).toBe(0);
+  expect(line(result.stdout, 'reading')).toBe(
+    `reading:${JSON.stringify({ path: join(fixtures, 'source.mjs') })}`,
+  );
 });
 
 test("an answer's directory is the working directory its option's validator reads", () => {

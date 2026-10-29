@@ -981,7 +981,7 @@ test(
         ),
       );
       space.write('my configs/app.json', json({ limits: { bytes: 'x' } }));
-      // The wrong value falls back to the default, so only the named file's own failure prints.
+      // The wrong value falls back to the default, so the run prints nothing.
       await expect(space.stderr(['--config', 'my configs/app.json'], env)).resolves.toBe('');
       rmSync(join(space.project, 'my configs'), { force: true, recursive: true });
     }
