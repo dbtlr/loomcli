@@ -1275,6 +1275,15 @@ test(
 );
 
 test(
+  'the user file shows as its full path when host.cwd is the user folder',
+  inWorkspace(async (space) => {
+    const user = space.write('.config/app/config.json', '[', space.home);
+    const result = await space.run([], { FIXTURE_CWD: join(space.home, '.config', 'app') });
+    expect(result.stderr).toBe(skipped(user, invalidJson));
+  }),
+);
+
+test(
   'the user file is config.<ext> under XDG_CONFIG_HOME, or under ~/.config when it is unset, empty, or relative',
   inWorkspace(async (space) => {
     const xdg = join(space.root, 'xdg');

@@ -107,11 +107,15 @@ function configFile(path: string, shown: string): ConfigFile {
 }
 
 /**
- * The candidates in one directory, in candidate order. A file in the working directory shows as the
- * candidate names it, and one anywhere else as its full path.
+ * The candidates in one directory, in candidate order. A file the walk finds in the working
+ * directory shows as the candidate names it, and every other file as its full path.
  */
-function filesIn(directory: string, candidates: readonly string[], host: Host): ConfigFile[] {
-  const working = directory === resolve(host.cwd);
+function filesIn(
+  directory: string,
+  candidates: readonly string[],
+  { host, walked }: { host: Host; walked: boolean },
+): ConfigFile[] {
+  const working = walked && directory === resolve(host.cwd);
   return candidates.map((candidate) => {
     const path = resolve(directory, candidate);
     return configFile(path, working ? candidate : path);
@@ -310,6 +314,8 @@ async function variableFile(value: string, lookup: Lookup, channels: Channels): 
 interface Step {
   readonly directory: string;
   readonly candidates: readonly string[];
+  /** Whether the walk looks here, so a file in the working directory shows as its candidate. */
+  readonly walked: boolean;
 }
 
 /** The home directory as `node:path` resolves it, or none when the host has no absolute one. */
@@ -327,9 +333,9 @@ function startDirectory(lookup: Lookup): string {
 function walkSteps(lookup: Lookup, home: string | undefined): Step[] {
   const { candidates } = lookup;
   const walk = walkDirectories(startDirectory(lookup), home);
-  const steps = walk.map((directory) => ({ candidates, directory }));
+  const steps = walk.map((directory) => ({ candidates, directory, walked: true }));
   if (home !== undefined && !walk.includes(home)) {
-    steps.push({ candidates, directory: home });
+    steps.push({ candidates, directory: home, walked: false });
   }
   return steps;
 }
@@ -341,12 +347,15 @@ function searchSteps(lookup: Lookup): Step[] {
   const user = userFolder(lookup.app, lookup.host, home);
   return user === undefined
     ? steps
-    : [...steps, { candidates: userCandidates(lookup.candidates), directory: user }];
+    : [...steps, { candidates: userCandidates(lookup.candidates), directory: user, walked: false }];
 }
 
 /** Writes the line that says no file was found, naming the first candidate in the start directory. */
 async function announceNoFile(lookup: Lookup, { out, style }: Channels): Promise<void> {
-  const [first] = filesIn(startDirectory(lookup), lookup.candidates, lookup.host);
+  const [first] = filesIn(startDirectory(lookup), lookup.candidates, {
+    host: lookup.host,
+    walked: true,
+  });
   if (first !== undefined) {
     await out.info(
       `Found no configuration file. Create ${nowrap(style.escape(first.shown))} to configure ${lookup.app}.`,
@@ -358,7 +367,7 @@ async function announceNoFile(lookup: Lookup, { out, style }: Channels): Promise
 async function searched(lookup: Lookup, channels: Channels): Promise<Outcome | undefined> {
   for (const step of searchSteps(lookup)) {
     const outcome = await directoryFile(
-      filesIn(step.directory, step.candidates, lookup.host),
+      filesIn(step.directory, step.candidates, { host: lookup.host, walked: step.walked }),
       channels,
     );
     if (outcome !== undefined) {
