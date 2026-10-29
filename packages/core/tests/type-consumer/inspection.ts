@@ -3,6 +3,7 @@ import type {
   ArgumentNode,
   CommandGraph,
   CommandNode,
+  ConfigurationNode,
   OptionNode,
   PostInstall,
   StandardJSONSchemaV1,
@@ -31,6 +32,10 @@ const aliases: readonly string[] = root.aliases;
 // `version` is never absent, `postInstall` is absent where the Application declares none, and every other core fact reads as an optional string.
 const version: string = graph.version;
 const postInstall: PostInstall | undefined = graph.postInstall;
+// The configuration fact is null with no configuration source, and its schema a read-only record or null.
+const configuration: ConfigurationNode | null = graph.configuration;
+const configurationSchema: Readonly<Record<string, unknown>> | null | undefined =
+  graph.configuration?.schema;
 const summary: string | undefined = graph.description;
 const rootSummary: string | undefined = root.description;
 const argumentSummary = (slot: ArgumentNode): string | undefined => slot.description;
@@ -131,3 +136,5 @@ void rootDeprecated;
 void optionHidden;
 void optionDeprecated;
 void optionAliases;
+void configuration;
+void configurationSchema;

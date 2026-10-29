@@ -91,7 +91,7 @@ function describesObject(schema: Record<string, unknown>): boolean {
  * the `$schema` pointer. Core reads its standard properties inside its own converter guard, so the
  * author's properties are read there, when core asks, and never at the `configuration()` call.
  */
-function publishedSchema(schema: StandardSchemaV1): StandardSchemaV1 {
+function pointerListingSchema(schema: StandardSchemaV1): StandardSchemaV1 {
   return {
     get '~standard'() {
       const standard = schema['~standard'];
@@ -113,4 +113,4 @@ function withoutPointer(object: Record<string, unknown>): Record<string, unknown
   return Object.fromEntries(Object.entries(object).filter(([key]) => key !== pointerKey));
 }
 
-export { publishedSchema, withoutPointer };
+export { pointerListingSchema, withoutPointer };

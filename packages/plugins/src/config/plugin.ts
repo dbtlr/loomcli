@@ -13,7 +13,7 @@ import { configInput } from './extension.js';
 import { judgeLinks } from './links.js';
 import { configIdentity as identity } from './names.js';
 import { envVariable, fileCandidates } from './pattern.js';
-import { publishedSchema } from './pointer.js';
+import { pointerListingSchema } from './pointer.js';
 import type { EmptyFileGuard } from './schema-types.js';
 import type { Loaded } from './shared.js';
 
@@ -152,7 +152,7 @@ function configuration<
         const { configSource } = await import('./source.js');
         return { default: configSource<Schema, Directory>(shared) };
       },
-      schema: publishedSchema(settings.schema),
+      schema: pointerListingSchema(settings.schema),
     },
   });
   const values: ConfigProvider<Schema, Directory> = provider('config', {

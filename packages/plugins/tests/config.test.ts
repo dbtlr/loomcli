@@ -2248,7 +2248,7 @@ test('the graph publishes the schema the plugin hands core, with a $schema strin
 });
 
 /** A Standard Schema that accepts any value and publishes the JSON Schema given. */
-function publishing(answer: Record<string, unknown>): StandardSchemaV1 {
+function publishing(answer: Readonly<Record<string, unknown>>): StandardSchemaV1 {
   const standard = {
     jsonSchema: { input: () => answer, output: () => answer },
     validate: (value: unknown) => ({ value }),
@@ -2266,6 +2266,17 @@ function publishedFor(schema: StandardSchemaV1) {
 }
 
 const pointer = { type: 'string' };
+
+/** A value frozen at every depth, so any write into it throws. */
+function deepFreeze<Value>(value: Value): Value {
+  if (typeof value === 'object' && value !== null) {
+    for (const item of Object.values(value)) {
+      deepFreeze(item);
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
 
 test.each([
   [
@@ -2297,9 +2308,10 @@ test.each([
     { anyOf: [{ type: 'object' }, { type: 'null' }] },
   ],
 ])('the published schema: %s', (_case, answer, expected) => {
-  expect(publishedFor(publishing(answer))).toEqual({ schema: expected });
-  // The library's own answer is never changed.
-  expect(answer).not.toHaveProperty('properties.$schema', pointer);
+  // The library's own answer is never changed, so a frozen answer publishes too.
+  const before = structuredClone(answer);
+  expect(publishedFor(publishing(deepFreeze(answer)))).toEqual({ schema: expected });
+  expect(answer).toEqual(before);
 });
 
 test('a schema with no converter publishes null', () => {

@@ -133,9 +133,20 @@ test.each([
       rule: { identity: '@loomcli/core/schema-converter-failed' },
       sentence,
     });
+    expect(fault).toMatchObject({
+      findings: [{ call: 'plugin', mark: '1.source.schema' }],
+    });
     expect(app.check()).toMatchObject([{ sentence }]);
   },
 );
+
+test('a converter that throws keeps the thrown value as the fault cause', () => {
+  const thrown = new Error('No JSON Schema.');
+  const schema = converting(() => {
+    throw thrown;
+  }).schema;
+  expect(thrownBy(() => application(source(schema)).inspect())).toMatchObject({ cause: thrown });
+});
 
 test("check() lists an input's converter fault before the configuration schema's", () => {
   const app = new Application('app', { plugins: [source(throwingSchema('Source.'))] })
