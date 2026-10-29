@@ -42,7 +42,7 @@ const config: Linter.Config[] = [
   },
 ];
 
-test('the declarations Loom ships in its own packages and examples pass the four rules', () => {
+test('the declarations Loom ships in its own packages and examples pass every rule', () => {
   expect(sourceDirectories).toContain('examples/textstat/src');
   const files = sourceDirectories.flatMap((directory) => sourceFiles(directory));
   expect(files.length).toBeGreaterThan(50);

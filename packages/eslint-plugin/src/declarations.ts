@@ -2,8 +2,7 @@ import type { Rule, Scope } from 'eslint';
 import type {
   Expression,
   Identifier,
-  ImportNamespaceSpecifier,
-  ImportSpecifier,
+  ImportDeclaration,
   Node,
   ObjectExpression,
   Property,
@@ -93,23 +92,39 @@ function variableOf(sourceCode: SourceCode, identifier: Identifier): Scope.Varia
   return undefined;
 }
 
-/** The one import specifier that declares a variable, or `undefined` for any other binding. */
-function importSpecifierOf(
-  variable: Scope.Variable,
-): { specifier: ImportNamespaceSpecifier | ImportSpecifier; source: unknown } | undefined {
-  const [definition, redeclaration] = variable.defs;
-  if (!definition || redeclaration || definition.type !== 'ImportBinding') {
+/** One specifier of an import declaration: a named, a default, or a namespace import. */
+type ImportBinding = ImportDeclaration['specifiers'][number];
+
+/**
+ * The import an identifier's variable is bound by, with the module specifier it comes from, or
+ * `undefined` for a variable bound any other way and for an undeclared name.
+ */
+function importOf(
+  sourceCode: SourceCode,
+  identifier: Identifier,
+): { readonly specifier: ImportBinding; readonly source: unknown } | undefined {
+  const variable = variableOf(sourceCode, identifier);
+  const [definition, redeclaration] = variable?.defs ?? [];
+  // An `import x = require()` binding is an import binding with no module specifier to read.
+  if (
+    !definition ||
+    redeclaration ||
+    definition.type !== 'ImportBinding' ||
+    definition.parent.type !== 'ImportDeclaration'
+  ) {
     return undefined;
   }
-  const { node, parent } = definition;
-  if (node.type === 'ImportDefaultSpecifier') {
-    return undefined;
-  }
-  return { source: parent.source.value, specifier: node };
+  return { source: definition.parent.source.value, specifier: definition.node };
 }
 
-/** The name an import specifier takes from its module, which may be spelled as a string. */
-function importedName(specifier: ImportSpecifier): string {
+/**
+ * The name a named import takes from its module, which may be spelled as a string, or `undefined`
+ * for a default or namespace import.
+ */
+function importedName(specifier: ImportBinding): string | undefined {
+  if (specifier.type !== 'ImportSpecifier') {
+    return undefined;
+  }
   const { imported } = specifier;
   return imported.type === 'Identifier' ? imported.name : String(imported.value);
 }
@@ -119,18 +134,13 @@ function importedName(specifier: ImportSpecifier): string {
  * `undefined` for an identifier bound any other way.
  */
 function coreExportOf(sourceCode: SourceCode, identifier: Identifier): string | undefined {
-  const variable = variableOf(sourceCode, identifier);
-  const imported = variable && importSpecifierOf(variable);
-  if (imported?.source !== corePackage || imported.specifier.type !== 'ImportSpecifier') {
-    return undefined;
-  }
-  return importedName(imported.specifier);
+  const imported = importOf(sourceCode, identifier);
+  return imported?.source === corePackage ? importedName(imported.specifier) : undefined;
 }
 
 /** Whether an identifier is a namespace import of `@loomcli/core`, as in `import * as loom`. */
 function isCoreNamespace(sourceCode: SourceCode, identifier: Identifier): boolean {
-  const variable = variableOf(sourceCode, identifier);
-  const imported = variable && importSpecifierOf(variable);
+  const imported = importOf(sourceCode, identifier);
   return imported?.source === corePackage && imported.specifier.type === 'ImportNamespaceSpecifier';
 }
 
@@ -170,6 +180,21 @@ function constantInit(variable: Scope.Variable): Expression | undefined {
   return definition.parent.kind === 'const' && id.type === 'Identifier'
     ? (init ?? undefined)
     : undefined;
+}
+
+/**
+ * The initializer of the `const` an identifier names, with `traced` grown by that constant, or
+ * `undefined` for any other binding and for a constant already followed, so a constant that names
+ * itself ends a walk.
+ */
+function followConstant(
+  sourceCode: SourceCode,
+  identifier: Identifier,
+  traced: ReadonlySet<Scope.Variable>,
+): { readonly init: Expression; readonly traced: ReadonlySet<Scope.Variable> } | undefined {
+  const variable = variableOf(sourceCode, identifier);
+  const init = variable && !traced.has(variable) ? constantInit(variable) : undefined;
+  return variable && init ? { init, traced: new Set([...traced, variable]) } : undefined;
 }
 
 /** The authoring call a node is, when its receiver is a Loom declaration, else `undefined`. */
@@ -214,11 +239,8 @@ function isDeclaration(
       return authoringCallOf(sourceCode, target, traced) !== undefined;
     }
     case 'Identifier': {
-      const variable = variableOf(sourceCode, target);
-      const init = variable && !traced.has(variable) ? constantInit(variable) : undefined;
-      return variable !== undefined && init !== undefined
-        ? isDeclaration(sourceCode, init, new Set([...traced, variable]))
-        : false;
+      const followed = followConstant(sourceCode, target, traced);
+      return followed !== undefined && isDeclaration(sourceCode, followed.init, followed.traced);
     }
     default: {
       return false;
@@ -299,10 +321,14 @@ export {
   authoringCallOf,
   constructorOf,
   coreCalleeOf,
+  followConstant,
+  importedName,
+  importOf,
+  isNode,
   literalString,
   memberKey,
   positionalArguments,
   readProperty,
   unwrapped,
 };
-export type { Argument, AuthoringCall, PropertyReading };
+export type { Argument, AuthoringCall, ImportBinding, PropertyReading };

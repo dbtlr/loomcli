@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { discardedDeclaration } from './rules/discarded-declaration.js';
 import { hostBypass } from './rules/host-bypass.js';
 import { nameShape } from './rules/name-shape.js';
+import { strictConfigurationSchema } from './rules/strict-configuration-schema.js';
 import { undescribed } from './rules/undescribed.js';
 
 /** The plugin's published name, which is also the specifier both tools load it by. */
@@ -30,6 +31,7 @@ const rules = {
   'discarded-declaration': discardedDeclaration,
   'host-bypass': hostBypass,
   'name-shape': nameShape,
+  'strict-configuration-schema': strictConfigurationSchema,
   undescribed,
 };
 

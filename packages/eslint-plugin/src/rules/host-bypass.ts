@@ -11,6 +11,7 @@ import type {
   Program,
 } from 'estree';
 
+import { importedName } from '../declarations.js';
 import { ruleUrl } from '../docs.js';
 
 /*
@@ -99,15 +100,6 @@ function spelled(node: Node): string | undefined {
     return node.name;
   }
   return node.type === 'Literal' && typeof node.value === 'string' ? node.value : undefined;
-}
-
-/** The name an import specifier imports, or none for a default or namespace import. */
-function importedName(specifier: ImportDeclaration['specifiers'][number]): string | undefined {
-  if (specifier.type !== 'ImportSpecifier') {
-    return undefined;
-  }
-  const { imported } = specifier;
-  return imported.type === 'Identifier' ? imported.name : String(imported.value);
 }
 
 /** The report data for a use of `process`: what it reached, and what to use instead. */
