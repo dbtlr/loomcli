@@ -4,7 +4,7 @@ title: ADR-0118 - The configuration plugin reads one schema-described file throu
 description: configuration({ schema, file, short, env, directory, notice }) replaces config() and returns { plugin, values }. The schema is one required Standard Schema for the whole file whose input accepts an empty file. The plugin drops the value at each issue's path and validates again until the file passes, names each drop at -v, and ignores unknown keys. values is a provider read as provided.config. An option links to a key with configInput beside env, takes the file's value once the file passes, and a link the schema cannot hold is a build fault where the schema publishes its shape. A linked option resolves a relative path against the file's directory, and provided.config keeps paths as written. A lint rule advises against a strict schema.
 status: proposed
 created: 2026-10-28
-modified: 2026-10-28
+modified: 2026-10-29
 ---
 
 # ADR-0118 - The configuration plugin reads one schema-described file through a provider and drops what the schema rejects
@@ -62,3 +62,4 @@ Proposed. It moves to accepted in the release PR of the release that ships `conf
 ## Changelog
 
 - 2026-10-28: Proposed with the configuration contract (LM-426). It supersedes ADR-0054's `config({ file, short })` settings, which `configuration()` carries forward, and, with ADR-0117, ADR-0039's clause that a wrong value is a usage failure. Each carries a dated entry. It closes LM-376: unknown keys are ignored and never reported.
+- 2026-10-29: [ADR-0121](0121-the-configuration-source-publishes-its-files-json-schema-as-a-core-graph-fact.md), proposed, passes the configuration schema to core's source slot, so the graph and the manifest publish the file's shape with a `$schema` property added, has the plugin remove a top-level `$schema` key before it validates, and has the link check read the graph's `configuration.schema` in place of its own conversion. It binds when that record is accepted.

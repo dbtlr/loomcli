@@ -58,10 +58,13 @@ const invalidImplied = registerRule('@loomcli/core/invalid-implied', {
   headline: 'Implied value rejected',
 });
 
-/** A validator's JSON Schema converter that threw or returned a value that is not a plain object. */
+/**
+ * A JSON Schema converter that threw or returned a value that is not a plain object: an input
+ * validator's, or the configuration source schema's.
+ */
 const schemaConverterFailed = registerRule('@loomcli/core/schema-converter-failed', {
   explanation:
-    "Help, the manifest, and completion read what an input accepts from the JSON Schema its validator publishes. A converter that throws or returns anything but a plain object publishes no shape, so a distributed build reads the input's schema as null.",
+    "Help, the manifest, and completion read what an input accepts from the JSON Schema its validator publishes, and the manifest reads the configuration's JSON Schema from the configuration source's schema. A converter that throws or returns anything but a plain object publishes no JSON Schema, so a distributed build reads that schema as null.",
   headline: 'Schema converter failed',
 });
 

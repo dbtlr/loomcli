@@ -731,7 +731,11 @@ class ApplicationBuilder<
     let frozen: CommandGraph | undefined = undefined;
     const converterFault = checks.development ? checks.fault : undefined;
     const inspected = () =>
-      (frozen ??= inspectGraph(this.#name, graph, { ...facts, converterFault }));
+      (frozen ??= inspectGraph(this.#name, graph, {
+        ...facts,
+        converterFault,
+        source: installedSource(plugins)?.source,
+      }));
     if (checks.development) {
       // A build that checks converters asks every one at build, so its check runs on every build.
       inspected();

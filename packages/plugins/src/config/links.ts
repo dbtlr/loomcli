@@ -1,11 +1,5 @@
 import { DeclarationError, readExtension } from '@loomcli/core';
-import type {
-  CommandGraph,
-  CommandNode,
-  GraphBuiltHook,
-  OptionNode,
-  StandardSchemaV1,
-} from '@loomcli/core';
+import type { CommandGraph, CommandNode, GraphBuiltHook, OptionNode } from '@loomcli/core';
 
 import { isRecord } from '../plain-data.js';
 import { configLinkPath, configLinkType } from '../rules.js';
@@ -13,12 +7,12 @@ import { configInput } from './extension.js';
 
 /**
  * The graph judgment of the configuration plugin: an option linked to a path the schema cannot hold
- * is a build fault, where the schema publishes its shape through Standard JSON Schema. The walk
- * reads the shape by the contract's keywords alone, and a schema without a converter, a converter
- * that throws, an open object, and a path through an array get no check.
+ * is a build fault, where core published the file's shape as the graph's `configuration` fact. The
+ * walk reads the shape by the contract's keywords alone, and a schema that publishes no shape, an
+ * open object, and a path through an array get no check.
  */
 
-type Shape = Record<string, unknown>;
+type Shape = Readonly<Record<string, unknown>>;
 
 const noMembers = 0;
 
@@ -29,24 +23,6 @@ const takenTypes = {
   multiple: new Set(['array']),
   string: new Set(['integer', 'number', 'string']),
 };
-
-/** The shape one schema publishes for its input, or `undefined` when it publishes none. */
-function inputShape(schema: StandardSchemaV1): Shape | undefined {
-  const props: object = schema['~standard'];
-  if (!('jsonSchema' in props)) {
-    return undefined;
-  }
-  const converter: unknown = props.jsonSchema;
-  if (!isRecord(converter) || typeof converter.input !== 'function') {
-    return undefined;
-  }
-  try {
-    const shape: unknown = converter.input({ target: 'draft-2020-12' });
-    return isRecord(shape) ? shape : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /** The reference a `$ref` names inside the shape's own `$defs`, or the shape itself for `#`. */
 function referenced(root: Shape, reference: string): Shape | undefined {
@@ -277,23 +253,20 @@ function faultOf(link: Linked, shape: Shape): DeclarationError | undefined {
 }
 
 /**
- * The `onGraphBuilt` hook for one schema. It converts the schema once, only when an option carries
- * the binding, and throws the first fault it finds.
+ * The `onGraphBuilt` hook: it reads the configuration file's shape core published on the graph,
+ * only when an option carries the binding, and throws the first fault it finds.
  */
-export function judgeLinks(schema: StandardSchemaV1): GraphBuiltHook {
-  return (graph) => {
-    const linked = linkedOptions(graph);
-    const [first] = linked;
-    const shape = first === undefined ? undefined : inputShape(schema);
-    if (shape === undefined) {
-      return undefined;
-    }
-    for (const link of linked) {
-      const fault = faultOf(link, shape);
-      if (fault !== undefined) {
-        throw fault;
-      }
-    }
+export const judgeLinks: GraphBuiltHook = (graph) => {
+  const linked = linkedOptions(graph);
+  const shape = linked.length === noMembers ? undefined : graph.configuration?.schema;
+  if (shape === undefined || shape === null) {
     return undefined;
-  };
-}
+  }
+  for (const link of linked) {
+    const fault = faultOf(link, shape);
+    if (fault !== undefined) {
+      throw fault;
+    }
+  }
+  return undefined;
+};

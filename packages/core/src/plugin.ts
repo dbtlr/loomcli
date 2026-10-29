@@ -1,3 +1,5 @@
+import type { StandardSchemaV1 } from '@standard-schema/spec';
+
 import { claimVariables } from './bindings.js';
 import type { MiddlewareContext } from './chain.js';
 import { attach, childNode, commandCode, commandNode } from './command.js';
@@ -91,7 +93,9 @@ interface DeclaredPlugin {
   views?: readonly ViewContribution[] | undefined;
   translators?: readonly Translation[] | undefined;
   failureEncoders?: readonly FailureEncoding[] | undefined;
-  source?: { binding: AnyExtension; load: () => unknown } | undefined;
+  source?:
+    | { binding: AnyExtension; load: () => unknown; schema?: StandardSchemaV1 | undefined }
+    | undefined;
   commands?: readonly unknown[] | undefined;
 }
 
@@ -224,6 +228,11 @@ interface PluginDefinition<
   source?: {
     binding: AnyExtension & { readonly target: 'option' };
     load: () => Promise<{ default: SourceResolver<Plugin<Options>> }>;
+    /**
+     * The Standard Schema of the whole configuration the source reads. Core never validates with
+     * it: graph build publishes its JSON Schema as the graph's `configuration` fact.
+     */
+    schema?: StandardSchemaV1;
   };
   /**
    * The Commands the plugin attaches to the root. Each may require this plugin's own options, which
@@ -530,11 +539,17 @@ function readCommands(identity: string, list: readonly unknown[]): readonly Atta
 
 /**
  * One plugin's configuration source: the identity of the binding that marks an option as
- * configuration-bound, and the loader that fetches the resolver's module.
+ * configuration-bound, the loader that fetches the resolver's module, and the schema of the
+ * configuration it reads, with the finding and subject a failed converter reports.
  */
 interface BuiltSource {
   binding: string;
   load: () => unknown;
+  schema: StandardSchemaV1 | undefined;
+  /** The finding that marks `schema` in the `plugin()` call. */
+  schemaFinding: Finding;
+  /** The plugin as a sentence names it: `Plugin "@acme/config"`. */
+  subject: string;
 }
 
 /**
@@ -548,12 +563,18 @@ function readSource(identity: string, declaration: DeclaredPlugin, build: Plugin
   if (declared === undefined) {
     return undefined;
   }
-  const { binding, load } = declared;
+  const { binding, load, schema } = declared;
   const site = pluginSlot(identity, 'source', declared);
   registerDescriptor(build.descriptors, binding, {
     place: partFinding(site, ['binding']),
   });
-  return { binding: binding.identity, load };
+  return {
+    binding: binding.identity,
+    load,
+    schema,
+    schemaFinding: partFinding(site, ['schema']),
+    subject: pluginSentence(identity),
+  };
 }
 
 /** One plugin's declarations, read once at its `plugin()` call. */

@@ -1,4 +1,4 @@
-import { Application, Command, processHandle } from '@loomcli/core';
+import { Application, Command, extension, plugin, processHandle } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { json } from '@loomcli/plugins/format/views';
 import { help } from '@loomcli/plugins/help';
@@ -118,6 +118,25 @@ const published = (input) => () =>
     .option('odd', { description: 'An odd schema.', type: 'string', validate: publishing(input) })
     .action(dispatch);
 
+const configKey = extension('@fixture/config/key', { schema: z.string(), target: 'option' });
+
+/** An application whose configuration source declares the schema `input` publishes. */
+const configured = (input) => () =>
+  new Application('app', {
+    description: 'Probe a configuration.',
+    plugins: [
+      manifest(),
+      plugin('@fixture/config', {
+        extensions: [configKey],
+        source: {
+          binding: configKey,
+          load: async () => ({ default: async () => ({}) }),
+          schema: publishing(input),
+        },
+      }),
+    ],
+  }).action(dispatch);
+
 /** A value that holds itself, which no JSON text can carry. */
 function looped() {
   const value = { type: 'string' };
@@ -180,6 +199,8 @@ const scenarios = {
   'array-date': () => defaulted([new Date(0)]),
   bigint: () => defaulted(10n),
   'child-nan': () => placed('child', Number.NaN),
+  'configuration-nan': configured(() => ({ minimum: Number.NaN, type: 'object' })),
+  configured: configured(() => ({ properties: { retries: { type: 'integer' } }, type: 'object' })),
   date: () => defaulted(new Date(0)),
   'deep-bigint': () => defaulted({ outer: { inner: 10n } }),
   function: () => defaulted(() => 'ten'),

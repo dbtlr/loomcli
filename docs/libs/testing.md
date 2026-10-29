@@ -78,7 +78,7 @@ test('the application assembles', () => {
 `assertAssembles` covers what `Application.check()` covers, and builds no rule of its own:
 
 - Every build rule `inspect()` applies. A build-rule fault ends the build, so it is the one fault in the list.
-- The input-schema converter check, whatever the release facts read, the post-install command's routing check, and every `onGraphBuilt` hook. Past a built graph, each failing converter and each rejecting or broken hook is its own fault, and the build goes on.
+- The converter check of the input schemas and the configuration source's schema, whatever the release facts read, the post-install command's routing check, and every `onGraphBuilt` hook. Past a built graph, each failing converter and each rejecting or broken hook is its own fault, and the build goes on.
 
 It does not pass a declared default or an implied value through its validator. A validator may answer asynchronously and read the run's host, so a bad default surfaces on the application's first run, which reports it.
 

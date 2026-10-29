@@ -164,7 +164,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/schema-converter-failed
 
-**Schema converter failed.** Help, the manifest, and completion read what an input accepts from the JSON Schema its validator publishes. A converter that throws or returns anything but a plain object publishes no shape, so a distributed build reads the input's schema as null.
+**Schema converter failed.** Help, the manifest, and completion read what an input accepts from the JSON Schema its validator publishes, and the manifest reads the configuration's JSON Schema from the configuration source's schema. A converter that throws or returns anything but a plain object publishes no JSON Schema, so a distributed build reads that schema as null.
 
 ### @loomcli/core/sibling-name-taken
 

@@ -5,6 +5,7 @@ import { dropUntilPasses } from './drop.js';
 import type { Removal, Step } from './drop.js';
 import { findFile } from './lookup.js';
 import type { UsableFile } from './lookup.js';
+import { withoutPointer } from './pointer.js';
 
 /**
  * What the source and the provider of one `configuration()` call share: the lookup, the read, and
@@ -93,7 +94,9 @@ async function load<Schema extends StandardSchemaV1>(
     },
     { out, style },
   );
-  const passed = await dropUntilPasses(shared.schema, usable?.object ?? {}, (removal) =>
+  // The `$schema` pointer names the file's hosted schema for an editor, and is never a setting.
+  const object = usable === undefined ? {} : withoutPointer(usable.object);
+  const passed = await dropUntilPasses(shared.schema, object, (removal) =>
     out.debug(removalLine(removal, usable?.file.shown, style)),
   );
   return {
