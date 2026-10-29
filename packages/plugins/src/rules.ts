@@ -11,7 +11,7 @@ import { packageName } from './constants.js';
 /** A configuration plugin `file` setting that is not a relative path. */
 const configFilePath = diagnosticRule(`${packageName}/config/file-path`, {
   explanation:
-    'The configuration plugin looks for its file in the working directory and then in the home directory, so file is a relative path whose segments each name a directory or a file.',
+    'The configuration plugin looks for its file in the start directory, each of its ancestors, and the home directory, so file is a relative path whose segments each name a directory or a file.',
   headline: 'Invalid configuration file path',
 });
 
