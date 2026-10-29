@@ -2314,6 +2314,20 @@ test.each([
   expect(answer).toEqual(before);
 });
 
+test('a schema whose converter throws, as zod does for a bigint, publishes null and the run goes on', async () => {
+  const schema = z.object({ big: z.bigint().optional(), retries: z.number().optional() });
+  expect(publishedFor(schema)).toEqual({ schema: null });
+  const app = new Application('app', { plugins: [configuration({ schema }).plugin] }).action(
+    ({ out }) => out.print('ran'),
+  );
+  const process = mockProcess({});
+  await app.run({ process });
+  expect({ code: process.exitCode ?? 0, stdout: process.stdout.text }).toEqual({
+    code: 0,
+    stdout: 'ran\n',
+  });
+});
+
 test('a schema with no converter publishes null', () => {
   expect(publishedFor(object({ retries: optional(number()) }))).toEqual({ schema: null });
 });

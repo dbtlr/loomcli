@@ -2,7 +2,6 @@ import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/sp
 
 import { envNames } from './bindings.js';
 import type { ArgumentSlot, BuiltCommand, BuiltGraph } from './command.js';
-import type { Finding } from './diagnostic-text.js';
 import { asSentence, DeclarationError, InternalError, reasonOf } from './errors.js';
 import type { ExtensionRecords } from './extension.js';
 import { partOf, siteFinding } from './facts.js';
@@ -250,11 +249,6 @@ interface SchemaCheck {
   readonly siteOf: (input: InputDeclaration) => InputSite | undefined;
 }
 
-const inputCorrection =
-  'Fix the converter so it returns a JSON Schema object, or declare a validator that publishes none.';
-const sourceCorrection =
-  'Fix the converter so it returns a JSON Schema object, or pass a schema that publishes none.';
-
 /** How one converter failed: the clause after its subject, and the thrown value when it threw. */
 interface FailedConverter {
   readonly failure: string;
@@ -262,22 +256,16 @@ interface FailedConverter {
 }
 
 /**
- * The converter fault a development build reports for one schema: the subject that owns it, such
- * as an input's validator or a plugin's configuration schema, the finding that marks it, and the
- * way it failed, with the thrown value as its cause when the converter threw.
+ * The converter fault a development build reports for one input, with the finding that marks its
+ * validator and the way it failed, with the thrown value as its cause when the converter threw.
  */
-function converterFault(
-  owner: {
-    readonly correction: string;
-    readonly subject: string;
-    readonly findings: readonly Finding[];
-  },
-  failed: FailedConverter,
-) {
+function converterFault(input: InputDeclaration, check: SchemaCheck, failed: FailedConverter) {
+  const site = check.siteOf(input);
   const parts = {
-    correction: owner.correction,
-    findings: owner.findings,
-    sentence: `${owner.subject} JSON Schema converter ${failed.failure}`,
+    correction:
+      'Fix the converter so it returns a JSON Schema object, or declare a validator that publishes none.',
+    findings: site === undefined ? [] : [siteFinding(site, partOf(site, 'validate'))],
+    sentence: `${declarationSubject(input)} validator's JSON Schema converter ${failed.failure}`,
   };
   return 'cause' in failed
     ? new DeclarationError(schemaConverterFailed, parts, { cause: failed.cause })
@@ -331,45 +319,25 @@ function inputSchema(input: InputDeclaration, check: SchemaCheck): InputSchema {
   const { fault } = check;
   return publishedSchema(
     schema,
-    fault &&
-      ((failed) => {
-        const site = check.siteOf(input);
-        const findings = site === undefined ? [] : [siteFinding(site, partOf(site, 'validate'))];
-        const subject = `${declarationSubject(input)} validator's`;
-        fault(converterFault({ correction: inputCorrection, findings, subject }, failed));
-      }),
+    fault && ((failed) => fault(converterFault(input, check, failed))),
   );
 }
 
 /**
  * The configuration fact: `null` when no installed plugin claims the source slot, and otherwise the
- * input-side schema the source's `schema` publishes, `null` when it declares none or publishes
- * none. A build that checks converters reports a converter that fails at the `plugin()` call.
+ * input-side schema the source's `schema` publishes, `null` when it declares none or publishes none.
+ * A converter that fails publishes `null` in every build with no fault, because the author installed
+ * the source to read a configuration, and a part JSON Schema cannot express, such as a `bigint`,
+ * must not fail their runs.
  */
-function configurationNode(
-  source: BuiltSource | undefined,
-  fault: ConverterFault,
-): ConfigurationNode | null {
+function configurationNode(source: BuiltSource | undefined): ConfigurationNode | null {
   if (source === undefined) {
     return null;
   }
   const { schema } = source;
-  const published =
-    schema === undefined
-      ? null
-      : publishedSchema(
-          schema,
-          fault &&
-            ((failed) => {
-              const owner = {
-                correction: sourceCorrection,
-                findings: [source.schemaFinding],
-                subject: `${source.subject} configuration schema's`,
-              };
-              fault(converterFault(owner, failed));
-            }),
-        );
-  return Object.freeze({ schema: published });
+  return Object.freeze({
+    schema: schema === undefined ? null : publishedSchema(schema, undefined),
+  });
 }
 
 /** One declaration's extension record, which is the shared empty one when it carries no value. */
@@ -581,9 +549,8 @@ function inspectGraph(
     path: Object.freeze([]),
     records,
   });
-  // The inputs' converters are asked first, so a build that keeps every fault lists theirs first.
   const inspected: CommandGraph = {
-    configuration: configurationNode(facts.source, fault),
+    configuration: configurationNode(facts.source),
     description: facts.description,
     globals,
     name,

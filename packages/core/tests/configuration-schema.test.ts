@@ -7,14 +7,14 @@
  *   configuration source slot, `{ schema: null }` when the source declares no schema or its schema
  *   publishes no converter, and otherwise the input-side JSON Schema its converter returns for
  *   `{ target: 'draft-2020-12' }`, as an input's schema is derived.
- * - A converter that fails. A development `inspect()` and `check()` report
- *   `@loomcli/core/schema-converter-failed` naming the plugin, and a distributed run reads `null`.
+ * - A converter that fails. It publishes `null` in every build, and no build reports a fault for it,
+ *   while an input's converter fault is still reported.
  */
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { Application, DeclarationError, extension, plugin } from '../src/index.js';
+import { Application, extension, plugin } from '../src/index.js';
 import type { CommandGraph, Plugin, StandardSchemaV1 } from '../src/index.js';
 
 const configKey = extension('@fixture/config/key', { schema: z.string(), target: 'option' });
@@ -96,65 +96,29 @@ test('the converter is asked once per build for the target, and its answer is st
   expect(calls).toEqual([{ target: 'draft-2020-12' }]);
 });
 
-/** The fault a call threw, or `undefined` when it threw none. */
-function thrownBy(call: () => unknown): unknown {
-  try {
-    call();
-  } catch (error) {
-    return error;
-  }
-  return undefined;
-}
-
-const converterCorrection =
-  'Fix the converter so it returns a JSON Schema object, or pass a schema that publishes none.';
-
 test.each([
   [
     'throws',
     () => {
-      throw new Error('Transforms cannot be represented.');
+      throw new Error('BigInt cannot be represented in JSON Schema.');
     },
-    'Plugin "@fixture/config" configuration schema\'s JSON Schema converter failed for target "draft-2020-12": Transforms cannot be represented.',
   ],
-  [
-    'answers a value that is not a plain object',
-    () => [1, 2],
-    'Plugin "@fixture/config" configuration schema\'s JSON Schema converter answered target "draft-2020-12" with a value that is not a plain object.',
-  ],
+  ['answers a value that is not a plain object', () => [1, 2]],
 ])(
-  'a converter that %s is a development build fault from inspect() and check()',
-  (_case, answer, sentence) => {
+  'a converter that %s publishes schema: null in a development build, and no check reports it',
+  (_case, answer) => {
     const app = application(source(converting(answer).schema));
-    const fault = thrownBy(() => app.inspect());
-    expect(fault).toBeInstanceOf(DeclarationError);
-    expect(fault).toMatchObject({
-      correction: converterCorrection,
-      rule: { identity: '@loomcli/core/schema-converter-failed' },
-      sentence,
-    });
-    expect(fault).toMatchObject({
-      findings: [{ call: 'plugin', mark: '1.source.schema' }],
-    });
-    expect(app.check()).toMatchObject([{ sentence }]);
+    expect(app.inspect().configuration).toEqual({ schema: null });
+    expect(app.check()).toEqual([]);
   },
 );
 
-test('a converter that throws keeps the thrown value as the fault cause', () => {
-  const thrown = new Error('No JSON Schema.');
-  const schema = converting(() => {
-    throw thrown;
-  }).schema;
-  expect(thrownBy(() => application(source(schema)).inspect())).toMatchObject({ cause: thrown });
-});
-
-test("check() lists an input's converter fault before the configuration schema's", () => {
+test("an input's converter fault is still reported beside a configuration schema that publishes none", () => {
   const app = new Application('app', { plugins: [source(throwingSchema('Source.'))] })
     .option('size', { type: 'string', validate: throwingSchema('Input.') })
     .action(() => undefined);
   expect(app.check().map((fault) => fault.sentence)).toEqual([
     'Option "size" validator\'s JSON Schema converter failed for target "draft-2020-12": Input.',
-    'Plugin "@fixture/config" configuration schema\'s JSON Schema converter failed for target "draft-2020-12": Source.',
   ]);
 });
 

@@ -540,16 +540,12 @@ function readCommands(identity: string, list: readonly unknown[]): readonly Atta
 /**
  * One plugin's configuration source: the identity of the binding that marks an option as
  * configuration-bound, the loader that fetches the resolver's module, and the schema of the
- * configuration it reads, with the finding and subject a failed converter reports.
+ * configuration it reads, which graph build publishes.
  */
 interface BuiltSource {
   binding: string;
   load: () => unknown;
   schema: StandardSchemaV1 | undefined;
-  /** The finding that marks `schema` in the `plugin()` call. */
-  schemaFinding: Finding;
-  /** The plugin as a sentence names it: `Plugin "@acme/config"`. */
-  subject: string;
 }
 
 /**
@@ -568,13 +564,7 @@ function readSource(identity: string, declaration: DeclaredPlugin, build: Plugin
   registerDescriptor(build.descriptors, binding, {
     place: partFinding(site, ['binding']),
   });
-  return {
-    binding: binding.identity,
-    load,
-    schema,
-    schemaFinding: partFinding(site, ['schema']),
-    subject: pluginSentence(identity),
-  };
+  return { binding: binding.identity, load, schema };
 }
 
 /** One plugin's declarations, read once at its `plugin()` call. */
