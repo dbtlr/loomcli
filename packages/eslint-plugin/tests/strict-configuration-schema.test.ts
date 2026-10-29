@@ -103,6 +103,7 @@ tester.run('strict-configuration-schema', strictConfigurationSchema, {
       // A strict object that reaches the schema only loosened, as a field, or inside a function.
       code: `${imports}
         const State = z.strictObject({ channel: z.string(), name: z.string() });
+        const meta = z.strictObject({});
         configuration({
           file: '.tool.toml',
           schema: z.object({
@@ -113,6 +114,7 @@ tester.run('strict-configuration-schema', strictConfigurationSchema, {
             e: State.shape.channel,
             f: z.object({ ...State.shape }),
             g: z.string().refine((value) => State.safeParse({ channel: value }).success),
+            h: z.string().default(import.meta.dirname),
           }),
         });`,
     },
