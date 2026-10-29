@@ -55,6 +55,10 @@ The owner's rulings on LM-269 set the shape:
 
 `configuration()` replaces `config()`, the schema is required, and a wrong value in the file no longer fails the run, so the implementation carries breaking fragments with the migration: an application calls `configuration({ schema })` with a schema for its file, installs `plugin`, and keeps every `configInput` link. textstat migrates in the implementation, and Heimdall's three applications replace `readConfigSection` through a seed on its board. The bet is the drop loop over an opaque Standard Schema and the empty-file type check; the contract's probes against zod, valibot, and ArkType ground both. A schema that implements `StandardJSONSchemaV1` and an application with a linked option convert the schema once per graph build for the link check. LM-377 publishes the file's JSON Schema, LM-379 reads JSONC, and LM-367 shows bindings in help, each after this record's implementation. [Configuration plugin](../plugins/config.md) and [ESLint plugin reference](../libs/eslint-plugin.md) carry the contract.
 
+## Status
+
+Proposed. It moves to accepted in the release PR of the release that ships `configuration()` with the schema, the drop rule, `provided.config`, the link check, and the `strict-configuration-schema` lint rule, with textstat migrated.
+
 ## Changelog
 
 - 2026-10-28: Proposed with the configuration contract (LM-426). It supersedes ADR-0054's `config({ file, short })` settings, which `configuration()` carries forward, and, with ADR-0117, ADR-0039's clause that a wrong value is a usage failure. Each carries a dated entry. It closes LM-376: unknown keys are ignored and never reported.

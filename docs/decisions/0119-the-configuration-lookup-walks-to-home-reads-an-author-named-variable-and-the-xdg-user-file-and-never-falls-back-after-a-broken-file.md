@@ -52,6 +52,10 @@ These rules of ADR-0054 stand: the file pattern and its candidates, the several-
 
 The walk reads more directories, each through one `stat` per candidate, so a run started deep in a tree pays a few more system calls before it reads a file. A broken file in the working directory no longer lets the home file answer, which an operator who relied on that sees as a run with no configuration and a warning that says so. Both are changes for the implementation's fragments. Follow-ups wait for this lookup: LM-375 adds the line and column to the broken-file warning, and LM-378 adds `--no-config`. [Configuration plugin](../plugins/config.md) carries the contract.
 
+## Status
+
+Proposed. It moves to accepted in the release PR of the release that ships the lookup: the variable, the walk, the home file, the XDG user file, no fallback after a broken file, the notice, and the directory option.
+
 ## Changelog
 
 - 2026-10-28: Proposed with the configuration contract (LM-426). It supersedes ADR-0054's lookup in the working directory and then the home directory, its clause that a broken discovered file is absent so the lookup goes on, and its rejection of a per-user XDG file. ADR-0054 carries a dated entry.

@@ -38,6 +38,10 @@ A relative path in a configuration file is written relative to the file, as tsco
 
 The input-source stage keeps its tiers and its precedence. Validation gains one branch for a configuration fill, and the stage reads `directory` from each answer. A third-party configuration source gains the fallback with no change, because it is a rule of the tier. [Input sources](../core/input-sources.md) and [Validation](../core/validation.md) carry the contract.
 
+## Status
+
+Proposed. It moves to accepted in the release PR of the release whose implementation drops a configuration fill its option's validator rejects, writes the `-v` line, and validates an answer that carries a `directory` against that directory.
+
 ## Changelog
 
 - 2026-10-28: Proposed with the configuration contract (LM-426). It narrows ADR-0006's rule that a default never substitutes for invalid input, and ADR-0032's dated reading that a filled value its schema rejects never falls through to the default, for the configuration tier alone, and supersedes ADR-0039's clause that a wrong value in the file is a usage failure. Each carries a dated entry.

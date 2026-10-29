@@ -765,7 +765,7 @@ The one JSON, TOML, or YAML file the first-party configuration plugin reads in a
 _Avoid_: Config, settings file, rc file, dotfile
 
 **Configuration schema**:
-The one Standard Schema an author writes for the whole configuration file, in which every key is optional so that an empty file passes. Application code reads its output as the configuration's provided value.
+The one Standard Schema an author writes for the whole configuration file, in which every object key outside an array item or a record value is optional so that an empty file passes. Application code reads its output as the configuration's provided value.
 _Avoid_: Section schema, config type, settings schema
 
 **Dropped value**:

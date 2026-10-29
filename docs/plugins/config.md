@@ -136,7 +136,7 @@ dir = "../transcripts"
 - **`short`.** Gives `--config` a short spelling under [Plugin settings](../core/plugin-contract.md#plugin-settings), so `short: 'c'` lets an operator type `-c`. With none, `--config` has no short spelling.
 - **`env`.** Names a variable whose value names the configuration file, under **Lookup**. The plugin reads it from `host.env` itself: it is not an environment binding on `--config`, so `inspect()` publishes no `env` for it. The name follows core's variable name rule, `[A-Za-z_][A-Za-z0-9_]*`, and any other value throws a `DeclarationError` from `configuration()`: `@loomcli/plugins/config/variable-name`, `Plugin "@loomcli/plugins/config" env is not a variable name.`, corrected by `Name a variable such as COLLECTOR_CONFIG: a letter or an underscore, then letters, digits, or underscores.`
 - **`directory`.** `{ name, short, description }` makes the plugin declare a global string option, `--<name>`, under **The directory option**. Core judges its name and short spelling as it judges every plugin option's, and the type rejects a `name` of `config`, which would claim `--config`'s spelling.
-- **`notice`.** With `true`, a run whose lookup finds no file writes one line, under **Missing files**.
+- **`notice`.** With `true`, a run with no `--config` and no variable whose search finds no file writes one line, under **Missing files**.
 - **Faults at the call.** `configuration()` judges its settings when it is called: the `file` rules above and below, then the `env` rule. The types reject a `short` that is not one ASCII letter.
 
 ## The schema
