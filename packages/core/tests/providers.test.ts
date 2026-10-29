@@ -228,6 +228,30 @@ describe('opting in', () => {
     ]);
   });
 
+  it('hands an opener out, style, and the graph the run built', async () => {
+    const seen: string[] = [];
+    const note: Provider<'note', string> = provider('note', {
+      load: async () => ({
+        default: async ({ graph, out, style }) => {
+          await out.warn(`Opened under ${graph.name}.`);
+          seen.push(typeof style.escape);
+          return graph.name;
+        },
+      }),
+    });
+    const app = new Application('app').command(
+      new Command('get', { uses: [note] }).action(({ provided }) => {
+        seen.push(`action ${provided.note}`);
+      }),
+    );
+    const { code, stderr } = await run(app, ['get']);
+    expect(code).toBe(0);
+    expect(stderr).toContain('Opened under app.');
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toBe('function');
+    expect(seen[1]).toBe('action app');
+  });
+
   it('builds a provider reached twice once', async () => {
     const lines = journal();
     const pool = recorded(lines, 'pool');

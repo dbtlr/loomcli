@@ -4,7 +4,7 @@ title: ADR-0117 - A configuration value its validator rejects falls back, and a 
 description: A value the configuration source filled that the option's validator rejects is dropped, so the option falls back as if no tier supplied it, and core names the drop in one out.debug line at -v. An answer may carry the absolute directory of the file it came from, and the option's validator then reads that directory as host.cwd. This narrows ADR-0006's and ADR-0032's rule that a filled value its schema rejects fails the run, for the configuration tier alone.
 status: proposed
 created: 2026-10-28
-modified: 2026-10-28
+modified: 2026-10-29
 ---
 
 # ADR-0117 - A configuration value its validator rejects falls back, and a configuration value validates against its file's directory
@@ -20,10 +20,11 @@ A relative path in a configuration file is written relative to the file, as tsco
 ## Decision
 
 - **A rejected configuration fill falls back.** When an option's value came from the configuration source and the option's validator returns issues, core drops the fill. The option then reads as unfilled by every tier: its declared default applies, or it is omitted, under [Absence and defaults](../core/validation.md#absence-and-defaults). A `required` option reports its missing-value error, and an option that declares `validateOmitted` calls its validator with `undefined`. A dropped fill is not present, so it activates no middleware. A multiple option's list is one fill, so one rejected item drops the whole list.
+- **A content option falls back too.** A content option has no validator: core reads its path as content. A path the configuration source filled that core cannot read is dropped as a rejected fill is, with the same `-v` line, and the option reads as unfilled. The owner chose the same rules for content options when the implementation review raised them.
 - **Named at `-v`.** Core writes one `out.debug` line for each dropped fill: `Ignored option "<spelling>" from <label>: <issue>`, where `<spelling>` is the option's [reported spelling](../core/failures.md#failure-classes), `<label>` is the answer's label, and `<issue>` is the first issue's message, with its path after the option as a failure prints one. The line shows at `-v` alone, under [ADR-0090](0090-an-operators-v-or-q-settles-the-runs-verbosity-right-after-graph-build.md).
 - **The configuration tier alone.** A value from argv or the environment that its validator rejects still fails the run with code 2, and a validator that throws is still a developer error. A source's answer of the wrong raw type is still that plugin's defect.
 - **`supplied` is unchanged.** The validation context's `supplied` record is taken before any validator runs, so it holds the raw value the source filled, as it holds every filled value.
-- **An answer carries its file's directory.** `SourceAnswer` gains an optional `directory`, an absolute path. When an answer holds one, the option's validator receives a validation context whose `host` is the run's host with `cwd` replaced by that directory, so `path()` resolves a relative value against the file's directory. Every other field of the host is the run's. A `directory` that is not a string holding an absolute path is a defect of the source, under the rule for answers outside the contract.
+- **An answer carries its file's directory.** `SourceAnswer` gains an optional `directory`, an absolute path. When an answer holds one, the option's validator receives a validation context whose `host` is the run's host with `cwd` replaced by that directory, so `path()` resolves a relative value against the file's directory, and a content option reads a relative path against it. A dropped fill holds no value, so an omission call after the drop reads the run's own host. Every other field of the host is the run's. A `directory` that is not a string holding an absolute path is a defect of the source, under the rule for answers outside the contract.
 - **The configuration schema keeps its paths as written.** A Standard Schema library passes no options to the validators nested inside it, so a configuration plugin cannot hand its own schema a host whose `cwd` is the file's directory, and `path()` cannot be nested in a zod, valibot, or ArkType object. The owner chose that a value the schema reads keeps the path the file wrote, and only a linked option resolves against the file's directory.
 
 ## Considered options
@@ -45,3 +46,4 @@ Proposed. It moves to accepted in the release PR of the release whose implementa
 ## Changelog
 
 - 2026-10-28: Proposed with the configuration contract (LM-426). It narrows ADR-0006's rule that a default never substitutes for invalid input, and ADR-0032's dated reading that a filled value its schema rejects never falls through to the default, for the configuration tier alone, and supersedes ADR-0039's clause that a wrong value in the file is a usage failure. Each carries a dated entry.
+- 2026-10-29: Content options follow the same rules (LM-427): a configuration path core cannot read falls back, and a relative one reads against the answer's directory. An omission call after a drop reads the run's own host.

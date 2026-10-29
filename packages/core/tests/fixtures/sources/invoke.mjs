@@ -109,6 +109,7 @@ const log = () =>
         env: 'FIXTURE_LEVEL',
         extensions: [configKey('log.level')],
         type: 'string',
+        validate: z.string().regex(/^[a-z]+$/u, 'Supply a level name.'),
       },
       verbose: { description: 'Print more.', env: 'FIXTURE_VERBOSE', type: 'boolean' },
     },
@@ -138,6 +139,26 @@ const recording = {
       const supplied = validationContext(options)?.supplied.options.file;
       process.stdout.write(`schema:file:${JSON.stringify({ supplied, value })}\n`);
       return { value: value ?? 'none' };
+    },
+    vendor: 'fixture',
+    version: 1,
+  },
+};
+
+/**
+ * A schema that prints the working directory its context reports, and the raw value its
+ * `supplied` record holds for the option, then accepts the value. It rejects `bad`.
+ */
+const tracing = {
+  '~standard': {
+    validate: (value, options) => {
+      const context = validationContext(options);
+      const { name } = context.input;
+      const supplied = context.supplied.options[name];
+      process.stdout.write(
+        `schema:${name}:${JSON.stringify({ cwd: context.host.cwd, supplied, value })}\n`,
+      );
+      return value === 'bad' ? { issues: [{ message: 'Supply a good one.' }] } : { value };
     },
     vendor: 'fixture',
     version: 1,
@@ -231,6 +252,54 @@ function application() {
       type: 'count',
     })
     .action(print('region'));
+  // Each option a configuration file may fill with a value its validator rejects.
+  const fallback = new Command('fallback', {
+    description: 'The fallback command.',
+  })
+    .option('minimum', {
+      default: '5',
+      description: 'The minimum option.',
+      extensions: [configKey('minimum')],
+      type: 'string',
+      validate: digits,
+    })
+    .option('needed', {
+      description: 'The needed option.',
+      extensions: [configKey('needed')],
+      required: true,
+      type: 'string',
+      validate: digits,
+    })
+    .action(print('fallback'));
+  const traced = new Command('traced', {
+    description: 'The traced command.',
+  })
+    .option('omitted', {
+      description: 'The omitted option.',
+      extensions: [configKey('omitted')],
+      type: 'string',
+      validate: tracing,
+      validateOmitted: true,
+    })
+    .option('where', {
+      description: 'The where option.',
+      extensions: [configKey('where')],
+      type: 'string',
+      validate: tracing,
+    })
+    .action(print('traced'));
+  // A content option a configuration file may fill with a path.
+  const reading = new Command('reading', {
+    description: 'The reading command.',
+  })
+    .option('input', {
+      description: 'The input option.',
+      extensions: [configKey('input')],
+      type: 'content',
+    })
+    .action(({ options, out }) =>
+      out.print(`reading:${JSON.stringify({ path: options.input?.path ?? null })}`),
+    );
   const paint = new Command('paint', {
     description: 'The paint command.',
   })
@@ -250,11 +319,21 @@ function application() {
     .option('name', { description: 'The name option.', env: 'constructor', type: 'string' })
     .option('flag', { description: 'The flag option.', env: 'toString', type: 'boolean' })
     .action(({ options, out }) => out.print(`inherited:${typeof options.name}:${options.flag}`));
-  return new Application('app', {
+  let app = new Application('app', {
     description: 'The app application.',
     plugins: (installed[process.argv[2]] ?? (() => []))(),
     views: overrides[process.env.FIXTURE_VIEWS ?? 'none'],
-  })
+  });
+  // Under FIXTURE_CHATTY the application marks `-v`, so a test reads the debug lines a run writes.
+  if (process.env.FIXTURE_CHATTY === '1') {
+    app = app.globalOption('chatty', {
+      description: 'Print more.',
+      short: 'v',
+      type: 'count',
+      verbose: true,
+    });
+  }
+  return app
     .globalOption('limit', {
       default: '10',
       description: 'The limit option.',
@@ -266,6 +345,9 @@ function application() {
     .command(count)
     .command(select)
     .command(region)
+    .command(fallback)
+    .command(traced)
+    .command(reading)
     .command(paint)
     .command(cache)
     .command(inherited)

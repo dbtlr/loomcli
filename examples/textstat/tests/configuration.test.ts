@@ -576,7 +576,7 @@ test(
       stdout: '',
     });
     rmSync(join(space.project, '.textstat.json'));
-    const home = space.write(space.home, '.textstat.toml', 'minBytes = -1\n');
+    const home = space.write(space.home, '.textstat.toml', 'minBytes = {}\n');
     expect(space.textstat(files).stderr).toContain(`(from minBytes in ${home})`);
   }),
 );

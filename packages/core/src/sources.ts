@@ -1,3 +1,5 @@
+import { isAbsolute } from 'node:path';
+
 import { envNames } from './bindings.js';
 import {
   asSentence,
@@ -230,7 +232,7 @@ function readAnswer(
   sentence: string,
   input: OptionInput,
   answer: unknown,
-): { label: string; value: RawFill } {
+): { directory: string | undefined; label: string; value: RawFill } {
   const shape = isPlainObject(answer) ? answer : undefined;
   const label = shape?.label;
   if (!shape || !isProseLine(label)) {
@@ -245,11 +247,18 @@ function readAnswer(
       `${sentence} answered option ${quoted(input.name)} with a value that is not ${owed[kind]}.`,
     );
   }
-  return { label, value };
+  const { directory } = shape;
+  if (directory !== undefined && (typeof directory !== 'string' || !isAbsolute(directory))) {
+    throw ruleFault(
+      `${sentence} answered option ${quoted(input.name)} with a directory that is not an absolute path.`,
+    );
+  }
+  return { directory, label, value };
 }
 
 /** One answer read under the answers rule, with the requested option it fills. */
 interface Answer {
+  directory: string | undefined;
   label: string;
   target: Requested;
   value: RawFill;
@@ -273,8 +282,8 @@ function readAnswers(
     if (!target) {
       throw ruleFault(`${sentence} answered option ${quoted(name)}, which core did not request.`);
     }
-    const { label, value } = readAnswer(sentence, target.input, answer);
-    return { label, target, value };
+    const { directory, label, value } = readAnswer(sentence, target.input, answer);
+    return { directory, label, target, value };
   });
 }
 
@@ -443,11 +452,17 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
       return { fault: undefined, labels, rejected };
     }
     const options = frozenValues(owner.inputs, validated.values);
-    for (const { label, target, value } of await askSource(stage, { options, owner, requested })) {
+    const fills = new Map<string, { directory: string | undefined }>();
+    for (const { directory, label, target, value } of await askSource(stage, {
+      options,
+      owner,
+      requested,
+    })) {
       fill(target.scope.values, target.input.name, value);
       labels.set(target.input.name, label);
+      fills.set(target.input.name, { directory });
     }
-    return { fault: undefined, labels, rejected };
+    return { fault: undefined, fills, labels, rejected };
   } catch (error) {
     // The resolver's own failure keeps its class, and so its code.
     // Every other fault above is raised as an internal error, and anything else is wrapped the same way.

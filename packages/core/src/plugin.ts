@@ -178,6 +178,11 @@ interface SourceContext<Options extends PluginOptions = PluginOptions> {
 interface SourceAnswer {
   readonly value: string | boolean | number | readonly string[];
   readonly label: string;
+  /**
+   * The absolute path of the directory of the file the value came from. The option's validator
+   * reads it as `host.cwd`, so a relative path in the file resolves against the file.
+   */
+  readonly directory?: string;
 }
 
 /**

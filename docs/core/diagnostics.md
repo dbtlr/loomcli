@@ -176,7 +176,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/source-answers
 
-**Invalid source answers.** A configuration source answers with a record that maps each option core requested to { value, label }, where the value has the raw type the option takes and the label is one line of prose. Core fills no option from any other answer.
+**Invalid source answers.** A configuration source answers with a record that maps each option core requested to { value, label }, where the value has the raw type the option takes and the label is one line of prose, and an answer may add a directory, the absolute path of the folder holding the file the value came from. Core fills no option from any other answer.
 
 ### @loomcli/core/spelling-taken
 

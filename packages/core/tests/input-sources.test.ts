@@ -41,6 +41,9 @@
  *   Declared exit codes acceptance.
  */
 
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
@@ -243,16 +246,147 @@ test('a failure on a filled value names its source, and an argv message is uncha
   expect(run([], { FIXTURE_LIMIT: 'many' }, 'plain').stderr).toBe(
     'app: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.\n',
   );
-  expect(run([], settings({ 'limits.bytes': 'many' })).stderr).toBe(
-    'app: Option "--limit" (from limits.bytes in fixture.json): Supply a whole number.\n',
-  );
   expect(run(['--limit', 'many'], {}, 'plain').stderr).toBe(
     'app: Option "--limit": Supply a whole number.\n',
   );
-  expect(run(['select'], settings({ fields: ['a', ''] })).stderr).toBe(
-    'app: Option "--fields" (from fields in fixture.json) at 1: Supply a field name.\n',
+});
+
+/** Marks the fixture's `-v`, so the run writes its debug lines. */
+const chatty = { FIXTURE_CHATTY: '1' };
+
+test('a configuration value its validator rejects falls back to the default and is named at -v', () => {
+  const rejected = settings({ 'limits.bytes': 'many' });
+  const ran = run([], rejected);
+  expect(ran.status).toBe(0);
+  expect(valueOf(ran.stdout, 'root', 'limit')).toBe('10');
+  expect(ran.stderr).toBe('');
+  const verbose = run(['-v'], { ...rejected, ...chatty });
+  expect(verbose.status).toBe(0);
+  expect(valueOf(verbose.stdout, 'root', 'limit')).toBe('10');
+  expect(verbose.stderr).toContain(
+    'Ignored option "--limit" from limits.bytes in fixture.json: Supply a whole number.\n',
+  );
+  expect(verbose.stderr.match(/Ignored option/gu)).toHaveLength(1);
+  // The environment outranks the file, so a rejected variable still fails the run.
+  expect(run([], { FIXTURE_LIMIT: 'many', ...settings({ 'limits.bytes': '3' }) }).status).toBe(2);
+});
+
+test('a dropped fill leaves a required option missing, with no source in its message', () => {
+  expect(run(['fallback'], settings({ needed: 'many' }))).toMatchObject({
+    status: 2,
+    stderr: 'app: Option "--needed" is required. Supply a value.\n',
+  });
+  expect(run(['fallback'], settings({ minimum: 'many', needed: '1' })).stdout).toContain(
+    '"minimum":"5"',
   );
 });
+
+test('one rejected item drops the whole list, which a required multiple option reports missing', () => {
+  const result = run(['-v', 'select'], { ...chatty, ...settings({ fields: ['a', ''] }) });
+  expect(result.status).toBe(2);
+  expect(result.stderr).toContain(
+    'Ignored option "--fields" at 1 from fields in fixture.json: Supply a field name.\n',
+  );
+  expect(result.stderr).toContain(
+    'app: Option "--fields" is required. Supply at least one value.\n',
+  );
+});
+
+test('a dropped fill activates no middleware', () => {
+  const dropped = run([], settings({ 'log.level': 'LOUD1' }));
+  expect(dropped.status).toBe(0);
+  expect(line(dropped.stdout, 'log')).toBeUndefined();
+  expect(line(run([], settings({ 'log.level': 'loud' })).stdout, 'log')).toContain(
+    '"level":"loud"',
+  );
+});
+
+test('a dropped fill validates as unfilled, and supplied keeps the raw value', () => {
+  const result = run(['traced'], settings({ omitted: 'bad' }));
+  expect(result.status).toBe(0);
+  expect(line(result.stdout, 'schema:omitted')).toBe(
+    `schema:omitted:${JSON.stringify({ cwd: process.cwd(), supplied: 'bad', value: 'bad' })}`,
+  );
+  // The omission call follows the rejected call and carries no value.
+  const calls = result.stdout.split('\n').filter((entry) => entry.startsWith('schema:omitted:'));
+  expect(calls).toHaveLength(2);
+  expect(calls[1]).toBe(
+    `schema:omitted:${JSON.stringify({ cwd: process.cwd(), supplied: 'bad' })}`,
+  );
+  expect(valueOf(result.stdout, 'traced', 'omitted')).toBeUndefined();
+});
+
+test("a dropped fill validates its omission against the run's working directory, not the file's", () => {
+  const env = {
+    ...settings({ omitted: 'bad' }),
+    FIXTURE_DIRECTORY: JSON.stringify('/srv/project'),
+  };
+  const calls = run(['traced'], env)
+    .stdout.split('\n')
+    .filter((entry) => entry.startsWith('schema:omitted:'));
+  expect(calls).toEqual([
+    `schema:omitted:${JSON.stringify({ cwd: '/srv/project', supplied: 'bad', value: 'bad' })}`,
+    `schema:omitted:${JSON.stringify({ cwd: process.cwd(), supplied: 'bad' })}`,
+  ]);
+});
+
+/** The fixtures folder, an absolute directory that holds `source.mjs`. */
+const fixtures = fileURLToPath(new URL('fixtures/sources', import.meta.url));
+
+test('a configuration path its content option cannot read falls back and is named at -v', () => {
+  const missing = settings({ input: 'absent.txt' });
+  const ran = run(['reading'], missing);
+  expect(ran.status).toBe(0);
+  expect(line(ran.stdout, 'reading')).toBe('reading:{"path":null}');
+  expect(ran.stderr).toBe('');
+  const verbose = run(['-v', 'reading'], { ...missing, ...chatty });
+  expect(verbose.status).toBe(0);
+  expect(verbose.stderr).toContain(
+    'Ignored option "--input" from input in fixture.json: Expected a readable file that exists.\n',
+  );
+  // A path typed on the command line still fails the run.
+  expect(run(['reading', '--input', 'absent.txt']).status).toBe(2);
+});
+
+test("a relative configuration path for a content option resolves against the answer's directory", () => {
+  const result = run(['reading'], {
+    ...settings({ input: 'source.mjs' }),
+    FIXTURE_DIRECTORY: JSON.stringify(fixtures),
+  });
+  expect(result.status).toBe(0);
+  expect(line(result.stdout, 'reading')).toBe(
+    `reading:${JSON.stringify({ path: join(fixtures, 'source.mjs') })}`,
+  );
+});
+
+test("an answer's directory is the working directory its option's validator reads", () => {
+  const where = settings({ where: 'x' });
+  const directory = JSON.stringify('/srv/project');
+  const result = run(['traced'], { ...where, FIXTURE_DIRECTORY: directory });
+  expect(line(result.stdout, 'schema:where')).toBe(
+    `schema:where:${JSON.stringify({ cwd: '/srv/project', supplied: 'x', value: 'x' })}`,
+  );
+  // An answer without a directory reads the run's working directory.
+  expect(line(run(['traced'], where).stdout, 'schema:where')).toContain(
+    JSON.stringify(process.cwd()),
+  );
+});
+
+test.each(['relative/dir', '', 7])(
+  'an answer whose directory is %j is a source defect',
+  (value) => {
+    const env = { ...settings({ where: 'x' }), FIXTURE_DIRECTORY: JSON.stringify(value) };
+    expect(run(['traced'], env)).toMatchObject({
+      status: 1,
+      stderr: 'app: Something went wrong.\n',
+    });
+    const result = run(['traced'], { ...env, FIXTURE_BUILD: 'development' });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      '\n\nPlugin "@fixture/config" answered option "where" with a directory that is not an absolute path.\n',
+    );
+  },
+);
 
 test("with a local parse fault, a plugin's option still fills and activates and a local one does not", () => {
   expect(run(['count', '--bogus'], { FIXTURE_TOTAL: '1', FIXTURE_VERBOSE: '1' })).toEqual({

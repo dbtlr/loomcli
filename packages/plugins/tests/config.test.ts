@@ -481,16 +481,13 @@ test(
   inWorkspace(async (space) => {
     const nested = settings({ file: '.app/config.{yaml,json}' });
     space.write('.app/config.yaml', 'limits: { bytes: many }\n');
-    await expect(space.stderr([], nested)).resolves.toBe(
-      wrong('Option "--limit" (from limits.bytes in .app/config.yaml): Supply a whole number.'),
-    );
+    // A wrong value in the file falls back to the default, and only -v names the drop.
+    await expect(space.stderr([], nested)).resolves.toBe('');
     rmSync(join(space.project, '.app'), { recursive: true });
     const yaml = space.write('.app/config.yaml', 'limits: { bytes: many }\n', space.home);
     const json5 = space.write('.app/config.json', '{}', space.home);
     const result = await space.run([], nested);
-    expect(result.stderr).toBe(
-      `${several(json5, yaml)}${wrong(`Option "--limit" (from limits.bytes in ${yaml}): Supply a whole number.`)}`,
-    );
+    expect(result.stderr).toBe(several(json5, yaml));
   }),
 );
 
@@ -984,11 +981,8 @@ test(
         ),
       );
       space.write('my configs/app.json', json({ limits: { bytes: 'x' } }));
-      await expect(space.stderr(['--config', 'my configs/app.json'], env)).resolves.toBe(
-        wrong(
-          'Option "--limit" (from limits.bytes in my configs/app.json): Supply a whole number.',
-        ),
-      );
+      // The wrong value falls back to the default, so the run prints nothing.
+      await expect(space.stderr(['--config', 'my configs/app.json'], env)).resolves.toBe('');
       rmSync(join(space.project, 'my configs'), { force: true, recursive: true });
     }
   }),
@@ -1238,14 +1232,15 @@ test(
   'a file found in an ancestor shows as its full path, a file in the working directory as file names it',
   inWorkspace(async (space) => {
     const start = nest(space.project, 'a');
-    const found = space.write('.app.json', json({ limits: { bytes: 'many' } }));
+    // A value of the wrong type still fails the run, so its label reaches stderr.
+    const found = space.write('.app.json', json({ limits: { bytes: {} } }));
     const result = await space.run([], { FIXTURE_CWD: start });
     expect(result.stderr).toBe(
-      wrong(`Option "--limit" (from limits.bytes in ${found}): Supply a whole number.`),
+      wrong(`Option "--limit" (from limits.bytes in ${found}): Use a string or a number.`),
     );
-    const near = space.write('.app.json', json({ limits: { bytes: 'many' } }), start);
+    const near = space.write('.app.json', json({ limits: { bytes: {} } }), start);
     await expect(space.stderr([], { FIXTURE_CWD: start })).resolves.toBe(
-      wrong(`Option "--limit" (from limits.bytes in .app.json): Supply a whole number.`),
+      wrong(`Option "--limit" (from limits.bytes in .app.json): Use a string or a number.`),
     );
     expect(near).toBe(join(start, '.app.json'));
   }),

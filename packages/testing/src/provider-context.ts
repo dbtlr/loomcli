@@ -4,8 +4,9 @@
  */
 import type { ProviderContext } from '@loomcli/core';
 
-import { logWith, neverAborts, registersNothing, unstated } from './unstated-members.js';
+import { logWith, neverAborts, outWith, registersNothing, unstated } from './unstated-members.js';
 import type { OptionalMembers } from './unstated-members.js';
+import { unstatedStyle } from './unstated-style.js';
 
 /**
  * What a test states to build a provider context: `options` and `provided` whole, and any other
@@ -35,12 +36,17 @@ function providerContext<Globals, Provided>(
 ): ProviderContext<Globals, Provided> {
   return {
     ...values,
+    get graph() {
+      return values.graph ?? unstated('providerContext', 'graph');
+    },
     get host() {
       return values.host ?? unstated('providerContext', 'host');
     },
     log: logWith(values.log),
     onShutdown: values.onShutdown ?? registersNothing,
+    out: outWith(values.out, 'providerContext'),
     signal: values.signal ?? neverAborts(),
+    style: values.style ?? unstatedStyle(),
   };
 }
 

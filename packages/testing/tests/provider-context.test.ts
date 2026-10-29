@@ -55,4 +55,32 @@ describe('providerContext', () => {
       new Error('providerContext has no host. Add host to its values.'),
     );
   });
+
+  it('answers out, style, and onShutdown with inert members, and asks for the graph', async () => {
+    const context = providerContext(open, {
+      options: { token: undefined },
+      provided: { pool: { url: '' } },
+    });
+    await expect(context.out.warn('Skipped.')).resolves.toBeUndefined();
+    expect(context.style.red('text')).toBe('text');
+    expect(() => context.graph).toThrow(
+      new Error('providerContext has no graph. Add graph to its values.'),
+    );
+  });
+
+  it('keeps the out member the test states and the inert rest', async () => {
+    const lines: string[] = [];
+    const context = providerContext(open, {
+      options: { token: undefined },
+      out: {
+        warn: async (message) => {
+          lines.push(message);
+        },
+      },
+      provided: { pool: { url: '' } },
+    });
+    await context.out.warn('Loud.');
+    await context.out.debug('Quiet.');
+    expect(lines).toEqual(['Loud.']);
+  });
 });

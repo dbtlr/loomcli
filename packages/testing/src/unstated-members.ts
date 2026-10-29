@@ -87,9 +87,12 @@ function inertRegion(): Region {
 }
 
 /** The builders whose context carries an `out`, and the function each builds one for. */
-const outBuilders: Readonly<Record<'actionContext' | 'middlewareContext', string>> = {
+const outBuilders: Readonly<
+  Record<'actionContext' | 'middlewareContext' | 'providerContext', string>
+> = {
   actionContext: 'action',
   middlewareContext: 'middleware',
+  providerContext: 'provider',
 };
 
 /**

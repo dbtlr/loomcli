@@ -359,6 +359,14 @@ export function isSupplied(values: OptionValues, name: string): boolean {
   );
 }
 
+/** Removes the value an input source filled, so the option reads as unfilled by every tier. */
+export function withdrawFill(values: OptionValues, name: string): void {
+  values.booleans.delete(name);
+  values.counts.delete(name);
+  values.lists.delete(name);
+  values.strings.delete(name);
+}
+
 /** One run's own copy of parsed values, which the input-source stage fills without touching argv's. */
 export function copyValues(values: OptionValues): OptionValues {
   return {

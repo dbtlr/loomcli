@@ -1,10 +1,12 @@
 import { DeclarationError, quoted } from './errors.js';
 import { partFinding } from './facts.js';
 import type { FactSite } from './facts.js';
+import type { CommandGraph } from './inspect.js';
 import type { Log } from './log.js';
 import { foreignValue, foreignValueCorrection, providerNameTaken } from './plugin-rules.js';
 import type { OnShutdown } from './signal-lane.js';
-import type { Host } from './types.js';
+import type { ContextualStyle } from './style.js';
+import type { Host, Out } from './types.js';
 
 /** Phantom key. It carries a provider's value and globals types and holds no runtime value. */
 declare const providerTypes: unique symbol;
@@ -109,8 +111,14 @@ interface ProviderContext<Globals = {}, Provided = {}> {
   readonly options: Globals;
   /** The values of the providers this provider uses, each under its provider's name. */
   readonly provided: Provided;
+  /** The frozen graph the run built, which `inspect()` returns. */
+  readonly graph: CommandGraph;
   readonly host: Host;
   readonly log: Log;
+  /** The channel a middleware receives, so an opener warns the operator or writes a line at `-v`. */
+  readonly out: Out;
+  /** The contextual style a configuration source receives, so an opener escapes raw data before it writes it. */
+  readonly style: ContextualStyle;
   readonly signal: AbortSignal;
   readonly onShutdown: OnShutdown;
 }
@@ -262,11 +270,15 @@ function providedBinder<Uses extends readonly AnyProvider[]>(
   return (values) => providedRecord(listed, values) as ProvidedValues<Uses>;
 }
 
-/** What one run's openers read: the run's validated globals and its host, log, signal, and onShutdown. */
+/** What one run's openers read: the run's validated globals and its graph, host, log, out, style, signal, and onShutdown. */
 interface OpenerScope {
   readonly options: Readonly<Record<string, unknown>>;
+  /** The run's graph, built on its first read, so a run whose openers never read it builds none. */
+  readonly graph: () => CommandGraph;
   readonly host: Host;
   readonly log: Log;
+  readonly out: Out;
+  readonly style: ContextualStyle;
   readonly signal: AbortSignal;
   readonly onShutdown: OnShutdown;
 }
@@ -317,7 +329,14 @@ async function openValue(
   if (typeof opener !== 'function') {
     throw new TypeError(`Provider "${opened.name}" loaded a module with no default opener.`);
   }
-  const context = Object.freeze({ ...scope, provided: providedRecord(opened.uses, values) });
+  const { graph, ...rest } = scope;
+  const context = Object.freeze({
+    ...rest,
+    get graph() {
+      return graph();
+    },
+    provided: providedRecord(opened.uses, values),
+  });
   const value: unknown = await Reflect.apply(opener, undefined, [context]);
   return value;
 }
