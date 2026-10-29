@@ -1232,14 +1232,15 @@ test(
   'a file found in an ancestor shows as its full path, a file in the working directory as file names it',
   inWorkspace(async (space) => {
     const start = nest(space.project, 'a');
-    const found = space.write('.app.json', json({ limits: { bytes: 'many' } }));
+    // A value of the wrong type still fails the run, so its label reaches stderr.
+    const found = space.write('.app.json', json({ limits: { bytes: {} } }));
     const result = await space.run([], { FIXTURE_CWD: start });
     expect(result.stderr).toBe(
-      wrong(`Option "--limit" (from limits.bytes in ${found}): Supply a whole number.`),
+      wrong(`Option "--limit" (from limits.bytes in ${found}): Use a string or a number.`),
     );
-    const near = space.write('.app.json', json({ limits: { bytes: 'many' } }), start);
+    const near = space.write('.app.json', json({ limits: { bytes: {} } }), start);
     await expect(space.stderr([], { FIXTURE_CWD: start })).resolves.toBe(
-      wrong(`Option "--limit" (from limits.bytes in .app.json): Supply a whole number.`),
+      wrong(`Option "--limit" (from limits.bytes in .app.json): Use a string or a number.`),
     );
     expect(near).toBe(join(start, '.app.json'));
   }),
