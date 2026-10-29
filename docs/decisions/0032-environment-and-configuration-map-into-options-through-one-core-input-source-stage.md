@@ -4,7 +4,7 @@ title: ADR-0032 - Environment and configuration map into options through one cor
 description: An option may name the environment variable that supplies it, and one installed plugin may declare the configuration source that answers for options carrying its binding. Core fills each unfilled option from argv, then the environment, then the configuration source, then the declared default, in one stage between local parsing and validation, so a filled value is supplied in every sense and everything downstream reads options.
 status: accepted
 created: 2026-09-24
-modified: 2026-10-29
+modified: 2026-10-30
 ---
 
 # ADR-0032 - Environment and configuration map into options through one core input-source stage
@@ -66,3 +66,4 @@ Accepted 2026-09-24 with the implementation. Core reads `env` on string, Boolean
 - 2026-10-27: [ADR-0112](0112-an-invocation-by-name-may-exclude-options-and-the-mcp-plugin-excludes-an-option-its-author-keeps-off-the-tool.md), proposed, narrows the stage's scope for an invocation by name that excludes options: an excluded option is out of scope, so the stage reads no variable for it and never asks the configuration source for it, and it takes its declared default. The precedence and every other clause stand. It binds when that record is accepted.
 - 2026-10-28: [ADR-0117](0117-a-configuration-value-its-validator-rejects-falls-back-and-validates-against-its-files-directory.md), proposed, narrows ADR-0006's dated reading that a filled value its schema rejects never falls through to the default, for the configuration tier alone: such a fill is dropped and the option falls back as if no tier supplied it, with one `out.debug` line. An answer may carry the absolute `directory` of its file, which the option's validator reads as `host.cwd`. The precedence, the environment rules, and every other source rule stand. It binds when that record is accepted.
 - 2026-10-29: [ADR-0121](0121-the-configuration-source-publishes-its-files-json-schema-as-a-core-graph-fact.md), proposed, adds an optional `schema` to the source slot, the Standard Schema of the configuration the source reads, which core publishes as the graph's `configuration` fact and never validates with. It binds when that record is accepted.
+- 2026-10-30: The Boolean grammar widens: `true`, `yes`, `y`, `on`, and `1` are true, and `false`, `no`, `n`, `off`, and `0` are false, still case-insensitive and read as the whole value. Any other value stays a usage failure naming the variable, and its issue lists the grammar: `Use true, false, yes, no, y, n, on, off, 1, or 0.`. Every value the grammar accepted before reads as before, and every other rule here stands.

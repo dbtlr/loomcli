@@ -90,7 +90,13 @@ const truths: ReadonlyMap<string, boolean> = new Map([
   ['0', false],
   ['1', true],
   ['false', false],
+  ['n', false],
+  ['no', false],
+  ['off', false],
+  ['on', true],
   ['true', true],
+  ['y', true],
+  ['yes', true],
 ]);
 
 /**

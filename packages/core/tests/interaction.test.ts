@@ -25,7 +25,7 @@
  *   marks it `control` and `interaction`, and `mimir setup --no-input` with stdin and stderr
  *   terminals runs with `interactive` false.
  * - `MIMIR_INPUT=false`, and the configuration source's `false`, turn interaction off,
- *   `MIMIR_INPUT=yes` fails with the environment grammar's usage failure, and an application that
+ *   `MIMIR_INPUT=maybe` fails with the environment grammar's usage failure, and an application that
  *   marks its own option and installs the plugin fails with the two-marks error.
  */
 
