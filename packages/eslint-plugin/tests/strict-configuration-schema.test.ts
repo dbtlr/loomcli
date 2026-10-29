@@ -82,8 +82,40 @@ tester.run('strict-configuration-schema', strictConfigurationSchema, {
         } as const);`,
       errors: [strict],
     },
+    {
+      // A method that keeps an object strict carries the strict object into its result.
+      code: `${imports}
+        const State = z.strictObject({ channel: z.string() });
+        configuration({ file: '.tool.toml', schema: z.object({ state: State.extend({}).partial() }) });`,
+      errors: [{ ...strict, line: 3 }],
+    },
+    {
+      // Zod 3 and the older mini specifier report an unknown key on the object too.
+      code: `import { configuration } from '@loomcli/plugins/config';
+        import { z } from 'zod/v3';
+        import * as mini from 'zod/v4-mini';
+        configuration({ file: '.tool.toml', schema: z.object({ a: z.strictObject({}), b: mini.strictObject({}) }) });`,
+      errors: [strict, strict],
+    },
   ],
   valid: [
+    {
+      // A strict object that reaches the schema only loosened, as a field, or inside a function.
+      code: `${imports}
+        const State = z.strictObject({ channel: z.string(), name: z.string() });
+        configuration({
+          file: '.tool.toml',
+          schema: z.object({
+            a: State.loose(),
+            b: State.partial().strip(),
+            c: State.passthrough(),
+            d: State.catchall(z.string()),
+            e: State.shape.channel,
+            f: z.object({ ...State.shape }),
+            g: z.string().refine((value) => State.safeParse({ channel: value }).success),
+          }),
+        });`,
+    },
     {
       code: `${imports}
         const updates = z.object({ channel: z.string().optional() });

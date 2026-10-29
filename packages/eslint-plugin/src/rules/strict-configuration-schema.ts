@@ -1,13 +1,14 @@
 import type { Rule, Scope } from 'eslint';
-import type { CallExpression, Expression, Identifier, ImportDeclaration, Node } from 'estree';
+import type { CallExpression, Identifier, Node } from 'estree';
 
 import {
-  constantInit,
+  followConstant,
+  importedName,
+  importOf,
   isNode,
   positionalArguments,
   readProperty,
   unwrapped,
-  variableOf,
 } from '../declarations.js';
 import { ruleUrl } from '../docs.js';
 
@@ -15,16 +16,34 @@ import { ruleUrl } from '../docs.js';
  * Zod reports an unknown key in a strict object as an issue on the object itself, so the
  * configuration plugin drops the whole object. This rule reports a zod strict object it can trace
  * into the schema a `configuration()` call names. It follows what the source itself builds: a
- * call on a zod import, and a `const` in the module. valibot and ArkType name the unknown key
- * itself, and a `.strict()` whose receiver does not trace to zod means something else, such as
- * yup's skip-coercion mode, so neither is reported: a false report is worse than a missed one.
+ * call on a zod import, the schemas a call takes or is called on, and a `const` in the module.
+ * valibot and ArkType name the unknown key itself, and a `.strict()` whose receiver does not trace
+ * to zod means something else, such as yup's skip-coercion mode, so neither is reported: a false
+ * report is worse than a missed one. For the same reason the walk stops where a strict object no
+ * longer reaches the schema as one: at a property read such as `.shape`, at a method that makes
+ * an object loose, and at a function body such as a `refine` callback.
  */
 
 /** The module the configuration plugin is imported from. */
 const configModule = '@loomcli/plugins/config';
 
-/** The specifiers that load zod, classic and mini. */
-const zodModules: ReadonlySet<string> = new Set(['zod', 'zod/mini', 'zod/v4', 'zod/v4/mini']);
+/** The specifiers that load zod: version 4 classic and mini, and version 3. */
+const zodModules: ReadonlySet<string> = new Set([
+  'zod',
+  'zod/mini',
+  'zod/v3',
+  'zod/v4',
+  'zod/v4-mini',
+  'zod/v4/mini',
+]);
+
+/** The zod methods that return a loose copy of an object, which reports no unknown key on itself. */
+const looseningMethods: ReadonlySet<string> = new Set([
+  'catchall',
+  'loose',
+  'passthrough',
+  'strip',
+]);
 
 /** The name zod exports its whole module under, as in `import { z } from 'zod'`. */
 const zodNamespace = 'z';
@@ -32,39 +51,14 @@ const zodNamespace = 'z';
 /** The scope analysis the rule reads. */
 type SourceCode = Rule.RuleContext['sourceCode'];
 
-/** One specifier of an import declaration: a named, a default, or a namespace import. */
-type ImportBinding = ImportDeclaration['specifiers'][number];
-
-/** The import a variable is bound by, with the module it comes from, or `undefined` for any other binding. */
-function importOf(
-  sourceCode: SourceCode,
-  identifier: Identifier,
-): { readonly binding: ImportBinding; readonly module: unknown } | undefined {
-  const variable = variableOf(sourceCode, identifier);
-  const [definition, redeclaration] = variable?.defs ?? [];
-  if (!definition || redeclaration || definition.type !== 'ImportBinding') {
-    return undefined;
-  }
-  return { binding: definition.node, module: definition.parent.source.value };
-}
-
-/** The name a named import takes from its module, or `undefined` for a default or namespace import. */
-function importedName(binding: ImportBinding): string | undefined {
-  if (binding.type !== 'ImportSpecifier') {
-    return undefined;
-  }
-  const { imported } = binding;
-  return imported.type === 'Identifier' ? imported.name : String(imported.value);
-}
-
 /** Whether an identifier is the whole zod module: a namespace, a default, or the named `z` import. */
 function isZodModule(sourceCode: SourceCode, identifier: Identifier): boolean {
   const imported = importOf(sourceCode, identifier);
-  if (!imported || typeof imported.module !== 'string' || !zodModules.has(imported.module)) {
+  if (!imported || typeof imported.source !== 'string' || !zodModules.has(imported.source)) {
     return false;
   }
-  return imported.binding.type === 'ImportSpecifier'
-    ? importedName(imported.binding) === zodNamespace
+  return imported.specifier.type === 'ImportSpecifier'
+    ? importedName(imported.specifier) === zodNamespace
     : true;
 }
 
@@ -75,8 +69,8 @@ function isZodModule(sourceCode: SourceCode, identifier: Identifier): boolean {
 function zodExportOf(sourceCode: SourceCode, callee: Node): string | undefined {
   if (callee.type === 'Identifier') {
     const imported = importOf(sourceCode, callee);
-    return typeof imported?.module === 'string' && zodModules.has(imported.module)
-      ? importedName(imported.binding)
+    return typeof imported?.source === 'string' && zodModules.has(imported.source)
+      ? importedName(imported.specifier)
       : undefined;
   }
   if (
@@ -89,21 +83,6 @@ function zodExportOf(sourceCode: SourceCode, callee: Node): string | undefined {
     return callee.property.name;
   }
   return undefined;
-}
-
-/**
- * The initializer of the `const` an identifier names, with `traced` grown by that constant, or
- * `undefined` for any other binding and for a constant already followed, so a constant that names
- * itself ends the walk.
- */
-function followConstant(
-  sourceCode: SourceCode,
-  identifier: Identifier,
-  traced: ReadonlySet<Scope.Variable>,
-): { readonly init: Expression; readonly traced: ReadonlySet<Scope.Variable> } | undefined {
-  const variable = variableOf(sourceCode, identifier);
-  const init = variable && !traced.has(variable) ? constantInit(variable) : undefined;
-  return variable && init ? { init, traced: new Set([...traced, variable]) } : undefined;
 }
 
 /**
@@ -151,7 +130,9 @@ function isStrictObject(sourceCode: SourceCode, call: CallExpression): boolean {
 function isConfigurationCallee(sourceCode: SourceCode, callee: Node): boolean {
   if (callee.type === 'Identifier') {
     const imported = importOf(sourceCode, callee);
-    return imported?.module === configModule && importedName(imported.binding) === 'configuration';
+    return (
+      imported?.source === configModule && importedName(imported.specifier) === 'configuration'
+    );
   }
   if (
     callee.type !== 'MemberExpression' ||
@@ -163,23 +144,23 @@ function isConfigurationCallee(sourceCode: SourceCode, callee: Node): boolean {
     return false;
   }
   const imported = importOf(sourceCode, callee.object);
-  return imported?.module === configModule && imported.binding.type === 'ImportNamespaceSpecifier';
+  return (
+    imported?.source === configModule && imported.specifier.type === 'ImportNamespaceSpecifier'
+  );
 }
 
 /**
- * Whether a child of a node is a name rather than a value: a key that is not computed, or the
- * property of a member read that is not computed. Neither refers to a variable.
+ * Whether a child of a node is a name rather than a value: a key that is not computed. It refers
+ * to no variable.
  */
 function isNameOnly(parent: Node, key: string): boolean {
-  if (key === 'key') {
-    return (
-      (parent.type === 'Property' ||
-        parent.type === 'MethodDefinition' ||
-        parent.type === 'PropertyDefinition') &&
-      !parent.computed
-    );
-  }
-  return key === 'property' && parent.type === 'MemberExpression' && !parent.computed;
+  return (
+    key === 'key' &&
+    (parent.type === 'Property' ||
+      parent.type === 'MethodDefinition' ||
+      parent.type === 'PropertyDefinition') &&
+    !parent.computed
+  );
 }
 
 /** A child slot of a node as a list: an array slot as it is, any other slot as one entry. */
@@ -195,10 +176,47 @@ function valueChildren(node: Node): Node[] {
     .filter((child) => isNode(child));
 }
 
-/** Whether a node is TypeScript type syntax, which is not part of a value. */
-function isTypeSyntax(node: Node): boolean {
-  // The assertions that wrap a value unwrap to it; every other TypeScript node is a type.
-  return node.type.startsWith('TS') && unwrapped(node) === node;
+/**
+ * Whether a strict object inside a node cannot reach the schema as one. TypeScript type syntax is
+ * not part of the value; the assertions that wrap a value unwrap to it, so they are walked. A
+ * property read takes a field off a value, such as `.shape`, and a function body, such as a
+ * `refine` callback, runs on the parsed value rather than describing it.
+ */
+function isOutsideSchema(node: Node): boolean {
+  return (
+    (node.type.startsWith('TS') && unwrapped(node) === node) ||
+    node.type === 'MemberExpression' ||
+    node.type === 'ArrowFunctionExpression' ||
+    node.type === 'FunctionExpression'
+  );
+}
+
+/**
+ * The receiver a call carries into its result, which the walk judges: the object of a method call,
+ * unless the method makes an object loose. A plain function call carries none.
+ */
+function carriedReceiver(call: CallExpression): Node | undefined {
+  const { callee } = call;
+  if (callee.type !== 'MemberExpression') {
+    return undefined;
+  }
+  const loosens =
+    !callee.computed &&
+    callee.property.type === 'Identifier' &&
+    looseningMethods.has(callee.property.name);
+  return loosens ? undefined : callee.object;
+}
+
+/**
+ * The children of a node a strict object can reach the schema through: a call's arguments and the
+ * receiver it carries, or every value child of any other node.
+ */
+function schemaChildren(node: Node): Node[] {
+  if (node.type !== 'CallExpression') {
+    return valueChildren(node);
+  }
+  const receiver = carriedReceiver(node);
+  return receiver === undefined ? [...node.arguments] : [receiver, ...node.arguments];
 }
 
 /**
@@ -232,11 +250,11 @@ const strictConfigurationSchema: Rule.RuleModule = {
         }
         return;
       }
-      if (isTypeSyntax(node)) {
+      if (isOutsideSchema(node)) {
         return;
       }
       reportStrict(node);
-      for (const child of valueChildren(node)) {
+      for (const child of schemaChildren(node)) {
         judge(child, traced);
       }
     }
