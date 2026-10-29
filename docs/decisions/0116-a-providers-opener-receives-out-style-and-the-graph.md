@@ -4,7 +4,7 @@ title: ADR-0116 - A provider's opener receives out, style, and the graph
 description: The provider context gains out, the channel object a middleware receives, the contextual style a configuration source receives, and the frozen graph the run built, so a provider can warn the operator, write a line at -v, and read the application name. A provider still asks nothing and reads no request. This replaces ADR-0108's clause that a provider receives no out.
 status: proposed
 created: 2026-10-28
-modified: 2026-10-28
+modified: 2026-10-29
 ---
 
 # ADR-0116 - A provider's opener receives out, style, and the graph
@@ -17,7 +17,8 @@ The configuration plugin's structured values are a provider, `provided.config`, 
 
 ## Decision
 
-- **Three members join the context.** `ProviderContext` gains `out`, `style`, and `graph`.
+- **Four members join the context.** `ProviderContext` gains `out`, `style`, `graph`, and `invokedBy`.
+- **`invokedBy`.** `'name'` in a run `invoke()` started and `'argv'` otherwise, as a configuration source reads it, so a provider's `InputError` spells an option by its declared name in an invocation by name.
 - **`out`.** The channel object a middleware receives: the output contract an action has, with the default destinations on every Command and `results` typed with a `never` argument, because a result is the action's. `out.fatal()` throws a `FatalError`, which takes the ordinary failure path as any other throw from an opener does. An ephemeral provider receives its run's `out`, and a persistent provider the outermost run's, as each already receives the host and `log`.
 - **`style`.** The contextual style a configuration source receives, so a provider escapes raw data with `style.escape` before it writes it.
 - **`graph`.** The frozen graph the run built, which [`inspect()`](../core/graph-inspection.md) returns, the same object a middleware and the action read. A persistent provider receives the outermost run's.
@@ -31,12 +32,13 @@ The configuration plugin's structured values are a provider, `provided.config`, 
 
 ## Consequences
 
-Adding a member to a context core builds is an addition, not a breaking change, so every opener compiles unchanged. The implementation gives `@loomcli/testing`'s `providerContext` the three members under its existing rules: `out`'s lanes do nothing, `style` answers every name, and an unstated `graph` asks to be stated. [Providers](../core/providers.md) carries the contract.
+Adding a member to a context core builds is an addition, not a breaking change, so every opener compiles unchanged. The implementation gives `@loomcli/testing's `providerContext` the four members under its existing rules: `out`'s lanes do nothing, `style` answers every name, and an unstated `graph` or `invokedBy` asks to be stated. [Providers](../core/providers.md) carries the contract.
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release whose implementation gives a provider's opener `out`, `style`, and `graph`, and `@loomcli/testing`'s `providerContext` the same three members.
+Proposed. It moves to accepted in the release PR of the release whose implementation gives a provider's opener `out`, `style`, `graph`, and `invokedBy`, and `@loomcli/testing`'s `providerContext` the same four members.
 
 ## Changelog
 
 - 2026-10-28: Proposed with the configuration contract (LM-426). It replaces ADR-0108's clause that a provider receives no `out`; ADR-0108 carries a dated entry.
+- 2026-10-29: The opener's context also gains invokedBy, so a provider's InputError spells an option by name in an invocation by name (LM-428).

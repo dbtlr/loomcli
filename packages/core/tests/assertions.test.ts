@@ -29,7 +29,6 @@ const allowed = {
   'core/src/style.ts': 1,
   'core/src/validation.ts': 1,
   'core/src/view.ts': 1,
-  'plugins/src/config/drop.ts': 1,
   'plugins/src/config/plugin.ts': 1,
   'plugins/src/mcp/plugin.ts': 1,
   'testing/src/unstated-style.ts': 1,

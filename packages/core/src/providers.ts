@@ -119,6 +119,11 @@ interface ProviderContext<Globals = {}, Provided = {}> {
   readonly out: Out;
   /** The contextual style a configuration source receives, so an opener escapes raw data before it writes it. */
   readonly style: ContextualStyle;
+  /**
+   * How the run received its inputs. It reads `'name'` in a run `invoke()` started, where a problem
+   * names an option by its declared name, as core's own problems do there, and `'argv'` otherwise.
+   */
+  readonly invokedBy: 'argv' | 'name';
   readonly signal: AbortSignal;
   readonly onShutdown: OnShutdown;
 }
@@ -270,7 +275,7 @@ function providedBinder<Uses extends readonly AnyProvider[]>(
   return (values) => providedRecord(listed, values) as ProvidedValues<Uses>;
 }
 
-/** What one run's openers read: the run's validated globals and its graph, host, log, out, style, signal, and onShutdown. */
+/** What one run's openers read: the run's validated globals and its graph, host, invokedBy, log, out, style, signal, and onShutdown. */
 interface OpenerScope {
   readonly options: Readonly<Record<string, unknown>>;
   /** The run's graph, built on its first read, so a run whose openers never read it builds none. */
@@ -279,6 +284,7 @@ interface OpenerScope {
   readonly log: Log;
   readonly out: Out;
   readonly style: ContextualStyle;
+  readonly invokedBy: 'argv' | 'name';
   readonly signal: AbortSignal;
   readonly onShutdown: OnShutdown;
 }

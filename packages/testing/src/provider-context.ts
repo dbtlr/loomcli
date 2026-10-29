@@ -42,6 +42,9 @@ function providerContext<Globals, Provided>(
     get host() {
       return values.host ?? unstated('providerContext', 'host');
     },
+    get invokedBy() {
+      return values.invokedBy ?? unstated('providerContext', 'invokedBy');
+    },
     log: logWith(values.log),
     onShutdown: values.onShutdown ?? registersNothing,
     out: outWith(values.out, 'providerContext'),
