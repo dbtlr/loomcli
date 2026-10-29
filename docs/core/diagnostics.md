@@ -226,7 +226,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/config/link-path
 
-**Option linked to a path the configuration schema does not hold.** An option linked with configInput takes the value the configuration file holds at its path, and the configuration schema describes the whole file. A path whose keys the schema does not hold leads to a value the schema removes or never describes, so the option could never be filled from the file.
+**Option linked to a path the configuration schema does not hold.** An option linked with configInput takes the value the configuration file holds at its path, and the configuration schema describes the whole file. A path whose keys the schema does not describe means the shape of the file and the option disagree, and the check catches a typo or a stale link at build time.
 
 ### @loomcli/plugins/config/link-type
 

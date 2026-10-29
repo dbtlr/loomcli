@@ -90,22 +90,62 @@ function pathKey(path: readonly Step[]): string {
   return JSON.stringify(path);
 }
 
-/** The node without every value whose path is in `doomed`, copying as it goes so no array index shifts under a removal. */
-function pruned(node: unknown, path: readonly Step[], doomed: ReadonlySet<string>): unknown {
-  if (Array.isArray(node)) {
-    return node.flatMap((item, index) => {
-      const at = [...path, index];
-      return doomed.has(pathKey(at)) ? [] : [pruned(item, at, doomed)];
-    });
-  }
-  if (!isRecord(node)) {
-    return node;
-  }
+/** What one pruning holds: the paths it removes, and the copy made of each node it has met. */
+interface Pruning {
+  readonly doomed: ReadonlySet<string>;
+  readonly copies: Map<object, unknown>;
+}
+
+/** The array copied without the items a removal names, each pruned; its copy is on record before an item is met. */
+function prunedList(node: readonly unknown[], path: readonly Step[], pruning: Pruning): unknown[] {
+  const copy: unknown[] = [];
+  pruning.copies.set(node, copy);
+  node.forEach((item, index) => {
+    const at = [...path, index];
+    if (!pruning.doomed.has(pathKey(at))) {
+      copy.push(prunedNode(item, at, pruning));
+    }
+  });
+  return copy;
+}
+
+/** One kept key as an own data property, so a key named __proto__ stays data. */
+function ownData(value: unknown): PropertyDescriptor {
+  return { configurable: true, enumerable: true, value, writable: true };
+}
+
+/** The record copied without the keys a removal names, each pruned; its copy is on record before a key is met. */
+function prunedRecord(
+  node: Record<string, unknown>,
+  path: readonly Step[],
+  pruning: Pruning,
+): Record<string, unknown> {
+  const copy: Record<string, unknown> = {};
+  pruning.copies.set(node, copy);
   const kept = Object.entries(node).flatMap(([name, value]) => {
     const at = [...path, name];
-    return doomed.has(pathKey(at)) ? [] : [[name, pruned(value, at, doomed)]];
+    return pruning.doomed.has(pathKey(at)) ? [] : [[name, ownData(prunedNode(value, at, pruning))]];
   });
-  return Object.fromEntries(kept);
+  return Object.defineProperties(copy, Object.fromEntries(kept));
+}
+
+/**
+ * The node without every value the pruning removes, copying as it goes so no array index shifts
+ * under a removal. A node reached again, through a YAML alias, is copied once, so a shared or
+ * cyclic value keeps its shape.
+ */
+function prunedNode(node: unknown, path: readonly Step[], pruning: Pruning): unknown {
+  if (typeof node !== 'object' || node === null) {
+    return node;
+  }
+  const known = pruning.copies.get(node);
+  if (known !== undefined) {
+    return known;
+  }
+  if (Array.isArray(node)) {
+    return prunedList(node, path, pruning);
+  }
+  return isRecord(node) ? prunedRecord(node, path, pruning) : node;
 }
 
 /** The file with every removal of a round made. A removal with no steps leaves no key. */
@@ -114,7 +154,7 @@ function removeAll(
   removals: readonly Removal[],
 ): Record<string, unknown> {
   const doomed = new Set(removals.map((removal) => pathKey(removal.path)));
-  const made = doomed.has(pathKey([])) ? {} : pruned(file, [], doomed);
+  const made = doomed.has(pathKey([])) ? {} : prunedNode(file, [], { copies: new Map(), doomed });
   return isRecord(made) ? made : {};
 }
 
@@ -138,9 +178,6 @@ interface Passed<Output> {
 function outputOf<Schema extends StandardSchemaV1>(
   value: unknown,
 ): StandardSchemaV1.InferOutput<Schema> {
-  // Last resort: no typed path exists, because a generic schema's validate reads as its constraint's, which returns unknown.
-  // It holds because the value is what this schema's own validate returned, and InferOutput<Schema> names that output.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return value;
 }
 

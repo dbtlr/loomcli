@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { Application, DeclarationError } from '@loomcli/core';
+import { Application, DeclarationError, InputError, override } from '@loomcli/core';
 import type { InvocationValues, Plugin, StandardSchemaV1 } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import type { ConfigurationSettings } from '@loomcli/plugins/config';
@@ -15,6 +15,7 @@ import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { dropUntilPasses } from '../src/config/drop.js';
 import { inspected as inspectGraph, invoked, run as runInProcess } from './fixtures/config-run.ts';
 import type { Declared, SchemaName, Settings } from './fixtures/config-run.ts';
 import { settingsFault } from './fixtures/config-settings.ts';
@@ -1656,6 +1657,37 @@ test(
 );
 
 test(
+  'a YAML anchor that refers to itself does not stop a run that drops a value',
+  inWorkspace(async (space) => {
+    space.write('.app.yaml', 'tree: &t\n  name: root\n  child: *t\nretries: many\n');
+    const result = await space.run(['-L'], {
+      ...loudEnv,
+      ...settings({ file: '.app.yaml' }),
+      FIXTURE_SCHEMA: 'typed',
+    });
+    // The printed value is not the schema's output, which holds the cycle and cannot be serialized.
+    expect(result.status).toBe(0);
+    expect(received(result.stdout)).toMatchObject({ limit: '10' });
+    expect(result.stderr).toBe(
+      wrong('Ignored retries in .app.yaml: Invalid input: expected number, received string'),
+    );
+  }),
+);
+
+test('a value reached twice by alias is copied once and stays shared after a drop', async () => {
+  const shared = { name: 'root' };
+  const file = { first: shared, retries: 'many', second: shared };
+  const passed = await dropUntilPasses(
+    z.looseObject({ retries: z.number().optional() }),
+    file,
+    () => Promise.resolve(),
+  );
+  expect(passed.file).toEqual({ first: shared, second: shared });
+  expect(passed.file.first).toBe(passed.file.second);
+  expect(passed.file.first).not.toBe(shared);
+});
+
+test(
   'a wrong value at a key falls back to the schema default',
   inWorkspace(async (space) => {
     space.write('.app.json', json({ retries: 'many' }));
@@ -1808,6 +1840,38 @@ test(
     await idle.run({ process: none });
     expect(none.stderr.text).toBe('');
     expect(none.stdout.text).toBe('ran\n');
+  }),
+);
+
+test(
+  'in an invocation by name, a named file the provider reads first names the config option by declared name',
+  inWorkspace(async (space) => {
+    const { plugin: installed, values } = configuration({ schema: z.object({}) });
+    const reading = new Application('app', {
+      plugins: [installed],
+      uses: [values],
+      views: [
+        override(InputError, { render: (failure) => `${JSON.stringify(failure.problems)}\n` }),
+      ],
+    }).action(({ out }) => out.print('ran'));
+    const outcome = await reading.invoke(
+      [],
+      { options: { config: 'missing.json' } },
+      { process: mockProcess({ cwd: space.project, env: { HOME: space.home } }) },
+    );
+    expect(outcome).toMatchObject({
+      messages: `${json([
+        {
+          input: { global: true, kind: 'option', name: 'config' },
+          issues: [
+            { message: 'File "missing.json" does not exist. Supply the path of an existing file.' },
+          ],
+          reason: 'invalid',
+          spelling: 'config',
+        },
+      ])}\n`,
+      status: 'failed',
+    });
   }),
 );
 

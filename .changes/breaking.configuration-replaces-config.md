@@ -1,6 +1,6 @@
 - Replace `config()` from `@loomcli/plugins/config` with `configuration()`. It takes one settings object that holds the required `schema`, a Standard Schema for the whole configuration file, beside the `file`, `short`, `env`, `directory`, and `notice` settings, and returns `{ plugin, values }`. Install `plugin`; a Command that opts in with `uses: [values]` reads the validated file as `provided.config`, typed as the schema's output. The `ConfigSettings` type is now `ConfigurationSettings`.
 - Require the schema to accept an empty file. Its types reject a schema that requires a key outside an array item or a record value, and a schema that still rejects an empty file throws a `DeclarationError` under `@loomcli/plugins/config/empty-file`.
-- Change a configuration value the schema rejects to be dropped instead of failing the run. The plugin removes the value at each issue's path and validates again, names each removal at `-v`, and ignores keys the schema does not describe. Only a `--config` file that cannot be read or parsed fails a run.
+- Change a configuration value the schema rejects to be dropped instead of failing the run. The plugin removes the value at each issue's path and validates again, names each removal at `-v`, and ignores keys the schema does not describe. Only a `--config` file that is missing, cannot be read or parsed, or does not hold an object or mapping fails a run.
 - Change a value a linked option cannot take, such as a string for a Boolean option, to fall through to the option's default with one `-v` line instead of failing the run with code 2.
 - Change a linked option to take the value the file holds once the file passes the schema, and a relative path it takes to resolve against the directory of the file. `provided.config` keeps each path as the file wrote it.
 - Add the build faults `@loomcli/plugins/config/link-path` and `@loomcli/plugins/config/link-type` for an option linked to a path that a schema publishing its shape through Standard JSON Schema does not hold, or that holds a value the option cannot take.
@@ -38,7 +38,7 @@ const textstatFile = z.object({
   total: z.boolean().optional(),
 });
 
-const { plugin: configPlugin } = configuration({
+const { plugin: configPlugin, values: config } = configuration({
   file: '.textstat.{toml,json}',
   schema: textstatFile,
   short: 'c',
@@ -50,10 +50,9 @@ const app = new Application('textstat', { plugins: [configPlugin] }).option('min
 });
 ```
 
-A Command that reads the whole file opts in to `values`:
+A Command that reads the whole file opts in to the `values` the same call returns:
 
 ```ts
-const { plugin: configPlugin, values: config } = configuration({ schema: textstatFile });
 const show = new Command('show', { description: 'Show the threshold.', uses: [config] }).action(
   ({ out, provided }) => out.print(String(provided.config.minBytes)),
 );

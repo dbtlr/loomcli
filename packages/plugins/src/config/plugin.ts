@@ -47,7 +47,7 @@ type ConfigOptions<Directory extends string = never> = typeof options &
  * for, and how an operator points the lookup elsewhere.
  */
 interface ConfigurationSettings<Schema extends StandardSchemaV1, Directory extends string = never> {
-  /** One Standard Schema for the whole file. Every key is optional outside an array item. */
+  /** One Standard Schema for the whole file. Every key is optional outside an array item or a record value. */
   readonly schema: Schema & EmptyFileGuard<Schema>;
   /** The configuration file's name or relative path, a file pattern. Defaults to `.<app>.json`. */
   readonly file?: string;
