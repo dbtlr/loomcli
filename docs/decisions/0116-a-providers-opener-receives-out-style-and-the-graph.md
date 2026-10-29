@@ -32,7 +32,7 @@ The configuration plugin's structured values are a provider, `provided.config`, 
 
 ## Consequences
 
-Adding a member to a context core builds is an addition, not a breaking change, so every opener compiles unchanged. The implementation gives `@loomcli/testing's `providerContext` the four members under its existing rules: `out`'s lanes do nothing, `style` answers every name, and an unstated `graph` or `invokedBy` asks to be stated. [Providers](../core/providers.md) carries the contract.
+Adding a member to a context core builds is an addition, not a breaking change, so every opener compiles unchanged. The implementation gives `@loomcli/testing`'s `providerContext` the four members under its existing rules: `out`'s lanes do nothing, `style` answers every name, and an unstated `graph` or `invokedBy` asks to be stated. [Providers](../core/providers.md) carries the contract.
 
 ## Status
 

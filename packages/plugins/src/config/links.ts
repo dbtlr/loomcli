@@ -177,7 +177,7 @@ function describe(leaves: readonly Shape[]): string {
   return [...new Set(names)].join(' or ');
 }
 
-/** How the diagnostic names an option, as the input source declaration errors name it. */
+/** How the diagnostic names an option, as the graph records it. */
 function subjectOf(option: OptionNode, node: CommandNode | undefined): string {
   if (node === undefined) {
     return `Global option "${option.name}"`;
