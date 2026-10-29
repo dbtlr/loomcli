@@ -42,6 +42,7 @@ const leaf = {
 
 test('inspects a graph of globals, a root action, and three children', () => {
   expect(invokeInspect('jsonkit')).toEqual({
+    configuration: null,
     description: none,
     globals: [
       {
@@ -162,6 +163,7 @@ test('an explicit version of 0.0.0 inspects identically to an omitted version', 
 
 test('reports the version and every declared description, and the root reports the graph one', () => {
   expect(invokeInspect('described')).toEqual({
+    configuration: null,
     description: 'Reads a JSON document.',
     globals: [
       {
@@ -244,6 +246,7 @@ test('reports the version and every declared description, and the root reports t
 
 test('reports hidden and deprecated on every Command and option, and neither on the root', () => {
   expect(invokeInspect('listing')).toEqual({
+    configuration: null,
     description: none,
     globals: [
       {
@@ -330,6 +333,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
 
 test('inspects a group at two named levels below the root', () => {
   expect(invokeInspect('nested')).toEqual({
+    configuration: null,
     description: none,
     globals: [],
     name: 'store',

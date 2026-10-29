@@ -4,7 +4,7 @@ title: ADR-0030 - An input carries its JSON Schema as a core graph fact, derived
 description: Graph build asks a validated input's Standard Schema for its input-side JSON Schema through the standard's converter and stores the plain result on the option or argument node, so the manifest, help, completion, and any later projection read one shape fact with no plugin installed. A result carries no schema.
 status: accepted
 created: 2026-09-18
-modified: 2026-10-22
+modified: 2026-10-29
 ---
 
 # ADR-0030 - An input carries its JSON Schema as a core graph fact, derived through the Standard JSON Schema channel
@@ -50,3 +50,4 @@ Accepted 2026-09-29 with the implementation. Build stores each validated input's
 - 2026-09-29: Accepted. The implementation settles the rule the entry above states: in a development build, `inspect()` and every `run()` call every validated input's converter at build, and a converter that throws or returns anything but a plain object throws `@loomcli/core/schema-converter-failed`, whose finding marks the input's `validate` and whose sentence names the input, the target `draft-2020-12`, and the thrown reason, escaped. A distributed build calls a converter only where a projection reads the graph, as before, and reads a failure as `null`.
 - 2026-10-14: [ADR-0081](0081-content-inputs-prepare-lazy-handles-and-one-command-claims-stdin.md), proposed, narrows validator-derived input schemas for native content paths. Core publishes their path schema directly in the graph field `schema`, without a converter. It binds when accepted; every other clause remains unchanged.
 - 2026-10-22: [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md), proposed, ends the copy and the freeze of the stored schema. Build stores the object the converter returned, read-only by its type and neither copied nor frozen, so a converter answer whose keys throw when read and one that holds itself get no rule, and a converter fails only when it throws or returns anything but a plain object. Every other clause stands. It binds when that record is accepted.
+- 2026-10-29: [ADR-0121](0121-the-configuration-source-publishes-its-files-json-schema-as-a-core-graph-fact.md), proposed, extends the schema fact to the configuration source's file: core derives the JSON Schema of the source's optional `schema` through the same channel and target and publishes it as the graph's `configuration` fact, where a converter that fails publishes `null` with no fault. It binds when that record is accepted.

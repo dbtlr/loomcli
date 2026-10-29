@@ -72,9 +72,30 @@ const misbound = plugin('@fixture/misbound', {
   source: { binding: commandKey, load: async () => ({ default: async () => ({}) }) },
 });
 
+// A source declares the Standard Schema of its configuration, whose JSON Schema the graph publishes.
+const described = plugin('@fixture/described', {
+  extensions: [settingKey],
+  source: {
+    binding: settingKey,
+    load: async () => ({ default: async () => ({}) }),
+    schema: z.object({ retries: z.number().optional() }),
+  },
+});
+
+const undescribed = plugin('@fixture/undescribed', {
+  extensions: [settingKey],
+  source: {
+    binding: settingKey,
+    load: async () => ({ default: async () => ({}) }),
+    // @ts-expect-error TS2353: A configuration schema is a Standard Schema, not a plain record.
+    schema: { retries: 'number' },
+  },
+});
+
 export type { SettingsOptions };
 export {
   bound,
+  described,
   listed,
   migrated,
   misbound,
@@ -84,4 +105,5 @@ export {
   settingKey,
   settings,
   tags,
+  undescribed,
 };

@@ -121,7 +121,14 @@ export type {
   ViewContribution,
   ViewOverride,
 } from './view.js';
-export type { ArgumentNode, CommandGraph, CommandNode, OptionNode, ResultNode } from './inspect.js';
+export type {
+  ArgumentNode,
+  CommandGraph,
+  CommandNode,
+  ConfigurationNode,
+  OptionNode,
+  ResultNode,
+} from './inspect.js';
 export type { PostInstall } from './post-install.js';
 export type {
   Middleware,

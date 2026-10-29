@@ -753,7 +753,7 @@ A core-declared position that exactly one plugin may claim. A second claim is a 
 _Avoid_: Singleton, capability (for the position)
 
 **Configuration source**:
-The one optional `source` a plugin definition declares, which answers for configuration-bound options: those carrying a value of the plugin's own binding extension. Core loads it lazily only when such an option is still unfilled after argv and the environment and holds no environment fault, calls it once, and fills each option it answers, with a label core prints in failure messages. A fill the option's validator rejects is dropped and the option falls back as if no tier supplied it. Core holds no store, file format, or path grammar; the plugin owns what the binding means.
+The one optional `source` a plugin definition declares, which answers for configuration-bound options: those carrying a value of the plugin's own binding extension. It may also declare `schema`, the configuration's Standard Schema, whose JSON Schema core publishes as the graph's `configuration` fact and never validates with. Core loads it lazily only when such an option is still unfilled after argv and the environment and holds no environment fault, calls it once, and fills each option it answers, with a label core prints in failure messages. A fill the option's validator rejects is dropped and the option falls back as if no tier supplied it. Core holds no store, file format, or path grammar; the plugin owns what the binding means.
 _Avoid_: Config loader, config provider, settings store
 
 **Dotenv file**:
@@ -765,7 +765,7 @@ The one JSON, TOML, or YAML file the first-party configuration plugin reads in a
 _Avoid_: Config, settings file, rc file, dotfile
 
 **Configuration schema**:
-The one Standard Schema an author writes for the whole configuration file, in which every object key outside an array item or a record value is optional so that an empty file passes. Application code reads its output as the configuration's provided value.
+The one Standard Schema an author writes for the whole configuration file, in which every object key outside an array item or a record value is optional so that an empty file passes. Application code reads its output as the configuration's provided value. The configuration plugin passes it to the configuration source with a `$schema` property added, so core publishes the file's JSON Schema as the graph's `configuration` fact, which the manifest prints.
 _Avoid_: Section schema, config type, settings schema
 
 **Dropped value**:
@@ -817,7 +817,7 @@ The author or a plugin whose lifecycle hook gives a value to a collecting extens
 _Avoid_: Contributor, producer, publisher
 
 **Core fact**:
-A declaration fact core owns and every projection reads without any plugin installed: description, version, hidden, deprecated, control, option groups, the input schema, native content type, stdin claims and declarations, content collection bounds, and a result's media types.
+A declaration fact core owns and every projection reads without any plugin installed: description, version, hidden, deprecated, control, option groups, the input schema, native content type, stdin claims and declarations, content collection bounds, and a result's media types. The configuration schema is a graph fact core derives the same way, which only an installed configuration source declares.
 _Avoid_: Built-in metadata, reserved field
 
 **Plugin Command**:

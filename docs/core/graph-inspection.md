@@ -27,6 +27,10 @@ interface CommandGraph {
   readonly globals: readonly OptionNode[];
   readonly root: CommandNode;
   readonly postInstall: PostInstall | undefined; // see The post-install declaration in Application declarations
+  readonly configuration: ConfigurationNode | null;
+}
+interface ConfigurationNode {
+  readonly schema: Readonly<Record<string, unknown>> | null;
 }
 interface CommandNode {
   readonly name: string | null;
@@ -134,8 +138,9 @@ type OptionNode =
 - `version` is the string the Application declares, or `0.0.0` when it declares none, so it is never `undefined`. Every `description` is the core fact the declaration carries, or `undefined` when omitted. The root `CommandNode` reports the Application's description, the value `CommandGraph.description` holds, so a projection that walks nodes never special-cases the root. The graph names no plugin as the source of anything: which plugin contributed an option is provenance, and a projection describes the built product alone. An extension key carries its defining plugin's identity because that identity is the fact's name, the way a package name is part of an import, not a record of who installed what.
 - `globals` holds every global option in one list: the application's declarations, then each plugin's in installation order. Nothing in an entry tells an application's global option from a plugin's, because the two are one kind under [ADR-0055](../decisions/0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md), and the graph names no plugin as the source of anything. Every string entry reads `required: false` and `validateOmitted: false`, because a global option declares no presence rule, so a projection does not branch on them.
 - `result` is `null` on a Command that declares none, and otherwise the kind, the view names in record order, the default, and the media type each view declares, keyed by view name, under [Results](results.md) and [Media types](results.md#media-types). The names include every view a plugin's `onCommandAttach` hook added, and an option such a hook declared appears under the node's `options` like any local option, because the graph names no plugin as the source of anything.
+- `configuration` is `null` when no installed plugin claims the [configuration source](input-sources.md) slot. Otherwise it is `{ schema }`, where `schema` is the input-side JSON Schema the source's `schema` publishes through its converter, derived at build as an [input schema](validation.md#input-schema) is, or `null` when the source declares no schema, its schema publishes no converter, or its converter fails, which is never a fault. It describes the configuration the source reads, not the plugin that reads it, so the graph still names no plugin. [ADR-0121](../decisions/0121-the-configuration-source-publishes-its-files-json-schema-as-a-core-graph-fact.md) records the decision.
 - `extensions` holds each [extension value](extensions.md) the declaration carries, keyed by extension identity, as the frozen plain-data output of its schema. A [collecting extension](extensions.md#collecting-extensions) holds the frozen array of its values' outputs in collection order, and a declaration that carries none of its values has no key for it. `readExtension(node, descriptor)` is the typed read; the record is the projection-neutral form.
-- The result is frozen, except each `default`'s wrapped value, which is the value the author declared, and each `schema`, which is the object the validator's converter returned. Its types are read-only, so a consumer reads it without copying it.
+- The result is frozen, except each `default`'s wrapped value, which is the value the author declared, and each `schema`, which is the object the validator's converter returned, `configuration.schema` included. Its types are read-only, so a consumer reads it without copying it.
 
 ```ts
 const graph = app.inspect();

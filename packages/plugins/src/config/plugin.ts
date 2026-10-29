@@ -13,6 +13,7 @@ import { configInput } from './extension.js';
 import { judgeLinks } from './links.js';
 import { configIdentity as identity } from './names.js';
 import { envVariable, fileCandidates } from './pattern.js';
+import { pointerListingSchema } from './pointer.js';
 import type { EmptyFileGuard } from './schema-types.js';
 import type { Loaded } from './shared.js';
 
@@ -143,7 +144,7 @@ function configuration<
   };
   const installed: Plugin<ConfigOptions<Directory>> = plugin(identity, {
     extensions: [configInput],
-    onGraphBuilt: judgeLinks(settings.schema),
+    onGraphBuilt: judgeLinks,
     options: declaredOptions<Directory>(settings),
     source: {
       binding: configInput,
@@ -151,6 +152,7 @@ function configuration<
         const { configSource } = await import('./source.js');
         return { default: configSource<Schema, Directory>(shared) };
       },
+      schema: pointerListingSchema(settings.schema),
     },
   });
   const values: ConfigProvider<Schema, Directory> = provider('config', {

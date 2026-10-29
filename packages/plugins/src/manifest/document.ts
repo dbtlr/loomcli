@@ -27,6 +27,7 @@ interface ManifestDocument {
   readonly exitCodes: Readonly<Record<string, string>>;
   readonly encodings: { readonly json: string; readonly jsonl: string };
   readonly globals: readonly ManifestOption[];
+  readonly configuration: CommandGraph['configuration'];
   readonly command: ManifestCommand;
 }
 
@@ -119,7 +120,7 @@ type ManifestOption =
 
 /** The token rule, stated once so no entry repeats it. */
 const tokens =
-  "Every input is a string token. A schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument satisfies it alone. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
+  "Every input is a string token. An input's schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument satisfies it alone. The configuration schema describes the configuration the application reads, not a token. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
 
 /** The Meaning column of core's Invocation table, with its code formatting removed. */
 const coreExitCodes: Readonly<Record<string, string>> = {
@@ -414,6 +415,7 @@ function manifestDocument(graph: CommandGraph, command: CommandNode): ManifestDo
     exitCodes: exitCodeTable(graph.root),
     encodings,
     globals: visible(graph.globals).map(optionEntry),
+    configuration: graph.configuration,
     command: commandEntry(command),
   };
 }
@@ -437,11 +439,16 @@ function inputsOf(document: ManifestDocument): (ManifestOption | ManifestArgumen
 }
 
 /**
- * The first input in a document whose declared default or published schema is not plain JSON data,
- * named with the field that holds it, or `undefined`. A declared default is snapshotted as the
+ * The configuration schema when it is not plain JSON data, or else the first input in a document
+ * whose declared default or published schema is not, named with the field that holds it, or
+ * `undefined`. A declared default is snapshotted as the
  * author wrote it, and a converter's schema keeps any value it returned, so either can hold one.
  */
 function unencodableInput(document: ManifestDocument): string | undefined {
+  const fileSchema = document.configuration?.schema ?? null;
+  if (fileSchema !== null && !isPlainJson(fileSchema)) {
+    return 'the configuration schema';
+  }
   for (const input of inputsOf(document)) {
     if ('default' in input && input.default !== null && !isPlainJson(input.default.value)) {
       return `the default of ${inputLabel(input)}`;

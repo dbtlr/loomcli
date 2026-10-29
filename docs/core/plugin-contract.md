@@ -28,6 +28,7 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
   source?: {
     binding: AnyExtension & { readonly target: 'option' };
     load: () => Promise<{ default: SourceResolver<Plugin<Options>> }>;
+    schema?: StandardSchemaV1; // the configuration's Standard Schema, whose JSON Schema the graph publishes
   };
   commands?: readonly Command<unknown, unknown, PluginOptionValues<Options>>[];
 }

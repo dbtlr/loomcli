@@ -2233,3 +2233,140 @@ test('a link into an open object, a record, an array, or a schema without a shap
     ),
   ).toBe('built');
 });
+
+test('the graph publishes the schema the plugin hands core, with a $schema string among its top-level properties', () => {
+  const schema = z.object({ retries: z.number().int().optional() });
+  const { plugin: installed } = configuration({ schema });
+  const graph = new Application('app', { plugins: [installed] }).action(() => undefined).inspect();
+  const published = schema['~standard'].jsonSchema.input({ target: 'draft-2020-12' });
+  expect(graph.configuration).toEqual({
+    schema: {
+      ...published,
+      properties: { ...Object(published.properties), $schema: { type: 'string' } },
+    },
+  });
+});
+
+/** A Standard Schema that accepts any value and publishes the JSON Schema given. */
+function publishing(answer: Readonly<Record<string, unknown>>): StandardSchemaV1 {
+  const standard = {
+    jsonSchema: { input: () => answer, output: () => answer },
+    validate: (value: unknown) => ({ value }),
+    vendor: 'fixture',
+    version: 1 as const,
+  };
+  return { '~standard': standard };
+}
+
+/** The configuration fact an application publishes when the plugin reads the schema given. */
+function publishedFor(schema: StandardSchemaV1) {
+  return new Application('app', { plugins: [configuration({ schema }).plugin] })
+    .action(() => undefined)
+    .inspect().configuration;
+}
+
+const pointer = { type: 'string' };
+
+/** A value frozen at every depth, so any write into it throws. */
+function deepFreeze<Value>(value: Value): Value {
+  if (typeof value === 'object' && value !== null) {
+    for (const item of Object.values(value)) {
+      deepFreeze(item);
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
+
+test.each([
+  [
+    'a record gains properties with the pointer alone',
+    { additionalProperties: { type: 'number' }, type: 'object' },
+    { additionalProperties: { type: 'number' }, properties: { $schema: pointer }, type: 'object' },
+  ],
+  [
+    'a top-level $ref lists it in the definition it names',
+    {
+      $defs: { Config: { properties: { retries: { type: 'integer' } }, type: 'object' } },
+      $ref: '#/$defs/Config',
+    },
+    {
+      $defs: {
+        Config: { properties: { $schema: pointer, retries: { type: 'integer' } }, type: 'object' },
+      },
+      $ref: '#/$defs/Config',
+    },
+  ],
+  [
+    "the author's own pointer property is kept",
+    { properties: { $schema: { format: 'uri', type: 'string' } }, type: 'object' },
+    { properties: { $schema: { format: 'uri', type: 'string' } }, type: 'object' },
+  ],
+  [
+    'a union passes as it is',
+    { anyOf: [{ type: 'object' }, { type: 'null' }] },
+    { anyOf: [{ type: 'object' }, { type: 'null' }] },
+  ],
+])('the published schema: %s', (_case, answer, expected) => {
+  // The library's own answer is never changed, so a frozen answer publishes too.
+  const before = structuredClone(answer);
+  expect(publishedFor(publishing(deepFreeze(answer)))).toEqual({ schema: expected });
+  expect(answer).toEqual(before);
+});
+
+test('a schema whose converter throws, as zod does for a bigint, publishes null and the run goes on', async () => {
+  const schema = z.object({ big: z.bigint().optional(), retries: z.number().optional() });
+  expect(publishedFor(schema)).toEqual({ schema: null });
+  const app = new Application('app', { plugins: [configuration({ schema }).plugin] }).action(
+    ({ out }) => out.print('ran'),
+  );
+  const process = mockProcess({});
+  await app.run({ process });
+  expect({ code: process.exitCode ?? 0, stdout: process.stdout.text }).toEqual({
+    code: 0,
+    stdout: 'ran\n',
+  });
+});
+
+test('a schema with no converter publishes null', () => {
+  expect(publishedFor(object({ retries: optional(number()) }))).toEqual({ schema: null });
+});
+
+test(
+  'a top-level $schema key in the file is removed before validation, in every format, and writes no -v line',
+  inWorkspace(async (space) => {
+    const pointed: Pairs = [
+      ['.app.json', json({ $schema: 'https://example.com/app.json', title: 'json' })],
+      ['.app.toml', '"$schema" = "https://example.com/app.json"\ntitle = "toml"\n'],
+      ['.app.yaml', '$schema: https://example.com/app.json\ntitle: yaml\n'],
+    ];
+    for (const [file, content] of pointed) {
+      space.write(file, content);
+      const result = await space.run([], shown('typed', settings({ file })));
+      expect(result.stderr).toBe('');
+      expect(provided(result.stdout)).toEqual({ retries: 3, title: file.slice(5).toUpperCase() });
+    }
+  }),
+);
+
+test(
+  'a $schema key below the top level is an ordinary key, and a strict schema keeps the file beside a pointer',
+  inWorkspace(async (space) => {
+    space.write(
+      '.app.json',
+      json({ $schema: 'https://example.com/app.json', updates: { $schema: 'x', interval: 5 } }),
+    );
+    const result = await space.run([], shown('loose'));
+    expect(provided(result.stdout)).toEqual({ updates: { $schema: 'x', interval: 5 } });
+    const { plugin: installed, values } = configuration({
+      schema: z.strictObject({ title: z.string().optional() }),
+    });
+    space.write('.app.json', json({ $schema: 'https://example.com/app.json', title: 'kept' }));
+    const app = new Application('app', { plugins: [installed], uses: [values] }).action(
+      ({ out, provided: read }) => out.print(JSON.stringify(read.config)),
+    );
+    const process = mockProcess({ cwd: space.project, env: { HOME: space.home } });
+    await app.run({ process });
+    expect(process.stdout.text).toBe('{"title":"kept"}\n');
+  }),
+);

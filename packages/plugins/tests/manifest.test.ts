@@ -102,7 +102,7 @@ function entryAt(document: z.infer<typeof printedSchema>, names: readonly string
 }
 
 const tokens =
-  "Every input is a string token. A schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument satisfies it alone. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
+  "Every input is a string token. An input's schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument satisfies it alone. The configuration schema describes the configuration the application reads, not a token. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
 
 const exitCodes = {
   '0': 'Successful execution and core output',
@@ -172,6 +172,7 @@ const getDocument = {
   exitCodes,
   encodings,
   globals,
+  configuration: null,
   command: {
     name: 'get',
     path: ['get'],
@@ -310,6 +311,26 @@ test('the manifest prints the routed slice as indented JSON in the contract key 
   });
 });
 
+test('the envelope carries the configuration fact after globals: null without a source, and the schema a source publishes', () => {
+  expect(JSON.parse(run('app', ['--manifest']).stdout).configuration).toBeNull();
+  const { stdout } = run('configured', ['--manifest']);
+  const document = JSON.parse(stdout);
+  expect(document.configuration).toEqual({
+    schema: { properties: { retries: { type: 'integer' } }, type: 'object' },
+  });
+  expect(Object.keys(document)).toEqual([
+    'name',
+    'version',
+    'description',
+    'tokens',
+    'exitCodes',
+    'encodings',
+    'globals',
+    'configuration',
+    'command',
+  ]);
+});
+
 test('manifest({ short }) prints the routed slice through its chosen short spelling', () => {
   const result = run('short', ['get', '-M']);
   expect(result).toMatchObject({ status: 0, stderr: '' });
@@ -363,6 +384,7 @@ test('the root slice lists every visible Command and omits the hidden one', () =
     'exitCodes',
     'encodings',
     'globals',
+    'configuration',
     'command',
   ]);
   const document = printedSchema.parse(raw);
@@ -591,4 +613,8 @@ test('a null-prototype default prints as a plain object, and an absent descripti
 test('a published schema that is not plain JSON data fails the write', () => {
   expect(unencodable('schema')).toEqual(reportedAs('the schema of option "--odd"'));
   expect(unencodable('schema-cycle')).toEqual(reportedAs('the schema of option "--odd"'));
+});
+
+test('a configuration schema that is not plain JSON data fails the write', () => {
+  expect(unencodable('configuration-nan')).toEqual(reportedAs('the configuration schema'));
 });

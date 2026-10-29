@@ -11,6 +11,7 @@ import type { OptionGroup } from './option-groups.js';
 import { distinctAliases, reportedOf, spellingsOf } from './options.js';
 import type { OptionSpelling } from './options.js';
 import { isPlainObject } from './plain.js';
+import type { BuiltSource } from './plugin.js';
 import type { PostInstall } from './post-install.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
 import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
@@ -180,6 +181,16 @@ interface CommandGraph {
   readonly postInstall: PostInstall | undefined;
   readonly globals: readonly OptionNode[];
   readonly root: CommandNode;
+  /** The configuration source's published schema, or `null` when no plugin claims the slot. */
+  readonly configuration: ConfigurationNode | null;
+}
+
+/**
+ * The configuration the installed configuration source reads: the input-side JSON Schema its
+ * `schema` publishes, or `null` when it declares none or its schema publishes none.
+ */
+interface ConfigurationNode {
+  readonly schema: InputSchema;
 }
 
 /**
@@ -238,15 +249,17 @@ interface SchemaCheck {
   readonly siteOf: (input: InputDeclaration) => InputSite | undefined;
 }
 
+/** How one converter failed: the clause after its subject, and the thrown value when it threw. */
+interface FailedConverter {
+  readonly failure: string;
+  readonly cause?: unknown;
+}
+
 /**
- * The converter fault a development build reports for one input, with the way it failed and, when
- * the converter threw, the thrown value as its cause.
+ * The converter fault a development build reports for one input, with the finding that marks its
+ * validator and the way it failed, with the thrown value as its cause when the converter threw.
  */
-function converterFault(
-  input: InputDeclaration,
-  check: SchemaCheck,
-  failed: { failure: string; cause?: unknown },
-) {
+function converterFault(input: InputDeclaration, check: SchemaCheck, failed: FailedConverter) {
   const site = check.siteOf(input);
   const parts = {
     correction:
@@ -260,10 +273,39 @@ function converterFault(
 }
 
 /**
- * The input-side schema a declaration's validator publishes, as its converter returned it, or
- * `null` where the graph holds no published shape: no validator, a validator with
- * no converter, or a converter that throws or returns anything but a plain object. A build that
- * checks converters reports that last case as a declaration fault first.
+ * The input-side schema a Standard Schema publishes, as its converter returned it, or `null` where
+ * it publishes no shape: a schema with no converter, or a converter that throws or returns anything
+ * but a plain object. `failed` hears that last case first, in a build that checks converters.
+ */
+function publishedSchema(
+  schema: StandardSchemaV1,
+  failed: ((how: FailedConverter) => void) | undefined,
+): InputSchema {
+  let published: unknown = undefined;
+  // The converter is the library's code, so a throw on reaching it or on calling it is one failure.
+  try {
+    if (!publishesSchema(schema)) {
+      return null;
+    }
+    published = schema['~standard'].jsonSchema.input(schemaTarget);
+  } catch (error) {
+    const reason = asSentence(reasonOf(error));
+    failed?.({ cause: error, failure: `failed for target "${schemaTarget.target}": ${reason}` });
+    return null;
+  }
+  if (isPlainObject(published)) {
+    return published;
+  }
+  failed?.({
+    failure: `answered target "${schemaTarget.target}" with a value that is not a plain object.`,
+  });
+  return null;
+}
+
+/**
+ * The input-side schema a declaration's validator publishes, or `null` where the graph holds no
+ * published shape: no validator, or a validator that publishes none. A build that checks
+ * converters reports a converter that fails as a declaration fault at the input's call first.
  */
 function inputSchema(input: InputDeclaration, check: SchemaCheck): InputSchema {
   const { config } = input;
@@ -274,29 +316,28 @@ function inputSchema(input: InputDeclaration, check: SchemaCheck): InputSchema {
   if (schema === undefined) {
     return null;
   }
-  let published: unknown = undefined;
-  // The converter is the library's code, so a throw on reaching it or on calling it is one failure.
-  try {
-    if (!publishesSchema(schema)) {
-      return null;
-    }
-    published = schema['~standard'].jsonSchema.input(schemaTarget);
-  } catch (error) {
-    if (check.fault) {
-      const reason = asSentence(reasonOf(error));
-      const failure = `failed for target "${schemaTarget.target}": ${reason}`;
-      check.fault(converterFault(input, check, { cause: error, failure }));
-    }
+  const { fault } = check;
+  return publishedSchema(
+    schema,
+    fault && ((failed) => fault(converterFault(input, check, failed))),
+  );
+}
+
+/**
+ * The configuration fact: `null` when no installed plugin claims the source slot, and otherwise the
+ * input-side schema the source's `schema` publishes, `null` when it declares none or publishes none.
+ * A converter that fails publishes `null` in every build with no fault, because the author installed
+ * the source to read a configuration, and a part JSON Schema cannot express, such as a `bigint`,
+ * must not fail their runs.
+ */
+function configurationNode(source: BuiltSource | undefined): ConfigurationNode | null {
+  if (source === undefined) {
     return null;
   }
-  if (isPlainObject(published)) {
-    return published;
-  }
-  if (check.fault) {
-    const failure = `answered target "${schemaTarget.target}" with a value that is not a plain object.`;
-    check.fault(converterFault(input, check, { failure }));
-  }
-  return null;
+  const { schema } = source;
+  return Object.freeze({
+    schema: schema === undefined ? null : publishedSchema(schema, undefined),
+  });
 }
 
 /** One declaration's extension record, which is the shared empty one when it carries no value. */
@@ -490,6 +531,7 @@ function inspectGraph(
     converterFault: ConverterFault;
     description: string | undefined;
     postInstall: PostInstall | undefined;
+    source: BuiltSource | undefined;
     version: string;
   },
 ): CommandGraph {
@@ -499,18 +541,21 @@ function inspectGraph(
   const nodes = new WeakMap<BuiltCommand, CommandNode>();
   const { sites } = graph.globals;
   const check: SchemaCheck = { fault, siteOf: (input) => sites.get(input) };
-  const inspected: CommandGraph = {
+  const globals = Object.freeze(optionNodes(graph.globals.inputs, { check, records, table }));
+  const root = commandNode(graph.root, {
     description: facts.description,
-    globals: Object.freeze(optionNodes(graph.globals.inputs, { check, records, table })),
+    fault,
+    nodes,
+    path: Object.freeze([]),
+    records,
+  });
+  const inspected: CommandGraph = {
+    configuration: configurationNode(facts.source),
+    description: facts.description,
+    globals,
     name,
     postInstall: facts.postInstall,
-    root: commandNode(graph.root, {
-      description: facts.description,
-      fault,
-      nodes,
-      path: Object.freeze([]),
-      records,
-    }),
+    root,
     version: facts.version,
   };
   const frozen = Object.freeze(inspected);
@@ -576,5 +621,13 @@ function nodeAt(graph: CommandGraph, path: readonly string[]): CommandNode {
   return node;
 }
 
-export type { ArgumentNode, CommandGraph, CommandNode, ConverterFault, OptionNode, ResultNode };
+export type {
+  ArgumentNode,
+  CommandGraph,
+  CommandNode,
+  ConfigurationNode,
+  ConverterFault,
+  OptionNode,
+  ResultNode,
+};
 export { graphMismatch, inspectGraph, linkOf, nodeAt, resultNode };
