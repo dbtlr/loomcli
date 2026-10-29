@@ -51,6 +51,12 @@ const calls = {
     stop.abort();
     return { content: [{ text: 'stopped', type: 'text' }], isError: false };
   },
+  /** Answers its arguments' value as the structured content, whatever JSON it is. */
+  structured: ({ arguments: input }) => ({
+    content: [{ text: JSON.stringify(input.value), type: 'text' }],
+    isError: false,
+    structuredContent: input.value,
+  }),
   throw: () => {
     throw new Error('The fixture tool failed.');
   },

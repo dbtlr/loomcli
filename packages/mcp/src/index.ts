@@ -10,6 +10,7 @@ export type {
   ToolAnnotations,
   ToolCall,
 } from './protocol.js';
-export { protocolRevision } from './revision.js';
+export { handshakeRevisions, protocolRevision } from './revision.js';
+export type { HandshakeRevision } from './revision.js';
 export { McpServer } from './server.js';
 export type { McpServerOptions, RunOptions, ServerInput, ServerOutput } from './server.js';

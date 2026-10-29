@@ -5,7 +5,12 @@ import { join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test';
 
-import { launch, request } from '../../../packages/mcp/tests/session.js';
+import {
+  handshakeRequest,
+  initialize,
+  launch,
+  request,
+} from '../../../packages/mcp/tests/session.js';
 import type { Message } from '../../../packages/mcp/tests/session.js';
 import { childEnvironment } from '../../../scripts/test-process.js';
 import { main } from './documents.js';
@@ -92,7 +97,7 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
         cacheScope: 'private',
         capabilities: { tools: {} },
         resultType: 'complete',
-        supportedVersions: ['2026-07-28'],
+        supportedVersions: ['2026-07-28', '2025-11-25', '2025-06-18'],
         ttlMs: 0,
       },
     });
@@ -184,6 +189,33 @@ describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => 
       ],
       ttlMs: 0,
     });
+  });
+
+  it('serves a client that opens with initialize on 2025-06-18, as Codex does', async () => {
+    const session = serve();
+    session.send(initialize(0, '2025-06-18'));
+    await expect(session.next()).resolves.toMatchObject({
+      id: 0,
+      result: { capabilities: { tools: {} }, protocolVersion: '2025-06-18' },
+    });
+    session.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+    session.send(handshakeRequest(1, 'tools/list'));
+    const listing = await session.next();
+    expect([Object(listing.result).tools].flat().map((tool) => Object(tool).name)).toEqual([
+      'jsonkit',
+      'get',
+      'keys',
+      'select',
+      'stats_depth_max',
+    ]);
+    session.send(
+      handshakeRequest(2, 'tools/call', { arguments: { file: 'doc.json' }, name: 'jsonkit' }),
+    );
+    const answer = await session.next();
+    // 2025-06-18 holds structured content as an object alone, so the members array stays text.
+    expect(answer.result).not.toHaveProperty('structuredContent');
+    expect(answer.result).toMatchObject({ isError: false });
+    await expect(session.close()).resolves.toMatchObject({ status: 0, stderr: '' });
   });
 
   it('get answers the value as text with no structured content', async () => {

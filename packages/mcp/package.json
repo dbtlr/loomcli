@@ -2,7 +2,7 @@
   "name": "@loom/mcp",
   "version": "0.0.0",
   "private": true,
-  "description": "The Model Context Protocol server Loom's MCP plugin speaks through, pinned to revision 2026-07-28. Never published: the plugin pack bundles it.",
+  "description": "The Model Context Protocol server Loom's MCP plugin speaks through: revision 2026-07-28 per request, and 2025-11-25 and 2025-06-18 after initialize. Never published: the plugin pack bundles it.",
   "license": "MIT",
   "type": "module",
   "exports": {

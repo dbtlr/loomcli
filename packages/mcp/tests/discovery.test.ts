@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vite-plus/test';
 import { open, request, serverInfo } from './session.js';
 
 describe('server/discover', () => {
-  it('answers the pinned revision, the tools capability, no caching, and the server identity', async () => {
+  it('answers every revision it serves, the tools capability, no caching, and the server identity', async () => {
     const session = open();
     session.send(request(1, 'server/discover'));
     await expect(session.next()).resolves.toEqual({
@@ -15,7 +15,7 @@ describe('server/discover', () => {
         cacheScope: 'private',
         capabilities: { tools: {} },
         resultType: 'complete',
-        supportedVersions: ['2026-07-28'],
+        supportedVersions: ['2026-07-28', '2025-11-25', '2025-06-18'],
         ttlMs: 0,
       },
     });
@@ -56,7 +56,7 @@ describe('per-request checks', () => {
     await session.close();
   });
 
-  it('answers a request for another version with -32022 naming both versions', async () => {
+  it('answers a request for another version with -32022 naming every version it serves', async () => {
     const session = open();
     session.send({
       id: 'a',
@@ -72,9 +72,9 @@ describe('per-request checks', () => {
     await expect(session.next()).resolves.toEqual({
       error: {
         code: -32_022,
-        data: { requested: '2025-11-25', supported: ['2026-07-28'] },
+        data: { requested: '2025-11-25', supported: ['2026-07-28', '2025-11-25', '2025-06-18'] },
         message:
-          "Unsupported protocol version. This server speaks MCP 2026-07-28; send that version in every request's params._meta.",
+          "Unsupported protocol version. This server speaks MCP 2026-07-28 per request; send that version in every request's params._meta, or open the connection with initialize for MCP 2025-11-25 or 2025-06-18.",
       },
       id: 'a',
       jsonrpc: '2.0',
@@ -89,49 +89,6 @@ describe('per-request checks', () => {
       id: 1,
       result: { resultType: 'complete' },
     });
-    await session.close();
-  });
-});
-
-describe('a legacy client', () => {
-  const message =
-    'Unsupported protocol version. This server speaks MCP 2026-07-28, which has no initialize request; use a client that supports protocol version 2026-07-28.';
-
-  it('answers initialize with -32022 naming the version it asked for', async () => {
-    const session = open();
-    session.send({
-      id: 0,
-      jsonrpc: '2.0',
-      method: 'initialize',
-      params: {
-        capabilities: {},
-        clientInfo: { name: 'legacy', version: '1.0.0' },
-        protocolVersion: '2025-11-25',
-      },
-    });
-    await expect(session.next()).resolves.toEqual({
-      error: {
-        code: -32_022,
-        data: { requested: '2025-11-25', supported: ['2026-07-28'] },
-        message,
-      },
-      id: 0,
-      jsonrpc: '2.0',
-    });
-    await session.close();
-  });
-
-  it('answers initialize with no protocol version as requesting ""', async () => {
-    const session = open();
-    session.send({ id: 0, jsonrpc: '2.0', method: 'initialize', params: { protocolVersion: 3 } });
-    session.send({ id: 1, jsonrpc: '2.0', method: 'initialize' });
-    for (const id of [0, 1]) {
-      await expect(session.next()).resolves.toEqual({
-        error: { code: -32_022, data: { requested: '', supported: ['2026-07-28'] }, message },
-        id,
-        jsonrpc: '2.0',
-      });
-    }
     await session.close();
   });
 });
@@ -157,7 +114,7 @@ describe('methods the server does not serve', () => {
 
   it('answers an unserved method with -32601 before the per-request checks', async () => {
     const session = open();
-    session.send({ id: 1, jsonrpc: '2.0', method: 'ping' });
+    session.send({ id: 1, jsonrpc: '2.0', method: 'resources/list' });
     await expect(session.next()).resolves.toMatchObject({ error: { code: -32_601 }, id: 1 });
     await session.close();
   });

@@ -12,7 +12,13 @@ import {
 } from './json-rpc.js';
 import type { RequestId } from './json-rpc.js';
 import type { CallToolResult, ProgressUpdate, ServerIdentity, Tool, ToolCall } from './protocol.js';
-import { protocolRevision } from './revision.js';
+import {
+  handshakeRevisions,
+  latestHandshakeRevision,
+  protocolRevision,
+  undescribedHandshakeRevision,
+} from './revision.js';
+import type { HandshakeRevision } from './revision.js';
 
 /** What a server serves: its identity, its tool listing, and the call of one tool. */
 interface McpServerOptions {
@@ -57,33 +63,77 @@ const metaKeys = {
   subscriptionId: 'io.modelcontextprotocol/subscriptionId',
 } as const;
 
-/** Every method the server serves. Any other method, `ping` included, is not found. */
-const methods = new Set(['server/discover', 'subscriptions/listen', 'tools/call', 'tools/list']);
-
-function unsupportedVersion(requested: string, message: string) {
-  return new ProtocolError(errorCodes.unsupportedProtocolVersion, message, {
-    supported: [protocolRevision],
-    requested,
-  });
-}
+/** Every revision the server serves, as discovery and an unsupported version list them. */
+const supportedRevisions = [protocolRevision, ...handshakeRevisions];
 
 /**
- * The answer to the handshake of earlier revisions, given before any other check, so a legacy
- * client learns which revision it needs.
+ * How a request is served. A request whose `params._meta` carries a protocol version is served on
+ * the per-request revision, relying on no earlier request. Any other request is served on the
+ * initialize-era revision its connection negotiated.
  */
-function legacyInitialize(params: unknown) {
-  const requested = isRecord(params) ? params.protocolVersion : undefined;
-  return unsupportedVersion(
-    typeof requested === 'string' ? requested : '',
-    `Unsupported protocol version. This server speaks MCP ${protocolRevision}, which has no initialize request; use a client that supports protocol version ${protocolRevision}.`,
+type Era = 'handshake' | 'per-request';
+
+/** Every method a per-request one may call. Any other, `ping` included, is not found. */
+const methods = new Set(['server/discover', 'subscriptions/listen', 'tools/call', 'tools/list']);
+
+/** Every method an initialized connection serves beside `initialize`. Any other is not found. */
+const handshakeMethods = new Set(['ping', 'tools/call', 'tools/list']);
+
+function unsupportedVersion(requested: string) {
+  return new ProtocolError(
+    errorCodes.unsupportedProtocolVersion,
+    `Unsupported protocol version. This server speaks MCP ${protocolRevision} per request; send that version in every request's params._meta, or open the connection with initialize for MCP ${handshakeRevisions.join(' or ')}.`,
+    { supported: supportedRevisions, requested },
   );
 }
 
 function missingMeta(key: string) {
   return new ProtocolError(
     errorCodes.invalidParams,
-    `The request's params._meta carries no "${key}". Send "${metaKeys.protocolVersion}" and "${metaKeys.clientCapabilities}" with every request.`,
+    `The request's params._meta carries no "${key}". Send "${metaKeys.protocolVersion}" and "${metaKeys.clientCapabilities}" with every request, or open the connection with initialize.`,
   );
+}
+
+/** The era a request selects: per-request when its `params._meta` names a protocol version. */
+function eraOf(params: unknown): Era {
+  const meta = isRecord(params) ? params._meta : undefined;
+  return isRecord(meta) && metaKeys.protocolVersion in meta ? 'per-request' : 'handshake';
+}
+
+/**
+ * The version an `initialize` request negotiates: the one it asks for when the server serves it,
+ * and otherwise the latest the server serves, as the initialize-era lifecycle requires. A request
+ * with no version string or no capabilities object is answered with the error.
+ */
+function negotiate(params: unknown): HandshakeRevision | ProtocolError {
+  const requested = isRecord(params) ? params.protocolVersion : undefined;
+  const capabilities = isRecord(params) ? params.capabilities : undefined;
+  if (typeof requested !== 'string' || !isRecord(capabilities)) {
+    return new ProtocolError(
+      errorCodes.invalidParams,
+      'The initialize request carries no protocol version or no capabilities. Send params.protocolVersion as a string and params.capabilities as an object.',
+    );
+  }
+  return handshakeRevisions.find((revision) => revision === requested) ?? latestHandshakeRevision;
+}
+
+/**
+ * The server's identity as an initialize result carries it. The implementation info of the earliest
+ * revision served has no description, which later revisions added.
+ */
+function implementationInfo(identity: ServerIdentity, version: HandshakeRevision) {
+  const { description, ...named } = identity;
+  return version === undescribedHandshakeRevision || description === undefined
+    ? named
+    : { ...named, description };
+}
+
+/**
+ * A call's result as an initialize-era revision holds it, where structured content is a JSON
+ * object. Any other value is left to the text content, which already carries it.
+ */
+function handshakeCallResult({ structuredContent, ...result }: CallToolResult) {
+  return isRecord(structuredContent) ? { ...result, structuredContent } : result;
 }
 
 /**
@@ -101,26 +151,32 @@ function envelopeFault(params: unknown): ProtocolError | undefined {
   if (!isRecord(capabilities)) {
     return missingMeta(metaKeys.clientCapabilities);
   }
-  return version === protocolRevision
-    ? undefined
-    : unsupportedVersion(
-        version,
-        `Unsupported protocol version. This server speaks MCP ${protocolRevision}; send that version in every request's params._meta.`,
-      );
+  return version === protocolRevision ? undefined : unsupportedVersion(version);
 }
 
-/** The error a request is answered with before any handler runs, if any. */
-function requestFault(method: string, params: unknown): ProtocolError | undefined {
-  if (method === 'initialize') {
-    return legacyInitialize(params);
+/**
+ * The error a request other than `initialize` is answered with before any handler runs, if any.
+ * Before `initialize`, a request for a method the server serves needs per-request `_meta`, `ping`
+ * aside, which the initialize-era lifecycle allows at any time.
+ */
+function requestFault(method: string, params: unknown, initialized: boolean) {
+  if (eraOf(params) === 'per-request') {
+    return methods.has(method)
+      ? envelopeFault(params)
+      : new ProtocolError(
+          errorCodes.methodNotFound,
+          `The method is not one this server serves. This server speaks MCP ${protocolRevision}; call server/discover, tools/list, tools/call, or subscriptions/listen.`,
+        );
   }
-  if (!methods.has(method)) {
-    return new ProtocolError(
-      errorCodes.methodNotFound,
-      `The method is not one this server serves. This server speaks MCP ${protocolRevision}; call server/discover, tools/list, tools/call, or subscriptions/listen.`,
-    );
+  if (!initialized && method !== 'ping' && (methods.has(method) || handshakeMethods.has(method))) {
+    return missingMeta(metaKeys.protocolVersion);
   }
-  return envelopeFault(params);
+  return handshakeMethods.has(method)
+    ? undefined
+    : new ProtocolError(
+        errorCodes.methodNotFound,
+        'The method is not one this server serves on an initialized connection. Call ping, tools/list, or tools/call.',
+      );
 }
 
 /** Listens for the output's error event. A write the client cannot read has no one to report to. */
@@ -179,10 +235,11 @@ interface Pending {
 }
 
 /**
- * What a request's handler receives beside its params: the signal that aborts it, and, for a call
- * that carries a progress token, the function that sends progress.
+ * What a request's handler receives beside its params: the era that shapes its result, the signal
+ * that aborts it, and, for a call that carries a progress token, the function that sends progress.
  */
 interface Handling {
+  readonly era: Era;
   readonly signal: AbortSignal;
   readonly progress: ((update: ProgressUpdate) => void) | undefined;
 }
@@ -200,6 +257,8 @@ class Session {
   readonly #subscriptions = new Set<RequestId>();
   readonly #writes = new Set<Promise<void>>();
   readonly #splitter = new LineSplitter();
+  /** The revision `initialize` negotiated for the connection, once it has. */
+  #handshake: HandshakeRevision | undefined;
   #silenced = false;
 
   constructor(options: McpServerOptions, output: ServerOutput) {
@@ -289,14 +348,54 @@ class Session {
   }
 
   #request(id: RequestId, method: string, params: unknown) {
-    const fault = this.#idInUse(id) ?? requestFault(method, params);
+    const fault =
+      this.#idInUse(id) ??
+      (method === 'initialize'
+        ? undefined
+        : requestFault(method, params, this.#handshake !== undefined));
     if (fault !== undefined) {
       this.#send(errorMessage(id, fault));
+    } else if (method === 'initialize') {
+      this.#initialize(id, params);
+    } else if (method === 'ping') {
+      this.#send(resultMessage(id, {}));
     } else if (method === 'subscriptions/listen') {
       this.#listen(id);
     } else {
       this.#start(id, method, isRecord(params) ? params : {});
     }
+  }
+
+  /**
+   * Opens the connection on an initialize-era revision, once. The negotiated revision then serves
+   * every request that carries no per-request `_meta`.
+   */
+  #initialize(id: RequestId, params: unknown) {
+    if (this.#handshake !== undefined) {
+      this.#send(
+        errorMessage(
+          id,
+          new ProtocolError(
+            errorCodes.invalidRequest,
+            `The connection is already initialized on MCP ${this.#handshake}. Send initialize once, as the first request.`,
+          ),
+        ),
+      );
+      return;
+    }
+    const version = negotiate(params);
+    if (version instanceof ProtocolError) {
+      this.#send(errorMessage(id, version));
+      return;
+    }
+    this.#handshake = version;
+    this.#send(
+      resultMessage(id, {
+        protocolVersion: version,
+        capabilities: { tools: {} },
+        serverInfo: implementationInfo(this.#options.identity, version),
+      }),
+    );
   }
 
   /**
@@ -327,7 +426,8 @@ class Session {
     const pending = { call: method === 'tools/call', controller: new AbortController() };
     this.#inFlight.set(id, pending);
     const progress = pending.call ? this.#progress(id, pending, params) : undefined;
-    const outcome = this.#outcome(method, params, { progress, signal: pending.controller.signal });
+    const handling = { era: eraOf(params), progress, signal: pending.controller.signal };
+    const outcome = this.#outcome(method, params, handling);
     const settling = this.#answer(id, pending, outcome);
     this.#settling.add(settling);
     void settling.finally(() => this.#settling.delete(settling));
@@ -383,10 +483,14 @@ class Session {
     };
   }
 
-  /** A request's stamped result, or the error to answer it with. A handler's own throw is internal. */
+  /**
+   * A request's result in the shape of its era, stamped on the per-request revision, or the error to
+   * answer it with. A handler's own throw is internal.
+   */
   async #outcome(method: string, params: Record<string, unknown>, handling: Handling) {
     try {
-      return this.#stamp(await this.#dispatch(method, params, handling));
+      const result = await this.#dispatch(method, params, handling);
+      return handling.era === 'per-request' ? this.#stamp(result) : result;
     } catch (error) {
       return error instanceof ProtocolError
         ? error
@@ -404,15 +508,19 @@ class Session {
   ): Promise<object> {
     if (method === 'server/discover') {
       return {
-        supportedVersions: [protocolRevision],
+        supportedVersions: supportedRevisions,
         capabilities: { tools: {} },
         ttlMs: 0,
         cacheScope: 'private',
       };
     }
-    if (method === 'tools/list') {
-      return this.#list(params);
-    }
+    return method === 'tools/list'
+      ? this.#list(params, handling.era)
+      : this.#call(params, handling);
+  }
+
+  /** One tool call, its result in the shape of its era. */
+  async #call(params: Record<string, unknown>, handling: Handling) {
     const { name } = params;
     if (typeof name !== 'string') {
       throw new ProtocolError(
@@ -420,20 +528,24 @@ class Session {
         "The tools/call request names no tool. Send the tool's name as params.name.",
       );
     }
-    const { progress, signal } = handling;
+    const { era, progress, signal } = handling;
     const call: ToolCall = { name, arguments: params.arguments, signal };
-    return this.#options.callTool(progress === undefined ? call : { ...call, progress });
+    const result = await this.#options.callTool(
+      progress === undefined ? call : { ...call, progress },
+    );
+    return era === 'per-request' ? result : handshakeCallResult(result);
   }
 
-  /** The tool listing: one page, which no client caches. */
-  async #list(params: Record<string, unknown>) {
+  /** The tool listing: one page, which no client caches on the per-request revision. */
+  async #list(params: Record<string, unknown>, era: Era) {
     if (params.cursor !== undefined) {
       throw new ProtocolError(
         errorCodes.invalidParams,
         'The cursor is not one this server issued. Call tools/list without a cursor.',
       );
     }
-    return { tools: await this.#options.listTools(), ttlMs: 0, cacheScope: 'private' };
+    const tools = await this.#options.listTools();
+    return era === 'per-request' ? { tools, ttlMs: 0, cacheScope: 'private' } : { tools };
   }
 
   /** A result as the revision requires it: complete, with the server's identity in `_meta`. */
@@ -464,9 +576,11 @@ class Session {
 }
 
 /**
- * An MCP server of the pinned revision over a stdio-style pair of streams. It serves
- * `server/discover`, `tools/list`, `tools/call`, and `subscriptions/listen`, and answers every
- * other method as not found.
+ * An MCP server over a stdio-style pair of streams, of both eras. A request carrying per-request
+ * `_meta` is served on the per-request revision, which serves `server/discover`, `tools/list`,
+ * `tools/call`, and `subscriptions/listen`. A connection that opens with `initialize` is served on
+ * the initialize-era revision it negotiates, which serves `ping`, `tools/list`, and `tools/call`.
+ * Every other method is not found.
  */
 class McpServer {
   readonly #options: McpServerOptions;

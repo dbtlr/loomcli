@@ -26,6 +26,28 @@ function request(id: number | string, method: string, params: Record<string, unk
   return { id, jsonrpc: '2.0', method, params: { ...params, _meta: meta } };
 }
 
+/**
+ * The handshake that opens a connection on an initialize-era revision, with the capabilities and
+ * client a handshake carries. `params` replaces the version, for a malformed handshake.
+ */
+function initialize(id: number | string, protocolVersion: unknown, params?: unknown) {
+  return {
+    id,
+    jsonrpc: '2.0',
+    method: 'initialize',
+    params: params ?? {
+      capabilities: {},
+      clientInfo: { name: 'handshake-client', version: '0.1.0' },
+      protocolVersion,
+    },
+  };
+}
+
+/** A request of an initialize-era revision: no per-request `_meta`, the connection carries the version. */
+function handshakeRequest(id: number | string, method: string, params?: Record<string, unknown>) {
+  return { id, jsonrpc: '2.0', method, ...(params === undefined ? {} : { params }) };
+}
+
 /** One parsed message the server wrote. */
 type Message = Record<string, unknown>;
 
@@ -154,5 +176,5 @@ function open(scenario = 'default') {
   return launch(fixture, [scenario]);
 }
 
-export { launch, meta, open, request, serverInfo };
+export { handshakeRequest, initialize, launch, meta, open, request, serverInfo };
 export type { Ending, LaunchOptions, Message };
