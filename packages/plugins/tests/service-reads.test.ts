@@ -38,7 +38,8 @@ function fakeManager(options: {
   readonly answer?: ChildExit;
 }): Fake {
   const kills: string[] = [];
-  const shutdown = { handlers: [] as (() => void)[], removed: 0 };
+  const handlers: (() => void)[] = [];
+  const shutdown = { handlers, removed: 0 };
   const spawn: Host['spawn'] = (_program, _args, spawnOptions) => {
     const { promise: exited, resolve: settle } = Promise.withResolvers<ChildExit>();
     if (options.answer !== undefined) {
@@ -113,6 +114,19 @@ describe('a status read', () => {
     expect(kills).toEqual([]);
   });
 
+  it('answers a read that SIGKILL ends on its own before the limit as an exit, not as one that ran out', async () => {
+    const { kills, manager } = fakeManager({
+      answer: exitOf(137),
+      signal: new AbortController().signal,
+    });
+    await expect(readCall(manager, call)).resolves.toEqual({
+      code: 137,
+      kind: 'exited',
+      stdout: '',
+    });
+    expect(kills).toEqual([]);
+  });
+
   it('answers a read that exits before the limit, and leaves no timer running', async () => {
     const { manager } = fakeManager({
       answer: exitOf(0, 'ActiveState=active\n'),
@@ -136,6 +150,19 @@ describe('a status read', () => {
     controller.abort(reason);
     await expect(outcome).resolves.toBe(reason);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('throws the run signal reason when the run is cancelled during a read that ignores SIGTERM and the limit then ends it', async () => {
+    const controller = new AbortController();
+    const { kills, manager } = fakeManager({ signal: controller.signal });
+    const pending = readCall(manager, call);
+    const reason = new Error('The run was cancelled.');
+    const outcome = pending.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(1);
+    controller.abort(reason);
+    await vi.advanceTimersByTimeAsync(readLimit);
+    await expect(outcome).resolves.toBe(reason);
+    expect(kills).toEqual(['SIGKILL']);
   });
 
   it('is killed with SIGKILL by the shutdown handler while it runs, and the handler is removed after', async () => {
