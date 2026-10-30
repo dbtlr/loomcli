@@ -79,3 +79,4 @@ Accepted in 0.13.0.
 ## Changelog
 
 - 2026-10-16: Proposed with the declared option-group contract.
+- 2026-10-30: [ADR-0123](0123-in-an-exclusive-option-group-the-highest-input-tier-that-supplies-a-member-wins.md), proposed, narrows "No cross-option source precedence suppresses an exclusive conflict": in an exclusive group, the members the highest tier supplied stay supplied, and each member a lower tier filled is withdrawn before validation, reads as unfilled by every tier, and is absent from the supplied record. A conflict is reported only between members one tier supplied, and the named values of an invocation by name are the argv tier. `oneRequired` and `requiredTogether` still count every tier's fills, and every other rule here stands. It binds when that record is accepted.

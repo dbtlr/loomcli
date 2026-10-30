@@ -232,7 +232,12 @@ Any accepted spelling counts, including negative Boolean forms and aliases. Vali
 Defaults do not count. A supplied value rejected by its validator still counts, so value and group problems can report together.
 Malformed environment values and named values that cannot lower supply nothing.
 An invocation by name first follows ordinary lowering: Boolean values without matching spellings, zero counts, and empty lists are absent.
-A configured member and a different typed member conflict in an exclusive group, and the diagnostic names the configured source.
+In an exclusive group, the highest input tier that supplies a member wins: the members that tier supplied stay supplied, and each member a lower tier filled is withdrawn. The tiers rank as [Input sources](input-sources.md) ranks them for one option, argv, then the environment, then the configuration source, and the named values of an [invocation by name](invocation.md#invocation-by-name) are argv.
+So `json = true` in a configuration file with a typed `--yaml` runs with `yaml`, and an environment member wins over a configured one.
+Core withdraws a losing member right after the input-source stage and before validation, so its value is never validated. It then reads as unfilled by every tier: its declared default applies, or it is omitted, it is absent from the `supplied` record, and it activates nothing.
+A conflict is reported only between members one tier supplied, such as `--json --yaml` or two configured keys, and the diagnostic names each member's source.
+A member in two exclusive groups withdraws when either holds a member a higher tier supplied, judged on the fills the stage left, so declaration order does not matter.
+`oneRequired` and `requiredTogether` count every tier's fills, a withdrawn member included.
 
 Automatically attached stdin does not count as a supplied option. For example, piping input does not satisfy `oneRequired('file', 'url')` on a stdin-claiming `file` option.
 An exclusive group limits supplied options, so stdin may still attach to an unsupplied content option beside a supplied sibling.
@@ -256,7 +261,7 @@ Completion suppresses exclusive siblings after a member appears in the line, inc
 MCP omits groups containing hidden or control options, and writes a group that holds an excluded option over its other members. Its schemas use named supplied-value predicates for Boolean polarity, positive counts, and nonempty lists.
 Exclusive constraints remain sound when external sources fill other options. Positive requirements are encoded only when every member has no environment binding or extensions.
 An extension might bind a configuration source, so uncertain groups remain runtime rules.
-[ADR-0085](../decisions/0085-a-command-declares-option-groups-over-supplied-local-options.md) records the contract.
+[ADR-0085](../decisions/0085-a-command-declares-option-groups-over-supplied-local-options.md) records the contract, and [ADR-0123](../decisions/0123-in-an-exclusive-option-group-the-highest-input-tier-that-supplies-a-member-wins.md) decides an exclusive group by the highest tier that supplies a member.
 
 ## Passthrough
 
