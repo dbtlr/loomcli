@@ -74,6 +74,7 @@ const level = new Command('level', {
   .option('secret', { description: 'Hidden.', env: 'KIT_SECRET', hidden: true, type: 'string' })
   .option('plain', { description: 'Long only.', type: 'boolean' })
   .option('raw', { env: 'KIT_RAW', type: 'boolean' })
+  .option('field', { env: 'KIT_FIELDS', envDelimiter: '\t', multiple: true, type: 'string' })
   .action(noop);
 
 const show = new Command('show', {
@@ -243,6 +244,11 @@ describe('sections', () => {
         '.TP',
         String.raw`\fB\-\-raw\fR`,
         String.raw`Environment: \fBKIT_RAW\fR`,
+        '.TP',
+        String.raw`\fB\-\-field\fR <\fIfield\fR>`,
+        '(repeatable)',
+        '.br',
+        String.raw`Environment: \fBKIT_FIELDS\fR (a list separated by \(dq\et\(dq)`,
         '.SH "EXAMPLES"',
         '.nf',
         String.raw`\fB$ kit level \-\-color\fR`,
@@ -276,6 +282,9 @@ describe('sections', () => {
         '.TP',
         String.raw`\fBKIT_RAW\fR`,
         String.raw`Supplies \fB\-\-raw\fR.`,
+        '.TP',
+        String.raw`\fBKIT_FIELDS\fR`,
+        String.raw`Supplies \fB\-\-field\fR as a list separated by \(dq\et\(dq.`,
         '.SH "SEE ALSO"',
         String.raw`\fBkit\fR(1)`,
       ),

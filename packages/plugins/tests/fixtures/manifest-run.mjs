@@ -36,7 +36,7 @@ function application(settings) {
       type: 'string',
       validate: z.string().regex(/^[0-9]+$/u),
     })
-    .option('tag', { multiple: true, type: 'string' })
+    .option('tag', { env: 'APP_TAGS', envDelimiter: ',', multiple: true, type: 'string' })
     .option('verbose', { description: 'Say more.', env: 'APP_VERBOSE', short: 'v', type: 'count' })
     .option('backup', { default: 'none', implied: 'simple', type: 'string' })
     .option('mode', { default: undefined, type: 'string', validate: z.string().optional() })

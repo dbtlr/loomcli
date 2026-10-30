@@ -227,13 +227,29 @@ function optionTag(option: OptionNode): string {
   return `${spellings}${escapeText(`${separator}${before}`)}${inFont(placeholder, 'italic')}${escapeText(after)}`;
 }
 
+/**
+ * The delimiter a multiple option's variable is a list under, written as a JSON string literal so
+ * a tab reads `"\t"`, or `undefined` for an option whose variable holds one value.
+ */
+function listDelimiter(option: OptionNode): string | undefined {
+  if ((option.type !== 'string' && option.type !== 'content') || option.envDelimiter === null) {
+    return undefined;
+  }
+  return escapeText(JSON.stringify(option.envDelimiter));
+}
+
 /** The lines an option's entry adds after its text: its environment and configuration bindings. */
 function bindings(option: OptionNode): string[] {
   const path = readExtension(option, configInput)?.path;
+  const delimiter = listDelimiter(option);
   return [
     ...(isEmpty(option.env)
       ? []
-      : [`Environment: ${option.env.map((name) => inFont(name, 'bold')).join(', ')}`]),
+      : [
+          `Environment: ${option.env.map((name) => inFont(name, 'bold')).join(', ')}${
+            delimiter === undefined ? '' : ` (a list separated by ${delimiter})`
+          }`,
+        ]),
     ...(path === undefined ? [] : [`Configuration: ${inFont(path, 'bold')}`]),
   ];
 }
@@ -257,9 +273,14 @@ function suppliedSpelling(option: OptionNode): string {
 
 function environment({ optionSections }: Subject): string[] {
   const lines = listed(optionSections).flatMap((option) =>
-    option.env.flatMap((name) =>
-      entry(inFont(name, 'bold'), `Supplies ${inFont(suppliedSpelling(option), 'bold')}.`),
-    ),
+    option.env.flatMap((name) => {
+      const delimiter = listDelimiter(option);
+      const list = delimiter === undefined ? '' : ` as a list separated by ${delimiter}`;
+      return entry(
+        inFont(name, 'bold'),
+        `Supplies ${inFont(suppliedSpelling(option), 'bold')}${list}.`,
+      );
+    }),
   );
   return headed('ENVIRONMENT', lines);
 }
