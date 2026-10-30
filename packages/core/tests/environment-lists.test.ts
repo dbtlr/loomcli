@@ -11,7 +11,8 @@
  * - Names. The first name in the list that holds a non-empty value supplies the list.
  * - Replacement. A variable's list satisfies `required` and keeps the default from applying.
  * - Content. A multiple content option reads each item as a path.
- * - Declarations. An empty delimiter is a declaration error at the declaring call.
+ * - Declarations. An empty delimiter on a multiple string or content option is a declaration error
+ *   at the declaring call.
  */
 import { Application, Command } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
@@ -116,6 +117,17 @@ test('an empty delimiter is a declaration error at the declaring call', () => {
       envDelimiter: '',
       multiple: true,
       type: 'string',
+    }),
+  ).toThrow('@loomcli/core/env-delimiter');
+});
+
+test('an empty delimiter on a multiple content option is a declaration error', () => {
+  expect(() =>
+    new Command('c').option('file', {
+      env: 'F',
+      envDelimiter: '',
+      multiple: true,
+      type: 'content',
     }),
   ).toThrow('@loomcli/core/env-delimiter');
 });

@@ -144,6 +144,16 @@ test.each(Object.entries(cases))('the %s fault throws its rule’s diagnostic', 
   expect(coreRuleParts(thrown(scenario))).toEqual(parts);
 });
 
+test('an empty delimiter marks the envDelimiter of the option that declared it', () => {
+  expect(findingsOf(thrown('env-delimiter'))).toContain(
+    onCommand(
+      ['get'],
+      "option('fields', { env: 'FIELDS', envDelimiter: '', multiple: true, type: 'string' })",
+      "envDelimiter: ''",
+    ).join('\n'),
+  );
+});
+
 const converterCorrection =
   'Fix the converter so it returns a JSON Schema object, or declare a validator that publishes none.';
 
