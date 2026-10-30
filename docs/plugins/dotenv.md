@@ -82,7 +82,7 @@ URL=http://${HOST}:${PORT:-8080}/api
 With `PORT` unset everywhere, `URL` reads `http://localhost:8080/api`.
 A reference reads the value the name holds at that point: its value in the hook's environment when it has one, empty included; otherwise the value a more specific file gave it; otherwise the value the last valid assignment above it in the same file gave it.
 A reference to a name nothing has given a value reads as empty, and `${NAME:-default}` reads `default` in its place. An empty value is a value, so `${NAME:-default}` reads it rather than the default, as Bun reads one.
-A name runs through letters, digits, and underscores, so `$1abc` is a reference to the name `1abc`. The expansion rules are Bun's. Where `dotenv-expand` differs, taking the default for an empty value, reading a name that starts with a digit as literal text, and scanning an expanded value again, the plugin follows Bun. The default may hold references of its own, and a closing brace matches its own `${`.
+A name runs through letters, digits, and underscores, so `$1abc` is a reference to the name `1abc`. Where `dotenv-expand` differs from Bun, taking the default for an empty value, reading a name that starts with a digit as literal text, and scanning an expanded value again, the plugin follows Bun. The default may hold references of its own, and a closing brace matches its own `${`.
 A value from the environment is never expanded, and an expanded value is never scanned again.
 A reference reads every valid assignment the files define, including a name an allow list or a deny list keeps the plugin from importing.
 
@@ -91,6 +91,8 @@ A `$` followed by anything but a name character or `{`, an unclosed `${`, and a 
 `$(command)` stays literal text, and the plugin runs no command.
 Single quotes keep `$` literal, a named deviation from Bun, which expands inside single quotes too. Under Bun, Bun's expanded value is already in the process and wins.
 Bun expands a file after reading all of it, so it reads a reference to a name a later line of the same file assigns as that line's unexpanded text, where the plugin reads only what lies above the reference.
+In double quotes Bun decodes only `\n`, `\r`, and `\$`, and keeps `\t`, `\"`, and `\\` as written, where the plugin decodes them. A `\\` before a reference reads differently too: with `USER=drew`, `"C:\\Users\\$USER"` reads `C:\Users\drew` under the plugin and `C:\\Users\$USER` under Bun.
+The plugin keeps `${}` and `${:-default}` as literal text, where Bun reads them as empty and as `default`.
 
 ## Warnings
 

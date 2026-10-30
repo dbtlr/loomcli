@@ -7,8 +7,8 @@ import { isVariableName } from '../variable-name.js';
 import { readDotenv } from './read.js';
 
 /**
- * Which names the plugin imports. With no settings it imports every name `.env` defines; `only`
- * imports the names it lists, and `except` imports every name but the ones it lists.
+ * Which names the plugin imports. With no settings it imports every name the dotenv files define;
+ * `only` imports the names it lists, and `except` imports every name but the ones it lists.
  */
 type DotenvSettings =
   | { readonly only: readonly string[]; readonly except?: never }
@@ -44,7 +44,10 @@ function importedNames(settings: DotenvSettings | undefined): (name: string) => 
   return () => true;
 }
 
-/** Imports the variables the working directory's .env file defines that the process has not set. */
+/**
+ * Imports the variables the process has not set from the dotenv files in the working directory:
+ * `.env`, `.env.<mode>`, `.env.local`, and `.env.<mode>.local`, the more specific file winning.
+ */
 export function dotenv(settings?: DotenvSettings): Plugin {
   const imports = importedNames(settings);
   return plugin(`${packageName}/dotenv`, {
