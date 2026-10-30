@@ -16,8 +16,8 @@ interface EnvBinding {
   envDelimiter?: never; // only a multiple option declares a delimiter
   envAllowEmpty?: never; // only a scalar string option's binding declares it
 }
-type StringBinding = // a scalar string option's binding: no variable, or a variable an empty value may supply
-  | { env?: never; envDelimiter?: never; envAllowEmpty?: never }
+type StringBinding = // a scalar string option's binding: the plain binding, or a variable an empty value may supply
+  | EnvBinding
   | {
       env: string | readonly [string, ...string[]];
       envDelimiter?: never;

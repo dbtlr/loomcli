@@ -96,6 +96,12 @@ const allowing = new Command('allowing')
     type: 'string',
   });
 
+// A binding whose variable another declaration names, or leaves out, still fits a string option.
+declare const named: { env?: string };
+const forwarded = new Command('forwarded')
+  .option('tag', { ...named, type: 'string' })
+  .option('label', { ...named, required: 'non-interactive', type: 'string' });
+
 // @ts-expect-error TS2345: An option that binds no variable declares no envAllowEmpty.
 const allowUnbound = new Command('allowUnbound').option('prefix', {
   envAllowEmpty: true,
@@ -186,6 +192,7 @@ export {
   bound,
   described,
   flag,
+  forwarded,
   listed,
   migrated,
   misbound,

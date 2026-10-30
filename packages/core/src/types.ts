@@ -71,12 +71,12 @@ type ListBinding =
       envAllowEmpty?: never;
     };
 /**
- * A scalar string option's binding: no variable, or a variable an empty value may supply. Only the
- * member that binds a variable declares `envAllowEmpty`, so the types reject the key on an option
- * that binds none.
+ * A scalar string option's binding: the plain binding, or a variable an empty value may supply.
+ * Only the member that requires `env` declares `envAllowEmpty`, so the types reject the key on an
+ * option that binds no variable, while a binding whose `env` may be absent still fits the plain one.
  */
 type StringBinding =
-  | { env?: never; envDelimiter?: never; envAllowEmpty?: never }
+  | EnvBinding
   | {
       env: string | readonly [string, ...string[]];
       envDelimiter?: never;
