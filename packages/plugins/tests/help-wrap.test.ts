@@ -779,3 +779,32 @@ test('a wrapped binding fact prints its labels, names, and separators dim on eve
     '          \u001b[90mconfig: server.listen address)\u001b[39m',
   ]);
 });
+
+/** A multiple option whose variable splits at a space, the delimiter a wrap could break. */
+const listBound = {
+  options: [
+    {
+      description: 'A word to count.',
+      env: ['APP_WORDS'],
+      envDelimiter: ' ',
+      multiple: true,
+      name: 'word',
+      type: 'string',
+    },
+  ],
+};
+
+test("a list binding's delimiter literal never breaks across lines at 40 and 60 columns", () => {
+  expect(block(render({ app: listBound, columns: 40 }), 'OPTIONS').slice(0, 5)).toEqual([
+    'OPTIONS',
+    '      --word <word>  A word to count.',
+    '                     (repeatable, env:',
+    '                     APP_WORDS as a list',
+    '                     separated by " ")',
+  ]);
+  for (const columns of [40, 60]) {
+    const lines = render({ app: listBound, columns }).split('\n');
+    expect(lines.filter((line) => line.length > columns)).toEqual([]);
+    expect(lines.filter((line) => line.includes('" ")'))).toHaveLength(1);
+  }
+});

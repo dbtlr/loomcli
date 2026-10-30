@@ -502,3 +502,26 @@ test('an option row lists its variables and its configuration key last among the
   expect(compact.stdout).toContain('config: cloud.region)');
   expect(compact.stdout).not.toContain('APP_TOKEN');
 });
+
+test("a multiple option's env fact names its delimiter as a JSON string after the variables, on both pages", () => {
+  const expected = page(
+    'app · Show each list binding.',
+    '',
+    'USAGE',
+    '  app [options]',
+    '',
+    'OPTIONS',
+    '      --field <field>    A field to print.  (repeatable, env: APP_FIELDS FIELDS as a list separated by ",")',
+    '      --word <word>      (repeatable, env: APP_WORDS as a list separated by " ")',
+    '      --secret <secret>  (repeatable)',
+    '  -h, --help             Show this help.',
+    '  -V, --version          Print the version.',
+  );
+  expect(run('list-bindings', ['--help'])).toEqual(expected);
+  const compact = run('list-bindings', ['-h']);
+  expect(compact.stdout).toContain(
+    '(repeatable, env: APP_FIELDS FIELDS as a list separated by ",")',
+  );
+  expect(compact.stdout).not.toContain('APP_SECRETS');
+  expect(compact.stdout).not.toContain('";"');
+});
