@@ -235,6 +235,7 @@ An invocation by name first follows ordinary lowering: Boolean values without ma
 In an exclusive group, the highest input tier that supplies a member wins: the members that tier supplied stay supplied, and each member a lower tier filled is withdrawn. The tiers rank as [Input sources](input-sources.md) ranks them for one option, argv, then the environment, then the configuration source, and the named values of an [invocation by name](invocation.md#invocation-by-name) are argv.
 So `json = true` in a configuration file with a typed `--yaml` runs with `yaml`, and an environment member wins over a configured one.
 Core withdraws a losing member right after the input-source stage and before validation, so its value is never validated. It then reads as unfilled by every tier: its declared default applies, or it is omitted, it is absent from the `supplied` record, and it activates nothing.
+A member bound to a variable outside its grammar fails the run as ever, unless a member of the group is typed in argv, which makes the variable a lower tier the run never reads, and then the failure is not reported.
 A conflict is reported only between members one tier supplied, such as `--json --yaml` or two configured keys, and the diagnostic names each member's source.
 A member in two exclusive groups withdraws when either holds a member a higher tier supplied, judged on the fills the stage left, so declaration order does not matter.
 `oneRequired` and `requiredTogether` count every tier's fills, a withdrawn member included.
