@@ -191,6 +191,7 @@ test("a plugin's option publishes the node an application's global option publis
     default: { value: 'plain' },
     description: undefined,
     env: [],
+    envAllowEmpty: false,
     envDelimiter: null,
     extensions: {},
     hidden: false,

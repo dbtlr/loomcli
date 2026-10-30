@@ -21,7 +21,7 @@ The lists govern imports by this plugin. A runtime or launcher that loads `.env`
 
 An existing defined variable wins, including an empty string.
 An env-bound option reads imported values through its ordinary environment tier, including an ordered list of names.
-An empty variable still supplies no option value, so option resolution can fall through to another name, configuration, or a default.
+An empty variable still supplies no option value, so option resolution can fall through to another name, configuration, or a default, unless a string option's binding declares `envAllowEmpty: true`: then a file's `FOO=` supplies the empty string, as a process's own empty `FOO` does, under [Empty values](../core/input-sources.md).
 Failures identify the variable without naming the file it came from.
 
 Only an argv `run()` whose [process handle](../core/host.md#the-process-handle) has a `publishEnv` copies additions out, and a handle `processHandle` builds has one, which copies them into `process.env` for libraries and the programs a library starts itself, only when it was given neither `env` nor `cwd`.

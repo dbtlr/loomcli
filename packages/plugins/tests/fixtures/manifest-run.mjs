@@ -32,6 +32,7 @@ function application(settings) {
       default: '10',
       description: 'The limit.',
       env: ['APP_LIMIT', 'APP_LIMIT_FALLBACK'],
+      envAllowEmpty: true,
       short: 'l',
       type: 'string',
       validate: z.string().regex(/^[0-9]+$/u),

@@ -59,15 +59,29 @@ type Presence = { required: true; default?: never } | { required?: false; defaul
  * member of `ListBinding` that binds no variable, declares `envDelimiter?: never`, so the types
  * reject it on an option that is not multiple or binds no variable.
  */
-type Multiplicity = ListBinding | ({ multiple?: false } & EnvBinding);
+type Multiplicity = ListBinding | ({ multiple?: false } & StringBinding);
 /** A multiple option's binding: no variable, or a variable and the delimiter that splits it. */
 type ListBinding =
-  | { multiple: true; env?: never; envDelimiter?: never }
+  | { multiple: true; env?: never; envDelimiter?: never; envAllowEmpty?: never }
   | {
       multiple: true;
       env: string | readonly [string, ...string[]];
       /** The non-empty string that separates the items of the variable's value. */
       envDelimiter: string;
+      envAllowEmpty?: never;
+    };
+/**
+ * A scalar string option's binding: the plain binding, or a variable an empty value may supply.
+ * Only the member that requires `env` declares `envAllowEmpty`, so the types reject the key on an
+ * option that binds no variable, while a binding whose `env` may be absent still fits the plain one.
+ */
+type StringBinding =
+  | EnvBinding
+  | {
+      env: string | readonly [string, ...string[]];
+      envDelimiter?: never;
+      /** `true` lets the first defined name supply the option, its value empty or not. */
+      envAllowEmpty?: boolean;
     };
 /**
  * The environment binding: the variable, or the non-empty list of variables, the input-source
@@ -78,6 +92,8 @@ interface EnvBinding {
   env?: string | readonly [string, ...string[]];
   /** Only a multiple option declares a delimiter, under `ListBinding`. */
   envDelimiter?: never;
+  /** Only a scalar string option's binding declares it, under `StringBinding`. */
+  envAllowEmpty?: never;
 }
 /**
  * `validateOmitted: true` sends an omitted optional scalar to its own schema. The literal member
@@ -879,14 +895,12 @@ export type StringOption = UnmarkedStringOption | BackgroundOption;
 export type UnmarkedStringOption = OptionSpelling &
   (
     | (Presence & Multiplicity & Omission)
-    | {
+    | ({
         required: 'non-interactive';
         default?: never;
         multiple?: false;
         validateOmitted?: never;
-        env?: string | readonly [string, ...string[]];
-        envDelimiter?: never;
-      }
+      } & StringBinding)
   ) &
   Described &
   Listed &
@@ -916,6 +930,7 @@ export type BackgroundOption = Described &
     shortOnly?: never;
     env?: never;
     envDelimiter?: never;
+    envAllowEmpty?: never;
     default?: never;
     implied?: never;
     multiple?: false;
@@ -1095,6 +1110,7 @@ export type BooleanOption =
       shortOnly?: never;
       aliases?: readonly string[];
       env?: never;
+      envAllowEmpty?: never;
     });
 /**
  * A counted option takes no value and reads how many times it was supplied, across every spelling,
@@ -1120,8 +1136,8 @@ export type CountOption = OptionSpelling &
     implied?: never;
   } & (
     | ({ verbose?: never; quiet?: never } & EnvBinding)
-    | { verbose: true; quiet?: never; env?: never }
-    | { quiet: true; verbose?: never; env?: never }
+    | { verbose: true; quiet?: never; env?: never; envAllowEmpty?: never }
+    | { quiet: true; verbose?: never; env?: never; envAllowEmpty?: never }
   );
 export type OptionConfig = StringOption | BooleanOption | CountOption | ContentOption;
 /**

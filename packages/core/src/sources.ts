@@ -119,7 +119,9 @@ type NamedReading = { reading: VariableReading; variable: string } | undefined;
 
 /**
  * Reads one option's bound variables in list order. The first variable holding a non-empty value
- * supplies the option, and an empty variable is unset and falls through to the next. A string
+ * supplies the option, and an empty variable is unset and falls through to the next, unless a
+ * string option's binding declares `envAllowEmpty`, under which the first defined variable supplies
+ * the option, its value empty or not. A string
  * option receives the raw string, never its implied value, and a multiple option receives the
  * list its declared delimiter splits the raw string into, every item kept. A Boolean option reads the whole value
  * through the grammar, so the value states the option's value and not a spelling, and a counted
@@ -127,9 +129,10 @@ type NamedReading = { reading: VariableReading; variable: string } | undefined;
  * variable and never falls through.
  */
 function readVariable(input: OptionInput, env: Host['env']): NamedReading {
+  const allowEmpty = input.config.envAllowEmpty === true;
   const variable = envNames(input.config).find((name) => {
     const raw = Object.hasOwn(env, name) ? env[name] : undefined;
-    return raw !== undefined && raw !== '';
+    return raw !== undefined && (allowEmpty || raw !== '');
   });
   const raw = variable === undefined ? undefined : env[variable];
   if (variable === undefined || raw === undefined) {

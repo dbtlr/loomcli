@@ -20,7 +20,7 @@ if (mode === 'native') {
   process.exit(0);
 }
 // Bun reads .env before this fixture starts; each test needs a controlled process baseline.
-for (const name of new Set([...observedNames, 'TOKEN', 'ALT', 'ENABLED'])) {
+for (const name of new Set([...observedNames, 'TOKEN', 'ALT', 'ENABLED', 'PREFIX'])) {
   delete process.env[name];
 }
 const installed = dotenv(settings);
@@ -37,6 +37,13 @@ const app = new Application('app', {
     default: 'fallback',
     description: 'The token.',
     env: ['TOKEN', 'ALT'],
+    type: 'string',
+  })
+  .option('prefix', {
+    default: 'fallback',
+    description: 'The prefix.',
+    env: 'PREFIX',
+    envAllowEmpty: true,
     type: 'string',
   })
   .option('enabled', { description: 'Enable the feature.', env: 'ENABLED', type: 'boolean' })

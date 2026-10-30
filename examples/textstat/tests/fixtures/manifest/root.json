@@ -77,6 +77,7 @@
       "schema": null,
       "env": [],
       "envDelimiter": null,
+      "envAllowEmpty": false,
       "default": null,
       "implied": null,
       "background": false
@@ -205,6 +206,7 @@
         },
         "env": [],
         "envDelimiter": null,
+        "envAllowEmpty": false,
         "default": {
           "value": "bytes"
         },
@@ -231,6 +233,7 @@
           "TEXTSTAT_MIN_BYTES"
         ],
         "envDelimiter": null,
+        "envAllowEmpty": false,
         "default": {
           "value": "0"
         },
@@ -276,6 +279,7 @@
         },
         "env": [],
         "envDelimiter": null,
+        "envAllowEmpty": false,
         "default": null,
         "implied": null,
         "background": false

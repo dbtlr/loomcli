@@ -85,6 +85,59 @@ const flag = new Command('flag').option('total', {
   type: 'boolean',
 });
 
+// A scalar string option that binds a variable may let an empty value supply it.
+const allowing = new Command('allowing')
+  .option('prefix', { env: 'APP_PREFIX', envAllowEmpty: true, type: 'string' })
+  .option('suffix', { env: ['APP_SUFFIX', 'OLD_SUFFIX'], envAllowEmpty: false, type: 'string' })
+  .option('tag', {
+    env: 'APP_TAG',
+    envAllowEmpty: true,
+    required: 'non-interactive',
+    type: 'string',
+  });
+
+// A binding whose variable another declaration names, or leaves out, still fits a string option.
+declare const named: { env?: string };
+const forwarded = new Command('forwarded')
+  .option('tag', { ...named, type: 'string' })
+  .option('label', { ...named, required: 'non-interactive', type: 'string' });
+
+// @ts-expect-error TS2345: An option that binds no variable declares no envAllowEmpty.
+const allowUnbound = new Command('allowUnbound').option('prefix', {
+  envAllowEmpty: true,
+  type: 'string',
+});
+
+// @ts-expect-error TS2345: A multiple option declares no envAllowEmpty.
+const allowList = new Command('allowList').option('fields', {
+  env: 'FIELDS',
+  envAllowEmpty: true,
+  envDelimiter: ',',
+  multiple: true,
+  type: 'string',
+});
+
+// @ts-expect-error TS2345: A Boolean option declares no envAllowEmpty.
+const allowFlag = new Command('allowFlag').option('total', {
+  env: 'TOTAL',
+  envAllowEmpty: true,
+  type: 'boolean',
+});
+
+// @ts-expect-error TS2345: A counted option declares no envAllowEmpty.
+const allowCount = new Command('allowCount').option('level', {
+  env: 'LEVEL',
+  envAllowEmpty: true,
+  type: 'count',
+});
+
+// @ts-expect-error TS2345: A content option declares no envAllowEmpty.
+const allowContent = new Command('allowContent').option('file', {
+  env: 'FILE',
+  envAllowEmpty: true,
+  type: 'content',
+});
+
 // An argument is identified by its place among bare tokens, so it cannot bind.
 // @ts-expect-error TS2353: An argument config declares no env.
 const positional = new Command('positional').argument('path', { env: 'PATH_TO' });
@@ -130,9 +183,16 @@ const undescribed = plugin('@fixture/undescribed', {
 
 export type { SettingsOptions };
 export {
+  allowContent,
+  allowCount,
+  allowFlag,
+  allowList,
+  allowUnbound,
+  allowing,
   bound,
   described,
   flag,
+  forwarded,
   listed,
   migrated,
   misbound,
