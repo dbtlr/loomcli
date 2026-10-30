@@ -12,6 +12,7 @@ const typescript = require('typescript/package.json');
 const compiler = join(dirname(require.resolve('typescript/package.json')), typescript.bin.tsc);
 const { version } = typescript;
 const zod = require('zod/package.json');
+const { devDependencies } = require('../../../package.json');
 const packageManager = process.env.npm_execpath;
 assert.ok(packageManager, 'Run this check through pnpm run check:types.');
 
@@ -78,6 +79,8 @@ try {
         '@loomcli/plugins': 'file:./plugins.tgz',
         '@loomcli/prompts': 'file:./prompts.tgz',
         '@loomcli/validators': 'file:./validators.tgz',
+        // A consumer installs its own Node types, which core's declarations type-check against.
+        '@types/node': devDependencies['@types/node'],
         zod: zod.version,
       },
       private: true,
