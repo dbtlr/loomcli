@@ -109,7 +109,7 @@ const truths: ReadonlyMap<string, boolean> = new Map([
 type RawFill = string | boolean | number | readonly string[];
 
 /** What one variable holds under the environment rules: a fill, or a value outside the grammar. */
-type VariableReading = { kind: 'fill'; value: string | boolean | number } | { kind: 'rejected' };
+type VariableReading = { kind: 'fill'; value: RawFill } | { kind: 'rejected' };
 
 /** The count grammar a bound variable is read through: the whole value, one or more ASCII digits. */
 const countText = /^[0-9]+$/u;
@@ -120,7 +120,8 @@ type NamedReading = { reading: VariableReading; variable: string } | undefined;
 /**
  * Reads one option's bound variables in list order. The first variable holding a non-empty value
  * supplies the option, and an empty variable is unset and falls through to the next. A string
- * option receives the raw string, never its implied value. A Boolean option reads the whole value
+ * option receives the raw string, never its implied value, and a multiple option receives the
+ * list its declared delimiter splits the raw string into, every item kept. A Boolean option reads the whole value
  * through the grammar, so the value states the option's value and not a spelling, and a counted
  * option reads the whole value as decimal digits. A value outside the grammar stops at its
  * variable and never falls through.
@@ -135,7 +136,9 @@ function readVariable(input: OptionInput, env: Host['env']): NamedReading {
     return undefined;
   }
   if (input.config.type === 'string' || input.config.type === 'content') {
-    return { reading: { kind: 'fill', value: raw }, variable };
+    const { multiple, envDelimiter } = input.config;
+    const value = multiple === true && envDelimiter !== undefined ? raw.split(envDelimiter) : raw;
+    return { reading: { kind: 'fill', value }, variable };
   }
   if (input.config.type === 'count') {
     const reading: VariableReading = countText.test(raw)

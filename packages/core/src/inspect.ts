@@ -60,7 +60,8 @@ interface ArgumentNode {
  * spelling, polarity, default, or validator, so its variant carries none of them. A string option's
  * `implied` is the value a bare spelling supplies, or `null` when it declares none.
  * `env` holds the variables the option's environment binding names, in declaration order, and is
- * empty when it binds none.
+ * empty when it binds none. A multiple string or content option's `envDelimiter` is the delimiter
+ * that binding declares, or `null`.
  * `aliases` holds the declared aliases as bare names in declaration order. An alias is
  * unadvertised, so the spellings above are the ones the declared name derives and no listing reads
  * `aliases`; parsing and `locate` read the table, which holds every alias's spellings.
@@ -82,6 +83,8 @@ interface StringOptionNode {
   readonly validateOmitted: boolean;
   readonly schema: InputSchema;
   readonly env: readonly string[];
+  /** The delimiter a multiple option's binding declares, or `null` when it declares none. */
+  readonly envDelimiter: string | null;
   readonly default: { readonly value: unknown } | undefined;
   readonly implied: string | null;
   /** Whether the option carries the background mark, whose value the run reads as its background choice. */
@@ -379,6 +382,7 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
       const value = {
         ...shared,
         default: declaredDefault(config),
+        envDelimiter: config.envDelimiter ?? null,
         implied: config.implied ?? null,
         multiple: config.multiple === true,
         required: config.required === true || (config.type === 'content' && (config.min ?? 0) > 0),

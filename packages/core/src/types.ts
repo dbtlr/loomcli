@@ -54,9 +54,20 @@ type OptionSpelling =
 type Presence = { required: true; default?: never } | { required?: false; default?: unknown };
 /**
  * The literal member keeps `multiple: true` exact under contextual typing, as `Presence` does.
- * A multiple option takes its list from the configuration source, so it binds no variable.
+ * A multiple option takes its list from the configuration source, or binds a variable beside the
+ * delimiter that splits the variable's value into the list. `envDelimiter` is declared nowhere
+ * else, so the types reject it on an option that is not multiple or binds no variable.
  */
-type Multiplicity = { multiple: true; env?: never } | ({ multiple?: false } & EnvBinding);
+type Multiplicity = ListBinding | ({ multiple?: false } & EnvBinding);
+/** A multiple option's binding: no variable, or a variable and the delimiter that splits it. */
+type ListBinding =
+  | { multiple: true; env?: never; envDelimiter?: never }
+  | {
+      multiple: true;
+      env: string | readonly [string, ...string[]];
+      /** The non-empty string that separates the items of the variable's value. */
+      envDelimiter: string;
+    };
 /**
  * The environment binding: the variable, or the non-empty list of variables, the input-source
  * stage fills the option from when argv supplies none. The first name holding a value supplies it.
@@ -64,6 +75,8 @@ type Multiplicity = { multiple: true; env?: never } | ({ multiple?: false } & En
  */
 interface EnvBinding {
   env?: string | readonly [string, ...string[]];
+  /** Only a multiple option declares a delimiter, under `ListBinding`. */
+  envDelimiter?: never;
 }
 /**
  * `validateOmitted: true` sends an omitted optional scalar to its own schema. The literal member
@@ -871,6 +884,7 @@ export type UnmarkedStringOption = OptionSpelling &
         multiple?: false;
         validateOmitted?: never;
         env?: string | readonly [string, ...string[]];
+        envDelimiter?: never;
       }
   ) &
   Described &
@@ -900,6 +914,7 @@ export type BackgroundOption = Described &
     short?: never;
     shortOnly?: never;
     env?: never;
+    envDelimiter?: never;
     default?: never;
     implied?: never;
     multiple?: false;
@@ -933,7 +948,7 @@ export type ContentOption = ContentInput &
     polarity?: never;
     implied?: never;
   } & (
-    | { multiple: true; env?: never; min?: number; max?: number }
+    | (ListBinding & { min?: number; max?: number })
     | ({ multiple?: false; min?: never; max?: never } & EnvBinding)
   );
 export interface StdinConfig {

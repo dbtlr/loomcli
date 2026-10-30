@@ -61,6 +61,11 @@ const cases: Record<string, RuleParts> = {
     rule: 'spelling-taken',
     sentence: 'Option spelling "--limit" is used by both "min-bytes" and "limit".',
   },
+  'env-delimiter': {
+    correction: 'Name the string that separates the items, such as ",".',
+    rule: 'env-delimiter',
+    sentence: 'Option "fields" declares an empty envDelimiter.',
+  },
   'global-local-key': {
     correction: 'Rename the local option.',
     rule: 'option-declared-twice',

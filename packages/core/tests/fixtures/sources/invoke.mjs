@@ -219,6 +219,8 @@ function application() {
   })
     .option('fields', {
       description: 'The fields option.',
+      env: 'FIXTURE_FIELDS',
+      envDelimiter: ',',
       extensions: [configKey('fields')],
       multiple: true,
       required: true,

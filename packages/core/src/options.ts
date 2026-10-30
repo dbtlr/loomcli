@@ -2,7 +2,7 @@ import { declaredName } from './command-rules.js';
 import { DeclarationError, quoted } from './errors.js';
 import { siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
-import { optionDeclaredTwice, spellingTaken } from './input-rules.js';
+import { envDelimiterEmpty, optionDeclaredTwice, spellingTaken } from './input-rules.js';
 import type { OptionConfig } from './types.js';
 
 export interface OptionDeclaration {
@@ -178,6 +178,17 @@ function checkAliases(config: OptionConfig, site: InputSite, name: string): void
   }
 }
 
+/** A multiple option's delimiter separates its variable's items, so it holds a character. */
+function checkEnvDelimiter(config: OptionConfig, site: InputSite, name: string): void {
+  if ((config.type === 'string' || config.type === 'content') && config.envDelimiter === '') {
+    throw new DeclarationError(envDelimiterEmpty, {
+      correction: 'Name the string that separates the items, such as ",".',
+      findings: [siteFinding(site, `${site.at}.envDelimiter`)],
+      sentence: `Option ${quoted(name)} declares an empty envDelimiter.`,
+    });
+  }
+}
+
 /**
  * The aliases one option declares, each with its place in `aliases`, without a repeat: an alias
  * that names the option or an alias before it adds no spelling, so it is skipped.
@@ -318,6 +329,7 @@ export function compileOptions<Declaration extends OptionDeclaration>(
     const site = scope.siteOf(declaration);
     checkOptionName(name, site);
     checkAliases(config, site, name);
+    checkEnvDelimiter(config, site, name);
     const first = names.get(name);
     if (first) {
       const earlier = scope.siteOf(first);

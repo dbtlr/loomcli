@@ -239,6 +239,32 @@ test('a source answers a multiple option with a list, and an empty string fills'
   expect(line(result.stdout, 'select')).toBe(`select:{${full},"fields":["a","b"],"title":""}`);
 });
 
+test('a multiple option splits its variable at the declared delimiter, and argv outranks it', () => {
+  const listed = { FIXTURE_FIELDS: 'a,b,c' };
+  expect(valueOf(run(['select'], listed).stdout, 'select', 'fields')).toEqual(['a', 'b', 'c']);
+  expect(valueOf(run(['select', '--fields', 'x'], listed).stdout, 'select', 'fields')).toEqual([
+    'x',
+  ]);
+});
+
+test('a variable list replaces the configuration source, which is never asked for the option', () => {
+  const both = { FIXTURE_FIELDS: 'a,b', ...settings({ fields: ['from', 'file'] }) };
+  const result = run(['select'], both);
+  expect(valueOf(result.stdout, 'select', 'fields')).toEqual(['a', 'b']);
+  expect(line(result.stdout, 'source')).not.toContain('"fields"');
+  // An empty variable is unset, so the configuration source supplies the list.
+  expect(
+    valueOf(run(['select'], { ...both, FIXTURE_FIELDS: '' }).stdout, 'select', 'fields'),
+  ).toEqual(['from', 'file']);
+});
+
+test('an item the validator rejects fails naming the variable and the item position', () => {
+  expect(run(['select'], { FIXTURE_FIELDS: 'a,' })).toMatchObject({
+    status: 2,
+    stderr: 'app: Option "--fields" (from FIXTURE_FIELDS) at 1: Supply a field name.\n',
+  });
+});
+
 test('an empty list still reports the required message of a required multiple option', () => {
   expect(run(['select'], settings({ fields: [] })).stderr).toBe(
     'app: Option "--fields" (from fields in fixture.json) is required. Supply at least one value.\n',
@@ -660,7 +686,7 @@ test('inspect() publishes env on bound and unbound options of every kind', () =>
     ['color', ['FIXTURE_COLOR']],
   ]);
   expect(envs(select.options)).toEqual([
-    ['fields', []],
+    ['fields', ['FIXTURE_FIELDS']],
     ['title', []],
   ]);
   // A list publishes in declaration order.
