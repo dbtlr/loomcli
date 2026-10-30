@@ -7,7 +7,7 @@
  * Bun.
  */
 
-// Substitution syntax is intentional literal input: dotenv never expands variables.
+// Substitution syntax is intentional input for the references the plugin expands.
 /* oxlint-disable eslint/no-template-curly-in-string */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,14 +22,20 @@ const fixture = new URL('fixtures/dotenv-run.mjs', import.meta.url);
 /** The allow list most tests install, so an unlisted name shows what the list leaves out. */
 const listed = ['TOKEN', 'ALT', 'EMPTY', 'SET', 'NEXT', 'ENABLED'];
 
+/**
+ * Runs the fixture in a directory holding the given files: a string is the `.env` file, and a
+ * record maps each file name to its text.
+ */
 function runFile(
-  content: string | undefined,
+  content: string | Record<string, string> | undefined,
   options: {
-    env?: Record<string, string>;
+    env?: Record<string, string> | undefined;
+    launchEnv?: Record<string, string>;
     directory?: boolean;
-    unreadable?: boolean;
+    unreadable?: string;
     mode?: string;
     names?: readonly string[];
+    runtime?: string;
     settings?: unknown;
   } = {},
 ) {
@@ -37,12 +43,18 @@ function runFile(
   try {
     if (options.directory === true) {
       mkdirSync(join(directory, '.env'));
-    } else if (content !== undefined) {
+    } else if (typeof content === 'string') {
       writeFileSync(join(directory, '.env'), content);
+    } else {
+      for (const [name, text] of Object.entries(content ?? {})) {
+        writeFileSync(join(directory, name), text);
+      }
     }
     return invoke(fixture, [options.mode ?? 'run'], {
       cwd: directory,
+      ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
       env: {
+        ...options.launchEnv,
         ALT: undefined,
         ENABLED: undefined,
         FIXTURE_ENV: JSON.stringify(options.env ?? {}),
@@ -52,7 +64,7 @@ function runFile(
         FIXTURE_SETTINGS: JSON.stringify(
           'settings' in options ? options.settings : { only: listed },
         ),
-        FIXTURE_UNREADABLE: options.unreadable === true ? '1' : undefined,
+        FIXTURE_UNREADABLE: options.unreadable,
         TOKEN: undefined,
       },
     });
@@ -177,8 +189,8 @@ test('a named run captures warnings and leaves the process untouched', () => {
   expect(JSON.parse(outcome.output)).toMatchObject({ options: { token: 'file' }, process: null });
 });
 
-function warning(name: string, line: number): string {
-  return `⚠ Skipped ${name} on line ${line} of .env: the line is not a valid assignment. Correct the line, or remove it.\n`;
+function warning(name: string, line: number, file = '.env'): string {
+  return `⚠ Skipped ${name} on line ${line} of ${file}: the line is not a valid assignment. Correct the line, or remove it.\n`;
 }
 
 test.each([
@@ -226,7 +238,7 @@ test('missing files and .env directories are silent while unreadable files warn 
   expect(JSON.parse(missing.stdout).options.token).toBe('fallback');
   const directory = runFile(undefined, { directory: true });
   expect(directory).toMatchObject({ status: 0, stderr: '' });
-  const unreadable = runFile(undefined, { unreadable: true });
+  const unreadable = runFile(undefined, { unreadable: '.env' });
   expect(unreadable).toMatchObject({
     status: 0,
     stderr: '⚠ Skipped .env: the file could not be read. Make it readable, or remove it.\n',
@@ -245,12 +257,16 @@ test.each([
   ['multiline single quotes', 'TOKEN=\'a\r\n\\n "b"\r\nc\' # comment\r\n', 'a\n\\n "b"\nc'],
   ['double quote escapes', 'TOKEN="a\\nb\\rc\\td\\"e\\\\f"\n', 'a\nb\rc\td"e\\f'],
   ['multiline double quotes', 'TOKEN="a\r\nb\r\nc" # comment\r\n', 'a\nb\nc'],
-  ['unknown escapes stay literal', 'TOKEN="a\\qb\\$c"\n', String.raw`a\qb\$c`],
+  [
+    String.raw`unknown escapes stay literal and \$ is a dollar`,
+    'TOKEN="a\\qb\\$c"\n',
+    String.raw`a\qb$c`,
+  ],
   ['backslash before a physical newline', 'TOKEN="a\\\nb"\n', 'a\\\nb'],
-  ['embedded hash', 'TOKEN=a#b # comment\n', 'a#b'],
+  ['an embedded hash ends an unquoted value', 'TOKEN=a#b # comment\n', 'a'],
+  ['a quoted hash stays', 'TOKEN="a#b" # comment\n', 'a#b'],
   ['comment as the value', 'TOKEN=# comment\n', ''],
   ['quotes within unquoted text', 'TOKEN=a"b\'c\n', 'a"b\'c'],
-  ['no expansion', 'TOKEN=${HOME}\n', '${HOME}'],
   ['last valid assignment wins', 'TOKEN=first\nTOKEN=last\n', 'last'],
 ])('dotenv parses %s', (_name, content, value) => {
   const result = runFile(content);
@@ -296,3 +312,300 @@ test.each(['\u2028', '\u2029', '\r'])(
     expect(JSON.parse(result.stdout).env).toEqual({ NEXT: `visible${separator}text` });
   },
 );
+
+/** Runs the plugin over the given files with every name imported, and returns the names it read. */
+function readLayers(
+  files: Record<string, string>,
+  options: { env?: Record<string, string>; names?: readonly string[] } = {},
+) {
+  const result = runFile(files, {
+    env: options.env,
+    names: options.names ?? ['TOKEN', 'ALT', 'NEXT'],
+    settings: null,
+  });
+  return { ...result, env: result.stdout === '' ? {} : JSON.parse(result.stdout).env };
+}
+
+const production = { NODE_ENV: 'production' };
+
+test.each([
+  ['.env.<mode> over .env', { '.env': 'TOKEN=base', '.env.production': 'TOKEN=mode' }, 'mode'],
+  [
+    '.env.local over .env.<mode>',
+    { '.env.local': 'TOKEN=local', '.env.production': 'TOKEN=mode' },
+    'local',
+  ],
+  [
+    '.env.<mode>.local over .env.local',
+    { '.env.local': 'TOKEN=local', '.env.production.local': 'TOKEN=both' },
+    'both',
+  ],
+  ['.env.local over .env', { '.env': 'TOKEN=base', '.env.local': 'TOKEN=local' }, 'local'],
+  [
+    'the most specific of all four',
+    {
+      '.env': 'TOKEN=base',
+      '.env.local': 'TOKEN=local',
+      '.env.production': 'TOKEN=mode',
+      '.env.production.local': 'TOKEN=both',
+    },
+    'both',
+  ],
+])('the more specific file wins: %s', (_name, files, value) => {
+  const result = readLayers(files, { env: production });
+  expect(result).toMatchObject({ env: { TOKEN: value }, status: 0, stderr: '' });
+});
+
+test('each layered file contributes the names the others leave unset', () => {
+  const result = readLayers(
+    {
+      '.env': 'TOKEN=base\nALT=base\nNEXT=base',
+      '.env.local': 'ALT=local',
+      '.env.production': 'NEXT=mode',
+    },
+    { env: production },
+  );
+  expect(result).toMatchObject({
+    env: { ALT: 'local', NEXT: 'mode', TOKEN: 'base' },
+    status: 0,
+    stderr: '',
+  });
+});
+
+test('a variable the environment holds beats every file, empty included', () => {
+  const files = { '.env': 'TOKEN=base', '.env.production.local': 'TOKEN=both\nALT=both' };
+  expect(readLayers(files, { env: { ...production, TOKEN: 'shell' } }).env).toEqual({
+    ALT: 'both',
+    TOKEN: 'shell',
+  });
+  expect(readLayers(files, { env: { ...production, TOKEN: '' } }).env).toEqual({
+    ALT: 'both',
+    TOKEN: '',
+  });
+});
+
+test.each([
+  ['unset', {}],
+  ['empty', { NODE_ENV: '' }],
+])('with NODE_ENV %s the plugin reads .env and .env.local alone', (_name, env) => {
+  const result = readLayers(
+    {
+      '.env': 'TOKEN=base\nALT=base\nNEXT=base',
+      '.env.': 'ALT=dot',
+      '.env.development': 'NEXT=development',
+      '.env.local': 'TOKEN=local',
+      '.env.local.local': 'NEXT=twice',
+    },
+    { env },
+  );
+  expect(result).toMatchObject({
+    env: { ALT: 'base', NEXT: 'base', TOKEN: 'local' },
+    status: 0,
+    stderr: '',
+  });
+});
+
+test('the mode is read as written, and a file for another mode is not read', () => {
+  const files = { '.env': 'TOKEN=base', '.env.Production': 'TOKEN=cased', '.env.staging': 'ALT=x' };
+  expect(readLayers(files, { env: production }).env).toEqual({ TOKEN: 'base' });
+  expect(readLayers(files, { env: { NODE_ENV: 'Production' } }).env).toEqual({ TOKEN: 'cased' });
+});
+
+test('under the test mode the plugin skips .env.local and reads the other three', () => {
+  const result = readLayers(
+    {
+      '.env': 'TOKEN=base\nALT=base\nNEXT=base',
+      '.env.local': 'TOKEN=local\nALT=local\nNEXT=local',
+      '.env.test': 'ALT=mode\nNEXT=mode',
+      '.env.test.local': 'NEXT=both',
+    },
+    { env: { NODE_ENV: 'test' } },
+  );
+  expect(result).toMatchObject({
+    env: { ALT: 'mode', NEXT: 'both', TOKEN: 'base' },
+    status: 0,
+    stderr: '',
+  });
+});
+
+test('a file the mode names twice is read once, at its more specific place', () => {
+  const result = readLayers(
+    {
+      '.env': 'TOKEN=base',
+      '.env.local': 'TOKEN=local\nBAD no-equals',
+      '.env.local.local': 'ALT=deep',
+    },
+    { env: { NODE_ENV: 'local' } },
+  );
+  expect(result).toMatchObject({
+    env: { ALT: 'deep', TOKEN: 'local' },
+    status: 0,
+    stderr: warning('BAD', 2, '.env.local'),
+  });
+});
+
+test('a variable a file defines never chooses the mode the plugin reads', () => {
+  const result = readLayers(
+    { '.env': 'NODE_ENV=production\nTOKEN=base', '.env.production': 'TOKEN=mode' },
+    {
+      names: ['NODE_ENV', 'TOKEN'],
+    },
+  );
+  expect(result.env).toEqual({ NODE_ENV: 'production', TOKEN: 'base' });
+});
+
+test('a malformed assignment in one file never erases a valid one in another', () => {
+  const result = readLayers(
+    { '.env': 'TOKEN=base', '.env.production': 'TOKEN no-equals\nALT=mode' },
+    { env: production },
+  );
+  expect(result).toMatchObject({
+    env: { ALT: 'mode', TOKEN: 'base' },
+    status: 0,
+    stderr: warning('TOKEN', 1, '.env.production'),
+  });
+});
+
+test('warnings name their file and come in the order the plugin reads the files', () => {
+  const result = readLayers(
+    {
+      '.env': 'TOKEN no-equals',
+      '.env.local': 'ALT no-equals',
+      '.env.production': 'NEXT no-equals',
+      '.env.production.local': 'TOKEN="a" trailing',
+    },
+    { env: production },
+  );
+  expect(result.stderr).toBe(
+    warning('TOKEN', 1, '.env.production.local') +
+      warning('ALT', 1, '.env.local') +
+      warning('NEXT', 1, '.env.production') +
+      warning('TOKEN', 1, '.env'),
+  );
+});
+
+test('a layered file that is missing or is a directory is silent', () => {
+  const result = runFile({ '.env': 'TOKEN=base' }, { env: production, settings: null });
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  expect(JSON.parse(result.stdout).env).toEqual({ TOKEN: 'base' });
+});
+
+test('an unreadable layered file warns once with its name while the other files contribute', () => {
+  const result = runFile(
+    { '.env': 'TOKEN=base', '.env.production': 'ALT=mode' },
+    { env: production, names: ['TOKEN', 'ALT', 'NEXT'], settings: null, unreadable: '.env.local' },
+  );
+  expect(result).toMatchObject({
+    status: 0,
+    stderr: '⚠ Skipped .env.local: the file could not be read. Make it readable, or remove it.\n',
+  });
+  expect(JSON.parse(result.stdout).env).toEqual({ ALT: 'mode', TOKEN: 'base' });
+});
+
+test('an allow list and a deny list apply to every layered file', () => {
+  const files = { '.env': 'TOKEN=base\nNEXT=base', '.env.production': 'TOKEN=mode\nNEXT=mode' };
+  const only = runFile(files, { env: production, settings: { only: ['TOKEN'] } });
+  expect(JSON.parse(only.stdout).env).toEqual({ TOKEN: 'mode' });
+  const except = runFile(files, { env: production, settings: { except: ['TOKEN'] } });
+  expect(JSON.parse(except.stdout).env).toEqual({ NEXT: 'mode' });
+});
+
+test.each([
+  ['$NAME', 'ALT=x\nTOKEN=a-$ALT-b', 'a-x-b'],
+  ['${NAME}', 'ALT=x\nTOKEN=a${ALT}b', 'axb'],
+  ['a name that ends at a non-name character', 'ALT=x\nTOKEN=$ALT.$ALT/', 'x.x/'],
+  ['an unset name reads empty', 'TOKEN=a${MISSING}b$MISSING', 'ab'],
+  ['${NAME:-default} for an unset name', 'TOKEN=${MISSING:-fallback}', 'fallback'],
+  ['${NAME:-default} for a set name', 'ALT=x\nTOKEN=${ALT:-fallback}', 'x'],
+  ['an empty value is a value', 'ALT=\nTOKEN=${ALT:-fallback}', ''],
+  ['a default holding a reference', 'ALT=x\nTOKEN=${MISSING:-<${ALT}>}', '<x>'],
+  ['a default holding a nested default', 'TOKEN=${A:-${B:-deep}}end', 'deepend'],
+  ['a double-quoted value', 'ALT=x\nTOKEN="a $ALT ${ALT}\\n"', 'a x x\n'],
+  ['a multiline double-quoted value', 'ALT=x\nTOKEN="$ALT\n${ALT}"', 'x\nx'],
+  [
+    'single quotes stay literal',
+    "ALT=x\nTOKEN='$ALT ${ALT} ${ALT:-d} \\$'",
+    '$ALT ${ALT} ${ALT:-d} \\$',
+  ],
+  [String.raw`\$ is a dollar when unquoted`, 'ALT=x\nTOKEN=\\$ALT-\\${ALT}', '$ALT-${ALT}'],
+  [
+    String.raw`\$ is a dollar in double quotes`,
+    'ALT=x\nTOKEN="\\$ALT \\\\$ALT"',
+    String.raw`$ALT \x`,
+  ],
+  ['another backslash is no escape when unquoted', 'ALT=x\nTOKEN=a\\n\\x', String.raw`a\n\x`],
+  ['$(command) stays literal', 'TOKEN=$(echo hi) and `x`', '$(echo hi) and `x`'],
+  ['a dollar before a non-name character', 'TOKEN=a$ b$', 'a$ b$'],
+  ['an unclosed ${', 'ALT=x\nTOKEN=${ALT', '${ALT'],
+  ['${ with neither a name nor a default', 'TOKEN=${a b} ${} ${-x}', '${a b} ${} ${-x}'],
+  ['a name that starts with a digit', 'TOKEN=$1abc-${2:-d}', '-d'],
+  ['a reference does not scan its value again', "ALT='$TOKEN'\nTOKEN=$ALT", '$TOKEN'],
+  ['a reference to a later line reads empty', 'TOKEN=[$ALT]\nALT=x', '[]'],
+  ['a reference reads the last assignment above it', 'ALT=1\nALT=2\nTOKEN=$ALT\nALT=3', '2'],
+  ['a hash ends the value before its references', 'ALT=x\nTOKEN=$ALT#${ALT}', 'x'],
+])('a value expands %s', (_name, content, value) => {
+  const result = runFile(content, { names: ['TOKEN', 'ALT'], settings: null });
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  expect(JSON.parse(result.stdout).env.TOKEN).toBe(value);
+});
+
+test('a reference reads the environment first, and never expands the environment value', () => {
+  const result = readLayers(
+    { '.env': 'ALT=file\nTOKEN=$ALT-${NEXT}', '.env.local': 'NEXT=local' },
+    { env: { ALT: '$NEXT', NEXT: '' } },
+  );
+  expect(result.env).toEqual({ ALT: '$NEXT', NEXT: '', TOKEN: '$NEXT-' });
+});
+
+test('a reference reads a more specific file, and never a less specific one', () => {
+  const result = readLayers(
+    {
+      '.env': 'ALT=base\nNEXT=base\nTOKEN=$ALT-$NEXT',
+      '.env.local': 'ALT=local\nTOKEN=$ALT-$NEXT',
+    },
+    { env: {} },
+  );
+  expect(result.env).toEqual({ ALT: 'local', NEXT: 'base', TOKEN: 'local-' });
+});
+
+test('a reference reads a name an allow list keeps the plugin from importing', () => {
+  const result = runFile('SECRET=s3\nTOKEN=<$SECRET>\n', {
+    names: ['TOKEN', 'SECRET'],
+    settings: { only: ['TOKEN'] },
+  });
+  expect(JSON.parse(result.stdout).env).toEqual({ TOKEN: '<s3>' });
+});
+
+test.each([
+  ['a hash after other text', 'TOKEN=a#b\n', 'a'],
+  ['a hash that starts the value', 'TOKEN=#b\n', ''],
+  ['a hash after whitespace', 'TOKEN=a #b\n', 'a'],
+  ['a URL fragment', 'TOKEN=https://x.test/p#frag\n', 'https://x.test/p'],
+  ['a quoted hash', 'TOKEN="https://x.test/p#frag"\n', 'https://x.test/p#frag'],
+  ['a single-quoted hash', "TOKEN='a#b'\n", 'a#b'],
+])('an unquoted value ends at any hash: %s', (_name, content, value) => {
+  const result = runFile(content);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  expect(JSON.parse(result.stdout).env).toEqual({ TOKEN: value });
+});
+
+// Bun loads these files itself before the plugin runs. The values the plugin reads under Node are
+// The values Bun reads for the same project, which is why the plugin follows Bun's order.
+test('the plugin reads under Node the values Bun reads for the same layered files', () => {
+  const files = {
+    '.env': 'TOKEN=base\nALT=base-$TOKEN\nNEXT=${TOKEN}#comment',
+    '.env.local': 'ALT=local-${MISSING:-d}',
+    '.env.production': 'TOKEN=mode',
+    '.env.production.local': String.raw`NEXT="both $TOKEN \$"`,
+  };
+  const names = ['TOKEN', 'ALT', 'NEXT'];
+  const bun = runFile(files, {
+    launchEnv: production,
+    mode: 'native',
+    names,
+    runtime: 'bun',
+    settings: null,
+  });
+  const node = runFile(files, { env: production, names, runtime: 'node', settings: null });
+  expect(JSON.parse(node.stdout).env).toEqual(JSON.parse(bun.stdout));
+});

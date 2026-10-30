@@ -1,13 +1,23 @@
 import { variableNameSource } from '../variable-name.js';
+import type { ValueQuote } from './expand.js';
 
 interface MalformedAssignment {
   readonly name: string;
   readonly line: number;
 }
 
+/** A value as written: its text before any `$` or backslash is read, and how it was quoted. */
 interface ParsedValue {
   readonly value: string | undefined;
+  readonly quote: ValueQuote;
   readonly next: number;
+}
+
+/** One valid assignment, in file order, whose value the plugin has not yet expanded. */
+interface DotenvAssignment {
+  readonly name: string;
+  readonly value: string;
+  readonly quote: ValueQuote;
 }
 
 interface ParsedAssignment extends ParsedValue {
@@ -16,7 +26,7 @@ interface ParsedAssignment extends ParsedValue {
 }
 
 interface ParsedFile {
-  readonly values: Map<string, string>;
+  readonly assignments: DotenvAssignment[];
   readonly malformed: MalformedAssignment[];
 }
 
@@ -27,24 +37,17 @@ const characterWidth = 1;
 const escapeWidth = 2;
 const notFound = -1;
 
-const escapes: ReadonlyMap<string, string> = new Map([
-  ['n', '\n'],
-  ['r', '\r'],
-  ['t', '\t'],
-  ['"', '"'],
-  ['\\', '\\'],
-]);
-
 function validTail(text: string): boolean {
   return /^[ \t]*(?:#[^\n]*)?$/u.test(text);
 }
 
+/** A backslash and the character after it stay together, so an escaped quote never ends a value. */
 function quotedCharacter(text: string, offset: number) {
-  const character = text.charAt(offset);
-  const following = text.charAt(offset + characterWidth);
-  return character === '\\' && following !== ''
-    ? { value: escapes.get(following) ?? `\\${following}`, width: escapeWidth }
-    : { value: character, width: characterWidth };
+  const width =
+    text.charAt(offset) === '\\' && text.charAt(offset + characterWidth) !== ''
+      ? escapeWidth
+      : characterWidth;
+  return { value: text.slice(offset, offset + width), width };
 }
 
 /** One physical line of a quoted value: its text, and what follows the closing quote when it has one. */
@@ -61,7 +64,10 @@ function literalLine(text: string, from: number): QuotedLine {
     : { tail: text.slice(end + afterQuote), value: text.slice(from, end) };
 }
 
-/** One physical line inside a double-quoted value, stopping only at an unescaped quote. */
+/**
+ * One physical line inside a double-quoted value, stopping only at an unescaped quote. Its escapes
+ * stay undecoded, because a `\$` and a `$` read differently.
+ */
 function quotedLine(text: string, from: number): QuotedLine {
   let value = '';
   for (let offset = from; offset < text.length;) {
@@ -84,9 +90,13 @@ function quotedLine(text: string, from: number): QuotedLine {
 function quoted(
   lines: readonly string[],
   start: number,
-  opening: { first: string; readLine: (text: string, from: number) => QuotedLine },
+  opening: {
+    first: string;
+    quote: ValueQuote;
+    readLine: (text: string, from: number) => QuotedLine;
+  },
 ): ParsedValue {
-  const { first, readLine } = opening;
+  const { first, quote, readLine } = opening;
   let value = '';
   let line = start;
   let current = readLine(first, afterQuote);
@@ -97,6 +107,7 @@ function quoted(
   }
   return {
     next: line + nextLine,
+    quote,
     value:
       current.tail !== undefined && validTail(current.tail) ? value + current.value : undefined,
   };
@@ -104,17 +115,17 @@ function quoted(
 
 function readValue(lines: readonly string[], line: number, text: string): ParsedValue {
   if (text.startsWith("'")) {
-    return quoted(lines, line, { first: text, readLine: literalLine });
+    return quoted(lines, line, { first: text, quote: 'single', readLine: literalLine });
   }
   if (text.startsWith('"')) {
-    return quoted(lines, line, { first: text, readLine: quotedLine });
+    return quoted(lines, line, { first: text, quote: 'double', readLine: quotedLine });
   }
-  const comment = /(?:^|[ \t])#/u.exec(text);
-  const value = (comment === null ? text : text.slice(firstCharacter, comment.index)).replace(
+  const comment = text.indexOf('#');
+  const value = (comment === notFound ? text : text.slice(firstCharacter, comment)).replace(
     /[ \t]+$/u,
     '',
   );
-  return { next: line + nextLine, value };
+  return { next: line + nextLine, quote: 'unquoted', value };
 }
 
 /** An assignment's header: an optional `export`, the variable's name, and the rest of the line. */
@@ -128,29 +139,31 @@ function assignmentAt(lines: readonly string[], line: number): ParsedAssignment 
   const assignment = /^[ \t]*=[ \t]*(?<value>[^\n]*)$/u.exec(header?.groups?.rest ?? '');
   const parsed =
     assignment === null
-      ? { next: line + nextLine, value: undefined }
+      ? { next: line + nextLine, quote: 'unquoted' as const, value: undefined }
       : readValue(lines, line, assignment.groups?.value ?? '');
   return { ...parsed, line: line + nextLine, name: header?.groups?.name };
 }
 
+/** Every valid assignment is kept, because a reference reads names the plugin does not import. */
 function recordAssignment(
   file: ParsedFile,
   parsed: ParsedAssignment,
   imports: (name: string) => boolean,
 ): void {
-  const { line, name, value } = parsed;
-  if (name !== undefined && imports(name)) {
-    if (value === undefined || value.includes('\0')) {
-      file.malformed.push({ line, name });
-    } else {
-      file.values.set(name, value);
-    }
+  const { line, name, quote, value } = parsed;
+  if (name === undefined) {
+    return;
+  }
+  if (value !== undefined && !value.includes('\0')) {
+    file.assignments.push({ name, quote, value });
+  } else if (imports(name)) {
+    file.malformed.push({ line, name });
   }
 }
 
-/** The last valid assignment to each variable the plugin imports, with secret-free warning locations. */
+/** A file's valid assignments in order, with secret-free warning locations for the malformed ones. */
 export function parseDotenv(text: string, imports: (name: string) => boolean) {
-  const file: ParsedFile = { malformed: [], values: new Map() };
+  const file: ParsedFile = { assignments: [], malformed: [] };
   const lines = text
     .replace(/^\uFEFF/u, '')
     .replaceAll('\r\n', '\n')
@@ -161,5 +174,7 @@ export function parseDotenv(text: string, imports: (name: string) => boolean) {
     recordAssignment(file, parsed, imports);
     line = parsed.next;
   }
-  return { malformed: file.malformed, values: Object.fromEntries(file.values) };
+  return file;
 }
+
+export type { DotenvAssignment };
