@@ -10,6 +10,7 @@ import { configInput } from '../config/extension.js';
 import { argumentAccepts, optionAccepts } from '../help/accepted.js';
 import {
   argumentFacts,
+  delimiterLiteral,
   deprecatedFacts,
   isEmpty,
   optionCellParts,
@@ -228,15 +229,12 @@ function optionTag(option: OptionNode): string {
 }
 
 /**
- * The delimiter a multiple option's variable is a list under, written as a JSON string literal so
- * a tab reads `"\t"` and a space never breaks the line, or `undefined` for an option whose
- * variable holds one value.
+ * The delimiter a multiple option's variable is a list under, as help writes it, with a space that
+ * never breaks the line, or `undefined` for an option whose variable holds one value.
  */
 function listDelimiter(option: OptionNode): string | undefined {
-  if ((option.type !== 'string' && option.type !== 'content') || option.envDelimiter === null) {
-    return undefined;
-  }
-  return escapeUnbroken(JSON.stringify(option.envDelimiter));
+  const literal = delimiterLiteral(option);
+  return literal === undefined ? undefined : escapeUnbroken(literal);
 }
 
 /** The lines an option's entry adds after its text: its environment and configuration bindings. */
