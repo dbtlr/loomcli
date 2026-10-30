@@ -237,6 +237,21 @@ describe('child programs', () => {
     expect(inputs).toEqual(['piped', '']);
   });
 
+  it("under stdin: 'inherit' byte stdin is the call's input decoded as UTF-8", async () => {
+    const inputs: string[] = [];
+    const mock = mockProcess({
+      programs: {
+        cat: ({ input }) => {
+          inputs.push(input);
+          return {};
+        },
+      },
+      stdin: new TextEncoder().encode('caf\u00e9'),
+    });
+    await starting('cat', { stdin: 'inherit' }).run({ process: mock });
+    expect(inputs).toEqual(['caf\u00e9']);
+  });
+
   it('under app.invoke an inherited stream reaches the outcome, not the mock', async () => {
     const mock = mockProcess({ programs: { git: () => ({ stdout: 'through' }) } });
     const outcome = await starting('git', { stdout: 'inherit' }).invoke([], {}, { process: mock });
@@ -376,6 +391,19 @@ describe('child programs', () => {
 });
 
 describe('piped stdin', () => {
+  it('yields bytes that are not valid UTF-8 exactly as given, as one chunk', async () => {
+    const bytes = Uint8Array.of(0xff, 0xfe, 0x00, 0xc3, 0x28);
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of mockProcess({ stdin: bytes }).stdin) {
+      chunks.push(Uint8Array.from(Buffer.from(chunk)));
+    }
+    expect(chunks).toEqual([bytes]);
+  });
+
+  it('yields nothing for empty bytes', async () => {
+    await expect(drained(mockProcess({ stdin: new Uint8Array() }).stdin)).resolves.toBe('');
+  });
+
   it('yields the text once over the mock life, then ends', async () => {
     const mock = mockProcess({ stdin: 'hello\n' });
     await expect(drained(mock.stdin)).resolves.toBe('hello\n');

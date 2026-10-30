@@ -1,0 +1,1 @@
+- Allow `mockProcess({ stdin })` in `@loomcli/testing` to take bytes as well as text. A `Uint8Array` is piped as one chunk, unchanged, so a test can state input that is not valid UTF-8. Under `stdin: 'inherit'`, a child program's recorded `input` stays text, decoded as UTF-8.

@@ -71,14 +71,14 @@ interface MockFacts extends Omit<ProcessFields, 'stdin' | 'stdout' | 'stderr' | 
 }
 
 /**
- * The facts a test supplies; each replaces its default whole. A run's stdin is piped text or the
+ * The facts a test supplies; each replaces its default whole. A run's stdin is piped text or bytes, or the
  * terminal's keyboard, never both.
  */
 type MockFields = MockFacts &
   (
     | {
-        /** Piped text; empty when omitted. */
-        readonly stdin: string;
+        /** Piped text or bytes, sent as given; empty when omitted. */
+        readonly stdin: string | Uint8Array;
         /** No terminal when omitted. */
         readonly terminal?: MockTerminal & { readonly keys?: undefined };
       }
@@ -246,9 +246,10 @@ function mockSignals(life: Life, terminal: Readable | undefined): SignalSource {
   };
 }
 
-/** The mock's piped stdin: the text once as a byte chunk, then the end. Never a terminal. */
-function pipedStdin(text: string): MockStdin {
-  const stream = Readable.from(text === '' ? [] : [Buffer.from(text)], { objectMode: false });
+/** The mock's piped stdin: the text or bytes once as one chunk, unchanged, then the end. Never a terminal. */
+function pipedStdin(input: string | Uint8Array): MockStdin {
+  const chunk = Buffer.from(input);
+  const stream = Readable.from(chunk.length > noBytes ? [chunk] : [], { objectMode: false });
   return Object.assign(stream, { isRaw: false, isTTY: false });
 }
 
@@ -436,6 +437,11 @@ function deliver(choice: OutputChoice, bytes: Uint8Array, own: Writable): ChildO
   return noOutput();
 }
 
+/** The text a piped input stands for, bytes decoded as UTF-8. */
+function textOf(input: string | Uint8Array): string {
+  return typeof input === 'string' ? input : new TextDecoder().decode(input);
+}
+
 /** The text a spawn's input stands for, decoded as UTF-8. */
 function inputOf(options: SpawnCall, stdin: string): string {
   if (options.detached === true) {
@@ -445,7 +451,7 @@ function inputOf(options: SpawnCall, stdin: string): string {
     return stdin;
   }
   const { input } = options;
-  return typeof input === 'string' ? input : new TextDecoder().decode(input ?? new Uint8Array());
+  return textOf(input ?? new Uint8Array());
 }
 
 /** Each output stream's choice: both ignored for a detached child, and captured when omitted. */
@@ -628,7 +634,7 @@ function mockProcess(fields: MockFields = {}): MockProcess {
   const size: Size = { columns: terminal?.columns, rows: terminal?.rows };
   const libc = 'libc' in fields ? fields.libc : defaultLibc(platform);
   const uid = 'uid' in fields ? fields.uid : defaultUid;
-  const stdinText = fields.stdin ?? '';
+  const stdinText = textOf(fields.stdin ?? '');
   const streams = mockStreams(fields, { life, transcript });
   let written: ExitCode | undefined = undefined;
   return {
