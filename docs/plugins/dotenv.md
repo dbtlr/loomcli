@@ -87,7 +87,7 @@ A value from the environment is never expanded, and an expanded value is never s
 A reference reads every valid assignment the files define, including a name an allow list or a deny list keeps the plugin from importing.
 
 `\$` reads as one `$` in an unquoted and in a double-quoted value, and no other backslash in an unquoted value is an escape.
-A `$` followed by anything but a name character or `{`, an unclosed `${`, and a `${` whose inside is neither a name nor a name followed by `:-` stay literal text.
+A `$` followed by anything but a name character or `{`, an unclosed `${`, and a `${` whose inside is neither a name nor a name followed by `:-` stay literal text. A `${` that stays literal keeps everything through its closing brace, or through the end of the value when it never closes, so with `B=x` the value `${A$B}` reads `${A$B}`, as Bun reads it.
 `$(command)` stays literal text, and the plugin runs no command.
 Single quotes keep `$` literal, a named deviation from Bun, which expands inside single quotes too. Under Bun, Bun's expanded value is already in the process and wins.
 Bun expands a file after reading all of it, so it reads a reference to a name a later line of the same file assigns as that line's unexpanded text, where the plugin reads only what lies above the reference.

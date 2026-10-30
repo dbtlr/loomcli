@@ -68,14 +68,24 @@ function bareReference(text: string, offset: number, lookup: Lookup): Step | und
     : { text: lookup(name) ?? '', width: afterDollar + name.length };
 }
 
-/** A `${NAME}` or `${NAME:-default}` at `offset`, or `undefined` when its inside is neither. */
-function bracedReference(text: string, offset: number, reading: Reading): Step | undefined {
+/** A `${` construct read as its own text, through its closing brace or the end of the value. */
+function literalConstruct(text: string, offset: number, close: number): Step {
+  const end = close === notFound ? text.length : close + one;
+  return { text: text.slice(offset, end), width: end - offset };
+}
+
+/**
+ * A `${NAME}` or `${NAME:-default}` at `offset`. A `${` whose inside is neither, or that never
+ * closes, reads as its own text through its closing brace or the end of the value, so no reference
+ * inside it expands, as Bun reads it.
+ */
+function bracedReference(text: string, offset: number, reading: Reading): Step {
   const { expandText, lookup } = reading;
   const inside = offset + afterBrace;
   const close = closingBrace(text, inside);
   const groups = close === notFound ? undefined : braced.exec(text.slice(inside, close))?.groups;
   if (groups?.name === undefined) {
-    return undefined;
+    return literalConstruct(text, offset, close);
   }
   const fallback = groups.fallback;
   const found = lookup(groups.name);

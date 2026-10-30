@@ -555,6 +555,12 @@ test.each([
   ['a dollar before a non-name character', 'TOKEN=a$ b$', 'a$ b$'],
   ['an unclosed ${', 'ALT=x\nTOKEN=${ALT', '${ALT'],
   ['${ with neither a name nor a default', 'TOKEN=${a b} ${} ${-x}', '${a b} ${} ${-x}'],
+  [
+    'a failed ${ keeps the references inside it literal',
+    'ALT=x\nTOKEN=${A$ALT} ${$ALT}-$ALT',
+    '${A$ALT} ${$ALT}-x',
+  ],
+  ['an unclosed ${ keeps the references after it literal', 'ALT=x\nTOKEN=${A$ALT', '${A$ALT'],
   ['a name that starts with a digit', 'TOKEN=$1abc-${2:-d}', '-d'],
   ['a reference does not scan its value again', "ALT='$TOKEN'\nTOKEN=$ALT", '$TOKEN'],
   ['a reference to a later line reads empty', 'TOKEN=[$ALT]\nALT=x', '[]'],
