@@ -320,7 +320,7 @@ test('oneRequired is satisfied by a configured member', async () => {
   expect(missing.status).toBe(2);
 });
 
-test('requiredTogether counts a member that the exclusive group withdrew', async () => {
+test('a requiredTogether group that holds a member the exclusive group withdrew is not checked', async () => {
   const rules: readonly Rule[] = [
     ['exclusive', 'json', 'yaml'],
     ['requiredTogether', 'json', 'plain'],

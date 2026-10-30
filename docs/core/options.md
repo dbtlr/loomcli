@@ -222,7 +222,7 @@ const exportCommand = new Command('export', { description: 'Export a document.' 
   .action(({ options, out }) => out.print(options.json ? 'json' : 'yaml'));
 ```
 
-`exclusive(...names)` permits at most one supplied member. `oneRequired(...names)` requires at least one.
+`exclusive(...names)` permits at most one member that claims the group: a supplied member claims it unless it is a Boolean at its absent value. `oneRequired(...names)` requires at least one.
 `requiredTogether(...names)` requires all members or none. Combining exclusive and one-required groups over the same members expresses exactly one.
 Each call returns a new declaration, preserves the receiver, and closes at `action()` without changing action option types.
 Application exposes the same methods for root-local options. Lifecycle hooks use them on the erased attached Command after action registration.
