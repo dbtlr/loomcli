@@ -41,7 +41,7 @@ The plugin reads up to four files in `host.cwd`, under [ADR-0125](../decisions/0
 | `.env.local` | The mode is not `test`. |
 | `.env.<mode>.local` | A mode is set. |
 
-The mode is the value of `NODE_ENV` in the environment the hook receives, as written and case-sensitive, so `NODE_ENV=production` reads `.env.production` and `.env.production.local`.
+The mode is the value of `NODE_ENV` in the environment the hook receives, as written, so `NODE_ENV=production` reads `.env.production` and `.env.production.local`. The plugin names each file with the mode as written, and the file system decides whether a file named in another case matches, as it does for any path: on a case-insensitive file system, such as macOS's default, `NODE_ENV=production` also reads a file named `.env.Production`.
 A variable a file defines never chooses the mode. With `NODE_ENV` unset or empty there is no mode, and the plugin reads `.env` and `.env.local` alone.
 Under `NODE_ENV=test` the plugin skips `.env.local`, so a test run reads `.env`, `.env.test`, and `.env.test.local`.
 A file the list names twice, as `NODE_ENV=local` names `.env.local`, is read once, at its more specific place.
