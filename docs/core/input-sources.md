@@ -12,11 +12,15 @@ This page states where an input reads a value besides argv: environment bindings
 // Core exports `SourceResolver`, `SourceContext`, `SourceAnswer`, and `ContextualStyle`, the type of an action's `style`.
 interface EnvBinding {
   env?: string | readonly [string, ...string[]]; // one name, or a non-empty list: AWS_REGION first, then AWS_DEFAULT_REGION
+  envDelimiter?: never; // only a multiple option declares a delimiter
 }
-interface ListEnvBinding {
-  env: string | readonly [string, ...string[]];
-  envDelimiter: string; // a multiple option's binding: the non-empty string that separates the variable's items
-}
+type ListBinding = // a multiple option's binding: no variable, or a variable and its delimiter
+  | { multiple: true; env?: never; envDelimiter?: never }
+  | {
+      multiple: true;
+      env: string | readonly [string, ...string[]];
+      envDelimiter: string; // the non-empty string that separates the variable's items
+    };
 
 interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
   // ...

@@ -55,8 +55,9 @@ type Presence = { required: true; default?: never } | { required?: false; defaul
 /**
  * The literal member keeps `multiple: true` exact under contextual typing, as `Presence` does.
  * A multiple option takes its list from the configuration source, or binds a variable beside the
- * delimiter that splits the variable's value into the list. `envDelimiter` is declared nowhere
- * else, so the types reject it on an option that is not multiple or binds no variable.
+ * delimiter that splits the variable's value into the list. Every other option shape, and the
+ * member of `ListBinding` that binds no variable, declares `envDelimiter?: never`, so the types
+ * reject it on an option that is not multiple or binds no variable.
  */
 type Multiplicity = ListBinding | ({ multiple?: false } & EnvBinding);
 /** A multiple option's binding: no variable, or a variable and the delimiter that splits it. */
