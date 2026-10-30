@@ -42,7 +42,7 @@ The help factory takes an optional `paging` setting under [Help paging](help.md#
 ### Inputs
 
 - [Interaction](interaction.md): open it when an operator turns off questions for a run.
-- [Dotenv](dotenv.md): open it when a run reads variables from a `.env` file.
+- [Dotenv](dotenv.md): open it when a run reads variables from `.env` files.
 - [Configuration](config.md): open it when a run reads structured configuration or option values from a configuration file.
 - [Suggestions](suggestions.md): open it when an unknown Command or option should suggest the closest name.
 

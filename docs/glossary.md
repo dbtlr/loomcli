@@ -757,8 +757,12 @@ The one optional `source` a plugin definition declares, which answers for config
 _Avoid_: Config loader, config provider, settings store
 
 **Dotenv file**:
-The `.env` file in the working directory from which the dotenv plugin imports every variable the process has not set, unless an allow list or a deny list narrows the import. It adds variables before inputs are read and leaves existing values, including empty values, unchanged.
+One of the files in the working directory from which the dotenv plugin imports every variable the process has not set, unless an allow list or a deny list narrows the import: `.env`, `.env.<mode>`, `.env.local`, and `.env.<mode>.local`, from least to most specific, the more specific file winning. It adds variables before inputs are read and leaves existing values, including empty values, unchanged. A value may reference another variable, and an unquoted value ends at any `#`.
 _Avoid_: Configuration file (for this file), env source, input-source tier
+
+**Dotenv mode**:
+The value of `NODE_ENV` in the environment the dotenv plugin receives, which names the mode files `.env.<mode>` and `.env.<mode>.local`. With `NODE_ENV` unset or empty there is no mode and no mode file, and under the mode `test` the plugin skips `.env.local`. A dotenv file never sets the mode.
+_Avoid_: Environment (for the mode), stage, profile
 
 **Configuration file**:
 The one JSON, TOML, or YAML file the first-party configuration plugin reads in a run, never merged with another: the file `--config` names, or the file the author's variable names, or else the first found by the walk from the start directory up to the home directory, then the home file, then the XDG user file. A run under `--no-config` reads none. A JSON file may hold comments and trailing commas. Only the file `--config` names can fail a run; a broken file found any other way warns and leaves the run with no configuration.

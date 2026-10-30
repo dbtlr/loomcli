@@ -134,10 +134,10 @@ const versionPostfix = diagnosticRule(`${packageName}/version/postfix`, {
   headline: 'Invalid version postfix',
 });
 
-/** A dotenv `only` or `except` list that holds a name no assignment in `.env` gives. */
+/** A dotenv `only` or `except` list that holds a name no assignment in a dotenv file gives. */
 const dotenvVariableName = diagnosticRule(`${packageName}/dotenv/variable-name`, {
   explanation:
-    'The dotenv plugin compares each name an only or except list holds with the names the assignments in .env give, and an assignment names a variable with a letter or underscore followed by letters, digits, or underscores. A listed name of another form never matches, so the list would not do what it says.',
+    'The dotenv plugin compares each name an only or except list holds with the names the assignments in the dotenv files give, and an assignment names a variable with a letter or underscore followed by letters, digits, or underscores. A listed name of another form never matches, so the list would not do what it says.',
   headline: 'Invalid dotenv variable name',
 });
 

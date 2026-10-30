@@ -7,17 +7,28 @@ import { dotenv } from '@loomcli/plugins/dotenv';
 
 const [mode] = process.argv.slice(2);
 // Create the unreadable path after Bun's own startup dotenv read, so the plugin sees the failure.
-if (process.env.FIXTURE_UNREADABLE === '1') {
-  symlinkSync('.env', join(process.cwd(), '.env'));
+const unreadable = process.env.FIXTURE_UNREADABLE;
+if (unreadable !== undefined) {
+  symlinkSync(unreadable, join(process.cwd(), unreadable));
 }
 const settings = JSON.parse(process.env.FIXTURE_SETTINGS ?? 'null') ?? undefined;
 const observedNames = JSON.parse(process.env.FIXTURE_NAMES ?? '["TOKEN"]');
+// Bun reads the dotenv files before this fixture starts, so 'native' reports the values it read.
+if (mode === 'native') {
+  const native = Object.fromEntries(observedNames.map((name) => [name, process.env[name]]));
+  process.stdout.write(JSON.stringify(native));
+  process.exit(0);
+}
 // Bun reads .env before this fixture starts; each test needs a controlled process baseline.
 for (const name of new Set([...observedNames, 'TOKEN', 'ALT', 'ENABLED'])) {
   delete process.env[name];
 }
 const installed = dotenv(settings);
 const hostOverride = { cwd: process.cwd(), env: JSON.parse(process.env.FIXTURE_ENV ?? '{}') };
+// A supplied environment may hold a name whose value is undefined, which core reads as unset.
+for (const name of JSON.parse(process.env.FIXTURE_UNSET ?? '[]')) {
+  hostOverride.env[name] = undefined;
+}
 const app = new Application('app', {
   description: 'Read a dotenv file.',
   plugins: [installed],
