@@ -9,8 +9,9 @@
  * - Supplied. A required option filled from the environment passes, a `validateOmitted` validator
  *   receives the filled string, `supplied` holds it, and the action receives the same value it
  *   would for the flag.
- * - Booleans. `true`, `1`, `FALSE`, and `0` fill a Boolean option under each polarity, `yes` fails
- *   with the grammar diagnostic, and `NO_COLOR` keeps its presence rule.
+ * - Booleans. `true`, `1`, `FALSE`, and `0` fill a Boolean option under each polarity, `maybe`
+ *   fails with the grammar diagnostic, and `NO_COLOR` keeps its presence rule. Every word of the
+ *   grammar is proven in process in boolean-environment.test.ts.
  * - Counts. `0`, `3`, and `007` fill a counted option with `0`, `3`, and `7`, `-1`, `1.5`, and
  *   `three` fail with the count diagnostic, one occurrence beats the variable, and a configuration
  *   answer of `2` fills `2`.
@@ -131,25 +132,26 @@ test.each([
 });
 
 test('a Boolean variable outside the grammar is a usage failure naming the variable', () => {
-  expect(run(['count', '--max', '1'], { FIXTURE_TOTAL: 'yes' }, 'plain')).toEqual({
+  expect(run(['count', '--max', '1'], { FIXTURE_TOTAL: 'maybe' }, 'plain')).toEqual({
     status: 2,
-    stderr: 'app: Option "--total" (from FIXTURE_TOTAL): Use true, false, 1, or 0.\n',
+    stderr:
+      'app: Option "--total" (from FIXTURE_TOTAL): Use true, false, yes, no, y, n, on, off, 1, or 0.\n',
     stdout: 'schema:file:{}\nresolved:2\n',
   });
   // A negative-only option is named by the one spelling an operator types for it.
   expect(run(['count', '--max', '1'], { FIXTURE_QUIET: ' true' }, 'plain').stderr).toBe(
-    'app: Option "--no-quiet" (from FIXTURE_QUIET): Use true, false, 1, or 0.\n',
+    'app: Option "--no-quiet" (from FIXTURE_QUIET): Use true, false, yes, no, y, n, on, off, 1, or 0.\n',
   );
 });
 
 test("problems report the application's globals, then a plugin's, then the local options", () => {
-  const env = { FIXTURE_LIMIT: 'many', FIXTURE_TOTAL: 'yes', FIXTURE_VERBOSE: 'yes' };
+  const env = { FIXTURE_LIMIT: 'many', FIXTURE_TOTAL: 'maybe', FIXTURE_VERBOSE: 'maybe' };
   expect(run(['count', '--max', 'x'], env, 'plain').stderr).toBe(
     [
       'app: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.',
-      'app: Option "--verbose" (from FIXTURE_VERBOSE): Use true, false, 1, or 0.',
+      'app: Option "--verbose" (from FIXTURE_VERBOSE): Use true, false, yes, no, y, n, on, off, 1, or 0.',
       'app: Option "--max": Supply a whole number.',
-      'app: Option "--total" (from FIXTURE_TOTAL): Use true, false, 1, or 0.',
+      'app: Option "--total" (from FIXTURE_TOTAL): Use true, false, yes, no, y, n, on, off, 1, or 0.',
       '',
     ].join('\n'),
   );
@@ -218,11 +220,12 @@ test('a Boolean variable outside the grammar keeps the source unloaded', () => {
     run(['count', '--max', '1', '--limit', '1'], {
       FIXTURE_LEVEL: 'info',
       FIXTURE_LOADER: 'throws',
-      FIXTURE_TOTAL: 'yes',
+      FIXTURE_TOTAL: 'maybe',
     }),
   ).toEqual({
     status: 2,
-    stderr: 'app: Option "--total" (from FIXTURE_TOTAL): Use true, false, 1, or 0.\n',
+    stderr:
+      'app: Option "--total" (from FIXTURE_TOTAL): Use true, false, yes, no, y, n, on, off, 1, or 0.\n',
     stdout: `schema:file:{}\nlog:{${filled}}\nresolved:2\n`,
   });
 });
@@ -688,10 +691,11 @@ test('an empty value in a list counts as unset and the next name is read', () =>
 
 test('a Boolean or count value outside its grammar on a listed name fails naming that variable', () => {
   expect(
-    run(['region'], { FIXTURE_DEBUG: 'yes', FIXTURE_DEBUG_FALLBACK: 'true' }, 'plain'),
+    run(['region'], { FIXTURE_DEBUG: 'maybe', FIXTURE_DEBUG_FALLBACK: 'true' }, 'plain'),
   ).toEqual({
     status: 2,
-    stderr: 'app: Option "--debug" (from FIXTURE_DEBUG): Use true, false, 1, or 0.\n',
+    stderr:
+      'app: Option "--debug" (from FIXTURE_DEBUG): Use true, false, yes, no, y, n, on, off, 1, or 0.\n',
     stdout: 'resolved:2\n',
   });
   expect(run(['region'], { FIXTURE_DEPTH: 'x', FIXTURE_DEPTH_FALLBACK: '2' }, 'plain').stderr).toBe(
@@ -699,7 +703,7 @@ test('a Boolean or count value outside its grammar on a listed name fails naming
   );
   // A later name is read only when the earlier ones are unset.
   expect(run(['region'], { FIXTURE_DEBUG_FALLBACK: 'maybe' }, 'plain').stderr).toBe(
-    'app: Option "--debug" (from FIXTURE_DEBUG_FALLBACK): Use true, false, 1, or 0.\n',
+    'app: Option "--debug" (from FIXTURE_DEBUG_FALLBACK): Use true, false, yes, no, y, n, on, off, 1, or 0.\n',
   );
 });
 

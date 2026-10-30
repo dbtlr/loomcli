@@ -38,16 +38,16 @@ test('TEXTSTAT_TOTAL reads the Boolean grammar', () => {
     'COUNT  SOURCE\n    3  stdin\n    3  total\n',
   );
   expect(count([], { TEXTSTAT_TOTAL: '0' }).stdout).toBe('COUNT  SOURCE\n    3  stdin\n');
-  expect(count([], { TEXTSTAT_TOTAL: 'yes' })).toEqual({
+  expect(count([], { TEXTSTAT_TOTAL: 'maybe' })).toEqual({
     status: 2,
     stderr:
-      'textstat: Option "--total" (from TEXTSTAT_TOTAL): Use true, false, 1, or 0.\nRun "textstat --help" to see the usage.\n',
+      'textstat: Option "--total" (from TEXTSTAT_TOTAL): Use true, false, yes, no, y, n, on, off, 1, or 0.\nRun "textstat --help" to see the usage.\n',
     stdout: '',
   });
 });
 
 test('help takes over a run whose variable is outside the grammar', () => {
-  const result = count(['--help'], { TEXTSTAT_TOTAL: 'yes' });
+  const result = count(['--help'], { TEXTSTAT_TOTAL: 'maybe' });
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   expect(result.stdout).toContain('USAGE');

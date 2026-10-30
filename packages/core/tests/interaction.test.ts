@@ -24,9 +24,9 @@
  * - `mimir --help` lists `--no-input` with its description among the global options, the manifest
  *   marks it `control` and `interaction`, and `mimir setup --no-input` with stdin and stderr
  *   terminals runs with `interactive` false.
- * - `MIMIR_INPUT=false`, and the configuration source's `false`, turn interaction off,
- *   `MIMIR_INPUT=yes` fails with the environment grammar's usage failure, and an application that
- *   marks its own option and installs the plugin fails with the two-marks error.
+ * - A variable the plugin binds turns interaction off with `false`, and two options that each carry
+ *   the interaction mark fail with the two-marks error. A plugin option's Boolean variable reads
+ *   core's grammar, proven under Input sources acceptance.
  */
 
 import { Application } from '@loomcli/core';

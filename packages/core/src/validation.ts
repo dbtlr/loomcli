@@ -718,7 +718,7 @@ export function suppliedInputs(
 function grammarIssues(input: OptionInput): readonly StandardSchemaV1.Issue[] {
   return input.config.type === 'count'
     ? [{ message: 'Use a whole number of 0 or more.' }]
-    : [{ message: 'Use true, false, 1, or 0.' }];
+    : [{ message: 'Use true, false, yes, no, y, n, on, off, 1, or 0.' }];
 }
 
 /** One validation problem and the lines core's default text holds. */
