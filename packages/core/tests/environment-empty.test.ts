@@ -10,11 +10,13 @@
  *   not apply, and a non-empty value fills as before.
  * - Lists. The first name the environment defines supplies the option, so a defined empty name
  *   stops the search, and an undefined name is skipped.
+ * - Configuration. Under the key `APP_PREFIX=` clears a prefix the configuration source holds, and
+ *   the source is never asked for the option. Without the key the source supplies it.
  * - Ordinary fill. The empty string satisfies `required`, never fills the implied value, passes
  *   through the option's validator, and loses to argv.
  * - Projections. `inspect()` publishes the key on the string variant alone.
  */
-import { Application } from '@loomcli/core';
+import { Application, extension, plugin } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
@@ -76,6 +78,66 @@ test('under the key the first defined name supplies the option and an undefined 
   // Without the key the empty first name falls through to the later name.
   await expect(prefixOf({}, { APP_PREFIX: '', LEGACY_PREFIX: 'old' })).resolves.toMatchObject({
     seen: ['old'],
+  });
+});
+
+const configKey = extension('@fixture/config/key', { schema: z.string(), target: 'option' });
+
+/** The option names each call of the configuration source was asked for. */
+const asked: string[][] = [];
+
+/** A configuration source that holds `configured` for every option it is asked for. */
+const configuration = () =>
+  plugin('@fixture/config', {
+    extensions: [configKey],
+    source: {
+      binding: configKey,
+      load: () =>
+        Promise.resolve({
+          default: async ({ requests }) => {
+            asked.push(requests.map(({ name }) => name));
+            return Object.fromEntries(
+              requests.map(({ name }) => [
+                name,
+                { label: 'the fixture settings', value: 'configured' },
+              ]),
+            );
+          },
+        }),
+    },
+  });
+
+/** One run of an application whose `prefix` option binds a variable and a configuration key. */
+async function configuredPrefixOf(
+  binding: { envAllowEmpty?: boolean },
+  env: Record<string, string>,
+) {
+  asked.length = 0;
+  const values: unknown[] = [];
+  const status = await new Application('app', { plugins: [configuration()] })
+    .option('prefix', {
+      env: 'APP_PREFIX',
+      extensions: [configKey('prefix')],
+      type: 'string',
+      ...binding,
+    })
+    .action(({ options }) => {
+      values.push(options.prefix);
+    })
+    .run({ process: mockProcess({ argv: [], env }) });
+  return { asked: asked.flat(), status, values };
+}
+
+test('under the key a defined empty variable clears a configured value and the source is never asked', async () => {
+  await expect(configuredPrefixOf({ envAllowEmpty: true }, { APP_PREFIX: '' })).resolves.toEqual({
+    asked: [],
+    status: 0,
+    values: [''],
+  });
+  await expect(configuredPrefixOf({}, { APP_PREFIX: '' })).resolves.toEqual({
+    asked: ['prefix'],
+    status: 0,
+    values: ['configured'],
   });
 });
 
