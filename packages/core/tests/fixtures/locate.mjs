@@ -59,10 +59,14 @@ function reduce(graph, position) {
   }
   // This graph declares no counted option, so an option position's counts are always empty.
   // Counted-options.test.ts reads them against a graph that declares one.
-  const { argument, command, counts: _counts, option, ...rest } = position;
+  // Only the `booleans` mode keeps the Booleans the earlier words gave.
+  const { argument, booleans, command, counts: _counts, option, ...rest } = position;
   const node = nodeAt(graph, command.path);
   let own = node === command;
   const reduced = { ...rest, command: command.path };
+  if (mode === 'booleans' && booleans !== undefined) {
+    reduced.booleans = Object.fromEntries(booleans);
+  }
   if (option !== undefined) {
     reduced.option = option.name;
     own &&= [...graph.globals, ...node.options].includes(option);

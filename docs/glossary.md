@@ -140,7 +140,7 @@ The Boolean option setting that selects which long forms exist and what an absen
 _Avoid_: Negation mode, inverse flag
 
 **Option group**:
-A declared relationship among a Command's local options: at most one supplied, at least one supplied, or all supplied together. It is distinct from a routing Group and a help Section.
+A declared relationship among a Command's local options: at most one supplied, at least one supplied, or all supplied together. In an exclusive group, a member claims the group when a tier supplies it, unless it is a Boolean supplied at its absent value, such as `--no-yaml` on a `both` option; the highest input tier that claims a member wins, a member a lower tier claimed is withdrawn before validation, and only members one tier claimed conflict. It is distinct from a routing Group and a help Section.
 _Avoid_: Flag group, validation group, constraint
 
 **Multiple option**:
@@ -163,7 +163,7 @@ The value a string option takes when its spelling is supplied bare, with nothing
 _Avoid_: Optional argument, flag value, const value
 
 **Input-source stage**:
-The invocation phase between local parsing and validation that fills each unfilled option from the prepared environment and then the configuration source, under the fixed precedence argv, environment, configuration, default. A filled value is supplied in every sense, and nothing downstream can tell which tier supplied it; only core's failure messages name the source. The supplied record tells an action whether a value was supplied, never by which tier.
+The invocation phase between local parsing and validation that fills each unfilled option from the prepared environment and then the configuration source, under the fixed precedence argv, environment, configuration, default. A filled value is supplied in every sense, except a member of an exclusive option group that a lower tier filled beside a sibling a higher tier supplied, which core withdraws before validation. Nothing downstream can tell which tier supplied a value; only core's failure messages name the source. The supplied record tells an action whether a value was supplied, never by which tier.
 _Avoid_: Config merge, fallback chain, value resolution
 
 **Environment preparation**:

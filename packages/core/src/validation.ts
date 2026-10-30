@@ -11,7 +11,7 @@ import type { InputProblem } from './errors.js';
 import { callSite, partOf, siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
 import { invalidDefault, invalidImplied } from './input-rules.js';
-import { groupReports } from './option-groups.js';
+import { absentBooleans, groupReports } from './option-groups.js';
 import type { OptionGroup } from './option-groups.js';
 import { booleanValue, copyValues, reportedOf, spellingsOf, withdrawFill } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
@@ -92,6 +92,12 @@ export interface Provenance {
   labels: ReadonlyMap<string, string>;
   rejected: ReadonlyMap<string, string>;
   unanswered?: ReadonlySet<InputDeclaration>;
+  /**
+   * The names of the options the stage withdrew as the losing members of an exclusive option group.
+   * Each reads as unfilled; `oneRequired` counts it, and a `requiredTogether` group that holds it is
+   * not checked.
+   */
+  withdrawn?: ReadonlySet<string>;
 }
 
 /** The raw tokens one invocation collected, keyed by declaration and by option name. */
@@ -1077,12 +1083,14 @@ export async function validateValues(invocation: Invocation): Promise<Validation
   }
   found.push(
     ...groupReports({
+      absent: absentBooleans(invocation.inputs.locals),
       groups: invocation.optionGroups,
       labels: sources.labels,
       named: invocation.named !== undefined,
       table: invocation.table,
       unanswered,
       values: groupValues,
+      withdrawn: sources.withdrawn ?? new Set(),
     }),
   );
   return {

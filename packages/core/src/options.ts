@@ -267,7 +267,12 @@ function addLongForms(
  * scope declared it.
  */
 export function booleanValue(values: OptionValues, name: string, config: OptionConfig): boolean {
-  return values.booleans.get(name) ?? config.polarity === 'negative';
+  return values.booleans.get(name) ?? absentBoolean(config);
+}
+
+/** The value a Boolean option's polarity gives it when no tier supplies it: `true` for negative. */
+export function absentBoolean(config: OptionConfig): boolean {
+  return config.polarity === 'negative';
 }
 
 /** The form an option's positive spellings read words by, its long form and short alias alike. */

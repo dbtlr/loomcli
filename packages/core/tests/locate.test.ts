@@ -32,6 +32,38 @@ test('reads the contract examples, reaching a Command through its alias', () => 
   ]);
 });
 
+test('an option position holds the value the earlier words gave each Boolean option', () => {
+  expect(
+    locateAll(
+      [
+        ['--no-color', '-q', 'keys', '-s', '--'],
+        ['keys', '--'],
+        ['-a', '--'],
+      ],
+      'booleans',
+    ),
+  ).toEqual([
+    {
+      booleans: { color: false, quiet: true, sort: true },
+      command: ['keys'],
+      kind: 'option',
+      own: true,
+      prefix: '--',
+      supplied: ['color', 'quiet', 'sort'],
+    },
+    { booleans: {}, command: ['keys'], kind: 'option', own: true, prefix: '--', supplied: [] },
+    // Routing still holds the root's own -a unbound, which gives the root's entry true.
+    {
+      booleans: { all: true },
+      command: [],
+      kind: 'option',
+      own: true,
+      prefix: '--',
+      supplied: ['all'],
+    },
+  ]);
+});
+
 test('reads an empty list as one empty word at the root', () => {
   expect(locateAll([[], ['']])).toEqual([
     { command: [], kind: 'command', own: true, prefix: '' },

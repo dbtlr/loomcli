@@ -95,13 +95,19 @@ function optionOffers(
   position: Extract<WordPosition, { kind: 'option' }>,
 ): Offer[] {
   const scope = [...graph.globals, ...position.command.options];
+  // A Boolean an earlier word gave its absent value claims no exclusive group, so it hides no sibling.
+  const absent = new Map(
+    position.command.options.flatMap((option): [string, boolean][] =>
+      option.type === 'boolean' ? [[option.name, option.polarity === 'negative']] : [],
+    ),
+  );
+  const claimed = (name: string): boolean => {
+    const value = position.booleans.get(name);
+    return position.supplied.includes(name) && (value === undefined || value !== absent.get(name));
+  };
   const excluded = new Set(
     position.command.optionGroups
-      .filter(
-        (group) =>
-          group.kind === 'exclusive' &&
-          group.options.some((name) => position.supplied.includes(name)),
-      )
+      .filter((group) => group.kind === 'exclusive' && group.options.some(claimed))
       .flatMap((group) => group.options.filter((name) => !position.supplied.includes(name))),
   );
   return scope

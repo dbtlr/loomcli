@@ -21,8 +21,8 @@ test('help states visible groups and the manifest publishes the same graph facts
   ]);
 });
 
-test('completion suppresses exclusive siblings including after negative and alias spellings', () => {
-  for (const supplied of ['--json', '--no-json', '--js']) {
+test('completion suppresses exclusive siblings after a claiming spelling, an alias included', () => {
+  for (const supplied of ['--json', '--js']) {
     const result = invoke(fixture, ['completion', '__complete', '--', supplied, '--']);
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain('--yaml');
@@ -30,10 +30,26 @@ test('completion suppresses exclusive siblings including after negative and alia
   }
 });
 
-test('a negative Boolean spelling is supplied and group diagnostics retain the reported spelling', () => {
-  const result = invoke(fixture, ['--no-json', '--yaml']);
-  expect(result.status).toBe(2);
-  expect(result.stderr).toContain(
+test('completion still offers exclusive siblings after a spelling that gives a Boolean its absent value', () => {
+  const result = invoke(fixture, ['completion', '__complete', '--', '--no-json', '--']);
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain('--yaml');
+});
+
+test('completion suppresses exclusive siblings after a negative Boolean spelling', () => {
+  const result = invoke(fixture, ['completion', '__complete', '--', 'negated', '--no-cache', '--']);
+  expect(result.status).toBe(0);
+  expect(result.stdout).not.toContain('--json');
+  expect(result.stdout).not.toContain('--yaml');
+});
+
+test('a false Boolean spelling claims no exclusive group, and group diagnostics retain the reported spelling', () => {
+  const negative = invoke(fixture, ['--no-json', '--yaml']);
+  expect(negative.status).toBe(0);
+  expect(negative.stdout).toBe('action\n');
+  const alias = invoke(fixture, ['--js', '--yaml']);
+  expect(alias.status).toBe(2);
+  expect(alias.stderr).toContain(
     'groups: Options "--json" and "--yaml" cannot be used together. Supply only one of them.\n',
   );
 });
@@ -45,7 +61,14 @@ test('MCP lists sound group schemas and rejects group failures through invoke', 
   const tools = Object(answer.result).tools;
   expect(tools[0].inputSchema.allOf).toEqual(
     expect.arrayContaining([
-      { not: { allOf: [{ required: ['json'] }, { required: ['yaml'] }] } },
+      {
+        not: {
+          allOf: [
+            { properties: { json: { const: true } }, required: ['json'] },
+            { properties: { yaml: { const: true } }, required: ['yaml'] },
+          ],
+        },
+      },
       { anyOf: [{ required: ['json'] }, { required: ['yaml'] }] },
     ]),
   );
@@ -53,6 +76,11 @@ test('MCP lists sound group schemas and rejects group failures through invoke', 
   const failed = await session.next();
   expect(Object(failed.result).isError).toBe(true);
   expect(JSON.stringify(failed.result)).toContain('cannot be used together');
+  session.send(
+    request(3, 'tools/call', { arguments: { json: true, yaml: false }, name: 'groups' }),
+  );
+  const agreed = await session.next();
+  expect(Object(agreed.result).isError).not.toBe(true);
   const ending = await session.close();
   expect(ending).toMatchObject({ status: 0, stderr: '' });
 });
@@ -87,6 +115,28 @@ test('MCP schemas describe named false, zero, and empty-list absence and omit un
         allOf: [
           { properties: { count: { minimum: 1 } }, required: ['count'] },
           { properties: { items: { minItems: 1 } }, required: ['items'] },
+        ],
+      },
+    },
+  ]);
+  // A negative Boolean member is absent as true, so it claims its exclusive group as false.
+  const negatedClaim = { properties: { cache: { const: false } }, required: ['cache'] };
+  expect(schemas.negated.allOf).toEqual([
+    {
+      not: {
+        allOf: [negatedClaim, { properties: { json: { const: true } }, required: ['json'] }],
+      },
+    },
+    {
+      not: {
+        allOf: [negatedClaim, { properties: { yaml: { const: true } }, required: ['yaml'] }],
+      },
+    },
+    {
+      not: {
+        allOf: [
+          { properties: { json: { const: true } }, required: ['json'] },
+          { properties: { yaml: { const: true } }, required: ['yaml'] },
         ],
       },
     },

@@ -3,7 +3,7 @@ import { registerRule } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { commandSentence, DeclarationError, quoted } from './errors.js';
 import type { InputProblem } from './errors.js';
-import { isSupplied, reportedOf, spellingsOf } from './options.js';
+import { absentBoolean, isSupplied, reportedOf, spellingsOf } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
 import type { InputDeclaration } from './validation.js';
 
@@ -108,8 +108,81 @@ function declareGroup(declaration: Declaration): OptionGroup {
   return group;
 }
 
+/** The input tier that supplied an option's value. `tierRanks` orders them, argv highest. */
+type Tier = 'argv' | 'configuration' | 'environment';
+
+const tierRanks: Readonly<Record<Tier, number>> = {
+  argv: 3,
+  configuration: 1,
+  environment: 2,
+};
+
+/** Each Boolean option's absent value, by name, the value its polarity gives an unsupplied option. */
+function absentBooleans(inputs: readonly InputDeclaration[]): ReadonlyMap<string, boolean> {
+  return new Map(
+    inputs.flatMap((input): [string, boolean][] =>
+      input.kind === 'option' && input.config.type === 'boolean'
+        ? [[input.name, absentBoolean(input.config)]]
+        : [],
+    ),
+  );
+}
+
+/**
+ * Whether one member claims its exclusive group: a tier supplied it, and it is not a Boolean at its
+ * absent value. Such a Boolean neither wins the group nor conflicts, and stays supplied.
+ */
+function claims(values: OptionValues, name: string, absent: ReadonlyMap<string, boolean>): boolean {
+  const value = values.booleans.get(name);
+  return isSupplied(values, name) && (value === undefined || value !== absent.get(name));
+}
+
+/** What decides which members of an exclusive group lose: the tier of each, and the rejected variables. */
+interface TierContext {
+  /** The names of the options whose bound variable is outside its grammar and filled nothing. */
+  readonly rejected: ReadonlySet<string>;
+  /** The tier that supplied one option a claim, or `undefined` when none did. */
+  readonly tierOf: (name: string) => Tier | undefined;
+}
+
+/**
+ * The members that lose their exclusive group: those a lower tier claimed beside a sibling a
+ * higher tier claimed, and those whose variable is outside its grammar beside a sibling argv
+ * claimed. Every group reads the tiers as the input-source stage left them, so a member of two
+ * groups loses when either holds a higher tier, and declaration order decides nothing. A group of
+ * another kind has no loser.
+ */
+function losingMembers(groups: readonly OptionGroup[], context: TierContext): ReadonlySet<string> {
+  return new Set(
+    groups
+      .filter((group) => group.kind === 'exclusive')
+      .flatMap((group) => losersOf(group, context)),
+  );
+}
+
+/** The losing members of one exclusive group. */
+function losersOf(group: OptionGroup, context: TierContext): string[] {
+  const ranked = group.options.map((name) => {
+    const tier = context.tierOf(name);
+    return { name, rank: tier === undefined ? 0 : tierRanks[tier] };
+  });
+  const top = Math.max(...ranked.map(({ rank }) => rank));
+  return ranked
+    .filter(({ name, rank }) =>
+      rank > 0 ? rank < top : context.rejected.has(name) && top === tierRanks.argv,
+    )
+    .map(({ name }) => name);
+}
+
 interface GroupContext {
+  /** Each Boolean option's absent value, by name, at which a member claims no exclusive group. */
+  readonly absent: ReadonlyMap<string, boolean>;
   readonly groups: readonly OptionGroup[];
+  /**
+   * The members core withdrew as the losers of an exclusive group. The sibling that won replaced
+   * each in every other group: `oneRequired` counts it, and `requiredTogether` is not checked.
+   */
+  readonly withdrawn: ReadonlySet<string>;
   readonly values: OptionValues;
   readonly table: SpellingTable;
   readonly named: boolean;
@@ -117,22 +190,43 @@ interface GroupContext {
   readonly unanswered: ReadonlySet<string>;
 }
 
-/** An unknown configuration answer suppresses only failures whose proof depends on that answer. */
-function brokenGroup(group: OptionGroup, context: GroupContext): boolean {
-  const supplied = group.options.filter((name) => isSupplied(context.values, name));
+/**
+ * Whether one member counts toward its group: for an exclusive group, a claim; for `oneRequired`, a
+ * supplied or withdrawn member; for `requiredTogether`, a supplied one.
+ */
+function countsFor(group: OptionGroup, name: string, context: GroupContext): boolean {
   switch (group.kind) {
     case 'exclusive': {
-      return supplied.length > 1;
+      return claims(context.values, name, context.absent);
     }
     case 'oneRequired': {
-      return supplied.length === 0 && !group.options.some((name) => context.unanswered.has(name));
+      return isSupplied(context.values, name) || context.withdrawn.has(name);
+    }
+    case 'requiredTogether': {
+      return isSupplied(context.values, name);
+    }
+    default: {
+      const exhaustive: never = group.kind;
+      return exhaustive;
+    }
+  }
+}
+
+/** An unknown configuration answer suppresses only failures whose proof depends on that answer. */
+function brokenGroup(group: OptionGroup, context: GroupContext): boolean {
+  const counted = group.options.filter((name) => countsFor(group, name, context));
+  switch (group.kind) {
+    case 'exclusive': {
+      return counted.length > 1;
+    }
+    case 'oneRequired': {
+      return counted.length === 0 && !group.options.some((name) => context.unanswered.has(name));
     }
     case 'requiredTogether': {
       return (
-        supplied.length > 0 &&
-        group.options.some(
-          (name) => !isSupplied(context.values, name) && !context.unanswered.has(name),
-        )
+        counted.length > 0 &&
+        !group.options.some((name) => context.withdrawn.has(name)) &&
+        group.options.some((name) => !counted.includes(name) && !context.unanswered.has(name))
       );
     }
     default: {
@@ -183,7 +277,7 @@ function reportGroup(
       reason: group.kind,
       spellings,
       supplied: group.options.flatMap((name, index) =>
-        isSupplied(context.values, name) ? [spellings[index] ?? name] : [],
+        countsFor(group, name, context) ? [spellings[index] ?? name] : [],
       ),
     },
   };
@@ -198,5 +292,5 @@ function groupReports(
     .map((group) => reportGroup(group, context));
 }
 
-export type { OptionGroup };
-export { declareGroup, groupReports };
+export type { OptionGroup, Tier };
+export { absentBooleans, claims, declareGroup, groupReports, losingMembers };

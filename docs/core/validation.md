@@ -114,13 +114,13 @@ Core re-exports the `StandardSchemaV1` type, so a custom validator depends on `@
 | `input`       | `{ kind, name, global }` | The same identity for the declaration under validation     |
 | `command`     | absent                   | The routed path of canonical names; `[]` for the root      |
 | `passthrough` | absent                   | The tail after the first bare `--`                         |
-| `supplied`    | absent                   | The raw tokens, or the raw values input sources filled, of every declared input, before any default |
+| `supplied`    | absent                   | The raw tokens, or the raw values input sources filled, of every declared input, before any default, except a member of an exclusive option group that core withdrew |
 
 A [question](../libs/prompts.md) validates its submitted answer with `phase: 'question'`. It carries the captured host, the routed path, the passthrough tail, and a separate copy of the run's supplied inputs. A linked question's `input` identifies its local option. An unlinked question's identity is `{ kind: 'question', name: message, global: false }`. Core's `questionValidationOptions(context, { message, option? })` builds these authenticated Standard Schema options for the prompts library. Context-dependent validators such as `path()` and `dateTime()` therefore use the same working directory and time zone as option validation.
 
 A default and an [implied value](options.md#implied-values) validate before any token is parsed, so their phase, `default`, reports the host and the declaration alone. A configuration source's own options validate before the source is called, so `supplied` holds no value the source fills, and `passthrough` is `[]` while a local fault is held. Every input validator call of one invocation, the globals and the routed Command's own declarations alike, reports the same route, passthrough, and supplied inputs. The route, the passthrough tail, and every collected value are copies made for each call, so a validator that writes to them changes nothing that a later validator or the action reads. `host` is the captured object itself, shared with the action, as the table states, except for an option a configuration answer with a `directory` filled, whose `host` replaces `cwd` with that directory. Once core drops that fill, the option's omission call reads the captured object.
 
-`supplied` holds the tokens as the parser read them, and the raw values the [input sources](input-sources.md) filled, before any validator runs and before any default applies; a bare spelling with an [implied value](options.md#implied-values) reads as the raw implied string. Every declared name of the routed Command, and every global name, is a key.
+`supplied` holds the tokens as the parser read them, and the raw values the [input sources](input-sources.md) filled, before any validator runs and before any default applies, except a member of an [exclusive option group](options.md#declared-option-groups) that a lower tier filled beside a sibling a higher tier supplied, which core withdraws before validation and leaves out; a bare spelling with an [implied value](options.md#implied-values) reads as the raw implied string. Every declared name of the routed Command, and every global name, is a key.
 
 | Declared input and invocation                  | `supplied` value               |
 | ---------------------------------------------- | ------------------------------ |
@@ -199,7 +199,7 @@ Two declarations in this table are faults, each a `DeclarationError` with code 1
 - **A declared default.** A declared default passes its validator, even when an invocation overrides it: [`@loomcli/core/invalid-default`](diagnostics.md#loomclicoreinvalid-default).
 - **An implied value.** An implied value passes its validator, even when the invocation holds no bare spelling: [`@loomcli/core/invalid-implied`](diagnostics.md#loomclicoreinvalid-implied).
 
-For an option, omitted means that no token and no [input source](input-sources.md) supplied it. A value the environment or the configuration source filled is a supplied value in every row above.
+For an option, omitted means that no token and no [input source](input-sources.md) supplied it. A value the environment or the configuration source filled is a supplied value in every row above, unless core withdrew it as the losing member of an [exclusive option group](options.md#declared-option-groups).
 
 A declared default reaches its validator as the value the author declared, the value `inspect()` publishes under `default`. An array default reaches the action as its own mutable copy on every invocation.
 

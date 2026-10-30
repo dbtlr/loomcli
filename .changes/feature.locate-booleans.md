@@ -1,0 +1,1 @@
+- Add `booleans` to the option position `locate()` returns: the value the earlier words gave each Boolean option in scope, keyed by name, so `--no-json` holds `json` at `false`. A completion reader can tell whether a member of an exclusive option group gave its absent value and so claims nothing. See [graph inspection](docs/core/graph-inspection.md).
