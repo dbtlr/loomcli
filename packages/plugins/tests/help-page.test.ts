@@ -478,3 +478,27 @@ test('a hidden option of either scope leaves the folded root OPTIONS', () => {
     ),
   );
 });
+
+test('an option row lists its variables and its configuration key last among the facts but deprecated, never a value', () => {
+  const expected = page(
+    'app · Show each binding fact.',
+    '',
+    'USAGE',
+    '  app [options]',
+    '',
+    'OPTIONS',
+    '      --region[=<region>]  The region to use.  (default: eu, implied: us, env: APP_REGION APP_ZONE, config: cloud.region)',
+    '      --cache              Use the cache.  (env: APP_CACHE)',
+    '      --retries <retries>  (config: retries)',
+    '      --old <old>          (env: APP_OLD, config: old, deprecated: Use --region instead.)',
+    '      --token <token>      The access token.',
+    '  -h, --help               Show this help.',
+    '  -V, --version            Print the version.',
+  );
+  // The compact page prints the same facts, and its hints follow.
+  expect(run('bindings', ['--help'])).toEqual(expected);
+  const compact = run('bindings', ['-h']);
+  expect(compact.stdout).toContain('(env: APP_CACHE)');
+  expect(compact.stdout).toContain('config: cloud.region)');
+  expect(compact.stdout).not.toContain('APP_TOKEN');
+});

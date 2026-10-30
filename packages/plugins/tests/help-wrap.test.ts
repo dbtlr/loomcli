@@ -25,8 +25,9 @@
  *   inner heading, so no description starts in a spelling's column, and a stacked set without one
  *   starts them four columns in.
  * - Literals. A USAGE form, a left cell, a code block line, and an example command wider than
- *   `columns` print whole. A Details code span holding spaces, and a hint's command, never break. A
- *   link destination wider than the width keeps its own line.
+ *   `columns` print whole. A Details code span holding spaces, a hint's command, and a variable
+ *   name or a configuration path holding a space in a fact parenthesis never break. A link
+ *   destination wider than the width keeps its own line.
  * - Details. A paragraph authored across several lines joins and wraps at 40 columns and joins into
  *   one line at 200. A list item's continuation hangs after its marker, nested two levels, and a
  *   quote's continuation carries `> `. A heading wraps. Code keeps every line as written, and an
@@ -49,7 +50,7 @@
  *   unwrapped. A tab inside a description, a Details paragraph, and a code line expands on a
  *   terminal, and stays a tab off one.
  * - Styles. Exact themed bytes pin a wrapped right cell whose style spans the break, a wrapped fact
- *   parenthesis, a wrapped deprecation message, and a stacked row.
+ *   parenthesis, a wrapped binding fact, a wrapped deprecation message, and a stacked row.
  */
 
 import { expect, test } from 'vite-plus/test';
@@ -740,5 +741,41 @@ test('a wrapped deprecation message and a stacked row keep their styles on every
     '      \u001b[93mUse the new\u001b[39m',
     '      \u001b[93mcommand\u001b[39m',
     '      \u001b[93minstead.\u001b[90m)\u001b[39m',
+  ]);
+});
+
+/** An option bound to two variables and to a configuration path whose segment holds a space. */
+const bound = {
+  options: [
+    {
+      configPath: 'server.listen address',
+      description: 'Where the server listens.',
+      env: ['APP_SERVER_LISTEN_ADDRESS', 'APP_ADDRESS'],
+      name: 'listen',
+      type: 'string',
+    },
+  ],
+};
+
+test('a variable name and a configuration path in the fact parenthesis never break across lines', () => {
+  for (const columns of [40, 60]) {
+    const lines = render({ app: bound, columns }).split('\n');
+    expect(lines.filter((line) => line.length > columns)).toEqual([]);
+    for (const name of ['APP_SERVER_LISTEN_ADDRESS', 'APP_ADDRESS', 'server.listen address']) {
+      expect(lines.filter((line) => line.includes(name))).toHaveLength(1);
+    }
+    expect(lines.some((line) => line.includes('config:'))).toBe(true);
+  }
+});
+
+test('a wrapped binding fact prints its labels, names, and separators dim on every line', () => {
+  const app = { options: [{ ...bound.options[0], env: ['APP_LISTEN', 'APP_ADDRESS'] }] };
+  const options = block(render({ app, columns: 40, ...themed }), '\u001b[90mOPTIONS\u001b[39m');
+  expect(options.slice(0, 5)).toEqual([
+    '\u001b[90mOPTIONS\u001b[39m',
+    '      \u001b[33m--listen\u001b[39m \u001b[90;3m<listen>\u001b[39;23m',
+    '          Where the server listens.',
+    '          \u001b[90m(env: APP_LISTEN APP_ADDRESS,\u001b[39m',
+    '          \u001b[90mconfig: server.listen address)\u001b[39m',
   ]);
 });

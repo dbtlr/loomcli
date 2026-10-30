@@ -1,4 +1,5 @@
 import { Application, Command, override, processHandle } from '@loomcli/core';
+import { configInput } from '@loomcli/plugins/config/extension';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { helpPage } from '@loomcli/plugins/help/views';
@@ -411,7 +412,43 @@ function multiline() {
     .action(dispatch);
 }
 
+/** Options that bind variables and a configuration key, and one that hides its bindings. */
+function bindings() {
+  return new Application('app', {
+    description: 'Show each binding fact.',
+    plugins,
+    version: '1.2.0',
+  })
+    .option('region', {
+      default: 'eu',
+      description: 'The region to use.',
+      env: ['APP_REGION', 'APP_ZONE'],
+      extensions: [configInput({ path: 'cloud.region' })],
+      implied: 'us',
+      type: 'string',
+    })
+    .option('cache', { description: 'Use the cache.', env: 'APP_CACHE', type: 'boolean' })
+    .option('retries', {
+      extensions: [configInput({ path: 'retries' })],
+      type: 'string',
+    })
+    .option('old', {
+      deprecated: 'Use --region instead.',
+      env: 'APP_OLD',
+      extensions: [configInput({ path: 'old' })],
+      type: 'string',
+    })
+    .option('token', {
+      description: 'The access token.',
+      env: 'APP_TOKEN',
+      extensions: [configInput({ path: 'token' }), helpInput({ hideBindings: true })],
+      type: 'string',
+    })
+    .action(dispatch);
+}
+
 const scenarios = {
+  bindings,
   'branded-line': () =>
     branded([
       override(versionLine, { render: ({ graph }) => `<${graph.name}@${graph.version}>\n` }),

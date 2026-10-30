@@ -12,8 +12,8 @@ import {
   deprecatedFacts,
   isEmpty,
   optionCell,
-  optionFacts,
   optionForm,
+  pageOptionFacts,
   rightCell,
 } from './cells.js';
 import type { Row, StringOption, UsageWriter } from './cells.js';
@@ -245,7 +245,7 @@ function optionRow(option: OptionNode, context: ViewContext): Row {
     left: optionCell(option, context),
     right: rightCell(
       { accepts: optionAccepts(option), description: option.description },
-      optionFacts(option),
+      pageOptionFacts(option),
       context,
     ),
   };

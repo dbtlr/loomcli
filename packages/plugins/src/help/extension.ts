@@ -1,5 +1,5 @@
 import { extension } from '@loomcli/core';
-import { array, object, optional, pipe, regex, strictTuple, string, union } from 'valibot';
+import { array, literal, object, optional, pipe, regex, strictTuple, string, union } from 'valibot';
 
 import { packageName } from '../constants.js';
 import { line, markdown } from '../lines.js';
@@ -26,6 +26,7 @@ const commandFacts = object({
 
 const inputFacts = object({
   accepts: optional(line),
+  hideBindings: optional(literal(true)),
   placeholder: optional(word),
   section: optional(sectionPath),
 });
