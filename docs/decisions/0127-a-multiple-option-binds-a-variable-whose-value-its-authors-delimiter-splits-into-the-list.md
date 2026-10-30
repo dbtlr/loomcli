@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0127 - A multiple option binds a variable whose value its author's delimiter splits into the list
-description: A multiple string or content option may bind env when its declaration names envDelimiter, a non-empty string the types require beside env on a multiple option and reject everywhere else. The variable that supplies the option splits at each occurrence of the delimiter into the list, untrimmed, with empty items kept, and each item passes the option's validator. The list is the environment tier's fill, so it replaces the configuration source and the default and never joins them. The graph publishes the delimiter as envDelimiter, which the manifest copies and the man page prints beside the variables. This narrows ADR-0032's binding clause and withdraws its rejection of a list grammar for multiple options in the environment.
+description: A multiple string or content option may bind env when its declaration names envDelimiter, a non-empty string the types require beside env on a multiple option and reject everywhere else. The variable that supplies the option splits at each occurrence of the delimiter into the list, untrimmed, with empty items kept, and each item passes the option's validator. The list is the environment tier's fill, so it replaces the configuration source and the default and never joins them. The graph publishes the delimiter as envDelimiter, which the manifest copies and the man page prints beside the variables. This narrows ADR-0032's binding clause and ADR-0081's prohibition on a multiple content option binding, and withdraws ADR-0032's rejection of a list grammar for multiple options in the environment.
 status: proposed
 created: 2026-10-30
 modified: 2026-10-30
@@ -11,7 +11,7 @@ modified: 2026-10-30
 
 ## Context
 
-[ADR-0032](0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md) lets no multiple option bind a variable, so its list comes from argv or the configuration source alone. It rejected "a list grammar for multiple options in the environment" because "every separator is a character some value holds, and the configuration source already carries lists as lists". The types carry the bar: a multiple option's declaration takes no `env`, and core holds no runtime check for it, under [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md).
+[ADR-0032](0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md) lets no multiple option bind a variable, so its list comes from argv or the configuration source alone. It rejected "a list grammar for multiple options in the environment" because "every separator is a character some value holds, and the configuration source already carries lists as lists". [ADR-0081](0081-content-inputs-prepare-lazy-handles-and-one-command-claims-stdin.md) keeps the same bar for a multiple content option: "Multiple content options keep the existing prohibition on environment binding." The types carry the bar: a multiple option's declaration takes no `env`, and core holds no runtime check for it, under [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md).
 
 Command-line parsers in the ecosystem bind a list to a variable, and CI configuration sets one, such as `FIELDS=name,size`. clap splits a variable only with a `value_delimiter` its author declares, and keeps empty segments. Click and Typer split on the type's splitter, whitespace by default, and drop empty segments. Viper's `GetStringSlice` splits on whitespace, and its `Unmarshal` hook splits on commas and keeps empty segments. Commander does not split. Every one of them replaces the lower tiers with the list rather than joining them.
 
@@ -43,4 +43,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 
 ## Changelog
 
-- 2026-10-30: Proposed with the contract. It narrows ADR-0032's environment binding clause that a multiple string option cannot bind, and withdraws ADR-0032's rejection of a list grammar for multiple options in the environment, for a delimiter the author declares. ADR-0032 carries a dated entry.
+- 2026-10-30: Proposed with the contract. It narrows ADR-0032's environment binding clause that a multiple string option cannot bind, and ADR-0081's prohibition on a multiple content option binding, and withdraws ADR-0032's rejection of a list grammar for multiple options in the environment, for a delimiter the author declares. ADR-0032 and ADR-0081 carry dated entries.

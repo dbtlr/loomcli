@@ -108,3 +108,7 @@ textstat replaces its file collection and stdin helper with native content. json
 ## Status
 
 Accepted in 0.13.0.
+
+## Changelog
+
+- 2026-10-30: [ADR-0127](0127-a-multiple-option-binds-a-variable-whose-value-its-authors-delimiter-splits-into-the-list.md), proposed, narrows the prohibition on environment binding for a multiple content option: one binds a variable when its declaration also names `envDelimiter`, and each item the delimiter splits out is read as a path. The scalar content option's binding, argv precedence, and every other rule here stand. It binds when that record is accepted.
