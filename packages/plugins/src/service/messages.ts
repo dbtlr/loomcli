@@ -102,6 +102,8 @@ const notes = {
     `Lingering is off, so ${label} stops when you log out. Run loginctl enable-linger to keep it running.`,
   missing: missingSentence,
   noSession: (label: string) => `There is no login session, so ${label} starts when you log in.`,
+  timedOut: (call: UnreadableCall, seconds: number) =>
+    `${call.manager} did not report ${call.target} within ${seconds} seconds, so status ended the call. Run ${call.report} to see why.`,
   unreadable: (call: UnreadableCall, code: number) =>
     `${call.manager} could not report ${call.target} (exit ${code}). Run ${call.report} to see why.`,
 };

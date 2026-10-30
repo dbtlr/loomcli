@@ -3,8 +3,8 @@ import { basename, isAbsolute, join } from 'node:path';
 import { observe } from '../installation/disk.js';
 import { unknownReading } from './backend.js';
 import type { Backend, Reading, Service } from './backend.js';
-import { expectCall, run, succeeded } from './manager.js';
-import type { Answer, Call } from './manager.js';
+import { expectCall, readCall, readLimitSeconds, succeeded } from './manager.js';
+import type { Call, Read } from './manager.js';
 import { notes } from './messages.js';
 import { systemdUnit } from './unit.js';
 
@@ -76,7 +76,7 @@ function readShown(stdout: string, installed: boolean): Omit<Reading, 'notes'> {
 
 /** The note `Linger=no` adds, or none for any other answer. */
 async function lingerNotes(service: Service): Promise<readonly string[]> {
-  const answer = await run(service.manager, {
+  const answer = await readCall(service.manager, {
     args: ['show-user', String(service.uid), '--property=Linger'],
     program: 'loginctl',
     report: '',
@@ -88,19 +88,21 @@ async function lingerNotes(service: Service): Promise<readonly string[]> {
 }
 
 /** The note of a `show` call that could not report the unit. */
-function unreadableNote(service: Service, name: string, answer: Answer): string {
+function unreadableNote(service: Service, name: string, answer: Read): string {
   if (answer.kind === 'missing') {
     return notes.missing(service.manager.name, 'systemctl');
   }
   const call = { manager: 'systemctl --user', report: statusCommand(name), target: name };
-  return notes.unreadable(call, answer.code);
+  return answer.kind === 'timedOut'
+    ? notes.timedOut(call, readLimitSeconds)
+    : notes.unreadable(call, answer.code);
 }
 
 /** The manager's state of the label's unit, and the session note for an installed one. */
 async function read(service: Service, installed: boolean): Promise<Reading> {
   const name = unitName(service.label);
   const call = systemctl(name, 'show', name, '--property=ActiveState,MainPID');
-  const answer = await run(service.manager, call);
+  const answer = await readCall(service.manager, call);
   const session = installed ? await lingerNotes(service) : [];
   return answer.kind === 'exited' && answer.code === succeeded
     ? { ...readShown(answer.stdout, installed), notes: session }

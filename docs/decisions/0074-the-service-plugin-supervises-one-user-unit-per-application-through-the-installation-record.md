@@ -4,7 +4,7 @@ title: ADR-0074 - The service plugin supervises one user unit per application th
 description: The service plugin contributes service install, uninstall, start, stop, restart, and status. It writes one systemd user unit on Linux or one launchd user agent on macOS, named by a required reverse-DNS label, that runs the application with argument words the graph must route. Only a distributed build installs, with no opt-in. The unit file is recorded through the installation record, so a file the plugin did not write is never overwritten. Status returns a typed result and exits 0 whenever it reports, with author rows from an optional probe. The plugin adds no time limit, redirects no output, and exports no supervisor seam.
 status: accepted
 created: 2026-10-13
-modified: 2026-10-13
+modified: 2026-10-30
 ---
 
 # ADR-0074 - The service plugin supervises one user unit per application through the installation record
@@ -58,3 +58,4 @@ Accepted in 0.11.0.
 
 - 2026-10-13: Proposed with the service contract.
 - 2026-10-13: [ADR-0076](0076-the-skills-plugin-installs-an-applications-agent-skills-for-claude-and-the-shared-agents-folder.md), proposed, gives the installed-files module a force mode for an operator's `skills install --force`, so adoption by flag no longer loosens the guarantee for every installer. The service plugin never passes it, and its refusal to adopt a unit it did not write stands.
+- 2026-10-30: [ADR-0126](0126-service-status-bounds-each-manager-read-at-five-seconds-and-reports-an-unknown-state-when-one-runs-out.md), proposed, narrows "No time limit" to the calls that change a unit, and the rejection of Heimdall's timeouts with it. Each read `status` makes, of the unit's state and of the user's session, runs for at most a fixed 5 seconds and is then ended with `SIGKILL`. A state read that runs out reads `unknown` with a note naming the call and the limit, and `status` still exits 0; a session read that runs out adds no note. `install`, `uninstall`, `start`, `stop`, `restart`, and launchd's unload wait still run with no time limit. Every other rule here stands. It binds when that record is accepted.

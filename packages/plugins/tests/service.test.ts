@@ -45,11 +45,13 @@
  *   loaded, gives the pinned text and JSON. A unit with no file and no loaded job reads
  *   `not installed` and exits 0, and one with no file whose job the manager reports running reads
  *   that state and its pid. A `show` that exits 1 gives `unknown` with its note and exits 0.
- *   `Linger=no` and a `print gui/<uid>` that exits 113 add their notes. A probe's rows print under
+ *   `Linger=no` and a `print gui/<uid>` that exits 113 add their notes. A state read that never
+ *   exits, and one that ignores SIGTERM, each end at 5 seconds and give `unknown` with a note naming
+ *   the call and the limit, and exit 0; a session read that never exits adds no note. A probe's rows print under
  *   `unit`, and the probe receives the state and an `invoke` that runs the application's own
  *   Command; a probe that throws exits 1.
- * - Waiting. A run aborted while launchd's unload is polled, and one aborted during a manager call,
- *   exit 130 and leave the record as the module left it.
+ * - Waiting. A run aborted while launchd's unload is polled, one aborted during a manager call, and
+ *   one aborted during a status read exit 130 and leave the record as the module left it.
  * - Settings and the graph. Each settings fault throws its pinned diagnostic at the call. `run`
  *   words naming an unknown Command, a group, an unknown option, a misplaced option, an unexpected
  *   argument, and an option with no value each fail the build with `run-unrouted`, and `check()`
@@ -140,6 +142,7 @@ interface Answer {
   readonly stdout?: string;
   readonly abort?: boolean;
   readonly hang?: boolean;
+  readonly deaf?: boolean;
 }
 type Answers = Record<string, Answer | readonly Answer[]>;
 
@@ -1164,6 +1167,77 @@ describe('waiting', () => {
         pinnedUnit(box),
       ),
     );
+  });
+
+  describe('a read that runs out', () => {
+    const stateRead = 'systemctl --user show com.acme.notes.service --property=ActiveState,MainPID';
+    const lingerRead = `loginctl show-user ${uid} --property=Linger`;
+    const stateNote =
+      'systemctl --user did not report com.acme.notes.service within 5 seconds, so status ended the call. Run systemctl --user status com.acme.notes.service to see why.';
+
+    it('ends a state read that never exits and one that ignores SIGTERM, reads unknown with the note, and exits 0', () => {
+      const box = sandbox();
+      expect(run(box, ['install']).status).toBe(0);
+      for (const deaf of [false, true]) {
+        const result = run(box, ['status'], {
+          answers: { ...shown('active', 1), [stateRead]: { deaf, hang: true } },
+        });
+        expect(result).toEqual({
+          status: 0,
+          stderr: '',
+          stdout: `com.acme.notes: unknown\n  unit  ${systemdPath(box)}\n  note  ${stateNote}\n`,
+        });
+      }
+    }, 30_000);
+
+    it('ends a session read that never exits and adds no note', () => {
+      const box = sandbox();
+      expect(run(box, ['install']).status).toBe(0);
+      const result = run(box, ['status'], {
+        answers: { ...shown('active', 7), [lingerRead]: { hang: true } },
+      });
+      expect(result).toEqual({
+        status: 0,
+        stderr: '',
+        stdout: `com.acme.notes: running (pid 7)\n  unit  ${systemdPath(box)}\n`,
+      });
+    }, 30_000);
+
+    it('ends a launchd state read that never exits, reads unknown with the note, and exits 0', () => {
+      const box = sandbox();
+      expect(run(box, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
+      const result = run(box, ['status'], {
+        answers: { [`launchctl print ${agent}`]: { hang: true } },
+        platform: 'darwin',
+      });
+      expect(result).toEqual({
+        status: 0,
+        stderr: '',
+        stdout: `com.acme.notes: unknown\n  unit  ${launchdPath(box)}\n  note  launchctl did not report ${agent} within 5 seconds, so status ended the call. Run launchctl print ${agent} to see why.\n`,
+      });
+    }, 30_000);
+
+    it('ends a launchd session read that never exits and adds no note', () => {
+      const box = sandbox();
+      expect(run(box, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
+      const result = run(box, ['status'], {
+        answers: { ...loaded, [`launchctl print ${domain}`]: { hang: true } },
+        platform: 'darwin',
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe(`com.acme.notes: unknown\n  unit  ${launchdPath(box)}\n`);
+    }, 30_000);
+
+    it('exits 130 with no note when the run is cancelled during the read', () => {
+      const box = sandbox();
+      expect(run(box, ['install']).status).toBe(0);
+      const result = run(box, ['status'], {
+        answers: { ...shown('active', 1), [stateRead]: { abort: true, hang: true } },
+      });
+      expect(result.status).toBe(130);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).not.toContain('did not report');
+    });
   });
 });
 
