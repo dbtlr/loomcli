@@ -55,11 +55,14 @@ test('invalid supplied values and group problems report together in declaration 
   ]);
 });
 
-test.each(['false', '0', '[]'])('a source-filled %s member loses to a typed sibling', (value) => {
-  const result = invoke(advanced, ['source', value]);
-  expect(result.status).toBe(0);
-  expect(result.stdout).toBe('action\n');
-});
+test.each(['false', '0', '[]'])(
+  'a source-filled %s member never fails beside a typed sibling',
+  (value) => {
+    const result = invoke(advanced, ['source', value]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe('action\n');
+  },
+);
 
 test('environment values satisfy required groups and lose to a typed sibling', () => {
   expect(invoke(advanced, ['env']).status).toBe(0);
@@ -163,11 +166,15 @@ interface Tiered {
   readonly stderr: string;
 }
 
+/** One of the tiered application's options. */
+type Member = 'json' | 'plain' | 'yaml';
+
 /** One group over the tiered application's options. */
 type Rule = readonly [
   'exclusive' | 'oneRequired' | 'requiredTogether',
-  'json' | 'plain' | 'yaml',
-  'json' | 'plain' | 'yaml',
+  Member,
+  Member,
+  ...Member[],
 ];
 
 const jsonOrYaml: readonly Rule[] = [['exclusive', 'json', 'yaml']];
@@ -208,21 +215,24 @@ function tieredApplication(
       description: 'Write JSON.',
       env: 'EXPORT_JSON',
       extensions: [binding('json')],
+      polarity: 'both',
       type: 'boolean',
     })
     .option('yaml', {
       description: 'Write YAML.',
       env: 'EXPORT_YAML',
       extensions: [binding('yaml')],
+      polarity: 'both',
       type: 'boolean',
     })
     .option('plain', {
       description: 'Write plain text.',
       extensions: [binding('plain')],
+      polarity: 'both',
       type: 'boolean',
     });
-  for (const [kind, first, second] of rules) {
-    app = app[kind](first, second);
+  for (const [kind, first, second, ...rest] of rules) {
+    app = app[kind](first, second, ...rest);
   }
   return app.action(({ options, supplied }) => {
     seen.push({ options: { ...options }, supplied: { ...supplied.options } });
@@ -357,12 +367,26 @@ test('the named values of an invocation by name are the argv tier', async () => 
   expect(conflict.status).toBe('failed');
 });
 
-test('a requiredTogether failure over a withdrawn member names the source that filled it', async () => {
+test('a requiredTogether group that holds a withdrawn member is not checked', async () => {
   const rules: readonly Rule[] = [
     ['exclusive', 'json', 'yaml'],
     ['requiredTogether', 'json', 'plain'],
   ];
-  const result = await tiered({ answers: { json: true }, argv: ['--yaml'] }, rules);
+  const alone = await tiered({ answers: { json: true }, argv: ['--yaml'] }, rules);
+  expect(alone.status).toBe(0);
+  expect(alone.seen[0]?.options).toMatchObject({ json: false, plain: false, yaml: true });
+  const together = await tiered({ answers: { json: true, plain: true }, argv: ['--yaml'] }, rules);
+  expect(together.status).toBe(0);
+  expect(together.seen[0]?.options).toMatchObject({ json: false, plain: true, yaml: true });
+  expect(together.seen[0]?.supplied.plain).toBe(true);
+});
+
+test('a requiredTogether group with no withdrawn member is still checked beside an exclusive group', async () => {
+  const rules: readonly Rule[] = [
+    ['exclusive', 'json', 'yaml'],
+    ['requiredTogether', 'json', 'plain'],
+  ];
+  const result = await tiered({ answers: { json: true } }, rules);
   expect(result.status).toBe(2);
   expect(result.stderr).toContain('"--json" (from json in tiers.json) and "--plain" must be');
 });
@@ -387,13 +411,33 @@ test('a variable outside the grammar beside a typed sibling satisfies no other g
   expect(result.stderr).toContain('One of options "--json" and "--plain" is required.');
 });
 
-test("a group problem's supplied list names a withdrawn member it counted", async () => {
-  const rules: readonly Rule[] = [
-    ['exclusive', 'json', 'yaml'],
-    ['requiredTogether', 'json', 'plain'],
-  ];
-  const result = await tieredApplication({ json: true }, rules).invoke([], {
-    options: { yaml: true },
+test('a false Boolean member neither wins an exclusive group nor conflicts, and reaches the action', async () => {
+  for (const words of [
+    { answers: { json: true }, argv: ['--no-yaml'] },
+    { answers: { json: true }, env: { EXPORT_YAML: '0' } },
+    { argv: ['--json', '--no-yaml'] },
+    { answers: { yaml: false }, argv: ['--json'] },
+  ]) {
+    const result = await tiered(words);
+    expect(result.status).toBe(0);
+    expect(result.seen[0]?.options).toMatchObject({ json: true, yaml: false });
+    expect(result.seen[0]?.supplied).toMatchObject({ json: true, yaml: false });
+  }
+});
+
+test('a named false Boolean member claims no exclusive group', async () => {
+  const seen: Tiered['seen'] = [];
+  const result = await tieredApplication({}, undefined, seen).invoke([], {
+    options: { json: true, yaml: false },
+  });
+  expect(result.status).toBe('completed');
+  expect(seen[0]?.options).toMatchObject({ json: true, yaml: false });
+});
+
+test("an exclusive problem's supplied list names only the members that claimed the group", async () => {
+  const rules: readonly Rule[] = [['exclusive', 'json', 'yaml', 'plain']];
+  const result = await tieredApplication({}, rules).invoke([], {
+    options: { json: true, plain: false, yaml: true },
   });
   expect(result.status).toBe('failed');
   const problems =
@@ -401,8 +445,22 @@ test("a group problem's supplied list names a withdrawn member it counted", asyn
       ? result.failure.problems
       : [];
   expect(problems).toEqual([
-    expect.objectContaining({ reason: 'requiredTogether', supplied: ['json'] }),
+    expect.objectContaining({ reason: 'exclusive', supplied: ['json', 'yaml'] }),
   ]);
+});
+
+test('a variable outside the grammar beside a false typed sibling is still reported', async () => {
+  const result = await tiered({ argv: ['--no-yaml'], env: { EXPORT_JSON: 'maybe' } });
+  expect(result.status).toBe(2);
+  expect(result.stderr).toContain('EXPORT_JSON');
+});
+
+test('a false Boolean member still counts for oneRequired and requiredTogether', async () => {
+  const one = await tiered({ argv: ['--no-json'] }, [['oneRequired', 'json', 'yaml']]);
+  expect(one.status).toBe(0);
+  const together = await tiered({ argv: ['--no-json'] }, [['requiredTogether', 'json', 'yaml']]);
+  expect(together.status).toBe(2);
+  expect(together.stderr).toContain('must be supplied together');
 });
 
 test("a withdrawn configured member's omission reads the run's working directory", async () => {

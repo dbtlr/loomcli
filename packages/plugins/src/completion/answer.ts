@@ -95,13 +95,12 @@ function optionOffers(
   position: Extract<WordPosition, { kind: 'option' }>,
 ): Offer[] {
   const scope = [...graph.globals, ...position.command.options];
+  // A Boolean an earlier word gave as false claims no exclusive group, so it hides no sibling.
+  const claimed = (name: string): boolean =>
+    position.supplied.includes(name) && position.booleans.get(name) !== false;
   const excluded = new Set(
     position.command.optionGroups
-      .filter(
-        (group) =>
-          group.kind === 'exclusive' &&
-          group.options.some((name) => position.supplied.includes(name)),
-      )
+      .filter((group) => group.kind === 'exclusive' && group.options.some(claimed))
       .flatMap((group) => group.options.filter((name) => !position.supplied.includes(name))),
   );
   return scope

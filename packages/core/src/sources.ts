@@ -16,7 +16,7 @@ import { isProseLine } from './facts.js';
 import { frozenValues } from './globals.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
 import type { LogBinder } from './log.js';
-import { losingMembers } from './option-groups.js';
+import { claims, losingMembers } from './option-groups.js';
 import type { OptionGroup, Tier } from './option-groups.js';
 import { isSupplied, withdrawFill } from './options.js';
 import type { OptionValues } from './options.js';
@@ -446,10 +446,11 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
 
 /**
  * Right after the stage fills and before validation, withdraws each member of an exclusive option
- * group that a lower tier filled beside a sibling a higher tier supplied. The option reads as
+ * group that a lower tier claimed beside a sibling a higher tier claimed. The option reads as
  * unfilled by every tier: its value is removed, and so are its label and its file, and nothing
- * validates it. Its label moves to `withdrawn`, which the groups that still count it name. A
- * rejected variable of a member beside a typed sibling is forgotten too.
+ * validates it. Its name joins `withdrawn`, which settles the other groups that hold it. A
+ * rejected variable of a member beside a sibling argv claimed is forgotten too. A Boolean supplied
+ * as false claims nothing, so it never withdraws and never makes a sibling withdraw.
  */
 function withdrawLosers(stage: SourceStage, outcome: SourceOutcome): SourceOutcome {
   const { locals } = stage;
@@ -457,7 +458,7 @@ function withdrawLosers(stage: SourceStage, outcome: SourceOutcome): SourceOutco
     return outcome;
   }
   const tierOf = (name: string): Tier | undefined => {
-    if (!isSupplied(locals.values, name)) {
+    if (!claims(locals.values, name)) {
       return undefined;
     }
     if (outcome.fills?.has(name) === true) {
@@ -472,14 +473,14 @@ function withdrawLosers(stage: SourceStage, outcome: SourceOutcome): SourceOutco
   if (losers.size === 0) {
     return outcome;
   }
-  const withdrawn = new Map<string, string | undefined>();
+  const withdrawn = new Set<string>();
   const labels = new Map(outcome.labels);
   const fills = outcome.fills && new Map(outcome.fills);
   const rejected = new Map(outcome.rejected);
   for (const name of losers) {
     if (isSupplied(locals.values, name)) {
       withdrawFill(locals.values, name);
-      withdrawn.set(name, labels.get(name));
+      withdrawn.add(name);
     }
     labels.delete(name);
     fills?.delete(name);

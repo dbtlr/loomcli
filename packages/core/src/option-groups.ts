@@ -117,20 +117,28 @@ const tierRanks: Readonly<Record<Tier, number>> = {
   environment: 2,
 };
 
+/**
+ * Whether one member claims its exclusive group: a tier supplied it, and it is not a Boolean whose
+ * value is false. A false Boolean neither wins the group nor conflicts, and stays supplied.
+ */
+function claims(values: OptionValues, name: string): boolean {
+  return isSupplied(values, name) && values.booleans.get(name) !== false;
+}
+
 /** What decides which members of an exclusive group lose: the tier of each, and the rejected variables. */
 interface TierContext {
   /** The names of the options whose bound variable is outside its grammar and filled nothing. */
   readonly rejected: ReadonlySet<string>;
-  /** The tier that supplied one option, or `undefined` when none did. */
+  /** The tier that supplied one option a claim, or `undefined` when none did. */
   readonly tierOf: (name: string) => Tier | undefined;
 }
 
 /**
- * The members that lose their exclusive group: those a lower tier supplied beside a sibling a
- * higher tier supplied, and those whose variable is outside its grammar beside a sibling typed in
- * argv. Every group reads the tiers as the input-source stage left them, so a member of two groups
- * loses when either holds a higher tier, and declaration order decides nothing. A group of another
- * kind has no loser.
+ * The members that lose their exclusive group: those a lower tier claimed beside a sibling a
+ * higher tier claimed, and those whose variable is outside its grammar beside a sibling argv
+ * claimed. Every group reads the tiers as the input-source stage left them, so a member of two
+ * groups loses when either holds a higher tier, and declaration order decides nothing. A group of
+ * another kind has no loser.
  */
 function losingMembers(groups: readonly OptionGroup[], context: TierContext): ReadonlySet<string> {
   return new Set(
@@ -157,10 +165,10 @@ function losersOf(group: OptionGroup, context: TierContext): string[] {
 interface GroupContext {
   readonly groups: readonly OptionGroup[];
   /**
-   * The members core withdrew as the losers of an exclusive group, with the label of the tier that
-   * filled each, which the other kinds still count and name.
+   * The members core withdrew as the losers of an exclusive group. The sibling that won replaced
+   * each in every other group: `oneRequired` counts it, and `requiredTogether` is not checked.
    */
-  readonly withdrawn: ReadonlyMap<string, string | undefined>;
+  readonly withdrawn: ReadonlySet<string>;
   readonly values: OptionValues;
   readonly table: SpellingTable;
   readonly named: boolean;
@@ -168,21 +176,34 @@ interface GroupContext {
   readonly unanswered: ReadonlySet<string>;
 }
 
-/** Whether one member counts toward its group: supplied, or for a kind but exclusive, withdrawn. */
+/**
+ * Whether one member counts toward its group: for an exclusive group, a claim; for `oneRequired`, a
+ * supplied or withdrawn member; for `requiredTogether`, a supplied one.
+ */
 function countsFor(group: OptionGroup, name: string, context: GroupContext): boolean {
-  return (
-    isSupplied(context.values, name) || (group.kind !== 'exclusive' && context.withdrawn.has(name))
-  );
+  switch (group.kind) {
+    case 'exclusive': {
+      return claims(context.values, name);
+    }
+    case 'oneRequired': {
+      return isSupplied(context.values, name) || context.withdrawn.has(name);
+    }
+    case 'requiredTogether': {
+      return isSupplied(context.values, name);
+    }
+    default: {
+      const exhaustive: never = group.kind;
+      return exhaustive;
+    }
+  }
 }
 
 /** An unknown configuration answer suppresses only failures whose proof depends on that answer. */
 function brokenGroup(group: OptionGroup, context: GroupContext): boolean {
-  const supplied = group.options.filter((name) => isSupplied(context.values, name));
-  // These kinds count every tier's fills, so a member the exclusive pass withdrew still counts.
   const counted = group.options.filter((name) => countsFor(group, name, context));
   switch (group.kind) {
     case 'exclusive': {
-      return supplied.length > 1;
+      return counted.length > 1;
     }
     case 'oneRequired': {
       return counted.length === 0 && !group.options.some((name) => context.unanswered.has(name));
@@ -190,6 +211,7 @@ function brokenGroup(group: OptionGroup, context: GroupContext): boolean {
     case 'requiredTogether': {
       return (
         counted.length > 0 &&
+        !group.options.some((name) => context.withdrawn.has(name)) &&
         group.options.some((name) => !counted.includes(name) && !context.unanswered.has(name))
       );
     }
@@ -231,9 +253,7 @@ function reportGroup(
     context.named ? name : reportedOf(spellingsOf(context.table, name), name),
   );
   const described = group.options.map((name, index) => {
-    const label =
-      context.labels.get(name) ??
-      (countsFor(group, name, context) ? context.withdrawn.get(name) : undefined);
+    const label = context.labels.get(name);
     return `${quoted(spellings[index])}${label === undefined ? '' : ` (from ${escapeControlCharacters(label)})`}`;
   });
   return {
@@ -259,4 +279,4 @@ function groupReports(
 }
 
 export type { OptionGroup, Tier };
-export { declareGroup, groupReports, losingMembers };
+export { claims, declareGroup, groupReports, losingMembers };

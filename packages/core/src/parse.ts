@@ -335,6 +335,8 @@ interface ReadState {
   fault: HeldFault | undefined;
   faulted: Set<string>;
   globalFault: boolean;
+  /** The value each held-back Boolean option gives the reached Command's own entry, by its name. */
+  heldBooleans: Map<string, boolean>;
   path: string[];
   pending: PendingOccurrence[];
   positionals: string[];
@@ -442,14 +444,21 @@ function note(state: ReadState, entry: { at: number; name: string }): void {
 
 /**
  * Lists the held-back options while routing is still open, each under the name the reached
- * Command's own entry gives its spelling, so a reader offers none of them again. A spelling that
- * Command does not hold lists nothing.
+ * Command's own entry gives its spelling, so a reader offers none of them again, and notes the value
+ * a Boolean spelling gives that entry. A spelling that Command does not hold lists nothing.
  */
 function noteHeld(state: ReadState): void {
   for (const { at, occurrence } of state.pending) {
     const entry = state.command.table.get(occurrence.spelling);
     if (entry && !state.supplied.some(({ name }) => name === entry.name)) {
       note(state, { at, name: entry.name });
+      if (
+        occurrence.kind === 'value' &&
+        entry.valueClass === 'boolean' &&
+        occurrence.option.valueClass === 'boolean'
+      ) {
+        state.heldBooleans.set(entry.name, entry.value);
+      }
     }
   }
 }
@@ -741,6 +750,8 @@ interface WordsRead {
   fault: HeldFault | undefined;
   faulted: ReadonlySet<string>;
   globalFault: boolean;
+  /** The value each Boolean option routing still holds unbound gives the reached Command's entry. */
+  heldBooleans: ReadonlyMap<string, boolean>;
   passthrough: string[];
   path: string[];
   positionals: string[];
@@ -801,6 +812,7 @@ function readWords(
     fault: undefined,
     faulted: new Set(),
     globalFault: false,
+    heldBooleans: new Map(),
     path: [],
     pending: [],
     positionals: [],

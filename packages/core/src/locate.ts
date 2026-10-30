@@ -17,6 +17,8 @@ type WordPosition =
       readonly prefix: string;
       readonly supplied: readonly string[];
       readonly counts: ReadonlyMap<string, number>;
+      /** The value the earlier words gave each Boolean option, so a reader sees which gave false. */
+      readonly booleans: ReadonlyMap<string, boolean>;
     }
   | {
       readonly kind: 'value';
@@ -112,12 +114,14 @@ function carriedValue(scope: Scope, last: string): WordPosition | undefined {
 }
 
 /**
- * The option position of a last word: the names the earlier words supplied, and how many times they
- * supplied each counted option, a global's and a bound own option's alike.
+ * The option position of a last word: the names the earlier words supplied, how many times they
+ * supplied each counted option, a global's and a bound own option's alike, and the value they gave
+ * each Boolean option, a held-back own option's included.
  */
 function optionPosition(scope: Scope, last: string): WordPosition {
   const { globals, locals } = scope.earlier.values;
   return {
+    booleans: new Map([...globals.booleans, ...locals.booleans, ...scope.earlier.heldBooleans]),
     command: scope.command,
     counts: new Map([...globals.counts, ...locals.counts]),
     kind: 'option',

@@ -38,13 +38,30 @@ function externallyUnbound(option: OptionNode): boolean {
   );
 }
 
+/**
+ * The named values with which one member claims its exclusive group, or `undefined` for a member no
+ * call can claim through. A Boolean claims only as `true`, because a false one neither wins the group
+ * nor conflicts, so a `negative` Boolean, which every call supplies as false or not at all, claims
+ * through none.
+ */
+function namedClaim(option: OptionNode): Schema | undefined {
+  if (option.type !== 'boolean') {
+    return namedPresence(option);
+  }
+  if (option.polarity === 'negative') {
+    return undefined;
+  }
+  return { properties: { [option.name]: { const: true } }, required: [option.name] };
+}
+
 function constraints(kind: OptionGroup['kind'], options: readonly OptionNode[]): Schema[] {
-  const presence = options.map(namedPresence);
   if (kind === 'exclusive') {
-    return presence.flatMap((first, index) =>
-      presence.slice(index + nextMember).map((second) => ({ not: { allOf: [first, second] } })),
+    const claims = options.flatMap((option) => namedClaim(option) ?? []);
+    return claims.flatMap((first, index) =>
+      claims.slice(index + nextMember).map((second) => ({ not: { allOf: [first, second] } })),
     );
   }
+  const presence = options.map(namedPresence);
   if (!options.every(externallyUnbound)) {
     return [];
   }

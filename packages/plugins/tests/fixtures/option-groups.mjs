@@ -50,6 +50,14 @@ const extended = new Command('extended', { description: 'Read extended inputs.' 
   .extend(mcpCommand({}))
   .action(() => {});
 
+const negated = new Command('negated', { description: 'Choose a format or no cache.' })
+  .option('cache', { description: 'Skip the cache.', polarity: 'negative', type: 'boolean' })
+  .option('json', { description: 'JSON output.', type: 'boolean' })
+  .option('yaml', { description: 'YAML output.', type: 'boolean' })
+  .exclusive('cache', 'json', 'yaml')
+  .extend(mcpCommand({}))
+  .action(() => {});
+
 const excluding = [mcpInput({ exclude: true })];
 const partial = new Command('partial', { description: 'Read partly excluded inputs.' })
   .option('message', { description: 'The message.', type: 'string' })
@@ -86,6 +94,7 @@ const app = new Application('groups', {
   .command(choice('need', 'oneRequired'))
   .command(choice('together', 'requiredTogether'))
   .command(bound)
+  .command(negated)
   .command(described)
   .command(extended)
   .command(partial)
