@@ -93,10 +93,11 @@ export interface Provenance {
   rejected: ReadonlyMap<string, string>;
   unanswered?: ReadonlySet<InputDeclaration>;
   /**
-   * The options the stage withdrew as the losing members of an exclusive option group. Each reads
-   * as unfilled, and only `oneRequired` and `requiredTogether` still count it.
+   * The options the stage withdrew as the losing members of an exclusive option group, by option
+   * name, with the label of the tier that filled each. Each reads as unfilled, and only
+   * `oneRequired` and `requiredTogether` still count it and name its label.
    */
-  withdrawn?: ReadonlySet<string>;
+  withdrawn?: ReadonlyMap<string, string | undefined>;
 }
 
 /** The raw tokens one invocation collected, keyed by declaration and by option name. */
@@ -1088,7 +1089,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       table: invocation.table,
       unanswered,
       values: groupValues,
-      withdrawn: sources.withdrawn ?? new Set(),
+      withdrawn: sources.withdrawn ?? new Map(),
     }),
   );
   return {

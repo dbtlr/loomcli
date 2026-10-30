@@ -448,7 +448,8 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
  * Right after the stage fills and before validation, withdraws each member of an exclusive option
  * group that a lower tier filled beside a sibling a higher tier supplied. The option reads as
  * unfilled by every tier: its value is removed, and so are its label and its file, and nothing
- * validates it. A rejected variable of a member beside a typed sibling is forgotten too.
+ * validates it. Its label moves to `withdrawn`, which the groups that still count it name. A
+ * rejected variable of a member beside a typed sibling is forgotten too.
  */
 function withdrawLosers(stage: SourceStage, outcome: SourceOutcome): SourceOutcome {
   const { locals } = stage;
@@ -471,14 +472,14 @@ function withdrawLosers(stage: SourceStage, outcome: SourceOutcome): SourceOutco
   if (losers.size === 0) {
     return outcome;
   }
-  const withdrawn = new Set<string>();
+  const withdrawn = new Map<string, string | undefined>();
   const labels = new Map(outcome.labels);
   const fills = outcome.fills && new Map(outcome.fills);
   const rejected = new Map(outcome.rejected);
   for (const name of losers) {
     if (isSupplied(locals.values, name)) {
       withdrawFill(locals.values, name);
-      withdrawn.add(name);
+      withdrawn.set(name, labels.get(name));
     }
     labels.delete(name);
     fills?.delete(name);

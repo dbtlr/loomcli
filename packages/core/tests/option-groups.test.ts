@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 
-import { Application, extension, plugin } from '@loomcli/core';
+import { Application, InputError, extension, plugin, validationContext } from '@loomcli/core';
+import type { SourceAnswer, StandardSchemaV1 } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
@@ -171,12 +172,11 @@ type Rule = readonly [
 
 const jsonOrYaml: readonly Rule[] = [['exclusive', 'json', 'yaml']];
 
-/** Builds the application: a configuration source that answers `answers`, and the groups under test. */
-function tieredApplication(
-  answers: Record<string, boolean>,
-  rules: readonly Rule[] = jsonOrYaml,
-  seen: Tiered['seen'] = [],
-) {
+/**
+ * A configuration source that answers `answers`, each labeled as a key in `tiers.json`, and the
+ * binding its options carry. A `directory` is the directory of the file each answer came from.
+ */
+function tiersSource(answers: Record<string, SourceAnswer['value']>, directory?: string) {
   const binding = extension('@test/tiers/key', { schema: z.string(), target: 'option' });
   const source = plugin('@test/tiers', {
     extensions: [binding],
@@ -187,12 +187,22 @@ function tieredApplication(
           Object.fromEntries(
             Object.entries(answers).map(([name, value]) => [
               name,
-              { label: `${name} in tiers.json`, value },
+              { label: `${name} in tiers.json`, value, ...(directory ? { directory } : {}) },
             ]),
           ),
       }),
     },
   });
+  return { binding, source };
+}
+
+/** Builds the application: a configuration source that answers `answers`, and the groups under test. */
+function tieredApplication(
+  answers: Record<string, boolean>,
+  rules: readonly Rule[] = jsonOrYaml,
+  seen: Tiered['seen'] = [],
+) {
+  const { binding, source } = tiersSource(answers);
   let app = new Application('export', { plugins: [source] })
     .option('json', {
       description: 'Write JSON.',
@@ -310,7 +320,7 @@ test('requiredTogether counts a member that the exclusive group withdrew', async
   expect(result.seen[0]?.options).toMatchObject({ json: false, plain: true, yaml: true });
 });
 
-test('a member in two exclusive groups withdraws whichever group is declared first', async () => {
+test('a member in two exclusive groups withdraws when either holds a higher tier, whatever the declaration order', async () => {
   const forward: readonly Rule[] = [
     ['exclusive', 'json', 'yaml'],
     ['exclusive', 'yaml', 'plain'],
@@ -345,4 +355,81 @@ test('the named values of an invocation by name are the argv tier', async () => 
   expect(seen[0]?.options).toMatchObject({ json: true, yaml: false });
   const conflict = await app.invoke([], { options: { json: true, yaml: true } });
   expect(conflict.status).toBe('failed');
+});
+
+test('a requiredTogether failure over a withdrawn member names the source that filled it', async () => {
+  const rules: readonly Rule[] = [
+    ['exclusive', 'json', 'yaml'],
+    ['requiredTogether', 'json', 'plain'],
+  ];
+  const result = await tiered({ answers: { json: true }, argv: ['--yaml'] }, rules);
+  expect(result.status).toBe(2);
+  expect(result.stderr).toContain('"--json" (from json in tiers.json) and "--plain" must be');
+});
+
+test('oneRequired is satisfied by a member that the exclusive group withdrew', async () => {
+  const rules: readonly Rule[] = [
+    ['exclusive', 'json', 'yaml'],
+    ['oneRequired', 'json', 'plain'],
+  ];
+  const result = await tiered({ answers: { json: true }, argv: ['--yaml'] }, rules);
+  expect(result.status).toBe(0);
+  expect(result.seen[0]?.options).toMatchObject({ json: false, plain: false, yaml: true });
+});
+
+test('a variable outside the grammar beside a typed sibling satisfies no other group', async () => {
+  const rules: readonly Rule[] = [
+    ['exclusive', 'json', 'yaml'],
+    ['oneRequired', 'json', 'plain'],
+  ];
+  const result = await tiered({ argv: ['--yaml'], env: { EXPORT_JSON: 'maybe' } }, rules);
+  expect(result.status).toBe(2);
+  expect(result.stderr).toContain('One of options "--json" and "--plain" is required.');
+});
+
+test("a group problem's supplied list names a withdrawn member it counted", async () => {
+  const rules: readonly Rule[] = [
+    ['exclusive', 'json', 'yaml'],
+    ['requiredTogether', 'json', 'plain'],
+  ];
+  const result = await tieredApplication({ json: true }, rules).invoke([], {
+    options: { yaml: true },
+  });
+  expect(result.status).toBe('failed');
+  const problems =
+    result.status === 'failed' && result.failure instanceof InputError
+      ? result.failure.problems
+      : [];
+  expect(problems).toEqual([
+    expect.objectContaining({ reason: 'requiredTogether', supplied: ['json'] }),
+  ]);
+});
+
+test("a withdrawn configured member's omission reads the run's working directory", async () => {
+  const directories: string[] = [];
+  const { binding, source } = tiersSource({ file: 'out.txt' }, '/srv/project');
+  const mock = mockProcess({ argv: ['--yaml'], cwd: '/loom-test' });
+  const status = await new Application('export', { plugins: [source] })
+    .option('file', {
+      description: 'Write to a file.',
+      extensions: [binding('file')],
+      type: 'string',
+      validate: {
+        '~standard': {
+          validate: (value: unknown, options?: StandardSchemaV1.Options) => {
+            directories.push(validationContext(options)?.host.cwd ?? 'no context');
+            return { value };
+          },
+          vendor: 'test',
+          version: 1,
+        },
+      },
+      validateOmitted: true,
+    })
+    .option('yaml', { description: 'Write YAML.', type: 'boolean' })
+    .exclusive('file', 'yaml')
+    .action(() => {})
+    .run({ process: mock });
+  expect(status).toBe(0);
+  expect(directories).toEqual(['/loom-test']);
 });

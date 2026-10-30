@@ -108,7 +108,7 @@ function declareGroup(declaration: Declaration): OptionGroup {
   return group;
 }
 
-/** The input tier that supplied an option's value, from the lowest to the highest rank. */
+/** The input tier that supplied an option's value. `tierRanks` orders them, argv highest. */
 type Tier = 'argv' | 'configuration' | 'environment';
 
 const tierRanks: Readonly<Record<Tier, number>> = {
@@ -156,8 +156,11 @@ function losersOf(group: OptionGroup, context: TierContext): string[] {
 
 interface GroupContext {
   readonly groups: readonly OptionGroup[];
-  /** The members core withdrew as the losers of an exclusive group, which the other kinds still count. */
-  readonly withdrawn: ReadonlySet<string>;
+  /**
+   * The members core withdrew as the losers of an exclusive group, with the label of the tier that
+   * filled each, which the other kinds still count and name.
+   */
+  readonly withdrawn: ReadonlyMap<string, string | undefined>;
   readonly values: OptionValues;
   readonly table: SpellingTable;
   readonly named: boolean;
@@ -228,7 +231,9 @@ function reportGroup(
     context.named ? name : reportedOf(spellingsOf(context.table, name), name),
   );
   const described = group.options.map((name, index) => {
-    const label = context.labels.get(name);
+    const label =
+      context.labels.get(name) ??
+      (countsFor(group, name, context) ? context.withdrawn.get(name) : undefined);
     return `${quoted(spellings[index])}${label === undefined ? '' : ` (from ${escapeControlCharacters(label)})`}`;
   });
   return {

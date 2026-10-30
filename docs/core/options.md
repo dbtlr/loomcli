@@ -238,7 +238,7 @@ Core withdraws a losing member right after the input-source stage and before val
 A member bound to a variable outside its grammar fails the run as ever, unless a member of the group is typed in argv, which makes the variable a lower tier the run never reads, and then the failure is not reported.
 A conflict is reported only between members one tier supplied, such as `--json --yaml` or two configured keys, and the diagnostic names each member's source.
 A member in two exclusive groups withdraws when either holds a member a higher tier supplied, judged on the fills the stage left, so declaration order does not matter.
-`oneRequired` and `requiredTogether` count every tier's fills, a withdrawn member included.
+`oneRequired` and `requiredTogether` count every tier's fills, a withdrawn member included, and their diagnostic names the source that filled it.
 
 Automatically attached stdin does not count as a supplied option. For example, piping input does not satisfy `oneRequired('file', 'url')` on a stdin-claiming `file` option.
 An exclusive group limits supplied options, so stdin may still attach to an unsupplied content option beside a supplied sibling.
