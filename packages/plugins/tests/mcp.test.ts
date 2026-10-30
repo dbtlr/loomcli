@@ -58,7 +58,7 @@ import { describe, expect, it } from 'vite-plus/test';
 
 import { childEnvironment, invoke } from '../../../scripts/test-process.js';
 import { ruleParts } from '../../../scripts/test-rules.js';
-import { launch, meta, request } from '../../mcp/tests/session.js';
+import { handshakeRequest, initialize, launch, meta, request } from '../../mcp/tests/session.js';
 import type { Message } from '../../mcp/tests/session.js';
 
 const fixture = new URL('fixtures/mcp.mjs', import.meta.url);
@@ -104,7 +104,7 @@ describe('discovery', () => {
         cacheScope: 'private',
         capabilities: { tools: {} },
         resultType: 'complete',
-        supportedVersions: ['2026-07-28'],
+        supportedVersions: ['2026-07-28', '2025-11-25', '2025-06-18'],
         ttlMs: 0,
       },
     });
@@ -478,6 +478,45 @@ describe('a failed call', () => {
         isError: true,
       });
     }
+  });
+});
+
+describe('an initialize-era client', () => {
+  it('opens with initialize, then lists and calls tools in the shape of 2025-06-18', async () => {
+    const session = serve('calls');
+    session.send(initialize(0, '2025-06-18'));
+    await expect(session.next()).resolves.toEqual({
+      id: 0,
+      jsonrpc: '2.0',
+      result: {
+        capabilities: { tools: {} },
+        protocolVersion: '2025-06-18',
+        serverInfo: { name: 'calls', version: '2.0.0' },
+      },
+    });
+    session.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+    session.send(handshakeRequest(1, 'tools/list'));
+    const listing = await session.next();
+    expect(Object.keys(Object(listing.result))).toEqual(['tools']);
+    expect(toolNamed(Object(listing.result).tools, 'members')).toBeDefined();
+    session.send(handshakeRequest(2, 'tools/call', { name: 'missing' }));
+    await expect(session.next()).resolves.toMatchObject({
+      result: { isError: true, structuredContent: { exitCode: 65 } },
+    });
+    await expect(session.close()).resolves.toMatchObject({ status: 0, stderr: '' });
+  });
+
+  it('answers a JSON view that prints an array as text alone', async () => {
+    const session = serve('calls');
+    session.send(initialize(0, '2025-11-25'));
+    await session.next();
+    session.send(handshakeRequest(1, 'tools/call', { name: 'members' }));
+    await expect(session.next()).resolves.toEqual({
+      id: 1,
+      jsonrpc: '2.0',
+      result: { content: [{ text: '[\n  "a",\n  "b"\n]\n', type: 'text' }], isError: false },
+    });
+    await session.close();
   });
 });
 

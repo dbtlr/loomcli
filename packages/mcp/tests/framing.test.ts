@@ -4,17 +4,26 @@
  * The protocol package is proven when its own conformance tests, which import nothing of Loom,
  * produce these results under Node and Bun:
  *
- * - The constant. The package exports one revision, `2026-07-28`, and every version check and
- *   answer reads it.
+ * - The constants. The package exports the per-request revision, `2026-07-28`, and the
+ *   initialize-era revisions, `2025-11-25` and `2025-06-18`, and every version check and answer
+ *   reads them.
  * - Framing. A message split across two reads parses once, two messages in one read parse in order,
  *   a blank line is ignored, a line that is not JSON answers `-32700`, a batch and a JSON value
  *   that is not a request answer `-32600`, and every line the server writes parses as one message
  *   and holds no raw line break.
  * - Discovery and versions. `server/discover` answers the fields above with `ttlMs` and
- *   `cacheScope`. A request without `_meta`, or missing either required key, answers `-32602`, a
- *   request for `2025-11-25` answers `-32022` naming `2026-07-28` and the requested version,
- *   `initialize` answers `-32022` with the message above, and `ping` and an unknown method answer
- *   `-32601`.
+ *   `cacheScope` and lists all three revisions. Before `initialize`, a request without `_meta`, or
+ *   missing either required key, answers `-32602`, a per-request `2025-11-25` answers `-32022`
+ *   listing all three revisions and the requested version, and a per-request `ping` and an unknown
+ *   method answer `-32601`.
+ * - The handshake. `initialize` answers the initialize-era version it asks for, or `2025-11-25`
+ *   for any other, with the tools capability and the identity, without its description on
+ *   `2025-06-18`. A malformed one answers `-32602` and a second one `-32600`. An initialized
+ *   connection answers `ping`, which also answers before `initialize`, `tools/list`, and
+ *   `tools/call` without `resultType`, the identity in `_meta`, `ttlMs`, or `cacheScope`, leaves
+ *   out structured content that is not an object, sends progress and honours cancellation, answers
+ *   any other method `-32601`, and still serves a request carrying per-request `_meta` on
+ *   `2026-07-28`.
  * - Tools. `tools/list` answers with `resultType`, `ttlMs`, `cacheScope`, and no `nextCursor`, a
  *   cursor answers `-32602`, and `tools/call` reaches the handler it was given with the request's
  *   name and arguments.

@@ -667,7 +667,7 @@ try {
     const [discovered, listed, called] = session.messages;
     assert.deepEqual(
       discovered.result.supportedVersions,
-      ['2026-07-28'],
+      ['2026-07-28', '2025-11-25', '2025-06-18'],
       `${name}: packed discovery`,
     );
     assert.deepEqual(
