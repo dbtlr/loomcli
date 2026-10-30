@@ -58,6 +58,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Invalid declared name.** An action reads each argument and option under its name, and help and diagnostics print it. A leading "-" reads as an option, and whitespace or "=" splits the name where the parser reads it.
 
+### @loomcli/core/env-delimiter
+
+**Empty environment delimiter.** A multiple option's variable splits at each occurrence of its envDelimiter into the option's list, and an empty string occurs between every two characters, so it separates no item.
+
 ### @loomcli/core/extension-output
 
 **Extension output not plain data.** Every projection, the manifest included, reads an extension's output as frozen plain data: strings, finite numbers, Booleans, null, arrays, and plain objects.
