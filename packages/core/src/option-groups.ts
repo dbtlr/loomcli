@@ -108,8 +108,56 @@ function declareGroup(declaration: Declaration): OptionGroup {
   return group;
 }
 
+/** The input tier that supplied an option's value, from the lowest to the highest rank. */
+type Tier = 'argv' | 'configuration' | 'environment';
+
+const tierRanks: Readonly<Record<Tier, number>> = {
+  argv: 3,
+  configuration: 1,
+  environment: 2,
+};
+
+/** What decides which members of an exclusive group lose: the tier of each, and the rejected variables. */
+interface TierContext {
+  /** The names of the options whose bound variable is outside its grammar and filled nothing. */
+  readonly rejected: ReadonlySet<string>;
+  /** The tier that supplied one option, or `undefined` when none did. */
+  readonly tierOf: (name: string) => Tier | undefined;
+}
+
+/**
+ * The members that lose their exclusive group: those a lower tier supplied beside a sibling a
+ * higher tier supplied, and those whose variable is outside its grammar beside a sibling typed in
+ * argv. Every group reads the tiers as the input-source stage left them, so a member of two groups
+ * loses when either holds a higher tier, and declaration order decides nothing. A group of another
+ * kind has no loser.
+ */
+function losingMembers(groups: readonly OptionGroup[], context: TierContext): ReadonlySet<string> {
+  return new Set(
+    groups
+      .filter((group) => group.kind === 'exclusive')
+      .flatMap((group) => losersOf(group, context)),
+  );
+}
+
+/** The losing members of one exclusive group. */
+function losersOf(group: OptionGroup, context: TierContext): string[] {
+  const ranked = group.options.map((name) => {
+    const tier = context.tierOf(name);
+    return { name, rank: tier === undefined ? 0 : tierRanks[tier] };
+  });
+  const top = Math.max(...ranked.map(({ rank }) => rank));
+  return ranked
+    .filter(({ name, rank }) =>
+      rank > 0 ? rank < top : context.rejected.has(name) && top === tierRanks.argv,
+    )
+    .map(({ name }) => name);
+}
+
 interface GroupContext {
   readonly groups: readonly OptionGroup[];
+  /** The members core withdrew as the losers of an exclusive group, which the other kinds still count. */
+  readonly withdrawn: ReadonlySet<string>;
   readonly values: OptionValues;
   readonly table: SpellingTable;
   readonly named: boolean;
@@ -117,22 +165,29 @@ interface GroupContext {
   readonly unanswered: ReadonlySet<string>;
 }
 
+/** Whether one member counts toward its group: supplied, or for a kind but exclusive, withdrawn. */
+function countsFor(group: OptionGroup, name: string, context: GroupContext): boolean {
+  return (
+    isSupplied(context.values, name) || (group.kind !== 'exclusive' && context.withdrawn.has(name))
+  );
+}
+
 /** An unknown configuration answer suppresses only failures whose proof depends on that answer. */
 function brokenGroup(group: OptionGroup, context: GroupContext): boolean {
   const supplied = group.options.filter((name) => isSupplied(context.values, name));
+  // These kinds count every tier's fills, so a member the exclusive pass withdrew still counts.
+  const counted = group.options.filter((name) => countsFor(group, name, context));
   switch (group.kind) {
     case 'exclusive': {
       return supplied.length > 1;
     }
     case 'oneRequired': {
-      return supplied.length === 0 && !group.options.some((name) => context.unanswered.has(name));
+      return counted.length === 0 && !group.options.some((name) => context.unanswered.has(name));
     }
     case 'requiredTogether': {
       return (
-        supplied.length > 0 &&
-        group.options.some(
-          (name) => !isSupplied(context.values, name) && !context.unanswered.has(name),
-        )
+        counted.length > 0 &&
+        group.options.some((name) => !counted.includes(name) && !context.unanswered.has(name))
       );
     }
     default: {
@@ -183,7 +238,7 @@ function reportGroup(
       reason: group.kind,
       spellings,
       supplied: group.options.flatMap((name, index) =>
-        isSupplied(context.values, name) ? [spellings[index] ?? name] : [],
+        countsFor(group, name, context) ? [spellings[index] ?? name] : [],
       ),
     },
   };
@@ -198,5 +253,5 @@ function groupReports(
     .map((group) => reportGroup(group, context));
 }
 
-export type { OptionGroup };
-export { declareGroup, groupReports };
+export type { OptionGroup, Tier };
+export { declareGroup, groupReports, losingMembers };

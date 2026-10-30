@@ -1,6 +1,9 @@
 import { fileURLToPath } from 'node:url';
 
+import { Application, extension, plugin } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
+import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
 
@@ -51,18 +54,16 @@ test('invalid supplied values and group problems report together in declaration 
   ]);
 });
 
-test.each(['false', '0', '[]'])('source-filled %s counts as supplied', (value) => {
+test.each(['false', '0', '[]'])('a source-filled %s member loses to a typed sibling', (value) => {
   const result = invoke(advanced, ['source', value]);
-  expect(result.status).toBe(2);
-  expect(result.stderr).toContain('(from fixture setting)');
-  expect(result.stderr).toContain('cannot be used together');
+  expect(result.status).toBe(0);
+  expect(result.stdout).toBe('action\n');
 });
 
-test('environment values satisfy required groups and retain their source in conflicts', () => {
+test('environment values satisfy required groups and lose to a typed sibling', () => {
   expect(invoke(advanced, ['env']).status).toBe(0);
-  const conflict = invoke(advanced, ['env', '--second', 'typed']);
-  expect(conflict.status).toBe(2);
-  expect(conflict.stderr).toContain('"--first" (from GROUP_FIRST)');
+  const typed = invoke(advanced, ['env', '--second', 'typed']);
+  expect(typed.status).toBe(0);
 });
 
 test('named calls preserve lowering presence and expose structured group problems', () => {
@@ -152,4 +153,196 @@ test('piped stdin attaches content but is not a supplied option for a group', ()
       .status,
   ).toBe(2);
   expect(invoke(content, ['oneRequired', '--file', fileURLToPath(content)]).status).toBe(0);
+});
+
+/** What one run of the tiered application saw: its status, its stderr, and what the action read. */
+interface Tiered {
+  readonly seen: { options: Record<string, unknown>; supplied: Record<string, unknown> }[];
+  readonly status: number;
+  readonly stderr: string;
+}
+
+/** One group over the tiered application's options. */
+type Rule = readonly [
+  'exclusive' | 'oneRequired' | 'requiredTogether',
+  'json' | 'plain' | 'yaml',
+  'json' | 'plain' | 'yaml',
+];
+
+const jsonOrYaml: readonly Rule[] = [['exclusive', 'json', 'yaml']];
+
+/** Builds the application: a configuration source that answers `answers`, and the groups under test. */
+function tieredApplication(
+  answers: Record<string, boolean>,
+  rules: readonly Rule[] = jsonOrYaml,
+  seen: Tiered['seen'] = [],
+) {
+  const binding = extension('@test/tiers/key', { schema: z.string(), target: 'option' });
+  const source = plugin('@test/tiers', {
+    extensions: [binding],
+    source: {
+      binding,
+      load: async () => ({
+        default: async () =>
+          Object.fromEntries(
+            Object.entries(answers).map(([name, value]) => [
+              name,
+              { label: `${name} in tiers.json`, value },
+            ]),
+          ),
+      }),
+    },
+  });
+  let app = new Application('export', { plugins: [source] })
+    .option('json', {
+      description: 'Write JSON.',
+      env: 'EXPORT_JSON',
+      extensions: [binding('json')],
+      type: 'boolean',
+    })
+    .option('yaml', {
+      description: 'Write YAML.',
+      env: 'EXPORT_YAML',
+      extensions: [binding('yaml')],
+      type: 'boolean',
+    })
+    .option('plain', {
+      description: 'Write plain text.',
+      extensions: [binding('plain')],
+      type: 'boolean',
+    });
+  for (const [kind, first, second] of rules) {
+    app = app[kind](first, second);
+  }
+  return app.action(({ options, supplied }) => {
+    seen.push({ options: { ...options }, supplied: { ...supplied.options } });
+  });
+}
+
+/** One run of the tiered application. */
+async function tiered(
+  words: { argv?: string[]; env?: Record<string, string>; answers?: Record<string, boolean> },
+  rules?: readonly Rule[],
+): Promise<Tiered> {
+  const seen: Tiered['seen'] = [];
+  const mock = mockProcess({ argv: words.argv ?? [], env: words.env ?? {} });
+  const status = await tieredApplication(words.answers ?? {}, rules, seen).run({ process: mock });
+  return { seen, status, stderr: mock.stderr.text };
+}
+
+test('a typed member wins over a configured sibling, which reads at its default and unsupplied', async () => {
+  const result = await tiered({ answers: { json: true }, argv: ['--yaml'] });
+  expect(result.status).toBe(0);
+  expect(result.seen).toHaveLength(1);
+  expect(result.seen[0]?.options).toMatchObject({ json: false, yaml: true });
+  expect(result.seen[0]?.supplied).not.toHaveProperty('json', true);
+  expect(result.seen[0]?.supplied.yaml).toBe(true);
+});
+
+test('a typed member wins over a bound variable of a sibling', async () => {
+  const result = await tiered({ argv: ['--yaml'], env: { EXPORT_JSON: '1' } });
+  expect(result.status).toBe(0);
+  expect(result.seen[0]?.options).toMatchObject({ json: false, yaml: true });
+});
+
+test('an environment member wins over a configured sibling', async () => {
+  const result = await tiered({ answers: { yaml: true }, env: { EXPORT_JSON: '1' } });
+  expect(result.status).toBe(0);
+  expect(result.seen[0]?.options).toMatchObject({ json: true, yaml: false });
+  expect(result.seen[0]?.supplied).not.toHaveProperty('yaml', true);
+});
+
+test('members one tier supplied still conflict, and the diagnostic names each source', async () => {
+  const typed = await tiered({ argv: ['--json', '--yaml'] });
+  expect(typed.status).toBe(2);
+  expect(typed.stderr).toContain('cannot be used together');
+  const bound = await tiered({ env: { EXPORT_JSON: '1', EXPORT_YAML: '1' } });
+  expect(bound.status).toBe(2);
+  expect(bound.stderr).toContain('"--json" (from EXPORT_JSON) and "--yaml" (from EXPORT_YAML)');
+  const configured = await tiered({ answers: { json: true, yaml: true } });
+  expect(configured.status).toBe(2);
+  expect(configured.stderr).toContain('"--json" (from json in tiers.json)');
+  expect(configured.stderr).toContain('"--yaml" (from yaml in tiers.json)');
+});
+
+test('a withdrawn member is never validated', async () => {
+  const validated: unknown[] = [];
+  const mock = mockProcess({ argv: ['--yaml'], env: { EXPORT_FILE: 'out.txt' } });
+  const status = await new Application('export')
+    .option('file', {
+      description: 'Write to a file.',
+      env: 'EXPORT_FILE',
+      type: 'string',
+      validate: {
+        '~standard': {
+          validate: (value: unknown) => {
+            validated.push(value);
+            return { value };
+          },
+          vendor: 'test',
+          version: 1,
+        },
+      },
+    })
+    .option('yaml', { description: 'Write YAML.', type: 'boolean' })
+    .exclusive('file', 'yaml')
+    .action(() => {})
+    .run({ process: mock });
+  expect(status).toBe(0);
+  expect(validated).toEqual([]);
+});
+
+test('oneRequired is satisfied by a configured member', async () => {
+  const rules: readonly Rule[] = [['oneRequired', 'json', 'yaml']];
+  const satisfied = await tiered({ answers: { json: true } }, rules);
+  expect(satisfied.status).toBe(0);
+  const missing = await tiered({}, rules);
+  expect(missing.status).toBe(2);
+});
+
+test('requiredTogether counts a member that the exclusive group withdrew', async () => {
+  const rules: readonly Rule[] = [
+    ['exclusive', 'json', 'yaml'],
+    ['requiredTogether', 'json', 'plain'],
+  ];
+  const result = await tiered({ answers: { json: true }, argv: ['--yaml', '--plain'] }, rules);
+  expect(result.status).toBe(0);
+  expect(result.seen[0]?.options).toMatchObject({ json: false, plain: true, yaml: true });
+});
+
+test('a member in two exclusive groups withdraws whichever group is declared first', async () => {
+  const forward: readonly Rule[] = [
+    ['exclusive', 'json', 'yaml'],
+    ['exclusive', 'yaml', 'plain'],
+  ];
+  const backward: readonly Rule[] = [
+    ['exclusive', 'yaml', 'plain'],
+    ['exclusive', 'json', 'yaml'],
+  ];
+  for (const rules of [forward, backward]) {
+    const result = await tiered(
+      { answers: { plain: true }, argv: ['--json'], env: { EXPORT_YAML: '1' } },
+      rules,
+    );
+    expect(result.status).toBe(0);
+    expect(result.seen[0]?.options).toMatchObject({ json: true, plain: false, yaml: false });
+  }
+});
+
+test('a variable outside the grammar beside a typed sibling is not reported', async () => {
+  const result = await tiered({ argv: ['--yaml'], env: { EXPORT_JSON: 'maybe' } });
+  expect(result.status).toBe(0);
+  const bound = await tiered({ env: { EXPORT_JSON: 'maybe', EXPORT_YAML: '1' } });
+  expect(bound.status).toBe(2);
+  expect(bound.stderr).toContain('EXPORT_JSON');
+});
+
+test('the named values of an invocation by name are the argv tier', async () => {
+  const seen: Tiered['seen'] = [];
+  const app = tieredApplication({ yaml: true }, undefined, seen);
+  const won = await app.invoke([], { options: { json: true } });
+  expect(won.status).toBe('completed');
+  expect(seen[0]?.options).toMatchObject({ json: true, yaml: false });
+  const conflict = await app.invoke([], { options: { json: true, yaml: true } });
+  expect(conflict.status).toBe('failed');
 });

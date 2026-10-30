@@ -16,7 +16,9 @@ import { isProseLine } from './facts.js';
 import { frozenValues } from './globals.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
 import type { LogBinder } from './log.js';
-import { isSupplied } from './options.js';
+import { losingMembers } from './option-groups.js';
+import type { OptionGroup, Tier } from './option-groups.js';
+import { isSupplied, withdrawFill } from './options.js';
 import type { OptionValues } from './options.js';
 import { isPlainObject } from './plain.js';
 import { loadDefault, pluginSentence } from './plugin.js';
@@ -46,6 +48,8 @@ interface SourceStage {
   extensions: ExtensionRecords;
   /** The globals table: the application's global options, then each plugin's in install order. */
   globals: StageScope;
+  /** The routed Command's option groups, which decide a member by the highest tier that supplies one. */
+  groups: readonly OptionGroup[];
   host: Host;
   /** The graph `inspect()` would return for the run, built on its first read. */
   inspected: () => CommandGraph;
@@ -437,6 +441,54 @@ function requestedOf(
  * stage and fills nothing more.
  */
 async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
+  return withdrawLosers(stage, await fillTiers(stage));
+}
+
+/**
+ * Right after the stage fills and before validation, withdraws each member of an exclusive option
+ * group that a lower tier filled beside a sibling a higher tier supplied. The option reads as
+ * unfilled by every tier: its value is removed, and so are its label and its file, and nothing
+ * validates it. A rejected variable of a member beside a typed sibling is forgotten too.
+ */
+function withdrawLosers(stage: SourceStage, outcome: SourceOutcome): SourceOutcome {
+  const { locals } = stage;
+  if (outcome.fault || !locals || stage.groups.length === 0) {
+    return outcome;
+  }
+  const tierOf = (name: string): Tier | undefined => {
+    if (!isSupplied(locals.values, name)) {
+      return undefined;
+    }
+    if (outcome.fills?.has(name) === true) {
+      return 'configuration';
+    }
+    return outcome.labels.has(name) ? 'environment' : 'argv';
+  };
+  const losers = losingMembers(stage.groups, {
+    rejected: new Set(outcome.rejected.keys()),
+    tierOf,
+  });
+  if (losers.size === 0) {
+    return outcome;
+  }
+  const withdrawn = new Set<string>();
+  const labels = new Map(outcome.labels);
+  const fills = outcome.fills && new Map(outcome.fills);
+  const rejected = new Map(outcome.rejected);
+  for (const name of losers) {
+    if (isSupplied(locals.values, name)) {
+      withdrawFill(locals.values, name);
+      withdrawn.add(name);
+    }
+    labels.delete(name);
+    fills?.delete(name);
+    rejected.delete(name);
+  }
+  return { ...outcome, ...(fills ? { fills } : {}), labels, rejected, withdrawn };
+}
+
+/** The environment, then the configuration source, filling every option in scope that argv left unfilled. */
+async function fillTiers(stage: SourceStage): Promise<SourceOutcome> {
   const scopes = stage.locals ? [stage.globals, stage.locals] : [stage.globals];
   const { labels, rejected } = fillFromEnvironment(scopes, stage.host.env);
   const owner = installedSource(stage.plugins);

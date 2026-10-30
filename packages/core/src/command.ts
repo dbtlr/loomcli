@@ -2723,6 +2723,7 @@ async function fillScope(
   const sources = await fillInputs({
     extensions: graph.extensions,
     globals: { global: true, inputs: inScope(graph.globals.inputs), values: globals },
+    groups: local.kind === 'parsed' ? routed.command.optionGroups : [],
     host: invocation.host,
     inspected: invocation.inspected,
     invokedBy: invocation.invokedBy,
