@@ -12,18 +12,19 @@ import type { ServiceDetail, ServiceSettings, ServiceState, ServiceStatus } from
 /** What every child reads from its action context. */
 type ChildContext = Pick<
   ActionContext<unknown>,
-  'graph' | 'host' | 'invoke' | 'log' | 'out' | 'signal'
+  'graph' | 'host' | 'invoke' | 'log' | 'onShutdown' | 'out' | 'signal'
 >;
 
 /** The run a child acts on, read from its action context. */
 function childRun(label: string, context: ChildContext): ChildRun {
-  const { graph, host, out, signal } = context;
+  const { graph, host, onShutdown, out, signal } = context;
   return {
     description: graph.description,
     host,
     info: (message) => out.info(message),
     label,
     name: graph.name,
+    onShutdown,
     signal,
     success: (message) => out.success(message),
   };

@@ -1,5 +1,5 @@
 import { applicationDirectory } from '@loomcli/core';
-import type { Host } from '@loomcli/core';
+import type { Host, OnShutdown } from '@loomcli/core';
 
 import { homeOf } from '../application-folders.js';
 import { holdsControlCharacter } from '../control-character.js';
@@ -27,6 +27,7 @@ interface ChildRun {
   readonly label: string;
   readonly host: Host;
   readonly signal: AbortSignal;
+  readonly onShutdown: OnShutdown;
   readonly info: (message: string) => Promise<void>;
   readonly success: (message: string) => Promise<void>;
 }
@@ -100,11 +101,11 @@ function unitHome(run: ChildRun): string {
  * which selects the backend, and an absolute home.
  */
 function prepare(run: ChildRun): Prepared {
-  const { host, label, name, signal } = run;
+  const { host, label, name, onShutdown, signal } = run;
   const backend = backendOf(run);
   const home = unitHome(run);
   const uid = userId(name, host);
-  const manager = { env: managerEnv(host, uid), name, signal, spawn: host.spawn };
+  const manager = { env: managerEnv(host, uid), name, onShutdown, signal, spawn: host.spawn };
   const unit = backend.unitPath(label, home, host.env);
   const service = { label, manager, name, uid, unit };
   return { backend, home, record: recordDirectory(run), run, service };

@@ -2,8 +2,8 @@ import { basename, join } from 'node:path';
 
 import { unknownReading } from './backend.js';
 import type { Backend, Reading, Service } from './backend.js';
-import { expectCall, pause, run, succeeded } from './manager.js';
-import type { Answer, Call } from './manager.js';
+import { expectCall, pause, readCall, readLimitSeconds, succeeded } from './manager.js';
+import type { Call, Read } from './manager.js';
 import { notes } from './messages.js';
 import { launchdPlist } from './unit.js';
 
@@ -111,7 +111,7 @@ function readPrinted(stdout: string): Omit<Reading, 'notes'> {
 
 /** The note a domain with no login session adds, or none for any other answer. */
 async function sessionNotes(service: Service): Promise<readonly string[]> {
-  const answer = await run(service.manager, {
+  const answer = await readCall(service.manager, {
     args: ['print', domain(service)],
     program: 'launchctl',
     report: '',
@@ -122,18 +122,20 @@ async function sessionNotes(service: Service): Promise<readonly string[]> {
 }
 
 /** The note of a `print` call that could not report the agent. */
-function unreadableNote(service: Service, name: string, answer: Answer): string {
+function unreadableNote(service: Service, name: string, answer: Read): string {
   if (answer.kind === 'missing') {
     return notes.missing(service.manager.name, 'launchctl');
   }
   const call = { manager: 'launchctl', report: `launchctl print ${name}`, target: name };
-  return notes.unreadable(call, answer.code);
+  return answer.kind === 'timedOut'
+    ? notes.timedOut(call, readLimitSeconds)
+    : notes.unreadable(call, answer.code);
 }
 
 /** The state `print` reports for the label's agent, and the session note for an installed one. */
 async function read(service: Service, installed: boolean): Promise<Reading> {
   const name = target(service, service.label);
-  const answer = await run(service.manager, launchctl(service, service.label, 'print', name));
+  const answer = await readCall(service.manager, launchctl(service, service.label, 'print', name));
   const session = installed ? await sessionNotes(service) : [];
   if (answer.kind === 'exited' && answer.code === notLoaded) {
     return { notes: session, running: false, state: installed ? 'not loaded' : 'not installed' };

@@ -30,7 +30,11 @@ if (answer.abort === true) {
   writeFileSync(scenario.abortMarker, '');
 }
 if (answer.hang === true) {
-  // The call never exits on its own, so only the run signal's SIGTERM ends it.
+  // The call never exits on its own, so only a signal ends it: SIGTERM, unless the answer is deaf
+  // To it, and then only SIGKILL.
+  if (answer.deaf === true) {
+    process.on('SIGTERM', () => {});
+  }
   setInterval(() => {}, 1000);
 } else {
   process.stdout.write(answer.stdout ?? 'manager output\n');
