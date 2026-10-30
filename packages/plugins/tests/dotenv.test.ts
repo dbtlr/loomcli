@@ -2,9 +2,11 @@
  * Acceptance plan for the dotenv plugin (docs/plugins/dotenv.md#dotenv-plugin).
  *
  * Acceptance covers parser behavior, warning recovery, empty-value precedence, env-bound options,
- * host isolation, child-process visibility, and named invocation capture. The packed consumer also
- * proves the public subpath, emitted types, argv publication, and named isolation under Node and
- * Bun.
+ * host isolation, child-process visibility, and named invocation capture. It also covers the layered
+ * files and their precedence, the mode `NODE_ENV` names, the test mode's skip of `.env.local`,
+ * reference expansion and its escape, the `#` that ends an unquoted value, and the values Bun reads
+ * for the same files. The packed consumer also proves the public subpath, emitted types, argv
+ * publication, and named isolation under Node and Bun.
  */
 
 // Substitution syntax is intentional input for the references the plugin expands.
@@ -31,8 +33,9 @@ function runFile(
   options: {
     env?: Record<string, string> | undefined;
     launchEnv?: Record<string, string>;
-    directory?: boolean;
+    directory?: string;
     unreadable?: string;
+    unset?: readonly string[];
     mode?: string;
     names?: readonly string[];
     runtime?: string;
@@ -41,14 +44,15 @@ function runFile(
 ) {
   const directory = mkdtempSync(join(tmpdir(), 'loom-dotenv-'));
   try {
-    if (options.directory === true) {
-      mkdirSync(join(directory, '.env'));
-    } else if (typeof content === 'string') {
+    if (typeof content === 'string') {
       writeFileSync(join(directory, '.env'), content);
     } else {
       for (const [name, text] of Object.entries(content ?? {})) {
         writeFileSync(join(directory, name), text);
       }
+    }
+    if (options.directory !== undefined) {
+      mkdirSync(join(directory, options.directory));
     }
     return invoke(fixture, [options.mode ?? 'run'], {
       cwd: directory,
@@ -65,6 +69,7 @@ function runFile(
           'settings' in options ? options.settings : { only: listed },
         ),
         FIXTURE_UNREADABLE: options.unreadable,
+        FIXTURE_UNSET: JSON.stringify(options.unset ?? []),
         TOKEN: undefined,
       },
     });
@@ -236,7 +241,7 @@ test('missing files and .env directories are silent while unreadable files warn 
   const missing = runFile(undefined);
   expect(missing).toMatchObject({ status: 0, stderr: '' });
   expect(JSON.parse(missing.stdout).options.token).toBe('fallback');
-  const directory = runFile(undefined, { directory: true });
+  const directory = runFile(undefined, { directory: '.env' });
   expect(directory).toMatchObject({ status: 0, stderr: '' });
   const unreadable = runFile(undefined, { unreadable: '.env' });
   expect(unreadable).toMatchObject({
@@ -484,10 +489,19 @@ test('warnings name their file and come in the order the plugin reads the files'
   );
 });
 
-test('a layered file that is missing or is a directory is silent', () => {
+test('a layered file that is missing is silent', () => {
   const result = runFile({ '.env': 'TOKEN=base' }, { env: production, settings: null });
   expect(result).toMatchObject({ status: 0, stderr: '' });
   expect(JSON.parse(result.stdout).env).toEqual({ TOKEN: 'base' });
+});
+
+test('a directory at a layered name is silent while the other files contribute', () => {
+  const result = runFile(
+    { '.env': 'TOKEN=base', '.env.production': 'ALT=mode' },
+    { directory: '.env.local', env: production, settings: null },
+  );
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  expect(JSON.parse(result.stdout).env).toEqual({ ALT: 'mode', TOKEN: 'base' });
 });
 
 test('an unreadable layered file warns once with its name while the other files contribute', () => {
@@ -520,6 +534,7 @@ test.each([
   ['an empty value is a value', 'ALT=\nTOKEN=${ALT:-fallback}', ''],
   ['a default holding a reference', 'ALT=x\nTOKEN=${MISSING:-<${ALT}>}', '<x>'],
   ['a default holding a nested default', 'TOKEN=${A:-${B:-deep}}end', 'deepend'],
+  ['an escaped dollar inside a default', 'TOKEN=${MISSING:-\\${}', '${'],
   ['a double-quoted value', 'ALT=x\nTOKEN="a $ALT ${ALT}\\n"', 'a x x\n'],
   ['a multiline double-quoted value', 'ALT=x\nTOKEN="$ALT\n${ALT}"', 'x\nx'],
   [
@@ -568,6 +583,15 @@ test('a reference reads a more specific file, and never a less specific one', ()
   expect(result.env).toEqual({ ALT: 'local', NEXT: 'base', TOKEN: 'local-' });
 });
 
+test('a reference reads past a name the supplied environment holds as undefined', () => {
+  const result = runFile(
+    { '.env': 'TOKEN=<$ALT>', '.env.local': 'ALT=local' },
+    { names: ['TOKEN', 'ALT'], settings: null, unset: ['ALT'] },
+  );
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  expect(JSON.parse(result.stdout).env).toEqual({ ALT: 'local', TOKEN: '<local>' });
+});
+
 test('a reference reads a name an allow list keeps the plugin from importing', () => {
   const result = runFile('SECRET=s3\nTOKEN=<$SECRET>\n', {
     names: ['TOKEN', 'SECRET'],
@@ -589,8 +613,8 @@ test.each([
   expect(JSON.parse(result.stdout).env).toEqual({ TOKEN: value });
 });
 
-// Bun loads these files itself before the plugin runs. The values the plugin reads under Node are
-// The values Bun reads for the same project, which is why the plugin follows Bun's order.
+// Bun loads these files itself before the plugin runs, and under Node the plugin reads the values
+// Bun reads for the same project, which is why the plugin follows Bun's order.
 test('the plugin reads under Node the values Bun reads for the same layered files', () => {
   const files = {
     '.env': 'TOKEN=base\nALT=base-$TOKEN\nNEXT=${TOKEN}#comment',

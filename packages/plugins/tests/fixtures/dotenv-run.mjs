@@ -25,6 +25,10 @@ for (const name of new Set([...observedNames, 'TOKEN', 'ALT', 'ENABLED'])) {
 }
 const installed = dotenv(settings);
 const hostOverride = { cwd: process.cwd(), env: JSON.parse(process.env.FIXTURE_ENV ?? '{}') };
+// A supplied environment may hold a name whose value is undefined, which core reads as unset.
+for (const name of JSON.parse(process.env.FIXTURE_UNSET ?? '[]')) {
+  hostOverride.env[name] = undefined;
+}
 const app = new Application('app', {
   description: 'Read a dotenv file.',
   plugins: [installed],

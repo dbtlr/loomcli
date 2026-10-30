@@ -89,7 +89,9 @@ async function readLayer(
 async function readDotenv(context: EnvironmentContext, imports: (name: string) => boolean) {
   const { env } = context.host;
   const known = new Map<string, string>();
-  const outer: Lookup = (name) => (Object.hasOwn(env, name) ? env[name] : known.get(name));
+  // A name the environment holds as undefined is unset, as core's merge reads it.
+  const outer: Lookup = (name) =>
+    (Object.hasOwn(env, name) ? env[name] : undefined) ?? known.get(name);
   for (const file of dotenvFiles(env.NODE_ENV)) {
     for (const [name, value] of await readLayer(file, context, { imports, outer })) {
       if (!known.has(name)) {
