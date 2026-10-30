@@ -275,9 +275,11 @@ function environment({ optionSections }: Subject): string[] {
     option.env.flatMap((name) => {
       const delimiter = listDelimiter(option);
       const list = delimiter === undefined ? '' : ` as a list separated by ${delimiter}`;
+      const empty =
+        option.type === 'string' && option.envAllowEmpty ? ', even with an empty value' : '';
       return entry(
         inFont(name, 'bold'),
-        `Supplies ${inFont(suppliedSpelling(option), 'bold')}${list}.`,
+        `Supplies ${inFont(suppliedSpelling(option), 'bold')}${list}${empty}.`,
       );
     }),
   );

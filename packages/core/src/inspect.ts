@@ -61,7 +61,8 @@ interface ArgumentNode {
  * `implied` is the value a bare spelling supplies, or `null` when it declares none.
  * `env` holds the variables the option's environment binding names, in declaration order, and is
  * empty when it binds none. A multiple string or content option's `envDelimiter` is the delimiter
- * that binding declares, or `null`.
+ * that binding declares, or `null`. A string option's `envAllowEmpty` is `true` when its binding
+ * declares the key `true`, under which a defined empty variable supplies the option.
  * `aliases` holds the declared aliases as bare names in declaration order. An alias is
  * unadvertised, so the spellings above are the ones the declared name derives and no listing reads
  * `aliases`; parsing and `locate` read the table, which holds every alias's spellings.
@@ -85,6 +86,8 @@ interface StringOptionNode {
   readonly env: readonly string[];
   /** The delimiter a multiple option's binding declares, or `null` when it declares none. */
   readonly envDelimiter: string | null;
+  /** Whether the binding lets a defined empty variable supply the option. */
+  readonly envAllowEmpty: boolean;
   readonly default: { readonly value: unknown } | undefined;
   readonly implied: string | null;
   /** Whether the option carries the background mark, whose value the run reads as its background choice. */
@@ -93,7 +96,7 @@ interface StringOptionNode {
 }
 type OptionNode =
   | StringOptionNode
-  | (Omit<StringOptionNode, 'type' | 'background'> & {
+  | (Omit<StringOptionNode, 'type' | 'background' | 'envAllowEmpty'> & {
       readonly type: 'content';
       readonly stdin: boolean;
       readonly min: number | undefined;
@@ -399,7 +402,12 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
             stdin: config.stdin === true,
             type: 'content',
           })
-        : Object.freeze({ ...value, background: config.background === true, type: 'string' });
+        : Object.freeze({
+            ...value,
+            background: config.background === true,
+            envAllowEmpty: config.envAllowEmpty === true,
+            type: 'string',
+          });
     }
     case 'boolean': {
       return Object.freeze({

@@ -306,6 +306,21 @@ describe('sections', () => {
     );
   });
 
+  it('an ENVIRONMENT entry says when an empty value supplies a string option', () => {
+    const app = new Application('kit', { plugins: [manpage()] })
+      .option('prefix', { env: ['KIT_PREFIX', 'OLD_PREFIX'], envAllowEmpty: true, type: 'string' })
+      .option('suffix', { env: 'KIT_SUFFIX', type: 'string' })
+      .action(noop);
+    const lines = pagesOf(app).get('kit.1')?.split('\n');
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        String.raw`Supplies \fB\-\-prefix\fR, even with an empty value.`,
+        String.raw`Supplies \fB\-\-suffix\fR.`,
+      ]),
+    );
+    expect(lines?.filter((line) => line.includes('even with an empty value'))).toHaveLength(2);
+  });
+
   it('a Command with no description has the page name alone under NAME', () => {
     expect(pagesOf(kit).get('kit-bare.1')).toBe(
       page(

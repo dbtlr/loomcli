@@ -208,6 +208,7 @@
         },
         "env": [],
         "envDelimiter": null,
+        "envAllowEmpty": false,
         "default": null,
         "implied": null,
         "background": false
@@ -464,6 +465,7 @@
                 },
                 "env": [],
                 "envDelimiter": null,
+                "envAllowEmpty": false,
                 "default": null,
                 "implied": null,
                 "background": false
@@ -523,6 +525,7 @@
                 },
                 "env": [],
                 "envDelimiter": null,
+                "envAllowEmpty": false,
                 "default": null,
                 "implied": null,
                 "background": false
@@ -596,6 +599,7 @@
                 "schema": null,
                 "env": [],
                 "envDelimiter": null,
+                "envAllowEmpty": false,
                 "default": null,
                 "implied": null,
                 "background": false
@@ -849,6 +853,7 @@
             },
             "env": [],
             "envDelimiter": null,
+            "envAllowEmpty": false,
             "default": null,
             "implied": null,
             "background": false

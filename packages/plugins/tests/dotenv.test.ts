@@ -135,6 +135,24 @@ test('existing empty values block dotenv while ordered environment bindings can 
   );
 });
 
+test("a file's empty assignment supplies an option whose binding allows an empty value", () => {
+  const names = ['PREFIX'];
+  const only = { only: ['PREFIX'] };
+  const fromFile = runFile('PREFIX=\n', { names, settings: only });
+  expect(fromFile).toMatchObject({ status: 0, stderr: '' });
+  expect(JSON.parse(fromFile.stdout)).toMatchObject({
+    env: { PREFIX: '' },
+    options: { prefix: '' },
+  });
+  // A process's own empty variable wins over the file and supplies the empty string too.
+  const fromProcess = runFile('PREFIX=file\n', { env: { PREFIX: '' }, names, settings: only });
+  expect(JSON.parse(fromProcess.stdout).options.prefix).toBe('');
+  // Without the assignment the default applies.
+  expect(JSON.parse(runFile('OTHER=1\n', { names, settings: only }).stdout).options.prefix).toBe(
+    'fallback',
+  );
+});
+
 test('an invalid imported option value reports the environment variable without dotenv provenance', () => {
   const result = runFile('ENABLED=secret-value\n');
   expect(result.status).toBe(2);
