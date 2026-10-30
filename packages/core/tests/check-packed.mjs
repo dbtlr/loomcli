@@ -384,6 +384,8 @@ try {
         '@loomcli/prompts': 'file:./prompts.tgz',
         '@loomcli/testing': 'file:./testing.tgz',
         '@loomcli/validators': 'file:./validators.tgz',
+        // A consumer installs its own Node types, which the packed declarations type-check against.
+        '@types/node': devDependencies['@types/node'],
         // The packed configuration consumer describes its file with a schema.
         zod: devDependencies.zod,
       },
