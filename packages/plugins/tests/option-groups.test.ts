@@ -30,10 +30,17 @@ test('completion suppresses exclusive siblings after a claiming spelling, an ali
   }
 });
 
-test('completion still offers exclusive siblings after a false Boolean spelling', () => {
+test('completion still offers exclusive siblings after a spelling that gives a Boolean its absent value', () => {
   const result = invoke(fixture, ['completion', '__complete', '--', '--no-json', '--']);
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('--yaml');
+});
+
+test('completion suppresses exclusive siblings after a negative Boolean spelling', () => {
+  const result = invoke(fixture, ['completion', '__complete', '--', 'negated', '--no-cache', '--']);
+  expect(result.status).toBe(0);
+  expect(result.stdout).not.toContain('--json');
+  expect(result.stdout).not.toContain('--yaml');
 });
 
 test('a false Boolean spelling claims no exclusive group, and group diagnostics retain the reported spelling', () => {
@@ -112,8 +119,19 @@ test('MCP schemas describe named false, zero, and empty-list absence and omit un
       },
     },
   ]);
-  // A negative Boolean member gives false in every call, so it never claims its exclusive group.
+  // A negative Boolean member is absent as true, so it claims its exclusive group as false.
+  const negatedClaim = { properties: { cache: { const: false } }, required: ['cache'] };
   expect(schemas.negated.allOf).toEqual([
+    {
+      not: {
+        allOf: [negatedClaim, { properties: { json: { const: true } }, required: ['json'] }],
+      },
+    },
+    {
+      not: {
+        allOf: [negatedClaim, { properties: { yaml: { const: true } }, required: ['yaml'] }],
+      },
+    },
     {
       not: {
         allOf: [

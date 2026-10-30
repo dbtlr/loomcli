@@ -425,6 +425,45 @@ test('a false Boolean member neither wins an exclusive group nor conflicts, and 
   }
 });
 
+/** One run of an application whose exclusive group holds a negative Boolean beside a positive one. */
+async function negated(words: { argv?: string[]; env?: Record<string, string> }) {
+  const seen: Tiered['seen'] = [];
+  const mock = mockProcess({ argv: words.argv ?? [], env: words.env ?? {} });
+  const status = await new Application('export')
+    .option('cache', {
+      description: 'Skip the cache.',
+      env: 'EXPORT_CACHE',
+      polarity: 'negative',
+      type: 'boolean',
+    })
+    .option('json', { description: 'Write JSON.', type: 'boolean' })
+    .exclusive('cache', 'json')
+    .action(({ options, supplied }) => {
+      seen.push({ options: { ...options }, supplied: { ...supplied.options } });
+    })
+    .run({ process: mock });
+  return { seen, status, stderr: mock.stderr.text };
+}
+
+test('a typed negative Boolean member claims its exclusive group and conflicts with a typed sibling', async () => {
+  const typed = await negated({ argv: ['--no-cache', '--json'] });
+  expect(typed.status).toBe(2);
+  expect(typed.stderr).toContain('"--no-cache" and "--json" cannot be used together');
+  const alone = await negated({ argv: ['--no-cache'] });
+  expect(alone.status).toBe(0);
+  expect(alone.seen[0]?.options).toMatchObject({ cache: false, json: false });
+});
+
+test('a negative Boolean member at its absent value claims nothing, and one off it loses to a typed sibling', async () => {
+  const absent = await negated({ argv: ['--json'], env: { EXPORT_CACHE: '1' } });
+  expect(absent.status).toBe(0);
+  expect(absent.seen[0]?.supplied).toMatchObject({ cache: true, json: true });
+  const claimed = await negated({ argv: ['--json'], env: { EXPORT_CACHE: '0' } });
+  expect(claimed.status).toBe(0);
+  expect(claimed.seen[0]?.options).toMatchObject({ cache: true, json: true });
+  expect(claimed.seen[0]?.supplied).not.toHaveProperty('cache', false);
+});
+
 test('a named false Boolean member claims no exclusive group', async () => {
   const seen: Tiered['seen'] = [];
   const result = await tieredApplication({}, undefined, seen).invoke([], {

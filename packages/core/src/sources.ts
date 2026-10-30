@@ -16,7 +16,7 @@ import { isProseLine } from './facts.js';
 import { frozenValues } from './globals.js';
 import type { CommandGraph, OptionNode } from './inspect.js';
 import type { LogBinder } from './log.js';
-import { claims, losingMembers } from './option-groups.js';
+import { absentBooleans, claims, losingMembers } from './option-groups.js';
 import type { OptionGroup, Tier } from './option-groups.js';
 import { isSupplied, withdrawFill } from './options.js';
 import type { OptionValues } from './options.js';
@@ -450,15 +450,16 @@ async function fillInputs(stage: SourceStage): Promise<SourceOutcome> {
  * unfilled by every tier: its value is removed, and so are its label and its file, and nothing
  * validates it. Its name joins `withdrawn`, which settles the other groups that hold it. A
  * rejected variable of a member beside a sibling argv claimed is forgotten too. A Boolean supplied
- * as false claims nothing, so it never withdraws and never makes a sibling withdraw.
+ * at its absent value claims nothing, so it never withdraws and never makes a sibling withdraw.
  */
 function withdrawLosers(stage: SourceStage, outcome: SourceOutcome): SourceOutcome {
   const { locals } = stage;
   if (outcome.fault || !locals || stage.groups.length === 0) {
     return outcome;
   }
+  const absent = absentBooleans(locals.inputs);
   const tierOf = (name: string): Tier | undefined => {
-    if (!claims(locals.values, name)) {
+    if (!claims(locals.values, name, absent)) {
       return undefined;
     }
     if (outcome.fills?.has(name) === true) {

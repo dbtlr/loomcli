@@ -3,7 +3,7 @@ import { registerRule } from './diagnostic-text.js';
 import type { Finding } from './diagnostic-text.js';
 import { commandSentence, DeclarationError, quoted } from './errors.js';
 import type { InputProblem } from './errors.js';
-import { isSupplied, reportedOf, spellingsOf } from './options.js';
+import { absentBoolean, isSupplied, reportedOf, spellingsOf } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
 import type { InputDeclaration } from './validation.js';
 
@@ -117,12 +117,24 @@ const tierRanks: Readonly<Record<Tier, number>> = {
   environment: 2,
 };
 
+/** Each Boolean option's absent value, by name, the value its polarity gives an unsupplied option. */
+function absentBooleans(inputs: readonly InputDeclaration[]): ReadonlyMap<string, boolean> {
+  return new Map(
+    inputs.flatMap((input): [string, boolean][] =>
+      input.kind === 'option' && input.config.type === 'boolean'
+        ? [[input.name, absentBoolean(input.config)]]
+        : [],
+    ),
+  );
+}
+
 /**
- * Whether one member claims its exclusive group: a tier supplied it, and it is not a Boolean whose
- * value is false. A false Boolean neither wins the group nor conflicts, and stays supplied.
+ * Whether one member claims its exclusive group: a tier supplied it, and it is not a Boolean at its
+ * absent value. Such a Boolean neither wins the group nor conflicts, and stays supplied.
  */
-function claims(values: OptionValues, name: string): boolean {
-  return isSupplied(values, name) && values.booleans.get(name) !== false;
+function claims(values: OptionValues, name: string, absent: ReadonlyMap<string, boolean>): boolean {
+  const value = values.booleans.get(name);
+  return isSupplied(values, name) && (value === undefined || value !== absent.get(name));
 }
 
 /** What decides which members of an exclusive group lose: the tier of each, and the rejected variables. */
@@ -163,6 +175,8 @@ function losersOf(group: OptionGroup, context: TierContext): string[] {
 }
 
 interface GroupContext {
+  /** Each Boolean option's absent value, by name, at which a member claims no exclusive group. */
+  readonly absent: ReadonlyMap<string, boolean>;
   readonly groups: readonly OptionGroup[];
   /**
    * The members core withdrew as the losers of an exclusive group. The sibling that won replaced
@@ -183,7 +197,7 @@ interface GroupContext {
 function countsFor(group: OptionGroup, name: string, context: GroupContext): boolean {
   switch (group.kind) {
     case 'exclusive': {
-      return claims(context.values, name);
+      return claims(context.values, name, context.absent);
     }
     case 'oneRequired': {
       return isSupplied(context.values, name) || context.withdrawn.has(name);
@@ -279,4 +293,4 @@ function groupReports(
 }
 
 export type { OptionGroup, Tier };
-export { claims, declareGroup, groupReports, losingMembers };
+export { absentBooleans, claims, declareGroup, groupReports, losingMembers };
