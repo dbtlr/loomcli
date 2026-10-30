@@ -1,7 +1,8 @@
-import { pad, readExtension } from '@loomcli/core';
+import { nowrap, pad, readExtension } from '@loomcli/core';
 import type { ArgumentNode, OptionNode, ViewContext } from '@loomcli/core';
 
 import { isStrings } from '../closed-set.js';
+import { configInput } from '../config/extension.js';
 import { singleLine, singleLineOf, terminators } from '../lines.js';
 import { addsOccurrence, oneOccurrence } from '../occurrences.js';
 import { unitWidth } from '../text-lines.js';
@@ -235,8 +236,12 @@ function renderDefault(value: unknown): string {
   return oneLine(isText(value) ? String(value) : jsonOrText(value));
 }
 
-/** One fact of a row's parenthesis, and the tone help prints it in. */
+/**
+ * One fact of a row's parenthesis, and the tone help prints it in. A fact with `names` prints its
+ * `text` as a label, then each name, and on a terminal wrapping keeps each name whole.
+ */
 interface Fact {
+  readonly names?: readonly string[];
   readonly text: string;
   readonly tone: 'dim' | 'warning';
 }
@@ -275,17 +280,40 @@ function rightCellWith(text: CellText, facts: readonly Fact[], writer: CellWrite
 }
 
 /** The right cell of one row as help styles it. */
-function rightCell(text: CellText, facts: readonly Fact[], { style }: ViewContext): string {
+function rightCell(text: CellText, facts: readonly Fact[], context: ViewContext): string {
+  const { style } = context;
   return rightCellWith(text, facts, {
-    fact: (fact) => style[fact.tone](style.escape(fact.text)),
+    fact: (fact) => styledFact(fact, context),
     mark: (mark) => style.dim(mark),
     prose: (prose) => style.primary(style.escape(prose)),
   });
 }
 
+/**
+ * One fact as help styles it. The names of a binding fact sit in `nowrap` on a terminal, so the
+ * wrap breaks between names and never inside one.
+ */
+function styledFact(fact: Fact, context: ViewContext): string {
+  const { style } = context;
+  const tone = style[fact.tone];
+  if (fact.names === undefined) {
+    return tone(style.escape(fact.text));
+  }
+  const names = fact.names.map((name) => {
+    const styled = tone(style.escape(name));
+    return onTerminal(context) ? nowrap(styled) : styled;
+  });
+  return `${tone(style.escape(`${fact.text} `))}${names.join(tone(' '))}`;
+}
+
 /** A fact help prints dim. */
 function dimFact(text: string): Fact {
   return { text, tone: 'dim' };
+}
+
+/** A dim fact that prints a label and then names help keeps whole. */
+function bindingFact(label: string, names: readonly string[]): Fact {
+  return { names, text: label, tone: 'dim' };
 }
 
 /** The fact one declared default contributes, which an explicit `undefined` default does not. */
@@ -361,6 +389,29 @@ function deprecatedFacts(member: { readonly deprecated: string | undefined }): F
  */
 function optionFacts(option: OptionNode): Fact[] {
   return [...kindFacts(option), ...deprecatedFacts(option)];
+}
+
+/**
+ * The facts a help page prints for one option row: the facts the man page prints, with the
+ * option's bindings between them and the deprecation, unless its `helpInput` hides them.
+ */
+function pageOptionFacts(option: OptionNode): Fact[] {
+  return [...kindFacts(option), ...bindingFacts(option), ...deprecatedFacts(option)];
+}
+
+/**
+ * The names the option's bindings contribute: its variables in declaration order as `env`, then
+ * its `configInput` path as `config`. Names alone, never a value.
+ */
+function bindingFacts(option: OptionNode): Fact[] {
+  if (readExtension(option, helpInput)?.hideBindings === true) {
+    return [];
+  }
+  const path = readExtension(option, configInput)?.path;
+  return [
+    ...(isEmpty(option.env) ? [] : [bindingFact('env:', option.env)]),
+    ...(path === undefined ? [] : [bindingFact('config:', [path])]),
+  ];
 }
 
 /** The facts one option's kind contributes ahead of its deprecation. */
@@ -490,6 +541,7 @@ export {
   optionCellParts,
   optionFacts,
   optionForm,
+  pageOptionFacts,
   rightCell,
   rightCellWith,
 };

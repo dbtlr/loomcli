@@ -742,3 +742,25 @@ test('a wrapped deprecation message and a stacked row keep their styles on every
     '      \u001b[93minstead.\u001b[90m)\u001b[39m',
   ]);
 });
+
+test('a variable name and a configuration path in the fact parenthesis never break across lines', () => {
+  const app = {
+    options: [
+      {
+        configPath: 'server.listen.address',
+        description: 'Where the server listens.',
+        env: ['APP_SERVER_LISTEN_ADDRESS', 'APP_ADDRESS'],
+        name: 'listen',
+        type: 'string',
+      },
+    ],
+  };
+  for (const columns of [40, 60]) {
+    const stdout = render({ app, columns });
+    expect(stdout.split('\n').filter((line) => line.length > columns)).toEqual([]);
+    for (const name of ['APP_SERVER_LISTEN_ADDRESS', 'APP_ADDRESS', 'server.listen.address']) {
+      expect(stdout.split('\n').filter((line) => line.includes(name))).toHaveLength(1);
+    }
+    expect(stdout).toContain('config:');
+  }
+});

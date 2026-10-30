@@ -26,9 +26,9 @@ test('textstat --help folds the globals into OPTIONS, because it has no children
       '  MEASURE',
       '    -m, --metric <metric>  What each row counts. One of: bytes, words, lines.  (default: bytes)',
       '  FILTER',
-      '    -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)',
+      '    -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0, env: TEXTSTAT_MIN_BYTES, config: minBytes)',
       '  SUMMARY',
-      '    -t, --total  Add a total row.',
+      '    -t, --total  Add a total row.  (env: TEXTSTAT_TOTAL, config: total)',
       '',
       'OPTIONS',
       '  -f, --format <format>  Select the output format, table by default. One of: table, json, jsonl.',
@@ -61,9 +61,9 @@ test('textstat -h prints the compact page and points to the details and examples
       '  MEASURE',
       '    -m, --metric <metric>  What each row counts. One of: bytes, words, lines.  (default: bytes)',
       '  FILTER',
-      '    -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0)',
+      '    -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0, env: TEXTSTAT_MIN_BYTES, config: minBytes)',
       '  SUMMARY',
-      '    -t, --total  Add a total row.',
+      '    -t, --total  Add a total row.  (env: TEXTSTAT_TOTAL, config: total)',
       '',
       'OPTIONS',
       '  -f, --format <format>  Select the output format, table by default. One of: table, json, jsonl.',
@@ -108,5 +108,13 @@ const sized = new URL('fixtures/width.mjs', import.meta.url);
 test.each([40, 60])('textstat --help fits a %i-column terminal', (columns) => {
   const result = invoke(sized, [String(columns), '--help']);
   expect(result.status).toBe(0);
+  expect(result.stdout.split('\n').filter((line) => line.length > columns)).toEqual([]);
+});
+
+test.each([40, 60])('textstat -h shows its bindings and fits a %i-column terminal', (columns) => {
+  const result = invoke(sized, [String(columns), '-h']);
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain('TEXTSTAT_MIN_BYTES');
+  expect(result.stdout).toContain('minBytes');
   expect(result.stdout.split('\n').filter((line) => line.length > columns)).toEqual([]);
 });

@@ -1,4 +1,5 @@
 import { Application, Command, processHandle } from '@loomcli/core';
+import { configInput } from '@loomcli/plugins/config/extension';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { loomTheme } from '@loomcli/plugins/theme';
@@ -20,8 +21,12 @@ function extensions(spec) {
 }
 
 /** One option's configuration, with its help input value as an extension. */
-function optionConfig({ help: shown, name: _name, ...config }) {
-  return shown === undefined ? config : { ...config, extensions: [helpInput(shown)] };
+function optionConfig({ configPath, help: shown, name: _name, ...config }) {
+  const declared = [
+    ...(configPath === undefined ? [] : [configInput({ path: configPath })]),
+    ...(shown === undefined ? [] : [helpInput(shown)]),
+  ];
+  return declared.length === 0 ? config : { ...config, extensions: declared };
 }
 
 /** A Command with its declared options, arguments, children, and action. */
