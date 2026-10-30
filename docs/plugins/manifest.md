@@ -73,6 +73,7 @@ type ManifestOption =
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly env: readonly string[];
       readonly envDelimiter: string | null;
+      readonly envAllowEmpty: boolean;
       readonly default: { readonly value: unknown } | null;
       readonly implied: string | null;
       readonly background: boolean; // see Background
@@ -144,6 +145,7 @@ type ManifestOption =
       "schema": null,
       "env": [],
       "envDelimiter": null,
+      "envAllowEmpty": false,
       "default": null,
       "implied": null
     }
