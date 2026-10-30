@@ -228,17 +228,18 @@ Each call returns a new declaration, preserves the receiver, and closes at `acti
 Application exposes the same methods for root-local options. Lifecycle hooks use them on the erased attached Command after action registration.
 
 Presence follows the input-source stage's supplied fact. Argv, environment, and configuration fills count, including configured false, zero, or empty lists.
-Any accepted spelling counts, including negative Boolean forms and aliases. Validation messages and structured spelling lists use the option's reported spelling, or its declared name for a named call.
+Any accepted spelling counts, including negative Boolean forms and aliases, except that a false Boolean claims no exclusive group, as below. Validation messages and structured spelling lists use the option's reported spelling, or its declared name for a named call.
 Defaults do not count. A supplied value rejected by its validator still counts, so value and group problems can report together.
 Malformed environment values and named values that cannot lower supply nothing.
 An invocation by name first follows ordinary lowering: Boolean values without matching spellings, zero counts, and empty lists are absent.
-In an exclusive group, the highest input tier that supplies a member wins: the members that tier supplied stay supplied, and each member a lower tier filled is withdrawn. The tiers rank as [Input sources](input-sources.md) ranks them for one option, argv, then the environment, then the configuration source, and the named values of an [invocation by name](invocation.md#invocation-by-name) are argv.
-So `json = true` in a configuration file with a typed `--yaml` runs with `yaml`, and an environment member wins over a configured one.
+A member claims its exclusive group when a tier supplies it, unless it is a Boolean whose value is false. A false Boolean, such as `--no-yaml`, `EXPORT_YAML=0`, or a configured `yaml = false`, neither wins the group nor conflicts, so `--json --no-yaml` runs. It stays supplied: it reaches the action as `false` and stays in the `supplied` record. A `negative` Boolean gives false in every spelling, so a typed one never claims its group. A counted or string member claims the group whatever its value, a zero or an empty list included.
+In an exclusive group, the highest input tier that claims a member wins: the members that tier claimed stay supplied, and each member a lower tier claimed is withdrawn. The tiers rank as [Input sources](input-sources.md) ranks them for one option, argv, then the environment, then the configuration source, and the named values of an [invocation by name](invocation.md#invocation-by-name) are argv.
+So `json = true` in a configuration file with a typed `--yaml` runs with `yaml`, the same file with a typed `--no-yaml` runs with `json`, and an environment member wins over a configured one.
 Core withdraws a losing member right after the input-source stage and before validation, so its value is never validated. It then reads as unfilled by every tier: its declared default applies, or it is omitted, it is absent from the `supplied` record, and it activates nothing.
-A member bound to a variable outside its grammar fails the run as ever, unless a member of the group is typed in argv, which makes the variable a lower tier the run never reads, and then the failure is not reported.
-A conflict is reported only between members one tier supplied, such as `--json --yaml` or two configured keys, and the diagnostic names each member's source.
-A member in two exclusive groups withdraws when either holds a member a higher tier supplied, judged on the fills the stage left, so declaration order does not matter.
-`oneRequired` and `requiredTogether` count every tier's fills, a withdrawn member included, and their diagnostic names the source that filled it.
+A member bound to a variable outside its grammar fails the run as ever, unless argv claims a member of the group, which makes the variable a lower tier the run never reads, and then the failure is not reported.
+A conflict is reported only between members one tier claimed, such as `--json --yaml` or two configured keys, and the diagnostic names each member's source. The problem's `supplied` list names the members that claimed the group.
+A member in two exclusive groups withdraws when either holds a member a higher tier claimed, judged on the fills the stage left, so declaration order does not matter.
+The member that won an exclusive group replaced the withdrawn one in every other group. `oneRequired` counts a withdrawn member as supplied, so a group that holds one is satisfied. A `requiredTogether` group that holds a withdrawn member is not checked: with `exclusive('token', 'user')` and `requiredTogether('user', 'password')`, a configured `user` beside a typed `--token` runs whether the file holds `password` or not, and a configured `password` still reaches the action. A rejected variable that a typed sibling sets aside filled nothing, so it settles no other group.
 
 Automatically attached stdin does not count as a supplied option. For example, piping input does not satisfy `oneRequired('file', 'url')` on a stdin-claiming `file` option.
 An exclusive group limits supplied options, so stdin may still attach to an unsupplied content option beside a supplied sibling.
@@ -257,9 +258,9 @@ Existing held-fault precedence and middleware takeover rules remain unchanged ac
 Inspection publishes frozen `optionGroups: [{ kind, options }]` on every Command, including hidden members, or `[]`.
 Help states each visible group in one plain sentence and the manifest publishes the same facts.
 Both omit groups with hidden members. Help notes when a group contains a stdin claim that piping does not count.
-Completion suppresses exclusive siblings after a member appears in the line, including aliases and negative spellings, without reading environment or configuration.
+Completion suppresses exclusive siblings after a member that claims the group appears in the line, an alias included, without reading environment or configuration. A false Boolean spelling, such as `--no-json`, suppresses no sibling.
 
-MCP omits groups containing hidden or control options, and writes a group that holds an excluded option over its other members. Its schemas use named supplied-value predicates for Boolean polarity, positive counts, and nonempty lists.
+MCP omits groups containing hidden or control options, and writes a group that holds an excluded option over its other members. Its schemas use named supplied-value predicates for Boolean polarity, positive counts, and nonempty lists. An exclusive constraint reads a Boolean member as claiming only when it is `true`, so a call with `json: true` and `yaml: false` passes, and it leaves a `negative` Boolean member out, because no call can claim through it.
 Exclusive constraints remain sound when external sources fill other options. Positive requirements are encoded only when every member has no environment binding or extensions.
 An extension might bind a configuration source, so uncertain groups remain runtime rules.
 [ADR-0085](../decisions/0085-a-command-declares-option-groups-over-supplied-local-options.md) records the contract, and [ADR-0123](../decisions/0123-in-an-exclusive-option-group-the-highest-input-tier-that-supplies-a-member-wins.md) decides an exclusive group by the highest tier that supplies a member.
