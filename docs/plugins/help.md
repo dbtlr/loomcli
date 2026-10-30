@@ -10,7 +10,7 @@ The page is derived from the graph and the variant by the [page rules](help-page
 
 ## Help extensions
 
-Three descriptors are exported from `@loomcli/plugins/help/extension`, and all are help's own facts; every other fact the page prints is a core fact. Each field is optional, and the descriptor's schema carries every rule below, so the call that receives a value that breaks one rejects it the way it rejects any extension value its schema rejects. The declared view is exported from `@loomcli/plugins/help/views`, a second declarations module, because it imports the page module: the page code loads with the plugin's entry module, the descriptor module stays declarations alone, and the middleware module holds nothing but the call. A graph fact that carries a marker character prints literally. The restyle escapes raw fragments before it adds style markers, and a replacement owns that escaping obligation.
+Three descriptors are exported from `@loomcli/plugins/help/extension`, and all are help's own facts; every other fact the page prints is a core fact, except an option's configuration key, which help reads from the [configuration plugin](config.md)'s `configInput`. Each field is optional, and the descriptor's schema carries every rule below, so the call that receives a value that breaks one rejects it the way it rejects any extension value its schema rejects. The declared view is exported from `@loomcli/plugins/help/views`, a second declarations module, because it imports the page module: the page code loads with the plugin's entry module, the descriptor module stays declarations alone, and the middleware module holds nothing but the call. A graph fact that carries a marker character prints literally. The restyle escapes raw fragments before it adds style markers, and a replacement owns that escaping obligation.
 
 ```ts
 // @loomcli/plugins/help/views
@@ -72,7 +72,7 @@ export const markdown = pipe(
 ```ts
 // src/help/extension.ts, the declarations module of the @loomcli/plugins/help subpath
 import { extension } from '@loomcli/core';
-import { array, object, optional, pipe, regex, strictTuple, string, union } from 'valibot';
+import { array, literal, object, optional, pipe, regex, strictTuple, string, union } from 'valibot';
 
 import { packageName } from '../constants.js';
 import { line, markdown } from '../lines.js';
@@ -95,6 +95,7 @@ export const helpCommand = extension(`${packageName}/help/command`, {
 export const helpInput = extension(`${packageName}/help/input`, {
   schema: object({
     accepts: optional(line),
+    hideBindings: optional(literal(true)),
     placeholder: optional(word),
     section: optional(sectionPath),
   }),
@@ -106,7 +107,7 @@ export const helpArgument = extension(`${packageName}/help/argument`, {
 });
 ```
 
-`helpCommand` targets Commands, so a Command or the Application carries it. `details` is [Markdown](help-page.md#markdown-details) the extended page renders after the masthead, a string that holds a character other than whitespace, with blank lines allowed, written inline or brought in with a text import. `examples` lists invocations the page prints under EXAMPLES: `command` holds the tokens after the application name as one line, and `note` is one line printed under it. `helpInput` targets options, so a local option and a global option carry it, whoever declares it. `placeholder` is the word the page shows for a string option's value, `<path>` for a `--file` declared with `placeholder: 'path'`; it holds no whitespace, and without it the page shows the option's declared name. A `placeholder` on a Boolean or counted option is accepted and never shown, because neither takes a value. `accepts` is one line the page prints as the input's [accepted values](#accepted-values), in place of any list help would derive from the schema; an `accepts` on a Boolean or counted option is accepted and never shown, for the same reason. `helpArgument` targets arguments and carries `accepts` alone: an argument's placeholder is its declared name, which the author already chose, and its description is a core fact. The value a projection reads back through `readExtension` is the schema's output, deeply read-only, with an omitted field absent and an explicit `undefined` dropped, as every stored extension value drops it.
+`helpCommand` targets Commands, so a Command or the Application carries it. `details` is [Markdown](help-page.md#markdown-details) the extended page renders after the masthead, a string that holds a character other than whitespace, with blank lines allowed, written inline or brought in with a text import. `examples` lists invocations the page prints under EXAMPLES: `command` holds the tokens after the application name as one line, and `note` is one line printed under it. `helpInput` targets options, so a local option and a global option carry it, whoever declares it. `placeholder` is the word the page shows for a string option's value, `<path>` for a `--file` declared with `placeholder: 'path'`; it holds no whitespace, and without it the page shows the option's declared name. A `placeholder` on a Boolean or counted option is accepted and never shown, because neither takes a value. `accepts` is one line the page prints as the input's [accepted values](#accepted-values), in place of any list help would derive from the schema; an `accepts` on a Boolean or counted option is accepted and never shown, for the same reason. `hideBindings`, which holds `true` alone, keeps the option's [bindings](#help-variants) off both pages. `helpArgument` targets arguments and carries `accepts` alone: an argument's placeholder is its declared name, which the author already chose, and its description is a core fact. The value a projection reads back through `readExtension` is the schema's output, deeply read-only, with an omitted field absent and an explicit `undefined` dropped, as every stored extension value drops it.
 
 `section` places a Command or an option in an authored [help section](#ordered-help-sections). `commandSections` and `optionSections` order the sections on that Command's own help page. The fields are optional and belong to help, including on a global option a plugin declares. Arguments keep their existing block and gain no section field.
 
@@ -272,7 +273,8 @@ export type HelpVariant = 'compact' | 'extended';
 
 - **Selection.** The middleware reads `spellings.help` from its [context](../core/middleware.md). `-h` selects `compact`. Every other case selects `extended`: `--help`, and a help option with no spelling, which only an input source could supply. Help's option binds no variable and carries no configuration binding, so the first-party plugin never meets that case, and the rule keeps the extended page as the answer to a request that names no variant. `jsonkit -h --help` repeats the help option, and the repeated-option fault is held while the earlier `-h` stands, as it does for any repeated global under [Global consumption and routing](../core/commands.md#global-consumption-and-routing), so it prints the compact page. A letter in a short group is spelled `-h`, so `jsonkit -Vh` prints the compact page when help is installed ahead of version. Core supplies no variant fact and knows nothing of help.
 - **Compact.** The [page rules](help-page.md#the-help-page) with Details and EXAMPLES omitted, the child hint spelled `-h`, and the pointer `Run <path> --help for details and examples.` when the extended page of the node would print one of the omitted blocks. The masthead keeps its deprecation line, and every row keeps its accepted values and facts, so the compact page loses no rule about what an input accepts.
-- **Extended.** Every block of the [page rules](help-page.md#the-help-page). Help prints no environment or configuration binding on either page: help teaches command-line syntax, and a variable or a configuration file belongs to the documentation.
+- **Extended.** Every block of the [page rules](help-page.md#the-help-page).
+- **Bindings.** Both pages print an option's bindings in its row's fact parenthesis under the [right-cell rule](help-page.md#the-help-page): `env: <names>` for its [environment binding](../core/input-sources.md), the variables in declaration order separated by a space, and `config: <path>` for the dotted path of its [`configInput`](config.md#linking-an-option) value, so textstat's `--min-bytes` reads `(default: 0, env: TEXTSTAT_MIN_BYTES, config: minBytes)` on `-h` and `--help` alike. Help prints names alone, never a variable's value or a configuration value and no sentence about what a value does, so a Boolean option of every polarity prints its bindings alike. Help reads `configInput` through its descriptor, as the [man page](manpage.md) does, whether or not the configuration plugin is installed; a configuration source another plugin declares binds through its own extension, which help does not read. An option whose `helpInput` holds `hideBindings: true` prints neither fact on either page, while the man page, the manifest, and `inspect()` still publish its bindings. [ADR-0124](../decisions/0124-help-prints-each-options-bound-variables-and-configuration-key-on-both-pages.md) records the decision.
 - **Replacement.** `HelpPage` carries `variant`, and `helpPage` stays one declared view. A replacement receives the variant and decides what each one prints, and one that ignores it prints one page for both. A replacement never reads `spellings`.
 - **The manifest.** Help's values in the manifest are unchanged: it supplies `details` and `examples` whatever the variant, because the variant is a choice of page, not a fact of the Command.
 
@@ -332,7 +334,7 @@ The default help view applies this mapping. A style named below is a member of t
 | Option spelling separator `,` | `dim` |
 | Descriptions in right cells | `primary` |
 | Accepted-values sentences in right cells | `primary` |
-| Fact parentheses, fact separators, `required`, `repeatable`, `default: <value>`, and `implied: <value>` | `dim` |
+| Fact parentheses, fact separators, `required`, `repeatable`, `default: <value>`, `implied: <value>`, `env: <names>`, and `config: <path>` | `dim` |
 | `deprecated: <message>` inside a fact list | `warning` |
 | The entire `Deprecated: <message>` line below a masthead, excluding indentation | `warning` |
 | Example `$` prompt | `dim` |
