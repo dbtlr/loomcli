@@ -1,0 +1,51 @@
+---
+type: adr
+title: ADR-0125 - Dotenv layers mode and local files in Bun's order, expands references, and ends an unquoted value at any hash
+description: 'The dotenv plugin reads .env, .env.<mode>, .env.local, and .env.<mode>.local in host.cwd, the more specific file winning, in the order Bun and Next.js load them. The mode is NODE_ENV''s value; with NODE_ENV unset or empty no mode file is read, and under the test mode .env.local is skipped. Unquoted and double-quoted values expand $NAME, ${NAME}, and ${NAME:-default} against the run''s environment and the values read before them, with a \$ escape and never $(command); single quotes stay literal. An unquoted value ends at any #. Every warning names the file it read. It supersedes ADR-0102''s one-file clause and narrows its file format.'
+status: proposed
+created: 2026-10-30
+modified: 2026-10-30
+---
+
+# ADR-0125 - Dotenv layers mode and local files in Bun's order, expands references, and ends an unquoted value at any hash
+
+## Context
+
+[ADR-0102](0102-dotenv-imports-every-variable-the-process-has-not-set.md) has the dotenv plugin read only `.env` in `host.cwd`, with no mode sibling or layered file, and carries forward [ADR-0084](0084-dotenv-prepares-an-allowlisted-environment-before-inputs.md)'s file format, in which substitution syntax stays literal and `#` starts a comment only at the start of a value or after whitespace.
+
+The tools an operator already uses read more than one file. In order of increasing precedence, Bun loads `.env`, `.env.<mode>`, `.env.local`, and `.env.<mode>.local`, and skips `.env.local` when the mode is `test`; Next.js loads the same files in the same order with the same skip. dotenv-flow and Vite put the mode file above `.env.local`. Node's `--env-file` reads no layered file. The owner ruled for Bun's order. Bun loads these files before the plugin runs, and the plugin never replaces a variable the process has set, so a file the plugin reads as Bun does gives an application the same values under Node and Bun.
+
+Bun also expands variable references in every value, and the `dotenv-expand` package does in the files Vite reads, while the plugin keeps `$HOME` literal, so one file reads two ways today. Node's `--env-file`, the `dotenv` package, and Bun end an unquoted value at any `#`, while the plugin keeps a `#` that follows another character, so `URL=a#b` reads `a#b` under the plugin and `a` under each of them. The owner approved expansion, with single quotes literal, and aligning the comment boundary, on 2026-10-23.
+
+## Decision
+
+- **Four files, most specific wins.** The plugin reads, in `host.cwd`, `.env`, `.env.<mode>`, `.env.local`, and `.env.<mode>.local`, listed from least to most specific. A variable more than one file defines takes the value of the most specific file that assigns it validly. Within a file the last valid assignment still wins, and a malformed assignment in one file never erases a valid one in another. An existing defined variable still beats every file under core's merge.
+- **The mode is `NODE_ENV`.** The mode is the value of `NODE_ENV` in the environment the hook receives, as written and case-sensitive. A variable a file defines never chooses the mode. With `NODE_ENV` unset or empty there is no mode, and the plugin reads `.env` and `.env.local` alone, as dotenv-flow does. A file the list names twice, as `NODE_ENV=local` names `.env.local`, is read once, at its more specific place.
+- **The test mode skips `.env.local`.** When the mode is exactly `test`, the plugin does not read `.env.local`. It still reads `.env`, `.env.test`, and `.env.test.local`.
+- **The most specific file is read first.** The plugin reads the files from the most specific to `.env`, as Bun loads them, so a name keeps the first valid value read and a later file only fills names still unset. This order decides what a reference reads.
+- **References expand.** In an unquoted or a double-quoted value, `$NAME`, `${NAME}`, and `${NAME:-default}` read the value the name holds at that point: its value in the hook's environment when it has one, empty included; otherwise the value a more specific file gave it; otherwise the value the last valid assignment above it in the same file gave it. A name runs through letters, digits, and underscores, as Bun reads one. A reference to a name nothing has given a value reads as empty, and `${NAME:-default}` reads `default` in its place. An empty value is a value, so `${NAME:-default}` reads it rather than the default, as Bun reads one, where a POSIX shell takes the default. The default may hold references of its own, and a closing brace matches its own `${`. A value that comes from the environment is never expanded, and an expanded value is never scanned again. A reference reads every valid assignment the files define, whether or not an allow list or a deny list lets the plugin import that name.
+- **Literal dollars.** `\$` reads as one `$` in an unquoted and in a double-quoted value, and no other backslash in an unquoted value is an escape. A `$` followed by anything but a name character or `{`, an unclosed `${`, and a `${` whose inside is neither a name nor a name followed by `:-` stay literal text. `$(command)` stays literal text, and the plugin runs no command.
+- **Single quotes stay literal.** A single-quoted value keeps every character, `$` included, with no escape and no expansion. This is a named deviation from Bun, which expands inside single quotes, and follows `dotenvx` and Docker Compose. Under Bun, Bun's expanded value is already in the process and wins.
+- **Any `#` ends an unquoted value.** An unquoted value ends at its first `#`, wherever it stands, as Node's `--env-file`, the `dotenv` package, and Bun read one, so `URL=a#b` reads `a` and `A=#b` reads an empty value. A `#` inside quotes stays part of the value, and after a closing quote only whitespace and an optional comment remain valid, as before.
+- **Every warning names its file.** A missing file and a directory of a listed name are silent, each file alone. Any other read error warns once for that file and the file contributes nothing, while the other files still contribute: `Skipped .env.local: the file could not be read. Make it readable, or remove it.` A malformed assignment the plugin would import warns with its name, its starting line, and its file: `Skipped API_TOKEN on line 4 of .env.production: the line is not a valid assignment. Correct the line, or remove it.` Warnings come in the order the plugin reads the files.
+
+This record supersedes ADR-0102's clause that the plugin reads only `.env`, with no mode sibling or layered file, and narrows the file format and recovery ADR-0102 carries forward from ADR-0084: its rule that substitution syntax stays literal, its whitespace-before-comment rule, and its two warnings, which named `.env` alone. `dotenv()` keeps its settings, `only` and `except`, and takes no new one. Every other rule ADR-0102 states or carries forward stands.
+
+## Considered options
+
+- **dotenv-flow's and Vite's order, `.env` < `.env.local` < `.env.<mode>` < `.env.<mode>.local`.** Rejected by the owner's ruling of 2026-10-30, which chose Bun's order so that Node and Bun read the same values.
+- **Bun's mode, `BUN_ENV` before `NODE_ENV`, with `development` for any mode but `production` and `test`.** Not taken: the plugin reads `NODE_ENV` alone and reads `.env.<mode>` for whatever mode `NODE_ENV` names, as dotenv-flow does. Under Bun with `NODE_ENV` unset, Bun has already loaded `.env.development` and `.env.development.local`, which the plugin does not read under Node.
+- **Reading the files from `.env` up and resolving references against the values merged at the end, as dotenv-flow with `dotenv-expand` does.** Rejected: a reference in `.env.local` to a name only `.env` defines would read that value under Node and an empty value under Bun, which reads `.env.local` before `.env`.
+- **An option or a setting that names the mode or the file list.** Not taken: the ruling takes the mode from `NODE_ENV`, and the settings stay `only` and `except`.
+
+## Consequences
+
+An application that installs `dotenv()` now reads its operators' `.env.local` and mode files, and a value holding `$` reads differently: `\$` or single quotes keep a literal dollar. A value with an unquoted `#` after other text loses the rest of its line, which a fragment marks breaking with its migration, quoting the value. Bun's own loader and the plugin read the same values except in three places: a single-quoted `$`, a mode file one of them reads and the other does not, and a reference to a name a later line of the same file assigns, which Bun reads as that line's unexpanded text because it expands a file after reading all of it, and the plugin reads as the value above the reference, or empty. [Dotenv plugin](../plugins/dotenv.md) carries the contract.
+
+## Status
+
+Proposed. It moves to accepted in the release PR of the release that ships it.
+
+## Changelog
+
+- 2026-10-30: Proposed with the contract. It supersedes ADR-0102's one-file clause and narrows the file format and warnings ADR-0102 carries forward from ADR-0084. ADR-0102 carries a dated entry.

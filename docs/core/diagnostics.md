@@ -238,7 +238,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/dotenv/variable-name
 
-**Invalid dotenv variable name.** The dotenv plugin compares each name an only or except list holds with the names the assignments in .env give, and an assignment names a variable with a letter or underscore followed by letters, digits, or underscores. A listed name of another form never matches, so the list would not do what it says.
+**Invalid dotenv variable name.** The dotenv plugin compares each name an only or except list holds with the names the assignments in the dotenv files give, and an assignment names a variable with a letter or underscore followed by letters, digits, or underscores. A listed name of another form never matches, so the list would not do what it says.
 
 ### @loomcli/plugins/manifest/failure-code-conflict
 
