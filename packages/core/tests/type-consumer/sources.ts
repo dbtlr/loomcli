@@ -38,16 +38,52 @@ const bound = new Application('bound', { plugins: [settings()] })
     return [limit, total];
   });
 
-// A multiple option takes its list from the configuration source, so it binds no variable.
-// @ts-expect-error TS2345: A multiple option declares no env.
+// A multiple option binds a variable only beside the delimiter its author declares.
+// @ts-expect-error TS2345: A multiple option that binds env declares an envDelimiter.
 const listed = new Command('listed').option('fields', {
   env: 'FIELDS',
   multiple: true,
   type: 'string',
 });
 
-// @ts-expect-error TS2322: A plugin's multiple option declares no env either.
+// @ts-expect-error TS2322: A plugin's multiple option declares an envDelimiter beside env too.
 const tags = { tags: { env: 'TAGS', multiple: true, type: 'string' } } satisfies PluginOptions;
+
+// A multiple string option and a multiple content option each bind a list, one name or several.
+const split = new Command('split')
+  .option('fields', { env: 'FIELDS', envDelimiter: ',', multiple: true, type: 'string' })
+  .option('paths', {
+    env: ['PATHS', 'OLD_PATHS'],
+    envDelimiter: ':',
+    multiple: true,
+    type: 'content',
+  })
+  .action(({ options }) => {
+    const fields: string[] = options.fields;
+    return fields;
+  });
+
+// The delimiter belongs to a multiple option that binds a variable and to nothing else.
+// @ts-expect-error TS2345: A multiple option without env declares no envDelimiter.
+const unbound = new Command('unbound').option('fields', {
+  envDelimiter: ',',
+  multiple: true,
+  type: 'string',
+});
+
+// @ts-expect-error TS2345: An option that is not multiple declares no envDelimiter.
+const single = new Command('single').option('field', {
+  env: 'FIELD',
+  envDelimiter: ',',
+  type: 'string',
+});
+
+// @ts-expect-error TS2345: A Boolean option declares no envDelimiter.
+const flag = new Command('flag').option('total', {
+  env: 'TOTAL',
+  envDelimiter: ',',
+  type: 'boolean',
+});
 
 // An argument is identified by its place among bare tokens, so it cannot bind.
 // @ts-expect-error TS2353: An argument config declares no env.
@@ -96,6 +132,7 @@ export type { SettingsOptions };
 export {
   bound,
   described,
+  flag,
   listed,
   migrated,
   misbound,
@@ -104,6 +141,9 @@ export {
   positional,
   settingKey,
   settings,
+  single,
+  split,
   tags,
+  unbound,
   undescribed,
 };

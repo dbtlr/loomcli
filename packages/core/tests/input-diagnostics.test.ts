@@ -61,6 +61,11 @@ const cases: Record<string, RuleParts> = {
     rule: 'spelling-taken',
     sentence: 'Option spelling "--limit" is used by both "min-bytes" and "limit".',
   },
+  'env-delimiter': {
+    correction: 'Name the string that separates the items, such as ",".',
+    rule: 'env-delimiter',
+    sentence: 'Option "fields" declares an empty envDelimiter.',
+  },
   'global-local-key': {
     correction: 'Rename the local option.',
     rule: 'option-declared-twice',
@@ -137,6 +142,16 @@ const cases: Record<string, RuleParts> = {
 
 test.each(Object.entries(cases))('the %s fault throws its rule’s diagnostic', (scenario, parts) => {
   expect(coreRuleParts(thrown(scenario))).toEqual(parts);
+});
+
+test('an empty delimiter marks the envDelimiter of the option that declared it', () => {
+  expect(findingsOf(thrown('env-delimiter'))).toContain(
+    onCommand(
+      ['get'],
+      "option('fields', { env: 'FIELDS', envDelimiter: '', multiple: true, type: 'string' })",
+      "envDelimiter: ''",
+    ).join('\n'),
+  );
 });
 
 const converterCorrection =

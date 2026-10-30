@@ -2,7 +2,14 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { escapeText, inFont, request, textLine, writeRuns } from '../src/manpage/roff.js';
+import {
+  escapeText,
+  escapeUnbroken,
+  inFont,
+  request,
+  textLine,
+  writeRuns,
+} from '../src/manpage/roff.js';
 
 /** A character by its code point, so the test source stays ASCII. */
 const char = (point: number) => String.fromCodePoint(point);
@@ -15,6 +22,10 @@ test('the backslash, the hyphen, the quote characters, the caret, and the tilde 
 test('a tab is a space in filled text and kept in no-fill text', () => {
   expect(escapeText('a\tb')).toBe('a b');
   expect(escapeText('a\tb', 'noFill')).toBe('a\tb');
+});
+
+test('unbroken text escapes each space, a tab included, so man never wraps inside it', () => {
+  expect(escapeUnbroken('" a\tb"')).toBe(String.raw`\(dq\ a\ b\(dq`);
 });
 
 test('a control character and a line separator show as their escape, its backslash escaped', () => {

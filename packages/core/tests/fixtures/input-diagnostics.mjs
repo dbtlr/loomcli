@@ -96,6 +96,13 @@ const scenarios = {
     new Command('get')
       .option('min-bytes', { aliases: ['limit'], type: 'string' })
       .option('limit', { type: 'string' }),
+  'env-delimiter': () =>
+    new Command('get').option('fields', {
+      env: 'FIELDS',
+      envDelimiter: '',
+      multiple: true,
+      type: 'string',
+    }),
   'global-local-key': () =>
     new Application('probe')
       .globalOption('file', { type: 'string' })

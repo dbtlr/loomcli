@@ -779,3 +779,42 @@ test('a wrapped binding fact prints its labels, names, and separators dim on eve
     '          \u001b[90mconfig: server.listen address)\u001b[39m',
   ]);
 });
+
+/** A multiple option whose variable splits at a space, the delimiter a wrap could break. */
+const listBound = {
+  options: [
+    {
+      description: 'A word to count.',
+      env: ['APP_WORDS'],
+      envDelimiter: ' ',
+      multiple: true,
+      name: 'word',
+      type: 'string',
+    },
+  ],
+};
+
+test("a list binding's delimiter literal never breaks across lines, and the row fits 40 and 60 columns", () => {
+  expect(block(render({ app: listBound, columns: 40 }), 'OPTIONS').slice(0, 5)).toEqual([
+    'OPTIONS',
+    '      --word <word>  A word to count.',
+    '                     (repeatable, env:',
+    '                     APP_WORDS as a list',
+    '                     separated by " ")',
+  ]);
+  // At 36 columns a line ends between the literal's quotes unless the literal stays whole.
+  for (const columns of [36, 40, 60]) {
+    const lines = render({ app: listBound, columns }).split('\n');
+    expect(lines.filter((line) => line.length > columns)).toEqual([]);
+    expect(lines.filter((line) => line.includes('" ")'))).toHaveLength(1);
+  }
+  // The words and the literal print dim on every line, as the names do.
+  const options = block(
+    render({ app: listBound, columns: 40, ...themed }),
+    '\u001b[90mOPTIONS\u001b[39m',
+  );
+  expect(options.slice(3, 5)).toEqual([
+    '                     \u001b[90mAPP_WORDS as a list\u001b[39m',
+    '                     \u001b[90mseparated by " ")\u001b[39m',
+  ]);
+});

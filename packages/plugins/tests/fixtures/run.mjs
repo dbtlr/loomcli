@@ -447,6 +447,31 @@ function bindings() {
     .action(dispatch);
 }
 
+/** Multiple options whose variables hold a delimited list, and one that hides its bindings. */
+function listBindings() {
+  return new Application('app', {
+    description: 'Show each list binding.',
+    plugins,
+    version: '1.2.0',
+  })
+    .option('field', {
+      description: 'A field to print.',
+      env: ['APP_FIELDS', 'FIELDS'],
+      envDelimiter: ',',
+      multiple: true,
+      type: 'string',
+    })
+    .option('word', { env: 'APP_WORDS', envDelimiter: ' ', multiple: true, type: 'string' })
+    .option('secret', {
+      env: 'APP_SECRETS',
+      envDelimiter: ';',
+      extensions: [helpInput({ hideBindings: true })],
+      multiple: true,
+      type: 'string',
+    })
+    .action(dispatch);
+}
+
 const scenarios = {
   bindings,
   'branded-line': () =>
@@ -475,6 +500,7 @@ const scenarios = {
   facts,
   folded,
   kinds,
+  'list-bindings': listBindings,
   marked: () =>
     versioned({ description: 'A \uE001fixture\uE002 application.', version: '1.2.0\uE003' }),
   multiline,

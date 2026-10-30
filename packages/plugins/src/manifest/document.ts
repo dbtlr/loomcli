@@ -84,6 +84,7 @@ type ManifestOption =
       readonly multiple: boolean;
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly env: readonly string[];
+      readonly envDelimiter: string | null;
       readonly default: { readonly value: unknown } | null;
       readonly implied: string | null;
       /** The background mark, last on the string variant; a content option carries none. */
@@ -207,6 +208,7 @@ function optionEntry(node: OptionNode): ManifestOption {
         multiple: node.multiple,
         schema: node.schema,
         env: node.env,
+        envDelimiter: node.envDelimiter,
         default: defaultOf(node),
         implied: node.implied,
         ...(node.type === 'string' ? { background: node.background } : {}),

@@ -44,6 +44,13 @@ const variableBoundTwice = registerRule('@loomcli/core/variable-bound-twice', {
   headline: 'Variable bound twice',
 });
 
+/** A multiple option whose variable splits at a delimiter that is the empty string. */
+const envDelimiterEmpty = registerRule('@loomcli/core/env-delimiter', {
+  explanation:
+    "A multiple option's variable splits at each occurrence of its envDelimiter into the option's list, and an empty string occurs between every two characters, so it separates no item.",
+  headline: 'Empty environment delimiter',
+});
+
 /** A declared default its validator rejected. */
 const invalidDefault = registerRule('@loomcli/core/invalid-default', {
   explanation:
@@ -66,6 +73,7 @@ const schemaConverterFailed = registerRule('@loomcli/core/schema-converter-faile
 });
 
 export {
+  envDelimiterEmpty,
   invalidDefault,
   invalidImplied,
   nameSharedAcrossKinds,

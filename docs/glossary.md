@@ -175,7 +175,7 @@ The run's captured environment after installed environment hooks add missing var
 _Avoid_: Dotenv environment, merged config
 
 **Environment binding**:
-The variable, or the ordered list of variables, an option names with `env` on its declaration, from which the input-source stage fills the option when argv does not supply it. With a list, the first name holding a non-empty value supplies it. Binding is explicit only, an argument and a multiple option never bind, and within one invocation's scope a variable binds one option. Host conventions such as `NO_COLOR` are rendering policy and not bindings.
+The variable, or the ordered list of variables, an option names with `env` on its declaration, from which the input-source stage fills the option when argv does not supply it. With a list, the first name holding a non-empty value supplies it. Binding is explicit only, an argument never binds, and within one invocation's scope a variable binds one option. A multiple option binds only beside `envDelimiter`, the string its author declares to separate the items, and the value splits at each delimiter into the list, keeping empty items. Host conventions such as `NO_COLOR` are rendering policy and not bindings.
 _Avoid_: Env var option, env fallback, auto env
 
 **Validator**:

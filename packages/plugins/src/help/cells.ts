@@ -238,9 +238,11 @@ function renderDefault(value: unknown): string {
 
 /**
  * One fact of a row's parenthesis, and the tone help prints it in. A fact with `names` prints its
- * `text` as a label, then each name, and on a terminal wrapping keeps each name whole.
+ * `text` as a label, then each name, then, with a `delimiter`, the words that name it, and on a
+ * terminal wrapping keeps each name and the delimiter whole.
  */
 interface Fact {
+  readonly delimiter?: string;
   readonly names?: readonly string[];
   readonly text: string;
   readonly tone: 'dim' | 'warning';
@@ -290,8 +292,8 @@ function rightCell(text: CellText, facts: readonly Fact[], context: ViewContext)
 }
 
 /**
- * One fact as help styles it. The names of a binding fact sit in `nowrap` on a terminal, so the
- * wrap breaks between names and never inside one.
+ * One fact as help styles it. The names of a binding fact and its delimiter sit in `nowrap` on a
+ * terminal, so the wrap breaks between them and never inside one.
  */
 function styledFact(fact: Fact, context: ViewContext): string {
   const { style } = context;
@@ -299,11 +301,26 @@ function styledFact(fact: Fact, context: ViewContext): string {
   if (fact.names === undefined) {
     return tone(style.escape(fact.text));
   }
-  const names = fact.names.map((name) => {
-    const styled = tone(style.escape(name));
+  const whole = (unit: string) => {
+    const styled = tone(style.escape(unit));
     return onTerminal(context) ? nowrap(styled) : styled;
-  });
-  return `${tone(style.escape(`${fact.text} `))}${names.join(tone(' '))}`;
+  };
+  const list =
+    fact.delimiter === undefined
+      ? ''
+      : `${tone(' as a list separated by ')}${whole(fact.delimiter)}`;
+  return `${tone(style.escape(`${fact.text} `))}${fact.names.map(whole).join(tone(' '))}${list}`;
+}
+
+/**
+ * The delimiter a multiple option's variable is a list under, as a JSON string literal so a space
+ * reads `" "` and a tab `"\t"`, or `undefined` for an option whose variable holds one value.
+ */
+function delimiterLiteral(option: OptionNode): string | undefined {
+  if ((option.type !== 'string' && option.type !== 'content') || option.envDelimiter === null) {
+    return undefined;
+  }
+  return JSON.stringify(option.envDelimiter);
 }
 
 /** A fact help prints dim. */
@@ -311,9 +328,11 @@ function dimFact(text: string): Fact {
   return { text, tone: 'dim' };
 }
 
-/** A dim fact that prints a label and then names help keeps whole. */
-function bindingFact(label: string, names: readonly string[]): Fact {
-  return { names, text: label, tone: 'dim' };
+/** A dim fact that prints a label, then names help keeps whole, then a list's delimiter. */
+function bindingFact(label: string, names: readonly string[], delimiter?: string): Fact {
+  return delimiter === undefined
+    ? { names, text: label, tone: 'dim' }
+    : { delimiter, names, text: label, tone: 'dim' };
 }
 
 /** The fact one declared default contributes, which an explicit `undefined` default does not. */
@@ -400,8 +419,9 @@ function pageOptionFacts(option: OptionNode): Fact[] {
 }
 
 /**
- * The names the option's bindings contribute: its variables in declaration order as `env`, then
- * its `configInput` path as `config`. Names alone, never a value.
+ * The names the option's bindings contribute: its variables in declaration order as `env`, with a
+ * multiple option's delimiter after them, then its `configInput` path as `config`. Names alone,
+ * never a value.
  */
 function bindingFacts(option: OptionNode): Fact[] {
   if (readExtension(option, helpInput)?.hideBindings === true) {
@@ -409,7 +429,7 @@ function bindingFacts(option: OptionNode): Fact[] {
   }
   const path = readExtension(option, configInput)?.path;
   return [
-    ...(isEmpty(option.env) ? [] : [bindingFact('env:', option.env)]),
+    ...(isEmpty(option.env) ? [] : [bindingFact('env:', option.env, delimiterLiteral(option))]),
     ...(path === undefined ? [] : [bindingFact('config:', [path])]),
   ];
 }
@@ -534,6 +554,7 @@ export {
   argumentFacts,
   argumentForm,
   column,
+  delimiterLiteral,
   deprecatedFacts,
   isEmpty,
   oneLine,

@@ -10,6 +10,7 @@ import { configInput } from '../config/extension.js';
 import { argumentAccepts, optionAccepts } from '../help/accepted.js';
 import {
   argumentFacts,
+  delimiterLiteral,
   deprecatedFacts,
   isEmpty,
   optionCellParts,
@@ -32,7 +33,7 @@ import type { OrderedSection, SectionMember } from '../help/sections.js';
 import { singleLine, singleLineOf } from '../lines.js';
 import { detailsLines } from './markdown.js';
 import { findable, pageFile, pageName } from './pages.js';
-import { escapeText, inFont, request, textLine } from './roff.js';
+import { escapeText, escapeUnbroken, inFont, request, textLine } from './roff.js';
 
 /** The page section every page is in. */
 const section = '1';
@@ -227,13 +228,27 @@ function optionTag(option: OptionNode): string {
   return `${spellings}${escapeText(`${separator}${before}`)}${inFont(placeholder, 'italic')}${escapeText(after)}`;
 }
 
+/**
+ * The delimiter a multiple option's variable is a list under, as help writes it, with a space that
+ * never breaks the line, or `undefined` for an option whose variable holds one value.
+ */
+function listDelimiter(option: OptionNode): string | undefined {
+  const literal = delimiterLiteral(option);
+  return literal === undefined ? undefined : escapeUnbroken(literal);
+}
+
 /** The lines an option's entry adds after its text: its environment and configuration bindings. */
 function bindings(option: OptionNode): string[] {
   const path = readExtension(option, configInput)?.path;
+  const delimiter = listDelimiter(option);
   return [
     ...(isEmpty(option.env)
       ? []
-      : [`Environment: ${option.env.map((name) => inFont(name, 'bold')).join(', ')}`]),
+      : [
+          `Environment: ${option.env.map((name) => inFont(name, 'bold')).join(', ')}${
+            delimiter === undefined ? '' : ` (a list separated by ${delimiter})`
+          }`,
+        ]),
     ...(path === undefined ? [] : [`Configuration: ${inFont(path, 'bold')}`]),
   ];
 }
@@ -257,9 +272,14 @@ function suppliedSpelling(option: OptionNode): string {
 
 function environment({ optionSections }: Subject): string[] {
   const lines = listed(optionSections).flatMap((option) =>
-    option.env.flatMap((name) =>
-      entry(inFont(name, 'bold'), `Supplies ${inFont(suppliedSpelling(option), 'bold')}.`),
-    ),
+    option.env.flatMap((name) => {
+      const delimiter = listDelimiter(option);
+      const list = delimiter === undefined ? '' : ` as a list separated by ${delimiter}`;
+      return entry(
+        inFont(name, 'bold'),
+        `Supplies ${inFont(suppliedSpelling(option), 'bold')}${list}.`,
+      );
+    }),
   );
   return headed('ENVIRONMENT', lines);
 }
