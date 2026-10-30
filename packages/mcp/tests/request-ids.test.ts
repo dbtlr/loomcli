@@ -1,7 +1,7 @@
 // Acceptance plan: see packages/mcp/tests/framing.test.ts.
 import { describe, expect, it } from 'vite-plus/test';
 
-import { open, request } from './session.js';
+import { handshakeRequest, initialize, open, request } from './session.js';
 
 describe('a request id in use', () => {
   it('answers a request that reuses the id of a call in flight with -32600, and leaves the call running', async () => {
@@ -24,6 +24,18 @@ describe('a request id in use', () => {
     expect(stderr).toBe('started first\naborted first\nresolved\n');
     expect(messages).toHaveLength(1);
     expect(status).toBe(0);
+  });
+
+  it('answers an initialize that reuses the id of a call in flight with -32600, and initializes nothing', async () => {
+    const session = open();
+    session.send(request(2, 'tools/call', { arguments: { label: 'first' }, name: 'wait' }));
+    await session.observed('started first');
+    session.send(initialize(2, '2025-06-18'));
+    await expect(session.next()).resolves.toMatchObject({ error: { code: -32_600 }, id: 2 });
+    session.send(handshakeRequest(3, 'tools/list'));
+    await expect(session.next()).resolves.toMatchObject({ error: { code: -32_602 }, id: 3 });
+    const { messages } = await session.close();
+    expect(messages).toHaveLength(2);
   });
 
   it('answers a request that reuses the id of an open subscription with -32600', async () => {

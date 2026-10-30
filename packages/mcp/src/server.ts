@@ -168,7 +168,7 @@ function requestFault(method: string, params: unknown, initialized: boolean) {
           `The method is not one this server serves. This server speaks MCP ${protocolRevision}; call server/discover, tools/list, tools/call, or subscriptions/listen.`,
         );
   }
-  if (!initialized && method !== 'ping' && (methods.has(method) || handshakeMethods.has(method))) {
+  if (!initialized && methods.has(method)) {
     return missingMeta(metaKeys.protocolVersion);
   }
   return handshakeMethods.has(method)

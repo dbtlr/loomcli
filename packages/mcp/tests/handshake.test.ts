@@ -70,6 +70,14 @@ describe('initialize', () => {
       id: 0,
       jsonrpc: '2.0',
     });
+    // A malformed handshake initializes nothing, so the connection still needs one, and takes it.
+    session.send(handshakeRequest(1, 'tools/list'));
+    await expect(session.next()).resolves.toMatchObject({ error: { code: -32_602 }, id: 1 });
+    session.send(initialize(2, '2025-06-18'));
+    await expect(session.next()).resolves.toMatchObject({
+      id: 2,
+      result: { protocolVersion: '2025-06-18' },
+    });
     await session.close();
   });
 
@@ -186,6 +194,28 @@ describe('an initialized connection', () => {
       await session.close();
     },
   );
+
+  it('checks a request whose _meta names a protocol version on 2026-07-28, even after the handshake', async () => {
+    const session = open();
+    session.send(initialize(0, '2025-06-18'));
+    await session.next();
+    session.send(
+      handshakeRequest(1, 'tools/list', {
+        _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' },
+      }),
+    );
+    await expect(session.next()).resolves.toEqual({
+      error: {
+        code: -32_602,
+        message: expect.stringContaining(
+          'params._meta carries no "io.modelcontextprotocol/clientCapabilities"',
+        ),
+      },
+      id: 1,
+      jsonrpc: '2.0',
+    });
+    await session.close();
+  });
 
   it('serves a request carrying per-request _meta on 2026-07-28 beside the handshake', async () => {
     const session = open();

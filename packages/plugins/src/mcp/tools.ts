@@ -97,7 +97,10 @@ function described(
   return description === undefined ? notice : `${notice}\n${description}`;
 }
 
-/** A published schema without its top-level `$schema` key, whose dialect the protocol's matches. */
+/**
+ * A published schema without its top-level `$schema` key. The property sits inside the tool's input
+ * schema, whose default dialect on 2026-07-28 and 2025-11-25 is 2020-12, the converter's target.
+ */
 function withoutDialect(schema: Schema): Schema {
   return Object.fromEntries(Object.entries(schema).filter(([key]) => key !== '$schema'));
 }

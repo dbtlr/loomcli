@@ -7,7 +7,10 @@ export type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue };
 
-/** Who the server is. Every result carries it in `_meta` under `io.modelcontextprotocol/serverInfo`. */
+/**
+ * Who the server is. Every per-request result carries it in `_meta` under
+ * `io.modelcontextprotocol/serverInfo`, and an `initialize` result carries it as `serverInfo`.
+ */
 export interface ServerIdentity {
   readonly name: string;
   readonly version: string;
