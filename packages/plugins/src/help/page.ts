@@ -12,8 +12,8 @@ import {
   deprecatedFacts,
   isEmpty,
   optionCell,
-  pageOptionFacts,
   optionForm,
+  pageOptionFacts,
   rightCell,
 } from './cells.js';
 import type { Row, StringOption, UsageWriter } from './cells.js';
