@@ -93,6 +93,11 @@ function escapeText(text: string, fill: Fill = 'fill'): string {
   return written;
 }
 
+/** Filled text whose every space is unbreakable, so man never wraps a line inside it. */
+function escapeUnbroken(text: string): string {
+  return escapeText(text).replaceAll(' ', String.raw`\ `);
+}
+
 /** Text in a font, which returns to the regular font after it, so every line ends in it. */
 function inFont(text: string, font: Font, fill: Fill = 'fill'): string {
   const escaped = escapeText(text, fill);
@@ -127,4 +132,4 @@ function request(name: string, args: readonly string[]): string {
 }
 
 export type { Fill, Font, Run };
-export { escapeText, inFont, request, textLine, writeRuns };
+export { escapeText, escapeUnbroken, inFont, request, textLine, writeRuns };

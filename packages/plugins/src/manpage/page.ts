@@ -32,7 +32,7 @@ import type { OrderedSection, SectionMember } from '../help/sections.js';
 import { singleLine, singleLineOf } from '../lines.js';
 import { detailsLines } from './markdown.js';
 import { findable, pageFile, pageName } from './pages.js';
-import { escapeText, inFont, request, textLine } from './roff.js';
+import { escapeText, escapeUnbroken, inFont, request, textLine } from './roff.js';
 
 /** The page section every page is in. */
 const section = '1';
@@ -229,13 +229,14 @@ function optionTag(option: OptionNode): string {
 
 /**
  * The delimiter a multiple option's variable is a list under, written as a JSON string literal so
- * a tab reads `"\t"`, or `undefined` for an option whose variable holds one value.
+ * a tab reads `"\t"` and a space never breaks the line, or `undefined` for an option whose
+ * variable holds one value.
  */
 function listDelimiter(option: OptionNode): string | undefined {
   if ((option.type !== 'string' && option.type !== 'content') || option.envDelimiter === null) {
     return undefined;
   }
-  return escapeText(JSON.stringify(option.envDelimiter));
+  return escapeUnbroken(JSON.stringify(option.envDelimiter));
 }
 
 /** The lines an option's entry adds after its text: its environment and configuration bindings. */

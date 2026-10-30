@@ -291,6 +291,21 @@ describe('sections', () => {
     );
   });
 
+  it("a list variable's delimiter reads as one unbroken JSON string on a string or a content option", () => {
+    const app = new Application('kit', { plugins: [manpage()] })
+      .option('field', { env: 'KIT_FIELDS', envDelimiter: ' ', multiple: true, type: 'string' })
+      .option('file', { env: 'KIT_FILES', envDelimiter: ',', multiple: true, type: 'content' })
+      .action(noop);
+    expect(pagesOf(app).get('kit.1')?.split('\n')).toEqual(
+      expect.arrayContaining([
+        String.raw`Environment: \fBKIT_FIELDS\fR (a list separated by \(dq\ \(dq)`,
+        String.raw`Environment: \fBKIT_FILES\fR (a list separated by \(dq,\(dq)`,
+        String.raw`Supplies \fB\-\-field\fR as a list separated by \(dq\ \(dq.`,
+        String.raw`Supplies \fB\-\-file\fR as a list separated by \(dq,\(dq.`,
+      ]),
+    );
+  });
+
   it('a Command with no description has the page name alone under NAME', () => {
     expect(pagesOf(kit).get('kit-bare.1')).toBe(
       page(
