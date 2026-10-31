@@ -2,7 +2,7 @@
  * Acceptance plan for the configuration file (docs/toolchain/build.md#the-configuration-file), as
  * `loom init` and `loom changelog check` read it. Each case runs in-process on a mock process,
  * under ADR-0103; `build.test.ts` and `changelog.test.ts` prove `loom build` and `loom changelog
- * write` in process runs.
+ * write`.
  *
  * - `paths.source` moves the application module, the entry, and the test, and the scaffold's
  *   `tsconfig.json` `include`, the linter's file globs, and the `check` script's lint target name

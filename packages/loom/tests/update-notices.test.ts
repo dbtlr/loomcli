@@ -87,7 +87,7 @@ await probe.run({
 /** The compiled probe, built once for the file. */
 let binary = '';
 
-beforeAll(() => {
+beforeAll(async () => {
   const root = fixturePackage(
     {
       'package.json': `${JSON.stringify({
@@ -102,7 +102,7 @@ beforeAll(() => {
     },
     ['core', 'plugins'],
   );
-  const result = loom(root, ['build', '--release', '--out', 'bin/probe']);
+  const result = await loom(root, ['build', '--release', '--out', 'bin/probe']);
   if (result.status !== 0) {
     throw new Error(`loom build --release failed:\n${result.stderr}`);
   }

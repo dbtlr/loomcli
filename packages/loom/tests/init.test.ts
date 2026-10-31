@@ -1,8 +1,9 @@
 /*
  * Acceptance plan for loom init (docs/toolchain/init.md).
  *
- * `loom init` is proven when process runs of the packed `loom` bin produce these results under Node
- * and Bun:
+ * `loom init` runs in-process on a mock process, with real Bun reads of the application module,
+ * under the runtime the CI matrix selects. The terminal cases run the built bin on a
+ * pseudo-terminal. It is proven when those runs produce these results:
  *
  * - A new application. In an empty directory, init writes `package.json`, the scaffold files, the
  *   fragment guide, and the skill, and prints the warning that `install.sh` was not written,
@@ -58,7 +59,6 @@ import {
   inPackage,
   linkInstalled,
   loom,
-  runtimes,
   snapshot,
 } from './package.js';
 
@@ -126,7 +126,11 @@ const ownTypedManifest = `${JSON.stringify(
 /** A compiler configuration of the package's own. */
 const ownTypescriptConfig = '{ "compilerOptions": { "strict": false } }\n';
 
-/** An existing package that holds its own manifest and application module, linking core. */
+/**
+ * An existing package that holds its own manifest and application module, linking core. Core
+ * resolves, so init reads the module's exports under Bun; from source, the `bun` program in
+ * `run.ts` runs `src/read-application.ts`, because only the build writes `read-application.js`.
+ */
 function ownPackage(files: Record<string, string> = {}) {
   return fixturePackage({
     'package.json': ownManifest,
@@ -142,9 +146,9 @@ const noRepository =
 const warning = (path: string) =>
   `warning: ${path} differs from what loom init wrote. Run loom init --force to restore it, or delete its header to keep your edits.\n`;
 
-test('in an empty directory init writes package.json, the scaffold files, the test, the lint configuration, the fragment guide, and the skill, one line each, and warns that install.sh was not written', () => {
+test('in an empty directory init writes package.json, the scaffold files, the test, the lint configuration, the fragment guide, and the skill, one line each, and warns that install.sh was not written', async () => {
   const directory = emptyNotes();
-  expect(loom(directory, ['init'])).toEqual({
+  await expect(loom(directory, ['init'])).resolves.toEqual({
     status: 0,
     stderr: noRepository,
     stdout: [
@@ -174,9 +178,9 @@ test('in an empty directory init writes package.json, the scaffold files, the te
   expect(existsSync(join(directory, 'install.sh'))).toBe(false);
 });
 
-test("a new package.json is named for the directory, pins Loom at the running loom's version, and pins the ranges loom declares", () => {
+test("a new package.json is named for the directory, pins Loom at the running loom's version, and pins the ranges loom declares", async () => {
   const directory = emptyNotes();
-  loom(directory, ['init']);
+  await loom(directory, ['init']);
   expect(JSON.parse(read(directory, 'package.json'))).toEqual({
     bin: { notes: 'dist/main.js' },
     dependencies: { '@loomcli/core': version },
@@ -197,39 +201,43 @@ test("a new package.json is named for the directory, pins Loom at the running lo
 
 test(
   'a new scaffold, once installed, passes its own assembly test under bun test, builds, and its bundle keeps the shebang and runs under Node and Bun',
-  () => {
+  async () => {
     const directory = emptyNotes();
-    loom(directory, ['init']);
+    await loom(directory, ['init']);
     linkInstalled(directory, ['core', 'testing', 'types', 'typescript']);
     expect(inPackage(directory, 'bun', ['test']).status).toBe(0);
-    expect(loom(directory, ['build', '--target', 'node']).status).toBe(0);
+    const runResult = await loom(directory, ['build', '--target', 'node']);
+    expect(runResult.status).toBe(0);
     const bundle = join(directory, 'dist/main.js');
     expect(readFileSync(bundle, 'utf8').startsWith('#!/usr/bin/env node\n')).toBe(true);
-    for (const runtime of runtimes) {
-      expect(execute(bundle, [], { runtime })).toEqual({
-        status: 0,
-        stderr: '',
-        stdout: 'notes is ready. Replace this action with your own.\n',
-      });
-    }
+    const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
+    expect(execute(bundle, [], { runtime })).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'notes is ready. Replace this action with your own.\n',
+    });
   },
   slow,
 );
 
-test('a second run over an unedited scaffold writes nothing and prints only the missing-repository warning', () => {
+test('a second run over an unedited scaffold writes nothing and prints only the missing-repository warning', async () => {
   const directory = emptyNotes();
-  loom(directory, ['init']);
+  await loom(directory, ['init']);
   const before = snapshot(directory);
-  expect(loom(directory, ['init'])).toEqual({ status: 0, stderr: noRepository, stdout: '' });
+  await expect(loom(directory, ['init'])).resolves.toEqual({
+    status: 0,
+    stderr: noRepository,
+    stdout: '',
+  });
   expect(snapshot(directory)).toEqual(before);
 });
 
-test('in an existing package init writes the missing pieces and leaves its application module, build script, tsconfig.json, and compiler byte-identical', () => {
+test('in an existing package init writes the missing pieces and leaves its application module, build script, tsconfig.json, and compiler byte-identical', async () => {
   const root = ownPackage({
     'package.json': ownTypedManifest,
     'tsconfig.json': ownTypescriptConfig,
   });
-  const result = loom(root, ['init']);
+  const result = await loom(root, ['init']);
   expect(result).toEqual({
     status: 0,
     stderr: noRepository,
@@ -261,10 +269,10 @@ test('in an existing package init writes the missing pieces and leaves its appli
   expect(read(root, 'src/main.ts')).toContain("import { probe } from './application.js';");
 });
 
-test('--only tsconfig writes tsconfig.json alone', () => {
+test('--only tsconfig writes tsconfig.json alone', async () => {
   const root = ownPackage();
   const before = snapshot(root);
-  expect(loom(root, ['init', '--only', 'tsconfig'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'tsconfig'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'Wrote tsconfig.json.\n',
@@ -275,10 +283,10 @@ test('--only tsconfig writes tsconfig.json alone', () => {
   expect(after).toEqual(before);
 });
 
-test('--only changes writes .changes/README.md alone', () => {
+test('--only changes writes .changes/README.md alone', async () => {
   const root = ownPackage();
   const before = snapshot(root);
-  expect(loom(root, ['init', '--only', 'changes'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'changes'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `Wrote ${guidePath}.\n`,
@@ -288,40 +296,42 @@ test('--only changes writes .changes/README.md alone', () => {
   expect(after).toEqual(before);
 });
 
-test('--only repeats, and each piece it names is written', () => {
+test('--only repeats, and each piece it names is written', async () => {
   const root = ownPackage();
-  expect(loom(root, ['init', '--only', 'skill', '--only', 'entry']).stdout).toBe(
-    `Wrote src/main.ts.\nWrote ${skillPath}.\n`,
-  );
+  const runResult = await loom(root, ['init', '--only', 'skill', '--only', 'entry']);
+  expect(runResult.stdout).toBe(`Wrote src/main.ts.\nWrote ${skillPath}.\n`);
 });
 
-test('init in a subdirectory acts on the package directory and names paths relative to it', () => {
+test('init in a subdirectory acts on the package directory and names paths relative to it', async () => {
   const root = ownPackage();
-  expect(loom(join(root, 'src'), ['init', '--only', 'changes']).stdout).toBe(
-    `Wrote ${guidePath}.\n`,
-  );
+  const runResult = await loom(join(root, 'src'), ['init', '--only', 'changes']);
+  expect(runResult.stdout).toBe(`Wrote ${guidePath}.\n`);
   expect(existsSync(join(root, guidePath))).toBe(true);
 });
 
-test('init from a subdirectory prints the drift warning of a managed file in the package directory', () => {
+test('init from a subdirectory prints the drift warning of a managed file in the package directory', async () => {
   const root = ownPackage({ [guidePath]: `${renderManaged(guide)}An edit.\n` });
-  const init = loom(join(root, 'src'), ['init', '--only', 'changes']);
+  const init = await loom(join(root, 'src'), ['init', '--only', 'changes']);
   expect(init.stderr).toBe(warning(guidePath));
 });
 
-test('--force never overwrites a scaffold file or key', () => {
+test('--force never overwrites a scaffold file or key', async () => {
   const root = ownPackage({ 'src/main.ts': 'export {};\n' });
-  loom(root, ['init']);
+  await loom(root, ['init']);
   const before = snapshot(root);
-  expect(loom(root, ['init', '--force'])).toEqual({ status: 0, stderr: noRepository, stdout: '' });
+  await expect(loom(root, ['init', '--force'])).resolves.toEqual({
+    status: 0,
+    stderr: noRepository,
+    stdout: '',
+  });
   expect(snapshot(root)).toEqual(before);
   expect(read(root, 'src/main.ts')).toBe('export {};\n');
 });
 
-test('an unedited managed file from an older loom is re-rendered with the current template', () => {
+test('an unedited managed file from an older loom is re-rendered with the current template', async () => {
   const stale = renderManaged('\n# Change fragments\n\nAn older guide.\n');
   const root = ownPackage({ [guidePath]: stale });
-  expect(loom(root, ['init', '--only', 'changes'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'changes'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `Wrote ${guidePath}.\n`,
@@ -329,10 +339,10 @@ test('an unedited managed file from an older loom is re-rendered with the curren
   expect(read(root, guidePath)).toBe(renderManaged(guide));
 });
 
-test('an edited managed file draws exactly one warning and stays byte-identical', () => {
+test('an edited managed file draws exactly one warning and stays byte-identical', async () => {
   const edited = `${renderManaged(skill)}An edit.\n`;
   const root = ownPackage({ [skillPath]: edited });
-  expect(loom(root, ['init', '--only', 'skill'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'skill'])).resolves.toEqual({
     status: 0,
     stderr: warning(skillPath),
     stdout: '',
@@ -340,9 +350,9 @@ test('an edited managed file draws exactly one warning and stays byte-identical'
   expect(read(root, skillPath)).toBe(edited);
 });
 
-test('--force re-renders an edited managed file', () => {
+test('--force re-renders an edited managed file', async () => {
   const root = ownPackage({ [guidePath]: `${renderManaged(guide)}An edit.\n` });
-  expect(loom(root, ['init', '--only', 'changes', '--force'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'changes', '--force'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `Wrote ${guidePath}.\n`,
@@ -350,10 +360,10 @@ test('--force re-renders an edited managed file', () => {
   expect(read(root, guidePath)).toBe(renderManaged(guide));
 });
 
-test('a managed file whose header was deleted stays byte-identical under --force and draws no warning', () => {
+test('a managed file whose header was deleted stays byte-identical under --force and draws no warning', async () => {
   const released = `${guide}An edit of my own.\n`;
   const root = ownPackage({ [guidePath]: released });
-  expect(loom(root, ['init', '--only', 'changes', '--force'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'changes', '--force'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '',
@@ -361,8 +371,8 @@ test('a managed file whose header was deleted stays byte-identical under --force
   expect(read(root, guidePath)).toBe(released);
 });
 
-test('--only with a piece init does not know is an option error that names the pieces', () => {
-  const result = loom(emptyNotes(), ['init', '--only', 'nonsense']);
+test('--only with a piece init does not know is an option error that names the pieces', async () => {
+  const result = await loom(emptyNotes(), ['init', '--only', 'nonsense']);
   expect(result.status).toBe(2);
   expect(result.stderr).toContain(
     'Use application, entry, tsconfig, test, lint, package, changes, skill, or install.',
@@ -371,9 +381,9 @@ test('--only with a piece init does not know is an option error that names the p
 
 test(
   'managed files a Markdown formatter rewrote stay managed: init writes nothing and warns nothing',
-  (context) => {
+  async (context) => {
     const directory = emptyNotes();
-    loom(directory, ['init']);
+    await loom(directory, ['init']);
     const formatted = spawnSync('npx', ['-y', 'prettier@3', '--write', guidePath, skillPath], {
       cwd: directory,
       encoding: 'utf8',
@@ -383,7 +393,11 @@ test(
       // Prettier comes from the registry through npx, so a machine without network skips this test.
       context.skip();
     }
-    expect(loom(directory, ['init'])).toEqual({ status: 0, stderr: noRepository, stdout: '' });
+    await expect(loom(directory, ['init'])).resolves.toEqual({
+      status: 0,
+      stderr: noRepository,
+      stdout: '',
+    });
   },
   slow,
 );
@@ -409,23 +423,24 @@ test.each([
   ['a default export', 'export default application;', "import probe from './application.js';"],
 ])(
   'an authored application module exported under %s gets an entry that imports it and builds',
-  (_case, exported, imported) => {
+  async (_case, exported, imported) => {
     const root = ownPackage({ 'src/application.ts': authored(exported) });
-    expect(loom(root, ['init', '--only', 'entry'])).toEqual({
+    await expect(loom(root, ['init', '--only', 'entry'])).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: 'Wrote src/main.ts.\n',
     });
     expect(read(root, 'src/main.ts')).toContain(imported);
-    expect(loom(root, ['build', '--target', 'node']).status).toBe(0);
+    const runResult = await loom(root, ['build', '--target', 'node']);
+    expect(runResult.status).toBe(0);
     expect(execute(join(root, 'dist/main.js'), [], { runtime: 'node' }).stdout).toBe('authored\n');
   },
   slow,
 );
 
-test('an authored application module that exports no Application draws a warning and no entry', () => {
+test('an authored application module that exports no Application draws a warning and no entry', async () => {
   const root = ownPackage({ 'src/application.ts': 'export const value = 1;\n' });
-  expect(loom(root, ['init', '--only', 'entry'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'entry'])).resolves.toEqual({
     status: 0,
     stderr:
       'warning: src/main.ts was not written because src/application.ts exports no Application loom can read. Write the entry by hand.\n',
@@ -434,7 +449,7 @@ test('an authored application module that exports no Application draws a warning
   expect(existsSync(join(root, 'src/main.ts'))).toBe(false);
 });
 
-test('an authored application module that cannot be loaded draws the load warning naming why and no entry', () => {
+test('an authored application module that cannot be loaded draws the load warning naming why and no entry', async () => {
   const root = fixturePackage(
     {
       'package.json': ownManifest,
@@ -442,7 +457,7 @@ test('an authored application module that cannot be loaded draws the load warnin
     },
     [],
   );
-  expect(loom(root, ['init', '--only', 'entry'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'entry'])).resolves.toEqual({
     status: 0,
     stderr:
       'warning: src/main.ts was not written because src/application.ts could not be loaded: @loomcli/core does not resolve from the package, so install it before init reads src/application.ts. Install the package and run loom init again, or write the entry by hand.\n',
@@ -453,9 +468,9 @@ test('an authored application module that cannot be loaded draws the load warnin
 
 test.each(['My Notes', 'notes cli'])(
   'an empty directory named %j is refused before anything is written',
-  (name) => {
+  async (name) => {
     const directory = emptyDirectory(name);
-    const result = loom(directory, ['init']);
+    const result = await loom(directory, ['init']);
     expect(result).toEqual({
       status: 1,
       stderr: expect.stringContaining(
@@ -467,23 +482,24 @@ test.each(['My Notes', 'notes cli'])(
   },
 );
 
-test.each(['notes.cli', 'notes2'])('an empty directory named %j scaffolds', (name) => {
+test.each(['notes.cli', 'notes2'])('an empty directory named %j scaffolds', async (name) => {
   const directory = emptyDirectory(name);
-  expect(loom(directory, ['init']).status).toBe(0);
+  const runResult = await loom(directory, ['init']);
+  expect(runResult.status).toBe(0);
   expect(JSON.parse(read(directory, 'package.json'))).toMatchObject({ name });
 });
 
-test('a write that fails names the file after the lines of what was already written', () => {
+test('a write that fails names the file after the lines of what was already written', async () => {
   const root = ownPackage({ '.agents': 'a file where a directory belongs\n' });
-  const result = loom(root, ['init', '--only', 'changes', '--only', 'skill']);
+  const result = await loom(root, ['init', '--only', 'changes', '--only', 'skill']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe(`Wrote ${guidePath}.\n`);
   expect(result.stderr).toContain(`Cannot write ${skillPath}: `);
 });
 
-test('--only skill in an empty directory writes package.json and the skill alone', () => {
+test('--only skill in an empty directory writes package.json and the skill alone', async () => {
   const directory = emptyNotes();
-  expect(loom(directory, ['init', '--only', 'skill'])).toEqual({
+  await expect(loom(directory, ['init', '--only', 'skill'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `Wrote package.json.\nWrote ${skillPath}.\n`,
@@ -491,12 +507,13 @@ test('--only skill in an empty directory writes package.json and the skill alone
   expect([...snapshot(directory).keys()].toSorted()).toEqual([skillPath, 'package.json']);
 });
 
-test('an empty directory inside a package scaffolds there and leaves the outer package.json byte-identical', () => {
+test('an empty directory inside a package scaffolds there and leaves the outer package.json byte-identical', async () => {
   const root = ownPackage();
   const outer = read(root, 'package.json');
   const directory = join(root, 'tools', 'notes');
   mkdirSync(directory, { recursive: true });
-  expect(loom(directory, ['init', '--only', 'package']).stdout).toBe(
+  const runResult = await loom(directory, ['init', '--only', 'package']);
+  expect(runResult.stdout).toBe(
     [
       'Wrote package.json.',
       'Added bin to package.json.',
@@ -529,10 +546,10 @@ function isExecutable(path: string) {
   return (statSync(path).mode & 0o777) === 0o755;
 }
 
-test('--only install writes install.sh alone, executable, with the shell header, the name, and the repository', () => {
+test('--only install writes install.sh alone, executable, with the shell header, the name, and the repository', async () => {
   const root = repositoryPackage('me/notes');
   const before = snapshot(root);
-  expect(loom(root, ['init', '--only', 'install'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'install'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'Wrote install.sh.\n',
@@ -548,20 +565,20 @@ test('--only install writes install.sh alone, executable, with the shell header,
   expect(after).toEqual(before);
 });
 
-test('a full init in a package with a GitHub repository writes install.sh after the skill', () => {
+test('a full init in a package with a GitHub repository writes install.sh after the skill', async () => {
   const root = repositoryPackage('git+https://github.com/me/notes.git');
-  const { stdout } = loom(root, ['init']);
+  const { stdout } = await loom(root, ['init']);
   expect(stdout.endsWith(`Wrote ${skillPath}.\nWrote install.sh.\n`)).toBe(true);
 });
 
-test('after repository changes, init re-renders an unedited install.sh with the new repository and keeps it executable', () => {
+test('after repository changes, init re-renders an unedited install.sh with the new repository and keeps it executable', async () => {
   const root = repositoryPackage('me/notes');
-  loom(root, ['init', '--only', 'install']);
+  await loom(root, ['init', '--only', 'install']);
   writeFileSync(
     join(root, 'package.json'),
     `${JSON.stringify({ name: 'notes', repository: 'me/jot', type: 'module' })}\n`,
   );
-  expect(loom(root, ['init', '--only', 'install'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'install'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'Wrote install.sh.\n',
@@ -570,17 +587,18 @@ test('after repository changes, init re-renders an unedited install.sh with the 
   expect(isExecutable(join(root, 'install.sh'))).toBe(true);
 });
 
-test('an edited install.sh draws the drift warning from init, and --force re-renders it executable', () => {
+test('an edited install.sh draws the drift warning from init, and --force re-renders it executable', async () => {
   const root = repositoryPackage('me/notes');
   const edited = `${renderManaged(installerScript('notes', 'me/notes'))}# An edit.\n`;
   put(root, 'install.sh', edited);
-  expect(loom(root, ['init', '--only', 'install'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'install'])).resolves.toEqual({
     status: 0,
     stderr: warning('install.sh'),
     stdout: '',
   });
   expect(read(root, 'install.sh')).toBe(edited);
-  expect(loom(root, ['init', '--only', 'install', '--force']).stdout).toBe('Wrote install.sh.\n');
+  const runResult = await loom(root, ['init', '--only', 'install', '--force']);
+  expect(runResult.stdout).toBe('Wrote install.sh.\n');
   expect(read(root, 'install.sh')).toBe(renderManaged(installerScript('notes', 'me/notes')));
   expect(isExecutable(join(root, 'install.sh'))).toBe(true);
 });
@@ -592,9 +610,9 @@ test.each([
   ['a repository that cannot be read', 'https://example.com/'],
 ])(
   'with %s, init writes no install.sh, prints the warning that names repository, and exits 0',
-  (_case, repository) => {
+  async (_case, repository) => {
     const root = repositoryPackage(repository);
-    expect(loom(root, ['init', '--only', 'install'])).toEqual({
+    await expect(loom(root, ['init', '--only', 'install'])).resolves.toEqual({
       status: 0,
       stderr: noRepository,
       stdout: '',
@@ -603,14 +621,14 @@ test.each([
   },
 );
 
-test('an install.sh whose #! line was edited keeps its header and draws the drift warning from init', () => {
+test('an install.sh whose #! line was edited keeps its header and draws the drift warning from init', async () => {
   const root = repositoryPackage('me/notes');
   const edited = renderManaged(installerScript('notes', 'me/notes')).replace(
     /^#!\/bin\/sh\n/u,
     '#!/usr/bin/env sh\n',
   );
   put(root, 'install.sh', edited);
-  expect(loom(root, ['init', '--only', 'install'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'install'])).resolves.toEqual({
     status: 0,
     stderr: warning('install.sh'),
     stdout: '',
@@ -643,13 +661,15 @@ export const notes = new Application('notes', {
 `;
 }
 
-test('on a re-run where the entry and the test exist, init reads the post-install declaration into install.sh', () => {
+test('on a re-run where the entry and the test exist, init reads the post-install declaration into install.sh', async () => {
   const root = installPackage({
     'src/application.test.ts': '// The test.\n',
     'src/application.ts': declaring("{ command: ['setup'], message: 'Run notes init next.' }"),
     'src/main.ts': '// The entry.\n',
   });
-  expect(loom(root, ['init', '--only', 'entry', '--only', 'test', '--only', 'install'])).toEqual({
+  await expect(
+    loom(root, ['init', '--only', 'entry', '--only', 'test', '--only', 'install']),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'Wrote install.sh.\n',
@@ -661,9 +681,10 @@ test('on a re-run where the entry and the test exist, init reads the post-instal
   );
 });
 
-test('a package with no application module gets install.sh with no post-install step', () => {
+test('a package with no application module gets install.sh with no post-install step', async () => {
   const root = installPackage({});
-  expect(loom(root, ['init', '--only', 'install']).stdout).toBe('Wrote install.sh.\n');
+  const runResult = await loom(root, ['init', '--only', 'install']);
+  expect(runResult.stdout).toBe('Wrote install.sh.\n');
   expect(read(root, 'install.sh')).toBe(renderManaged(installerScript('notes', 'me/notes')));
 });
 
@@ -685,12 +706,16 @@ test.each([
   ],
 ] as const)(
   'an application module that %s draws its warning, writes no install.sh, and leaves an existing one alone',
-  (_case, files, links, stderr) => {
+  async (_case, files, links, stderr) => {
     const fresh = installPackage(files, links);
-    expect(loom(fresh, ['init', '--only', 'install'])).toEqual({ status: 0, stderr, stdout: '' });
+    await expect(loom(fresh, ['init', '--only', 'install'])).resolves.toEqual({
+      status: 0,
+      stderr,
+      stdout: '',
+    });
     expect(existsSync(join(fresh, 'install.sh'))).toBe(false);
     const existing = installPackage({ ...files, 'install.sh': earlierScript }, links);
-    expect(loom(existing, ['init', '--only', 'install'])).toEqual({
+    await expect(loom(existing, ['init', '--only', 'install'])).resolves.toEqual({
       status: 0,
       stderr,
       stdout: '',
@@ -712,9 +737,9 @@ test.each([
   ],
 ])(
   'a declaration fault %s prints its Developer Diagnostic, writes no install.sh, and exits 1 once the other pieces are written',
-  (_case, module, rule) => {
+  async (_case, module, rule) => {
     const root = installPackage({ 'install.sh': earlierScript, 'src/application.ts': module });
-    const result = loom(root, ['init', '--only', 'changes', '--only', 'install']);
+    const result = await loom(root, ['init', '--only', 'changes', '--only', 'install']);
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('Wrote .changes/README.md.\n');
     expect(result.stderr).toMatch(
@@ -758,9 +783,10 @@ const toolingCases = [
 
 test.each(toolingCases)(
   'init $flags writes the lint file, the test, and the check script of that pair',
-  ({ check, flags, lintFile, lintText, testImport }) => {
+  async ({ check, flags, lintFile, lintText, testImport }) => {
     const directory = emptyNotes();
-    expect(loom(directory, ['init', ...flags]).status).toBe(0);
+    const runResult = await loom(directory, ['init', ...flags]);
+    expect(runResult.status).toBe(0);
     expect(read(directory, lintFile)).toBe(lintText);
     const text = read(directory, testPath);
     expect(text).toContain(`${testImport}\n`);
@@ -787,9 +813,9 @@ test('the oxlint file holds the configuration @loomcli/eslint-plugin ships, and 
   expect(eslintConfig('src')).toContain('...loom.configs.recommended');
 });
 
-test('the test file opens its test with the comment that says to keep it', () => {
+test('the test file opens its test with the comment that says to keep it', async () => {
   const directory = emptyNotes();
-  loom(directory, ['init']);
+  await loom(directory, ['init']);
   expect(read(directory, testPath)).toBe(`/// <reference types="bun" />
 import { test } from 'bun:test';
 import { assertAssembles } from '@loomcli/testing';
@@ -804,18 +830,19 @@ test('the application assembles', () => {
 `);
 });
 
-test('a test for an application exported as default imports it by the entry identifier', () => {
+test('a test for an application exported as default imports it by the entry identifier', async () => {
   const root = ownPackage({ 'src/application.ts': authored('export default application;') });
-  expect(loom(root, ['init', '--only', 'test']).stdout).toBe(`Wrote ${testPath}.\n`);
+  const runResult = await loom(root, ['init', '--only', 'test']);
+  expect(runResult.stdout).toBe(`Wrote ${testPath}.\n`);
   expect(read(root, testPath)).toContain("import probe from './application.js';");
   expect(read(root, testPath)).toContain('assertAssembles(probe);');
 });
 
-test('an unnamed option value is an option error that names the choices', () => {
-  const linter = loom(emptyNotes(), ['init', '--linter', 'biome']);
+test('an unnamed option value is an option error that names the choices', async () => {
+  const linter = await loom(emptyNotes(), ['init', '--linter', 'biome']);
   expect(linter.status).toBe(2);
   expect(linter.stderr).toContain('Use oxlint or eslint.');
-  const runner = loom(emptyNotes(), ['init', '--test-runner', 'jest']);
+  const runner = await loom(emptyNotes(), ['init', '--test-runner', 'jest']);
   expect(runner.status).toBe(2);
   expect(runner.stderr).toContain('Use bun or vitest.');
 });
@@ -827,9 +854,9 @@ test.each([
   ['eslint.config.ts'],
   ['eslint.config.mts'],
   ['eslint.config.cts'],
-])('a package with %s uses ESLint and writes no lint file', (config) => {
+])('a package with %s uses ESLint and writes no lint file', async (config) => {
   const root = ownPackage({ [config]: 'export default [];\n' });
-  const result = loom(root, ['init']);
+  const result = await loom(root, ['init']);
   expect(result.stdout).not.toContain('Wrote .oxlintrc.json.');
   expect(result.stdout).not.toContain('Wrote eslint.config.js.');
   expect(read(root, config)).toBe('export default [];\n');
@@ -842,9 +869,9 @@ test.each([
   expect(manifest.devDependencies).not.toHaveProperty('oxlint');
 });
 
-test('a package with .oxlintrc.json uses oxlint and keeps the file', () => {
+test('a package with .oxlintrc.json uses oxlint and keeps the file', async () => {
   const root = ownPackage({ '.oxlintrc.json': '{}\n' });
-  loom(root, ['init']);
+  await loom(root, ['init']);
   expect(read(root, '.oxlintrc.json')).toBe('{}\n');
   expect(JSON.parse(read(root, 'package.json')).scripts.check).toBe(
     'tsc --noEmit && oxlint src && bun test',
@@ -854,32 +881,36 @@ test('a package with .oxlintrc.json uses oxlint and keeps the file', () => {
 
 test.each(['.oxlintrc.jsonc', 'oxlint.config.ts', 'oxlint.config.mts'])(
   'a package with %s uses oxlint and init writes no second oxlint file, which oxlint refuses to run beside',
-  (config) => {
+  async (config) => {
     const root = ownPackage({ [config]: '{}\n' });
-    const result = loom(root, ['init']);
+    const result = await loom(root, ['init']);
     expect(result.stdout).not.toContain('.oxlintrc.json');
     expect(existsSync(join(root, '.oxlintrc.json'))).toBe(false);
     expect(existsSync(join(root, 'eslint.config.js'))).toBe(false);
-    expect(loom(root, ['init', '--only', 'lint'])).toEqual({ status: 0, stderr: '', stdout: '' });
+    await expect(loom(root, ['init', '--only', 'lint'])).resolves.toEqual({
+      status: 0,
+      stderr: '',
+      stdout: '',
+    });
     expect(JSON.parse(read(root, 'package.json')).scripts.check).toBe(
       'tsc --noEmit && oxlint src && bun test',
     );
   },
 );
 
-test('a package that declares @types/bun uses Bun', () => {
+test('a package that declares @types/bun uses Bun', async () => {
   const manifest = `${JSON.stringify({ devDependencies: { '@types/bun': '^1.0.0' }, name: 'probe', type: 'module' }, undefined, 2)}\n`;
   const root = ownPackage({ 'package.json': manifest });
-  loom(root, ['init']);
+  await loom(root, ['init']);
   const { devDependencies, scripts } = JSON.parse(read(root, 'package.json'));
   expect(scripts.check).toBe('tsc --noEmit && oxlint src && bun test');
   expect(devDependencies).not.toHaveProperty('vitest');
 });
 
-test('a --test-runner the operator supplies wins over a vitest dependency the package holds', () => {
+test('a --test-runner the operator supplies wins over a vitest dependency the package holds', async () => {
   const manifest = `${JSON.stringify({ devDependencies: { vitest: '^5.0.0' }, name: 'probe', type: 'module' }, undefined, 2)}\n`;
   const root = ownPackage({ 'package.json': manifest });
-  loom(root, ['init', '--test-runner', 'bun']);
+  await loom(root, ['init', '--test-runner', 'bun']);
   expect(JSON.parse(read(root, 'package.json')).scripts.check).toBe(
     'tsc --noEmit && oxlint src && bun test',
   );
@@ -888,10 +919,10 @@ test('a --test-runner the operator supplies wins over a vitest dependency the pa
 
 test.each(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'])(
   'a package that declares vitest under %s uses vitest',
-  (group) => {
+  async (group) => {
     const manifest = `${JSON.stringify({ [group]: { vitest: '^5.0.0' }, name: 'probe', type: 'module' }, undefined, 2)}\n`;
     const root = ownPackage({ 'package.json': manifest });
-    loom(root, ['init']);
+    await loom(root, ['init']);
     expect(JSON.parse(read(root, 'package.json')).scripts.check).toBe(
       'tsc --noEmit && oxlint src && vitest run',
     );
@@ -899,24 +930,24 @@ test.each(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDepen
   },
 );
 
-test('a flag the operator supplies wins over the lint configuration the package holds', () => {
+test('a flag the operator supplies wins over the lint configuration the package holds', async () => {
   const root = ownPackage({ '.oxlintrc.json': '{}\n' });
-  loom(root, ['init', '--linter', 'eslint']);
+  await loom(root, ['init', '--linter', 'eslint']);
   expect(read(root, 'eslint.config.js')).toBe(eslintConfig('src'));
   expect(JSON.parse(read(root, 'package.json')).scripts.check).toBe(
     'tsc --noEmit && eslint . && bun test',
   );
 });
 
-test('--only test writes the test alone and --only lint writes the lint file alone', () => {
+test('--only test writes the test alone and --only lint writes the lint file alone', async () => {
   const root = ownPackage();
   const before = snapshot(root);
-  expect(loom(root, ['init', '--only', 'test'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'test'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `Wrote ${testPath}.\n`,
   });
-  expect(loom(root, ['init', '--only', 'lint'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'lint'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'Wrote .oxlintrc.json.\n',
@@ -927,17 +958,21 @@ test('--only test writes the test alone and --only lint writes the lint file alo
   expect(after).toEqual(before);
 });
 
-test('a re-run never overwrites the test or the lint file', () => {
+test('a re-run never overwrites the test or the lint file', async () => {
   const root = ownPackage({ [testPath]: 'export {};\n', '.oxlintrc.json': '{}\n' });
-  loom(root, ['init']);
+  await loom(root, ['init']);
   const before = snapshot(root);
-  expect(loom(root, ['init', '--force'])).toEqual({ status: 0, stderr: noRepository, stdout: '' });
+  await expect(loom(root, ['init', '--force'])).resolves.toEqual({
+    status: 0,
+    stderr: noRepository,
+    stdout: '',
+  });
   expect(snapshot(root)).toEqual(before);
   expect(read(root, testPath)).toBe('export {};\n');
   expect(read(root, '.oxlintrc.json')).toBe('{}\n');
 });
 
-test('a test for an application that cannot be loaded draws the warning and no file', () => {
+test('a test for an application that cannot be loaded draws the warning and no file', async () => {
   const root = fixturePackage(
     {
       'package.json': ownManifest,
@@ -945,7 +980,7 @@ test('a test for an application that cannot be loaded draws the warning and no f
     },
     [],
   );
-  expect(loom(root, ['init', '--only', 'test'])).toEqual({
+  await expect(loom(root, ['init', '--only', 'test'])).resolves.toEqual({
     status: 0,
     stderr: `warning: ${testPath} was not written because src/application.ts could not be loaded: @loomcli/core does not resolve from the package, so install it before init reads src/application.ts. Install the package and run loom init again, or write the test by hand.\n`,
     stdout: '',
@@ -1020,7 +1055,8 @@ test('at a terminal supplied flags, --no-input, and an init that writes nothing 
 
 test('at a terminal a re-run of a Bun scaffold asks no question', async () => {
   const directory = emptyNotes();
-  expect(loom(directory, ['init']).status).toBe(0);
+  const runResult = await loom(directory, ['init']);
+  expect(runResult.status).toBe(0);
   const tty = atTerminal(directory);
   try {
     await expect(tty.expect('warning: install.sh was not written')).resolves.not.toContain('Which');
@@ -1053,9 +1089,9 @@ test('at a terminal the runner question is asked when the test file is missing',
   expect(read(root, testPath)).toContain("import { test } from 'vitest';");
 });
 
-test('an ESLint scaffold aliases typescript to the TypeScript 6 package and adds the compiler as @typescript/native', () => {
+test('an ESLint scaffold aliases typescript to the TypeScript 6 package and adds the compiler as @typescript/native', async () => {
   const directory = emptyNotes();
-  loom(directory, ['init', '--linter', 'eslint', '--test-runner', 'vitest']);
+  await loom(directory, ['init', '--linter', 'eslint', '--test-runner', 'vitest']);
   expect(JSON.parse(read(directory, 'package.json')).devDependencies).toEqual({
     '@loomcli/eslint-plugin': version,
     '@loomcli/loom': version,
@@ -1068,9 +1104,9 @@ test('an ESLint scaffold aliases typescript to the TypeScript 6 package and adds
   });
 });
 
-test('an ESLint scaffold in a package that pins its own typescript keeps that key and adds no second compiler', () => {
+test('an ESLint scaffold in a package that pins its own typescript keeps that key and adds no second compiler', async () => {
   const root = ownPackage({ 'package.json': ownTypedManifest });
-  loom(root, ['init', '--linter', 'eslint']);
+  await loom(root, ['init', '--linter', 'eslint']);
   const { devDependencies } = JSON.parse(read(root, 'package.json'));
   expect(devDependencies.typescript).toBe('~5.9.0');
   expect(devDependencies).not.toHaveProperty('@typescript/native');
@@ -1080,14 +1116,13 @@ test('an ESLint scaffold in a package that pins its own typescript keeps that ke
 const plainTypescriptWarning = (range: string) =>
   `warning: package.json declares typescript as ${range}, and typescript-eslint supports TypeScript below 6.1, so eslint . fails on TypeScript 7. Set typescript to npm:@typescript/typescript6@${toolRanges['@typescript/typescript6']} and add @typescript/native as npm:typescript@${range}, which keeps tsc on your compiler. See https://github.com/dbtlr/loomcli/blob/main/docs/libs/eslint-plugin.md.\n`;
 
-test('ESLint over a plain typescript key draws one warning that names the alias and the guide', () => {
+test('ESLint over a plain typescript key draws one warning that names the alias and the guide', async () => {
   const root = ownPackage({ 'package.json': ownTypedManifest });
-  expect(loom(root, ['init', '--linter', 'eslint']).stderr).toBe(
-    `${plainTypescriptWarning('~5.9.0')}${noRepository}`,
-  );
+  const runResult = await loom(root, ['init', '--linter', 'eslint']);
+  expect(runResult.stderr).toBe(`${plainTypescriptWarning('~5.9.0')}${noRepository}`);
 });
 
-test('ESLint over the typescript alias, and oxlint over a plain typescript key, draw no such warning', () => {
+test('ESLint over the typescript alias, and oxlint over a plain typescript key, draw no such warning', async () => {
   const aliased = `${JSON.stringify(
     {
       devDependencies: { typescript: 'npm:@typescript/typescript6@^6.0.2' },
@@ -1098,14 +1133,21 @@ test('ESLint over the typescript alias, and oxlint over a plain typescript key, 
     undefined,
     2,
   )}\n`;
-  expect(loom(ownPackage({ 'package.json': aliased }), ['init', '--linter', 'eslint']).stderr).toBe(
-    noRepository,
-  );
-  expect(
-    loom(ownPackage({ 'package.json': ownTypedManifest }), ['init', '--linter', 'oxlint']).stderr,
-  ).toBe(noRepository);
+  const runResult = await loom(ownPackage({ 'package.json': aliased }), [
+    'init',
+    '--linter',
+    'eslint',
+  ]);
+  expect(runResult.stderr).toBe(noRepository);
+  const runResult2 = await loom(ownPackage({ 'package.json': ownTypedManifest }), [
+    'init',
+    '--linter',
+    'oxlint',
+  ]);
+  expect(runResult2.stderr).toBe(noRepository);
 });
 
-test('a new ESLint scaffold draws no typescript warning', () => {
-  expect(loom(emptyNotes(), ['init', '--linter', 'eslint']).stderr).toBe(noRepository);
+test('a new ESLint scaffold draws no typescript warning', async () => {
+  const runResult = await loom(emptyNotes(), ['init', '--linter', 'eslint']);
+  expect(runResult.stderr).toBe(noRepository);
 });

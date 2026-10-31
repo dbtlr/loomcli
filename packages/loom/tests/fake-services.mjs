@@ -1,5 +1,5 @@
 // A fake npm registry and GitHub API for the release command tests.
-// It runs as its own process because the tests spawn the CLI synchronously, which blocks their own event loop.
+// Its event loop stays independent of the real git and pnpm programs the fixtures run.
 // It serves the registry under /registry, the GitHub API under /github, and reports every write it received at /state.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -7,6 +7,9 @@ import { createServer } from 'node:http';
 
 const state = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const writes = [];
+let tarballRequests = 0;
+// The packument requests the registry received and held without answering.
+let heldPackumentRequests = 0;
 
 function assetName(name, version) {
   return `${name.replace(/^@/u, '').replace('/', '-')}-${version}.tgz`;
@@ -113,6 +116,7 @@ function registry(request, response, path, host) {
     return;
   }
   if (path.startsWith('/tarballs/')) {
+    tarballRequests += 1;
     const file = path.slice('/tarballs/'.length);
     const found = Object.entries(state.packages).find(
       ([name]) => assetName(name, state.version) === file,
@@ -143,6 +147,7 @@ function registry(request, response, path, host) {
   }
   if (entry.stalls > 0) {
     entry.stalls -= 1;
+    heldPackumentRequests += 1;
     // The endpoint holds the connection and never answers, so the client's own deadline ends the request.
     return;
   }
@@ -272,7 +277,7 @@ const server = createServer(async (request, response) => {
   try {
     const raw = await collect(request);
     if (url.pathname === '/state') {
-      send(response, 200, { writes });
+      send(response, 200, { heldPackumentRequests, tarballRequests, writes });
     } else if (url.pathname.startsWith('/registry/')) {
       registry(request, response, url.pathname.slice('/registry'.length), host);
     } else if (url.pathname.startsWith('/github/uploads/')) {

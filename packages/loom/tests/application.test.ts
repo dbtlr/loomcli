@@ -2,12 +2,16 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { expect, test } from 'vite-plus/test';
+import { afterEach, expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
 import { invoke } from '../../../scripts/test-process.js';
 import { loom } from '../src/application.js';
 import { pnpmManifestPath } from '../src/helpers/release-files.js';
+import { removeRoots } from './fixture.js';
+import { run } from './run.js';
+
+afterEach(removeRoots);
 
 test('build, init, and the changelog are public while the release commands stay hidden', () => {
   const children = loom.inspect().root.children.map(({ hidden, name }) => ({ hidden, name }));
@@ -20,10 +24,8 @@ test('build, init, and the changelog are public while the release commands stay 
   ]);
 });
 
-const cli = new URL('../dist/main.js', import.meta.url);
-
-test('--help lists build, init, and the changelog and advertises no release command', () => {
-  const result = invoke(cli, ['--help']);
+test('--help lists build, init, and the changelog and advertises no release command', async () => {
+  const result = await run(['--help']);
   expect(result.status).toBe(0);
   expect(result.stdout).toMatch(/^ {2}build +/mu);
   expect(result.stdout).toMatch(/^ {2}changelog +/mu);
@@ -32,8 +34,8 @@ test('--help lists build, init, and the changelog and advertises no release comm
   expect(result.stdout).not.toMatch(/^ {2}(?:pr|release) +/mu);
 });
 
-test('--help prints the help page of the routed release Command', () => {
-  const result = invoke(cli, ['release', 'plan', '--help']);
+test('--help prints the help page of the routed release Command', async () => {
+  const result = await run(['release', 'plan', '--help']);
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('loom release plan');
   expect(result.stderr).toBe('');
@@ -83,10 +85,10 @@ test("changelog check loads its own work and no other command's", () => {
   ]);
 });
 
-test('--version prints the version of the @loomcli/loom package', () => {
+test('--version prints the version of the @loomcli/loom package', async () => {
   const manifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
   const { version } = z.object({ version: z.string() }).parse(JSON.parse(manifest));
-  const result = invoke(cli, ['--version']);
+  const result = await run(['--version']);
   expect(result.status).toBe(0);
   expect(result.stdout).toBe(`loom v${version}\n`);
 });
