@@ -29,6 +29,20 @@ const configVariableName = diagnosticRule(`${packageName}/config/variable-name`,
   headline: 'Invalid configuration variable name',
 });
 
+/** A configuration plugin `root` marker that is not one path segment. */
+const configRootName = diagnosticRule(`${packageName}/config/root-name`, {
+  explanation:
+    "The configuration plugin's project walk checks each directory it looks in for an entry of each root marker's name, so a marker names one entry: it is nonempty, holds no slash or backslash, and is neither . nor ..",
+  headline: 'Invalid configuration root marker',
+});
+
+/** A configuration plugin `root` marker beside scopes that never walk the project. */
+const configRootWithoutProject = diagnosticRule(`${packageName}/config/root-without-project`, {
+  explanation:
+    'A root marker bounds the project walk, and a scopes list without project reads the home file and the user file alone, so the marker would bound nothing and its setting would say something the lookup never does.',
+  headline: 'Configuration root marker without the project scope',
+});
+
 /** A configuration schema that rejects an empty file, which the types cannot see. */
 const configEmptyFile = diagnosticRule(`${packageName}/config/empty-file`, {
   explanation:
@@ -148,6 +162,8 @@ export {
   configFilePattern,
   configLinkPath,
   configLinkType,
+  configRootName,
+  configRootWithoutProject,
   configVariableName,
   failureCodeConflict,
   manpagePageNameTaken,

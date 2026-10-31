@@ -5,6 +5,7 @@ import {
   followConstant,
   importedName,
   importOf,
+  isConfigurationCallee,
   isNode,
   positionalArguments,
   readProperty,
@@ -24,9 +25,6 @@ import { ruleUrl } from '../docs.js';
  * is no strict object, such as `.loose()`, and at a function that runs on the parsed value, such
  * as a `refine` callback.
  */
-
-/** The module the configuration plugin is imported from. */
-const configModule = '@loomcli/plugins/config';
 
 /** The specifiers that load zod: version 4 classic and mini, and version 3. */
 const zodModules: ReadonlySet<string> = new Set([
@@ -128,29 +126,6 @@ function isStrictObject(sourceCode: SourceCode, call: CallExpression): boolean {
     callee.property.type === 'Identifier' &&
     callee.property.name === 'strict' &&
     isZodSchema(sourceCode, callee.object, new Set())
-  );
-}
-
-/** Whether a callee is `configuration` from the configuration plugin, by name or through a namespace. */
-function isConfigurationCallee(sourceCode: SourceCode, callee: Node): boolean {
-  if (callee.type === 'Identifier') {
-    const imported = importOf(sourceCode, callee);
-    return (
-      imported?.source === configModule && importedName(imported.specifier) === 'configuration'
-    );
-  }
-  if (
-    callee.type !== 'MemberExpression' ||
-    callee.computed ||
-    callee.object.type !== 'Identifier' ||
-    callee.property.type !== 'Identifier' ||
-    callee.property.name !== 'configuration'
-  ) {
-    return false;
-  }
-  const imported = importOf(sourceCode, callee.object);
-  return (
-    imported?.source === configModule && imported.specifier.type === 'ImportNamespaceSpecifier'
   );
 }
 

@@ -6,6 +6,7 @@ import type { Removal, Step } from './drop.js';
 import { findFile } from './lookup.js';
 import type { UsableFile } from './lookup.js';
 import { withoutPointer } from './pointer.js';
+import type { Reach } from './scopes.js';
 
 /**
  * What the source and the provider of one `configuration()` call share: the lookup, the read, and
@@ -21,6 +22,8 @@ interface Shared<Schema extends StandardSchemaV1> {
   /** The variable that names the configuration file, when the settings name one. */
   readonly env: string | undefined;
   readonly notice: boolean;
+  /** The scopes the lookup reads and the markers that end its walk. */
+  readonly reach: Reach;
   readonly schema: Schema;
   /** The result each run read, by the run's host. */
   readonly reads: WeakMap<Host, Promise<Loaded<Schema>>>;
@@ -91,6 +94,7 @@ async function load<Schema extends StandardSchemaV1>(
       invokedBy,
       named: stringOption(options, 'config'),
       notice: shared.notice,
+      reach: shared.reach,
     },
     { out, style },
   );

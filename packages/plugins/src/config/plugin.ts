@@ -15,6 +15,8 @@ import { configIdentity as identity } from './names.js';
 import { envVariable, fileCandidates } from './pattern.js';
 import { pointerListingSchema } from './pointer.js';
 import type { EmptyFileGuard } from './schema-types.js';
+import { judgeReach } from './scopes.js';
+import type { ScopeSettings } from './scopes.js';
 import type { Loaded } from './shared.js';
 
 const options = {
@@ -53,9 +55,12 @@ type ConfigOptions<Directory extends string = never> = typeof options &
 
 /**
  * What an application tells the configuration plugin: the schema of its file, the file it looks
- * for, and how an operator points the lookup elsewhere.
+ * for, the scopes it looks in, and how an operator points the lookup elsewhere.
  */
-interface ConfigurationSettings<Schema extends StandardSchemaV1, Directory extends string = never> {
+interface ConfigurationSettings<
+  Schema extends StandardSchemaV1,
+  Directory extends string = never,
+> extends ScopeSettings {
   /** One Standard Schema for the whole file. Every key is optional outside an array item or a record value. */
   readonly schema: Schema & EmptyFileGuard<Schema>;
   /** The configuration file's name or relative path, a file pattern. Defaults to `.<app>.json`. */
@@ -124,9 +129,10 @@ interface Configuration<Schema extends StandardSchemaV1, Directory extends strin
  * plugin answers the configuration tier from one JSON, TOML, or YAML file per run, and from none
  * under `--no-config`: the file `--config` names, or else the file the settings' `env` variable
  * names, or else the first found of the settings' `file` in the walk from the start directory up to
- * the home directory, in the home directory, and in the user folder. The provider hands
- * application code the schema's output for that file, after the plugin has dropped every value the
- * schema rejects. The call judges the settings' `file` and `env`, which it reads once. The resolver
+ * the directory below home, or to the root marker, in the home directory, and in the user folder,
+ * each step read only under the scope the settings choose. The provider hands application code the
+ * schema's output for that file, after the plugin has dropped every value the schema rejects. The
+ * call judges the settings' `file`, `env`, `root`, and `scopes`, which it reads once. The resolver
  * and the opener load only when core calls them, and they share one read per run, keyed by the
  * run's host.
  */
@@ -139,6 +145,7 @@ function configuration<
     directory: settings.directory?.name,
     env: envVariable(settings),
     notice: settings.notice === true,
+    reach: judgeReach(settings),
     reads: new WeakMap<Host, Promise<Loaded<Schema>>>(),
     schema: settings.schema,
   };
@@ -173,3 +180,4 @@ export type {
   DirectorySetting,
 };
 export type { ConfigurationSchemaMustAcceptAnEmptyFile, EmptyFileGuard } from './schema-types.js';
+export type { Scope, ScopeSettings } from './scopes.js';

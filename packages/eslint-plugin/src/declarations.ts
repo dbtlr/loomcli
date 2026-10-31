@@ -19,6 +19,9 @@ import type {
 /** The package whose `Command` and `Application` constructors start a declaration. */
 const corePackage = '@loomcli/core';
 
+/** The module the configuration plugin is imported from. */
+const configModule = '@loomcli/plugins/config';
+
 /** The constructors of `@loomcli/core` that build a declaration. */
 const constructorNames: ReadonlySet<string> = new Set(['Application', 'Command']);
 
@@ -127,6 +130,29 @@ function importedName(specifier: ImportBinding): string | undefined {
   }
   const { imported } = specifier;
   return imported.type === 'Identifier' ? imported.name : String(imported.value);
+}
+
+/** Whether a callee is `configuration` from the configuration plugin, by name or through a namespace. */
+function isConfigurationCallee(sourceCode: SourceCode, callee: Node): boolean {
+  if (callee.type === 'Identifier') {
+    const imported = importOf(sourceCode, callee);
+    return (
+      imported?.source === configModule && importedName(imported.specifier) === 'configuration'
+    );
+  }
+  if (
+    callee.type !== 'MemberExpression' ||
+    callee.computed ||
+    callee.object.type !== 'Identifier' ||
+    callee.property.type !== 'Identifier' ||
+    callee.property.name !== 'configuration'
+  ) {
+    return false;
+  }
+  const imported = importOf(sourceCode, callee.object);
+  return (
+    imported?.source === configModule && imported.specifier.type === 'ImportNamespaceSpecifier'
+  );
 }
 
 /**
@@ -324,6 +350,7 @@ export {
   followConstant,
   importedName,
   importOf,
+  isConfigurationCallee,
   isNode,
   literalString,
   memberKey,

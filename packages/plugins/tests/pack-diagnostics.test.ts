@@ -75,6 +75,16 @@ const settingsCases: Record<string, Expected> = {
     rule: 'config/file-path',
     sentence: 'Plugin "@loomcli/plugins/config" file is not a relative path.',
   },
+  'config-root': {
+    correction: "Name an entry in the project's root directory, such as package.json or .git.",
+    rule: 'config/root-name',
+    sentence: 'Plugin "@loomcli/plugins/config" root is not a file name.',
+  },
+  'config-root-scope': {
+    correction: "Add 'project' to scopes, or remove root.",
+    rule: 'config/root-without-project',
+    sentence: 'Plugin "@loomcli/plugins/config" root bounds a project walk the lookup never takes.',
+  },
   'config-variable': {
     correction:
       'Name a variable such as COLLECTOR_CONFIG: a letter or an underscore, then letters, digits, or underscores.',
