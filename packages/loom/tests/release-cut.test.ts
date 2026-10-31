@@ -22,8 +22,8 @@ import {
 import { run } from './run.js';
 
 // Mock the named exports through the test runner; Bun does not synchronize builtin ESM exports.
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof fs>();
+vi.mock(import('node:fs'), async (importOriginal) => {
+  const actual = await importOriginal();
   return {
     ...actual,
     renameSync: vi.fn(actual.renameSync),
