@@ -1,9 +1,21 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { afterAll } from 'vite-plus/test';
+
 const roots: string[] = [];
+
+/** Pristine repositories live for the file; every test works on its own complete copy. */
+const templates = new Map<string, { base: string; root: string }>();
+
+afterAll(() => {
+  for (const { root } of templates.values()) {
+    rmSync(root, { force: true, recursive: true });
+  }
+  templates.clear();
+});
 
 // Creates a temporary directory that removeRoots() deletes when the test ends.
 export function temporaryRoot(prefix: string) {
@@ -46,23 +58,31 @@ export function commit(root: string, date?: string) {
   return git(root, ['rev-parse', 'HEAD']);
 }
 
-// Initializes a repository from the supplied files and commits them as its first commit.
+// Initializes each distinct starting history once, then copies it without sharing mutable Git state.
 export function repository(options: {
   files: Record<string, string>;
   prefix: string;
   tag?: string | undefined;
 }) {
+  const key = JSON.stringify({ files: options.files, tag: options.tag });
+  let template = templates.get(key);
+  if (template === undefined) {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), options.prefix)));
+    git(root, ['init', '-q']);
+    git(root, ['config', 'core.autocrlf', 'false']);
+    for (const [path, body] of Object.entries(options.files)) {
+      put(root, path, body);
+    }
+    const base = commit(root);
+    if (options.tag !== undefined) {
+      git(root, ['tag', options.tag]);
+    }
+    template = { base, root };
+    templates.set(key, template);
+  }
   const root = temporaryRoot(options.prefix);
-  git(root, ['init', '-q']);
-  git(root, ['config', 'core.autocrlf', 'false']);
-  for (const [path, body] of Object.entries(options.files)) {
-    put(root, path, body);
-  }
-  const base = commit(root);
-  if (options.tag !== undefined) {
-    git(root, ['tag', options.tag]);
-  }
-  return { base, root };
+  cpSync(template.root, root, { recursive: true });
+  return { base: template.base, root };
 }
 
 // A breaking fragment body with the change bullet and the five migration labels.

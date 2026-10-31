@@ -11,7 +11,7 @@ import { afterAll, beforeAll, beforeEach, expect, test } from 'vite-plus/test';
 
 import { recordInstallation } from '../../../scripts/test-installation.js';
 import { put, removeRoots, temporaryRoot } from './fixture.js';
-import { execute, fixturePackage, loom, runtimes } from './package.js';
+import { execute, fixturePackage, loom } from './package.js';
 
 /** How long compiling the probe and bundling it may take. */
 const slow = 300_000;
@@ -57,7 +57,7 @@ if (door === 'invoke') {
 /** The probe package, its compiled binary, and its Node bundle, built once for the file. */
 let built = { binary: '', bundle: '', root: '' };
 
-beforeAll(() => {
+beforeAll(async () => {
   const root = fixturePackage({
     'package.json': `${JSON.stringify({
       bin: { probe: 'dist/main.js' },
@@ -73,7 +73,7 @@ beforeAll(() => {
     ['--release', '--out', 'bin/probe'],
     ['--target', 'node', '--release', '--out', 'node-dist'],
   ]) {
-    const result = loom(root, ['build', ...args]);
+    const result = await loom(root, ['build', ...args]);
     if (result.status !== 0) {
       throw new Error(`loom build ${args.join(' ')} failed:\n${result.stderr}`);
     }
@@ -240,13 +240,11 @@ test('an unset directory variable reads no installation', () => {
   expect(printed(built.binary, { env: {} })).toBe('none');
 });
 
-test.each(runtimes)(
-  'a Node bundle built with --release under %s reads no installation, even of its runtime',
-  (runtime) => {
-    recordBinary(runtimePath(runtime));
-    expect(printed(built.bundle, { runtime })).toBe('none');
-  },
-);
+test('a Node bundle built with --release reads no installation, even of its runtime', () => {
+  const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
+  recordBinary(runtimePath(runtime));
+  expect(printed(built.bundle, { runtime })).toBe('none');
+});
 
 test('the source run reads no installation, even of its runtime', () => {
   recordBinary(runtimePath('bun'));

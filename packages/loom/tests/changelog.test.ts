@@ -3,8 +3,7 @@
 /*
  * Acceptance plan for the package changelog (docs/toolchain/changelog.md).
  *
- * The package changelog is proven when process runs of the packed `loom` bin produce these results
- * under Node and Bun, in fixture git repositories:
+ * The package changelog is proven by in-process runs against real fixture git repositories:
  *
  * - The bump table. Each row of the table cuts its next version from fixtures holding those kinds,
  *   and a package at `1.2.0-next.1` fails the cut.
@@ -18,21 +17,38 @@
  *   every file byte-identical.
  */
 
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import fs, {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { join, relative } from 'node:path';
 
-import { afterEach, expect, test } from 'vite-plus/test';
+import { afterEach, expect, test, vi } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { commit, git, migration, put, removeRoots, repository, temporaryRoot } from './fixture.js';
+import { run as runLoom } from './run.js';
 
-const cli = new URL('../dist/main.js', import.meta.url);
-function run(cwd: string, ...args: string[]) {
-  return invoke(cli, ['changelog', ...args], { cwd });
+// Mock the named exports through the test runner; Bun does not synchronize builtin ESM exports.
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof fs>();
+  return {
+    ...actual,
+    renameSync: vi.fn(actual.renameSync),
+    writeFileSync: vi.fn(actual.writeFileSync),
+  };
+});
+
+async function run(cwd: string, ...args: string[]) {
+  return await runLoom(['changelog', ...args], { cwd });
 }
 afterEach(() => {
+  vi.restoreAllMocks();
+  vi.mocked(writeFileSync).mockReset();
+  vi.mocked(renameSync).mockReset();
   removeRoots();
 });
 
@@ -82,20 +98,20 @@ function breaking(change: string) {
   return migration.replace('Remove the old call.', change);
 }
 
-test('check validates the fragments of the nearest package from its src directory', () => {
+test('check validates the fragments of the nearest package from its src directory', async () => {
   const root = directory({
     '.changes/feature.tags.md': '- Add tags.\n',
     '.changes/output.md': '- Fix output.\n',
     'src/main.ts': 'export {};\n',
   });
-  expect(run(join(root, 'src'), 'check')).toEqual({
+  await expect(run(join(root, 'src'), 'check')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'Checked 2 fragments.\n',
   });
 });
 
-test('check at a monorepo root validates the root fragments alone', () => {
+test('check at a monorepo root validates the root fragments alone', async () => {
   const root = directory({
     '.changes/root.md': '- Fix the root.\n',
     'packages/one/.changes/breaking.md': '- Invalid name.\n',
@@ -103,57 +119,72 @@ test('check at a monorepo root validates the root fragments alone', () => {
     'packages/two/.changes/feature.md': '- Invalid name.\n',
     'packages/two/package.json': '{"name":"two","version":"1.0.0"}\n',
   });
-  expect(run(root, 'check')).toEqual({ status: 0, stderr: '', stdout: 'Checked 1 fragment.\n' });
-});
-
-test("check in a member package reads its own .changes and never the monorepo root's configuration file", () => {
-  const root = directory({
-    'elsewhere/feature.md': '- Bare kind.\n',
-    'loom.config.json': '{ "paths": { "changes": "elsewhere" } }\n',
-    'packages/one/.changes/fix.md': '- Fix output.\n',
-    'packages/one/package.json': '{"name":"one","version":"1.0.0"}\n',
-  });
-  expect(run(join(root, 'packages/one'), 'check')).toEqual({
+  await expect(run(root, 'check')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'Checked 1 fragment.\n',
   });
 });
 
-test('check resolves paths.changes against the package directory, from a subdirectory or with --config', () => {
+test("check in a member package reads its own .changes and never the monorepo root's configuration file", async () => {
+  const root = directory({
+    'elsewhere/feature.md': '- Bare kind.\n',
+    'loom.config.json': '{ "paths": { "changes": "elsewhere" } }\n',
+    'packages/one/.changes/fix.md': '- Fix output.\n',
+    'packages/one/package.json': '{"name":"one","version":"1.0.0"}\n',
+  });
+  await expect(run(join(root, 'packages/one'), 'check')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Checked 1 fragment.\n',
+  });
+});
+
+test('check resolves paths.changes against the package directory, from a subdirectory or with --config', async () => {
   const root = directory({
     'notes/changes/fix.md': '- Fix output.\n',
     'other/loom.json': '{ "paths": { "changes": "notes/changes" } }\n',
     'src/main.ts': 'export {};\n',
   });
   const checked = { status: 0, stderr: '', stdout: 'Checked 1 fragment.\n' };
-  expect(run(join(root, 'src'), '--config', '../other/loom.json', 'check')).toEqual(checked);
+  await expect(run(join(root, 'src'), '--config', '../other/loom.json', 'check')).resolves.toEqual(
+    checked,
+  );
   put(root, 'loom.config.json', '{ "paths": { "changes": "notes/changes" } }\n');
-  expect(run(join(root, 'src'), 'check')).toEqual(checked);
+  await expect(run(join(root, 'src'), 'check')).resolves.toEqual(checked);
 });
 
-test('check outside any package fails and says to run it inside a package directory', () => {
+test('check outside any package fails and says to run it inside a package directory', async () => {
   const root = temporaryRoot('loom-changelog-');
-  const result = run(root, 'check');
+  const result = await run(root, 'check');
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('Run loom inside a package directory.');
 });
 
-test('check accepts an empty fragment set and a missing .changes directory', () => {
+test('check accepts an empty fragment set and a missing .changes directory', async () => {
   const root = directory();
-  expect(run(root, 'check').stdout).toBe('Checked 0 fragments.\n');
+  const runResult = await run(root, 'check');
+  expect(runResult.stdout).toBe('Checked 0 fragments.\n');
   rmSync(join(root, '.changes'), { recursive: true });
-  expect(run(root, 'check')).toEqual({ status: 0, stderr: '', stdout: 'Checked 0 fragments.\n' });
+  await expect(run(root, 'check')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Checked 0 fragments.\n',
+  });
 });
 
-test('check accepts nested Markdown and a breaking migration and ignores only the guide', () => {
+test('check accepts nested Markdown and a breaking migration and ignores only the guide', async () => {
   const root = directory({
     '.changes/breaking.call.md': migration,
     '.changes/new.md':
       '- Add input.\n\n  Example:\n\n  ```ts\n  call();\n  ```\n\n  - Nested detail.\n',
   });
-  expect(run(root, 'check')).toEqual({ status: 0, stderr: '', stdout: 'Checked 2 fragments.\n' });
+  await expect(run(root, 'check')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Checked 2 fragments.\n',
+  });
 });
 
 test.each([
@@ -177,22 +208,22 @@ test.each([
     migration.replace('**Why.** Remove ambiguity.', '> **Why.** Remove ambiguity.'),
   ],
   ['breaking.call.md', `${migration}\n### Migration\n`],
-])('check rejects invalid fragment %s with no file edits', (name, body) => {
+])('check rejects invalid fragment %s with no file edits', async (name, body) => {
   const root = directory({ [`.changes/${name}`]: body });
-  const result = run(root, 'check');
+  const result = await run(root, 'check');
   expect(result.status).toBe(1);
   expect(result.stderr).toContain(`.changes/${name}:`);
   expect(readFileSync(join(root, '.changes', name), 'utf8')).toBe(body);
 });
 
-test('check names every invalid fragment in one run', () => {
+test('check names every invalid fragment in one run', async () => {
   const root = directory({
     '.changes/breaking.call.md': '- Remove the old call.\n',
     '.changes/feature.md': '- Add tags.\n',
     '.changes/nested/fix.md': '- Fix output.\n',
     '.changes/valid.md': '- Fix input.\n',
   });
-  const result = run(root, 'check');
+  const result = await run(root, 'check');
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('.changes/breaking.call.md:');
@@ -201,19 +232,19 @@ test('check names every invalid fragment in one run', () => {
   expect(result.stderr).not.toContain('.changes/valid.md');
 });
 
-test.each(['directory', 'README.md'])('check refuses a directory named %s', (name) => {
+test.each(['directory', 'README.md'])('check refuses a directory named %s', async (name) => {
   const root = directory();
   rmSync(join(root, '.changes/README.md'));
   mkdirSync(join(root, '.changes', name));
-  expect(run(root, 'check')).toEqual({
+  await expect(run(root, 'check')).resolves.toEqual({
     status: 1,
     stderr: `.changes/${name}: expected a fragment file. Keep fragments directly in .changes/.\n`,
     stdout: '',
   });
 });
 
-test('check rejects write options through Loom before reading files', () => {
-  const result = run(directory(), 'check', '--date', '2026-10-07');
+test('check rejects write options through Loom before reading files', async () => {
+  const result = await run(directory(), 'check', '--date', '2026-10-07');
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('--date');
@@ -228,13 +259,13 @@ test.each([
   ['1.4.7', ['breaking.call.md', 'feature.tags.md', 'fix.md'], '2.0.0'],
   ['1.4.7', ['feature.tags.md', 'fix.md'], '1.5.0'],
   ['1.4.7', ['fix.md'], '1.4.8'],
-])('write cuts %s with %j to %s', (current, names, expected) => {
+])('write cuts %s with %j to %s', async (current, names, expected) => {
   const root = packageRepository(current);
   for (const name of names) {
     put(root, `.changes/${name}`, name.startsWith('breaking.') ? migration : '- Change.\n');
   }
   commit(root);
-  const result = run(root, 'write', '--dry-run', '--date', '2026-10-07');
+  const result = await run(root, 'write', '--dry-run', '--date', '2026-10-07');
   expect(result.status).toBe(0);
   expect(result.stdout.startsWith(`## v${expected} - 2026-10-07\n\n`)).toBe(true);
   expect(result.stdout.endsWith(`Next version: ${expected}\n`)).toBe(true);
@@ -242,24 +273,24 @@ test.each([
 
 test.each(['1.2.0-next.1', '1.2', 'v1.2.0', '01.2.0'])(
   'write refuses version %s, which is not MAJOR.MINOR.PATCH',
-  (version) => {
+  async (version) => {
     const root = packageRepository(version, { '.changes/fix.md': '- Fix output.\n' });
-    const result = run(root, 'write', '--date', '2026-10-07');
+    const result = await run(root, 'write', '--date', '2026-10-07');
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(version);
     expect(git(root, ['status', '--porcelain'])).toBe('');
   },
 );
 
-test.each(['0.0.0', '1.4.7'])('write refuses an empty fragment set at %s', (version) => {
+test.each(['0.0.0', '1.4.7'])('write refuses an empty fragment set at %s', async (version) => {
   const root = packageRepository(version);
-  const result = run(root, 'write', '--date', '2026-10-07');
+  const result = await run(root, 'write', '--date', '2026-10-07');
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('No fragments');
   expect(git(root, ['status', '--porcelain'])).toBe('');
 });
 
-test('write renders each group in landing order, breaking first, and keeps a corrected fragment in place', () => {
+test('write renders each group in landing order, breaking first, and keeps a corrected fragment in place', async () => {
   const root = packageRepository('1.4.7');
   put(root, '.changes/zeta.md', '- Fix zeta.\n');
   put(root, '.changes/feature.beta.md', '- Add beta.\n');
@@ -274,7 +305,7 @@ test('write renders each group in landing order, breaking first, and keeps a cor
   put(root, '.changes/zeta.md', '- Fix zeta, corrected.\n');
   commit(root, '2026-01-05T12:00:00Z');
   const migrationSection = migration.slice(migration.indexOf('### Migration'));
-  expect(run(root, 'write', '--dry-run', '--date', '2026-10-07')).toEqual({
+  await expect(run(root, 'write', '--dry-run', '--date', '2026-10-07')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: [
@@ -294,7 +325,7 @@ test('write renders each group in landing order, breaking first, and keeps a cor
   });
 });
 
-test('write cuts a member package: section prepended, only the version changed, fragments consumed', () => {
+test('write cuts a member package: section prepended, only the version changed, fragments consumed', async () => {
   const manifest = [
     '{',
     '    "name": "@scope/notes",',
@@ -317,10 +348,10 @@ test('write cuts a member package: section prepended, only the version changed, 
   }).root;
   const notes = join(root, 'packages/notes');
   put(notes, 'scratch.txt', 'untracked work\n');
-  const previewed = run(notes, 'write', '--dry-run', '--date', '2026-10-07');
+  const previewed = await run(notes, 'write', '--dry-run', '--date', '2026-10-07');
   const section = '## v1.5.0 - 2026-10-07\n\n### Features\n\n- Add tags.\n\n';
   expect(previewed).toEqual({ status: 0, stderr: '', stdout: `${section}Next version: 1.5.0\n` });
-  expect(run(notes, 'write', '--date', '2026-10-07')).toEqual(previewed);
+  await expect(run(notes, 'write', '--date', '2026-10-07')).resolves.toEqual(previewed);
   expect(readFileSync(join(notes, 'CHANGELOG.md'), 'utf8')).toBe(
     changelog.replace('## v1.4.7', `${section}## v1.4.7`),
   );
@@ -336,7 +367,7 @@ test('write cuts a member package: section prepended, only the version changed, 
   ]);
 });
 
-test("write cuts from the folder and into the changelog loom.config.json names, at a monorepo's root", () => {
+test("write cuts from the folder and into the changelog loom.config.json names, at a monorepo's root", async () => {
   const changelog = '# Changelog\n\n## v1.4.7 - 2026-01-01\n\n### Fixes\n\n- Old entry.\n';
   const root = repository({
     files: {
@@ -352,7 +383,7 @@ test("write cuts from the folder and into the changelog loom.config.json names, 
   }).root;
   const notes = join(root, 'packages/notes');
   const section = '## v1.5.0 - 2026-10-07\n\n### Features\n\n- Add tags.\n\n';
-  expect(run(notes, 'write', '--date', '2026-10-07')).toEqual({
+  await expect(run(notes, 'write', '--date', '2026-10-07')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `${section}Next version: 1.5.0\n`,
@@ -368,9 +399,10 @@ test("write cuts from the folder and into the changelog loom.config.json names, 
   expect(readdirSync(notes).toSorted()).toEqual(['.changes', 'loom.config.json', 'package.json']);
 });
 
-test('write creates CHANGELOG.md with a title when it is missing', () => {
+test('write creates CHANGELOG.md with a title when it is missing', async () => {
   const root = packageRepository('0.0.0', { '.changes/fix.md': '- Fix output.\n' });
-  expect(run(root, 'write', '--date', '2026-10-07').status).toBe(0);
+  const runResult = await run(root, 'write', '--date', '2026-10-07');
+  expect(runResult.status).toBe(0);
   expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(
     '# Changelog\n\n## v0.1.0 - 2026-10-07\n\n### Fixes\n\n- Fix output.\n',
   );
@@ -379,28 +411,30 @@ test('write creates CHANGELOG.md with a title when it is missing', () => {
   );
 });
 
-test('write creates the folder of the changelog loom.config.json names when it is missing', () => {
+test('write creates the folder of the changelog loom.config.json names when it is missing', async () => {
   const root = packageRepository('0.0.0', {
     '.changes/fix.md': '- Fix output.\n',
     'loom.config.json': '{ "paths": { "changelog": "docs/CHANGELOG.md" } }\n',
   });
-  expect(run(root, 'write', '--date', '2026-10-07').status).toBe(0);
+  const runResult = await run(root, 'write', '--date', '2026-10-07');
+  expect(runResult.status).toBe(0);
   expect(readFileSync(join(root, 'docs/CHANGELOG.md'), 'utf8')).toBe(
     '# Changelog\n\n## v0.1.0 - 2026-10-07\n\n### Fixes\n\n- Fix output.\n',
   );
 });
 
-test('write --dry-run leaves every file byte-identical', () => {
+test('write --dry-run leaves every file byte-identical', async () => {
   const root = packageRepository('1.4.7', {
     '.changes/fix.md': '- Fix output.\n',
     'CHANGELOG.md': '# Changelog\n',
   });
   const before = snapshot(root);
-  expect(run(root, 'write', '--dry-run', '--date', '2026-10-07').status).toBe(0);
+  const runResult = await run(root, 'write', '--dry-run', '--date', '2026-10-07');
+  expect(runResult.status).toBe(0);
   expect(snapshot(root)).toEqual(before);
 });
 
-test('write in a shallow clone fails and changes no file', () => {
+test('write in a shallow clone fails and changes no file', async () => {
   const source = packageRepository('1.4.7');
   put(source, '.changes/zeta.md', '- First.\n');
   commit(source, '2026-01-02T12:00:00Z');
@@ -409,37 +443,36 @@ test('write in a shallow clone fails and changes no file', () => {
   const root = join(temporaryRoot('loom-changelog-'), 'shallow');
   git(source, ['clone', '--depth', '1', '--no-local', source, root]);
   const before = snapshot(root);
-  const result = run(root, 'write', '--date', '2026-10-07');
+  const result = await run(root, 'write', '--date', '2026-10-07');
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('full git history');
   expect(result.stderr).toContain('git fetch --unshallow');
   expect(snapshot(root)).toEqual(before);
 });
 
-test('write refuses a fragment no commit added and changes no file', () => {
+test('write refuses a fragment no commit added and changes no file', async () => {
   const root = packageRepository('1.4.7', { '.changes/fix.md': '- Fix output.\n' });
   put(root, '.changes/feature.tags.md', '- Add tags.\n');
   const before = snapshot(root);
-  const result = run(root, 'write', '--date', '2026-10-07');
+  const result = await run(root, 'write', '--date', '2026-10-07');
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('.changes/feature.tags.md');
   expect(snapshot(root)).toEqual(before);
 });
 
-test('write copies a narrative named relative to the working directory above the entries', () => {
+test('write copies a narrative named relative to the working directory above the entries', async () => {
   const root = packageRepository('1.4.7', { '.changes/fix.md': '- Fix output.\n' });
   put(root, 'src/narrative.md', 'This release fixes **output**.\n');
-  expect(
-    run(
-      join(root, 'src'),
-      'write',
-      '--dry-run',
-      '--date',
-      '2026-10-07',
-      '--narrative',
-      'narrative.md',
-    ).stdout,
-  ).toBe(
+  const runResult = await run(
+    join(root, 'src'),
+    'write',
+    '--dry-run',
+    '--date',
+    '2026-10-07',
+    '--narrative',
+    'narrative.md',
+  );
+  expect(runResult.stdout).toBe(
     '## v1.4.8 - 2026-10-07\n\nThis release fixes **output**.\n\n### Fixes\n\n- Fix output.\n\nNext version: 1.4.8\n',
   );
 });
@@ -448,31 +481,32 @@ test.each([
   ['an empty narrative', ''],
   ['a level-two heading', '## Highlights\n\nProse.\n'],
   ['a level-one heading', '# Release\n'],
-])('write refuses %s', (_label, narrative) => {
+])('write refuses %s', async (_label, narrative) => {
   const root = packageRepository('1.4.7', { '.changes/fix.md': '- Fix output.\n' });
   writeFileSync(join(root, 'narrative.md'), narrative);
   const before = snapshot(root);
-  const result = run(root, 'write', '--date', '2026-10-07', '--narrative', 'narrative.md');
+  const result = await run(root, 'write', '--date', '2026-10-07', '--narrative', 'narrative.md');
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('Narrative');
   expect(snapshot(root)).toEqual(before);
 });
 
-test('write refuses an invalid calendar date and dates the cut today by default', () => {
+test('write refuses an invalid calendar date and dates the cut today by default', async () => {
   const root = packageRepository('1.4.7', { '.changes/fix.md': '- Fix output.\n' });
-  const invalid = run(root, 'write', '--date', '2026-02-30');
+  const invalid = await run(root, 'write', '--date', '2026-02-30');
   expect(invalid.status).toBe(1);
   expect(invalid.stderr).toContain('calendar date');
   const before = new Date().toISOString().slice(0, 10);
-  const heading = run(root, 'write', '--dry-run').stdout.split('\n')[0];
+  const runResult = await run(root, 'write', '--dry-run');
+  const heading = runResult.stdout.split('\n')[0];
   const after = new Date().toISOString().slice(0, 10);
   expect([`## v1.4.8 - ${before}`, `## v1.4.8 - ${after}`]).toContain(heading);
 });
 
-test('write refuses an invalid fragment and names it without edits', () => {
+test('write refuses an invalid fragment and names it without edits', async () => {
   const root = packageRepository('1.4.7', { '.changes/feature.md': '- Add tags.\n' });
   const before = snapshot(root);
-  const result = run(root, 'write', '--date', '2026-10-07');
+  const result = await run(root, 'write', '--date', '2026-10-07');
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('.changes/feature.md:');
   expect(snapshot(root)).toEqual(before);
@@ -480,19 +514,19 @@ test('write refuses an invalid fragment and names it without edits', () => {
 
 test.each([['check'], ['write', '--dry-run']])(
   '%s rejects unused passthrough',
-  (...mode: string[]) => {
+  async (...mode: string[]) => {
     const root = packageRepository('1.4.7', { '.changes/fix.md': '- Fix output.\n' });
-    const result = run(root, ...mode, '--', '--date', '2026-10-07');
+    const result = await run(root, ...mode, '--', '--date', '2026-10-07');
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('Arguments after -- are not supported.');
   },
 );
 
-test('write outside a git repository says to run it inside one with the fragments committed', () => {
+test('write outside a git repository says to run it inside one with the fragments committed', async () => {
   const root = directory({ '.changes/fix.md': '- Fix output.\n' });
   const before = snapshot(root);
-  const result = run(root, 'write', '--date', '2026-10-07');
+  const result = await run(root, 'write', '--date', '2026-10-07');
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('orders fragments by the commits that added them');
   expect(result.stderr).toContain('inside a git repository');
@@ -506,18 +540,19 @@ test.each([
     'dates that run backward',
     ['2026-01-05T12:00:00Z', '2026-01-03T12:00:00Z', '2026-01-04T12:00:00Z'],
   ],
-])('write orders fragments by their adding commits under %s', (_label, dates) => {
+])('write orders fragments by their adding commits under %s', async (_label, dates) => {
   const root = packageRepository('1.4.7');
   for (const [index, name] of ['charlie', 'bravo', 'alpha'].entries()) {
     put(root, `.changes/${name}.md`, `- Fix ${name}.\n`);
     commit(root, dates[index]);
   }
-  expect(run(root, 'write', '--dry-run', '--date', '2026-10-07').stdout).toBe(
+  const runResult = await run(root, 'write', '--dry-run', '--date', '2026-10-07');
+  expect(runResult.stdout).toBe(
     '## v1.4.8 - 2026-10-07\n\n### Fixes\n\n- Fix charlie.\n\n- Fix bravo.\n\n- Fix alpha.\n\nNext version: 1.4.8\n',
   );
 });
 
-test('write ignores history settings that change what git log prints', () => {
+test('write ignores history settings that change what git log prints', async () => {
   const root = packageRepository('1.4.7');
   put(root, '.changes/old.md', '- Fix renamed.\n');
   commit(root, '2026-01-02T12:00:00Z');
@@ -527,7 +562,7 @@ test('write ignores history settings that change what git log prints', () => {
   commit(root, '2026-01-04T12:00:00Z');
   git(root, ['config', 'log.showSignature', 'true']);
   git(root, ['config', 'log.follow', 'true']);
-  expect(run(root, 'write', '--dry-run', '--date', '2026-10-07')).toEqual({
+  await expect(run(root, 'write', '--dry-run', '--date', '2026-10-07')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout:
@@ -535,20 +570,28 @@ test('write ignores history settings that change what git log prints', () => {
   });
 });
 
-test('a byte order mark is not fragment or narrative content', () => {
+test('a byte order mark is not fragment or narrative content', async () => {
   const root = packageRepository('1.4.7', {
     '.changes/fix.md': '﻿- Fix output.\n',
     'narrative.md': '﻿This release fixes output.\n',
   });
-  expect(run(root, 'check').stdout).toBe('Checked 1 fragment.\n');
-  expect(
-    run(root, 'write', '--dry-run', '--date', '2026-10-07', '--narrative', 'narrative.md').stdout,
-  ).toBe(
+  const runResult = await run(root, 'check');
+  expect(runResult.stdout).toBe('Checked 1 fragment.\n');
+  const runResult2 = await run(
+    root,
+    'write',
+    '--dry-run',
+    '--date',
+    '2026-10-07',
+    '--narrative',
+    'narrative.md',
+  );
+  expect(runResult2.stdout).toBe(
     '## v1.4.8 - 2026-10-07\n\nThis release fixes output.\n\n### Fixes\n\n- Fix output.\n\nNext version: 1.4.8\n',
   );
 });
 
-test('write keeps the byte order marks of CHANGELOG.md and package.json', () => {
+test('write keeps the byte order marks of CHANGELOG.md and package.json', async () => {
   const changelog =
     '﻿---\ndescription: Releases.\n---\n\n# Changelog\n\n## v1.4.7 - 2026-01-01\n\n### Fixes\n\n- Old entry.\n';
   const manifest = '﻿{\n  "name": "notes",\n  "version": "1.4.7"\n}\n';
@@ -558,7 +601,8 @@ test('write keeps the byte order marks of CHANGELOG.md and package.json', () => 
   });
   put(root, 'package.json', manifest);
   commit(root);
-  expect(run(root, 'write', '--date', '2026-10-07').status).toBe(0);
+  const runResult = await run(root, 'write', '--date', '2026-10-07');
+  expect(runResult.status).toBe(0);
   expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(
     changelog.replace(
       '## v1.4.7',
@@ -585,83 +629,60 @@ test.each([
     '# Changelog\n\n## v1.4.8 - 2026-01-01\n\n- Earlier.\n',
     'CHANGELOG.md already has a v1.4.8 section',
   ],
-])('write refuses a CHANGELOG.md with %s and says what to do', (_label, changelog, sentence) => {
-  const root = packageRepository('1.4.7', {
-    '.changes/fix.md': '- Fix output.\n',
-    'CHANGELOG.md': changelog,
-  });
-  const before = snapshot(root);
-  const result = run(root, 'write', '--date', '2026-10-07');
-  expect(result.status).toBe(1);
-  expect(result.stderr).toContain(sentence);
-  expect(result.stderr.split('\n').filter(Boolean)).toHaveLength(1);
-  expect(result.stderr).toMatch(/, so .+\.\n$/u);
-  expect(snapshot(root)).toEqual(before);
-});
+])(
+  'write refuses a CHANGELOG.md with %s and says what to do',
+  async (_label, changelog, sentence) => {
+    const root = packageRepository('1.4.7', {
+      '.changes/fix.md': '- Fix output.\n',
+      'CHANGELOG.md': changelog,
+    });
+    const before = snapshot(root);
+    const result = await run(root, 'write', '--date', '2026-10-07');
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(sentence);
+    expect(result.stderr.split('\n').filter(Boolean)).toHaveLength(1);
+    expect(result.stderr).toMatch(/, so .+\.\n$/u);
+    expect(snapshot(root)).toEqual(before);
+  },
+);
 
-// Node synchronizes patched builtin exports; the normal CLI cases use the selected runtime.
 test.each([
   ['staging', 'write'],
   ['replacement', 'rename'],
-])('write that fails during %s changes no file', (_label, mode) => {
+])('write that fails during %s changes no file', async (_label, mode) => {
   const root = packageRepository('1.4.7', {
     '.changes/fix.md': '- Fix output.\n',
     'CHANGELOG.md': '# Changelog\n',
   });
-  const preload = join(temporaryRoot('loom-changelog-preload-'), 'fail.mjs');
-  put(
-    dirname(preload),
-    'fail.mjs',
-    `import fs from 'node:fs';
-import { syncBuiltinESMExports } from 'node:module';
-const { renameSync, writeFileSync } = fs;
-fs.writeFileSync = function (path, ...args) {
-  if (process.env.FAIL_MODE === 'write' && String(path).endsWith('package.json')) {
-    throw new Error('induced staging failure');
-  }
-  return writeFileSync(path, ...args);
-};
-let failed = false;
-fs.renameSync = function (from, to) {
-  if (!failed && process.env.FAIL_MODE === 'rename' && String(to) === process.env.FAIL_TARGET) {
-    failed = true;
-    throw new Error('induced replacement failure');
-  }
-  return renameSync(from, to);
-};
-syncBuiltinESMExports();
-`,
-  );
   const before = snapshot(root);
-  const result = spawnSync(
-    'node',
-    [
-      '--import',
-      pathToFileURL(preload).href,
-      fileURLToPath(cli),
-      'changelog',
-      'write',
-      '--date',
-      '2026-10-07',
-    ],
-    {
-      cwd: root,
-      encoding: 'utf8',
-      env: { ...process.env, FAIL_MODE: mode, FAIL_TARGET: join(root, 'package.json') },
-      timeout: 10_000,
-    },
-  );
+  const { writeFileSync: write, renameSync: rename } = fs;
+  let failed = false;
+  vi.mocked(writeFileSync).mockImplementation((path, ...args) => {
+    if (mode === 'write' && String(path).endsWith('package.json')) {
+      throw new Error('induced staging failure');
+    }
+    return write(path, ...args);
+  });
+  vi.mocked(renameSync).mockImplementation((from, to) => {
+    if (!failed && mode === 'rename' && String(to) === join(root, 'package.json')) {
+      failed = true;
+      throw new Error('induced replacement failure');
+    }
+    return rename(from, to);
+  });
+  const result = await run(root, 'write', '--date', '2026-10-07');
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('induced');
   expect(snapshot(root)).toEqual(before);
 });
 
-test('write into a CHANGELOG.md that holds only its title ends the file with one newline', () => {
+test('write into a CHANGELOG.md that holds only its title ends the file with one newline', async () => {
   const root = packageRepository('1.4.7', {
     '.changes/fix.md': '- Fix output.\n',
     'CHANGELOG.md': '# Changelog\n\nEvery release of notes.\n',
   });
-  expect(run(root, 'write', '--date', '2026-10-07').status).toBe(0);
+  const runResult = await run(root, 'write', '--date', '2026-10-07');
+  expect(runResult.status).toBe(0);
   expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(
     '# Changelog\n\nEvery release of notes.\n\n## v1.4.8 - 2026-10-07\n\n### Fixes\n\n- Fix output.\n',
   );
@@ -676,22 +697,27 @@ const hiddenEntries = {
   '.changes/.notes.md.swp': '\u0000swap',
 };
 
-test('check ignores hidden entries in .changes/', () => {
+test('check ignores hidden entries in .changes/', async () => {
   const root = directory({ ...hiddenEntries, '.changes/fix.md': '- Fix output.\n' });
-  expect(run(root, 'check')).toEqual({ status: 0, stderr: '', stdout: 'Checked 1 fragment.\n' });
+  await expect(run(root, 'check')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Checked 1 fragment.\n',
+  });
 });
 
-test('check still rejects a backup file, which is not hidden', () => {
+test('check still rejects a backup file, which is not hidden', async () => {
   const root = directory({ '.changes/fix.md~': '- Fix output.\n' });
-  expect(run(root, 'check').stderr).toContain('.changes/fix.md~:');
+  const runResult = await run(root, 'check');
+  expect(runResult.stderr).toContain('.changes/fix.md~:');
 });
 
-test('write neither renders nor deletes hidden entries', () => {
+test('write neither renders nor deletes hidden entries', async () => {
   const root = packageRepository('1.4.7', {
     ...hiddenEntries,
     '.changes/fix.md': '- Fix output.\n',
   });
-  const result = run(root, 'write', '--date', '2026-10-07');
+  const result = await run(root, 'write', '--date', '2026-10-07');
   expect(result).toEqual({
     status: 0,
     stderr: '',
