@@ -106,6 +106,32 @@ test('check at a monorepo root validates the root fragments alone', () => {
   expect(run(root, 'check')).toEqual({ status: 0, stderr: '', stdout: 'Checked 1 fragment.\n' });
 });
 
+test("check in a member package reads its own .changes and never the monorepo root's configuration file", () => {
+  const root = directory({
+    'elsewhere/feature.md': '- Bare kind.\n',
+    'loom.config.json': '{ "paths": { "changes": "elsewhere" } }\n',
+    'packages/one/.changes/fix.md': '- Fix output.\n',
+    'packages/one/package.json': '{"name":"one","version":"1.0.0"}\n',
+  });
+  expect(run(join(root, 'packages/one'), 'check')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Checked 1 fragment.\n',
+  });
+});
+
+test('check resolves paths.changes against the package directory, from a subdirectory or with --config', () => {
+  const root = directory({
+    'notes/changes/fix.md': '- Fix output.\n',
+    'other/loom.json': '{ "paths": { "changes": "notes/changes" } }\n',
+    'src/main.ts': 'export {};\n',
+  });
+  const checked = { status: 0, stderr: '', stdout: 'Checked 1 fragment.\n' };
+  expect(run(join(root, 'src'), '--config', '../other/loom.json', 'check')).toEqual(checked);
+  put(root, 'loom.config.json', '{ "paths": { "changes": "notes/changes" } }\n');
+  expect(run(join(root, 'src'), 'check')).toEqual(checked);
+});
+
 test('check outside any package fails and says to run it inside a package directory', () => {
   const root = temporaryRoot('loom-changelog-');
   const result = run(root, 'check');
@@ -350,6 +376,17 @@ test('write creates CHANGELOG.md with a title when it is missing', () => {
   );
   expect(readFileSync(join(root, 'package.json'), 'utf8')).toBe(
     `${JSON.stringify({ name: 'notes', version: '0.1.0' }, null, 2)}\n`,
+  );
+});
+
+test('write creates the folder of the changelog loom.config.json names when it is missing', () => {
+  const root = packageRepository('0.0.0', {
+    '.changes/fix.md': '- Fix output.\n',
+    'loom.config.json': '{ "paths": { "changelog": "docs/CHANGELOG.md" } }\n',
+  });
+  expect(run(root, 'write', '--date', '2026-10-07').status).toBe(0);
+  expect(readFileSync(join(root, 'docs/CHANGELOG.md'), 'utf8')).toBe(
+    '# Changelog\n\n## v0.1.0 - 2026-10-07\n\n### Fixes\n\n- Fix output.\n',
   );
 });
 

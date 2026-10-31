@@ -4,8 +4,9 @@ import { resolve } from 'node:path';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { withoutByteOrderMark } from './byte-order-mark.js';
+import { conventionalChangelog, conventionalFragments } from './conventions.js';
 import type { FragmentKind } from './fragments.js';
-import { conventionalFragments, readFragments } from './fragments.js';
+import { readFragments } from './fragments.js';
 import { headingText, locateRelease, requireClosedBlocks } from './markdown.js';
 import { git, gitLine, requireFullHistory } from './repository.js';
 import type { Checkout } from './repository.js';
@@ -151,7 +152,7 @@ export interface ChangelogFiles {
 
 /** The changelog and the fragment folder a repository or a package keeps when nothing names others. */
 export const conventionalFiles: ChangelogFiles = {
-  changelog: 'CHANGELOG.md',
+  changelog: conventionalChangelog,
   changes: conventionalFragments,
 };
 

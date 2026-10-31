@@ -1,13 +1,14 @@
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { object, safeParse, string } from 'valibot';
 
@@ -105,6 +106,8 @@ export function writePackageCut(directory: string, cut: PackageCut) {
     renameSync(from, to);
     moves.push({ from, to });
   };
+  // The first folder made for a changelog whose folder is missing, which a failed cut removes again.
+  let created: string | undefined = undefined;
   let keep = false;
   try {
     // Each file is staged under its conventional name, wherever the configuration puts the changelog.
@@ -122,6 +125,7 @@ export function writePackageCut(directory: string, cut: PackageCut) {
       if (existsSync(path)) {
         move(path, join(stage, `old.${name}`));
       }
+      created ??= mkdirSync(dirname(path), { recursive: true });
       move(join(stage, `new.${name}`), path);
     }
     for (const fragment of cut.fragments) {
@@ -145,6 +149,9 @@ export function writePackageCut(directory: string, cut: PackageCut) {
         `Restoring ${failed.join(', ')} failed, so copy the originals back from ${stage}.`,
         { cause: error },
       );
+    }
+    if (created !== undefined) {
+      rmSync(created, { force: true, recursive: true });
     }
     throw error;
   } finally {

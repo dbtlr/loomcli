@@ -367,6 +367,25 @@ test('the cut updates only release files, preserves workspace references, and re
   expect(readFileSync(join(root, 'packages/core/package.json'), 'utf8')).toContain('0.1.0');
 });
 
+test('the cut reads no key of the loom.config.json at the repository root, and keeps to .changes and CHANGELOG.md', () => {
+  const root = repository();
+  put(
+    root,
+    'loom.config.json',
+    '{ "paths": { "changelog": "docs/CHANGELOG.md", "changes": "notes" } }\n',
+  );
+  put(root, '.changes/add.md', '- Add input.\n');
+  put(root, 'notes/other.md', '- Not read.\n');
+  commit(root);
+  const result = cut(root, '--date', '2026-09-07');
+  expect(result.status).toBe(0);
+  expect(result.stdout).toBe('## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- Add input.\n\n');
+  expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toContain('## v0.1.0 - 2026-09-07');
+  expect(readdirSync(join(root, '.changes'))).toEqual(['README.md']);
+  expect(readdirSync(join(root, 'notes'))).toEqual(['other.md']);
+  expect(readdirSync(root)).not.toContain('docs');
+});
+
 test('lockfile preparation failure leaves the original repository unchanged', () => {
   const root = repository();
   put(root, '.changes/add.md', '- Add input.\n');

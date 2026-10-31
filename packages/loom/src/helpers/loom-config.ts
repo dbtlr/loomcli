@@ -4,6 +4,8 @@ import { configuration } from '@loomcli/plugins/config';
 import { minLength, object, optional, pipe, string } from 'valibot';
 import type { InferOutput } from 'valibot';
 
+import { conventionalChangelog, conventionalFragments } from './conventions.js';
+
 /**
  * One path the configuration file names. An empty string or a value of another type is an issue at
  * its own key, so the plugin drops that key alone and its convention applies.
@@ -89,8 +91,8 @@ export function packagePaths(directory: string, config: LoomConfig): PackagePath
   return {
     application:
       paths.application === undefined ? join(source, 'application.ts') : at(paths.application),
-    changelog: at(paths.changelog ?? 'CHANGELOG.md'),
-    changes: at(paths.changes ?? '.changes'),
+    changelog: at(paths.changelog ?? conventionalChangelog),
+    changes: at(paths.changes ?? conventionalFragments),
     configured: new Set(pathKeys.filter((key) => paths[key] !== undefined)),
     entry: paths.entry === undefined ? join(source, 'main.ts') : at(paths.entry),
     installer: at(paths.installer ?? 'install.sh'),

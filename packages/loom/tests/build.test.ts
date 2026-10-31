@@ -391,6 +391,53 @@ test('an application module paths.application names that does not exist fails th
   expect(existsSync(join(root, 'dist'))).toBe(false);
 });
 
+test('--entry and --application beat the modules loom.config.json names', () => {
+  const root = probePackage(
+    {},
+    {
+      'loom.config.json':
+        '{ "paths": { "application": "src/file-app.ts", "entry": "src/file-main.ts" } }\n',
+      'src/app.ts': application,
+      'src/cli.ts': entry.replace('./application.js', './app.js'),
+      'src/file-app.ts': application,
+      'src/file-main.ts': entry.replace('./application.js', './file-app.js'),
+    },
+  );
+  const configured = loom(root, ['build', '--target', 'node']);
+  expect(configured.status).toBe(0);
+  expect(readdirSync(join(root, 'dist'))).toEqual(
+    expect.arrayContaining(['file-app.js', 'file-main.js']),
+  );
+  rmSync(join(root, 'dist'), { recursive: true });
+  const named = loom(root, [
+    'build',
+    '--target',
+    'node',
+    '--entry',
+    'src/cli.ts',
+    '--application',
+    'src/app.ts',
+  ]);
+  expect(named.stderr).toBe('');
+  expect(named.status).toBe(0);
+  expect(readdirSync(join(root, 'dist')).filter((name) => name.endsWith('.js'))).toEqual(
+    expect.arrayContaining(['app.js', 'cli.js']),
+  );
+  expect(existsSync(join(root, 'dist/file-main.js'))).toBe(false);
+  expect(existsSync(join(root, 'dist/file-app.js'))).toBe(false);
+});
+
+test('an entry paths.entry names that does not exist fails the build and names the key', () => {
+  const root = probePackage({}, { 'loom.config.json': '{ "paths": { "entry": "src/cli.ts" } }\n' });
+  const result = loom(root, ['build', '--target', 'node']);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain(
+    'src/cli.ts does not exist, so create it or name the module with paths.entry.',
+  );
+  expect(existsSync(join(root, 'dist'))).toBe(false);
+});
+
 test('paths.out moves the output, and --out beats it', () => {
   const root = probePackage({}, { 'loom.config.json': '{ "paths": { "out": "build" } }\n' });
   expect(loom(root, ['build', '--target', 'node']).status).toBe(0);

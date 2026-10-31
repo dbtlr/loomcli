@@ -220,4 +220,7 @@ test('a path the schema rejects is dropped, its convention applies, and -v names
   expect(result.status).toBe(0);
   expect(result.stdout).toBe('Checked 1 fragment.\n');
   expect(result.stderr).toContain('Ignored paths.changes in loom.config.json');
+  // The valid key beside the rejected one survives.
+  const written = await runLoom(directory, ['init', '--only', 'application']);
+  expect(written.stdout).toBe('Wrote lib/application.ts.\n');
 });

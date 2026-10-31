@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { withoutByteOrderMark } from './byte-order-mark.js';
+import { conventionalFragments } from './conventions.js';
 import { requireClosedBlocks } from './markdown.js';
 import { readDirectory, readRegularFile } from './repository.js';
 import type { Checkout } from './repository.js';
@@ -100,13 +101,6 @@ async function readFragment(
 
 /** A fragment's kind, read from its file name: `breaking.<slug>.md`, `feature.<slug>.md`, or `<slug>.md`. */
 export type FragmentKind = 'breaking' | 'feature' | 'fix';
-
-/**
- * The folder a checkout keeps its fragments in, relative to its root, when nothing names another:
- * Loom's own release commands read it at the repository root, and a package reads it unless its
- * configuration file names another.
- */
-export const conventionalFragments = '.changes';
 
 /**
  * Every fragment in the folder under the root, read from the working tree or from a revision. The
