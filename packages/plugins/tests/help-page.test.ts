@@ -22,13 +22,11 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
-
-const fixture = new URL('fixtures/run.mjs', import.meta.url);
+import { run as fixtureRun } from './fixtures/run-app.js';
 
 /** One page the fixture printed, with the single newline `out.print` appends. */
-function run(scenario: string, argv: string[]) {
-  return invoke(fixture, [scenario, ...argv]);
+async function run(scenario: string, argv: string[]) {
+  return await fixtureRun([scenario, ...argv]);
 }
 
 /** A page written by hand, as its lines. `out.print` ends it with exactly one newline. */
@@ -36,8 +34,8 @@ function page(...lines: string[]) {
   return { status: 0, stderr: '', stdout: `${lines.join('\n')}\n` };
 }
 
-test('a root with an action and children prints both usage forms and the closing hint', () => {
-  expect(run('nested', ['--help'])).toEqual(
+test('a root with an action and children prints both usage forms and the closing hint', async () => {
+  await expect(run('nested', ['--help'])).resolves.toEqual(
     page(
       'store · Keep a local store.',
       '',
@@ -58,8 +56,8 @@ test('a root with an action and children prints both usage forms and the closing
   );
 });
 
-test('a group prints the children form alone, because it has no other form', () => {
-  expect(run('nested', ['cache', '--help'])).toEqual(
+test('a group prints the children form alone, because it has no other form', async () => {
+  await expect(run('nested', ['cache', '--help'])).resolves.toEqual(
     page(
       'store cache · Manage the cache.',
       '',
@@ -78,8 +76,8 @@ test('a group prints the children form alone, because it has no other form', () 
   );
 });
 
-test('a child with an action and children of its own prints both forms', () => {
-  expect(run('nested', ['sync', '--help'])).toEqual(
+test('a child with an action and children of its own prints both forms', async () => {
+  await expect(run('nested', ['sync', '--help'])).resolves.toEqual(
     page(
       'store sync · Copy the store to a remote.',
       '',
@@ -99,8 +97,8 @@ test('a child with an action and children of its own prints both forms', () => {
   );
 });
 
-test('an option row spells each polarity and placeholder, and folds in the globals', () => {
-  expect(run('cells', ['--help'])).toEqual(
+test('an option row spells each polarity and placeholder, and folds in the globals', async () => {
+  await expect(run('cells', ['--help'])).resolves.toEqual(
     page(
       'app · Show one option row for each spelling.',
       '',
@@ -121,8 +119,8 @@ test('an option row spells each polarity and placeholder, and folds in the globa
   );
 });
 
-test('a right cell carries the description, then the facts that apply, in one parenthesis', () => {
-  expect(run('facts', ['--help'])).toEqual(
+test('a right cell carries the description, then the facts that apply, in one parenthesis', async () => {
+  await expect(run('facts', ['--help'])).resolves.toEqual(
     page(
       'app · Show one right cell for each fact.',
       '',
@@ -153,8 +151,8 @@ test('a right cell carries the description, then the facts that apply, in one pa
   );
 });
 
-test('a counted option ends its spellings with an ellipsis, and an implied value brackets its placeholder', () => {
-  expect(run('kinds', ['--help'])).toEqual(
+test('a counted option ends its spellings with an ellipsis, and an implied value brackets its placeholder', async () => {
+  await expect(run('kinds', ['--help'])).resolves.toEqual(
     page(
       'copyit · Copy files with backups.',
       '',
@@ -179,8 +177,8 @@ test('a counted option ends its spellings with an ellipsis, and an implied value
   );
 });
 
-test('the quiet-marked option prints no ellipsis, because a further -q adds nothing', () => {
-  expect(run('verbose', ['--help'])).toEqual(
+test('the quiet-marked option prints no ellipsis, because a further -q adds nothing', async () => {
+  await expect(run('verbose', ['--help'])).resolves.toEqual(
     page(
       'fetchit · Fetch records.',
       '',
@@ -196,15 +194,15 @@ test('the quiet-marked option prints no ellipsis, because a further -q adds noth
   );
 });
 
-test('a default JSON cannot render prints as String renders it', () => {
-  const result = run('unencodable', ['--help']);
+test('a default JSON cannot render prints as String renders it', async () => {
+  const result = await run('unencodable', ['--help']);
   expect(result).toMatchObject({ status: 0, stderr: '' });
   expect(result.stdout).toContain('  --shape <shape>  The shape.  (default: [object Object])\n');
   expect(result.stdout).toMatch(/^ {6}--list <list> {4}The list\. {2}\(default: 7\)$/mu);
 });
 
-test('a root with children prints GLOBAL OPTIONS and the action form', () => {
-  expect(run('usage', ['--help'])).toEqual(
+test('a root with children prints GLOBAL OPTIONS and the action form', async () => {
+  await expect(run('usage', ['--help'])).resolves.toEqual(
     page(
       'app · Do the work.',
       '',
@@ -227,8 +225,8 @@ test('a root with children prints GLOBAL OPTIONS and the action form', () => {
   );
 });
 
-test('the action form holds the arguments, then the node required options', () => {
-  expect(run('usage', ['run', '--help'])).toEqual(
+test('the action form holds the arguments, then the node required options', async () => {
+  await expect(run('usage', ['run', '--help'])).resolves.toEqual(
     page(
       'app run · Run one job.',
       '',
@@ -253,8 +251,8 @@ test('the action form holds the arguments, then the node required options', () =
   );
 });
 
-test('a required variadic argument prints its ellipsis inside the required brackets', () => {
-  expect(run('usage', ['pack', '--help'])).toEqual(
+test('a required variadic argument prints its ellipsis inside the required brackets', async () => {
+  await expect(run('usage', ['pack', '--help'])).resolves.toEqual(
     page(
       'app pack · Pack the files.',
       '',
@@ -273,8 +271,8 @@ test('a required variadic argument prints its ellipsis inside the required brack
   );
 });
 
-test('a node with no description prints its path alone, with details joined by line feeds', () => {
-  expect(run('prose', ['--help'])).toEqual(
+test('a node with no description prints its path alone, with details joined by line feeds', async () => {
+  await expect(run('prose', ['--help'])).resolves.toEqual(
     page(
       'app',
       '',
@@ -297,8 +295,8 @@ test('a node with no description prints its path alone, with details joined by l
   );
 });
 
-test('a hidden child leaves no row in COMMANDS, and a child that is also deprecated leaves none', () => {
-  expect(run('children', ['--help'])).toEqual(
+test('a hidden child leaves no row in COMMANDS, and a child that is also deprecated leaves none', async () => {
+  await expect(run('children', ['--help'])).resolves.toEqual(
     page(
       'app · Do the work.',
       '',
@@ -320,8 +318,8 @@ test('a hidden child leaves no row in COMMANDS, and a child that is also depreca
   );
 });
 
-test('a deprecated Command carries its message on a second masthead line', () => {
-  expect(run('children', ['fetch', '--help'])).toEqual(
+test('a deprecated Command carries its message on a second masthead line', async () => {
+  await expect(run('children', ['fetch', '--help'])).resolves.toEqual(
     page(
       'app fetch · Read one value at a path.',
       '  Deprecated: Use get instead.',
@@ -336,8 +334,8 @@ test('a deprecated Command carries its message on a second masthead line', () =>
   );
 });
 
-test('a line break in a description or a deprecation message prints as one space', () => {
-  expect(run('multiline', ['--help'])).toEqual(
+test('a line break in a description or a deprecation message prints as one space', async () => {
+  await expect(run('multiline', ['--help'])).resolves.toEqual(
     page(
       'app · Do the work.',
       '',
@@ -355,7 +353,7 @@ test('a line break in a description or a deprecation message prints as one space
       'Run app <command> --help for command details.',
     ),
   );
-  expect(run('multiline', ['fetch', '--help'])).toEqual(
+  await expect(run('multiline', ['fetch', '--help'])).resolves.toEqual(
     page(
       'app fetch · Read one value at a path.',
       '  Deprecated: Use get instead.',
@@ -373,8 +371,8 @@ test('a line break in a description or a deprecation message prints as one space
   );
 });
 
-test('a hidden Command routed to directly prints its own page like any other', () => {
-  expect(run('children', ['debug', '--help'])).toEqual(
+test('a hidden Command routed to directly prints its own page like any other', async () => {
+  await expect(run('children', ['debug', '--help'])).resolves.toEqual(
     page(
       'app debug · Dump the document.',
       '',
@@ -391,8 +389,8 @@ test('a hidden Command routed to directly prints its own page like any other', (
   );
 });
 
-test('a group whose children are all hidden prints the children form and no other listing', () => {
-  expect(run('children', ['cache', '--help'])).toEqual(
+test('a group whose children are all hidden prints the children form and no other listing', async () => {
+  await expect(run('children', ['cache', '--help'])).resolves.toEqual(
     page(
       'app cache · Manage the cache.',
       '',
@@ -406,8 +404,8 @@ test('a group whose children are all hidden prints the children form and no othe
   );
 });
 
-test('a root whose children are all hidden prints no children form, no COMMANDS, and no hint', () => {
-  expect(run('unlisted', ['--help'])).toEqual(
+test('a root whose children are all hidden prints no children form, no COMMANDS, and no hint', async () => {
+  await expect(run('unlisted', ['--help'])).resolves.toEqual(
     page(
       'app · Do the work.',
       '',
@@ -421,8 +419,8 @@ test('a root whose children are all hidden prints no children form, no COMMANDS,
   );
 });
 
-test('a hidden option, required ones included, leaves the action form, OPTIONS, and GLOBAL OPTIONS, and deprecated is last', () => {
-  expect(run('scoped', ['--help'])).toEqual(
+test('a hidden option, required ones included, leaves the action form, OPTIONS, and GLOBAL OPTIONS, and deprecated is last', async () => {
+  await expect(run('scoped', ['--help'])).resolves.toEqual(
     page(
       'app · Do the work.',
       '',
@@ -446,8 +444,8 @@ test('a hidden option, required ones included, leaves the action form, OPTIONS, 
   );
 });
 
-test('a hidden global option leaves GLOBAL OPTIONS on a non-root page', () => {
-  expect(run('scoped', ['run', '--help'])).toEqual(
+test('a hidden global option leaves GLOBAL OPTIONS on a non-root page', async () => {
+  await expect(run('scoped', ['run', '--help'])).resolves.toEqual(
     page(
       'app run · Run one job.',
       '',
@@ -462,8 +460,8 @@ test('a hidden global option leaves GLOBAL OPTIONS on a non-root page', () => {
   );
 });
 
-test('a hidden option of either scope leaves the folded root OPTIONS', () => {
-  expect(run('folded', ['--help'])).toEqual(
+test('a hidden option of either scope leaves the folded root OPTIONS', async () => {
+  await expect(run('folded', ['--help'])).resolves.toEqual(
     page(
       'app · Do the work.',
       '',
@@ -479,7 +477,7 @@ test('a hidden option of either scope leaves the folded root OPTIONS', () => {
   );
 });
 
-test('an option row lists its variables and its configuration key last among the facts but deprecated, never a value', () => {
+test('an option row lists its variables and its configuration key last among the facts but deprecated, never a value', async () => {
   const expected = page(
     'app · Show each binding fact.',
     '',
@@ -496,14 +494,14 @@ test('an option row lists its variables and its configuration key last among the
     '  -V, --version            Print the version.',
   );
   // The compact page prints the same facts, and its hints follow.
-  expect(run('bindings', ['--help'])).toEqual(expected);
-  const compact = run('bindings', ['-h']);
+  await expect(run('bindings', ['--help'])).resolves.toEqual(expected);
+  const compact = await run('bindings', ['-h']);
   expect(compact.stdout).toContain('(env: APP_CACHE)');
   expect(compact.stdout).toContain('config: cloud.region)');
   expect(compact.stdout).not.toContain('APP_TOKEN');
 });
 
-test("a multiple option's env fact names its delimiter as a JSON string after the variables, on both pages", () => {
+test("a multiple option's env fact names its delimiter as a JSON string after the variables, on both pages", async () => {
   const expected = page(
     'app · Show each list binding.',
     '',
@@ -517,8 +515,8 @@ test("a multiple option's env fact names its delimiter as a JSON string after th
     '  -h, --help             Show this help.',
     '  -V, --version          Print the version.',
   );
-  expect(run('list-bindings', ['--help'])).toEqual(expected);
-  const compact = run('list-bindings', ['-h']);
+  await expect(run('list-bindings', ['--help'])).resolves.toEqual(expected);
+  const compact = await run('list-bindings', ['-h']);
   expect(compact.stdout).toContain(
     '(repeatable, env: APP_FIELDS FIELDS as a list separated by ",")',
   );

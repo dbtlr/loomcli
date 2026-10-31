@@ -24,12 +24,10 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { run as fixtureRun } from './fixtures/run-app.js';
 
-const fixture = new URL('fixtures/run.mjs', import.meta.url);
-
-function run(scenario: string, argv: string[]) {
-  return invoke(fixture, [scenario, ...argv]);
+async function run(scenario: string, argv: string[]) {
+  return await fixtureRun([scenario, ...argv]);
 }
 
 /** A page written by hand, as its lines. The view ends it with exactly one newline. */
@@ -61,8 +59,8 @@ const compactRoot = page(
   'Run app --help for details and examples.',
 );
 
-test('--help prints the extended page, with the details and examples and the --help child hint', () => {
-  expect(run('variants', ['--help'])).toEqual(
+test('--help prints the extended page, with the details and examples and the --help child hint', async () => {
+  await expect(run('variants', ['--help'])).resolves.toEqual(
     page(
       'app · A fixture application.',
       '',
@@ -82,7 +80,7 @@ test('--help prints the extended page, with the details and examples and the --h
       'Run app <command> --help for command details.',
     ),
   );
-  expect(run('variants', ['get', '--help'])).toEqual(
+  await expect(run('variants', ['get', '--help'])).resolves.toEqual(
     page(
       'app get · Read one value at a path.',
       '',
@@ -96,12 +94,12 @@ test('--help prints the extended page, with the details and examples and the --h
   );
 });
 
-test('-h prints the compact page of a group, the child hint ahead of the pointer', () => {
-  expect(run('variants', ['-h'])).toEqual(compactRoot);
+test('-h prints the compact page of a group, the child hint ahead of the pointer', async () => {
+  await expect(run('variants', ['-h'])).resolves.toEqual(compactRoot);
 });
 
-test('-h drops the details of a leaf and points to the extended page that holds them', () => {
-  expect(run('variants', ['get', '-h'])).toEqual(
+test('-h drops the details of a leaf and points to the extended page that holds them', async () => {
+  await expect(run('variants', ['get', '-h'])).resolves.toEqual(
     page(
       'app get · Read one value at a path.',
       '',
@@ -115,24 +113,24 @@ test('-h drops the details of a leaf and points to the extended page that holds 
   );
 });
 
-test('-h on a leaf with neither details nor examples prints the extended page with no pointer', () => {
-  const extended = run('variants', ['keys', '--help']);
-  expect(run('variants', ['keys', '-h'])).toEqual(extended);
+test('-h on a leaf with neither details nor examples prints the extended page with no pointer', async () => {
+  const extended = await run('variants', ['keys', '--help']);
+  await expect(run('variants', ['keys', '-h'])).resolves.toEqual(extended);
   expect(extended.stdout).not.toContain('Run ');
 });
 
-test('a letter in a short group is spelled -h, so -Vh prints the compact page', () => {
-  expect(run('variants', ['-Vh'])).toEqual(compactRoot);
+test('a letter in a short group is spelled -h, so -Vh prints the compact page', async () => {
+  await expect(run('variants', ['-Vh'])).resolves.toEqual(compactRoot);
 });
 
-test('-h --help holds the repeated option, and the earlier -h stands, so the compact page prints', () => {
-  expect(run('variants', ['-h', '--help'])).toEqual(compactRoot);
+test('-h --help holds the repeated option, and the earlier -h stands, so the compact page prints', async () => {
+  await expect(run('variants', ['-h', '--help'])).resolves.toEqual(compactRoot);
 });
 
 test.each([
   [['-h'], 'root:compact\n'],
   [['--help'], 'root:extended\n'],
   [['get', '-h'], 'get:compact\n'],
-])('an override of the page receives the variant for %j', (argv, stdout) => {
-  expect(run('variants-page', argv)).toEqual({ status: 0, stderr: '', stdout });
+])('an override of the page receives the variant for %j', async (argv, stdout) => {
+  await expect(run('variants-page', argv)).resolves.toEqual({ status: 0, stderr: '', stdout });
 });

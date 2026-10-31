@@ -2,21 +2,19 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { run as fixtureRun } from './fixtures/format-failures.js';
 
-const fixture = new URL('fixtures/format-failures.mjs', import.meta.url);
-
-function run(scenario: string, argv: string[]) {
-  return invoke(fixture, [scenario, ...argv]);
+async function run(scenario: string, argv: string[]) {
+  return await fixtureRun([scenario, ...argv]);
 }
 
 /** Help's hint for `app count`, which every usage failure carries. */
 const usage = String.raw`"hints":["Run \"app count --help\" to see the usage."]`;
 
-test('a held fault under --format json writes one JSON line to stderr, and --format jsonl the same bytes', () => {
+test('a held fault under --format json writes one JSON line to stderr, and --format jsonl the same bytes', async () => {
   const line = `{"error":{"code":"invalid-input","exitCode":2,"message":"Option \\"--depth\\": Use decimal digits.",${usage}}}\n`;
   for (const selected of ['json', 'jsonl']) {
-    expect(run('plain', ['count', '--format', selected, '--depth', 'x'])).toEqual({
+    await expect(run('plain', ['count', '--format', selected, '--depth', 'x'])).resolves.toEqual({
       status: 2,
       stderr: line,
       stdout: '',
@@ -24,39 +22,41 @@ test('a held fault under --format json writes one JSON line to stderr, and --for
   }
 });
 
-test("a held structural fault still selects the formatter's view, because core validates --format under it", () => {
-  expect(run('plain', ['count', '--format', 'json', '--bogus'])).toEqual({
+test("a held structural fault still selects the formatter's view, because core validates --format under it", async () => {
+  await expect(run('plain', ['count', '--format', 'json', '--bogus'])).resolves.toEqual({
     status: 2,
     stderr: `{"error":{"code":"unknown-option","exitCode":2,"message":"Unknown option \\"--bogus\\". Supply a declared option; prefix a hyphenated path with \\"./\\".",${usage}}}\n`,
     stdout: '',
   });
 });
 
-test('an action failure under --format json writes the fatal line, with C1 controls escaped', () => {
-  expect(run('plain', ['count', '--format', 'json', '--fail', 'yes'])).toEqual({
+test('an action failure under --format json writes the fatal line, with C1 controls escaped', async () => {
+  await expect(run('plain', ['count', '--format', 'json', '--fail', 'yes'])).resolves.toEqual({
     status: 1,
     stderr: '{"error":{"code":"fatal","exitCode":1,"message":"The count failed.","hints":[]}}\n',
     stdout: '',
   });
-  expect(run('preserve', ['count', '--format', 'json', '--fail', 'controls']).stderr).toBe(
+  const fixtureResult1 = await run('preserve', ['count', '--format', 'json', '--fail', 'controls']);
+  expect(fixtureResult1.stderr).toBe(
     '{"error":{"code":"fatal","exitCode":1,"message":"A \\u009b control and a \\"quote\\".","hints":[]}}\n',
   );
 });
 
-test('a rejected or omitted --format writes the text diagnostic, because the default view declares no media type', () => {
-  expect(run('plain', ['count', '--format', 'yaml'])).toEqual({
+test('a rejected or omitted --format writes the text diagnostic, because the default view declares no media type', async () => {
+  await expect(run('plain', ['count', '--format', 'yaml'])).resolves.toEqual({
     status: 2,
     stderr:
       'app: Option "--format": Supply one of table, json, jsonl.\nRun "app count --help" to see the usage.\n',
     stdout: '',
   });
-  expect(run('plain', ['count', '--depth', 'x']).stderr).toBe(
+  const fixtureResult2 = await run('plain', ['count', '--depth', 'x']);
+  expect(fixtureResult2.stderr).toBe(
     'app: Option "--depth": Use decimal digits.\nRun "app count --help" to see the usage.\n',
   );
 });
 
-test('a default view that is json() writes the JSON line with no --format', () => {
-  expect(run('json-default', ['count'])).toEqual({
+test('a default view that is json() writes the JSON line with no --format', async () => {
+  await expect(run('json-default', ['count'])).resolves.toEqual({
     status: 1,
     stderr: '{"error":{"code":"fatal","exitCode":1,"message":"The count failed.","hints":[]}}\n',
     stdout: '',

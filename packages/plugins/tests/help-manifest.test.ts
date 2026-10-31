@@ -1,21 +1,20 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
-
-const fixture = new URL('fixtures/help-manifest.mjs', import.meta.url);
+import { run as fixtureRun } from './fixtures/help-manifest.js';
+import { run as rulesRun } from './fixtures/manifest-rules-app.mjs';
 
 /** The manifest values each Command carries, then help's own value on `noted`, for one scenario. */
-function read(scenario: string): unknown[] {
-  const result = invoke(fixture, [scenario]);
-  expect(result.stderr).toBe('');
+async function read(scenario: string): Promise<unknown[]> {
+  const result = await fixtureRun([scenario]);
   return result.stdout
     .split('\n')
     .filter((line) => line !== '')
     .map((line): unknown => JSON.parse(line));
 }
 
-test('help supplies its details and examples to the manifest, after the author value, with no manifest plugin', () => {
-  expect(read('supplied')[0]).toEqual({
+test('help supplies its details and examples to the manifest, after the author value, with no manifest plugin', async () => {
+  const fixtureResult1 = await read('supplied');
+  expect(fixtureResult1[0]).toEqual({
     detailed: [{ details: 'Details alone.' }],
     empty: [],
     noted: [{ details: 'Only an agent needs this.' }, { examples: [{ command: 'noted y' }] }],
@@ -29,16 +28,17 @@ test('help supplies its details and examples to the manifest, after the author v
   });
 });
 
-test('help supplies what it read at its own turn, whatever a later hook does to its value', () => {
-  const [manifest, help] = read('replaced-later');
+test('help supplies what it read at its own turn, whatever a later hook does to its value', async () => {
+  const [manifest, help] = await read('replaced-later');
   expect(manifest).toMatchObject({
     noted: [{ details: 'Only an agent needs this.' }, { examples: [{ command: 'noted y' }] }],
   });
   expect(help).toEqual({ helpOnNoted: { details: 'Replaced after help.' } });
 });
 
-test('without help installed, the manifest holds the author values alone', () => {
-  expect(read('no-help')[0]).toEqual({
+test('without help installed, the manifest holds the author values alone', async () => {
+  const fixtureResult2 = await read('no-help');
+  expect(fixtureResult2[0]).toEqual({
     detailed: [],
     empty: [],
     noted: [{ details: 'Only an agent needs this.' }],
@@ -48,9 +48,8 @@ test('without help installed, the manifest holds the author values alone', () =>
 });
 
 /** What one manifest value case reports: no fault, or the declaration error its call raised. */
-function rule(name: string): unknown {
-  const result = invoke(new URL('fixtures/manifest-rules.mjs', import.meta.url), [name]);
-  expect(result.stderr).toBe('');
+async function rule(name: string): Promise<unknown> {
+  const result = await rulesRun([name]);
   return JSON.parse(result.stdout);
 }
 
@@ -62,13 +61,13 @@ function invalid(message: string) {
   };
 }
 
-test('manifestCommand applies the line and Markdown rules help applies', () => {
+test('manifestCommand applies the line and Markdown rules help applies', async () => {
   const line = 'Supply one line that holds a character other than whitespace.';
-  expect(rule('valid')).toEqual({ fault: null });
-  expect(rule('markdown-blank-lines')).toEqual({ fault: null });
-  expect(rule('blank-details')).toEqual(
+  await expect(rule('valid')).resolves.toEqual({ fault: null });
+  await expect(rule('markdown-blank-lines')).resolves.toEqual({ fault: null });
+  await expect(rule('blank-details')).resolves.toEqual(
     invalid('Supply Markdown that holds a character other than whitespace.'),
   );
-  expect(rule('command-on-two-lines')).toEqual(invalid(line));
-  expect(rule('note-on-two-lines')).toEqual(invalid(line));
+  await expect(rule('command-on-two-lines')).resolves.toEqual(invalid(line));
+  await expect(rule('note-on-two-lines')).resolves.toEqual(invalid(line));
 });

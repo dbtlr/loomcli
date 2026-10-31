@@ -21,20 +21,18 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { run as fixtureRun } from './fixtures/table.js';
 
-const fixture = new URL('fixtures/table.mjs', import.meta.url);
-
-test('table() renders explicit columns through out.render', () => {
-  expect(invoke(fixture, ['explicit'])).toEqual({
+test('table() renders explicit columns through out.render', async () => {
+  await expect(fixtureRun(['explicit'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'COUNT  source\n    6  one.txt\n    2  two words.txt\nresolved:0\n',
   });
 });
 
-test('table() discovers own keys in first-seen order when columns are omitted', () => {
-  expect(invoke(fixture, ['defaults'])).toEqual({
+test('table() discovers own keys in first-seen order when columns are omitted', async () => {
+  await expect(fixtureRun(['defaults'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout:
@@ -42,40 +40,40 @@ test('table() discovers own keys in first-seen order when columns are omitted', 
   });
 });
 
-test('table() renders as a declared whole view through out.results', () => {
-  expect(invoke(fixture, ['declared'])).toEqual({
+test('table() renders as a declared whole view through out.results', async () => {
+  await expect(fixtureRun(['declared'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'source        count\ndeclared.txt  3\nresolved:0\n',
   });
 });
 
-test('table() permits one key twice with independent formatting', () => {
-  expect(invoke(fixture, ['duplicate-key'])).toEqual({
+test('table() permits one key twice with independent formatting', async () => {
+  await expect(fixtureRun(['duplicate-key'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'COUNT  TENS\n2      20\nresolved:0\n',
   });
 });
 
-test('table() prints null and undefined as empty cells', () => {
-  expect(invoke(fixture, ['nullish'])).toEqual({
+test('table() prints null and undefined as empty cells', async () => {
+  await expect(fixtureRun(['nullish'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `nullish  missing  end\n${' '.repeat(18)}x\nresolved:0\n`,
   });
 });
 
-test('table() measures wide and styled cells with the view context', () => {
-  expect(invoke(fixture, ['styled-wide'])).toEqual({
+test('table() measures wide and styled cells with the view context', async () => {
+  await expect(fixtureRun(['styled-wide'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'N       count\n猫猫        1\nstyled     20\nresolved:0\n',
   });
 });
 
-test('table() leaves formatted text authored and escapes default data cells', () => {
-  const result = invoke(fixture, ['escape']);
+test('table() leaves formatted text authored and escapes default data cells', async () => {
+  const result = await fixtureRun(['escape']);
   const marker = '\uE000["style",[["foreground","red"]]]\uE001data\uE002';
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
@@ -84,40 +82,40 @@ test('table() leaves formatted text authored and escapes default data cells', ()
   expect(result.stdout.split(marker)).toHaveLength(2);
 });
 
-test('table() escapes a discovered key before styling its header', () => {
-  const result = invoke(fixture, ['escaped-key']);
+test('table() escapes a discovered key before styling its header', async () => {
+  const result = await fixtureRun(['escaped-key']);
   const marker = '\uE000["style",[["foreground","red"]]]\uE001data\uE002';
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   expect(result.stdout).toContain(marker);
 });
 
-test('table() measures a large finite sequence without an argument overflow', () => {
-  expect(invoke(fixture, ['large'])).toEqual({
+test('table() measures a large finite sequence without an argument overflow', async () => {
+  await expect(fixtureRun(['large'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'resolved:0\n',
   });
 });
 
-test('table() centers its last column without trailing padding', () => {
-  expect(invoke(fixture, ['last-center'])).toEqual({
+test('table() centers its last column without trailing padding', async () => {
+  await expect(fixtureRun(['last-center'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'ABCD\n x\nresolved:0\n',
   });
 });
 
-test('table() prints only configured headers for an empty sequence', () => {
-  expect(invoke(fixture, ['empty-explicit'])).toEqual({
+test('table() prints only configured headers for an empty sequence', async () => {
+  await expect(fixtureRun(['empty-explicit'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'source  count\nresolved:0\n',
   });
 });
 
-test('table() prints nothing for an empty sequence with no known columns', () => {
-  expect(invoke(fixture, ['empty-default'])).toEqual({
+test('table() prints nothing for an empty sequence with no known columns', async () => {
+  await expect(fixtureRun(['empty-default'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'resolved:0\n',

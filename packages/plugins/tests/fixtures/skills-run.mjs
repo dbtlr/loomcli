@@ -40,39 +40,10 @@ if (scenario.ceiling !== undefined) {
   syncBuiltinESMExports();
 }
 
-const { Application, Command, processHandle } = await import('@loomcli/core');
-const { help } = await import('@loomcli/plugins/help');
-const { skills } = await import('@loomcli/plugins/skills');
+const { processHandle } = await import('@loomcli/core');
+const { skillsApplication } = await import('./skills-run-app.ts');
 
-/** A file as the loader answers it: text, or the bytes the scenario lists. */
-function fileOf({ bytes, content, executable, path }) {
-  return {
-    content: bytes === undefined ? content : Uint8Array.from(bytes),
-    ...(executable === undefined ? {} : { executable }),
-    path,
-  };
-}
-
-/** The skill a scenario entry describes, its loader recording each call. */
-function skillOf(entry) {
-  return {
-    files: async () => {
-      fs.appendFileSync(scenario.loaded, `${entry.name}\n`);
-      if (entry.throws) {
-        throw new Error(`The ${entry.name} loader failed.`);
-      }
-      return 'result' in entry ? entry.result : entry.files.map(fileOf);
-    },
-    name: entry.name,
-  };
-}
-
-const app = new Application('notes', {
-  description: 'Keep notes in sync.',
-  plugins: [help(), skills({ skills: scenario.skills.map(skillOf) })],
-}).command(new Command('ping', { description: 'Answer.' }).action(({ out }) => out.print('pong')));
-
-process.exitCode = await app.run({
+process.exitCode = await skillsApplication(scenario).run({
   process: processHandle({
     argv,
     cwd: scenario.cwd,
