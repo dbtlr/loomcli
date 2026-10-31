@@ -82,7 +82,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { run as fixtureRun } from './fixtures/skills-run-app.mjs';
+import { run as fixtureRun } from './fixtures/skills-run-app.js';
 
 const fixture = new URL('fixtures/skills-run.mjs', import.meta.url);
 
@@ -153,26 +153,24 @@ interface Scenario {
 
 /** Runs `notes skills ...argv` in the sandbox, its fixture skills and environment from the scenario. */
 async function run(box: Box, argv: string[], scenario: Scenario = {}) {
-  writeFileSync(
-    box.scenario,
-    JSON.stringify({
-      ceiling: box.root,
-      columns: scenario.columns,
-      cwd: scenario.cwd ?? box.repo,
-      env: { HOME: box.home, XDG_STATE_HOME: box.state, ...scenario.env },
-      loaded: box.loaded,
-      platform: scenario.platform,
-      release: { build: scenario.build ?? 'distributed' },
-      skills: scenario.skills ?? [notes],
-      umask: scenario.umask,
-    }),
-  );
+  const facts = {
+    ceiling: box.root,
+    columns: scenario.columns,
+    cwd: scenario.cwd ?? box.repo,
+    env: { HOME: box.home, XDG_STATE_HOME: box.state, ...scenario.env },
+    loaded: box.loaded,
+    platform: scenario.platform,
+    release: { build: scenario.build ?? 'distributed' },
+    skills: scenario.skills ?? [notes],
+    umask: scenario.umask,
+  };
+  writeFileSync(box.scenario, JSON.stringify(facts));
   // A real process owns the umask. Bun also needs a fresh process for the .git ceiling:
   // Its builtin ESM exports are fixed before an in-process fixture can install the trap.
   if (scenario.umask !== undefined || scenario.processCeiling === true) {
     return invoke(fixture, argv, { env: { SKILLS_SCENARIO: box.scenario } });
   }
-  return await fixtureRun(argv, JSON.parse(readFileSync(box.scenario, 'utf8')));
+  return await fixtureRun(argv, facts);
 }
 
 /** The skill names the loaders were called for, in order. */

@@ -1,10 +1,9 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
-import { Application, Command, processHandle } from '@loomcli/core';
-import { format } from '@loomcli/plugins/format';
-import { service } from '@loomcli/plugins/service';
+import { processHandle } from '@loomcli/core';
 
 import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
+import { serviceApplication } from './service-run-app.ts';
 
 /**
  * One run of an application that installs `service()`, against fake service managers the test puts
@@ -30,63 +29,7 @@ if (scenario.abortMarker !== undefined) {
   timer.unref();
 }
 
-/** The probe the scenario names: one that records what it received, or one that throws. */
-function probe() {
-  if (scenario.probe === undefined) {
-    return {};
-  }
-  return {
-    probe: async ({ host, invoke, log, signal, state }) => {
-      writeFileSync(
-        scenario.probeLog,
-        JSON.stringify({
-          aborted: signal.aborted,
-          log: typeof log.info,
-          platform: host.platform,
-          state,
-        }),
-      );
-      if (scenario.probe === 'throw') {
-        throw new Error('The probe failed.');
-      }
-      const outcome = await invoke(['health'], {});
-      return [{ name: 'health', value: outcome.output.trim() }];
-    },
-  };
-}
-
-const app = new Application('notes', {
-  ...(scenario.description === null
-    ? {}
-    : { description: scenario.description ?? 'Keep notes in sync.' }),
-  plugins: [
-    format(),
-    service({
-      label: scenario.label ?? 'com.acme.notes',
-      run: scenario.run ?? ['serve'],
-      ...probe(),
-    }),
-  ],
-})
-  .command(
-    new Command('serve', { description: 'Serve the notes.' })
-      .option('port', { description: 'The port to serve on.', type: 'string' })
-      .action(({ out }) => out.print('serving')),
-  )
-  .command(
-    new Command('health', { description: 'Report the health.' }).action(({ out }) =>
-      out.print('ok, v1.5.0'),
-    ),
-  )
-  .command(
-    new Command('cache', { description: 'Manage the cache.' }).command(
-      new Command('clear', { description: 'Clear the cache.' }).action(({ out }) =>
-        out.print('cleared'),
-      ),
-    ),
-  );
-
-process.exitCode = await app.run({
+process.exitCode = await serviceApplication(scenario).run({
   process: processHandle({
     argv,
     env: scenario.env,

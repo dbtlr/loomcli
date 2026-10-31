@@ -1,10 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 
-import { Application, Command, processHandle } from '@loomcli/core';
-import { completion } from '@loomcli/plugins/completion';
-import { help } from '@loomcli/plugins/help';
+import { processHandle } from '@loomcli/core';
 
 import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
+import { completionInstallationApplication } from './completion-install-app.ts';
 
 /**
  * One run of an application named `jsonkit` that installs `completion()`. The scenario file, named
@@ -29,12 +28,7 @@ if (scenario.umask !== undefined) {
   process.umask(scenario.umask);
 }
 
-const app = new Application('jsonkit', {
-  description: 'Read JSON.',
-  plugins: [help(), completion()],
-}).command(new Command('ping', { description: 'Answer.' }).action(({ out }) => out.print('pong')));
-
-process.exitCode = await app.run({
+process.exitCode = await completionInstallationApplication().run({
   process: processHandle({
     argv: process.argv.slice(2),
     cwd: scenario.cwd,

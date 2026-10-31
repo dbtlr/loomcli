@@ -75,12 +75,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { ProcessTerminal, ReleaseFacts } from '@loomcli/core';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 import { ruleParts } from '../../../scripts/test-rules.js';
 import { servicePrograms } from './fixtures/service-programs.js';
-import { run as fixtureRun } from './fixtures/service-run-app.mjs';
+import { run as fixtureRun } from './fixtures/service-run-app.js';
 
 const fixture = new URL('fixtures/service-run.mjs', import.meta.url);
 const manager = fileURLToPath(new URL('fixtures/service-manager.mjs', import.meta.url));
@@ -150,7 +151,7 @@ type Answers = Record<string, Answer | readonly Answer[]>;
 interface Scenario {
   readonly platform?: string;
   readonly program?: readonly string[];
-  readonly release?: unknown;
+  readonly release?: ReleaseFacts;
   readonly label?: string;
   readonly run?: readonly string[];
   readonly description?: string | null;
@@ -158,7 +159,7 @@ interface Scenario {
   readonly answers?: Answers;
   readonly env?: Record<string, string | undefined>;
   readonly umask?: number;
-  readonly terminal?: unknown;
+  readonly terminal?: ProcessTerminal;
 }
 
 /** Runs `notes service ...argv` in the sandbox against its fake managers. */
@@ -167,34 +168,32 @@ async function run(box: Box, argv: string[], scenario: Scenario = {}) {
     call,
     results: Array.isArray(results) ? results : [results],
   }));
-  writeFileSync(
-    join(box.root, 'scenario.json'),
-    JSON.stringify({
-      abortMarker: box.marker,
-      cwd: box.root,
-      uid,
-      answers,
-      calls: box.calls,
-      description: scenario.description,
-      env: {
-        HOME: box.home,
-        PATH: box.bin,
-        XDG_CONFIG_HOME: box.config,
-        XDG_RUNTIME_DIR: '/run/user/given',
-        XDG_STATE_HOME: box.state,
-        ...scenario.env,
-      },
-      label: scenario.label,
-      platform: scenario.platform ?? 'linux',
-      probe: scenario.probe,
-      probeLog: box.probeLog,
-      program: scenario.program ?? program,
-      release: scenario.release ?? { build: 'distributed' },
-      run: scenario.run ?? runWords,
-      terminal: scenario.terminal,
-      umask: scenario.umask,
-    }),
-  );
+  const facts = {
+    abortMarker: box.marker,
+    cwd: box.root,
+    uid,
+    answers,
+    calls: box.calls,
+    description: scenario.description,
+    env: {
+      HOME: box.home,
+      PATH: box.bin,
+      XDG_CONFIG_HOME: box.config,
+      XDG_RUNTIME_DIR: '/run/user/given',
+      XDG_STATE_HOME: box.state,
+      ...scenario.env,
+    },
+    label: scenario.label,
+    platform: scenario.platform ?? 'linux',
+    probe: scenario.probe,
+    probeLog: box.probeLog,
+    program: scenario.program ?? program,
+    release: scenario.release ?? { build: 'distributed' },
+    run: scenario.run ?? runWords,
+    terminal: scenario.terminal,
+    umask: scenario.umask,
+  };
+  writeFileSync(join(box.root, 'scenario.json'), JSON.stringify(facts));
   // A real process owns the umask and the manager termination signals.
   if (
     scenario.umask !== undefined ||
@@ -205,7 +204,7 @@ async function run(box: Box, argv: string[], scenario: Scenario = {}) {
     return invoke(fixture, [join(box.root, 'scenario.json'), 'service', ...argv]);
   }
   return await fixtureRun(['service', ...argv], {
-    ...JSON.parse(readFileSync(join(box.root, 'scenario.json'), 'utf8')),
+    ...facts,
     programs: servicePrograms({ bin: box.bin, calls: box.calls, abortMarker: box.marker, answers }),
   });
 }
@@ -558,17 +557,20 @@ describe('refusing', () => {
   it.each([
     ['source', 'a source build'],
     ['development', 'a development build'],
-  ])('a %s build exits 1 with the pinned sentence and calls nothing', async (build, phrase) => {
-    const box = sandbox();
-    const result = await run(box, ['install'], { release: { build } });
-    expect(result).toEqual({
-      status: 1,
-      stderr: `notes is ${phrase}, so it cannot install a service that would outlive it. Build it with loom build, then run the built notes service install.\n`,
-      stdout: '',
-    });
-    expect(calls(box)).toEqual([]);
-    expect(existsSync(systemdPath(box))).toBe(false);
-  });
+  ] satisfies [ReleaseFacts['build'], string][])(
+    'a %s build exits 1 with the pinned sentence and calls nothing',
+    async (build, phrase) => {
+      const box = sandbox();
+      const result = await run(box, ['install'], { release: { build } });
+      expect(result).toEqual({
+        status: 1,
+        stderr: `notes is ${phrase}, so it cannot install a service that would outlive it. Build it with loom build, then run the built notes service install.\n`,
+        stdout: '',
+      });
+      expect(calls(box)).toEqual([]);
+      expect(existsSync(systemdPath(box))).toBe(false);
+    },
+  );
 
   /** Puts something at the unit's path that the plugin's file does not list as it is. */
   const occupants: [string, (box: Box, path: string) => void, (path: string) => string][] = [

@@ -24,7 +24,7 @@ import { invoke } from '../../../scripts/test-process.js';
 import { startupLine } from '../src/completion/shells.js';
 import { deniesWrite, ownedByAnother } from '../src/completion/startup.js';
 import { zshInstalledScript } from '../src/completion/zsh.js';
-import { run as fixtureRun } from './fixtures/completion-install-app.mjs';
+import { run as fixtureRun } from './fixtures/completion-install-app.js';
 
 const fixture = new URL('fixtures/completion-install.mjs', import.meta.url);
 
@@ -87,29 +87,27 @@ interface Scenario {
 /** Runs `jsonkit ...argv` in the sandbox, with the temporary folders and the scenario's variables. */
 async function run(box: Box, argv: string[], scenario: Scenario = {}) {
   const cwd = scenario.cwd ?? box.work;
-  writeFileSync(
-    box.scenario,
-    JSON.stringify({
-      abortMarker: scenario.abortMarker,
-      columns: scenario.columns,
-      cwd,
-      env: {
-        HOME: box.home,
-        XDG_CONFIG_HOME: box.config,
-        XDG_DATA_HOME: box.data,
-        XDG_STATE_HOME: box.state,
-        ...scenario.env,
-      },
-      platform: scenario.platform,
-      uid: process.getuid?.() ?? 0,
-      umask: scenario.umask,
-    }),
-  );
+  const facts = {
+    abortMarker: scenario.abortMarker,
+    columns: scenario.columns,
+    cwd,
+    env: {
+      HOME: box.home,
+      XDG_CONFIG_HOME: box.config,
+      XDG_DATA_HOME: box.data,
+      XDG_STATE_HOME: box.state,
+      ...scenario.env,
+    },
+    platform: scenario.platform,
+    uid: process.getuid?.() ?? 0,
+    umask: scenario.umask,
+  };
+  writeFileSync(box.scenario, JSON.stringify(facts));
   // A real process owns the umask.
   if (scenario.umask !== undefined) {
     return invoke(fixture, argv, { cwd, env: { COMPLETION_SCENARIO: box.scenario } });
   }
-  return await fixtureRun(argv, { ...JSON.parse(readFileSync(box.scenario, 'utf8')), programs });
+  return await fixtureRun(argv, { ...facts, programs });
 }
 
 /** The lines a run wrote to stderr, each with any lane glyph and the space after it removed. */
