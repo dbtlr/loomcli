@@ -138,9 +138,14 @@ test.each(['null-prototype', 'null-prototype-application'])(
   },
 );
 
+/*
+ * Each error is built inside its test, where the code that builds it stays reachable: Bun 1.4.0
+ * renders a bare "Error" stack once a collection frees that code before the first read.
+ */
 test.each([
-  ['unknownOptionName', unknownOptionName('lound')],
-  ['undeclaredArgument', undeclaredArgument(['get'], 1, 'extra')],
-])("%s's by-name error opens its stack with its own name and message", (_builder, error) => {
+  ['unknownOptionName', () => unknownOptionName('lound')],
+  ['undeclaredArgument', () => undeclaredArgument(['get'], 1, 'extra')],
+])("%s's by-name error opens its stack with its own name and message", (_builder, build) => {
+  const error = build();
   expect(error.stack?.startsWith(`${error.name}: ${error.message}\n`)).toBe(true);
 });
