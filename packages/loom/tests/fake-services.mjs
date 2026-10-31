@@ -8,6 +8,8 @@ import { createServer } from 'node:http';
 const state = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const writes = [];
 let tarballRequests = 0;
+// The packument requests the registry received and held without answering.
+let heldPackumentRequests = 0;
 
 function assetName(name, version) {
   return `${name.replace(/^@/u, '').replace('/', '-')}-${version}.tgz`;
@@ -145,6 +147,7 @@ function registry(request, response, path, host) {
   }
   if (entry.stalls > 0) {
     entry.stalls -= 1;
+    heldPackumentRequests += 1;
     // The endpoint holds the connection and never answers, so the client's own deadline ends the request.
     return;
   }
@@ -274,7 +277,7 @@ const server = createServer(async (request, response) => {
   try {
     const raw = await collect(request);
     if (url.pathname === '/state') {
-      send(response, 200, { tarballRequests, writes });
+      send(response, 200, { heldPackumentRequests, tarballRequests, writes });
     } else if (url.pathname.startsWith('/registry/')) {
       registry(request, response, url.pathname.slice('/registry'.length), host);
     } else if (url.pathname.startsWith('/github/uploads/')) {
