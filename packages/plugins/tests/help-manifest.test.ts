@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
 import { run as fixtureRun } from './fixtures/help-manifest.mjs';
-import { run as rulesRun } from './fixtures/manifest-rules.mjs';
+import { run as rulesRun } from './fixtures/manifest-rules-app.mjs';
 
 /** The manifest values each Command carries, then help's own value on `noted`, for one scenario. */
 async function read(scenario: string): Promise<unknown[]> {

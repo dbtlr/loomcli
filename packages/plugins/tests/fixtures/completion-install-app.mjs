@@ -37,6 +37,7 @@ async function run(args = [], given = {}) {
             ),
         ),
       },
+      uid: given.uid,
       ...(terminal !== undefined
         ? {
             terminal: {

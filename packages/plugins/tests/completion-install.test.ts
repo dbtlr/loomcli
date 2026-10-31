@@ -99,6 +99,7 @@ async function run(box: Box, argv: string[], scenario: Scenario = {}) {
         ...scenario.env,
       },
       platform: scenario.platform,
+      uid: process.getuid?.() ?? 0,
       umask: scenario.umask,
     }),
   );
