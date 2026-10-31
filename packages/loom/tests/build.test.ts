@@ -1100,6 +1100,24 @@ test('a development bundle reads the development code its dependencies ship', ()
   expect(run.stdout).toBe('development development\n');
 });
 
+test(
+  'a compiled binary reads production code from its dependencies in a distributed build and development code in a development one',
+  () => {
+    const root = modesPackage();
+    const shell = { NODE_ENV: undefined };
+    for (const [build, expected] of [
+      ['distributed', 'production production\n'],
+      ['development', 'development development\n'],
+    ] as const) {
+      const built = loom(root, ['build', '--name', 'modes', '--build', build], { env: shell });
+      expect(built.status).toBe(0);
+      const run = execute(join(root, 'dist/modes'), [], { env: childEnvironment(shell) });
+      expect(run.stdout).toBe(expected);
+    }
+  },
+  slow,
+);
+
 test("a build reads the package's bunfig.toml, whose loader setting applies to the bundle", () => {
   const root = fixturePackage({
     'bunfig.toml': '[loader]\n".greeting" = "text"\n',

@@ -2,7 +2,7 @@
   "name": "@loomcli/loom",
   "version": "0.16.0",
   "description": "The Loom CLI toolchain.",
-  "license": "MIT",
+  "license": "MIT AND ISC AND Apache-2.0 AND Unicode-3.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dbtlr/loomcli.git"
