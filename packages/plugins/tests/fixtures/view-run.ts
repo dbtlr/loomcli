@@ -1,5 +1,5 @@
 import { Application, style } from '@loomcli/core';
-import type { Out, RowViews, RunOptions, View } from '@loomcli/core';
+import type { ApplicationOptions, Out, RowViews, RunOptions, View } from '@loomcli/core';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { mockProcess } from '@loomcli/testing';
 import type { MockProcess } from '@loomcli/testing';
@@ -16,6 +16,8 @@ interface ViewRun {
   readonly theme?: boolean;
   /** Renders through an invocation by name, which has no terminal, and answers its output. */
   readonly invoke?: boolean;
+  /** The Application's view overrides. */
+  readonly views?: ApplicationOptions['views'];
 }
 
 /**
@@ -52,6 +54,7 @@ function baseApplication(run: ViewRun) {
   return new Application('pack-views', {
     description: 'Render a pack view at a live width.',
     plugins: run.theme === true ? [loomTheme({ primary: style.cyan })] : [],
+    views: run.views ?? [],
   });
 }
 
