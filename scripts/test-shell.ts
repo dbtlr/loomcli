@@ -670,7 +670,10 @@ function runPowershell(
       timeout: stepTimeout / 2,
     });
   const first = attempt();
-  return first.error === undefined || first.signal === null ? first : attempt();
+  // A timeout of spawnSync reports ETIMEDOUT however the child ended, by a signal or a status.
+  const timedOut =
+    first.error !== undefined && 'code' in first.error && first.error.code === 'ETIMEDOUT';
+  return timedOut ? attempt() : first;
 }
 
 /**
