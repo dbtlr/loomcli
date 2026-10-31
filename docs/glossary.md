@@ -847,7 +847,7 @@ A publishable first-party package under `packages/`, a library or the `@loomcli/
 _Avoid_: Release target, public workspace
 
 **Change fragment**:
-A pending record of one pull request's consumer-visible changes and any required migration, kept in a package's `.changes/` until a cut consumes it. Its kind is breaking, feature, or fix.
+A pending record of one pull request's consumer-visible changes and any required migration, kept in a package's fragment folder, `.changes/` unless the toolchain configuration file names another, until a cut consumes it. Its kind is breaking, feature, or fix.
 _Avoid_: Changeset, release note draft
 
 **Breaking fragment**:
