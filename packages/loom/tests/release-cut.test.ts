@@ -1,11 +1,15 @@
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import fs, {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { afterEach, expect, test } from 'vite-plus/test';
+import { afterEach, expect, test, vi } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import {
   commit,
   git,
@@ -15,17 +19,30 @@ import {
   repository as fixtureRepository,
   temporaryRoot,
 } from './fixture.js';
+import { run } from './run.js';
 
-const cli = new URL('../dist/main.js', import.meta.url);
+// Mock the named exports through the test runner; Bun does not synchronize builtin ESM exports.
+vi.mock(import('node:fs'), async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    renameSync: vi.fn(actual.renameSync),
+    writeFileSync: vi.fn(actual.writeFileSync),
+  };
+});
+
 // The synchronized cut, which writes the release files.
-function cut(root: string, ...args: string[]) {
-  return invoke(cli, ['release', 'cut', ...args], { cwd: root });
+async function cut(root: string, ...args: string[]) {
+  return await run(['release', 'cut', ...args], { cwd: root });
 }
 // The same cut with --dry-run, which prints the section and writes nothing.
-function dryRun(root: string, ...args: string[]) {
-  return cut(root, '--dry-run', ...args);
+async function dryRun(root: string, ...args: string[]) {
+  return await cut(root, '--dry-run', ...args);
 }
 afterEach(() => {
+  vi.restoreAllMocks();
+  vi.mocked(writeFileSync).mockReset();
+  vi.mocked(renameSync).mockReset();
   removeRoots();
 });
 
@@ -67,13 +84,13 @@ function setVersion(
   commit(root);
 }
 
-test('a dry run derives the first version from manifests and preserves fragment prose', () => {
+test('a dry run derives the first version from manifests and preserves fragment prose', async () => {
   const root = repository();
   put(root, '.changes/add.md', '- Add **typed** input.\n\n  - Preserve nested detail.\n');
   commit(root);
   git(root, ['tag', 'v0.99.0']);
   const before = git(root, ['status', '--porcelain']);
-  expect(dryRun(root, '--date', '2026-09-07')).toEqual({
+  await expect(dryRun(root, '--date', '2026-09-07')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout:
@@ -87,17 +104,17 @@ test.each([
   ['0.4.7', 'plain.md', '- Fix output.\n', '0.4.8'],
   ['0.4.7', 'feature.input.md', '- Add input.\n', '0.4.8'],
   ['0.4.7', 'breaking.call.md', migration, '0.5.0'],
-])('a dry run increments manifest %s for %s', (current, name, body, expected) => {
+])('a dry run increments manifest %s for %s', async (current, name, body, expected) => {
   const root = repository(current);
   put(root, `.changes/${name}`, body);
   commit(root);
   git(root, ['tag', 'v0.90.0']);
-  const result = dryRun(root, '--date', '2026-09-07');
+  const result = await dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain(`## v${expected} - 2026-09-07`);
 });
 
-test('a dry run sorts by the commit that added each fragment, then filename', () => {
+test('a dry run sorts by the commit that added each fragment, then filename', async () => {
   const root = repository();
   put(root, '.changes/z.md', '- First.\n');
   commit(root, '2026-01-02T12:00:00Z');
@@ -106,25 +123,26 @@ test('a dry run sorts by the commit that added each fragment, then filename', ()
   commit(root, '2026-01-03T12:00:00Z');
   put(root, '.changes/z.md', '- First, corrected.\n');
   commit(root, '2026-01-04T12:00:00Z');
-  expect(dryRun(root, '--date', '2026-09-07').stdout).toBe(
+  const runResult = await dryRun(root, '--date', '2026-09-07');
+  expect(runResult.stdout).toBe(
     '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- First, corrected.\n\n- Second.\n\n- Third.\n\n',
   );
 });
 
-test('an explicit target cuts a feature-only minor release with the same preview and written section', () => {
+test('an explicit target cuts a feature-only minor release with the same preview and written section', async () => {
   const root = repository('0.12.0');
   put(root, 'packages/core/source.ts', 'export const typed = true;\n');
   put(root, '.changes/feature.input.md', '- Add typed input.\n');
   commit(root);
   const args = ['--target', '0.13.0', '--date', '2026-10-15'];
-  const preview = dryRun(root, ...args);
+  const preview = await dryRun(root, ...args);
   expect(preview).toEqual({
     status: 0,
     stderr: '',
     stdout: '## v0.13.0 - 2026-10-15\n\n### Features\n\n- Add typed input.\n\n',
   });
   expect(git(root, ['status', '--porcelain'])).toBe('');
-  expect(cut(root, ...args)).toEqual(preview);
+  await expect(cut(root, ...args)).resolves.toEqual(preview);
   expect(readFileSync(join(root, 'packages/core/package.json'), 'utf8')).toContain('0.13.0');
   expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toContain(preview.stdout.trimEnd());
   expect(readdirSync(join(root, '.changes'))).toEqual(['README.md']);
@@ -132,11 +150,11 @@ test('an explicit target cuts a feature-only minor release with the same preview
 
 test.each(['0.12.1', '0.12.10', '0.13.1', '0.20.0'])(
   'an explicit target %s may equal or exceed the feature minimum',
-  (target) => {
+  async (target) => {
     const root = repository('0.12.0');
     put(root, '.changes/feature.input.md', '- Add input.\n');
     commit(root);
-    expect(dryRun(root, '--target', target)).toMatchObject({
+    await expect(dryRun(root, '--target', target)).resolves.toMatchObject({
       status: 0,
       stderr: '',
       stdout: expect.stringContaining(`## v${target} - `),
@@ -155,12 +173,12 @@ test.each([
   ['0.13.0+build', 'stable 0.x'],
   ['1.0.0', 'stable 0.x'],
   ['0.9007199254740991.0', 'stable 0.x'],
-])('an invalid target %j fails preview and writing without edits', (target, message) => {
+])('an invalid target %j fails preview and writing without edits', async (target, message) => {
   const root = repository('0.12.0');
   put(root, '.changes/feature.input.md', '- Add input.\n');
   commit(root);
   for (const args of [['--dry-run'], []]) {
-    expect(cut(root, ...args, '--target', target)).toMatchObject({
+    await expect(cut(root, ...args, '--target', target)).resolves.toMatchObject({
       status: 1,
       stderr: expect.stringContaining(message),
       stdout: '',
@@ -169,81 +187,93 @@ test.each([
   }
 });
 
-test('a breaking fragment sets a minor minimum that an explicit patch cannot bypass', () => {
+test('a breaking fragment sets a minor minimum that an explicit patch cannot bypass', async () => {
   const root = repository('0.12.0');
   put(root, '.changes/breaking.input.md', migration);
   commit(root);
-  expect(cut(root, '--target', '0.12.99')).toMatchObject({
+  await expect(cut(root, '--target', '0.12.99')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('at least 0.13.0'),
     stdout: '',
   });
   expect(git(root, ['status', '--porcelain'])).toBe('');
-  expect(dryRun(root, '--target', '0.13.0').status).toBe(0);
-  expect(dryRun(root, '--target', '0.14.0').status).toBe(0);
+  const runResult = await dryRun(root, '--target', '0.13.0');
+  expect(runResult.status).toBe(0);
+  const runResult2 = await dryRun(root, '--target', '0.14.0');
+  expect(runResult2.status).toBe(0);
 });
 
-test('an explicit target retains empty-fragment and initial-release rules', () => {
+test('an explicit target retains empty-fragment and initial-release rules', async () => {
   const later = repository('0.12.0');
-  expect(cut(later, '--target', '0.13.0').stderr).toContain('No fragments');
+  const runResult = await cut(later, '--target', '0.13.0');
+  expect(runResult.stderr).toContain('No fragments');
   const initial = repository();
-  expect(cut(initial, '--initial', '--target', '0.0.1').stderr).toContain('at least 0.1.0');
-  expect(cut(initial, '--initial', '--target', '0.2.0').stderr).toContain('requires a narrative');
+  const runResult2 = await cut(initial, '--initial', '--target', '0.0.1');
+  expect(runResult2.stderr).toContain('at least 0.1.0');
+  const runResult3 = await cut(initial, '--initial', '--target', '0.2.0');
+  expect(runResult3.stderr).toContain('requires a narrative');
   put(initial, 'narrative.md', 'Begin with typed input.\n');
   commit(initial);
-  expect(
+  await expect(
     dryRun(initial, '--initial', '--target', '0.2.0', '--narrative', 'narrative.md'),
-  ).toMatchObject({
+  ).resolves.toMatchObject({
     status: 0,
     stderr: '',
     stdout: expect.stringContaining('## v0.2.0 - '),
   });
 });
 
-test('an explicit target retains the clean-checkout and existing-tag safeguards', () => {
+test('an explicit target retains the clean-checkout and existing-tag safeguards', async () => {
   const root = repository('0.12.0');
   put(root, '.changes/feature.input.md', '- Add input.\n');
   commit(root);
   put(root, 'local.md', 'Local work.\n');
-  expect(cut(root, '--target', '0.13.0').stderr).toContain('clean checkout');
+  const runResult = await cut(root, '--target', '0.13.0');
+  expect(runResult.stderr).toContain('clean checkout');
   rmSync(join(root, 'local.md'));
   git(root, ['tag', 'v0.13.0']);
-  expect(cut(root, '--target', '0.13.0').stderr).toContain('Tag v0.13.0 already exists');
+  const runResult2 = await cut(root, '--target', '0.13.0');
+  expect(runResult2.stderr).toContain('Tag v0.13.0 already exists');
   expect(git(root, ['status', '--porcelain'])).toBe('');
 });
 
-test('a dry run refuses mismatched manifests and invalid dates without edits', () => {
+test('a dry run refuses mismatched manifests and invalid dates without edits', async () => {
   const root = repository('0.3.1');
   put(root, 'packages/other/package.json', '{"name":"other","version":"0.3.2"}\n');
   put(root, '.changes/add.md', '- Add.\n');
   commit(root);
-  expect(dryRun(root).stderr).toContain('versions must match');
-  expect(dryRun(root, '--date', '2026-02-30').stderr).toContain('calendar date');
+  const runResult = await dryRun(root);
+  expect(runResult.stderr).toContain('versions must match');
+  const runResult2 = await dryRun(root, '--date', '2026-02-30');
+  expect(runResult2.stderr).toContain('calendar date');
   expect(git(root, ['status', '--porcelain'])).toBe('');
 });
 
-test('an empty set requires explicit first-release intent and cannot release later versions', () => {
+test('an empty set requires explicit first-release intent and cannot release later versions', async () => {
   const root = repository();
-  expect(dryRun(root).stderr).toContain('No fragments');
+  const runResult = await dryRun(root);
+  expect(runResult.stderr).toContain('No fragments');
   const later = repository('0.2.0');
-  expect(dryRun(later, '--initial').stderr).toContain('0.0.0');
+  const runResult2 = await dryRun(later, '--initial');
+  expect(runResult2.stderr).toContain('0.0.0');
 });
 
-test('an empty initial cut carries notes only through a narrative', () => {
+test('an empty initial cut carries notes only through a narrative', async () => {
   const root = repository();
-  expect(dryRun(root, '--initial', '--date', '2026-09-07').stderr).toContain(
-    'requires a narrative',
-  );
+  const runResult = await dryRun(root, '--initial', '--date', '2026-09-07');
+  expect(runResult.stderr).toContain('requires a narrative');
   put(root, 'narrative.md', 'Start using the typed command API.\n');
   commit(root);
-  expect(dryRun(root, '--initial', '--date', '2026-09-07', '--narrative', 'narrative.md')).toEqual({
+  await expect(
+    dryRun(root, '--initial', '--date', '2026-09-07', '--narrative', 'narrative.md'),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '## v0.1.0 - 2026-09-07\n\nStart using the typed command API.\n\n',
   });
 });
 
-test('material changes propagate through library peer dependencies while docs stay immaterial', () => {
+test('material changes propagate through library peer dependencies while docs stay immaterial', async () => {
   const root = repository('0.2.0');
   setVersion(root, '0.3.0', {
     adapter: { name: 'adapter', peerDependencies: { '@sample/core': 'workspace:*' } },
@@ -253,51 +283,52 @@ test('material changes propagate through library peer dependencies while docs st
   put(root, 'docs/guide.md', '# Guide\n');
   put(root, '.changes/add.md', '- Add input.\n');
   commit(root);
-  const result = dryRun(root, '--date', '2026-09-07');
+  const result = await dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('No material changes: unrelated.\n');
   put(root, 'tsconfig.json', '{}\n');
   commit(root);
-  expect(dryRun(root).stdout).not.toContain('No material changes:');
+  const runResult = await dryRun(root);
+  expect(runResult.stdout).not.toContain('No material changes:');
 });
 
-test('a supplied history base changes the material report but never the version', () => {
+test('a supplied history base changes the material report but never the version', async () => {
   const root = repository('0.8.2');
   put(root, 'packages/core/source.ts', 'export {};\n');
   commit(root);
   const base = git(root, ['rev-parse', 'HEAD']);
   put(root, '.changes/fix.md', '- Fix.\n');
   commit(root);
-  const result = dryRun(root, '--since', base, '--date', '2026-09-07');
+  const result = await dryRun(root, '--since', base, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('## v0.8.3 - 2026-09-07');
   expect(result.stdout).toContain('No material changes: @sample/core.');
 });
 
-test('the material report needs no tag for the current version', () => {
+test('the material report needs no tag for the current version', async () => {
   const root = repository('0.6.0', { tag: false });
   put(root, 'docs/guide.md', '# Guide\n');
   put(root, '.changes/fix.md', '- Fix output.\n');
   commit(root);
-  const result = dryRun(root, '--date', '2026-09-07');
+  const result = await dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('## v0.6.1 - 2026-09-07');
   expect(result.stdout).toContain('No material changes: @sample/core.\n');
 });
 
-test('an abandoned unpublished version keeps the baseline at the commit that set it', () => {
+test('an abandoned unpublished version keeps the baseline at the commit that set it', async () => {
   const root = repository('0.1.0');
   setVersion(root, '0.2.0', { other: { name: 'other' } });
   put(root, 'packages/core/source.ts', 'export {};\n');
   put(root, '.changes/fix.md', '- Fix output.\n');
   commit(root);
-  const result = dryRun(root, '--date', '2026-09-07');
+  const result = await dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('## v0.2.1 - 2026-09-07');
   expect(result.stdout).toContain('No material changes: other.\n');
 });
 
-test('a version tag on an unrelated commit does not move the baseline', () => {
+test('a version tag on an unrelated commit does not move the baseline', async () => {
   const root = repository('0.7.0', { tag: false });
   const unrelated = git(root, ['rev-parse', 'HEAD']);
   setVersion(root, '0.8.0', { other: { name: 'other' } });
@@ -305,13 +336,13 @@ test('a version tag on an unrelated commit does not move the baseline', () => {
   put(root, 'packages/core/source.ts', 'export {};\n');
   put(root, '.changes/fix.md', '- Fix output.\n');
   commit(root);
-  const result = dryRun(root, '--date', '2026-09-07');
+  const result = await dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('## v0.8.1 - 2026-09-07');
   expect(result.stdout).toContain('No material changes: other.\n');
 });
 
-test('a version set on a side branch takes its baseline from the merge commit', () => {
+test('a version set on a side branch takes its baseline from the merge commit', async () => {
   const root = repository('0.3.0');
   setVersion(root, '0.3.0', { idle: { name: 'idle' }, other: { name: 'other' } });
   const branch = git(root, ['branch', '--show-current']);
@@ -332,13 +363,13 @@ test('a version set on a side branch takes its baseline from the merge commit', 
     'Merge feature',
     'feature',
   ]);
-  const result = dryRun(root, '--date', '2026-09-07');
+  const result = await dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('## v0.4.1 - 2026-09-07');
   expect(result.stdout).toContain('No material changes: @sample/core, idle, other.\n');
 });
 
-test('the cut updates only release files, preserves workspace references, and refuses a second increment', () => {
+test('the cut updates only release files, preserves workspace references, and refuses a second increment', async () => {
   const root = repository();
   put(
     root,
@@ -347,8 +378,8 @@ test('the cut updates only release files, preserves workspace references, and re
   );
   put(root, '.changes/add.md', '- Add input.\n');
   commit(root);
-  const previewed = dryRun(root, '--date', '2026-09-07');
-  const result = cut(root, '--date', '2026-09-07');
+  const previewed = await dryRun(root, '--date', '2026-09-07');
+  const result = await cut(root, '--date', '2026-09-07');
   expect(result).toEqual({ status: 0, stderr: '', stdout: previewed.stdout });
   expect(readFileSync(join(root, 'packages/core/package.json'), 'utf8')).toContain(
     '"version": "0.1.0"',
@@ -363,11 +394,12 @@ test('the cut updates only release files, preserves workspace references, and re
   );
   expect(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8')).toContain('specifier: workspace:*');
   expect(readdirSync(join(root, '.changes'))).toEqual(['README.md']);
-  expect(cut(root).status).toBe(1);
+  const runResult = await cut(root);
+  expect(runResult.status).toBe(1);
   expect(readFileSync(join(root, 'packages/core/package.json'), 'utf8')).toContain('0.1.0');
 });
 
-test('the cut reads no key of the loom.config.json at the repository root, and keeps to .changes and CHANGELOG.md', () => {
+test('the cut reads no key of the loom.config.json at the repository root, and keeps to .changes and CHANGELOG.md', async () => {
   const root = repository();
   put(
     root,
@@ -377,7 +409,7 @@ test('the cut reads no key of the loom.config.json at the repository root, and k
   put(root, '.changes/add.md', '- Add input.\n');
   put(root, 'notes/other.md', '- Not read.\n');
   commit(root);
-  const result = cut(root, '--date', '2026-09-07');
+  const result = await cut(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toBe('## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- Add input.\n\n');
   expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toContain('## v0.1.0 - 2026-09-07');
@@ -386,17 +418,18 @@ test('the cut reads no key of the loom.config.json at the repository root, and k
   expect(readdirSync(root)).not.toContain('docs');
 });
 
-test('lockfile preparation failure leaves the original repository unchanged', () => {
+test('lockfile preparation failure leaves the original repository unchanged', async () => {
   const root = repository();
   put(root, '.changes/add.md', '- Add input.\n');
   put(root, 'pnpm-lock.yaml', 'invalid: [\n');
   commit(root);
-  expect(cut(root, '--date', '2026-09-07').status).toBe(1);
+  const runResult = await cut(root, '--date', '2026-09-07');
+  expect(runResult.status).toBe(1);
   expect(git(root, ['status', '--porcelain'])).toBe('');
   expect(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8')).toBe('invalid: [\n');
 });
 
-test('the cut supports pnpm multi-document lockfiles and preserves earlier releases', () => {
+test('the cut supports pnpm multi-document lockfiles and preserves earlier releases', async () => {
   const root = repository('0.3.0');
   const history = '## v0.3.0 - 2026-01-01\n\n### Changes\n\n- Old entry.\n';
   put(root, 'CHANGELOG.md', `# Changelog\n\n${history}`);
@@ -407,71 +440,45 @@ test('the cut supports pnpm multi-document lockfiles and preserves earlier relea
   );
   put(root, '.changes/fix.md', '- Fix output.\n');
   commit(root);
-  const previewed = dryRun(root, '--date', '2026-09-07');
-  expect(cut(root, '--date', '2026-09-07')).toEqual(previewed);
+  const previewed = await dryRun(root, '--date', '2026-09-07');
+  await expect(cut(root, '--date', '2026-09-07')).resolves.toEqual(previewed);
   expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(
     `# Changelog\n\n${previewed.stdout}${history}`,
   );
 });
 
-// Node synchronizes patched builtin exports; the normal CLI cases use the selected runtime.
-test('the cut restores release files after a filesystem write fails', () => {
+test('the cut restores release files after a filesystem write fails', async () => {
   const root = repository();
   put(root, '.changes/add.md', '- Add input.\n');
-  const preload = join(root, 'fail-write.mjs');
-  put(
-    root,
-    'fail-write.mjs',
-    `import fs from 'node:fs';
-import { syncBuiltinESMExports } from 'node:module';
-const original = fs.writeFileSync;
-let failed = false;
-fs.writeFileSync = function (path, ...args) {
-  if (!failed && String(path) === process.env.FAIL_WRITE_PATH) {
-    failed = true;
-    original(path, 'partial write');
-    throw new Error('induced write failure');
-  }
-  return original(path, ...args);
-};
-syncBuiltinESMExports();
-`,
-  );
   commit(root);
-  const result = spawnSync(
-    'node',
-    [
-      '--import',
-      pathToFileURL(preload).href,
-      fileURLToPath(cli),
-      'release',
-      'cut',
-      '--date',
-      '2026-09-07',
-    ],
-    {
-      cwd: root,
-      encoding: 'utf8',
-      env: { ...process.env, FAIL_WRITE_PATH: join(root, 'packages/core/package.json') },
-      timeout: 10_000,
-    },
-  );
+  const original = fs.writeFileSync;
+  let failed = false;
+  vi.mocked(writeFileSync).mockImplementation((path, ...args) => {
+    if (!failed && String(path) === join(root, 'packages/core/package.json')) {
+      failed = true;
+      original(path, 'partial write');
+      throw new Error('induced write failure');
+    }
+    return original(path, ...args);
+  });
+  const result = await cut(root, '--date', '2026-09-07');
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('induced write failure');
   expect(git(root, ['status', '--porcelain'])).toBe('');
 });
 
-test('an optional narrative appears before entries without rewriting it', () => {
+test('an optional narrative appears before entries without rewriting it', async () => {
   const root = repository();
   put(root, '.changes/add.md', '- Add.\n');
   put(root, 'narrative.md', 'This release adds **typed** input.\n');
   commit(root);
-  expect(dryRun(root, '--date', '2026-09-07', '--narrative', 'narrative.md').stdout).toBe(
+  const runResult = await dryRun(root, '--date', '2026-09-07', '--narrative', 'narrative.md');
+  expect(runResult.stdout).toBe(
     '## v0.1.0 - 2026-09-07\n\nThis release adds **typed** input.\n\n### Fixes\n\n- Add.\n\n',
   );
 });
 
-test('opaque fragment names are literal Git paths and merges establish landing order', () => {
+test('opaque fragment names are literal Git paths and merges establish landing order', async () => {
   const root = repository();
   const branch = git(root, ['branch', '--show-current']);
   git(root, ['checkout', '-qb', 'feature']);
@@ -495,26 +502,28 @@ test('opaque fragment names are literal Git paths and merges establish landing o
     ],
     '2026-01-04T12:00:00Z',
   );
-  const result = dryRun(root, '--date', '2026-09-07');
+  const result = await dryRun(root, '--date', '2026-09-07');
   expect(result.status).toBe(0);
   expect(result.stdout).toBe(
     '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- Landed first.\n\n- Landed last.\n\n',
   );
 });
 
-test('the cut refuses dirty inputs and existing tags without edits', () => {
+test('the cut refuses dirty inputs and existing tags without edits', async () => {
   const root = repository();
   put(root, '.changes/add.md', '- Add.\n');
   commit(root);
   put(root, 'local.txt', 'local work');
-  expect(cut(root).stderr).toContain('clean checkout');
+  const runResult = await cut(root);
+  expect(runResult.stderr).toContain('clean checkout');
   rmSync(join(root, 'local.txt'));
   git(root, ['tag', 'v0.1.0']);
-  expect(cut(root).stderr).toContain('Tag v0.1.0 already exists');
+  const runResult2 = await cut(root);
+  expect(runResult2.stderr).toContain('Tag v0.1.0 already exists');
   expect(git(root, ['status', '--porcelain'])).toBe('');
 });
 
-test('Git history treats bracketed fragment names literally', () => {
+test('Git history treats bracketed fragment names literally', async () => {
   const root = repository();
   put(root, '.changes/[a].md', '- First.\n');
   commit(root, '2026-01-02T12:00:00Z');
@@ -522,20 +531,22 @@ test('Git history treats bracketed fragment names literally', () => {
   commit(root, '2026-01-03T12:00:00Z');
   put(root, '.changes/a.md', '- Third.\n');
   commit(root, '2026-01-04T12:00:00Z');
-  expect(dryRun(root, '--date', '2026-09-07').stdout).toBe(
+  const runResult = await dryRun(root, '--date', '2026-09-07');
+  expect(runResult.stdout).toBe(
     '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- First.\n\n- Second.\n\n- Third.\n\n',
   );
 });
 
-test('private manifests need no name or version to be excluded', () => {
+test('private manifests need no name or version to be excluded', async () => {
   const root = repository();
   put(root, 'packages/private/package.json', '{"private":true}\n');
   put(root, '.changes/add.md', '- Add input.\n');
   commit(root);
-  expect(dryRun(root).status).toBe(0);
+  const runResult = await dryRun(root);
+  expect(runResult.status).toBe(0);
 });
 
-test('explicit workspace targets win over dependency keys with the same library name', () => {
+test('explicit workspace targets win over dependency keys with the same library name', async () => {
   const root = repository('0.2.0');
   setVersion(root, '0.3.0', {
     aaa: { name: 'aaa' },
@@ -545,48 +556,31 @@ test('explicit workspace targets win over dependency keys with the same library 
   put(root, 'packages/zzz/code.ts', 'export {};\n');
   put(root, '.changes/add.md', '- Add.\n');
   commit(root);
-  expect(dryRun(root).stdout).toContain('No material changes: @sample/core, aaa.');
+  const runResult = await dryRun(root);
+  expect(runResult.stdout).toContain('No material changes: @sample/core, aaa.');
 });
 
-test('a persistent filesystem failure does not prevent restoration of earlier files', () => {
+test('a persistent filesystem failure does not prevent restoration of earlier files', async () => {
   const root = repository();
   const originalChangelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
   put(root, '.changes/add.md', '- Add input.\n');
-  const preload = join(root, 'fail-write.mjs');
-  put(
-    root,
-    'fail-write.mjs',
-    `import fs from 'node:fs';
-import { syncBuiltinESMExports } from 'node:module';
-const original = fs.writeFileSync;
-fs.writeFileSync = function (path, ...args) {
-  if (String(path) === process.env.FAIL_WRITE_PATH) {
-    original(path, 'partial write');
-    throw new Error('persistent write failure');
-  }
-  return original(path, ...args);
-};
-syncBuiltinESMExports();
-`,
-  );
   commit(root);
-  const result = spawnSync(
-    'node',
-    ['--import', pathToFileURL(preload).href, fileURLToPath(cli), 'release', 'cut'],
-    {
-      cwd: root,
-      encoding: 'utf8',
-      env: { ...process.env, FAIL_WRITE_PATH: join(root, 'packages/core/package.json') },
-      timeout: 10_000,
-    },
-  );
+  const original = fs.writeFileSync;
+  vi.mocked(writeFileSync).mockImplementation((path, ...args) => {
+    if (String(path) === join(root, 'packages/core/package.json')) {
+      original(path, 'partial write');
+      throw new Error('persistent write failure');
+    }
+    return original(path, ...args);
+  });
+  const result = await cut(root);
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('rollback incomplete');
   expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(originalChangelog);
   expect(readFileSync(join(root, '.changes/add.md'), 'utf8')).toBe('- Add input.\n');
 });
 
-test('a dry run refuses shallow history instead of inventing landing dates', () => {
+test('a dry run refuses shallow history instead of inventing landing dates', async () => {
   const source = repository();
   put(source, '.changes/z.md', '- First.\n');
   commit(source, '2026-01-02T12:00:00Z');
@@ -594,60 +588,65 @@ test('a dry run refuses shallow history instead of inventing landing dates', () 
   commit(source, '2026-01-03T12:00:00Z');
   const root = join(temporaryRoot('loom-release-cut-'), 'shallow');
   git(source, ['clone', '--depth', '1', '--no-local', source, root]);
-  expect(dryRun(root).stderr).toContain('full Git history');
+  const runResult = await dryRun(root);
+  expect(runResult.stderr).toContain('full Git history');
 });
 
 test.each(['## **Unreleased**', '## **v0.1.0** - 2026-01-01'])(
   'the cut recognizes formatted history heading %s',
-  (heading) => {
+  async (heading) => {
     const root = repository();
     put(root, 'CHANGELOG.md', `# Changelog\n\n${heading}\n\n- Existing.\n`);
     put(root, '.changes/add.md', '- Add.\n');
     commit(root);
-    expect(cut(root).stderr).toMatch(/has an Unreleased section|already has a v0\.1\.0 section/u);
+    const runResult = await cut(root);
+    expect(runResult.stderr).toMatch(/has an Unreleased section|already has a v0\.1\.0 section/u);
     expect(git(root, ['status', '--porcelain'])).toBe('');
   },
 );
 
 test.each(['```text\nunfinished', '<script>\nunfinished'])(
   'narrative cannot swallow generated headings with %s',
-  (body) => {
+  async (body) => {
     const root = repository();
     put(root, '.changes/add.md', '- Add.\n');
     put(root, 'narrative.md', body);
     commit(root);
-    expect(dryRun(root, '--narrative', 'narrative.md').stderr).toContain('unclosed Markdown block');
+    const runResult = await dryRun(root, '--narrative', 'narrative.md');
+    expect(runResult.stderr).toContain('unclosed Markdown block');
   },
 );
 
-test('the cut refuses history with an open block that would hide the new release', () => {
+test('the cut refuses history with an open block that would hide the new release', async () => {
   const root = repository();
   put(root, 'CHANGELOG.md', '# Changelog\n\n```text\nunfinished\n');
   put(root, '.changes/add.md', '- Add.\n');
   commit(root);
-  expect(cut(root).stderr).toContain('unclosed Markdown block');
+  const runResult = await cut(root);
+  expect(runResult.stderr).toContain('unclosed Markdown block');
   expect(git(root, ['status', '--porcelain'])).toBe('');
 });
 
 test.each(['## <em>Unreleased</em>', '## <code>v0.1.0</code> - 2026-01-01', '## v0.1.0'])(
   'the cut rejects history heading %s by its displayed text',
-  (heading) => {
+  async (heading) => {
     const root = repository();
     put(root, 'CHANGELOG.md', `# Changelog\n\n${heading}\n\n- Existing.\n`);
     put(root, '.changes/add.md', '- Add.\n');
     commit(root);
-    expect(cut(root).stderr).toMatch(/has an Unreleased section|already has a v0\.1\.0 section/u);
+    const runResult = await cut(root);
+    expect(runResult.stderr).toMatch(/has an Unreleased section|already has a v0\.1\.0 section/u);
     expect(git(root, ['status', '--porcelain'])).toBe('');
   },
 );
 
-test('an existing release lock stays intact and gives recovery guidance', () => {
+test('an existing release lock stays intact and gives recovery guidance', async () => {
   const root = repository();
   put(root, '.changes/add.md', '- Add.\n');
   commit(root);
   mkdirSync(join(root, '.git/release-cut.lock'));
   put(root, '.git/release-cut.lock/owner', 'existing writer');
-  const result = cut(root);
+  const result = await cut(root);
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('Another writer may be active');
   expect(result.stderr).toContain('fresh isolated checkout');
@@ -657,11 +656,11 @@ test('an existing release lock stays intact and gives recovery guidance', () => 
 
 test.each([[['--dry-run']], [[]]])(
   'release cut %j rejects unused passthrough without editing release files',
-  (mode) => {
+  async (mode) => {
     const root = repository();
     put(root, '.changes/change.md', '- Add an operation.\n');
     commit(root);
-    const result = cut(root, ...mode, '--', '--date', '2026-09-07');
+    const result = await cut(root, ...mode, '--', '--date', '2026-09-07');
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('Arguments after -- are not supported.');
@@ -669,12 +668,12 @@ test.each([[['--dry-run']], [[]]])(
   },
 );
 
-test('a feature fragment advances the synchronized patch and renders under Features', () => {
+test('a feature fragment advances the synchronized patch and renders under Features', async () => {
   const root = repository('0.4.7');
   put(root, '.changes/feature.typed.md', '- Add typed input.\n');
   put(root, '.changes/output.md', '- Fix output.\n');
   commit(root);
-  expect(dryRun(root, '--date', '2026-09-07')).toEqual({
+  await expect(dryRun(root, '--date', '2026-09-07')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout:
@@ -682,22 +681,23 @@ test('a feature fragment advances the synchronized patch and renders under Featu
   });
 });
 
-test('a dry run orders fragments added within one second by their commits', () => {
+test('a dry run orders fragments added within one second by their commits', async () => {
   const root = repository();
   for (const name of ['charlie', 'bravo', 'alpha']) {
     put(root, `.changes/${name}.md`, `- Fix ${name}.\n`);
     commit(root, '2026-01-02T12:00:00Z');
   }
-  expect(dryRun(root, '--date', '2026-09-07').stdout).toBe(
+  const runResult = await dryRun(root, '--date', '2026-09-07');
+  expect(runResult.stdout).toBe(
     '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- Fix charlie.\n\n- Fix bravo.\n\n- Fix alpha.\n\n',
   );
 });
 
-test('the cut renders a fragment that starts with a byte order mark as a list and consumes it', () => {
+test('the cut renders a fragment that starts with a byte order mark as a list and consumes it', async () => {
   const root = repository();
   put(root, '.changes/add.md', '﻿- Add input.\n');
   commit(root);
-  const result = cut(root, '--date', '2026-09-07');
+  const result = await cut(root, '--date', '2026-09-07');
   expect(result).toEqual({
     status: 0,
     stderr: '',
@@ -709,15 +709,14 @@ test('the cut renders a fragment that starts with a byte order mark as a list an
   expect(readdirSync(join(root, '.changes'))).toEqual(['README.md']);
 });
 
-test('the cut ignores hidden entries in .changes/ and leaves them in place', () => {
+test('the cut ignores hidden entries in .changes/ and leaves them in place', async () => {
   const root = repository();
   put(root, '.changes/.DS_Store', '\u0000binary');
   put(root, '.changes/.notes.md', '- Hidden fix.\n');
   put(root, '.changes/add.md', '- Add input.\n');
   commit(root);
-  expect(cut(root, '--date', '2026-09-07').stdout).toBe(
-    '## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- Add input.\n\n',
-  );
+  const runResult = await cut(root, '--date', '2026-09-07');
+  expect(runResult.stdout).toBe('## v0.1.0 - 2026-09-07\n\n### Fixes\n\n- Add input.\n\n');
   expect(readdirSync(join(root, '.changes')).toSorted()).toEqual(
     ['.DS_Store', '.notes.md', 'README.md'].toSorted(),
   );

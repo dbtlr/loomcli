@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
 
+import { childEnvironment } from '../../../scripts/test-process.js';
 import { temporaryRoot } from './fixture.js';
 
 const writeSchema = z.object({
@@ -17,7 +18,11 @@ const writeSchema = z.object({
   size: z.number().optional(),
 });
 
-const reportSchema = z.object({ writes: z.array(writeSchema) });
+const reportSchema = z.object({
+  heldPackumentRequests: z.number(),
+  tarballRequests: z.number(),
+  writes: z.array(writeSchema),
+});
 
 const children: ChildProcess[] = [];
 
@@ -97,20 +102,29 @@ export function stopServices() {
 }
 
 // Starts one process that answers both the registry and the GitHub API.
-// It runs outside the test process because the tests spawn the CLI synchronously and cannot serve requests from their own event loop.
+// The server stays responsive while a toolchain run synchronously starts real git or pnpm.
 export async function startServices(state: ServicesState) {
   const configPath = join(temporaryRoot('loom-services-'), 'services.json');
   writeFileSync(configPath, JSON.stringify(state));
   const child = spawn(
     process.execPath,
     [fileURLToPath(new URL('fake-services.mjs', import.meta.url)), configPath],
-    { stdio: ['ignore', 'pipe', 'pipe'] },
+    { env: childEnvironment(undefined), stdio: ['ignore', 'pipe', 'pipe'] },
   );
   children.push(child);
   const base = `http://127.0.0.1:${String(await announcedPort(child))}`;
   return {
     githubApi: `${base}/github`,
+    // The packument requests the registry received and held without answering.
+    heldPackumentRequests: async () => {
+      const response = await fetch(`${base}/state`);
+      return reportSchema.parse(await response.json()).heldPackumentRequests;
+    },
     registry: `${base}/registry`,
+    tarballRequests: async () => {
+      const response = await fetch(`${base}/state`);
+      return reportSchema.parse(await response.json()).tarballRequests;
+    },
     // Every write the services received, in the order they arrived.
     writes: async () => {
       const response = await fetch(`${base}/state`);

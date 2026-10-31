@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { childEnvironment } from '../../../scripts/test-process.js';
 import { put, temporaryRoot } from './fixture.js';
+import { run } from './run.js';
 
 /** The repository root, whose installed packages a fixture package links. */
 const repository = fileURLToPath(new URL('../../../', import.meta.url));
@@ -26,9 +27,6 @@ const loomTimeout = 120_000;
 
 /** The built loom bin every process test runs. */
 export const cli = fileURLToPath(new URL('../dist/main.js', import.meta.url));
-
-/** The runtimes every artifact runs under. */
-export const runtimes = ['node', 'bun'] as const;
 
 /** A link a fixture package holds: a Loom package, the TypeScript compiler, or Node's type declarations. */
 export type Link = keyof typeof installed;
@@ -62,26 +60,13 @@ export function linkInstalled(root: string, links: readonly Link[]) {
   }
 }
 
-/** One run of the loom bin under the runtime the test run names, with a generous timeout. */
+/** One in-process toolchain run in a fixture package. */
 export function loom(
   cwd: string,
   args: string[],
-  options: { env?: Record<string, string | undefined>; runtime?: string } = {},
+  options: { env?: Record<string, string | undefined> } = {},
 ) {
-  const result = spawnSync(
-    options.runtime ?? process.env.LOOM_TEST_RUNTIME ?? 'node',
-    [cli, ...args],
-    {
-      cwd,
-      encoding: 'utf8',
-      env: childEnvironment(options.env),
-      timeout: loomTimeout,
-    },
-  );
-  if (result.error) {
-    throw result.error;
-  }
-  return { status: result.status, stderr: result.stderr, stdout: result.stdout };
+  return run(args, { ...options, cwd });
 }
 
 /** One run of a command in a package directory, such as the compiler or a test runner. */

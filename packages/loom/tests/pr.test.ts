@@ -1,13 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { childEnvironment } from '../../../scripts/test-process.js';
 import {
   commit,
   git,
@@ -17,8 +16,8 @@ import {
   repository as fixtureRepository,
   temporaryRoot,
 } from './fixture.js';
-
-const cli = new URL('../dist/main.js', import.meta.url);
+import { cli } from './package.js';
+import { run } from './run.js';
 
 function repository(version = '0.4.7', { tag = true } = {}) {
   return fixtureRepository({
@@ -35,8 +34,8 @@ function repository(version = '0.4.7', { tag = true } = {}) {
   });
 }
 
-function check(root: string, base: string, ...args: string[]) {
-  return invoke(cli, ['pr', 'check', '--base', base, '--title', 'Fix output', ...args], {
+async function check(root: string, base: string, ...args: string[]) {
+  return await run(['pr', 'check', '--base', base, '--title', 'Fix output', ...args], {
     cwd: root,
   });
 }
@@ -48,19 +47,17 @@ afterEach(() => {
 const narrativeProse = 'Start using the typed command API.';
 
 // An initial cut consumes no fragments, so its notes come from a narrative kept outside the checkout.
-function writeInitialRelease(root: string) {
+async function writeInitialRelease(root: string) {
   const narrative = join(temporaryRoot('loom-narrative-'), 'narrative.md');
   writeFileSync(narrative, `${narrativeProse}\n`);
-  return invoke(
-    cli,
+  return await run(
     ['release', 'cut', '--initial', '--date', '2026-09-07', '--narrative', narrative],
     { cwd: root },
   );
 }
 
-function releaseCheck(root: string, base: string, version: string) {
-  return invoke(
-    cli,
+async function releaseCheck(root: string, base: string, version: string) {
+  return await run(
     [
       'pr',
       'check',
@@ -73,41 +70,43 @@ function releaseCheck(root: string, base: string, version: string) {
   );
 }
 
-test('a compiler-written release passes and unrelated code cannot enter the release cut', () => {
+test('a compiler-written release passes and unrelated code cannot enter the release cut', async () => {
   const { root } = repository();
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
+  const runResult = await run(['release', 'cut', '--date', '2026-09-07'], { cwd: root });
+  expect(runResult.status).toBe(0);
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8')).toEqual({
+  await expect(releaseCheck(root, base, '0.4.8')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'PR checks passed.\n',
   });
   put(root, 'packages/core/index.js', 'export const value = 2;\n');
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8')).toMatchObject({
+  await expect(releaseCheck(root, base, '0.4.8')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('outside the release cut'),
   });
 });
 
 // The lockfile check copies every tracked file at the base, and a reference document can pass 1 MiB.
-test('a release check reads a tracked file larger than a mebibyte at the base', () => {
+test('a release check reads a tracked file larger than a mebibyte at the base', async () => {
   const { root } = repository();
   put(root, 'docs/reference.md', 'A line of reference prose.\n'.repeat(80_000));
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
+  const runResult = await run(['release', 'cut', '--date', '2026-09-07'], { cwd: root });
+  expect(runResult.status).toBe(0);
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8')).toEqual({
+  await expect(releaseCheck(root, base, '0.4.8')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'PR checks passed.\n',
   });
 });
 
-test('a feature-only explicit target passes admission with synchronized manifests and lockfile', () => {
+test('a feature-only explicit target passes admission with synchronized manifests and lockfile', async () => {
   const { root } = repository('0.12.0');
   put(root, '.changes/feature.input.md', '- Add typed input.\n');
   put(
@@ -120,11 +119,11 @@ test('a feature-only explicit target passes admission with synchronized manifest
     }),
   );
   const base = commit(root);
-  expect(
-    invoke(cli, ['release', 'cut', '--target', '0.13.0', '--date', '2026-10-15'], { cwd: root }),
-  ).toMatchObject({ status: 0, stderr: '' });
+  await expect(
+    run(['release', 'cut', '--target', '0.13.0', '--date', '2026-10-15'], { cwd: root }),
+  ).resolves.toMatchObject({ status: 0, stderr: '' });
   commit(root);
-  expect(releaseCheck(root, base, '0.13.0')).toEqual({
+  await expect(releaseCheck(root, base, '0.13.0')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'PR checks passed.\n',
@@ -133,17 +132,18 @@ test('a feature-only explicit target passes admission with synchronized manifest
     '"version":"0.13.0"',
   );
   expect(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8')).toContain('specifier: workspace:*');
-  expect(releaseCheck(root, base, '0.14.0')).toMatchObject({
+  await expect(releaseCheck(root, base, '0.14.0')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('Every participating library must carry title version'),
   });
 });
 
-test('release admission rejects a target below the breaking-fragment minimum', () => {
+test('release admission rejects a target below the breaking-fragment minimum', async () => {
   const { root } = repository('0.12.0');
   put(root, '.changes/breaking.input.md', migration);
   const base = commit(root);
-  expect(invoke(cli, ['release', 'cut', '--target', '0.13.0'], { cwd: root }).status).toBe(0);
+  const runResult = await run(['release', 'cut', '--target', '0.13.0'], { cwd: root });
+  expect(runResult.status).toBe(0);
   put(
     root,
     'packages/core/package.json',
@@ -155,7 +155,7 @@ test('release admission rejects a target below the breaking-fragment minimum', (
     readFileSync(join(root, 'CHANGELOG.md'), 'utf8').replace('v0.13.0', 'v0.12.1'),
   );
   commit(root);
-  expect(releaseCheck(root, base, '0.12.1')).toMatchObject({
+  await expect(releaseCheck(root, base, '0.12.1')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('at least 0.13.0'),
   });
@@ -207,7 +207,7 @@ const decisionIndex = [
 const proposedThird = proposedRecord('0003').split('\n## Changelog')[0] ?? '';
 
 // A cut at 0.4.8, dated 2026-09-07, over a base that holds three proposed decisions.
-function decisionCut(first = proposedRecord('0001'), index = decisionIndex) {
+async function decisionCut(first = proposedRecord('0001'), index = decisionIndex) {
   const { root } = repository();
   put(root, 'docs/decisions/0001-first.md', first);
   put(root, 'docs/decisions/0002-second.md', proposedRecord('0002'));
@@ -215,7 +215,8 @@ function decisionCut(first = proposedRecord('0001'), index = decisionIndex) {
   put(root, 'docs/decisions/README.md', index);
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
+  const runResult = await run(['release', 'cut', '--date', '2026-09-07'], { cwd: root });
+  expect(runResult.status).toBe(0);
   return { base, root };
 }
 
@@ -233,8 +234,8 @@ const acceptedFirstIndex = decisionIndex.replace(
   '| The first one. | accepted |',
 );
 
-test('a release cut may mark shipped decisions accepted and leave another proposed', () => {
-  const { base, root } = decisionCut();
+test('a release cut may mark shipped decisions accepted and leave another proposed', async () => {
+  const { base, root } = await decisionCut();
   put(root, 'docs/decisions/0001-first.md', acceptedFirst);
   put(
     root,
@@ -253,7 +254,7 @@ test('a release cut may mark shipped decisions accepted and leave another propos
     acceptedFirstIndex.replace('| The third.     | proposed |', '| The third.     | accepted |'),
   );
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8')).toEqual({
+  await expect(releaseCheck(root, base, '0.4.8')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'PR checks passed.\n',
@@ -293,15 +294,15 @@ test.each([
     },
   },
   { edit: 'a new record', files: { 'docs/decisions/0004-fourth.md': proposedRecord('0004') } },
-])('a release cut that changes $edit fails naming the record', ({ files }) => {
-  const { base, root } = decisionCut();
+])('a release cut that changes $edit fails naming the record', async ({ files }) => {
+  const { base, root } = await decisionCut();
   put(root, 'docs/decisions/0001-first.md', acceptedFirst);
   put(root, 'docs/decisions/README.md', acceptedFirstIndex);
   for (const [path, body] of Object.entries(files)) {
     put(root, path, body);
   }
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8')).toMatchObject({
+  await expect(releaseCheck(root, base, '0.4.8')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining(
       `${Object.keys(files)[0]}: a release cut changes a decision record only to mark a proposed decision accepted`,
@@ -309,9 +310,9 @@ test.each([
   });
 });
 
-test('a release cut replaces the whole Status section, subsections included', () => {
+test('a release cut replaces the whole Status section, subsections included', async () => {
   const evidence = '\n### Evidence\n\nThe acceptance run.\n';
-  const { base, root } = decisionCut(
+  const { base, root } = await decisionCut(
     proposedRecord('0001').replace('ships it.\n', `ships it.\n${evidence}`),
   );
   put(
@@ -321,16 +322,18 @@ test('a release cut replaces the whole Status section, subsections included', ()
   );
   put(root, 'docs/decisions/README.md', acceptedFirstIndex);
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8').stderr).toContain(
+  const runResult = await releaseCheck(root, base, '0.4.8');
+  expect(runResult.stderr).toContain(
     'docs/decisions/0001-first.md: a release cut changes a decision record only',
   );
   put(root, 'docs/decisions/0001-first.md', acceptedFirst);
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8').status).toBe(0);
+  const runResult2 = await releaseCheck(root, base, '0.4.8');
+  expect(runResult2.status).toBe(0);
 });
 
-test('a record with two Status sections cannot be accepted', () => {
-  const { base, root } = decisionCut(
+test('a record with two Status sections cannot be accepted', async () => {
+  const { base, root } = await decisionCut(
     proposedRecord('0001').replace('## Changelog', '## Status\n\nAgain.\n\n## Changelog'),
   );
   put(
@@ -340,7 +343,8 @@ test('a record with two Status sections cannot be accepted', () => {
   );
   put(root, 'docs/decisions/README.md', acceptedFirstIndex);
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8').stderr).toContain(
+  const runResult = await releaseCheck(root, base, '0.4.8');
+  expect(runResult.stderr).toContain(
     'docs/decisions/0001-first.md: a release cut changes a decision record only',
   );
 });
@@ -354,8 +358,8 @@ test.each([
     shape: 'two rows',
   },
   { index: acceptedFirstIndex, shape: 'a row that already reads accepted' },
-])('a record whose index has $shape cannot be accepted', ({ index }) => {
-  const { base, root } = decisionCut(proposedRecord('0001'), index);
+])('a record whose index has $shape cannot be accepted', async ({ index }) => {
+  const { base, root } = await decisionCut(proposedRecord('0001'), index);
   put(root, 'docs/decisions/0001-first.md', acceptedFirst);
   put(
     root,
@@ -363,16 +367,18 @@ test.each([
     index.replace('| The first one. | proposed |', '| The first one. | accepted |'),
   );
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8').stderr).toContain(
+  const runResult = await releaseCheck(root, base, '0.4.8');
+  expect(runResult.stderr).toContain(
     'docs/decisions/README.md: a release cut changes the decision index only',
   );
 });
 
-test('a release cut that deletes a record fails naming the record', () => {
-  const { base, root } = decisionCut();
+test('a release cut that deletes a record fails naming the record', async () => {
+  const { base, root } = await decisionCut();
   rmSync(join(root, 'docs/decisions/0002-second.md'));
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8').stderr).toContain(
+  const runResult = await releaseCheck(root, base, '0.4.8');
+  expect(runResult.stderr).toContain(
     'docs/decisions/0002-second.md: a release cut changes a decision record only',
   );
 });
@@ -390,12 +396,12 @@ test.each([
     edit: 'edits the index prose',
     index: acceptedFirstIndex.replace('ADR-0002 narrows', 'ADR-0002, proposed, narrows'),
   },
-])('a release cut that $edit fails naming the index', ({ index }) => {
-  const { base, root } = decisionCut();
+])('a release cut that $edit fails naming the index', async ({ index }) => {
+  const { base, root } = await decisionCut();
   put(root, 'docs/decisions/0001-first.md', acceptedFirst);
   put(root, 'docs/decisions/README.md', index);
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8')).toMatchObject({
+  await expect(releaseCheck(root, base, '0.4.8')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining(
       'docs/decisions/README.md: a release cut changes the decision index only',
@@ -403,16 +409,17 @@ test.each([
   });
 });
 
-test('a release cut that changes only the index fails naming the index', () => {
-  const { base, root } = decisionCut();
+test('a release cut that changes only the index fails naming the index', async () => {
+  const { base, root } = await decisionCut();
   put(root, 'docs/decisions/README.md', acceptedFirstIndex);
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8').stderr).toContain(
+  const runResult = await releaseCheck(root, base, '0.4.8');
+  expect(runResult.stderr).toContain(
     'docs/decisions/README.md: a release cut changes the decision index only',
   );
 });
 
-test('a release check derives the material baseline at the base without a tag', () => {
+test('a release check derives the material baseline at the base without a tag', async () => {
   const { root } = repository('0.4.7', { tag: false });
   put(
     root,
@@ -424,40 +431,44 @@ test('a release check derives the material baseline at the base without a tag', 
   put(root, 'packages/core/index.js', 'export const value = 2;\n');
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  const written = invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root });
+  const written = await run(['release', 'cut', '--date', '2026-09-07'], { cwd: root });
   expect(written.status).toBe(0);
   expect(written.stdout).toContain('No material changes: other.\n');
   commit(root);
-  expect(releaseCheck(root, base, '0.5.1')).toEqual({
+  await expect(releaseCheck(root, base, '0.5.1')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'PR checks passed.\n',
   });
 });
 
-test('build-affecting PRs require a changed fragment or skip label', () => {
+test('build-affecting PRs require a changed fragment or skip label', async () => {
   const { base, root } = repository();
   put(root, 'packages/core/index.js', 'export const value = 2;\n');
   commit(root);
-  expect(check(root, base)).toMatchObject({
+  await expect(check(root, base)).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('fragment or skip-changelog'),
   });
-  expect(check(root, base, '--label', 'skip-changelog')).toEqual({
+  await expect(check(root, base, '--label', 'skip-changelog')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'PR checks passed.\n',
   });
   put(root, '.changes/fix.md', '- Fix output.\n');
   commit(root);
-  expect(check(root, base)).toEqual({ status: 0, stderr: '', stdout: 'PR checks passed.\n' });
+  await expect(check(root, base)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
+  });
 });
 
-test('ordinary PRs cannot bump a library, even with skip-changelog or by making it private', () => {
+test('ordinary PRs cannot bump a library, even with skip-changelog or by making it private', async () => {
   const { base, root } = repository();
   put(root, 'packages/core/package.json', '{"name":"@sample/core","version":"0.4.8"}');
   commit(root);
-  expect(check(root, base, '--label', 'skip-changelog')).toMatchObject({
+  await expect(check(root, base, '--label', 'skip-changelog')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('version must stay 0.4.7'),
   });
@@ -468,13 +479,13 @@ test('ordinary PRs cannot bump a library, even with skip-changelog or by making 
     '{"name":"@sample/core","private":true,"version":"0.4.8"}',
   );
   commit(root);
-  expect(check(root, base, '--label', 'skip-changelog')).toMatchObject({
+  await expect(check(root, base, '--label', 'skip-changelog')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('version must stay 0.4.7'),
   });
 });
 
-test('release validation checks generated entries and preserves earlier changelog history', () => {
+test('release validation checks generated entries and preserves earlier changelog history', async () => {
   const { root } = repository();
   put(
     root,
@@ -483,135 +494,155 @@ test('release validation checks generated entries and preserves earlier changelo
   );
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
+  const runResult = await run(['release', 'cut', '--date', '2026-09-07'], { cwd: root });
+  expect(runResult.status).toBe(0);
   const expected = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
   put(root, 'CHANGELOG.md', expected.replace('- Fix output.', '- Something else.'));
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8')).toMatchObject({
+  await expect(releaseCheck(root, base, '0.4.8')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('CHANGELOG.md'),
   });
   put(root, 'CHANGELOG.md', expected.replace('- Earlier result.', '- Rewritten history.'));
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8')).toMatchObject({
+  await expect(releaseCheck(root, base, '0.4.8')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('CHANGELOG.md'),
   });
   put(root, 'CHANGELOG.md', expected);
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8').status).toBe(0);
+  const runResult2 = await releaseCheck(root, base, '0.4.8');
+  expect(runResult2.status).toBe(0);
 });
 
-test('a release cannot delete its lockfile or change a manifest file mode', () => {
+test('a release cannot delete its lockfile or change a manifest file mode', async () => {
   const { root } = repository('0.0.0');
   const base = git(root, ['rev-parse', 'HEAD']);
-  expect(writeInitialRelease(root).status).toBe(0);
+  const runResult = await writeInitialRelease(root);
+  expect(runResult.status).toBe(0);
   const cut = commit(root);
   rmSync(join(root, 'pnpm-lock.yaml'));
   commit(root);
-  expect(releaseCheck(root, base, '0.1.0')).toMatchObject({
+  await expect(releaseCheck(root, base, '0.1.0')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('pnpm-lock.yaml'),
   });
   git(root, ['reset', '--hard', cut]);
   git(root, ['update-index', '--chmod=+x', 'packages/core/package.json']);
   git(root, ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'mode']);
-  expect(releaseCheck(root, base, '0.1.0')).toMatchObject({
+  await expect(releaseCheck(root, base, '0.1.0')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('file mode'),
   });
 });
 
-test('PR checks refuse shallow history', () => {
+test('PR checks refuse shallow history', async () => {
   const { base, root } = repository();
   put(root, 'docs/guide.md', '# Guide\n');
   commit(root);
   const clone = join(root, 'shallow');
   git(root, ['clone', '--depth=1', '--no-local', root, clone]);
-  expect(check(clone, base)).toMatchObject({
+  await expect(check(clone, base)).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('full Git history'),
   });
 });
 
-test.each(['docs/guide.md', 'README.md'])('documentation path %s needs no fragment', (path) => {
-  const { base, root } = repository();
-  put(root, path, '# Guide\n');
-  commit(root);
-  expect(check(root, base).status).toBe(0);
-});
+test.each(['docs/guide.md', 'README.md'])(
+  'documentation path %s needs no fragment',
+  async (path) => {
+    const { base, root } = repository();
+    put(root, path, '# Guide\n');
+    commit(root);
+    const runResult = await check(root, base);
+    expect(runResult.status).toBe(0);
+  },
+);
 
-test('an old untouched fragment and a guide edit do not satisfy admission; a correction does', () => {
+test('an old untouched fragment and a guide edit do not satisfy admission; a correction does', async () => {
   const { root } = repository();
   put(root, '.changes/old.md', '- Add old output.\n');
   const base = commit(root);
   put(root, '.changes/README.md', '# Revised guide\n');
   put(root, 'packages/core/index.js', 'export const value = 2;\n');
   commit(root);
-  expect(check(root, base).stderr).toContain('fragment or skip-changelog');
+  const runResult = await check(root, base);
+  expect(runResult.stderr).toContain('fragment or skip-changelog');
   put(root, '.changes/old.md', '- Add corrected output.\n');
   commit(root);
-  expect(check(root, base).status).toBe(0);
+  const runResult2 = await check(root, base);
+  expect(runResult2.status).toBe(0);
 });
 
-test('skip never excuses an invalid fragment already at head', () => {
+test('skip never excuses an invalid fragment already at head', async () => {
   const { root } = repository();
   put(root, '.changes/breaking.invalid.md', '- Break output without migration.\n');
   const base = commit(root);
   put(root, 'docs/guide.md', '# Guide\n');
   commit(root);
-  expect(check(root, base, '--label', 'skip-changelog')).toMatchObject({
+  await expect(check(root, base, '--label', 'skip-changelog')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('Migration'),
   });
 });
 
-test('comparison uses committed head content and excludes changes from the base branch', () => {
+test('comparison uses committed head content and excludes changes from the base branch', async () => {
   const { base, root } = repository();
   put(root, 'packages/core/index.js', 'export const value = 2;\n');
   const feature = commit(root);
   put(root, '.changes/local.md', '- Uncommitted output.\n');
-  expect(check(root, base, '--head', feature).stderr).toContain('fragment or skip-changelog');
+  const runResult = await check(root, base, '--head', feature);
+  expect(runResult.stderr).toContain('fragment or skip-changelog');
   rmSync(join(root, '.changes/local.md'));
   git(root, ['checkout', '--detach', base]);
   put(root, '.changes/base.md', '- A different feature.\n');
   const advanced = commit(root);
-  expect(check(root, advanced, '--head', feature).stderr).toContain('fragment or skip-changelog');
+  const runResult2 = await check(root, advanced, '--head', feature);
+  expect(runResult2.stderr).toContain('fragment or skip-changelog');
   git(root, ['checkout', '--detach', base]);
   put(root, 'docs/guide.md', '# Guide\n');
   const docs = commit(root);
-  expect(check(root, advanced, '--head', docs).status).toBe(0);
+  const runResult3 = await check(root, advanced, '--head', docs);
+  expect(runResult3.status).toBe(0);
 });
 
-test('ordinary PRs allow private version edits and require new libraries to join the current version', () => {
+test('ordinary PRs allow private version edits and require new libraries to join the current version', async () => {
   const { base, root } = repository();
   put(root, 'packages/private/package.json', '{"name":"private","private":true,"version":"9.0.0"}');
   commit(root);
-  expect(check(root, base, '--label', 'skip-changelog').status).toBe(0);
+  const runResult = await check(root, base, '--label', 'skip-changelog');
+  expect(runResult.status).toBe(0);
   put(root, 'packages/next/package.json', '{"name":"next","version":"0.4.8"}');
   commit(root);
-  expect(check(root, base, '--label', 'skip-changelog').stderr).toContain('versions must match');
+  const runResult2 = await check(root, base, '--label', 'skip-changelog');
+  expect(runResult2.stderr).toContain('versions must match');
   put(root, 'packages/next/package.json', '{"name":"next","version":"0.4.7"}');
   commit(root);
-  expect(check(root, base, '--label', 'skip-changelog').status).toBe(0);
+  const runResult3 = await check(root, base, '--label', 'skip-changelog');
+  expect(runResult3.status).toBe(0);
 });
 
-test('the initial empty cut and a narrative round-trip through the compiler', () => {
+test('the initial empty cut and a narrative round-trip through the compiler', async () => {
   const { base, root } = repository('0.0.0');
-  expect(writeInitialRelease(root).status).toBe(0);
+  const runResult = await writeInitialRelease(root);
+  expect(runResult.status).toBe(0);
   commit(root);
-  expect(releaseCheck(root, base, '0.1.0').status).toBe(0);
+  const runResult2 = await releaseCheck(root, base, '0.1.0');
+  expect(runResult2.status).toBe(0);
   git(root, ['tag', 'v0.1.0']);
-  expect(releaseCheck(root, base, '0.1.0').stderr).toContain('Tag v0.1.0 already exists');
+  const runResult3 = await releaseCheck(root, base, '0.1.0');
+  expect(runResult3.stderr).toContain('Tag v0.1.0 already exists');
 });
 
-test('an initial cut whose section lost its narrative carries no notes and fails', () => {
+test('an initial cut whose section lost its narrative carries no notes and fails', async () => {
   const { base, root } = repository('0.0.0');
-  expect(writeInitialRelease(root).status).toBe(0);
+  const runResult = await writeInitialRelease(root);
+  expect(runResult.status).toBe(0);
   const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
   put(root, 'CHANGELOG.md', changelog.replace(`\n${narrativeProse}\n`, ''));
   commit(root);
-  expect(releaseCheck(root, base, '0.1.0').stderr).toContain('requires a narrative');
+  const runResult2 = await releaseCheck(root, base, '0.1.0');
+  expect(runResult2.stderr).toContain('requires a narrative');
 });
 
 test('the Ubuntu workflow checks metadata as data and reruns admission when a label is removed', () => {
@@ -646,8 +677,8 @@ test('the Ubuntu workflow checks metadata as data and reruns admission when a la
   );
   const head = commit(root);
   const env = {
-    ...process.env,
-    LOOM_PR_CLI: fileURLToPath(cli),
+    ...childEnvironment(undefined),
+    LOOM_PR_CLI: cli,
     PR_BASE: base,
     PR_HEAD: head,
     PR_LABELS: JSON.stringify(['skip-changelog']),
@@ -666,7 +697,7 @@ test('the Ubuntu workflow checks metadata as data and reruns admission when a la
   expect(git(root, ['status', '--porcelain'])).toBe('');
 });
 
-test('breaking cuts advance the minor and synchronize every library', () => {
+test('breaking cuts advance the minor and synchronize every library', async () => {
   const { root } = repository();
   put(root, 'packages/other/package.json', '{"name":"other","version":"0.4.7"}');
   put(
@@ -690,76 +721,91 @@ test('breaking cuts advance the minor and synchronize every library', () => {
 `,
   );
   const base = commit(root);
-  const written = invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root });
+  const written = await run(['release', 'cut', '--date', '2026-09-07'], { cwd: root });
   expect(written.status).toBe(0);
   expect(written.stdout).toContain('## v0.5.0 - 2026-09-07');
   commit(root);
-  expect(releaseCheck(root, base, '0.5.0').status).toBe(0);
+  const runResult = await releaseCheck(root, base, '0.5.0');
+  expect(runResult.status).toBe(0);
   put(root, 'packages/other/package.json', '{"name":"other","version":"0.4.7"}');
   commit(root);
-  expect(releaseCheck(root, base, '0.5.0').stderr).toContain('versions must match');
+  const runResult2 = await releaseCheck(root, base, '0.5.0');
+  expect(runResult2.stderr).toContain('versions must match');
 });
 
-test('a release rejects lockfile changes that the version writer did not produce', () => {
+test('a release rejects lockfile changes that the version writer did not produce', async () => {
   const { base, root } = repository('0.0.0');
-  expect(writeInitialRelease(root).status).toBe(0);
+  const runResult = await writeInitialRelease(root);
+  expect(runResult.status).toBe(0);
   const lockfile = readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8');
   const changed = lockfile.replace('autoInstallPeers: true', 'autoInstallPeers: false');
   expect(changed).not.toBe(lockfile);
   put(root, 'pnpm-lock.yaml', changed);
   commit(root);
-  expect(releaseCheck(root, base, '0.1.0')).toMatchObject({
+  await expect(releaseCheck(root, base, '0.1.0')).resolves.toMatchObject({
     status: 1,
     stderr: expect.stringContaining('pnpm-lock.yaml must match the version writer'),
   });
 });
 
-test('release cuts reject non-version manifest changes and mismatched title versions', () => {
+test('release cuts reject non-version manifest changes and mismatched title versions', async () => {
   const { root } = repository();
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
+  const runResult = await run(['release', 'cut', '--date', '2026-09-07'], { cwd: root });
+  expect(runResult.status).toBe(0);
   const cut = commit(root);
-  expect(releaseCheck(root, base, '0.4.9').stderr).toContain(
-    'Every participating library must carry title version',
-  );
+  const runResult2 = await releaseCheck(root, base, '0.4.9');
+  expect(runResult2.stderr).toContain('Every participating library must carry title version');
   put(
     root,
     'packages/core/package.json',
     '{"name":"@sample/core","version":"0.4.8","scripts":{"prepack":"echo injected"}}',
   );
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8').stderr).toContain('only the version field');
+  const runResult3 = await releaseCheck(root, base, '0.4.8');
+  expect(runResult3.stderr).toContain('only the version field');
   git(root, ['reset', '--hard', cut]);
   put(root, '.changes/left.md', '- Left behind.\n');
   commit(root);
-  expect(releaseCheck(root, base, '0.4.8').stderr).toContain('No fragments may remain');
+  const runResult4 = await releaseCheck(root, base, '0.4.8');
+  expect(runResult4.stderr).toContain('No fragments may remain');
 });
 
-test('a release branch must include the current base and ordinary argument errors stay explicit', () => {
+test('a release branch must include the current base and ordinary argument errors stay explicit', async () => {
   const { root } = repository();
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
-  expect(invoke(cli, ['release', 'cut', '--date', '2026-09-07'], { cwd: root }).status).toBe(0);
+  const runResult = await run(['release', 'cut', '--date', '2026-09-07'], { cwd: root });
+  expect(runResult.status).toBe(0);
   const cut = commit(root);
   git(root, ['checkout', '--detach', base]);
   put(root, 'docs/guide.md', '# Guide\n');
   const advanced = commit(root);
   git(root, ['checkout', '--detach', cut]);
-  expect(releaseCheck(root, advanced, '0.4.8').stderr).toContain('include the current base');
-  expect(releaseCheck(root, base, '1.0.0').stderr).toContain('Expected release title');
-  expect(check(root, base, '--', 'extra').stderr).toContain('Arguments after --');
-  expect(invoke(cli, ['pr', 'check'], { cwd: root }).status).toBe(2);
+  const runResult2 = await releaseCheck(root, advanced, '0.4.8');
+  expect(runResult2.stderr).toContain('include the current base');
+  const runResult3 = await releaseCheck(root, base, '1.0.0');
+  expect(runResult3.stderr).toContain('Expected release title');
+  const runResult4 = await check(root, base, '--', 'extra');
+  expect(runResult4.stderr).toContain('Arguments after --');
+  const runResult5 = await run(['pr', 'check'], { cwd: root });
+  expect(runResult5.status).toBe(2);
 });
 
-test('a committed hidden entry in .changes/ is ignored, neither rejected nor counted as a fragment', () => {
+test('a committed hidden entry in .changes/ is ignored, neither rejected nor counted as a fragment', async () => {
   const { base, root } = repository();
   put(root, 'packages/core/index.js', 'export const value = 2;\n');
   put(root, '.changes/.DS_Store', '\u0000binary');
   put(root, '.changes/.output.md', '- Fix output.\n');
   commit(root);
-  expect(check(root, base).stderr).toContain('fragment or skip-changelog');
+  const runResult = await check(root, base);
+  expect(runResult.stderr).toContain('fragment or skip-changelog');
   put(root, '.changes/output.md', '- Fix output.\n');
   commit(root);
-  expect(check(root, base)).toEqual({ status: 0, stderr: '', stdout: 'PR checks passed.\n' });
+  await expect(check(root, base)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
+  });
 });
