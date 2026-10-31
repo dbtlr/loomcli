@@ -32,7 +32,7 @@ See [loom init](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain/init.m
 
 ## Changelog
 
-A package keeps its pending changes as fragments in `.changes/` and cuts its `package.json` version from them.
+A package keeps its pending changes as fragments in `.changes/`, or the folder `paths.changes` names in `loom.config.json`, and cuts its `package.json` version from them. `CHANGELOG.md` is likewise the default of `paths.changelog`.
 
 ```sh
 mkdir -p .changes

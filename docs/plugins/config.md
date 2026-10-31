@@ -90,6 +90,7 @@ export const { plugin: configPlugin, values: config } = configuration({
   short: 'c',
   env: 'COLLECTOR_CONFIG',
   directory: { name: 'project', short: 'p' },
+  root: '.git',
   schema: collectorConfig,
 });
 ```

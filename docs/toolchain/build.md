@@ -63,7 +63,7 @@ A package may keep `loom.config.json` beside its `package.json` to depart from a
   | `installer` | `install.sh` | `init` |
   | `skills` | `skills` | `build` |
 
-  `application` and `entry` follow `source` unless set themselves. `skills` is the folder of agent skills the application installs for its operator, the layout `npx skills` reads; how the build reads it is recorded separately.
+  Each path is a nonempty string, relative or absolute, and a relative path may hold `..`; an empty string or a value of another type is dropped and its convention applies. `application` and `entry` follow `source` unless set themselves. `skills` is the folder of agent skills the application installs for its operator, the layout `npx skills` reads; how the build reads it is recorded separately.
 - **One base.** Every path in the file resolves against the package directory, whichever directory the file sits in, and an absolute path stays as written. A path may leave the package directory, such as a monorepo's root `install.sh`.
 - **`postInstall`.** The [post-install command and message](install.md#the-post-install-command) the installer script runs and prints: `{ "message": "…", "command": ["setup"] }`.
 - **Fixed paths.** `package.json`, `tsconfig.json`, the linter's configuration file, `bunfig.toml`, and the [changelog skill](init.md#managed-files) are where other tools look for them, so the file does not move them.
