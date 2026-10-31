@@ -8,9 +8,6 @@ import { fileURLToPath } from 'node:url';
 /** How long a fixture may run or stay silent before the harness ends it and the test fails. */
 const fixtureTimeout = 10_000;
 
-/** The prefixes of the variables the example applications bind to their options. */
-const exampleBindings = ['TEXTSTAT_', 'JSONKIT_'];
-
 /** Each runtime's own executable, by the name a test gives it, read once per test process. */
 const executables = new Map<string, string>();
 
@@ -49,26 +46,33 @@ const sharedState = join(tmpdir(), 'loom-test-state');
 const sharedHome = join(tmpdir(), 'loom-test-home');
 
 /**
- * The environment a fixture starts from: the parent's, minus every variable an example binds and
- * `CI`. A binding set in the developer's shell would otherwise fill an option the test never set,
- * and a `CI` the runner sets would stop every live region a fixture draws.
- * The state and home directories are temporary ones, so a fixture writes nothing under the
- * developer's own home. The test's own variables and the capture marker apply on top.
+ * The environment a fixture runs in, which the harness builds instead of inheriting. From the
+ * parent it takes only `PATH`, so a fixture finds the runtimes and programs the machine has, and the
+ * temporary directory, so a path a test builds under `tmpdir()` is the one the fixture sees. The
+ * home and every XDG folder are temporary ones, so a fixture reads no configuration from the
+ * developer's home and writes nothing there, and git reads no system configuration. Nothing else
+ * reaches a fixture: a color, pager, or terminal setting, a `CI` the runner sets, or a binding an
+ * example reads would otherwise change what the fixture prints. The test's own variables and the
+ * capture marker apply on top, and a variable a test sets to `undefined` stays unset.
  */
-export function childEnvironment(env: Record<string, string | undefined> | undefined) {
-  const inherited = Object.fromEntries(
-    Object.entries(process.env).filter(
-      ([name]) => !exampleBindings.some((prefix) => name.startsWith(prefix)),
-    ),
-  );
-  return {
-    ...inherited,
-    CI: undefined,
+export function childEnvironment(
+  env: Record<string, string | undefined> | undefined,
+): Record<string, string> {
+  const built: Record<string, string | undefined> = {
+    GIT_CONFIG_NOSYSTEM: '1',
     HOME: sharedHome,
     LOOM_CAPTURE_TEST: 'present',
+    PATH: process.env.PATH,
+    TMPDIR: tmpdir(),
+    XDG_CACHE_HOME: join(sharedHome, '.cache'),
+    XDG_CONFIG_HOME: join(sharedHome, '.config'),
+    XDG_DATA_HOME: join(sharedHome, '.local', 'share'),
     XDG_STATE_HOME: sharedState,
     ...env,
   };
+  return Object.fromEntries(
+    Object.entries(built).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
 }
 
 /**

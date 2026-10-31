@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path';
 
 import { afterAll } from 'vite-plus/test';
 
+import { childEnvironment } from '../../../scripts/test-process.js';
+
 const roots: string[] = [];
 
 /** Pristine repositories live for the file; every test works on its own complete copy. */
@@ -30,12 +32,16 @@ export function removeRoots() {
   }
 }
 
-// Commits carry a fixed date so fragment order and history stay reproducible.
+/**
+ * Runs git in a fixture repository. Commits carry a fixed date so fragment order and history stay
+ * reproducible, and git runs in the fixture's environment, so a developer's git configuration, such
+ * as tag signing, never applies.
+ */
 export function git(root: string, args: string[], date = '2026-01-01T12:00:00Z') {
   const result = spawnSync('git', args, {
     cwd: root,
     encoding: 'utf8',
-    env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
+    env: childEnvironment({ GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date }),
   });
   if (result.status !== 0) {
     throw new Error(result.stderr);
