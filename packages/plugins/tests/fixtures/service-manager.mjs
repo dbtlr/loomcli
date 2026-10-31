@@ -4,7 +4,8 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs
  * A fake service manager program: `systemctl`, `loginctl`, or `launchctl`, as the wrapper script on
  * `PATH` names it. It appends its words and the `XDG_RUNTIME_DIR` it received to the scenario's call
  * log, then answers from the scenario: the first rule whose `call` is its words exactly gives a list
- * of answers taken in turn, the last one repeating. A call no rule names exits 0 and prints nothing.
+ * of answers taken in turn, the last one repeating. A call no rule names exits 0 and prints
+ * `manager output` and `manager diagnostics`.
  */
 const [scenarioPath, program, ...args] = process.argv.slice(2);
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));

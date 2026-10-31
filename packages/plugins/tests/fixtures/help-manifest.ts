@@ -22,8 +22,6 @@ async function run(args: string[] = []) {
     section: ['Root'],
   });
 
-  /** Four Commands: help examples with an author value, an empty help value, none, and details alone. */
-
   /** A later hook that replaces the help value on `noted`, after help has read it. */
   const replacing = plugin('@fixture/replacing', {
     onCommandAttach: (command) =>
@@ -59,6 +57,7 @@ async function run(args: string[] = []) {
   return { stdout };
 }
 
+/** Four Commands: help examples with an author value, an empty help value, none, and details alone. */
 function commands(options: ApplicationOptions) {
   return new Application('app', options)
     .command(

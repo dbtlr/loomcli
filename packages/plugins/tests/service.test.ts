@@ -1,12 +1,13 @@
-import { createHash } from 'node:crypto';
 /*
  * Acceptance plan for the service plugin (docs/plugins/service.md#the-children).
  *
  * The plugin is proven when isolated runs under Node and Bun produce these results. Each fixture
- * sets `HOME`, `XDG_CONFIG_HOME`, and `XDG_STATE_HOME` to temporary directories, puts fake
- * `systemctl`, `loginctl`, and `launchctl` programs first on `PATH` that answer from a scenario
- * file and record each call, and runs an application that installs `service()` through
- * `run({ process: processHandle({ platform, program, release }) })`, so both backends run on either CI platform:
+ * sets `HOME`, `XDG_CONFIG_HOME`, and `XDG_STATE_HOME` to temporary directories and runs an
+ * application that installs `service()` on a mock process whose `systemctl`, `loginctl`, and
+ * `launchctl` programs answer from the scenario and record each call (`fixtures/service-programs.ts`),
+ * with the platform the case names, so both backends run on either CI platform. The hang, deaf, and
+ * umask cases need a real process: they run through `processHandle` with the same answers served by
+ * fake manager programs first on `PATH` (`fixtures/service-manager.mjs`):
  *
  * - Installing. A distributed run on `linux` writes the pinned unit, records it in `service.json`,
  *   and calls `daemon-reload`, `enable`, and `restart` in that order; a second install calls no
@@ -60,6 +61,8 @@ import { createHash } from 'node:crypto';
  * - Packaging. `pnpm check:packed` resolves `@loomcli/plugins/service` from the packed tarball
  *   under Node and Bun.
  */
+
+import { createHash } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
