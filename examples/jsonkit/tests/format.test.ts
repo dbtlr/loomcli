@@ -69,9 +69,8 @@ test('jsonkit paths --format yaml --help still prints the help page, help instal
 
 test('jsonkit inspect reports formatter views on the root records and paths results', async () => {
   const inspected = inspection();
-  expect(inspected.status).toBe(0);
   const graph: { root: { result: unknown; children: { name: string; result: unknown }[] } } =
-    JSON.parse(inspected.stdout);
+    JSON.parse(inspected);
   expect(graph.root.result).toEqual({
     default: 'records',
     kind: 'rows',

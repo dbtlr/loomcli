@@ -17,8 +17,7 @@ const inspected = z.object({
 
 function graph() {
   const result = inspection();
-  expect(result.stderr).toBe('');
-  return inspected.parse(JSON.parse(result.stdout));
+  return inspected.parse(JSON.parse(result));
 }
 
 /** The two failures jsonkit declares, as the extension stores them. */

@@ -8,8 +8,7 @@ const inspected = z.object({ root: z.object({ extensions: z.record(z.string(), z
 
 test("help supplies the root help values to the manifest's collecting extension", async () => {
   const result = inspection();
-  expect(result.stderr).toBe('');
-  const { root } = inspected.parse(JSON.parse(result.stdout));
+  const { root } = inspected.parse(JSON.parse(result));
   expect(root.extensions['@loomcli/plugins/manifest/command']).toEqual([
     {
       details:

@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { host, inspection, run } from './run.js';
+import { host, inspection, platform, run } from './run.js';
 
 // The private @loom/doctor plugin attaches one ordinary Command to the root, ahead of jsonkit's own.
 
@@ -9,7 +9,7 @@ import { host, inspection, run } from './run.js';
 const pipedReport = [
   'Host checks',
   '───────────',
-  `● Platform: ${process.platform}`,
+  `● Platform: ${platform}`,
   '● Output: not a terminal',
   '─'.repeat(80),
   '╭─ Result ───────────╮',
@@ -59,10 +59,9 @@ test('jsonkit doctor --help prints its page like any other Command', async () =>
 
 test('inspect() lists the plugin Command as the root first child, with nothing marking its plugin', async () => {
   const result = inspection();
-  expect(result.status).toBe(0);
   const graph = z
     .object({ root: z.object({ children: z.array(z.record(z.string(), z.unknown())) }) })
-    .parse(JSON.parse(result.stdout));
+    .parse(JSON.parse(result));
   expect(graph.root.children.map((child) => child.name)).toEqual([
     'doctor',
     'completion',

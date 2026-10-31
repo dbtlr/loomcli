@@ -185,10 +185,9 @@ test.each([
 
 test('the inspected graph publishes the text() input schema for --field', async () => {
   const inspected = inspection();
-  expect(inspected.status).toBe(0);
   const graph: {
     root: { children: { name: string; options: { name: string; schema: unknown }[] }[] };
-  } = JSON.parse(inspected.stdout);
+  } = JSON.parse(inspected);
   const found = graph.root.children.find((child) => child.name === 'select');
   expect(found?.options.find((option) => option.name === 'field')?.schema).toEqual({
     $schema: 'https://json-schema.org/draft/2020-12/schema',

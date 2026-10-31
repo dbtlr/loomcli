@@ -75,8 +75,7 @@ test('an unknown option on the root gains the hint that names the application al
 
 test("the inspected graph carries the plugin's option, the extension value, and the version", async () => {
   const result = inspection();
-  expect(result.status).toBe(0);
-  const graph = inspected.parse(JSON.parse(result.stdout));
+  const graph = inspected.parse(JSON.parse(result));
   expect(graph.version).toBe(manifest.version);
   expect(graph.globals.map((option) => option.name)).toEqual([
     'help',

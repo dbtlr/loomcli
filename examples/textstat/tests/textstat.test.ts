@@ -129,14 +129,12 @@ test('textstat logs one record for each run through the logging plugin, and prin
     writeFileSync(join(directory, 'one.txt'), 'hello\n');
     const home = join(directory, 'home');
     const state = join(directory, 'state');
-    // The directory the plugin picks on the platform the child runs on.
-    const logDirectory =
-      process.platform === 'darwin'
-        ? join(home, 'Library', 'Logs', 'textstat')
-        : join(state, 'textstat');
+    // The directory the plugin picks on the platform the run states, which is linux.
+    const logDirectory = join(state, 'textstat');
     const result = await run(['one.txt'], {
       cwd: directory,
       env: { HOME: home, XDG_STATE_HOME: state },
+      platform: 'linux',
     });
     expect(result).toEqual({
       status: 0,
@@ -642,13 +640,12 @@ test('textstat reads a literal file named hyphen through an explicit relative pa
 
 test("the inspected graph publishes native content facts and the catalog validators' input schemas", async () => {
   const inspected = inspection();
-  expect(inspected.status).toBe(0);
   const graph: {
     root: {
       arguments: unknown[];
       options: { aliases: string[]; name: string; schema: unknown }[];
     };
-  } = JSON.parse(inspected.stdout);
+  } = JSON.parse(inspected);
   expect(graph.root.arguments).toEqual([
     {
       description: 'The files and piped text to count. Use - to place stdin.',
@@ -680,8 +677,7 @@ test("the inspected graph publishes native content facts and the catalog validat
 
 test('the inspected graph reports the declared table and the formatter views on the root result', async () => {
   const inspected = inspection();
-  expect(inspected.status).toBe(0);
-  const graph: { root: { result: unknown } } = JSON.parse(inspected.stdout);
+  const graph: { root: { result: unknown } } = JSON.parse(inspected);
   expect(graph.root.result).toEqual({
     default: 'table',
     kind: 'rows',
@@ -692,11 +688,10 @@ test('the inspected graph reports the declared table and the formatter views on 
 
 test('the inspected graph marks --config, --help, --version, --manifest, and --format as control options', async () => {
   const inspected = inspection();
-  expect(inspected.status).toBe(0);
   const graph: {
     globals: { name: string; control: boolean }[];
     root: { options: { name: string; control: boolean }[] };
-  } = JSON.parse(inspected.stdout);
+  } = JSON.parse(inspected);
   const marks = Object.fromEntries(
     [...graph.globals, ...graph.root.options].map((option) => [option.name, option.control]),
   );

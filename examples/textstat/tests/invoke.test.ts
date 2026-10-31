@@ -20,11 +20,16 @@ async function failures() {
   try {
     writeFileSync(join(directory, 'one.txt'), 'hello\n');
     const values = { args: { files: ['one.txt'] }, options: { metric: 'nope' } };
-    const plain = await textstat.invoke([], values, { process: mockProcess({ cwd: directory }) });
-    const json = await textstat.invoke([], values, {
-      process: mockProcess({ cwd: directory }),
-      view: 'json',
-    });
+    const plainMock = mockProcess({ cwd: directory });
+    const plain = await textstat.invoke([], values, { process: plainMock });
+    const jsonMock = mockProcess({ cwd: directory });
+    const json = await textstat.invoke([], values, { process: jsonMock, view: 'json' });
+    // An invocation by name writes nothing to the process and sets no exit code.
+    for (const mock of [plainMock, jsonMock]) {
+      expect(mock.stdout.text).toBe('');
+      expect(mock.stderr.text).toBe('');
+      expect(mock.exitCode).toBeUndefined();
+    }
     return { json, plain };
   } finally {
     rmSync(directory, { force: true, recursive: true });
