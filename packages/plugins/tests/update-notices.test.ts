@@ -70,7 +70,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { ReleaseFacts } from '@loomcli/core';
 import { Application, locate } from '@loomcli/core';
 import type { NoticeSettings } from '@loomcli/plugins/self-update';
-import type { MockProcess, Program } from '@loomcli/testing';
+import type { MockProcess, Program, ProgramAnswer, ProgramCall } from '@loomcli/testing';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
@@ -148,7 +148,14 @@ interface Sandbox {
 
 const roots: string[] = [];
 
-afterEach(() => {
+/**
+ * Refresh children still running. Each swaps its own fake GitHub into `fetch` while it runs, so
+ * every test waits for its children before the next begins, whether or not it read them.
+ */
+const running = new Set<Promise<unknown>>();
+
+afterEach(async () => {
+  await Promise.allSettled(running);
   for (const root of roots.splice(0)) {
     chmodSync(root, 0o755);
     const cache = join(root, 'cache', 'notes');
@@ -347,13 +354,20 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {
     rules: scenario.rules,
   };
   const runReturned = Promise.withResolvers<void>();
-  const refresh: Program = async (call) => {
+  const refresh: Program = (call) => {
+    const child = refreshOnce(call);
+    running.add(child);
+    return child.finally(() => running.delete(child));
+  };
+  const refreshOnce = async (call: ProgramCall): Promise<ProgramAnswer> => {
     if (scenario.program === 'inert') {
       return {};
     }
     record(box, { cache: cacheIn(call.cwd), cwd: call.cwd, event: 'start', role: 'child' });
-    // One fake GitHub replaces fetch at a time, so the refresh runs once the run that started it
-    // Has returned, as the process fixture held a child's requests until its run had exited.
+    /*
+     * One fake GitHub replaces fetch at a time, so the refresh runs once the run that started it
+     * has returned, as the process fixture held a child's requests until its run had exited.
+     */
     await runReturned.promise;
     const child = await runSelfUpdate(
       application,
