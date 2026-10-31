@@ -69,28 +69,6 @@ export function loom(
   return run(args, { ...options, cwd });
 }
 
-/** A built toolchain run for application-export reads that require the bundled helper. */
-export async function loomProcess(
-  cwd: string,
-  args: string[],
-  options: { env?: Record<string, string | undefined>; runtime?: string } = {},
-) {
-  const result = spawnSync(
-    options.runtime ?? process.env.LOOM_TEST_RUNTIME ?? 'node',
-    [cli, ...args],
-    {
-      cwd,
-      encoding: 'utf8',
-      env: childEnvironment(options.env),
-      timeout: loomTimeout,
-    },
-  );
-  if (result.error) {
-    throw result.error;
-  }
-  return { status: result.status, stderr: result.stderr, stdout: result.stdout };
-}
-
 /** One run of a command in a package directory, such as the compiler or a test runner. */
 export function inPackage(cwd: string, command: string, args: string[]) {
   const result = spawnSync(command, args, {

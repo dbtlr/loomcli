@@ -58,7 +58,6 @@ import {
   inPackage,
   linkInstalled,
   loom,
-  loomProcess,
   snapshot,
 } from './package.js';
 
@@ -237,7 +236,7 @@ test('in an existing package init writes the missing pieces and leaves its appli
     'package.json': ownTypedManifest,
     'tsconfig.json': ownTypescriptConfig,
   });
-  const result = await loomProcess(root, ['init']);
+  const result = await loom(root, ['init']);
   expect(result).toEqual({
     status: 0,
     stderr: noRepository,
@@ -298,7 +297,7 @@ test('--only changes writes .changes/README.md alone', async () => {
 
 test('--only repeats, and each piece it names is written', async () => {
   const root = ownPackage();
-  const runResult = await loomProcess(root, ['init', '--only', 'skill', '--only', 'entry']);
+  const runResult = await loom(root, ['init', '--only', 'skill', '--only', 'entry']);
   expect(runResult.stdout).toBe(`Wrote src/main.ts.\nWrote ${skillPath}.\n`);
 });
 
@@ -317,9 +316,9 @@ test('init from a subdirectory prints the drift warning of a managed file in the
 
 test('--force never overwrites a scaffold file or key', async () => {
   const root = ownPackage({ 'src/main.ts': 'export {};\n' });
-  await loomProcess(root, ['init']);
+  await loom(root, ['init']);
   const before = snapshot(root);
-  await expect(loomProcess(root, ['init', '--force'])).resolves.toEqual({
+  await expect(loom(root, ['init', '--force'])).resolves.toEqual({
     status: 0,
     stderr: noRepository,
     stdout: '',
@@ -425,7 +424,7 @@ test.each([
   'an authored application module exported under %s gets an entry that imports it and builds',
   async (_case, exported, imported) => {
     const root = ownPackage({ 'src/application.ts': authored(exported) });
-    await expect(loomProcess(root, ['init', '--only', 'entry'])).resolves.toEqual({
+    await expect(loom(root, ['init', '--only', 'entry'])).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: 'Wrote src/main.ts.\n',
@@ -440,7 +439,7 @@ test.each([
 
 test('an authored application module that exports no Application draws a warning and no entry', async () => {
   const root = ownPackage({ 'src/application.ts': 'export const value = 1;\n' });
-  await expect(loomProcess(root, ['init', '--only', 'entry'])).resolves.toEqual({
+  await expect(loom(root, ['init', '--only', 'entry'])).resolves.toEqual({
     status: 0,
     stderr:
       'warning: src/main.ts was not written because src/application.ts exports no Application loom can read. Write the entry by hand.\n',
@@ -457,7 +456,7 @@ test('an authored application module that cannot be loaded draws the load warnin
     },
     [],
   );
-  await expect(loomProcess(root, ['init', '--only', 'entry'])).resolves.toEqual({
+  await expect(loom(root, ['init', '--only', 'entry'])).resolves.toEqual({
     status: 0,
     stderr:
       'warning: src/main.ts was not written because src/application.ts could not be loaded: @loomcli/core does not resolve from the package, so install it before init reads src/application.ts. Install the package and run loom init again, or write the entry by hand.\n',
@@ -549,7 +548,7 @@ function isExecutable(path: string) {
 test('--only install writes install.sh alone, executable, with the shell header, the name, and the repository', async () => {
   const root = repositoryPackage('me/notes');
   const before = snapshot(root);
-  await expect(loomProcess(root, ['init', '--only', 'install'])).resolves.toEqual({
+  await expect(loom(root, ['init', '--only', 'install'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'Wrote install.sh.\n',
@@ -567,18 +566,18 @@ test('--only install writes install.sh alone, executable, with the shell header,
 
 test('a full init in a package with a GitHub repository writes install.sh after the skill', async () => {
   const root = repositoryPackage('git+https://github.com/me/notes.git');
-  const { stdout } = await loomProcess(root, ['init']);
+  const { stdout } = await loom(root, ['init']);
   expect(stdout.endsWith(`Wrote ${skillPath}.\nWrote install.sh.\n`)).toBe(true);
 });
 
 test('after repository changes, init re-renders an unedited install.sh with the new repository and keeps it executable', async () => {
   const root = repositoryPackage('me/notes');
-  await loomProcess(root, ['init', '--only', 'install']);
+  await loom(root, ['init', '--only', 'install']);
   writeFileSync(
     join(root, 'package.json'),
     `${JSON.stringify({ name: 'notes', repository: 'me/jot', type: 'module' })}\n`,
   );
-  await expect(loomProcess(root, ['init', '--only', 'install'])).resolves.toEqual({
+  await expect(loom(root, ['init', '--only', 'install'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'Wrote install.sh.\n',
@@ -591,13 +590,13 @@ test('an edited install.sh draws the drift warning from init, and --force re-ren
   const root = repositoryPackage('me/notes');
   const edited = `${renderManaged(installerScript('notes', 'me/notes'))}# An edit.\n`;
   put(root, 'install.sh', edited);
-  await expect(loomProcess(root, ['init', '--only', 'install'])).resolves.toEqual({
+  await expect(loom(root, ['init', '--only', 'install'])).resolves.toEqual({
     status: 0,
     stderr: warning('install.sh'),
     stdout: '',
   });
   expect(read(root, 'install.sh')).toBe(edited);
-  const runResult = await loomProcess(root, ['init', '--only', 'install', '--force']);
+  const runResult = await loom(root, ['init', '--only', 'install', '--force']);
   expect(runResult.stdout).toBe('Wrote install.sh.\n');
   expect(read(root, 'install.sh')).toBe(renderManaged(installerScript('notes', 'me/notes')));
   expect(isExecutable(join(root, 'install.sh'))).toBe(true);
@@ -628,7 +627,7 @@ test('an install.sh whose #! line was edited keeps its header and draws the drif
     '#!/usr/bin/env sh\n',
   );
   put(root, 'install.sh', edited);
-  await expect(loomProcess(root, ['init', '--only', 'install'])).resolves.toEqual({
+  await expect(loom(root, ['init', '--only', 'install'])).resolves.toEqual({
     status: 0,
     stderr: warning('install.sh'),
     stdout: '',
@@ -668,7 +667,7 @@ test('on a re-run where the entry and the test exist, init reads the post-instal
     'src/main.ts': '// The entry.\n',
   });
   await expect(
-    loomProcess(root, ['init', '--only', 'entry', '--only', 'test', '--only', 'install']),
+    loom(root, ['init', '--only', 'entry', '--only', 'test', '--only', 'install']),
   ).resolves.toEqual({
     status: 0,
     stderr: '',
@@ -708,14 +707,14 @@ test.each([
   'an application module that %s draws its warning, writes no install.sh, and leaves an existing one alone',
   async (_case, files, links, stderr) => {
     const fresh = installPackage(files, links);
-    await expect(loomProcess(fresh, ['init', '--only', 'install'])).resolves.toEqual({
+    await expect(loom(fresh, ['init', '--only', 'install'])).resolves.toEqual({
       status: 0,
       stderr,
       stdout: '',
     });
     expect(existsSync(join(fresh, 'install.sh'))).toBe(false);
     const existing = installPackage({ ...files, 'install.sh': earlierScript }, links);
-    await expect(loomProcess(existing, ['init', '--only', 'install'])).resolves.toEqual({
+    await expect(loom(existing, ['init', '--only', 'install'])).resolves.toEqual({
       status: 0,
       stderr,
       stdout: '',
@@ -739,7 +738,7 @@ test.each([
   'a declaration fault %s prints its Developer Diagnostic, writes no install.sh, and exits 1 once the other pieces are written',
   async (_case, module, rule) => {
     const root = installPackage({ 'install.sh': earlierScript, 'src/application.ts': module });
-    const result = await loomProcess(root, ['init', '--only', 'changes', '--only', 'install']);
+    const result = await loom(root, ['init', '--only', 'changes', '--only', 'install']);
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('Wrote .changes/README.md.\n');
     expect(result.stderr).toMatch(
@@ -832,7 +831,7 @@ test('the application assembles', () => {
 
 test('a test for an application exported as default imports it by the entry identifier', async () => {
   const root = ownPackage({ 'src/application.ts': authored('export default application;') });
-  const runResult = await loomProcess(root, ['init', '--only', 'test']);
+  const runResult = await loom(root, ['init', '--only', 'test']);
   expect(runResult.stdout).toBe(`Wrote ${testPath}.\n`);
   expect(read(root, testPath)).toContain("import probe from './application.js';");
   expect(read(root, testPath)).toContain('assertAssembles(probe);');
@@ -910,7 +909,7 @@ test('a package that declares @types/bun uses Bun', async () => {
 test('a --test-runner the operator supplies wins over a vitest dependency the package holds', async () => {
   const manifest = `${JSON.stringify({ devDependencies: { vitest: '^5.0.0' }, name: 'probe', type: 'module' }, undefined, 2)}\n`;
   const root = ownPackage({ 'package.json': manifest });
-  await loomProcess(root, ['init', '--test-runner', 'bun']);
+  await loom(root, ['init', '--test-runner', 'bun']);
   expect(JSON.parse(read(root, 'package.json')).scripts.check).toBe(
     'tsc --noEmit && oxlint src && bun test',
   );
@@ -922,7 +921,7 @@ test.each(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDepen
   async (group) => {
     const manifest = `${JSON.stringify({ [group]: { vitest: '^5.0.0' }, name: 'probe', type: 'module' }, undefined, 2)}\n`;
     const root = ownPackage({ 'package.json': manifest });
-    await loomProcess(root, ['init']);
+    await loom(root, ['init']);
     expect(JSON.parse(read(root, 'package.json')).scripts.check).toBe(
       'tsc --noEmit && oxlint src && vitest run',
     );
@@ -942,7 +941,7 @@ test('a flag the operator supplies wins over the lint configuration the package 
 test('--only test writes the test alone and --only lint writes the lint file alone', async () => {
   const root = ownPackage();
   const before = snapshot(root);
-  await expect(loomProcess(root, ['init', '--only', 'test'])).resolves.toEqual({
+  await expect(loom(root, ['init', '--only', 'test'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `Wrote ${testPath}.\n`,
@@ -960,9 +959,9 @@ test('--only test writes the test alone and --only lint writes the lint file alo
 
 test('a re-run never overwrites the test or the lint file', async () => {
   const root = ownPackage({ [testPath]: 'export {};\n', '.oxlintrc.json': '{}\n' });
-  await loomProcess(root, ['init']);
+  await loom(root, ['init']);
   const before = snapshot(root);
-  await expect(loomProcess(root, ['init', '--force'])).resolves.toEqual({
+  await expect(loom(root, ['init', '--force'])).resolves.toEqual({
     status: 0,
     stderr: noRepository,
     stdout: '',
@@ -980,7 +979,7 @@ test('a test for an application that cannot be loaded draws the warning and no f
     },
     [],
   );
-  await expect(loomProcess(root, ['init', '--only', 'test'])).resolves.toEqual({
+  await expect(loom(root, ['init', '--only', 'test'])).resolves.toEqual({
     status: 0,
     stderr: `warning: ${testPath} was not written because src/application.ts could not be loaded: @loomcli/core does not resolve from the package, so install it before init reads src/application.ts. Install the package and run loom init again, or write the test by hand.\n`,
     stdout: '',
@@ -1118,7 +1117,7 @@ const plainTypescriptWarning = (range: string) =>
 
 test('ESLint over a plain typescript key draws one warning that names the alias and the guide', async () => {
   const root = ownPackage({ 'package.json': ownTypedManifest });
-  const runResult = await loomProcess(root, ['init', '--linter', 'eslint']);
+  const runResult = await loom(root, ['init', '--linter', 'eslint']);
   expect(runResult.stderr).toBe(`${plainTypescriptWarning('~5.9.0')}${noRepository}`);
 });
 
@@ -1133,13 +1132,13 @@ test('ESLint over the typescript alias, and oxlint over a plain typescript key, 
     undefined,
     2,
   )}\n`;
-  const runResult = await loomProcess(ownPackage({ 'package.json': aliased }), [
+  const runResult = await loom(ownPackage({ 'package.json': aliased }), [
     'init',
     '--linter',
     'eslint',
   ]);
   expect(runResult.stderr).toBe(noRepository);
-  const runResult2 = await loomProcess(ownPackage({ 'package.json': ownTypedManifest }), [
+  const runResult2 = await loom(ownPackage({ 'package.json': ownTypedManifest }), [
     'init',
     '--linter',
     'oxlint',
