@@ -64,7 +64,7 @@ export function linkInstalled(root: string, links: readonly Link[]) {
 export function loom(
   cwd: string,
   args: string[],
-  options: { env?: Record<string, string | undefined>; runtime?: string } = {},
+  options: { env?: Record<string, string | undefined> } = {},
 ) {
   return run(args, { ...options, cwd });
 }

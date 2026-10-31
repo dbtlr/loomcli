@@ -207,14 +207,12 @@ test(
     expect(runResult.status).toBe(0);
     const bundle = join(directory, 'dist/main.js');
     expect(readFileSync(bundle, 'utf8').startsWith('#!/usr/bin/env node\n')).toBe(true);
-    {
-      const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
-      expect(execute(bundle, [], { runtime })).toEqual({
-        status: 0,
-        stderr: '',
-        stdout: 'notes is ready. Replace this action with your own.\n',
-      });
-    }
+    const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
+    expect(execute(bundle, [], { runtime })).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'notes is ready. Replace this action with your own.\n',
+    });
   },
   slow,
 );
