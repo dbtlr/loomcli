@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { withoutByteOrderMark } from './byte-order-mark.js';
+import { conventionalFragments } from './conventions.js';
 import { requireClosedBlocks } from './markdown.js';
 import { readDirectory, readRegularFile } from './repository.js';
 import type { Checkout } from './repository.js';
@@ -25,8 +26,8 @@ function fragmentKind(name: string): FragmentKind | undefined {
   return 'fix';
 }
 
-function validateBody(name: string, kind: FragmentKind, body: string) {
-  requireClosedBlocks(body, `.changes/${name}`);
+function validateBody(path: string, kind: FragmentKind, body: string) {
+  requireClosedBlocks(body, path);
   const nodes = fromMarkdown(body).children;
   const migrationIndex = nodes.findIndex((node) => node.type === 'heading');
   const breaking = kind === 'breaking';
@@ -40,7 +41,7 @@ function validateBody(name: string, kind: FragmentKind, body: string) {
         node.children.some((item) => item.children.length === 0),
     )
   ) {
-    throw new Error(`.changes/${name}: expected top-level change bullets.`);
+    throw new Error(`${path}: expected top-level change bullets.`);
   }
   if (!breaking) {
     return;
@@ -53,11 +54,11 @@ function validateBody(name: string, kind: FragmentKind, body: string) {
     heading.children[0]?.type !== 'text' ||
     heading.children[0].value !== 'Migration'
   ) {
-    throw new Error(`.changes/${name}: expected one ### Migration section after the bullets.`);
+    throw new Error(`${path}: expected one ### Migration section after the bullets.`);
   }
   const migrationNodes = nodes.slice(migrationIndex + 1);
   if (migrationNodes.some((node) => node.type === 'heading')) {
-    throw new Error(`.changes/${name}: expected one ### Migration section.`);
+    throw new Error(`${path}: expected one ### Migration section.`);
   }
   const labels = ['Affected surface.', 'Why.', 'Before and after.', 'Steps.', 'Validation.'];
   const found = migrationNodes.flatMap((node) => {
@@ -72,7 +73,7 @@ function validateBody(name: string, kind: FragmentKind, body: string) {
     return labels.includes(first.children[0].value) ? [first.children[0].value] : [];
   });
   if (labels.some((label) => found.filter((item) => item === label).length !== 1)) {
-    throw new Error(`.changes/${name}: Migration requires each label once: ${labels.join(', ')}`);
+    throw new Error(`${path}: Migration requires each label once: ${labels.join(', ')}`);
   }
 }
 
@@ -81,22 +82,20 @@ async function readFragment(
   checkout: Checkout,
   entry: Awaited<ReturnType<typeof readDirectory>>[number],
   ref: string | undefined,
+  folder: string,
 ) {
   const { name } = entry;
+  const path = `${folder}/${name}`;
   if (!entry.isFile()) {
-    throw new Error(
-      `.changes/${name}: expected a fragment file. Keep fragments directly in .changes/.`,
-    );
+    throw new Error(`${path}: expected a fragment file. Keep fragments directly in ${folder}/.`);
   }
   const kind = fragmentKind(name);
   if (kind === undefined) {
-    throw new Error(
-      `.changes/${name}: expected <slug>.md, feature.<slug>.md, or breaking.<slug>.md.`,
-    );
+    throw new Error(`${path}: expected <slug>.md, feature.<slug>.md, or breaking.<slug>.md.`);
   }
-  const source = await readRegularFile(checkout, `.changes/${name}`, ref);
+  const source = await readRegularFile(checkout, path, ref);
   const body = withoutByteOrderMark(source);
-  validateBody(name, kind, body);
+  validateBody(path, kind, body);
   return { body, kind, name, source };
 }
 
@@ -104,24 +103,29 @@ async function readFragment(
 export type FragmentKind = 'breaking' | 'feature' | 'fix';
 
 /**
- * Every fragment in `.changes/` under the root, read from the working tree or from a revision.
- * The regular file `README.md` is the guide, not a fragment. A hidden entry, one whose name starts
- * with `.`, is ignored, and a missing working-tree directory holds no fragments. One error names
- * every invalid entry, so a single run reports them all.
+ * Every fragment in the folder under the root, read from the working tree or from a revision. The
+ * folder is relative to the root, with `/` between its segments, and may leave it. The regular file
+ * `README.md` is the guide, not a fragment. A hidden entry, one whose name starts with `.`, is
+ * ignored, and a missing working-tree folder holds no fragments. One error names every invalid
+ * entry, so a single run reports them all.
  */
-export async function readFragments(checkout: Checkout, ref?: string) {
-  if (ref === undefined && !existsSync(join(checkout.root, '.changes'))) {
+export async function readFragments(
+  checkout: Checkout,
+  ref?: string,
+  folder = conventionalFragments,
+) {
+  if (ref === undefined && !existsSync(join(checkout.root, folder))) {
     return [];
   }
   const failures: string[] = [];
   const fragments = [];
-  const listed = await readDirectory(checkout, '.changes', ref);
+  const listed = await readDirectory(checkout, folder, ref);
   const entries = listed
     .filter((entry) => !entry.name.startsWith('.'))
     .filter((entry) => entry.name !== 'README.md' || !entry.isFile());
   for (const entry of entries) {
     try {
-      fragments.push(await readFragment(checkout, entry, ref));
+      fragments.push(await readFragment(checkout, entry, ref, folder));
     } catch (error) {
       // A cancelled run reads no further fragment and reports none.
       checkout.signal.throwIfAborted();

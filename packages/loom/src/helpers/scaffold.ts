@@ -1,7 +1,11 @@
+import { join, parse, posix } from 'node:path';
+
 import { safeParse } from 'valibot';
 
 import { withoutByteOrderMark } from './byte-order-mark.js';
 import { jsonObject } from './json-object.js';
+import { changelogFiles, packageRelative } from './loom-config.js';
+import type { PackagePaths } from './loom-config.js';
 import { parseManifest } from './manifest.js';
 import { checkScript, toolDependencies, toolRanges } from './tooling.js';
 import type { Tooling } from './tooling.js';
@@ -234,18 +238,19 @@ export interface ScaffoldVersions {
 }
 
 /**
- * The `package.json` keys a scaffold adds, for an application's name, the versions it pins, and the
- * linter and test runner it wires.
+ * The `package.json` keys a scaffold adds, for an application's name, the versions it pins, the
+ * linter and test runner it wires, and where its entry's bundle and its source folder are.
  */
 export function scaffoldKeys(
   name: string,
   { loom, typescript }: ScaffoldVersions,
   tooling: Tooling,
+  { bin, source }: Pick<ScaffoldLayout, 'bin' | 'source'>,
 ): ManifestKey[] {
   return [
-    { path: ['bin'], value: { [name]: 'dist/main.js' } },
+    { path: ['bin'], value: { [name]: bin } },
     { path: ['scripts', 'build'], value: 'loom build --target node' },
-    { path: ['scripts', 'check'], value: checkScript(tooling) },
+    { path: ['scripts', 'check'], value: checkScript(tooling, source) },
     dependencyKey('dependencies', '@loomcli/core', loom),
     dependencyKey('devDependencies', '@loomcli/loom', loom),
     ...compilerKeys(tooling, typescript),
@@ -288,4 +293,48 @@ export function addMissingKeys(
   const mark = source.slice(0, source.length - withoutByteOrderMark(source).length);
   const trailing = /\r?\n$/u.test(source) ? newline : '';
   return { added, text: `${mark}${body}${trailing}` };
+}
+
+/**
+ * Where a scaffold writes each file whose place a key decides, and the paths its content names, each
+ * relative to the package directory with `/` between segments. `bin` is the bundle `loom build`
+ * writes for the entry, and `guide` the fragment guide in the fragment folder.
+ */
+export interface ScaffoldLayout {
+  readonly application: string;
+  readonly bin: string;
+  readonly changelog: string;
+  readonly changes: string;
+  readonly entry: string;
+  readonly guide: string;
+  readonly installer: string;
+  readonly source: string;
+  readonly test: string;
+}
+
+/** The layout of a scaffold whose package's paths are resolved against its directory. */
+export function scaffoldLayout(directory: string, paths: PackagePaths): ScaffoldLayout {
+  const at = (path: string) => packageRelative(directory, path);
+  return {
+    application: at(paths.application),
+    bin: at(join(paths.out, `${parse(paths.entry).name}.js`)),
+    ...changelogFiles(directory, paths),
+    entry: at(paths.entry),
+    guide: at(join(paths.changes, 'README.md')),
+    installer: at(paths.installer),
+    source: at(paths.source),
+    test: at(join(paths.source, 'application.test.ts')),
+  };
+}
+
+/**
+ * The specifier a module at package path `from` imports the module at package path `to` by: the
+ * relative path, starting with `.`, with a TypeScript extension as the compiled one, as NodeNext
+ * resolution reads it.
+ */
+export function moduleSpecifier(from: string, to: string): string {
+  const path = posix
+    .relative(posix.dirname(from), to)
+    .replace(/\.(?<kind>[cm]?)tsx?$/u, '.$<kind>js');
+  return path.startsWith('../') ? path : `./${path}`;
 }

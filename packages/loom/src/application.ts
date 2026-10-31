@@ -1,6 +1,7 @@
 import { Application } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { interaction } from '@loomcli/plugins/interaction';
+import { verbose } from '@loomcli/plugins/verbose';
 import { version } from '@loomcli/plugins/version';
 
 import { buildCommand } from './commands/build/command.js';
@@ -8,11 +9,12 @@ import { changelog } from './commands/changelog/command.js';
 import { init } from './commands/init/command.js';
 import { pr } from './commands/pr/command.js';
 import { release } from './commands/release/command.js';
+import { loomConfigPlugin } from './helpers/loom-config.js';
 import { loomVersion } from './helpers/loom-version.js';
 
 export const loom = new Application('loom', {
   description: 'The Loom toolchain. It acts on the package in the working directory.',
-  plugins: [help(), interaction(), version()],
+  plugins: [help(), interaction(), version(), verbose(), loomConfigPlugin],
   version: loomVersion,
 })
   .command(buildCommand)

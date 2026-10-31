@@ -13,6 +13,8 @@ import {
 import { hostTarget } from '../../helpers/build-target.js';
 import type { BuildTarget } from '../../helpers/build-target.js';
 import { build, watch } from '../../helpers/build.js';
+import { packagePaths } from '../../helpers/loom-config.js';
+import type { PackagePaths } from '../../helpers/loom-config.js';
 import { existingModule, shown } from '../../helpers/modules.js';
 import { packageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
@@ -31,12 +33,26 @@ function optionError(name: string, message: string): InputError {
 }
 
 /**
- * The application module a bundle carries beside the entry: the one `--application` names, which
- * must exist, else `src/application.ts` when it exists. A binary compiles the entry alone, and the
+ * The entry the build starts from: the one `--entry` names, else `paths.entry`, which must exist. A
+ * missing module names the key when the configuration file set it, and `--entry` otherwise.
+ */
+function entryModule(cwd: string, paths: PackagePaths, option: string | undefined): string {
+  if (option !== undefined) {
+    return existingModule(cwd, resolve(cwd, option), '--entry');
+  }
+  const naming = paths.configured.has('entry') ? 'paths.entry' : '--entry';
+  return existingModule(cwd, paths.entry, naming);
+}
+
+/**
+ * The application module a bundle carries beside the entry: the one `--application` names, else the
+ * one `paths.application` in the configuration file names, each of which must exist, else the
+ * conventional `<source>/application.ts` when it exists. A binary compiles the entry alone, and the
  * action refuses `--application` with one before it gets here.
  */
 function applicationModule(
-  paths: { cwd: string; directory: string },
+  cwd: string,
+  paths: PackagePaths,
   target: BuildTarget,
   option: string | undefined,
 ): string | undefined {
@@ -44,10 +60,12 @@ function applicationModule(
     return undefined;
   }
   if (option !== undefined) {
-    return existingModule(paths.cwd, resolve(paths.cwd, option), 'application');
+    return existingModule(cwd, resolve(cwd, option), '--application');
   }
-  const conventional = join(paths.directory, 'src/application.ts');
-  return existsSync(conventional) ? conventional : undefined;
+  if (paths.configured.has('application')) {
+    return existingModule(cwd, paths.application, 'paths.application');
+  }
+  return existsSync(paths.application) ? paths.application : undefined;
 }
 
 /**
@@ -68,27 +86,26 @@ function separateEntryFiles(cwd: string, entry: string, application: string | un
  * output that names an existing directory fails before anything builds, naming `--out`.
  */
 function outputPath(
-  paths: { cwd: string; directory: string },
+  cwd: string,
+  paths: PackagePaths,
   target: BuildTarget,
-  out: string | undefined,
-  name: () => string,
+  { name, out }: { name: () => string; out: string | undefined },
 ): string {
-  const output =
-    out === undefined ? defaultOutput(paths.directory, target, name) : resolve(paths.cwd, out);
+  const output = out === undefined ? defaultOutput(paths.out, target, name) : resolve(cwd, out);
   if (target.kind === 'compile' && statSync(output, { throwIfNoEntry: false })?.isDirectory()) {
     throw new Error(
-      `${shown(paths.cwd, output)} is a directory, and a binary is one file, so name the binary's file with --out.`,
+      `${shown(cwd, output)} is a directory, and a binary is one file, so name the binary's file with --out.`,
     );
   }
   return output;
 }
 
 /**
- * Where a build writes when `--out` names nothing: a bundle's directory, `dist/`, or a binary's
- * file, `dist/<name>`.
+ * Where a build writes when `--out` names nothing: a bundle's directory, `<out>/`, or a binary's
+ * file, `<out>/<name>`, where `<out>` is `paths.out`, `dist` by convention.
  */
 function defaultOutput(directory: string, target: BuildTarget, name: () => string): string {
-  return target.kind === 'bundle' ? join(directory, 'dist') : join(directory, 'dist', name());
+  return target.kind === 'bundle' ? directory : join(directory, name());
 }
 
 /** Builds the package's application for one target, or prints its facts or define pair. */
@@ -98,6 +115,7 @@ export const buildApplication: ActionHandler<typeof buildCommand> = async ({
   options,
   out,
   passthrough,
+  provided,
   signal,
 }) => {
   if (options.facts && options.define) {
@@ -139,19 +157,16 @@ export const buildApplication: ActionHandler<typeof buildCommand> = async ({
     if (options.define) {
       return `${definePair(facts)}\n`;
     }
-    const paths = { cwd, directory };
-    const entry = existingModule(
-      cwd,
-      options.entry === undefined ? join(directory, 'src/main.ts') : resolve(cwd, options.entry),
-      'entry',
-    );
-    const named = applicationModule(paths, target, options.application);
+    const paths = packagePaths(directory, provided.config);
+    const entry = entryModule(cwd, paths, options.entry);
+    const named = applicationModule(cwd, paths, target, options.application);
     // A module that is both the entry and the application module is bundled once, as the entry.
     const application = named === entry ? undefined : named;
     separateEntryFiles(cwd, entry, application);
-    const output = outputPath(paths, target, options.out, () =>
-      applicationName(manifest, options.name),
-    );
+    const output = outputPath(cwd, paths, target, {
+      name: () => applicationName(manifest, options.name),
+      out: options.out,
+    });
     const plan = { application, directory, entry, facts, out: output, target };
     const run = { host, onShutdown, signal };
     if (options.watch) {

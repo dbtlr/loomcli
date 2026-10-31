@@ -32,6 +32,7 @@ import {
   readManifest,
   scaffoldName,
 } from '../../helpers/build-facts.js';
+import { packagePaths } from '../../helpers/loom-config.js';
 import { loomVersion, typescriptRange } from '../../helpers/loom-version.js';
 import { driftWarning, hasDrifted, readManaged, renderManaged } from '../../helpers/managed.js';
 import { parseManifest } from '../../helpers/manifest.js';
@@ -45,8 +46,11 @@ import {
   existingRunner,
   isNewPackageName,
   isTypescriptAlias,
+  moduleSpecifier,
   scaffoldKeys,
+  scaffoldLayout,
 } from '../../helpers/scaffold.js';
+import type { ScaffoldLayout } from '../../helpers/scaffold.js';
 import {
   defaultTooling,
   existingLinter,
@@ -62,26 +66,24 @@ import type { init, Piece } from './command.js';
 /** The pieces that read the application's name from `package.json`. */
 const namedPieces: readonly Piece[] = ['package', 'application', 'entry', 'test', 'install'];
 
-/** The application module, the entry, and the test, by their conventional paths in the package. */
-const applicationPath = 'src/application.ts';
-const entryPath = 'src/main.ts';
-const testPath = 'src/application.test.ts';
-
 /** The compiler configuration the `check` script's `tsc --noEmit` runs against. */
 const typescriptConfigPath = 'tsconfig.json';
 
-/** The installer script, and the mode init writes it with, so an operator can run it directly. */
-const installerPath = 'install.sh';
+/** The changelog skill, where coding agents look for skills, whatever the configuration holds. */
+const skillPath = '.agents/skills/loom-changelog/SKILL.md';
+
+/** The mode init writes the installer script with, so an operator can run it directly. */
 const executableMode = 0o755;
 
 /**
  * Where one init run acts, and how it reports. Each line is written as the file or key lands, so a
  * failure later in the run follows the lines of what was already written. Every path a line names
- * is relative to the package directory.
+ * is relative to the package directory, and `layout` places each file a key decides.
  */
 interface Run extends RunHost {
   readonly directory: string;
   readonly force: boolean;
+  readonly layout: ScaffoldLayout;
   readonly line: (text: string) => void;
   readonly tooling: Tooling;
   readonly warn: (text: string) => void;
@@ -101,14 +103,21 @@ type ApplicationRead =
   | { readonly kind: 'unloaded'; readonly reason: string }
   | { readonly kind: 'unexported' };
 
-/** The package directory init acts on, and whether init starts a new application in it. */
+/**
+ * The package directory init acts on, whether init starts a new application in it, and where the
+ * run writes each file a key decides.
+ */
 interface Target {
   readonly directory: string;
   readonly fresh: boolean;
+  readonly layout: ScaffoldLayout;
 }
 
+/** Where init acts, before the configuration places its files. */
+type Place = Omit<Target, 'layout'>;
+
 /** A directory init starts a new application in, which fails when npm or core would reject its name. */
-function newPackageDirectory(directory: string): Target {
+function newPackageDirectory(directory: string): Place {
   const name = basename(directory);
   if (!isNewPackageName(name)) {
     throw new Error(
@@ -123,7 +132,7 @@ function newPackageDirectory(directory: string): Target {
  * starts there whatever lies above it, else the nearest package directory, else `undefined` when
  * the directory is neither empty nor inside a package.
  */
-function initTarget(cwd: string): Target | undefined {
+function initTarget(cwd: string): Place | undefined {
   const directory = resolve(cwd);
   if (readdirSync(directory).length === 0) {
     return newPackageDirectory(directory);
@@ -140,7 +149,7 @@ type QuestionContext = Parameters<typeof confirm>[0];
  * becomes a new one only at a terminal, when the operator accepts the question; declined, off a
  * terminal, or under `--no-input`, init fails and names the command that creates a `package.json`.
  */
-async function chosenTarget(context: QuestionContext, cwd: string) {
+async function chosenPlace(context: QuestionContext, cwd: string): Promise<Place> {
   const target = initTarget(cwd);
   if (target !== undefined) {
     return target;
@@ -166,7 +175,7 @@ async function chosenTarget(context: QuestionContext, cwd: string) {
  * Checks the package's `package.json` before init asks or writes anything: it must be a JSON
  * object, and it must name the application when a piece the run writes reads the name.
  */
-function checkManifest(target: Target, only: readonly Piece[]) {
+function checkManifest(target: Place, only: readonly Piece[]) {
   if (target.fresh) {
     return;
   }
@@ -233,8 +242,9 @@ type InstallRead = { readonly declared: PostInstall | undefined } | { readonly d
 
 /** The warning that the installer script was not written because the module could not be loaded. */
 function unloadedInstaller(run: Run, reason: string): undefined {
+  const { application, installer } = run.layout;
   run.warn(
-    `warning: ${installerPath} was not written because ${applicationPath} could not be loaded: ${reasonLine(reason)}. Install the package and run loom init again.`,
+    `warning: ${installer} was not written because ${application} could not be loaded: ${reasonLine(reason)}. Install the package and run loom init again.`,
   );
   return undefined;
 }
@@ -269,8 +279,9 @@ function installRead(run: Run, read: ApplicationRead): InstallRead | undefined {
       return unloadedInstaller(run, read.reason);
     }
     case 'unexported': {
+      const { application, installer } = run.layout;
       run.warn(
-        `warning: ${installerPath} was not written because ${applicationPath} exports no Application loom can read. Export one Application from ${applicationPath}, then run loom init again.`,
+        `warning: ${installer} was not written because ${application} exports no Application loom can read. Export one Application from ${application}, then run loom init again.`,
       );
       return undefined;
     }
@@ -298,7 +309,7 @@ async function writeInstaller(
   const repository = githubRepository(manifest);
   if (repository === undefined) {
     run.warn(
-      `warning: ${installerPath} was not written because package.json names no GitHub repository. Set repository to a GitHub address such as owner/name, then run loom init again.`,
+      `warning: ${run.layout.installer} was not written because package.json names no GitHub repository. Set repository to a GitHub address such as owner/name, then run loom init again.`,
     );
     return undefined;
   }
@@ -308,7 +319,7 @@ async function writeInstaller(
   }
   writeManaged(
     run,
-    installerPath,
+    run.layout.installer,
     installerScript(scaffoldName(manifest), repository, read.declared),
     executableMode,
   );
@@ -324,7 +335,7 @@ const eslintPluginGuide = 'https://github.com/dbtlr/loomcli/blob/main/docs/libs/
  * compiler, and typescript-eslint, which supports TypeScript below 6.1, fails on TypeScript 7
  * when `eslint .` runs.
  */
-function warnPlainTypescript(run: Run, target: Target) {
+function warnPlainTypescript(run: Run, target: Place) {
   if (run.tooling.linter !== 'eslint' || target.fresh) {
     return;
   }
@@ -343,7 +354,7 @@ function writeKeys(run: Run) {
   const name = scaffoldName(readManifest(run.directory));
   const { added, text } = addMissingKeys(
     source,
-    scaffoldKeys(name, { loom: loomVersion, typescript: typescriptRange }, run.tooling),
+    scaffoldKeys(name, { loom: loomVersion, typescript: typescriptRange }, run.tooling, run.layout),
   );
   if (added.length > 0) {
     writeFile(run, 'package.json', text);
@@ -366,8 +377,8 @@ async function authoredRead(run: Run, name: string): Promise<ApplicationRead> {
   try {
     result = await readApplicationExports(run, {
       directory: run.directory,
-      module: applicationPath,
-      path: join(run.directory, applicationPath),
+      module: run.layout.application,
+      path: join(run.directory, run.layout.application),
     });
   } catch (error) {
     // A cancelled read stops init where it is, with no warning and nothing more written.
@@ -431,38 +442,45 @@ function importedApplication(
     return outcome.imported;
   }
   const { noun, path } = file;
+  const { application } = run.layout;
   if (outcome.kind === 'unloaded' || outcome.kind === 'fault') {
     const reason = outcome.kind === 'unloaded' ? outcome.reason : outcome.diagnostic;
     run.warn(
-      `warning: ${path} was not written because ${applicationPath} could not be loaded: ${reasonLine(reason)}. Install the package and run loom init again, or write the ${noun} by hand.`,
+      `warning: ${path} was not written because ${application} could not be loaded: ${reasonLine(reason)}. Install the package and run loom init again, or write the ${noun} by hand.`,
     );
   } else {
     run.warn(
-      `warning: ${path} was not written because ${applicationPath} exports no Application loom can read. Write the ${noun} by hand.`,
+      `warning: ${path} was not written because ${application} exports no Application loom can read. Write the ${noun} by hand.`,
     );
   }
   return undefined;
 }
 
-/** Writes the entry when it is missing. */
+/** Writes the entry when it is missing, importing the application module by its relative path. */
 async function writeEntry(run: Run, reading: () => Promise<ApplicationRead>) {
-  if (existsSync(join(run.directory, entryPath))) {
+  const { application, entry } = run.layout;
+  if (existsSync(join(run.directory, entry))) {
     return;
   }
-  const imported = importedApplication(run, { noun: 'entry', path: entryPath }, await reading());
+  const imported = importedApplication(run, { noun: 'entry', path: entry }, await reading());
   if (imported !== undefined) {
-    write(run, entryPath, entryModule(imported));
+    write(run, entry, entryModule(imported, moduleSpecifier(entry, application)));
   }
 }
 
-/** Writes the test of the assembly check when it is missing, for the run's test runner. */
+/**
+ * Writes the test of the assembly check when it is missing, for the run's test runner, importing
+ * the application module by its relative path.
+ */
 async function writeTest(run: Run, reading: () => Promise<ApplicationRead>) {
-  if (existsSync(join(run.directory, testPath))) {
+  const { application, test } = run.layout;
+  if (existsSync(join(run.directory, test))) {
     return;
   }
-  const imported = importedApplication(run, { noun: 'test', path: testPath }, await reading());
+  const imported = importedApplication(run, { noun: 'test', path: test }, await reading());
   if (imported !== undefined) {
-    write(run, testPath, applicationTest(run.tooling.runner, imported));
+    const specifier = moduleSpecifier(test, application);
+    write(run, test, applicationTest(run.tooling.runner, imported, specifier));
   }
 }
 
@@ -470,7 +488,8 @@ async function writeTest(run: Run, reading: () => Promise<ApplicationRead>) {
 function writeLint(run: Run) {
   const { linter } = run.tooling;
   if (!hasLintConfig(run.directory, linter)) {
-    write(run, lintConfigPath(linter), linter === 'oxlint' ? oxlintConfig : eslintConfig);
+    const text = linter === 'oxlint' ? oxlintConfig : eslintConfig(run.layout.source);
+    write(run, lintConfigPath(linter), text);
   }
 }
 
@@ -488,14 +507,14 @@ function isSelected(only: readonly Piece[], piece: Piece) {
 }
 
 /** The `package.json` text a run starts from: the new manifest in a new package directory. */
-function manifestSource({ directory, fresh }: Target) {
+function manifestSource({ directory, fresh }: Place) {
   return fresh
     ? newManifest(basename(directory))
     : readFileSync(join(directory, 'package.json'), 'utf8');
 }
 
 /** The `package.json` object a run starts from. */
-function targetManifest(target: Target) {
+function targetManifest(target: Place) {
   return parseManifest(manifestSource(target), join(target.directory, 'package.json'));
 }
 
@@ -504,7 +523,7 @@ function targetManifest(target: Target) {
  * of a lint configuration file, which a directory that gains its `package.json` may already hold,
  * and the runner a dependency field declares, vitest or Bun's types.
  */
-function existingTooling(target: Target): Partial<Tooling> {
+function existingTooling(target: Place): Partial<Tooling> {
   const linter = existingLinter(target.directory);
   const runner = existingRunner(targetManifest(target));
   return {
@@ -522,7 +541,7 @@ function keysDiffer(target: Target, first: Tooling, second: Tooling) {
   const name = scaffoldName(manifestOf(source, join(target.directory, 'package.json')));
   const versions = { loom: loomVersion, typescript: typescriptRange };
   const textFor = (tooling: Tooling) =>
-    addMissingKeys(source, scaffoldKeys(name, versions, tooling)).text;
+    addMissingKeys(source, scaffoldKeys(name, versions, tooling, target.layout)).text;
   return textFor(first) !== textFor(second);
 }
 
@@ -543,18 +562,21 @@ function neededQuestions(
       selected('lint') ||
       (keysMatter && keysDiffer(target, defaultTooling, { linter: 'eslint', runner })),
     runner:
-      (selected('test') && !existsSync(join(target.directory, testPath))) ||
+      (selected('test') && !existsSync(join(target.directory, target.layout.test))) ||
       (keysMatter && keysDiffer(target, defaultTooling, { linter, runner: 'vitest' })),
   };
 }
 
 /** One init run over the pieces it is limited to, all of them by default. */
-async function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; target: Target }) {
-  const { directory, fresh } = run.target;
+async function runInit(
+  run: Omit<Run, 'directory' | 'layout'> & { only: readonly Piece[]; target: Target },
+) {
+  const { directory, fresh, layout } = run.target;
   const context: Run = {
     directory,
     force: run.force,
     host: run.host,
+    layout,
     line: run.line,
     onShutdown: run.onShutdown,
     signal: run.signal,
@@ -565,7 +587,7 @@ async function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; t
   if (fresh) {
     writeNewManifest(context);
   }
-  const authored = existsSync(join(directory, applicationPath));
+  const authored = existsSync(join(directory, layout.application));
   const reading = applicationReader(context, authored);
   if (selected('package') || selected('lint')) {
     warnPlainTypescript(context, run.target);
@@ -575,13 +597,13 @@ async function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; t
   }
   if (selected('application') && !authored) {
     const name = scaffoldName(readManifest(directory));
-    write(context, applicationPath, applicationModule(name, applicationIdentifier(name)));
+    write(context, layout.application, applicationModule(name, applicationIdentifier(name)));
   }
   if (selected('entry')) {
     await writeEntry(context, reading);
   }
   if (selected('tsconfig') && !existsSync(join(directory, typescriptConfigPath))) {
-    write(context, typescriptConfigPath, typescriptConfig);
+    write(context, typescriptConfigPath, typescriptConfig(layout.source));
   }
   if (selected('test')) {
     await writeTest(context, reading);
@@ -590,10 +612,10 @@ async function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; t
     writeLint(context);
   }
   if (selected('changes')) {
-    writeManaged(context, '.changes/README.md', fragmentGuide);
+    writeManaged(context, layout.guide, fragmentGuide(layout));
   }
   if (selected('skill')) {
-    writeManaged(context, '.agents/skills/loom-changelog/SKILL.md', changelogSkill);
+    writeManaged(context, skillPath, changelogSkill(layout));
   }
   const fault = selected('install') ? await writeInstaller(context, reading) : undefined;
   // A declaration fault fails the run once every other piece is written.
@@ -607,10 +629,16 @@ async function runInit(run: Omit<Run, 'directory'> & { only: readonly Piece[]; t
  * a terminal for the tooling nothing else decides.
  */
 export const initPackage: ActionHandler<typeof init> = async (context) => {
-  const { host, onShutdown, options, out, passthrough, signal, supplied } = context;
+  const { host, onShutdown, options, out, passthrough, provided, signal, supplied } = context;
   await report({ out, passthrough, signal }, async () => {
-    const target = await chosenTarget(context, host.cwd);
-    checkManifest(target, options.only);
+    const place = await chosenPlace(context, host.cwd);
+    checkManifest(place, options.only);
+    // A new application uses every convention: the file the lookup finds describes the package above it.
+    const config = place.fresh ? {} : provided.config;
+    const target = {
+      ...place,
+      layout: scaffoldLayout(place.directory, packagePaths(place.directory, config)),
+    };
     const existing = existingTooling(target);
     const needed = neededQuestions(target, options.only);
     // Precedence: a supplied option, the package's own setting, a terminal question, the default.

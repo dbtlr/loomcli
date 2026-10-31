@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { withoutByteOrderMark } from './byte-order-mark.js';
+import { conventionalChangelog, conventionalFragments } from './conventions.js';
 import type { FragmentKind } from './fragments.js';
 import { readFragments } from './fragments.js';
 import { headingText, locateRelease, requireClosedBlocks } from './markdown.js';
@@ -50,19 +51,24 @@ export function releaseDate(input: string | undefined) {
 }
 
 /**
- * The fragments under the root, each group in landing order: by the position of the first-parent
- * commit that added each fragment, then by file name within one commit, so a later correction keeps
- * the fragment's first position and commit dates never enter. A shallow clone hides those commits,
- * and a fragment no commit added has no position, so both fail.
+ * The fragments in the folder under the root, each group in landing order: by the position of the
+ * first-parent commit that added each fragment, then by file name within one commit, so a later
+ * correction keeps the fragment's first position and commit dates never enter. A shallow clone
+ * hides those commits, and a fragment no commit added has no position, so both fail.
  */
-export async function landedFragments(checkout: Checkout, ref?: string) {
+export async function landedFragments(
+  checkout: Checkout,
+  ref?: string,
+  folder = conventionalFragments,
+) {
   await requireFullHistory(checkout);
   const head = ref ?? (await gitLine(checkout, ['rev-parse', 'HEAD']));
   const history = await git(checkout, ['rev-list', '--first-parent', head]);
   const chain = history.split('\n').filter(Boolean);
   const positions = new Map(chain.map((commit, index) => [commit, chain.length - index]));
   const landed = [];
-  for (const fragment of await readFragments(checkout, ref)) {
+  for (const fragment of await readFragments(checkout, ref, folder)) {
+    const path = `${folder}/${fragment.name}`;
     const commit = await gitLine(checkout, [
       'log',
       '--first-parent',
@@ -71,11 +77,11 @@ export async function landedFragments(checkout: Checkout, ref?: string) {
       '--format=%H',
       head,
       '--',
-      `.changes/${fragment.name}`,
+      path,
     ]);
     const added = positions.get(commit);
     if (added === undefined) {
-      throw new Error(`.changes/${fragment.name}: commit the fragment before preparing a release.`);
+      throw new Error(`${path}: commit the fragment before preparing a release.`);
     }
     landed.push({
       added,
@@ -136,29 +142,48 @@ export function renderSection(release: {
 }
 
 /**
+ * The changelog and the fragment folder a cut names, as the operator reads them: relative to the
+ * package directory, or to the repository root for Loom's own release.
+ */
+export interface ChangelogFiles {
+  readonly changelog: string;
+  readonly changes: string;
+}
+
+/** The changelog and the fragment folder a repository or a package keeps when nothing names others. */
+export const conventionalFiles: ChangelogFiles = {
+  changelog: conventionalChangelog,
+  changes: conventionalFragments,
+};
+
+/**
  * Where a new release section goes: above the earlier release sections, after the byte order mark,
  * frontmatter, title, and introduction. A changelog without a title, with an Unreleased section, or
- * that already holds the version fails, each with its own sentence.
+ * that already holds the version fails, each with its own sentence that names the files.
  */
-export function releaseInsertion(changelog: string, version: string) {
+export function releaseInsertion(
+  changelog: string,
+  version: string,
+  { changelog: file, changes } = conventionalFiles,
+) {
   const { body, frontmatter, nodes, releases } = locateRelease(changelog, version);
-  requireClosedBlocks(body, 'CHANGELOG.md');
+  requireClosedBlocks(body, file);
   const headings = nodes.filter((node) => node.type === 'heading');
   if (!headings.some((node) => node.depth === 1)) {
     throw new Error(
-      'CHANGELOG.md needs a level-one title, so add one such as # Changelog above its release sections.',
+      `${file} needs a level-one title, so add one such as # Changelog above its release sections.`,
     );
   }
   // An Unreleased heading without a link definition keeps its brackets as text.
   const titles = headings.map((node) => headingText(node).trim());
   if (titles.some((title) => /^\[?unreleased\]?$/iu.test(title))) {
     throw new Error(
-      'CHANGELOG.md has an Unreleased section, so move its entries into fragments in .changes/ and delete the section.',
+      `${file} has an Unreleased section, so move its entries into fragments in ${changes}/ and delete the section.`,
     );
   }
   if (titles.some((title) => title.split(/\s/u)[0] === `v${version}`)) {
     throw new Error(
-      `CHANGELOG.md already has a v${version} section, so set the version in package.json to the latest release it records and cut again.`,
+      `${file} already has a v${version} section, so set the version in package.json to the latest release it records and cut again.`,
     );
   }
   const offset = releases[0]?.position?.start.offset;
@@ -173,7 +198,12 @@ export function placedSection(section: string, after: string) {
   return after === '' ? section.replace(/\n+$/u, '\n') : section;
 }
 
-export function insertSection(changelog: string, section: string, version: string) {
-  const { after, before } = releaseInsertion(changelog, version);
+export function insertSection(
+  changelog: string,
+  section: string,
+  version: string,
+  files = conventionalFiles,
+) {
+  const { after, before } = releaseInsertion(changelog, version, files);
   return before + placedSection(section, after) + after;
 }

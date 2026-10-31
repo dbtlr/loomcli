@@ -1,12 +1,15 @@
 import { Command } from '@loomcli/core';
 
+import { loomConfig } from '../../helpers/loom-config.js';
+
 /*
  * Each action imports its work when it runs, so a run of any other command, help included, loads
  * none of it.
  */
 
 export const changelogCheck = new Command('check', {
-  description: 'Check every fragment in .changes/ and count them.',
+  description: 'Check every fragment in the fragment folder, by default .changes/, and count them.',
+  uses: [loomConfig],
 }).action(async (context) => {
   const { checkChangelog } = await import('./check.js');
   await checkChangelog(context);
@@ -14,7 +17,8 @@ export const changelogCheck = new Command('check', {
 
 export const changelogWrite = new Command('write', {
   description:
-    'Cut the next version: prepend its section to CHANGELOG.md, set the package.json version, and delete the consumed fragments.',
+    'Cut the next version: prepend its section to the changelog, by default CHANGELOG.md, set the package.json version, and delete the consumed fragments.',
+  uses: [loomConfig],
 })
   .option('date', {
     description: 'Date the release as YYYY-MM-DD instead of today.',

@@ -1,17 +1,21 @@
+import type { ChangelogFiles } from '../helpers/changelog.js';
+
 /**
- * The fragment guide `loom init` manages at `.changes/README.md`, without its header. It opens with
- * a blank line, which separates the header init puts above it from the title.
+ * The fragment guide `loom init` manages at `<changes>/README.md`, without its header, naming the
+ * package's fragment folder and changelog relative to the package directory. It opens with a blank
+ * line, which separates the header init puts above it from the title.
  */
-export const fragmentGuide = `
+export function fragmentGuide({ changelog, changes }: ChangelogFiles): string {
+  return `
 # Change fragments
 
-This directory holds the package's pending changelog entries, one fragment per change. \`loom changelog write\` cuts the next version from them into \`CHANGELOG.md\`.
+This directory holds the package's pending changelog entries, one fragment per change. \`loom changelog write\` cuts the next version from them into \`${changelog}\`.
 
 ## Name the fragment
 
 - \`breaking.<slug>.md\` is a breaking change, \`feature.<slug>.md\` a feature, and \`<slug>.md\` a fix.
 - Choose a unique, nonempty slug, such as \`feature.list-by-tag.md\`. A bare \`feature.md\` or \`breaking.md\` is invalid.
-- Keep fragments directly in \`.changes/\`. A subdirectory or a file that is not Markdown is invalid. A hidden entry, one whose name starts with \`.\`, is ignored.
+- Keep fragments directly in \`${changes}/\`. A subdirectory or a file that is not Markdown is invalid. A hidden entry, one whose name starts with \`.\`, is ignored.
 - This \`README.md\` is the guide, not a fragment.
 
 ## Write the entry
@@ -67,6 +71,7 @@ A version that is not \`MAJOR.MINOR.PATCH\`, a prerelease such as \`1.2.0-next.1
 ## Check and cut
 
 - \`loom changelog check\` validates every fragment, exits 1 for an invalid one, and names it. It needs no git history, so CI can run it.
-- \`loom changelog write\` prepends the release section to \`CHANGELOG.md\`, sets \`version\` in \`package.json\`, and deletes the consumed fragments. It orders entries by the commit that added each fragment, so it needs full git history. \`--date YYYY-MM-DD\` dates the release, \`--narrative FILE\` copies prose above the entries, and \`--dry-run\` prints the section and the next version and writes nothing.
+- \`loom changelog write\` prepends the release section to \`${changelog}\`, sets \`version\` in \`package.json\`, and deletes the consumed fragments. It orders entries by the commit that added each fragment, so it needs full git history. \`--date YYYY-MM-DD\` dates the release, \`--narrative FILE\` copies prose above the entries, and \`--dry-run\` prints the section and the next version and writes nothing.
 - \`write\` refreshes no lockfile, so run your package manager after a cut.
 `;
+}

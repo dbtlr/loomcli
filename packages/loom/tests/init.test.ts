@@ -47,6 +47,7 @@ import { changelogSkill } from '../src/content/changelog-skill.js';
 import { fragmentGuide } from '../src/content/fragment-guide.js';
 import { installerScript } from '../src/content/installer-script.js';
 import { eslintConfig, oxlintConfig, typescriptConfig } from '../src/content/scaffold.js';
+import { conventionalFiles } from '../src/helpers/changelog.js';
 import { renderManaged } from '../src/helpers/managed.js';
 import { toolRanges } from '../src/helpers/tooling.js';
 import { put, removeRoots, temporaryRoot } from './fixture.js';
@@ -80,6 +81,10 @@ const { typescript } = ranges;
 const guidePath = '.changes/README.md';
 const testPath = 'src/application.test.ts';
 const skillPath = '.agents/skills/loom-changelog/SKILL.md';
+
+/** The fragment guide and the changelog skill a package with no configuration file gets. */
+const guide = fragmentGuide(conventionalFiles);
+const skill = changelogSkill(conventionalFiles);
 
 /** An empty directory with the supplied name, where init scaffolds a new application. */
 function emptyDirectory(name: string) {
@@ -164,8 +169,8 @@ test('in an empty directory init writes package.json, the scaffold files, the te
       '',
     ].join('\n'),
   });
-  expect(read(directory, guidePath)).toBe(renderManaged(fragmentGuide));
-  expect(read(directory, skillPath)).toBe(renderManaged(changelogSkill));
+  expect(read(directory, guidePath)).toBe(renderManaged(guide));
+  expect(read(directory, skillPath)).toBe(renderManaged(skill));
   expect(existsSync(join(directory, 'install.sh'))).toBe(false);
 });
 
@@ -265,7 +270,7 @@ test('--only tsconfig writes tsconfig.json alone', () => {
     stdout: 'Wrote tsconfig.json.\n',
   });
   const after = snapshot(root);
-  expect(after.get('tsconfig.json')).toBe(Buffer.from(typescriptConfig).toString('base64'));
+  expect(after.get('tsconfig.json')).toBe(Buffer.from(typescriptConfig('src')).toString('base64'));
   after.delete('tsconfig.json');
   expect(after).toEqual(before);
 });
@@ -299,7 +304,7 @@ test('init in a subdirectory acts on the package directory and names paths relat
 });
 
 test('init from a subdirectory prints the drift warning of a managed file in the package directory', () => {
-  const root = ownPackage({ [guidePath]: `${renderManaged(fragmentGuide)}An edit.\n` });
+  const root = ownPackage({ [guidePath]: `${renderManaged(guide)}An edit.\n` });
   const init = loom(join(root, 'src'), ['init', '--only', 'changes']);
   expect(init.stderr).toBe(warning(guidePath));
 });
@@ -321,11 +326,11 @@ test('an unedited managed file from an older loom is re-rendered with the curren
     stderr: '',
     stdout: `Wrote ${guidePath}.\n`,
   });
-  expect(read(root, guidePath)).toBe(renderManaged(fragmentGuide));
+  expect(read(root, guidePath)).toBe(renderManaged(guide));
 });
 
 test('an edited managed file draws exactly one warning and stays byte-identical', () => {
-  const edited = `${renderManaged(changelogSkill)}An edit.\n`;
+  const edited = `${renderManaged(skill)}An edit.\n`;
   const root = ownPackage({ [skillPath]: edited });
   expect(loom(root, ['init', '--only', 'skill'])).toEqual({
     status: 0,
@@ -336,17 +341,17 @@ test('an edited managed file draws exactly one warning and stays byte-identical'
 });
 
 test('--force re-renders an edited managed file', () => {
-  const root = ownPackage({ [guidePath]: `${renderManaged(fragmentGuide)}An edit.\n` });
+  const root = ownPackage({ [guidePath]: `${renderManaged(guide)}An edit.\n` });
   expect(loom(root, ['init', '--only', 'changes', '--force'])).toEqual({
     status: 0,
     stderr: '',
     stdout: `Wrote ${guidePath}.\n`,
   });
-  expect(read(root, guidePath)).toBe(renderManaged(fragmentGuide));
+  expect(read(root, guidePath)).toBe(renderManaged(guide));
 });
 
 test('a managed file whose header was deleted stays byte-identical under --force and draws no warning', () => {
-  const released = `${fragmentGuide}An edit of my own.\n`;
+  const released = `${guide}An edit of my own.\n`;
   const root = ownPackage({ [guidePath]: released });
   expect(loom(root, ['init', '--only', 'changes', '--force'])).toEqual({
     status: 0,
@@ -739,14 +744,14 @@ const toolingCases = [
     check: 'tsc --noEmit && eslint . && bun test',
     flags: ['--linter', 'eslint', '--test-runner', 'bun'],
     lintFile: 'eslint.config.js',
-    lintText: eslintConfig,
+    lintText: eslintConfig('src'),
     testImport: "import { test } from 'bun:test';",
   },
   {
     check: 'tsc --noEmit && eslint . && vitest run',
     flags: ['--linter', 'eslint', '--test-runner', 'vitest'],
     lintFile: 'eslint.config.js',
-    lintText: eslintConfig,
+    lintText: eslintConfig('src'),
     testImport: "import { test } from 'vitest';",
   },
 ];
@@ -777,9 +782,9 @@ test('the oxlint file holds the configuration @loomcli/eslint-plugin ships, and 
       '@loomcli/unrooted-configuration': 'warn',
     },
   });
-  expect(eslintConfig).toContain("import loom from '@loomcli/eslint-plugin';");
-  expect(eslintConfig).toContain('parser: tseslint.parser');
-  expect(eslintConfig).toContain('...loom.configs.recommended');
+  expect(eslintConfig('src')).toContain("import loom from '@loomcli/eslint-plugin';");
+  expect(eslintConfig('src')).toContain('parser: tseslint.parser');
+  expect(eslintConfig('src')).toContain('...loom.configs.recommended');
 });
 
 test('the test file opens its test with the comment that says to keep it', () => {
@@ -897,7 +902,7 @@ test.each(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDepen
 test('a flag the operator supplies wins over the lint configuration the package holds', () => {
   const root = ownPackage({ '.oxlintrc.json': '{}\n' });
   loom(root, ['init', '--linter', 'eslint']);
-  expect(read(root, 'eslint.config.js')).toBe(eslintConfig);
+  expect(read(root, 'eslint.config.js')).toBe(eslintConfig('src'));
   expect(JSON.parse(read(root, 'package.json')).scripts.check).toBe(
     'tsc --noEmit && eslint . && bun test',
   );
@@ -975,7 +980,7 @@ test('at a terminal init asks for the linter and the test runner, and writes wha
   } finally {
     await tty.close();
   }
-  expect(read(directory, 'eslint.config.js')).toBe(eslintConfig);
+  expect(read(directory, 'eslint.config.js')).toBe(eslintConfig('src'));
   expect(JSON.parse(read(directory, 'package.json')).scripts.check).toBe(
     'tsc --noEmit && eslint . && vitest run',
   );
