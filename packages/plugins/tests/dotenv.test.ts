@@ -18,31 +18,52 @@ import { join } from 'node:path';
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { run as fixtureRun } from './fixtures/dotenv-app.js';
+import { invokeByName, run as fixtureRun } from './fixtures/dotenv-app.js';
 
 const fixture = new URL('fixtures/dotenv-run.mjs', import.meta.url);
 
 /** The allow list most tests install, so an unlisted name shows what the list leaves out. */
 const listed = ['TOKEN', 'ALT', 'EMPTY', 'SET', 'NEXT', 'ENABLED'];
 
-/**
- * Runs the fixture in a directory holding the given files: a string is the `.env` file, and a
- * record maps each file name to its text.
- */
+interface FixtureOptions {
+  env?: Record<string, string> | undefined;
+  launchEnv?: Record<string, string>;
+  directory?: string;
+  unreadable?: string;
+  unset?: readonly string[];
+  mode?: string;
+  names?: readonly string[];
+  runtime?: string;
+  settings?: unknown;
+}
+
+/** Runs the fixture in a directory holding the given files, under `inFixture`. */
 async function runFile(
   content: string | Record<string, string> | undefined,
-  options: {
-    env?: Record<string, string> | undefined;
-    launchEnv?: Record<string, string>;
-    directory?: string;
-    unreadable?: string;
-    unset?: readonly string[];
-    mode?: string;
-    names?: readonly string[];
-    runtime?: string;
-    settings?: unknown;
-  } = {},
+  options: FixtureOptions = {},
 ) {
+  return await inFixture(content, options, (env, directory) => {
+    // The native reference observes Bun's startup dotenv read before any Application runs.
+    if (options.mode === 'native') {
+      return invoke(fixture, [options.mode], {
+        cwd: directory,
+        env,
+        ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
+      });
+    }
+    return fixtureRun([options.mode ?? 'run'], env, directory);
+  });
+}
+
+/**
+ * Calls `body` with the fixture's environment in a directory holding the given files: a string is
+ * the `.env` file, and a record maps each file name to its text.
+ */
+async function inFixture<Result>(
+  content: string | Record<string, string> | undefined,
+  options: FixtureOptions,
+  body: (env: Record<string, string | undefined>, directory: string) => Result | Promise<Result>,
+): Promise<Result> {
   const directory = mkdtempSync(join(tmpdir(), 'loom-dotenv-'));
   try {
     if (typeof content === 'string') {
@@ -55,10 +76,8 @@ async function runFile(
     if (options.directory !== undefined) {
       mkdirSync(join(directory, options.directory));
     }
-    const settings = {
-      cwd: directory,
-      ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
-      env: {
+    return await body(
+      {
         ...options.launchEnv,
         ALT: undefined,
         ENABLED: undefined,
@@ -73,12 +92,8 @@ async function runFile(
         FIXTURE_UNSET: JSON.stringify(options.unset ?? []),
         TOKEN: undefined,
       },
-    };
-    // The native reference observes Bun's startup dotenv read before any Application runs.
-    if (options.mode === 'native') {
-      return invoke(fixture, [options.mode], settings);
-    }
-    return await fixtureRun([options.mode ?? 'run'], settings.env, directory);
+      directory,
+    );
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
@@ -215,10 +230,13 @@ test('valid variable names that also name object properties reach the process as
 });
 
 test('a named run captures warnings and leaves the process untouched', async () => {
-  const result = await runFile('TOKEN=file\nNEXT bad\n', { mode: 'invoke' });
-  expect(result.stderr).toBe('');
-  const outcome = JSON.parse(result.stdout);
+  const result = await inFixture('TOKEN=file\nNEXT bad\n', {}, invokeByName);
+  expect(result).toMatchObject({ exitCode: undefined, stderr: '', stdout: '' });
+  const { outcome } = result;
   expect(outcome).toMatchObject({ messages: warning('NEXT', 2), status: 'completed' });
+  if (outcome.status === 'cancelled') {
+    throw new Error('The named run was cancelled.');
+  }
   expect(JSON.parse(outcome.output)).toMatchObject({ options: { token: 'file' }, process: null });
 });
 

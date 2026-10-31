@@ -67,8 +67,8 @@ function dotenvApplication(
     });
 }
 
-async function run(args: string[], fixtureEnv: Record<string, string | undefined>, cwd: string) {
-  const mode = args[0] ?? 'run';
+/** Reads the fixture's settings from its environment and builds the application for one mode. */
+function prepare(mode: string, fixtureEnv: Record<string, string | undefined>, cwd: string) {
   const unreadable = fixtureEnv.FIXTURE_UNREADABLE;
   if (unreadable !== undefined) {
     symlinkSync(unreadable, join(cwd, unreadable));
@@ -83,13 +83,12 @@ async function run(args: string[], fixtureEnv: Record<string, string | undefined
     env[name] = undefined;
   }
   const published = new Map<string, string>();
-  const app = dotenvApplication(mode, names, settings, published);
-  if (mode === 'invoke') {
-    const mock = mockProcess({ cwd, env });
-    const outcome = await app.invoke([], {}, { process: mock });
-    mock.stdout.write(`${JSON.stringify(outcome)}\n`);
-    return { status: mock.exitCode, stderr: mock.stderr.text, stdout: mock.stdout.text };
-  }
+  return { app: dotenvApplication(mode, names, settings, published), env, published };
+}
+
+async function run(args: string[], fixtureEnv: Record<string, string | undefined>, cwd: string) {
+  const mode = args[0] ?? 'run';
+  const { app, env, published } = prepare(mode, fixtureEnv, cwd);
   return await runOnMock(
     app,
     {
@@ -108,4 +107,15 @@ async function run(args: string[], fixtureEnv: Record<string, string | undefined
   );
 }
 
-export { run };
+/**
+ * Invokes the application by name on a mock and returns the outcome beside what the mock recorded,
+ * so a test sees that the invocation set no exit code and wrote to neither stream.
+ */
+async function invokeByName(fixtureEnv: Record<string, string | undefined>, cwd: string) {
+  const { app, env } = prepare('invoke', fixtureEnv, cwd);
+  const mock = mockProcess({ cwd, env });
+  const outcome = await app.invoke([], {}, { process: mock });
+  return { exitCode: mock.exitCode, outcome, stderr: mock.stderr.text, stdout: mock.stdout.text };
+}
+
+export { invokeByName, run };
