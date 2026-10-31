@@ -324,6 +324,8 @@ test('the data error keeps the SyntaxError JSON.parse threw as its cause', async
   const status = await translated((line) => {
     reported += line;
   }).run({ process: mock });
+  // The app itself prints nothing to stdout; the hook's line is the only text.
+  expect(mock.stdout.text).toBe('');
   expect({ status, stderr: mock.stderr.text, stdout: reported }).toEqual({
     status: 65,
     stderr: invalidJson,

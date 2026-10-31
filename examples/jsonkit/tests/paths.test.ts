@@ -66,10 +66,7 @@ test('a walk that throws leaves its written rows behind, under the line and the 
 
 test('the declared result names both views and the formatter appends its own, the row view first', async () => {
   const inspected = inspection();
-  expect(inspected.status).toBe(0);
-  const graph: { root: { children: { name: string; result: unknown }[] } } = JSON.parse(
-    inspected.stdout,
-  );
+  const graph: { root: { children: { name: string; result: unknown }[] } } = JSON.parse(inspected);
   const found = graph.root.children.find((child) => child.name === 'paths');
   expect(found?.result).toEqual({
     default: 'list',
@@ -92,11 +89,10 @@ function marks(options: readonly Marked[]): Record<string, boolean> {
 
 test('the inspected graph marks the control options and leaves the work options unmarked', async () => {
   const inspected = inspection();
-  expect(inspected.status).toBe(0);
   const graph: {
     globals: Marked[];
     root: { children: { name: string | null; options: Marked[] }[] };
-  } = JSON.parse(inspected.stdout);
+  } = JSON.parse(inspected);
   const optionsOf = (name: string) =>
     graph.root.children.find((child) => child.name === name)?.options ?? [];
   expect(marks(graph.globals)).toEqual({

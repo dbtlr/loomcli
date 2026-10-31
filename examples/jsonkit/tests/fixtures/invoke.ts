@@ -4,6 +4,8 @@ import { join } from 'node:path';
 
 import type { InvokeOptions } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
+import type { MockProcess } from '@loomcli/testing';
+import { expect } from 'vite-plus/test';
 
 import { subject as jsonkit } from '../run.js';
 
@@ -26,9 +28,19 @@ async function viaArgv(argv: string[], cwd: string) {
   return { code, stderr: mock.stderr.text, stdout: mock.stdout.text };
 }
 
+/** An invocation by name writes nothing to the process and sets no exit code. */
+function expectUntouched(mock: MockProcess) {
+  expect(mock.stdout.text).toBe('');
+  expect(mock.stderr.text).toBe('');
+  expect(mock.exitCode).toBeUndefined();
+}
+
 /** `invoke()` by name on a mock process whose working directory is `cwd`. */
-function named(path: string[], values: object, cwd: string, options: object = {}) {
-  return jsonkit.invoke(path, values, { ...options, process: mockProcess({ cwd }) });
+async function named(path: string[], values: object, cwd: string, options: object = {}) {
+  const mock = mockProcess({ cwd });
+  const outcome = await jsonkit.invoke(path, values, { ...options, process: mock });
+  expectUntouched(mock);
+  return outcome;
 }
 
 /** The pinned invocations, each spelled as argv and as a path with named values. */
@@ -103,18 +115,18 @@ export async function report(scenario: 'color' | 'names' | 'stdin' | 'wedge'): P
   }
   if (scenario === 'stdin') {
     // No file names the document, and content stdin is unavailable to an invocation by name.
-    const outcome = await jsonkit.invoke(
-      ['get'],
-      { args: { path: 'name' } },
-      { process: mockProcess() },
-    );
+    const mock = mockProcess();
+    const outcome = await jsonkit.invoke(['get'], { args: { path: 'name' } }, { process: mock });
+    expectUntouched(mock);
     return JSON.stringify(outcome);
   }
   // An invocation by name reads no color choice, so its help page stays plain whatever it names.
+  const mock = mockProcess({ env: { FORCE_COLOR: '1' } });
   const outcome = await jsonkit.invoke(
     [],
     { options: { color: true, help: true } },
-    { process: mockProcess({ env: { FORCE_COLOR: '1' } }) },
+    { process: mock },
   );
+  expectUntouched(mock);
   return JSON.stringify(outcome);
 }

@@ -55,7 +55,6 @@ const inspected = z.object({
 
 test('only document-reading Commands claim stdin through their local native file option', async () => {
   const result = inspection();
-  expect(result).toMatchObject({ status: 0, stderr: '' });
   const option = z.object({
     name: z.string(),
     required: z.boolean().optional(),
@@ -69,7 +68,7 @@ test('only document-reading Commands claim stdin through their local native file
       globals: z.array(option),
       root: inspectedCommand.extend({ children: z.array(inspectedCommand) }),
     })
-    .parse(JSON.parse(result.stdout));
+    .parse(JSON.parse(result));
   expect(graph.globals.map((input) => input.name)).not.toContain('file');
   const documentCommands = new Set([null, 'get', 'keys', 'select', 'fetch', 'paths', 'debug']);
   for (const node of [graph.root, ...graph.root.children]) {
@@ -131,8 +130,7 @@ test('jsonkit explains an otherwise invalid invocation instead of rejecting it',
 
 test("the inspected graph carries the plugin's option, the extension value, and the version", async () => {
   const result = inspection();
-  expect(result.status).toBe(0);
-  const graph = inspected.parse(JSON.parse(result.stdout));
+  const graph = inspected.parse(JSON.parse(result));
   expect(graph.version).toBe(manifest.version);
   expect(graph.globals.map((option) => option.name)).toEqual([
     'help',

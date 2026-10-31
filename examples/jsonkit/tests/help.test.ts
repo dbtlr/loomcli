@@ -556,7 +556,7 @@ function colored(
 ) {
   return run(argv, {
     env,
-    // A page taller than the terminal goes to the pager, which passes it through when stdout is no terminal.
+    // A page taller than the terminal goes to the pager; this stub stands for the real `less` with LESS=FRX, which the spawn piped through unchanged.
     programs: { '/bin/sh': ({ input }) => ({ stdout: input }) },
     ...(terminal === 'tty' ? { terminal: { columns: 100 } } : {}),
   });

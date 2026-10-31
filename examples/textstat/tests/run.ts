@@ -1,5 +1,6 @@
 import type { Readable } from 'node:stream';
 
+import type { ProcessHandle } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 
 import { textstat } from '../src/application.js';
@@ -45,8 +46,8 @@ async function run(argv: string[], facts: Facts = {}): Promise<Result> {
 }
 
 /** What the inspection reports, as the JSON document a test parses at its boundary. */
-function inspection() {
-  return { status: 0, stderr: '', stdout: JSON.stringify(textstat.inspect()) };
+function inspection(): string {
+  return JSON.stringify(textstat.inspect());
 }
 
 /**
@@ -65,7 +66,9 @@ async function runWithStdin(
     ...(cwd === undefined ? {} : { cwd }),
     ...(keyboard ? { terminal: { columns: 80, keys: [], rows: 24, streams: [] } } : { stdin: '' }),
   });
-  const status = await textstat.run({ process: Object.create(mock, { stdin: { value: stdin } }) });
+  // The handle is the mock with the built stream as its stdin; `run()` returns the status.
+  const handle: ProcessHandle = { ...mock, stdin };
+  const status = await textstat.run({ process: handle });
   return { status, stderr: mock.stderr.text, stdout: mock.stdout.text };
 }
 

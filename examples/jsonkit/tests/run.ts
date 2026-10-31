@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 
-import type { RunOptions } from '@loomcli/core';
+import type { ProcessHandle, RunOptions } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import type { MockFields } from '@loomcli/testing';
 import { vi } from 'vite-plus/test';
@@ -19,8 +19,11 @@ vi.mock('../src/commands/get.md', async () => {
   return { default: readFileSync(new URL('../src/commands/get.md', import.meta.url), 'utf8') };
 });
 
-/** The application the tests run, which other test modules read from here so the mock below applies. */
+/** The application the tests run, which other test modules read from here so the mock above applies. */
 const subject = jsonkit;
+
+/** The platform every run states, which the mock would otherwise seal to the same value. */
+const platform = 'linux';
 
 /** What one run left behind: its exit status, and everything it wrote to each stream. */
 interface Result {
@@ -51,6 +54,7 @@ async function run(argv: string[], facts: Facts = {}): Promise<Result> {
   const { cwd, env, input, programs, rendering, terminal } = facts;
   const mock = mockProcess({
     argv,
+    platform,
     ...(cwd === undefined ? {} : { cwd }),
     ...(env === undefined ? {} : { env }),
     stdin: input ?? '',
@@ -77,16 +81,19 @@ async function runWithStdin(
   const { cwd, keyboard = false } = options;
   const mock = mockProcess({
     argv,
+    platform,
     ...(cwd === undefined ? {} : { cwd }),
     ...(keyboard ? { terminal: { columns: 80, keys: [], rows: 24, streams: [] } } : { stdin: '' }),
   });
-  const status = await jsonkit.run({ process: Object.create(mock, { stdin: { value: stdin } }) });
+  // The handle is the mock with the built stream as its stdin; `run()` returns the status.
+  const handle: ProcessHandle = { ...mock, stdin };
+  const status = await jsonkit.run({ process: handle });
   return { status, stderr: mock.stderr.text, stdout: mock.stdout.text };
 }
 
 /** What the inspection reports, as the JSON document a test parses at its boundary. */
-function inspection() {
-  return { status: 0, stderr: '', stdout: JSON.stringify(jsonkit.inspect()) };
+function inspection(): string {
+  return JSON.stringify(jsonkit.inspect());
 }
 
 /** The document the host scenarios read. */
@@ -182,5 +189,5 @@ async function printed(argv: string[], facts: Facts = {}): Promise<string> {
   return stdout;
 }
 
-export { host, inspection, printed, run, runWithStdin, subject };
+export { host, inspection, platform, printed, run, runWithStdin, subject };
 export type { Facts, Result };
