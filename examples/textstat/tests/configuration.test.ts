@@ -66,12 +66,41 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { DeclarationError } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { configApp } from './fixtures/config-app.js';
+import type { Choices, Settings } from './fixtures/config-app.js';
+import { run } from './run.js';
 
-const main = new URL('../dist/main.js', import.meta.url);
-const appFixture = new URL('fixtures/config-app.mjs', import.meta.url);
+/** What one run left behind: its status, and everything it wrote to each stream. */
+type Result = Awaited<ReturnType<typeof run>>;
+
+/**
+ * Runs the fixture application the choices describe in this process, with the argv and the
+ * environment a case gives and `project` as the host's working directory. A fault at a call
+ * prints its rule, as an application's own run would fail.
+ */
+async function runApp(
+  choices: Choices,
+  argv: string[],
+  project: string,
+  env: Record<string, string | undefined>,
+): Promise<Result> {
+  const mock = mockProcess({ argv, cwd: project, env });
+  try {
+    const status = await configApp(choices).run({ process: mock });
+    return { status, stderr: mock.stderr.text, stdout: mock.stdout.text };
+  } catch (error) {
+    if (!(error instanceof Error)) {
+      throw error;
+    }
+    const rule = error instanceof DeclarationError ? error.rule?.identity : undefined;
+    return { status: undefined, stderr: '', stdout: `${error.name}: ${rule ?? error.message}\n` };
+  }
+}
 
 /**
  * One temporary workspace per test: the project directory textstat runs in, with two files to
@@ -82,16 +111,16 @@ interface Workspace {
   readonly project: string;
   readonly home: string;
   /** The built application, run in the project directory with `HOME` set. */
-  textstat(argv: string[], env?: Record<string, string | undefined>): ReturnType<typeof invoke>;
+  textstat(argv: string[], env?: Record<string, string | undefined>): Promise<Result>;
   /**
    * An application named textstat, built from public APIs, that installs the plugin with the
    * settings given, or with none, and prints the options it receives.
    */
   app(
-    settings: unknown,
+    settings: Choices['settings'],
     argv?: string[],
     env?: Record<string, string | undefined>,
-  ): ReturnType<typeof invoke>;
+  ): Promise<Result>;
   /** Writes one file under a base directory, creating its directories, and answers its path. */
   write(base: string, relative: string, content: string): string;
 }
@@ -107,17 +136,23 @@ function workspace(): Workspace {
   writeFileSync(join(project, 'two.txt'), 'é');
   const variables = { HOME: home };
   return {
-    app: (settings, argv = [], env = {}) =>
-      invoke(
-        appFixture,
-        [settings === undefined ? 'none' : JSON.stringify(settings), project, ...argv],
-        { cwd: root, env: { ...variables, ...env } },
-      ),
+    app: (settings, argv = [], env = {}) => {
+      const { FIXTURE_PATH, FIXTURE_VIEWS, ...own } = env;
+      return runApp(
+        {
+          ...(FIXTURE_PATH === undefined ? {} : { limitPath: FIXTURE_PATH }),
+          ...(settings === undefined ? {} : { settings }),
+          ...(FIXTURE_VIEWS === 'input' ? { view: 'input' } : {}),
+        },
+        argv,
+        project,
+        { ...variables, ...own },
+      );
+    },
     home,
     project,
     root,
-    textstat: (argv, env = {}) =>
-      invoke(main, argv, { cwd: project, env: { ...variables, ...env } }),
+    textstat: (argv, env = {}) => run(argv, { cwd: project, env: { ...variables, ...env } }),
     write: (base, relative, content) => {
       const path = join(base, relative);
       mkdirSync(join(path, '..'), { recursive: true });
@@ -128,11 +163,11 @@ function workspace(): Workspace {
 }
 
 /** Runs one test body in a fresh workspace and removes it afterward. */
-function inWorkspace(body: (space: Workspace) => void): () => void {
-  return () => {
+function inWorkspace(body: (space: Workspace) => Promise<void> | void): () => Promise<void> {
+  return async () => {
     const space = workspace();
     try {
-      body(space);
+      await body(space);
     } finally {
       rmSync(space.root, { force: true, recursive: true });
     }
@@ -144,7 +179,7 @@ function json(value: unknown): string {
 }
 
 /** The options the fixture application received, parsed from the one line it prints. */
-function received(result: ReturnType<typeof invoke>): unknown {
+function received(result: Result): unknown {
   expect(result).toMatchObject({ status: 0, stderr: '' });
   return JSON.parse(result.stdout);
 }
@@ -188,47 +223,61 @@ const fixtureDefaults = {
 
 test(
   'Lookup: textstat reads .textstat.toml in the working directory, then in the home directory',
-  inWorkspace((space) => {
-    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: both });
+  inWorkspace(async (space) => {
+    await expect(space.textstat(files)).resolves.toEqual({ status: 0, stderr: '', stdout: both });
     space.write(space.home, '.textstat.toml', 'minBytes = 5\n');
-    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: filtered });
+    await expect(space.textstat(files)).resolves.toEqual({
+      status: 0,
+      stderr: '',
+      stdout: filtered,
+    });
     // A file in the working directory hides the home file, so its minBytes is not read.
     space.write(space.project, '.textstat.toml', 'total = true\n');
-    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: withTotal });
+    await expect(space.textstat(files)).resolves.toEqual({
+      status: 0,
+      stderr: '',
+      stdout: withTotal,
+    });
     // A broken file in the working directory warns, and the home file does not answer.
     space.write(space.project, '.textstat.toml', 'total = ');
-    expect(space.textstat(files)).toEqual({
+    await expect(space.textstat(files)).resolves.toEqual({
       status: 0,
       stderr: skipped('.textstat.toml', invalidToml('line 1, column 9')),
       stdout: both,
     });
     rmSync(join(space.project, '.textstat.toml'));
     rmSync(join(space.home, '.textstat.toml'));
-    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: both });
+    await expect(space.textstat(files)).resolves.toEqual({ status: 0, stderr: '', stdout: both });
   }),
 );
 
 test(
   'Lookup: configuration() with only a schema reads .textstat.json',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     space.write(space.project, '.textstat.toml', 'minBytes = 3\n');
-    expect(received(space.app(undefined))).toEqual(fixtureDefaults);
+    expect(received(await space.app(undefined))).toEqual(fixtureDefaults);
     space.write(space.project, '.textstat.json', json({ minBytes: 5 }));
-    expect(received(space.app(undefined))).toEqual({ ...fixtureDefaults, 'min-bytes': 5 });
+    expect(received(await space.app(undefined))).toEqual({ ...fixtureDefaults, 'min-bytes': 5 });
   }),
 );
 
 test(
   'Precedence: TEXTSTAT_MIN_BYTES beats the file, and a flag beats both',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     space.write(space.project, '.textstat.toml', 'minBytes = 5\n');
-    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: filtered });
-    expect(space.textstat(files, { TEXTSTAT_MIN_BYTES: '0' })).toEqual({
+    await expect(space.textstat(files)).resolves.toEqual({
+      status: 0,
+      stderr: '',
+      stdout: filtered,
+    });
+    await expect(space.textstat(files, { TEXTSTAT_MIN_BYTES: '0' })).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: both,
     });
-    expect(space.textstat([...files, '--min-bytes', '0'], { TEXTSTAT_MIN_BYTES: '5' })).toEqual({
+    await expect(
+      space.textstat([...files, '--min-bytes', '0'], { TEXTSTAT_MIN_BYTES: '5' }),
+    ).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: both,
@@ -238,23 +287,23 @@ test(
 
 test(
   '--config: --config and -c name a file that answers alone, and a bad named file fails the run',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     space.write(space.project, '.textstat.toml', 'minBytes = 5\n');
     space.write(space.project, 'pinned.json', json({ total: true }));
     for (const spelling of ['--config', '-c']) {
-      expect(space.textstat([...files, spelling, 'pinned.json'])).toEqual({
+      await expect(space.textstat([...files, spelling, 'pinned.json'])).resolves.toEqual({
         status: 0,
         stderr: '',
         stdout: withTotal,
       });
     }
-    expect(space.textstat([...files, '--config', 'missing.json'])).toEqual({
+    await expect(space.textstat([...files, '--config', 'missing.json'])).resolves.toEqual({
       status: 2,
       stderr: namedFailure('missing.json', 'does not exist. Supply the path of an existing file.'),
       stdout: '',
     });
     space.write(space.project, 'broken.toml', 'minBytes = ');
-    expect(space.textstat([...files, '-c', 'broken.toml'])).toEqual({
+    await expect(space.textstat([...files, '-c', 'broken.toml'])).resolves.toEqual({
       status: 2,
       stderr: namedFailure(
         'broken.toml',
@@ -263,7 +312,7 @@ test(
       stdout: '',
     });
     space.write(space.project, 'list.json', '[]');
-    expect(space.textstat([...files, '--config', 'list.json'])).toEqual({
+    await expect(space.textstat([...files, '--config', 'list.json'])).resolves.toEqual({
       status: 2,
       stderr: namedFailure(
         'list.json',
@@ -271,34 +320,34 @@ test(
       ),
       stdout: '',
     });
-    const help = space.textstat(['--config', 'missing.json', '--help']);
+    const help = await space.textstat(['--config', 'missing.json', '--help']);
     expect(help).toMatchObject({ status: 0, stderr: '' });
     expect(help.stdout.startsWith('textstat')).toBe(true);
     // Every bound option is filled from argv, so no file is read and the bad name never surfaces.
-    expect(
+    await expect(
       space.textstat([...files, '--config', 'missing.json', '--min-bytes', '0', '--total']),
-    ).toEqual({ status: 0, stderr: '', stdout: withTotal });
+    ).resolves.toEqual({ status: 0, stderr: '', stdout: withTotal });
   }),
 );
 
 test(
   '--no-config: a run reads no file, and --no-config beside --config fails with code 2',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     space.write(space.project, '.textstat.toml', 'total = true\n');
     space.write(space.home, '.textstat.toml', 'minBytes = 5\n');
-    expect(space.textstat([...files, '--no-config'])).toEqual({
+    await expect(space.textstat([...files, '--no-config'])).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: both,
     });
     rmSync(join(space.project, '.textstat.toml'));
-    expect(space.textstat([...files, '--no-config'])).toEqual({
+    await expect(space.textstat([...files, '--no-config'])).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: both,
     });
     space.write(space.project, 'pinned.json', json({ total: true }));
-    expect(space.textstat([...files, '--no-config', '-c', 'pinned.json'])).toEqual({
+    await expect(space.textstat([...files, '--no-config', '-c', 'pinned.json'])).resolves.toEqual({
       status: 2,
       stderr: `textstat: Options "--config" and "--no-config" cannot be used together. Supply only one of them.\n${hint}`,
       stdout: '',
@@ -308,14 +357,14 @@ test(
 
 test(
   "Mixed groups: -tc reads -t as the root's total and -c as the configuration plugin's --config",
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     space.write(space.project, 'pinned.toml', 'minBytes = 5\n');
-    expect(space.textstat(['-tc', 'pinned.toml', ...files])).toEqual({
+    await expect(space.textstat(['-tc', 'pinned.toml', ...files])).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: filteredTotal,
     });
-    expect(space.textstat(['-tcpinned.toml', ...files])).toEqual({
+    await expect(space.textstat(['-tcpinned.toml', ...files])).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: filteredTotal,
@@ -325,10 +374,10 @@ test(
 
 test(
   'Discovered files: a missing file is silent, and a broken one warns once and the run exits 0',
-  inWorkspace((space) => {
-    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: both });
+  inWorkspace(async (space) => {
+    await expect(space.textstat(files)).resolves.toEqual({ status: 0, stderr: '', stdout: both });
     mkdirSync(join(space.project, '.textstat.json'));
-    expect(space.textstat(files)).toEqual({
+    await expect(space.textstat(files)).resolves.toEqual({
       status: 0,
       stderr: skipped(
         '.textstat.json',
@@ -344,7 +393,7 @@ test(
     ];
     for (const [content, clause] of broken) {
       space.write(space.project, '.textstat.json', content);
-      expect(space.textstat(files)).toEqual({
+      await expect(space.textstat(files)).resolves.toEqual({
         status: 0,
         stderr: skipped('.textstat.json', clause),
         stdout: both,
@@ -352,7 +401,7 @@ test(
     }
     rmSync(join(space.project, '.textstat.json'));
     const home = space.write(space.home, '.textstat.json', 'null');
-    const help = space.textstat(['--help']);
+    const help = await space.textstat(['--help']);
     expect(help.status).toBe(0);
     expect(help.stderr).toBe(skipped(home, notObject));
     expect(help.stdout.startsWith('textstat')).toBe(true);
@@ -361,7 +410,7 @@ test(
 
 test(
   'Formats: TOML, YAML, an extensionless file, .textstat.conf, and JSON with comments each fill under a file that names them',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     const formats: readonly (readonly [string, string])[] = [
       ['.textstat.toml', 'minBytes = 5\ntotal = true\n'],
       ['.textstat.yaml', 'minBytes: 5\ntotal: true\n'],
@@ -374,14 +423,14 @@ test(
     ];
     for (const [file, content] of formats) {
       space.write(space.project, file, content);
-      expect(received(space.app({ file }))).toEqual({
+      expect(received(await space.app({ file }))).toEqual({
         ...fixtureDefaults,
         'min-bytes': 5,
         total: true,
       });
     }
     // A --config file reads by its extension.
-    expect(space.textstat([...files, '--config', '.textstat.yaml'])).toEqual({
+    await expect(space.textstat([...files, '--config', '.textstat.yaml'])).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: filteredTotal,
@@ -391,10 +440,10 @@ test(
 
 test(
   'Formats: with .textstat.toml and .textstat.json in one directory, the TOML file answers and one warning prints',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     space.write(space.project, '.textstat.toml', 'minBytes = 5\n');
     space.write(space.project, '.textstat.json', json({ total: true }));
-    expect(space.textstat(files)).toEqual({
+    await expect(space.textstat(files)).resolves.toEqual({
       status: 0,
       stderr:
         '⚠ Skipped .textstat.json: .textstat.toml matches the same pattern first. Keep one of the files, and remove the others.\n',
@@ -433,37 +482,37 @@ function strippedBundle(
 
 test(
   'Formats: a run whose file is JSON loads neither parser, and each format loads only its own',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     const env = { HOME: space.home };
-    const run = (bundle: URL, argv: string[] = []) =>
+    const runBundle = (bundle: URL, argv: string[] = []) =>
       invoke(bundle, [...files, ...argv], { cwd: space.project, env });
     const neither = strippedBundle(space, 'neither', ['toml', 'yaml']);
     space.write(space.project, '.textstat.json', json({ minBytes: 5 }));
-    expect(run(neither)).toEqual({ status: 0, stderr: '', stdout: filtered });
+    expect(runBundle(neither)).toEqual({ status: 0, stderr: '', stdout: filtered });
     // The same copy fails to load its source on a TOML file, so the removed chunks held a parser.
     rmSync(join(space.project, '.textstat.json'));
     space.write(space.project, '.textstat.toml', 'minBytes = 5\n');
-    expect(run(neither)).toEqual({
+    expect(runBundle(neither)).toEqual({
       status: 1,
       stderr: 'textstat: Something went wrong.\n',
       stdout: '',
     });
     // A TOML run loads no YAML parser, and a YAML run no TOML parser.
-    expect(run(strippedBundle(space, 'toml-only', ['yaml']))).toEqual({
+    expect(runBundle(strippedBundle(space, 'toml-only', ['yaml']))).toEqual({
       status: 0,
       stderr: '',
       stdout: filtered,
     });
     space.write(space.project, 'settings.yaml', 'minBytes: 5\n');
     expect(
-      run(strippedBundle(space, 'yaml-only', ['toml']), ['--config', 'settings.yaml']),
+      runBundle(strippedBundle(space, 'yaml-only', ['toml']), ['--config', 'settings.yaml']),
     ).toEqual({ status: 0, stderr: '', stdout: filtered });
   }),
 );
 
 test(
   'Formats: broken TOML and YAML files warn when discovered and fail with code 2 when named',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     const yamlFaults: readonly (readonly [string, string | undefined])[] = [
       ['minBytes: [', 'line 1, column 12'],
       ['', undefined],
@@ -471,12 +520,12 @@ test(
       ['minBytes: !!binary aGk=\n', 'line 1, column 11'],
     ];
     space.write(space.project, '.textstat.toml', 'minBytes = ');
-    expect(space.textstat(files)).toEqual({
+    await expect(space.textstat(files)).resolves.toEqual({
       status: 0,
       stderr: skipped('.textstat.toml', invalidToml('line 1, column 12')),
       stdout: both,
     });
-    expect(space.textstat([...files, '--config', '.textstat.toml'])).toMatchObject({
+    await expect(space.textstat([...files, '--config', '.textstat.toml'])).resolves.toMatchObject({
       status: 2,
       stderr: namedFailure(
         '.textstat.toml',
@@ -485,34 +534,40 @@ test(
     });
     for (const [content, at] of yamlFaults) {
       space.write(space.project, '.textstat.yaml', content);
-      expect(space.app({ file: '.textstat.yaml' })).toMatchObject({
+      await expect(space.app({ file: '.textstat.yaml' })).resolves.toMatchObject({
         status: 0,
         stderr: skipped('.textstat.yaml', at === undefined ? notMapping : invalidYaml(at)),
       });
-      expect(space.textstat([...files, '--config', '.textstat.yaml'])).toMatchObject({
-        status: 2,
-        stderr: namedFailure(
-          '.textstat.yaml',
-          at === undefined
-            ? 'does not hold a YAML mapping. Write its settings as one YAML mapping.'
-            : `is not valid YAML at ${at}. Correct its syntax, or supply another file.`,
-        ),
-      });
+      await expect(space.textstat([...files, '--config', '.textstat.yaml'])).resolves.toMatchObject(
+        {
+          status: 2,
+          stderr: namedFailure(
+            '.textstat.yaml',
+            at === undefined
+              ? 'does not hold a YAML mapping. Write its settings as one YAML mapping.'
+              : `is not valid YAML at ${at}. Correct its syntax, or supply another file.`,
+          ),
+        },
+      );
     }
   }),
 );
 
 test(
   'Values: a number fills as its text, and a value the option cannot take fills nothing and fails nothing',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     space.write(space.project, '.textstat.toml', 'minBytes = 5\n');
-    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: filtered });
+    await expect(space.textstat(files)).resolves.toEqual({
+      status: 0,
+      stderr: '',
+      stdout: filtered,
+    });
     space.write(space.project, '.textstat.toml', 'total = "yes"\n');
-    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: both });
+    await expect(space.textstat(files)).resolves.toEqual({ status: 0, stderr: '', stdout: both });
     space.write(space.project, '.textstat.toml', '[minBytes]\nmax = 5\n');
-    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: both });
+    await expect(space.textstat(files)).resolves.toEqual({ status: 0, stderr: '', stdout: both });
     space.write(space.project, 'settings.yaml', 'total: no\n');
-    expect(space.textstat([...files, '--config', 'settings.yaml'])).toEqual({
+    await expect(space.textstat([...files, '--config', 'settings.yaml'])).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: both,
@@ -522,38 +577,38 @@ test(
 
 test(
   'Values: a multiple option reads an array, and a TOML date and time fill as written',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     const toml = { file: '.textstat.toml' };
     space.write(space.project, '.textstat.toml', 'fields = ["a", 2]\n');
-    expect(received(space.app(toml))).toEqual({ ...fixtureDefaults, field: ['a', '2'] });
+    expect(received(await space.app(toml))).toEqual({ ...fixtureDefaults, field: ['a', '2'] });
     space.write(space.project, '.textstat.toml', 'fields = []\n');
-    expect(received(space.app(toml))).toEqual(fixtureDefaults);
+    expect(received(await space.app(toml))).toEqual(fixtureDefaults);
     space.write(space.project, '.textstat.toml', 'fields = ["a", {}]\n');
-    expect(received(space.app(toml))).toEqual(fixtureDefaults);
+    expect(received(await space.app(toml))).toEqual(fixtureDefaults);
     for (const note of ['1979-05-27', '1979-05-27 07:32:00', '07:32:00.5']) {
       space.write(space.project, '.textstat.toml', `note = ${note}\n`);
-      expect(received(space.app(toml))).toEqual({ ...fixtureDefaults, note });
+      expect(received(await space.app(toml))).toEqual({ ...fixtureDefaults, note });
     }
   }),
 );
 
 test(
   'Paths: a path that meets a non-object leaves the option to its default, and a bad path throws at the call',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     space.write(space.project, '.textstat.json', json({ limits: 5 }));
-    expect(received(space.app(undefined))).toEqual(fixtureDefaults);
-    expect(space.app(undefined, [], { FIXTURE_PATH: 'a..b' }).stdout).toBe(
-      'DeclarationError: @loomcli/core/invalid-extension-value\n',
-    );
+    expect(received(await space.app(undefined))).toEqual(fixtureDefaults);
+    const { stdout } = await space.app(undefined, [], { FIXTURE_PATH: 'a..b' });
+    expect(stdout).toBe('DeclarationError: @loomcli/core/invalid-extension-value\n');
   }),
 );
 
 test(
   'Escaping: a control character in a --config path prints as its escape',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     const escape = String.fromCodePoint(27);
     const named = `esc${escape}ape`;
-    expect(space.textstat([...files, '--config', named]).stderr).toBe(
+    const { stderr } = await space.textstat([...files, '--config', named]);
+    expect(stderr).toBe(
       namedFailure(
         String.raw`esc\u001bape`,
         'does not exist. Supply the path of an existing file.',
@@ -564,38 +619,44 @@ test(
 
 test(
   'Edges: a bad file pattern throws from configuration() under its rule',
-  inWorkspace((space) => {
-    const cases: readonly (readonly [unknown, string])[] = [
+  inWorkspace(async (space) => {
+    const cases: readonly (readonly [Settings, string])[] = [
       [{ file: '/etc/textstat.json' }, '@loomcli/plugins/config/file-path'],
       [{ file: '*.json' }, '@loomcli/plugins/config/file-pattern'],
       [{ file: '.textstat.{toml,ini}' }, '@loomcli/plugins/config/file-pattern'],
     ];
     for (const [settings, rule] of cases) {
-      expect(space.app(settings).stdout).toBe(`DeclarationError: ${rule}\n`);
+      const { stdout } = await space.app(settings);
+      expect(stdout).toBe(`DeclarationError: ${rule}\n`);
     }
   }),
 );
 
 test(
   'Edges: a byte order mark reads, and two values the options cannot take fill nothing and print nothing',
-  inWorkspace((space) => {
+  inWorkspace(async (space) => {
     space.write(
       space.project,
       '.textstat.json',
       `${String.fromCodePoint(65_279)}${json({ minBytes: 5 })}`,
     );
-    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: filtered });
+    await expect(space.textstat(files)).resolves.toEqual({
+      status: 0,
+      stderr: '',
+      stdout: filtered,
+    });
     space.write(space.project, '.textstat.json', json({ minBytes: {}, total: 'yes' }));
-    expect(space.textstat(files)).toEqual({ status: 0, stderr: '', stdout: both });
+    await expect(space.textstat(files)).resolves.toEqual({ status: 0, stderr: '', stdout: both });
   }),
 );
 
 test(
   'Edges: a source InputError reaches an InputError view override, and a local structure fault outranks it',
-  inWorkspace((space) => {
-    expect(
-      space.app(undefined, ['--config', 'missing.json'], { FIXTURE_VIEWS: 'input' }).stderr,
-    ).toBe(
+  inWorkspace(async (space) => {
+    const { stderr } = await space.app(undefined, ['--config', 'missing.json'], {
+      FIXTURE_VIEWS: 'input',
+    });
+    expect(stderr).toBe(
       `${json([
         {
           input: { global: true, kind: 'option', name: 'config' },
@@ -607,7 +668,9 @@ test(
         },
       ])}\n`,
     );
-    expect(space.textstat([...files, '--config', 'missing.json', '--metric'])).toEqual({
+    await expect(
+      space.textstat([...files, '--config', 'missing.json', '--metric']),
+    ).resolves.toEqual({
       status: 2,
       stderr: `textstat: Option "--metric" requires a value. Supply a value after "--metric".\n${hint}`,
       stdout: '',

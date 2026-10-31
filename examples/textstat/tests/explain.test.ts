@@ -5,9 +5,7 @@ import { join } from 'node:path';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { invoke } from '../../../scripts/test-process.js';
-
-const main = new URL('../dist/main.js', import.meta.url);
+import { inspection, run } from './run.js';
 
 /** The application's own manifest, which is where its declared version comes from. */
 const manifest = z
@@ -31,10 +29,10 @@ const inspected = z.object({
 });
 
 /** Every case runs the built application in an empty throwaway directory. */
-function withDirectory(run: (cwd: string) => void) {
+async function withDirectory(body: (cwd: string) => Promise<void>) {
   const directory = mkdtempSync(join(tmpdir(), 'loom-textstat-explain-'));
   try {
-    run(directory);
+    await body(directory);
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
@@ -42,9 +40,9 @@ function withDirectory(run: (cwd: string) => void) {
 
 test.each(['--explain', '-e'])(
   'textstat %s explains the application and reads no file',
-  (spelling) => {
-    withDirectory((cwd) => {
-      expect(invoke(main, [spelling], { cwd })).toEqual({
+  async (spelling) => {
+    await withDirectory(async (cwd) => {
+      await expect(run([spelling], { cwd })).resolves.toEqual({
         status: 0,
         stderr: '',
         stdout: application,
@@ -53,10 +51,10 @@ test.each(['--explain', '-e'])(
   },
 );
 
-test('textstat explains an otherwise invalid invocation instead of rejecting it', () => {
+test('textstat explains an otherwise invalid invocation instead of rejecting it', async () => {
   // The named file fails preparation, but the explain takeover keeps that input fault held.
-  withDirectory((cwd) => {
-    expect(invoke(main, ['missing.txt', '--explain'], { cwd })).toEqual({
+  await withDirectory(async (cwd) => {
+    await expect(run(['missing.txt', '--explain'], { cwd })).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: application,
@@ -64,9 +62,9 @@ test('textstat explains an otherwise invalid invocation instead of rejecting it'
   });
 });
 
-test('an unknown option on the root gains the hint that names the application alone', () => {
-  withDirectory((cwd) => {
-    expect(invoke(main, ['--bogus'], { cwd })).toEqual({
+test('an unknown option on the root gains the hint that names the application alone', async () => {
+  await withDirectory(async (cwd) => {
+    await expect(run(['--bogus'], { cwd })).resolves.toEqual({
       status: 2,
       stderr:
         'textstat: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\nRun "textstat --help" to see the usage.\nRun "textstat --explain" to explain this command.\n',
@@ -75,10 +73,9 @@ test('an unknown option on the root gains the hint that names the application al
   });
 });
 
-test("the inspected graph carries the plugin's option, the extension value, and the version", () => {
-  const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
-  expect(result.status).toBe(0);
-  const graph = inspected.parse(JSON.parse(result.stdout));
+test("the inspected graph carries the plugin's option, the extension value, and the version", async () => {
+  const result = inspection();
+  const graph = inspected.parse(JSON.parse(result));
   expect(graph.version).toBe(manifest.version);
   expect(graph.globals.map((option) => option.name)).toEqual([
     'help',

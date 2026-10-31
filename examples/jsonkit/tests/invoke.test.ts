@@ -2,22 +2,12 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
-
-const fixture = new URL('fixtures/invoke.mjs', import.meta.url);
+import { report } from './fixtures/invoke.js';
 
 /** What the fixture reports for one pinned invocation, through each door. */
 interface WedgeCase {
   argv: { code: number; stderr: string; stdout: string };
   named: { status: string; exitCode?: number; messages: string; output: string };
-}
-
-/** The fixture's JSON report for one scenario, with no color forced from the developer's shell. */
-function report(scenario: string): string {
-  const result = invoke(fixture, [scenario], { env: { FORCE_COLOR: undefined } });
-  expect(result.stderr).toBe('');
-  expect(result.status).toBe(0);
-  return result.stdout;
 }
 
 /** The outcome fields the equivalence covers: what each stream received and the code. */
@@ -29,8 +19,8 @@ function asArgv({ named }: WedgeCase) {
   };
 }
 
-test('run() with argv and invoke() with the same path and values write the same bytes and resolve the same code', () => {
-  const wedge: WedgeCase[] = JSON.parse(report('wedge'));
+test('run() with argv and invoke() with the same path and values write the same bytes and resolve the same code', async () => {
+  const wedge: WedgeCase[] = JSON.parse(await report('wedge'));
   const cases = wedge.slice(0, 6);
   expect(cases.map((entry) => entry.argv.code)).toEqual([0, 0, 0, 0, 65, 65]);
   for (const entry of cases) {
@@ -38,8 +28,8 @@ test('run() with argv and invoke() with the same path and values write the same 
   }
 });
 
-test('a completed invocation reads completed and a failed one carries the code and the failure', () => {
-  const wedge: WedgeCase[] = JSON.parse(report('wedge'));
+test('a completed invocation reads completed and a failed one carries the code and the failure', async () => {
+  const wedge: WedgeCase[] = JSON.parse(await report('wedge'));
   expect(wedge[0]?.named.status).toBe('completed');
   expect(wedge[4]?.named).toMatchObject({
     exitCode: 65,
@@ -54,8 +44,8 @@ test('a completed invocation reads completed and a failed one carries the code a
   });
 });
 
-test('an input problem names the option by its spelling under run() and by its declared name under invoke(), with no help hint', () => {
-  const wedge: WedgeCase[] = JSON.parse(report('wedge'));
+test('an input problem names the option by its spelling under run() and by its declared name under invoke(), with no help hint', async () => {
+  const wedge: WedgeCase[] = JSON.parse(await report('wedge'));
   const entry = wedge[6];
   expect(entry?.argv).toEqual({
     code: 2,
@@ -70,8 +60,8 @@ test('an input problem names the option by its spelling under run() and by its d
   });
 });
 
-test('an unknown option suggests a declared name under invoke(), and neither the help nor the explain hint prints', () => {
-  const wedge: WedgeCase[] = JSON.parse(report('wedge'));
+test('an unknown option suggests a declared name under invoke(), and neither the help nor the explain hint prints', async () => {
+  const wedge: WedgeCase[] = JSON.parse(await report('wedge'));
   const entry = wedge[7];
   expect(entry?.argv).toEqual({
     code: 2,
@@ -99,8 +89,8 @@ interface Names {
   unknown: WedgeCase['named'];
 }
 
-test('an unknown path element lists the root children, an unknown argument names its key, and an alias routes', () => {
-  const { alias, argument, unknown }: Names = JSON.parse(report('names'));
+test('an unknown path element lists the root children, an unknown argument names its key, and an alias routes', async () => {
+  const { alias, argument, unknown }: Names = JSON.parse(await report('names'));
   expect(unknown).toMatchObject({
     exitCode: 2,
     messages:
@@ -116,15 +106,15 @@ test('an unknown path element lists the root children, an unknown argument names
   expect(alias).toEqual({ messages: '', output: 'name\na\nb\nuser\n', status: 'completed' });
 });
 
-test('help: true completes with the extended help page that --help prints', () => {
-  const { help, helpArgv }: Names = JSON.parse(report('names'));
+test('help: true completes with the extended help page that --help prints', async () => {
+  const { help, helpArgv }: Names = JSON.parse(await report('names'));
   expect(helpArgv).toMatchObject({ code: 0, stderr: '' });
   expect(helpArgv.stdout).toContain('EXAMPLES');
   expect(help).toEqual({ messages: '', output: helpArgv.stdout, status: 'completed' });
 });
 
-test('an invocation by name requires a file because content stdin is unavailable', () => {
-  expect(JSON.parse(report('stdin'))).toMatchObject({
+test('an invocation by name requires a file because content stdin is unavailable', async () => {
+  expect(JSON.parse(await report('stdin'))).toMatchObject({
     exitCode: 2,
     messages: 'jsonkit: Option "file": Expected at least 1 readable source.\n',
     output: '',
@@ -132,11 +122,8 @@ test('an invocation by name requires a file because content stdin is unavailable
   });
 });
 
-test('invoke() with the color plugin installed captures plain text under FORCE_COLOR, even naming color', () => {
-  const result = invoke(fixture, ['color'], { env: { FORCE_COLOR: '1' } });
-  expect(result.stderr).toBe('');
-  expect(result.status).toBe(0);
-  const outcome: { output: string; status: string } = JSON.parse(result.stdout);
+test('invoke() with the color plugin installed captures plain text under FORCE_COLOR, even naming color', async () => {
+  const outcome: { output: string; status: string } = JSON.parse(await report('color'));
   expect(outcome.status).toBe('completed');
   expect(outcome.output).toContain(
     '      --[no-]color  Turn color on or off, overriding NO_COLOR.\n',

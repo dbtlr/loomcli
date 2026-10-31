@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { inspection } from './run.js';
 
 const identity = '@loomcli/plugins/manifest/command';
 
@@ -16,9 +16,8 @@ const inspected = z.object({
 });
 
 function graph() {
-  const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
-  expect(result.stderr).toBe('');
-  return inspected.parse(JSON.parse(result.stdout));
+  const result = inspection();
+  return inspected.parse(JSON.parse(result));
 }
 
 /** The two failures jsonkit declares, as the extension stores them. */
@@ -33,7 +32,7 @@ const pathNotFound = {
   meaning: 'The path names no value in the document.',
 };
 
-test("help supplies the root help values to the manifest's collecting extension, after the author's failures", () => {
+test("help supplies the root help values to the manifest's collecting extension, after the author's failures", async () => {
   expect(graph().root.extensions[identity]).toEqual([
     { failures: [invalidJson] },
     {
@@ -43,7 +42,7 @@ test("help supplies the root help values to the manifest's collecting extension,
   ]);
 });
 
-test('the author value on get is collected ahead of the value help supplies', () => {
+test('the author value on get is collected ahead of the value help supplies', async () => {
   const get = graph().root.children.find((child) => child.name === 'get');
   expect(get?.extensions[identity]).toEqual([
     {

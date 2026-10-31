@@ -18,16 +18,47 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { Application, override } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
+import { helpPage } from '@loomcli/plugins/help/views';
+import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { main } from './documents.js';
+import { printed, run } from './run.js';
 
 /** The same application, started behind the hook that records each plugin module it loads. */
 const loads = new URL('fixtures/loads.mjs', import.meta.url);
 
-/** The same help plugin installed, with the page branded through the view registry. */
-const branded = new URL('fixtures/branded-page.mjs', import.meta.url);
+/**
+ * The application brands the page the installed help plugin renders. The plugin stays installed and
+ * keeps its option and its middleware; only the view function behind the page is replaced. A broken
+ * replacement reports one diagnostic and returns 1.
+ */
+async function branded(scenario: 'branded' | 'broken') {
+  const application = new Application('jsonkit', {
+    description: 'Read and reshape one JSON document.',
+    plugins: [help()],
+    views: [
+      override(
+        helpPage,
+        scenario === 'broken'
+          ? {
+              render: () => {
+                throw new Error('Cannot render the page.');
+              },
+            }
+          : {
+              render: ({ command, graph }, { style }) =>
+                `${style.escape(`${graph.name}: ${command.name ?? graph.description ?? ''}`)}\n`,
+            },
+      ),
+    ],
+  }).action(({ out }) => out.print('summarized'));
+  const mock = mockProcess({ argv: ['--help'], release: { build: 'distributed' } });
+  const status = await application.run({ process: mock });
+  return { status, stderr: mock.stderr.text, stdout: mock.stdout.text };
+}
 
 /** A page as its lines, ending with the single newline the declared view appends. */
 function page(...lines: string[]) {
@@ -121,30 +152,30 @@ const select = page(
   '  -q, --quiet       Hide info and success messages.',
 );
 
-test('jsonkit --help prints the root page', () => {
-  expect(invoke(main, ['--help'])).toEqual(root);
+test('jsonkit --help prints the root page', async () => {
+  await expect(run(['--help'])).resolves.toEqual(root);
 });
 
-test('jsonkit -F name select names the Command that declares -F, and help takes the fault over', () => {
-  expect(invoke(main, ['-F', 'name', 'select'])).toEqual({
+test('jsonkit -F name select names the Command that declares -F, and help takes the fault over', async () => {
+  await expect(run(['-F', 'name', 'select'])).resolves.toEqual({
     status: 2,
     stderr:
       'jsonkit: Option "-F" belongs to command "select". Supply it after "select".\nRun "jsonkit --help" to see the usage.\n',
     stdout: '',
   });
-  expect(invoke(main, ['-F', 'name', 'select', '--help'])).toEqual(root);
+  await expect(run(['-F', 'name', 'select', '--help'])).resolves.toEqual(root);
 });
 
-test('jsonkit holds a fault on a root local option, so help after it renders the page', () => {
-  expect(invoke(main, ['--file'])).toEqual({
+test('jsonkit holds a fault on a root local option, so help after it renders the page', async () => {
+  await expect(run(['--file'])).resolves.toEqual({
     status: 2,
     stderr:
       'jsonkit: Option "--file" requires a value. Supply a value after "--file".\nRun "jsonkit --help" to see the usage.\n',
     stdout: '',
   });
-  expect(invoke(main, ['--file', '--help'])).toEqual(root);
-  expect(invoke(main, ['--help', '--help'])).toEqual(root);
-  expect(invoke(main, ['nope', '--help'])).toEqual({
+  await expect(run(['--file', '--help'])).resolves.toEqual(root);
+  await expect(run(['--help', '--help'])).resolves.toEqual(root);
+  await expect(run(['nope', '--help'])).resolves.toEqual({
     status: 2,
     stderr:
       'jsonkit: Unknown command "nope". Use one of: doctor, completion, mcp, manpage, get, keys, select, stats.\nRun "jsonkit --help" to see the usage.\n',
@@ -152,8 +183,8 @@ test('jsonkit holds a fault on a root local option, so help after it renders the
   });
 });
 
-test('jsonkit -h prints the compact root page, the child hint ahead of the pointer', () => {
-  expect(invoke(main, ['-h'])).toEqual(
+test('jsonkit -h prints the compact root page, the child hint ahead of the pointer', async () => {
+  await expect(run(['-h'])).resolves.toEqual(
     page(
       'jsonkit · Read and reshape one JSON document.',
       '',
@@ -195,26 +226,26 @@ test('jsonkit -h prints the compact root page, the child hint ahead of the point
   );
 });
 
-test('jsonkit --help --version prints help and never loads the version middleware module', () => {
+test('jsonkit --help --version prints help and never loads the version middleware module', async () => {
   const result = loaded(['--help', '--version']);
   expect(result.marks).toEqual(['loaded:help']);
   expect(result).toMatchObject(root);
 });
 
-test('jsonkit --version --help prints the same page, because help wins the tie', () => {
+test('jsonkit --version --help prints the same page, because help wins the tie', async () => {
   expect(loaded(['--version', '--help'])).toMatchObject(root);
 });
 
-test('jsonkit select --help prints the leaf page of a Command with a required option', () => {
-  expect(invoke(main, ['select', '--help'])).toEqual(select);
+test('jsonkit select --help prints the leaf page of a Command with a required option', async () => {
+  await expect(run(['select', '--help'])).resolves.toEqual(select);
 });
 
-test('jsonkit select -h prints the extended page, because select has no details or examples', () => {
-  expect(invoke(main, ['select', '-h'])).toEqual(select);
+test('jsonkit select -h prints the extended page, because select has no details or examples', async () => {
+  await expect(run(['select', '-h'])).resolves.toEqual(select);
 });
 
-test('jsonkit stats depth max --help prints the page of the Command three levels down', () => {
-  expect(invoke(main, ['stats', 'depth', 'max', '--help'])).toEqual(
+test('jsonkit stats depth max --help prints the page of the Command three levels down', async () => {
+  await expect(run(['stats', 'depth', 'max', '--help'])).resolves.toEqual(
     page(
       'jsonkit stats depth max · Print the deepest nesting level under a path.',
       '',
@@ -242,14 +273,14 @@ test('jsonkit stats depth max --help prints the page of the Command three levels
   );
 });
 
-test('jsonkit stats depth --help lists the child of the group two levels down', () => {
-  expect(invoke(main, ['stats', 'depth', '--help']).stdout).toContain(
+test('jsonkit stats depth --help lists the child of the group two levels down', async () => {
+  await expect(printed(['stats', 'depth', '--help'])).resolves.toContain(
     ['COMMANDS', '  max  Print the deepest nesting level under a path.'].join('\n'),
   );
 });
 
-test('jsonkit get --help renders while the required path is missing', () => {
-  expect(invoke(main, ['get', '--help'])).toEqual(
+test('jsonkit get --help renders while the required path is missing', async () => {
+  await expect(run(['get', '--help'])).resolves.toEqual(
     page(
       'jsonkit get · Read one value at a path.',
       '',
@@ -285,8 +316,8 @@ test('jsonkit get --help renders while the required path is missing', () => {
   );
 });
 
-test('jsonkit get -h omits Details and EXAMPLES and points to extended help', () => {
-  expect(invoke(main, ['get', '-h'])).toEqual(
+test('jsonkit get -h omits Details and EXAMPLES and points to extended help', async () => {
+  await expect(run(['get', '-h'])).resolves.toEqual(
     page(
       'jsonkit get · Read one value at a path.',
       '',
@@ -313,12 +344,12 @@ test('jsonkit get -h omits Details and EXAMPLES and points to extended help', ()
   );
 });
 
-test('jsonkit select --bogus --help renders too, because help takes over held input faults', () => {
-  expect(invoke(main, ['select', '--bogus', '--help'])).toEqual(select);
+test('jsonkit select --bogus --help renders too, because help takes over held input faults', async () => {
+  await expect(run(['select', '--bogus', '--help'])).resolves.toEqual(select);
 });
 
-test('jsonkit fetch --help opens with the deprecation message under the masthead', () => {
-  expect(invoke(main, ['fetch', '--help'])).toEqual(
+test('jsonkit fetch --help opens with the deprecation message under the masthead', async () => {
+  await expect(run(['fetch', '--help'])).resolves.toEqual(
     page(
       'jsonkit fetch · Read one value at a path.',
       '  Deprecated: Use get instead.',
@@ -344,8 +375,8 @@ test('jsonkit fetch --help opens with the deprecation message under the masthead
   );
 });
 
-test('jsonkit debug --help prints the page of a Command no listing shows', () => {
-  expect(invoke(main, ['debug', '--help'])).toEqual(
+test('jsonkit debug --help prints the page of a Command no listing shows', async () => {
+  await expect(run(['debug', '--help'])).resolves.toEqual(
     page(
       'jsonkit debug · Dump the parsed document.',
       '',
@@ -367,44 +398,44 @@ test('jsonkit debug --help prints the page of a Command no listing shows', () =>
   );
 });
 
-test('jsonkit --version prints the name and the declared version', () => {
-  expect(invoke(main, ['--version'])).toEqual({
+test('jsonkit --version prints the name and the declared version', async () => {
+  await expect(run(['--version'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'jsonkit v0.0.0\n',
   });
 });
 
-test('jsonkit get --version prints the same line, because the version is an Application fact', () => {
-  expect(invoke(main, ['get', '--version'])).toEqual({
+test('jsonkit get --version prints the same line, because the version is an Application fact', async () => {
+  await expect(run(['get', '--version'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'jsonkit v0.0.0\n',
   });
 });
 
-test('an override of helpPage changes jsonkit --help while help() stays installed', () => {
-  expect(invoke(branded, ['branded'])).toEqual({
+test('an override of helpPage changes jsonkit --help while help() stays installed', async () => {
+  await expect(branded('branded')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'jsonkit: Read and reshape one JSON document.\n',
   });
 });
 
-test('a broken helpPage override reports one diagnostic on stderr and returns 1', () => {
-  expect(invoke(branded, ['broken'])).toEqual({
+test('a broken helpPage override reports one diagnostic on stderr and returns 1', async () => {
+  await expect(branded('broken')).resolves.toEqual({
     status: 1,
     stderr: 'jsonkit: Something went wrong.\n',
     stdout: '',
   });
 });
 
-/** The same application on a terminal whose stdout reports a fixed width and no `COLUMNS`. */
-const sized = new URL('fixtures/width.mjs', import.meta.url);
-
-/** One invocation on a terminal `columns` wide. */
+/** One invocation on a terminal `columns` wide on stdout, with no `COLUMNS` and no styling. */
 function at(columns: number, argv: string[]) {
-  return invoke(sized, [String(columns), ...argv]);
+  return run(argv, {
+    rendering: { color: 'never', hyperlinks: 'never', modifiers: 'never' },
+    terminal: { columns, streams: ['stdout'] },
+  });
 }
 
 /** The lines of a page that run past `columns`. */
@@ -412,8 +443,8 @@ function overflowing(stdout: string, columns: number): string[] {
   return stdout.split('\n').filter((line) => line.length > columns);
 }
 
-test('jsonkit --help on a 60-column terminal wraps its prose and keeps its literals whole', () => {
-  expect(at(60, ['--help'])).toEqual(
+test('jsonkit --help on a 60-column terminal wraps its prose and keeps its literals whole', async () => {
+  await expect(at(60, ['--help'])).resolves.toEqual(
     page(
       'jsonkit · Read and reshape one JSON document.',
       '',
@@ -471,8 +502,9 @@ test('jsonkit --help on a 60-column terminal wraps its prose and keeps its liter
   );
 });
 
-test('jsonkit --help on a 30-column terminal stacks its COMMANDS rows', () => {
-  const blocks = at(30, ['--help']).stdout.split('\n\n');
+test('jsonkit --help on a 30-column terminal stacks its COMMANDS rows', async () => {
+  const { stdout } = await at(30, ['--help']);
+  const blocks = stdout.split('\n\n');
   expect(blocks.find((block) => block.startsWith('COMMANDS\n'))).toBe(
     [
       'COMMANDS',
@@ -493,31 +525,42 @@ test('jsonkit --help on a 30-column terminal stacks its COMMANDS rows', () => {
   );
 });
 
-test.each([40, 60])('jsonkit -h fits a %i-column terminal', (columns) => {
-  const result = at(columns, ['-h']);
+test.each([40, 60])('jsonkit -h fits a %i-column terminal', async (columns) => {
+  const result = await at(columns, ['-h']);
   expect(result.status).toBe(0);
   expect(overflowing(result.stdout, columns)).toEqual([]);
 });
 
-test('jsonkit get --help and select --help fit 60 columns, and at 40 only their literals overflow', () => {
+test('jsonkit get --help and select --help fit 60 columns, and at 40 only their literals overflow', async () => {
   for (const argv of [
     ['get', '--help'],
     ['select', '--help'],
   ]) {
-    const result = at(60, argv);
+    const result = await at(60, argv);
     expect(result.status).toBe(0);
     expect(overflowing(result.stdout, 60)).toEqual([]);
   }
-  expect(overflowing(at(40, ['get', '--help']).stdout, 40)).toEqual([
-    '  $ jsonkit get nested.deep.value -f doc.json',
-  ]);
-  expect(overflowing(at(40, ['select', '--help']).stdout, 40)).toEqual([
+  const get = await at(40, ['get', '--help']);
+  expect(overflowing(get.stdout, 40)).toEqual(['  $ jsonkit get nested.deep.value -f doc.json']);
+  const selectPage = await at(40, ['select', '--help']);
+  expect(overflowing(selectPage.stdout, 40)).toEqual([
     '  jsonkit select --field <field>... [options]',
   ]);
 });
 
-/** The color plugin's run of jsonkit's help page, on a capable terminal or piped. */
-const colored = new URL('fixtures/color.mjs', import.meta.url);
+/** The color plugin's run of jsonkit's help page, on a capable terminal or with every stream piped. */
+function colored(
+  terminal: 'pipe' | 'tty',
+  argv: string[],
+  env: Record<string, string | undefined>,
+) {
+  return run(argv, {
+    env,
+    // A page taller than the terminal goes to the pager; this stub stands for the real `less` with LESS=FRX, which the spawn piped through unchanged.
+    programs: { '/bin/sh': ({ input }) => ({ stdout: input }) },
+    ...(terminal === 'tty' ? { terminal: { columns: 100 } } : {}),
+  });
+}
 
 /** One SGR sequence and the parameters it carries. */
 const sgr = new RegExp(`${String.fromCodePoint(27)}\\[(?<parameters>[0-9;]*)m`, 'gu');
@@ -531,23 +574,19 @@ function hasColor(text: string): boolean {
   );
 }
 
-test('jsonkit --help --no-color prints no color on a capable terminal, even under FORCE_COLOR', () => {
+test('jsonkit --help --no-color prints no color on a capable terminal, even under FORCE_COLOR', async () => {
   const variables = { COLORTERM: undefined, NO_COLOR: undefined, TERM: 'xterm' };
   const forced = { ...variables, FORCE_COLOR: '1' };
-  const colorful = invoke(colored, ['tty', '--help'], { env: forced });
+  const colorful = await colored('tty', ['--help'], forced);
   expect(colorful.status).toBe(0);
   expect(hasColor(colorful.stdout)).toBe(true);
-  const off = invoke(colored, ['tty', '--help', '--no-color'], { env: forced });
+  const off = await colored('tty', ['--help', '--no-color'], forced);
   expect(off.status).toBe(0);
   expect(off.stdout).toContain('--[no-]color');
   expect(hasColor(off.stdout)).toBe(false);
-  const piped = invoke(colored, ['pipe', '--help'], {
-    env: { ...variables, FORCE_COLOR: undefined },
-  });
+  const piped = await colored('pipe', ['--help'], { ...variables, FORCE_COLOR: undefined });
   expect(hasColor(piped.stdout)).toBe(false);
-  const on = invoke(colored, ['pipe', '--help', '--color'], {
-    env: { ...variables, FORCE_COLOR: undefined },
-  });
+  const on = await colored('pipe', ['--help', '--color'], { ...variables, FORCE_COLOR: undefined });
   expect(on.status).toBe(0);
   expect(hasColor(on.stdout)).toBe(true);
 });
