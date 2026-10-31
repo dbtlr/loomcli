@@ -19,8 +19,6 @@ const dispatch = ({ out }: Pick<ActionContext<unknown>, 'out'>) => out.print('di
 type FailureDeclaration = NonNullable<Parameters<typeof manifestCommand>[0]['failures']>[number];
 
 async function run(args: string[] = [], env: Record<string, string | undefined> = {}) {
-  // A test that reads a declaration fault's own sentence runs the fixture as a development build.
-
   // The manifest reads each class's statics alone, so no fixture constructs one.
 
   /** A data failure, 65. */
@@ -271,6 +269,7 @@ async function run(args: string[] = [], env: Record<string, string | undefined> 
   return await runOnMock(factory(), {
     argv,
     env,
+    // A test that reads a declaration fault's own sentence runs the fixture as a development build.
     release: {
       build: z
         .enum(['source', 'development', 'distributed'])

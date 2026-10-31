@@ -35,6 +35,7 @@ function redirect(status: number, location: string) {
   return new Response(null, { headers: { location }, status });
 }
 
+/** The contents a release lists under a file name: its sums, or one of its assets. */
 function assetOf(release: GitHub['releases'][string] | undefined, file: string) {
   if (file === 'SHA256SUMS') {
     return release?.sums;
@@ -42,6 +43,7 @@ function assetOf(release: GitHub['releases'][string] | undefined, file: string) 
   return release?.assets?.[file];
 }
 
+/** Redirects `text` back to itself until it has been redirected `hops` times, then lets GitHub answer. */
 function hop(hops: number, text: string) {
   const url = new URL(text);
   const done = Number(url.searchParams.get('hop') ?? '0');
@@ -129,8 +131,6 @@ function selfUpdateApplication(
     return redirect(302, `${assetHost}/${download.tag}/${download.file}`);
   }
 
-  /** The contents a release lists under a file name: its sums, or one of its assets. */
-
   /** What the asset host answers: the file's bytes. */
   function answerAssets(url: URL) {
     const [tag, file] = url.pathname.slice(1).split('/');
@@ -186,8 +186,6 @@ function selfUpdateApplication(
     }
     return typeof rule === 'number' ? new Response('Unavailable', { status: rule }) : undefined;
   }
-
-  /** Redirects `text` back to itself until it has been redirected `hops` times, then lets GitHub answer. */
 
   /** A rule the scenario sets for URLs that contain a fragment, applied before GitHub answers. */
   function ruled(text: string, signal: AbortSignal | null | undefined) {
