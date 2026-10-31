@@ -1,3 +1,4 @@
+import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for ordered help sections (docs/plugins/help.md#ordered-help-sections).
  *
@@ -43,18 +44,14 @@
  *   and layout. No version field changes in the implementation PR.
  */
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
-
-const fixture = new URL('fixtures/help-sections.mjs', import.meta.url);
+import { run as fixtureRun } from './fixtures/help-sections.mjs';
 
 function page(...lines: string[]) {
   return { status: 0, stderr: '', stdout: `${lines.join('\n')}\n` };
 }
 
-test('section paths and page orders are frozen help metadata, without installing help', () => {
-  const result = invoke(fixture, ['metadata']);
+test('section paths and page orders are frozen help metadata, without installing help', async () => {
+  const result = await fixtureRun(['metadata']);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   expect(JSON.parse(result.stdout)).toEqual({
@@ -70,8 +67,8 @@ test('section paths and page orders are frozen help metadata, without installing
 
 test.each(['--help', '-h'])(
   'nested Command sections replace defaults on %s and retain the child hint',
-  (spelling) => {
-    expect(invoke(fixture, ['commands', spelling])).toEqual(
+  async (spelling) => {
+    await expect(fixtureRun(['commands', spelling])).resolves.toEqual(
       page(
         'work',
         '',
@@ -96,8 +93,8 @@ test.each(['--help', '-h'])(
   },
 );
 
-test('named sections combine local and global options, preserve direct members, and fold defaults on a childless root', () => {
-  expect(invoke(fixture, ['options', '--help'])).toEqual(
+test('named sections combine local and global options, preserve direct members, and fold defaults on a childless root', async () => {
+  await expect(fixtureRun(['options', '--help'])).resolves.toEqual(
     page(
       'report',
       '',
@@ -137,10 +134,10 @@ const machinery = ['MACHINERY', '  info  Inspect machinery.'];
 
 test.each(['ordered', 'parent-order'])(
   'partial order %s ignores hidden paths and keeps outer sections contiguous',
-  (scenario) => {
+  async (scenario) => {
     const first =
       scenario === 'ordered' ? [...machinery, '', ...work] : [...work, '', ...machinery];
-    expect(invoke(fixture, [scenario, '--help'])).toEqual(
+    await expect(fixtureRun([scenario, '--help'])).resolves.toEqual(
       page(
         'ordered',
         '',
@@ -170,8 +167,8 @@ test.each(['ordered', 'parent-order'])(
   },
 );
 
-test('invalid paths are rejected by ordinary extension validation in every declaration slot', () => {
-  const result = invoke(fixture, ['invalid']);
+test('invalid paths are rejected by ordinary extension validation in every declaration slot', async () => {
+  const result = await fixtureRun(['invalid']);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   const rejected: unknown = JSON.parse(result.stdout);
@@ -181,8 +178,8 @@ test('invalid paths are rejected by ordinary extension validation in every decla
 
 test.each(['--help', '-h'])(
   'named-only child listings keep the %s hint without printing COMMANDS',
-  (spelling) => {
-    const result = invoke(fixture, ['named-only', spelling]);
+  async (spelling) => {
+    const result = await fixtureRun(['named-only', spelling]);
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).not.toContain('\nCOMMANDS\n');
@@ -190,8 +187,8 @@ test.each(['--help', '-h'])(
   },
 );
 
-test('a child page owns option order, can reverse defaults, and lists plugin globals in authored sections', () => {
-  expect(invoke(fixture, ['scoped', 'tools', '--help'])).toEqual(
+test('a child page owns option order, can reverse defaults, and lists plugin globals in authored sections', async () => {
+  await expect(fixtureRun(['scoped', 'tools', '--help'])).resolves.toEqual(
     page(
       'scoped tools',
       '',
@@ -216,8 +213,8 @@ test('a child page owns option order, can reverse defaults, and lists plugin glo
   );
 });
 
-test('a nested Command uses its own child section order, without enclosing its page in its membership', () => {
-  expect(invoke(fixture, ['child-order', 'tools', '--help'])).toEqual(
+test('a nested Command uses its own child section order, without enclosing its page in its membership', async () => {
+  await expect(fixtureRun(['child-order', 'tools', '--help'])).resolves.toEqual(
     page(
       'nested tools',
       '',
@@ -238,8 +235,8 @@ test('a nested Command uses its own child section order, without enclosing its p
   );
 });
 
-test('grouping preserves graph authoring order, including hidden and plugin-attached Commands', () => {
-  const result = invoke(fixture, ['graph']);
+test('grouping preserves graph authoring order, including hidden and plugin-attached Commands', async () => {
+  const result = await fixtureRun(['graph']);
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout)).toEqual([
     'info',
@@ -257,8 +254,8 @@ test('grouping preserves graph authoring order, including hidden and plugin-atta
   ]);
 });
 
-test('nested rows measure terminal columns and literal heading markers print without markup', () => {
-  expect(invoke(fixture, ['wide', '--help'])).toEqual(
+test('nested rows measure terminal columns and literal heading markers print without markup', async () => {
+  await expect(fixtureRun(['wide', '--help'])).resolves.toEqual(
     page(
       'wide',
       '',
@@ -274,7 +271,7 @@ test('nested rows measure terminal columns and literal heading markers print wit
       '  -h, --help  Show this help.',
     ),
   );
-  const styled = invoke(fixture, ['wide-styled', '--help']);
+  const styled = await fixtureRun(['wide-styled', '--help']);
   expect(styled.status).toBe(0);
   expect(styled.stderr).toBe('');
   expect(styled.stdout).toContain(
@@ -282,8 +279,8 @@ test('nested rows measure terminal columns and literal heading markers print wit
   );
 });
 
-test('completion keeps canonical graph order and core descriptions under help section ordering', () => {
-  expect(invoke(fixture, ['completion', 'completion', '__complete', '--', ''])).toEqual({
+test('completion keeps canonical graph order and core descriptions under help section ordering', async () => {
+  await expect(fixtureRun(['completion', 'completion', '__complete', '--', ''])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout:

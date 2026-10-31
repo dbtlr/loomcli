@@ -1,4 +1,4 @@
-import { Application, Command, extension, plugin, processHandle } from '@loomcli/core';
+import { Application, Command, extension, plugin } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { json } from '@loomcli/plugins/format/views';
 import { help } from '@loomcli/plugins/help';
@@ -6,80 +6,216 @@ import { helpCommand } from '@loomcli/plugins/help/extension';
 import { manifest } from '@loomcli/plugins/manifest';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 import { version } from '@loomcli/plugins/version';
+import { mockProcess } from '@loomcli/testing';
 import { z } from 'zod';
 
-const dispatch = ({ out }) => out.print('dispatched');
+/** Runs the fixture on isolated process facts and returns its recorded output. */
+async function run(args = [], env = {}) {
+  const status = 0;
+  const output = mockProcess({ env });
+  const handles = [output];
+  let captured = output;
+  const capture = (fields) => {
+    const { terminal, ...facts } = fields;
+    const handle = mockProcess({
+      env,
+      ...facts,
+      ...(terminal !== undefined
+        ? {
+            terminal: {
+              columns: terminal.stdout?.columns ?? terminal.stderr?.columns,
+              rows: 24,
+              streams: ['stdout', 'stderr'].filter((name) => terminal[name]?.isTTY),
+              ...(terminal.background === undefined ? {} : { background: terminal.background }),
+            },
+          }
+        : {}),
+    });
+    handles.push(handle);
+    captured = handle;
+    return handle;
+  };
 
-// A test that reads a defect's own sentence runs the fixture as a development build.
-const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
+  // A test that reads a defect's own sentence runs the fixture as a development build.
+  const release = { build: env.FIXTURE_BUILD ?? 'distributed' };
 
-/** The view a result names, so the formatter adds `json`, `jsonl`, and `--format` beside it. */
-const text = { render: (value) => `${value}\n` };
+  /** The view a result names, so the formatter adds `json`, `jsonl`, and `--format` beside it. */
+  const text = { render: (value) => `${value}\n` };
 
-/** Every entry rule the manifest states, spread over a small application. */
-function application(settings) {
-  const get = new Command('get', {
-    description: 'Read one value.',
-    extensions: [
-      manifestCommand({ details: 'Quote a path.' }),
-      helpCommand({ details: 'Help prose.', examples: [{ command: 'get b', note: 'B.' }] }),
-    ],
-  })
-    .argument('path', { description: 'The path.', required: true })
-    .option('raw', { description: 'Print raw.', env: 'APP_RAW', polarity: 'both', type: 'boolean' })
-    .option('debug', { hidden: true, type: 'boolean' })
-    .option('limit', {
-      default: '10',
-      description: 'The limit.',
-      env: ['APP_LIMIT', 'APP_LIMIT_FALLBACK'],
-      envAllowEmpty: true,
-      short: 'l',
-      type: 'string',
-      validate: z.string().regex(/^[0-9]+$/u),
+  /** Every entry rule the manifest states, spread over a small application. */
+  function application(settings) {
+    const get = new Command('get', {
+      description: 'Read one value.',
+      extensions: [
+        manifestCommand({ details: 'Quote a path.' }),
+        helpCommand({ details: 'Help prose.', examples: [{ command: 'get b', note: 'B.' }] }),
+      ],
     })
-    .option('tag', { env: 'APP_TAGS', envDelimiter: ',', multiple: true, type: 'string' })
-    .option('verbose', { description: 'Say more.', env: 'APP_VERBOSE', short: 'v', type: 'count' })
-    .option('backup', { default: 'none', implied: 'simple', type: 'string' })
-    .option('mode', { default: undefined, type: 'string', validate: z.string().optional() })
-    .action(dispatch)
-    .extend(manifestCommand({ examples: [{ command: 'get a' }] }));
-  const show = new Command('show', { description: 'Show a value.' })
-    .result({ views: { text } })
-    .action(({ out }) => out.results('shown'));
-  const old = new Command('old', { deprecated: 'Use get instead.' }).action(dispatch);
-  const secret = new Command('secret', { description: 'A hidden command.', hidden: true }).action(
-    dispatch,
-  );
-  const clear = new Command('clear', { description: 'Empty the cache.' }).action(dispatch);
-  const cache = new Command('cache', { description: 'Manage the cache.' }).command(clear);
-  const weird = new Command('weird', {
-    description: 'A \u009b control, a \u009f edge, and a \u00a0 space.',
-  })
-    .option('marked', { default: 'c\uE000\uE001\uE002\uE003d\uE003E000e', type: 'string' })
-    .action(dispatch);
-  const pick = new Command('pick')
-    .argument('index', { default: '0', validate: z.string().regex(/^[0-9]+$/u) })
-    .action(dispatch);
-  const empty = new Command('empty', { extensions: [manifestCommand({})] }).action(dispatch);
-  return new Application('app', {
-    description: 'A fixture application.',
-    plugins: [help(), version(), format(), manifest(settings)],
-    version: '1.2.0',
-  })
-    .globalOption('file', { description: 'The document.', short: 'f', type: 'string' })
-    .globalOption('trace', { hidden: true, type: 'boolean' })
-    .command(get)
-    .command(show)
-    .command(old)
-    .command(secret)
-    .command(cache)
-    .command(weird)
-    .command(empty)
-    .command(pick)
-    .action(dispatch);
+      .argument('path', { description: 'The path.', required: true })
+      .option('raw', {
+        description: 'Print raw.',
+        env: 'APP_RAW',
+        polarity: 'both',
+        type: 'boolean',
+      })
+      .option('debug', { hidden: true, type: 'boolean' })
+      .option('limit', {
+        default: '10',
+        description: 'The limit.',
+        env: ['APP_LIMIT', 'APP_LIMIT_FALLBACK'],
+        envAllowEmpty: true,
+        short: 'l',
+        type: 'string',
+        validate: z.string().regex(/^[0-9]+$/u),
+      })
+      .option('tag', { env: 'APP_TAGS', envDelimiter: ',', multiple: true, type: 'string' })
+      .option('verbose', {
+        description: 'Say more.',
+        env: 'APP_VERBOSE',
+        short: 'v',
+        type: 'count',
+      })
+      .option('backup', { default: 'none', implied: 'simple', type: 'string' })
+      .option('mode', { default: undefined, type: 'string', validate: z.string().optional() })
+      .action(dispatch)
+      .extend(manifestCommand({ examples: [{ command: 'get a' }] }));
+    const show = new Command('show', { description: 'Show a value.' })
+      .result({ views: { text } })
+      .action(({ out }) => out.results('shown'));
+    const old = new Command('old', { deprecated: 'Use get instead.' }).action(dispatch);
+    const secret = new Command('secret', { description: 'A hidden command.', hidden: true }).action(
+      dispatch,
+    );
+    const clear = new Command('clear', { description: 'Empty the cache.' }).action(dispatch);
+    const cache = new Command('cache', { description: 'Manage the cache.' }).command(clear);
+    const weird = new Command('weird', {
+      description: 'A \u009b control, a \u009f edge, and a \u00a0 space.',
+    })
+      .option('marked', { default: 'c\uE000\uE001\uE002\uE003d\uE003E000e', type: 'string' })
+      .action(dispatch);
+    const pick = new Command('pick')
+      .argument('index', { default: '0', validate: z.string().regex(/^[0-9]+$/u) })
+      .action(dispatch);
+    const empty = new Command('empty', { extensions: [manifestCommand({})] }).action(dispatch);
+    return new Application('app', {
+      description: 'A fixture application.',
+      plugins: [help(), version(), format(), manifest(settings)],
+      version: '1.2.0',
+    })
+      .globalOption('file', { description: 'The document.', short: 'f', type: 'string' })
+      .globalOption('trace', { hidden: true, type: 'boolean' })
+      .command(get)
+      .command(show)
+      .command(old)
+      .command(secret)
+      .command(cache)
+      .command(weird)
+      .command(empty)
+      .command(pick)
+      .action(dispatch);
+  }
+
+  /** An application whose one option declares a default that JSON cannot carry. */
+
+  /** The same application with no description anywhere. */
+
+  /** A hand-written validator whose converter publishes what `input` returns. */
+
+  /** An application whose one option publishes the schema `input` returns. */
+
+  const configKey = extension('@fixture/config/key', { schema: z.string(), target: 'option' });
+
+  /** An application whose configuration source declares the schema `input` publishes. */
+  const configured = (input) => () =>
+    new Application('app', {
+      description: 'Probe a configuration.',
+      plugins: [
+        manifest(),
+        plugin('@fixture/config', {
+          extensions: [configKey],
+          source: {
+            binding: configKey,
+            load: async () => ({ default: async () => ({}) }),
+            schema: publishing(input),
+          },
+        }),
+      ],
+    }).action(dispatch);
+
+  /** A value that holds itself, which no JSON text can carry. */
+
+  /** An application whose non-plain default sits on a global, a child Command's option, or an argument. */
+
+  /**
+   * An application whose `json` key holds a view that declares no media type and whose `wire` key
+   * holds a mapped `json()`, so the document reads each encoding from the result, not from a name.
+   */
+  const wired = () =>
+    new Application('app', { plugins: [format(), manifest()] })
+      .result({ views: { json: text, wire: json({ map: (value) => ({ value }) }) } })
+      .action(({ out }) => out.results('wired'));
+
+  /** Descriptions and a deprecation message an author wrote across several lines. */
+
+  const scenarios = {
+    app: application,
+    'argument-nan': () => placed('argument', Number.NaN),
+    'array-date': () => defaulted([new Date(0)]),
+    bigint: () => defaulted(10n),
+    'child-nan': () => placed('child', Number.NaN),
+    'configuration-nan': configured(() => ({ minimum: Number.NaN, type: 'object' })),
+    configured: configured(() => ({
+      properties: { retries: { type: 'integer' } },
+      type: 'object',
+    })),
+    date: () => defaulted(new Date(0)),
+    'deep-bigint': () => defaulted({ outer: { inner: 10n } }),
+    function: () => defaulted(() => 'ten'),
+    'global-nan': () => placed('global', Number.NaN),
+    infinity: () => defaulted(Number.POSITIVE_INFINITY),
+    map: () => defaulted(new Map()),
+    multiline,
+    nan: () => defaulted(Number.NaN),
+    'null-prototype': () => bare(Object.assign(Object.create(null), { plain: [1, { two: null }] })),
+    schema: published(() => ({ minimum: Number.NaN, type: 'number' })),
+    'schema-cycle': published(looped),
+    short: () => application({ short: 'M' }),
+    wired,
+  };
+
+  const [scenario, ...argv] = args;
+
+  // `COLOR=always` forces color and modifiers on, so a test compares the bytes under both settings.
+  const forced = env.COLOR === 'always';
+
+  await scenarios[scenario]().run({
+    process: capture({ argv, release }),
+    ...(forced ? { rendering: { color: 'always', modifiers: 'always' } } : {}),
+  });
+  return {
+    status: captured.exitCode ?? status,
+    stderr: handles.map((handle) => handle.stderr.text).join(''),
+    stdout: handles.map((handle) => handle.stdout.text).join(''),
+  };
 }
 
-/** An application whose one option declares a default that JSON cannot carry. */
+const dispatch = ({ out }) => out.print('dispatched');
+function publishing(input) {
+  return {
+    '~standard': {
+      jsonSchema: { input, output: () => ({}) },
+      validate: (value) => ({ value }),
+      vendor: 'fixture',
+      version: 1,
+    },
+  };
+}
+function looped() {
+  const value = { type: 'string' };
+  value.self = value;
+  return value;
+}
+
 function defaulted(value) {
   return new Application('app', {
     description: 'Probe a default.',
@@ -93,61 +229,22 @@ function defaulted(value) {
     })
     .action(dispatch);
 }
-
-/** The same application with no description anywhere. */
 function bare(value) {
   return new Application('app', { plugins: [manifest()] })
     .option('odd', { default: value, type: 'string', validate: z.any() })
     .action(dispatch);
 }
-
-/** A hand-written validator whose converter publishes what `input` returns. */
-function publishing(input) {
-  return {
-    '~standard': {
-      jsonSchema: { input, output: () => ({}) },
-      validate: (value) => ({ value }),
-      vendor: 'fixture',
-      version: 1,
-    },
-  };
-}
-
-/** An application whose one option publishes the schema `input` returns. */
 const published = (input) => () =>
   new Application('app', { description: 'Probe a schema.', plugins: [manifest()] })
     .option('odd', { description: 'An odd schema.', type: 'string', validate: publishing(input) })
     .action(dispatch);
-
-const configKey = extension('@fixture/config/key', { schema: z.string(), target: 'option' });
-
-/** An application whose configuration source declares the schema `input` publishes. */
-const configured = (input) => () =>
-  new Application('app', {
-    description: 'Probe a configuration.',
-    plugins: [
-      manifest(),
-      plugin('@fixture/config', {
-        extensions: [configKey],
-        source: {
-          binding: configKey,
-          load: async () => ({ default: async () => ({}) }),
-          schema: publishing(input),
-        },
-      }),
-    ],
-  }).action(dispatch);
-
-/** A value that holds itself, which no JSON text can carry. */
-function looped() {
-  const value = { type: 'string' };
-  value.self = value;
-  return value;
-}
-
-/** An application whose non-plain default sits on a global, a child Command's option, or an argument. */
 function placed(where, value) {
-  const odd = { default: value, description: 'An odd default.', type: 'string', validate: z.any() };
+  const odd = {
+    default: value,
+    description: 'An odd default.',
+    type: 'string',
+    validate: z.any(),
+  };
   const app = new Application('app', {
     description: 'Probe a default.',
     plugins: [manifest()],
@@ -166,17 +263,6 @@ function placed(where, value) {
     )
     .action(dispatch);
 }
-
-/**
- * An application whose `json` key holds a view that declares no media type and whose `wire` key
- * holds a mapped `json()`, so the document reads each encoding from the result, not from a name.
- */
-const wired = () =>
-  new Application('app', { plugins: [format(), manifest()] })
-    .result({ views: { json: text, wire: json({ map: (value) => ({ value }) }) } })
-    .action(({ out }) => out.results('wired'));
-
-/** Descriptions and a deprecation message an author wrote across several lines. */
 function multiline() {
   const fetch = new Command('fetch', {
     deprecated: 'Use get\ninstead.',
@@ -194,33 +280,4 @@ function multiline() {
     .action(dispatch);
 }
 
-const scenarios = {
-  app: application,
-  'argument-nan': () => placed('argument', Number.NaN),
-  'array-date': () => defaulted([new Date(0)]),
-  bigint: () => defaulted(10n),
-  'child-nan': () => placed('child', Number.NaN),
-  'configuration-nan': configured(() => ({ minimum: Number.NaN, type: 'object' })),
-  configured: configured(() => ({ properties: { retries: { type: 'integer' } }, type: 'object' })),
-  date: () => defaulted(new Date(0)),
-  'deep-bigint': () => defaulted({ outer: { inner: 10n } }),
-  function: () => defaulted(() => 'ten'),
-  'global-nan': () => placed('global', Number.NaN),
-  infinity: () => defaulted(Number.POSITIVE_INFINITY),
-  map: () => defaulted(new Map()),
-  multiline,
-  nan: () => defaulted(Number.NaN),
-  'null-prototype': () => bare(Object.assign(Object.create(null), { plain: [1, { two: null }] })),
-  schema: published(() => ({ minimum: Number.NaN, type: 'number' })),
-  'schema-cycle': published(looped),
-  short: () => application({ short: 'M' }),
-  wired,
-};
-
-const [scenario, ...argv] = process.argv.slice(2);
-// `COLOR=always` forces color and modifiers on, so a test compares the bytes under both settings.
-const forced = process.env.COLOR === 'always';
-await scenarios[scenario]().run({
-  process: processHandle({ argv, release }),
-  ...(forced ? { rendering: { color: 'always', modifiers: 'always' } } : {}),
-});
+export { run };

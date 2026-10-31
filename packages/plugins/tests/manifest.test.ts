@@ -55,12 +55,11 @@
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { run as fixtureRun } from './fixtures/manifest-run.mjs';
+import { run as settingsRun } from './fixtures/manifest-settings.mjs';
 
-const fixture = new URL('fixtures/manifest-run.mjs', import.meta.url);
-
-function run(scenario: string, argv: string[], env: Record<string, string> = {}) {
-  return invoke(fixture, [scenario, ...argv], { env });
+async function run(scenario: string, argv: string[], env: Record<string, string> = {}) {
+  return await fixtureRun([scenario, ...argv], env);
 }
 
 /** A Command entry as these tests walk it: its name and children, every other field kept as it is. */
@@ -77,15 +76,15 @@ const entrySchema: z.ZodType<Entry> = z.lazy(() =>
 const printedSchema = z.looseObject({ command: entrySchema });
 
 /** The raw document text one invocation printed, after checking that it succeeded. */
-function printed(argv: string[]): string {
-  const result = run('app', argv);
+async function printed(argv: string[]) {
+  const result = await run('app', argv);
   expect(result).toMatchObject({ status: 0, stderr: '' });
   return result.stdout;
 }
 
 /** A document the fixture printed, parsed at the boundary into the fields these tests walk. */
-function documentOf(argv: string[]) {
-  return printedSchema.parse(JSON.parse(printed(argv)));
+async function documentOf(argv: string[]) {
+  return printedSchema.parse(JSON.parse(await printed(argv)));
 }
 
 /** The Command entry at a path of child names under a parsed document's `command`. */
@@ -313,17 +312,18 @@ const getDocument = {
   },
 };
 
-test('the manifest prints the routed slice as indented JSON in the contract key order, with a missing argument held', () => {
-  expect(run('app', ['get', '--manifest'])).toEqual({
+test('the manifest prints the routed slice as indented JSON in the contract key order, with a missing argument held', async () => {
+  await expect(run('app', ['get', '--manifest'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `${JSON.stringify(getDocument, null, 2)}\n`,
   });
 });
 
-test('the envelope carries the configuration fact after globals: null without a source, and the schema a source publishes', () => {
-  expect(JSON.parse(run('app', ['--manifest']).stdout).configuration).toBeNull();
-  const { stdout } = run('configured', ['--manifest']);
+test('the envelope carries the configuration fact after globals: null without a source, and the schema a source publishes', async () => {
+  const fixtureResult1 = await run('app', ['--manifest']);
+  expect(JSON.parse(fixtureResult1.stdout).configuration).toBeNull();
+  const { stdout } = await run('configured', ['--manifest']);
   const document = JSON.parse(stdout);
   expect(document.configuration).toEqual({
     schema: { properties: { retries: { type: 'integer' } }, type: 'object' },
@@ -341,17 +341,17 @@ test('the envelope carries the configuration fact after globals: null without a 
   ]);
 });
 
-test('manifest({ short }) prints the routed slice through its chosen short spelling', () => {
-  const result = run('short', ['get', '-M']);
+test('manifest({ short }) prints the routed slice through its chosen short spelling', async () => {
+  const result = await run('short', ['get', '-M']);
   expect(result).toMatchObject({ status: 0, stderr: '' });
-  expect(result).toEqual(run('short', ['get', '--manifest']));
+  expect(result).toEqual(await run('short', ['get', '--manifest']));
   expect(printedSchema.parse(JSON.parse(result.stdout)).command.name).toBe('get');
   expect(result.stdout).toContain('"short": "-M"');
 });
 
-test('manifest() declares no short spelling by default', () => {
-  expect(run('app', ['get', '-M'])).toMatchObject({ status: 2, stdout: '' });
-  expect(run('app', ['get', '--manifest'])).toEqual({
+test('manifest() declares no short spelling by default', async () => {
+  await expect(run('app', ['get', '-M'])).resolves.toMatchObject({ status: 2, stdout: '' });
+  await expect(run('app', ['get', '--manifest'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `${JSON.stringify(getDocument, null, 2)}\n`,
@@ -359,32 +359,31 @@ test('manifest() declares no short spelling by default', () => {
 });
 
 /** The factory or declaration fault observed through a process running the public API. */
-function settingsOutcome(mode: string, value?: string): unknown {
-  const settingsFixture = new URL('fixtures/manifest-settings.mjs', import.meta.url);
-  const result = invoke(settingsFixture, value === undefined ? [mode] : [mode, value]);
+async function settingsOutcome(mode: string, value?: string) {
+  const result = await settingsRun(value === undefined ? [mode] : [mode, value]);
   expect(result).toMatchObject({ status: 0, stderr: '' });
   return JSON.parse(result.stdout);
 }
 
-test('manifest accepts omitted or empty settings and either case of ASCII letter', () => {
-  expect(settingsOutcome('settings')).toBe('returned');
+test('manifest accepts omitted or empty settings and either case of ASCII letter', async () => {
+  await expect(settingsOutcome('settings')).resolves.toBe('returned');
   for (const settings of [{}, { short: 'm' }, { short: 'M' }]) {
-    expect(settingsOutcome('settings', JSON.stringify(settings))).toBe('returned');
+    await expect(settingsOutcome('settings', JSON.stringify(settings))).resolves.toBe('returned');
   }
 });
 
 test.each(['global', 'local', 'plugin'])(
   'the manifest short spelling colliding with a %s option reports the ordinary spelling-taken rule',
-  (owner) => {
-    expect(settingsOutcome('collision', owner)).toMatchObject({
+  async (owner) => {
+    await expect(settingsOutcome('collision', owner)).resolves.toMatchObject({
       rule: '@loomcli/core/spelling-taken',
       sentence: expect.stringContaining(owner === 'plugin' ? '-h' : '-M'),
     });
   },
 );
 
-test('the root slice lists every visible Command and omits the hidden one', () => {
-  const text = printed(['--manifest']);
+test('the root slice lists every visible Command and omits the hidden one', async () => {
+  const text = await printed(['--manifest']);
   const raw: unknown = JSON.parse(text);
   expect(Object.keys(Object(raw))).toEqual([
     'name',
@@ -419,8 +418,8 @@ test('the root slice lists every visible Command and omits the hidden one', () =
   ]);
 });
 
-test('a result reads kind, views, default, and media types in order, and the formatter option carries its enum and its control mark', () => {
-  const show = entryAt(documentOf(['show', '--manifest']), []);
+test('a result reads kind, views, default, and media types in order, and the formatter option carries its enum and its control mark', async () => {
+  const show = entryAt(await documentOf(['show', '--manifest']), []);
   expect(show.result).toEqual({
     default: 'text',
     kind: 'value',
@@ -455,8 +454,8 @@ test('a result reads kind, views, default, and media types in order, and the for
   ]);
 });
 
-test('a result reads each encoding from the media types its views declare, never from a view name', () => {
-  const result = run('wired', ['--manifest']);
+test('a result reads each encoding from the media types its views declare, never from a view name', async () => {
+  const result = await run('wired', ['--manifest']);
   expect(result).toMatchObject({ status: 0, stderr: '' });
   const document: { encodings: unknown; command: { result: unknown } } = JSON.parse(result.stdout);
   expect(document.encodings).toEqual(encodings);
@@ -468,14 +467,14 @@ test('a result reads each encoding from the media types its views declare, never
   });
 });
 
-test('a deprecated Command carries its message, and a value with no field adds nothing', () => {
-  const document = documentOf(['--manifest']);
+test('a deprecated Command carries its message, and a value with no field adds nothing', async () => {
+  const document = await documentOf(['--manifest']);
   expect(entryAt(document, ['old']).deprecated).toBe('Use get instead.');
   expect(entryAt(document, ['empty'])).toMatchObject({ details: [], examples: [] });
 });
 
-test('a line break in a description or a deprecation message prints as one space', () => {
-  const result = run('multiline', ['fetch', '--manifest']);
+test('a line break in a description or a deprecation message prints as one space', async () => {
+  const result = await run('multiline', ['fetch', '--manifest']);
   expect(result).toMatchObject({ status: 0, stderr: '' });
   const document = printedSchema.parse(JSON.parse(result.stdout));
   expect(document.description).toBe('Do the work.');
@@ -488,20 +487,20 @@ test('a line break in a description or a deprecation message prints as one space
   });
 });
 
-test('a hidden Command routed to directly prints its own slice, and a group prints its children', () => {
-  expect(entryAt(documentOf(['secret', '--manifest']), [])).toMatchObject({
+test('a hidden Command routed to directly prints its own slice, and a group prints its children', async () => {
+  expect(entryAt(await documentOf(['secret', '--manifest']), [])).toMatchObject({
     description: 'A hidden command.',
     name: 'secret',
   });
-  expect(entryAt(documentOf(['cache', '--manifest']), [])).toMatchObject({
+  expect(entryAt(await documentOf(['cache', '--manifest']), [])).toMatchObject({
     children: [{ description: 'Empty the cache.', name: 'clear', path: ['cache', 'clear'] }],
     hasAction: false,
     name: 'cache',
   });
 });
 
-test('marker characters print exactly, C1 controls escape up to U+009F, and U+00A0 stays raw', () => {
-  const text = printed(['weird', '--manifest']);
+test('marker characters print exactly, C1 controls escape up to U+009F, and U+00A0 stays raw', async () => {
+  const text = await printed(['weird', '--manifest']);
   expect(text).toContain('"description": "A \\u009b control, a \\u009f edge, and a \u00a0 space."');
   expect(text).not.toContain('\u009b');
   expect(entryAt(printedSchema.parse(JSON.parse(text)), []).options).toEqual([
@@ -527,14 +526,14 @@ test('marker characters print exactly, C1 controls escape up to U+009F, and U+00
   ]);
 });
 
-test('the bytes are the same with color and modifiers forced on', () => {
-  const plain = run('app', ['get', '--manifest']);
-  const forced = invoke(fixture, ['app', 'get', '--manifest'], { env: { COLOR: 'always' } });
+test('the bytes are the same with color and modifiers forced on', async () => {
+  const plain = await run('app', ['get', '--manifest']);
+  const forced = await fixtureRun(['app', 'get', '--manifest'], { COLOR: 'always' });
   expect(forced).toEqual(plain);
 });
 
-test('an argument entry carries its schema and default, and an absent description reads null', () => {
-  expect(entryAt(documentOf(['pick', '--manifest']), []).arguments).toEqual([
+test('an argument entry carries its schema and default, and an absent description reads null', async () => {
+  expect(entryAt(await documentOf(['pick', '--manifest']), []).arguments).toEqual([
     {
       name: 'index',
       description: null,
@@ -548,26 +547,27 @@ test('an argument entry carries its schema and default, and an absent descriptio
       default: { value: '0' },
     },
   ]);
-  expect(entryAt(documentOf(['--manifest']), ['empty']).description).toBeNull();
+  expect(entryAt(await documentOf(['--manifest']), ['empty']).description).toBeNull();
 });
 
-test('an unknown Command still fails in routing, and an earlier takeover wins', () => {
-  expect(run('app', ['nope', '--manifest'])).toEqual({
+test('an unknown Command still fails in routing, and an earlier takeover wins', async () => {
+  await expect(run('app', ['nope', '--manifest'])).resolves.toEqual({
     status: 2,
     stderr:
       'app: Unknown command "nope". Use one of: get, show, cache, weird, empty, pick.\nRun "app --help" to see the usage.\n',
     stdout: '',
   });
-  expect(run('app', ['--help', '--manifest']).stdout).toMatch(/^app · A fixture application\./u);
-  expect(run('app', ['--version', '--manifest'])).toEqual({
+  const fixtureResult2 = await run('app', ['--help', '--manifest']);
+  expect(fixtureResult2.stdout).toMatch(/^app · A fixture application\./u);
+  await expect(run('app', ['--version', '--manifest'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'app v1.2.0\n',
   });
 });
 
-test('a --manifest token after the passthrough delimiter is not read as the option', () => {
-  expect(run('app', ['get', 'x', '--', '--manifest'])).toEqual({
+test('a --manifest token after the passthrough delimiter is not read as the option', async () => {
+  await expect(run('app', ['get', 'x', '--', '--manifest'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'dispatched\n',
@@ -575,10 +575,11 @@ test('a --manifest token after the passthrough delimiter is not read as the opti
 });
 
 /** One unencodable input's report in each build, so a test compares both at once. */
-function unencodable(scenario: string) {
+async function unencodable(scenario: string) {
+  const fixtureResult3 = await run(scenario, ['--manifest'], { FIXTURE_BUILD: 'development' });
   return {
-    development: run(scenario, ['--manifest'], { FIXTURE_BUILD: 'development' }).stderr,
-    distributed: run(scenario, ['--manifest']),
+    development: fixtureResult3.stderr,
+    distributed: await run(scenario, ['--manifest']),
   };
 }
 
@@ -595,7 +596,7 @@ function reportedAs(field: string) {
   };
 }
 
-test('a declared default that is not plain JSON data fails the write, wherever the input sits', () => {
+test('a declared default that is not plain JSON data fails the write, wherever the input sits', async () => {
   for (const scenario of [
     'bigint',
     'nan',
@@ -608,13 +609,17 @@ test('a declared default that is not plain JSON data fails the write, wherever t
     'global-nan',
     'child-nan',
   ]) {
-    expect(unencodable(scenario)).toEqual(reportedAs('the default of option "--odd"'));
+    await expect(unencodable(scenario)).resolves.toEqual(
+      reportedAs('the default of option "--odd"'),
+    );
   }
-  expect(unencodable('argument-nan')).toEqual(reportedAs('the default of argument "odd"'));
+  await expect(unencodable('argument-nan')).resolves.toEqual(
+    reportedAs('the default of argument "odd"'),
+  );
 });
 
-test('a null-prototype default prints as a plain object, and an absent description reads null', () => {
-  const result = run('null-prototype', ['--manifest']);
+test('a null-prototype default prints as a plain object, and an absent description reads null', async () => {
+  const result = await run('null-prototype', ['--manifest']);
   expect(result).toMatchObject({ status: 0, stderr: '' });
   const document = printedSchema.parse(JSON.parse(result.stdout));
   expect(document.description).toBeNull();
@@ -624,11 +629,15 @@ test('a null-prototype default prints as a plain object, and an absent descripti
   ]);
 });
 
-test('a published schema that is not plain JSON data fails the write', () => {
-  expect(unencodable('schema')).toEqual(reportedAs('the schema of option "--odd"'));
-  expect(unencodable('schema-cycle')).toEqual(reportedAs('the schema of option "--odd"'));
+test('a published schema that is not plain JSON data fails the write', async () => {
+  await expect(unencodable('schema')).resolves.toEqual(reportedAs('the schema of option "--odd"'));
+  await expect(unencodable('schema-cycle')).resolves.toEqual(
+    reportedAs('the schema of option "--odd"'),
+  );
 });
 
-test('a configuration schema that is not plain JSON data fails the write', () => {
-  expect(unencodable('configuration-nan')).toEqual(reportedAs('the configuration schema'));
+test('a configuration schema that is not plain JSON data fails the write', async () => {
+  await expect(unencodable('configuration-nan')).resolves.toEqual(
+    reportedAs('the configuration schema'),
+  );
 });

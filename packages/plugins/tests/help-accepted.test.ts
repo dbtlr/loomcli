@@ -29,9 +29,7 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
-
-const fixture = new URL('fixtures/help-accepted.mjs', import.meta.url);
+import { run as fixtureRun } from './fixtures/help-accepted.mjs';
 
 /** The lines of one section of a page, from its title to the next blank line. */
 function section(page: string, title: string): string[] {
@@ -57,14 +55,14 @@ function optionCells(page: string): Record<string, string | null> {
   return cells;
 }
 
-function pageOf(argv: string[]): string {
-  const result = invoke(fixture, argv);
+async function pageOf(argv: string[]) {
+  const result = await fixtureRun(argv);
   expect(result).toMatchObject({ status: 0, stderr: '' });
   return result.stdout;
 }
 
-test('a row derives its accepted values from a closed set of strings at every level, and nothing when a keyword could narrow it', () => {
-  expect(optionCells(pageOf(['shapes', '--help']))).toEqual({
+test('a row derives its accepted values from a closed set of strings at every level, and nothing when a keyword could narrow it', async () => {
+  expect(optionCells(await pageOf(['shapes', '--help']))).toEqual({
     '--all-annotations': 'One of: a.',
     '--any-annotated': 'One of: a, b.',
     '--any-consts': 'One of: a, b.',
@@ -116,8 +114,8 @@ test('a row derives its accepted values from a closed set of strings at every le
   });
 });
 
-test('an argument row derives from its schema and prints an authored helpArgument sentence', () => {
-  expect(section(pageOf(['pick', '--help']), 'ARGUMENTS')).toEqual([
+test('an argument row derives from its schema and prints an authored helpArgument sentence', async () => {
+  expect(section(await pageOf(['pick', '--help']), 'ARGUMENTS')).toEqual([
     '  mode   The mode. One of: fast, slow.',
     '  size   A whole number.',
     '  names  One of: x, y.',
@@ -133,7 +131,7 @@ test.each([
   ['v-array', ['  values']],
 ])(
   'a variadic argument derives from the top of its schema under the same keyword rules: %s',
-  (name, rows) => {
-    expect(section(pageOf([name, '--help']), 'ARGUMENTS')).toEqual(rows);
+  async (name, rows) => {
+    expect(section(await pageOf([name, '--help']), 'ARGUMENTS')).toEqual(rows);
   },
 );

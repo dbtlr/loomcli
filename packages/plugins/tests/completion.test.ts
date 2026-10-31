@@ -9,7 +9,6 @@ import { Application, Command, locate } from '@loomcli/core';
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@loomcli/core';
 import { describe, expect, it } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { sealedShellEnvironment } from '../../../scripts/test-shell.js';
 import { answer } from '../src/completion/answer.js';
 import { bashScript } from '../src/completion/bash.js';
@@ -20,12 +19,11 @@ import { zshInstalledScript, zshScript } from '../src/completion/zsh.js';
 import { format } from '../src/format/plugin.js';
 import { help } from '../src/help/plugin.js';
 import { verbose } from '../src/verbose/plugin.js';
-
-const fixture = new URL('fixtures/completion.mjs', import.meta.url);
+import { run as fixtureRun } from './fixtures/completion-app.mjs';
 
 /** The answer `__complete` writes for the words after the application name. */
-function complete(...words: string[]): string {
-  const result = invoke(fixture, ['completion', '__complete', '--', ...words]);
+async function complete(...words: string[]) {
+  const result = await fixtureRun(['completion', '__complete', '--', ...words]);
   expect(result).toMatchObject({ status: 0, stderr: '' });
   return result.stdout;
 }
@@ -56,8 +54,8 @@ function framed(lines: readonly string[], directive: number): string {
 }
 
 describe('the answer', () => {
-  it('a Command position offers visible canonical children with descriptions reduced to display text', () => {
-    expect(complete('')).toBe(
+  it('a Command position offers visible canonical children with descriptions reduced to display text', async () => {
+    await expect(complete('')).resolves.toBe(
       framed(
         [
           'completion\tPrint or install a shell completion script.',
@@ -68,12 +66,12 @@ describe('the answer', () => {
         4,
       ),
     );
-    expect(complete('cache', '')).toBe(framed(['clear', 'list\tList entries.'], 4));
-    expect(complete('p')).toBe(framed(['paths\tWalkall paths.'], 4));
+    await expect(complete('cache', '')).resolves.toBe(framed(['clear', 'list\tList entries.'], 4));
+    await expect(complete('p')).resolves.toBe(framed(['paths\tWalkall paths.'], 4));
   });
 
-  it('the completion group offers its shells and installing children, and never __complete', () => {
-    expect(complete('completion', '')).toBe(
+  it('the completion group offers its shells and installing children, and never __complete', async () => {
+    await expect(complete('completion', '')).resolves.toBe(
       framed(
         [
           'bash\tPrint the Bash completion script.',
@@ -87,17 +85,19 @@ describe('the answer', () => {
         4,
       ),
     );
-    expect(complete('completion', 'install', '')).toBe(framed(['bash', 'zsh', 'fish', 'pwsh'], 4));
-    expect(complete('completion', '_')).toBe(framed([], 4));
+    await expect(complete('completion', 'install', '')).resolves.toBe(
+      framed(['bash', 'zsh', 'fish', 'pwsh'], 4),
+    );
+    await expect(complete('completion', '_')).resolves.toBe(framed([], 4));
   });
 
-  it('an alias, a hidden Command, and a deprecated Command are never offered, and each still routes', () => {
-    expect(complete('l')).toBe(framed([], 4));
-    expect(complete('d')).toBe(framed([], 4));
-    expect(complete('f')).toBe(framed([], 4));
-    expect(complete('ls', '--')).toBe(framed(globalLines, 4));
-    expect(complete('debug', '--d')).toBe(framed(['--dump'], 4));
-    expect(complete('fetch', '--d')).toBe(framed(['--deep'], 4));
+  it('an alias, a hidden Command, and a deprecated Command are never offered, and each still routes', async () => {
+    await expect(complete('l')).resolves.toBe(framed([], 4));
+    await expect(complete('d')).resolves.toBe(framed([], 4));
+    await expect(complete('f')).resolves.toBe(framed([], 4));
+    await expect(complete('ls', '--')).resolves.toBe(framed(globalLines, 4));
+    await expect(complete('debug', '--d')).resolves.toBe(framed(['--dump'], 4));
+    await expect(complete('fetch', '--d')).resolves.toBe(framed(['--deep'], 4));
   });
 
   it("an option's alias is never offered, and a typed one completes its option's value", () => {
@@ -117,11 +117,11 @@ describe('the answer', () => {
     expect(answer(graph, locate(graph, ['--measure=b']))).toBe(framed(['--measure=bytes'], 4));
   });
 
-  it('an option position offers long spellings, and short ones too when the word is exactly a hyphen', () => {
-    expect(complete('paths', '--')).toBe(
+  it('an option position offers long spellings, and short ones too when the word is exactly a hyphen', async () => {
+    await expect(complete('paths', '--')).resolves.toBe(
       framed([...globalLines, '--format\tThe view.', '--field\tA field.', '--quiet\tSay less.'], 4),
     );
-    expect(complete('paths', '-')).toBe(
+    await expect(complete('paths', '-')).resolves.toBe(
       framed(
         [
           '--file\tThe document.',
@@ -138,8 +138,8 @@ describe('the answer', () => {
         4,
       ),
     );
-    expect(complete('paths', '--n')).toBe(framed(['--no-color\tColor output.'], 4));
-    expect(complete('paths', '-q')).toBe(framed([], 4));
+    await expect(complete('paths', '--n')).resolves.toBe(framed(['--no-color\tColor output.'], 4));
+    await expect(complete('paths', '-q')).resolves.toBe(framed([], 4));
   });
 
   it("a root's own --format before a group's name leaves routing open, so the group's children are offered", () => {
@@ -186,19 +186,23 @@ describe('the answer', () => {
     expect(answer(graph, locate(graph, ['one', '']))).toBe(framed(['b~c'], 4));
   });
 
-  it('a supplied option is not offered again unless it is a multiple string option', () => {
-    expect(complete('paths', '--format', 'json', '-q', '--f')).toBe(
+  it('a supplied option is not offered again unless it is a multiple string option', async () => {
+    await expect(complete('paths', '--format', 'json', '-q', '--f')).resolves.toBe(
       framed(['--file\tThe document.', '--field\tA field.'], 4),
     );
-    expect(complete('paths', '--field', 'a', '--fi')).toBe(
+    await expect(complete('paths', '--field', 'a', '--fi')).resolves.toBe(
       framed(['--file\tThe document.', '--field\tA field.'], 4),
     );
-    expect(complete('--file', 'x', 'paths', '--fi')).toBe(framed(['--field\tA field.'], 4));
+    await expect(complete('--file', 'x', 'paths', '--fi')).resolves.toBe(
+      framed(['--field\tA field.'], 4),
+    );
   });
 
-  it('a counted option is offered again, because another occurrence adds to its count', () => {
-    expect(complete('backups', '-v', '--v')).toBe(framed(['--verbose\tSay more.'], 4));
-    expect(complete('backups', '-vv', '--verbose', '--v')).toBe(
+  it('a counted option is offered again, because another occurrence adds to its count', async () => {
+    await expect(complete('backups', '-v', '--v')).resolves.toBe(
+      framed(['--verbose\tSay more.'], 4),
+    );
+    await expect(complete('backups', '-vv', '--verbose', '--v')).resolves.toBe(
       framed(['--verbose\tSay more.'], 4),
     );
   });
@@ -219,49 +223,53 @@ describe('the answer', () => {
     expect(answer(graph, locate(graph, ['-v', '--verbose', '--v']))).toBe(framed([], 4));
   });
 
-  it('a string option with an implied value offers its values only when they are attached', () => {
-    expect(complete('backups', '--backup=')).toBe(
+  it('a string option with an implied value offers its values only when they are attached', async () => {
+    await expect(complete('backups', '--backup=')).resolves.toBe(
       framed(['--backup=none', '--backup=simple', '--backup=numbered'], 4),
     );
-    expect(complete('backups', '--backup=n')).toBe(
+    await expect(complete('backups', '--backup=n')).resolves.toBe(
       framed(['--backup=none', '--backup=numbered'], 4),
     );
-    expect(complete('backups', '-bn')).toBe(framed(['-bnone', '-bnumbered'], 4));
+    await expect(complete('backups', '-bn')).resolves.toBe(framed(['-bnone', '-bnumbered'], 4));
     // A bare spelling is complete, so the next word offers what follows it and no value.
-    expect(complete('backups', '--backup', '')).toBe(framed(['disk', 'tape'], 4));
-    expect(complete('backups', '-b', '')).toBe(framed(['disk', 'tape'], 4));
+    await expect(complete('backups', '--backup', '')).resolves.toBe(framed(['disk', 'tape'], 4));
+    await expect(complete('backups', '-b', '')).resolves.toBe(framed(['disk', 'tape'], 4));
   });
 
-  it('a value position offers the closed set after its lead, filtered by the typed value', () => {
-    expect(complete('paths', '--format', '')).toBe(framed(['json', 'jsonl', 'table'], 4));
-    expect(complete('paths', '-f', 't')).toBe(framed(['table'], 4));
-    expect(complete('paths', '--format=')).toBe(
+  it('a value position offers the closed set after its lead, filtered by the typed value', async () => {
+    await expect(complete('paths', '--format', '')).resolves.toBe(
+      framed(['json', 'jsonl', 'table'], 4),
+    );
+    await expect(complete('paths', '-f', 't')).resolves.toBe(framed(['table'], 4));
+    await expect(complete('paths', '--format=')).resolves.toBe(
       framed(['--format=json', '--format=jsonl', '--format=table'], 4),
     );
-    expect(complete('paths', '--format=j')).toBe(framed(['--format=json', '--format=jsonl'], 4));
-    expect(complete('paths', '--format=x')).toBe(framed([], 4));
+    await expect(complete('paths', '--format=j')).resolves.toBe(
+      framed(['--format=json', '--format=jsonl'], 4),
+    );
+    await expect(complete('paths', '--format=x')).resolves.toBe(framed([], 4));
   });
 
-  it('an argument offers exact values once, leaving out every value a shell cannot hold', () => {
-    expect(complete('keys', '')).toBe(
+  it('an argument offers exact values once, leaving out every value a shell cannot hold', async () => {
+    await expect(complete('keys', '')).resolves.toBe(
       framed(['plain', '$(touch sentinel)', '`touch sentinel`', ';touch sentinel'], 4),
     );
-    expect(complete('ls', '$')).toBe(framed(['$(touch sentinel)'], 4));
+    await expect(complete('ls', '$')).resolves.toBe(framed(['$(touch sentinel)'], 4));
   });
 
-  it('an input with no closed set and the passthrough tail leave the shell its files', () => {
-    expect(complete('--file', '')).toBe(framed([], 0));
-    expect(complete('--old', '')).toBe(framed([], 0));
-    expect(complete('paths', '--', 'x')).toBe(framed([], 0));
+  it('an input with no closed set and the passthrough tail leave the shell its files', async () => {
+    await expect(complete('--file', '')).resolves.toBe(framed([], 0));
+    await expect(complete('--old', '')).resolves.toBe(framed([], 0));
+    await expect(complete('paths', '--', 'x')).resolves.toBe(framed([], 0));
   });
 
-  it('a structural fault offers nothing and reports an error', () => {
-    expect(complete('nope', '')).toBe(framed([], 1));
-    expect(complete('paths', '--bogus', '')).toBe(framed([], 1));
+  it('a structural fault offers nothing and reports an error', async () => {
+    await expect(complete('nope', '')).resolves.toBe(framed([], 1));
+    await expect(complete('paths', '--bogus', '')).resolves.toBe(framed([], 1));
   });
 
-  it('a typed --help or a hostile word is read as a word and never activates anything', () => {
-    expect(complete('--help', '')).toBe(
+  it('a typed --help or a hostile word is read as a word and never activates anything', async () => {
+    await expect(complete('--help', '')).resolves.toBe(
       framed(
         [
           'completion\tPrint or install a shell completion script.',
@@ -272,7 +280,7 @@ describe('the answer', () => {
         4,
       ),
     );
-    expect(complete('$(touch sentinel)', '')).toBe(framed([], 1));
+    await expect(complete('$(touch sentinel)', '')).resolves.toBe(framed([], 1));
   });
 
   it('a description reads each line break as a space, with every control character removed', () => {
@@ -303,7 +311,7 @@ describe('the answer', () => {
 });
 
 describe('the Commands', () => {
-  it('each shell Command prints its script for the application name in one exact write', () => {
+  it('each shell Command prints its script for the application name in one exact write', async () => {
     const shells = {
       bash: bashScript,
       fish: fishScript,
@@ -311,7 +319,7 @@ describe('the Commands', () => {
       zsh: zshScript,
     };
     for (const [shell, script] of Object.entries(shells)) {
-      expect(invoke(fixture, ['completion', shell])).toEqual({
+      await expect(fixtureRun(['completion', shell])).resolves.toEqual({
         status: 0,
         stderr: '',
         stdout: script('kit'),
@@ -319,16 +327,16 @@ describe('the Commands', () => {
     }
   });
 
-  it('the completion group lists its visible shells when the subcommand is missing', () => {
-    const result = invoke(fixture, ['completion']);
+  it('the completion group lists its visible shells when the subcommand is missing', async () => {
+    const result = await fixtureRun(['completion']);
     expect(result.status).not.toBe(0);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('bash, zsh, fish, powershell');
     expect(result.stderr).not.toContain('__complete');
   });
 
-  it('a shell Command reaches help when help is installed', () => {
-    const result = invoke(fixture, ['completion', 'bash', '--help']);
+  it('a shell Command reaches help when help is installed', async () => {
+    const result = await fixtureRun(['completion', 'bash', '--help']);
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('Print the Bash completion script.');
   });

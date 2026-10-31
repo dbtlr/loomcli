@@ -24,6 +24,7 @@ import { invoke } from '../../../scripts/test-process.js';
 import { startupLine } from '../src/completion/shells.js';
 import { deniesWrite, ownedByAnother } from '../src/completion/startup.js';
 import { zshInstalledScript } from '../src/completion/zsh.js';
+import { run as fixtureRun } from './fixtures/completion-install-app.mjs';
 
 const fixture = new URL('fixtures/completion-install.mjs', import.meta.url);
 
@@ -82,7 +83,7 @@ interface Scenario {
 }
 
 /** Runs `jsonkit ...argv` in the sandbox, with the temporary folders and the scenario's variables. */
-function run(box: Box, argv: string[], scenario: Scenario = {}) {
+async function run(box: Box, argv: string[], scenario: Scenario = {}) {
   const cwd = scenario.cwd ?? box.work;
   writeFileSync(
     box.scenario,
@@ -101,7 +102,11 @@ function run(box: Box, argv: string[], scenario: Scenario = {}) {
       umask: scenario.umask,
     }),
   );
-  return invoke(fixture, argv, { cwd, env: { COMPLETION_SCENARIO: box.scenario } });
+  // A real process owns the umask.
+  if (scenario.umask !== undefined) {
+    return invoke(fixture, argv, { cwd, env: { COMPLETION_SCENARIO: box.scenario } });
+  }
+  return await fixtureRun(argv, JSON.parse(readFileSync(box.scenario, 'utf8')));
 }
 
 /** The lines a run wrote to stderr, each with any lane glyph and the space after it removed. */
@@ -114,8 +119,9 @@ function lines(stderr: string): string[] {
 }
 
 /** The printed script of a shell, read from the print child. */
-function printed(box: Box, shell: string): string {
-  return run(box, ['completion', shell]).stdout;
+async function printed(box: Box, shell: string) {
+  const fixtureResult1 = await run(box, ['completion', shell]);
+  return fixtureResult1.stdout;
 }
 
 const scripts = {
@@ -199,12 +205,12 @@ function systemError(code: string): Error {
 }
 
 describe('installing Bash and Zsh', () => {
-  it('keeps a startup file whose path holds spaces on one line at a narrow width', () => {
+  it('keeps a startup file whose path holds spaces on one line at a narrow width', async () => {
     const box = sandbox();
     const home = join(box.root, 'Application Support', 'home');
     mkdirSync(home, { recursive: true });
     const startup = join(home, '.bashrc');
-    const narrow = run(box, ['completion', 'install', 'bash'], {
+    const narrow = await run(box, ['completion', 'install', 'bash'], {
       columns: 40,
       env: { HOME: home },
     });
@@ -214,17 +220,17 @@ describe('installing Bash and Zsh', () => {
     rmSync(join(box.data, 'jsonkit'), { force: true, recursive: true });
     rmSync(join(box.state, 'jsonkit'), { force: true, recursive: true });
     rmSync(startup, { force: true });
-    const piped = run(box, ['completion', 'install', 'bash'], { env: { HOME: home } });
+    const piped = await run(box, ['completion', 'install', 'bash'], { env: { HOME: home } });
     expect(lines(piped.stderr)).toContain(`Added a line to ${startup} that loads it.`);
   });
 
   it.each([0o002, 0o077])(
     'writes the pinned script, line, and record under umask %o, and a second install changes nothing',
-    (umask) => {
+    async (umask) => {
       const box = sandbox();
       const script = scripts.bash(box);
       const startup = join(box.home, '.bashrc');
-      const result = run(box, ['completion', 'install', 'bash'], { umask });
+      const result = await run(box, ['completion', 'install', 'bash'], { umask });
       expect(result.status).toBe(0);
       expect(result.stdout).toBe('');
       expect(lines(result.stderr)).toEqual([
@@ -232,7 +238,7 @@ describe('installing Bash and Zsh', () => {
         `Added a line to ${startup} that loads it.`,
         'Open a new shell to use it.',
       ]);
-      expect(readFileSync(script, 'utf8')).toBe(printed(box, 'bash'));
+      expect(readFileSync(script, 'utf8')).toBe(await printed(box, 'bash'));
       expect(modeOf(script)).toBe(0o644);
       expect(modeOf(dirname(script))).toBe(0o755);
       expect(modeOf(join(box.data, 'jsonkit'))).toBe(0o755);
@@ -245,7 +251,7 @@ describe('installing Bash and Zsh', () => {
         state: 'committed',
       });
       const before = { ...tree(box.home), ...tree(box.data), ...tree(box.state) };
-      const again = run(box, ['completion', 'install', 'bash'], { umask });
+      const again = await run(box, ['completion', 'install', 'bash'], { umask });
       expect(again.status).toBe(0);
       expect(lines(again.stderr)).toEqual([
         `${script} is unchanged.`,
@@ -257,12 +263,12 @@ describe('installing Bash and Zsh', () => {
 
   it.each([0o002, 0o077])(
     'writes the installed Zsh file and its fpath line at the end of .zshrc under umask %o',
-    (umask) => {
+    async (umask) => {
       const box = sandbox();
       const script = scripts.zsh(box);
       const startup = join(box.home, '.zshrc');
       writeFileSync(startup, 'autoload -Uz compinit\ncompinit');
-      const result = run(box, ['completion', 'install', 'zsh'], { umask });
+      const result = await run(box, ['completion', 'install', 'zsh'], { umask });
       expect(result.status).toBe(0);
       expect(lines(result.stderr)).toEqual([
         `Installed the zsh completion script in ${script}.`,
@@ -278,7 +284,7 @@ describe('installing Bash and Zsh', () => {
       );
       expect(recorded(box, 'zsh').lines).toEqual([{ line: zshLine(script), path: startup }]);
       const before = { ...tree(box.home), ...tree(box.data) };
-      const again = run(box, ['completion', 'install', 'zsh'], { umask });
+      const again = await run(box, ['completion', 'install', 'zsh'], { umask });
       expect(lines(again.stderr)).toEqual([
         `${script} is unchanged.`,
         `${startup} already loads it.`,
@@ -287,25 +293,25 @@ describe('installing Bash and Zsh', () => {
     },
   );
 
-  it('writes Fish’s script under the configuration folder, touches no startup file, and reports it unchanged next time', () => {
+  it('writes Fish’s script under the configuration folder, touches no startup file, and reports it unchanged next time', async () => {
     const box = sandbox();
     const script = scripts.fish(box);
-    const result = run(box, ['completion', 'install', 'fish']);
+    const result = await run(box, ['completion', 'install', 'fish']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `Installed the fish completion script in ${script}.`,
       'Open a new shell to use it.',
     ]);
-    expect(readFileSync(script, 'utf8')).toBe(printed(box, 'fish'));
+    expect(readFileSync(script, 'utf8')).toBe(await printed(box, 'fish'));
     expect(recorded(box, 'fish')).toMatchObject({ files: [{ path: script }], lines: [] });
     expect(readdirSync(box.home)).toEqual([]);
-    const again = run(box, ['completion', 'install', 'fish']);
+    const again = await run(box, ['completion', 'install', 'fish']);
     expect(lines(again.stderr)).toEqual([`${script} is unchanged.`]);
   });
 
-  it('follows SHELL when the shell is left out', () => {
+  it('follows SHELL when the shell is left out', async () => {
     const box = sandbox();
-    const result = run(box, ['completion', 'install'], { env: { SHELL: '/usr/bin/zsh' } });
+    const result = await run(box, ['completion', 'install'], { env: { SHELL: '/usr/bin/zsh' } });
     expect(result.status).toBe(0);
     expect(existsSync(scripts.zsh(box))).toBe(true);
     expect(existsSync(recordPath(box, 'zsh'))).toBe(true);
@@ -315,9 +321,9 @@ describe('installing Bash and Zsh', () => {
     ['/bin/sh', '/bin/sh'],
     [undefined, '(unset)'],
     ['', '(unset)'],
-  ])('exits 2 for SHELL %j with the pinned sentence and writes nothing', (shell, shown) => {
+  ])('exits 2 for SHELL %j with the pinned sentence and writes nothing', async (shell, shown) => {
     const box = sandbox();
-    const result = run(box, ['completion', 'install'], { env: { SHELL: shell } });
+    const result = await run(box, ['completion', 'install'], { env: { SHELL: shell } });
     expect(result.status).toBe(2);
     expect(lines(result.stderr)[0]).toBe(
       `jsonkit: jsonkit cannot tell your shell from SHELL (${shown}). Name it: jsonkit completion install bash, zsh, fish, or pwsh.`,
@@ -326,64 +332,66 @@ describe('installing Bash and Zsh', () => {
     expect(readdirSync(box.state)).toEqual([]);
   });
 
-  it('exits 2 for a shell argument outside the four', () => {
+  it('exits 2 for a shell argument outside the four', async () => {
     const box = sandbox();
     for (const shell of ['tcsh', 'powershell']) {
-      expect(run(box, ['completion', 'install', shell]).status).toBe(2);
-      expect(run(box, ['completion', 'uninstall', shell]).status).toBe(2);
+      const fixtureResult2 = await run(box, ['completion', 'install', shell]);
+      expect(fixtureResult2.status).toBe(2);
+      const fixtureResult3 = await run(box, ['completion', 'uninstall', shell]);
+      expect(fixtureResult3.status).toBe(2);
     }
   });
 
-  it('puts Bash’s line in an existing .profile on darwin when neither .bash_profile nor .bash_login exists', () => {
+  it('puts Bash’s line in an existing .profile on darwin when neither .bash_profile nor .bash_login exists', async () => {
     const box = sandbox();
     const profile = join(box.home, '.profile');
     writeFileSync(profile, 'export PATH\n');
-    const result = run(box, ['completion', 'install', 'bash'], { platform: 'darwin' });
+    const result = await run(box, ['completion', 'install', 'bash'], { platform: 'darwin' });
     expect(result.status).toBe(0);
     expect(readFileSync(profile, 'utf8')).toBe(`export PATH\n${bashLine(scripts.bash(box))}\n`);
     expect(existsSync(join(box.home, '.bash_profile'))).toBe(false);
     expect(existsSync(join(box.home, '.bashrc'))).toBe(false);
   });
 
-  it('puts Bash’s line in .bash_login on darwin before .profile when .bash_profile does not exist', () => {
+  it('puts Bash’s line in .bash_login on darwin before .profile when .bash_profile does not exist', async () => {
     const box = sandbox();
     const login = join(box.home, '.bash_login');
     writeFileSync(login, '');
     writeFileSync(join(box.home, '.profile'), 'export PATH\n');
-    const result = run(box, ['completion', 'install', 'bash'], { platform: 'darwin' });
+    const result = await run(box, ['completion', 'install', 'bash'], { platform: 'darwin' });
     expect(result.status).toBe(0);
     expect(readFileSync(login, 'utf8')).toBe(`${bashLine(scripts.bash(box))}\n`);
     expect(readFileSync(join(box.home, '.profile'), 'utf8')).toBe('export PATH\n');
   });
 
-  it('creates .bash_profile on darwin when no login file exists', () => {
+  it('creates .bash_profile on darwin when no login file exists', async () => {
     const box = sandbox();
-    const result = run(box, ['completion', 'install', 'bash'], { platform: 'darwin' });
+    const result = await run(box, ['completion', 'install', 'bash'], { platform: 'darwin' });
     expect(result.status).toBe(0);
     expect(readFileSync(join(box.home, '.bash_profile'), 'utf8')).toBe(
       `${bashLine(scripts.bash(box))}\n`,
     );
   });
 
-  it('moves the Zsh line under an absolute ZDOTDIR, creating the folder', () => {
+  it('moves the Zsh line under an absolute ZDOTDIR, creating the folder', async () => {
     const box = sandbox();
     const zdotdir = join(box.root, 'zdot', 'inner');
-    const result = run(box, ['completion', 'install', 'zsh'], { env: { ZDOTDIR: zdotdir } });
+    const result = await run(box, ['completion', 'install', 'zsh'], { env: { ZDOTDIR: zdotdir } });
     expect(result.status).toBe(0);
     expect(readFileSync(join(zdotdir, '.zshrc'), 'utf8')).toBe(`${zshLine(scripts.zsh(box))}\n`);
     expect(modeOf(zdotdir)).toBe(0o755);
     expect(existsSync(join(box.home, '.zshrc'))).toBe(false);
-    run(box, ['completion', 'uninstall', 'zsh'], { env: { ZDOTDIR: zdotdir } });
+    await run(box, ['completion', 'uninstall', 'zsh'], { env: { ZDOTDIR: zdotdir } });
     expect(existsSync(join(zdotdir, '.zshrc'))).toBe(true);
   });
 
-  it('leaves an unchanged script in place when only the line moves', () => {
+  it('leaves an unchanged script in place when only the line moves', async () => {
     const box = sandbox();
     const script = scripts.zsh(box);
-    run(box, ['completion', 'install', 'zsh']);
+    await run(box, ['completion', 'install', 'zsh']);
     const before = lstatSync(script).ino;
     const zdotdir = join(box.root, 'zdot');
-    const result = run(box, ['completion', 'install', 'zsh'], { env: { ZDOTDIR: zdotdir } });
+    const result = await run(box, ['completion', 'install', 'zsh'], { env: { ZDOTDIR: zdotdir } });
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `${script} is unchanged.`,
@@ -394,14 +402,16 @@ describe('installing Bash and Zsh', () => {
     expect(lstatSync(script).ino).toBe(before);
   });
 
-  it('moves the script and its line after XDG_DATA_HOME changes', () => {
+  it('moves the script and its line after XDG_DATA_HOME changes', async () => {
     const box = sandbox();
     const old = scripts.zsh(box);
     const startup = join(box.home, '.zshrc');
-    run(box, ['completion', 'install', 'zsh']);
+    await run(box, ['completion', 'install', 'zsh']);
     const moved = join(box.root, 'data2');
     const script = join(moved, 'jsonkit', 'completion', 'zsh', '_loom_jsonkit');
-    const result = run(box, ['completion', 'install', 'zsh'], { env: { XDG_DATA_HOME: moved } });
+    const result = await run(box, ['completion', 'install', 'zsh'], {
+      env: { XDG_DATA_HOME: moved },
+    });
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `Installed the zsh completion script in ${script}.`,
@@ -417,32 +427,33 @@ describe('installing Bash and Zsh', () => {
 });
 
 describe('the record against the disk', () => {
-  it('rewrites a recorded script someone deleted', () => {
+  it('rewrites a recorded script someone deleted', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     rmSync(script);
-    const result = run(box, ['completion', 'install', 'bash']);
+    const result = await run(box, ['completion', 'install', 'bash']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `Installed the bash completion script in ${script}.`,
       `${join(box.home, '.bashrc')} already loads it.`,
       'Open a new shell to use it.',
     ]);
-    expect(readFileSync(script, 'utf8')).toBe(printed(box, 'bash'));
+    expect(readFileSync(script, 'utf8')).toBe(await printed(box, 'bash'));
   });
 
-  it('resolves a pending plugin’s file whose script and line are in place through the module', () => {
+  it('resolves a pending plugin’s file whose script and line are in place through the module', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
+    const printedScript = await printed(box, 'bash');
     editRecord(box, 'bash', (file) => {
       file.state = 'pending';
-      file.files = [{ intended: digestOf(printed(box, 'bash')), path: script, prior: null }];
+      file.files = [{ intended: digestOf(printedScript), path: script, prior: null }];
       file.lines = [{ intended: bashLine(script), path: startup, prior: null }];
     });
-    const result = run(box, ['completion', 'install', 'bash']);
+    const result = await run(box, ['completion', 'install', 'bash']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `${script} is unchanged.`,
@@ -455,13 +466,15 @@ describe('the record against the disk', () => {
     });
   });
 
-  it('warns that a moved script someone changed was left in place', () => {
+  it('warns that a moved script someone changed was left in place', async () => {
     const box = sandbox();
     const old = scripts.bash(box);
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     writeFileSync(old, 'edited\n');
     const moved = join(box.root, 'data2');
-    const result = run(box, ['completion', 'install', 'bash'], { env: { XDG_DATA_HOME: moved } });
+    const result = await run(box, ['completion', 'install', 'bash'], {
+      env: { XDG_DATA_HOME: moved },
+    });
     expect(result.status).toBe(0);
     const left = `${old} changed since jsonkit completion install wrote it, so it was left in place.`;
     expect(lines(result.stderr)).toContain(left);
@@ -491,18 +504,18 @@ describe('the startup line', () => {
 });
 
 describe('checks', () => {
-  it('names HOME when the paths need it and it is not absolute', () => {
+  it('names HOME when the paths need it and it is not absolute', async () => {
     const box = sandbox();
-    const result = run(box, ['completion', 'install', 'bash'], { env: { HOME: 'relative' } });
+    const result = await run(box, ['completion', 'install', 'bash'], { env: { HOME: 'relative' } });
     expect(result.status).toBe(1);
     expect(lines(result.stderr)).toEqual([
       'jsonkit cannot find your home folder because HOME is not an absolute path. Set HOME to an absolute path, then run the command again.',
     ]);
   });
 
-  it('names HOME before the installation record when both need it', () => {
+  it('names HOME before the installation record when both need it', async () => {
     const box = sandbox();
-    const result = run(box, ['completion', 'install', 'bash'], {
+    const result = await run(box, ['completion', 'install', 'bash'], {
       env: { HOME: 'relative', XDG_STATE_HOME: undefined },
     });
     expect(result.status).toBe(1);
@@ -511,14 +524,14 @@ describe('checks', () => {
     ]);
   });
 
-  it('refuses a file in the way before it asks PowerShell for its profile', () => {
+  it('refuses a file in the way before it asks PowerShell for its profile', async () => {
     const box = sandbox();
     const script = scripts.pwsh(box);
     mkdirSync(dirname(script), { recursive: true });
     writeFileSync(script, 'mine\n');
     const empty = join(box.root, 'empty');
     mkdirSync(empty);
-    const result = run(box, ['completion', 'install', 'pwsh'], { env: { PATH: empty } });
+    const result = await run(box, ['completion', 'install', 'pwsh'], { env: { PATH: empty } });
     expect(result.status).toBe(1);
     expect(lines(result.stderr)).toEqual([
       `${script} was not installed by jsonkit completion install.`,
@@ -526,13 +539,13 @@ describe('checks', () => {
     ]);
   });
 
-  it('refuses a file in the way before it judges the startup file', () => {
+  it('refuses a file in the way before it judges the startup file', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
     mkdirSync(dirname(script), { recursive: true });
     writeFileSync(script, 'mine\n');
     mkdirSync(join(box.home, '.bashrc'));
-    const result = run(box, ['completion', 'install', 'bash']);
+    const result = await run(box, ['completion', 'install', 'bash']);
     expect(result.status).toBe(1);
     expect(lines(result.stderr)).toEqual([
       `${script} was not installed by jsonkit completion install.`,
@@ -540,10 +553,10 @@ describe('checks', () => {
     ]);
   });
 
-  it('needs no home when absolute variables name every path', () => {
+  it('needs no home when absolute variables name every path', async () => {
     const box = sandbox();
     const zdotdir = join(box.root, 'zdot');
-    const result = run(box, ['completion', 'install', 'zsh'], {
+    const result = await run(box, ['completion', 'install', 'zsh'], {
       env: { HOME: 'relative', ZDOTDIR: zdotdir },
     });
     expect(result.status).toBe(0);
@@ -557,35 +570,38 @@ describe('checks', () => {
     [['update'], 'powershell'],
     [['uninstall', 'bash'], 'bash'],
     [['uninstall'], 'powershell'],
-  ])('refuses completion %j on win32 with exit 1, naming the print Command', (words, printer) => {
+  ])(
+    'refuses completion %j on win32 with exit 1, naming the print Command',
+    async (words, printer) => {
+      const box = sandbox();
+      const result = await run(box, ['completion', ...words], {
+        env: { SHELL: undefined },
+        platform: 'win32',
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe('');
+      expect(lines(result.stderr)).toEqual([
+        `jsonkit completion installs bash, zsh, fish, and pwsh completion on Linux and macOS. Print the script with jsonkit completion ${printer} and load it yourself.`,
+      ]);
+      expect([readdirSync(box.data), readdirSync(box.state), readdirSync(box.home)]).toEqual([
+        [],
+        [],
+        [],
+      ]);
+    },
+  );
+
+  it('prints the PowerShell script on win32', async () => {
     const box = sandbox();
-    const result = run(box, ['completion', ...words], {
-      env: { SHELL: undefined },
-      platform: 'win32',
-    });
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe('');
-    expect(lines(result.stderr)).toEqual([
-      `jsonkit completion installs bash, zsh, fish, and pwsh completion on Linux and macOS. Print the script with jsonkit completion ${printer} and load it yourself.`,
-    ]);
-    expect([readdirSync(box.data), readdirSync(box.state), readdirSync(box.home)]).toEqual([
-      [],
-      [],
-      [],
-    ]);
+    const result = await run(box, ['completion', 'powershell'], { platform: 'win32' });
+    expect(result).toEqual({ status: 0, stderr: '', stdout: await printed(box, 'powershell') });
   });
 
-  it('prints the PowerShell script on win32', () => {
-    const box = sandbox();
-    const result = run(box, ['completion', 'powershell'], { platform: 'win32' });
-    expect(result).toEqual({ status: 0, stderr: '', stdout: printed(box, 'powershell') });
-  });
-
-  it('refuses a damaged plugin’s file on install, naming install', () => {
+  it('refuses a damaged plugin’s file on install, naming install', async () => {
     const box = sandbox();
     mkdirSync(dirname(recordPath(box, 'bash')), { recursive: true });
     writeFileSync(recordPath(box, 'bash'), 'not json');
-    const result = run(box, ['completion', 'install', 'bash']);
+    const result = await run(box, ['completion', 'install', 'bash']);
     expect(result.status).toBe(1);
     expect(lines(result.stderr)).toEqual([
       `${recordPath(box, 'bash')} cannot be read, so jsonkit will not change the files and line it lists. Remove it, the files it lists, and the line it added, then run jsonkit completion install again.`,
@@ -595,14 +611,14 @@ describe('checks', () => {
 });
 
 describe('files the record does not list', () => {
-  it('refuses an unrecorded file at the script’s path for install and changes nothing', () => {
+  it('refuses an unrecorded file at the script’s path for install and changes nothing', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
     mkdirSync(dirname(script), { recursive: true });
     writeFileSync(script, 'mine\n');
     writeFileSync(join(box.home, '.bashrc'), 'set -o vi\n');
     const before = { ...tree(box.home), ...tree(box.data) };
-    const result = run(box, ['completion', 'install', 'bash']);
+    const result = await run(box, ['completion', 'install', 'bash']);
     expect(result.status).toBe(1);
     expect(lines(result.stderr)).toEqual([
       `${script} was not installed by jsonkit completion install.`,
@@ -611,19 +627,19 @@ describe('files the record does not list', () => {
     expect({ ...tree(box.home), ...tree(box.data) }).toEqual(before);
   });
 
-  it('refuses a recorded script changed since for install and update, and changes nothing', () => {
+  it('refuses a recorded script changed since for install and update, and changes nothing', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     writeFileSync(script, 'edited\n');
     const before = { ...tree(box.home), ...tree(box.data), ...tree(box.state) };
-    const installing = run(box, ['completion', 'install', 'bash']);
+    const installing = await run(box, ['completion', 'install', 'bash']);
     expect(installing.status).toBe(1);
     expect(lines(installing.stderr)).toEqual([
       `${script} changed since jsonkit completion install wrote it.`,
       'jsonkit completion install changed nothing, because files it did not install are in the way. Remove them, then run jsonkit completion install bash again.',
     ]);
-    const updating = run(box, ['completion', 'update']);
+    const updating = await run(box, ['completion', 'update']);
     expect(updating.status).toBe(1);
     expect(lines(updating.stderr)).toEqual([
       `${script} changed since jsonkit completion install wrote it.`,
@@ -632,10 +648,10 @@ describe('files the record does not list', () => {
     expect({ ...tree(box.home), ...tree(box.data), ...tree(box.state) }).toEqual(before);
   });
 
-  it('fails update for every shell when one shell’s script was edited', () => {
+  it('fails update for every shell when one shell’s script was edited', async () => {
     const box = sandbox();
-    run(box, ['completion', 'install', 'bash']);
-    run(box, ['completion', 'install', 'zsh']);
+    await run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'zsh']);
     writeFileSync(scripts.zsh(box), 'edited\n');
     // An older script in Bash's file, so an update would otherwise rewrite it.
     writeFileSync(scripts.bash(box), 'old bash\n');
@@ -643,7 +659,7 @@ describe('files the record does not list', () => {
       file.files = [{ digest: digestOf('old bash\n'), path: scripts.bash(box) }];
     });
     const before = { ...tree(box.home), ...tree(box.data), ...tree(box.state) };
-    const result = run(box, ['completion', 'update']);
+    const result = await run(box, ['completion', 'update']);
     expect(result.status).toBe(1);
     expect(lines(result.stderr)).toEqual([
       `${scripts.zsh(box)} changed since jsonkit completion install wrote it.`,
@@ -654,11 +670,11 @@ describe('files the record does not list', () => {
 });
 
 describe('a startup file the plugin cannot change', () => {
-  it('fails install for a startup file that is a directory and writes nothing', () => {
+  it('fails install for a startup file that is a directory and writes nothing', async () => {
     const box = sandbox();
     const startup = join(box.home, '.bashrc');
     mkdirSync(startup);
-    const result = run(box, ['completion', 'install', 'bash']);
+    const result = await run(box, ['completion', 'install', 'bash']);
     expect(result.status).toBe(1);
     expect(lines(result.stderr)).toEqual([
       `${startup} is not a file, so jsonkit cannot add its startup line. Remove it, then run jsonkit completion install again.`,
@@ -700,14 +716,14 @@ describe('a startup file the plugin cannot change', () => {
 
   it.each(unchangeable)(
     'installs the script for %s, prints the line to add, and records no line',
-    (_case, prepare) => {
+    async (_case, prepare) => {
       const box = sandbox();
       const startup = prepare(box);
       // Bash reads `.bashrc` from the home folder, so a locked folder is reached as the home.
       const home = dirname(startup).includes('locked') ? dirname(startup) : box.home;
       const before = readFileSync(startup).toString('latin1');
       const script = scripts.bash(box);
-      const result = run(box, ['completion', 'install', 'bash'], { env: { HOME: home } });
+      const result = await run(box, ['completion', 'install', 'bash'], { env: { HOME: home } });
       expect(result.status).toBe(0);
       expect(lines(result.stderr)).toEqual([
         `Installed the bash completion script in ${script}.`,
@@ -721,13 +737,13 @@ describe('a startup file the plugin cannot change', () => {
     },
   );
 
-  it('installs the script for a startup file the process may not read, prints the line to add, and records no line', () => {
+  it('installs the script for a startup file the process may not read, prints the line to add, and records no line', async () => {
     const box = sandbox();
     const startup = join(box.home, '.bashrc');
     writeFileSync(startup, 'set -o vi\n');
     chmodSync(startup, 0o000);
     const script = scripts.bash(box);
-    const result = run(box, ['completion', 'install', 'bash']);
+    const result = await run(box, ['completion', 'install', 'bash']);
     chmodSync(startup, 0o644);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
@@ -740,13 +756,13 @@ describe('a startup file the plugin cannot change', () => {
     expect(recorded(box, 'bash').lines).toEqual([]);
   });
 
-  it('installs the script for a missing startup file below a folder it may not write', () => {
+  it('installs the script for a missing startup file below a folder it may not write', async () => {
     const box = sandbox();
     const locked = join(box.root, 'locked');
     mkdirSync(locked);
     chmodSync(locked, 0o555);
     const zdotdir = join(locked, 'zdot');
-    const result = run(box, ['completion', 'install', 'zsh'], { env: { ZDOTDIR: zdotdir } });
+    const result = await run(box, ['completion', 'install', 'zsh'], { env: { ZDOTDIR: zdotdir } });
     expect(result.status).toBe(0);
     expect(lines(result.stderr)[1]).toBe(
       `jsonkit cannot change ${join(zdotdir, '.zshrc')}, so add this line to it yourself:`,
@@ -755,7 +771,7 @@ describe('a startup file the plugin cannot change', () => {
     expect(existsSync(zdotdir)).toBe(false);
   });
 
-  it('judges the folder of the real file a linked startup file names', () => {
+  it('judges the folder of the real file a linked startup file names', async () => {
     const box = sandbox();
     const dotfiles = join(box.root, 'dotfiles');
     mkdirSync(dotfiles);
@@ -765,7 +781,7 @@ describe('a startup file the plugin cannot change', () => {
     const startup = join(box.home, '.bashrc');
     symlinkSync(real, startup);
     const script = scripts.bash(box);
-    const result = run(box, ['completion', 'install', 'bash']);
+    const result = await run(box, ['completion', 'install', 'bash']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)[1]).toBe(
       `jsonkit cannot change ${startup}, so add this line to it yourself:`,
@@ -774,13 +790,13 @@ describe('a startup file the plugin cannot change', () => {
     expect(readFileSync(real, 'utf8')).toBe('set -o vi\n');
   });
 
-  it('reports a line no longer held in a startup file it cannot change, printing nothing to remove', () => {
+  it('reports a line no longer held in a startup file it cannot change, printing nothing to remove', async () => {
     const box = sandbox();
     const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     writeFileSync(startup, 'mine\n');
     chmodSync(startup, 0o444);
-    const result = run(box, ['completion', 'uninstall']);
+    const result = await run(box, ['completion', 'uninstall']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `Removed ${scripts.bash(box)}.`,
@@ -801,13 +817,13 @@ describe('a startup file the plugin cannot change', () => {
     expect(ownedByAnother({ owner: 0, user: undefined })).toBe(false);
   });
 
-  it('uninstalls after the startup file becomes read-only, printing the line to remove', () => {
+  it('uninstalls after the startup file becomes read-only, printing the line to remove', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     chmodSync(startup, 0o444);
-    const result = run(box, ['completion', 'uninstall']);
+    const result = await run(box, ['completion', 'uninstall']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `Removed ${script}.`,
@@ -816,21 +832,21 @@ describe('a startup file the plugin cannot change', () => {
     expect(result.stdout).toBe(`${bashLine(script)}\n`);
     expect(readFileSync(startup, 'utf8')).toBe(`${bashLine(script)}\n`);
     expect(existsSync(recordPath(box, 'bash'))).toBe(false);
-    const again = run(box, ['completion', 'uninstall']);
+    const again = await run(box, ['completion', 'uninstall']);
     expect(again.status).toBe(0);
     expect(lines(again.stderr)).toEqual([
       'jsonkit has no completion installed, so there is nothing to remove.',
     ]);
   });
 
-  it('adds the new line under a new ZDOTDIR and prints the old line to remove from a read-only .zshrc', () => {
+  it('adds the new line under a new ZDOTDIR and prints the old line to remove from a read-only .zshrc', async () => {
     const box = sandbox();
     const script = scripts.zsh(box);
     const old = join(box.home, '.zshrc');
-    run(box, ['completion', 'install', 'zsh']);
+    await run(box, ['completion', 'install', 'zsh']);
     chmodSync(old, 0o444);
     const zdotdir = join(box.root, 'zdot');
-    const result = run(box, ['completion', 'install', 'zsh'], { env: { ZDOTDIR: zdotdir } });
+    const result = await run(box, ['completion', 'install', 'zsh'], { env: { ZDOTDIR: zdotdir } });
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `${script} is unchanged.`,
@@ -847,13 +863,13 @@ describe('a startup file the plugin cannot change', () => {
 });
 
 describe('a recorded line in a startup file the plugin cannot change', () => {
-  it('drops the recorded line from a startup file that became read-only, which still loads the script', () => {
+  it('drops the recorded line from a startup file that became read-only, which still loads the script', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     chmodSync(startup, 0o444);
-    const installing = run(box, ['completion', 'install', 'bash']);
+    const installing = await run(box, ['completion', 'install', 'bash']);
     expect(installing.status).toBe(0);
     expect(lines(installing.stderr)).toEqual([
       `${script} is unchanged.`,
@@ -861,20 +877,22 @@ describe('a recorded line in a startup file the plugin cannot change', () => {
     ]);
     expect(installing.stdout).toBe('');
     expect(recorded(box, 'bash').lines).toEqual([]);
-    const removing = run(box, ['completion', 'uninstall']);
+    const removing = await run(box, ['completion', 'uninstall']);
     expect(lines(removing.stderr)).toEqual([`Removed ${script}.`]);
     expect(removing.stdout).toBe('');
     expect(readFileSync(startup, 'utf8')).toBe(`${bashLine(script)}\n`);
   });
 
-  it('releases the old line and prints the new one in its place when install moves the script', () => {
+  it('releases the old line and prints the new one in its place when install moves the script', async () => {
     const box = sandbox();
     const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     chmodSync(startup, 0o444);
     const moved = join(box.root, 'data2');
     const script = join(moved, 'jsonkit', 'completion', 'jsonkit.bash');
-    const result = run(box, ['completion', 'install', 'bash'], { env: { XDG_DATA_HOME: moved } });
+    const result = await run(box, ['completion', 'install', 'bash'], {
+      env: { XDG_DATA_HOME: moved },
+    });
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `Installed the bash completion script in ${script}.`,
@@ -888,17 +906,17 @@ describe('a recorded line in a startup file the plugin cannot change', () => {
     expect(recorded(box, 'bash').lines).toEqual([]);
   });
 
-  it('records no line the operator added to a read-only file when install moves the script, so uninstall leaves it', () => {
+  it('records no line the operator added to a read-only file when install moves the script, so uninstall leaves it', async () => {
     const box = sandbox();
     const old = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     const moved = join(box.root, 'data2');
     const script = join(moved, 'jsonkit', 'completion', 'jsonkit.bash');
     const text = `${bashLine(old)}\n${bashLine(script)}\n`;
     writeFileSync(startup, text);
     chmodSync(startup, 0o444);
-    const installing = run(box, ['completion', 'install', 'bash'], {
+    const installing = await run(box, ['completion', 'install', 'bash'], {
       env: { XDG_DATA_HOME: moved },
     });
     expect(installing.status).toBe(0);
@@ -911,23 +929,25 @@ describe('a recorded line in a startup file the plugin cannot change', () => {
     ]);
     expect(installing.stdout).toBe(`${bashLine(old)}\n`);
     expect(recorded(box, 'bash').lines).toEqual([]);
-    const removing = run(box, ['completion', 'uninstall']);
+    const removing = await run(box, ['completion', 'uninstall']);
     expect(removing.status).toBe(0);
     expect(lines(removing.stderr)).toEqual([`Removed ${script}.`]);
     expect(removing.stdout).toBe('');
     expect(readFileSync(startup, 'utf8')).toBe(text);
   });
 
-  it('records nothing for the new line in a startup file it cannot read when install moves the script', () => {
+  it('records nothing for the new line in a startup file it cannot read when install moves the script', async () => {
     const box = sandbox();
     const old = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     const moved = join(box.root, 'data2');
     const script = join(moved, 'jsonkit', 'completion', 'jsonkit.bash');
     writeFileSync(startup, `${bashLine(old)}\n${bashLine(script)}\n`);
     chmodSync(startup, 0o000);
-    const result = run(box, ['completion', 'install', 'bash'], { env: { XDG_DATA_HOME: moved } });
+    const result = await run(box, ['completion', 'install', 'bash'], {
+      env: { XDG_DATA_HOME: moved },
+    });
     chmodSync(startup, 0o644);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
@@ -941,22 +961,22 @@ describe('a recorded line in a startup file the plugin cannot change', () => {
     expect(recorded(box, 'bash').lines).toEqual([]);
   });
 
-  it('drops a line from the record when its file changes to another encoding, so install prints it to add', () => {
+  it('drops a line from the record when its file changes to another encoding, so install prints it to add', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     const bytes = Buffer.concat([
       Buffer.from('feff', 'hex'),
       Buffer.from(bashLine(script), 'utf16le'),
     ]);
     writeFileSync(startup, bytes);
-    const updating = run(box, ['completion', 'update']);
+    const updating = await run(box, ['completion', 'update']);
     expect(updating.status).toBe(0);
     expect(lines(updating.stderr)).toEqual([`${script} is unchanged.`]);
     expect(updating.stdout).toBe('');
     expect(recorded(box, 'bash').lines).toEqual([]);
-    const installing = run(box, ['completion', 'install', 'bash']);
+    const installing = await run(box, ['completion', 'install', 'bash']);
     expect(installing.status).toBe(0);
     expect(lines(installing.stderr)).toEqual([
       `${script} is unchanged.`,
@@ -964,7 +984,7 @@ describe('a recorded line in a startup file the plugin cannot change', () => {
     ]);
     expect(installing.stdout).toBe(`${bashLine(script)}\n`);
     expect(recorded(box, 'bash').lines).toEqual([]);
-    const removing = run(box, ['completion', 'uninstall']);
+    const removing = await run(box, ['completion', 'uninstall']);
     expect(removing.status).toBe(0);
     expect(lines(removing.stderr)).toEqual([`Removed ${script}.`]);
     expect(removing.stdout).toBe('');
@@ -973,10 +993,10 @@ describe('a recorded line in a startup file the plugin cannot change', () => {
 });
 
 describe('update', () => {
-  it('rewrites each recorded script at its recorded path, even with XDG_DATA_HOME changed', () => {
+  it('rewrites each recorded script at its recorded path, even with XDG_DATA_HOME changed', async () => {
     const box = sandbox();
-    run(box, ['completion', 'install', 'bash']);
-    run(box, ['completion', 'install', 'fish']);
+    await run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'fish']);
     // An earlier version wrote other scripts, which its record lists.
     for (const shell of ['bash', 'fish'] as const) {
       writeFileSync(scripts[shell](box), `old ${shell}\n`);
@@ -985,7 +1005,7 @@ describe('update', () => {
       });
     }
     const elsewhere = join(box.root, 'elsewhere');
-    const result = run(box, ['completion', 'update'], {
+    const result = await run(box, ['completion', 'update'], {
       env: { XDG_CONFIG_HOME: elsewhere, XDG_DATA_HOME: elsewhere },
     });
     expect(result.status).toBe(0);
@@ -993,30 +1013,30 @@ describe('update', () => {
       `Updated the bash completion script in ${scripts.bash(box)}.`,
       `Updated the fish completion script in ${scripts.fish(box)}.`,
     ]);
-    expect(readFileSync(scripts.bash(box), 'utf8')).toBe(printed(box, 'bash'));
-    expect(readFileSync(scripts.fish(box), 'utf8')).toBe(printed(box, 'fish'));
+    expect(readFileSync(scripts.bash(box), 'utf8')).toBe(await printed(box, 'bash'));
+    expect(readFileSync(scripts.fish(box), 'utf8')).toBe(await printed(box, 'fish'));
     expect(existsSync(elsewhere)).toBe(false);
   });
 
-  it('reports an up-to-date script unchanged', () => {
+  it('reports an up-to-date script unchanged', async () => {
     const box = sandbox();
-    run(box, ['completion', 'install', 'zsh']);
-    const result = run(box, ['completion', 'update']);
+    await run(box, ['completion', 'install', 'zsh']);
+    const result = await run(box, ['completion', 'update']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([`${scripts.zsh(box)} is unchanged.`]);
   });
 
-  it('replaces a line whose text changed where it stands', () => {
+  it('replaces a line whose text changed where it stands', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
     writeFileSync(startup, 'first\n');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     writeFileSync(startup, `first\nold line ${marker}\nlast\n`);
     editRecord(box, 'bash', (file) => {
       file.lines = [{ line: `old line ${marker}`, path: startup }];
     });
-    const result = run(box, ['completion', 'update']);
+    const result = await run(box, ['completion', 'update']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `${script} is unchanged.`,
@@ -1026,12 +1046,12 @@ describe('update', () => {
     expect(recorded(box, 'bash').lines).toEqual([{ line: bashLine(script), path: startup }]);
   });
 
-  it('adds no line the operator removed', () => {
+  it('adds no line the operator removed', async () => {
     const box = sandbox();
     const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     writeFileSync(startup, 'mine\n');
-    const result = run(box, ['completion', 'update']);
+    const result = await run(box, ['completion', 'update']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `${scripts.bash(box)} is unchanged.`,
@@ -1041,11 +1061,11 @@ describe('update', () => {
     expect(recorded(box, 'bash').lines).toEqual([]);
   });
 
-  it('releases a changed line in a read-only startup file, printing the line to remove and the one to add', () => {
+  it('releases a changed line in a read-only startup file, printing the line to remove and the one to add', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     writeFileSync(script, 'old bash\n');
     writeFileSync(startup, `old line ${marker}\n`);
     editRecord(box, 'bash', (file) => {
@@ -1053,7 +1073,7 @@ describe('update', () => {
       file.lines = [{ line: `old line ${marker}`, path: startup }];
     });
     chmodSync(startup, 0o444);
-    const result = run(box, ['completion', 'update']);
+    const result = await run(box, ['completion', 'update']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `Updated the bash completion script in ${script}.`,
@@ -1061,23 +1081,23 @@ describe('update', () => {
       `Add this line to ${startup} in its place:`,
     ]);
     expect(result.stdout).toBe(`old line ${marker}\n${bashLine(script)}\n`);
-    expect(readFileSync(script, 'utf8')).toBe(printed(box, 'bash'));
+    expect(readFileSync(script, 'utf8')).toBe(await printed(box, 'bash'));
     expect(readFileSync(startup, 'utf8')).toBe(`old line ${marker}\n`);
     expect(recorded(box, 'bash').lines).toEqual([]);
   });
 
-  it('drops a changed line from a read-only startup file that already holds the new one, printing the line to remove', () => {
+  it('drops a changed line from a read-only startup file that already holds the new one, printing the line to remove', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     const text = `old line ${marker}\n${bashLine(script)}\n`;
     writeFileSync(startup, text);
     editRecord(box, 'bash', (file) => {
       file.lines = [{ line: `old line ${marker}`, path: startup }];
     });
     chmodSync(startup, 0o444);
-    const result = run(box, ['completion', 'update']);
+    const result = await run(box, ['completion', 'update']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `${script} is unchanged.`,
@@ -1088,55 +1108,56 @@ describe('update', () => {
     expect(recorded(box, 'bash').lines).toEqual([]);
   });
 
-  it('prints the nothing-to lines with nothing recorded', () => {
+  it('prints the nothing-to lines with nothing recorded', async () => {
     const box = sandbox();
-    const updating = run(box, ['completion', 'update']);
+    const updating = await run(box, ['completion', 'update']);
     expect(updating.status).toBe(0);
     expect(lines(updating.stderr)).toEqual([
       'jsonkit has no completion installed, so there is nothing to update. Run jsonkit completion install to install it.',
     ]);
-    const removing = run(box, ['completion', 'uninstall']);
+    const removing = await run(box, ['completion', 'uninstall']);
     expect(removing.status).toBe(0);
     expect(lines(removing.stderr)).toEqual([
       'jsonkit has no completion installed, so there is nothing to remove.',
     ]);
-    expect(lines(run(box, ['completion', 'uninstall', 'zsh']).stderr)).toEqual([
+    const fixtureResult4 = await run(box, ['completion', 'uninstall', 'zsh']);
+    expect(lines(fixtureResult4.stderr)).toEqual([
       'jsonkit has no completion installed, so there is nothing to remove.',
     ]);
   });
 
-  it('leaves a pending file from a first install killed before its script was written for the next install', () => {
+  it('leaves a pending file from a first install killed before its script was written for the next install', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
     const record = recordPath(box, 'bash');
     mkdirSync(dirname(record), { recursive: true });
     const pending = `${JSON.stringify({
       directories: [],
-      files: [{ intended: digestOf(printed(box, 'bash')), path: script, prior: null }],
+      files: [{ intended: digestOf(await printed(box, 'bash')), path: script, prior: null }],
       format: 1,
       lines: [],
       state: 'pending',
     })}\n`;
     writeFileSync(record, pending);
-    const updating = run(box, ['completion', 'update']);
+    const updating = await run(box, ['completion', 'update']);
     expect(updating.status).toBe(0);
     expect(lines(updating.stderr)).toEqual([
       'jsonkit has no completion installed, so there is nothing to update. Run jsonkit completion install to install it.',
     ]);
     expect(readFileSync(record, 'utf8')).toBe(pending);
-    const installing = run(box, ['completion', 'install', 'bash']);
+    const installing = await run(box, ['completion', 'install', 'bash']);
     expect(installing.status).toBe(0);
     expect(recorded(box, 'bash')).toMatchObject({ files: [{ path: script }], state: 'committed' });
   });
 });
 
 describe('uninstall', () => {
-  it('removes the script, the line, and each created folder, leaving the startup file as it was', () => {
+  it('removes the script, the line, and each created folder, leaving the startup file as it was', async () => {
     const box = sandbox();
     const startup = join(box.home, '.zshrc');
     writeFileSync(startup, 'setopt autocd\n');
-    run(box, ['completion', 'install', 'zsh']);
-    const result = run(box, ['completion', 'uninstall', 'zsh']);
+    await run(box, ['completion', 'install', 'zsh']);
+    const result = await run(box, ['completion', 'uninstall', 'zsh']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `Removed ${scripts.zsh(box)}.`,
@@ -1147,13 +1168,13 @@ describe('uninstall', () => {
     expect(existsSync(recordPath(box, 'zsh'))).toBe(false);
   });
 
-  it('never records or removes a line the operator added by hand to a file it may change', () => {
+  it('never records or removes a line the operator added by hand to a file it may change', async () => {
     const box = sandbox();
     const script = scripts.zsh(box);
     const startup = join(box.home, '.zshrc');
     const text = `setopt autocd\n${zshLine(script)}\n`;
     writeFileSync(startup, text);
-    const installing = run(box, ['completion', 'install', 'zsh']);
+    const installing = await run(box, ['completion', 'install', 'zsh']);
     expect(installing.status).toBe(0);
     expect(lines(installing.stderr)).toEqual([
       `Installed the zsh completion script in ${script}.`,
@@ -1161,20 +1182,20 @@ describe('uninstall', () => {
       'Open a new shell to use it.',
     ]);
     expect(recorded(box, 'zsh').lines).toEqual([]);
-    const removing = run(box, ['completion', 'uninstall', 'zsh']);
+    const removing = await run(box, ['completion', 'uninstall', 'zsh']);
     expect(removing.status).toBe(0);
     expect(lines(removing.stderr)).toEqual([`Removed ${script}.`]);
     expect(readFileSync(startup, 'utf8')).toBe(text);
   });
 
-  it('leaves an edited line and an edited script, stating each', () => {
+  it('leaves an edited line and an edited script, stating each', async () => {
     const box = sandbox();
     const script = scripts.bash(box);
     const startup = join(box.home, '.bashrc');
-    run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'bash']);
     writeFileSync(startup, `${bashLine(script)} # mine\n`);
     writeFileSync(script, 'edited\n');
-    const result = run(box, ['completion', 'uninstall', 'bash']);
+    const result = await run(box, ['completion', 'uninstall', 'bash']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `${script} changed since jsonkit completion install wrote it, so it was left in place.`,
@@ -1184,27 +1205,27 @@ describe('uninstall', () => {
     expect(readFileSync(startup, 'utf8')).toBe(`${bashLine(script)} # mine\n`);
   });
 
-  it('states a script already gone', () => {
+  it('states a script already gone', async () => {
     const box = sandbox();
-    run(box, ['completion', 'install', 'fish']);
+    await run(box, ['completion', 'install', 'fish']);
     rmSync(scripts.fish(box));
-    const result = run(box, ['completion', 'uninstall']);
+    const result = await run(box, ['completion', 'uninstall']);
     expect(lines(result.stderr)).toEqual([`${scripts.fish(box)} was already gone.`]);
   });
 
-  it('removes every installed shell with no shell, and only the named one otherwise', () => {
+  it('removes every installed shell with no shell, and only the named one otherwise', async () => {
     const box = sandbox();
-    run(box, ['completion', 'install', 'bash']);
-    run(box, ['completion', 'install', 'zsh']);
-    const one = run(box, ['completion', 'uninstall', 'zsh']);
+    await run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'zsh']);
+    const one = await run(box, ['completion', 'uninstall', 'zsh']);
     expect(one.status).toBe(0);
     expect(existsSync(scripts.zsh(box))).toBe(false);
     expect(existsSync(scripts.bash(box))).toBe(true);
     expect(readFileSync(join(box.home, '.bashrc'), 'utf8')).toBe(
       `${bashLine(scripts.bash(box))}\n`,
     );
-    run(box, ['completion', 'install', 'zsh']);
-    const every = run(box, ['completion', 'uninstall']);
+    await run(box, ['completion', 'install', 'zsh']);
+    const every = await run(box, ['completion', 'uninstall']);
     expect(every.status).toBe(0);
     expect(lines(every.stderr)).toEqual([
       `Removed ${scripts.bash(box)}.`,
@@ -1224,34 +1245,39 @@ describe('uninstall', () => {
     ['pwsh', 'bash', 'pwsh', 'bash'],
   ])(
     'after installing %s then %s, uninstalling %s then %s leaves no folder either created',
-    (...order) => {
+    async (...order) => {
       const box = sandbox();
       const bin = join(box.root, 'bin');
       fakePwsh(bin, answerOf(join(box.home, 'profile.ps1')));
       const env = pwshEnv(box, bin);
       for (const [index, shell] of order.entries()) {
         const verb = index < 2 ? 'install' : 'uninstall';
-        expect(run(box, ['completion', verb, shell], { env }).status).toBe(0);
+        const fixtureResult5 = await run(box, ['completion', verb, shell], { env });
+        expect(fixtureResult5.status).toBe(0);
       }
       expect(readdirSync(box.data)).toEqual([]);
     },
   );
 
-  it('hands a folder to a shell whose script reaches it through a symbolic link, so uninstalling both leaves no folder', () => {
+  it('hands a folder to a shell whose script reaches it through a symbolic link, so uninstalling both leaves no folder', async () => {
     const box = sandbox();
     const alias = join(box.root, 'alias');
     symlinkSync(box.data, alias);
-    expect(run(box, ['completion', 'install', 'zsh']).status).toBe(0);
+    const fixtureResult6 = await run(box, ['completion', 'install', 'zsh']);
+    expect(fixtureResult6.status).toBe(0);
     const throughLink = { env: { XDG_DATA_HOME: alias } };
-    expect(run(box, ['completion', 'install', 'bash'], throughLink).status).toBe(0);
-    expect(run(box, ['completion', 'uninstall', 'zsh']).status).toBe(0);
-    expect(run(box, ['completion', 'uninstall', 'bash'], throughLink).status).toBe(0);
+    const fixtureResult7 = await run(box, ['completion', 'install', 'bash'], throughLink);
+    expect(fixtureResult7.status).toBe(0);
+    const fixtureResult8 = await run(box, ['completion', 'uninstall', 'zsh']);
+    expect(fixtureResult8.status).toBe(0);
+    const fixtureResult9 = await run(box, ['completion', 'uninstall', 'bash'], throughLink);
+    expect(fixtureResult9.status).toBe(0);
     expect(readdirSync(box.data)).toEqual([]);
   });
 
   it.each([[['completion', 'uninstall']], [['completion', 'uninstall', 'bash']]])(
     '%j deletes a pending file that records nothing and the empty folders it created',
-    (argv) => {
+    async (argv) => {
       const box = sandbox();
       const script = scripts.bash(box);
       const record = recordPath(box, 'bash');
@@ -1264,13 +1290,13 @@ describe('uninstall', () => {
         record,
         `${JSON.stringify({
           directories: created,
-          files: [{ intended: digestOf(printed(box, 'bash')), path: script, prior: null }],
+          files: [{ intended: digestOf(await printed(box, 'bash')), path: script, prior: null }],
           format: 1,
           lines: [{ intended: bashLine(script), path: join(box.home, '.bashrc'), prior: null }],
           state: 'pending',
         })}\n`,
       );
-      const result = run(box, argv);
+      const result = await run(box, argv);
       expect(result.status).toBe(0);
       expect(lines(result.stderr)).toEqual([
         'jsonkit has no completion installed, so there is nothing to remove.',
@@ -1280,13 +1306,13 @@ describe('uninstall', () => {
     },
   );
 
-  it('fails with no shell and changes nothing when one shell’s plugin’s file is damaged', () => {
+  it('fails with no shell and changes nothing when one shell’s plugin’s file is damaged', async () => {
     const box = sandbox();
-    run(box, ['completion', 'install', 'bash']);
-    run(box, ['completion', 'install', 'zsh']);
+    await run(box, ['completion', 'install', 'bash']);
+    await run(box, ['completion', 'install', 'zsh']);
     writeFileSync(recordPath(box, 'bash'), '{"format":1');
     const before = { ...tree(box.home), ...tree(box.data), ...tree(box.state) };
-    const result = run(box, ['completion', 'uninstall']);
+    const result = await run(box, ['completion', 'uninstall']);
     expect(result.status).toBe(1);
     expect(lines(result.stderr)).toEqual([
       `${recordPath(box, 'bash')} cannot be read, so jsonkit will not change the files and line it lists. Remove it, the files it lists, and the line it added, then run jsonkit completion uninstall again.`,
@@ -1328,13 +1354,13 @@ function profileSized(box: Box, remainder: number): string {
 }
 
 describe('PowerShell', () => {
-  it('writes the line into the profile PowerShell reports, holding non-ASCII characters', () => {
+  it('writes the line into the profile PowerShell reports, holding non-ASCII characters', async () => {
     const box = sandbox();
     const profile = join(box.home, 'Документы', 'PowerShell', 'Profile.ps1');
     const bin = join(box.root, 'bin');
     fakePwsh(bin, answerOf(profile));
     const script = scripts.pwsh(box);
-    const result = run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
+    const result = await run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `Installed the pwsh completion script in ${script}.`,
@@ -1342,7 +1368,7 @@ describe('PowerShell', () => {
       'Open a new shell to use it.',
     ]);
     expect(readFileSync(profile, 'utf8')).toBe(`${powershellLine(script)}\n`);
-    expect(readFileSync(script, 'utf8')).toBe(printed(box, 'powershell'));
+    expect(readFileSync(script, 'utf8')).toBe(await printed(box, 'powershell'));
     expect(readFileSync(join(box.root, 'pwsh.log'), 'utf8')).toBe(
       `${realpathSync(box.home)}\n-NoLogo\n-NoProfile\n-NonInteractive\n-Command\n[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($PROFILE))\n`,
     );
@@ -1371,11 +1397,11 @@ describe('PowerShell', () => {
       },
       `jsonkit cannot find the profile of pwsh, because pwsh reported ${answerOf('profile.ps1')}. Check that pwsh -NoProfile -Command $PROFILE prints the path of your profile.`,
     ],
-  ])('fails when the fixture %s, and writes nothing', (_case, prepare, sentence) => {
+  ])('fails when the fixture %s, and writes nothing', async (_case, prepare, sentence) => {
     const box = sandbox();
     const bin = join(box.root, 'bin');
     prepare(box, bin);
-    const result = run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
+    const result = await run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
     expect(result.status).toBe(1);
     expect(lines(result.stderr)).toEqual([sentence]);
     expect(readdirSync(box.data)).toEqual([]);
@@ -1402,12 +1428,12 @@ describe('PowerShell', () => {
       'Base64 and a second word',
       (box: Box) => `${answerOf(join(box.home, 'profile.ps1'))} RemoteSigned`,
     ],
-  ])('fails when the fixture answers %s, and writes nothing', (_case, answer) => {
+  ])('fails when the fixture answers %s, and writes nothing', async (_case, answer) => {
     const box = sandbox();
     const bin = join(box.root, 'bin');
     const text = answer(box);
     fakePwsh(bin, text);
-    const result = run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
+    const result = await run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
     expect(result.status).toBe(1);
     expect(lines(result.stderr)).toEqual([
       `jsonkit cannot find the profile of pwsh, because pwsh reported ${text}. Check that pwsh -NoProfile -Command $PROFILE prints the path of your profile.`,
@@ -1416,23 +1442,23 @@ describe('PowerShell', () => {
     expect(readdirSync(box.home)).toEqual([]);
   });
 
-  it('reads an answer that ends with a carriage return and a line feed', () => {
+  it('reads an answer that ends with a carriage return and a line feed', async () => {
     const box = sandbox();
     const profile = join(box.home, 'profile.ps1');
     const bin = join(box.root, 'bin');
     const answer = answerOf(profile);
     fakePwsh(bin, answer, `printf '%s\\r\\n' '${answer}'\nexit 0\n`);
-    const result = run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
+    const result = await run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
     expect(result.status).toBe(0);
     expect(readFileSync(profile, 'utf8')).toBe(`${powershellLine(scripts.pwsh(box))}\n`);
   });
 
-  it('ends the query and the run when the run is aborted while PowerShell answers', () => {
+  it('ends the query and the run when the run is aborted while PowerShell answers', async () => {
     const box = sandbox();
     const bin = join(box.root, 'bin');
     const abortMarker = join(box.root, 'abort');
     fakePwsh(bin, 'x', `: > '${abortMarker}'\nexec /bin/sleep 30\n`);
-    const result = run(box, ['completion', 'install', 'pwsh'], {
+    const result = await run(box, ['completion', 'install', 'pwsh'], {
       abortMarker,
       env: pwshEnv(box, bin),
     });
@@ -1457,7 +1483,7 @@ describe('PowerShell', () => {
         chmodSync(folder, 0o000);
       },
     ],
-  ])('runs the pwsh of a later PATH entry when an earlier one %s', (_case, prepare) => {
+  ])('runs the pwsh of a later PATH entry when an earlier one %s', async (_case, prepare) => {
     const box = sandbox();
     const profile = join(box.home, 'profile.ps1');
     const earlier = join(box.root, 'earlier');
@@ -1465,7 +1491,7 @@ describe('PowerShell', () => {
     const bin = join(box.root, 'bin');
     fakePwsh(bin, answerOf(profile));
     const env = { ...pwshEnv(box, bin), PATH: `${earlier}:${bin}` };
-    const result = run(box, ['completion', 'install', 'pwsh'], { env });
+    const result = await run(box, ['completion', 'install', 'pwsh'], { env });
     expect(result.status).toBe(0);
     expect(readFileSync(profile, 'utf8')).toBe(`${powershellLine(scripts.pwsh(box))}\n`);
   });
@@ -1485,14 +1511,14 @@ describe('PowerShell', () => {
         folder: join(box.home, 'bin'),
       }),
     ],
-  ])('never runs a fixture pwsh %s', (_case, place) => {
+  ])('never runs a fixture pwsh %s', async (_case, place) => {
     const box = sandbox();
     const empty = join(box.root, 'empty');
     mkdirSync(empty);
     const { PATH, folder } = place(box, empty);
     fakePwsh(folder, answerOf(join(box.home, 'profile.ps1')));
     const log = join(box.root, 'pwsh.log');
-    const result = run(box, ['completion', 'install', 'pwsh'], {
+    const result = await run(box, ['completion', 'install', 'pwsh'], {
       cwd: box.home,
       env: { PATH, PWSH_LOG: log },
     });

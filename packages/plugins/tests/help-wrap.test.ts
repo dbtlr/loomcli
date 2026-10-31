@@ -55,9 +55,7 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
-
-const fixture = new URL('fixtures/help-wrap.mjs', import.meta.url);
+import { run as fixtureRun } from './fixtures/help-wrap.mjs';
 
 /** One width a page reads: a terminal that wide, or a pipe. */
 type Width = number | null;
@@ -72,8 +70,8 @@ interface WrapInput {
 }
 
 /** What the fixture printed for one page, after it exited cleanly. */
-function render(input: WrapInput): string {
-  const result = invoke(fixture, [JSON.stringify(input)]);
+async function render(input: WrapInput) {
+  const result = await fixtureRun([JSON.stringify(input)]);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return result.stdout;
@@ -124,29 +122,29 @@ const children = {
   config: { description: 'Read values.' },
 };
 
-test('a page at a width it already fits prints as it does off a terminal', () => {
+test('a page at a width it already fits prints as it does off a terminal', async () => {
   for (const app of [rows, children]) {
-    expect(render({ app, columns: 200 })).toBe(render({ app, columns: null }));
+    await expect(render({ app, columns: 200 })).resolves.toBe(await render({ app, columns: null }));
   }
 });
 
-test('COLUMNS narrows the page on a terminal and changes nothing on a pipe', () => {
+test('COLUMNS narrows the page on a terminal and changes nothing on a pipe', async () => {
   const app = {
     config: {
       description:
         'Read and reshape one document from a file or a pipe, and print the result in a chosen format.',
     },
   };
-  const at = (columns: Width, env?: Record<string, string>) =>
-    render({ app, columns, ...(env === undefined ? {} : { env }) });
-  expect(at(60)).not.toBe(at(100));
-  expect(at(100, { COLUMNS: '60' })).toBe(at(60));
-  expect(at(100, { COLUMNS: '150' })).toBe(at(100));
-  expect(at(null, { COLUMNS: '60' })).toBe(at(null));
+  const at = async (columns: Width, env?: Record<string, string>) =>
+    await render({ app, columns, ...(env === undefined ? {} : { env }) });
+  await expect(at(60)).resolves.not.toBe(await at(100));
+  await expect(at(100, { COLUMNS: '60' })).resolves.toBe(await at(60));
+  await expect(at(100, { COLUMNS: '150' })).resolves.toBe(await at(100));
+  await expect(at(null, { COLUMNS: '60' })).resolves.toBe(await at(null));
 });
 
-test('a right cell wraps as one text under its column, in direct rows and under an inner heading', () => {
-  const stdout = render({ app: rows, columns: 40 });
+test('a right cell wraps as one text under its column, in direct rows and under an inner heading', async () => {
+  const stdout = await render({ app: rows, columns: 40 });
   expect(block(stdout, 'OPTIONS')).toEqual([
     'OPTIONS',
     '  -o, --format <format>  Select the',
@@ -169,15 +167,15 @@ test('a right cell wraps as one text under its column, in direct rows and under 
   ]);
 });
 
-test('a row set stacks exactly when its indent, left column, and floor exceed the columns', () => {
-  expect(block(render({ app: children, columns: 27 }), 'COMMANDS')).toEqual([
+test('a row set stacks exactly when its indent, left column, and floor exceed the columns', async () => {
+  expect(block(await render({ app: children, columns: 27 }), 'COMMANDS')).toEqual([
     'COMMANDS',
     '  alpha       Read the',
     '              configuration',
     '              values.',
     '  beta-gamma  Write values.',
   ]);
-  const stdout = render({ app: children, columns: 26 });
+  const stdout = await render({ app: children, columns: 26 });
   expect(block(stdout, 'COMMANDS')).toEqual([
     'COMMANDS',
     '  alpha',
@@ -211,8 +209,8 @@ function nested(inner: string) {
   };
 }
 
-test("an outer heading's direct rows and an inner heading's rows stack independently", () => {
-  expect(block(render({ app: nested('beta'), columns: 21 }), 'COMMANDS')).toEqual([
+test("an outer heading's direct rows and an inner heading's rows stack independently", async () => {
+  expect(block(await render({ app: nested('beta'), columns: 21 }), 'COMMANDS')).toEqual([
     'COMMANDS',
     '  alpha',
     '      Read the',
@@ -222,7 +220,9 @@ test("an outer heading's direct rows and an inner heading's rows stack independe
     '    beta  Write',
     '          values.',
   ]);
-  expect(block(render({ app: nested('beta-delta-epsilon'), columns: 30 }), 'COMMANDS')).toEqual([
+  expect(
+    block(await render({ app: nested('beta-delta-epsilon'), columns: 30 }), 'COMMANDS'),
+  ).toEqual([
     'COMMANDS',
     '  alpha  Read the',
     '         configuration values.',
@@ -232,13 +232,13 @@ test("an outer heading's direct rows and an inner heading's rows stack independe
   ]);
 });
 
-test('a stacked right cell whose unit is wider than its space overflows on its own line', () => {
+test('a stacked right cell whose unit is wider than its space overflows on its own line', async () => {
   const app = {
     commands: [
       { config: { description: 'See https://example.com/a/very/long/path now.' }, name: 'alpha' },
     ],
   };
-  expect(block(render({ app, columns: 20 }), 'COMMANDS')).toEqual([
+  expect(block(await render({ app, columns: 20 }), 'COMMANDS')).toEqual([
     'COMMANDS',
     '  alpha',
     '      See',
@@ -268,21 +268,22 @@ const literals = {
   ],
 };
 
-test('usage forms, left cells, code, and example commands print whole on a narrow terminal', () => {
-  const lines = render({ app: literals, columns: 15 }).split('\n');
+test('usage forms, left cells, code, and example commands print whole on a narrow terminal', async () => {
+  const fixtureResult1 = await render({ app: literals, columns: 15 });
+  const lines = fixtureResult1.split('\n');
   expect(lines).toContain('  app --mode <mode> --level <level> [options]');
   expect(lines).toContain('      --level <level>');
   expect(lines).toContain('    const value = compute(input, options);');
   expect(lines).toContain('  $ app go --mode fast --level high');
 });
 
-test("a Details code span, a hint's command, and a link destination never break", () => {
-  const stdout = render({ app: literals, columns: 24 });
+test("a Details code span, a hint's command, and a link destination never break", async () => {
+  const stdout = await render({ app: literals, columns: 24 });
   expect(blocks(stdout).slice(1, 3)).toEqual([
     ['  Use', '  `one two three four five six`', '  here.'],
     ['  See docs', '  (https://example.com/a/very/long/path).'],
   ]);
-  expect(blocks(render({ app: literals, columns: 15 })).at(-1)).toEqual([
+  expect(blocks(await render({ app: literals, columns: 15 })).at(-1)).toEqual([
     'Run',
     'app <command> --help',
     'for command',
@@ -296,36 +297,36 @@ function details(markdown: string) {
 }
 
 /** The Details block of a page, which follows the masthead. */
-function detailsAt(markdown: string, columns: Width): string[] {
-  return blocks(render({ app: details(markdown), columns }))
+async function detailsAt(markdown: string, columns: Width): Promise<string[]> {
+  return blocks(await render({ app: details(markdown), columns }))
     .slice(1, -2)
     .flat();
 }
 
-test('a paragraph authored across lines joins and wraps on a terminal, and keeps its lines off one', () => {
+test('a paragraph authored across lines joins and wraps on a terminal, and keeps its lines off one', async () => {
   const markdown = 'The first line of text\nand the second line\nand the third.';
-  expect(detailsAt(markdown, 40)).toEqual([
+  await expect(detailsAt(markdown, 40)).resolves.toEqual([
     '  The first line of text and the second',
     '  line and the third.',
   ]);
-  expect(detailsAt(markdown, 200)).toEqual([
+  await expect(detailsAt(markdown, 200)).resolves.toEqual([
     '  The first line of text and the second line and the third.',
   ]);
-  expect(detailsAt(markdown, null)).toEqual([
+  await expect(detailsAt(markdown, null)).resolves.toEqual([
     '  The first line of text',
     '  and the second line',
     '  and the third.',
   ]);
 });
 
-test('a list item continues after its marker, nested two levels, and a quote carries its marker', () => {
+test('a list item continues after its marker, nested two levels, and a quote carries its marker', async () => {
   const markdown = [
     '- A first item whose text runs long enough to wrap.',
     '  - A nested item whose text also runs long enough.',
     '',
     '> A quoted line of text that runs long enough to wrap.',
   ].join('\n');
-  expect(detailsAt(markdown, 30)).toEqual([
+  await expect(detailsAt(markdown, 30)).resolves.toEqual([
     '  ● A first item whose text',
     '    runs long enough to wrap.',
     '    ● A nested item whose text',
@@ -335,33 +336,37 @@ test('a list item continues after its marker, nested two levels, and a quote car
   ]);
 });
 
-test('ordered items right-align their markers and wrap under their text column', () => {
+test('ordered items right-align their markers and wrap under their text column', async () => {
   const markdown = Array.from({ length: 10 }, (_unused, index) =>
     index === 0 ? '1. A first item whose text runs long.' : `${index + 1}. Item ${index + 1}`,
   ).join('\n');
-  expect(detailsAt(markdown, 30).slice(0, 3)).toEqual([
+  const fixtureResult2 = await detailsAt(markdown, 30);
+  expect(fixtureResult2.slice(0, 3)).toEqual([
     '   1. A first item whose text',
     '      runs long.',
     '   2. Item 2',
   ]);
-  expect(detailsAt(markdown, 30).slice(-2)).toEqual(['   9. Item 9', '  10. Item 10']);
-  expect(detailsAt('3) one\n3) two', null)).toEqual(['  3. one', '  4. two']);
+  const fixtureResult3 = await detailsAt(markdown, 30);
+  expect(fixtureResult3.slice(-2)).toEqual(['   9. Item 9', '  10. Item 10']);
+  await expect(detailsAt('3) one\n3) two', null)).resolves.toEqual(['  3. one', '  4. two']);
 });
 
-test('a nested ordered list starts at its bullet parent text column and aligns on its own', () => {
-  expect(detailsAt('- parent\n  9. nine\n  9. ten', 30)).toEqual([
+test('a nested ordered list starts at its bullet parent text column and aligns on its own', async () => {
+  await expect(detailsAt('- parent\n  9. nine\n  9. ten', 30)).resolves.toEqual([
     '  ● parent',
     '     9. nine',
     '    10. ten',
   ]);
 });
 
-test('a level 1 heading underlines the widest wrapped line off a terminal and on one', () => {
-  expect(detailsAt('# A heading that is long enough to wrap', null)).toEqual([
+test('a level 1 heading underlines the widest wrapped line off a terminal and on one', async () => {
+  await expect(detailsAt('# A heading that is long enough to wrap', null)).resolves.toEqual([
     '  A heading that is long enough to wrap',
     '  ─────────────────────────────────────',
   ]);
-  expect(detailsAt('# A heading that is long enough to wrap\n## Level two\n', 30)).toEqual([
+  await expect(
+    detailsAt('# A heading that is long enough to wrap\n## Level two\n', 30),
+  ).resolves.toEqual([
     '  A heading that is long',
     '  enough to wrap',
     '  ──────────────────────',
@@ -369,7 +374,7 @@ test('a level 1 heading underlines the widest wrapped line off a terminal and on
   ]);
 });
 
-test('a heading wraps and code keeps every line as written', () => {
+test('a heading wraps and code keeps every line as written', async () => {
   const markdown = [
     '# A heading that is long enough to wrap',
     '',
@@ -378,7 +383,7 @@ test('a heading wraps and code keeps every line as written', () => {
     'second',
     '```',
   ].join('\n');
-  expect(detailsAt(markdown, 30)).toEqual([
+  await expect(detailsAt(markdown, 30)).resolves.toEqual([
     '  A heading that is long',
     '  enough to wrap',
     '  ──────────────────────',
@@ -387,8 +392,8 @@ test('a heading wraps and code keeps every line as written', () => {
   ]);
 });
 
-test('an emphasis pair on one authored line stays styled after the join', () => {
-  const stdout = render({
+test('an emphasis pair on one authored line stays styled after the join', async () => {
+  const stdout = await render({
     app: details('Some *emphasis* here\nand more.'),
     columns: 200,
     rendering: { color: 'never', modifiers: 'always' },
@@ -417,8 +422,8 @@ const hanging = {
   postfix: '(Report schema v1 of the long format name here)',
 };
 
-test('at 40 columns each prose text continues where its first line started', () => {
-  const root = render({ app: hanging, columns: 40 });
+test('at 40 columns each prose text continues where its first line started', async () => {
+  const root = await render({ app: hanging, columns: 40 });
   expect(blocks(root)[0]).toEqual([
     'app · Read and reshape one document from',
     '      a file or a pipe.',
@@ -430,7 +435,7 @@ test('at 40 columns each prose text continues where its first line started', () 
     '    file and prints it.',
   ]);
   expect(blocks(root).at(-1)).toEqual(['Run app <command> --help for command', 'details.']);
-  expect(blocks(render({ app: hanging, argv: ['old', '--help'], columns: 40 }))[0]).toEqual([
+  expect(blocks(await render({ app: hanging, argv: ['old', '--help'], columns: 40 }))[0]).toEqual([
     'app old · Read.',
     '  Deprecated: Use the new command, which',
     '              reads every format this',
@@ -438,19 +443,19 @@ test('at 40 columns each prose text continues where its first line started', () 
   ]);
 });
 
-test('the version line stays one line on a narrow terminal', () => {
-  expect(render({ app: hanging, argv: ['--version'], columns: 20 })).toBe(
+test('the version line stays one line on a narrow terminal', async () => {
+  await expect(render({ app: hanging, argv: ['--version'], columns: 20 })).resolves.toBe(
     'app v1.2.3 (Report schema v1 of the long format name here)\n',
   );
 });
 
-test('a text with less than one column left for it prints unwrapped', () => {
+test('a text with less than one column left for it prints unwrapped', async () => {
   const app = { config: { description: 'Read values from somewhere.' }, name: 'application' };
   // At 2 columns even the fallback indent of 2 leaves no column, so the description stays whole.
-  expect(blocks(render({ app, columns: 2 }))[0]).toEqual([
+  expect(blocks(await render({ app, columns: 2 }))[0]).toEqual([
     'application · Read values from somewhere.',
   ]);
-  expect(block(render({ app: children, columns: 6 }), 'COMMANDS')).toEqual([
+  expect(block(await render({ app: children, columns: 6 }), 'COMMANDS')).toEqual([
     'COMMANDS',
     '  alpha',
     '      Read the configuration values.',
@@ -459,18 +464,18 @@ test('a text with less than one column left for it prints unwrapped', () => {
   ]);
 });
 
-test('a tab in a description, Details, and an example command expands on a terminal alone', () => {
+test('a tab in a description, Details, and an example command expands on a terminal alone', async () => {
   const app = {
     help: { details: 'A\tB\n\n```\nx\ty\n```', examples: [{ command: 'run\tfast' }] },
     options: [{ description: 'Name\tthe value.', name: 'name', type: 'string' }],
   };
-  const terminal = render({ app, columns: 80 });
+  const terminal = await render({ app, columns: 80 });
   expect(terminal).not.toContain('\t');
   expect(blocks(terminal).slice(1, 3)).toEqual([['  A       B'], ['    x       y']]);
   expect(block(terminal, 'OPTIONS')[1]).toBe('      --name <name>  Name    the value.');
   // An example command is a literal, so its tab expands from the start of its page line.
   expect(block(terminal, 'EXAMPLES')[1]).toBe('  $ app run     fast');
-  const piped = render({ app, columns: null });
+  const piped = await render({ app, columns: null });
   expect(blocks(piped).slice(1, 3)).toEqual([['  A\tB'], ['    x\ty']]);
   expect(block(piped, 'OPTIONS')[1]).toBe('      --name <name>  Name\tthe value.');
   expect(block(piped, 'EXAMPLES')[1]).toBe('  $ app run\tfast');
@@ -507,8 +512,8 @@ function starts(lines: readonly string[]) {
   return { left, right };
 }
 
-test('a stacked set holding a long-only option starts its right cells past every spelling', () => {
-  const lines = block(render({ app: outputs({ quiet: true }), columns: 28 }), 'OPTIONS');
+test('a stacked set holding a long-only option starts its right cells past every spelling', async () => {
+  const lines = block(await render({ app: outputs({ quiet: true }), columns: 28 }), 'OPTIONS');
   expect(lines).toEqual([
     'OPTIONS',
     '  -o, --out <folder>',
@@ -526,8 +531,8 @@ test('a stacked set holding a long-only option starts its right cells past every
   expect([...right].filter((column) => left.has(column))).toEqual([]);
 });
 
-test('a stacked set with no long-only option starts its right cells four columns in', () => {
-  expect(block(render({ app: outputs({ quiet: false }), columns: 28 }), 'OPTIONS')).toEqual([
+test('a stacked set with no long-only option starts its right cells four columns in', async () => {
+  expect(block(await render({ app: outputs({ quiet: false }), columns: 28 }), 'OPTIONS')).toEqual([
     'OPTIONS',
     '  -o, --out <folder>',
     '      The folder to write',
@@ -539,9 +544,9 @@ test('a stacked set with no long-only option starts its right cells four columns
   ]);
 });
 
-test('a stacked set under an inner heading starts its right cells past every spelling', () => {
+test('a stacked set under an inner heading starts its right cells past every spelling', async () => {
   const app = outputs({ quiet: true, section: ['Output', 'Files'] });
-  const lines = block(render({ app, columns: 28 }), 'OUTPUT');
+  const lines = block(await render({ app, columns: 28 }), 'OUTPUT');
   expect(lines).toEqual([
     'OUTPUT',
     '  FILES',
@@ -575,8 +580,8 @@ function blockStarting(stdout: string, opening: string): string[] {
   return blocks(stdout).find(([first]) => first?.startsWith(opening)) ?? [];
 }
 
-test('the INPUT sentences and an option-group sentence wrap at their indent', () => {
-  const stdout = render({ app: sentences, columns: 40 });
+test('the INPUT sentences and an option-group sentence wrap at their indent', async () => {
+  const stdout = await render({ app: sentences, columns: 40 });
   expect(block(stdout, 'INPUT')).toEqual([
     'INPUT',
     '  The event stream that the application',
@@ -591,11 +596,11 @@ test('the INPUT sentences and an option-group sentence wrap at their indent', ()
   ]);
 });
 
-test('the INPUT example stays whole, and the sentences keep their lines off a terminal', () => {
-  expect(block(render({ app: sentences, columns: 20 }), 'INPUT').at(-1)).toBe(
+test('the INPUT example stays whole, and the sentences keep their lines off a terminal', async () => {
+  expect(block(await render({ app: sentences, columns: 20 }), 'INPUT').at(-1)).toBe(
     '  Example: <producer> | app',
   );
-  const piped = render({ app: sentences, columns: null });
+  const piped = await render({ app: sentences, columns: null });
   expect(block(piped, 'INPUT')).toEqual([
     'INPUT',
     '  The event stream that the application reads one record at a time.',
@@ -616,15 +621,15 @@ const table = [
   '| name | the full name of the user |',
 ].join('\n');
 
-test('table rows keep their lines on a terminal and interrupt the paragraph above them', () => {
-  expect(detailsAt(table, 24)).toEqual([
+test('table rows keep their lines on a terminal and interrupt the paragraph above them', async () => {
+  await expect(detailsAt(table, 24)).resolves.toEqual([
     '  The fields of a record',
     '  are listed below.',
     '  | Key | Value |',
     '  | --- | --- |',
     '  | name | the full name of the user |',
   ]);
-  expect(detailsAt(table, 200)).toEqual([
+  await expect(detailsAt(table, 200)).resolves.toEqual([
     '  The fields of a record are listed below.',
     '  | Key | Value |',
     '  | --- | --- |',
@@ -632,15 +637,15 @@ test('table rows keep their lines on a terminal and interrupt the paragraph abov
   ]);
 });
 
-test('table rows print one page line per authored line off a terminal, read inline per line', () => {
-  expect(detailsAt(table, null)).toEqual([
+test('table rows print one page line per authored line off a terminal, read inline per line', async () => {
+  await expect(detailsAt(table, null)).resolves.toEqual([
     '  The fields of a record are',
     '  listed below.',
     '  | Key | Value |',
     '  | --- | --- |',
     '  | name | the full name of the user |',
   ]);
-  const stdout = render({
+  const stdout = await render({
     app: details('| `a b` | *x* |\n| c | d |'),
     columns: 200,
     rendering: { color: 'never', modifiers: 'always' },
@@ -648,24 +653,24 @@ test('table rows print one page line per authored line off a terminal, read inli
   expect(blocks(stdout)[1]).toEqual(['  | `a b` | \u001b[3mx\u001b[23m |', '  | c | d |']);
 });
 
-test('a line indented four spaces directly after table rows reads as paragraph text, not code', () => {
-  expect(detailsAt('Para.\n| a | b |\n    indented line after rows', null)).toEqual([
+test('a line indented four spaces directly after table rows reads as paragraph text, not code', async () => {
+  await expect(detailsAt('Para.\n| a | b |\n    indented line after rows', null)).resolves.toEqual([
     '  Para.',
     '  | a | b |',
     '  indented line after rows',
   ]);
-  expect(detailsAt('| a | b |\n    indented line after rows', null)).toEqual([
+  await expect(detailsAt('| a | b |\n    indented line after rows', null)).resolves.toEqual([
     '  | a | b |',
     '  indented line after rows',
   ]);
-  expect(detailsAt('- item\n  | a | b |\n      deeper line', null)).toEqual([
+  await expect(detailsAt('- item\n  | a | b |\n      deeper line', null)).resolves.toEqual([
     '  ● item',
     '    | a | b |',
     '    deeper line',
   ]);
 });
 
-test('a masthead description and a deprecation continue at indent 2 when their hang cannot fit', () => {
+test('a masthead description and a deprecation continue at indent 2 when their hang cannot fit', async () => {
   const app = {
     commands: [
       {
@@ -676,25 +681,25 @@ test('a masthead description and a deprecation continue at indent 2 when their h
     config: { description: 'Read the configuration values.' },
     name: 'application',
   };
-  expect(blocks(render({ app, columns: 20 }))[0]).toEqual([
+  expect(blocks(await render({ app, columns: 20 }))[0]).toEqual([
     'application · Read',
     '  the configuration',
     '  values.',
   ]);
-  expect(blocks(render({ app, argv: ['old', '--help'], columns: 24 }))[0]).toEqual([
+  expect(blocks(await render({ app, argv: ['old', '--help'], columns: 24 }))[0]).toEqual([
     'application old · Read.',
     '  Deprecated: Use the',
     '  configuration command.',
   ]);
 });
 
-test("a list item continues at its marker's column when its hang cannot fit", () => {
-  expect(detailsAt('- Set configurationvalue now.', 20)).toEqual([
+test("a list item continues at its marker's column when its hang cannot fit", async () => {
+  await expect(detailsAt('- Set configurationvalue now.', 20)).resolves.toEqual([
     '  ● Set',
     '  configurationvalue',
     '  now.',
   ]);
-  expect(detailsAt('- outer\n  - Set configurationvalue now.', 20)).toEqual([
+  await expect(detailsAt('- outer\n  - Set configurationvalue now.', 20)).resolves.toEqual([
     '  ● outer',
     '    ● Set',
     '    configurationvalue',
@@ -705,11 +710,13 @@ test("a list item continues at its marker's column when its hang cannot fit", ()
 /** Color and modifiers on, under the Loom theme. */
 const themed = { rendering: { color: 'always', modifiers: 'always' }, themed: true } as const;
 
-test('a wrapped right cell closes its styles before the indent and opens them after it', () => {
+test('a wrapped right cell closes its styles before the indent and opens them after it', async () => {
   const app = {
     commands: [{ config: { deprecated: 'Use read.', description: 'Read one.' }, name: 'get' }],
   };
-  expect(block(render({ app, columns: 22, ...themed }), '\u001b[90mCOMMANDS\u001b[39m')).toEqual([
+  expect(
+    block(await render({ app, columns: 22, ...themed }), '\u001b[90mCOMMANDS\u001b[39m'),
+  ).toEqual([
     '\u001b[90mCOMMANDS\u001b[39m',
     '  \u001b[33mget\u001b[39m  Read one.',
     '       \u001b[90m(\u001b[93mdeprecated:\u001b[39m',
@@ -717,7 +724,7 @@ test('a wrapped right cell closes its styles before the indent and opens them af
   ]);
 });
 
-test('a wrapped deprecation message and a stacked row keep their styles on every line', () => {
+test('a wrapped deprecation message and a stacked row keep their styles on every line', async () => {
   const app = {
     commands: [
       {
@@ -726,13 +733,13 @@ test('a wrapped deprecation message and a stacked row keep their styles on every
       },
     ],
   };
-  const stdout = render({ app, argv: ['old', '--help'], columns: 30, ...themed });
+  const stdout = await render({ app, argv: ['old', '--help'], columns: 30, ...themed });
   expect(blocks(stdout)[0]).toEqual([
     '\u001b[33;1mapp old\u001b[39;22m \u001b[90m·\u001b[39m Read one.',
     '  \u001b[93mDeprecated: Use the new\u001b[39m',
     '              \u001b[93mcommand instead.\u001b[39m',
   ]);
-  const root = render({ app, columns: 18, ...themed });
+  const root = await render({ app, columns: 18, ...themed });
   expect(block(root, '\u001b[90mCOMMANDS\u001b[39m')).toEqual([
     '\u001b[90mCOMMANDS\u001b[39m',
     '  \u001b[33mold\u001b[39m',
@@ -757,9 +764,10 @@ const bound = {
   ],
 };
 
-test('a variable name and a configuration path in the fact parenthesis never break across lines', () => {
+test('a variable name and a configuration path in the fact parenthesis never break across lines', async () => {
   for (const columns of [40, 60]) {
-    const lines = render({ app: bound, columns }).split('\n');
+    const fixtureResult4 = await render({ app: bound, columns });
+    const lines = fixtureResult4.split('\n');
     expect(lines.filter((line) => line.length > columns)).toEqual([]);
     for (const name of ['APP_SERVER_LISTEN_ADDRESS', 'APP_ADDRESS', 'server.listen address']) {
       expect(lines.filter((line) => line.includes(name))).toHaveLength(1);
@@ -768,9 +776,12 @@ test('a variable name and a configuration path in the fact parenthesis never bre
   }
 });
 
-test('a wrapped binding fact prints its labels, names, and separators dim on every line', () => {
+test('a wrapped binding fact prints its labels, names, and separators dim on every line', async () => {
   const app = { options: [{ ...bound.options[0], env: ['APP_LISTEN', 'APP_ADDRESS'] }] };
-  const options = block(render({ app, columns: 40, ...themed }), '\u001b[90mOPTIONS\u001b[39m');
+  const options = block(
+    await render({ app, columns: 40, ...themed }),
+    '\u001b[90mOPTIONS\u001b[39m',
+  );
   expect(options.slice(0, 5)).toEqual([
     '\u001b[90mOPTIONS\u001b[39m',
     '      \u001b[33m--listen\u001b[39m \u001b[90;3m<listen>\u001b[39;23m',
@@ -794,8 +805,8 @@ const listBound = {
   ],
 };
 
-test("a list binding's delimiter literal never breaks across lines, and the row fits 40 and 60 columns", () => {
-  expect(block(render({ app: listBound, columns: 40 }), 'OPTIONS').slice(0, 5)).toEqual([
+test("a list binding's delimiter literal never breaks across lines, and the row fits 40 and 60 columns", async () => {
+  expect(block(await render({ app: listBound, columns: 40 }), 'OPTIONS').slice(0, 5)).toEqual([
     'OPTIONS',
     '      --word <word>  A word to count.',
     '                     (repeatable, env:',
@@ -804,13 +815,14 @@ test("a list binding's delimiter literal never breaks across lines, and the row 
   ]);
   // At 36 columns a line ends between the literal's quotes unless the literal stays whole.
   for (const columns of [36, 40, 60]) {
-    const lines = render({ app: listBound, columns }).split('\n');
+    const fixtureResult5 = await render({ app: listBound, columns });
+    const lines = fixtureResult5.split('\n');
     expect(lines.filter((line) => line.length > columns)).toEqual([]);
     expect(lines.filter((line) => line.includes('" ")'))).toHaveLength(1);
   }
   // The words and the literal print dim on every line, as the names do.
   const options = block(
-    render({ app: listBound, columns: 40, ...themed }),
+    await render({ app: listBound, columns: 40, ...themed }),
     '\u001b[90mOPTIONS\u001b[39m',
   );
   expect(options.slice(3, 5)).toEqual([

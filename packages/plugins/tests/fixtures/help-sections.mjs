@@ -1,52 +1,159 @@
-import {
-  Application,
-  Command,
-  DeclarationError,
-  plugin,
-  processHandle,
-  readExtension,
-} from '@loomcli/core';
+import { Application, Command, DeclarationError, plugin, readExtension } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { loomTheme } from '@loomcli/plugins/theme';
+import { mockProcess } from '@loomcli/testing';
 
-const [scenario, ...argv] = process.argv.slice(2);
+/** Runs the fixture on isolated process facts and returns its recorded output. */
+async function run(args = [], env = {}) {
+  const status = 0;
+  const output = mockProcess({ env });
+  const handles = [output];
+  let current = output;
+  const capture = (fields) => {
+    const { terminal, ...facts } = fields;
+    const handle = mockProcess({
+      env,
+      ...facts,
+      ...(terminal?.stdout?.isTTY || terminal?.stderr?.isTTY
+        ? {
+            terminal: {
+              columns: terminal.stdout?.columns ?? terminal.stderr?.columns,
+              rows: 24,
+              streams: [terminal.stdout?.isTTY ? 'stdout' : 'stderr'],
+              ...(terminal.background === undefined ? {} : { background: terminal.background }),
+            },
+          }
+        : {}),
+    });
+    handles.push(handle);
+    current = handle;
+    return handle;
+  };
 
-function metadata() {
-  const app = new Application('sections', {
-    extensions: [
-      helpCommand({
-        commandSections: [['Work', 'Read']],
-        optionSections: [['Output']],
-        section: [' Root ', 'Unused'],
-      }),
-    ],
-  })
-    .globalOption('quiet', {
-      extensions: [helpInput({ section: ['Output', 'Logging'] })],
-      type: 'boolean',
+  const [scenario, ...argv] = args;
+
+  function metadata() {
+    const app = new Application('sections', {
+      extensions: [
+        helpCommand({
+          commandSections: [['Work', 'Read']],
+          optionSections: [['Output']],
+          section: [' Root ', 'Unused'],
+        }),
+      ],
     })
-    .action(() => {});
-  const graph = app.inspect();
-  const command = readExtension(graph.root, helpCommand);
-  const input = readExtension(graph.globals[0], helpInput);
-  process.stdout.write(
-    `${JSON.stringify({
-      command,
-      frozen: [
+      .globalOption('quiet', {
+        extensions: [helpInput({ section: ['Output', 'Logging'] })],
+        type: 'boolean',
+      })
+      .action(() => {});
+    const graph = app.inspect();
+    const command = readExtension(graph.root, helpCommand);
+    const input = readExtension(graph.globals[0], helpInput);
+    current.stdout.write(
+      `${JSON.stringify({
         command,
-        command.section,
-        command.commandSections,
-        command.commandSections?.[0],
-        command.optionSections,
-        command.optionSections?.[0],
+        frozen: [
+          command,
+          command.section,
+          command.commandSections,
+          command.commandSections?.[0],
+          command.optionSections,
+          command.optionSections?.[0],
+          input,
+          input.section,
+        ].every(Object.isFrozen),
         input,
-        input.section,
-      ].every(Object.isFrozen),
-      input,
-    })}\n`,
-  );
+      })}\n`,
+    );
+  }
+
+  function invalid() {
+    const values = [[], ['One', 'Two', 'Three'], [1], [' '], ['One\nTwo'], 'One'];
+    const rejected = [];
+    for (const path of values) {
+      for (const slot of ['command', 'local', 'global', 'plugin', 'commands', 'options']) {
+        try {
+          const value = helpInput({ section: path });
+          let app = new Application('invalid');
+          switch (slot) {
+            case 'command': {
+              app = app.extend(helpCommand({ section: path }));
+              break;
+            }
+            case 'local': {
+              app = app.option('quiet', { extensions: [value], type: 'boolean' });
+              break;
+            }
+            case 'global': {
+              app = app.globalOption('quiet', { extensions: [value], type: 'boolean' });
+              break;
+            }
+            case 'plugin': {
+              app = new Application('invalid', {
+                plugins: [
+                  plugin('@fixture/invalid', {
+                    options: { quiet: { extensions: [value], type: 'boolean' } },
+                  }),
+                ],
+              });
+              break;
+            }
+            case 'commands': {
+              app = app.extend(helpCommand({ commandSections: [path] }));
+              break;
+            }
+            case 'options': {
+              app = app.extend(helpCommand({ optionSections: [path] }));
+              break;
+            }
+          }
+          app.action(() => {}).inspect();
+          rejected.push('accepted');
+        } catch (error) {
+          rejected.push(error instanceof DeclarationError ? error.rule.identity : 'wrong error');
+        }
+      }
+    }
+    current.stdout.write(`${JSON.stringify(rejected)}\n`);
+  }
+
+  const scenarios = {
+    'child-order': () => childOrder().run({ process: capture({ argv }) }),
+    commands: () => commands().run({ process: capture({ argv }) }),
+    completion: () => completing().run({ process: capture({ argv }) }),
+    graph: () => {
+      current.stdout.write(
+        `${JSON.stringify(
+          ordered()
+            .inspect()
+            .root.children.map((child) => child.name),
+        )}\n`,
+      );
+    },
+    invalid,
+    metadata,
+    'named-only': () => commands(false).run({ process: capture({ argv }) }),
+    options: () => options().run({ process: capture({ argv }) }),
+    ordered: () => ordered().run({ process: capture({ argv }) }),
+    'parent-order': () => ordered(true).run({ process: capture({ argv }) }),
+    scoped: () => scoped().run({ process: capture({ argv }) }),
+    wide: () => wide().run({ process: capture({ argv }) }),
+    'wide-styled': () =>
+      wide().run({
+        process: capture({ argv, env: {} }),
+        rendering: { color: 'always', modifiers: 'always' },
+      }),
+  };
+
+  await scenarios[scenario](argv);
+  return {
+    status: current.exitCode ?? status,
+    stderr: handles.map((handle) => handle.stderr.text).join(''),
+    stdout: handles.map((handle) => handle.stdout.text).join(''),
+  };
 }
 
 function commands(includeDefault = true) {
@@ -78,7 +185,6 @@ function commands(includeDefault = true) {
     );
   return includeDefault ? app.command(doctor) : app;
 }
-
 function options() {
   return new Application('report', {
     extensions: [
@@ -115,13 +221,89 @@ function options() {
     .option('strict', { description: 'Reject unreadable files.', type: 'boolean' })
     .action(() => {});
 }
-
 function sectionedCommand(name, section, description, hidden = false) {
   return new Command(name, {
     description,
     extensions: section === undefined ? [] : [helpCommand({ section })],
     hidden,
   }).action(() => {});
+}
+function scoped() {
+  const tracing = plugin('@fixture/tracing', {
+    options: {
+      trace: {
+        description: 'Trace calls.',
+        extensions: [helpInput({ section: ['Trace'] })],
+        type: 'boolean',
+      },
+    },
+  });
+  const child = new Command('tools', {
+    extensions: [
+      helpCommand({
+        optionSections: [['Global options'], ['Options']],
+        section: ['Root commands'],
+      }),
+    ],
+  })
+    .argument('file', { description: 'File to read.', required: true })
+    .option('mode', { description: 'Use mode.', type: 'boolean' })
+    .action(() => {});
+  return new Application('scoped', {
+    extensions: [helpCommand({ optionSections: [['Trace'], ['Output'], ['Global options']] })],
+    plugins: [help(), tracing],
+  })
+    .globalOption('quiet', {
+      description: 'Say less.',
+      extensions: [helpInput({ section: ['Output'] })],
+      short: 'q',
+      type: 'boolean',
+    })
+    .command(child);
+}
+function wide() {
+  return new Application('wide', { plugins: [help(), loomTheme()] })
+    .option('field', {
+      description: 'Fields.',
+      extensions: [helpInput({ placeholder: '界界', section: ['out\uE001put', 'fi\uE002les'] })],
+      short: 'F',
+      type: 'string',
+    })
+    .option('mark', {
+      description: 'Short.',
+      extensions: [helpInput({ placeholder: 'é', section: ['OUT\uE001PUT', 'FI\uE002LES'] })],
+      short: 'x',
+      shortOnly: true,
+      type: 'string',
+    })
+    .option('hidden-long-name', {
+      extensions: [helpInput({ section: ['out\uE001put', 'fi\uE002les'] })],
+      hidden: true,
+      type: 'boolean',
+    })
+    .action(() => {});
+}
+
+function childOrder() {
+  const parent = new Command('tools', {
+    extensions: [
+      helpCommand({ commandSections: [['Read'], ['Edit']], section: ['Outer', 'Ignored'] }),
+    ],
+  })
+    .command(sectionedCommand('edit', ['Edit']))
+    .command(sectionedCommand('read', ['Read']));
+  return new Application('nested', {
+    extensions: [helpCommand({ commandSections: [['Edit'], ['Read']] })],
+    plugins: [help()],
+  }).command(parent);
+}
+function completing() {
+  return new Application('project', {
+    extensions: [helpCommand({ commandSections: [['Last'], ['First']] })],
+    plugins: [help(), completion()],
+  })
+    .command(sectionedCommand('alpha', ['First'], 'Read first.'))
+    .command(sectionedCommand('beta', ['Last'], 'Read last.'));
 }
 
 function ordered(parentOnly = false) {
@@ -157,162 +339,4 @@ function ordered(parentOnly = false) {
     .command(sectionedCommand('alpha', ['Alpha']))
     .command(sectionedCommand('zeta', ['Zeta']));
 }
-
-function invalid() {
-  const values = [[], ['One', 'Two', 'Three'], [1], [' '], ['One\nTwo'], 'One'];
-  const rejected = [];
-  for (const path of values) {
-    for (const slot of ['command', 'local', 'global', 'plugin', 'commands', 'options']) {
-      try {
-        const value = helpInput({ section: path });
-        let app = new Application('invalid');
-        switch (slot) {
-          case 'command': {
-            app = app.extend(helpCommand({ section: path }));
-            break;
-          }
-          case 'local': {
-            app = app.option('quiet', { extensions: [value], type: 'boolean' });
-            break;
-          }
-          case 'global': {
-            app = app.globalOption('quiet', { extensions: [value], type: 'boolean' });
-            break;
-          }
-          case 'plugin': {
-            app = new Application('invalid', {
-              plugins: [
-                plugin('@fixture/invalid', {
-                  options: { quiet: { extensions: [value], type: 'boolean' } },
-                }),
-              ],
-            });
-            break;
-          }
-          case 'commands': {
-            app = app.extend(helpCommand({ commandSections: [path] }));
-            break;
-          }
-          case 'options': {
-            app = app.extend(helpCommand({ optionSections: [path] }));
-            break;
-          }
-        }
-        app.action(() => {}).inspect();
-        rejected.push('accepted');
-      } catch (error) {
-        rejected.push(error instanceof DeclarationError ? error.rule.identity : 'wrong error');
-      }
-    }
-  }
-  process.stdout.write(`${JSON.stringify(rejected)}\n`);
-}
-
-function scoped() {
-  const tracing = plugin('@fixture/tracing', {
-    options: {
-      trace: {
-        description: 'Trace calls.',
-        extensions: [helpInput({ section: ['Trace'] })],
-        type: 'boolean',
-      },
-    },
-  });
-  const child = new Command('tools', {
-    extensions: [
-      helpCommand({
-        optionSections: [['Global options'], ['Options']],
-        section: ['Root commands'],
-      }),
-    ],
-  })
-    .argument('file', { description: 'File to read.', required: true })
-    .option('mode', { description: 'Use mode.', type: 'boolean' })
-    .action(() => {});
-  return new Application('scoped', {
-    extensions: [helpCommand({ optionSections: [['Trace'], ['Output'], ['Global options']] })],
-    plugins: [help(), tracing],
-  })
-    .globalOption('quiet', {
-      description: 'Say less.',
-      extensions: [helpInput({ section: ['Output'] })],
-      short: 'q',
-      type: 'boolean',
-    })
-    .command(child);
-}
-
-function childOrder() {
-  const parent = new Command('tools', {
-    extensions: [
-      helpCommand({ commandSections: [['Read'], ['Edit']], section: ['Outer', 'Ignored'] }),
-    ],
-  })
-    .command(sectionedCommand('edit', ['Edit']))
-    .command(sectionedCommand('read', ['Read']));
-  return new Application('nested', {
-    extensions: [helpCommand({ commandSections: [['Edit'], ['Read']] })],
-    plugins: [help()],
-  }).command(parent);
-}
-
-function wide() {
-  return new Application('wide', { plugins: [help(), loomTheme()] })
-    .option('field', {
-      description: 'Fields.',
-      extensions: [helpInput({ placeholder: '界界', section: ['out\uE001put', 'fi\uE002les'] })],
-      short: 'F',
-      type: 'string',
-    })
-    .option('mark', {
-      description: 'Short.',
-      extensions: [helpInput({ placeholder: 'é', section: ['OUT\uE001PUT', 'FI\uE002LES'] })],
-      short: 'x',
-      shortOnly: true,
-      type: 'string',
-    })
-    .option('hidden-long-name', {
-      extensions: [helpInput({ section: ['out\uE001put', 'fi\uE002les'] })],
-      hidden: true,
-      type: 'boolean',
-    })
-    .action(() => {});
-}
-
-function completing() {
-  return new Application('project', {
-    extensions: [helpCommand({ commandSections: [['Last'], ['First']] })],
-    plugins: [help(), completion()],
-  })
-    .command(sectionedCommand('alpha', ['First'], 'Read first.'))
-    .command(sectionedCommand('beta', ['Last'], 'Read last.'));
-}
-
-const scenarios = {
-  'child-order': () => childOrder().run({ process: processHandle({ argv }) }),
-  commands: () => commands().run({ process: processHandle({ argv }) }),
-  completion: () => completing().run({ process: processHandle({ argv }) }),
-  graph: () => {
-    process.stdout.write(
-      `${JSON.stringify(
-        ordered()
-          .inspect()
-          .root.children.map((child) => child.name),
-      )}\n`,
-    );
-  },
-  invalid,
-  metadata,
-  'named-only': () => commands(false).run({ process: processHandle({ argv }) }),
-  options: () => options().run({ process: processHandle({ argv }) }),
-  ordered: () => ordered().run({ process: processHandle({ argv }) }),
-  'parent-order': () => ordered(true).run({ process: processHandle({ argv }) }),
-  scoped: () => scoped().run({ process: processHandle({ argv }) }),
-  wide: () => wide().run({ process: processHandle({ argv }) }),
-  'wide-styled': () =>
-    wide().run({
-      process: processHandle({ argv, env: {} }),
-      rendering: { color: 'always', modifiers: 'always' },
-    }),
-};
-await scenarios[scenario](argv);
+export { run };

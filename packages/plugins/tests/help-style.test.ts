@@ -38,14 +38,16 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { run as fixtureRun } from './fixtures/help-style.mjs';
 
-function run(options: Record<string, unknown> = {}) {
-  return invoke(new URL('fixtures/help-style.mjs', import.meta.url), [JSON.stringify(options)]);
+async function run(options: Record<string, unknown> = {}) {
+  return await fixtureRun([JSON.stringify(options)]);
 }
 
-test('the version uses a bold highlighted name and primary version with an unstyled space', () => {
-  expect(run({ rendering: { color: 'always', modifiers: 'always' }, version: 'v1.2.3' })).toEqual({
+test('the version uses a bold highlighted name and primary version with an unstyled space', async () => {
+  await expect(
+    run({ rendering: { color: 'always', modifiers: 'always' }, version: 'v1.2.3' }),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '\u001b[33;1mapp\u001b[39;22m v1.2.3\n',
@@ -58,33 +60,35 @@ test.each([
     { theme: 'custom' },
     '\u001b[36;1mapp\u001b[39;22m \u001b[32mv1.2.3\u001b[39m \u001b[35m(Report schema v1)\u001b[39m\n',
   ],
-])('a postfix is dim after one unstyled space: %j', (options, stdout) => {
-  expect(
+])('a postfix is dim after one unstyled space: %j', async (options, stdout) => {
+  await expect(
     run({
       postfix: '(Report schema v1)',
       rendering: { color: 'always', modifiers: 'always' },
       version: 'v1.2.3',
       ...options,
     }),
-  ).toEqual({ status: 0, stderr: '', stdout });
+  ).resolves.toEqual({ status: 0, stderr: '', stdout });
 });
 
-test('a postfix holding marker characters prints them literally', () => {
-  expect(
+test('a postfix holding marker characters prints them literally', async () => {
+  await expect(
     run({
       postfix: '(schema \uE001v1\uE002)',
       rendering: { color: 'always', modifiers: 'always' },
       version: 'v1.2.3',
     }),
-  ).toEqual({
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '\u001b[33;1mapp\u001b[39;22m v1.2.3 \u001b[90m(schema \uE001v1\uE002)\u001b[39m\n',
   });
 });
 
-test('help styles each semantic fragment, including deprecation punctuation and opaque examples', () => {
-  expect(run({ argv: ['--help'], rendering: { color: 'always', modifiers: 'always' } })).toEqual({
+test('help styles each semantic fragment, including deprecation punctuation and opaque examples', async () => {
+  await expect(
+    run({ argv: ['--help'], rendering: { color: 'always', modifiers: 'always' } }),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: [
@@ -113,8 +117,10 @@ test('help styles each semantic fragment, including deprecation punctuation and 
   });
 });
 
-test('a compact page styles the child hint and the pointer to the extended page', () => {
-  expect(run({ argv: ['-h'], rendering: { color: 'always', modifiers: 'always' } })).toEqual({
+test('a compact page styles the child hint and the pointer to the extended page', async () => {
+  await expect(
+    run({ argv: ['-h'], rendering: { color: 'always', modifiers: 'always' } }),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: [
@@ -142,8 +148,8 @@ test.each([
   [{}, '33'],
   [{ TERM: 'xterm-256color' }, '38;5;172'],
   [{ COLORTERM: 'truecolor' }, '38;2;201;123;54'],
-])('version follows the named palette depth: %j', (env, color) => {
-  expect(run({ env, rendering: { color: 'always', modifiers: 'always' } })).toEqual({
+])('version follows the named palette depth: %j', async (env, color) => {
+  await expect(run({ env, rendering: { color: 'always', modifiers: 'always' } })).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `\u001b[${color};1mapp\u001b[39;22m v0.0.0\n`,
@@ -168,22 +174,22 @@ test.each([
     { env: { FORCE_COLOR: '1' }, rendering: { color: 'never', modifiers: 'never' } },
     'app v0.0.0\n',
   ],
-])('version leaves capability and modifier policy to core: %j', (options, stdout) => {
-  expect(run(options)).toEqual({ status: 0, stderr: '', stdout });
+])('version leaves capability and modifier policy to core: %j', async (options, stdout) => {
+  await expect(run(options)).resolves.toEqual({ status: 0, stderr: '', stdout });
 });
 
 test.each(['0.0.0', 'v0.0.0', 'V0.0.0', '1.0.0\uE003'])(
   'version preserves literal graph data and normalization: %s',
-  (version) => {
+  async (version) => {
     const suffix = version === 'v0.0.0' ? 'v0.0.0' : `v${version}`;
-    expect(
+    await expect(
       run({
         argv: ['get', '--version'],
         name: 'app',
         rendering: { color: 'always', modifiers: 'always' },
         version,
       }),
-    ).toEqual({
+    ).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: `\u001b[33;1mapp\u001b[39;22m ${suffix}\n`,
@@ -191,10 +197,10 @@ test.each(['0.0.0', 'v0.0.0', 'V0.0.0', '1.0.0\uE003'])(
   },
 );
 
-test('help measures wide and combining placeholders and escapes literal data before styling', () => {
-  expect(
+test('help measures wide and combining placeholders and escapes literal data before styling', async () => {
+  await expect(
     run({ argv: ['--help'], leaf: true, rendering: { color: 'never', modifiers: 'never' } }),
-  ).toEqual({
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: [
@@ -225,8 +231,8 @@ test('help measures wide and combining placeholders and escapes literal data bef
   });
 });
 
-test('themed option cells separate spellings, placeholders, facts, and warning text', () => {
-  const result = run({
+test('themed option cells separate spellings, placeholders, facts, and warning text', async () => {
+  const result = await run({
     argv: ['--help'],
     leaf: true,
     rendering: { color: 'always', modifiers: 'always' },
@@ -252,8 +258,8 @@ test('themed option cells separate spellings, placeholders, facts, and warning t
   expect(result.stdout).toContain('  \u001b[90;3m界é\u001b[39;23m  Wide.\n');
 });
 
-test("an implied value's brackets and a count's ellipsis share the placeholder style, and the implied fact is dim", () => {
-  const result = run({
+test("an implied value's brackets and a count's ellipsis share the placeholder style, and the implied fact is dim", async () => {
+  const result = await run({
     argv: ['--help'],
     kinds: true,
     rendering: { color: 'always', modifiers: 'always' },
@@ -267,10 +273,12 @@ test("an implied value's brackets and a count's ellipsis share the placeholder s
   );
 });
 
-test('a deprecated routed Command highlights only the deprecation line as warning', () => {
-  expect(
-    run({ argv: ['get', '--help'], rendering: { color: 'always', modifiers: 'always' } }).stdout,
-  ).toBe(
+test('a deprecated routed Command highlights only the deprecation line as warning', async () => {
+  const fixtureResult1 = await run({
+    argv: ['get', '--help'],
+    rendering: { color: 'always', modifiers: 'always' },
+  });
+  expect(fixtureResult1.stdout).toBe(
     [
       '\u001b[33;1mapp get\u001b[39;22m \u001b[90m·\u001b[39m Read one.',
       '  \u001b[93mDeprecated: Use read.\u001b[39m',
@@ -287,7 +295,7 @@ test('a deprecated routed Command highlights only the deprecation line as warnin
 });
 
 // These are literal terminal codes from the palette contract, independent of Loom's style helpers.
-function terminal(code: string, text: string, reset = '39'): string {
+function terminal(code: string, text: string, reset = '39') {
   return code === '' ? text : `\u001b[${code}m${text}\u001b[${reset}m`;
 }
 
@@ -357,14 +365,14 @@ test.each([
   },
 ])(
   'help resolves the theme and modifier policy without changing layout: $options',
-  ({ options, highlight, dim, primary, modifiers }) => {
+  async ({ options, highlight, dim, primary, modifiers }) => {
     const bold = [highlight, modifiers ? '1' : ''].filter(Boolean).join(';');
     const italic = [dim, modifiers ? '3' : ''].filter(Boolean).join(';');
     const boldReset = [highlight ? '39' : '', modifiers ? '22' : ''].filter(Boolean).join(';');
     const italicReset = [dim ? '39' : '', modifiers ? '23' : ''].filter(Boolean).join(';');
     const helpShort = highlight ? `\u001b[${highlight}m-h\u001b[${dim}m,\u001b[39m` : '-h,';
     const versionShort = highlight ? `\u001b[${highlight}m-V\u001b[${dim}m,\u001b[39m` : '-V,';
-    expect(run({ ...options, argv: ['--help'], minimal: true })).toEqual({
+    await expect(run({ ...options, argv: ['--help'], minimal: true })).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: [
@@ -382,10 +390,14 @@ test.each([
   },
 );
 
-test('a detailed custom theme distinguishes every page token, including primary prose and examples', () => {
-  expect(
-    run({ argv: ['--help'], rendering: { color: 'always', modifiers: 'always' }, theme: 'custom' }),
-  ).toEqual({
+test('a detailed custom theme distinguishes every page token, including primary prose and examples', async () => {
+  await expect(
+    run({
+      argv: ['--help'],
+      rendering: { color: 'always', modifiers: 'always' },
+      theme: 'custom',
+    }),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: [
@@ -419,10 +431,10 @@ function overflowing(stdout: string): string[] {
   return stdout.split('\n').filter((line) => line.length > 20);
 }
 
-test('a help page wraps on a terminal narrower than its rows, where only its literals overflow', () => {
+test('a help page wraps on a terminal narrower than its rows, where only its literals overflow', async () => {
   const plain = { color: 'never', hyperlinks: 'never', modifiers: 'never' };
-  const piped = run({ argv: ['--help'], rendering: plain });
-  const narrow = run({ argv: ['--help'], columns: 20, rendering: plain, tty: true });
+  const piped = await run({ argv: ['--help'], rendering: plain });
+  const narrow = await run({ argv: ['--help'], columns: 20, rendering: plain, tty: true });
   expect(piped.status).toBe(0);
   expect(overflowing(piped.stdout)).toContain('  get  Read one.  (deprecated: Use read.)');
   expect(narrow.status).toBe(0);

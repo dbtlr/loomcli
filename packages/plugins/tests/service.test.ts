@@ -80,6 +80,7 @@ import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 import { ruleParts } from '../../../scripts/test-rules.js';
+import { run as fixtureRun } from './fixtures/service-run-app.mjs';
 
 const fixture = new URL('fixtures/service-run.mjs', import.meta.url);
 const manager = fileURLToPath(new URL('fixtures/service-manager.mjs', import.meta.url));
@@ -161,7 +162,7 @@ interface Scenario {
 }
 
 /** Runs `notes service ...argv` in the sandbox against its fake managers. */
-function run(box: Box, argv: string[], scenario: Scenario = {}) {
+async function run(box: Box, argv: string[], scenario: Scenario = {}) {
   const answers = Object.entries(scenario.answers ?? {}).map(([call, results]) => ({
     call,
     results: Array.isArray(results) ? results : [results],
@@ -170,6 +171,8 @@ function run(box: Box, argv: string[], scenario: Scenario = {}) {
     join(box.root, 'scenario.json'),
     JSON.stringify({
       abortMarker: box.marker,
+      cwd: box.root,
+      uid,
       answers,
       calls: box.calls,
       description: scenario.description,
@@ -192,7 +195,19 @@ function run(box: Box, argv: string[], scenario: Scenario = {}) {
       umask: scenario.umask,
     }),
   );
-  return invoke(fixture, [join(box.root, 'scenario.json'), 'service', ...argv]);
+  // A real process owns the umask and the manager termination signals.
+  if (
+    scenario.umask !== undefined ||
+    Object.values(scenario.answers ?? {})
+      .flat()
+      .some((answer) => answer.hang)
+  ) {
+    return invoke(fixture, [join(box.root, 'scenario.json'), 'service', ...argv]);
+  }
+  return await fixtureRun(
+    ['service', ...argv],
+    JSON.parse(readFileSync(join(box.root, 'scenario.json'), 'utf8')),
+  );
 }
 
 /** Every call the fake managers received, as their words. */
@@ -223,7 +238,7 @@ function lines(stderr: string): string[] {
     .map((line) => line.replace(/^\P{ASCII} /u, ''));
 }
 
-function digestOf(text: string): string {
+function digestOf(text: string) {
   return `sha256:${createHash('sha256').update(text).digest('hex')}`;
 }
 
@@ -302,9 +317,9 @@ const notLoaded: Answers = { [`launchctl print ${agent}`]: { exit: 113 } };
 const loaded: Answers = { [`launchctl print ${agent}`]: { exit: 0 } };
 
 describe('installing', () => {
-  it('a distributed install on linux writes the pinned unit, records it, and reloads, enables, and restarts; a second is unchanged', () => {
+  it('a distributed install on linux writes the pinned unit, records it, and reloads, enables, and restarts; a second is unchanged', async () => {
     const box = sandbox();
-    const result = run(box, ['install']);
+    const result = await run(box, ['install']);
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
     const unit = systemdPath(box);
@@ -323,7 +338,7 @@ describe('installing', () => {
       'systemctl --user restart com.acme.notes.service',
     ]);
     clearCalls(box);
-    const second = run(box, ['install']);
+    const second = await run(box, ['install']);
     expect(second.status).toBe(0);
     expect(second.stdout).toBe('');
     expect(lines(second.stderr)).toEqual([`${unit} is unchanged.`, 'Started com.acme.notes.']);
@@ -333,10 +348,10 @@ describe('installing', () => {
     ]);
   });
 
-  it('a distributed install on darwin writes the pinned plist, enables, and bootstraps; a second install unloads a loaded agent, waits, and bootstraps, changed or not', () => {
+  it('a distributed install on darwin writes the pinned plist, enables, and bootstraps; a second install unloads a loaded agent, waits, and bootstraps, changed or not', async () => {
     const box = sandbox();
     const plist = launchdPath(box);
-    const result = run(box, ['install'], { answers: notLoaded, platform: 'darwin' });
+    const result = await run(box, ['install'], { answers: notLoaded, platform: 'darwin' });
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
     expect(lines(result.stderr)).toEqual([`Wrote ${plist}.`, 'Started com.acme.notes.']);
@@ -352,7 +367,7 @@ describe('installing', () => {
     ]);
 
     clearCalls(box);
-    const again = run(box, ['install'], {
+    const again = await run(box, ['install'], {
       answers: { [`launchctl print ${agent}`]: [{ exit: 0 }, { exit: 113 }] },
       platform: 'darwin',
     });
@@ -367,7 +382,7 @@ describe('installing', () => {
     ]);
 
     clearCalls(box);
-    const changed = run(box, ['install'], {
+    const changed = await run(box, ['install'], {
       answers: { [`launchctl print ${agent}`]: [{ exit: 0 }, { exit: 0 }, { exit: 113 }] },
       platform: 'darwin',
       run: ['serve'],
@@ -387,14 +402,15 @@ describe('installing', () => {
     );
   });
 
-  it('an interpreter and a script, a run word with a space, ", $, and %, and a description with & and < render with the pinned quoting', () => {
+  it('an interpreter and a script, a run word with a space, ", $, and %, and a description with & and < render with the pinned quoting', async () => {
     const scenario: Scenario = {
       description: 'Notes & <more> at 100%',
       program: ['/usr/bin/node', '/srv/my notes/main.js'],
       run: ['serve', '--port', 'a b"c$d%e'],
     };
     const linux = sandbox();
-    expect(run(linux, ['install'], scenario).status).toBe(0);
+    const fixtureResult1 = await run(linux, ['install'], scenario);
+    expect(fixtureResult1.status).toBe(0);
     expect(readFileSync(systemdPath(linux), 'utf8')).toBe(`[Unit]
 Description=Notes & <more> at 100%%
 StartLimitIntervalSec=0
@@ -410,9 +426,12 @@ SuccessExitStatus=130 143
 WantedBy=default.target
 `);
     const darwin = sandbox();
-    expect(
-      run(darwin, ['install'], { ...scenario, answers: notLoaded, platform: 'darwin' }).status,
-    ).toBe(0);
+    const fixtureResult2 = await run(darwin, ['install'], {
+      ...scenario,
+      answers: notLoaded,
+      platform: 'darwin',
+    });
+    expect(fixtureResult2.status).toBe(0);
     expect(readFileSync(launchdPath(darwin), 'utf8')).toContain(`  <array>
     <string>/usr/bin/node</string>
     <string>/srv/my notes/main.js</string>
@@ -422,11 +441,12 @@ WantedBy=default.target
   </array>`);
   });
 
-  it('an install after the label changed stops and disables the earlier unit and removes its file', () => {
+  it('an install after the label changed stops and disables the earlier unit and removes its file', async () => {
     const box = sandbox();
-    expect(run(box, ['install'], { label: 'com.acme.old' }).status).toBe(0);
+    const fixtureResult3 = await run(box, ['install'], { label: 'com.acme.old' });
+    expect(fixtureResult3.status).toBe(0);
     clearCalls(box);
-    const result = run(box, ['install']);
+    const result = await run(box, ['install']);
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
     const old = systemdPath(box, 'com.acme.old');
@@ -448,12 +468,13 @@ WantedBy=default.target
     ]);
   });
 
-  it('an install after an earlier one failed between its write and bootstrap prints the unchanged line and loads the plist on disk', () => {
+  it('an install after an earlier one failed between its write and bootstrap prints the unchanged line and loads the plist on disk', async () => {
     const box = sandbox();
     const plist = launchdPath(box);
-    expect(run(box, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
+    const fixtureResult4 = await run(box, ['install'], { answers: notLoaded, platform: 'darwin' });
+    expect(fixtureResult4.status).toBe(0);
     clearCalls(box);
-    const failed = run(box, ['install'], {
+    const failed = await run(box, ['install'], {
       answers: { ...loaded, [`launchctl enable ${agent}`]: { exit: 1 } },
       platform: 'darwin',
       run: ['serve'],
@@ -462,7 +483,7 @@ WantedBy=default.target
     expect(lines(failed.stderr)[0]).toBe(`Wrote ${plist}.`);
     expect(calls(box)).toEqual([`launchctl enable ${agent}`]);
     clearCalls(box);
-    const rerun = run(box, ['install'], {
+    const rerun = await run(box, ['install'], {
       answers: { [`launchctl print ${agent}`]: [{ exit: 0 }, { exit: 113 }] },
       platform: 'darwin',
       run: ['serve'],
@@ -479,44 +500,53 @@ WantedBy=default.target
     expect(calls(box).some((words) => words.includes('kickstart'))).toBe(false);
   });
 
-  it('an install on darwin after the label changed unloads the earlier agent and removes its plist', () => {
+  it('an install on darwin after the label changed unloads the earlier agent and removes its plist', async () => {
     const box = sandbox();
     const old = `${domain}/com.acme.old`;
     const answers = { ...notLoaded, [`launchctl print ${old}`]: { exit: 113 } };
-    expect(
-      run(box, ['install'], { answers, label: 'com.acme.old', platform: 'darwin' }).status,
-    ).toBe(0);
+    const fixtureResult5 = await run(box, ['install'], {
+      answers,
+      label: 'com.acme.old',
+      platform: 'darwin',
+    });
+    expect(fixtureResult5.status).toBe(0);
     clearCalls(box);
-    const result = run(box, ['install'], { answers, platform: 'darwin' });
+    const result = await run(box, ['install'], { answers, platform: 'darwin' });
     expect(result.status).toBe(0);
     expect(existsSync(launchdPath(box, 'com.acme.old'))).toBe(false);
     expect(calls(box).slice(0, 2)).toEqual([`launchctl bootout ${old}`, `launchctl print ${old}`]);
   });
 
-  it('under umask 002 the unit and the plist are written with mode 644', () => {
+  it('under umask 002 the unit and the plist are written with mode 644', async () => {
     const linux = sandbox();
-    expect(run(linux, ['install'], { umask: 0o002 }).status).toBe(0);
+    const fixtureResult6 = await run(linux, ['install'], { umask: 0o002 });
+    expect(fixtureResult6.status).toBe(0);
     expect(statSync(systemdPath(linux)).mode & 0o777).toBe(0o644);
     const darwin = sandbox();
-    expect(
-      run(darwin, ['install'], { answers: notLoaded, platform: 'darwin', umask: 0o002 }).status,
-    ).toBe(0);
+    const fixtureResult7 = await run(darwin, ['install'], {
+      answers: notLoaded,
+      platform: 'darwin',
+      umask: 0o002,
+    });
+    expect(fixtureResult7.status).toBe(0);
     expect(statSync(launchdPath(darwin)).mode & 0o777).toBe(0o644);
   });
 
-  it('an application with no description renders its name as the description', () => {
+  it('an application with no description renders its name as the description', async () => {
     const box = sandbox();
-    expect(run(box, ['install'], { description: null }).status).toBe(0);
+    const fixtureResult8 = await run(box, ['install'], { description: null });
+    expect(fixtureResult8.status).toBe(0);
     expect(readFileSync(systemdPath(box), 'utf8')).toContain('\nDescription=notes\n');
   });
 
   it.each(['\n', '\r\n'])(
     'a description with the line break %j installs with a space in its place',
-    (lineBreak) => {
+    async (lineBreak) => {
       const box = sandbox();
-      expect(run(box, ['install'], { description: `Keep notes${lineBreak}in sync.` }).status).toBe(
-        0,
-      );
+      const fixtureResult9 = await run(box, ['install'], {
+        description: `Keep notes${lineBreak}in sync.`,
+      });
+      expect(fixtureResult9.status).toBe(0);
       expect(readFileSync(systemdPath(box), 'utf8')).toContain(
         '\nDescription=Keep notes in sync.\n',
       );
@@ -528,9 +558,9 @@ describe('refusing', () => {
   it.each([
     ['source', 'a source build'],
     ['development', 'a development build'],
-  ])('a %s build exits 1 with the pinned sentence and calls nothing', (build, phrase) => {
+  ])('a %s build exits 1 with the pinned sentence and calls nothing', async (build, phrase) => {
     const box = sandbox();
-    const result = run(box, ['install'], { release: { build } });
+    const result = await run(box, ['install'], { release: { build } });
     expect(result).toEqual({
       status: 1,
       stderr: `notes is ${phrase}, so it cannot install a service that would outlive it. Build it with loom build, then run the built notes service install.\n`,
@@ -568,25 +598,26 @@ describe('refusing', () => {
   ])('on %s', (platform, pathOf) => {
     it.each(occupants)(
       '%s at the unit path exits 1, writes nothing, and calls nothing',
-      (_name, occupy, sentence) => {
+      async (_name, occupy, sentence) => {
         const box = sandbox();
         const path = pathOf(box);
         mkdirSync(join(path, '..'), { recursive: true });
         occupy(box, path);
-        const result = run(box, ['install'], { answers: notLoaded, platform });
+        const result = await run(box, ['install'], { answers: notLoaded, platform });
         expect(result).toEqual({ status: 1, stderr: `${sentence(path)}\n`, stdout: '' });
         expect(calls(box)).toEqual([]);
         expect(existsSync(platform === 'linux' ? linuxRecord(box) : darwinRecord(box))).toBe(false);
       },
     );
 
-    it('a recorded file changed since exits 1, keeps the change, and calls nothing', () => {
+    it('a recorded file changed since exits 1, keeps the change, and calls nothing', async () => {
       const box = sandbox();
-      expect(run(box, ['install'], { answers: notLoaded, platform }).status).toBe(0);
+      const fixtureResult10 = await run(box, ['install'], { answers: notLoaded, platform });
+      expect(fixtureResult10.status).toBe(0);
       const path = pathOf(box);
       writeFileSync(path, 'changed by hand\n');
       clearCalls(box);
-      const result = run(box, ['install'], { answers: notLoaded, platform });
+      const result = await run(box, ['install'], { answers: notLoaded, platform });
       expect(result).toEqual({
         status: 1,
         stderr: `${path} changed since notes service install wrote it, so install leaves it alone. Remove it, then run notes service install again.\n`,
@@ -596,29 +627,29 @@ describe('refusing', () => {
       expect(calls(box)).toEqual([]);
     });
 
-    it('a file with the rendered text that service.json does not list refuses as unrecorded', () => {
+    it('a file with the rendered text that service.json does not list refuses as unrecorded', async () => {
       const box = sandbox();
       const path = pathOf(box);
       mkdirSync(join(path, '..'), { recursive: true });
       writeFileSync(path, platform === 'linux' ? pinnedUnit(box) : pinnedPlist(box));
-      const result = run(box, ['install'], { answers: notLoaded, platform });
+      const result = await run(box, ['install'], { answers: notLoaded, platform });
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(`${path} was not written by notes service install`);
       expect(calls(box)).toEqual([]);
     });
   });
 
-  it('win32 and a relative HOME exit 1 from every child', () => {
+  it('win32 and a relative HOME exit 1 from every child', async () => {
     const box = sandbox();
     for (const child of ['install', 'uninstall', 'start', 'stop', 'restart', 'status']) {
-      expect(run(box, [child], { platform: 'win32' })).toEqual({
+      await expect(run(box, [child], { platform: 'win32' })).resolves.toEqual({
         status: 1,
         stderr:
           'notes cannot run a service on win32. Run it on Linux with systemd or macOS with launchd.\n',
         stdout: '',
       });
       for (const platform of ['linux', 'darwin']) {
-        expect(run(box, [child], { env: { HOME: 'home' }, platform })).toEqual({
+        await expect(run(box, [child], { env: { HOME: 'home' }, platform })).resolves.toEqual({
           status: 1,
           stderr:
             'notes cannot find its service unit because HOME is not an absolute path. Set HOME to an absolute path, then run the command again.\n',
@@ -629,9 +660,9 @@ describe('refusing', () => {
     expect(calls(box)).toEqual([]);
   });
 
-  it('a program word holding a newline exits 1 with nothing written', () => {
+  it('a program word holding a newline exits 1 with nothing written', async () => {
     const box = sandbox();
-    const result = run(box, ['install'], { program: ['/opt/notes\n/bin/notes'] });
+    const result = await run(box, ['install'], { program: ['/opt/notes\n/bin/notes'] });
     expect(result).toEqual({
       status: 1,
       stderr:
@@ -648,13 +679,13 @@ describe('refusing', () => {
     ['unknown-format', '{"format":2,"state":"committed","directories":[],"files":[]}\n'],
   ])(
     'a %s service.json fails install and uninstall with the pinned sentence and calls nothing',
-    (_reason, text) => {
+    async (_reason, text) => {
       const box = sandbox();
       const record = linuxRecord(box);
       mkdirSync(join(record, '..'), { recursive: true });
       writeFileSync(record, text);
       for (const child of ['install', 'uninstall']) {
-        expect(run(box, [child])).toEqual({
+        await expect(run(box, [child])).resolves.toEqual({
           status: 1,
           stderr: `${record} cannot be read, so notes will not change the files it lists. Remove it and the files it lists, then run notes service ${child} again.\n`,
           stdout: '',
@@ -667,25 +698,27 @@ describe('refusing', () => {
 });
 
 describe('children', () => {
-  it('start, stop, and restart call the pinned systemd commands', () => {
+  it('start, stop, and restart call the pinned systemd commands', async () => {
     const box = sandbox();
-    expect(run(box, ['install']).status).toBe(0);
+    const fixtureResult11 = await run(box, ['install']);
+    expect(fixtureResult11.status).toBe(0);
     for (const [child, line] of [
       ['start', 'Started'],
       ['stop', 'Stopped'],
       ['restart', 'Restarted'],
     ]) {
       clearCalls(box);
-      const result = run(box, [child ?? '']);
+      const result = await run(box, [child ?? '']);
       expect(result).toEqual({ status: 0, stderr: expect.any(String), stdout: '' });
       expect(lines(result.stderr)).toEqual([`${line} com.acme.notes.`]);
       expect(calls(box)).toEqual([`systemctl --user ${child} com.acme.notes.service`]);
     }
   });
 
-  it('start, stop, and restart call the pinned launchd commands, and stop leaves the plist', () => {
+  it('start, stop, and restart call the pinned launchd commands, and stop leaves the plist', async () => {
     const box = sandbox();
-    expect(run(box, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
+    const fixtureResult12 = await run(box, ['install'], { answers: notLoaded, platform: 'darwin' });
+    expect(fixtureResult12.status).toBe(0);
     const cases: [string, Answers, string[]][] = [
       ['start', loaded, [`launchctl print ${agent}`, `launchctl kickstart ${agent}`]],
       [
@@ -707,7 +740,7 @@ describe('children', () => {
     ];
     for (const [child, answers, expected] of cases) {
       clearCalls(box);
-      const result = run(box, [child], { answers, platform: 'darwin' });
+      const result = await run(box, [child], { answers, platform: 'darwin' });
       expect(result.status).toBe(0);
       expect(result.stdout).toBe('');
       expect(calls(box)).toEqual(expected);
@@ -717,10 +750,10 @@ describe('children', () => {
 
   it.each(['linux', 'darwin'])(
     'start, stop, and restart on %s exit 1 with the not-installed sentence when no file is at the path',
-    (platform) => {
+    async (platform) => {
       const box = sandbox();
       for (const child of ['start', 'stop', 'restart']) {
-        expect(run(box, [child], { platform })).toEqual({
+        await expect(run(box, [child], { platform })).resolves.toEqual({
           status: 1,
           stderr: 'com.acme.notes is not installed. Run notes service install first.\n',
           stdout: '',
@@ -730,11 +763,12 @@ describe('children', () => {
     },
   );
 
-  it('uninstall on systemd stops, disables, removes, reloads, and clears the record', () => {
+  it('uninstall on systemd stops, disables, removes, reloads, and clears the record', async () => {
     const box = sandbox();
-    expect(run(box, ['install']).status).toBe(0);
+    const fixtureResult13 = await run(box, ['install']);
+    expect(fixtureResult13.status).toBe(0);
     clearCalls(box);
-    const result = run(box, ['uninstall']);
+    const result = await run(box, ['uninstall']);
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
     expect(lines(result.stderr)).toEqual([`Removed ${systemdPath(box)}.`]);
@@ -747,11 +781,12 @@ describe('children', () => {
     expect(existsSync(linuxRecord(box))).toBe(false);
   });
 
-  it('uninstall on launchd unloads the agent and removes the plist', () => {
+  it('uninstall on launchd unloads the agent and removes the plist', async () => {
     const box = sandbox();
-    expect(run(box, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
+    const fixtureResult14 = await run(box, ['install'], { answers: notLoaded, platform: 'darwin' });
+    expect(fixtureResult14.status).toBe(0);
     clearCalls(box);
-    const result = run(box, ['uninstall'], { answers: notLoaded, platform: 'darwin' });
+    const result = await run(box, ['uninstall'], { answers: notLoaded, platform: 'darwin' });
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
     expect(lines(result.stderr)).toEqual([`Removed ${launchdPath(box)}.`]);
@@ -760,11 +795,12 @@ describe('children', () => {
     expect(existsSync(darwinRecord(box))).toBe(false);
   });
 
-  it('uninstall keeps a changed unit with the kept line', () => {
+  it('uninstall keeps a changed unit with the kept line', async () => {
     const box = sandbox();
-    expect(run(box, ['install']).status).toBe(0);
+    const fixtureResult15 = await run(box, ['install']);
+    expect(fixtureResult15.status).toBe(0);
     writeFileSync(systemdPath(box), 'changed by hand\n');
-    const result = run(box, ['uninstall']);
+    const result = await run(box, ['uninstall']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `Kept ${systemdPath(box)} because it changed since notes service install wrote it. Remove it yourself when it is no longer needed.`,
@@ -772,11 +808,11 @@ describe('children', () => {
     expect(readFileSync(systemdPath(box), 'utf8')).toBe('changed by hand\n');
   });
 
-  it('uninstall refuses an unrecorded unit and runs nothing', () => {
+  it('uninstall refuses an unrecorded unit and runs nothing', async () => {
     const box = sandbox();
     mkdirSync(join(systemdPath(box), '..'), { recursive: true });
     writeFileSync(systemdPath(box), 'hand written\n');
-    expect(run(box, ['uninstall'])).toEqual({
+    await expect(run(box, ['uninstall'])).resolves.toEqual({
       status: 1,
       stderr: `${systemdPath(box)} was not written by notes service install, so uninstall leaves it alone. Remove it with whatever installed it.\n`,
       stdout: '',
@@ -785,9 +821,9 @@ describe('children', () => {
     expect(readFileSync(systemdPath(box), 'utf8')).toBe('hand written\n');
   });
 
-  it('uninstall with nothing installed prints the nothing-to-remove line and exits 0', () => {
+  it('uninstall with nothing installed prints the nothing-to-remove line and exits 0', async () => {
     const box = sandbox();
-    const result = run(box, ['uninstall']);
+    const result = await run(box, ['uninstall']);
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
     expect(lines(result.stderr)).toEqual([
@@ -796,12 +832,13 @@ describe('children', () => {
     expect(calls(box)).toEqual([]);
   });
 
-  it('a recorded unit whose file is gone is stopped, reads as already gone, and the record clears', () => {
+  it('a recorded unit whose file is gone is stopped, reads as already gone, and the record clears', async () => {
     const linux = sandbox();
-    expect(run(linux, ['install']).status).toBe(0);
+    const fixtureResult16 = await run(linux, ['install']);
+    expect(fixtureResult16.status).toBe(0);
     rmSync(systemdPath(linux));
     clearCalls(linux);
-    const systemd = run(linux, ['uninstall']);
+    const systemd = await run(linux, ['uninstall']);
     expect(systemd.status).toBe(0);
     expect(lines(systemd.stderr)).toEqual([`${systemdPath(linux)} was already gone.`]);
     expect(calls(linux)).toEqual([
@@ -811,21 +848,26 @@ describe('children', () => {
     expect(existsSync(linuxRecord(linux))).toBe(false);
 
     const darwin = sandbox();
-    expect(run(darwin, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
+    const fixtureResult17 = await run(darwin, ['install'], {
+      answers: notLoaded,
+      platform: 'darwin',
+    });
+    expect(fixtureResult17.status).toBe(0);
     rmSync(launchdPath(darwin));
     clearCalls(darwin);
-    const launchd = run(darwin, ['uninstall'], { answers: notLoaded, platform: 'darwin' });
+    const launchd = await run(darwin, ['uninstall'], { answers: notLoaded, platform: 'darwin' });
     expect(launchd.status).toBe(0);
     expect(lines(launchd.stderr)).toEqual([`${launchdPath(darwin)} was already gone.`]);
     expect(calls(darwin)[0]).toBe(`launchctl bootout ${agent}`);
     expect(existsSync(darwinRecord(darwin))).toBe(false);
   });
 
-  it('after the label changed with no reinstall, uninstall stops the earlier unit, removes its file, and clears the record', () => {
+  it('after the label changed with no reinstall, uninstall stops the earlier unit, removes its file, and clears the record', async () => {
     const box = sandbox();
-    expect(run(box, ['install'], { label: 'com.acme.old' }).status).toBe(0);
+    const fixtureResult18 = await run(box, ['install'], { label: 'com.acme.old' });
+    expect(fixtureResult18.status).toBe(0);
     clearCalls(box);
-    const result = run(box, ['uninstall']);
+    const result = await run(box, ['uninstall']);
     expect(result.status).toBe(0);
     const old = systemdPath(box, 'com.acme.old');
     expect(lines(result.stderr)).toEqual([`Removed ${old}.`]);
@@ -840,10 +882,11 @@ describe('children', () => {
 });
 
 describe('managers', () => {
-  it('a systemctl that exits 1 fails restart with the pinned sentence and prints none of its output', () => {
+  it('a systemctl that exits 1 fails restart with the pinned sentence and prints none of its output', async () => {
     const box = sandbox();
-    expect(run(box, ['install']).status).toBe(0);
-    const result = run(box, ['restart'], {
+    const fixtureResult19 = await run(box, ['install']);
+    expect(fixtureResult19.status).toBe(0);
+    const result = await run(box, ['restart'], {
       answers: {
         'systemctl --user restart com.acme.notes.service': {
           exit: 1,
@@ -859,9 +902,9 @@ describe('managers', () => {
     });
   });
 
-  it('a launchctl call that exits with an unnamed code names the call and points at print', () => {
+  it('a launchctl call that exits with an unnamed code names the call and points at print', async () => {
     const box = sandbox();
-    const result = run(box, ['install'], {
+    const result = await run(box, ['install'], {
       answers: { ...notLoaded, [`launchctl bootstrap ${domain} ${launchdPath(box)}`]: { exit: 5 } },
       platform: 'darwin',
     });
@@ -871,11 +914,12 @@ describe('managers', () => {
     );
   });
 
-  it('a PATH with no systemctl fails with the cannot-find sentence', () => {
+  it('a PATH with no systemctl fails with the cannot-find sentence', async () => {
     const box = sandbox();
-    expect(run(box, ['install']).status).toBe(0);
+    const fixtureResult20 = await run(box, ['install']);
+    expect(fixtureResult20.status).toBe(0);
     rmSync(join(box.bin, 'systemctl'));
-    expect(run(box, ['stop'])).toEqual({
+    await expect(run(box, ['stop'])).resolves.toEqual({
       status: 1,
       stderr:
         'notes cannot find systemctl. Install systemd, or run the command where it is available.\n',
@@ -883,10 +927,11 @@ describe('managers', () => {
     });
   });
 
-  it.each([3, 36, 113])('a launchd bootout that exits %i is no failure', (code) => {
+  it.each([3, 36, 113])('a launchd bootout that exits %i is no failure', async (code) => {
     const box = sandbox();
-    expect(run(box, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
-    const result = run(box, ['stop'], {
+    const fixtureResult21 = await run(box, ['install'], { answers: notLoaded, platform: 'darwin' });
+    expect(fixtureResult21.status).toBe(0);
+    const result = await run(box, ['stop'], {
       answers: { ...notLoaded, [`launchctl bootout ${agent}`]: { exit: code } },
       platform: 'darwin',
     });
@@ -894,15 +939,18 @@ describe('managers', () => {
     expect(lines(result.stderr)).toEqual(['Stopped com.acme.notes.']);
   });
 
-  it('on linux, an environment with no XDG_RUNTIME_DIR passes /run/user/<uid> to every call, and a given one passes as it is', () => {
+  it('on linux, an environment with no XDG_RUNTIME_DIR passes /run/user/<uid> to every call, and a given one passes as it is', async () => {
     const box = sandbox();
-    expect(run(box, ['install'], { env: { XDG_RUNTIME_DIR: undefined } }).status).toBe(0);
-    expect(run(box, ['status'], { env: { XDG_RUNTIME_DIR: undefined } }).status).toBe(0);
+    const fixtureResult22 = await run(box, ['install'], { env: { XDG_RUNTIME_DIR: undefined } });
+    expect(fixtureResult22.status).toBe(0);
+    const fixtureResult23 = await run(box, ['status'], { env: { XDG_RUNTIME_DIR: undefined } });
+    expect(fixtureResult23.status).toBe(0);
     const absent = records(box);
     expect(absent.length).toBeGreaterThan(4);
     expect(absent.every((call) => call.runtime === `/run/user/${uid}`)).toBe(true);
     clearCalls(box);
-    expect(run(box, ['restart']).status).toBe(0);
+    const fixtureResult24 = await run(box, ['restart']);
+    expect(fixtureResult24.status).toBe(0);
     expect(records(box)).toEqual([
       { runtime: '/run/user/given', words: 'systemctl --user restart com.acme.notes.service' },
     ]);
@@ -942,12 +990,13 @@ function shown(active: string, pid: number): Answers {
 }
 
 describe('status', () => {
-  it('prints the same bytes on a narrow terminal as on a pipe, its unit path whole', () => {
+  it('prints the same bytes on a narrow terminal as on a pipe, its unit path whole', async () => {
     const box = sandbox();
-    expect(run(box, ['install']).status).toBe(0);
+    const fixtureResult25 = await run(box, ['install']);
+    expect(fixtureResult25.status).toBe(0);
     const narrow = { columns: 20, isTTY: true, rows: 24 };
     const terminal = { stderr: narrow, stdin: { isTTY: false }, stdout: narrow };
-    const text = run(box, ['status'], { answers: shown('active', 4120), terminal });
+    const text = await run(box, ['status'], { answers: shown('active', 4120), terminal });
     expect(text).toEqual({
       status: 0,
       stderr: '',
@@ -960,16 +1009,17 @@ describe('status', () => {
     ['inactive', 0, 'inactive', { running: false, state: 'inactive' }],
     ['failed', 0, 'failed', { running: false, state: 'failed' }],
     ['activating', 77, 'activating', { pid: 77, running: false, state: 'activating' }],
-  ])('ActiveState %s gives the pinned text and JSON', (active, pid, summary, members) => {
+  ])('ActiveState %s gives the pinned text and JSON', async (active, pid, summary, members) => {
     const box = sandbox();
-    expect(run(box, ['install']).status).toBe(0);
-    const text = run(box, ['status'], { answers: shown(active, pid) });
+    const fixtureResult26 = await run(box, ['install']);
+    expect(fixtureResult26.status).toBe(0);
+    const text = await run(box, ['status'], { answers: shown(active, pid) });
     expect(text).toEqual({
       status: 0,
       stderr: '',
       stdout: `com.acme.notes: ${summary}\n  unit  ${systemdPath(box)}\n`,
     });
-    const json = run(box, ['status', '--format', 'json'], { answers: shown(active, pid) });
+    const json = await run(box, ['status', '--format', 'json'], { answers: shown(active, pid) });
     expect(json.status).toBe(0);
     expect(json.stdout).toBe(statusJson(systemdPath(box), members));
   });
@@ -996,26 +1046,35 @@ describe('status', () => {
       'not loaded',
       { running: false, state: 'not loaded' },
     ],
-  ])('a launchd print of %s gives the pinned text and JSON', (_name, answer, summary, members) => {
-    const box = sandbox();
-    expect(run(box, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
-    const answers = {
-      [`launchctl print ${agent}`]: answer,
-      [`launchctl print ${domain}`]: { exit: 0 },
-    };
-    const text = run(box, ['status'], { answers, platform: 'darwin' });
-    expect(text).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: `com.acme.notes: ${summary}\n  unit  ${launchdPath(box)}\n`,
-    });
-    const json = run(box, ['status', '--format', 'json'], { answers, platform: 'darwin' });
-    expect(json.stdout).toBe(statusJson(launchdPath(box), members));
-  });
+  ])(
+    'a launchd print of %s gives the pinned text and JSON',
+    async (_name, answer, summary, members) => {
+      const box = sandbox();
+      const fixtureResult27 = await run(box, ['install'], {
+        answers: notLoaded,
+        platform: 'darwin',
+      });
+      expect(fixtureResult27.status).toBe(0);
+      const answers = {
+        [`launchctl print ${agent}`]: answer,
+        [`launchctl print ${domain}`]: { exit: 0 },
+      };
+      const text = await run(box, ['status'], { answers, platform: 'darwin' });
+      expect(text).toEqual({
+        status: 0,
+        stderr: '',
+        stdout: `com.acme.notes: ${summary}\n  unit  ${launchdPath(box)}\n`,
+      });
+      const json = await run(box, ['status', '--format', 'json'], { answers, platform: 'darwin' });
+      expect(json.stdout).toBe(statusJson(launchdPath(box), members));
+    },
+  );
 
-  it('a unit with no file and no loaded job reads not installed and exits 0, and one whose job runs reads its state and pid', () => {
+  it('a unit with no file and no loaded job reads not installed and exits 0, and one whose job runs reads its state and pid', async () => {
     const box = sandbox();
-    const missing = run(box, ['status', '--format', 'json'], { answers: shown('inactive', 0) });
+    const missing = await run(box, ['status', '--format', 'json'], {
+      answers: shown('inactive', 0),
+    });
     expect(missing.status).toBe(0);
     expect(JSON.parse(missing.stdout)).toEqual({
       details: [],
@@ -1026,22 +1085,23 @@ describe('status', () => {
       state: 'not installed',
       unit: systemdPath(box),
     });
-    const darwin = run(box, ['status'], { answers: notLoaded, platform: 'darwin' });
+    const darwin = await run(box, ['status'], { answers: notLoaded, platform: 'darwin' });
     expect(darwin).toEqual({
       status: 0,
       stderr: '',
       stdout: `com.acme.notes: not installed\n  unit  ${launchdPath(box)}\n`,
     });
-    const orphan = run(box, ['status'], { answers: shown('active', 31) });
+    const orphan = await run(box, ['status'], { answers: shown('active', 31) });
     expect(orphan.stdout).toBe(`com.acme.notes: running (pid 31)\n  unit  ${systemdPath(box)}\n`);
     // Status asks no session question of a unit that is not installed.
     expect(calls(box).filter((words) => words.startsWith('loginctl'))).toEqual([]);
   });
 
-  it('a show that exits 1 gives unknown with its note and exits 0', () => {
+  it('a show that exits 1 gives unknown with its note and exits 0', async () => {
     const box = sandbox();
-    expect(run(box, ['install']).status).toBe(0);
-    const result = run(box, ['status'], {
+    const fixtureResult28 = await run(box, ['install']);
+    expect(fixtureResult28.status).toBe(0);
+    const result = await run(box, ['status'], {
       answers: {
         ...shown('active', 1),
         'systemctl --user show com.acme.notes.service --property=ActiveState,MainPID': { exit: 1 },
@@ -1052,7 +1112,7 @@ describe('status', () => {
       stderr: '',
       stdout: `com.acme.notes: unknown\n  unit  ${systemdPath(box)}\n  note  systemctl --user could not report com.acme.notes.service (exit 1). Run systemctl --user status com.acme.notes.service to see why.\n`,
     });
-    const darwin = run(box, ['status'], {
+    const darwin = await run(box, ['status'], {
       answers: { [`launchctl print ${agent}`]: { exit: 5 } },
       platform: 'darwin',
     });
@@ -1061,17 +1121,18 @@ describe('status', () => {
       `  note  launchctl could not report ${agent} (exit 5). Run launchctl print ${agent} to see why.\n`,
     );
     rmSync(join(box.bin, 'systemctl'));
-    const missing = run(box, ['status']);
+    const missing = await run(box, ['status']);
     expect(missing.status).toBe(0);
     expect(missing.stdout).toContain(
       '  note  notes cannot find systemctl. Install systemd, or run the command where it is available.\n',
     );
   });
 
-  it('Linger=no and a print of the domain that exits 113 add their notes', () => {
+  it('Linger=no and a print of the domain that exits 113 add their notes', async () => {
     const box = sandbox();
-    expect(run(box, ['install']).status).toBe(0);
-    const linger = run(box, ['status'], {
+    const fixtureResult29 = await run(box, ['install']);
+    expect(fixtureResult29.status).toBe(0);
+    const linger = await run(box, ['status'], {
       answers: {
         ...shown('active', 4120),
         [`loginctl show-user ${uid} --property=Linger`]: { stdout: 'Linger=no\n' },
@@ -1081,8 +1142,12 @@ describe('status', () => {
       `com.acme.notes: running (pid 4120)\n  unit  ${systemdPath(box)}\n  note  Lingering is off, so com.acme.notes stops when you log out. Run loginctl enable-linger to keep it running.\n`,
     );
     const darwin = sandbox();
-    expect(run(darwin, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
-    const session = run(darwin, ['status'], {
+    const fixtureResult30 = await run(darwin, ['install'], {
+      answers: notLoaded,
+      platform: 'darwin',
+    });
+    expect(fixtureResult30.status).toBe(0);
+    const session = await run(darwin, ['status'], {
       answers: { ...notLoaded, [`launchctl print ${domain}`]: { exit: 113 } },
       platform: 'darwin',
     });
@@ -1091,14 +1156,15 @@ describe('status', () => {
     );
   });
 
-  it("a probe's rows print under unit, and the probe receives the state and an invoke that runs the application's own Command", () => {
+  it("a probe's rows print under unit, and the probe receives the state and an invoke that runs the application's own Command", async () => {
     const box = sandbox();
-    expect(run(box, ['install']).status).toBe(0);
+    const fixtureResult31 = await run(box, ['install']);
+    expect(fixtureResult31.status).toBe(0);
     const answers = {
       ...shown('active', 4120),
       [`loginctl show-user ${uid} --property=Linger`]: { stdout: 'Linger=no\n' },
     };
-    const result = run(box, ['status'], { answers, probe: 'rows' });
+    const result = await run(box, ['status'], { answers, probe: 'rows' });
     expect(result).toEqual({
       status: 0,
       stderr: '',
@@ -1120,17 +1186,18 @@ describe('status', () => {
         unit: systemdPath(box),
       },
     });
-    const json = run(box, ['status', '--format', 'json'], { answers, probe: 'rows' });
+    const json = await run(box, ['status', '--format', 'json'], { answers, probe: 'rows' });
     expect(JSON.parse(json.stdout).details).toEqual([{ name: 'health', value: 'ok, v1.5.0' }]);
   });
 
-  it('a probe is not called for a unit that is not installed, and a probe that throws exits 1', () => {
+  it('a probe is not called for a unit that is not installed, and a probe that throws exits 1', async () => {
     const box = sandbox();
-    const missing = run(box, ['status'], { answers: shown('inactive', 0), probe: 'throw' });
+    const missing = await run(box, ['status'], { answers: shown('inactive', 0), probe: 'throw' });
     expect(missing.status).toBe(0);
     expect(existsSync(box.probeLog)).toBe(false);
-    expect(run(box, ['install']).status).toBe(0);
-    const thrown = run(box, ['status'], { answers: shown('active', 1), probe: 'throw' });
+    const fixtureResult32 = await run(box, ['install']);
+    expect(fixtureResult32.status).toBe(0);
+    const thrown = await run(box, ['status'], { answers: shown('active', 1), probe: 'throw' });
     expect(thrown.status).toBe(1);
     expect(thrown.stdout).toBe('');
     expect(existsSync(box.probeLog)).toBe(true);
@@ -1138,11 +1205,12 @@ describe('status', () => {
 });
 
 describe('waiting', () => {
-  it('a run aborted while the launchd unload is polled exits 130 and leaves the record', () => {
+  it('a run aborted while the launchd unload is polled exits 130 and leaves the record', async () => {
     const box = sandbox();
-    expect(run(box, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
+    const fixtureResult33 = await run(box, ['install'], { answers: notLoaded, platform: 'darwin' });
+    expect(fixtureResult33.status).toBe(0);
     const before = readFileSync(darwinRecord(box), 'utf8');
-    const result = run(box, ['stop'], {
+    const result = await run(box, ['stop'], {
       answers: { [`launchctl print ${agent}`]: [{ exit: 0 }, { abort: true, exit: 0 }] },
       platform: 'darwin',
     });
@@ -1153,9 +1221,9 @@ describe('waiting', () => {
     expect(readFileSync(launchdPath(box), 'utf8')).toBe(pinnedPlist(box));
   });
 
-  it('a run aborted during a manager call ends the call and exits 130 with the record the module left', () => {
+  it('a run aborted during a manager call ends the call and exits 130 with the record the module left', async () => {
     const box = sandbox();
-    const result = run(box, ['install'], {
+    const result = await run(box, ['install'], {
       answers: { 'systemctl --user restart com.acme.notes.service': { abort: true, hang: true } },
     });
     expect(result.status).toBe(130);
@@ -1175,11 +1243,12 @@ describe('waiting', () => {
     const stateNote =
       'systemctl --user did not report com.acme.notes.service within 5 seconds, so status ended the call. Run systemctl --user status com.acme.notes.service to see why.';
 
-    it('ends a state read that never exits and one that ignores SIGTERM, reads unknown with the note, and exits 0', () => {
+    it('ends a state read that never exits and one that ignores SIGTERM, reads unknown with the note, and exits 0', async () => {
       const box = sandbox();
-      expect(run(box, ['install']).status).toBe(0);
+      const fixtureResult34 = await run(box, ['install']);
+      expect(fixtureResult34.status).toBe(0);
       for (const deaf of [false, true]) {
-        const result = run(box, ['status'], {
+        const result = await run(box, ['status'], {
           answers: { ...shown('active', 1), [stateRead]: { deaf, hang: true } },
         });
         expect(result).toEqual({
@@ -1190,10 +1259,11 @@ describe('waiting', () => {
       }
     }, 30_000);
 
-    it('ends a session read that never exits and adds no note', () => {
+    it('ends a session read that never exits and adds no note', async () => {
       const box = sandbox();
-      expect(run(box, ['install']).status).toBe(0);
-      const result = run(box, ['status'], {
+      const fixtureResult35 = await run(box, ['install']);
+      expect(fixtureResult35.status).toBe(0);
+      const result = await run(box, ['status'], {
         answers: { ...shown('active', 7), [lingerRead]: { hang: true } },
       });
       expect(result).toEqual({
@@ -1203,10 +1273,14 @@ describe('waiting', () => {
       });
     }, 30_000);
 
-    it('ends a launchd state read that never exits, reads unknown with the note, and exits 0', () => {
+    it('ends a launchd state read that never exits, reads unknown with the note, and exits 0', async () => {
       const box = sandbox();
-      expect(run(box, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
-      const result = run(box, ['status'], {
+      const fixtureResult36 = await run(box, ['install'], {
+        answers: notLoaded,
+        platform: 'darwin',
+      });
+      expect(fixtureResult36.status).toBe(0);
+      const result = await run(box, ['status'], {
         answers: { [`launchctl print ${agent}`]: { hang: true } },
         platform: 'darwin',
       });
@@ -1217,10 +1291,14 @@ describe('waiting', () => {
       });
     }, 30_000);
 
-    it('ends a launchd session read that never exits and adds no note', () => {
+    it('ends a launchd session read that never exits and adds no note', async () => {
       const box = sandbox();
-      expect(run(box, ['install'], { answers: notLoaded, platform: 'darwin' }).status).toBe(0);
-      const result = run(box, ['status'], {
+      const fixtureResult37 = await run(box, ['install'], {
+        answers: notLoaded,
+        platform: 'darwin',
+      });
+      expect(fixtureResult37.status).toBe(0);
+      const result = await run(box, ['status'], {
         answers: { ...loaded, [`launchctl print ${domain}`]: { hang: true } },
         platform: 'darwin',
       });
@@ -1228,10 +1306,11 @@ describe('waiting', () => {
       expect(result.stdout).toBe(`com.acme.notes: unknown\n  unit  ${launchdPath(box)}\n`);
     }, 30_000);
 
-    it('exits 130 with no note when the run is cancelled during the read', () => {
+    it('exits 130 with no note when the run is cancelled during the read', async () => {
       const box = sandbox();
-      expect(run(box, ['install']).status).toBe(0);
-      const result = run(box, ['status'], {
+      const fixtureResult38 = await run(box, ['install']);
+      expect(fixtureResult38.status).toBe(0);
+      const result = await run(box, ['status'], {
         answers: { ...shown('active', 1), [stateRead]: { abort: true, hang: true } },
       });
       expect(result.status).toBe(130);

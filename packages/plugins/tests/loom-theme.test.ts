@@ -32,10 +32,10 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { run as fixtureRun } from './fixtures/loom-theme.mjs';
 
-function palette(options: Record<string, unknown> = {}) {
-  return invoke(new URL('fixtures/loom-theme.mjs', import.meta.url), [JSON.stringify(options)]);
+async function palette(options: Record<string, unknown> = {}) {
+  return await fixtureRun([JSON.stringify(options)]);
 }
 
 test.each([
@@ -55,9 +55,11 @@ test.each([
       '38;2;91;125;163',
     ],
   ],
-])('the Loom palette supplies only the specified foregrounds at %j', (env, colors) => {
+])('the Loom palette supplies only the specified foregrounds at %j', async (env, colors) => {
   const names = ['dim', 'highlight', 'success', 'warning', 'error', 'info'];
-  expect(palette({ env, rendering: { color: 'always', modifiers: 'always' } })).toEqual({
+  await expect(
+    palette({ env, rendering: { color: 'always', modifiers: 'always' } }),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `primary|${names
@@ -83,64 +85,66 @@ test.each([
       '38;2;74;107;145',
     ],
   ],
-])('the Loom palette supplies its light foregrounds on a light background at %j', (env, colors) => {
-  const names = ['dim', 'highlight', 'success', 'warning', 'error', 'info'];
-  const rendering = { color: 'always', modifiers: 'always' };
-  expect(palette({ background: 'light', env, rendering })).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: `primary|${names
-      .map((name, index) => `\u001b[${colors[index]}m${name}\u001b[39m`)
-      .join('|')}`,
-  });
-});
+])(
+  'the Loom palette supplies its light foregrounds on a light background at %j',
+  async (env, colors) => {
+    const names = ['dim', 'highlight', 'success', 'warning', 'error', 'info'];
+    const rendering = { color: 'always', modifiers: 'always' };
+    await expect(palette({ background: 'light', env, rendering })).resolves.toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `primary|${names
+        .map((name, index) => `\u001b[${colors[index]}m${name}\u001b[39m`)
+        .join('|')}`,
+    });
+  },
+);
 
-test('a whole-token override is one value on both backgrounds', () => {
+test('a whole-token override is one value on both backgrounds', async () => {
   const options = {
     overrides: { highlight: ['cyan'] },
     rendering: { color: 'always', modifiers: 'always' },
     tokens: ['highlight'],
   };
-  const dark = palette({ ...options, background: 'dark' }).stdout;
+  const fixtureResult1 = await palette({ ...options, background: 'dark' });
+  const dark = fixtureResult1.stdout;
   expect(dark).toBe('\u001b[36mhighlight\u001b[39m');
-  expect(palette({ ...options, background: 'light' }).stdout).toBe(dark);
+  const fixtureResult2 = await palette({ ...options, background: 'light' });
+  expect(fixtureResult2.stdout).toBe(dark);
 });
 
-test('defaults change foregrounds while preserving enclosing backgrounds and modifiers', () => {
-  expect(
-    palette({
-      outer: true,
-      rendering: { color: 'always', modifiers: 'always' },
-      tokens: ['primary', 'dim', 'highlight'],
-    }).stdout,
-  ).toBe(
+test('defaults change foregrounds while preserving enclosing backgrounds and modifiers', async () => {
+  const fixtureResult3 = await palette({
+    outer: true,
+    rendering: { color: 'always', modifiers: 'always' },
+    tokens: ['primary', 'dim', 'highlight'],
+  });
+  expect(fixtureResult3.stdout).toBe(
     '\u001b[44;1mprimary\u001b[31m|\u001b[90mdim\u001b[31m|\u001b[33mhighlight\u001b[39;49;22m',
   );
 });
 
-test('undefined keeps a default, replacements remove it, and custom undefined names inherit', () => {
-  expect(
-    palette({
-      overrides: {
-        absent: null,
-        highlight: null,
-        identifier: ['magenta'],
-        success: ['cyan', 'bold'],
-      },
-      rendering: { color: 'always', modifiers: 'always' },
-      tokens: ['highlight', 'success', 'identifier', 'absent'],
-    }).stdout,
-  ).toBe(
+test('undefined keeps a default, replacements remove it, and custom undefined names inherit', async () => {
+  const fixtureResult4 = await palette({
+    overrides: {
+      absent: null,
+      highlight: null,
+      identifier: ['magenta'],
+      success: ['cyan', 'bold'],
+    },
+    rendering: { color: 'always', modifiers: 'always' },
+    tokens: ['highlight', 'success', 'identifier', 'absent'],
+  });
+  expect(fixtureResult4.stdout).toBe(
     '\u001b[33mhighlight\u001b[39m|\u001b[36;1msuccess\u001b[39;22m|\u001b[35midentifier\u001b[39m|absent',
   );
-  expect(
-    palette({
-      outer: true,
-      overrides: { highlight: [], success: ['resetForeground'] },
-      rendering: { color: 'always', modifiers: 'always' },
-      tokens: ['highlight', 'success'],
-    }).stdout,
-  ).toBe('\u001b[31;44;1mhighlight|\u001b[39msuccess\u001b[49;22m');
+  const fixtureResult5 = await palette({
+    outer: true,
+    overrides: { highlight: [], success: ['resetForeground'] },
+    rendering: { color: 'always', modifiers: 'always' },
+    tokens: ['highlight', 'success'],
+  });
+  expect(fixtureResult5.stdout).toBe('\u001b[31;44;1mhighlight|\u001b[39msuccess\u001b[49;22m');
 });
 
 test.each([
@@ -149,24 +153,29 @@ test.each([
   { env: { FORCE_COLOR: '1' }, rendering: { color: 'never' } },
   { bare: true, rendering: { color: 'always' } },
   { absent: true, rendering: { color: 'always' } },
-])('theme installation leaves plain destinations and bare mappings uncolored: %j', (options) => {
-  expect(palette(options)).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: 'primary|dim|highlight|success|warning|error|info',
-  });
-});
+])(
+  'theme installation leaves plain destinations and bare mappings uncolored: %j',
+  async (options) => {
+    await expect(palette(options)).resolves.toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'primary|dim|highlight|success|warning|error|info',
+    });
+  },
+);
 
-test('FORCE_COLOR retains precedence over NO_COLOR without a TTY', () => {
-  expect(palette({ env: { FORCE_COLOR: '1', NO_COLOR: '1' }, tokens: ['success'] }).stdout).toBe(
-    '\u001b[32msuccess\u001b[39m',
-  );
+test('FORCE_COLOR retains precedence over NO_COLOR without a TTY', async () => {
+  const fixtureResult6 = await palette({
+    env: { FORCE_COLOR: '1', NO_COLOR: '1' },
+    tokens: ['success'],
+  });
+  expect(fixtureResult6.stdout).toBe('\u001b[32msuccess\u001b[39m');
 });
 
 test.each(['identity', 'slot'])(
   'the named theme retains the existing %s collision rule',
-  (collision) => {
-    const result = palette({ collision });
+  async (collision) => {
+    const result = await palette({ collision });
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('@loomcli/plugins/theme');
@@ -176,8 +185,8 @@ test.each(['identity', 'slot'])(
   },
 );
 
-test('installing the named theme leaves unmarked text unchanged', () => {
-  expect(
+test('installing the named theme leaves unmarked text unchanged', async () => {
+  await expect(
     palette({ literal: 'plain', rendering: { color: 'always', modifiers: 'always' } }),
-  ).toEqual({ status: 0, stderr: '', stdout: 'plain' });
+  ).resolves.toEqual({ status: 0, stderr: '', stdout: 'plain' });
 });
