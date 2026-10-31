@@ -420,6 +420,8 @@ test('SIGTSTP calls suspend handlers newest first and stops; SIGCONT resumes the
   }
   running.child.kill('SIGCONT');
   await running.announced('resumed:second');
+  // The fixture prints a second `continued` after its resume handlers; SIGTERM waits for it.
+  await running.announced('resumed:second\ncontinued');
   // Nothing asks core to listen for an ending signal, so SIGTERM has its default effect.
   running.child.kill('SIGTERM');
   await expect(running.exit).resolves.toEqual({
