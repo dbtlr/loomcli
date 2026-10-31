@@ -1,62 +1,89 @@
-import { Application, FatalError, processHandle } from '@loomcli/core';
+import { DeclarationError, Application, FatalError } from '@loomcli/core';
 
-import { declare } from './declare.mjs';
+import { ruleText } from './rule-text.mjs';
+import { scenario as fixtureScenario } from './scenario.mjs';
 
-const scenario = process.argv[2];
+/** Runs a fresh fixture scenario with only the supplied process facts. */
+async function runFixture(words, fixtureOptions = {}) {
+  const fixture = fixtureScenario({ ...fixtureOptions, argv: words });
+  const { createProcess, stdout: writeStdout } = fixture;
 
-/** The root one scenario declares, whose faulty call throws before anything runs. */
-function build() {
-  let app = new Application('fixture');
-  switch (scenario) {
-    case 'duplicate': {
-      app = app
-        .argument('files', { required: true, variadic: true })
-        .argument('files', { required: true, variadic: true });
-      break;
-    }
-    case 'competing': {
-      app = app
-        .argument('files', { required: true, variadic: true })
-        .argument('extras', { required: true, variadic: true });
-      break;
-    }
-    case 'required': {
-      app = app.argument('files', { required: true, variadic: true });
-      break;
+  function declare(build) {
+    try {
+      return build();
+    } catch (error) {
+      if (!(error instanceof DeclarationError)) {
+        throw error;
+      }
+      writeStdout(`thrown:${error.exitCode}: ${ruleText(error)}\n`);
+      throw fixture.stopped;
     }
   }
-  if (scenario !== 'actionless') {
-    app = app.action(({ out }) => {
-      if (scenario === 'fatal') {
-        out.fatal('Expected failure.');
-      }
-      if (scenario === 'throw-fatal') {
-        throw new FatalError('Expected failure.');
-      }
-      if (scenario === 'unexpected') {
-        throw new Error('Unexpected failure.');
-      }
-      if (scenario === 'unknown-throw') {
-        throw null;
-      }
-      if (scenario === 'caught-fatal') {
-        try {
-          out.fatal('Caught failure.');
-        } catch (error) {
-          if (!(error instanceof FatalError)) {
-            throw error;
-          }
+  try {
+    const scenario = words[0];
+
+    /** The root one scenario declares, whose faulty call throws before anything runs. */
+    function build() {
+      let app = new Application('fixture');
+      switch (scenario) {
+        case 'duplicate': {
+          app = app
+            .argument('files', { required: true, variadic: true })
+            .argument('files', { required: true, variadic: true });
+          break;
+        }
+        case 'competing': {
+          app = app
+            .argument('files', { required: true, variadic: true })
+            .argument('extras', { required: true, variadic: true });
+          break;
+        }
+        case 'required': {
+          app = app.argument('files', { required: true, variadic: true });
+          break;
         }
       }
-      out.print('dispatched');
+      if (scenario !== 'actionless') {
+        app = app.action(({ out }) => {
+          if (scenario === 'fatal') {
+            out.fatal('Expected failure.');
+          }
+          if (scenario === 'throw-fatal') {
+            throw new FatalError('Expected failure.');
+          }
+          if (scenario === 'unexpected') {
+            throw new Error('Unexpected failure.');
+          }
+          if (scenario === 'unknown-throw') {
+            throw null;
+          }
+          if (scenario === 'caught-fatal') {
+            try {
+              out.fatal('Caught failure.');
+            } catch (error) {
+              if (!(error instanceof FatalError)) {
+                throw error;
+              }
+            }
+          }
+          out.print('dispatched');
+        });
+      }
+      return app;
+    }
+
+    const app = declare(build);
+    writeStdout('assembled\n');
+    const code = await app.run({
+      process: createProcess({ argv: words.slice(1), release: { build: 'distributed' } }),
     });
+    writeStdout(`resolved:${code}\n`);
+  } catch (error) {
+    if (error !== fixture.stopped) {
+      fixture.thrown(error);
+    }
   }
-  return app;
+  return fixture.result();
 }
 
-const app = declare(build);
-process.stdout.write('assembled\n');
-const code = await app.run({
-  process: processHandle({ argv: process.argv.slice(3), release: { build: 'distributed' } }),
-});
-process.stdout.write(`resolved:${code}\n`);
+export { runFixture as run };

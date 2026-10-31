@@ -1,13 +1,13 @@
 // Acceptance plan: see packages/plugins/tests/help-variants.test.ts.
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/plugins/spellings.mjs', import.meta.url);
 
 /** The spellings record the fixture plugin's middleware read for one invocation. */
-function spellingsOf(argv: string[], env: Record<string, string> = {}) {
-  const result = invoke(fixture, argv, { env });
+async function spellingsOf(argv: string[], env: Record<string, string> = {}) {
+  const result = await invokeFixture(fixture, argv, { env });
   expect(result.stderr).toBe('');
   const lines = result.stdout.split('\n');
   // Each line the middleware printed is `<label>:<JSON>`.
@@ -27,13 +27,15 @@ test.each([
   [['--name', 'a', '-n', 'b'], { name: '-n' }],
 ] satisfies [string[], Record<string, string>][])(
   'a middleware reads the spelling that supplied each of its options for %j',
-  (argv, spellings) => {
-    expect(spellingsOf(argv).spellings).toEqual(spellings);
+  async (argv, spellings) => {
+    await expect(
+      spellingsOf(argv).then((fixtureResult) => fixtureResult.spellings),
+    ).resolves.toEqual(spellings);
   },
 );
 
-test('an option filled by an input source or left to its default has no spelling', () => {
-  const read = spellingsOf([], {
+test('an option filled by an input source or left to its default has no spelling', async () => {
+  const read = await spellingsOf([], {
     FIXTURE_LEVEL: 'debug',
     FIXTURE_SETTINGS: JSON.stringify({ from: 'settings' }),
   });
@@ -41,19 +43,25 @@ test('an option filled by an input source or left to its default has no spelling
   expect(read.spellings).toEqual({});
 });
 
-test('another plugin and the application keep their spellings from a middleware', () => {
-  expect(spellingsOf(['--loud', '-F', 'doc.json', '--local', '-q']).spellings).toEqual({
+test('another plugin and the application keep their spellings from a middleware', async () => {
+  await expect(
+    spellingsOf(['--loud', '-F', 'doc.json', '--local', '-q']).then(
+      (fixtureResult) => fixtureResult.spellings,
+    ),
+  ).resolves.toEqual({
     quiet: '-q',
   });
 });
 
-test('an option named __proto__ keeps its value and its spelling as own entries', () => {
-  const read = spellingsOf(['--__proto__']);
+test('an option named __proto__ keeps its value and its spelling as own entries', async () => {
+  const read = await spellingsOf(['--__proto__']);
   // JSON.parse creates an own `__proto__` key, where an object literal would set the prototype.
   expect(read.spellings).toEqual(JSON.parse('{"__proto__":"--__proto__"}'));
   expect(Object.hasOwn(read.options, '__proto__')).toBe(true);
 });
 
-test('the spellings record is frozen', () => {
-  expect(spellingsOf(['-q']).frozen).toBe(true);
+test('the spellings record is frozen', async () => {
+  await expect(spellingsOf(['-q']).then((fixtureResult) => fixtureResult.frozen)).resolves.toBe(
+    true,
+  );
 });

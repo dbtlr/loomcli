@@ -1,122 +1,285 @@
-import { Application, Command, plugin, processHandle } from '@loomcli/core';
+import { Application, Command, plugin } from '@loomcli/core';
 
-// A test that reads a defect's own sentence runs the fixture as a development build.
-const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
+import { scenario as fixtureScenario } from '../scenario.mjs';
 
-const scenario = process.argv[2];
-const argv = process.argv.slice(3);
+/** Runs a fresh fixture scenario with only the supplied process facts. */
+async function runFixture(fixtureWords, fixtureOptions = {}) {
+  const fixture = fixtureScenario({ ...fixtureOptions, argv: fixtureWords });
+  const { createProcess, env: fixtureEnv, stdout: writeStdout } = fixture;
+  try {
+    // A test that reads a defect's own sentence runs the fixture as a development build.
+    const release = { build: fixtureEnv.FIXTURE_BUILD ?? 'distributed' };
 
-/** The run's own controller, so a scenario cancels from inside a validator or a middleware. */
-const controller = new AbortController();
-const effects = [];
+    const scenario = fixtureWords[0];
+    const argv = fixtureWords.slice(1);
 
-/** Accepting validation can have effects even when middleware ends the invocation. */
-const effectful = {
-  '~standard': {
-    validate: (value) => {
-      effects.push('validation');
-      return { value };
-    },
-    vendor: 'fixture',
-    version: 1,
-  },
-};
+    /** The run's own controller, so a scenario cancels from inside a validator or a middleware. */
+    const controller = new AbortController();
+    const effects = [];
 
-/** A schema that reads decimal digits, so a request carries the output and not the token. */
-const digits = {
-  '~standard': {
-    validate: (value) =>
-      /^\d+$/u.test(value)
-        ? { value: Number(value) }
-        : { issues: [{ message: 'Use decimal digits.' }] },
-    vendor: 'fixture',
-    version: 1,
-  },
-};
+    /** Accepting validation can have effects even when middleware ends the invocation. */
+    const effectful = {
+      '~standard': {
+        validate: (value) => {
+          effects.push('validation');
+          return { value };
+        },
+        vendor: 'fixture',
+        version: 1,
+      },
+    };
 
-/** A schema whose output is an object, so the request and the action each hold one of them. */
-const noted = {
-  '~standard': {
-    validate: (value) => ({ value: { note: value } }),
-    vendor: 'fixture',
-    version: 1,
-  },
-};
+    /** A schema that reads decimal digits, so a request carries the output and not the token. */
+    const digits = {
+      '~standard': {
+        validate: (value) =>
+          /^\d+$/u.test(value)
+            ? { value: Number(value) }
+            : { issues: [{ message: 'Use decimal digits.' }] },
+        vendor: 'fixture',
+        version: 1,
+      },
+    };
 
-/** A schema that cancels the run where it stands, then answers as any other schema does. */
-const aborting = {
-  '~standard': {
-    validate: (value) => {
+    /** A schema whose output is an object, so the request and the action each hold one of them. */
+    const noted = {
+      '~standard': {
+        validate: (value) => ({ value: { note: value } }),
+        vendor: 'fixture',
+        version: 1,
+      },
+    };
+
+    /** A schema that cancels the run where it stands, then answers as any other schema does. */
+    const aborting = {
+      '~standard': {
+        validate: (value) => {
+          controller.abort();
+          return { value };
+        },
+        vendor: 'fixture',
+        version: 1,
+      },
+    };
+
+    /** A schema that fails the way the author's own code fails, with a developer error and no issues. */
+    const breaking = {
+      '~standard': {
+        validate: () => {
+          throw new Error('the validator broke');
+        },
+        vendor: 'fixture',
+        version: 1,
+      },
+    };
+
+    /** The schema the routed argument declares, which one scenario chooses. */
+    const schemas = {
+      'cancel-validator': aborting,
+      'effect-takeover': effectful,
+      'throwing-bare': breaking,
+      'throwing-takeover': breaking,
+    };
+
+    const rows = [{ source: 'one.txt' }, { source: 'two words.txt' }];
+
+    /** The default view of the rows result: one head, one line per row, one tail. */
+    const list = {
+      head: () => 'PATHS\n',
+      row: (row, index) => `${index}: ${row.source}\n`,
+      tail: () => 'END\n',
+    };
+
+    /** A second row view, so a selection is visible row by row. */
+    const wide = { row: (row) => `[${row.source}]\n` };
+
+    /** A whole view over the collected rows, so a selection is visible in one line. */
+    const total = { render: (all) => `${all.length} rows\n` };
+
+    /** The view one selector assigns, read from its own environment name. */
+    function assigned(key) {
+      return fixtureEnv[`LOOM_FIXTURE_VIEW_${key.toUpperCase()}`];
+    }
+
+    /** A middleware that assigns the view its environment names, before or after it continues. */
+    function selector(key, when) {
+      return async (context) => {
+        const name = assigned(key);
+        if (when === 'before' && name !== undefined) {
+          context.view = name;
+        }
+        await context.next();
+        if (when === 'after' && name !== undefined) {
+          context.view = name;
+        }
+      };
+    }
+
+    /** Writes what the chain reads before the action runs, then continues. */
+
+    /** Whether one write into the request landed, so a frozen value reports as the throw it raises. */
+
+    /** A middleware that writes into every value the request carries, then continues. */
+    async function mutating({ next, out, request }) {
+      const writes = {
+        assign: attempt(() => {
+          request.options.raw = true;
+        }),
+        meta: attempt(() => {
+          request.options.meta.note = 'middleware';
+        }),
+        tag: attempt(() => request.options.tag.push('middleware')),
+      };
+      await out.print(`writes:${JSON.stringify(writes)}`);
+      await next();
+    }
+
+    /** A middleware that takes the invocation over, as a help plugin does. */
+    async function taking({ out, request }) {
+      if (scenario === 'effect-takeover') {
+        effects.push('takeover');
+        await out.print(`effects:${effects.join(',')}`);
+      }
+      await out.print(`help:${request === null ? 'null' : 'request'}`);
+    }
+
+    /** An always-on wrapper, which reports the outcome it wrapped. */
+
+    /** A middleware that cancels the run and continues, so the chain never reaches the boundary. */
+    async function aborts({ next }) {
       controller.abort();
-      return { value };
-    },
-    vendor: 'fixture',
-    version: 1,
-  },
-};
+      await next();
+    }
 
-/** A schema that fails the way the author's own code fails, with a developer error and no issues. */
-const breaking = {
-  '~standard': {
-    validate: () => {
-      throw new Error('the validator broke');
-    },
-    vendor: 'fixture',
-    version: 1,
-  },
-};
+    /** Each fixture plugin, named by the key a scenario installs it under. */
+    const plugins = {
+      canceller: () =>
+        plugin('@fixture/canceller', {
+          middleware: { activate: 'always', load: () => ({ default: aborts }) },
+        }),
+      first: () =>
+        plugin('@fixture/first', {
+          middleware: {
+            activate: 'always',
+            load: () => ({ default: selector('first', 'before') }),
+          },
+        }),
+      help: () =>
+        plugin('@fixture/help', {
+          middleware: { activate: ['help'], load: () => ({ default: taking }) },
+          options: { help: { short: 'h', type: 'boolean' } },
+        }),
+      late: () =>
+        plugin('@fixture/late', {
+          middleware: { activate: 'always', load: () => ({ default: selector('late', 'after') }) },
+        }),
+      mutator: () =>
+        plugin('@fixture/mutator', {
+          middleware: { activate: 'always', load: () => ({ default: mutating }) },
+        }),
+      reader: () =>
+        plugin('@fixture/reader', {
+          middleware: { activate: 'always', load: () => ({ default: reading }) },
+        }),
+      second: () =>
+        plugin('@fixture/second', {
+          middleware: {
+            activate: 'always',
+            load: () => ({ default: selector('second', 'before') }),
+          },
+        }),
+      wrapper: () =>
+        plugin('@fixture/wrapper', {
+          middleware: { activate: 'always', load: () => ({ default: wrapping }) },
+        }),
+    };
 
-/** The schema the routed argument declares, which one scenario chooses. */
-const schemas = {
-  'cancel-validator': aborting,
-  'effect-takeover': effectful,
-  'throwing-bare': breaking,
-  'throwing-takeover': breaking,
-};
+    /** What each scenario installs, in the order the chain composes them. */
+    const installed = {
+      bare: [],
+      'cancel-chain': ['canceller'],
+      'cancel-validator': ['reader'],
+      'effect-takeover': ['help'],
+      late: ['late'],
+      mutating: ['mutator'],
+      reading: ['reader'],
+      select: ['first'],
+      'select-read': ['first', 'reader'],
+      'select-takeover': ['first', 'help'],
+      takeover: ['help'],
+      'throwing-bare': [],
+      'throwing-takeover': ['help'],
+      two: ['first', 'second'],
+      'wrapped-takeover': ['wrapper', 'help'],
+    };
 
-const rows = [{ source: 'one.txt' }, { source: 'two words.txt' }];
+    /** One graph every scenario shares, so an invocation reads the same declarations throughout. */
+    function application() {
+      const get = new Command('get', {
+        description: 'The get command.',
+      })
+        .argument('path', {
+          description: 'The path argument.',
+          required: true,
+          validate: schemas[scenario],
+        })
+        .option('depth', { description: 'The depth option.', type: 'string', validate: digits })
+        .option('raw', { description: 'The raw option.', type: 'boolean' })
+        .action(({ args, options, out, passthrough }) =>
+          out.print(`get:${JSON.stringify({ args, options, passthrough })}`),
+        );
+      const edit = new Command('edit', {
+        description: 'The edit command.',
+      })
+        .option('tag', { description: 'The tag option.', multiple: true, type: 'string' })
+        .option('meta', { description: 'The meta option.', type: 'string', validate: noted })
+        .action(({ options, out }) =>
+          out.print(`edit:${JSON.stringify({ frozen: Object.isFrozen(options.tag), options })}`),
+        );
+      const count = new Command('count', {
+        description: 'The count command.',
+      })
+        .rows({ views: { list, total, wide } })
+        .action(({ out }) => out.results(rows));
+      const cache = new Command('cache', {
+        description: 'The cache command.',
+      }).command(
+        new Command('clear', {
+          description: 'The clear command.',
+        }).action(({ out }) => out.print('cleared')),
+      );
+      return new Application('app', {
+        description: 'The app application.',
+        plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
+        version: '1.2.0',
+      })
+        .globalOption('file', { description: 'The file option.', short: 'f', type: 'string' })
+        .command(get)
+        .command(edit)
+        .command(count)
+        .command(cache)
+        .action(({ out }) => out.print('root'));
+    }
 
-/** The default view of the rows result: one head, one line per row, one tail. */
-const list = {
-  head: () => 'PATHS\n',
-  row: (row, index) => `${index}: ${row.source}\n`,
-  tail: () => 'END\n',
-};
-
-/** A second row view, so a selection is visible row by row. */
-const wide = { row: (row) => `[${row.source}]\n` };
-
-/** A whole view over the collected rows, so a selection is visible in one line. */
-const total = { render: (all) => `${all.length} rows\n` };
-
-/** The view one selector assigns, read from its own environment name. */
-function assigned(key) {
-  return process.env[`LOOM_FIXTURE_VIEW_${key.toUpperCase()}`];
+    const code = await application().run({
+      process: createProcess({ argv, release }),
+      signal: controller.signal,
+    });
+    writeStdout(`resolved:${code}\n`);
+  } catch (error) {
+    if (error !== fixture.stopped) {
+      fixture.thrown(error);
+    }
+  }
+  return fixture.result();
 }
 
-/** A middleware that assigns the view its environment names, before or after it continues. */
-function selector(key, when) {
-  return async (context) => {
-    const name = assigned(key);
-    if (when === 'before' && name !== undefined) {
-      context.view = name;
-    }
-    await context.next();
-    if (when === 'after' && name !== undefined) {
-      context.view = name;
-    }
-  };
-}
-
-/** Writes what the chain reads before the action runs, then continues. */
 async function reading({ next, out, request, view }) {
   await out.print(`request:${JSON.stringify(request)}`);
   await out.print(`frozen:${request === null ? 'none' : Object.isFrozen(request.args)}`);
   await out.print(`view:${String(view)}`);
   await next();
 }
-
-/** Whether one write into the request landed, so a frozen value reports as the throw it raises. */
 function attempt(write) {
   try {
     write();
@@ -125,149 +288,9 @@ function attempt(write) {
     return 'threw';
   }
 }
-
-/** A middleware that writes into every value the request carries, then continues. */
-async function mutating({ next, out, request }) {
-  const writes = {
-    assign: attempt(() => {
-      request.options.raw = true;
-    }),
-    meta: attempt(() => {
-      request.options.meta.note = 'middleware';
-    }),
-    tag: attempt(() => request.options.tag.push('middleware')),
-  };
-  await out.print(`writes:${JSON.stringify(writes)}`);
-  await next();
-}
-
-/** A middleware that takes the invocation over, as a help plugin does. */
-async function taking({ out, request }) {
-  if (scenario === 'effect-takeover') {
-    effects.push('takeover');
-    await out.print(`effects:${effects.join(',')}`);
-  }
-  await out.print(`help:${request === null ? 'null' : 'request'}`);
-}
-
-/** An always-on wrapper, which reports the outcome it wrapped. */
 async function wrapping({ next, out }) {
   const outcome = await next();
   await out.print(`wrapper:${outcome}`);
 }
 
-/** A middleware that cancels the run and continues, so the chain never reaches the boundary. */
-async function aborts({ next }) {
-  controller.abort();
-  await next();
-}
-
-/** Each fixture plugin, named by the key a scenario installs it under. */
-const plugins = {
-  canceller: () =>
-    plugin('@fixture/canceller', {
-      middleware: { activate: 'always', load: () => ({ default: aborts }) },
-    }),
-  first: () =>
-    plugin('@fixture/first', {
-      middleware: { activate: 'always', load: () => ({ default: selector('first', 'before') }) },
-    }),
-  help: () =>
-    plugin('@fixture/help', {
-      middleware: { activate: ['help'], load: () => ({ default: taking }) },
-      options: { help: { short: 'h', type: 'boolean' } },
-    }),
-  late: () =>
-    plugin('@fixture/late', {
-      middleware: { activate: 'always', load: () => ({ default: selector('late', 'after') }) },
-    }),
-  mutator: () =>
-    plugin('@fixture/mutator', {
-      middleware: { activate: 'always', load: () => ({ default: mutating }) },
-    }),
-  reader: () =>
-    plugin('@fixture/reader', {
-      middleware: { activate: 'always', load: () => ({ default: reading }) },
-    }),
-  second: () =>
-    plugin('@fixture/second', {
-      middleware: { activate: 'always', load: () => ({ default: selector('second', 'before') }) },
-    }),
-  wrapper: () =>
-    plugin('@fixture/wrapper', {
-      middleware: { activate: 'always', load: () => ({ default: wrapping }) },
-    }),
-};
-
-/** What each scenario installs, in the order the chain composes them. */
-const installed = {
-  bare: [],
-  'cancel-chain': ['canceller'],
-  'cancel-validator': ['reader'],
-  'effect-takeover': ['help'],
-  late: ['late'],
-  mutating: ['mutator'],
-  reading: ['reader'],
-  select: ['first'],
-  'select-read': ['first', 'reader'],
-  'select-takeover': ['first', 'help'],
-  takeover: ['help'],
-  'throwing-bare': [],
-  'throwing-takeover': ['help'],
-  two: ['first', 'second'],
-  'wrapped-takeover': ['wrapper', 'help'],
-};
-
-/** One graph every scenario shares, so an invocation reads the same declarations throughout. */
-function application() {
-  const get = new Command('get', {
-    description: 'The get command.',
-  })
-    .argument('path', {
-      description: 'The path argument.',
-      required: true,
-      validate: schemas[scenario],
-    })
-    .option('depth', { description: 'The depth option.', type: 'string', validate: digits })
-    .option('raw', { description: 'The raw option.', type: 'boolean' })
-    .action(({ args, options, out, passthrough }) =>
-      out.print(`get:${JSON.stringify({ args, options, passthrough })}`),
-    );
-  const edit = new Command('edit', {
-    description: 'The edit command.',
-  })
-    .option('tag', { description: 'The tag option.', multiple: true, type: 'string' })
-    .option('meta', { description: 'The meta option.', type: 'string', validate: noted })
-    .action(({ options, out }) =>
-      out.print(`edit:${JSON.stringify({ frozen: Object.isFrozen(options.tag), options })}`),
-    );
-  const count = new Command('count', {
-    description: 'The count command.',
-  })
-    .rows({ views: { list, total, wide } })
-    .action(({ out }) => out.results(rows));
-  const cache = new Command('cache', {
-    description: 'The cache command.',
-  }).command(
-    new Command('clear', {
-      description: 'The clear command.',
-    }).action(({ out }) => out.print('cleared')),
-  );
-  return new Application('app', {
-    description: 'The app application.',
-    plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
-    version: '1.2.0',
-  })
-    .globalOption('file', { description: 'The file option.', short: 'f', type: 'string' })
-    .command(get)
-    .command(edit)
-    .command(count)
-    .command(cache)
-    .action(({ out }) => out.print('root'));
-}
-
-const code = await application().run({
-  process: processHandle({ argv, release }),
-  signal: controller.signal,
-});
-process.stdout.write(`resolved:${code}\n`);
+export { runFixture as run };

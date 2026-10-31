@@ -1,3 +1,4 @@
+import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for collecting extensions (docs/core/extensions.md#collecting-extensions).
  *
@@ -14,15 +15,13 @@
  * option holding one value; and a `collect` that is not a Boolean rejected.
  */
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/plugins/collecting.mjs', import.meta.url);
 
 /** The facts one scenario wrote, one JSON value per line. */
-function facts(scenario: string, mode: string): unknown[] {
-  const result = invoke(fixture, [scenario, mode]);
+async function facts(scenario: string, mode: string): Promise<unknown[]> {
+  const result = await invokeFixture(fixture, [scenario, mode]);
   expect(result.stderr).toBe('');
   return result.stdout
     .split('\n')
@@ -30,8 +29,10 @@ function facts(scenario: string, mode: string): unknown[] {
     .map((line): unknown => JSON.parse(line));
 }
 
-test('a collecting extension keeps every author layer in order, where an ordinary one keeps the last', () => {
-  expect(facts('layers', 'inspect')[0]).toEqual({
+test('a collecting extension keeps every author layer in order, where an ordinary one keeps the last', async () => {
+  await expect(
+    facts('layers', 'inspect').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toEqual({
     bare: {},
     get: {
       '@fixture/notes/command': [{ note: 'constructor' }, { note: 'layer' }],
@@ -41,8 +42,10 @@ test('a collecting extension keeps every author layer in order, where an ordinar
   });
 });
 
-test('every descriptor publishes collect as given, false where it is omitted or undefined', () => {
-  expect(facts('layers', 'descriptors')[0]).toEqual({
+test('every descriptor publishes collect as given, false where it is omitted or undefined', async () => {
+  await expect(
+    facts('layers', 'descriptors').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toEqual({
     notes: true,
     null: null,
     single: false,
@@ -50,8 +53,10 @@ test('every descriptor publishes collect as given, false where it is omitted or 
   });
 });
 
-test('hooks supply values after the author layers, in installation order, and replace an ordinary value', () => {
-  expect(facts('hooks', 'inspect')[0]).toEqual({
+test('hooks supply values after the author layers, in installation order, and replace an ordinary value', async () => {
+  await expect(
+    facts('hooks', 'inspect').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toEqual({
     bare: {},
     get: {
       '@fixture/notes/command': [
@@ -66,8 +71,8 @@ test('hooks supply values after the author layers, in installation order, and re
   });
 });
 
-test('a hook reads the author values and every earlier hook value, typed and as the published record', () => {
-  const [before, beforeRecord, after, afterRecord] = facts('reads', 'inspect');
+test('a hook reads the author values and every earlier hook value, typed and as the published record', async () => {
+  const [before, beforeRecord, after, afterRecord] = await facts('reads', 'inspect');
   expect(before).toEqual({
     notes: [{ note: 'constructor' }, { note: 'layer' }],
     reader: '@fixture/before',
@@ -100,8 +105,8 @@ test('a hook reads the author values and every earlier hook value, typed and as 
   });
 });
 
-test('a collecting read returns every value in order, frozen, and a frozen empty list where there is none', () => {
-  const [read, foreign] = facts('hooks', 'read');
+test('a collecting read returns every value in order, frozen, and a frozen empty list where there is none', async () => {
+  const [read, foreign] = await facts('hooks', 'read');
   expect(foreign).toEqual({
     foreign: 'DeclarationError',
     message:
@@ -120,39 +125,55 @@ test('a collecting read returns every value in order, frozen, and a frozen empty
   });
 });
 
-test('a hook that replaces an ordinary value leaves its key where it first appeared', () => {
-  expect(facts('keys', 'keys')[0]).toEqual(['@fixture/single/command', '@fixture/notes/command']);
+test('a hook that replaces an ordinary value leaves its key where it first appeared', async () => {
+  await expect(facts('keys', 'keys').then((fixtureResult) => fixtureResult[0])).resolves.toEqual([
+    '@fixture/single/command',
+    '@fixture/notes/command',
+  ]);
 });
 
-test('a hook that declares an option and then extends keeps both', () => {
-  expect(facts('option-then-extend', 'options')[0]).toEqual({
+test('a hook that declares an option and then extends keeps both', async () => {
+  await expect(
+    facts('option-then-extend', 'options').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toEqual({
     notes: [{ note: 'constructor' }, { note: 'layer' }, { note: 'hook' }],
     options: ['raw', 'extra'],
   });
 });
 
-test('each value is validated once per build, the author layers and the hook values alike', () => {
+test('each value is validated once per build, the author layers and the hook values alike', async () => {
   // Eight values reach the schema, and each reaches it once.
   // Two author layers of each extension, the option value, and one value from each of three hooks.
-  expect(facts('hooks', 'calls')[0]).toEqual({ calls: 8 });
+  await expect(facts('hooks', 'calls').then((fixtureResult) => fixtureResult[0])).resolves.toEqual({
+    calls: 8,
+  });
 });
 
-test('a second value of a collecting extension in one layer replaces the first, in a declaration and in one extend() call', () => {
-  expect(facts('twice-in-layer', 'inspect')[0]).toEqual({
+test('a second value of a collecting extension in one layer replaces the first, in a declaration and in one extend() call', async () => {
+  await expect(
+    facts('twice-in-layer', 'inspect').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toEqual({
     get: { '@fixture/notes/command': [{ note: 'b' }] },
   });
-  expect(facts('twice-in-call', 'inspect')[0]).toMatchObject({
+  await expect(
+    facts('twice-in-call', 'inspect').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toMatchObject({
     get: {
       '@fixture/notes/command': [{ note: 'constructor' }, { note: 'layer' }, { note: 'b' }],
     },
   });
 });
 
-test('a value a hook passes to extend() is rejected at the call, and a hook that catches continues', () => {
+test('a value a hook passes to extend() is rejected at the call, and a hook that catches continues', async () => {
   const invalid =
     'Command "get" holds an invalid "@fixture/notes/command" value: Supply a note. Correct the value.';
-  expect(facts('rejected', 'fault')[0]).toEqual({ fault: 'DeclarationError', message: invalid });
-  const [caught, graph] = facts('caught', 'inspect');
+  await expect(
+    facts('rejected', 'fault').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toEqual({
+    fault: 'DeclarationError',
+    message: invalid,
+  });
+  const [caught, graph] = await facts('caught', 'inspect');
   expect(caught).toEqual({ caught: 'DeclarationError', message: invalid });
   expect(graph).toMatchObject({
     get: {
@@ -162,36 +183,52 @@ test('a value a hook passes to extend() is rejected at the call, and a hook that
   });
 });
 
-test('extend() rejects a second descriptor of one identity at the call', () => {
-  expect(facts('twin-at-call', 'fault')[0]).toEqual({
+test('extend() rejects a second descriptor of one identity at the call', async () => {
+  await expect(
+    facts('twin-at-call', 'fault').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toEqual({
     fault: 'DeclarationError',
     message:
       'Extension "@fixture/notes/command" is defined twice. Install one copy of the package that defines it.',
   });
 });
 
-test('a rejected extend() call the hook catches registers none of its descriptors', () => {
-  expect(facts('rejected-twin', 'fault')[0]).toEqual({ fault: null });
+test('a rejected extend() call the hook catches registers none of its descriptors', async () => {
+  await expect(
+    facts('rejected-twin', 'fault').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toEqual({
+    fault: null,
+  });
 });
 
-test('a descriptor a hook added only to a value it discarded never reaches the build', () => {
-  expect(facts('discarded-twin', 'fault')[0]).toEqual({ fault: null });
+test('a descriptor a hook added only to a value it discarded never reaches the build', async () => {
+  await expect(
+    facts('discarded-twin', 'fault').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toEqual({
+    fault: null,
+  });
 });
 
-test('a descriptor a hook returns is compared with every other descriptor of its identity', () => {
+test('a descriptor a hook returns is compared with every other descriptor of its identity', async () => {
   const twice = {
     fault: 'DeclarationError',
     message:
       'Extension "@fixture/notes/command" is defined twice. Install one copy of the package that defines it.',
   };
   // The root's hook returns a twin, and the child's author layer carries the original.
-  expect(facts('returned-twin', 'fault')[0]).toEqual(twice);
+  await expect(
+    facts('returned-twin', 'fault').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toEqual(twice);
   // Two hooks on one Command each return a value of a different descriptor of one identity.
-  expect(facts('twin-hooks', 'fault')[0]).toEqual(twice);
+  await expect(
+    facts('twin-hooks', 'fault').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toEqual(twice);
 });
 
-test('an invalid author value is reported before a hook on that Command runs', () => {
-  expect(facts('author-first', 'fault')[0]).toEqual({
+test('an invalid author value is reported before a hook on that Command runs', async () => {
+  await expect(
+    facts('author-first', 'fault').then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toEqual({
     fault: 'DeclarationError',
     message:
       'Command "get" holds an invalid "@fixture/notes/command" value: Supply a note. Correct the value.',

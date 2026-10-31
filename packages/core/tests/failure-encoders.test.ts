@@ -1,3 +1,4 @@
+import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for failure encoders (docs/core/failure-views.md#failure-encoders).
  *
@@ -46,15 +47,13 @@
  *   diagnostic in `messages`, calls no encoder, and carries the form on the outcome.
  */
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
 import { coreRuleParts } from './rule-parts.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/failure-encoders.mjs', import.meta.url);
 
 /** One run of the fixture application, with the encoder and the build each variant names. */
-function run(
+async function run(
   words: string[],
   variant: {
     build?: 'development' | 'distributed';
@@ -62,7 +61,7 @@ function run(
     env?: Record<string, string>;
   } = {},
 ) {
-  return invoke(fixture, ['run', ...words], {
+  return await invokeFixture(fixture, ['run', ...words], {
     env: {
       FIXTURE_BUILD: variant.build ?? 'distributed',
       FIXTURE_ENCODER: variant.encoder ?? 'line',
@@ -89,14 +88,16 @@ function line(form: { code: string; exitCode: number; message: string; hints?: s
 /** The hint the fixture plugin adds to every failure. */
 const hint = 'Run "enc --help" to see the usage.';
 
-test('a held fault under an encoded selection writes the encoded line alone, and nothing to stdout', () => {
-  expect(run(['list', '--pick', 'json', '--depth', 'x'])).toEqual({
+test('a held fault under an encoded selection writes the encoded line alone, and nothing to stdout', async () => {
+  await expect(run(['list', '--pick', 'json', '--depth', 'x'])).resolves.toEqual({
     status: 2,
     stderr:
       '{"error":{"code":"invalid-input","exitCode":2,"message":"Option \\"--depth\\": Use decimal digits.","hints":["Run \\"enc --help\\" to see the usage."]}}\n',
     stdout: 'exit:2\n',
   });
-  expect(run(['list', '--pick', 'json', '--bogus']).stderr).toBe(
+  await expect(
+    run(['list', '--pick', 'json', '--bogus']).then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toBe(
     line({
       code: 'unknown-option',
       exitCode: 2,
@@ -106,16 +107,16 @@ test('a held fault under an encoded selection writes the encoded line alone, and
   );
 });
 
-test("a validator that throws on another input still writes the encoded line, because the selection's own option validated before it", () => {
-  expect(run(['list', '--pick', 'json', '--depth', 'throw'])).toEqual({
+test("a validator that throws on another input still writes the encoded line, because the selection's own option validated before it", async () => {
+  await expect(run(['list', '--pick', 'json', '--depth', 'throw'])).resolves.toEqual({
     status: 1,
     stderr: line({ code: 'internal', exitCode: 1, message: 'Something went wrong.' }),
     stdout: 'exit:1\n',
   });
 });
 
-test('an action failure after rows writes the rows on stdout and the line alone on stderr', () => {
-  expect(run(['list', '--pick', 'json'])).toEqual({
+test('an action failure after rows writes the rows on stdout and the line alone on stderr', async () => {
+  await expect(run(['list', '--pick', 'json'])).resolves.toEqual({
     status: 1,
     stderr: line({ code: 'fatal', exitCode: 1, message: 'The key "b" is refused.' }),
     stdout: '{"key":"a"}\nexit:1\n',
@@ -127,71 +128,79 @@ function incomplete(yielded: number, written: number): string {
   return `Output is incomplete: Command "list" stopped after ${String(yielded)} rows, ${String(written)} written.\n`;
 }
 
-test('a stream cancelled mid-sequence under an encoded selection writes the incomplete-result line, because no encoder writes a failure', () => {
-  expect(run(['list', '--pick', 'json', '--how', 'stream-cancel'])).toEqual({
+test('a stream cancelled mid-sequence under an encoded selection writes the incomplete-result line, because no encoder writes a failure', async () => {
+  await expect(run(['list', '--pick', 'json', '--how', 'stream-cancel'])).resolves.toEqual({
     status: 130,
     stderr: incomplete(1, 1),
     stdout: '{"key":"a"}\nexit:130\n',
   });
 });
 
-test('a stdout that fails a write under an encoded selection writes the incomplete-result line beside its plain fallback report', () => {
-  expect(run(['list', '--pick', 'json'], { env: { FIXTURE_STDOUT: 'full' } })).toEqual({
+test('a stdout that fails a write under an encoded selection writes the incomplete-result line beside its plain fallback report', async () => {
+  await expect(
+    run(['list', '--pick', 'json'], { env: { FIXTURE_STDOUT: 'full' } }),
+  ).resolves.toEqual({
     status: 1,
     stderr: `${incomplete(1, 0)}enc: Something went wrong.\n`,
     stdout: 'exit:1\n',
   });
 });
 
-test('a broken encoder after rows writes the incomplete-result line ahead of the default text', () => {
-  expect(run(['list', '--pick', 'json'], { encoder: 'throws' })).toEqual({
+test('a broken encoder after rows writes the incomplete-result line ahead of the default text', async () => {
+  await expect(run(['list', '--pick', 'json'], { encoder: 'throws' })).resolves.toEqual({
     status: 1,
     stderr: `${incomplete(1, 1)}The key "b" is refused.\nenc: Something went wrong.\n`,
     stdout: '{"key":"a"}\nexit:1\n',
   });
 });
 
-test('a selection that declares no encoded media type writes its text as before', () => {
-  const table = run(['list']);
+test('a selection that declares no encoded media type writes its text as before', async () => {
+  const table = await run(['list']);
   expect(table.stdout).toBe('{"key":"a"}\nexit:1\n');
   expect(table.stderr).toBe(
     'Output is incomplete: Command "list" stopped after 1 rows, 1 written.\nbranded: The key "b" is refused.\n',
   );
-  expect(run(['list', '--depth', 'x']).stderr).toBe(
-    `enc: Option "--depth": Use decimal digits.\n${hint}\n`,
-  );
-  expect(run(['nope', '--pick', 'json']).stderr).toBe(
-    `enc: Unknown command "nope". Use one of: list, wire, flags, extra.\n${hint}\n`,
-  );
-  expect(invoke(fixture, ['build', 'list', '--pick', 'json']).stderr).toBe(
-    'enc: Something went wrong.\n',
-  );
+  await expect(
+    run(['list', '--depth', 'x']).then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toBe(`enc: Option "--depth": Use decimal digits.\n${hint}\n`);
+  await expect(
+    run(['nope', '--pick', 'json']).then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toBe(`enc: Unknown command "nope". Use one of: list, wire, flags, extra.\n${hint}\n`);
+  await expect(
+    invokeFixture(fixture, ['build', 'list', '--pick', 'json']).then(
+      (fixtureResult) => fixtureResult.stderr,
+    ),
+  ).resolves.toBe('enc: Something went wrong.\n');
 });
 
-test('a default view that declares the media type writes the line with no selection', () => {
-  expect(run(['wire'])).toEqual({
+test('a default view that declares the media type writes the line with no selection', async () => {
+  await expect(run(['wire'])).resolves.toEqual({
     status: 1,
     stderr: line({ code: 'fatal', exitCode: 1, message: 'Refused.' }),
     stdout: 'exit:1\n',
   });
 });
 
-test("the encoder answers ahead of the application's override, in plain text", () => {
-  expect(
-    run(['list', '--pick', 'json', '--how', 'fatal'], { env: { FORCE_COLOR: '1' } }).stderr,
-  ).toBe(line({ code: 'fatal', exitCode: 1, message: 'The registry is down.' }));
-  expect(run(['list', '--how', 'fatal']).stderr).toMatch(
-    /^branded: The .*registry.* is down\.\n$/u,
-  );
+test("the encoder answers ahead of the application's override, in plain text", async () => {
+  await expect(
+    run(['list', '--pick', 'json', '--how', 'fatal'], { env: { FORCE_COLOR: '1' } }).then(
+      (fixtureResult) => fixtureResult.stderr,
+    ),
+  ).resolves.toBe(line({ code: 'fatal', exitCode: 1, message: 'The registry is down.' }));
+  await expect(
+    run(['list', '--how', 'fatal']).then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toMatch(/^branded: The .*registry.* is down\.\n$/u);
 });
 
-test('a defect writes the generic line from a bundle, and its Developer Diagnostic and then the line from source', () => {
-  expect(run(['list', '--pick', 'json', '--how', 'defect'])).toEqual({
+test('a defect writes the generic line from a bundle, and its Developer Diagnostic and then the line from source', async () => {
+  await expect(run(['list', '--pick', 'json', '--how', 'defect'])).resolves.toEqual({
     status: 1,
     stderr: line({ code: 'internal', exitCode: 1, message: 'Something went wrong.' }),
     stdout: 'exit:1\n',
   });
-  const developed = run(['list', '--pick', 'json', '--how', 'defect'], { build: 'development' });
+  const developed = await run(['list', '--pick', 'json', '--how', 'defect'], {
+    build: 'development',
+  });
   expect(developed.status).toBe(1);
   expect(developed.stderr).toMatch(/^-- UNHANDLED EXCEPTION -+ @loomcli\/core\/foreign-throw\n/u);
   expect(
@@ -201,7 +210,7 @@ test('a defect writes the generic line from a bundle, and its Developer Diagnost
   ).toBe(true);
 });
 
-test("a structural fault core raises from argv words reaches the line with its class's code", () => {
+test("a structural fault core raises from argv words reaches the line with its class's code", async () => {
   const cases = {
     'misplaced-option': ['flags', '--deep', 'x'],
     'missing-value': ['flags', '--tag'],
@@ -211,7 +220,9 @@ test("a structural fault core raises from argv words reaches the line with its c
     'unknown-option': ['flags', '--bogus'],
   };
   for (const [code, words] of Object.entries(cases)) {
-    const encoded: { error: { code: string } } = JSON.parse(run(words).stderr);
+    const encoded: { error: { code: string } } = JSON.parse(
+      await run(words).then((fixtureResult) => fixtureResult.stderr),
+    );
     expect(encoded.error.code).toBe(code);
   }
 });
@@ -223,13 +234,13 @@ const brokenReasons = {
 
 test.each(Object.entries(brokenReasons))(
   'an encoder that %s writes the default text, then the defect by build, and exits 1',
-  (encoder, reason) => {
-    expect(run(['wire'], { encoder })).toEqual({
+  async (encoder, reason) => {
+    await expect(run(['wire'], { encoder })).resolves.toEqual({
       status: 1,
       stderr: 'Refused.\nenc: Something went wrong.\n',
       stdout: 'exit:1\n',
     });
-    const developed = run(['wire'], { build: 'development', encoder });
+    const developed = await run(['wire'], { build: 'development', encoder });
     expect(developed.status).toBe(1);
     expect(developed.stderr.startsWith('Refused.\n\n-- BROKEN FAILURE ENCODER ')).toBe(true);
     expect(coreRuleParts(developed.stderr)).toEqual({
@@ -240,8 +251,8 @@ test.each(Object.entries(brokenReasons))(
   },
 );
 
-test('a broken encoder in a cancelled run keeps the signal code', () => {
-  const cancelled = run(['list', '--pick', 'json', '--how', 'cancel'], { encoder: 'throws' });
+test('a broken encoder in a cancelled run keeps the signal code', async () => {
+  const cancelled = await run(['list', '--pick', 'json', '--how', 'cancel'], { encoder: 'throws' });
   expect(cancelled).toEqual({
     status: 130,
     stderr: 'Refused after the abort.\nenc: Something went wrong.\n',
@@ -249,8 +260,12 @@ test('a broken encoder in a cancelled run keeps the signal code', () => {
   });
 });
 
-test('a run by name calls no encoder and carries the form on its outcome', () => {
-  expect(JSON.parse(invoke(fixture, ['by-name']).stdout)).toEqual({
+test('a run by name calls no encoder and carries the form on its outcome', async () => {
+  expect(
+    JSON.parse(
+      await invokeFixture(fixture, ['by-name']).then((fixtureResult) => fixtureResult.stdout),
+    ),
+  ).toEqual({
     encoded: 0,
     form: {
       code: 'invalid-input',
@@ -273,6 +288,8 @@ test.each([
     '@loomcli/core/failure-encoder-taken',
     'Plugin "@fixture/second" registers a failure encoder for "application/json", which plugin "@fixture/first" already registers.',
   ],
-])('%s is a declaration fault at its call', (scenario, rule, sentence) => {
-  expect(invoke(fixture, [scenario]).stdout).toBe(`DeclarationError:${rule}:${sentence}\n`);
+])('%s is a declaration fault at its call', async (scenario, rule, sentence) => {
+  await expect(
+    invokeFixture(fixture, [scenario]).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe(`DeclarationError:${rule}:${sentence}\n`);
 });

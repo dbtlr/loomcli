@@ -1,3 +1,4 @@
+import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for observing log events (docs/core/lifecycle-hooks.md#observing-log-events).
  *
@@ -15,12 +16,9 @@
  *   throw on its own report's event is not.
  * - Types. The negative type checks reject a hook that returns a value.
  */
-
 // Acceptance plan: see packages/core/tests/logging.test.ts.
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/observing-log.mjs', import.meta.url);
 
@@ -45,8 +43,11 @@ interface Observed {
   written: string;
 }
 
-function run(scenario: string, build: 'development' | 'distributed' = 'distributed'): Observed {
-  const result = invoke(fixture, [scenario], { env: { FIXTURE_BUILD: build } });
+async function run(
+  scenario: string,
+  build: 'development' | 'distributed' = 'distributed',
+): Promise<Observed> {
+  const result = await invokeFixture(fixture, [scenario], { env: { FIXTURE_BUILD: build } });
   const line = (name: string) =>
     result.stdout
       .split('\n')
@@ -67,8 +68,8 @@ function destinations(printed: Seen[]) {
   return printed.filter(({ plugin }) => plugin !== undefined).map(({ destination }) => destination);
 }
 
-test('two plugins receive each event in installation order, the same frozen object', () => {
-  const { printed, written } = run('order');
+test('two plugins receive each event in installation order, the same frozen object', async () => {
+  const { printed, written } = await run('order');
   expect(printed.map(({ plugin, same }) => [plugin, same])).toEqual([
     ['fixture/first', true],
     ['fixture/second', true],
@@ -76,15 +77,15 @@ test('two plugins receive each event in installation order, the same frozen obje
   expect(written).toBe('fixture/first:one\nfixture/second:one\n');
 });
 
-test('a run({ process }) handle reaches the destination env, platform, and stderr', () => {
-  expect(destinations(run('order').printed)).toEqual([
+test('a run({ process }) handle reaches the destination env, platform, and stderr', async () => {
+  expect(destinations(await run('order').then((fixtureResult) => fixtureResult.printed))).toEqual([
     { env: 'run', platform: 'probe-os', stderr: 'stream' },
     { env: 'run', platform: 'probe-os', stderr: 'stream' },
   ]);
 });
 
-test("an action's invoke delivers to the parent's destination and captures none of it", () => {
-  const { printed, written } = run('invoke');
+test("an action's invoke delivers to the parent's destination and captures none of it", async () => {
+  const { printed, written } = await run('invoke');
   expect(written).toBe('fixture/first:inner\nfixture/second:inner\n');
   expect(destinations(printed)).toEqual([
     { env: 'run', platform: 'probe-os', stderr: 'stream' },
@@ -93,8 +94,8 @@ test("an action's invoke delivers to the parent's destination and captures none 
   expect(printed.at(-1)).toEqual({ messages: '', output: '' });
 });
 
-test('app.invoke passes a null stderr and the env its host replaced', () => {
-  const { printed, written } = run('app-invoke');
+test('app.invoke passes a null stderr and the env its host replaced', async () => {
+  const { printed, written } = await run('app-invoke');
   const after = printed.slice(printed.findIndex(({ marker }) => marker === 'invoke') + 1);
   expect(destinations(after)).toEqual([
     { env: 'invoked', platform: 'named-os', stderr: 'null' },
@@ -107,22 +108,22 @@ test('app.invoke passes a null stderr and the env its host replaced', () => {
 /** The opening of the Developer Diagnostic a hook's first throw reports. */
 const hookThrow = /^-- UNHANDLED EXCEPTION -+ @loomcli\/core\/foreign-throw\n\nCannot observe\.\n/u;
 
-test('a hook that throws is still called for every later event, and its first throw is one defect that turns exit 0 into 1', () => {
-  const developed = run('throws-on-event', 'development');
+test('a hook that throws is still called for every later event, and its first throw is one defect that turns exit 0 into 1', async () => {
+  const developed = await run('throws-on-event', 'development');
   // The hook receives both events and the fatal event its own report logs.
   expect(developed.calls).toBe(3);
   expect(developed.fine).toEqual(['one', 'two', 'Cannot observe.']);
   expect(developed.resolved).toBe('1');
   expect(developed.written).toMatch(hookThrow);
   expect(developed.written.match(/^-- /gmu)).toHaveLength(1);
-  const distributed = run('throws-on-event', 'distributed');
+  const distributed = await run('throws-on-event', 'distributed');
   expect(distributed.calls).toBe(3);
   expect(distributed.resolved).toBe('1');
   expect(distributed.written).toBe('probe: Something went wrong.\n');
 });
 
-test('a stdout that fails and a hook that throws write two diagnostics with one blank line between', () => {
-  const result = run('stdout-and-hook-broken', 'development');
+test('a stdout that fails and a hook that throws write two diagnostics with one blank line between', async () => {
+  const result = await run('stdout-and-hook-broken', 'development');
   expect(result.resolved).toBe('1');
   expect(result.written).toMatch(hookThrow);
   expect(result.written).toMatch(
@@ -130,20 +131,20 @@ test('a stdout that fails and a hook that throws write two diagnostics with one 
   );
 });
 
-test('a throwing hook in a run a caller cancelled keeps 130 and still writes the report', () => {
-  const result = run('cancelled-broken', 'development');
+test('a throwing hook in a run a caller cancelled keeps 130 and still writes the report', async () => {
+  const result = await run('cancelled-broken', 'development');
   expect(result.resolved).toBe('130');
   expect(result.fine).toEqual(['one', 'two', 'Cannot observe.']);
   expect(result.written).toMatch(hookThrow);
 });
 
-test("a hook that throws on the fatal event is reported once, and its throw on its own report's event is not", () => {
-  const developed = run('throws-on-fatal', 'development');
+test("a hook that throws on the fatal event is reported once, and its throw on its own report's event is not", async () => {
+  const developed = await run('throws-on-fatal', 'development');
   expect(developed.calls).toBe(2);
   expect(developed.fine).toEqual(['The probe failed.', 'Cannot observe.']);
   expect(developed.written.match(/^-- UNHANDLED EXCEPTION/gmu)).toHaveLength(2);
   expect(developed.written).toContain('\n\nCannot observe.\n');
-  const distributed = run('throws-on-fatal', 'distributed');
+  const distributed = await run('throws-on-fatal', 'distributed');
   expect(distributed.calls).toBe(2);
   expect(distributed.written).toBe('probe: Something went wrong.\n');
 });

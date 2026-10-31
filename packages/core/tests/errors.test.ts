@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { undeclaredArgument, unknownOptionName } from '../src/errors.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 test.each([
   [
@@ -35,8 +35,10 @@ test.each([
   ['unknown-throw', [], 1, 'fixture: Something went wrong.\n'],
 ] satisfies [string, string[], number, string][])(
   '%s completes without rejecting or dispatching after a failure',
-  (scenario, args, status, stderr) => {
-    expect(invoke(new URL('fixtures/errors.mjs', import.meta.url), [scenario, ...args])).toEqual({
+  async (scenario, args, status, stderr) => {
+    await expect(
+      invokeFixture(new URL('fixtures/errors.mjs', import.meta.url), [scenario, ...args]),
+    ).resolves.toEqual({
       status,
       stderr,
       stdout: `assembled\nresolved:${status}\n`,
@@ -55,8 +57,10 @@ test.each([
   ],
 ] satisfies [string, string][])(
   'the %s declaration throws from the call that makes it',
-  (scenario, message) => {
-    expect(invoke(new URL('fixtures/errors.mjs', import.meta.url), [scenario])).toEqual({
+  async (scenario, message) => {
+    await expect(
+      invokeFixture(new URL('fixtures/errors.mjs', import.meta.url), [scenario]),
+    ).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: `thrown:1: ${message}\n`,
@@ -64,8 +68,10 @@ test.each([
   },
 );
 
-test('catching FatalError prevents failure and eager printing', () => {
-  expect(invoke(new URL('fixtures/errors.mjs', import.meta.url), ['caught-fatal'])).toEqual({
+test('catching FatalError prevents failure and eager printing', async () => {
+  await expect(
+    invokeFixture(new URL('fixtures/errors.mjs', import.meta.url), ['caught-fatal']),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'assembled\ndispatched\nresolved:0\n',
@@ -73,17 +79,20 @@ test('catching FatalError prevents failure and eager printing', () => {
 });
 
 /** A valid options slot reaches both build entry points. */
-function withOptions(scenario: string, mode: 'inspect' | 'run') {
-  return invoke(new URL('fixtures/application-options.mjs', import.meta.url), [scenario, mode]);
+async function withOptions(scenario: string, mode: 'inspect' | 'run') {
+  return await invokeFixture(new URL('fixtures/application-options.mjs', import.meta.url), [
+    scenario,
+    mode,
+  ]);
 }
 
-test('an options object with core facts constructs, inspects, and runs the Application', () => {
-  expect(withOptions('options-object', 'inspect')).toEqual({
+test('an options object with core facts constructs, inspects, and runs the Application', async () => {
+  await expect(withOptions('options-object', 'inspect')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'assembled\ninspected\n',
   });
-  expect(withOptions('options-object', 'run')).toEqual({
+  await expect(withOptions('options-object', 'run')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'assembled\ndispatched\nresolved:0\n',
@@ -91,17 +100,20 @@ test('an options object with core facts constructs, inspects, and runs the Appli
 });
 
 /** A Command's valid options slot reaches both build entry points too. */
-function withCommandOptions(scenario: string, mode: 'inspect' | 'run') {
-  return invoke(new URL('fixtures/command-options.mjs', import.meta.url), [scenario, mode]);
+async function withCommandOptions(scenario: string, mode: 'inspect' | 'run') {
+  return await invokeFixture(new URL('fixtures/command-options.mjs', import.meta.url), [
+    scenario,
+    mode,
+  ]);
 }
 
-test('an options object with core facts constructs, inspects, and runs the Command', () => {
-  expect(withCommandOptions('options-object', 'inspect')).toEqual({
+test('an options object with core facts constructs, inspects, and runs the Command', async () => {
+  await expect(withCommandOptions('options-object', 'inspect')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'assembled\ninspected\n',
   });
-  expect(withCommandOptions('options-object', 'run')).toEqual({
+  await expect(withCommandOptions('options-object', 'run')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'assembled\ndispatched\nresolved:0\n',
@@ -112,13 +124,13 @@ test('an options object with core facts constructs, inspects, and runs the Comma
 // The rule holds on the Command's slot and on the Application's alike.
 test.each(['null-prototype', 'null-prototype-application'])(
   'an options object with no prototype (%s) inspects and runs',
-  (scenario) => {
-    expect(withCommandOptions(scenario, 'inspect')).toEqual({
+  async (scenario) => {
+    await expect(withCommandOptions(scenario, 'inspect')).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: 'assembled\ninspected\n',
     });
-    expect(withCommandOptions(scenario, 'run')).toEqual({
+    await expect(withCommandOptions(scenario, 'run')).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: 'assembled\ndispatched\nresolved:0\n',
@@ -126,9 +138,14 @@ test.each(['null-prototype', 'null-prototype-application'])(
   },
 );
 
+/*
+ * Each error is built inside its test, where the code that builds it stays reachable: Bun 1.4.0
+ * renders a bare "Error" stack once a collection frees that code before the first read.
+ */
 test.each([
-  ['unknownOptionName', unknownOptionName('lound')],
-  ['undeclaredArgument', undeclaredArgument(['get'], 1, 'extra')],
-])("%s's by-name error opens its stack with its own name and message", (_builder, error) => {
+  ['unknownOptionName', () => unknownOptionName('lound')],
+  ['undeclaredArgument', () => undeclaredArgument(['get'], 1, 'extra')],
+])("%s's by-name error opens its stack with its own name and message", (_builder, build) => {
+  const error = build();
   expect(error.stack?.startsWith(`${error.name}: ${error.message}\n`)).toBe(true);
 });

@@ -1,10 +1,10 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** What the public `isRuleIdentity` answers for each value. */
-function answers(values: readonly unknown[]): unknown {
-  const result = invoke(
+async function answers(values: readonly unknown[]): Promise<unknown> {
+  const result = await invokeFixture(
     new URL('fixtures/rule-identity.mjs', import.meta.url),
     values.map((value) => JSON.stringify(value)),
   );
@@ -18,12 +18,12 @@ const named = (length: number) => 'a'.repeat(length);
 /** A scoped package name whose scope and name come to `length` characters together. */
 const scoped = (length: number) => `@${'s'.repeat(9)}/${'n'.repeat(length - 11)}`;
 
-test('isRuleIdentity accepts an identity followed by a kebab-case rule name', () => {
-  expect(answers(['@a/b/c-d', 'pkg/rule'])).toEqual([true, true]);
+test('isRuleIdentity accepts an identity followed by a kebab-case rule name', async () => {
+  await expect(answers(['@a/b/c-d', 'pkg/rule'])).resolves.toEqual([true, true]);
 });
 
-test('isRuleIdentity rejects a value with no rule name, a rule name outside kebab-case, an empty segment, and a value that is not a string', () => {
-  expect(answers(['pkg', '@a/b', 'pkg/Rule', 'pkg//r', 7])).toEqual([
+test('isRuleIdentity rejects a value with no rule name, a rule name outside kebab-case, an empty segment, and a value that is not a string', async () => {
+  await expect(answers(['pkg', '@a/b', 'pkg/Rule', 'pkg//r', 7])).resolves.toEqual([
     false,
     false,
     false,
@@ -32,14 +32,14 @@ test('isRuleIdentity rejects a value with no rule name, a rule name outside keba
   ]);
 });
 
-test('a rule identity rejects a tilde in its package name, as npm does', () => {
-  expect(answers(['~x/rule', 'a~b/rule'])).toEqual([false, false]);
+test('a rule identity rejects a tilde in its package name, as npm does', async () => {
+  await expect(answers(['~x/rule', 'a~b/rule'])).resolves.toEqual([false, false]);
 });
 
-test("a rule identity's package name holds at most 214 characters, and its segments do not count", () => {
+test("a rule identity's package name holds at most 214 characters, and its segments do not count", async () => {
   const segments = `/${'p'.repeat(100)}/${'q'.repeat(100)}`;
-  expect(
+  await expect(
     answers([`${named(214)}/rule`, `${named(215)}/rule`, `${scoped(214)}${segments}`]),
-  ).toEqual([true, false, true]);
-  expect(answers([`${scoped(215)}/rule`])).toEqual([false]);
+  ).resolves.toEqual([true, false, true]);
+  await expect(answers([`${scoped(215)}/rule`])).resolves.toEqual([false]);
 });

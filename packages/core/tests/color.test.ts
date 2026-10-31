@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 /*
  * Acceptance plan for the color choice (docs/core/color.md#color).
  *
@@ -38,8 +39,6 @@
  *   with `color` supplied as `true`, and a fixture Application's invocation by name captures plain
  *   text under `FORCE_COLOR=1` and `rendering: { color: 'always' }`.
  */
-
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -47,11 +46,8 @@ import { fileURLToPath } from 'node:url';
 
 import { afterAll, expect, test } from 'vite-plus/test';
 
-import {
-  childEnvironment,
-  invoke,
-  invokeFromRemovedDirectory,
-} from '../../../scripts/test-process.js';
+import { childEnvironment } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** The notes application, which marks its own `--[no-]color` unless a variant leaves it out. */
 const fixture = new URL('fixtures/color.mjs', import.meta.url);
@@ -75,13 +71,13 @@ afterAll(() => {
 type Terminal = 'tty' | 'pipe' | 'invoke';
 
 /** One run of the fixture: the variant, the terminal, the command line, and any variables. */
-function notes(
+async function notes(
   variant: string,
   terminal: Terminal,
   argv: string[],
   env: Record<string, string | undefined> = {},
 ) {
-  return invoke(fixture, [variant, terminal, ...argv], {
+  return await invokeFixture(fixture, [variant, terminal, ...argv], {
     env: { ...plain, PROBE_CWD: directory, ...env },
   });
 }
@@ -119,118 +115,122 @@ function styles(text: string): { bold: boolean; color: boolean } {
 }
 
 /** What one run's stderr carries: its styles, and the exit status. */
-function printed(result: { status: number | null; stderr: string }) {
+function printed(result: { status: number | null | undefined; stderr: string }) {
   return { status: result.status, ...styles(result.stderr) };
 }
 
-test('on a capable terminal --no-color prints no color and keeps bold, under FORCE_COLOR too', () => {
-  expect(printed(notes('marked', 'tty', ['save']))).toEqual({
+test('on a capable terminal --no-color prints no color and keeps bold, under FORCE_COLOR too', async () => {
+  expect(printed(await notes('marked', 'tty', ['save']))).toEqual({
     bold: true,
     color: true,
     status: 0,
   });
-  expect(printed(notes('marked', 'tty', ['save', '--no-color']))).toEqual({
+  expect(printed(await notes('marked', 'tty', ['save', '--no-color']))).toEqual({
     bold: true,
     color: false,
     status: 0,
   });
-  expect(printed(notes('marked', 'tty', ['save', '--no-color'], { FORCE_COLOR: '1' }))).toEqual({
+  expect(
+    printed(await notes('marked', 'tty', ['save', '--no-color'], { FORCE_COLOR: '1' })),
+  ).toEqual({
     bold: true,
     color: false,
     status: 0,
   });
 });
 
-test('piped, --color prints color and no bold', () => {
-  expect(printed(notes('marked', 'pipe', ['save']))).toEqual({
+test('piped, --color prints color and no bold', async () => {
+  expect(printed(await notes('marked', 'pipe', ['save']))).toEqual({
     bold: false,
     color: false,
     status: 0,
   });
-  expect(printed(notes('marked', 'pipe', ['save', '--color']))).toEqual({
+  expect(printed(await notes('marked', 'pipe', ['save', '--color']))).toEqual({
     bold: false,
     color: true,
     status: 0,
   });
 });
 
-test('the last spelling sets the color of the repetition failure it causes', () => {
-  const off = notes('marked', 'tty', ['save', '--color', '--no-color']);
+test('the last spelling sets the color of the repetition failure it causes', async () => {
+  const off = await notes('marked', 'tty', ['save', '--color', '--no-color']);
   expect(off.stderr).toContain(
     'Option "--no-color" can be supplied only once. Remove the repeated option.',
   );
   expect(printed(off)).toEqual({ bold: true, color: false, status: 2 });
-  const on = notes('marked', 'pipe', ['save', '--no-color', '--color']);
+  const on = await notes('marked', 'pipe', ['save', '--no-color', '--color']);
   expect(on.stderr).toContain(
     'Option "--color" can be supplied only once. Remove the repeated option.',
   );
   expect(printed(on)).toEqual({ bold: false, color: true, status: 2 });
 });
 
-test('a spelling after the bare -- changes nothing, and an alias works as the long spelling', () => {
-  expect(printed(notes('marked', 'pipe', ['save', '--', '--color']))).toEqual({
+test('a spelling after the bare -- changes nothing, and an alias works as the long spelling', async () => {
+  expect(printed(await notes('marked', 'pipe', ['save', '--', '--color']))).toEqual({
     bold: false,
     color: false,
     status: 0,
   });
-  expect(printed(notes('marked', 'tty', ['save', '--no-color', '--', '--color']))).toEqual({
+  expect(printed(await notes('marked', 'tty', ['save', '--no-color', '--', '--color']))).toEqual({
     bold: true,
     color: false,
     status: 0,
   });
-  expect(printed(notes('marked', 'tty', ['save', '--no-colour']))).toEqual({
+  expect(printed(await notes('marked', 'tty', ['save', '--no-colour']))).toEqual({
     bold: true,
     color: false,
     status: 0,
   });
-  expect(printed(notes('marked', 'pipe', ['--colour', 'save']))).toEqual({
+  expect(printed(await notes('marked', 'pipe', ['--colour', 'save']))).toEqual({
     bold: false,
     color: true,
     status: 0,
   });
 });
 
-test('the choice overrides NO_COLOR and FORCE_COLOR', () => {
-  expect(printed(notes('marked', 'tty', ['save', '--color'], { NO_COLOR: '1' }))).toEqual({
+test('the choice overrides NO_COLOR and FORCE_COLOR', async () => {
+  expect(printed(await notes('marked', 'tty', ['save', '--color'], { NO_COLOR: '1' }))).toEqual({
     bold: true,
     color: true,
     status: 0,
   });
-  expect(printed(notes('marked', 'pipe', ['save', '--no-color'], { FORCE_COLOR: '1' }))).toEqual({
+  expect(
+    printed(await notes('marked', 'pipe', ['save', '--no-color'], { FORCE_COLOR: '1' })),
+  ).toEqual({
     bold: true,
     color: false,
     status: 0,
   });
 });
 
-test('with neither spelling every byte matches the unmarked application', () => {
+test('with neither spelling every byte matches the unmarked application', async () => {
   for (const terminal of ['tty', 'pipe'] as const) {
     for (const NO_COLOR of [undefined, '1']) {
       for (const FORCE_COLOR of [undefined, '1']) {
         const variables = { FORCE_COLOR, NO_COLOR };
-        expect(notes('marked', terminal, ['save'], variables)).toEqual(
-          notes('unmarked', terminal, ['save'], variables),
+        await expect(notes('marked', terminal, ['save'], variables)).resolves.toEqual(
+          await notes('unmarked', terminal, ['save'], variables),
         );
       }
     }
   }
 });
 
-test("the choice beats the Application's and run()'s declared color", () => {
+test("the choice beats the Application's and run()'s declared color", async () => {
   for (const variant of ['app-always', 'run-always']) {
-    expect(printed(notes(variant, 'tty', ['save', '--no-color']))).toEqual({
+    expect(printed(await notes(variant, 'tty', ['save', '--no-color']))).toEqual({
       bold: true,
       color: false,
       status: 0,
     });
   }
   for (const variant of ['app-never', 'run-never']) {
-    expect(printed(notes(variant, 'pipe', ['save']))).toEqual({
+    expect(printed(await notes(variant, 'pipe', ['save']))).toEqual({
       bold: false,
       color: false,
       status: 0,
     });
-    expect(printed(notes(variant, 'pipe', ['save', '--color']))).toEqual({
+    expect(printed(await notes(variant, 'pipe', ['save', '--color']))).toEqual({
       bold: false,
       color: true,
       status: 0,
@@ -243,28 +243,28 @@ test.each([
   ['a dotenv warning', 'dotenv', ['save'], 0, 'Skipped NOTES_TOKEN on line 1 of .env'],
   ['a configuration warning', 'config', ['save'], 0, 'Skipped .notes.json'],
   ['an onGraphBuilt declaration error', 'graph', ['save'], 1, 'The judge rejects the graph.'],
-] as const)('%s follows the choice', (_name, variant, argv, status, line) => {
-  const off = notes(variant, 'tty', [...argv, '--no-color']);
+] as const)('%s follows the choice', async (_name, variant, argv, status, line) => {
+  const off = await notes(variant, 'tty', [...argv, '--no-color']);
   expect(off.status).toBe(status);
   expect(off.stderr).toContain(line);
   expect(styles(off.stderr).color).toBe(false);
-  const on = notes(variant, 'pipe', [...argv, '--color']);
+  const on = await notes(variant, 'pipe', [...argv, '--color']);
   expect(on.status).toBe(status);
   expect(on.stderr).toContain(line);
   expect(styles(on.stderr).color).toBe(true);
 });
 
-test('a word that attaches a value supplies no choice and fails as the ordinary parse does', () => {
+test('a word that attaches a value supplies no choice and fails as the ordinary parse does', async () => {
   const line = 'Boolean option "--color" does not accept a value. Supply the flag alone.';
-  const terminal = notes('marked', 'tty', ['save', '--color=x']);
+  const terminal = await notes('marked', 'tty', ['save', '--color=x']);
   expect(terminal.stderr).toContain(line);
   expect(printed(terminal)).toEqual({ bold: true, color: true, status: 2 });
-  expect(printed(notes('marked', 'pipe', ['save', '--color=x']))).toEqual({
+  expect(printed(await notes('marked', 'pipe', ['save', '--color=x']))).toEqual({
     bold: false,
     color: false,
     status: 2,
   });
-  expect(printed(notes('marked', 'tty', ['save', '--color=x'], { NO_COLOR: '1' }))).toEqual({
+  expect(printed(await notes('marked', 'tty', ['save', '--color=x'], { NO_COLOR: '1' }))).toEqual({
     bold: true,
     color: false,
     status: 2,
@@ -272,19 +272,21 @@ test('a word that attaches a value supplies no choice and fails as the ordinary 
 });
 
 /** The value the action reads for the marked option, after the words the operator typed. */
-function typed(argv: string[]): unknown {
-  return JSON.parse(notes('marked', 'tty', ['save', ...argv]).stdout);
+async function typed(argv: string[]): Promise<unknown> {
+  return JSON.parse(
+    await notes('marked', 'tty', ['save', ...argv]).then((fixtureResult) => fixtureResult.stdout),
+  );
 }
 
-test('the action reads what the operator typed, never whether color is on', () => {
-  expect(typed(['--color'])).toEqual({ color: true });
-  expect(typed(['--no-color'])).toEqual({ color: false });
-  expect(typed([])).toEqual({ color: false });
-  expect(typed(['--colour'])).toEqual({ color: true });
+test('the action reads what the operator typed, never whether color is on', async () => {
+  await expect(typed(['--color'])).resolves.toEqual({ color: true });
+  await expect(typed(['--no-color'])).resolves.toEqual({ color: false });
+  await expect(typed([])).resolves.toEqual({ color: false });
+  await expect(typed(['--colour'])).resolves.toEqual({ color: true });
 });
 
-test('an invocation by name captures plain text under FORCE_COLOR and a declared always', () => {
-  const result = notes('app-always', 'invoke', [], { FORCE_COLOR: '1' });
+test('an invocation by name captures plain text under FORCE_COLOR and a declared always', async () => {
+  const result = await notes('app-always', 'invoke', [], { FORCE_COLOR: '1' });
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout)).toEqual({
     messages: 'ℹ Saved.\n',
@@ -298,7 +300,7 @@ const bundler = fileURLToPath(new URL('fixtures/release/bundle.mjs', import.meta
 
 test('a build that bakes malformed release facts prints its diagnostic as it did before the mark', () => {
   const outdir = join(directory, 'bundle');
-  const bundled = spawnSync('bun', [bundler, 'color.mjs', outdir, '{"build":"staging"}'], {
+  const bundled = spawnSync('bun', [bundler, 'color-process.mjs', outdir, '{"build":"staging"}'], {
     encoding: 'utf8',
     timeout: 60_000,
   });
@@ -306,11 +308,15 @@ test('a build that bakes malformed release facts prints its diagnostic as it did
   expect(bundled.status).toBe(0);
   // Core's fallback output carries no theme, so the marked run's color off changes no byte today.
   const read = (runtime: string, variant: string) => {
-    const result = spawnSync(runtime, [join(outdir, 'color.js'), variant, 'tty', '--color'], {
-      encoding: 'utf8',
-      env: childEnvironment({ ...plain, FORCE_COLOR: '1' }),
-      timeout: 60_000,
-    });
+    const result = spawnSync(
+      runtime,
+      [join(outdir, 'color-process.js'), variant, 'tty', '--color'],
+      {
+        encoding: 'utf8',
+        env: childEnvironment({ ...plain, FORCE_COLOR: '1' }),
+        timeout: 60_000,
+      },
+    );
     return { status: result.status, stderr: result.stderr, stdout: result.stdout };
   };
   for (const runtime of runtimes) {
@@ -324,16 +330,19 @@ test('a build that bakes malformed release facts prints its diagnostic as it did
   }
 });
 
-/** One run of a capture variant from a working directory removed before the runtime starts. */
+/** Runs host capture with a working-directory read that fails on this run's mock. */
 function fromRemoved(variant: string) {
-  return invokeFromRemovedDirectory(fixture, [variant, 'tty', 'save', '--color'], {
+  return invokeFixture(fixture, [variant, 'tty', 'save', '--color'], {
+    cwd: () => {
+      throw new Error('ENOENT');
+    },
     env: { ...plain, FORCE_COLOR: '1' },
   });
 }
 
-test("an unreadable working directory's line holds no style and is unchanged by the mark", () => {
-  const marked = fromRemoved('capture');
+test("an unreadable working directory's line holds no style and is unchanged by the mark", async () => {
+  const marked = await fromRemoved('capture');
   expect(marked.status).toBe(1);
   expect(marked.stderr).not.toContain('\u001b');
-  expect(marked).toEqual(fromRemoved('capture-unmarked'));
+  expect(marked).toEqual(await fromRemoved('capture-unmarked'));
 });

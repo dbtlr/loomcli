@@ -5,13 +5,17 @@ import { join } from 'node:path';
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 test('a named content argument checks a path and hands its action a lazy file handle', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'loom-content-'));
   try {
     const path = join(directory, 'input.txt');
     await writeFile(path, 'hello\n');
-    const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['file', path]);
+    const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [
+      'file',
+      path,
+    ]);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({
@@ -34,7 +38,10 @@ test.each(['header-break', 'header-destroy'])(
       for (const path of paths) {
         await writeFile(path, 'x'.repeat(size));
       }
-      const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [scenario, ...paths]);
+      const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [
+        scenario,
+        ...paths,
+      ]);
       expect(result.stderr).toBe('');
       expect(result.status).toBe(0);
       const lengths = JSON.parse(result.stdout);
@@ -53,7 +60,10 @@ test.each([
   '/dev/fd/0',
   ...(process.platform === 'linux' ? ['/proc/self/fd/0'] : []),
 ])('a named content path cannot read process stdin through %s', (path) => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['named-pipe', path]);
+  const result = invoke(new URL('fixtures/content-process.mjs', import.meta.url), [
+    'named-pipe',
+    path,
+  ]);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   expect(JSON.parse(result.stdout)).toMatchObject({
@@ -77,7 +87,10 @@ test('a named content path cannot read process stdin through a symlink', async (
   try {
     const path = join(directory, 'input');
     await symlink('/dev/stdin', path);
-    const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['named-pipe', path]);
+    const result = invoke(new URL('fixtures/content-process.mjs', import.meta.url), [
+      'named-pipe',
+      path,
+    ]);
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(JSON.parse(result.stdout)).toMatchObject({
@@ -94,7 +107,7 @@ test('a named regular file opens independently when the same file is redirected 
   try {
     const path = join(directory, 'input.txt');
     await writeFile(path, 'source sentinel\n');
-    const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [
+    const result = invoke(new URL('fixtures/content-process.mjs', import.meta.url), [
       'named-redirected',
       path,
     ]);
@@ -118,7 +131,10 @@ test('a named content input accepts an unrelated FIFO', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'loom-content-fifo-'));
   try {
     const path = join(directory, 'input');
-    const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['named-fifo', path]);
+    const result = invoke(new URL('fixtures/content-process.mjs', import.meta.url), [
+      'named-fifo',
+      path,
+    ]);
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     const { outcome } = JSON.parse(result.stdout);
@@ -135,7 +151,7 @@ test('a named content input accepts an unrelated FIFO', async () => {
 });
 
 test('a named content input accepts an unrelated device', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [
+  const result = invoke(new URL('fixtures/content-process.mjs', import.meta.url), [
     'named-pipe',
     '/dev/null',
   ]);
@@ -148,7 +164,7 @@ test('a named content input accepts an unrelated device', () => {
 });
 
 test('closed process stdin leaves unrelated named sources usable', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [
+  const result = invoke(new URL('fixtures/content-process.mjs', import.meta.url), [
     'file-closed-stdin',
     '/dev/null',
   ]);
@@ -160,7 +176,7 @@ test('closed process stdin leaves unrelated named sources usable', () => {
 });
 
 test('argv content paths can still name process stdin', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [
+  const result = invoke(new URL('fixtures/content-process.mjs', import.meta.url), [
     'argv-pipe',
     '/dev/stdin',
   ]);
@@ -168,12 +184,16 @@ test('argv content paths can still name process stdin', () => {
 });
 
 test('argv content paths accept process substitution', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['argv-substitution']);
+  const result = invoke(new URL('fixtures/content-process.mjs', import.meta.url), [
+    'argv-substitution',
+  ]);
   expect(result).toEqual({ status: 0, stderr: '', stdout: 'source sentinel\n\n' });
 });
 
-test('a second stdin declaration on one Command is a declaration fault', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['duplicate']);
+test('a second stdin declaration on one Command is a declaration fault', async () => {
+  const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [
+    'duplicate',
+  ]);
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout)).toMatchObject({
     name: 'DeclarationError',
@@ -181,26 +201,32 @@ test('a second stdin declaration on one Command is a declaration fault', () => {
   });
 });
 
-test('a stdin-only declaration hands the action a lazy stdin handle', () => {
-  expect(
-    invoke(new URL('fixtures/content.mjs', import.meta.url), ['stdin'], { input: 'events\n' }),
-  ).toEqual({
+test('a stdin-only declaration hands the action a lazy stdin handle', async () => {
+  await expect(
+    invokeFixture(new URL('fixtures/content.mjs', import.meta.url), ['stdin'], {
+      input: 'events\n',
+    }),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'events\n\n',
   });
 });
 
-test('missing stdin joins other missing inputs in one failure', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['stdin-missing']);
+test('missing stdin joins other missing inputs in one failure', async () => {
+  const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [
+    'stdin-missing',
+  ]);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('Option "--name" is required.');
   expect(result.stderr).toContain('Stdin: Expected at least 1 readable source.');
 });
 
-test('stdin problems retain their declaration position among other input problems', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['stdin-order']);
+test('stdin problems retain their declaration position among other input problems', async () => {
+  const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [
+    'stdin-order',
+  ]);
   const outcome = JSON.parse(result.stdout);
   expect(outcome.status).toBe('failed');
   expect(outcome.failure).toEqual([
@@ -213,16 +239,20 @@ test('stdin problems retain their declaration position among other input problem
   ]);
 });
 
-test('optional stdin help includes a pipeline example while keeping ordinary usage', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['stdin-help-optional']);
+test('optional stdin help includes a pipeline example while keeping ordinary usage', async () => {
+  const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [
+    'stdin-help-optional',
+  ]);
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('content [options]');
   expect(result.stdout).toContain('Optional.');
   expect(result.stdout).toContain('<producer> | content');
 });
 
-test('help describes stdin-only input without consuming it', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['stdin-help']);
+test('help describes stdin-only input without consuming it', async () => {
+  const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [
+    'stdin-help',
+  ]);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   expect(result.stdout).toContain('INPUT');
@@ -231,8 +261,8 @@ test('help describes stdin-only input without consuming it', () => {
   expect(result.stdout).toContain('piped or redirected stdin');
 });
 
-test('repeated - entries read the same stdin at its current position', () => {
-  const result = invoke(
+test('repeated - entries read the same stdin at its current position', async () => {
+  const result = await invokeFixture(
     new URL('fixtures/content.mjs', import.meta.url),
     ['collection', '-', '-'],
     { input: 'one\n' },
@@ -248,7 +278,7 @@ test('a scalar content option uses its supplied file and leaves piped stdin unre
   const directory = await mkdtemp(join(tmpdir(), 'loom-content-'));
   try {
     await writeFile(join(directory, 'input.txt'), 'file');
-    const result = invoke(
+    const result = await invokeFixture(
       new URL('fixtures/content.mjs', import.meta.url),
       ['scalar', '--file', 'input.txt'],
       { cwd: directory, input: 'pipe' },
@@ -264,7 +294,7 @@ test('a collection maximum includes automatically appended stdin', async () => {
   try {
     const path = join(directory, 'input.txt');
     await writeFile(path, 'file');
-    const result = invoke(
+    const result = await invokeFixture(
       new URL('fixtures/content.mjs', import.meta.url),
       ['collection-max', path],
       { input: 'pipe' },
@@ -279,20 +309,25 @@ test('a collection maximum includes automatically appended stdin', async () => {
 
 test.each(['named-empty', 'named-dash'])(
   'named content invocation rejects unavailable stdin: %s',
-  (scenario) => {
-    const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [scenario]);
+  async (scenario) => {
+    const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [
+      scenario,
+    ]);
     expect(JSON.parse(result.stdout)).toMatchObject({ exitCode: 2, output: '', status: 'failed' });
   },
 );
 
-test('an explicit - at a terminal is an input error', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['terminal', '-']);
+test('an explicit - at a terminal is an input error', async () => {
+  const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [
+    'terminal',
+    '-',
+  ]);
   expect(result.status).toBe(2);
   expect(result.stderr).toContain('Expected piped or redirected stdin.');
 });
 
-test('content preparation leaves an open stdin unread when another input fails', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['unread']);
+test('content preparation leaves an open stdin unread when another input fails', async () => {
+  const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), ['unread']);
   expect(result.status).toBe(2);
   expect(result.stderr).toContain('Option "--name" is required.');
   expect(result.stdout).toBe('{"reads":0}');
@@ -305,7 +340,7 @@ test('content reads .. after following a directory symlink', async () => {
     await writeFile(join(directory, 'real', 'target.txt'), 'followed');
     await writeFile(join(directory, 'target.txt'), 'lexical');
     await symlink(join(directory, 'real', 'child'), join(directory, 'link'));
-    const result = invoke(
+    const result = await invokeFixture(
       new URL('fixtures/content.mjs', import.meta.url),
       ['scalar', '--file', 'link/../target.txt'],
       { cwd: directory },
@@ -320,7 +355,7 @@ test('a trailing slash cannot turn a file operand into another source', async ()
   const directory = await mkdtemp(join(tmpdir(), 'loom-content-slash-'));
   try {
     await writeFile(join(directory, 'file.txt'), 'file');
-    const result = invoke(
+    const result = await invokeFixture(
       new URL('fixtures/content.mjs', import.meta.url),
       ['scalar', '--file', 'file.txt/'],
       { cwd: directory },
@@ -333,8 +368,10 @@ test('a trailing slash cannot turn a file operand into another source', async ()
   }
 });
 
-test('a group cannot declare a stdin input that no action receives', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['stdin-group']);
+test('a group cannot declare a stdin input that no action receives', async () => {
+  const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [
+    'stdin-group',
+  ]);
   expect(JSON.parse(result.stdout)).toMatchObject({
     name: 'DeclarationError',
     rule: '@loomcli/core/command-without-action',
@@ -344,8 +381,8 @@ test('a group cannot declare a stdin input that no action receives', () => {
 test.each([
   ['named-conflict', ['argument', 'option']],
   ['mixed-conflict', ['argument', 'stdin']],
-])('stdin conflict findings name every actual declaration: %s', (scenario, calls) => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), [scenario]);
+])('stdin conflict findings name every actual declaration: %s', async (scenario, calls) => {
+  const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [scenario]);
   const error = JSON.parse(result.stdout);
   expect(error.rule).toBe('@loomcli/core/stdin-claimed-twice');
   expect(error.findings).toHaveLength(2);
@@ -355,8 +392,10 @@ test.each([
   expect(error.findings.map((finding: { call: string }) => finding.call)).toEqual(calls);
 });
 
-test('stdin conflict findings identify the hook that declared a competing target', () => {
-  const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['hook-conflict']);
+test('stdin conflict findings identify the hook that declared a competing target', async () => {
+  const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [
+    'hook-conflict',
+  ]);
   const error = JSON.parse(result.stdout);
   expect(error.rule).toBe('@loomcli/core/stdin-claimed-twice');
   expect(error.findings).toHaveLength(2);
@@ -371,9 +410,13 @@ test('a content collection appends piped stdin after the supplied files', async 
   try {
     const path = join(directory, 'input.txt');
     await writeFile(path, 'file\n');
-    const result = invoke(new URL('fixtures/content.mjs', import.meta.url), ['collection', path], {
-      input: 'pipe\n',
-    });
+    const result = await invokeFixture(
+      new URL('fixtures/content.mjs', import.meta.url),
+      ['collection', path],
+      {
+        input: 'pipe\n',
+      },
+    );
     expect(result).toEqual({
       status: 0,
       stderr: '',

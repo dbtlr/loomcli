@@ -1,14 +1,14 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { declaredRules, coreRuleParts } from './rule-parts.js';
 import type { RuleParts } from './rule-parts.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/plugin-diagnostics.mjs', import.meta.url);
 
 /** The diagnostic one scenario's faulty declaration throws, as its message holds it. */
-function thrown(scenario: string): string {
-  const result = invoke(fixture, [scenario]);
+async function thrown(scenario: string): Promise<string> {
+  const result = await invokeFixture(fixture, [scenario]);
   expect(result.stderr).toBe('');
   return result.stdout;
 }
@@ -190,9 +190,12 @@ const cases: Record<string, RuleParts> = {
   },
 };
 
-test.each(Object.entries(cases))('the %s fault throws its rule’s diagnostic', (scenario, parts) => {
-  expect(coreRuleParts(thrown(scenario))).toEqual(parts);
-});
+test.each(Object.entries(cases))(
+  'the %s fault throws its rule’s diagnostic',
+  async (scenario, parts) => {
+    expect(coreRuleParts(await thrown(scenario))).toEqual(parts);
+  },
+);
 
 /** The rules core declares beside its defects that this family raises. */
 const fromCore = ['failure-code', 'rule-identity'];

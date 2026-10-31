@@ -1,3 +1,4 @@
+import { appendFileSync } from 'node:fs';
 import { setTimeout as after } from 'node:timers/promises';
 
 import {
@@ -8,236 +9,266 @@ import {
   InternalError,
   override,
   plugin,
-  processHandle,
 } from '@loomcli/core';
 import { help as packHelp } from '@loomcli/plugins/help';
 import { version as packVersion } from '@loomcli/plugins/version';
 import { z } from 'zod';
 
+import { scenario as fixtureScenario } from '../scenario.mjs';
 import { argumentFact, commandFact, optionFact } from './extensions.mjs';
+import { misuseModule } from './modules/misuse.mjs';
 
-const load = (module) => () => import(`./modules/${module}.mjs`);
+/** Runs a fresh fixture scenario with only the supplied process facts. */
+async function runFixture(words, fixtureOptions = {}) {
+  const fixture = fixtureScenario({ ...fixtureOptions, argv: words });
+  const { createProcess, env: fixtureEnv, stdout: writeStdout } = fixture;
+  try {
+    const misuse = misuseModule();
+    const loaded = new Set();
+    // The first load() call for each marked module records a line for this fixture run.
+    const load = (module) => () => {
+      if (!loaded.has(module) && ['help', 'version', 'inner', 'outer'].includes(module)) {
+        loaded.add(module);
+        if (fixtureEnv.LOOM_FIXTURE_MARKS) {
+          appendFileSync(fixtureEnv.LOOM_FIXTURE_MARKS, `loaded:${module}\n`);
+        }
+      }
+      return module === 'misuse' ? misuse : import(`./modules/${module}.mjs`);
+    };
 
-/** Each fixture plugin, named by the key a scenario installs it under. */
-const plugins = {
-  broken: () =>
-    plugin('@fixture/broken', {
-      middleware: { activate: 'always', load: () => import('./modules/missing.mjs') },
-    }),
-  catching: () =>
-    plugin('@fixture/catching', { middleware: { activate: 'always', load: load('catching') } }),
-  facts: () =>
-    plugin('@fixture/facts', {
-      extensions: [argumentFact, commandFact, optionFact],
-      middleware: { activate: 'always', load: load('reading') },
-    }),
-  failures: () =>
-    plugin('@fixture/failures', {
-      views: [
-        override(InputError, { render: (failure) => `plugin input: ${failure.message}\n` }),
-        override(FatalError, { render: (failure) => `plugin fatal: ${failure.message}\n` }),
+    /** Each fixture plugin, named by the key a scenario installs it under. */
+    const plugins = {
+      broken: () =>
+        plugin('@fixture/broken', {
+          middleware: { activate: 'always', load: () => import('./modules/missing.mjs') },
+        }),
+      catching: () =>
+        plugin('@fixture/catching', { middleware: { activate: 'always', load: load('catching') } }),
+      facts: () =>
+        plugin('@fixture/facts', {
+          extensions: [argumentFact, commandFact, optionFact],
+          middleware: { activate: 'always', load: load('reading') },
+        }),
+      failures: () =>
+        plugin('@fixture/failures', {
+          views: [
+            override(InputError, { render: (failure) => `plugin input: ${failure.message}\n` }),
+            override(FatalError, { render: (failure) => `plugin fatal: ${failure.message}\n` }),
+          ],
+        }),
+      help: () =>
+        plugin('@fixture/help', {
+          middleware: { activate: ['help'], load: load('help') },
+          options: { help: { short: 'h', type: 'boolean' } },
+        }),
+      inner: () =>
+        plugin('@fixture/inner', { middleware: { activate: 'always', load: load('inner') } }),
+      level: () =>
+        plugin('@fixture/level', {
+          middleware: { activate: 'always', load: load('observing') },
+          options: {
+            level: {
+              env: 'FIXTURE_LEVEL',
+              short: 'l',
+              type: 'string',
+              validate: z
+                .enum(['debug', 'info', 'warn'], { error: 'Use debug, info, or warn.' })
+                .transform((value) => value.toUpperCase()),
+            },
+          },
+        }),
+      microtask: () =>
+        plugin('@fixture/microtask', {
+          middleware: { activate: 'always', load: load('microtask') },
+        }),
+      misuse: () =>
+        plugin('@fixture/misuse', { middleware: { activate: 'always', load: load('misuse') } }),
+      'no-default': () =>
+        plugin('@fixture/no-default', {
+          middleware: { activate: 'always', load: load('no-default') },
+        }),
+      outer: () =>
+        plugin('@fixture/outer', { middleware: { activate: 'always', load: load('outer') } }),
+      // The first-party help and version plugins, whose options are global options like any other.
+      'pack-help': () => packHelp(),
+      'pack-version': () => packVersion(),
+      recatching: () =>
+        plugin('@fixture/recatching', {
+          middleware: { activate: 'always', load: load('recatching') },
+        }),
+      settings: () =>
+        plugin('@fixture/settings', {
+          middleware: { activate: ['cache', 'mode', 'quiet', 'tags'], load: load('settings') },
+          options: {
+            cache: { polarity: 'both', type: 'boolean' },
+            mode: { default: 'plain', short: 'm', type: 'string' },
+            quiet: { short: 'q', type: 'boolean' },
+            tags: { default: ['one'], multiple: true, type: 'string' },
+          },
+        }),
+      signals: () =>
+        plugin('@fixture/signals', { middleware: { activate: 'always', load: load('signals') } }),
+      'stash-caller': () =>
+        plugin('@fixture/stash-caller', {
+          middleware: { activate: 'always', load: load('stash-caller') },
+        }),
+      stashing: () =>
+        plugin('@fixture/stashing', { middleware: { activate: 'always', load: load('stashing') } }),
+      'sync-loader': () =>
+        plugin('@fixture/sync-loader', {
+          middleware: {
+            activate: 'always',
+            load: () => {
+              throw new Error('the loader threw before it could import');
+            },
+          },
+        }),
+      throwing: () =>
+        plugin('@fixture/throwing', { middleware: { activate: 'always', load: load('throwing') } }),
+      version: () =>
+        plugin('@fixture/version', {
+          middleware: { activate: ['version'], load: load('version') },
+          options: { version: { type: 'boolean' } },
+        }),
+    };
+
+    /** What each scenario installs, in the order the chain composes them. */
+    const installed = {
+      broken: ['broken'],
+      catching: ['catching'],
+      facts: ['facts'],
+      failures: ['failures'],
+      'failures-both': ['failures'],
+      'first-party': ['pack-help', 'pack-version'],
+      help: ['help', 'version'],
+      inert: [],
+      microtask: ['outer', 'microtask'],
+      misuse: ['misuse'],
+      'misuse-rendered': ['misuse'],
+      'no-default': ['no-default'],
+      recatching: ['recatching'],
+      settings: ['settings'],
+      signals: ['signals'],
+      stashed: ['stash-caller', 'stashing'],
+      'sync-loader': ['sync-loader'],
+      throwing: ['throwing'],
+      validated: ['settings', 'level'],
+      wrapped: ['outer', 'inner'],
+      'wrapped-catching': ['outer', 'catching'],
+      'wrapped-help': ['outer', 'help'],
+    };
+
+    /**
+     * The overrides the application itself lists. The failure scenarios show how one class resolves
+     * between contributors, and the misuse one shows that a chain fault reaches an override.
+     */
+    const registered = {
+      'failures-both': () => [
+        override(InputError, { render: (failure) => `app input: ${failure.message}\n` }),
       ],
-    }),
-  help: () =>
-    plugin('@fixture/help', {
-      middleware: { activate: ['help'], load: load('help') },
-      options: { help: { short: 'h', type: 'boolean' } },
-    }),
-  inner: () =>
-    plugin('@fixture/inner', { middleware: { activate: 'always', load: load('inner') } }),
-  level: () =>
-    plugin('@fixture/level', {
-      middleware: { activate: 'always', load: load('observing') },
-      options: {
-        level: {
-          env: 'FIXTURE_LEVEL',
-          short: 'l',
+      'misuse-rendered': () => [
+        override(InternalError, { render: (failure) => `app internal: ${failure.message}\n` }),
+      ],
+    };
+
+    const scenario = words[0];
+    const mode = words[1];
+    const argv = words.slice(2);
+
+    /**
+     * One graph every scenario shares, so an invocation reads the same declarations whichever plugins
+     * it installs. The extension values sit across the graph, and stay inert when no plugin defines
+     * their descriptors.
+     */
+    function application() {
+      const get = new Command('get', {
+        description: 'Read one value at a path.',
+        extensions: [commandFact({ details: 'Reads one value.', examples: ['get user.name'] })],
+      })
+        .argument('path', {
+          description: 'Dot path to read.',
+          extensions: [argumentFact({ hint: 'a dot path' })],
+          required: true,
+        })
+        .option('raw', {
+          description: 'Print the value unquoted.',
+          extensions: [optionFact({ placeholder: 'raw' })],
+          type: 'boolean',
+        })
+        .action(async ({ args, options, out, signal }) => {
+          // A macrotask, so a call the misuse fixture stashed lands after its middleware returned.
+          await after(0);
+          if (fixtureEnv.LOOM_FIXTURE_MISUSE === 'after-return') {
+            const module = misuse;
+            await module.stashed
+              .next()
+              .catch((error) => out.info(`misuse:${error.sentence ?? error.message}`));
+          }
+          if (fixtureEnv.LOOM_FIXTURE_MISUSE === 'late') {
+            const module = misuse;
+            await module.stashed.late;
+          }
+          if (fixtureEnv.LOOM_FIXTURE_ACTION === 'fatal') {
+            out.fatal('the action stopped the invocation');
+          }
+          await out.print(`get:${args.path}:${JSON.stringify(options)}`);
+          await out.print(`action-signal:${signal instanceof AbortSignal}:${signal.aborted}`);
+          // The action writes to the list it received, so a second run shows whether it reads a fresh one.
+          if (Array.isArray(options.tags)) {
+            options.tags.push('written');
+          }
+        });
+      // A group answers no invocation of its own, so the callable check is what rejects it.
+      // Core holds that fault and raises it at the dispatch boundary, so a takeover swallows it.
+      const cache = new Command('cache', { description: 'Manage the cache.' }).command(
+        new Command('clear', { description: 'Clear the cache.' }).action(({ out }) =>
+          out.print('cleared'),
+        ),
+      );
+      return new Application('app', {
+        description: 'A fixture application.',
+        extensions: [commandFact({ details: 'The whole fixture.' })],
+        plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
+        version: '1.2.0',
+        // The application resolves first, so its override wins over the plugin's for one class.
+        views: (registered[scenario] ?? (() => []))(),
+      })
+        .globalOption('file', {
+          description: 'The document to read.',
+          extensions: [optionFact({ placeholder: 'path' })],
+          short: 'f',
           type: 'string',
-          validate: z
-            .enum(['debug', 'info', 'warn'], { error: 'Use debug, info, or warn.' })
-            .transform((value) => value.toUpperCase()),
-        },
-      },
-    }),
-  microtask: () =>
-    plugin('@fixture/microtask', { middleware: { activate: 'always', load: load('microtask') } }),
-  misuse: () =>
-    plugin('@fixture/misuse', { middleware: { activate: 'always', load: load('misuse') } }),
-  'no-default': () =>
-    plugin('@fixture/no-default', {
-      middleware: { activate: 'always', load: load('no-default') },
-    }),
-  outer: () =>
-    plugin('@fixture/outer', { middleware: { activate: 'always', load: load('outer') } }),
-  // The first-party help and version plugins, whose options are global options like any other.
-  'pack-help': () => packHelp(),
-  'pack-version': () => packVersion(),
-  recatching: () =>
-    plugin('@fixture/recatching', { middleware: { activate: 'always', load: load('recatching') } }),
-  settings: () =>
-    plugin('@fixture/settings', {
-      middleware: { activate: ['cache', 'mode', 'quiet', 'tags'], load: load('settings') },
-      options: {
-        cache: { polarity: 'both', type: 'boolean' },
-        mode: { default: 'plain', short: 'm', type: 'string' },
-        quiet: { short: 'q', type: 'boolean' },
-        tags: { default: ['one'], multiple: true, type: 'string' },
-      },
-    }),
-  signals: () =>
-    plugin('@fixture/signals', { middleware: { activate: 'always', load: load('signals') } }),
-  'stash-caller': () =>
-    plugin('@fixture/stash-caller', {
-      middleware: { activate: 'always', load: load('stash-caller') },
-    }),
-  stashing: () =>
-    plugin('@fixture/stashing', { middleware: { activate: 'always', load: load('stashing') } }),
-  'sync-loader': () =>
-    plugin('@fixture/sync-loader', {
-      middleware: {
-        activate: 'always',
-        load: () => {
-          throw new Error('the loader threw before it could import');
-        },
-      },
-    }),
-  throwing: () =>
-    plugin('@fixture/throwing', { middleware: { activate: 'always', load: load('throwing') } }),
-  version: () =>
-    plugin('@fixture/version', {
-      middleware: { activate: ['version'], load: load('version') },
-      options: { version: { type: 'boolean' } },
-    }),
-};
+        })
+        .command(get)
+        .command(cache)
+        .action(({ out }) => out.print('root'));
+    }
 
-/** What each scenario installs, in the order the chain composes them. */
-const installed = {
-  broken: ['broken'],
-  catching: ['catching'],
-  facts: ['facts'],
-  failures: ['failures'],
-  'failures-both': ['failures'],
-  'first-party': ['pack-help', 'pack-version'],
-  help: ['help', 'version'],
-  inert: [],
-  microtask: ['outer', 'microtask'],
-  misuse: ['misuse'],
-  'misuse-rendered': ['misuse'],
-  'no-default': ['no-default'],
-  recatching: ['recatching'],
-  settings: ['settings'],
-  signals: ['signals'],
-  stashed: ['stash-caller', 'stashing'],
-  'sync-loader': ['sync-loader'],
-  throwing: ['throwing'],
-  validated: ['settings', 'level'],
-  wrapped: ['outer', 'inner'],
-  'wrapped-catching': ['outer', 'catching'],
-  'wrapped-help': ['outer', 'help'],
-};
-
-/**
- * The overrides the application itself lists. The failure scenarios show how one class resolves
- * between contributors, and the misuse one shows that a chain fault reaches an override.
- */
-const registered = {
-  'failures-both': () => [
-    override(InputError, { render: (failure) => `app input: ${failure.message}\n` }),
-  ],
-  'misuse-rendered': () => [
-    override(InternalError, { render: (failure) => `app internal: ${failure.message}\n` }),
-  ],
-};
-
-const scenario = process.argv[2];
-const mode = process.argv[3];
-const argv = process.argv.slice(4);
-
-/**
- * One graph every scenario shares, so an invocation reads the same declarations whichever plugins
- * it installs. The extension values sit across the graph, and stay inert when no plugin defines
- * their descriptors.
- */
-function application() {
-  const get = new Command('get', {
-    description: 'Read one value at a path.',
-    extensions: [commandFact({ details: 'Reads one value.', examples: ['get user.name'] })],
-  })
-    .argument('path', {
-      description: 'Dot path to read.',
-      extensions: [argumentFact({ hint: 'a dot path' })],
-      required: true,
-    })
-    .option('raw', {
-      description: 'Print the value unquoted.',
-      extensions: [optionFact({ placeholder: 'raw' })],
-      type: 'boolean',
-    })
-    .action(async ({ args, options, out, signal }) => {
-      // A macrotask, so a call the misuse fixture stashed lands after its middleware returned.
-      await after(0);
-      if (process.env.LOOM_FIXTURE_MISUSE === 'after-return') {
-        const module = await import('./modules/misuse.mjs');
-        await module.stashed
-          .next()
-          .catch((error) => out.info(`misuse:${error.sentence ?? error.message}`));
-      }
-      if (process.env.LOOM_FIXTURE_MISUSE === 'late') {
-        const module = await import('./modules/misuse.mjs');
-        await module.stashed.late;
-      }
-      if (process.env.LOOM_FIXTURE_ACTION === 'fatal') {
-        out.fatal('the action stopped the invocation');
-      }
-      await out.print(`get:${args.path}:${JSON.stringify(options)}`);
-      await out.print(`action-signal:${signal instanceof AbortSignal}:${signal.aborted}`);
-      // The action writes to the list it received, so a second run shows whether it reads a fresh one.
-      if (Array.isArray(options.tags)) {
-        options.tags.push('written');
-      }
-    });
-  // A group answers no invocation of its own, so the callable check is what rejects it.
-  // Core holds that fault and raises it at the dispatch boundary, so a takeover swallows it.
-  const cache = new Command('cache', { description: 'Manage the cache.' }).command(
-    new Command('clear', { description: 'Clear the cache.' }).action(({ out }) =>
-      out.print('cleared'),
-    ),
-  );
-  return new Application('app', {
-    description: 'A fixture application.',
-    extensions: [commandFact({ details: 'The whole fixture.' })],
-    plugins: (installed[scenario] ?? []).map((name) => plugins[name]()),
-    version: '1.2.0',
-    // The application resolves first, so its override wins over the plugin's for one class.
-    views: (registered[scenario] ?? (() => []))(),
-  })
-    .globalOption('file', {
-      description: 'The document to read.',
-      extensions: [optionFact({ placeholder: 'path' })],
-      short: 'f',
-      type: 'string',
-    })
-    .command(get)
-    .command(cache)
-    .action(({ out }) => out.print('root'));
+    if (mode === 'inspect') {
+      writeStdout(`${JSON.stringify(application().inspect())}\n`);
+    } else if (mode === 'twice') {
+      // One Application, run twice, so each run reads its declarations and its defaults anew.
+      const app = application();
+      const first = await app.run({ process: createProcess({ argv }) });
+      const second = await app.run({ process: createProcess({ argv }) });
+      writeStdout(`resolved:${first}:${second}\n`);
+    } else if (mode === 'development') {
+      const code = await application().run({
+        process: createProcess({ argv, release: { build: 'development' } }),
+      });
+      writeStdout(`resolved:${code}\n`);
+    } else {
+      const code = await application().run({
+        process: createProcess({ argv, release: { build: 'distributed' } }),
+      });
+      writeStdout(`resolved:${code}\n`);
+    }
+  } catch (error) {
+    if (error !== fixture.stopped) {
+      fixture.thrown(error);
+    }
+  }
+  return fixture.result();
 }
 
-if (mode === 'inspect') {
-  process.stdout.write(`${JSON.stringify(application().inspect())}\n`);
-} else if (mode === 'twice') {
-  // One Application, run twice, so each run reads its declarations and its defaults anew.
-  const app = application();
-  const first = await app.run({ process: processHandle({ argv }) });
-  const second = await app.run({ process: processHandle({ argv }) });
-  process.stdout.write(`resolved:${first}:${second}\n`);
-} else if (mode === 'development') {
-  const code = await application().run({
-    process: processHandle({ argv, release: { build: 'development' } }),
-  });
-  process.stdout.write(`resolved:${code}\n`);
-} else {
-  const code = await application().run({
-    process: processHandle({ argv, release: { build: 'distributed' } }),
-  });
-  process.stdout.write(`resolved:${code}\n`);
-}
+export { runFixture as run };

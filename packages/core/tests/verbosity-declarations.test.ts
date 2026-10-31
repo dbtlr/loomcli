@@ -1,14 +1,13 @@
+import { expect, test } from 'vite-plus/test';
 // Acceptance plan: see packages/core/tests/verbosity.test.ts.
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/verbosity-declarations.mjs', import.meta.url);
 
 /** One scenario's outcome: `ok`, or the call that threw, its rule, and its sentence and fix. */
-function outcome(mark: string, scenario: string): unknown {
-  const result = invoke(fixture, [mark, scenario]);
+async function outcome(mark: string, scenario: string): Promise<unknown> {
+  const result = await invokeFixture(fixture, [mark, scenario]);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return JSON.parse(result.stdout);
@@ -46,44 +45,48 @@ function rows(mark: 'verbose' | 'quiet'): [string, string, string][] {
   ];
 }
 
-test.each(['verbose', 'quiet'])('a counted global option carries the %s mark', (mark) => {
-  expect(outcome(mark, 'count')).toBe('ok');
+test.each(['verbose', 'quiet'])('a counted global option carries the %s mark', async (mark) => {
+  await expect(outcome(mark, 'count')).resolves.toBe('ok');
 });
 
 test.each(['verbose', 'quiet'])(
   'the %s mark takes a short alias and aliases, and a short-only spelling',
-  (mark) => {
-    expect(outcome(mark, 'short')).toBe('ok');
-    expect(outcome(mark, 'short-only')).toBe('ok');
+  async (mark) => {
+    await expect(outcome(mark, 'short')).resolves.toBe('ok');
+    await expect(outcome(mark, 'short-only')).resolves.toBe('ok');
   },
 );
 
-test.each(rows('verbose'))('the verbose mark rejects %s from %s', (scenario, threw, text) => {
-  expect(outcome('verbose', scenario)).toEqual({
+test.each(rows('verbose'))('the verbose mark rejects %s from %s', async (scenario, threw, text) => {
+  await expect(outcome('verbose', scenario)).resolves.toEqual({
     rule: '@loomcli/core/verbose-mark',
     text,
     threw,
   });
 });
 
-test.each(rows('quiet'))('the quiet mark rejects %s from %s', (scenario, threw, text) => {
-  expect(outcome('quiet', scenario)).toEqual({ rule: '@loomcli/core/quiet-mark', text, threw });
+test.each(rows('quiet'))('the quiet mark rejects %s from %s', async (scenario, threw, text) => {
+  await expect(outcome('quiet', scenario)).resolves.toEqual({
+    rule: '@loomcli/core/quiet-mark',
+    text,
+    threw,
+  });
 });
 
-test('an author may mark a verbose option alone', () => {
-  expect(outcome('both', 'verbose-alone')).toBe('ok');
+test('an author may mark a verbose option alone', async () => {
+  await expect(outcome('both', 'verbose-alone')).resolves.toBe('ok');
 });
 
 test.each(['verbose', 'quiet'])(
   'a binding of a source the Application does not install is inert beside the %s mark',
-  (mark) => {
-    expect(outcome(mark, 'binding-inert')).toBe('ok');
+  async (mark) => {
+    await expect(outcome(mark, 'binding-inert')).resolves.toBe('ok');
   },
 );
 
-test('inspect() publishes verbose and quiet on each counted option node, true on the marked one', () => {
+test('inspect() publishes verbose and quiet on each counted option node, true on the marked one', async () => {
   // A Boolean option's node carries neither fact, so each reads undefined, which JSON prints as null.
-  expect(outcome('inspect', '')).toEqual([
+  await expect(outcome('inspect', '')).resolves.toEqual([
     ['level', false, false],
     ['dry', null, null],
     ['verbose', true, false],

@@ -38,8 +38,8 @@ const fixture = new URL('fixtures/check.mjs', import.meta.url);
 /** The script that bundles a fixture with `Bun.build` and a define, as `loom build` does. */
 const bundler = fileURLToPath(new URL('fixtures/release/bundle.mjs', import.meta.url));
 
-/** The runtimes every case runs under. */
-const runtimes = ['node', 'bun'] as const;
+/** The runtime selected for this whole suite by CI. */
+const suiteRuntime = process.env.LOOM_TEST_RUNTIME ?? 'node';
 
 const root = mkdtempSync(join(tmpdir(), 'loom-check-'));
 
@@ -84,54 +84,48 @@ const everyFault = [
   fault('@fixture/judge/shared-name', 'The graph shares a name.', 'SHARED NAME'),
 ];
 
-test.each(runtimes)(
-  'check() returns every fault a development run meets before routing, in order, under %s',
-  (runtime) => {
-    expect(report(runtime, 'faults')).toEqual({
-      faults: everyFault,
-      // Both hooks ran on the one frozen graph, where each failed converter reads null.
-      hooks: { calls: 2, frozen: true, same: true, schemas: [null, null] },
-      list: true,
-    });
-  },
-);
+test('check() returns every fault a development run meets before routing, in order, under the suite runtime', () => {
+  const runtime = suiteRuntime;
+  expect(report(runtime, 'faults')).toEqual({
+    faults: everyFault,
+    // Both hooks ran on the one frozen graph, where each failed converter reads null.
+    hooks: { calls: 2, frozen: true, same: true, schemas: [null, null] },
+    list: true,
+  });
+});
 
-test.each(runtimes)(
-  'run() from source reports the first fault alone and inspect() throws it, under %s',
-  (runtime) => {
-    const ran = invoke(fixture, ['faults', 'run'], { runtime });
-    expect(ran.status).toBe(1);
-    expect(ran.stdout).toBe('');
-    expect(ran.stderr.match(/^-- /gmu)).toHaveLength(1);
-    expect(ran.stderr).toContain(`\n\n${converterFaults[0]?.sentence}\n\n`);
-    expect(report(runtime, 'faults', 'inspect')).toEqual({
-      rule: converterFaults[0]?.rule,
-      sentence: converterFaults[0]?.sentence,
-    });
-  },
-);
+test('run() from source reports the first fault alone and inspect() throws it, under the suite runtime', () => {
+  const runtime = suiteRuntime;
+  const ran = invoke(fixture, ['faults', 'run'], { runtime });
+  expect(ran.status).toBe(1);
+  expect(ran.stdout).toBe('');
+  expect(ran.stderr.match(/^-- /gmu)).toHaveLength(1);
+  expect(ran.stderr).toContain(`\n\n${converterFaults[0]?.sentence}\n\n`);
+  expect(report(runtime, 'faults', 'inspect')).toEqual({
+    rule: converterFaults[0]?.rule,
+    sentence: converterFaults[0]?.sentence,
+  });
+});
 
-test.each(runtimes)(
-  'a build rule fault is the one fault check() returns, the one inspect() throws, and no hook runs, under %s',
-  (runtime) => {
-    const thrown = report(runtime, 'build-fault', 'inspect');
-    expect(report(runtime, 'build-fault')).toEqual({
-      faults: [
-        fault(
-          '@loomcli/core/command-without-action',
-          'The root Command has no action.',
-          'NOTHING TO RUN',
-        ),
-      ],
-      hooks: { calls: 0, frozen: null, same: true, schemas: null },
-      list: true,
-    });
-    expect(thrown).toEqual({
-      rule: '@loomcli/core/command-without-action',
-      sentence: 'The root Command has no action.',
-    });
-  },
-);
+test('a build rule fault is the one fault check() returns, the one inspect() throws, and no hook runs, under the suite runtime', () => {
+  const runtime = suiteRuntime;
+  const thrown = report(runtime, 'build-fault', 'inspect');
+  expect(report(runtime, 'build-fault')).toEqual({
+    faults: [
+      fault(
+        '@loomcli/core/command-without-action',
+        'The root Command has no action.',
+        'NOTHING TO RUN',
+      ),
+    ],
+    hooks: { calls: 0, frozen: null, same: true, schemas: null },
+    list: true,
+  });
+  expect(thrown).toEqual({
+    rule: '@loomcli/core/command-without-action',
+    sentence: 'The root Command has no action.',
+  });
+});
 
 /** The bundles of check.mjs built so far, by name, so each is built once whichever test needs it first. */
 const bundles = new Map<string, string>();
@@ -159,7 +153,8 @@ test.each([
   'check() returns the same faults from a bundle whose baked facts read %s, which it never reads',
   (name, facts) => {
     const outdir = bundled(name, facts);
-    for (const runtime of runtimes) {
+    {
+      const runtime = suiteRuntime;
       const result = spawnSync(runtime, [join(outdir, 'check.js'), 'faults'], { encoding: 'utf8' });
       expect(result.stderr).toBe('');
       expect(JSON.parse(result.stdout).faults).toEqual(everyFault);
@@ -169,7 +164,8 @@ test.each([
 
 test('from a bundle whose baked facts read distributed, check() reports an unrouted post-install command and inspect() does not', () => {
   const outdir = bundled('distributed', distributedFacts);
-  for (const runtime of runtimes) {
+  {
+    const runtime = suiteRuntime;
     const bundle = join(outdir, 'check.js');
     const checked = spawnSync(runtime, [bundle, 'post-install'], { encoding: 'utf8' });
     expect(checked.stderr).toBe('');
@@ -185,25 +181,21 @@ test('from a bundle whose baked facts read distributed, check() reports an unrou
   }
 });
 
-test.each(runtimes)(
-  'check() leaves out a declared default its validator rejects, which run() reports, under %s',
-  (runtime) => {
-    expect(report(runtime, 'defaults').faults).toEqual([]);
-    const ran = invoke(fixture, ['defaults', 'run'], { runtime });
-    expect(ran.status).toBe(1);
-    expect(ran.stderr).toMatch(/^-- DEFAULT REJECTED -+ @loomcli\/core\/invalid-default\n/u);
-  },
-);
+test('check() leaves out a declared default its validator rejects, which run() reports, under the suite runtime', () => {
+  const runtime = suiteRuntime;
+  expect(report(runtime, 'defaults').faults).toEqual([]);
+  const ran = invoke(fixture, ['defaults', 'run'], { runtime });
+  expect(ran.status).toBe(1);
+  expect(ran.stderr).toMatch(/^-- DEFAULT REJECTED -+ @loomcli\/core\/invalid-default\n/u);
+});
 
-test.each(runtimes)(
-  'a hook that throws a TypeError adds the broken-graph-hook fault, and check() returns, under %s',
-  (runtime) => {
-    expect(report(runtime, 'broken-hook').faults).toEqual([
-      fault(
-        '@loomcli/core/broken-graph-hook',
-        'Plugin "@fixture/break" failed in onGraphBuilt: The hook broke.',
-        'BROKEN GRAPH HOOK',
-      ),
-    ]);
-  },
-);
+test('a hook that throws a TypeError adds the broken-graph-hook fault, and check() returns, under the suite runtime', () => {
+  const runtime = suiteRuntime;
+  expect(report(runtime, 'broken-hook').faults).toEqual([
+    fault(
+      '@loomcli/core/broken-graph-hook',
+      'Plugin "@fixture/break" failed in onGraphBuilt: The hook broke.',
+      'BROKEN GRAPH HOOK',
+    ),
+  ]);
+});

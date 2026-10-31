@@ -1,3 +1,4 @@
+import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for declared exit codes (docs/core/failures.md#declared-exit-codes).
  *
@@ -26,37 +27,37 @@
  *   the failure example coverage pins.
  */
 
-import { expect, test } from 'vite-plus/test';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
-import { invoke } from '../../../scripts/test-process.js';
-
-function exits(scenario: string, env: Record<string, string> = {}) {
-  return invoke(new URL('fixtures/exit-codes.mjs', import.meta.url), [scenario], { env });
+async function exits(scenario: string, env: Record<string, string> = {}) {
+  return await invokeFixture(new URL('fixtures/exit-codes.mjs', import.meta.url), [scenario], {
+    env,
+  });
 }
 
-test('a declared code decides the exit status, and the view reads it on the instance', () => {
-  expect(exits('declared')).toEqual({
+test('a declared code decides the exit status, and the view reads it on the instance', async () => {
+  await expect(exits('declared')).resolves.toEqual({
     status: 69,
     stderr: '69: The registry answered 503.\n',
     stdout: 'resolved:69\n',
   });
 });
 
-test('a subclass that declares nothing exits with the nearest declared code', () => {
-  expect(exits('inherited')).toEqual({
+test('a subclass that declares nothing exits with the nearest declared code', async () => {
+  await expect(exits('inherited')).resolves.toEqual({
     status: 69,
     stderr: 'The registry answered 504.\n',
     stdout: 'resolved:69\n',
   });
-  expect(exits('undeclared')).toEqual({
+  await expect(exits('undeclared')).resolves.toEqual({
     status: 1,
     stderr: 'Config is unreadable.\n',
     stdout: 'resolved:1\n',
   });
 });
 
-test('a class reads its code without an instance', () => {
-  expect(JSON.parse(exits('statics').stdout)).toEqual({
+test('a class reads its code without an instance', async () => {
+  expect(JSON.parse(await exits('statics').then((fixtureResult) => fixtureResult.stdout))).toEqual({
     ConfigError: 1,
     InputError: 2,
     LoomError: 1,
@@ -66,48 +67,48 @@ test('a class reads its code without an instance', () => {
   });
 });
 
-test('a class that declares 2 outside UsageError takes no usage prefix and no usage override', () => {
-  expect(exits('strict')).toEqual({
+test('a class that declares 2 outside UsageError takes no usage prefix and no usage override', async () => {
+  await expect(exits('strict')).resolves.toEqual({
     status: 2,
     stderr: 'Strict mode refused the value.\n',
     stdout: 'resolved:2\n',
   });
 });
 
-test('a JavaScript class that declares a code the types reserve exits with that code', () => {
-  expect(exits('reserved')).toEqual({
+test('a JavaScript class that declares a code the types reserve exits with that code', async () => {
+  await expect(exits('reserved')).resolves.toEqual({
     status: 130,
     stderr: 'Interrupted by the application.\n',
     stdout: 'resolved:130\n',
   });
 });
 
-test('a middleware that throws the class before next() exits with its code', () => {
-  expect(exits('middleware')).toEqual({
+test('a middleware that throws the class before next() exits with its code', async () => {
+  await expect(exits('middleware')).resolves.toEqual({
     status: 69,
     stderr: 'The registry answered 503.\n',
     stdout: 'resolved:69\n',
   });
 });
 
-test('a cancelled run resolves the signal code over the declared one', () => {
-  expect(exits('cancelled')).toEqual({
+test('a cancelled run resolves the signal code over the declared one', async () => {
+  await expect(exits('cancelled')).resolves.toEqual({
     status: 130,
     stderr: 'The registry answered 503.\n',
     stdout: 'resolved:130\n',
   });
 });
 
-test('a broken view of the class falls back to the default text and returns 1', () => {
-  expect(exits('broken')).toEqual({
+test('a broken view of the class falls back to the default text and returns 1', async () => {
+  await expect(exits('broken')).resolves.toEqual({
     status: 1,
     stderr: 'The registry answered 503.\nexits: Something went wrong.\n',
     stdout: 'resolved:1\n',
   });
 });
 
-test('core exports the fifteen sysexits names with their values and no EX_OK', () => {
-  expect(JSON.parse(exits('exports').stdout)).toEqual({
+test('core exports the fifteen sysexits names with their values and no EX_OK', async () => {
+  expect(JSON.parse(await exits('exports').then((fixtureResult) => fixtureResult.stdout))).toEqual({
     EX_CANTCREAT: 73,
     EX_CONFIG: 78,
     EX_DATAERR: 65,

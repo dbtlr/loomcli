@@ -1,17 +1,17 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** Whether `instanceof Application` recognized each value the fixture names. */
-function recognized(): unknown {
-  const result = invoke(new URL('fixtures/recognizing.mjs', import.meta.url));
+async function recognized(): Promise<unknown> {
+  const result = await invokeFixture(new URL('fixtures/recognizing.mjs', import.meta.url));
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return JSON.parse(result.stdout);
 }
 
-test('instanceof Application holds for an Application in every authoring state, whichever declaring call returned it', () => {
-  expect(recognized()).toMatchObject({
+test('instanceof Application holds for an Application in every authoring state, whichever declaring call returned it', async () => {
+  await expect(recognized()).resolves.toMatchObject({
     action: true,
     argument: true,
     bare: true,
@@ -28,8 +28,8 @@ test('instanceof Application holds for an Application in every authoring state, 
   });
 });
 
-test('instanceof Application is false for a Command, a plain object, a copy, null, and a function', () => {
-  expect(recognized()).toMatchObject({
+test('instanceof Application is false for a Command, a plain object, a copy, null, and a function', async () => {
+  await expect(recognized()).resolves.toMatchObject({
     aCommand: false,
     aFunction: false,
     aNull: false,
@@ -38,8 +38,8 @@ test('instanceof Application is false for a Command, a plain object, a copy, nul
   });
 });
 
-test("instanceof an author's subclass of Application reads that subclass's prototype chain alone", () => {
-  expect(recognized()).toMatchObject({
+test("instanceof an author's subclass of Application reads that subclass's prototype chain alone", async () => {
+  await expect(recognized()).resolves.toMatchObject({
     subclass: { aSubclassInstance: true, anApplication: false },
   });
 });

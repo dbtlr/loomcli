@@ -4,12 +4,13 @@ import { invoke } from '../../../scripts/test-process.js';
 import { findingsOf } from '../../../scripts/test-rules.js';
 import { declaredRules, coreRuleParts } from './rule-parts.js';
 import type { RuleParts } from './rule-parts.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/input-diagnostics.mjs', import.meta.url);
 
 /** The diagnostic one scenario's faulty declaration throws, as its message holds it. */
-function thrown(...args: string[]): string {
-  const result = invoke(fixture, args);
+async function thrown(...args: string[]): Promise<string> {
+  const result = await invokeFixture(fixture, args);
   expect(result.stderr).toBe('');
   return result.stdout;
 }
@@ -140,12 +141,15 @@ const cases: Record<string, RuleParts> = {
   },
 };
 
-test.each(Object.entries(cases))('the %s fault throws its rule’s diagnostic', (scenario, parts) => {
-  expect(coreRuleParts(thrown(scenario))).toEqual(parts);
-});
+test.each(Object.entries(cases))(
+  'the %s fault throws its rule’s diagnostic',
+  async (scenario, parts) => {
+    expect(coreRuleParts(await thrown(scenario))).toEqual(parts);
+  },
+);
 
-test('an empty delimiter marks the envDelimiter of the option that declared it', () => {
-  expect(findingsOf(thrown('env-delimiter'))).toContain(
+test('an empty delimiter marks the envDelimiter of the option that declared it', async () => {
+  expect(findingsOf(await thrown('env-delimiter'))).toContain(
     onCommand(
       ['get'],
       "option('fields', { env: 'FIELDS', envDelimiter: '', multiple: true, type: 'string' })",
@@ -206,15 +210,21 @@ const reportedCases: Record<string, RuleParts> = {
 
 test.each(Object.entries(reportedCases))(
   'the %s fault reports its rule’s diagnostic from run()',
-  (scenario, parts) => {
-    const result = invoke(fixture, [scenario]);
+  async (scenario, parts) => {
+    const result = await invokeFixture(fixture, [scenario]);
     expect(result).toMatchObject({ status: 1, stdout: '' });
     expect(coreRuleParts(result.stderr)).toEqual(parts);
   },
 );
 
-test('a default its validator rejects marks the default of the call that declared it', () => {
-  expect(findingsOf(invoke(fixture, ['invalid-default']).stderr)).toContain(
+test('a default its validator rejects marks the default of the call that declared it', async () => {
+  expect(
+    findingsOf(
+      await invokeFixture(fixture, ['invalid-default']).then(
+        (fixtureResult) => fixtureResult.stderr,
+      ),
+    ),
+  ).toContain(
     onCommand(
       ['probe', 'get'],
       "option('limit', { default: 'x', description: 'Limit.', type: 'string', validate: … })",
@@ -223,8 +233,14 @@ test('a default its validator rejects marks the default of the call that declare
   );
 });
 
-test("an implied value its validator rejects on a plugin's option marks implied in the plugin's options record", () => {
-  expect(findingsOf(invoke(fixture, ['plugin-invalid-implied']).stderr)).toContain(
+test("an implied value its validator rejects on a plugin's option marks implied in the plugin's options record", async () => {
+  expect(
+    findingsOf(
+      await invokeFixture(fixture, ['plugin-invalid-implied']).then(
+        (fixtureResult) => fixtureResult.stderr,
+      ),
+    ),
+  ).toContain(
     marked(
       "    plugin('@acme/copy', { options: { backup: { description: 'Backup.', implied: 'x', type: 'string', validate: … } } })",
       "implied: 'x'",
@@ -232,8 +248,14 @@ test("an implied value its validator rejects on a plugin's option marks implied 
   );
 });
 
-test("a default its validator rejects on a plugin's option marks the default in the plugin's options record", () => {
-  expect(findingsOf(invoke(fixture, ['plugin-invalid-default']).stderr)).toContain(
+test("a default its validator rejects on a plugin's option marks the default in the plugin's options record", async () => {
+  expect(
+    findingsOf(
+      await invokeFixture(fixture, ['plugin-invalid-default']).then(
+        (fixtureResult) => fixtureResult.stderr,
+      ),
+    ),
+  ).toContain(
     marked(
       "    plugin('@acme/log', { options: { level: { default: 'x', description: 'Level.', type: 'string', validate: … } } })",
       "default: 'x'",
@@ -241,8 +263,8 @@ test("a default its validator rejects on a plugin's option marks the default in 
   );
 });
 
-test('a converter that throws is a declaration fault from inspect() in a development build', () => {
-  const text = thrown('converter-throws', 'inspect');
+test('a converter that throws is a declaration fault from inspect() in a development build', async () => {
+  const text = await thrown('converter-throws', 'inspect');
   expect(coreRuleParts(text)).toEqual(converterThrows);
   expect(findingsOf(text)).toContain(
     onCommand(
@@ -253,23 +275,25 @@ test('a converter that throws is a declaration fault from inspect() in a develop
   );
 });
 
-test('a distributed build reads a failing converter as no published schema', () => {
-  expect(invoke(fixture, ['converter-throws-distributed'])).toEqual({
+test('a distributed build reads a failing converter as no published schema', async () => {
+  await expect(invokeFixture(fixture, ['converter-throws-distributed'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '',
   });
-  expect(thrown('converter-throws-distributed', 'inspect')).toBe('{"schema":null}\n');
+  await expect(thrown('converter-throws-distributed', 'inspect')).resolves.toBe(
+    '{"schema":null}\n',
+  );
 });
 
-test("a converter fault keeps the converter's thrown value as its cause", () => {
-  expect(thrown('converter-throws', 'cause')).toBe(
+test("a converter fault keeps the converter's thrown value as its cause", async () => {
+  await expect(thrown('converter-throws', 'cause')).resolves.toBe(
     `${JSON.stringify({ cause: 'No JSON Schema\nfor a transform.' })}\n`,
   );
 });
 
-test('a validator that throws marks the validate key of the call that declared its input', () => {
-  const result = invoke(fixture, ['validator-throws']);
+test('a validator that throws marks the validate key of the call that declared its input', async () => {
+  const result = await invokeFixture(fixture, ['validator-throws']);
   expect(result.status).toBe(1);
   expect(findingsOf(result.stderr)).toContain(
     onCommand(
@@ -280,8 +304,8 @@ test('a validator that throws marks the validate key of the call that declared i
   );
 });
 
-test('a global option validator that throws marks the validate key of its globalOption() call', () => {
-  const result = invoke(fixture, ['global-validator-throws']);
+test('a global option validator that throws marks the validate key of its globalOption() call', async () => {
+  const result = await invokeFixture(fixture, ['global-validator-throws']);
   expect(result.status).toBe(1);
   const finding = marked(
     "      .globalOption('limit', { description: 'Limit.', type: 'string', validate: … })",
@@ -290,8 +314,8 @@ test('a global option validator that throws marks the validate key of its global
   expect(result.stderr).toContain(`\n${finding.join('\n')}\n\n`);
 });
 
-test("a validator that throws on a plugin's option marks the validate key in the plugin's options record", () => {
-  const result = invoke(fixture, ['plugin-validator-throws']);
+test("a validator that throws on a plugin's option marks the validate key in the plugin's options record", async () => {
+  const result = await invokeFixture(fixture, ['plugin-validator-throws']);
   expect(result.status).toBe(1);
   expect(findingsOf(result.stderr)).toContain(
     marked(

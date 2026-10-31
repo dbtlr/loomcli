@@ -1,3 +1,4 @@
+import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for invocation by name (docs/core/invocation.md#invocation-by-name).
  *
@@ -56,11 +57,11 @@
  *   merges, because the action context gains a member.
  */
 
-import { expect, test } from 'vite-plus/test';
-
 import { invoke, start } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/by-name.mjs', import.meta.url);
+const processFixture = new URL('fixtures/by-name-process.mjs', import.meta.url);
 
 /** One outcome as the fixture prints it: the failure is reduced to its own enumerable fields. */
 interface Outcome {
@@ -73,8 +74,13 @@ interface Outcome {
 }
 
 /** The fixture's JSON report for one scenario, under the build it names. */
-function report(scenario: string, ...rest: string[]): string {
-  const result = invoke(fixture, [scenario, ...rest], { env: { FORCE_COLOR: undefined } });
+async function report(scenario: string, ...rest: string[]): Promise<string> {
+  const result =
+    scenario === 'isolation'
+      ? invoke(processFixture, [scenario, ...rest], { env: { FORCE_COLOR: undefined } })
+      : await invokeFixture(fixture, [scenario, ...rest], {
+          env: { FORCE_COLOR: undefined },
+        });
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return result.stdout;
@@ -92,8 +98,8 @@ type Lowering = Record<
   Outcome
 >;
 
-test('each value lowers to the tokens argv would give, row by row', () => {
-  const { every }: Lowering = JSON.parse(report('lowering'));
+test('each value lowers to the tokens argv would give, row by row', async () => {
+  const { every }: Lowering = JSON.parse(await report('lowering'));
   expect(echoed(every)).toEqual({
     args: { files: ['a', '1'], target: 'x' },
     options: {
@@ -110,29 +116,29 @@ test('each value lowers to the tokens argv would give, row by row', () => {
   });
 });
 
-test('a single value on a collecting input is one occurrence, and a number reaches an unvalidated option as its String text', () => {
-  const { single }: Lowering = JSON.parse(report('lowering'));
+test('a single value on a collecting input is one occurrence, and a number reaches an unvalidated option as its String text', async () => {
+  const { single }: Lowering = JSON.parse(await report('lowering'));
   expect(echoed(single)).toMatchObject({
     args: { files: ['f'], target: '7' },
     options: { color: true, name: '5', tag: ['one'] },
   });
 });
 
-test('false on a positive option, true on a negative option, 0 on a count, and an empty array are absence', () => {
-  const { absent }: Lowering = JSON.parse(report('lowering'));
+test('false on a positive option, true on a negative option, 0 on a count, and an empty array are absence', async () => {
+  const { absent }: Lowering = JSON.parse(await report('lowering'));
   expect(echoed(absent)).toEqual({
     args: { files: [], target: 't' },
     options: { color: false, flag: false, keep: true, tag: [], verbose: 0, versions: [] },
   });
 });
 
-test('false on a positive option leaves a bound variable free to fill it', () => {
-  const { bound }: Lowering = JSON.parse(report('lowering'));
+test('false on a positive option leaves a bound variable free to fill it', async () => {
+  const { bound }: Lowering = JSON.parse(await report('lowering'));
   expect(echoed(bound)).toMatchObject({ options: { flag: true } });
 });
 
-test('an empty array on a required multiple option is the missing-input problem', () => {
-  const { missing }: Lowering = JSON.parse(report('lowering'));
+test('an empty array on a required multiple option is the missing-input problem', async () => {
+  const { missing }: Lowering = JSON.parse(await report('lowering'));
   expect(missing).toMatchObject({
     exitCode: 2,
     messages: 'probe: Option "item" is required. Supply at least one value.\n',
@@ -140,8 +146,8 @@ test('an empty array on a required multiple option is the missing-input problem'
   });
 });
 
-test('each unlowerable value is an invalid problem in authoring order whose issue says what the input takes', () => {
-  const { unlowerable, unlowerableMore }: Lowering = JSON.parse(report('lowering'));
+test('each unlowerable value is an invalid problem in authoring order whose issue says what the input takes', async () => {
+  const { unlowerable, unlowerableMore }: Lowering = JSON.parse(await report('lowering'));
   expect(unlowerable).toMatchObject({
     exitCode: 2,
     failure: { name: 'InputError' },
@@ -184,8 +190,8 @@ interface Names {
   unknownOption: Outcome;
 }
 
-test('an argument binds by name, so a value never shifts into an earlier argument left out', () => {
-  const { byName, seen }: Names = JSON.parse(report('names'));
+test('an argument binds by name, so a value never shifts into an earlier argument left out', async () => {
+  const { byName, seen }: Names = JSON.parse(await report('names'));
   expect(seen).toEqual(['x']);
   expect(byName).toMatchObject({
     exitCode: 2,
@@ -194,8 +200,8 @@ test('an argument binds by name, so a value never shifts into an earlier argumen
   });
 });
 
-test('every problem names an option by its declared name, a source problem included', () => {
-  const { byName, source, sourceArgv }: Names = JSON.parse(report('names'));
+test('every problem names an option by its declared name, a source problem included', async () => {
+  const { byName, source, sourceArgv }: Names = JSON.parse(await report('names'));
   expect(byName.failure).toMatchObject({
     problems: [
       { reason: 'missing', spelling: 'first' },
@@ -212,8 +218,8 @@ test('every problem names an option by its declared name, a source problem inclu
   });
 });
 
-test('an unknown option name and an unknown argument name report their by-name sentences with exit 2', () => {
-  const { unknownArgument, unknownOption }: Names = JSON.parse(report('names'));
+test('an unknown option name and an unknown argument name report their by-name sentences with exit 2', async () => {
+  const { unknownArgument, unknownOption }: Names = JSON.parse(await report('names'));
   expect(unknownOption).toMatchObject({
     exitCode: 2,
     failure: { name: 'UnknownOptionError', spelling: 'verbos' },
@@ -227,8 +233,8 @@ test('an unknown option name and an unknown argument name report their by-name s
   });
 });
 
-test('the result reaches output, every other write reaches messages, all of it plain, on a host with no terminal or argv', () => {
-  const result = invoke(fixture, ['capture'], { env: { FORCE_COLOR: '1' } });
+test('the result reaches output, every other write reaches messages, all of it plain, on a host with no terminal or argv', async () => {
+  const result = await invokeFixture(fixture, ['capture'], { env: { FORCE_COLOR: '1' } });
   expect(result.status).toBe(0);
   const { plain, report: reported }: { plain: Outcome; report: Outcome } = JSON.parse(
     result.stdout,
@@ -260,8 +266,8 @@ interface Failures {
   rejected: boolean | string;
 }
 
-test('the handler receives the translated failure, never the foreign throw, and maps it into the outcome', () => {
-  const { foreign, received }: Failures = JSON.parse(report('failures'));
+test('the handler receives the translated failure, never the foreign throw, and maps it into the outcome', async () => {
+  const { foreign, received }: Failures = JSON.parse(await report('failures'));
   expect(foreign).toEqual({
     exitCode: 1,
     failure: { mapped: 'The foreign call failed.' },
@@ -281,8 +287,8 @@ test('the handler receives the translated failure, never the foreign throw, and 
   });
 });
 
-test('a path ending at a group holds the missing subcommand, and a hidden Command routes', () => {
-  const { group, hidden }: Names = JSON.parse(report('names'));
+test('a path ending at a group holds the missing subcommand, and a hidden Command routes', async () => {
+  const { group, hidden }: Names = JSON.parse(await report('names'));
   expect(group).toMatchObject({
     exitCode: 2,
     messages: 'probe: Command "cache" requires a subcommand. Use one of: clear.\n',
@@ -293,8 +299,8 @@ test('a path ending at a group holds the missing subcommand, and a hidden Comman
 /** The form of a defect in a distributed build, which names no reason. */
 const genericForm = { code: 'internal', exitCode: 1, hints: [], message: 'Something went wrong.' };
 
-test('a fault reported after a primary outcome that succeeded is the failure the handler receives', () => {
-  const { lateFault }: Failures = JSON.parse(report('failures'));
+test('a fault reported after a primary outcome that succeeded is the failure the handler receives', async () => {
+  const { lateFault }: Failures = JSON.parse(await report('failures'));
   expect(lateFault).toEqual({
     exitCode: 1,
     failure: '@loomcli/core/foreign-throw',
@@ -305,14 +311,14 @@ test('a fault reported after a primary outcome that succeeded is the failure the
   });
 });
 
-test('with no handler the outcome holds the failure itself', () => {
-  const { noHandler }: Failures = JSON.parse(report('failures'));
+test('with no handler the outcome holds the failure itself', async () => {
+  const { noHandler }: Failures = JSON.parse(await report('failures'));
   expect(noHandler.failure).toEqual({ isTranslated: true, message: 'The foreign call failed.' });
 });
 
-test('a defect writes the generic message in a distributed build and its diagnostic in a development one, and the handler receives the InternalError', () => {
-  const distributed: Failures = JSON.parse(report('failures', 'distributed'));
-  const development: Failures = JSON.parse(report('failures', 'development'));
+test('a defect writes the generic message in a distributed build and its diagnostic in a development one, and the handler receives the InternalError', async () => {
+  const distributed: Failures = JSON.parse(await report('failures', 'distributed'));
+  const development: Failures = JSON.parse(await report('failures', 'development'));
   expect(distributed.defect.messages).toBe('probe: Something went wrong.\n');
   expect(development.defect.messages).toMatch(
     /^-- UNHANDLED EXCEPTION -+ @loomcli\/core\/foreign-throw\n\nthe action broke\n/u,
@@ -323,8 +329,8 @@ test('a defect writes the generic message in a distributed build and its diagnos
   ]);
 });
 
-test('a broken failure view resolves failed with exit 1', () => {
-  const { foreign }: Failures = JSON.parse(report('failures', 'distributed', 'broken-view'));
+test('a broken failure view resolves failed with exit 1', async () => {
+  const { foreign }: Failures = JSON.parse(await report('failures', 'distributed', 'broken-view'));
   expect(foreign).toMatchObject({
     exitCode: 1,
     messages: 'The foreign call failed.\nprobe: Something went wrong.\n',
@@ -332,16 +338,16 @@ test('a broken failure view resolves failed with exit 1', () => {
   });
 });
 
-test('a handler that throws makes invoke reject with the same value', () => {
-  const { rejected }: Failures = JSON.parse(report('failures'));
+test('a handler that throws makes invoke reject with the same value', async () => {
+  const { rejected }: Failures = JSON.parse(await report('failures'));
   expect(rejected).toBe(true);
 });
 
 /** The fixture's view report. */
 type Views = Record<'assigned' | 'json' | 'noResult' | 'unknown', Outcome>;
 
-test('view selects the starting view, and a middleware assignment after it wins', () => {
-  const { assigned, json }: Views = JSON.parse(report('view'));
+test('view selects the starting view, and a middleware assignment after it wins', async () => {
+  const { assigned, json }: Views = JSON.parse(await report('view'));
   expect(json).toEqual({ messages: '', output: '{"count":2}\n', status: 'completed' });
   expect(assigned).toEqual({ messages: '', output: 'count 2\n', status: 'completed' });
 });
@@ -349,8 +355,8 @@ test('view selects the starting view, and a middleware assignment after it wins'
 test.each([
   ['unknown', 'invoke() selected view "yaml", which Command "count" does not name.'],
   ['noResult', 'invoke() selected view "json" on Command "get", which declares no result.'],
-] as const)('a %s view is the view-selection defect named for invoke()', (key, sentence) => {
-  const views: Views = JSON.parse(report('view', 'development'));
+] as const)('a %s view is the view-selection defect named for invoke()', async (key, sentence) => {
+  const views: Views = JSON.parse(await report('view', 'development'));
   expect(views[key]).toMatchObject({ exitCode: 1, status: 'failed' });
   expect(views[key].messages).toMatch(
     /^-- INVALID VIEW SELECTION -+ @loomcli\/core\/view-selection/u,
@@ -359,9 +365,9 @@ test.each([
   expect(views[key].messages).toContain("\nSupply a view name the Command's result declares.\n");
 });
 
-test('a call from an action touches no process listener, exit status, or real stream, and its writes stay in the outcome', () => {
+test('a call from an action touches no process listener, exit status, or real stream, and its writes stay in the outcome', async () => {
   const { code, stderr, stdout }: { code: number; stderr: string; stdout: string } = JSON.parse(
-    report('isolation'),
+    await report('isolation'),
   );
   expect({ code, stderr }).toEqual({ code: 0, stderr: '' });
   expect(JSON.parse(stdout)).toEqual({
@@ -376,8 +382,8 @@ test('a call from an action touches no process listener, exit status, or real st
   });
 });
 
-test('app.invoke with a process handle reads its facts and nothing of the process', () => {
-  expect(echoed(JSON.parse(report('host')))).toEqual({
+test('app.invoke with a process handle reads its facts and nothing of the process', async () => {
+  expect(echoed(JSON.parse(await report('host')))).toEqual({
     argv: [],
     cwd: '/virtual',
     env: { ONLY: 'x' },
@@ -389,7 +395,7 @@ test('app.invoke with a process handle reads its facts and nothing of the proces
 });
 
 test('a SIGTERM to the parent run resolves its call in flight as cancelled with 143, and the handler is never reached', async () => {
-  const running = start(fixture, ['sigterm']);
+  const running = start(processFixture, ['sigterm']);
   await running.announced('ready');
   running.child.kill('SIGTERM');
   await expect(running.exit).resolves.toEqual({
@@ -405,16 +411,16 @@ test('a SIGTERM to the parent run resolves its call in flight as cancelled with 
   });
 });
 
-test("an abort of the call's own signal resolves cancelled with 130 and never reaches the handler", () => {
-  expect(invoke(fixture, ['own-abort'])).toEqual({
+test("an abort of the call's own signal resolves cancelled with 130 and never reaches the handler", async () => {
+  await expect(invokeFixture(fixture, ['own-abort'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'ready\n{"handled":[],"outcome":{"exitCode":130,"status":"cancelled"}}\n',
   });
 });
 
-test('a signal already aborted at the call runs no middleware and no action', () => {
-  expect(JSON.parse(report('pre-aborted'))).toEqual({
+test('a signal already aborted at the call runs no middleware and no action', async () => {
+  expect(JSON.parse(await report('pre-aborted'))).toEqual({
     marks: [],
     outcome: { exitCode: 130, status: 'cancelled' },
   });
@@ -425,8 +431,8 @@ function lines(label: string): string {
   return `${[0, 1, 2, 3].map((index) => `${label} ${String(index)}`).join('\n')}\n`;
 }
 
-test('two overlapping calls capture their own bytes, and an invoked action resolves its own nested call', () => {
-  const { both, inner }: { both: Outcome; inner: Outcome } = JSON.parse(report('nesting'));
+test('two overlapping calls capture their own bytes, and an invoked action resolves its own nested call', async () => {
+  const { both, inner }: { both: Outcome; inner: Outcome } = JSON.parse(await report('nesting'));
   expect(echoed(both)).toEqual({
     left: { messages: '', output: lines('left'), status: 'completed' },
     right: { messages: '', output: lines('right'), status: 'completed' },
@@ -434,30 +440,30 @@ test('two overlapping calls capture their own bytes, and an invoked action resol
   expect(echoed(inner)).toEqual({ messages: '', output: lines('left'), status: 'completed' });
 });
 
-test("an action's call runs no lifecycle hook again, and each app.invoke runs every onCommandAttach and onGraphBuilt once", () => {
-  expect(JSON.parse(report('graph'))).toMatchObject({
+test("an action's call runs no lifecycle hook again, and each app.invoke runs every onCommandAttach and onGraphBuilt once", async () => {
+  expect(JSON.parse(await report('graph'))).toMatchObject({
     fromAction: '0 0\n',
     perBuild: { attach: 3, built: 1 },
     perCall: { attach: 3, built: 1 },
   });
 });
 
-test('app.invoke reports a build fault as a failed outcome with exit 1', () => {
-  expect(JSON.parse(report('graph'))).toMatchObject({
+test('app.invoke reports a build fault as a failed outcome with exit 1', async () => {
+  expect(JSON.parse(await report('graph'))).toMatchObject({
     broken: { exitCode: 1, messages: 'probe: Something went wrong.\n', status: 'failed' },
   });
 });
 
-test("the failure view and the onFailure hook read invokedBy as 'argv' under run() and 'name' under invoke()", () => {
-  expect(JSON.parse(report('invoked-by'))).toEqual({
+test("the failure view and the onFailure hook read invokedBy as 'argv' under run() and 'name' under invoke()", async () => {
+  expect(JSON.parse(await report('invoked-by'))).toEqual({
     argv: 'Stopped. (argv)\n',
     named: 'Stopped. (name)\n',
     seen: [{ hook: 'argv' }, { hook: 'name' }],
   });
 });
 
-test("a value lowered by name is recorded in a middleware's spellings under the option's reported spelling", () => {
-  expect(echoed(JSON.parse(report('spellings')))).toEqual({
+test("a value lowered by name is recorded in a middleware's spellings under the option's reported spelling", async () => {
+  expect(echoed(JSON.parse(await report('spellings')))).toEqual({
     loud: '--loud',
     quiet: '--no-quiet',
     tiny: '-t',

@@ -1,16 +1,18 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
-function run(mode: string) {
-  const result = invoke(new URL('fixtures/extended-command.mjs', import.meta.url), [mode]);
+async function run(mode: string) {
+  const result = await invokeFixture(new URL('fixtures/extended-command.mjs', import.meta.url), [
+    mode,
+  ]);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   return result.stdout;
 }
 
-test('an imported-style completed Command accepts immutable whole-value extension replacement', () => {
-  expect(JSON.parse(run('inspect'))).toEqual({
+test('an imported-style completed Command accepts immutable whole-value extension replacement', async () => {
+  expect(JSON.parse(await run('inspect'))).toEqual({
     after: { details: 'Application help.' },
     aliases: ['r'],
     before: { details: 'Library help.', examples: ['library'] },
@@ -21,14 +23,14 @@ test('an imported-style completed Command accepts immutable whole-value extensio
     other: 'retained',
     root: 'root',
   });
-  expect(JSON.parse(run('invoke'))).toEqual({
+  expect(JSON.parse(await run('invoke'))).toEqual({
     args: { path: 'document' },
     options: { quiet: true, raw: true },
   });
 });
 
-test('a second value of one extension in one call replaces the first whole', () => {
-  expect(JSON.parse(run('duplicate'))).toEqual({ details: 'Two.' });
+test('a second value of one extension in one call replaces the first whole', async () => {
+  expect(JSON.parse(await run('duplicate'))).toEqual({ details: 'Two.' });
 });
 
 test.each([
@@ -37,6 +39,6 @@ test.each([
     'twin',
     'Extension "test/help" is defined twice. Install one copy of the package that defines it.',
   ],
-])('extension layering rejects %s', (scenario, message) => {
-  expect(run(scenario)).toContain(message);
+])('extension layering rejects %s', async (scenario, message) => {
+  await expect(run(scenario)).resolves.toContain(message);
 });

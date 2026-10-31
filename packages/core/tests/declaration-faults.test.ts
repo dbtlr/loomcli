@@ -1,8 +1,8 @@
+import { expect, test } from 'vite-plus/test';
 // Acceptance plan: see packages/core/tests/developer-diagnostics.test.ts.
 
-import { expect, test } from 'vite-plus/test';
-
 import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 // A faulty call is an uncaught exception in the module that makes it, so no run reports it.
 test("an author's faulty call throws while its module is imported, with a stack at the line", () => {
@@ -19,14 +19,16 @@ test("an author's faulty call throws while its module is imported, with a stack 
 });
 
 /** One scenario of the declaration-calls fixture, read as the JSON it prints. */
-function calls(scenario: string): unknown {
-  const result = invoke(new URL('fixtures/declaration-calls.mjs', import.meta.url), [scenario]);
+async function calls(scenario: string): Promise<unknown> {
+  const result = await invokeFixture(new URL('fixtures/declaration-calls.mjs', import.meta.url), [
+    scenario,
+  ]);
   expect(result.stderr).toBe('');
   return JSON.parse(result.stdout);
 }
 
-test('a Command value publishes its authoring calls and no declared state', () => {
-  expect(calls('surface')).toEqual({
+test('a Command value publishes its authoring calls and no declared state', async () => {
+  await expect(calls('surface')).resolves.toEqual({
     declared: false,
     members: [
       'action',
@@ -50,10 +52,10 @@ test('a Command value publishes its authoring calls and no declared state', () =
 const collision =
   'thrown: Option "g" is declared as a global option and as a local option on Command "bad". Rename the local option.';
 
-test('a join that throws leaves no claim, so the value it walked attaches elsewhere', () => {
-  expect(calls('owners-after-fault')).toEqual([collision, 'ok']);
+test('a join that throws leaves no claim, so the value it walked attaches elsewhere', async () => {
+  await expect(calls('owners-after-fault')).resolves.toEqual([collision, 'ok']);
 });
 
-test('a join that throws leaves no descriptor behind in the Application', () => {
-  expect(calls('descriptors-after-fault')).toEqual([collision, 'ok']);
+test('a join that throws leaves no descriptor behind in the Application', async () => {
+  await expect(calls('descriptors-after-fault')).resolves.toEqual([collision, 'ok']);
 });

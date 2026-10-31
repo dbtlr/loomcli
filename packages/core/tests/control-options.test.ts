@@ -1,3 +1,6 @@
+import { expect, test } from 'vite-plus/test';
+
+import { invoke as invokeFixture } from './run-fixture.ts';
 /*
  * Acceptance plan for control options (docs/core/commands.md#control-options).
  *
@@ -17,15 +20,11 @@
  *   option.
  */
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
-
 const fixture = new URL('fixtures/control-options.mjs', import.meta.url);
 
 /** The fixture's output for one scenario, which ran without a fault of its own. */
-function report(scenario: string): string {
-  const result = invoke(fixture, [scenario]);
+async function report(scenario: string): Promise<string> {
+  const result = await invokeFixture(fixture, [scenario]);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return result.stdout;
@@ -35,19 +34,24 @@ function report(scenario: string): string {
  * The call that declares a fact checks it, so a faulty fact throws before any build and a valid one
  * reaches `inspect()`.
  */
-function withFact(target: string, fact: string, value: string) {
-  return invoke(new URL('fixtures/facts.mjs', import.meta.url), [target, fact, value, 'inspect']);
+async function withFact(target: string, fact: string, value: string) {
+  return await invokeFixture(new URL('fixtures/facts.mjs', import.meta.url), [
+    target,
+    fact,
+    value,
+    'inspect',
+  ]);
 }
 
-test('every declarer marks its option, and an omitted mark reads false', () => {
-  expect(JSON.parse(report('marks'))).toEqual({
+test('every declarer marks its option, and an omitted mark reads false', async () => {
+  expect(JSON.parse(await report('marks'))).toEqual({
     marked: { depth: true, field: false, level: true, raw: true, trace: true },
     omitted: { depth: false, field: false, level: false, raw: false, trace: false },
   });
 });
 
-test('a marked option parses, validates, activates its middleware, and reaches the action as an unmarked one', () => {
-  const { marked, unmarked }: Record<string, unknown> = JSON.parse(report('runtime'));
+test('a marked option parses, validates, activates its middleware, and reaches the action as an unmarked one', async () => {
+  const { marked, unmarked }: Record<string, unknown> = JSON.parse(await report('runtime'));
   expect(marked).toEqual(unmarked);
   expect(marked).toEqual({
     exitCode: 0,
@@ -70,8 +74,8 @@ test.each(
     [target, 'true'],
     [target, 'false'],
   ]),
-)('a control declared on %s as %s builds', (target, value) => {
-  expect(withFact(target, 'control', value)).toEqual({
+)('a control declared on %s as %s builds', async (target, value) => {
+  await expect(withFact(target, 'control', value)).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'assembled\ninspected\n',

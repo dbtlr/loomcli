@@ -1,119 +1,137 @@
-import { Application, Command, processHandle } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 import { z } from 'zod';
 
-// A source run is a development build, so an author's fault prints its Developer Diagnostic.
-const development = { description: 'Probe the inputs.' };
+import { scenario as fixtureScenario } from './scenario.mjs';
 
-const [scenario, ...argv] = process.argv.slice(2);
-const digits = z.string().regex(/^\d+$/u, 'Use decimal digits.').transform(Number);
-let calls = 0;
-const counting = (inner) => ({
-  '~standard': {
-    validate: (value) => {
-      calls += 1;
-      return inner['~standard'].validate(value);
-    },
-    vendor: 'fixture',
-    version: 1,
-  },
-});
+/** Runs a fresh fixture scenario with only the supplied process facts. */
+async function runFixture(words, fixtureOptions = {}) {
+  const fixture = fixtureScenario({ ...fixtureOptions, argv: words });
+  const { createProcess } = fixture;
+  try {
+    // A source run is a development build, so an author's fault prints its Developer Diagnostic.
+    const development = { description: 'Probe the inputs.' };
+
+    const [scenario, ...argv] = words;
+    const digits = z.string().regex(/^\d+$/u, 'Use decimal digits.').transform(Number);
+    let calls = 0;
+    const counting = (inner) => ({
+      '~standard': {
+        validate: (value) => {
+          calls += 1;
+          return inner['~standard'].validate(value);
+        },
+        vendor: 'fixture',
+        version: 1,
+      },
+    });
+
+    const string = z.string();
+
+    let app = undefined;
+    switch (scenario) {
+      case 'optional': {
+        app = new Application('optional', development)
+          .argument('path', { description: 'The path argument.' })
+          .action(({ args, out }) =>
+            out.print(JSON.stringify({ absent: args.path === undefined, args })),
+          );
+        break;
+      }
+      case 'default':
+      case 'invalid-default': {
+        app = new Application('optional', development)
+          .argument('path', {
+            default: scenario === 'default' ? '10' : 'bad',
+            description: 'The path argument.',
+            validate: digits,
+          })
+          .action(report);
+        break;
+      }
+      case 'schema': {
+        app = new Application('optional', development)
+          .argument('path', {
+            description: 'The path argument.',
+            validate: counting(z.string().min(1, 'Supply a path.')),
+          })
+          .action(({ args, out }) => out.print(JSON.stringify({ args, calls })));
+        break;
+      }
+      case 'pair': {
+        app = new Application('optional', development)
+          .argument('name', { description: 'The name argument.', required: true })
+          .argument('path', { description: 'The path argument.', required: false })
+          .action(report);
+        break;
+      }
+      case 'optional-first': {
+        const keys = new Command('keys', { description: 'The keys command.' })
+          .argument('path', { description: 'The path argument.' })
+          .argument('name', { description: 'The name argument.', required: true })
+          .action(report);
+        app = new Application('optional', development).command(keys).action(report);
+        break;
+      }
+      case 'two-optional': {
+        app = new Application('optional', development)
+          .argument('path', { description: 'The path argument.' })
+          .argument('extra', { description: 'The extra argument.' })
+          .action(report);
+        break;
+      }
+      case 'tail': {
+        app = new Application('optional', development)
+          .argument('files', {
+            description: 'The files argument.',
+            validate: counting(string),
+            variadic: true,
+          })
+          .action(({ args, out }) => out.print(JSON.stringify({ args, calls })));
+        break;
+      }
+      case 'tail-default': {
+        app = new Application('optional', development)
+          .argument('files', { default: ['a'], description: 'The files argument.', variadic: true })
+          .action(({ args, out }) => {
+            args.files.push('x');
+            return out.print(JSON.stringify({ args }));
+          });
+        break;
+      }
+      case 'tail-required': {
+        app = new Application('optional', development)
+          .argument('files', { description: 'The files argument.', required: true, variadic: true })
+          .action(report);
+        break;
+      }
+      case 'tail-invalid-default': {
+        app = new Application('optional', development)
+          .argument('files', {
+            default: ['bad'],
+            description: 'The files argument.',
+            validate: digits,
+            variadic: true,
+          })
+          .action(report);
+        break;
+      }
+      default: {
+        throw new Error(`Unknown scenario: ${scenario}`);
+      }
+    }
+    await app.run({ process: createProcess({ argv }) });
+    // A second run proves each invocation receives its own copy of a declared array default.
+    if (scenario === 'tail-default') {
+      await app.run({ process: createProcess({ argv }) });
+    }
+  } catch (error) {
+    if (error !== fixture.stopped) {
+      fixture.thrown(error);
+    }
+  }
+  return fixture.result();
+}
+
 const report = ({ args, passthrough, out }) => out.print(JSON.stringify({ args, passthrough }));
-const string = z.string();
 
-let app = undefined;
-switch (scenario) {
-  case 'optional': {
-    app = new Application('optional', development)
-      .argument('path', { description: 'The path argument.' })
-      .action(({ args, out }) =>
-        out.print(JSON.stringify({ absent: args.path === undefined, args })),
-      );
-    break;
-  }
-  case 'default':
-  case 'invalid-default': {
-    app = new Application('optional', development)
-      .argument('path', {
-        default: scenario === 'default' ? '10' : 'bad',
-        description: 'The path argument.',
-        validate: digits,
-      })
-      .action(report);
-    break;
-  }
-  case 'schema': {
-    app = new Application('optional', development)
-      .argument('path', {
-        description: 'The path argument.',
-        validate: counting(z.string().min(1, 'Supply a path.')),
-      })
-      .action(({ args, out }) => out.print(JSON.stringify({ args, calls })));
-    break;
-  }
-  case 'pair': {
-    app = new Application('optional', development)
-      .argument('name', { description: 'The name argument.', required: true })
-      .argument('path', { description: 'The path argument.', required: false })
-      .action(report);
-    break;
-  }
-  case 'optional-first': {
-    const keys = new Command('keys', { description: 'The keys command.' })
-      .argument('path', { description: 'The path argument.' })
-      .argument('name', { description: 'The name argument.', required: true })
-      .action(report);
-    app = new Application('optional', development).command(keys).action(report);
-    break;
-  }
-  case 'two-optional': {
-    app = new Application('optional', development)
-      .argument('path', { description: 'The path argument.' })
-      .argument('extra', { description: 'The extra argument.' })
-      .action(report);
-    break;
-  }
-  case 'tail': {
-    app = new Application('optional', development)
-      .argument('files', {
-        description: 'The files argument.',
-        validate: counting(string),
-        variadic: true,
-      })
-      .action(({ args, out }) => out.print(JSON.stringify({ args, calls })));
-    break;
-  }
-  case 'tail-default': {
-    app = new Application('optional', development)
-      .argument('files', { default: ['a'], description: 'The files argument.', variadic: true })
-      .action(({ args, out }) => {
-        args.files.push('x');
-        return out.print(JSON.stringify({ args }));
-      });
-    break;
-  }
-  case 'tail-required': {
-    app = new Application('optional', development)
-      .argument('files', { description: 'The files argument.', required: true, variadic: true })
-      .action(report);
-    break;
-  }
-  case 'tail-invalid-default': {
-    app = new Application('optional', development)
-      .argument('files', {
-        default: ['bad'],
-        description: 'The files argument.',
-        validate: digits,
-        variadic: true,
-      })
-      .action(report);
-    break;
-  }
-  default: {
-    throw new Error(`Unknown scenario: ${scenario}`);
-  }
-}
-await app.run({ process: processHandle({ argv }) });
-// A second run proves each invocation receives its own copy of a declared array default.
-if (scenario === 'tail-default') {
-  await app.run({ process: processHandle({ argv }) });
-}
+export { runFixture as run };

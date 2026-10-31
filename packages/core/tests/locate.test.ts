@@ -1,12 +1,11 @@
+import { expect, test } from 'vite-plus/test';
 // Acceptance plan: see packages/core/tests/options.test.ts.
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** Each word list's position, read against one fixture graph in one child process. */
-function locateAll(cases: string[][], mode = 'own') {
-  const result = invoke(new URL('fixtures/locate.mjs', import.meta.url), [
+async function locateAll(cases: string[][], mode = 'own') {
+  const result = await invokeFixture(new URL('fixtures/locate.mjs', import.meta.url), [
     JSON.stringify(cases),
     mode,
   ]);
@@ -17,8 +16,8 @@ function locateAll(cases: string[][], mode = 'own') {
 
 const none = { kind: 'none' };
 
-test('reads the contract examples, reaching a Command through its alias', () => {
-  expect(locateAll([['k'], ['ls', '--'], ['paths', '--format=j']])).toEqual([
+test('reads the contract examples, reaching a Command through its alias', async () => {
+  await expect(locateAll([['k'], ['ls', '--'], ['paths', '--format=j']])).resolves.toEqual([
     { command: [], kind: 'command', own: true, prefix: 'k' },
     { command: ['keys'], kind: 'option', own: true, prefix: '--', supplied: [] },
     {
@@ -32,8 +31,8 @@ test('reads the contract examples, reaching a Command through its alias', () => 
   ]);
 });
 
-test('an option position holds the value the earlier words gave each Boolean option', () => {
-  expect(
+test('an option position holds the value the earlier words gave each Boolean option', async () => {
+  await expect(
     locateAll(
       [
         ['--no-color', '-q', 'keys', '-s', '--'],
@@ -42,7 +41,7 @@ test('an option position holds the value the earlier words gave each Boolean opt
       ],
       'booleans',
     ),
-  ).toEqual([
+  ).resolves.toEqual([
     {
       booleans: { color: false, quiet: true, sort: true },
       command: ['keys'],
@@ -64,22 +63,22 @@ test('an option position holds the value the earlier words gave each Boolean opt
   ]);
 });
 
-test('reads an empty list as one empty word at the root', () => {
-  expect(locateAll([[], ['']])).toEqual([
+test('reads an empty list as one empty word at the root', async () => {
+  await expect(locateAll([[], ['']])).resolves.toEqual([
     { command: [], kind: 'command', own: true, prefix: '' },
     { command: [], kind: 'command', own: true, prefix: '' },
   ]);
 });
 
-test('reads every word after a bare delimiter as passthrough, a group included', () => {
-  expect(
+test('reads every word after a bare delimiter as passthrough, a group included', async () => {
+  await expect(
     locateAll([
       ['paths', 'a', '--', 'x'],
       ['--', '--'],
       ['--', '--file', ''],
       ['cache', '--', '-'],
     ]),
-  ).toEqual([
+  ).resolves.toEqual([
     { command: ['paths'], kind: 'passthrough', own: true, prefix: 'x' },
     { command: [], kind: 'passthrough', own: true, prefix: '--' },
     { command: [], kind: 'passthrough', own: true, prefix: '' },
@@ -92,8 +91,8 @@ function awaiting(command: string[], option: string, prefix: string) {
   return { command, kind: 'value', lead: '', option, own: true, prefix };
 }
 
-test('reads the word after a string option that waits for its next token as its value', () => {
-  expect(
+test('reads the word after a string option that waits for its next token as its value', async () => {
+  await expect(
     locateAll([
       ['--file', ''],
       ['keys', '-f', 'da'],
@@ -103,7 +102,7 @@ test('reads the word after a string option that waits for its next token as its 
       ['-qf', 'x'],
       ['keys', '-F', 'a', '--field', 'b'],
     ]),
-  ).toEqual([
+  ).resolves.toEqual([
     awaiting([], 'file', ''),
     awaiting(['keys'], 'file', 'da'),
     awaiting(['keys'], 'depth', '2'),
@@ -114,8 +113,8 @@ test('reads the word after a string option that waits for its next token as its 
   ]);
 });
 
-test('reads an option word or -- after a waiting option as no position, and any other word as its value', () => {
-  expect(
+test('reads an option word or -- after a waiting option as no position, and any other word as its value', async () => {
+  await expect(
     locateAll([
       ['--file', '--x'],
       ['keys', '-d', '-s'],
@@ -123,13 +122,19 @@ test('reads an option word or -- after a waiting option as no position, and any 
       ['--file', '-'],
       ['keys', '-d', '-5'],
     ]),
-  ).toEqual([none, none, none, awaiting([], 'file', '-'), awaiting(['keys'], 'depth', '-5')]);
+  ).resolves.toEqual([
+    none,
+    none,
+    none,
+    awaiting([], 'file', '-'),
+    awaiting(['keys'], 'depth', '-5'),
+  ]);
 });
 
-test('reads a short group whose walk reaches a value letter with characters after it as that value', () => {
-  expect(
+test('reads a short group whose walk reaches a value letter with characters after it as that value', async () => {
+  await expect(
     locateAll([['keys', '-sdfoo'], ['keys', '-sd=fo'], ['-qf=da'], ['-f=x'], ['ls', '-qsF', '']]),
-  ).toEqual([
+  ).resolves.toEqual([
     { command: ['keys'], kind: 'value', lead: '-sd', option: 'depth', own: true, prefix: 'foo' },
     { command: ['keys'], kind: 'value', lead: '-sd=', option: 'depth', own: true, prefix: 'fo' },
     { command: [], kind: 'value', lead: '-qf=', option: 'file', own: true, prefix: 'da' },
@@ -138,10 +143,10 @@ test('reads a short group whose walk reaches a value letter with characters afte
   ]);
 });
 
-test('reads a short group the walk cannot read as no position, and any other as an option spelling', () => {
-  expect(
+test('reads a short group the walk cannot read as no position, and any other as an option spelling', async () => {
+  await expect(
     locateAll([['keys', '-sx'], ['keys', '-s=1'], ['-s'], ['keys', '-qs'], ['keys', '-sd']]),
-  ).toEqual([
+  ).resolves.toEqual([
     none,
     none,
     none,
@@ -150,8 +155,10 @@ test('reads a short group the walk cannot read as no position, and any other as 
   ]);
 });
 
-test('reads a long spelling with an equals sign as the value of a string option in scope', () => {
-  expect(locateAll([['--file=da'], ['keys', '--file='], ['paths', '--format=a=b']])).toEqual([
+test('reads a long spelling with an equals sign as the value of a string option in scope', async () => {
+  await expect(
+    locateAll([['--file=da'], ['keys', '--file='], ['paths', '--format=a=b']]),
+  ).resolves.toEqual([
     { command: [], kind: 'value', lead: '--file=', option: 'file', own: true, prefix: 'da' },
     { command: ['keys'], kind: 'value', lead: '--file=', option: 'file', own: true, prefix: '' },
     {
@@ -165,8 +172,8 @@ test('reads a long spelling with an equals sign as the value of a string option 
   ]);
 });
 
-test('reads an equals sign after a Boolean, unknown, or out-of-scope spelling as no position', () => {
-  expect(
+test('reads an equals sign after a Boolean, unknown, or out-of-scope spelling as no position', async () => {
+  await expect(
     locateAll([
       ['--color=x'],
       ['--no-color='],
@@ -175,11 +182,13 @@ test('reads an equals sign after a Boolean, unknown, or out-of-scope spelling as
       ['keys', '--sort='],
       ['--='],
     ]),
-  ).toEqual([none, none, none, none, none, none]);
+  ).resolves.toEqual([none, none, none, none, none, none]);
 });
 
-test('reads any other hyphen word as an option spelling of the routed Command', () => {
-  expect(locateAll([['-'], ['--'], ['---'], ['keys', '-s'], ['--nop'], ['debug', '--']])).toEqual([
+test('reads any other hyphen word as an option spelling of the routed Command', async () => {
+  await expect(
+    locateAll([['-'], ['--'], ['---'], ['keys', '-s'], ['--nop'], ['debug', '--']]),
+  ).resolves.toEqual([
     { command: [], kind: 'option', own: true, prefix: '-', supplied: [] },
     { command: [], kind: 'option', own: true, prefix: '--', supplied: [] },
     { command: [], kind: 'option', own: true, prefix: '---', supplied: [] },
@@ -189,8 +198,8 @@ test('reads any other hyphen word as an option spelling of the routed Command', 
   ]);
 });
 
-test('reads a bare word as a child name until routing commits', () => {
-  expect(
+test('reads a bare word as a child name until routing commits', async () => {
+  await expect(
     locateAll([
       ['--file', 'keys', 'k'],
       ['-q', 'c'],
@@ -198,7 +207,7 @@ test('reads a bare word as a child name until routing commits', () => {
       ['--all', 'k'],
       ['cache', 'list', ''],
     ]),
-  ).toEqual([
+  ).resolves.toEqual([
     { command: [], kind: 'command', own: true, prefix: 'k' },
     { command: [], kind: 'command', own: true, prefix: 'c' },
     { command: ['cache'], kind: 'command', own: true, prefix: 'l' },
@@ -207,8 +216,8 @@ test('reads a bare word as a child name until routing commits', () => {
   ]);
 });
 
-test("leaves a parent's own option unbound while routing is still open, so a plain last word names a child", () => {
-  expect(
+test("leaves a parent's own option unbound while routing is still open, so a plain last word names a child", async () => {
+  await expect(
     locateAll([
       ['-a', 'cache', ''],
       ['-a', 'cache', 'l'],
@@ -219,7 +228,7 @@ test("leaves a parent's own option unbound while routing is still open, so a pla
       ['-a', 'cache', '-qf=x'],
       ['-a', '-'],
     ]),
-  ).toEqual([
+  ).resolves.toEqual([
     { command: ['cache'], kind: 'command', own: true, prefix: '' },
     { command: ['cache'], kind: 'command', own: true, prefix: 'l' },
     { command: [], kind: 'command', own: true, prefix: '' },
@@ -230,33 +239,33 @@ test("leaves a parent's own option unbound while routing is still open, so a pla
     { command: [], kind: 'option', own: true, prefix: '-', supplied: ['all'] },
   ]);
   // An unbound option of a parent lists the name the reached Command's own entry gives its spelling.
-  expect(
+  await expect(
     locateAll([
       ['-qa', 'mid', '-'],
       ['-a', 'mid', ''],
     ]),
-  ).toEqual([
+  ).resolves.toEqual([
     { command: ['mid'], kind: 'option', own: true, prefix: '-', supplied: ['quiet', 'any'] },
     { command: ['mid'], kind: 'command', own: true, prefix: '' },
   ]);
 });
 
-test("reads a parent's own option and carries routing on to the child that receives it", () => {
-  expect(
+test("reads a parent's own option and carries routing on to the child that receives it", async () => {
+  await expect(
     locateAll([
       ['--all', 'paths', '--'],
       ['-a', 'keys', ''],
       ['-aq', 'paths', '-'],
     ]),
-  ).toEqual([
+  ).resolves.toEqual([
     { command: ['paths'], kind: 'option', own: true, prefix: '--', supplied: ['all'] },
     none,
     { command: ['paths'], kind: 'option', own: true, prefix: '-', supplied: ['all', 'quiet'] },
   ]);
 });
 
-test('reads a bare word on a leaf as the argument the next positional fills', () => {
-  expect(
+test('reads a bare word on a leaf as the argument the next positional fills', async () => {
+  await expect(
     locateAll([
       ['paths', ''],
       ['paths', 'a', ''],
@@ -264,7 +273,7 @@ test('reads a bare word on a leaf as the argument the next positional fills', ()
       ['paths', '--format', 'json', 'a', 'b'],
       ['keys', ''],
     ]),
-  ).toEqual([
+  ).resolves.toEqual([
     { argument: 'root', command: ['paths'], kind: 'argument', own: true, prefix: '' },
     { argument: 'rest', command: ['paths'], kind: 'argument', own: true, prefix: '' },
     { argument: 'rest', command: ['paths'], kind: 'argument', own: true, prefix: 'c' },
@@ -273,8 +282,8 @@ test('reads a bare word on a leaf as the argument the next positional fills', ()
   ]);
 });
 
-test('reads every structural fault among the earlier words as no position', () => {
-  expect(
+test('reads every structural fault among the earlier words as no position', async () => {
+  await expect(
     locateAll([
       ['nope', ''],
       ['keys', '--nope', ''],
@@ -291,28 +300,47 @@ test('reads every structural fault among the earlier words as no position', () =
       ['keys', '-d', '1', '-d', ''],
       ['keys', '-s', '-sd', ''],
     ]),
-  ).toEqual([none, none, none, none, none, none, none, none, none, none, none, none, none, none]);
+  ).resolves.toEqual([
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+  ]);
   // A multiple option repeats, so its next occurrence still waits for a value.
-  expect(locateAll([['keys', '-F', 'a', '-F', '']])).toEqual([awaiting(['keys'], 'field', '')]);
+  await expect(locateAll([['keys', '-F', 'a', '-F', '']])).resolves.toEqual([
+    awaiting(['keys'], 'field', ''),
+  ]);
 });
 
-test('reads a last word that repeats an option that is not multiple as nothing to complete', () => {
-  expect(
+test('reads a last word that repeats an option that is not multiple as nothing to complete', async () => {
+  await expect(
     locateAll([
       ['keys', '-d', '1', '--depth=x'],
       ['keys', '-d', '1', '-dx'],
       ['keys', '-ss'],
     ]),
-  ).toEqual([none, none, none]);
+  ).resolves.toEqual([none, none, none]);
   // A long spelling with no "=" may still grow into another spelling, so it stays an option.
-  expect(locateAll([['keys', '-s', '--sort']])[0]).toMatchObject({
+  await expect(
+    locateAll([['keys', '-s', '--sort']]).then((fixtureResult) => fixtureResult[0]),
+  ).resolves.toMatchObject({
     kind: 'option',
     prefix: '--sort',
   });
 });
 
-test('lists the options earlier words supplied, globals and locals, in supplied order', () => {
-  expect(
+test('lists the options earlier words supplied, globals and locals, in supplied order', async () => {
+  await expect(
     locateAll([
       ['keys', '-s', '--file', 'x', '-q', '-F', 'a', '-F', 'b', '--'],
       ['--color', 'ls', '--depth', '1', '-'],
@@ -320,7 +348,7 @@ test('lists the options earlier words supplied, globals and locals, in supplied 
       ['-qf', 'x', 'paths', '--format=j', '-'],
       ['-aq', '--'],
     ]),
-  ).toEqual([
+  ).resolves.toEqual([
     {
       command: ['keys'],
       kind: 'option',
@@ -347,9 +375,9 @@ test('lists the options earlier words supplied, globals and locals, in supplied 
   ]);
 });
 
-test('answers synchronously and throws nothing for hostile word lists', () => {
+test('answers synchronously and throws nothing for hostile word lists', async () => {
   const hostile = [['--', '--'], ['-'], ['--='], ['---'], [''], [], ['-', ''], ['--=', '--=']];
-  const answers: unknown[] = locateAll(hostile);
+  const answers: unknown[] = await locateAll(hostile);
   expect(answers).toHaveLength(hostile.length);
   for (const answer of answers) {
     expect(answer).not.toHaveProperty('threw');
@@ -357,13 +385,13 @@ test('answers synchronously and throws nothing for hostile word lists', () => {
   }
 });
 
-test('reads 200000 words without exhausting the call stack', () => {
-  expect(locateAll([], 'long')).toEqual([
+test('reads 200000 words without exhausting the call stack', async () => {
+  await expect(locateAll([], 'long')).resolves.toEqual([
     { command: [], kind: 'passthrough', own: true, prefix: '' },
     { argument: 'rest', command: ['paths'], kind: 'argument', own: true, prefix: '' },
   ]);
 });
 
-test('rejects a graph core did not produce as an internal error', () => {
-  expect(locateAll([['k']], 'foreign')).toEqual([{ threw: 'InternalError' }]);
+test('rejects a graph core did not produce as an internal error', async () => {
+  await expect(locateAll([['k']], 'foreign')).resolves.toEqual([{ threw: 'InternalError' }]);
 });

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 /*
  * Acceptance plan for core's log events (docs/core/logging.md#logging).
  *
@@ -31,8 +32,6 @@
  *   holding a `Date`, a `bigint`, `undefined`, an `Error`, a class instance, and a value of an
  *   interface type.
  */
-
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -40,7 +39,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterAll, expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/logging.mjs', import.meta.url);
 
@@ -63,7 +62,7 @@ interface Collected {
 }
 
 /** What one process wrote, with the fixture's `event:` and `print:` lines read apart. */
-function read(result: { status: number | null; stderr: string; stdout: string }) {
+function read(result: { status: number | null | undefined; stderr: string; stdout: string }) {
   const lines = result.stdout.split('\n');
   const events: Collected[] = lines
     .filter((line) => line.startsWith('event:'))
@@ -85,19 +84,19 @@ function only<Item>(items: readonly Item[]): Item {
   return item;
 }
 
-function run(scenario: string, argv: string[] = [], env: Record<string, string> = {}) {
+async function run(scenario: string, argv: string[] = [], env: Record<string, string> = {}) {
   return read(
-    invoke(fixture, [scenario, ...argv], { env: { FIXTURE_BUILD: 'distributed', ...env } }),
+    await invokeFixture(fixture, [scenario, ...argv], {
+      env: { FIXTURE_BUILD: 'distributed', ...env },
+    }),
   );
 }
 
 /** The events of a run, with the identity of each reduced to what a test compares. */
-function summary(scenario: string, argv: string[] = [], env: Record<string, string> = {}) {
-  return run(scenario, argv, env).events.map(({ event }) => [
-    event.level,
-    event.message,
-    event.plugin,
-  ]);
+async function summary(scenario: string, argv: string[] = [], env: Record<string, string> = {}) {
+  return await run(scenario, argv, env).then((fixtureResult) =>
+    fixtureResult.events.map(({ event }) => [event.level, event.message, event.plugin]),
+  );
 }
 
 /** The script that bundles a fixture with `Bun.build` and a define, as `loom build` does. */
@@ -112,8 +111,8 @@ afterAll(() => {
 const isoTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const traceId = /^[0-9a-f]{32}$/u;
 
-test('an action, a middleware, a source, and an onFailure hook each log one event in call order', () => {
-  expect(summary('reach')).toEqual([
+test('an action, a middleware, a source, and an onFailure hook each log one event in call order', async () => {
+  await expect(summary('reach')).resolves.toEqual([
     ['info', 'from source', 'fixture/reaching'],
     ['info', 'from middleware', 'fixture/reaching'],
     ['info', 'from action', null],
@@ -122,16 +121,16 @@ test('an action, a middleware, a source, and an onFailure hook each log one even
   ]);
 });
 
-test("a plugin Command's action logs under no plugin", () => {
-  expect(summary('reach', ['plug'])).toEqual([
+test("a plugin Command's action logs under no plugin", async () => {
+  await expect(summary('reach', ['plug'])).resolves.toEqual([
     ['info', 'from source', 'fixture/reaching'],
     ['info', 'from middleware', 'fixture/reaching'],
     ['info', 'from plugin command', null],
   ]);
 });
 
-test('a call returns undefined and delivers a frozen event, whose methods keep working detached', () => {
-  const basic = run('basic');
+test('a call returns undefined and delivers a frozen event, whose methods keep working detached', async () => {
+  const basic = await run('basic');
   expect(basic.printed).toEqual([{}]);
   expect(basic.events).toHaveLength(1);
   expect(basic.events[0]?.frozen).toBe(true);
@@ -141,11 +140,11 @@ test('a call returns undefined and delivers a frozen event, whose methods keep w
     message: 'hello',
     plugin: null,
   });
-  expect(summary('detached')).toEqual([['info', 'detached', null]]);
+  await expect(summary('detached')).resolves.toEqual([['info', 'detached', null]]);
 });
 
-test('the five levels log in call order and the log has no fatal', () => {
-  const levels = run('levels');
+test('the five levels log in call order and the log has no fatal', async () => {
+  const levels = await run('levels');
   expect(levels.events.map(({ event }) => [event.level, event.message])).toEqual([
     ['trace', 'trace message'],
     ['debug', 'debug message'],
@@ -156,12 +155,16 @@ test('the five levels log in call order and the log has no fatal', () => {
   expect(levels.printed).toEqual([{ fatal: 'undefined' }]);
 });
 
-test('omitted fields read {}', () => {
-  expect(run('empty-fields').events[0]?.event.fields).toEqual({});
+test('omitted fields read {}', async () => {
+  await expect(
+    run('empty-fields')
+      .then((fixtureResult) => fixtureResult.events)
+      .then((fixtureResult) => fixtureResult[0]?.event.fields),
+  ).resolves.toEqual({});
 });
 
-test('fields copy into the JSON data JSON.stringify produces, with the three differences', () => {
-  const collected = only(run('copy').events);
+test('fields copy into the JSON data JSON.stringify produces, with the three differences', async () => {
+  const collected = only(await run('copy').then((fixtureResult) => fixtureResult.events));
   expect(collected.frozen).toBe(true);
   const { fields } = collected.event;
   expect(fields).toMatchObject({
@@ -187,23 +190,34 @@ test('fields copy into the JSON data JSON.stringify produces, with the three dif
   });
 });
 
-test("a caller's change to the object after the call leaves the event unchanged", () => {
-  expect(run('changed').events[0]?.event.fields).toEqual({ count: 1, nested: { value: 1 } });
+test("a caller's change to the object after the call leaves the event unchanged", async () => {
+  await expect(
+    run('changed')
+      .then((fixtureResult) => fixtureResult.events)
+      .then((fixtureResult) => fixtureResult[0]?.event.fields),
+  ).resolves.toEqual({
+    count: 1,
+    nested: { value: 1 },
+  });
 });
 
-test('time, run, and application are read at the call in the pinned forms', () => {
-  const [collected] = run('version').events;
+test('time, run, and application are read at the call in the pinned forms', async () => {
+  const [collected] = await run('version').then((fixtureResult) => fixtureResult.events);
   expect(collected?.event.time).toMatch(isoTime);
   expect(collected?.event.run).toMatch(traceId);
   expect(collected?.event.application).toEqual({ name: 'probe', version: '1.2.3' });
-  expect(run('unversioned').events[0]?.event.application).toEqual({
+  await expect(
+    run('unversioned')
+      .then((fixtureResult) => fixtureResult.events)
+      .then((fixtureResult) => fixtureResult[0]?.event.application),
+  ).resolves.toEqual({
     name: 'probe',
     version: '0.0.0',
   });
 });
 
-test('run is equal across one run, and different for the run, an action invoke, and app.invoke', () => {
-  const { events } = run('runs');
+test('run is equal across one run, and different for the run, an action invoke, and app.invoke', async () => {
+  const { events } = await run('runs');
   const [outer, inner, again] = events.slice(0, 3).map(({ event }) => event);
   const byName = events.filter(({ marker }) => marker === undefined);
   expect(byName.map(({ event }) => event.message)).toEqual([
@@ -218,20 +232,30 @@ test('run is equal across one run, and different for the run, an action invoke, 
   expect(named?.run).toMatch(traceId);
   expect(named?.run).not.toBe(outer?.run);
   expect(named?.run).not.toBe(inner?.run);
-  expect(run('runs').events[0]?.event.run).not.toBe(outer?.run);
+  await expect(
+    run('runs')
+      .then((fixtureResult) => fixtureResult.events)
+      .then((fixtureResult) => fixtureResult[0]?.event.run),
+  ).resolves.not.toBe(outer?.run);
 });
 
-test('path reads empty before routing, partial for an unknown Command, and routed in an action', () => {
-  const routed = run('path-routed', ['cache', 'clear']).events;
+test('path reads empty before routing, partial for an unknown Command, and routed in an action', async () => {
+  const routed = await run('path-routed', ['cache', 'clear']).then(
+    (fixtureResult) => fixtureResult.events,
+  );
   expect(routed.map(({ event }) => event.path)).toEqual([['cache', 'clear']]);
-  const structural = run('path-routed', ['--file']).events;
+  const structural = await run('path-routed', ['--file']).then(
+    (fixtureResult) => fixtureResult.events,
+  );
   expect(structural.map(({ event }) => [event.level, event.path])).toEqual([['error', []]]);
-  const unknown = run('path-routed', ['cache', 'nope']).events;
+  const unknown = await run('path-routed', ['cache', 'nope']).then(
+    (fixtureResult) => fixtureResult.events,
+  );
   expect(unknown.map(({ event }) => [event.level, event.path])).toEqual([['error', ['cache']]]);
 });
 
-test('an InputError logs at error with its failure form and exit code 2', () => {
-  const result = run('input-error', ['--bogus']);
+test('an InputError logs at error with its failure form and exit code 2', async () => {
+  const result = await run('input-error', ['--bogus']);
   expect(result.resolved).toBe('resolved:2');
   const { event, frozen } = only(result.events);
   expect(frozen).toBe(true);
@@ -248,8 +272,8 @@ test('an InputError logs at error with its failure form and exit code 2', () => 
   expect(event.defect).toBeUndefined();
 });
 
-test('a TypeError logs at fatal with its name, message, and stack from source', () => {
-  const result = run('type-error', [], { FIXTURE_BUILD: 'development' });
+test('a TypeError logs at fatal with its name, message, and stack from source', async () => {
+  const result = await run('type-error', [], { FIXTURE_BUILD: 'development' });
   const { event } = only(result.events);
   expect(event.level).toBe('fatal');
   expect(event.defect).toEqual({
@@ -261,8 +285,8 @@ test('a TypeError logs at fatal with its name, message, and stack from source', 
   expect(result.stderr).toContain('The probe failed.');
 });
 
-test('a distributed build logs the defect with its stack while stderr holds the generic sentence', () => {
-  const result = run('type-error', [], { FIXTURE_BUILD: 'distributed' });
+test('a distributed build logs the defect with its stack while stderr holds the generic sentence', async () => {
+  const result = await run('type-error', [], { FIXTURE_BUILD: 'distributed' });
   const { event } = only(result.events);
   expect(event.level).toBe('fatal');
   expect(event.message).toBe('Something went wrong.');
@@ -273,16 +297,16 @@ test('a distributed build logs the defect with its stack while stderr holds the 
   expect(result.stderr).toBe('probe: Something went wrong.\n');
 });
 
-test('a thrown string logs the value as the defect message, with no core stack', () => {
-  const result = run('throw-string', [], { FIXTURE_BUILD: 'distributed' });
+test('a thrown string logs the value as the defect message, with no core stack', async () => {
+  const result = await run('throw-string', [], { FIXTURE_BUILD: 'distributed' });
   const { event } = only(result.events);
   expect(event.level).toBe('fatal');
   expect(event.defect).toEqual({ message: "'boom'", name: 'InternalError' });
   expect(event.defect).not.toHaveProperty('stack');
 });
 
-test('a defect without a thrown Error cause reads the failure itself', () => {
-  const result = run('internal-error', [], { FIXTURE_BUILD: 'distributed' });
+test('a defect without a thrown Error cause reads the failure itself', async () => {
+  const result = await run('internal-error', [], { FIXTURE_BUILD: 'distributed' });
   const { event } = only(result.events);
   expect(event.level).toBe('fatal');
   expect(event.defect).toMatchObject({
@@ -291,8 +315,8 @@ test('a defect without a thrown Error cause reads the failure itself', () => {
   });
 });
 
-test('a stdout that fails a write logs the destination defect at fatal with the write error', () => {
-  const result = run('stdout-broken', [], { FIXTURE_BUILD: 'development' });
+test('a stdout that fails a write logs the destination defect at fatal with the write error', async () => {
+  const result = await run('stdout-broken', [], { FIXTURE_BUILD: 'development' });
   const { event } = only(result.events);
   expect(event.level).toBe('fatal');
   expect(event.message).toBe('Could not write invocation output.');
@@ -305,8 +329,8 @@ test('a stdout that fails a write logs the destination defect at fatal with the 
   expect(result.resolved).toBe('resolved:1');
 });
 
-test('a distributed build logs the destination defect while stderr holds the generic sentence', () => {
-  const result = run('stdout-broken', [], { FIXTURE_BUILD: 'distributed' });
+test('a distributed build logs the destination defect while stderr holds the generic sentence', async () => {
+  const result = await run('stdout-broken', [], { FIXTURE_BUILD: 'distributed' });
   const { event } = only(result.events);
   expect(event.level).toBe('fatal');
   expect(event.message).toBe('Something went wrong.');
@@ -314,15 +338,15 @@ test('a distributed build logs the destination defect while stderr holds the gen
   expect(result.stderr).toBe('probe: Something went wrong.\n');
 });
 
-test('a run whose stdout failed before its own failure logs the destination defect alone', () => {
+test('a run whose stdout failed before its own failure logs the destination defect alone', async () => {
   // A run whose output failed reports no other failure, so the action's own logs no event.
-  expect(summary('stdout-broken-after-failure')).toEqual([
+  await expect(summary('stdout-broken-after-failure')).resolves.toEqual([
     ['fatal', 'Something went wrong.', null],
   ]);
 });
 
-test('a fault reported after the outcome logs its own event', () => {
-  const result = run('after-primary', [], { FIXTURE_BUILD: 'distributed' });
+test('a fault reported after the outcome logs its own event', async () => {
+  const result = await run('after-primary', [], { FIXTURE_BUILD: 'distributed' });
   expect(result.events.map(({ event }) => [event.level, event.message])).toEqual([
     ['error', 'The action failed.'],
     ['fatal', 'Something went wrong.'],
@@ -330,8 +354,8 @@ test('a fault reported after the outcome logs its own event', () => {
   expect(result.events[1]?.event.defect?.message).toContain('The view broke.');
 });
 
-test('a failed action invoke logs its failure event under the nested run', () => {
-  const result = run('invoke-failure');
+test('a failed action invoke logs its failure event under the nested run', async () => {
+  const result = await run('invoke-failure');
   expect(result.events.map(({ event }) => [event.level, event.message])).toEqual([
     ['error', 'The inner failed.'],
     ['info', 'after inner'],
@@ -341,29 +365,33 @@ test('a failed action invoke logs its failure event under the nested run', () =>
   expect(result.printed).toEqual([{ inner: 'failed' }]);
 });
 
-test('a cancelled run whose action rejects with the signal reason logs no failure event', () => {
-  const result = run('cancelled-silent');
+test('a cancelled run whose action rejects with the signal reason logs no failure event', async () => {
+  const result = await run('cancelled-silent');
   expect(result.resolved).toBe('resolved:130');
   expect(result.events).toEqual([]);
 });
 
-test('a failure a cancelled run still renders logs one event, and the run keeps 130', () => {
-  const result = run('cancelled-rendered');
+test('a failure a cancelled run still renders logs one event, and the run keeps 130', async () => {
+  const result = await run('cancelled-rendered');
   expect(result.resolved).toBe('resolved:130');
   expect(result.events.map(({ event }) => [event.level, event.message])).toEqual([
     ['error', 'The action failed.'],
   ]);
 });
 
-test('a build fault logs no event', () => {
-  const result = run('build-fault');
+test('a build fault logs no event', async () => {
+  const result = await run('build-fault');
   expect(result.status).toBe(1);
   expect(result.events).toEqual([]);
 });
 
-test('with no plugin that declares onLog, a call returns undefined and a getter is never read', () => {
-  expect(run('unlogged').printed).toEqual([{ reads: 0, returned: true }]);
-  expect(run('listened').printed).toEqual([{ reads: 1 }]);
+test('with no plugin that declares onLog, a call returns undefined and a getter is never read', async () => {
+  await expect(run('unlogged').then((fixtureResult) => fixtureResult.printed)).resolves.toEqual([
+    { reads: 0, returned: true },
+  ]);
+  await expect(run('listened').then((fixtureResult) => fixtureResult.printed)).resolves.toEqual([
+    { reads: 1 },
+  ]);
 });
 
 /** Bundles the logging fixture, then runs one scenario of the bundle under a runtime. */
@@ -371,13 +399,13 @@ function bundledRun(runtime: string, scenario: string) {
   const outdir = join(root, `${runtime}-${scenario}`);
   const built = spawnSync(
     'bun',
-    [bundler, 'logging.mjs', outdir, JSON.stringify({ build: 'distributed' })],
+    [bundler, 'logging-process.mjs', outdir, JSON.stringify({ build: 'distributed' })],
     { encoding: 'utf8', timeout: 60_000 },
   );
   expect(built.stderr).toBe('');
   expect(built.status).toBe(0);
   return read(
-    spawnSync(runtime, [join(outdir, 'logging.js'), scenario], {
+    spawnSync(runtime, [join(outdir, 'logging-process.js'), scenario], {
       encoding: 'utf8',
       timeout: 60_000,
     }),

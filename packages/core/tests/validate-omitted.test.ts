@@ -1,23 +1,26 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** The fixture encodes an absent value as this marker, which JSON alone cannot carry. */
 const none = '#undefined';
 
-function omitted(scenario: string, argv: string[] = []) {
-  return invoke(new URL('fixtures/validate-omitted.mjs', import.meta.url), [scenario, ...argv]);
+async function omitted(scenario: string, argv: string[] = []) {
+  return await invokeFixture(new URL('fixtures/validate-omitted.mjs', import.meta.url), [
+    scenario,
+    ...argv,
+  ]);
 }
 
-function ran(scenario: string, argv: string[] = []) {
-  const result = omitted(scenario, argv);
+async function ran(scenario: string, argv: string[] = []) {
+  const result = await omitted(scenario, argv);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return JSON.parse(result.stdout);
 }
 
-test('an omitted option with validateOmitted reaches its schema in the invocation phase', () => {
-  expect(ran('option')).toEqual({
+test('an omitted option with validateOmitted reaches its schema in the invocation phase', async () => {
+  await expect(ran('option')).resolves.toEqual({
     args: {},
     calls: [
       {
@@ -31,8 +34,8 @@ test('an omitted option with validateOmitted reaches its schema in the invocatio
   });
 });
 
-test('a supplied value still reaches the same schema as its own string', () => {
-  expect(ran('option', ['--file', 'doc.json'])).toEqual({
+test('a supplied value still reaches the same schema as its own string', async () => {
+  await expect(ran('option', ['--file', 'doc.json'])).resolves.toEqual({
     args: {},
     calls: [
       {
@@ -46,21 +49,21 @@ test('a supplied value still reaches the same schema as its own string', () => {
   });
 });
 
-test("an issue from the omitted call is an input error naming the option's long form", () => {
-  expect(omitted('option-issue')).toEqual({
+test("an issue from the omitted call is an input error naming the option's long form", async () => {
+  await expect(omitted('option-issue')).resolves.toEqual({
     status: 2,
     stderr: 'omitted: Option "--file": Supply a file or pipe JSON to stdin.\n',
     stdout: '',
   });
-  expect(omitted('option-issue', ['-f', 'doc.json'])).toEqual({
+  await expect(omitted('option-issue', ['-f', 'doc.json'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: expect.stringContaining('"file":"file:doc.json"'),
   });
 });
 
-test('an omitted scalar argument with validateOmitted reaches its schema the same way', () => {
-  expect(ran('argument')).toEqual({
+test('an omitted scalar argument with validateOmitted reaches its schema the same way', async () => {
+  await expect(ran('argument')).resolves.toEqual({
     args: { path: 'stdin' },
     calls: [
       {
@@ -72,11 +75,15 @@ test('an omitted scalar argument with validateOmitted reaches its schema the sam
     ],
     options: {},
   });
-  expect(ran('argument', ['doc.json']).args).toEqual({ path: 'file:doc.json' });
+  await expect(
+    ran('argument', ['doc.json']).then((fixtureResult) => fixtureResult.args),
+  ).resolves.toEqual({
+    path: 'file:doc.json',
+  });
 });
 
-test('an issue from an omitted argument names the argument', () => {
-  expect(omitted('argument-issue')).toEqual({
+test('an issue from an omitted argument names the argument', async () => {
+  await expect(omitted('argument-issue')).resolves.toEqual({
     status: 2,
     stderr: 'omitted: Argument "path": Supply a path or pipe JSON to stdin.\n',
     stdout: '',

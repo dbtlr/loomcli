@@ -1,3 +1,4 @@
+import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for progress events (docs/core/output.md#progress-events).
  *
@@ -15,11 +16,9 @@
  * - Not logging. A fixture `onLog` hook receives no event for any report.
  */
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
 import { ProgressLedger } from '../src/progress-events.js';
 import type { ProgressEvent } from '../src/types.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** A ledger whose events land in the returned list, with markup stripped by a stand-in. */
 function ledger(): { events: ProgressEvent[]; ledger: ProgressLedger } {
@@ -109,15 +108,15 @@ test('a region that never reported builds no event when it closes', () => {
 const fixture = new URL('fixtures/progress-events.mjs', import.meta.url);
 
 /** The fixture's JSON report for one scenario of observed invocations by name. */
-function observed(scenario: string): Record<string, unknown> {
-  const result = invoke(fixture, [scenario]);
+async function observed(scenario: string): Promise<Record<string, unknown>> {
+  const result = await invokeFixture(fixture, [scenario]);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return JSON.parse(result.stdout);
 }
 
-test("onProgress receives a region's started, updated, updated, and ended events in order, each before report returns", () => {
-  expect(observed('order')).toEqual({
+test("onProgress receives a region's started, updated, updated, and ended events in order, each before report returns", async () => {
+  await expect(observed('order')).resolves.toEqual({
     events: [
       { id: 1, label: 'Fetching', state: 'started', total: 3 },
       { completed: 1, id: 1, label: 'Fetching', state: 'updated', total: 3 },
@@ -129,8 +128,10 @@ test("onProgress receives a region's started, updated, updated, and ended events
   });
 });
 
-test("onProgress numbers regions by first report, reads label '' before one is given, and reads a styled label plain", () => {
-  const events = [Object(observed('numbering').events)].flat();
+test("onProgress numbers regions by first report, reads label '' before one is given, and reads a styled label plain", async () => {
+  const events = [
+    Object(await observed('numbering').then((fixtureResult) => fixtureResult.events)),
+  ].flat();
   expect(events.filter((event) => event.state === 'started')).toEqual([
     { completed: 4, id: 1, label: '', state: 'started' },
     { id: 2, label: 'x', state: 'started' },
@@ -145,8 +146,8 @@ function states(run: unknown): unknown {
   ]);
 }
 
-test('each way a region closes reaches onProgress as its end state, and a region that never reported delivers nothing', () => {
-  const ends = observed('ends');
+test('each way a region closes reaches onProgress as its end state, and a region that never reported delivers nothing', async () => {
+  const ends = await observed('ends');
   expect(states(ends.endFailed)).toEqual([
     ['end failed', 'started'],
     ['end failed', 'failed'],
@@ -169,12 +170,12 @@ test('each way a region closes reaches onProgress as its end state, and a region
   expect(ends.silent).toEqual({ events: [], status: 'completed' });
 });
 
-test('an onLog hook receives no event for any report', () => {
-  expect(observed('logging')).toEqual({ events: 3, heard: [] });
+test('an onLog hook receives no event for any report', async () => {
+  await expect(observed('logging')).resolves.toEqual({ events: 3, heard: [] });
 });
 
-test("an action's call delivers its events to its own observer alone, and inherits none from its parent", () => {
-  expect(observed('nested')).toEqual({
+test("an action's call delivers its events to its own observer alone, and inherits none from its parent", async () => {
+  await expect(observed('nested')).resolves.toEqual({
     inner: [
       { id: 1, label: 'inner', state: 'started' },
       { id: 1, label: 'inner', state: 'ended' },
@@ -186,6 +187,10 @@ test("an action's call delivers its events to its own observer alone, and inheri
   });
 });
 
-test('an observer that throws is called no more, the run settles, and invoke rejects with its throw', () => {
-  expect(observed('throws')).toEqual({ calls: 1, finished: true, rejected: true });
+test('an observer that throws is called no more, the run settles, and invoke rejects with its throw', async () => {
+  await expect(observed('throws')).resolves.toEqual({
+    calls: 1,
+    finished: true,
+    rejected: true,
+  });
 });
