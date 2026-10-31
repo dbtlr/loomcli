@@ -1,13 +1,16 @@
 import { DeclarationError, processHandle } from '@loomcli/core';
 
 import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
-import { ruleText } from '../../../core/tests/fixtures/rule-text.mjs';
-import { createScenario } from './mcp-app.ts';
+import { createScenario, processColumns } from './mcp-app.ts';
+import { ruleText } from './rule-text.mjs';
 
 const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
 const [name, ...argv] = process.argv.slice(2);
 
 // A fault the call that declares it can detect throws before any run.
+if (Object.hasOwn(processColumns, name)) {
+  process.env.COLUMNS = processColumns[name];
+}
 try {
   const application = createScenario(name, process.env);
   if (argv[0] === 'inspect') {

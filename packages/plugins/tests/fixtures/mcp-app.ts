@@ -19,6 +19,7 @@ import { z } from 'zod';
 
 import { runOnMock } from './in-process.ts';
 import { bothKeysScenario, requiredContentExcluded } from './invalid-mcp-input.mjs';
+import { ruleText } from './rule-text.mjs';
 
 const dispatch = ({ out }: Pick<ActionContext<unknown>, 'out'>) => out.print('dispatched');
 
@@ -499,7 +500,6 @@ const faults = {
  * whose environment holds a narrow COLUMNS. A tool call is an invocation by name, with no terminal.
  */
 function columns() {
-  process.env.COLUMNS = '20';
   const measure = new Command('measure', {
     description: 'Report the columns.',
     extensions: [mcpCommand({})],
@@ -520,7 +520,6 @@ const twoLines = (value: string) => `${value}\nsecond line`;
  * break, served from a process whose environment holds a narrow COLUMNS.
  */
 function fitted() {
-  process.env.COLUMNS = '10';
   const grid = new Command('grid', {
     description: 'Render a table and records.',
     extensions: [mcpCommand({})],
@@ -549,6 +548,13 @@ function fitted() {
   }).command(grid);
 }
 
+/**
+ * The narrow COLUMNS the process serving a scenario holds in its environment. Only the process
+ * entry, `mcp.mjs`, sets it, before it builds the scenario, so building one in-process changes no
+ * environment.
+ */
+const processColumns: Readonly<Record<string, string>> = { columns: '20', fitted: '10' };
+
 const scenarios = { calls, columns, excluded, fitted, listing, multiline, progress, ...faults };
 
 function createScenario(name: string, env: Record<string, string | undefined> = {}) {
@@ -572,11 +578,9 @@ function inspectScenario(name: string) {
     if (!(error instanceof DeclarationError)) {
       throw error;
     }
-    const text =
-      error.sentence === undefined
-        ? error.message
-        : [error.sentence, ...[error.correction ?? []].flat()].join(' ');
-    return { stdout: `thrown:${error.exitCode}:${error.rule?.identity}: ${text}\n` };
+    return {
+      stdout: `thrown:${error.exitCode}:${error.rule?.identity}: ${ruleText(error)}\n`,
+    };
   }
 }
 
@@ -590,4 +594,4 @@ async function run(args: string[], options: { env?: Record<string, string> } = {
   });
 }
 
-export { createScenario, inspectScenario, run };
+export { createScenario, inspectScenario, processColumns, run };

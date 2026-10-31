@@ -2,7 +2,7 @@
 import { Application, Command, EX_DATAERR, FatalError } from '@loomcli/core';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 
-import { ruleText } from '../../../core/tests/fixtures/rule-text.mjs';
+import { ruleText } from './rule-text.mjs';
 
 /** Report declaration outcomes through the public API. */
 async function run(args = []) {
