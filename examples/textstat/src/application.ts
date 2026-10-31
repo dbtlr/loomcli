@@ -35,8 +35,11 @@ const textstatFile = z.object({
   total: z.boolean().optional(),
 });
 
+// Textstat counts text wherever the operator stands, so no entry marks a project it belongs to.
+// Its walk runs to the directory below home, as a lookup with no marker does.
 const { plugin: configPlugin } = configuration({
   file: '.textstat.{toml,json}',
+  root: false,
   schema: textstatFile,
   short: 'c',
 });

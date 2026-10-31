@@ -1,6 +1,6 @@
 // Acceptance plan: see examples/textstat/tests/configuration.test.ts.
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -1384,7 +1384,7 @@ function nest(base: string, ...segments: string[]): string {
 }
 
 test(
-  'the walk ends at the home directory, which it includes, when the start is inside home',
+  'the walk ends below the home directory when the start is inside home, and the home file answers after it',
   inWorkspace(async (space) => {
     const start = nest(space.home, 'work', 'deep');
     // A file above home is never read.
@@ -1716,6 +1716,225 @@ test(
   }),
 );
 
+test(
+  'scopes: project reads the walk alone, never the home file or the user file',
+  inWorkspace(async (space) => {
+    const project = settings({ scopes: ['project'] });
+    space.write('.app.json', json({ title: 'home' }), space.home);
+    space.write('.config/app/config.json', json({ title: 'user' }), space.home);
+    expect(received(await space.stdout([], project))).toEqual(defaults);
+    // A start inside home walks to the directory below home and never looks in home itself.
+    const start = nest(space.home, 'work');
+    expect(received(await space.stdout([], { ...project, FIXTURE_CWD: start }))).toEqual(defaults);
+    await expect(
+      space.stdout([], { ...project, FIXTURE_CWD: space.home }).then(received),
+    ).resolves.toEqual(defaults);
+    space.write('.app.json', json({ title: 'work' }), start);
+    expect(received(await space.stdout([], { ...project, FIXTURE_CWD: start }))).toEqual({
+      ...defaults,
+      title: 'work',
+    });
+    space.write('.app.json', json({ title: 'project' }));
+    expect(received(await space.stdout([], project))).toEqual({ ...defaults, title: 'project' });
+  }),
+);
+
+test(
+  'scopes: user reads the home file and then the user file, never the walk',
+  inWorkspace(async (space) => {
+    const user = settings({ scopes: ['user'] });
+    space.write('.app.json', json({ title: 'project' }));
+    expect(received(await space.stdout([], user))).toEqual(defaults);
+    space.write('.config/app/config.json', json({ title: 'user' }), space.home);
+    expect(received(await space.stdout([], user))).toEqual({ ...defaults, title: 'user' });
+    space.write('.app.json', json({ title: 'home' }), space.home);
+    expect(received(await space.stdout([], user))).toEqual({ ...defaults, title: 'home' });
+    // A start inside home reads the home file, and no directory between.
+    const start = nest(space.home, 'work');
+    space.write('.app.json', json({ title: 'work' }), start);
+    expect(received(await space.stdout([], { ...user, FIXTURE_CWD: start }))).toEqual({
+      ...defaults,
+      title: 'home',
+    });
+  }),
+);
+
+test(
+  'the project scope is read first whatever order scopes lists, and a scope listed twice counts once',
+  inWorkspace(async (space) => {
+    space.write('.app.json', json({ title: 'home' }), space.home);
+    space.write('.app.json', json({ title: 'project' }));
+    for (const scopes of [
+      ['user', 'project'],
+      ['project', 'user'],
+      ['user', 'project', 'user'],
+    ] as const) {
+      expect(received(await space.stdout([], settings({ scopes })))).toEqual({
+        ...defaults,
+        title: 'project',
+      });
+    }
+    expect(received(await space.stdout([], settings({ scopes: ['user', 'user'] })))).toEqual({
+      ...defaults,
+      title: 'home',
+    });
+  }),
+);
+
+test(
+  '--config and the variable name their file under every choice of scopes',
+  inWorkspace(async (space) => {
+    space.write('named.json', json({ title: 'named' }));
+    space.write('variable.json', json({ title: 'variable' }));
+    for (const scopes of [['project'], ['user']] as const) {
+      expect(
+        received(await space.stdout(['--config', 'named.json'], settings({ scopes }))),
+      ).toEqual({ ...defaults, config: 'named.json', title: 'named' });
+      expect(
+        received(
+          await space.stdout([], {
+            ...settings({ env: 'APP_CONFIG', scopes }),
+            APP_CONFIG: 'variable.json',
+          }),
+        ),
+      ).toEqual({ ...defaults, title: 'variable' });
+    }
+  }),
+);
+
+test(
+  'the root marker ends the walk after the directory that holds it, and the home file still answers',
+  inWorkspace(async (space) => {
+    const rooted = settings({ root: 'package.json' });
+    const start = nest(space.project, 'packages', 'cli', 'src');
+    const cli = join(space.project, 'packages', 'cli');
+    space.write('package.json', '{}', cli);
+    space.write('.app.json', json({ title: 'monorepo' }));
+    space.write('.app.json', json({ title: 'home' }), space.home);
+    // The monorepo's file above the marker is never read, and the home file answers instead.
+    expect(received(await space.stdout([], { ...rooted, FIXTURE_CWD: start }))).toEqual({
+      ...defaults,
+      title: 'home',
+    });
+    // The directory that holds the marker is looked in, and a nearer file answers first.
+    space.write('.app.json', json({ title: 'cli' }), cli);
+    expect(received(await space.stdout([], { ...rooted, FIXTURE_CWD: start }))).toEqual({
+      ...defaults,
+      title: 'cli',
+    });
+    space.write('.app.json', json({ title: 'src' }), start);
+    expect(received(await space.stdout([], { ...rooted, FIXTURE_CWD: start }))).toEqual({
+      ...defaults,
+      title: 'src',
+    });
+    // With no marker, and with root: false, the walk climbs to the monorepo's file.
+    rmSync(join(start, '.app.json'));
+    rmSync(join(cli, '.app.json'));
+    for (const unrooted of [{}, settings({ root: false })]) {
+      expect(received(await space.stdout([], { ...unrooted, FIXTURE_CWD: start }))).toEqual({
+        ...defaults,
+        title: 'monorepo',
+      });
+    }
+  }),
+);
+
+test(
+  'a root marker is any entry of a listed name: a file, a directory, or a symbolic link, dangling included',
+  inWorkspace(async (space) => {
+    const start = nest(space.project, 'a');
+    space.write('.app.json', json({ title: 'above' }), space.root);
+    const marked = async (root: NonNullable<Settings['root']>) =>
+      received(await space.stdout([], { ...settings({ root }), FIXTURE_CWD: start }));
+    await expect(marked(['.git', 'package.json'])).resolves.toEqual({
+      ...defaults,
+      title: 'above',
+    });
+    mkdirSync(join(space.project, '.git'));
+    await expect(marked(['package.json', '.git'])).resolves.toEqual(defaults);
+    await expect(marked('.git')).resolves.toEqual(defaults);
+    symlinkSync(join(space.root, 'missing'), join(start, 'deno.json'));
+    await expect(marked('deno.json')).resolves.toEqual(defaults);
+    // A marker the walk never meets leaves the walk to climb.
+    await expect(marked('Cargo.toml')).resolves.toEqual({ ...defaults, title: 'above' });
+  }),
+);
+
+test(
+  'the walk under a root marker still ends below home when it meets no marker',
+  inWorkspace(async (space) => {
+    const start = nest(space.home, 'work');
+    space.write('package.json', '{}', space.root);
+    space.write('.app.json', json({ title: 'above' }), space.root);
+    space.write('.app.json', json({ title: 'home' }), space.home);
+    expect(
+      received(
+        await space.stdout([], { ...settings({ root: 'package.json' }), FIXTURE_CWD: start }),
+      ),
+    ).toEqual({ ...defaults, title: 'home' });
+  }),
+);
+
+test(
+  'notice names the home file when scopes does not list project',
+  inWorkspace(async (space) => {
+    await expect(space.stderr([], settings({ notice: true, scopes: ['user'] }))).resolves.toBe(
+      notice(join(space.home, '.app.json')),
+    );
+    await expect(
+      space.stderr([], {
+        ...settings({ notice: true, scopes: ['user'] }),
+        FIXTURE_CWD: space.home,
+      }),
+    ).resolves.toBe(notice('.app.json'));
+    await expect(space.stderr([], settings({ notice: true, scopes: ['project'] }))).resolves.toBe(
+      notice('.app.json'),
+    );
+  }),
+);
+
+const rootNameFault = (mark: string) => ({
+  correction: "Name an entry in the project's root directory, such as package.json or .git.",
+  findings: [{ call: 'configuration', mark }],
+  rule: '@loomcli/plugins/config/root-name',
+  sentence: 'Plugin "@loomcli/plugins/config" root is not a file name.',
+});
+
+const rootWithoutProjectFault = {
+  correction: "Add 'project' to scopes, or remove root.",
+  findings: [{ call: 'configuration', mark: '0.root' }],
+  rule: '@loomcli/plugins/config/root-without-project',
+  sentence: 'Plugin "@loomcli/plugins/config" root bounds a project walk the lookup never takes.',
+};
+
+test.each([[''], ['a/b'], [String.raw`a\b`], ['.'], ['..'], ['/']])(
+  'configuration({ root: %j }) throws the root-name fault at its call',
+  (root) => {
+    expect(callFault({ root })).toEqual(rootNameFault('0.root'));
+  },
+);
+
+test('a root list marks the first name that is not a file name', () => {
+  expect(callFault({ root: ['package.json', '..', ''] })).toEqual(rootNameFault('0.root.1'));
+});
+
+test('a root beside scopes without project throws the root-without-project fault', () => {
+  expect(callFault({ root: '.git', scopes: ['user'] })).toEqual(rootWithoutProjectFault);
+  expect(callFault({ root: ['.git'], scopes: ['user', 'user'] })).toEqual(rootWithoutProjectFault);
+});
+
+test('the type rejects an empty scopes list, an unknown scope, and an empty root list', () => {
+  const rejected: Settings[] = [
+    // @ts-expect-error scopes lists at least one scope.
+    { scopes: [] },
+    // @ts-expect-error A scope is project or user.
+    { scopes: ['system'] },
+    // @ts-expect-error root lists at least one name.
+    { root: [] },
+  ];
+  expect(rejected).toHaveLength(3);
+});
+
 const variableFault = {
   correction:
     'Name a variable such as COLLECTOR_CONFIG: a letter or an underscore, then letters, digits, or underscores.',
@@ -1735,12 +1954,23 @@ test('configuration() judges the file rules before the env rule', () => {
   expect(callFault({ env: '1', file: '/abs' })).toEqual(pathFault);
 });
 
+test('configuration() judges the env rule before the root rules, and the root name before its scopes', () => {
+  expect(callFault({ env: '1', root: '' })).toEqual(variableFault);
+  expect(callFault({ root: 'a/b', scopes: ['user'] })).toEqual(rootNameFault('0.root'));
+});
+
 test.each([
   [{ env: 'APP_CONFIG' }],
   [{ env: '_x9' }],
   [{ notice: true }],
   [{ directory: { name: 'project' } }],
   [{ directory: { description: 'The project.', name: 'project', short: 'p' } }],
+  [{ scopes: ['project'] }],
+  [{ scopes: ['user'] }],
+  [{ root: 'package.json' }],
+  [{ root: ['package.json', '.git'], scopes: ['user', 'project'] }],
+  [{ root: false }],
+  [{ root: false, scopes: ['user'] }],
 ] satisfies [Settings][])('configuration(%j) returns its plugin', (value) => {
   expect(callFault(value)).toBe('returned');
 });

@@ -774,6 +774,7 @@ test('the oxlint file holds the configuration @loomcli/eslint-plugin ships, and 
       '@loomcli/name-shape': 'error',
       '@loomcli/strict-configuration-schema': 'error',
       '@loomcli/undescribed': 'error',
+      '@loomcli/unrooted-configuration': 'warn',
     },
   });
   expect(eslintConfig).toContain("import loom from '@loomcli/eslint-plugin';");

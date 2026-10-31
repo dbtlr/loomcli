@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises';
+import { lstat, readFile, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { escapeControlCharacters, InputError, nowrap } from '@loomcli/core';
@@ -9,13 +9,14 @@ import { parseFile } from './formats.js';
 import { splitExtension } from './names.js';
 import type { Position } from './position.js';
 import type { Clause, Reading } from './reading.js';
+import type { Reach } from './scopes.js';
 
 /**
  * The configuration plugin's lookup: the one file a run reads. `--config` names it, or else the
- * variable does, or else the first of the pattern's candidates found in the walk from the start
- * directory, in the home directory, and in the user folder. A file the variable names or the
- * lookup discovers that cannot be used warns and ends the lookup with no configuration, and the
- * named file fails the run.
+ * variable does, or else the first of the pattern's candidates found in the scopes the author
+ * chose: the project scope's walk from the start directory, then the user scope's home directory
+ * and user folder. A file the variable names or the lookup discovers that cannot be used warns and
+ * ends the lookup with no configuration, and the named file fails the run.
  */
 
 /** One file the lookup reads: where it is, and how a label or a diagnostic shows it, escaped. */
@@ -43,6 +44,8 @@ interface Lookup {
   readonly app: string;
   /** Whether a lookup that finds no file says so. */
   readonly notice: boolean;
+  /** The scopes the lookup reads and the markers that end its walk. */
+  readonly reach: Reach;
   /** The file `--config` named, which is the run's only file. */
   readonly named: string | undefined;
   /** Whether `--no-config` asked the run to read no file. */
@@ -145,18 +148,20 @@ function isInside(directory: string, home: string): boolean {
 }
 
 /**
- * The directories the walk looks in, nearest first: the start directory and each ancestor, up to
- * and including the home directory when the start is inside it, and up to the root otherwise.
+ * The directories the walk may look in, nearest first: the start directory and each ancestor, up
+ * to the directory below home when the start is inside it, and up to the root otherwise. The home
+ * directory belongs to the user scope, so a start at home walks nowhere.
  */
 function walkDirectories(start: string, home: string | undefined): string[] {
-  const bounded = home !== undefined && isInside(start, home);
+  const bound = home !== undefined && isInside(start, home) ? home : undefined;
   const directories: string[] = [];
-  for (let directory = start; ; directory = dirname(directory)) {
+  for (let directory = start; directory !== bound; directory = dirname(directory)) {
     directories.push(directory);
-    if ((bounded && directory === home) || dirname(directory) === directory) {
-      return directories;
+    if (dirname(directory) === directory) {
+      break;
     }
   }
+  return directories;
 }
 
 /** The extensions the user file may carry. */
@@ -187,14 +192,27 @@ function userFolder(app: string, host: Host, home: string | undefined): string |
   return home === undefined ? undefined : join(home, '.config', app);
 }
 
-/** Whether something is at a path. A failure other than absence counts as present, so a read reports it. */
-async function isPresent(path: string): Promise<boolean> {
+/**
+ * Whether something is at a path, through a symbolic link by default. A failure other than absence
+ * counts as present, so a read reports it and a walk stops there.
+ */
+async function isPresent(path: string, look: typeof stat = stat): Promise<boolean> {
   try {
-    await stat(path);
+    await look(path);
     return true;
   } catch (error) {
     return !isAbsent(error);
   }
+}
+
+/** Whether a directory holds an entry of a marker's name: a file, a directory, or any symbolic link. */
+async function holdsMarker(directory: string, markers: readonly string[]): Promise<boolean> {
+  for (const marker of markers) {
+    if (await isPresent(join(directory, marker), lstat)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** The file's text as UTF-8, or the clause that says why it could not be read. */
@@ -366,33 +384,67 @@ function startDirectory(lookup: Lookup): string {
   return resolve(lookup.host.cwd, lookup.directory ?? '.');
 }
 
-/** The walk's directories, then the home directory when the walk did not reach it, as steps. */
-function walkSteps(lookup: Lookup, home: string | undefined): Step[] {
-  const { candidates } = lookup;
-  const walk = walkDirectories(startDirectory(lookup), home);
-  const steps = walk.map((directory) => ({ candidates, directory, walked: true }));
-  if (home !== undefined && !walk.includes(home)) {
-    steps.push({ candidates, directory: home, walked: false });
+/**
+ * The project scope's steps: the walk's directories, nearest first, ending after a directory that
+ * holds a root marker. The marker is checked after the directory is looked in.
+ */
+async function* projectSteps(lookup: Lookup, home: string | undefined): AsyncGenerator<Step> {
+  const { candidates, reach } = lookup;
+  for (const directory of walkDirectories(startDirectory(lookup), home)) {
+    yield { candidates, directory, walked: true };
+    if (await holdsMarker(directory, reach.markers)) {
+      return;
+    }
+  }
+}
+
+/**
+ * The user scope's steps: the home directory, then the user folder. The home file shows as its
+ * candidate when it is in `host.cwd` and the start is inside home, as a walked file would.
+ */
+function userSteps(lookup: Lookup, home: string | undefined): Step[] {
+  const steps: Step[] = [];
+  if (home !== undefined) {
+    const walked = isInside(startDirectory(lookup), home);
+    steps.push({ candidates: lookup.candidates, directory: home, walked });
+  }
+  const user = userFolder(lookup.app, lookup.host, home);
+  if (user !== undefined) {
+    steps.push({ candidates: userCandidates(lookup.candidates), directory: user, walked: false });
   }
   return steps;
 }
 
-/** The steps the discovered files are looked for in: the walk, the home directory, the user folder. */
-function searchSteps(lookup: Lookup): Step[] {
+/** The steps the discovered files are looked for in, the project scope's before the user scope's. */
+async function* searchSteps(lookup: Lookup): AsyncGenerator<Step> {
   const home = resolvedHome(lookup.host);
-  const steps = walkSteps(lookup, home);
-  const user = userFolder(lookup.app, lookup.host, home);
-  return user === undefined
-    ? steps
-    : [...steps, { candidates: userCandidates(lookup.candidates), directory: user, walked: false }];
+  if (lookup.reach.project) {
+    yield* projectSteps(lookup, home);
+  }
+  if (lookup.reach.user) {
+    yield* userSteps(lookup, home);
+  }
 }
 
-/** Writes the line that says no file was found, naming the first candidate in the start directory. */
+/**
+ * The step the notice names its file in: the start directory under the project scope, and the
+ * home directory, or else the user folder, under the user scope alone. None when there is neither.
+ */
+function noticeStep(lookup: Lookup): Step | undefined {
+  if (lookup.reach.project) {
+    return { candidates: lookup.candidates, directory: startDirectory(lookup), walked: true };
+  }
+  const [first] = userSteps(lookup, resolvedHome(lookup.host));
+  return first;
+}
+
+/** Writes the line that says no file was found, naming the first candidate where the lookup starts. */
 async function announceNoFile(lookup: Lookup, { out, style }: Channels): Promise<void> {
-  const [first] = filesIn(startDirectory(lookup), lookup.candidates, {
-    host: lookup.host,
-    walked: true,
-  });
+  const step = noticeStep(lookup);
+  const [first] =
+    step === undefined
+      ? []
+      : filesIn(step.directory, step.candidates, { host: lookup.host, walked: step.walked });
   if (first !== undefined) {
     await out.info(
       `Found no configuration file. Create ${nowrap(style.escape(first.shown))} to configure ${lookup.app}.`,
@@ -402,7 +454,7 @@ async function announceNoFile(lookup: Lookup, { out, style }: Channels): Promise
 
 /** The outcome of the first discovered step that holds a file, or `undefined` when none does. */
 async function searched(lookup: Lookup, channels: Channels): Promise<Outcome | undefined> {
-  for (const step of searchSteps(lookup)) {
+  for await (const step of searchSteps(lookup)) {
     const outcome = await directoryFile(
       filesIn(step.directory, step.candidates, { host: lookup.host, walked: step.walked }),
       channels,
@@ -418,8 +470,8 @@ async function searched(lookup: Lookup, channels: Channels): Promise<Outcome | u
  * The one file a run reads, or `undefined` when it finds none it can use. `--no-config` reads no
  * file and writes no notice, and with `--config` beside it fails the run. The named file answers
  * alone and fails the run when it cannot be used. Then the variable's file answers alone, and the
- * walk, the home directory, and the user folder answer in that order. A file that cannot be used
- * ends the lookup with a warning, and no later step answers in its place.
+ * walk, the home directory, and the user folder answer in that order, each under its scope. A file
+ * that cannot be used ends the lookup with a warning, and no later step answers in its place.
  */
 async function findFile(lookup: Lookup, channels: Channels): Promise<UsableFile | undefined> {
   if (lookup.ignored) {

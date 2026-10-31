@@ -10,10 +10,18 @@ const ruleNames = [
   'name-shape',
   'strict-configuration-schema',
   'undescribed',
+  'unrooted-configuration',
 ];
-const ruleIds = ruleNames.map((name) => `@loomcli/${name}`);
 
-test('the plugin ships exactly the five rules', () => {
+/** Every rule at `error`, except the one that is advice, at `warn`. */
+const severities = Object.fromEntries(
+  ruleNames.map((name) => [
+    `@loomcli/${name}`,
+    name === 'unrooted-configuration' ? 'warn' : 'error',
+  ]),
+);
+
+test('the plugin ships exactly the six rules', () => {
   expect(Object.keys(plugin.rules).toSorted()).toEqual(ruleNames);
 });
 
@@ -36,17 +44,17 @@ test('the plugin names itself and carries the version of its manifest', () => {
   expect(manifest).toMatchObject({ version: plugin.meta.version });
 });
 
-test('the recommended config registers the plugin under @loomcli and turns exactly the five rules on at error', () => {
+test('the recommended config registers the plugin under @loomcli and turns five rules on at error and unrooted-configuration at warn', () => {
   const { recommended } = plugin.configs;
   expect(Object.keys(recommended.plugins)).toEqual(['@loomcli']);
   expect(recommended.plugins['@loomcli'].rules).toBe(plugin.rules);
-  expect(recommended.rules).toEqual(Object.fromEntries(ruleIds.map((id) => [id, 'error'])));
+  expect(recommended.rules).toEqual(severities);
 });
 
-test('the oxlint config loads the plugin by its package name and turns exactly the five rules on at error', () => {
+test('the oxlint config loads the plugin by its package name and turns five rules on at error and unrooted-configuration at warn', () => {
   const { oxlint } = plugin.configs;
   expect(oxlint.jsPlugins).toEqual(['@loomcli/eslint-plugin']);
-  expect(oxlint.rules).toEqual(Object.fromEntries(ruleIds.map((id) => [id, 'error'])));
+  expect(oxlint.rules).toEqual(severities);
 });
 
 test('the oxlint config is the JSON an .oxlintrc.json holds as it is', () => {
@@ -61,7 +69,8 @@ test('the oxlint config is the JSON an .oxlintrc.json holds as it is', () => {
       '    "@loomcli/host-bypass": "error",',
       '    "@loomcli/name-shape": "error",',
       '    "@loomcli/strict-configuration-schema": "error",',
-      '    "@loomcli/undescribed": "error"',
+      '    "@loomcli/undescribed": "error",',
+      '    "@loomcli/unrooted-configuration": "warn"',
       '  }',
       '}',
     ].join('\n'),

@@ -236,6 +236,14 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Option linked to a value it cannot take.** An option linked with configInput takes a string or a number, a Boolean, a whole number, or an array, by its type. A path whose configuration schema holds no value of that kind can never fill the option, so the link is a mistake that only the assembled application reveals.
 
+### @loomcli/plugins/config/root-name
+
+**Invalid configuration root marker.** The configuration plugin's project walk checks each directory it looks in for an entry of each root marker's name, so a marker names one entry: it is nonempty, holds no slash or backslash, and is neither . nor ..
+
+### @loomcli/plugins/config/root-without-project
+
+**Configuration root marker without the project scope.** A root marker bounds the project walk, and a scopes list without project reads the home file and the user file alone, so the marker would bound nothing and its setting would say something the lookup never does.
+
 ### @loomcli/plugins/config/variable-name
 
 **Invalid configuration variable name.** The configuration plugin reads the variable that env names from the run's environment, and an environment variable's name is a letter or underscore followed by letters, digits, or underscores, so a name of another form can never hold a value.

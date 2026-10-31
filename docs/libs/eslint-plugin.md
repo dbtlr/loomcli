@@ -30,7 +30,8 @@ Put the plugin's `configs.oxlint` object in `.oxlintrc.json`, as it is:
     "@loomcli/host-bypass": "error",
     "@loomcli/name-shape": "error",
     "@loomcli/strict-configuration-schema": "error",
-    "@loomcli/undescribed": "error"
+    "@loomcli/undescribed": "error",
+    "@loomcli/unrooted-configuration": "warn"
   }
 }
 ```
@@ -172,7 +173,7 @@ Each message names what the code reached and the member to use instead:
 | `userInfo()` from `os` | `host.uid` for who the user is, and `host.env.USER` for the name to show |
 | `child_process` | `host.spawn` |
 
-- **On by default.** `configs.recommended` and `configs.oxlint` turn the rule on at `error`, as they do every rule.
+- **On by default.** `configs.recommended` and `configs.oxlint` turn the rule on at `error`, as they do every rule but `unrooted-configuration`.
 - **The forms.** The rule reports the global `process`, `globalThis.process`, and `global.process`; an import of `process` or `node:process`, by default, namespace, or named import; `homedir`, `tmpdir`, and `userInfo` from `os` or `node:os`, as a named import or as a member of the module's default or namespace import; and any import of `child_process` or `node:child_process`. An `import()` with a literal specifier counts as an import. A re-export, `export { homedir } from 'node:os'` or `export * from 'node:child_process'`, is reported as the import it passes on, and a member destructured off an `os` binding or an awaited `import('node:os')`, as in `const { homedir } = os`, is reported as the member read it is. A type-only import or re-export, `import type` or one whose every specifier is a type, is not reported, because it runs nothing.
 - **The global alone.** The rule reads scope analysis, so a binding the code declares itself, such as a parameter named `process` or a destructured `{ process }`, is not reported. A use it cannot trace, such as `Reflect.get(globalThis, 'process')` or an `import()` with a computed specifier, is not reported either.
 - **The entry module.** `app.run()` given no handle binds the real process, so an entry module needs no `process` of its own and no exception.
@@ -195,7 +196,7 @@ export const { plugin: configPlugin, values: config } = configuration({
 });
 ```
 
-- **On by default.** `configs.recommended` and `configs.oxlint` turn the rule on at `error`, as they do every rule. An author who wants a strict schema turns the rule off, and the plugin then drops what the schema reports, under the ordinary rule.
+- **On by default.** `configs.recommended` and `configs.oxlint` turn the rule on at `error`, as they do every rule but `unrooted-configuration`. An author who wants a strict schema turns the rule off, and the plugin then drops what the schema reports, under the ordinary rule.
 - **Where it looks.** The `schema` property of the settings object literal passed to `configuration`, where the binding is imported from `@loomcli/plugins/config`, a renamed import and a namespace import included. The rule judges that expression at every depth a strict object reaches the schema through: the arguments of a call, the schema a method is called on, the members of an object or array literal, and what the function `z.lazy` takes and a getter in an object literal return. It follows an identifier whose `const` declaration in the same module initializes it, at any depth of the expression, so a section schema declared above the call is judged.
 - **The forms.** zod's `strictObject(...)`, called on a binding imported from `zod`, `zod/v4`, `zod/mini`, `zod/v4/mini`, `zod/v4-mini`, or `zod/v3`, through the whole module such as `z.strictObject(...)` included, and a `.strict()` call on a schema the rule traces to zod: a call on a zod import, a method call on one, or a `const` that holds one. The whole module is a namespace import, a default import, or the named `z` import.
 - **What it leaves alone.** valibot's and ArkType's strict objects, a `.strict()` whose receiver does not trace to zod, such as yup's, which turns off coercion, a schema imported from another module, held in a `let` variable, passed through a parameter, or built by a call the rule cannot see into, and every strict object outside a `configuration` call's `schema`. A strict object that reaches the schema only as something else is left alone too: loosened by `.loose()`, `.strip()`, `.passthrough()`, or `.catchall()`, turned into the enum of its keys by `.keyof()`, the same through zod mini's `z.keyof(...)` and `z.catchall(...)`, read for a field such as `.shape` or `...State.shape`, or used inside a function that runs on the parsed value, such as a `refine` callback.
