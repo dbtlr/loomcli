@@ -100,7 +100,7 @@ To run the same checks with the tests under Bun, both the test workers and the p
 pnpm verify:bun
 ```
 
-CI tests Node 22.23.2 and Bun 1.4.0 on macOS and Linux. These versions define the compatibility baseline for this increment. Windows is not exercised in CI and is unverified. TypeScript 7.0.2 checks emitted declarations with strict NodeNext resolution. Earlier versions are unverified.
+CI tests Node 22.23.2 and Bun 1.4.4 on macOS and Linux. These versions define the compatibility baseline for this increment. Windows is not exercised in CI and is unverified. TypeScript 7.0.2 checks emitted declarations with strict NodeNext resolution. Earlier versions are unverified.
 
 The [documentation map](docs/README.md) lists every reference and who it is for. The [core reference](docs/core/README.md) defines invocation, output, and failure behavior. The [glossary](docs/glossary.md) names the concepts it uses, and the [decision records](docs/decisions/README.md) explain why the core is shaped the way it is.
 
