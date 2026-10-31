@@ -1,5 +1,5 @@
 import { Application, style } from '@loomcli/core';
-import type { ApplicationOptions, Out, RowViews, RunOptions, View } from '@loomcli/core';
+import type { ApplicationOptions, Out, RowView, RowViews, RunOptions, View } from '@loomcli/core';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { mockProcess } from '@loomcli/testing';
 import type { MockProcess } from '@loomcli/testing';
@@ -124,5 +124,30 @@ async function renderRows<Row>(
   return await rendered(app, mock, run);
 }
 
-export { renderEach, renderResult, renderRows };
+/**
+ * What a row view prints over a source that yields one row per width, the terminal resized to
+ * that width before the source yields the row.
+ */
+async function renderStream<Row>(
+  run: ViewRun,
+  rows: readonly Row[],
+  view: RowView<Row>,
+): Promise<string> {
+  const mock = viewMock(run, run.widths[0]);
+  async function* streamed() {
+    for (const [index, row] of rows.entries()) {
+      const width = run.widths[index];
+      if (typeof width === 'number') {
+        mock.resize(width, 24);
+      }
+      yield row;
+    }
+  }
+  const app = baseApplication(run).action(async ({ out }) => {
+    await out.render(streamed(), view);
+  });
+  return await rendered(app, mock, run);
+}
+
+export { renderEach, renderResult, renderRows, renderStream };
 export type { ViewRun };

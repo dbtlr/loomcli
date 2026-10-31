@@ -84,6 +84,7 @@ import { expect, test, vi } from 'vite-plus/test';
 import { levelWidths } from '../src/table-fit.js';
 import { table } from '../src/table.js';
 import { filler, lines, render } from './fit-render.js';
+import { renderEach } from './fixtures/view-run.ts';
 import {
   TAB,
   expandTabs,
@@ -533,19 +534,21 @@ test('COLUMNS narrows a terminal, never widens it, fits a terminal with no width
 
 test.each([{ invoke: false }, { invoke: true }])(
   'a table piped or invoked by name ($invoke) is byte for byte the natural width, a multi-line format cell included',
-  ({ invoke }) => {
+  async ({ invoke }) => {
     const rows = [
       { left: 'x y z', right: 'hello world' },
       { left: 'q', right: 'zz' },
     ];
-    const config = {
+    const view = table<{ left: string; right: string }>({
       columns: [
         { header: 'A', key: 'left' },
-        { align: 'right', format: 'lines', key: 'right' },
+        { align: 'right', format: (value) => `${value}\nsecond line`, key: 'right' },
       ],
-    };
+    });
     const env = { COLUMNS: '10' };
-    expect(render({ config, env, invoke, rows, view: 'table', widths: [null] })).toBe(
+    await expect(
+      renderEach({ env, invoke, widths: [null] }, (out) => out.render(rows, view)),
+    ).resolves.toBe(
       lines(
         `A${' '.repeat(12)}right`,
         'x y z  hello world',
