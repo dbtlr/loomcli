@@ -150,7 +150,7 @@
   },
   "dependencies": {
     "@loomcli/validators": "workspace:*",
-    "smol-toml": "^1.9.0",
+    "smol-toml": "^1.9.1",
     "valibot": "^1.5.0",
     "yaml": "^2.9.1"
   },
