@@ -1,16 +1,14 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
-
-const main = new URL('../dist/main.js', import.meta.url);
+import { run } from './run.js';
 
 /** A page as its lines, ending with the single newline `out.print` appends. */
 function page(...lines: string[]) {
   return { status: 0, stderr: '', stdout: `${lines.join('\n')}\n` };
 }
 
-test('textstat --help folds the globals into OPTIONS, because it has no children', () => {
-  expect(invoke(main, ['--help'])).toEqual(
+test('textstat --help folds the globals into OPTIONS, because it has no children', async () => {
+  await expect(run(['--help'])).resolves.toEqual(
     page(
       'textstat · Count bytes, words, or lines across text sources.',
       '',
@@ -46,8 +44,8 @@ test('textstat --help folds the globals into OPTIONS, because it has no children
   );
 });
 
-test('textstat -h prints the compact page and points to the details and examples it omits', () => {
-  expect(invoke(main, ['-h'])).toEqual(
+test('textstat -h prints the compact page and points to the details and examples it omits', async () => {
+  await expect(run(['-h'])).resolves.toEqual(
     page(
       'textstat · Count bytes, words, or lines across text sources.',
       '',
@@ -79,14 +77,14 @@ test('textstat -h prints the compact page and points to the details and examples
   );
 });
 
-test("textstat -ht mixes help's letter with the root's total and prints the compact page", () => {
-  const compact = invoke(main, ['-h']);
+test("textstat -ht mixes help's letter with the root's total and prints the compact page", async () => {
+  const compact = await run(['-h']);
   expect(compact.status).toBe(0);
-  expect(invoke(main, ['-ht'])).toEqual(compact);
+  await expect(run(['-ht'])).resolves.toEqual(compact);
 });
 
-test('textstat --version prints the name and the declared version', () => {
-  expect(invoke(main, ['--version'])).toEqual({
+test('textstat --version prints the name and the declared version', async () => {
+  await expect(run(['--version'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'textstat v0.0.0\n',
@@ -95,26 +93,26 @@ test('textstat --version prints the name and the declared version', () => {
 
 test.each(['--help', '--version'])(
   'textstat %s takes over a file preparation failure',
-  (spelling) => {
-    const expected = invoke(main, [spelling]);
+  async (spelling) => {
+    const expected = await run([spelling]);
     expect(expected.status).toBe(0);
-    expect(invoke(main, ['missing-fixture.txt', spelling])).toEqual(expected);
+    await expect(run(['missing-fixture.txt', spelling])).resolves.toEqual(expected);
   },
 );
 
-/** The same application on a terminal whose stdout reports a fixed width and no `COLUMNS`. */
-const sized = new URL('fixtures/width.mjs', import.meta.url);
-
-test.each([40, 60])('textstat --help fits a %i-column terminal', (columns) => {
-  const result = invoke(sized, [String(columns), '--help']);
+test.each([40, 60])('textstat --help fits a %i-column terminal', async (columns) => {
+  const result = await run(['--help'], { columns });
   expect(result.status).toBe(0);
   expect(result.stdout.split('\n').filter((line) => line.length > columns)).toEqual([]);
 });
 
-test.each([40, 60])('textstat -h shows its bindings and fits a %i-column terminal', (columns) => {
-  const result = invoke(sized, [String(columns), '-h']);
-  expect(result.status).toBe(0);
-  expect(result.stdout).toContain('TEXTSTAT_MIN_BYTES');
-  expect(result.stdout).toContain('minBytes');
-  expect(result.stdout.split('\n').filter((line) => line.length > columns)).toEqual([]);
-});
+test.each([40, 60])(
+  'textstat -h shows its bindings and fits a %i-column terminal',
+  async (columns) => {
+    const result = await run(['-h'], { columns });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('TEXTSTAT_MIN_BYTES');
+    expect(result.stdout).toContain('minBytes');
+    expect(result.stdout.split('\n').filter((line) => line.length > columns)).toEqual([]);
+  },
+);

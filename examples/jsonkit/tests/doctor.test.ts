@@ -1,8 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { invoke } from '../../../scripts/test-process.js';
-import { main } from './documents.js';
+import { host, inspection, run } from './run.js';
 
 // The private @loom/doctor plugin attaches one ordinary Command to the root, ahead of jsonkit's own.
 
@@ -19,24 +18,24 @@ const pipedReport = [
   '',
 ].join('\n');
 
-test('jsonkit doctor routes to the plugin Command and runs its action', () => {
-  expect(invoke(main, ['doctor'])).toEqual({
+test('jsonkit doctor routes to the plugin Command and runs its action', async () => {
+  await expect(run(['doctor'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: pipedReport,
   });
 });
 
-test('jsonkit doctor runs at a terminal, because only the document Commands need --file or piped text', () => {
-  expect(invoke(new URL('fixtures/host.mjs', import.meta.url), ['terminal-doctor'])).toEqual({
+test('jsonkit doctor runs at a terminal, because only the document Commands need --file or piped text', async () => {
+  await expect(host('terminal-doctor')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: pipedReport,
   });
 });
 
-test('jsonkit doctor --help prints its page like any other Command', () => {
-  expect(invoke(main, ['doctor', '--help'])).toEqual({
+test('jsonkit doctor --help prints its page like any other Command', async () => {
+  await expect(run(['doctor', '--help'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: [
@@ -58,8 +57,8 @@ test('jsonkit doctor --help prints its page like any other Command', () => {
   });
 });
 
-test('inspect() lists the plugin Command as the root first child, with nothing marking its plugin', () => {
-  const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
+test('inspect() lists the plugin Command as the root first child, with nothing marking its plugin', async () => {
+  const result = inspection();
   expect(result.status).toBe(0);
   const graph = z
     .object({ root: z.object({ children: z.array(z.record(z.string(), z.unknown())) }) })

@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
-import { main, withDocuments } from './documents.js';
+import { withDocuments } from './documents.js';
+import { inspection, run } from './run.js';
 
 /** A document with one member of every kind the walk reports, in the order it walks them. */
 const walked = '{"name":"loom","tags":["a","b"],"ok":true}';
@@ -16,35 +16,38 @@ const entries = [
   { kind: 'boolean', path: 'ok' },
 ];
 
-test.each(['--format', '-o'])('jsonkit paths %s jsonl prints one line per Entry', (spelling) => {
-  withDocuments({ 'doc.json': walked }, (cwd) => {
-    const result = invoke(main, ['paths', spelling, 'jsonl', '-f', 'doc.json'], { cwd });
-    expect(result.status).toBe(0);
-    expect(result.stderr).toBe('');
-    expect(result.stdout).toBe(`${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`);
-  });
-});
+test.each(['--format', '-o'])(
+  'jsonkit paths %s jsonl prints one line per Entry',
+  async (spelling) => {
+    await withDocuments({ 'doc.json': walked }, async (cwd) => {
+      const result = await run(['paths', spelling, 'jsonl', '-f', 'doc.json'], { cwd });
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe('');
+      expect(result.stdout).toBe(`${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`);
+    });
+  },
+);
 
-test('jsonkit paths --format ndjson prints the same bytes as jsonl, the unadvertised alias', () => {
-  withDocuments({ 'doc.json': walked }, (cwd) => {
-    const named = invoke(main, ['paths', '--format', 'jsonl', '-f', 'doc.json'], { cwd });
-    const aliased = invoke(main, ['paths', '--format', 'ndjson', '-f', 'doc.json'], { cwd });
+test('jsonkit paths --format ndjson prints the same bytes as jsonl, the unadvertised alias', async () => {
+  await withDocuments({ 'doc.json': walked }, async (cwd) => {
+    const named = await run(['paths', '--format', 'jsonl', '-f', 'doc.json'], { cwd });
+    const aliased = await run(['paths', '--format', 'ndjson', '-f', 'doc.json'], { cwd });
     expect(aliased).toEqual(named);
   });
 });
 
-test('jsonkit paths --format json prints one indented array', () => {
-  withDocuments({ 'doc.json': walked }, (cwd) => {
-    const result = invoke(main, ['paths', '--format', 'json', '-f', 'doc.json'], { cwd });
+test('jsonkit paths --format json prints one indented array', async () => {
+  await withDocuments({ 'doc.json': walked }, async (cwd) => {
+    const result = await run(['paths', '--format', 'json', '-f', 'doc.json'], { cwd });
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toBe(`${JSON.stringify(entries, null, 2)}\n`);
   });
 });
 
-test('jsonkit get --format json is the unknown-option error, get declares no result', () => {
-  withDocuments({ 'doc.json': walked }, (cwd) => {
-    const result = invoke(main, ['get', '--format', 'json', 'user.name', '-f', 'doc.json'], {
+test('jsonkit get --format json is the unknown-option error, get declares no result', async () => {
+  await withDocuments({ 'doc.json': walked }, async (cwd) => {
+    const result = await run(['get', '--format', 'json', 'user.name', '-f', 'doc.json'], {
       cwd,
     });
     expect(result).toEqual({
@@ -56,16 +59,16 @@ test('jsonkit get --format json is the unknown-option error, get declares no res
   });
 });
 
-test('jsonkit paths --format yaml --help still prints the help page, help installed after format', () => {
-  withDocuments({ 'doc.json': walked }, (cwd) => {
-    const withHelp = invoke(main, ['paths', '--help'], { cwd });
-    const result = invoke(main, ['paths', '--format', 'yaml', '--help'], { cwd });
+test('jsonkit paths --format yaml --help still prints the help page, help installed after format', async () => {
+  await withDocuments({ 'doc.json': walked }, async (cwd) => {
+    const withHelp = await run(['paths', '--help'], { cwd });
+    const result = await run(['paths', '--format', 'yaml', '--help'], { cwd });
     expect(result).toEqual({ status: 0, stderr: '', stdout: withHelp.stdout });
   });
 });
 
-test('jsonkit inspect reports formatter views on the root records and paths results', () => {
-  const inspected = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
+test('jsonkit inspect reports formatter views on the root records and paths results', async () => {
+  const inspected = inspection();
   expect(inspected.status).toBe(0);
   const graph: { root: { result: unknown; children: { name: string; result: unknown }[] } } =
     JSON.parse(inspected.stdout);
@@ -87,20 +90,22 @@ test('jsonkit inspect reports formatter views on the root records and paths resu
 /** A document whose second key the walk refuses, so the sequence stops with rows already written. */
 const refused = '{"name":"loom","boom":{"deep":1}}';
 
-test('jsonkit paths --format json -f broken.json writes the invalid-json line alone and exits 65', () => {
-  withDocuments({ 'broken.json': '{"name":' }, (cwd) => {
-    expect(invoke(main, ['paths', '--format', 'json', '-f', 'broken.json'], { cwd })).toEqual({
-      status: 65,
-      stderr:
-        '{"error":{"code":"invalid-json","exitCode":65,"message":"The document is not valid JSON. Correct its syntax, or supply another document.","hints":[]}}\n',
-      stdout: '',
-    });
+test('jsonkit paths --format json -f broken.json writes the invalid-json line alone and exits 65', async () => {
+  await withDocuments({ 'broken.json': '{"name":' }, async (cwd) => {
+    await expect(run(['paths', '--format', 'json', '-f', 'broken.json'], { cwd })).resolves.toEqual(
+      {
+        status: 65,
+        stderr:
+          '{"error":{"code":"invalid-json","exitCode":65,"message":"The document is not valid JSON. Correct its syntax, or supply another document.","hints":[]}}\n',
+        stdout: '',
+      },
+    );
   });
 });
 
-test("jsonkit's FatalError override renders the text failure and is not consulted under --format json", () => {
-  withDocuments({ 'broken.json': '{"name":' }, (cwd) => {
-    expect(invoke(main, ['paths', '-f', 'broken.json'], { cwd })).toEqual({
+test("jsonkit's FatalError override renders the text failure and is not consulted under --format json", async () => {
+  await withDocuments({ 'broken.json': '{"name":' }, async (cwd) => {
+    await expect(run(['paths', '-f', 'broken.json'], { cwd })).resolves.toEqual({
       status: 65,
       stderr: 'The document is not valid JSON. Correct its syntax, or supply another document.\n',
       stdout: '',
@@ -109,9 +114,9 @@ test("jsonkit's FatalError override renders the text failure and is not consulte
 });
 
 // The jsonl() view is a whole view, so core collects the rows and a stopped sequence writes none.
-test('jsonkit paths --format jsonl with a refused key writes the fatal line alone, with no incomplete-result line', () => {
-  withDocuments({ 'doc.json': refused }, (cwd) => {
-    expect(invoke(main, ['paths', '--format', 'jsonl', '-f', 'doc.json'], { cwd })).toEqual({
+test('jsonkit paths --format jsonl with a refused key writes the fatal line alone, with no incomplete-result line', async () => {
+  await withDocuments({ 'doc.json': refused }, async (cwd) => {
+    await expect(run(['paths', '--format', 'jsonl', '-f', 'doc.json'], { cwd })).resolves.toEqual({
       status: 1,
       stderr:
         '{"error":{"code":"fatal","exitCode":1,"message":"Cannot walk boom. Remove the \\"boom\\" key from the document.","hints":[]}}\n',
@@ -120,9 +125,9 @@ test('jsonkit paths --format jsonl with a refused key writes the fatal line alon
   });
 });
 
-test('an unknown command under --format json writes its text, because routing reached no result', () => {
-  withDocuments({ 'doc.json': walked }, (cwd) => {
-    const result = invoke(main, ['typo', '--format', 'json', '-f', 'doc.json'], { cwd });
+test('an unknown command under --format json writes its text, because routing reached no result', async () => {
+  await withDocuments({ 'doc.json': walked }, async (cwd) => {
+    const result = await run(['typo', '--format', 'json', '-f', 'doc.json'], { cwd });
     expect(result.status).toBe(2);
     expect(result.stderr).toMatch(/^jsonkit: Unknown command "typo"\./u);
     expect(result.stdout).toBe('');

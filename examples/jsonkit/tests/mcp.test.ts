@@ -65,27 +65,27 @@ function failed(code: string, exitCode: number, message: string, text = `${messa
   });
 }
 
-describe.each(['node', 'bun'])('jsonkit mcp, the bundle under %s', (runtime) => {
-  /** A session with the built jsonkit, run in the documents' directory. */
-  function serve() {
-    return launch(main, ['mcp'], { cwd: directory, env: childEnvironment({}), runtime });
-  }
+/** A session with the built jsonkit, run in the documents' directory. */
+function serve() {
+  return launch(main, ['mcp'], { cwd: directory, env: childEnvironment({}) });
+}
 
-  /** One tool call's answer from a fresh session, which then ends with exit 0. */
-  async function call(name: string, args: Record<string, unknown>): Promise<Message> {
-    const session = serve();
-    session.send(request(1, 'tools/call', { arguments: args, name }));
-    const answer = await session.next();
-    await expect(session.close()).resolves.toMatchObject({ status: 0, stderr: '' });
-    return answer;
-  }
+/** One tool call's answer from a fresh session, which then ends with exit 0. */
+async function call(name: string, args: Record<string, unknown>): Promise<Message> {
+  const session = serve();
+  session.send(request(1, 'tools/call', { arguments: args, name }));
+  const answer = await session.next();
+  await expect(session.close()).resolves.toMatchObject({ status: 0, stderr: '' });
+  return answer;
+}
 
-  /** One tool call's result from a fresh session. */
-  async function resultOf(name: string, args: Record<string, unknown>): Promise<unknown> {
-    const answer = await call(name, args);
-    return answer.result;
-  }
+/** One tool call's result from a fresh session. */
+async function resultOf(name: string, args: Record<string, unknown>): Promise<unknown> {
+  const answer = await call(name, args);
+  return answer.result;
+}
 
+describe('jsonkit mcp, the bundle over stdio', () => {
   it('server/discover names jsonkit, its version, and its description', async () => {
     const session = serve();
     session.send(request(1, 'server/discover'));

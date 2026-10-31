@@ -6,22 +6,20 @@ import { join } from 'node:path';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { printed, run } from './run.js';
 
-const main = new URL('../dist/main.js', import.meta.url);
-
-test('textstat --manifest prints the whole application, omitting the hidden --timing', () => {
-  expect(invoke(main, ['--manifest'])).toEqual({
+test('textstat --manifest prints the whole application, omitting the hidden --timing', async () => {
+  await expect(run(['--manifest'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: readFileSync(new URL('fixtures/manifest/root.json', import.meta.url), 'utf8'),
   });
 });
 
-test('textstat -M prints the same manifest through the installed short spelling', () => {
-  const result = invoke(main, ['-M']);
+test('textstat -M prints the same manifest through the installed short spelling', async () => {
+  const result = await run(['-M']);
   expect(result).toMatchObject({ status: 0, stderr: '' });
-  expect(result).toEqual(invoke(main, ['--manifest']));
+  expect(result).toEqual(await run(['--manifest']));
 });
 
 /** The part of the document an agent reads to build one invocation, parsed at the boundary. */
@@ -48,8 +46,8 @@ const readable = z.object({
   encodings: z.object({ json: z.string() }),
 });
 
-test('an agent builds a valid invocation from the manifest alone and parses the promised encoding', () => {
-  const document = readable.parse(JSON.parse(invoke(main, ['--manifest']).stdout));
+test('an agent builds a valid invocation from the manifest alone and parses the promised encoding', async () => {
+  const document = readable.parse(JSON.parse(await printed(['--manifest'])));
   const { command } = document;
   // The agent picks a metric from the schema's enum and the json view from the result's views.
   const metric = command.options.find((entry) => entry.name === 'metric');
@@ -78,7 +76,7 @@ test('an agent builds a valid invocation from the manifest alone and parses the 
       'one.txt',
       'two.txt',
     ];
-    const result = invoke(main, argv, { cwd: directory });
+    const result = await run(argv, { cwd: directory });
     expect(result).toMatchObject({ status: 0, stderr: '' });
     // A rows result under json is one JSON array of its rows, as `encodings.json` states.
     expect(JSON.parse(result.stdout)).toEqual([

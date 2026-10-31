@@ -20,8 +20,8 @@ const message =
 // An unreadable working directory is an operator failure, so the bundle and the source print the same bytes.
 test.each([[['keys', '-f']], [['paths', '--format', 'json', '-f']]])(
   'jsonkit %j from a removed directory prints one line and exits 1 from the bundle and from source',
-  (argv) => {
-    withDocuments({ 'doc.json': document }, (directory) => {
+  async (argv) => {
+    await withDocuments({ 'doc.json': document }, (directory) => {
       const args = [...argv, join(directory, 'doc.json')];
       const expected = { status: 1, stderr: `jsonkit: ${message}\n`, stdout: '' };
       expect(invokeFromRemovedDirectory(main, args)).toEqual(expected);
@@ -30,8 +30,8 @@ test.each([[['keys', '-f']], [['paths', '--format', 'json', '-f']]])(
   },
 );
 
-test('jsonkit.invoke from a removed directory resolves failed with the failure, its form, and the line', () => {
-  withDocuments({ 'doc.json': document }, (directory) => {
+test('jsonkit.invoke from a removed directory resolves failed with the failure, its form, and the line', async () => {
+  await withDocuments({ 'doc.json': document }, (directory) => {
     const result = invokeFromRemovedDirectory(fixture, ['invoke', join(directory, 'doc.json')]);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
@@ -48,8 +48,8 @@ test('jsonkit.invoke from a removed directory resolves failed with the failure, 
   });
 });
 
-test('run() and jsonkit.invoke with a host.cwd override complete from a removed directory', () => {
-  withDocuments({ 'doc.json': document }, (directory) => {
+test('run() and jsonkit.invoke with a host.cwd override complete from a removed directory', async () => {
+  await withDocuments({ 'doc.json': document }, (directory) => {
     const result = invokeFromRemovedDirectory(fixture, ['overrides', join(directory, 'doc.json')]);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);

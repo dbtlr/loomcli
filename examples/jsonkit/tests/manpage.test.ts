@@ -7,10 +7,9 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { findOnPath } from '../../../scripts/test-shell.js';
 import Package from '../package.json' with { type: 'json' };
-import { main } from './documents.js';
+import { run } from './run.js';
 
 const roots: string[] = [];
 
@@ -31,8 +30,8 @@ function sandbox() {
 }
 
 /** Every page `generate` writes into a folder, by file name. */
-function generated(folder: string, env: Record<string, string | undefined> = {}) {
-  const result = invoke(main, ['manpage', 'generate', '--out', folder], { env });
+async function generated(folder: string, env: Record<string, string | undefined> = {}) {
+  const result = await run(['manpage', 'generate', '--out', folder], { env });
   expect(result.status).toBe(0);
   return pagesIn(folder);
 }
@@ -86,16 +85,17 @@ const getPage = [
 ].join('\n');
 
 describe('jsonkit manpage', () => {
-  it('generate writes jsonkit-get.1 byte for byte', () => {
+  it('generate writes jsonkit-get.1 byte for byte', async () => {
     const { root } = sandbox();
-    expect(generated(join(root, 'man')).get('jsonkit-get.1')).toBe(getPage);
+    const pages = await generated(join(root, 'man'));
+    expect(pages.get('jsonkit-get.1')).toBe(getPage);
   });
 
-  it('two runs, a run under another HOME, TERM, COLUMNS, and locale, and install write identical pages', () => {
+  it('two runs, a run under another HOME, TERM, COLUMNS, and locale, and install write identical pages', async () => {
     const box = sandbox();
-    const first = generated(join(box.root, 'first'));
-    expect(generated(join(box.root, 'second'))).toEqual(first);
-    expect(
+    const first = await generated(join(box.root, 'first'));
+    await expect(generated(join(box.root, 'second'))).resolves.toEqual(first);
+    await expect(
       generated(join(box.root, 'third'), {
         COLUMNS: '33',
         HOME: box.home,
@@ -103,8 +103,8 @@ describe('jsonkit manpage', () => {
         LC_ALL: 'fr_FR.UTF-8',
         TERM: 'xterm-256color',
       }),
-    ).toEqual(first);
-    const installed = invoke(main, ['manpage', 'install'], {
+    ).resolves.toEqual(first);
+    const installed = await run(['manpage', 'install'], {
       env: { HOME: box.home, MANPATH: undefined, SHELL: undefined, XDG_STATE_HOME: box.state },
     });
     expect(installed.status).toBe(0);
@@ -112,9 +112,9 @@ describe('jsonkit manpage', () => {
     expect(pagesIn(folder)).toEqual(first);
   });
 
-  it('the set holds the root, each visible Command at every depth, fetch, and each visible plugin Command, and no hidden Command or alias', () => {
+  it('the set holds the root, each visible Command at every depth, fetch, and each visible plugin Command, and no hidden Command or alias', async () => {
     const { root } = sandbox();
-    const pages = generated(join(root, 'man'));
+    const pages = await generated(join(root, 'man'));
     expect(new Set(pages.keys())).toEqual(
       new Set([
         'jsonkit.1',
@@ -160,23 +160,27 @@ describe('jsonkit manpage', () => {
     expect(pages.get('jsonkit-stats-depth-max.1')).toContain('jsonkit stats depth max');
   });
 
-  it.skipIf(findOnPath('groff') === undefined)('groff reads every page with no warning', () => {
-    const { root } = sandbox();
-    for (const [file, text] of generated(join(root, 'man'))) {
-      const lint = spawnSync('groff', ['-man', '-Tutf8', '-ww', '-z'], {
-        encoding: 'utf8',
-        input: text,
-      });
-      expect({ file, stderr: lint.stderr }).toEqual({ file, stderr: '' });
-    }
-  });
+  it.skipIf(findOnPath('groff') === undefined)(
+    'groff reads every page with no warning',
+    async () => {
+      const { root } = sandbox();
+      for (const [file, text] of await generated(join(root, 'man'))) {
+        const lint = spawnSync('groff', ['-man', '-Tutf8', '-ww', '-z'], {
+          encoding: 'utf8',
+          input: text,
+        });
+        expect({ file, stderr: lint.stderr }).toEqual({ file, stderr: '' });
+      }
+    },
+  );
 
   it.skipIf(findOnPath('mandoc') === undefined)(
     'mandoc reports the missing date of each page and nothing else',
-    () => {
+    async () => {
       const { root } = sandbox();
       const folder = join(root, 'man');
-      for (const file of generated(folder).keys()) {
+      const pages = await generated(folder);
+      for (const file of pages.keys()) {
         const lint = spawnSync('mandoc', ['-T', 'lint', '-W', 'warning', join(folder, file)], {
           encoding: 'utf8',
         });
