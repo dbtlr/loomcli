@@ -18,7 +18,11 @@ const writeSchema = z.object({
   size: z.number().optional(),
 });
 
-const reportSchema = z.object({ tarballRequests: z.number(), writes: z.array(writeSchema) });
+const reportSchema = z.object({
+  heldPackumentRequests: z.number(),
+  tarballRequests: z.number(),
+  writes: z.array(writeSchema),
+});
 
 const children: ChildProcess[] = [];
 
@@ -111,6 +115,11 @@ export async function startServices(state: ServicesState) {
   const base = `http://127.0.0.1:${String(await announcedPort(child))}`;
   return {
     githubApi: `${base}/github`,
+    // The packument requests the registry received and held without answering.
+    heldPackumentRequests: async () => {
+      const response = await fetch(`${base}/state`);
+      return reportSchema.parse(await response.json()).heldPackumentRequests;
+    },
     registry: `${base}/registry`,
     tarballRequests: async () => {
       const response = await fetch(`${base}/state`);

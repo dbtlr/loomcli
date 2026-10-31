@@ -734,6 +734,41 @@ test('a tarball endpoint that answers 503 twice is read again until it serves th
   expect(runResult.status).toBe(0);
 });
 
+/**
+ * Holds the first request whose URL matches until the fake endpoint holds it, then ends it with its
+ * deadline, and records the deadline in milliseconds each matching request was given. Each
+ * `AbortSignal.timeout` becomes a signal the test aborts, because a real deadline of a few
+ * milliseconds would also race the run's other requests against the worker's load. Returns the
+ * deadlines, in the order the requests were made.
+ */
+function expireFirst(matches: (url: string) => boolean, held: () => Promise<boolean>) {
+  const deadlines = new Map<AbortSignal, { controller: AbortController; ms: number }>();
+  vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+    const controller = new AbortController();
+    deadlines.set(controller.signal, { controller, ms });
+    return controller.signal;
+  });
+  const given: (number | undefined)[] = [];
+  const originalFetch = globalThis.fetch;
+  let expired = false;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const response = originalFetch(input, init);
+    const signal = init?.signal;
+    if (!matches(input instanceof Request ? input.url : input.toString()) || !signal) {
+      return response;
+    }
+    const deadline = deadlines.get(signal);
+    given.push(deadline?.ms);
+    if (!expired) {
+      expired = true;
+      await vi.waitUntil(held, { timeout: 10_000 });
+      deadline?.controller.abort(new DOMException('The operation timed out.', 'TimeoutError'));
+    }
+    return response;
+  });
+  return given;
+}
+
 test('a tarball endpoint that stalls past the deadline is read again until it serves the bytes', async () => {
   const { packages, published, root } = recordFixture({ tarballStalls: 1 });
   const endpoints = await startServices({
@@ -743,38 +778,15 @@ test('a tarball endpoint that stalls past the deadline is read again until it se
     tag: { annotated: true, commit: published },
     version: '0.2.0',
   });
-  // A 50 ms wall-clock deadline also races the prerequisite JSON reads against worker load.
-  // Deliver the deadline only once the server has received the tarball request it holds open.
-  const controllers = new Map<AbortSignal, AbortController>();
-  vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => {
-    const controller = new AbortController();
-    controllers.set(controller.signal, controller);
-    return controller.signal;
-  });
-  const originalFetch = globalThis.fetch;
-  let stalled = false;
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-    const response = originalFetch(input, init);
-    if (
-      !stalled &&
-      (input instanceof Request ? input.url : input.toString()).includes('/tarballs/')
-    ) {
-      stalled = true;
-      await vi.waitUntil(async () => (await endpoints.tarballRequests()) === 1, {
-        timeout: 10_000,
-      });
-      const signal = init?.signal;
-      if (signal) {
-        controllers
-          .get(signal)
-          ?.abort(new DOMException('The operation timed out.', 'TimeoutError'));
-      }
-    }
-    return response;
-  });
+  const deadlines = expireFirst(
+    (url) => url.includes('/tarballs/'),
+    async () => (await endpoints.tarballRequests()) === 1,
+  );
   const runResult = await record(root, endpoints, { requestTimeoutMs: 50, token: 'test-token' });
   expect(runResult.status).toBe(0);
   await expect(endpoints.tarballRequests()).resolves.toBe(2);
+  // A tarball read waits four times the request deadline.
+  expect(deadlines).toEqual([50 * 4, 50 * 4]);
 });
 
 test('a stalled registry read under plan fails with the url it waited on', async () => {
@@ -784,10 +796,15 @@ test('a stalled registry read under plan fails with the url it waited on', async
     repository: owner,
     version: '0.2.0',
   });
+  const deadlines = expireFirst(
+    (url) => decodeURIComponent(url) === `${endpoints.registry}/${library}`,
+    async () => (await endpoints.heldPackumentRequests()) === 1,
+  );
   const result = await plan(root, endpoints, '--request-timeout-ms', '50');
   expect(result.status).toBe(1);
   expect(result.stderr).toContain(`${endpoints.registry}/${library}`);
   expect(result.stderr).toContain('did not answer within 50 ms');
+  expect(deadlines).toEqual([50]);
 });
 
 test('a tarball that does not match its integrity fails before any write', async () => {
