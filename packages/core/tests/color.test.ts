@@ -46,7 +46,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterAll, expect, test } from 'vite-plus/test';
 
-import { childEnvironment, invokeFromRemovedDirectory } from '../../../scripts/test-process.js';
+import { childEnvironment } from '../../../scripts/test-process.js';
 import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** The notes application, which marks its own `--[no-]color` unless a variant leaves it out. */
@@ -115,7 +115,7 @@ function styles(text: string): { bold: boolean; color: boolean } {
 }
 
 /** What one run's stderr carries: its styles, and the exit status. */
-function printed(result: { status: number | null; stderr: string }) {
+function printed(result: { status: number | null | undefined; stderr: string }) {
   return { status: result.status, ...styles(result.stderr) };
 }
 
@@ -330,20 +330,19 @@ test('a build that bakes malformed release facts prints its diagnostic as it did
   }
 });
 
-/** One run of a capture variant from a working directory removed before the runtime starts. */
+/** Runs host capture with a working-directory read that fails on this run's mock. */
 function fromRemoved(variant: string) {
-  return invokeFromRemovedDirectory(
-    new URL('fixtures/color-process.mjs', import.meta.url),
-    [variant, 'tty', 'save', '--color'],
-    {
-      env: { ...plain, FORCE_COLOR: '1' },
+  return invokeFixture(fixture, [variant, 'tty', 'save', '--color'], {
+    cwd: () => {
+      throw new Error('ENOENT');
     },
-  );
+    env: { ...plain, FORCE_COLOR: '1' },
+  });
 }
 
-test("an unreadable working directory's line holds no style and is unchanged by the mark", () => {
-  const marked = fromRemoved('capture');
+test("an unreadable working directory's line holds no style and is unchanged by the mark", async () => {
+  const marked = await fromRemoved('capture');
   expect(marked.status).toBe(1);
   expect(marked.stderr).not.toContain('\u001b');
-  expect(marked).toEqual(fromRemoved('capture-unmarked'));
+  expect(marked).toEqual(await fromRemoved('capture-unmarked'));
 });

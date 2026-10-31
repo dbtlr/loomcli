@@ -1,5 +1,3 @@
-import { Writable } from 'node:stream';
-
 import { Application, Command, DeclarationError, diagnosticRule, plugin } from '@loomcli/core';
 
 import { scenario as fixtureScenario } from '../scenario.mjs';
@@ -27,12 +25,9 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
 
     /** One run through argv, with its exit code and what it wrote to each stream. */
     async function runCaptured(app, argv) {
-      const stdout = sink();
-      const stderr = sink();
-      const exitCode = await app.run({
-        process: createProcess({ argv, release, stderr: stderr.stream, stdout: stdout.stream }),
-      });
-      return { exitCode, stderr: stderr.text(), stdout: stdout.text() };
+      const mock = createProcess({ argv, record: false, release });
+      const exitCode = await app.run({ process: mock });
+      return { exitCode, stderr: mock.stderr.text, stdout: mock.stdout.text };
     }
 
     /** Every Command path in one graph, depth first, as the hook saw it. */
@@ -194,16 +189,6 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
   return fixture.result();
 }
 
-function sink() {
-  const chunks = [];
-  const stream = new Writable({
-    write(chunk, _encoding, done) {
-      chunks.push(String(chunk));
-      done();
-    },
-  });
-  return { stream, text: () => chunks.join('') };
-}
 function paths(node) {
   return [node.path.join(' '), ...node.children.flatMap(paths)];
 }

@@ -18,6 +18,8 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
   const { createProcess, stdout: writeStdout } = fixture;
   try {
     const scenario = fixtureWords[0];
+    // Each run owns the gate its source releases before its action fails.
+    const { promise: gate, resolve: release } = Promise.withResolvers();
 
     const rows = [{ source: 'one.txt' }, { source: 'two words.txt' }];
 
@@ -117,12 +119,6 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       const thrown = undefined;
       throw thrown;
     }
-
-    /** The gate one source releases as it ends, which the action awaits before it fails. */
-
-    const gate = new Promise((resolve) => {
-      release = resolve;
-    });
 
     /** A source that ends at once and releases the gate as it does, so the action fails after it. */
     const ending = {
@@ -390,22 +386,13 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         : new Application('incomplete', options).command(routed());
     }
 
-    /** The destination one scenario writes its result to, or the process stream every other uses. */
-    function stdout() {
-      return scenario === 'write-fails' ? failingAt(3) : fixture.output;
-    }
-
-    /** The stream one scenario's diagnostics reach, which one of them refuses every write on. */
-    function stderr() {
-      return scenario === 'stderr-failed' ? refusing() : fixture.diagnostic;
-    }
-
     const code = await build().run({
       process: createProcess({
         argv: scenario === 'root' ? [] : ['count'],
         release: { build: 'distributed' },
-        stderr: stderr(),
-        stdout: stdout(),
+        // These scenarios need destinations that fail, rather than recording streams.
+        ...(scenario === 'stderr-failed' ? { stderr: refusing() } : {}),
+        ...(scenario === 'write-fails' ? { stdout: failingAt(3) } : {}),
       }),
       signal: controller.signal,
     });
@@ -422,7 +409,5 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
   }
   return fixture.result();
 }
-
-let release = () => undefined;
 
 export { runFixture as run };

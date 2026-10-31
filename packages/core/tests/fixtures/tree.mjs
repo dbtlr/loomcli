@@ -1,5 +1,3 @@
-import { Writable } from 'node:stream';
-
 import { Application, Command } from '@loomcli/core';
 
 import { scenario as fixtureScenario } from './scenario.mjs';
@@ -28,38 +26,45 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
     const lines = [];
     const errors = [];
 
-    const stdout = capture(lines);
-    const stderr = capture(errors);
-
+    const recorded = [];
+    function captured(argv) {
+      const mock = createProcess({ argv, record: false });
+      recorded.push(mock);
+      return mock;
+    }
     const codes = [];
     first.inspect();
     first.inspect();
     codes.push(
       await first.run({
-        process: createProcess({ argv: ['cache', 'clear'], stderr, stdout }),
+        process: captured(['cache', 'clear']),
       }),
     );
     codes.push(
       await first.run({
-        process: createProcess({ argv: ['cache', 'clear'], stderr, stdout }),
+        process: captured(['cache', 'clear']),
       }),
     );
     codes.push(
       await second.run({
-        process: createProcess({ argv: ['cache', 'clear'], stderr, stdout }),
+        process: captured(['cache', 'clear']),
       }),
     );
     codes.push(
       await second.run({
-        process: createProcess({ argv: ['store', 'clear'], stderr, stdout }),
+        process: captured(['store', 'clear']),
       }),
     );
     codes.push(
       await second.run({
-        process: createProcess({ argv: ['extra', 'clear'], stderr, stdout }),
+        process: captured(['extra', 'clear']),
       }),
     );
     second.inspect();
+    for (const mock of recorded) {
+      lines.push(...mock.stdout.text.split('\n').filter(Boolean));
+      errors.push(...mock.stderr.text.split('\n').filter(Boolean));
+    }
     writeStdout(`${JSON.stringify({ codes, errors, lines })}\n`);
   } catch (error) {
     if (error !== fixture.stopped) {
@@ -70,12 +75,5 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
 }
 
 const dispatch = ({ out }) => out.print('dispatched');
-const capture = (into) =>
-  new Writable({
-    write(chunk, _encoding, callback) {
-      into.push(chunk.toString().trim());
-      callback();
-    },
-  });
 
 export { runFixture as run };

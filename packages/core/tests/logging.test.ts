@@ -62,7 +62,7 @@ interface Collected {
 }
 
 /** What one process wrote, with the fixture's `event:` and `print:` lines read apart. */
-function read(result: { status: number | null; stderr: string; stdout: string }) {
+function read(result: { status: number | null | undefined; stderr: string; stdout: string }) {
   const lines = result.stdout.split('\n');
   const events: Collected[] = lines
     .filter((line) => line.startsWith('event:'))

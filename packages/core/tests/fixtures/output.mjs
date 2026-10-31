@@ -11,27 +11,41 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
   try {
     const scenario = fixtureWords[0];
     const events = [];
-    const destination = new Writable({
-      highWaterMark: 1,
-      write(chunk, _encoding, callback) {
-        setTimeout(() => {
-          if (
-            scenario === 'failed' ||
-            scenario === 'caught-write' ||
-            scenario === 'double-failed'
-          ) {
-            callback(new Error('Output failed.'));
-          } else {
-            events.push(chunk.toString());
-            callback();
-          }
-        }, 5);
-      },
-    });
+    const mock = createProcess({ argv: [], record: false, release: { build: 'distributed' } });
+    const fails = [
+      'failed',
+      'caught-write',
+      'double-failed',
+      'closed',
+      'diagnostic-write',
+    ].includes(scenario);
+    // A separate destination is needed only when the scenario makes writes fail.
+    const destination = fails
+      ? new Writable({
+          highWaterMark: 1,
+          write(chunk, _encoding, callback) {
+            setTimeout(() => {
+              if (
+                scenario === 'failed' ||
+                scenario === 'caught-write' ||
+                scenario === 'double-failed'
+              ) {
+                callback(new Error('Output failed.'));
+              } else {
+                events.push(chunk.toString());
+                callback();
+              }
+            }, 5);
+          },
+        })
+      : mock.stdout;
+    if (!fails) {
+      mock.stdout.cork();
+      setTimeout(() => mock.stdout.uncork(), 5);
+    }
     if (scenario === 'closed') {
       destination.destroy();
     }
-    const stderr = scenario === 'double-failed' ? destination : fixture.diagnostic;
     const beforeErrors = destination.listenerCount('error');
     let attempts = 0;
     if (scenario === 'diagnostic-write') {
@@ -78,13 +92,23 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       }
     });
     const code = await app.run({
-      process: createProcess({
-        argv: [],
-        release: { build: 'distributed' },
-        stderr: scenario === 'diagnostic-write' ? destination : stderr,
-        stdout: destination,
-      }),
+      process: fails
+        ? {
+            ...mock,
+            stderr: ['double-failed', 'diagnostic-write'].includes(scenario)
+              ? destination
+              : mock.stderr,
+            stdout: destination,
+          }
+        : mock,
     });
+    fixture.exitCode = code;
+    if (!fails) {
+      events.push(
+        ...mock.transcript.filter((write) => write.stream === 'stdout').map((write) => write.text),
+      );
+    }
+    fixture.stderr(mock.stderr.text);
     writeStdout(
       `${JSON.stringify({
         code,

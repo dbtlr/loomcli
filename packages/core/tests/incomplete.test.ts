@@ -230,9 +230,8 @@ test('an iterator result whose done getter throws is the source failure it raise
 });
 
 test('a cleanup that never settles does not hold the stopped run open', async () => {
-  await expect(
-    incomplete('cleanup-hangs', { NODE_OPTIONS: '--unhandled-rejections=strict' }),
-  ).resolves.toEqual({
+  // Vitest reports any unhandled rejection from this in-process run.
+  await expect(incomplete('cleanup-hangs')).resolves.toEqual({
     status: 1,
     stderr: `${line('Command "count"', 0, 0)}The action failed.\n`,
     stdout: 'PATHS\nresolved:1\n',

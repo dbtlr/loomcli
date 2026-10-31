@@ -1,5 +1,3 @@
-import { Writable } from 'node:stream';
-
 import { Application, Command, extension, FatalError, plugin } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 
@@ -22,7 +20,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
 
     const events = [];
     const notes = {};
-    let columns = 40;
+    let mock = undefined;
     let stdoutText = '';
 
     /** A bare view that writes its data as it is. */
@@ -35,27 +33,9 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
 
     /** Resizes the terminal between writes, as an operator does. */
     function resize(width) {
-      columns = width;
+      mock.resize(width, 24);
       events.push({ resize: width });
     }
-
-    /** A stream whose writes reach the recorded terminal. */
-    function screenStream() {
-      return new Writable({
-        write(chunk, _encoding, done) {
-          events.push({ write: chunk.toString() });
-          done();
-        },
-      });
-    }
-
-    /** A stream that captures what a pipe would hold. */
-    const piped = new Writable({
-      write(chunk, _encoding, done) {
-        stdoutText += chunk.toString();
-        done();
-      },
-    });
 
     /** The closer each named region read when its signal aborted. */
     function watch(name, region, onAbort) {
@@ -494,9 +474,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
             })
         : app.action(chosen.action);
 
-    const stderr = screenStream();
-    const stdout = terminal === 'both' ? screenStream() : piped;
-    const tty = terminal === 'tty' || terminal === 'both' || terminal === 'nested';
+    const tty = ['tty', 'both', 'nested'].includes(terminal);
     let code = 0;
     let messages = undefined;
     if (terminal === 'invoke') {
@@ -504,28 +482,30 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       code = outcome.status;
       messages = outcome.messages;
     } else {
+      mock = createProcess({
+        argv,
+        env: {},
+        record: false,
+        terminal: {
+          columns: 40,
+          rows: 24,
+          streams: terminal === 'both' ? ['stdout', 'stderr'] : ['stderr'].filter(() => tty),
+        },
+      });
+      for (const name of ['stdout', 'stderr']) {
+        const stream = mock[name];
+        const originalWrite = stream.write.bind(stream);
+        stream.write = function write(chunk, ...args) {
+          if (name === 'stderr' || terminal === 'both') {
+            events.push({ write: chunk.toString() });
+          } else {
+            stdoutText += chunk.toString();
+          }
+          return Reflect.apply(originalWrite, this, [chunk, ...args]);
+        };
+      }
       code = await app.run({
-        process: createProcess({
-          argv,
-          env: {},
-          stderr,
-          stdout,
-          terminal: {
-            stderr: {
-              get columns() {
-                return tty ? columns : undefined;
-              },
-              isTTY: tty,
-              rows: 24,
-            },
-            stdin: { isTTY: false },
-            stdout: {
-              columns: terminal === 'both' ? columns : undefined,
-              isTTY: terminal === 'both',
-              rows: 24,
-            },
-          },
-        }),
+        process: mock,
         signal: caller.signal,
       });
     }

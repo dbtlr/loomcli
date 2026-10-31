@@ -1,5 +1,3 @@
-import { Writable } from 'node:stream';
-
 import {
   Application,
   Command,
@@ -9,6 +7,7 @@ import {
   lanes,
   nowrap,
   override,
+  processHandle,
 } from '@loomcli/core';
 
 import { scenario as fixtureScenario } from './scenario.mjs';
@@ -29,7 +28,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
     });
 
     if (scenario === 'destinations') {
-      // Each destination reads its own width, from a supplied terminal or from the real process.
+      // Each destination reads its own width from the supplied terminal facts.
       const app = new Application('columns').action(async ({ host, out }) => {
         await out.render(null, reading('stdout'));
         await out.draw(null, reading('stderr'));
@@ -37,12 +36,26 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
           `host:${String(host.terminal.stdout.columns)},${String(host.terminal.stderr.columns)}`,
         );
       });
+      const supplied = input.terminal;
+      const columns = supplied?.stdout.columns;
+      const oneScreen =
+        typeof columns === 'number' &&
+        columns === supplied.stderr.columns &&
+        supplied.stdout.isTTY &&
+        supplied.stderr.isTTY;
+      const mock = createProcess({
+        argv: [],
+        env: input.env ?? fixtureOptions.env ?? {},
+        ...(oneScreen ? { terminal: { columns, rows: 24 } } : {}),
+      });
+      // Distinct destination widths, widths retained on pipes, and unknown widths need a
+      // Custom ProcessTerminal: mockProcess describes one screen with a known size.
+      // This composed handle keeps the mock's recording streams and never mutates its terminal.
       await app.run({
-        process: createProcess({
-          argv: [],
-          ...(input.env === undefined ? {} : { env: input.env }),
-          ...(input.terminal === undefined ? {} : { terminal: input.terminal }),
-        }),
+        process:
+          supplied === undefined || oneScreen
+            ? mock
+            : processHandle({ ...mock, terminal: supplied }),
       });
     } else if (scenario === 'invoke') {
       // An invocation by name has no terminal, whatever COLUMNS the process holds.
@@ -56,16 +69,14 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       writeStdout(JSON.stringify(outcome));
     } else if (scenario === 'fresh') {
       // A getter-backed host whose width the action changes between render calls.
-      let width = 100;
-      const live = {
-        get columns() {
-          return width;
-        },
-        isTTY: true,
-        rows: 24,
-      };
+      const mock = createProcess({
+        argv: input.argv ?? [],
+        env: scenario === 'draw' ? { COLUMNS: '60' } : {},
+        record: scenario !== 'draw',
+        terminal: { columns: 100, rows: 24 },
+      });
       const at = (next) => {
-        width = next;
+        mock.resize(next, 24);
       };
       async function* rows() {
         at(71);
@@ -132,15 +143,10 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
           }),
         );
       fixture.exitCode = await app.run({
-        process: createProcess({
-          argv: input.argv,
-          env: {},
-          terminal: { stderr: live, stdin: { isTTY: false }, stdout: live },
-        }),
+        process: mock,
       });
     } else if (scenario === 'failure') {
       // Core's default failure text on a narrow terminal, and an override that wraps its own text.
-      const narrow = { columns: 20, isTTY: input.tty ?? true, rows: 24 };
       const views = input.override
         ? [
             override(FatalError, {
@@ -189,19 +195,21 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
           argv: input.argv,
           env: {},
           release: { build: 'distributed' },
-          terminal: { stderr: narrow, stdin: { isTTY: false }, stdout: narrow },
+          terminal: {
+            columns: 20,
+            rows: 24,
+            streams: (input.tty ?? true) ? ['stdout', 'stderr'] : [],
+          },
         }),
       });
     } else if (scenario === 'draw') {
       // Out.draw counts rows against the real stderr width, never the COLUMNS-narrowed one.
-      let width = 100;
-      const live = {
-        get columns() {
-          return width;
-        },
-        isTTY: true,
-        rows: 24,
-      };
+      const mock = createProcess({
+        argv: input.argv ?? [],
+        env: scenario === 'draw' ? { COLUMNS: '60' } : {},
+        record: scenario !== 'draw',
+        terminal: { columns: 100, rows: 24 },
+      });
       const seen = [];
       const counted = [];
       const line = `${'x'.repeat(80)}\n`;
@@ -214,18 +222,11 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       await new Application('columns', { description: 'Draw.' })
         .action(async ({ out }) => {
           counted.push(await out.draw(line, view));
-          width = 40;
+          mock.resize(40, 24);
           counted.push(await out.draw(line, view));
         })
         .run({
-          process: createProcess({
-            argv: [],
-            env: { COLUMNS: '60' },
-            stderr: new Writable({
-              write: (_chunk, _encoding, done) => done(),
-            }),
-            terminal: { stderr: live, stdin: { isTTY: false }, stdout: live },
-          }),
+          process: mock,
         });
       writeStdout(JSON.stringify({ counted, seen }));
     }

@@ -1,6 +1,3 @@
-import { Readable } from 'node:stream';
-import { text } from 'node:stream/consumers';
-
 import { Application, Command, plugin } from '@loomcli/core';
 
 import { scenario as fixtureScenario } from './scenario.mjs';
@@ -144,28 +141,10 @@ async function runFixture(words, fixtureOptions = {}) {
       }
     }
 
-    if (['file', 'named-file-unread', 'file-closed-stdin'].includes(scenario)) {
-      const app = new Application('content', { description: 'Read one content source.' })
-        .argument('file', { description: 'The source to read.', required: true, type: 'content' })
-        .action(async ({ args, out }) => {
-          const source = args.file;
-          await out.print(
-            JSON.stringify({
-              kind: source.kind,
-              name: source.name,
-              path: source.path,
-              text: await source.text(),
-            }),
-          );
-        });
+    if (['file'].includes(scenario)) {
+      const app = fileApplication();
       const outcome = await app.invoke([], { args: { file: path } }, { process: createProcess() });
-      writeStdout(
-        JSON.stringify(
-          scenario === 'named-file-unread'
-            ? { outcome, remaining: await text(process.stdin) }
-            : outcome,
-        ),
-      );
+      writeStdout(JSON.stringify(outcome));
     }
 
     if (['collection', 'collection-max', 'terminal'].includes(scenario)) {
@@ -190,11 +169,7 @@ async function runFixture(words, fixtureOptions = {}) {
           argv,
           ...(scenario === 'terminal'
             ? {
-                terminal: {
-                  stderr: { isTTY: false },
-                  stdin: { isTTY: true },
-                  stdout: { isTTY: false },
-                },
+                terminal: { columns: 80, keys: [], rows: 24, streams: [] },
               }
             : {}),
         }),
@@ -202,14 +177,7 @@ async function runFixture(words, fixtureOptions = {}) {
     }
 
     if (['scalar', 'named-empty', 'named-dash'].includes(scenario)) {
-      const app = new Application('content', { description: 'Read one source.' })
-        .option('file', {
-          description: 'The source.',
-          required: true,
-          stdin: true,
-          type: 'content',
-        })
-        .action(async ({ options, out }) => out.print(await options.file.text()));
+      const app = scalarApplication();
       if (scenario === 'scalar') {
         await app.run({ process: createProcess({ argv }) });
       } else {
@@ -224,11 +192,6 @@ async function runFixture(words, fixtureOptions = {}) {
 
     if (scenario === 'unread') {
       let reads = 0;
-      const stdin = new Readable({
-        read() {
-          reads++;
-        },
-      });
       const app = new Application('content', { description: 'Prepare sources without reading.' })
         .argument('files', {
           description: 'The sources.',
@@ -241,7 +204,13 @@ async function runFixture(words, fixtureOptions = {}) {
         .action(() => {
           throw new Error('The action must not run.');
         });
-      await app.run({ process: createProcess({ argv: [], stdin }) });
+      const mock = createProcess({ argv: [], stdin: 'unread' });
+      const read = mock.stdin.read.bind(mock.stdin);
+      mock.stdin.read = (...args) => {
+        reads++;
+        return Reflect.apply(read, mock.stdin, args);
+      };
+      await app.run({ process: mock });
       writeStdout(JSON.stringify({ reads }));
     }
 
@@ -277,11 +246,7 @@ async function runFixture(words, fixtureOptions = {}) {
             argv: scenario.startsWith('stdin-help') ? ['--help'] : argv,
             ...(scenario === 'stdin-missing'
               ? {
-                  terminal: {
-                    stderr: { isTTY: false },
-                    stdin: { isTTY: true },
-                    stdout: { isTTY: false },
-                  },
+                  terminal: { columns: 80, keys: [], rows: 24, streams: [] },
                 }
               : {}),
           }),
@@ -296,3 +261,32 @@ async function runFixture(words, fixtureOptions = {}) {
 }
 
 export { runFixture as run };
+
+/** Builds the named-file application shared by mock and real stdin tests. */
+export function fileApplication() {
+  return new Application('content', { description: 'Read one content source.' })
+    .argument('file', { description: 'The source to read.', required: true, type: 'content' })
+    .action(async ({ args, out }) => {
+      const source = args.file;
+      await out.print(
+        JSON.stringify({
+          kind: source.kind,
+          name: source.name,
+          path: source.path,
+          text: await source.text(),
+        }),
+      );
+    });
+}
+
+/** Builds the scalar source application shared by mock and shell transport tests. */
+export function scalarApplication() {
+  return new Application('content', { description: 'Read one source.' })
+    .option('file', {
+      description: 'The source.',
+      required: true,
+      stdin: true,
+      type: 'content',
+    })
+    .action(async ({ options, out }) => out.print(await options.file.text()));
+}

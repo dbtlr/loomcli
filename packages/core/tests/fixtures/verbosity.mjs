@@ -27,18 +27,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
      */
     const [variant, terminal, ...argv] = fixtureWords;
 
-    const terminals = {
-      pipe: {
-        stderr: { columns: undefined, isTTY: false, rows: undefined },
-        stdin: { isTTY: false },
-        stdout: { columns: undefined, isTTY: false, rows: undefined },
-      },
-      tty: {
-        stderr: { columns: 40, isTTY: true, rows: 24 },
-        stdin: { isTTY: false },
-        stdout: { columns: 40, isTTY: true, rows: 24 },
-      },
-    };
+    const terminals = { pipe: undefined, tty: { columns: 40, rows: 24 } };
 
     const unmarked = variant === 'unmarked';
 

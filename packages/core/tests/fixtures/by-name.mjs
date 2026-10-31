@@ -1,8 +1,8 @@
-import { Writable } from 'node:stream';
-
 import { Application, Command, FatalError, override, plugin, translate } from '@loomcli/core';
 
 import { scenario as fixtureScenario } from './scenario.mjs';
+
+const probe = { description: 'Probe a call by name.' };
 
 /** Runs a fresh fixture scenario with only the supplied process facts. */
 async function runFixture(fixtureWords, fixtureOptions = {}) {
@@ -11,9 +11,6 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
   try {
     const scenario = fixtureWords[0];
     const build = fixtureWords[1] ?? 'distributed';
-
-    /** The options each scenario's Application declares. */
-    const probe = { description: 'Probe a call by name.' };
 
     /** The release facts each run reads, which render a defect by the build a test names. */
     const release = { build };
@@ -34,7 +31,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       }
     }
 
-    /** Prints one line of JSON to the real stdout, which no invocation by name ever writes to. */
+    /** Prints one line of JSON to the fixture report, separate from the application's output. */
     function print(value) {
       writeStdout(`${JSON.stringify(value)}\n`);
     }
@@ -198,11 +195,11 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         seen,
         source: await app.invoke(['get'], {}, { process: createProcess({ env, release }) }),
         sourceArgv: await (async () => {
-          const stderr = sink();
+          const mock = createProcess({ argv: ['get'], env, record: false, release });
           const code = await app.run({
-            process: createProcess({ argv: ['get'], env, release, stderr: stderr.stream }),
+            process: mock,
           });
-          return { code, stderr: stderr.text() };
+          return { code, stderr: mock.stderr.text };
         })(),
         unknownArgument: await app.invoke(
           ['get'],
@@ -423,47 +420,27 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
 
     if (scenario === 'isolation') {
       // A sentinel host: every stream records its writes, so a write the call leaked would show.
-      const stdout = sink();
-      const stderr = sink();
       const real = { stderr: 0, stdout: 0 };
-      const app = new Application('probe', probe)
-        .command(
-          new Command('child', {
-            description: 'The child command.',
-          }).action(async ({ host, out }) => {
-            await out.print('child output');
-            await out.warn('child message');
-            await out.print(JSON.stringify({ argv: host.argv, counts: counts(), cwd: host.cwd }));
-          }),
-        )
-        .command(
-          new Command('parent', {
-            description: 'The parent command.',
-          }).action(async ({ invoke, out }) => {
-            const before = { counts: counts(), exitCode: fixture.exitCode ?? null };
-            // Every write to the real streams while the call runs is counted, and none may happen.
-            const restore = [
-              countWrites(fixture.output, real, 'stdout'),
-              countWrites(fixture.diagnostic, real, 'stderr'),
-            ];
-            const outcome = await invoke(['child'], {});
-            for (const undo of restore) {
-              undo();
-            }
-            const after = { counts: counts(), exitCode: fixture.exitCode ?? null };
-            await out.print(JSON.stringify({ after, before, outcome, real }));
-          }),
-        );
-      const code = await app.run({
-        process: createProcess({
-          argv: ['parent'],
-          cwd: '/sentinel',
-          release,
-          stderr: stderr.stream,
-          stdout: stdout.stream,
-        }),
+      let restore = [];
+      const app = isolationApplication({
+        afterCall: () => {
+          for (const undo of restore) {
+            undo();
+          }
+          return { counts: counts(), exitCode: fixture.exitCode ?? null, real };
+        },
+        beforeCall: () => {
+          restore = [
+            countWrites(fixture.output, real, 'stdout'),
+            countWrites(fixture.diagnostic, real, 'stderr'),
+          ];
+          return { counts: counts(), exitCode: fixture.exitCode ?? null };
+        },
+        counts,
       });
-      print({ code, stderr: stderr.text(), stdout: stdout.text() });
+      const mock = createProcess({ argv: ['parent'], cwd: '/sentinel', record: false, release });
+      const code = await app.run({ process: mock });
+      print({ code, stderr: mock.stderr.text, stdout: mock.stdout.text });
       fixture.exitCode = 0;
     } else if (scenario === 'host') {
       const app = new Application('probe', probe).action(async ({ host, out }) => {
@@ -586,60 +563,16 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
           }),
         ],
       }).action(({ out }) => out.fatal('Stopped.'));
-      const stderr = sink();
-      await app.run({ process: createProcess({ argv: [], release, stderr: stderr.stream }) });
+      const mock = createProcess({ argv: [], record: false, release });
+      await app.run({ process: mock });
       const named = await app.invoke([], {}, { process: createProcess({ release }) });
-      print({ argv: stderr.text(), named: named.messages, seen });
+      print({ argv: mock.stderr.text, named: named.messages, seen });
       fixture.exitCode = 0;
     }
 
     if (scenario === 'sigterm' || scenario === 'own-abort' || scenario === 'pre-aborted') {
       const marks = [];
-      const owner = plugin('@fixture/owner', {
-        middleware: {
-          activate: 'always',
-          load: () =>
-            Promise.resolve({
-              default: async ({ next }) => {
-                marks.push('middleware');
-                await next();
-              },
-            }),
-        },
-      });
-      const handled = [];
-      const failure = (value) => {
-        handled.push(value.name);
-        return value;
-      };
-      const app = new Application('probe', {
-        ...probe,
-        plugins: [owner],
-      })
-        .command(
-          new Command('slow', {
-            description: 'The slow command.',
-          }).action(async ({ signal }) => {
-            marks.push('action');
-            // The harness waits for this line on the real stdout before it signals the process.
-            writeStdout('ready\n');
-            await new Promise((resolve) => {
-              const held = setTimeout(resolve, 20_000);
-              signal.addEventListener('abort', () => {
-                clearTimeout(held);
-                resolve();
-              });
-            });
-          }),
-        )
-        .command(
-          new Command('parent', {
-            description: 'The parent command.',
-          }).action(async ({ invoke }) => {
-            const outcome = await invoke(['slow'], {}, { failure });
-            print({ handled, outcome });
-          }),
-        );
+      const { app, failure, handled } = signalApplication({ marks, print, writeStdout });
       if (scenario === 'sigterm') {
         const code = await app.run({ process: createProcess({ argv: ['parent'], release }) });
         print({ code });
@@ -775,15 +708,82 @@ function chatty(label) {
     }
   });
 }
-function sink() {
-  const chunks = [];
-  const stream = new Writable({
-    write(chunk, _encoding, callback) {
-      chunks.push(Buffer.from(chunk));
-      callback();
-    },
-  });
-  return { stream, text: () => Buffer.concat(chunks).toString('utf8') };
-}
 
 export { runFixture as run };
+
+/** Builds the nested invocation whose caller observes process isolation. */
+export function isolationApplication({ counts: listenerCounts, beforeCall, afterCall }) {
+  return new Application('probe', probe)
+    .command(
+      new Command('child', {
+        description: 'The child command.',
+      }).action(async ({ host, out }) => {
+        await out.print('child output');
+        await out.warn('child message');
+        await out.print(
+          JSON.stringify({ argv: host.argv, counts: listenerCounts(), cwd: host.cwd }),
+        );
+      }),
+    )
+    .command(
+      new Command('parent', {
+        description: 'The parent command.',
+      }).action(async ({ invoke, out }) => {
+        const before = beforeCall();
+        const outcome = await invoke(['child'], {});
+        const { real, ...after } = afterCall();
+        await out.print(JSON.stringify({ after, before, outcome, real }));
+      }),
+    );
+}
+
+/** Builds a cancellable nested call with observations local to this run. */
+export function signalApplication({ marks, writeStdout, print }) {
+  const owner = plugin('@fixture/owner', {
+    middleware: {
+      activate: 'always',
+      load: () =>
+        Promise.resolve({
+          default: async ({ next }) => {
+            marks.push('middleware');
+            await next();
+          },
+        }),
+    },
+  });
+  const handled = [];
+  const failure = (value) => {
+    handled.push(value.name);
+    return value;
+  };
+  const app = new Application('probe', {
+    ...probe,
+    plugins: [owner],
+  })
+    .command(
+      new Command('slow', {
+        description: 'The slow command.',
+      }).action(async ({ signal }) => {
+        marks.push('action');
+        // The process harness waits for this line before it signals the process.
+        writeStdout('ready\n');
+        await new Promise((resolve) => {
+          const held = setTimeout(resolve, 20_000);
+          signal.addEventListener('abort', () => {
+            clearTimeout(held);
+            resolve();
+          });
+        });
+      }),
+    )
+    .command(
+      new Command('parent', {
+        description: 'The parent command.',
+      }).action(async ({ invoke }) => {
+        const outcome = await invoke(['slow'], {}, { failure });
+        print({ handled, outcome });
+      }),
+    );
+
+  return { app, failure, handled };
+}

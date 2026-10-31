@@ -1,5 +1,3 @@
-import { Writable } from 'node:stream';
-
 import { Application, glyph, style } from '@loomcli/core';
 
 import { scenario as fixtureScenario } from './scenario.mjs';
@@ -11,11 +9,6 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
   try {
     let plain = '';
     let cells = 0;
-    const sink = new Writable({
-      write(chunk, encoding, done) {
-        done();
-      },
-    });
     const app = new Application('view', {
       description: 'Resolve view text.',
       rendering: { color: 'always', modifiers: 'always', terminalControls: 'preserve' },
@@ -30,7 +23,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       await out.print(JSON.stringify({ cells, plain }));
     });
     fixture.exitCode = await app.run({
-      process: createProcess({ argv: [], env: { TERM: 'linux' }, platform: 'linux', stderr: sink }),
+      process: createProcess({ argv: [], env: { TERM: 'linux' }, platform: 'linux' }),
     });
   } catch (error) {
     if (error !== fixture.stopped) {

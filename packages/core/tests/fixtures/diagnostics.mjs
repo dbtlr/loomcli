@@ -214,7 +214,15 @@ async function runFixture(words, fixtureOptions = {}) {
               argv: [],
               env: input.env ?? {},
               release: { build: 'source' },
-              terminal: input.terminal,
+              terminal:
+                input.terminal === undefined
+                  ? undefined
+                  : {
+                      columns:
+                        input.terminal.stderr?.columns ?? input.terminal.stdout?.columns ?? 80,
+                      rows: 24,
+                      streams: ['stdout', 'stderr'].filter((name) => input.terminal[name]?.isTTY),
+                    },
             }),
           });
         break;

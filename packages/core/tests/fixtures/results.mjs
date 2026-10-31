@@ -1,4 +1,3 @@
-import { Writable } from 'node:stream';
 import { setTimeout as after } from 'node:timers/promises';
 
 import {
@@ -87,19 +86,6 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         yield row;
       }
     }
-
-    /** A destination that records what reached it, so one capture reads both streams in order. */
-    function capture() {
-      return new Writable({
-        write(chunk, encoding, callback) {
-          events.push(chunk.toString());
-          callback();
-        },
-      });
-    }
-
-    /** The one destination the ordering scenario gives both streams. */
-    const shared = scenario === 'order' ? capture() : undefined;
 
     /** What each scenario declares: one value, a sequence under either view shape, or nothing. */
     const declarations = {
@@ -350,21 +336,18 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       return declarations[scenario] === 'none' ? ['plain'] : ['count'];
     }
 
-    const code = await build().run({
-      process: createProcess({
-        argv: argv(),
-        env: { TERM: 'linux' },
-        platform: 'linux',
-        release,
-        stderr: shared ?? fixture.diagnostic,
-        stdout: shared ?? fixture.output,
-        terminal: {
-          stderr: { isTTY: true },
-          stdin: { isTTY: false },
-          stdout: { isTTY: false },
-        },
-      }),
+    const mock = createProcess({
+      argv: argv(),
+      env: { TERM: 'linux' },
+      platform: 'linux',
+      record: scenario !== 'order',
+      release,
+      terminal: { columns: 80, rows: 24, streams: ['stderr'] },
     });
+    const code = await build().run({ process: mock });
+    if (scenario === 'order') {
+      events.push(...mock.transcript.map((write) => write.text));
+    }
     if (events.length > 0) {
       writeStdout(`${JSON.stringify(events)}\n`);
     }

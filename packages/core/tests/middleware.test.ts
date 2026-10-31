@@ -33,8 +33,8 @@ async function run(scenario: string, argv: string[], env: Record<string, string>
 }
 
 /**
- * The same invocation with a marks file, so a test reads which plugin implementation modules the
- * invocation evaluated. A module that never loaded leaves no line.
+ * The same invocation with a marks file, so a test reads which plugin load() wrappers were called.
+ * A wrapper that was never called leaves no line.
  */
 async function loaded(scenario: string, argv: string[]) {
   const directory = mkdtempSync(join(tmpdir(), 'loom-plugin-marks-'));

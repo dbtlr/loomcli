@@ -229,11 +229,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
             await invoke(['inner'], {});
             log.info('outer again');
           }),
-      'stdout-broken': () =>
-        new Application('probe', {
-          description: 'Probe a full disk.',
-          plugins: [collector],
-        }).action(({ out }) => out.print('lost')),
+      'stdout-broken': () => brokenStdoutApplication([collector]),
       'stdout-broken-after-failure': () =>
         new Application('probe', {
           description: 'Probe a full disk.',
@@ -248,10 +244,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         failing([collector], () => {
           throw 'boom';
         }),
-      'type-error': () =>
-        failing([collector], () => {
-          throw new TypeError('The probe failed.');
-        }),
+      'type-error': () => typeErrorApplication([collector]),
       // The action reads whether a getter on its fields is read with no listener installed.
       unlogged: () =>
         failing([silent], ({ log }) => {
@@ -339,3 +332,18 @@ function failing(plugins, action) {
 }
 
 export { runFixture as run };
+
+/** Builds the defect scenario whose bundled run reads baked release facts. */
+export function typeErrorApplication(plugins) {
+  return failing(plugins, () => {
+    throw new TypeError('The probe failed.');
+  });
+}
+
+/** Builds the output defect scenario shared with bundled process runs. */
+export function brokenStdoutApplication(plugins) {
+  return new Application('probe', { description: 'Probe a full disk.', plugins }).action(
+    ({ out }) => out.print('lost'),
+  );
+}
+export { fullDisk, deepFrozen };

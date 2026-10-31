@@ -52,11 +52,7 @@ async function runFixture(words, fixtureOptions = {}) {
         argv: [],
         env,
         platform: 'linux',
-        terminal: {
-          stderr: { isTTY: true },
-          stdin: { isTTY: false },
-          stdout: { isTTY: false },
-        },
+        terminal: { columns: 80, rows: 24, streams: ['stderr'] },
       }),
     };
     await app.run(options);

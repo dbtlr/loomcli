@@ -17,7 +17,7 @@ async function runFixture(words, fixtureOptions = {}) {
       })
       .join('');
     const tty = input.columns !== null;
-    const output = { columns: input.columns ?? undefined, isTTY: tty, rows: 24 };
+
     await new Application('lanes', { description: 'Write one lane message.' })
       .action(({ out }) => out[input.lane](message))
       .run({
@@ -25,7 +25,11 @@ async function runFixture(words, fixtureOptions = {}) {
           argv: [],
           env: input.env ?? {},
           platform: 'linux',
-          terminal: { stderr: output, stdin: { isTTY: false }, stdout: output },
+          terminal: {
+            columns: input.columns ?? 80,
+            rows: 24,
+            streams: tty ? ['stdout', 'stderr'] : [],
+          },
         }),
         rendering: input.rendering,
       });

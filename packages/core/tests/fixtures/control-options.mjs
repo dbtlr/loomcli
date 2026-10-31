@@ -1,5 +1,3 @@
-import { Writable } from 'node:stream';
-
 import { Application, Command, plugin } from '@loomcli/core';
 
 import { scenario as fixtureScenario } from './scenario.mjs';
@@ -88,17 +86,16 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         ['unmarked', false],
       ]) {
         const { app, seen } = declared(control);
-        const stderr = sink();
-        const exitCode = await app.run({
-          process: createProcess({ argv, stderr: stderr.stream }),
-        });
-        const rejected = await app.run({
-          process: createProcess({
-            argv: ['get', '--depth', 'deep'],
-            stderr: stderr.stream,
-          }),
-        });
-        outcomes[label] = { exitCode, rejected, seen, stderr: stderr.text() };
+        const first = createProcess({ argv, record: false });
+        const exitCode = await app.run({ process: first });
+        const second = createProcess({ argv: ['get', '--depth', 'deep'], record: false });
+        const rejected = await app.run({ process: second });
+        outcomes[label] = {
+          exitCode,
+          rejected,
+          seen,
+          stderr: first.stderr.text + second.stderr.text,
+        };
       }
       print(outcomes);
       fixture.exitCode = 0;
@@ -111,16 +108,6 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
   return fixture.result();
 }
 
-function sink() {
-  const chunks = [];
-  const stream = new Writable({
-    write(chunk, _encoding, done) {
-      chunks.push(String(chunk));
-      done();
-    },
-  });
-  return { stream, text: () => chunks.join('') };
-}
 function marks(app) {
   const graph = app.inspect();
   const get = graph.root.children.find((child) => child.name === 'get');

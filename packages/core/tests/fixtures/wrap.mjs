@@ -34,11 +34,7 @@ async function runFixture(words, fixtureOptions = {}) {
         argv: [],
         env: input.env ?? {},
         platform: 'linux',
-        terminal: {
-          stderr: { columns: undefined, isTTY: false, rows: undefined },
-          stdin: { isTTY: false },
-          stdout: { columns: undefined, isTTY: input.tty ?? false, rows: undefined },
-        },
+        terminal: { columns: 80, rows: 24, streams: input.tty ? ['stdout'] : [] },
       }),
       rendering: input.rendering,
     });

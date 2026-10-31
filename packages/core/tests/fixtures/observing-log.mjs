@@ -29,12 +29,6 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
 
     /** What the run's stderr received, which a hook writes to through `destination.stderr`. */
     const written = [];
-    const stderr = new Writable({
-      write(chunk, _encoding, callback) {
-        written.push(String(chunk));
-        callback();
-      },
-    });
 
     /** A stdout on a full disk, so every write fails, which leaves a broken destination. */
 
@@ -162,17 +156,17 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       fixtureEnv.FIXTURE_BUILD === undefined
         ? {}
         : { release: { build: fixtureEnv.FIXTURE_BUILD } };
-    const code = await app.run({
-      process: createProcess({
-        argv,
-        env: { PROBE: 'run' },
-        platform: 'probe-os',
-        stderr,
-        ...(scenario === 'stdout-and-hook-broken' ? { stdout: fullDisk() } : {}),
-        ...release,
-      }),
-      signal: controller.signal,
+    const mock = createProcess({
+      argv,
+      env: { PROBE: 'run' },
+      platform: 'probe-os',
+      record: false,
+      ...(scenario === 'stdout-and-hook-broken' ? { stdout: fullDisk() } : {}),
+      ...release,
     });
+    const code = await app.run({ process: mock, signal: controller.signal });
+    written.push(mock.stderr.text);
+    writeStdout(mock.stdout.text);
     if (scenario === 'app-invoke') {
       printed.push({ marker: 'invoke' });
       const outcome = await app.invoke(

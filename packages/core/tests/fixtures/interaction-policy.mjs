@@ -45,11 +45,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
                 { disabled: ['--no-input', '--port', '8080'], env: ['--port', '8080'] }[scenario] ??
                 [],
               env: scenario === 'env' ? { SETUP_INPUT: 'false' } : {},
-              terminal: {
-                stderr: { columns: 80, isTTY: true, rows: 24 },
-                stdin: { isTTY: true },
-                stdout: { columns: undefined, isTTY: false, rows: undefined },
-              },
+              terminal: { columns: 80, keys: [], rows: 24, streams: ['stderr'] },
             }),
           });
         }

@@ -27,10 +27,7 @@ export function scenario(options = {}) {
   }
   return {
     createProcess: (fields = {}) => {
-      const { terminal, stdin, stdout: output, stderr: diagnostic, ...facts } = fields;
-      const streams =
-        terminal === undefined ? [] : ['stdout', 'stderr'].filter((name) => terminal[name]?.isTTY);
-      const keyboard = terminal?.stdin?.isTTY;
+      const { stdout: output, stderr: diagnostic, record = true, ...facts } = fields;
       const mock = mockProcess({
         cwd: options.cwd ?? process.cwd(),
         ...(env.FIXTURE_TTY === '1'
@@ -47,33 +44,25 @@ export function scenario(options = {}) {
         },
         ...(options.input === undefined ? {} : { stdin: options.input }),
         ...facts,
-        ...(terminal === undefined || (!keyboard && streams.length === 0)
-          ? {}
-          : {
-              terminal: {
-                columns: terminal.stdout?.columns ?? terminal.stderr?.columns ?? 80,
-                rows: 24,
-                streams,
-                ...(keyboard ? { keys: [] } : {}),
-              },
-            }),
       });
-      // A few scenarios supply a failing destination or an unreadable stream deliberately.
-      // All other facts and effects still belong to this mock's sealed handle.
-      if (stdin !== undefined) {
-        mock.stdin = stdin;
+      if (record) {
+        mocks.push(mock);
       }
-      if (output !== undefined) {
-        mock.stdout = output;
+      if (output === undefined && diagnostic === undefined) {
+        return mock;
       }
-      if (diagnostic !== undefined) {
-        mock.stderr = diagnostic;
-      }
-      if (terminal !== undefined) {
-        mock.terminal = terminal;
-      }
-      mocks.push(mock);
-      return mock;
+      // Only scenarios that exercise a failing destination supply stream overrides.
+      return {
+        ...mock,
+        get exitCode() {
+          return mock.exitCode;
+        },
+        set exitCode(code) {
+          mock.exitCode = code;
+        },
+        stderr: diagnostic ?? mock.stderr,
+        stdout: output ?? mock.stdout,
+      };
     },
     diagnostic: primary.stderr,
     env,

@@ -25,6 +25,7 @@ async function runFixture(words, fixtureOptions = {}) {
   try {
     const misuse = misuseModule();
     const loaded = new Set();
+    // The first load() call for each marked module records a line for this fixture run.
     const load = (module) => () => {
       if (!loaded.has(module) && ['help', 'version', 'inner', 'outer'].includes(module)) {
         loaded.add(module);
