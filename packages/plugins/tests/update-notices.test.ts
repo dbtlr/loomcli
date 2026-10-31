@@ -70,7 +70,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { ReleaseFacts } from '@loomcli/core';
 import { Application, locate } from '@loomcli/core';
 import type { NoticeSettings } from '@loomcli/plugins/self-update';
-import type { Program } from '@loomcli/testing';
+import type { MockProcess, Program } from '@loomcli/testing';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
@@ -365,7 +365,13 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {
       },
       { requested: (url) => record(box, { event: 'request', role: 'child', url }) },
     );
-    record(box, { cache: cacheIn(box.cache), code: child.status, event: 'exit', role: 'child' });
+    record(box, {
+      cache: cacheIn(box.cache),
+      code: child.status,
+      event: 'exit',
+      role: 'child',
+      stderr: child.stderr,
+    });
     return { code: child.status, stderr: child.stderr, stdout: child.stdout };
   };
   const program =
@@ -382,20 +388,39 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {
     };
   }
   try {
-    const result = await runSelfUpdate(application, {
-      argv,
-      env,
-      home: env.HOME,
-      ...(release === undefined ? {} : { release }),
-      program,
-      programs,
-      ...(streams.length === 0 ? {} : { terminal: { columns: 80, rows: 24, streams } }),
-    });
+    const result = await runSelfUpdate(
+      application,
+      {
+        argv,
+        env,
+        home: env.HOME,
+        ...(release === undefined ? {} : { release }),
+        program,
+        programs,
+        ...(streams.length === 0 ? {} : { terminal: { columns: 80, rows: 24, streams } }),
+      },
+      { afterRun: (mock) => runMocks.set(box, mock) },
+    );
     record(box, { cache: cacheIn(box.cache), code: result.status, event: 'exit', role: 'run' });
     return result;
   } finally {
     runReturned.resolve();
   }
+}
+
+/** The mock of the last run in each sandbox, which keeps recording after the run returns. */
+const runMocks = new WeakMap<Sandbox, MockProcess>();
+
+/**
+ * What the last run's own streams hold now. Read after `childrenDone`, it shows whether a refresh
+ * child, which runs after its run returned, wrote anything there.
+ */
+function runStreams(box: Sandbox): { stderr: string; stdout: string } {
+  const mock = runMocks.get(box);
+  if (mock === undefined) {
+    throw new Error('No run has recorded its mock in this sandbox.');
+  }
+  return { stderr: mock.stderr.text, stdout: mock.stdout.text };
 }
 
 /** One event the fixture recorded: a run's or a child's start, request, exit, or session. */
@@ -405,6 +430,8 @@ interface FixtureEvent {
   readonly cache?: string | null;
   readonly cwd?: string;
   readonly code?: number;
+  /** What a refresh child answered on stderr, on its exit. */
+  readonly stderr?: string;
   readonly url?: string;
   readonly group?: number;
   readonly session?: number;
@@ -643,10 +670,12 @@ test('a 503 makes the child exit 1 and write nothing, so the run’s checked sta
   const box = sandbox();
   const from = Date.now();
   const first = await run(box, ['add'], { rules: { 'releases/latest': 503 } });
-  // The child's own failure sentence never reaches the run's streams.
   expect(first).toEqual({ status: 0, stderr: '✔ Added note 12.\n', stdout: '' });
   const children = await childrenDone(box);
   expect(children.at(-1)).toMatchObject({ code: 1, event: 'exit' });
+  // The child answered its own failure sentence, which never reaches the run's streams.
+  expect(children.at(-1)?.stderr).not.toBe('');
+  expect(runStreams(box)).toEqual({ stderr: first.stderr, stdout: first.stdout });
   const runExit = events(box).find(({ event, role }) => event === 'exit' && role === 'run');
   expect(readFileSync(box.file, 'utf8')).toBe(runExit?.cache);
   expectRefreshed(runExit?.cache, from, null);

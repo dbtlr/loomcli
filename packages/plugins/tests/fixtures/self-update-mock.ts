@@ -1,6 +1,6 @@
 import type { Writable } from 'node:stream';
 
-import type { MockFields } from '@loomcli/testing';
+import type { MockFields, MockProcess } from '@loomcli/testing';
 
 import { runOnMock } from './in-process.ts';
 import { selfUpdateApplication } from './self-update-app.ts';
@@ -16,9 +16,11 @@ export async function runSelfUpdate(
   options: {
     readonly umask?: number | undefined;
     readonly requested?: (url: string) => void;
+    /** Receives the mock once the run returns, so a test can read what it records later. */
+    readonly afterRun?: (mock: MockProcess) => void;
   } = {},
 ) {
-  const { umask = 0o022, requested = () => {} } = options;
+  const { umask = 0o022, requested = () => {}, afterRun } = options;
   let recording: Writable | undefined = undefined;
   const controller = new AbortController();
   const { app, fetch, stderr } = selfUpdateApplication(scenario, controller, {
@@ -38,6 +40,7 @@ export async function runSelfUpdate(
       app,
       { cwd: '/loom-test', env: {}, platform: 'linux', ...fields },
       {
+        ...(afterRun === undefined ? {} : { afterRun }),
         signal: controller.signal,
         stderr: (sink) => {
           recording = sink;
