@@ -1893,6 +1893,37 @@ test(
   }),
 );
 
+test(
+  'notice names the first directory the lookup looks in, and none when it looks nowhere',
+  inWorkspace(async (space) => {
+    const fromHome = { FIXTURE_CWD: space.home };
+    // A walk from home looks nowhere, so the notice names the home file the user scope reads.
+    await expect(space.stderr([], { ...settings({ notice: true }), ...fromHome })).resolves.toBe(
+      notice('.app.json'),
+    );
+    // With the project scope alone, no step reads a file there, so no line names one.
+    await expect(
+      space.stderr([], { ...settings({ notice: true, scopes: ['project'] }), ...fromHome }),
+    ).resolves.toBe('');
+    space.write('.app.json', json({ title: 'home' }), space.home);
+    expect(
+      received(await space.stdout([], { ...settings({ scopes: ['project'] }), ...fromHome })),
+    ).toEqual(defaults);
+  }),
+);
+
+test(
+  'the home file shows as its full path when host.cwd is home and the walk starts outside it',
+  inWorkspace(async (space) => {
+    const home = space.write('.app.json', '{', space.home);
+    const result = await space.run(['--project', space.project], {
+      ...settings({ directory: { name: 'project' } }),
+      FIXTURE_CWD: space.home,
+    });
+    expect(result.stderr).toBe(skipped(home, invalidJson('line 1, column 2')));
+  }),
+);
+
 const rootNameFault = (mark: string) => ({
   correction: "Name an entry in the project's root directory, such as package.json or .git.",
   findings: [{ call: 'configuration', mark }],

@@ -427,14 +427,17 @@ async function* searchSteps(lookup: Lookup): AsyncGenerator<Step> {
 }
 
 /**
- * The step the notice names its file in: the start directory under the project scope, and the
- * home directory, or else the user folder, under the user scope alone. None when there is neither.
+ * The step the notice names its file in: the first directory the lookup looks in, which is the
+ * start directory unless the walk looks nowhere, and then the home directory, or else the user
+ * folder, under the user scope. None when the lookup looks nowhere.
  */
 function noticeStep(lookup: Lookup): Step | undefined {
-  if (lookup.reach.project) {
-    return { candidates: lookup.candidates, directory: startDirectory(lookup), walked: true };
+  const home = resolvedHome(lookup.host);
+  const [start] = lookup.reach.project ? walkDirectories(startDirectory(lookup), home) : [];
+  if (start !== undefined) {
+    return { candidates: lookup.candidates, directory: start, walked: true };
   }
-  const [first] = userSteps(lookup, resolvedHome(lookup.host));
+  const [first] = lookup.reach.user ? userSteps(lookup, home) : [];
   return first;
 }
 
