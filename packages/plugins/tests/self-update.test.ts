@@ -1,11 +1,11 @@
 /*
  * Acceptance plan for the self-update plugin (docs/plugins/self-update.md#self-update-plugin).
  *
- * The plugin is proven when process tests under Node and Bun produce these results. Each fixture
+ * The plugin is proven when in-process tests under Node and Bun produce these results. Each fixture
  * sets `HOME` and `XDG_STATE_HOME` to temporary directories and runs an application that installs
- * `selfUpdate()` through `run({ process: processHandle({ release }) })`, whose installation names a binary in a
+ * `selfUpdate()` through `run({ process: mockProcess({ release }) })`, whose installation names a binary in a
  * temporary directory and whose record lies where `applicationDirectory` resolves for that
- * environment, with a preload that replaces `fetch` with a fake GitHub that serves fixture
+ * environment, with a scoped fake that replaces `fetch` with a fake GitHub that serves fixture
  * releases, redirects asset downloads to another HTTPS host as GitHub does, and records each
  * request:
  *
@@ -66,17 +66,16 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import type { ReleaseFacts } from '@loomcli/core';
 import { afterEach, expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import {
   channelOf,
   compareVersions,
   parseVersion,
   versionOfTag,
 } from '../src/self-update/version.js';
-
-const fixture = new URL('fixtures/self-update-run.mjs', import.meta.url);
+import { runSelfUpdate } from './fixtures/self-update-mock.ts';
 
 const asset = 'notes-linux-x64';
 const oldBytes = 'notes 1.4.2 binary\n';
@@ -91,7 +90,10 @@ interface FakeRelease {
   readonly assets: Record<string, string>;
 }
 
-function release(version: string, bytes = `notes ${version} binary\n`): [string, FakeRelease] {
+function githubRelease(
+  version: string,
+  bytes = `notes ${version} binary\n`,
+): [string, FakeRelease] {
   return [`v${version}`, { assets: { [asset]: bytes }, sums: `${digestOf(bytes)}  ${asset}\n` }];
 }
 
@@ -108,7 +110,11 @@ interface GitHub {
 const defaultGitHub: GitHub = {
   feed: ['v1.5.0', 'v1.4.2'],
   latest: 'v1.5.0',
-  releases: Object.fromEntries([release('1.5.0'), release('1.4.2', oldBytes), release('1.4.0')]),
+  releases: Object.fromEntries([
+    githubRelease('1.5.0'),
+    githubRelease('1.4.2', oldBytes),
+    githubRelease('1.4.0'),
+  ]),
   repository: 'acme/notes',
 };
 
@@ -180,8 +186,8 @@ function recordLine(path: string, bytes: string): string {
 
 interface Scenario {
   readonly version?: string;
-  readonly release?: unknown;
-  readonly installation?: unknown;
+  readonly release?: ReleaseFacts['release'] | undefined;
+  readonly installation?: ReleaseFacts['installation'] | undefined;
   readonly github?: Partial<GitHub>;
   readonly rules?: Record<string, string | number | { readonly hops: number }>;
   readonly hook?: 'record' | 'throw';
@@ -191,42 +197,41 @@ interface Scenario {
 }
 
 /** The release facts a binary at `version` reads, recorded at the sandbox's binary. */
-function facts(box: Sandbox, version: string, overrides: Scenario = {}) {
+function facts(box: Sandbox, version: string, overrides: Scenario = {}): ReleaseFacts {
   const [, prerelease = ''] = version.split('-');
   const channel = version.includes('-') ? (prerelease.split('.')[0] ?? 'stable') : 'stable';
+  const installation =
+    'installation' in overrides
+      ? overrides.installation
+      : { digest: `sha256:${digestOf(oldBytes)}`, method: 'script', path: box.binary };
+  const release =
+    'release' in overrides
+      ? overrides.release
+      : { asset, channel, repository: 'acme/notes', version };
   return {
     build: 'distributed',
-    installation:
-      'installation' in overrides
-        ? overrides.installation
-        : { digest: `sha256:${digestOf(oldBytes)}`, method: 'script', path: box.binary },
-    release:
-      'release' in overrides
-        ? overrides.release
-        : { asset, channel, repository: 'acme/notes', version },
+    ...(installation === undefined ? {} : { installation }),
+    ...(release === undefined ? {} : { release }),
   };
 }
 
 /** Runs `notes self-update ...argv` in the sandbox, its fake GitHub built from the scenario. */
 function run(box: Sandbox, argv: string[], scenario: Scenario = {}) {
-  const file = join(box.root, 'scenario.json');
-  writeFileSync(
-    file,
-    JSON.stringify({
+  const env = { HOME: box.home, XDG_STATE_HOME: box.state, ...scenario.env };
+  const release = facts(box, scenario.version ?? '1.4.2', scenario);
+  return runSelfUpdate(
+    {
       abortAfterRename: scenario.abortAfterRename,
-      env: { HOME: box.home, XDG_STATE_HOME: box.state, ...scenario.env },
       github: { ...defaultGitHub, ...scenario.github },
       hook: scenario.hook ?? 'record',
       hookLog: box.hookLog,
-      release: facts(box, scenario.version ?? '1.4.2', scenario),
+      release,
       requests: box.requests,
       rules: scenario.rules,
-    }),
+    },
+    { argv: ['self-update', ...argv], env, home: env.HOME, release },
+    scenario.umask,
   );
-  const umask = scenario.umask ?? 0o022;
-  return invoke(fixture, [file, 'self-update', ...argv], {
-    env: { FIXTURE_UMASK: umask.toString(8) },
-  });
 }
 
 function requests(box: Sandbox): string[] {
@@ -261,7 +266,7 @@ function lines(stderr: string): string[] {
     .map((line) => line.replace(/^\P{ASCII} /u, ''));
 }
 
-test('a stable binary updates to the latest release, keeps its mode, rewrites the record, and calls the hook', () => {
+test('a stable binary updates to the latest release, keeps its mode, rewrites the record, and calls the hook', async () => {
   const box = sandbox();
   writeFileSync(join(box.bin, '.notes.0123456789abcdef.loom-staging'), 'leftover');
   const recordStaging = join(
@@ -271,7 +276,7 @@ test('a stable binary updates to the latest release, keeps its mode, rewrites th
     '.install.json.0123456789abcdef.loom-staging',
   );
   writeFileSync(recordStaging, 'leftover');
-  const result = run(box, [], { umask: 0o077 });
+  const result = await run(box, [], { umask: 0o077 });
   expect(result.status).toBe(0);
   expect(lines(result.stderr)).toEqual([
     'Downloading notes-linux-x64 from v1.5.0 of acme/notes.',
@@ -301,16 +306,16 @@ const channelGitHub: Partial<GitHub> = {
   feed: ['v1.7.0-next.1', 'v1.6.0-beta.1', 'nightly', 'v1.6.0', 'v1.6.0-next.2', 'v1.5.0'],
   latest: 'v1.5.0',
   releases: Object.fromEntries([
-    release('1.6.0'),
-    release('1.6.0-next.2'),
-    release('1.6.0-beta.1'),
-    release('1.5.0'),
+    githubRelease('1.6.0'),
+    githubRelease('1.6.0-next.2'),
+    githubRelease('1.6.0-beta.1'),
+    githubRelease('1.5.0'),
   ]),
 };
 
-test('a prerelease binary follows its channel past a tag with no release onto a stable release that outranks it', () => {
+test('a prerelease binary follows its channel past a tag with no release onto a stable release that outranks it', async () => {
   const box = sandbox();
-  const result = run(box, [], { github: channelGitHub, version: '1.6.0-next.1' });
+  const result = await run(box, [], { github: channelGitHub, version: '1.6.0-next.1' });
   expect(result.status).toBe(0);
   expect(lines(result.stderr).at(-1)).toBe('Updated notes from 1.6.0-next.1 to 1.6.0.');
   expect(readFileSync(box.binary, 'utf8')).toBe('notes 1.6.0 binary\n');
@@ -321,18 +326,18 @@ test('a prerelease binary follows its channel past a tag with no release onto a 
   ]);
 });
 
-test('--channel next moves a stable binary onto the newest next release', () => {
+test('--channel next moves a stable binary onto the newest next release', async () => {
   const box = sandbox();
-  const result = run(box, ['--channel', 'next'], {
+  const result = await run(box, ['--channel', 'next'], {
     github: { ...channelGitHub, feed: ['v1.6.0-next.2', 'v1.5.0'] },
   });
   expect(result.status).toBe(0);
   expect(lines(result.stderr).at(-1)).toBe('Updated notes from 1.4.2 to 1.6.0-next.2.');
 });
 
-test('--channel stable from a newer prerelease replaces nothing and names the older version', () => {
+test('--channel stable from a newer prerelease replaces nothing and names the older version', async () => {
   const box = sandbox();
-  const result = run(box, ['--channel', 'stable'], { version: '1.6.0-next.1' });
+  const result = await run(box, ['--channel', 'stable'], { version: '1.6.0-next.1' });
   expect(result.status).toBe(0);
   expect(lines(result.stderr)).toEqual([
     'notes 1.6.0-next.1 is newer than the newest release on the stable channel, 1.5.0. Name that version to install it: notes self-update 1.5.0.',
@@ -341,9 +346,9 @@ test('--channel stable from a newer prerelease replaces nothing and names the ol
   expect(hookCalls(box)).toEqual([]);
 });
 
-test('a repository named in another case matches the feed, and a renamed one resolves and downloads from its new name', () => {
+test('a repository named in another case matches the feed, and a renamed one resolves and downloads from its new name', async () => {
   const cased = sandbox();
-  const result = run(cased, [], {
+  const result = await run(cased, [], {
     github: { ...channelGitHub, feed: ['v1.6.0-next.2'] },
     release: { asset, channel: 'next', repository: 'Acme/Notes', version: '1.6.0-next.1' },
   });
@@ -352,7 +357,7 @@ test('a repository named in another case matches the feed, and a renamed one res
 
   for (const version of ['1.4.2', '1.6.0-next.1']) {
     const box = sandbox();
-    const moved = run(box, [], {
+    const moved = await run(box, [], {
       github: {
         ...channelGitHub,
         feed: ['v1.6.0-next.2', 'v1.5.0'],
@@ -370,15 +375,15 @@ test('a repository named in another case matches the feed, and a renamed one res
   }
 });
 
-test('a repository with no stable release and a channel with none in the feed fail with the no-release sentence', () => {
+test('a repository with no stable release and a channel with none in the feed fail with the no-release sentence', async () => {
   const box = sandbox();
-  const stable = run(box, [], { github: { latest: null } });
+  const stable = await run(box, [], { github: { latest: null } });
   expect(stable.status).toBe(1);
   expect(stable.stderr).toBe(
     'notes found no release on the stable channel of acme/notes. Name a version to install, such as notes self-update 1.4.0.\n',
   );
   // A prerelease channel also takes stable releases, so the feed holds neither.
-  const next = run(box, ['--channel', 'rc'], { github: { feed: ['v1.6.0-beta.1'] } });
+  const next = await run(box, ['--channel', 'rc'], { github: { feed: ['v1.6.0-beta.1'] } });
   expect(next.status).toBe(1);
   expect(next.stderr).toBe(
     'notes found no release on the rc channel of acme/notes. Name a version to install, such as notes self-update 1.4.0.\n',
@@ -386,10 +391,10 @@ test('a repository with no stable release and a channel with none in the feed fa
   untouched(box);
 });
 
-test('a named version installs in either direction, with or without its v', () => {
+test('a named version installs in either direction, with or without its v', async () => {
   for (const named of ['1.4.0', 'v1.4.0']) {
     const box = sandbox();
-    const result = run(box, [named]);
+    const result = await run(box, [named]);
     expect(result.status).toBe(0);
     expect(lines(result.stderr).at(-1)).toBe('Updated notes from 1.4.2 to 1.4.0.');
     expect(readFileSync(box.binary, 'utf8')).toBe('notes 1.4.0 binary\n');
@@ -399,30 +404,30 @@ test('a named version installs in either direction, with or without its v', () =
   }
 });
 
-test('the running version, newest or named, replaces nothing and calls no hook', () => {
+test('the running version, newest or named, replaces nothing and calls no hook', async () => {
   const box = sandbox();
-  const newest = run(box, [], { github: { latest: 'v1.4.2' } });
+  const newest = await run(box, [], { github: { latest: 'v1.4.2' } });
   expect(newest.status).toBe(0);
   expect(lines(newest.stderr)).toEqual([
     'notes 1.4.2 is the newest release on the stable channel.',
   ]);
-  const named = run(box, ['1.4.2']);
+  const named = await run(box, ['1.4.2']);
   expect(named.status).toBe(0);
   expect(lines(named.stderr)).toEqual(['notes 1.4.2 is already installed.']);
   untouched(box);
   expect(hookCalls(box)).toEqual([]);
 });
 
-test('--check reports what an update would do, requests SHA256SUMS and no binary, and writes nothing', () => {
+test('--check reports what an update would do, requests SHA256SUMS and no binary, and writes nothing', async () => {
   const box = sandbox();
-  const channel = run(box, ['--check']);
+  const channel = await run(box, ['--check']);
   expect(channel.status).toBe(0);
   expect(lines(channel.stderr)).toEqual([
     'notes can update from 1.4.2 to 1.5.0 on the stable channel.',
   ]);
-  const named = run(box, ['--check', '1.4.0']);
+  const named = await run(box, ['--check', '1.4.0']);
   expect(lines(named.stderr)).toEqual(['notes can install 1.4.0 in place of 1.4.2.']);
-  const running = run(box, ['--check', '1.4.2']);
+  const running = await run(box, ['--check', '1.4.2']);
   expect(lines(running.stderr)).toEqual(['notes 1.4.2 is already installed.']);
   expect(requests(box)).toContain(
     'https://github.com/acme/notes/releases/download/v1.4.2/SHA256SUMS',
@@ -439,18 +444,18 @@ test.each([
   [['--channel', 'next', '1.4.0'], 'Option "--channel" cannot be given with a version.'],
   [['1.x'], 'version'],
   [['--channel', '01'], 'channel'],
-])('self-update %j is a usage error', (argv, fragment) => {
+])('self-update %j is a usage error', async (argv, fragment) => {
   const box = sandbox();
-  const result = run(box, argv);
+  const result = await run(box, argv);
   expect(result.status).toBe(2);
   expect(result.stderr).toContain(fragment);
   expect(requests(box)).toEqual([]);
 });
 
-test('--channel 1 follows the channel a version such as 2.0.0-1 derives', () => {
+test('--channel 1 follows the channel a version such as 2.0.0-1 derives', async () => {
   const box = sandbox();
-  const result = run(box, ['--channel', '1'], {
-    github: { feed: ['v2.0.0-1'], releases: Object.fromEntries([release('2.0.0-1')]) },
+  const result = await run(box, ['--channel', '1'], {
+    github: { feed: ['v2.0.0-1'], releases: Object.fromEntries([githubRelease('2.0.0-1')]) },
   });
   expect(result.status).toBe(0);
   expect(readFileSync(box.binary, 'utf8')).toBe('notes 2.0.0-1 binary\n');
@@ -487,19 +492,22 @@ const refusals: [string, (box: Sandbox) => Scenario, string][] = [
   ],
 ];
 
-test.each(refusals)('a run with %s refuses before any request', (_label, scenario, sentence) => {
-  const box = sandbox();
-  const result = run(box, [], scenario(box));
-  expect(result.status).toBe(1);
-  expect(result.stderr).toBe(`${sentence}\n`);
-  expect(requests(box)).toEqual([]);
-  untouched(box);
-});
+test.each(refusals)(
+  'a run with %s refuses before any request',
+  async (_label, scenario, sentence) => {
+    const box = sandbox();
+    const result = await run(box, [], scenario(box));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe(`${sentence}\n`);
+    expect(requests(box)).toEqual([]);
+    untouched(box);
+  },
+);
 
-test('a missing binary, a symbolic link, and a changed binary refuse before any request', () => {
+test('a missing binary, a symbolic link, and a changed binary refuse before any request', async () => {
   const missing = sandbox();
   rmSync(missing.binary);
-  const gone = run(missing, []);
+  const gone = await run(missing, []);
   expect(gone.status).toBe(1);
   expect(gone.stderr).toBe(
     `notes cannot find its binary at ${missing.binary}. Install it again with install.sh.\n`,
@@ -510,7 +518,7 @@ test('a missing binary, a symbolic link, and a changed binary refuse before any 
   writeFileSync(target, oldBytes, { mode: 0o755 });
   rmSync(linked.binary);
   symlinkSync(target, linked.binary);
-  const link = run(linked, []);
+  const link = await run(linked, []);
   expect(link.status).toBe(1);
   expect(link.stderr).toBe(
     `notes at ${linked.binary} is a symbolic link, so self-update will not replace what it points to. Install it again with install.sh.\n`,
@@ -519,7 +527,7 @@ test('a missing binary, a symbolic link, and a changed binary refuse before any 
 
   const changed = sandbox();
   writeFileSync(changed.binary, 'patched by hand\n');
-  const edited = run(changed, []);
+  const edited = await run(changed, []);
   expect(edited.status).toBe(1);
   expect(edited.stderr).toBe(
     `notes at ${changed.binary} changed since it was installed, so self-update will not replace it. Install it again with install.sh.\n`,
@@ -532,10 +540,10 @@ test('a missing binary, a symbolic link, and a changed binary refuse before any 
 
 test.skipIf(process.getuid?.() === 0)(
   'a read-only install directory refuses before any request',
-  () => {
+  async () => {
     const box = sandbox();
     chmodSync(box.bin, 0o555);
-    const result = run(box, []);
+    const result = await run(box, []);
     expect(result.status).toBe(1);
     expect(result.stderr).toBe(
       `notes cannot write to ${box.bin}. Run self-update as the user who installed notes.\n`,
@@ -676,9 +684,9 @@ const downloadFailures: [string, string[], Scenario, string][] = [
 
 test.each(downloadFailures)(
   '%s fails, leaving the binary, the record, and no staging file',
-  (_label, argv, scenario, sentence) => {
+  async (_label, argv, scenario, sentence) => {
     const box = sandbox();
-    const result = run(box, argv, scenario);
+    const result = await run(box, argv, scenario);
     expect(result.status).toBe(1);
     expect(lines(result.stderr).at(-1)).toBe(sentence);
     untouched(box);
@@ -688,9 +696,11 @@ test.each(downloadFailures)(
 
 test.skipIf(process.getuid?.() === 0)(
   'a staging write that fails reports the write sentence and leaves the binary',
-  () => {
+  async () => {
     const box = sandbox();
-    const result = run(box, [], { rules: { [`release-assets.example/v1.5.0/${asset}`]: 'lock' } });
+    const result = await run(box, [], {
+      rules: { [`release-assets.example/v1.5.0/${asset}`]: 'lock' },
+    });
     expect(result.status).toBe(1);
     expect(lines(result.stderr).at(-1)).toBe(
       `notes could not write the new binary to ${box.bin}. Free space there or check its permissions, then run self-update again.`,
@@ -700,18 +710,20 @@ test.skipIf(process.getuid?.() === 0)(
   },
 );
 
-test('a run aborted during the download exits 130 with no failure sentence and leaves everything', () => {
+test('a run aborted during the download exits 130 with no failure sentence and leaves everything', async () => {
   const box = sandbox();
-  const result = run(box, [], { rules: { [`release-assets.example/v1.5.0/${asset}`]: 'abort' } });
+  const result = await run(box, [], {
+    rules: { [`release-assets.example/v1.5.0/${asset}`]: 'abort' },
+  });
   expect(result.status).toBe(130);
   expect(lines(result.stderr)).toEqual(['Downloading notes-linux-x64 from v1.5.0 of acme/notes.']);
   untouched(box);
   expect(hookCalls(box)).toEqual([]);
 });
 
-test('a run aborted after the rename writes the record, calls the hook with an aborted signal, and exits 130', () => {
+test('a run aborted after the rename writes the record, calls the hook with an aborted signal, and exits 130', async () => {
   const box = sandbox();
-  const result = run(box, [], { abortAfterRename: true });
+  const result = await run(box, [], { abortAfterRename: true });
   expect(result.status).toBe(130);
   expect(readFileSync(box.record, 'utf8')).toBe(recordLine(box.binary, 'notes 1.5.0 binary\n'));
   expect(hookCalls(box)).toEqual([
@@ -719,26 +731,28 @@ test('a run aborted after the rename writes the record, calls the hook with an a
   ]);
 });
 
-test('a throwing hook fails the run after the update line, and the new binary and record stay', () => {
+test('a throwing hook fails the run after the update line, and the new binary and record stay', async () => {
   const box = sandbox();
-  const result = run(box, [], { hook: 'throw' });
+  const result = await run(box, [], { hook: 'throw' });
   expect(result.status).toBe(1);
   expect(lines(result.stderr)[1]).toBe('Updated notes from 1.4.2 to 1.5.0.');
   expect(readFileSync(box.binary, 'utf8')).toBe('notes 1.5.0 binary\n');
   expect(readFileSync(box.record, 'utf8')).toBe(recordLine(box.binary, 'notes 1.5.0 binary\n'));
 });
 
-test('twenty redirects on the way to the asset are followed', () => {
+test('twenty redirects on the way to the asset are followed', async () => {
   const box = sandbox();
   // Nineteen hops on github.com, then GitHub's own redirect to the asset host.
-  const result = run(box, [], { rules: { [`/releases/download/v1.5.0/${asset}`]: { hops: 19 } } });
+  const result = await run(box, [], {
+    rules: { [`/releases/download/v1.5.0/${asset}`]: { hops: 19 } },
+  });
   expect(result.status).toBe(0);
   expect(readFileSync(box.binary, 'utf8')).toBe('notes 1.5.0 binary\n');
 });
 
-test('a run cancelled after the download and before the rename exits 130 and leaves everything', () => {
+test('a run cancelled after the download and before the rename exits 130 and leaves everything', async () => {
   const box = sandbox();
-  const result = run(box, [], {
+  const result = await run(box, [], {
     rules: { [`release-assets.example/v1.5.0/${asset}`]: 'late-abort' },
   });
   expect(result.status).toBe(130);
@@ -746,9 +760,9 @@ test('a run cancelled after the download and before the rename exits 130 and lea
   expect(hookCalls(box)).toEqual([]);
 });
 
-test('the refusals keep their order', () => {
+test('the refusals keep their order', async () => {
   const unresolved = sandbox();
-  const first = run(unresolved, [], {
+  const first = await run(unresolved, [], {
     env: { HOME: 'home', XDG_STATE_HOME: '' },
     installation: {
       digest: `sha256:${digestOf(oldBytes)}`,
@@ -762,7 +776,7 @@ test('the refusals keep their order', () => {
   const directory = sandbox();
   rmSync(directory.binary);
   mkdirSync(directory.binary);
-  const second = run(directory, []);
+  const second = await run(directory, []);
   expect(second.stderr).toBe(
     `notes cannot find its binary at ${directory.binary}. Install it again with install.sh.\n`,
   );
@@ -770,25 +784,25 @@ test('the refusals keep their order', () => {
 
 test.skipIf(process.getuid?.() === 0)(
   'a changed binary refuses before an unwritable directory',
-  () => {
+  async () => {
     const box = sandbox();
     writeFileSync(box.binary, 'patched by hand\n');
     chmodSync(box.bin, 0o555);
-    const result = run(box, []);
+    const result = await run(box, []);
     expect(result.stderr).toBe(
       `notes at ${box.binary} changed since it was installed, so self-update will not replace it. Install it again with install.sh.\n`,
     );
   },
 );
 
-test('the feed passes over another repository and another channel, and stable passes over a prerelease or offsite answer', () => {
+test('the feed passes over another repository and another channel, and stable passes over a prerelease or offsite answer', async () => {
   const box = sandbox();
-  const feed = run(box, [], {
+  const feed = await run(box, [], {
     github: {
       ...channelGitHub,
       feed: ['v1.8.0-beta.1', 'v1.6.0-next.2'],
       foreign: [{ owner: 'other/repo', tag: 'v9.0.0' }],
-      releases: Object.fromEntries([release('1.8.0-beta.1'), release('1.6.0-next.2')]),
+      releases: Object.fromEntries([githubRelease('1.8.0-beta.1'), githubRelease('1.6.0-next.2')]),
     },
     version: '1.6.0-next.1',
   });
@@ -800,9 +814,11 @@ test('the feed passes over another repository and another channel, and stable pa
   const noRelease =
     'notes found no release on the stable channel of acme/notes. Name a version to install, such as notes self-update 1.4.0.\n';
   const prerelease = sandbox();
-  expect(run(prerelease, [], { github: { latest: 'v1.6.0-next.2' } }).stderr).toBe(noRelease);
+  const prereleaseResult = await run(prerelease, [], { github: { latest: 'v1.6.0-next.2' } });
+  expect(prereleaseResult.stderr).toBe(noRelease);
   const offsite = sandbox();
-  expect(run(offsite, [], { rules: { 'releases/latest': 'offsite' } }).stderr).toBe(noRelease);
+  const offsiteResult = await run(offsite, [], { rules: { 'releases/latest': 'offsite' } });
+  expect(offsiteResult.stderr).toBe(noRelease);
 });
 
 test('versions compare by SemVer precedence, and a version reads its channel', () => {

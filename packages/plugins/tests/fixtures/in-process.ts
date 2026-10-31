@@ -15,15 +15,16 @@ export async function runOnMock(
   fields: MockFields = {},
   options: Omit<RunOptions, 'process'> & {
     stdout?: Writable;
+    stderr?: (recording: Writable) => Writable;
     publishEnv?: (name: string, value: string) => void;
     afterRun?: (mock: MockProcess) => void;
   } = {},
 ): Promise<Outcome> {
   const mock = mockProcess(fields);
-  const { stdout, publishEnv, afterRun, ...runOptions } = options;
+  const { stdout, stderr, publishEnv, afterRun, ...runOptions } = options;
   // A sink or an environment publisher replaces only that effect; the mock still records the exit code.
   const handle: ProcessHandle =
-    stdout === undefined && publishEnv === undefined
+    stdout === undefined && stderr === undefined && publishEnv === undefined
       ? mock
       : {
           ...mock,
@@ -33,11 +34,12 @@ export async function runOnMock(
           set exitCode(value) {
             mock.exitCode = value;
           },
+          stderr: stderr?.(mock.stderr) ?? mock.stderr,
           stdout: stdout ?? mock.stdout,
           ...(publishEnv === undefined ? {} : { publishEnv }),
         };
-  await application.run({ ...runOptions, process: handle });
-  const status = mock.exitCode;
+  const code = await application.run({ ...runOptions, process: handle });
+  const status = handle === mock ? mock.exitCode : code;
   if (status === undefined) {
     throw new Error('The application run did not record its exit code.');
   }
