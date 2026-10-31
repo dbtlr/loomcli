@@ -1,8 +1,9 @@
 /*
  * Acceptance plan for loom init (docs/toolchain/init.md).
  *
- * `loom init` is proven when process runs of the packed `loom` bin produce these results under Node
- * and Bun:
+ * `loom init` runs in-process on a mock process, with real Bun reads of the application module,
+ * under the runtime the CI matrix selects. The terminal cases run the built bin on a
+ * pseudo-terminal. It is proven when those runs produce these results:
  *
  * - A new application. In an empty directory, init writes `package.json`, the scaffold files, the
  *   fragment guide, and the skill, and prints the warning that `install.sh` was not written,
@@ -66,8 +67,6 @@ afterEach(() => {
 });
 
 /** How long a test that checks or builds the scaffold may take. */
-// Application-export cases retain a process until src/helpers/application-exports.ts can locate
-// Read-application.js from source (the helper currently exists only beside the built bundle).
 const slow = 180_000;
 
 /**
@@ -127,7 +126,11 @@ const ownTypedManifest = `${JSON.stringify(
 /** A compiler configuration of the package's own. */
 const ownTypescriptConfig = '{ "compilerOptions": { "strict": false } }\n';
 
-/** An existing package that holds its own manifest and application module, linking core. */
+/**
+ * An existing package that holds its own manifest and application module, linking core. Core
+ * resolves, so init reads the module's exports under Bun; from source, the `bun` program in
+ * `run.ts` runs `src/read-application.ts`, because only the build writes `read-application.js`.
+ */
 function ownPackage(files: Record<string, string> = {}) {
   return fixturePackage({
     'package.json': ownManifest,
