@@ -1,153 +1,194 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, processHandle } from '@loomcli/core';
+import { DeclarationError, Application, Command } from '@loomcli/core';
 
-import { declare } from './declare.mjs';
+import { ruleText } from './rule-text.mjs';
+import { scenario as fixtureScenario } from './scenario.mjs';
 
-const scenario = process.argv[2];
+/** Runs a fresh fixture scenario with only the supplied process facts. */
+async function runFixture(fixtureWords, fixtureOptions = {}) {
+  const fixture = fixtureScenario({ ...fixtureOptions, argv: fixtureWords });
+  const { createProcess, stdout: writeStdout } = fixture;
 
-const dispatch = ({ out }) => out.print('dispatched');
-
-function child(name) {
-  return new Command(name).action(dispatch);
-}
-
-function build() {
-  const app = new Application('graph')
-    .globalOption('file', { short: 'f', type: 'string' })
-    .globalOption('total', { polarity: 'both', type: 'boolean' });
-  switch (scenario) {
-    case 'duplicate-children': {
-      return app.command(child('get')).command(child('get')).action(dispatch);
-    }
-    case 'invalid-child-name': {
-      return app.command(child('bad name')).action(dispatch);
-    }
-    case 'empty-child-name': {
-      return app.command(child('')).action(dispatch);
-    }
-    case 'hyphen-child-name': {
-      return app.command(child('-get')).action(dispatch);
-    }
-    case 'equals-child-name': {
-      return app.command(child('get=value')).action(dispatch);
-    }
-    case 'slash-child-name': {
-      return app.command(child('get/all')).action(dispatch);
-    }
-    case 'dot-child-name': {
-      return app.command(child('.get')).action(dispatch);
-    }
-    case 'wide-child-name': {
-      return app.command(child('界')).action(dispatch);
-    }
-    case 'colon-child-name': {
-      return app.command(child('get:all')).action(dispatch);
-    }
-    // A digit and an uppercase letter may open a name, and `_` may follow the first character.
-    case 'digit-child-name': {
-      return app.command(child('9Go_x')).action(dispatch);
-    }
-    // Every portable character in one name, with `.` and `-` after the first character.
-    case 'portable-child-name': {
-      return app.command(child('_Get.v2-all')).action(dispatch);
-    }
-    case 'space-application-name': {
-      return new Application('bad name').action(dispatch);
-    }
-    case 'newline-application-name': {
-      return new Application('a\nb').action(dispatch);
-    }
-    case 'empty-application-name': {
-      return new Application('').action(dispatch);
-    }
-    case 'hyphen-application-name': {
-      return new Application('-app').action(dispatch);
-    }
-    case 'dot-application-name': {
-      return new Application('.app').action(dispatch);
-    }
-    case 'slash-application-name': {
-      return new Application('bin/app').action(dispatch);
-    }
-    case 'portable-application-name': {
-      return new Application('App_.v2-x').command(child('get')).action(dispatch);
-    }
-    case 'colon-application-name': {
-      return new Application('app:cli').action(dispatch);
-    }
-    case 'digit-application-name': {
-      return new Application('9Go_x').command(child('get')).action(dispatch);
-    }
-    case 'empty-argument-name': {
-      return app.argument('', { required: true }).action(dispatch);
-    }
-    case 'hyphen-argument-name': {
-      return app.argument('--file', { required: true }).action(dispatch);
-    }
-    case 'shared-option-key': {
-      return app
-        .command(new Command('get').option('file', { type: 'boolean' }).action(dispatch))
-        .action(dispatch);
-    }
-    case 'shared-short-spelling': {
-      return app
-        .command(
-          new Command('get').option('force', { short: 'f', type: 'boolean' }).action(dispatch),
-        )
-        .action(dispatch);
-    }
-    case 'shared-negative-spelling': {
-      return app
-        .command(new Command('get').option('no-total', { type: 'string' }).action(dispatch))
-        .action(dispatch);
-    }
-    case 'root-option-collides': {
-      return app.option('file', { type: 'boolean' }).command(child('get')).action(dispatch);
-    }
-    case 'child-actionless': {
-      return app.command(new Command('get')).action(dispatch);
-    }
-    case 'child-duplicate-argument': {
-      return app
-        .command(
-          new Command('get')
-            .argument('path', { required: true })
-            .argument('path', { required: true })
-            .action(dispatch),
-        )
-        .action(dispatch);
-    }
-    case 'child-variadic-not-last': {
-      return app
-        .command(
-          new Command('get')
-            .argument('paths', { required: true, variadic: true })
-            .argument('path', { required: true })
-            .action(dispatch),
-        )
-        .action(dispatch);
-    }
-    case 'child-invalid-default': {
-      return app
-        .command(
-          new Command('get')
-            .option('depth', { default: 'deep', type: 'string', validate: digits() })
-            .action(dispatch),
-        )
-        .action(dispatch);
-    }
-    // The order fault outranks the argument-and-child rule, which the same graph also breaks.
-    // The child's own constructor throws before the late attach is reached.
-    case 'late-child-invalid-name': {
-      return app.action(dispatch).command(child('-get'));
-    }
-    default: {
-      return app.command(child('get')).command(child('keys')).action(dispatch);
+  function declare(build) {
+    try {
+      return build();
+    } catch (error) {
+      if (!(error instanceof DeclarationError)) {
+        throw error;
+      }
+      writeStdout(`thrown:${error.exitCode}: ${ruleText(error)}\n`);
+      throw fixture.stopped;
     }
   }
+  try {
+    const scenario = fixtureWords[0];
+
+    function child(name) {
+      return new Command(name).action(dispatch);
+    }
+
+    function build() {
+      const app = new Application('graph')
+        .globalOption('file', { short: 'f', type: 'string' })
+        .globalOption('total', { polarity: 'both', type: 'boolean' });
+      switch (scenario) {
+        case 'duplicate-children': {
+          return app.command(child('get')).command(child('get')).action(dispatch);
+        }
+        case 'invalid-child-name': {
+          return app.command(child('bad name')).action(dispatch);
+        }
+        case 'empty-child-name': {
+          return app.command(child('')).action(dispatch);
+        }
+        case 'hyphen-child-name': {
+          return app.command(child('-get')).action(dispatch);
+        }
+        case 'equals-child-name': {
+          return app.command(child('get=value')).action(dispatch);
+        }
+        case 'slash-child-name': {
+          return app.command(child('get/all')).action(dispatch);
+        }
+        case 'dot-child-name': {
+          return app.command(child('.get')).action(dispatch);
+        }
+        case 'wide-child-name': {
+          return app.command(child('界')).action(dispatch);
+        }
+        case 'colon-child-name': {
+          return app.command(child('get:all')).action(dispatch);
+        }
+        // A digit and an uppercase letter may open a name, and `_` may follow the first character.
+        case 'digit-child-name': {
+          return app.command(child('9Go_x')).action(dispatch);
+        }
+        // Every portable character in one name, with `.` and `-` after the first character.
+        case 'portable-child-name': {
+          return app.command(child('_Get.v2-all')).action(dispatch);
+        }
+        case 'space-application-name': {
+          return new Application('bad name').action(dispatch);
+        }
+        case 'newline-application-name': {
+          return new Application('a\nb').action(dispatch);
+        }
+        case 'empty-application-name': {
+          return new Application('').action(dispatch);
+        }
+        case 'hyphen-application-name': {
+          return new Application('-app').action(dispatch);
+        }
+        case 'dot-application-name': {
+          return new Application('.app').action(dispatch);
+        }
+        case 'slash-application-name': {
+          return new Application('bin/app').action(dispatch);
+        }
+        case 'portable-application-name': {
+          return new Application('App_.v2-x').command(child('get')).action(dispatch);
+        }
+        case 'colon-application-name': {
+          return new Application('app:cli').action(dispatch);
+        }
+        case 'digit-application-name': {
+          return new Application('9Go_x').command(child('get')).action(dispatch);
+        }
+        case 'empty-argument-name': {
+          return app.argument('', { required: true }).action(dispatch);
+        }
+        case 'hyphen-argument-name': {
+          return app.argument('--file', { required: true }).action(dispatch);
+        }
+        case 'shared-option-key': {
+          return app
+            .command(new Command('get').option('file', { type: 'boolean' }).action(dispatch))
+            .action(dispatch);
+        }
+        case 'shared-short-spelling': {
+          return app
+            .command(
+              new Command('get').option('force', { short: 'f', type: 'boolean' }).action(dispatch),
+            )
+            .action(dispatch);
+        }
+        case 'shared-negative-spelling': {
+          return app
+            .command(new Command('get').option('no-total', { type: 'string' }).action(dispatch))
+            .action(dispatch);
+        }
+        case 'root-option-collides': {
+          return app.option('file', { type: 'boolean' }).command(child('get')).action(dispatch);
+        }
+        case 'child-actionless': {
+          return app.command(new Command('get')).action(dispatch);
+        }
+        case 'child-duplicate-argument': {
+          return app
+            .command(
+              new Command('get')
+                .argument('path', { required: true })
+                .argument('path', { required: true })
+                .action(dispatch),
+            )
+            .action(dispatch);
+        }
+        case 'child-variadic-not-last': {
+          return app
+            .command(
+              new Command('get')
+                .argument('paths', { required: true, variadic: true })
+                .argument('path', { required: true })
+                .action(dispatch),
+            )
+            .action(dispatch);
+        }
+        case 'child-invalid-default': {
+          return app
+            .command(
+              new Command('get')
+                .option('depth', { default: 'deep', type: 'string', validate: digits() })
+                .action(dispatch),
+            )
+            .action(dispatch);
+        }
+        // The order fault outranks the argument-and-child rule, which the same graph also breaks.
+        // The child's own constructor throws before the late attach is reached.
+        case 'late-child-invalid-name': {
+          return app.action(dispatch).command(child('-get'));
+        }
+        default: {
+          return app.command(child('get')).command(child('keys')).action(dispatch);
+        }
+      }
+    }
+
+    const chunks = [];
+    const stderr = new Writable({
+      write(chunk, _encoding, callback) {
+        chunks.push(chunk.toString());
+        callback();
+      },
+    });
+    const app = declare(build);
+    const code = await app.run({
+      process: createProcess({
+        argv: fixtureWords.slice(1),
+        release: { build: 'distributed' },
+        stderr,
+      }),
+    });
+    writeStdout(`${JSON.stringify({ chunks, code })}\n`);
+  } catch (error) {
+    if (error !== fixture.stopped) {
+      fixture.thrown(error);
+    }
+  }
+  return fixture.result();
 }
 
+const dispatch = ({ out }) => out.print('dispatched');
 function digits() {
   return {
     '~standard': {
@@ -161,19 +202,4 @@ function digits() {
   };
 }
 
-const chunks = [];
-const stderr = new Writable({
-  write(chunk, _encoding, callback) {
-    chunks.push(chunk.toString());
-    callback();
-  },
-});
-const app = declare(build);
-const code = await app.run({
-  process: processHandle({
-    argv: process.argv.slice(3),
-    release: { build: 'distributed' },
-    stderr,
-  }),
-});
-process.stdout.write(`${JSON.stringify({ chunks, code })}\n`);
+export { runFixture as run };

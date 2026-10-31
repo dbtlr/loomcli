@@ -4,153 +4,156 @@ import { EX_UNAVAILABLE, FatalError, InputError, readExtension, ResultError } fr
 
 import { configKey } from './extension.mjs';
 
-/** How this run's source behaves, chosen by the test. */
-const mode = process.env.FIXTURE_SOURCE ?? 'answer';
+/** Builds a fresh source module for one scenario. */
+export function sourceModule({ env, stdout, abort }) {
+  /** How this run's source behaves, chosen by the test. */
+  const mode = env.FIXTURE_SOURCE ?? 'answer';
 
-if (mode === 'import-fails') {
-  throw new Error('the source module failed to evaluate');
-}
+  if (mode === 'import-fails') {
+    throw new Error('the source module failed to evaluate');
+  }
 
-/** An application's own failure that declares a sysexits code, raised from the source. */
-class RegistryUnavailableError extends FatalError {
-  static exitCode = EX_UNAVAILABLE;
+  /** An application's own failure that declares a sysexits code, raised from the source. */
+  class RegistryUnavailableError extends FatalError {
+    static exitCode = EX_UNAVAILABLE;
 
-  constructor() {
-    super('The settings registry is unavailable.');
-    this.name = 'RegistryUnavailableError';
+    constructor() {
+      super('The settings registry is unavailable.');
+      this.name = 'RegistryUnavailableError';
+    }
   }
-}
 
-/**
- * The fixture's configuration source. It prints what core handed it, then answers each requested
- * option whose key the settings in `FIXTURE_SETTINGS` hold.
- */
-const source = async ({ graph, host, options, out, requests, style }) => {
-  const names = requests.map((request) => request.name);
-  process.stdout.write(`source:${JSON.stringify({ options, requests: names })}\n`);
-  if (mode === 'throw') {
-    throw new Error(process.env.FIXTURE_REASON ?? 'the settings file is locked');
-  }
-  if (mode === 'context') {
-    // The graph is the one inspect() returns, and each request is a node inside it.
-    const globals = requests.map((request) => graph.globals.includes(request));
-    const select = graph.root.children.find((child) => child.name === 'select');
-    const routed = select.options.some((option) => requests.includes(option));
-    process.stdout.write(
-      `context:${JSON.stringify({ globals, name: graph.name, routed, style: typeof style.escape })}\n`,
-    );
-  }
-  if (mode === 'warn') {
-    await out.warn(
-      `Skipped ${style.escape(host.env.FIXTURE_WARN_PATH ?? 'a.json')}: the file is not valid JSON.`,
-    );
-  }
-  if (mode === 'input-error') {
-    throw new InputError('Option "--config": File "missing.json" does not exist.', [
-      {
-        input: { global: true, kind: 'option', name: 'config' },
-        issues: [{ message: 'File "missing.json" does not exist.' }],
-        reason: 'invalid',
-        spelling: '--config',
-      },
-    ]);
-  }
-  if (mode === 'fatal') {
-    out.fatal('the source gave up');
-  }
-  if (mode === 'result-error') {
-    // A ResultError the source built itself reports as itself.
-    throw new ResultError('repeated', ['bogus']);
-  }
-  if (mode === 'declared') {
-    throw new RegistryUnavailableError();
-  }
-  if (mode === 'declared-getter') {
-    return {
-      get limit() {
-        throw new RegistryUnavailableError();
-      },
-    };
-  }
-  if (mode === 'declared-value-getter') {
-    return {
-      limit: {
-        label: 'limit in fixture.json',
-        get value() {
+  /**
+   * The fixture's configuration source. It prints what core handed it, then answers each requested
+   * option whose key the settings in `FIXTURE_SETTINGS` hold.
+   */
+  const source = async ({ graph, host, options, out, requests, style }) => {
+    const names = requests.map((request) => request.name);
+    stdout(`source:${JSON.stringify({ options, requests: names })}\n`);
+    if (mode === 'throw') {
+      throw new Error(env.FIXTURE_REASON ?? 'the settings file is locked');
+    }
+    if (mode === 'context') {
+      // The graph is the one inspect() returns, and each request is a node inside it.
+      const globals = requests.map((request) => graph.globals.includes(request));
+      const select = graph.root.children.find((child) => child.name === 'select');
+      const routed = select.options.some((option) => requests.includes(option));
+      stdout(
+        `context:${JSON.stringify({ globals, name: graph.name, routed, style: typeof style.escape })}\n`,
+      );
+    }
+    if (mode === 'warn') {
+      await out.warn(
+        `Skipped ${style.escape(host.env.FIXTURE_WARN_PATH ?? 'a.json')}: the file is not valid JSON.`,
+      );
+    }
+    if (mode === 'input-error') {
+      throw new InputError('Option "--config": File "missing.json" does not exist.', [
+        {
+          input: { global: true, kind: 'option', name: 'config' },
+          issues: [{ message: 'File "missing.json" does not exist.' }],
+          reason: 'invalid',
+          spelling: '--config',
+        },
+      ]);
+    }
+    if (mode === 'fatal') {
+      out.fatal('the source gave up');
+    }
+    if (mode === 'result-error') {
+      // A ResultError the source built itself reports as itself.
+      throw new ResultError('repeated', ['bogus']);
+    }
+    if (mode === 'declared') {
+      throw new RegistryUnavailableError();
+    }
+    if (mode === 'declared-getter') {
+      return {
+        get limit() {
           throw new RegistryUnavailableError();
         },
-      },
-    };
-  }
-  if (mode === 'input-error-getter') {
-    return {
-      get limit() {
-        throw new InputError('Option "--limit": not from the resolver.', []);
-      },
-    };
-  }
-  if (mode === 'cancel') {
-    globalThis.fixtureAbort();
-    await after(50);
-    process.stdout.write('source:settled\n');
-  }
-  if (mode === 'not-record') {
-    return names;
-  }
-  if (mode === 'unrequested') {
-    return { port: { label: 'port in fixture.json', value: '1' } };
-  }
-  if (mode === 'sparse' || mode === 'hollow') {
-    // A list with holes, which a check that skips holes would pass as a list of strings.
-    // `sparse` holds a hole beside a string, and `hollow` holds two holes and nothing else.
-    const value = [];
-    if (mode === 'sparse') {
-      value[1] = 'a';
-    } else {
-      value.length = 2;
+      };
     }
-    return { fields: { label: 'fields in fixture.json', value } };
-  }
-  if (mode === 'record-getter') {
-    return {
-      get limit() {
-        throw new Error('the answers record threw');
-      },
-    };
-  }
-  if (mode === 'label-getter') {
-    return {
-      limit: {
-        get label() {
-          throw new Error('the answer label threw');
+    if (mode === 'declared-value-getter') {
+      return {
+        limit: {
+          label: 'limit in fixture.json',
+          get value() {
+            throw new RegistryUnavailableError();
+          },
         },
-        value: '1',
-      },
-    };
-  }
-  const settings = JSON.parse(host.env.FIXTURE_SETTINGS ?? '{}');
-  const answers = {};
-  for (const request of requests) {
-    const key = readExtension(request, configKey);
-    if (key !== undefined && Object.hasOwn(settings, key)) {
-      const label = mode === 'bad-label' ? 'two\nlines' : `${key} in fixture.json`;
-      const answer = { label, value: settings[key] };
-      // A file-relative answer names the directory of the file the value came from.
-      if (host.env.FIXTURE_DIRECTORY !== undefined) {
-        answer.directory = JSON.parse(host.env.FIXTURE_DIRECTORY);
-      }
-      answers[request.name] = mode === 'bare' ? settings[key] : answer;
+      };
     }
-  }
-  return answers;
-};
+    if (mode === 'input-error-getter') {
+      return {
+        get limit() {
+          throw new InputError('Option "--limit": not from the resolver.', []);
+        },
+      };
+    }
+    if (mode === 'cancel') {
+      abort();
+      await after(50);
+      stdout('source:settled\n');
+    }
+    if (mode === 'not-record') {
+      return names;
+    }
+    if (mode === 'unrequested') {
+      return { port: { label: 'port in fixture.json', value: '1' } };
+    }
+    if (mode === 'sparse' || mode === 'hollow') {
+      // A list with holes, which a check that skips holes would pass as a list of strings.
+      // `sparse` holds a hole beside a string, and `hollow` holds two holes and nothing else.
+      const value = [];
+      if (mode === 'sparse') {
+        value[1] = 'a';
+      } else {
+        value.length = 2;
+      }
+      return { fields: { label: 'fields in fixture.json', value } };
+    }
+    if (mode === 'record-getter') {
+      return {
+        get limit() {
+          throw new Error('the answers record threw');
+        },
+      };
+    }
+    if (mode === 'label-getter') {
+      return {
+        limit: {
+          get label() {
+            throw new Error('the answer label threw');
+          },
+          value: '1',
+        },
+      };
+    }
+    const settings = JSON.parse(host.env.FIXTURE_SETTINGS ?? '{}');
+    const answers = {};
+    for (const request of requests) {
+      const key = readExtension(request, configKey);
+      if (key !== undefined && Object.hasOwn(settings, key)) {
+        const label = mode === 'bad-label' ? 'two\nlines' : `${key} in fixture.json`;
+        const answer = { label, value: settings[key] };
+        // A file-relative answer names the directory of the file the value came from.
+        if (host.env.FIXTURE_DIRECTORY !== undefined) {
+          answer.directory = JSON.parse(host.env.FIXTURE_DIRECTORY);
+        }
+        answers[request.name] = mode === 'bare' ? settings[key] : answer;
+      }
+    }
+    return answers;
+  };
 
-/** The resolver core calls. One mode throws where it is called, before any promise exists. */
-function resolver(context) {
-  if (mode === 'declared-sync') {
-    throw new RegistryUnavailableError();
+  /** The resolver core calls. One mode throws where it is called, before any promise exists. */
+  function resolver(context) {
+    if (mode === 'declared-sync') {
+      throw new RegistryUnavailableError();
+    }
+    return source(context);
   }
-  return source(context);
+
+  return { default: resolver };
 }
-
-export default resolver;

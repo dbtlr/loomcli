@@ -1,14 +1,14 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { declaredRules, coreRuleParts } from './rule-parts.js';
 import type { RuleParts } from './rule-parts.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/command-diagnostics.mjs', import.meta.url);
 
 /** The diagnostic one scenario's faulty declaration throws, as its message holds it. */
-function thrown(scenario: string): string {
-  const result = invoke(fixture, [scenario]);
+async function thrown(scenario: string): Promise<string> {
+  const result = await invokeFixture(fixture, [scenario]);
   expect(result.stderr).toBe('');
   return result.stdout;
 }
@@ -100,9 +100,12 @@ const cases: Record<string, RuleParts> = {
   },
 };
 
-test.each(Object.entries(cases))('the %s fault throws its rule’s diagnostic', (scenario, parts) => {
-  expect(coreRuleParts(thrown(scenario))).toEqual(parts);
-});
+test.each(Object.entries(cases))(
+  'the %s fault throws its rule’s diagnostic',
+  async (scenario, parts) => {
+    expect(coreRuleParts(await thrown(scenario))).toEqual(parts);
+  },
+);
 
 /** The faults run() reports from a development build, which wait for the graph to be built. */
 const reportedCases: Record<string, RuleParts> = {
@@ -115,8 +118,8 @@ const reportedCases: Record<string, RuleParts> = {
 
 test.each(Object.entries(reportedCases))(
   'the %s fault reports its rule’s diagnostic from run()',
-  (scenario, parts) => {
-    const result = invoke(fixture, [scenario]);
+  async (scenario, parts) => {
+    const result = await invokeFixture(fixture, [scenario]);
     expect(result).toMatchObject({ status: 1, stdout: '' });
     expect(coreRuleParts(result.stderr)).toEqual(parts);
   },

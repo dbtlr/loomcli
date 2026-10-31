@@ -1,3 +1,4 @@
+import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for plugin Commands (docs/core/plugin-contract.md#plugin-commands).
  *
@@ -14,45 +15,51 @@
  * key, and when the root declares arguments. Each case runs under Node and Bun.
  */
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/plugins/commands.mjs', import.meta.url);
 
 /** One invocation of the scenario's application with the given tokens. */
-function run(scenario: string, argv: string[] = []) {
-  return invoke(fixture, [scenario, 'run', ...argv]);
+async function run(scenario: string, argv: string[] = []) {
+  return await invokeFixture(fixture, [scenario, 'run', ...argv]);
 }
 
 /** The root's children as `inspect()` lists them, or the declaration fault a call threw. */
-function inspect(scenario: string) {
-  return invoke(fixture, [scenario, 'inspect']).stdout;
+async function inspect(scenario: string) {
+  return await invokeFixture(fixture, [scenario, 'inspect']).then(
+    (fixtureResult) => fixtureResult.stdout,
+  );
 }
 
-test("plugin Commands attach ahead of the application's, in installation and list order", () => {
-  expect(inspect('order')).toBe('["alpha","beta","gamma","local"]\n');
+test("plugin Commands attach ahead of the application's, in installation and list order", async () => {
+  await expect(inspect('order')).resolves.toBe('["alpha","beta","gamma","local"]\n');
 });
 
-test('a plugin Command routes and runs like any other Command', () => {
-  expect(run('order', ['gamma'])).toEqual({
+test('a plugin Command routes and runs like any other Command', async () => {
+  await expect(run('order', ['gamma'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'ran:gamma\nresolved:0\n',
   });
-  expect(run('order', ['local']).stdout).toBe('ran:local\nresolved:0\n');
+  await expect(run('order', ['local']).then((fixtureResult) => fixtureResult.stdout)).resolves.toBe(
+    'ran:local\nresolved:0\n',
+  );
 });
 
-test("a lifecycle hook runs over a plugin Command, which the action's options reflect", () => {
-  expect(run('hooked', ['doctor', '--quiet']).stdout).toBe('quiet:true\nresolved:0\n');
+test("a lifecycle hook runs over a plugin Command, which the action's options reflect", async () => {
+  await expect(
+    run('hooked', ['doctor', '--quiet']).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('quiet:true\nresolved:0\n');
 });
 
-test("a plugin's own hook runs over the Command that plugin attaches", () => {
-  expect(run('own-hook', ['doctor', '--quiet']).stdout).toBe('quiet:true\nresolved:0\n');
+test("a plugin's own hook runs over the Command that plugin attaches", async () => {
+  await expect(
+    run('own-hook', ['doctor', '--quiet']).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('quiet:true\nresolved:0\n');
 });
 
-test('routing descends into the children of a group a plugin attaches', () => {
-  expect(run('nested', ['tools', 'clear'])).toEqual({
+test('routing descends into the children of a group a plugin attaches', async () => {
+  await expect(run('nested', ['tools', 'clear'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'ran:clear\nresolved:0\n',
@@ -103,10 +110,13 @@ const rejected = [
   ],
 ] satisfies [string, string][];
 
-test.each(rejected)('the call that makes the %s declaration wrong throws', (scenario, message) => {
-  expect(inspect(scenario)).toBe(`thrown:1: ${message}\n`);
-});
+test.each(rejected)(
+  'the call that makes the %s declaration wrong throws',
+  async (scenario, message) => {
+    await expect(inspect(scenario)).resolves.toBe(`thrown:1: ${message}\n`);
+  },
+);
 
-test("the plugins' Commands leave globalOption() open", () => {
-  expect(inspect('global-after-plugin-commands')).toBe('["doctor","local"]\n');
+test("the plugins' Commands leave globalOption() open", async () => {
+  await expect(inspect('global-after-plugin-commands')).resolves.toBe('["doctor","local"]\n');
 });

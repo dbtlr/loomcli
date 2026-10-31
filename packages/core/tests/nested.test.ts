@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 interface Report {
   args: Record<string, unknown>;
@@ -9,18 +9,21 @@ interface Report {
   passthrough: string[];
 }
 
-function invokeNested(argv: string[]) {
+async function invokeNested(argv: string[]) {
   // The fixture prefix prevents Bun from consuming a leading passthrough delimiter.
-  return invoke(new URL('fixtures/nested.mjs', import.meta.url), ['invoke', ...argv]);
+  return await invokeFixture(new URL('fixtures/nested.mjs', import.meta.url), ['invoke', ...argv]);
 }
 
-function invokeNestedRoot(argv: string[]) {
+async function invokeNestedRoot(argv: string[]) {
   // The fixture prefix prevents Bun from consuming a leading passthrough delimiter.
-  return invoke(new URL('fixtures/nested-root.mjs', import.meta.url), ['invoke', ...argv]);
+  return await invokeFixture(new URL('fixtures/nested-root.mjs', import.meta.url), [
+    'invoke',
+    ...argv,
+  ]);
 }
 
-function report(argv: string[]): Report {
-  const result = invokeNested(argv);
+async function report(argv: string[]): Promise<Report> {
+  const result = await invokeNested(argv);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return JSON.parse(result.stdout);
@@ -34,8 +37,8 @@ test.each([
   [['store', 'put'], 'put', {}],
 ] satisfies [string[], string, Record<string, unknown>][])(
   'routes %j through the named levels to its leaf with the globals and its own locals',
-  (argv, command, options) => {
-    expect(report(['--file', 'data.json', ...argv])).toEqual({
+  async (argv, command, options) => {
+    await expect(report(['--file', 'data.json', ...argv])).resolves.toEqual({
       args: {},
       command,
       options: { file: 'data.json', ...options },
@@ -52,8 +55,8 @@ test.each([
   [['c', 'clear', '--force'], 'clear', { force: true }],
 ] satisfies [string[], string, Record<string, unknown>][])(
   'routes %j through an alias to the Command its canonical name selects',
-  (argv, command, options) => {
-    expect(report(['--file', 'data.json', ...argv])).toEqual({
+  async (argv, command, options) => {
+    await expect(report(['--file', 'data.json', ...argv])).resolves.toEqual({
       args: {},
       command,
       options: { file: 'data.json', ...options },
@@ -62,10 +65,16 @@ test.each([
   },
 );
 
-test('one alias namespace belongs to one parent, so two parents each spend "ls" on a child', () => {
+test('one alias namespace belongs to one parent, so two parents each spend "ls" on a child', async () => {
   const shared = { args: {}, options: { file: 'data.json' }, passthrough: [] };
-  expect(report(['--file', 'data.json', 'cache', 'ls'])).toEqual({ ...shared, command: 'list' });
-  expect(report(['--file', 'data.json', 'store', 'ls'])).toEqual({ ...shared, command: 'put' });
+  await expect(report(['--file', 'data.json', 'cache', 'ls'])).resolves.toEqual({
+    ...shared,
+    command: 'list',
+  });
+  await expect(report(['--file', 'data.json', 'store', 'ls'])).resolves.toEqual({
+    ...shared,
+    command: 'put',
+  });
 });
 
 test.each([
@@ -75,8 +84,8 @@ test.each([
   [['cache', 'ls', 'extra'], 'Command "list" accepts no arguments. Remove the supplied values.'],
 ] satisfies [string[], string][])(
   'reports canonical names alone for the aliased invocation %j',
-  (argv, reason) => {
-    const result = invokeNested(argv);
+  async (argv, reason) => {
+    const result = await invokeNested(argv);
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
     expect(result.stderr).toBe(`nested: ${reason}\n`);
@@ -135,10 +144,14 @@ test.each([
   ],
 ] satisfies [string, string][])(
   'the call or attach that makes the %s graph wrong throws at its depth',
-  (scenario, reason) => {
-    expect(
-      invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [scenario, 'cache', 'clear']),
-    ).toEqual({ status: 0, stderr: '', stdout: `thrown:1: ${reason}\n` });
+  async (scenario, reason) => {
+    await expect(
+      invokeFixture(new URL('fixtures/nested-graph.mjs', import.meta.url), [
+        scenario,
+        'cache',
+        'clear',
+      ]),
+    ).resolves.toEqual({ status: 0, stderr: '', stdout: `thrown:1: ${reason}\n` });
   },
 );
 
@@ -147,23 +160,25 @@ test.each([
   ['digit-alias-name', '9Go_x'],
   ['repeated-alias', 'ls'],
   ['alias-own-name', 'keys'],
-] satisfies [string, string][])('the %s alias routes to its Command', (scenario, alias) => {
-  expect(invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [scenario, alias])).toEqual({
+] satisfies [string, string][])('the %s alias routes to its Command', async (scenario, alias) => {
+  await expect(
+    invokeFixture(new URL('fixtures/nested-graph.mjs', import.meta.url), [scenario, alias]),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'dispatched\n{"chunks":[],"code":0}\n',
   });
 });
 
-test('a Command three levels below the root routes and runs', () => {
-  expect(
-    invoke(new URL('fixtures/nested-graph.mjs', import.meta.url), [
+test('a Command three levels below the root routes and runs', async () => {
+  await expect(
+    invokeFixture(new URL('fixtures/nested-graph.mjs', import.meta.url), [
       'three-levels',
       'store',
       'cache',
       'clear',
     ]),
-  ).toEqual({ status: 0, stderr: '', stdout: 'dispatched\n{"chunks":[],"code":0}\n' });
+  ).resolves.toEqual({ status: 0, stderr: '', stdout: 'dispatched\n{"chunks":[],"code":0}\n' });
 });
 
 test.each([
@@ -186,15 +201,15 @@ test.each([
     ['cache', 'clear', 'extra'],
     'Command "clear" accepts no arguments. Remove the supplied values.',
   ],
-] satisfies [string[], string][])('rejects the nested invocation %j', (argv, reason) => {
-  const result = invokeNested(argv);
+] satisfies [string[], string][])('rejects the nested invocation %j', async (argv, reason) => {
+  const result = await invokeNested(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toBe(`nested: ${reason}\n`);
 });
 
-test('a root group dispatches the child a bare token selects', () => {
-  const result = invokeNestedRoot(['--file', 'data.json', 'get', 'a.b']);
+test('a root group dispatches the child a bare token selects', async () => {
+  const result = await invokeNestedRoot(['--file', 'data.json', 'get', 'a.b']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout)).toEqual({
@@ -212,8 +227,8 @@ test.each([
     'Unknown option "--verbose". Supply a declared option; prefix a hyphenated path with "./".',
   ],
   [['--file', 'data.json'], 'A command is required. Use one of: get, keys.'],
-] satisfies [string[], string][])('rejects the root group invocation %j', (argv, reason) => {
-  const result = invokeNestedRoot(argv);
+] satisfies [string[], string][])('rejects the root group invocation %j', async (argv, reason) => {
+  const result = await invokeNestedRoot(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toBe(`nested-root: ${reason}\n`);
@@ -225,8 +240,8 @@ test.each([
   [['store', '--pretty'], 'store', { pretty: true }],
 ] satisfies [string[], string, Record<string, unknown>][])(
   'runs the action of the Command %j selects, children and all',
-  (argv, command, options) => {
-    expect(report(['--file', 'data.json', ...argv])).toEqual({
+  async (argv, command, options) => {
+    await expect(report(['--file', 'data.json', ...argv])).resolves.toEqual({
       args: {},
       command,
       options: { file: 'data.json', ...options },

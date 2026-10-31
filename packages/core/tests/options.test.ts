@@ -1,3 +1,6 @@
+import { expect, test } from 'vite-plus/test';
+
+import { invoke as invokeFixture } from './run-fixture.ts';
 /*
  * Acceptance plan for option parsing (docs/core/commands.md#global-consumption-and-routing).
  *
@@ -49,27 +52,28 @@
  *   values in Bash, Zsh, and Fish.
  */
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
-
-function invokeOptions(argv: string[]) {
+async function invokeOptions(argv: string[]) {
   // The fixture prefix prevents Bun from consuming a leading passthrough delimiter.
-  return invoke(new URL('fixtures/options.mjs', import.meta.url), ['invoke', ...argv]);
+  return await invokeFixture(new URL('fixtures/options.mjs', import.meta.url), ['invoke', ...argv]);
 }
 
-test('an argument and option can share a key without losing either value', () => {
-  expect(
-    invoke(new URL('fixtures/shared-input-key.mjs', import.meta.url), ['one.txt', '--files']),
-  ).toEqual({
+test('an argument and option can share a key without losing either value', async () => {
+  await expect(
+    invokeFixture(new URL('fixtures/shared-input-key.mjs', import.meta.url), [
+      'one.txt',
+      '--files',
+    ]),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '{"args":{"files":["one.txt"]},"options":{"files":true}}\n',
   });
 });
 
-test('option declarations and invocation values remain isolated across branches and repeated runs', () => {
-  expect(invoke(new URL('fixtures/option-state.mjs', import.meta.url))).toEqual({
+test('option declarations and invocation values remain isolated across branches and repeated runs', async () => {
+  await expect(
+    invokeFixture(new URL('fixtures/option-state.mjs', import.meta.url)),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: [
@@ -81,9 +85,9 @@ test('option declarations and invocation values remain isolated across branches 
   });
 });
 
-test('local options and passthrough stay separate from positional inputs and host argv', () => {
+test('local options and passthrough stay separate from positional inputs and host argv', async () => {
   const argv = ['one.txt', '--metric=words', '--total', 'two.txt', '--', '--metric', 'two words'];
-  expect(invokeOptions(argv)).toEqual({
+  await expect(invokeOptions(argv)).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `${JSON.stringify({
@@ -115,8 +119,8 @@ test.each([
   [['-m', '-', 'one.txt'], { metric: '-', total: false }],
 ] satisfies [string[], { metric?: string; total: boolean }][])(
   'binds supported option forms %j',
-  (argv, options) => {
-    expect(invokeOptions(argv)).toEqual({
+  async (argv, options) => {
+    await expect(invokeOptions(argv)).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: `${JSON.stringify({ args: { files: ['one.txt'] }, argv, options, passthrough: [] })}\n`,
@@ -131,8 +135,8 @@ test.each([
   [['-tcsm', 'words'], { color: false, metric: 'words', silent: false, total: true }],
 ] satisfies [string[], { total: boolean; color: boolean; silent: boolean; metric?: string }][])(
   'applies polarity and short-only options for %j',
-  (argv, options) => {
-    const result = invoke(new URL('fixtures/polarity.mjs', import.meta.url), argv);
+  async (argv, options) => {
+    const result = await invokeFixture(new URL('fixtures/polarity.mjs', import.meta.url), argv);
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(JSON.parse(result.stdout)).toEqual({ options, passthrough: [] });
@@ -148,8 +152,8 @@ test.each([
   [['--no-total', '-t'], 'only once'],
 ] satisfies [string[], string][])(
   'rejects unavailable or repeated polarity forms %j',
-  (argv, reason) => {
-    const result = invoke(new URL('fixtures/polarity.mjs', import.meta.url), argv);
+  async (argv, reason) => {
+    const result = await invokeFixture(new URL('fixtures/polarity.mjs', import.meta.url), argv);
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain(reason);
@@ -161,8 +165,10 @@ test.each([
   ['duplicate-short', '-t', 'used by both'],
   ['negative-collision', '--no-total', 'used by both'],
   ['invalid-name', 'bad=name', 'name'],
-])('the option() call that declares %s throws before any build', (scenario, name, reason) => {
-  const result = invoke(new URL('fixtures/option-declarations.mjs', import.meta.url), [scenario]);
+])('the option() call that declares %s throws before any build', async (scenario, name, reason) => {
+  const result = await invokeFixture(new URL('fixtures/option-declarations.mjs', import.meta.url), [
+    scenario,
+  ]);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   expect(result.stdout).toMatch(/^thrown:1: /u);
@@ -170,16 +176,26 @@ test.each([
   expect(result.stdout).toContain(reason);
 });
 
-test('a word that is not an option word is a value or an argument, with no -- escape', () => {
+test('a word that is not an option word is a value or an argument, with no -- escape', async () => {
   const argv = ['--depth', '-5', '-.5', '-5', '-', '-1e3'];
-  expect(JSON.parse(invokeOptions(argv).stdout)).toMatchObject({
+  expect(
+    JSON.parse(await invokeOptions(argv).then((fixtureResult) => fixtureResult.stdout)),
+  ).toMatchObject({
     args: { files: ['-.5', '-5', '-', '-1e3'] },
     options: { depth: '-5' },
   });
-  expect(JSON.parse(invokeOptions(['-d', '-5', 'one.txt']).stdout)).toMatchObject({
+  expect(
+    JSON.parse(
+      await invokeOptions(['-d', '-5', 'one.txt']).then((fixtureResult) => fixtureResult.stdout),
+    ),
+  ).toMatchObject({
     options: { depth: '-5' },
   });
-  expect(JSON.parse(invokeOptions(['-td-.5', 'one.txt']).stdout)).toMatchObject({
+  expect(
+    JSON.parse(
+      await invokeOptions(['-td-.5', 'one.txt']).then((fixtureResult) => fixtureResult.stdout),
+    ),
+  ).toMatchObject({
     options: { depth: '-.5', total: true },
   });
 });
@@ -192,8 +208,8 @@ test.each([
   [['one.txt', '-tm', '--total'], '-m'],
 ] satisfies [string[], string][])(
   'a value option before an option word or -- names the attached form for %j',
-  (argv, spelling) => {
-    expect(invokeOptions(argv)).toEqual({
+  async (argv, spelling) => {
+    await expect(invokeOptions(argv)).resolves.toEqual({
       status: 2,
       stderr: `options: Option "${spelling}" requires a value. Supply a value after "${spelling}", or attach one that starts with a hyphen as "${spelling}=<value>".\n`,
       stdout: '',
@@ -208,8 +224,8 @@ test.each([
   [['-t=false', 'one.txt'], 'Boolean option "-t" does not accept a value'],
   [['-tt', 'one.txt'], 'Option "-t" can be supplied only once'],
   [['-tmx', '-tm', 'y', 'one.txt'], 'Option "-t" can be supplied only once'],
-] satisfies [string[], string][])('the short group %j fails with %s', (argv, sentence) => {
-  const result = invokeOptions(argv);
+] satisfies [string[], string][])('the short group %j fails with %s', async (argv, sentence) => {
+  const result = await invokeOptions(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain(`options: ${sentence}`);
@@ -226,10 +242,13 @@ test.each([
   [['-tx', 'one.txt'], '"-x"', 'Unknown option'],
   [['--no-total', 'one.txt'], '"--no-total"', 'Unknown option'],
   [['--', 'one.txt'], '"files"', 'requires at least one value'],
-] satisfies [string[], string, string][])('rejects %j without dispatch', (argv, option, reason) => {
-  const result = invokeOptions(argv);
-  expect(result.status).toBe(2);
-  expect(result.stdout).toBe('');
-  expect(result.stderr).toContain(option);
-  expect(result.stderr).toContain(reason);
-});
+] satisfies [string[], string, string][])(
+  'rejects %j without dispatch',
+  async (argv, option, reason) => {
+    const result = await invokeOptions(argv);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(option);
+    expect(result.stderr).toContain(reason);
+  },
+);

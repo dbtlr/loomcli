@@ -1,11 +1,55 @@
-import { Application, glyph, nowrap, pad, processHandle, style } from '@loomcli/core';
+import { Application, glyph, nowrap, pad, style } from '@loomcli/core';
 
-const input = JSON.parse(process.argv[2]);
-// JSON holds no NaN or Infinity, so a width spelled as a string is read as a number.
-const columns =
-  typeof input.columns === 'string' ? Number(input.columns) : (input.columns ?? undefined);
+import { scenario as fixtureScenario } from './scenario.mjs';
 
-/** Marked text built from a small description: strings, frames, styles, and glyphs. */
+/** Runs a fresh fixture scenario with only the supplied process facts. */
+async function runFixture(words, fixtureOptions = {}) {
+  const fixture = fixtureScenario({ ...fixtureOptions, argv: words });
+  const { createProcess } = fixture;
+  try {
+    const input = JSON.parse(words[0]);
+    // JSON holds no NaN or Infinity, so a width spelled as a string is read as a number.
+    const columns =
+      typeof input.columns === 'string' ? Number(input.columns) : (input.columns ?? undefined);
+
+    /** Marked text built from a small description: strings, frames, styles, and glyphs. */
+
+    const app = new Application('wrap', { description: 'Wrap text.' }).action(({ out }) =>
+      out.render(build(input.text), {
+        render: (text, context) => {
+          if (input.expand) {
+            return context.expandTabs(text);
+          }
+          try {
+            const wrapped = context.wrap(text, columns);
+            return input.center ? pad(wrapped, columns, { align: 'center' }) : wrapped;
+          } catch (error) {
+            return `${error.name}: ${error.message}`;
+          }
+        },
+      }),
+    );
+    await app.run({
+      process: createProcess({
+        argv: [],
+        env: input.env ?? {},
+        platform: 'linux',
+        terminal: {
+          stderr: { columns: undefined, isTTY: false, rows: undefined },
+          stdin: { isTTY: false },
+          stdout: { columns: undefined, isTTY: input.tty ?? false, rows: undefined },
+        },
+      }),
+      rendering: input.rendering,
+    });
+  } catch (error) {
+    if (error !== fixture.stopped) {
+      fixture.thrown(error);
+    }
+  }
+  return fixture.result();
+}
+
 function build(part) {
   if (typeof part === 'string') {
     return part;
@@ -30,31 +74,4 @@ function build(part) {
   throw new Error(`Unknown part: ${JSON.stringify(part)}`);
 }
 
-const app = new Application('wrap', { description: 'Wrap text.' }).action(({ out }) =>
-  out.render(build(input.text), {
-    render: (text, context) => {
-      if (input.expand) {
-        return context.expandTabs(text);
-      }
-      try {
-        const wrapped = context.wrap(text, columns);
-        return input.center ? pad(wrapped, columns, { align: 'center' }) : wrapped;
-      } catch (error) {
-        return `${error.name}: ${error.message}`;
-      }
-    },
-  }),
-);
-await app.run({
-  process: processHandle({
-    argv: [],
-    env: input.env ?? {},
-    platform: 'linux',
-    terminal: {
-      stderr: { columns: undefined, isTTY: false, rows: undefined },
-      stdin: { isTTY: false },
-      stdout: { columns: undefined, isTTY: input.tty ?? false, rows: undefined },
-    },
-  }),
-  rendering: input.rendering,
-});
+export { runFixture as run };

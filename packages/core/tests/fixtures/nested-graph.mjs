@@ -1,109 +1,142 @@
 import { Writable } from 'node:stream';
 
-import { Application, Command, processHandle } from '@loomcli/core';
+import { DeclarationError, Application, Command } from '@loomcli/core';
 
-import { declare } from './declare.mjs';
+import { ruleText } from './rule-text.mjs';
+import { scenario as fixtureScenario } from './scenario.mjs';
 
-const scenario = process.argv[2];
+/** Runs a fresh fixture scenario with only the supplied process facts. */
+async function runFixture(fixtureWords, fixtureOptions = {}) {
+  const fixture = fixtureScenario({ ...fixtureOptions, argv: fixtureWords });
+  const { createProcess, stdout: writeStdout } = fixture;
+
+  function declare(build) {
+    try {
+      return build();
+    } catch (error) {
+      if (!(error instanceof DeclarationError)) {
+        throw error;
+      }
+      writeStdout(`thrown:${error.exitCode}: ${ruleText(error)}\n`);
+      throw fixture.stopped;
+    }
+  }
+  try {
+    const scenario = fixtureWords[0];
+
+    function leaf(name) {
+      return new Command(name).action(dispatch);
+    }
+
+    function aliased(name, ...aliases) {
+      return new Command(name).alias(...aliases).action(dispatch);
+    }
+
+    function build() {
+      const app = new Application('nested-graph').globalOption('file', {
+        short: 'f',
+        type: 'string',
+      });
+      switch (scenario) {
+        case 'leaf-actionless': {
+          return app.command(new Command('cache').command(new Command('clear'))).action(dispatch);
+        }
+        case 'duplicate-nested-children': {
+          return app
+            .command(new Command('cache').command(leaf('clear')).command(leaf('clear')))
+            .action(dispatch);
+        }
+        case 'invalid-nested-child-name': {
+          return app.command(new Command('cache').command(leaf('bad name'))).action(dispatch);
+        }
+        case 'nested-shared-option-key': {
+          return app
+            .command(
+              new Command('cache').command(
+                new Command('clear').option('file', { type: 'boolean' }).action(dispatch),
+              ),
+            )
+            .action(dispatch);
+        }
+        case 'alias-sibling-name': {
+          return app.command(leaf('get')).command(aliased('keys', 'get')).action(dispatch);
+        }
+        case 'alias-before-sibling-name': {
+          // The alias is declared before the child whose name it repeats, so the rule reads both ways.
+          return app.command(aliased('keys', 'get')).command(leaf('get')).action(dispatch);
+        }
+        case 'alias-sibling-alias': {
+          return app
+            .command(aliased('select', 'ls'))
+            .command(aliased('keys', 'ls'))
+            .action(dispatch);
+        }
+        case 'alias-own-name': {
+          return app.command(aliased('keys', 'keys')).action(dispatch);
+        }
+        case 'repeated-alias': {
+          return app
+            .command(new Command('keys').alias('ls').alias('ls').action(dispatch))
+            .action(dispatch);
+        }
+        case 'invalid-alias-name': {
+          return app.command(aliased('keys', 'bad name')).action(dispatch);
+        }
+        case 'dot-alias-name': {
+          return app.command(aliased('keys', '.ls')).action(dispatch);
+        }
+        case 'slash-alias-name': {
+          return app.command(aliased('keys', 'ls/all')).action(dispatch);
+        }
+        case 'portable-alias-name': {
+          return app.command(aliased('keys', '_Ls.v2-all')).action(dispatch);
+        }
+        case 'digit-alias-name': {
+          return app.command(aliased('keys', '9Go_x')).action(dispatch);
+        }
+        case 'colon-alias-name': {
+          return app.command(aliased('keys', 'ls:all')).action(dispatch);
+        }
+        case 'nested-alias-sibling-name': {
+          return app
+            .command(new Command('cache').command(leaf('clear')).command(aliased('list', 'clear')))
+            .action(dispatch);
+        }
+        case 'shared-child': {
+          const clear = leaf('clear');
+          return app.command(new Command('cache').command(clear)).command(clear).action(dispatch);
+        }
+        case 'three-levels': {
+          // A group attached below a named Command puts its children three levels below the root.
+          const cache = new Command('cache').command(leaf('clear'));
+          return app.command(new Command('store').command(cache)).action(dispatch);
+        }
+        default: {
+          return app.command(new Command('cache').command(leaf('clear'))).action(dispatch);
+        }
+      }
+    }
+
+    const chunks = [];
+    const stderr = new Writable({
+      write(chunk, _encoding, callback) {
+        chunks.push(chunk.toString());
+        callback();
+      },
+    });
+    const app = declare(build);
+    const code = await app.run({
+      process: createProcess({ argv: fixtureWords.slice(1), stderr }),
+    });
+    writeStdout(`${JSON.stringify({ chunks, code })}\n`);
+  } catch (error) {
+    if (error !== fixture.stopped) {
+      fixture.thrown(error);
+    }
+  }
+  return fixture.result();
+}
 
 const dispatch = ({ out }) => out.print('dispatched');
 
-function leaf(name) {
-  return new Command(name).action(dispatch);
-}
-
-function aliased(name, ...aliases) {
-  return new Command(name).alias(...aliases).action(dispatch);
-}
-
-function build() {
-  const app = new Application('nested-graph').globalOption('file', { short: 'f', type: 'string' });
-  switch (scenario) {
-    case 'leaf-actionless': {
-      return app.command(new Command('cache').command(new Command('clear'))).action(dispatch);
-    }
-    case 'duplicate-nested-children': {
-      return app
-        .command(new Command('cache').command(leaf('clear')).command(leaf('clear')))
-        .action(dispatch);
-    }
-    case 'invalid-nested-child-name': {
-      return app.command(new Command('cache').command(leaf('bad name'))).action(dispatch);
-    }
-    case 'nested-shared-option-key': {
-      return app
-        .command(
-          new Command('cache').command(
-            new Command('clear').option('file', { type: 'boolean' }).action(dispatch),
-          ),
-        )
-        .action(dispatch);
-    }
-    case 'alias-sibling-name': {
-      return app.command(leaf('get')).command(aliased('keys', 'get')).action(dispatch);
-    }
-    case 'alias-before-sibling-name': {
-      // The alias is declared before the child whose name it repeats, so the rule reads both ways.
-      return app.command(aliased('keys', 'get')).command(leaf('get')).action(dispatch);
-    }
-    case 'alias-sibling-alias': {
-      return app.command(aliased('select', 'ls')).command(aliased('keys', 'ls')).action(dispatch);
-    }
-    case 'alias-own-name': {
-      return app.command(aliased('keys', 'keys')).action(dispatch);
-    }
-    case 'repeated-alias': {
-      return app
-        .command(new Command('keys').alias('ls').alias('ls').action(dispatch))
-        .action(dispatch);
-    }
-    case 'invalid-alias-name': {
-      return app.command(aliased('keys', 'bad name')).action(dispatch);
-    }
-    case 'dot-alias-name': {
-      return app.command(aliased('keys', '.ls')).action(dispatch);
-    }
-    case 'slash-alias-name': {
-      return app.command(aliased('keys', 'ls/all')).action(dispatch);
-    }
-    case 'portable-alias-name': {
-      return app.command(aliased('keys', '_Ls.v2-all')).action(dispatch);
-    }
-    case 'digit-alias-name': {
-      return app.command(aliased('keys', '9Go_x')).action(dispatch);
-    }
-    case 'colon-alias-name': {
-      return app.command(aliased('keys', 'ls:all')).action(dispatch);
-    }
-    case 'nested-alias-sibling-name': {
-      return app
-        .command(new Command('cache').command(leaf('clear')).command(aliased('list', 'clear')))
-        .action(dispatch);
-    }
-    case 'shared-child': {
-      const clear = leaf('clear');
-      return app.command(new Command('cache').command(clear)).command(clear).action(dispatch);
-    }
-    case 'three-levels': {
-      // A group attached below a named Command puts its children three levels below the root.
-      const cache = new Command('cache').command(leaf('clear'));
-      return app.command(new Command('store').command(cache)).action(dispatch);
-    }
-    default: {
-      return app.command(new Command('cache').command(leaf('clear'))).action(dispatch);
-    }
-  }
-}
-
-const chunks = [];
-const stderr = new Writable({
-  write(chunk, _encoding, callback) {
-    chunks.push(chunk.toString());
-    callback();
-  },
-});
-const app = declare(build);
-const code = await app.run({
-  process: processHandle({ argv: process.argv.slice(3), stderr }),
-});
-process.stdout.write(`${JSON.stringify({ chunks, code })}\n`);
+export { runFixture as run };

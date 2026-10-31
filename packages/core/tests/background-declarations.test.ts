@@ -1,14 +1,13 @@
+import { expect, test } from 'vite-plus/test';
 // Acceptance plan: see packages/core/tests/background.test.ts.
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/background-declarations.mjs', import.meta.url);
 
 /** One scenario's outcome: `ok`, or the call that threw, its rule, and its sentence and fix. */
-function outcome(scenario: string): unknown {
-  const result = invoke(fixture, [scenario]);
+async function outcome(scenario: string): Promise<unknown> {
+  const result = await invokeFixture(fixture, [scenario]);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return JSON.parse(result.stdout);
@@ -16,9 +15,9 @@ function outcome(scenario: string): unknown {
 
 const rule = '@loomcli/core/background-mark';
 
-test('a string global option carries the background mark, with aliases', () => {
-  expect(outcome('string')).toBe('ok');
-  expect(outcome('alias')).toBe('ok');
+test('a string global option carries the background mark, with aliases', async () => {
+  await expect(outcome('string')).resolves.toBe('ok');
+  await expect(outcome('alias')).resolves.toBe('ok');
 });
 
 test.each([
@@ -47,27 +46,27 @@ test.each([
     'new Application',
     'Plugin "@fixture/shade" option "background" declares background and carries configuration binding "@loomcli/plugins/config/input", a second source for the run\'s background. Remove the binding; the run reads its background before configuration.',
   ],
-])('the background mark rejects %s from %s', (scenario, threw, text) => {
-  expect(outcome(scenario)).toEqual({ rule, text, threw });
+])('the background mark rejects %s from %s', async (scenario, threw, text) => {
+  await expect(outcome(scenario)).resolves.toEqual({ rule, text, threw });
 });
 
-test('a binding of a source the Application does not install is inert beside the mark', () => {
-  expect(outcome('binding-inert')).toBe('ok');
+test('a binding of a source the Application does not install is inert beside the mark', async () => {
+  await expect(outcome('binding-inert')).resolves.toBe('ok');
 });
 
-test('inspect() publishes background on each string option node, true on the marked one', () => {
+test('inspect() publishes background on each string option node, true on the marked one', async () => {
   // A Boolean option's node carries no background fact, so it reads undefined, which JSON prints as null.
-  expect(outcome('inspect')).toEqual([
+  await expect(outcome('inspect')).resolves.toEqual([
     ['name', false],
     ['dry', null],
     ['background', true],
   ]);
 });
 
-test('style.adaptive takes an unapplied concrete chain for dark and for light, and nothing else', () => {
+test('style.adaptive takes an unapplied concrete chain for dark and for light, and nothing else', async () => {
   const fault =
     'TypeError: Adaptive styles take an unapplied concrete style chain for dark and for light.';
-  expect(outcome('adaptive')).toEqual({
+  await expect(outcome('adaptive')).resolves.toEqual({
     adaptive: fault,
     applied: fault,
     array: fault,
@@ -79,7 +78,7 @@ test('style.adaptive takes an unapplied concrete chain for dark and for light, a
   });
 });
 
-test('a bare theme() accepts an adaptive entry and a custom token named adaptive', () => {
-  expect(outcome('adaptive-entry')).toBe('ok');
-  expect(outcome('adaptive-name')).toBe('ok');
+test('a bare theme() accepts an adaptive entry and a custom token named adaptive', async () => {
+  await expect(outcome('adaptive-entry')).resolves.toBe('ok');
+  await expect(outcome('adaptive-name')).resolves.toBe('ok');
 });

@@ -1,4 +1,5 @@
 import {
+  DeclarationError,
   Application,
   Command,
   FatalError,
@@ -6,130 +7,415 @@ import {
   LoomError,
   override,
   plugin,
-  processHandle,
   UnknownCommandError,
   UnknownOptionError,
   UsageError,
 } from '@loomcli/core';
 
-import { declare } from './declare.mjs';
+import { ruleText } from './rule-text.mjs';
+import { scenario as fixtureScenario } from './scenario.mjs';
 
-const [scenario, ...argv] = process.argv.slice(2);
+/** Runs a fresh fixture scenario with only the supplied process facts. */
+async function runFixture(words, fixtureOptions = {}) {
+  const fixture = fixtureScenario({ ...fixtureOptions, argv: words });
+  const { createProcess, env: fixtureEnv, stdout: writeStdout } = fixture;
 
-/** Every hook call, in call order, printed to stdout ahead of the resolved code. */
-const calls = [];
+  function declare(build) {
+    try {
+      return build();
+    } catch (error) {
+      if (!(error instanceof DeclarationError)) {
+        throw error;
+      }
+      writeStdout(`thrown:${error.exitCode}: ${ruleText(error)}\n`);
+      throw fixture.stopped;
+    }
+  }
+  try {
+    const [scenario, ...argv] = words;
 
-/** The caller's own controller, which a cancelling scenario aborts from its action. */
-const controller = new AbortController();
+    /** Every hook call, in call order, printed to stdout ahead of the resolved code. */
+    const calls = [];
 
-/** A plugin whose only contribution is one `onFailure` hook, which records each call. */
-function hinting(identity, answer) {
-  return plugin(identity, {
-    onFailure: (failure, context) => {
-      calls.push(`hook:${identity}:${failure.name}:[${context.path.join(',')}]`);
-      return answer(failure, context);
-    },
-  });
+    /** The caller's own controller, which a cancelling scenario aborts from its action. */
+    const controller = new AbortController();
+
+    /** A plugin whose only contribution is one `onFailure` hook, which records each call. */
+    function hinting(identity, answer) {
+      return plugin(identity, {
+        onFailure: (failure, context) => {
+          calls.push(`hook:${identity}:${failure.name}:[${context.path.join(',')}]`);
+          return answer(failure, context);
+        },
+      });
+    }
+
+    /** What a failure view reads of where the run was, so a test reads the context it received. */
+    const where = {
+      render: (failure, { application, hints, path }) =>
+        `${JSON.stringify({ application, hints, name: failure.name, path })}\n`,
+    };
+
+    /** An override that prints the hints in its own form, beside its own sentence. */
+    const bracketed = {
+      render: (failure, { hints }) =>
+        [`usage: ${failure.message}`, ...hints.map((hint) => `  (${hint})`)]
+          .map((line) => `${line}\n`)
+          .join(''),
+    };
+
+    const breaks = {
+      render: () => {
+        throw new Error('Cannot render the failure.');
+      },
+    };
+
+    /** A validator whose converter throws when build asks it for the input's schema. */
+    const throwingConverter = {
+      '~standard': {
+        jsonSchema: {
+          input: () => {
+            throw new Error('This shape has no JSON Schema.');
+          },
+          output: () => ({}),
+        },
+        validate: (value) => ({ value }),
+        vendor: 'fixture',
+        version: 1,
+      },
+    };
+
+    /**
+     * A two-level graph: a group with a visible child, a hidden child, and an aliased child, and
+     * options of each listing kind on the root and on the child, so a hook's candidates are visible.
+     */
+    function routed(options = {}) {
+      const clear = new Command('clear', {
+        description: 'The clear command.',
+      })
+        .option('keep', { description: 'The keep option.', short: 'k', type: 'boolean' })
+        .option('secret', { description: 'The secret option.', hidden: true, type: 'boolean' })
+        .option('old', {
+          deprecated: 'Use --keep instead.',
+          description: 'The old option.',
+          type: 'boolean',
+        })
+        .action(dispatch);
+      const cache = new Command('cache', {
+        description: 'The cache command.',
+      })
+        .command(clear)
+        .command(
+          new Command('purge', { description: 'The purge command.', hidden: true }).action(
+            dispatch,
+          ),
+        )
+        .command(
+          new Command('list', { description: 'The list command.' }).alias('ls').action(dispatch),
+        );
+      return new Application('store', { description: 'Store values.', ...options })
+        .globalOption('file', { description: 'The file option.', short: 'f', type: 'string' })
+        .globalOption('trace', { description: 'The trace option.', hidden: true, type: 'boolean' })
+        .globalOption('legacy', {
+          deprecated: 'Use --file instead.',
+          description: 'The legacy option.',
+          type: 'boolean',
+        })
+        .command(cache);
+    }
+
+    /** A broken hook installed ahead of a working one, on a graph whose fault is a usage error. */
+    function broken(answer) {
+      return routed({
+        plugins: [hinting('fixture/broken', answer), hinting('fixture/fine', () => 'still here')],
+      }).action(dispatch);
+    }
+
+    /** A validator that rejects the value `bad` alone, with a field core does not read. */
+    const coded = {
+      '~standard': {
+        validate: (value) =>
+          value === 'bad' ? { issues: [{ code: 'too_short', message: 'Too short.' }] } : { value },
+        vendor: 'fixture',
+        version: 1,
+      },
+    };
+
+    /** Every issue the reported problems carry, whole, so a test reads the fields a view receives. */
+    const issues = {
+      render: (failure) =>
+        `${JSON.stringify(failure.problems.flatMap((problem) => problem.issues ?? []))}\n`,
+    };
+
+    /** A hook that reads its candidates from the graph, leaving out what completion leaves out. */
+
+    /** A view that throws, which a render the action never awaited fails through after the action. */
+    const breaking = {
+      render: () => {
+        throw new Error('The view broke.');
+      },
+    };
+
+    /** A validator that rejects every value, so a declared default fails before any token is read. */
+    const refuses = {
+      '~standard': {
+        validate: () => ({ issues: [{ message: 'No.' }] }),
+        vendor: 'fixture',
+        version: 1,
+      },
+    };
+
+    /** A reason holding a line break, then ESC, CR, and the line and paragraph separators. */
+    const multiline = 'line one\nline two';
+    const controls = [27, 13, 8232, 8233].map((code) => String.fromCodePoint(code)).join('');
+
+    const scenarios = {
+      // The action fails, then a render it never awaited is reported after it.
+      'after-primary': () =>
+        new Application('store', {
+          description: 'The store application.',
+          plugins: [hinting('fixture/one', (failure) => `hint for ${failure.name}`)],
+        }).action(({ out }) => {
+          void out.render('late', breaking);
+          out.fatal('The action failed.');
+        }),
+      // A JavaScript hook steps outside the contract and assigns the code, which core already read.
+      'assigns-exit-code': () =>
+        routed({
+          plugins: [
+            hinting('fixture/one', (failure) => {
+              // The instance code is an accessor without a setter, so this strict mode assignment throws.
+              // The hook catches it to show that no assignment reaches the code run() resolves.
+              try {
+                failure.exitCode = 0;
+              } catch {
+                // Ignored: the resolved code stays the class's.
+              }
+              return 'hinted';
+            }),
+          ],
+        }).action(dispatch),
+      'broken-controls': () =>
+        broken(() => {
+          throw new Error(`red${controls}end`);
+        }),
+      'broken-multiline': () =>
+        broken(() => {
+          throw new Error(multiline);
+        }),
+      'broken-throws': () =>
+        broken(() => {
+          throw new Error('Cannot suggest.');
+        }),
+      'broken-view': () =>
+        routed({
+          plugins: [
+            hinting('fixture/broken', () => {
+              throw new Error('Cannot suggest.');
+            }),
+            hinting('fixture/fine', () => 'still here'),
+          ],
+          views: [override(UsageError, breaks)],
+        }).action(dispatch),
+      'broken-view-multiline': () =>
+        routed({
+          views: [
+            override(UsageError, {
+              render: () => {
+                throw new Error(multiline);
+              },
+            }),
+          ],
+        }).action(dispatch),
+      'build-fault': () =>
+        new Application('store', {
+          description: 'The store application.',
+          plugins: [hinting('fixture/one', () => 'never')],
+          views: [override(LoomError, where)],
+        }),
+      // The caller cancels, then the action fails with its own failure, which still renders.
+      'cancelled-broken': () =>
+        new Application('store', {
+          description: 'The store application.',
+          plugins: [
+            hinting('fixture/broken', () => {
+              throw new Error('Cannot suggest.');
+            }),
+            hinting('fixture/fine', () => 'still here'),
+          ],
+        }).action(() => {
+          controller.abort(new Error('the caller stopped the run'));
+          throw new FatalError('The action failed.');
+        }),
+      // The caller cancels and the action rejects with the signal's reason, which reports nothing.
+      'cancelled-silent': () =>
+        new Application('store', {
+          description: 'The store application.',
+          plugins: [hinting('fixture/one', () => 'never')],
+        }).action(({ signal }) => {
+          controller.abort(new Error('the caller stopped the run'));
+          throw signal.reason;
+        }),
+      candidates: () => routed({ plugins: [hinting('fixture/suggest', suggest)] }).action(dispatch),
+      context: () => routed({ views: [override(LoomError, where)] }).action(dispatch),
+      // A development build asks every converter at build, so a converter that throws is a build fault.
+      'converter-fault': () =>
+        new Application('store', {
+          description: 'The store application.',
+          plugins: [hinting('fixture/one', () => 'converter-fault hint')],
+        })
+          .option('mode', {
+            description: 'The mode option.',
+            type: 'string',
+            validate: throwingConverter,
+          })
+          .action(dispatch),
+      'default-rejected': () =>
+        new Application('store', {
+          description: 'The store application.',
+          plugins: [
+            hinting(
+              'fixture/one',
+              (_failure, { command }) => `command at [${command.path.join(',')}]`,
+            ),
+          ],
+        })
+          .option('level', {
+            default: 'loud',
+            description: 'The level option.',
+            type: 'string',
+            validate: refuses,
+          })
+          .action(dispatch),
+      'issue-fields': () =>
+        new Application('store', {
+          description: 'The store application.',
+          views: [override(InputError, issues)],
+        })
+          .command(
+            new Command('tag', { description: 'The tag command.' })
+              .argument('names', {
+                description: 'The names argument.',
+                validate: coded,
+                variadic: true,
+              })
+              .action(dispatch),
+          )
+          .command(
+            new Command('label', {
+              description: 'The label command.',
+            })
+              .option('name', {
+                description: 'The name option.',
+                multiple: true,
+                type: 'string',
+                validate: coded,
+              })
+              .action(dispatch),
+          ),
+      'marked-hint': () =>
+        routed({
+          plugins: [hinting('fixture/one', (_failure, { style }) => `plain ${style.bold('bold')}`)],
+          rendering: { modifiers: 'always' },
+        }).action(dispatch),
+      none: () =>
+        routed({
+          plugins: [hinting('fixture/one', () => undefined), hinting('fixture/two', () => [])],
+        }).action(dispatch),
+      'override-hints': () =>
+        routed({
+          plugins: [hinting('fixture/one', () => ['first', 'second'])],
+          views: [override(UsageError, bracketed)],
+        }).action(dispatch),
+      plain: () => routed().action(dispatch),
+      // A middleware and the hook read the same graph, built once for the run.
+      'shared-graph': () => {
+        let seen = null;
+        const reader = plugin('fixture/reader', {
+          middleware: {
+            activate: 'always',
+            load: async () => ({
+              default: async ({ graph, next }) => {
+                seen = graph;
+                await next();
+              },
+            }),
+          },
+        });
+        return new Application('store', {
+          description: 'The store application.',
+          plugins: [
+            reader,
+            hinting(
+              'fixture/one',
+              (_failure, { graph }) => `same graph: ${String(graph === seen)}`,
+            ),
+          ],
+        }).action(({ out }) => out.fatal('The action failed.'));
+      },
+      // A takeover never raises the held unknown-option fault.
+      takeover: () =>
+        routed({
+          plugins: [
+            plugin('fixture/help', {
+              middleware: {
+                activate: ['help'],
+                load: async () => ({ default: ({ out }) => out.print('help') }),
+              },
+              options: { help: { type: 'boolean' } },
+            }),
+            hinting('fixture/one', () => 'never'),
+          ],
+        }).action(dispatch),
+      'two-plugins': () =>
+        routed({
+          plugins: [
+            hinting('fixture/one', () => ['first', 'shared']),
+            hinting('fixture/two', () => 'shared'),
+          ],
+        }).action(dispatch),
+      // Two rejected options, so one input failure writes two problem lines above the hints.
+      'two-problems': () =>
+        new Application('store', {
+          description: 'The store application.',
+          plugins: [hinting('fixture/one', () => ['first', 'second'])],
+        })
+          .option('left', { description: 'The left option.', type: 'string', validate: refuses })
+          .option('right', { description: 'The right option.', type: 'string', validate: refuses })
+          .action(dispatch),
+    };
+
+    const build = scenarios[scenario];
+    if (build === undefined) {
+      throw new Error(`Unknown scenario: ${scenario}`);
+    }
+    // A declaration that throws reports its fault and ends the fixture here.
+    const app = declare(build);
+    /**
+     * The build the run reads. A test that reads a broken contract's own sentence names a development
+     * build, and a converter fault waits for one; every other run is distributed.
+     */
+    const release = {
+      build:
+        fixtureEnv.FIXTURE_BUILD ?? (scenario === 'converter-fault' ? 'source' : 'distributed'),
+    };
+    const code = await app.run({
+      process: createProcess({ argv, release }),
+      signal: controller.signal,
+    });
+    for (const call of calls) {
+      writeStdout(`${call}\n`);
+    }
+    writeStdout(`resolved:${code}\n`);
+  } catch (error) {
+    if (error !== fixture.stopped) {
+      fixture.thrown(error);
+    }
+  }
+  return fixture.result();
 }
-
-/** What a failure view reads of where the run was, so a test reads the context it received. */
-const where = {
-  render: (failure, { application, hints, path }) =>
-    `${JSON.stringify({ application, hints, name: failure.name, path })}\n`,
-};
-
-/** An override that prints the hints in its own form, beside its own sentence. */
-const bracketed = {
-  render: (failure, { hints }) =>
-    [`usage: ${failure.message}`, ...hints.map((hint) => `  (${hint})`)]
-      .map((line) => `${line}\n`)
-      .join(''),
-};
-
-const breaks = {
-  render: () => {
-    throw new Error('Cannot render the failure.');
-  },
-};
 
 const dispatch = ({ out }) => out.print('dispatched');
-
-/** A validator whose converter throws when build asks it for the input's schema. */
-const throwingConverter = {
-  '~standard': {
-    jsonSchema: {
-      input: () => {
-        throw new Error('This shape has no JSON Schema.');
-      },
-      output: () => ({}),
-    },
-    validate: (value) => ({ value }),
-    vendor: 'fixture',
-    version: 1,
-  },
-};
-
-/**
- * A two-level graph: a group with a visible child, a hidden child, and an aliased child, and
- * options of each listing kind on the root and on the child, so a hook's candidates are visible.
- */
-function routed(options = {}) {
-  const clear = new Command('clear', {
-    description: 'The clear command.',
-  })
-    .option('keep', { description: 'The keep option.', short: 'k', type: 'boolean' })
-    .option('secret', { description: 'The secret option.', hidden: true, type: 'boolean' })
-    .option('old', {
-      deprecated: 'Use --keep instead.',
-      description: 'The old option.',
-      type: 'boolean',
-    })
-    .action(dispatch);
-  const cache = new Command('cache', {
-    description: 'The cache command.',
-  })
-    .command(clear)
-    .command(
-      new Command('purge', { description: 'The purge command.', hidden: true }).action(dispatch),
-    )
-    .command(
-      new Command('list', { description: 'The list command.' }).alias('ls').action(dispatch),
-    );
-  return new Application('store', { description: 'Store values.', ...options })
-    .globalOption('file', { description: 'The file option.', short: 'f', type: 'string' })
-    .globalOption('trace', { description: 'The trace option.', hidden: true, type: 'boolean' })
-    .globalOption('legacy', {
-      deprecated: 'Use --file instead.',
-      description: 'The legacy option.',
-      type: 'boolean',
-    })
-    .command(cache);
-}
-
-/** A broken hook installed ahead of a working one, on a graph whose fault is a usage error. */
-function broken(answer) {
-  return routed({
-    plugins: [hinting('fixture/broken', answer), hinting('fixture/fine', () => 'still here')],
-  }).action(dispatch);
-}
-
-/** A validator that rejects the value `bad` alone, with a field core does not read. */
-const coded = {
-  '~standard': {
-    validate: (value) =>
-      value === 'bad' ? { issues: [{ code: 'too_short', message: 'Too short.' }] } : { value },
-    vendor: 'fixture',
-    version: 1,
-  },
-};
-
-/** Every issue the reported problems carry, whole, so a test reads the fields a view receives. */
-const issues = {
-  render: (failure) =>
-    `${JSON.stringify(failure.problems.flatMap((problem) => problem.issues ?? []))}\n`,
-};
-
-/** A hook that reads its candidates from the graph, leaving out what completion leaves out. */
 function suggest(failure, { command, graph }) {
   if (failure instanceof UnknownOptionError) {
     const offered = [...graph.globals, ...command.options].filter(
@@ -149,254 +435,4 @@ function suggest(failure, { command, graph }) {
   return undefined;
 }
 
-/** A view that throws, which a render the action never awaited fails through after the action. */
-const breaking = {
-  render: () => {
-    throw new Error('The view broke.');
-  },
-};
-
-/** A validator that rejects every value, so a declared default fails before any token is read. */
-const refuses = {
-  '~standard': {
-    validate: () => ({ issues: [{ message: 'No.' }] }),
-    vendor: 'fixture',
-    version: 1,
-  },
-};
-
-/** A reason holding a line break, then ESC, CR, and the line and paragraph separators. */
-const multiline = 'line one\nline two';
-const controls = [27, 13, 8232, 8233].map((code) => String.fromCodePoint(code)).join('');
-
-const scenarios = {
-  // The action fails, then a render it never awaited is reported after it.
-  'after-primary': () =>
-    new Application('store', {
-      description: 'The store application.',
-      plugins: [hinting('fixture/one', (failure) => `hint for ${failure.name}`)],
-    }).action(({ out }) => {
-      void out.render('late', breaking);
-      out.fatal('The action failed.');
-    }),
-  // A JavaScript hook steps outside the contract and assigns the code, which core already read.
-  'assigns-exit-code': () =>
-    routed({
-      plugins: [
-        hinting('fixture/one', (failure) => {
-          // The instance code is an accessor without a setter, so this strict mode assignment throws.
-          // The hook catches it to show that no assignment reaches the code run() resolves.
-          try {
-            failure.exitCode = 0;
-          } catch {
-            // Ignored: the resolved code stays the class's.
-          }
-          return 'hinted';
-        }),
-      ],
-    }).action(dispatch),
-  'broken-controls': () =>
-    broken(() => {
-      throw new Error(`red${controls}end`);
-    }),
-  'broken-multiline': () =>
-    broken(() => {
-      throw new Error(multiline);
-    }),
-  'broken-throws': () =>
-    broken(() => {
-      throw new Error('Cannot suggest.');
-    }),
-  'broken-view': () =>
-    routed({
-      plugins: [
-        hinting('fixture/broken', () => {
-          throw new Error('Cannot suggest.');
-        }),
-        hinting('fixture/fine', () => 'still here'),
-      ],
-      views: [override(UsageError, breaks)],
-    }).action(dispatch),
-  'broken-view-multiline': () =>
-    routed({
-      views: [
-        override(UsageError, {
-          render: () => {
-            throw new Error(multiline);
-          },
-        }),
-      ],
-    }).action(dispatch),
-  'build-fault': () =>
-    new Application('store', {
-      description: 'The store application.',
-      plugins: [hinting('fixture/one', () => 'never')],
-      views: [override(LoomError, where)],
-    }),
-  // The caller cancels, then the action fails with its own failure, which still renders.
-  'cancelled-broken': () =>
-    new Application('store', {
-      description: 'The store application.',
-      plugins: [
-        hinting('fixture/broken', () => {
-          throw new Error('Cannot suggest.');
-        }),
-        hinting('fixture/fine', () => 'still here'),
-      ],
-    }).action(() => {
-      controller.abort(new Error('the caller stopped the run'));
-      throw new FatalError('The action failed.');
-    }),
-  // The caller cancels and the action rejects with the signal's reason, which reports nothing.
-  'cancelled-silent': () =>
-    new Application('store', {
-      description: 'The store application.',
-      plugins: [hinting('fixture/one', () => 'never')],
-    }).action(({ signal }) => {
-      controller.abort(new Error('the caller stopped the run'));
-      throw signal.reason;
-    }),
-  candidates: () => routed({ plugins: [hinting('fixture/suggest', suggest)] }).action(dispatch),
-  context: () => routed({ views: [override(LoomError, where)] }).action(dispatch),
-  // A development build asks every converter at build, so a converter that throws is a build fault.
-  'converter-fault': () =>
-    new Application('store', {
-      description: 'The store application.',
-      plugins: [hinting('fixture/one', () => 'converter-fault hint')],
-    })
-      .option('mode', {
-        description: 'The mode option.',
-        type: 'string',
-        validate: throwingConverter,
-      })
-      .action(dispatch),
-  'default-rejected': () =>
-    new Application('store', {
-      description: 'The store application.',
-      plugins: [
-        hinting('fixture/one', (_failure, { command }) => `command at [${command.path.join(',')}]`),
-      ],
-    })
-      .option('level', {
-        default: 'loud',
-        description: 'The level option.',
-        type: 'string',
-        validate: refuses,
-      })
-      .action(dispatch),
-  'issue-fields': () =>
-    new Application('store', {
-      description: 'The store application.',
-      views: [override(InputError, issues)],
-    })
-      .command(
-        new Command('tag', { description: 'The tag command.' })
-          .argument('names', {
-            description: 'The names argument.',
-            validate: coded,
-            variadic: true,
-          })
-          .action(dispatch),
-      )
-      .command(
-        new Command('label', {
-          description: 'The label command.',
-        })
-          .option('name', {
-            description: 'The name option.',
-            multiple: true,
-            type: 'string',
-            validate: coded,
-          })
-          .action(dispatch),
-      ),
-  'marked-hint': () =>
-    routed({
-      plugins: [hinting('fixture/one', (_failure, { style }) => `plain ${style.bold('bold')}`)],
-      rendering: { modifiers: 'always' },
-    }).action(dispatch),
-  none: () =>
-    routed({
-      plugins: [hinting('fixture/one', () => undefined), hinting('fixture/two', () => [])],
-    }).action(dispatch),
-  'override-hints': () =>
-    routed({
-      plugins: [hinting('fixture/one', () => ['first', 'second'])],
-      views: [override(UsageError, bracketed)],
-    }).action(dispatch),
-  plain: () => routed().action(dispatch),
-  // A middleware and the hook read the same graph, built once for the run.
-  'shared-graph': () => {
-    let seen = null;
-    const reader = plugin('fixture/reader', {
-      middleware: {
-        activate: 'always',
-        load: async () => ({
-          default: async ({ graph, next }) => {
-            seen = graph;
-            await next();
-          },
-        }),
-      },
-    });
-    return new Application('store', {
-      description: 'The store application.',
-      plugins: [
-        reader,
-        hinting('fixture/one', (_failure, { graph }) => `same graph: ${String(graph === seen)}`),
-      ],
-    }).action(({ out }) => out.fatal('The action failed.'));
-  },
-  // A takeover never raises the held unknown-option fault.
-  takeover: () =>
-    routed({
-      plugins: [
-        plugin('fixture/help', {
-          middleware: {
-            activate: ['help'],
-            load: async () => ({ default: ({ out }) => out.print('help') }),
-          },
-          options: { help: { type: 'boolean' } },
-        }),
-        hinting('fixture/one', () => 'never'),
-      ],
-    }).action(dispatch),
-  'two-plugins': () =>
-    routed({
-      plugins: [
-        hinting('fixture/one', () => ['first', 'shared']),
-        hinting('fixture/two', () => 'shared'),
-      ],
-    }).action(dispatch),
-  // Two rejected options, so one input failure writes two problem lines above the hints.
-  'two-problems': () =>
-    new Application('store', {
-      description: 'The store application.',
-      plugins: [hinting('fixture/one', () => ['first', 'second'])],
-    })
-      .option('left', { description: 'The left option.', type: 'string', validate: refuses })
-      .option('right', { description: 'The right option.', type: 'string', validate: refuses })
-      .action(dispatch),
-};
-
-const build = scenarios[scenario];
-if (build === undefined) {
-  throw new Error(`Unknown scenario: ${scenario}`);
-}
-// A declaration that throws reports its fault and ends the fixture here.
-const app = declare(build);
-/**
- * The build the run reads. A test that reads a broken contract's own sentence names a development
- * build, and a converter fault waits for one; every other run is distributed.
- */
-const release = {
-  build: process.env.FIXTURE_BUILD ?? (scenario === 'converter-fault' ? 'source' : 'distributed'),
-};
-const code = await app.run({
-  process: processHandle({ argv, release }),
-  signal: controller.signal,
-});
-for (const call of calls) {
-  process.stdout.write(`${call}\n`);
-}
-process.stdout.write(`resolved:${code}\n`);
+export { runFixture as run };

@@ -6,12 +6,12 @@ import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/option-groups.mjs', import.meta.url);
 
-test('exclusive supplied options fail before the action with one group problem', () => {
-  const result = invoke(fixture, ['exclusive', '--json', '--yaml']);
+test('exclusive supplied options fail before the action with one group problem', async () => {
+  const result = await invokeFixture(fixture, ['exclusive', '--json', '--yaml']);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toBe(
@@ -28,24 +28,32 @@ test.each([
   ['requiredTogether', [], 0],
   ['requiredTogether', ['--json'], 2],
   ['requiredTogether', ['--json', '--yaml'], 0],
-])('%s checks supplied members %j', (kind, words, code) => {
-  const result = invoke(fixture, [kind, ...words]);
+])('%s checks supplied members %j', async (kind, words, code) => {
+  const result = await invokeFixture(fixture, [kind, ...words]);
   expect(result.status).toBe(code);
   expect(result.stdout).toBe(code === 0 ? 'action\n' : '');
 });
 
 const advanced = new URL('fixtures/group-inputs.mjs', import.meta.url);
 
-test('defaults do not satisfy groups and combined groups express exactly one', () => {
-  const absent = invoke(advanced, ['defaults']);
+test('defaults do not satisfy groups and combined groups express exactly one', async () => {
+  const absent = await invokeFixture(advanced, ['defaults']);
   expect(absent.status).toBe(2);
   expect(absent.stderr).toContain('Supply at least one of them.');
-  expect(invoke(advanced, ['defaults', '--first', 'chosen']).status).toBe(0);
-  expect(invoke(advanced, ['defaults', '--first', 'chosen', '--second', 'other']).status).toBe(2);
+  await expect(
+    invokeFixture(advanced, ['defaults', '--first', 'chosen']).then(
+      (fixtureResult) => fixtureResult.status,
+    ),
+  ).resolves.toBe(0);
+  await expect(
+    invokeFixture(advanced, ['defaults', '--first', 'chosen', '--second', 'other']).then(
+      (fixtureResult) => fixtureResult.status,
+    ),
+  ).resolves.toBe(2);
 });
 
-test('invalid supplied values and group problems report together in declaration order', () => {
-  const result = invoke(advanced, ['invalid', '--first', 'bad', '--second', '2']);
+test('invalid supplied values and group problems report together in declaration order', async () => {
+  const result = await invokeFixture(advanced, ['invalid', '--first', 'bad', '--second', '2']);
   expect(result.status).toBe(2);
   expect(result.stderr.split('\n')).toEqual([
     'groups: Option "--first": Supply digits.',
@@ -57,21 +65,23 @@ test('invalid supplied values and group problems report together in declaration 
 
 test.each(['false', '0', '[]'])(
   'a source-filled %s member never fails beside a typed sibling',
-  (value) => {
-    const result = invoke(advanced, ['source', value]);
+  async (value) => {
+    const result = await invokeFixture(advanced, ['source', value]);
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('action\n');
   },
 );
 
-test('environment values satisfy required groups and lose to a typed sibling', () => {
-  expect(invoke(advanced, ['env']).status).toBe(0);
-  const typed = invoke(advanced, ['env', '--second', 'typed']);
+test('environment values satisfy required groups and lose to a typed sibling', async () => {
+  await expect(
+    invokeFixture(advanced, ['env']).then((fixtureResult) => fixtureResult.status),
+  ).resolves.toBe(0);
+  const typed = await invokeFixture(advanced, ['env', '--second', 'typed']);
   expect(typed.status).toBe(0);
 });
 
-test('named calls preserve lowering presence and expose structured group problems', () => {
-  const result = invoke(advanced, ['named']);
+test('named calls preserve lowering presence and expose structured group problems', async () => {
+  const result = await invokeFixture(advanced, ['named']);
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout)).toEqual({
     absent: 2,
@@ -90,8 +100,8 @@ test('named calls preserve lowering presence and expose structured group problem
   });
 });
 
-test('group declarations are immutable and inspection freezes their facts', () => {
-  const result = invoke(advanced, ['inspect']);
+test('group declarations are immutable and inspection freezes their facts', async () => {
+  const result = await invokeFixture(advanced, ['inspect']);
   expect(JSON.parse(result.stdout)).toEqual({
     frozen: true,
     grouped: [{ kind: 'exclusive', options: ['first', 'second'] }],
@@ -113,50 +123,61 @@ test.each([
   'minimum',
   'overlap',
   'reverse-overlap',
-])('rejects declaration fault %s', (scenario) => {
-  const result = invoke(declarations, [scenario]);
+])('rejects declaration fault %s', async (scenario) => {
+  const result = await invokeFixture(declarations, [scenario]);
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout)).toMatchObject({ name: 'DeclarationError' });
   expect(JSON.parse(result.stdout).message).toContain('@loomcli/core/option-group');
 });
 
-test('redundancy and required members in oneRequired remain valid', () => {
-  expect(invoke(declarations, ['redundancy']).stdout).toBe('accepted\n');
+test('redundancy and required members in oneRequired remain valid', async () => {
+  await expect(
+    invokeFixture(declarations, ['redundancy']).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('accepted\n');
 });
 
-test('lifecycle hooks can group their declared local options after action registration', () => {
-  const result = invoke(advanced, ['hook', '--first', '--second']);
+test('lifecycle hooks can group their declared local options after action registration', async () => {
+  const result = await invokeFixture(advanced, ['hook', '--first', '--second']);
   expect(result.status).toBe(2);
   expect(result.stderr).toContain('cannot be used together');
 });
 
-test('unanswered configuration members suppress only unproven group failures', () => {
+test('unanswered configuration members suppress only unproven group failures', async () => {
   const source = new URL('fixtures/group-unanswered.mjs', import.meta.url);
-  const unknown = invoke(source, ['one']);
+  const unknown = await invokeFixture(source, ['one']);
   expect(unknown.status).toBe(2);
   expect(unknown.stderr).toContain('Use good.');
   expect(unknown.stderr).not.toContain('Supply at least one');
-  const together = invoke(source, ['together']);
+  const together = await invokeFixture(source, ['together']);
   expect(together.status).toBe(2);
   expect(together.stderr).toContain('must be supplied together');
-  const exclusive = invoke(source, ['exclusive']);
+  const exclusive = await invokeFixture(source, ['exclusive']);
   expect(exclusive.status).toBe(2);
   expect(exclusive.stderr).toContain('cannot be used together');
 });
 
-test('piped stdin attaches content but is not a supplied option for a group', () => {
+test('piped stdin attaches content but is not a supplied option for a group', async () => {
   const content = new URL('fixtures/group-content.mjs', import.meta.url);
-  expect(invoke(content, ['oneRequired'], { input: 'piped' }).status).toBe(2);
-  const allowed = invoke(content, ['exclusive', '--url', 'https://example.test'], {
+  await expect(
+    invokeFixture(content, ['oneRequired'], { input: 'piped' }).then(
+      (fixtureResult) => fixtureResult.status,
+    ),
+  ).resolves.toBe(2);
+  const allowed = await invokeFixture(content, ['exclusive', '--url', 'https://example.test'], {
     input: 'piped',
   });
   expect(allowed.status).toBe(0);
   expect(allowed.stdout).toBe('stdin\n');
-  expect(
-    invoke(content, ['requiredTogether', '--url', 'https://example.test'], { input: 'piped' })
-      .status,
-  ).toBe(2);
-  expect(invoke(content, ['oneRequired', '--file', fileURLToPath(content)]).status).toBe(0);
+  await expect(
+    invokeFixture(content, ['requiredTogether', '--url', 'https://example.test'], {
+      input: 'piped',
+    }).then((fixtureResult) => fixtureResult.status),
+  ).resolves.toBe(2);
+  await expect(
+    invokeFixture(content, ['oneRequired', '--file', fileURLToPath(content)]).then(
+      (fixtureResult) => fixtureResult.status,
+    ),
+  ).resolves.toBe(0);
 });
 
 /** What one run of the tiered application saw: its status, its stderr, and what the action read. */

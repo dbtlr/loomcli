@@ -1,9 +1,12 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
-test('reportedSpelling names each option by the spelling a reported problem names it by', () => {
-  const result = invoke(new URL('fixtures/reported-spelling.mjs', import.meta.url), []);
+test('reportedSpelling names each option by the spelling a reported problem names it by', async () => {
+  const result = await invokeFixture(
+    new URL('fixtures/reported-spelling.mjs', import.meta.url),
+    [],
+  );
   expect(result.stderr).toBe('');
   expect(JSON.parse(result.stdout)).toEqual({
     color: '--color',

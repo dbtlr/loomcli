@@ -5,8 +5,8 @@ import { InputError } from '@loomcli/core';
  * code. A throw after `next()` settled is a throw during unwinding, which is this middleware's
  * failure with its own class and code.
  */
-const middleware = async ({ next, out }) => {
-  const mode = process.env.LOOM_FIXTURE_THROW;
+const middleware = async ({ next, out, host }) => {
+  const mode = host.env.LOOM_FIXTURE_THROW;
   if (mode === 'fatal') {
     out.fatal('the plugin stopped the invocation');
   }

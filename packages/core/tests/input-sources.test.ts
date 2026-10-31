@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 /*
  * Acceptance plan for input sources (docs/core/input-sources.md#input-sources).
  *
@@ -41,13 +42,11 @@
  *   validation after it. The failure classes a source throws with other codes are proven under
  *   Declared exit codes acceptance.
  */
-
-import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/sources/invoke.mjs', import.meta.url);
 
@@ -55,8 +54,12 @@ const fixture = new URL('fixtures/sources/invoke.mjs', import.meta.url);
  * One run of the fixture. `full` installs the configuration, log, and help plugins; `plain` leaves
  * the configuration source out, so every binding value in the graph is inert.
  */
-function run(argv: string[], env: Record<string, string | undefined> = {}, scenario = 'full') {
-  return invoke(fixture, [scenario, 'run', ...argv], { env });
+async function run(
+  argv: string[],
+  env: Record<string, string | undefined> = {},
+  scenario = 'full',
+) {
+  return await invokeFixture(fixture, [scenario, 'run', ...argv], { env });
 }
 
 /** The one stdout line that starts with a label, such as the action's or the source's. */
@@ -83,25 +86,41 @@ function settings(values: Record<string, unknown>): { FIXTURE_SETTINGS: string }
   return { FIXTURE_SETTINGS: JSON.stringify(values) };
 }
 
-test('argv wins over the environment, the environment over the source, the source over the default', () => {
+test('argv wins over the environment, the environment over the source, the source over the default', async () => {
   const both = { FIXTURE_LIMIT: '2', ...settings({ 'limits.bytes': '3' }) };
-  expect(valueOf(run(['--limit', '1'], both).stdout, 'root', 'limit')).toBe('1');
-  expect(valueOf(run([], both).stdout, 'root', 'limit')).toBe('2');
-  expect(valueOf(run([], { ...both, FIXTURE_LIMIT: '' }).stdout, 'root', 'limit')).toBe('3');
-  expect(run([])).toEqual({
+  expect(
+    valueOf(
+      await run(['--limit', '1'], both).then((fixtureResult) => fixtureResult.stdout),
+      'root',
+      'limit',
+    ),
+  ).toBe('1');
+  expect(
+    valueOf(await run([], both).then((fixtureResult) => fixtureResult.stdout), 'root', 'limit'),
+  ).toBe('2');
+  expect(
+    valueOf(
+      await run([], { ...both, FIXTURE_LIMIT: '' }).then((fixtureResult) => fixtureResult.stdout),
+      'root',
+      'limit',
+    ),
+  ).toBe('3');
+  await expect(run([])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nroot:{${full}}\nresolved:0\n`,
   });
 });
 
-test('a source whose binding the plugin leaves out of its extensions list still answers', () => {
+test('a source whose binding the plugin leaves out of its extensions list still answers', async () => {
   const unlisted = { FIXTURE_UNLISTED: '1', ...settings({ 'limits.bytes': '3' }) };
-  expect(valueOf(run([], unlisted).stdout, 'root', 'limit')).toBe('3');
+  expect(
+    valueOf(await run([], unlisted).then((fixtureResult) => fixtureResult.stdout), 'root', 'limit'),
+  ).toBe('3');
 });
 
-test('a value filled from the environment is supplied in every sense', () => {
-  const filled = run(['count'], { FIXTURE_FILE: 'a.txt', FIXTURE_MAX: '7' }, 'plain');
+test('a value filled from the environment is supplied in every sense', async () => {
+  const filled = await run(['count'], { FIXTURE_FILE: 'a.txt', FIXTURE_MAX: '7' }, 'plain');
   // The required option passes, and the validateOmitted schema receives the filled value.
   expect(filled).toEqual({
     status: 0,
@@ -114,7 +133,9 @@ test('a value filled from the environment is supplied in every sense', () => {
     ].join('\n'),
   });
   // The action cannot tell the environment from the flag.
-  expect(run(['count', '--max', '7', '--file', 'a.txt'], {}, 'plain')).toEqual(filled);
+  await expect(run(['count', '--max', '7', '--file', 'a.txt'], {}, 'plain')).resolves.toEqual(
+    filled,
+  );
 });
 
 test.each([
@@ -122,31 +143,37 @@ test.each([
   ['1', true],
   ['FALSE', false],
   ['0', false],
-])('%s fills a Boolean option with %s under every polarity', (value, expected) => {
+])('%s fills a Boolean option with %s under every polarity', async (value, expected) => {
   const env = { FIXTURE_COLOR: value, FIXTURE_QUIET: value, FIXTURE_TOTAL: value };
-  const result = run(['count', '--max', '1'], env, 'plain');
+  const result = await run(['count', '--max', '1'], env, 'plain');
   expect(result.status).toBe(0);
   expect(line(result.stdout, 'count')).toBe(
     `count:{${plain},"max":"1","file":"none","total":${expected},"quiet":${expected},"color":${expected}}`,
   );
 });
 
-test('a Boolean variable outside the grammar is a usage failure naming the variable', () => {
-  expect(run(['count', '--max', '1'], { FIXTURE_TOTAL: 'maybe' }, 'plain')).toEqual({
+test('a Boolean variable outside the grammar is a usage failure naming the variable', async () => {
+  await expect(run(['count', '--max', '1'], { FIXTURE_TOTAL: 'maybe' }, 'plain')).resolves.toEqual({
     status: 2,
     stderr:
       'app: Option "--total" (from FIXTURE_TOTAL): Use true, false, yes, no, y, n, on, off, 1, or 0.\n',
     stdout: 'schema:file:{}\nresolved:2\n',
   });
   // A negative-only option is named by the one spelling an operator types for it.
-  expect(run(['count', '--max', '1'], { FIXTURE_QUIET: ' true' }, 'plain').stderr).toBe(
+  await expect(
+    run(['count', '--max', '1'], { FIXTURE_QUIET: ' true' }, 'plain').then(
+      (fixtureResult) => fixtureResult.stderr,
+    ),
+  ).resolves.toBe(
     'app: Option "--no-quiet" (from FIXTURE_QUIET): Use true, false, yes, no, y, n, on, off, 1, or 0.\n',
   );
 });
 
-test("problems report the application's globals, then a plugin's, then the local options", () => {
+test("problems report the application's globals, then a plugin's, then the local options", async () => {
   const env = { FIXTURE_LIMIT: 'many', FIXTURE_TOTAL: 'maybe', FIXTURE_VERBOSE: 'maybe' };
-  expect(run(['count', '--max', 'x'], env, 'plain').stderr).toBe(
+  await expect(
+    run(['count', '--max', 'x'], env, 'plain').then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toBe(
     [
       'app: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.',
       'app: Option "--verbose" (from FIXTURE_VERBOSE): Use true, false, yes, no, y, n, on, off, 1, or 0.',
@@ -157,45 +184,64 @@ test("problems report the application's globals, then a plugin's, then the local
   );
 });
 
-test('NO_COLOR keeps its presence rule while an option bound to it reads the grammar', () => {
+test('NO_COLOR keeps its presence rule while an option bound to it reads the grammar', async () => {
   const terminal = { FIXTURE_TTY: '1', FORCE_COLOR: undefined, TERM: 'xterm-256color' };
-  const paint = (env: Record<string, string | undefined>) =>
-    line(run(['paint'], { ...terminal, ...env }, 'plain').stdout, 'paint');
-  expect(paint({ NO_COLOR: undefined })).toBe('paint:false:\u001b[31mX\u001b[39m');
-  expect(paint({ NO_COLOR: 'false' })).toBe('paint:false:X');
-  expect(paint({ NO_COLOR: '1' })).toBe('paint:true:X');
+  const paint = async (env: Record<string, string | undefined>) =>
+    line(
+      await run(['paint'], { ...terminal, ...env }, 'plain').then(
+        (fixtureResult) => fixtureResult.stdout,
+      ),
+      'paint',
+    );
+  await expect(paint({ NO_COLOR: undefined })).resolves.toBe('paint:false:\u001b[31mX\u001b[39m');
+  await expect(paint({ NO_COLOR: 'false' })).resolves.toBe('paint:false:X');
+  await expect(paint({ NO_COLOR: '1' })).resolves.toBe('paint:true:X');
 });
 
-test("a plugin's option filled from the environment activates its middleware, with false as well", () => {
-  expect(valueOf(run([], { FIXTURE_VERBOSE: '1' }, 'plain').stdout, 'log', 'verbose')).toBe(true);
-  expect(valueOf(run([], { FIXTURE_VERBOSE: 'false' }, 'plain').stdout, 'log', 'verbose')).toBe(
-    false,
-  );
-  expect(run([], {}, 'plain')).toEqual({
+test("a plugin's option filled from the environment activates its middleware, with false as well", async () => {
+  expect(
+    valueOf(
+      await run([], { FIXTURE_VERBOSE: '1' }, 'plain').then(
+        (fixtureResult) => fixtureResult.stdout,
+      ),
+      'log',
+      'verbose',
+    ),
+  ).toBe(true);
+  expect(
+    valueOf(
+      await run([], { FIXTURE_VERBOSE: 'false' }, 'plain').then(
+        (fixtureResult) => fixtureResult.stdout,
+      ),
+      'log',
+      'verbose',
+    ),
+  ).toBe(false);
+  await expect(run([], {}, 'plain')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `root:{${plain}}\nresolved:0\n`,
   });
 });
 
-test('a bad variable and a failing source report nothing under --help', () => {
-  expect(run(['--help'], { FIXTURE_LIMIT: 'many' }, 'plain')).toEqual({
+test('a bad variable and a failing source report nothing under --help', async () => {
+  await expect(run(['--help'], { FIXTURE_LIMIT: 'many' }, 'plain')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'help\nresolved:0\n',
   });
-  expect(run(['--help'], { FIXTURE_SOURCE: 'throw' })).toEqual({
+  await expect(run(['--help'], { FIXTURE_SOURCE: 'throw' })).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout:
       'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nhelp\nresolved:0\n',
   });
-  expect(run([], { FIXTURE_LIMIT: 'many' }, 'plain')).toEqual({
+  await expect(run([], { FIXTURE_LIMIT: 'many' }, 'plain')).resolves.toEqual({
     status: 2,
     stderr: 'app: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.\n',
     stdout: 'resolved:2\n',
   });
-  expect(run([], { FIXTURE_SOURCE: 'throw' })).toEqual({
+  await expect(run([], { FIXTURE_SOURCE: 'throw' })).resolves.toEqual({
     status: 1,
     stderr: 'app: Something went wrong.\n',
     stdout:
@@ -206,23 +252,25 @@ test('a bad variable and a failing source report nothing under --help', () => {
 /** The global values when argv fills `limit` and the environment fills `level`. */
 const filled = '"limit":"1","config":"fixture.json","level":"info","verbose":false,"help":false';
 
-test('the source is never loaded when every bound option is already filled', () => {
-  expect(run(['--limit', '1'], { FIXTURE_LEVEL: 'info', FIXTURE_LOADER: 'throws' })).toEqual({
+test('the source is never loaded when every bound option is already filled', async () => {
+  await expect(
+    run(['--limit', '1'], { FIXTURE_LEVEL: 'info', FIXTURE_LOADER: 'throws' }),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `log:{${filled}}\nroot:{${filled}}\nresolved:0\n`,
   });
 });
 
-test('a Boolean variable outside the grammar keeps the source unloaded', () => {
+test('a Boolean variable outside the grammar keeps the source unloaded', async () => {
   // `total` is unfilled and configuration-bound, but its environment fault removes it from requests.
-  expect(
+  await expect(
     run(['count', '--max', '1', '--limit', '1'], {
       FIXTURE_LEVEL: 'info',
       FIXTURE_LOADER: 'throws',
       FIXTURE_TOTAL: 'maybe',
     }),
-  ).toEqual({
+  ).resolves.toEqual({
     status: 2,
     stderr:
       'app: Option "--total" (from FIXTURE_TOTAL): Use true, false, yes, no, y, n, on, off, 1, or 0.\n',
@@ -230,8 +278,8 @@ test('a Boolean variable outside the grammar keeps the source unloaded', () => {
   });
 });
 
-test('a source answers a multiple option with a list, and an empty string fills', () => {
-  const result = run(['select'], settings({ fields: ['a', 'b'], title: '' }));
+test('a source answers a multiple option with a list, and an empty string fills', async () => {
+  const result = await run(['select'], settings({ fields: ['a', 'b'], title: '' }));
   expect(result.status).toBe(0);
   expect(line(result.stdout, 'source')).toBe(
     'source:{"options":{"config":"fixture.json"},"requests":["limit","level","fields","title"]}',
@@ -239,57 +287,75 @@ test('a source answers a multiple option with a list, and an empty string fills'
   expect(line(result.stdout, 'select')).toBe(`select:{${full},"fields":["a","b"],"title":""}`);
 });
 
-test('a multiple option splits its variable at the declared delimiter, and argv outranks it', () => {
+test('a multiple option splits its variable at the declared delimiter, and argv outranks it', async () => {
   const listed = { FIXTURE_FIELDS: 'a,b,c' };
-  expect(valueOf(run(['select'], listed).stdout, 'select', 'fields')).toEqual(['a', 'b', 'c']);
-  expect(valueOf(run(['select', '--fields', 'x'], listed).stdout, 'select', 'fields')).toEqual([
-    'x',
-  ]);
+  expect(
+    valueOf(
+      await run(['select'], listed).then((fixtureResult) => fixtureResult.stdout),
+      'select',
+      'fields',
+    ),
+  ).toEqual(['a', 'b', 'c']);
+  expect(
+    valueOf(
+      await run(['select', '--fields', 'x'], listed).then((fixtureResult) => fixtureResult.stdout),
+      'select',
+      'fields',
+    ),
+  ).toEqual(['x']);
 });
 
-test('a variable list replaces the configuration source, which is never asked for the option', () => {
+test('a variable list replaces the configuration source, which is never asked for the option', async () => {
   const both = { FIXTURE_FIELDS: 'a,b', ...settings({ fields: ['from', 'file'] }) };
-  const result = run(['select'], both);
+  const result = await run(['select'], both);
   expect(valueOf(result.stdout, 'select', 'fields')).toEqual(['a', 'b']);
   expect(line(result.stdout, 'source')).not.toContain('"fields"');
   // An empty variable is unset, so the configuration source supplies the list.
   expect(
-    valueOf(run(['select'], { ...both, FIXTURE_FIELDS: '' }).stdout, 'select', 'fields'),
+    valueOf(
+      await run(['select'], { ...both, FIXTURE_FIELDS: '' }).then(
+        (fixtureResult) => fixtureResult.stdout,
+      ),
+      'select',
+      'fields',
+    ),
   ).toEqual(['from', 'file']);
 });
 
-test('an item the validator rejects fails naming the variable and the item position', () => {
-  expect(run(['select'], { FIXTURE_FIELDS: 'a,' })).toMatchObject({
+test('an item the validator rejects fails naming the variable and the item position', async () => {
+  await expect(run(['select'], { FIXTURE_FIELDS: 'a,' })).resolves.toMatchObject({
     status: 2,
     stderr: 'app: Option "--fields" (from FIXTURE_FIELDS) at 1: Supply a field name.\n',
   });
 });
 
-test('an empty list still reports the required message of a required multiple option', () => {
-  expect(run(['select'], settings({ fields: [] })).stderr).toBe(
+test('an empty list still reports the required message of a required multiple option', async () => {
+  await expect(
+    run(['select'], settings({ fields: [] })).then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toBe(
     'app: Option "--fields" (from fields in fixture.json) is required. Supply at least one value.\n',
   );
 });
 
-test('a failure on a filled value names its source, and an argv message is unchanged', () => {
-  expect(run([], { FIXTURE_LIMIT: 'many' }, 'plain').stderr).toBe(
-    'app: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.\n',
-  );
-  expect(run(['--limit', 'many'], {}, 'plain').stderr).toBe(
-    'app: Option "--limit": Supply a whole number.\n',
-  );
+test('a failure on a filled value names its source, and an argv message is unchanged', async () => {
+  await expect(
+    run([], { FIXTURE_LIMIT: 'many' }, 'plain').then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toBe('app: Option "--limit" (from FIXTURE_LIMIT): Supply a whole number.\n');
+  await expect(
+    run(['--limit', 'many'], {}, 'plain').then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toBe('app: Option "--limit": Supply a whole number.\n');
 });
 
 /** Marks the fixture's `-v`, so the run writes its debug lines. */
 const chatty = { FIXTURE_CHATTY: '1' };
 
-test('a configuration value its validator rejects falls back to the default and is named at -v', () => {
+test('a configuration value its validator rejects falls back to the default and is named at -v', async () => {
   const rejected = settings({ 'limits.bytes': 'many' });
-  const ran = run([], rejected);
+  const ran = await run([], rejected);
   expect(ran.status).toBe(0);
   expect(valueOf(ran.stdout, 'root', 'limit')).toBe('10');
   expect(ran.stderr).toBe('');
-  const verbose = run(['-v'], { ...rejected, ...chatty });
+  const verbose = await run(['-v'], { ...rejected, ...chatty });
   expect(verbose.status).toBe(0);
   expect(valueOf(verbose.stdout, 'root', 'limit')).toBe('10');
   expect(verbose.stderr).toContain(
@@ -297,21 +363,27 @@ test('a configuration value its validator rejects falls back to the default and 
   );
   expect(verbose.stderr.match(/Ignored option/gu)).toHaveLength(1);
   // The environment outranks the file, so a rejected variable still fails the run.
-  expect(run([], { FIXTURE_LIMIT: 'many', ...settings({ 'limits.bytes': '3' }) }).status).toBe(2);
+  await expect(
+    run([], { FIXTURE_LIMIT: 'many', ...settings({ 'limits.bytes': '3' }) }).then(
+      (fixtureResult) => fixtureResult.status,
+    ),
+  ).resolves.toBe(2);
 });
 
-test('a dropped fill leaves a required option missing, with no source in its message', () => {
-  expect(run(['fallback'], settings({ needed: 'many' }))).toMatchObject({
+test('a dropped fill leaves a required option missing, with no source in its message', async () => {
+  await expect(run(['fallback'], settings({ needed: 'many' }))).resolves.toMatchObject({
     status: 2,
     stderr: 'app: Option "--needed" is required. Supply a value.\n',
   });
-  expect(run(['fallback'], settings({ minimum: 'many', needed: '1' })).stdout).toContain(
-    '"minimum":"5"',
-  );
+  await expect(
+    run(['fallback'], settings({ minimum: 'many', needed: '1' })).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toContain('"minimum":"5"');
 });
 
-test('one rejected item drops the whole list, which a required multiple option reports missing', () => {
-  const result = run(['-v', 'select'], { ...chatty, ...settings({ fields: ['a', ''] }) });
+test('one rejected item drops the whole list, which a required multiple option reports missing', async () => {
+  const result = await run(['-v', 'select'], { ...chatty, ...settings({ fields: ['a', ''] }) });
   expect(result.status).toBe(2);
   expect(result.stderr).toContain(
     'Ignored option "--fields" at 1 from fields in fixture.json: Supply a field name.\n',
@@ -321,17 +393,22 @@ test('one rejected item drops the whole list, which a required multiple option r
   );
 });
 
-test('a dropped fill activates no middleware', () => {
-  const dropped = run([], settings({ 'log.level': 'LOUD1' }));
+test('a dropped fill activates no middleware', async () => {
+  const dropped = await run([], settings({ 'log.level': 'LOUD1' }));
   expect(dropped.status).toBe(0);
   expect(line(dropped.stdout, 'log')).toBeUndefined();
-  expect(line(run([], settings({ 'log.level': 'loud' })).stdout, 'log')).toContain(
-    '"level":"loud"',
-  );
+  expect(
+    line(
+      await run([], settings({ 'log.level': 'loud' })).then(
+        (fixtureResult) => fixtureResult.stdout,
+      ),
+      'log',
+    ),
+  ).toContain('"level":"loud"');
 });
 
-test('a dropped fill validates as unfilled, and supplied keeps the raw value', () => {
-  const result = run(['traced'], settings({ omitted: 'bad' }));
+test('a dropped fill validates as unfilled, and supplied keeps the raw value', async () => {
+  const result = await run(['traced'], settings({ omitted: 'bad' }));
   expect(result.status).toBe(0);
   expect(line(result.stdout, 'schema:omitted')).toBe(
     `schema:omitted:${JSON.stringify({ cwd: process.cwd(), supplied: 'bad', value: 'bad' })}`,
@@ -345,14 +422,14 @@ test('a dropped fill validates as unfilled, and supplied keeps the raw value', (
   expect(valueOf(result.stdout, 'traced', 'omitted')).toBeUndefined();
 });
 
-test("a dropped fill validates its omission against the run's working directory, not the file's", () => {
+test("a dropped fill validates its omission against the run's working directory, not the file's", async () => {
   const env = {
     ...settings({ omitted: 'bad' }),
     FIXTURE_DIRECTORY: JSON.stringify('/srv/project'),
   };
-  const calls = run(['traced'], env)
-    .stdout.split('\n')
-    .filter((entry) => entry.startsWith('schema:omitted:'));
+  const calls = await run(['traced'], env).then((fixtureResult) =>
+    fixtureResult.stdout.split('\n').filter((entry) => entry.startsWith('schema:omitted:')),
+  );
   expect(calls).toEqual([
     `schema:omitted:${JSON.stringify({ cwd: '/srv/project', supplied: 'bad', value: 'bad' })}`,
     `schema:omitted:${JSON.stringify({ cwd: process.cwd(), supplied: 'bad' })}`,
@@ -362,23 +439,25 @@ test("a dropped fill validates its omission against the run's working directory,
 /** The fixtures folder, an absolute directory that holds `source.mjs`. */
 const fixtures = fileURLToPath(new URL('fixtures/sources', import.meta.url));
 
-test('a configuration path its content option cannot read falls back and is named at -v', () => {
+test('a configuration path its content option cannot read falls back and is named at -v', async () => {
   const missing = settings({ input: 'absent.txt' });
-  const ran = run(['reading'], missing);
+  const ran = await run(['reading'], missing);
   expect(ran.status).toBe(0);
   expect(line(ran.stdout, 'reading')).toBe('reading:{"path":null}');
   expect(ran.stderr).toBe('');
-  const verbose = run(['-v', 'reading'], { ...missing, ...chatty });
+  const verbose = await run(['-v', 'reading'], { ...missing, ...chatty });
   expect(verbose.status).toBe(0);
   expect(verbose.stderr).toContain(
     'Ignored option "--input" from input in fixture.json: Expected a readable file that exists.\n',
   );
   // A path typed on the command line still fails the run.
-  expect(run(['reading', '--input', 'absent.txt']).status).toBe(2);
+  await expect(
+    run(['reading', '--input', 'absent.txt']).then((fixtureResult) => fixtureResult.status),
+  ).resolves.toBe(2);
 });
 
-test("a relative configuration path for a content option resolves against the answer's directory", () => {
-  const result = run(['reading'], {
+test("a relative configuration path for a content option resolves against the answer's directory", async () => {
+  const result = await run(['reading'], {
     ...settings({ input: 'source.mjs' }),
     FIXTURE_DIRECTORY: JSON.stringify(fixtures),
   });
@@ -388,28 +467,31 @@ test("a relative configuration path for a content option resolves against the an
   );
 });
 
-test("an answer's directory is the working directory its option's validator reads", () => {
+test("an answer's directory is the working directory its option's validator reads", async () => {
   const where = settings({ where: 'x' });
   const directory = JSON.stringify('/srv/project');
-  const result = run(['traced'], { ...where, FIXTURE_DIRECTORY: directory });
+  const result = await run(['traced'], { ...where, FIXTURE_DIRECTORY: directory });
   expect(line(result.stdout, 'schema:where')).toBe(
     `schema:where:${JSON.stringify({ cwd: '/srv/project', supplied: 'x', value: 'x' })}`,
   );
   // An answer without a directory reads the run's working directory.
-  expect(line(run(['traced'], where).stdout, 'schema:where')).toContain(
-    JSON.stringify(process.cwd()),
-  );
+  expect(
+    line(
+      await run(['traced'], where).then((fixtureResult) => fixtureResult.stdout),
+      'schema:where',
+    ),
+  ).toContain(JSON.stringify(process.cwd()));
 });
 
 test.each(['relative/dir', '', 7])(
   'an answer whose directory is %j is a source defect',
-  (value) => {
+  async (value) => {
     const env = { ...settings({ where: 'x' }), FIXTURE_DIRECTORY: JSON.stringify(value) };
-    expect(run(['traced'], env)).toMatchObject({
+    await expect(run(['traced'], env)).resolves.toMatchObject({
       status: 1,
       stderr: 'app: Something went wrong.\n',
     });
-    const result = run(['traced'], { ...env, FIXTURE_BUILD: 'development' });
+    const result = await run(['traced'], { ...env, FIXTURE_BUILD: 'development' });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       '\n\nPlugin "@fixture/config" answered option "where" with a directory that is not an absolute path.\n',
@@ -417,22 +499,26 @@ test.each(['relative/dir', '', 7])(
   },
 );
 
-test("with a local parse fault, a plugin's option still fills and activates and a local one does not", () => {
-  expect(run(['count', '--bogus'], { FIXTURE_TOTAL: '1', FIXTURE_VERBOSE: '1' })).toEqual({
+test("with a local parse fault, a plugin's option still fills and activates and a local one does not", async () => {
+  await expect(
+    run(['count', '--bogus'], { FIXTURE_TOTAL: '1', FIXTURE_VERBOSE: '1' }),
+  ).resolves.toEqual({
     status: 2,
     stderr:
       'app: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
     stdout: `source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nlog:{${full.replace('"verbose":false', '"verbose":true')}}\nresolved:2\n`,
   });
-  expect(run(['cache'], { FIXTURE_VERBOSE: '1' }, 'plain')).toEqual({
+  await expect(run(['cache'], { FIXTURE_VERBOSE: '1' }, 'plain')).resolves.toEqual({
     status: 2,
     stderr: 'app: Command "cache" requires a subcommand. Use one of: clear.\n',
     stdout: `log:{${plain.replace('"verbose":false', '"verbose":true')}}\nresolved:2\n`,
   });
 });
 
-test("with a local parse fault, a global option's validator still runs and a rejection makes options null", () => {
-  expect(run(['count', '--bogus', '--limit', 'many'], { FIXTURE_VERBOSE: '1' }, 'plain')).toEqual({
+test("with a local parse fault, a global option's validator still runs and a rejection makes options null", async () => {
+  await expect(
+    run(['count', '--bogus', '--limit', 'many'], { FIXTURE_VERBOSE: '1' }, 'plain'),
+  ).resolves.toEqual({
     status: 2,
     stderr:
       'app: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
@@ -440,28 +526,30 @@ test("with a local parse fault, a global option's validator still runs and a rej
   });
 });
 
-test("the source's own options pass their validators before the call, which a rejection skips", () => {
-  expect(run(['--config', 'settings.txt'])).toEqual({
+test("the source's own options pass their validators before the call, which a rejection skips", async () => {
+  await expect(run(['--config', 'settings.txt'])).resolves.toEqual({
     status: 2,
     stderr: 'app: Option "--config": Supply a JSON file.\n',
     stdout: 'resolved:2\n',
   });
-  expect(run([], { FIXTURE_CONFIG_FILE: 'settings.txt', FIXTURE_VERBOSE: '1' })).toEqual({
+  await expect(
+    run([], { FIXTURE_CONFIG_FILE: 'settings.txt', FIXTURE_VERBOSE: '1' }),
+  ).resolves.toEqual({
     status: 2,
     stderr: 'app: Option "--config" (from FIXTURE_CONFIG_FILE): Supply a JSON file.\n',
     stdout: 'log:null\nresolved:2\n',
   });
   // A takeover reports nothing, and the source is still never called.
-  expect(run(['--help', '--config', 'settings.txt'])).toEqual({
+  await expect(run(['--help', '--config', 'settings.txt'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'help\nresolved:0\n',
   });
 });
 
-test("a rejected source option skips the source and reports with every other problem, the application's first", () => {
+test("a rejected source option skips the source and reports with every other problem, the application's first", async () => {
   const profiles = new URL('fixtures/sources/profiles.mjs', import.meta.url);
-  expect(invoke(profiles, ['--size', 'zz', '--profile', 'nope'])).toEqual({
+  await expect(invokeFixture(profiles, ['--size', 'zz', '--profile', 'nope'])).resolves.toEqual({
     status: 2,
     stderr: [
       'app: Option "--size": Expected a whole number.',
@@ -472,18 +560,20 @@ test("a rejected source option skips the source and reports with every other pro
   });
 });
 
-test('an option the skipped source would have filled reports no missing value, and its validator never judges the omission', () => {
+test('an option the skipped source would have filled reports no missing value, and its validator never judges the omission', async () => {
   const profiles = new URL('fixtures/sources/profiles.mjs', import.meta.url);
-  expect(invoke(profiles, ['x', '--profile', 'nope', '--title', 't'])).toEqual({
+  await expect(
+    invokeFixture(profiles, ['x', '--profile', 'nope', '--title', 't']),
+  ).resolves.toEqual({
     status: 2,
     stderr: 'app: Option "--profile": Expected one of: dev, prod.\n',
     stdout: 'resolved:2\n',
   });
 });
 
-test('a required option the skipped source was never asked about still reports as missing', () => {
+test('a required option the skipped source was never asked about still reports as missing', async () => {
   const profiles = new URL('fixtures/sources/profiles.mjs', import.meta.url);
-  expect(invoke(profiles, ['x', '--profile', 'nope'])).toEqual({
+  await expect(invokeFixture(profiles, ['x', '--profile', 'nope'])).resolves.toEqual({
     status: 2,
     stderr: [
       'app: Option "--profile": Expected one of: dev, prod.',
@@ -494,17 +584,17 @@ test('a required option the skipped source was never asked about still reports a
   });
 });
 
-test("a source option's validator reads the same context as every other validator", () => {
+test("a source option's validator reads the same context as every other validator", async () => {
   const argv = ['count', '--max', '7', '--limit', '3', '--config', 'other.json'];
-  const result = run(argv, { FIXTURE_CONFIG_COUNT: 'context' });
+  const result = await run(argv, { FIXTURE_CONFIG_COUNT: 'context' });
   expect(line(result.stdout, 'schema:config')).toBe('schema:config:{"limit":"3","max":"7"}');
   expect(line(result.stdout, 'source')).toBe(
     'source:{"options":{"config":"other.json"},"requests":["level","total"]}',
   );
 });
 
-test("the source's own options meet their validator once per value", () => {
-  const result = run(['--config', 'argv.json'], { FIXTURE_CONFIG_COUNT: '1' });
+test("the source's own options meet their validator once per value", async () => {
+  const result = await run(['--config', 'argv.json'], { FIXTURE_CONFIG_COUNT: '1' });
   expect(result).toEqual({
     status: 0,
     stderr: '',
@@ -520,8 +610,8 @@ test("the source's own options meet their validator once per value", () => {
   });
 });
 
-test('a local parse fault is reported ahead of a source fault', () => {
-  const result = run(['count', '--bogus'], { FIXTURE_SOURCE: 'throw' });
+test('a local parse fault is reported ahead of a source fault', async () => {
+  const result = await run(['count', '--bogus'], { FIXTURE_SOURCE: 'throw' });
   expect(result.status).toBe(2);
   expect(result.stderr).toBe(
     'app: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
@@ -577,15 +667,18 @@ test.each([
     { FIXTURE_SOURCE: 'label-getter' },
     'Plugin "@fixture/config" failed in its configuration source: the answer label threw.',
   ],
-])('a source fault %j reports its sentence with code 1', (env, sentence) => {
-  expect(run([], env)).toMatchObject({ status: 1, stderr: 'app: Something went wrong.\n' });
-  const result = run([], { ...env, FIXTURE_BUILD: 'development' });
+])('a source fault %j reports its sentence with code 1', async (env, sentence) => {
+  await expect(run([], env)).resolves.toMatchObject({
+    status: 1,
+    stderr: 'app: Something went wrong.\n',
+  });
+  const result = await run([], { ...env, FIXTURE_BUILD: 'development' });
   expect(result.status).toBe(1);
   expect(result.stderr).toContain(`\n\n${sentence}\n`);
 });
 
-test('an answer the answers rule rejects is a defect under the source answers rule', () => {
-  const { stderr } = run([], { FIXTURE_BUILD: 'development', FIXTURE_SOURCE: 'not-record' });
+test('an answer the answers rule rejects is a defect under the source answers rule', async () => {
+  const { stderr } = await run([], { FIXTURE_BUILD: 'development', FIXTURE_SOURCE: 'not-record' });
   expect(stderr).toMatch(/^-- INVALID SOURCE ANSWERS -+ @loomcli\/core\/source-answers\n/u);
 });
 
@@ -597,18 +690,21 @@ test.each([
     { fields: ['a', 1] },
     'option "fields" with a value that is not an array of strings.',
   ],
-])('an answer of the wrong type for %j names the type the option takes', (argv, values, clause) => {
-  expect(run(argv, settings(values))).toMatchObject({
-    status: 1,
-    stderr: 'app: Something went wrong.\n',
-  });
-  const result = run(argv, { ...settings(values), FIXTURE_BUILD: 'development' });
-  expect(result.status).toBe(1);
-  expect(result.stderr).toContain(`\n\nPlugin "@fixture/config" answered ${clause}\n`);
-});
+])(
+  'an answer of the wrong type for %j names the type the option takes',
+  async (argv, values, clause) => {
+    await expect(run(argv, settings(values))).resolves.toMatchObject({
+      status: 1,
+      stderr: 'app: Something went wrong.\n',
+    });
+    const result = await run(argv, { ...settings(values), FIXTURE_BUILD: 'development' });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`\n\nPlugin "@fixture/config" answered ${clause}\n`);
+  },
+);
 
-test.each(['sparse', 'hollow'])('a %s list answer is not an array of strings', (mode) => {
-  const result = run(['select'], { FIXTURE_SOURCE: mode });
+test.each(['sparse', 'hollow'])('a %s list answer is not an array of strings', async (mode) => {
+  const result = await run(['select'], { FIXTURE_SOURCE: mode });
   expect(result).toEqual({
     status: 1,
     stderr: 'app: Something went wrong.\n',
@@ -617,34 +713,36 @@ test.each(['sparse', 'hollow'])('a %s list answer is not an array of strings', (
   });
 });
 
-test('a run cancelled before it starts loads no source and calls none', () => {
+test('a run cancelled before it starts loads no source and calls none', async () => {
   const env = { FIXTURE_LOADER: 'recording' };
-  expect(invoke(fixture, ['full', 'cancelled'], { env })).toEqual({
+  await expect(invokeFixture(fixture, ['full', 'cancelled'], { env })).resolves.toEqual({
     status: 130,
     stderr: '',
     stdout: 'resolved:130\n',
   });
 });
 
-test('an abort while the source loads calls no resolver and dispatches nothing', () => {
+test('an abort while the source loads calls no resolver and dispatches nothing', async () => {
   const env = { FIXTURE_LOADER: 'aborts' };
-  expect(invoke(fixture, ['full', 'cancel'], { env })).toEqual({
+  await expect(invokeFixture(fixture, ['full', 'cancel'], { env })).resolves.toEqual({
     status: 130,
     stderr: '',
     stdout: 'loader:called\nresolved:130\n',
   });
 });
 
-test('a variable named after an Object.prototype member is unset in a plain-object env', () => {
-  expect(run(['inherited'], {}, 'plain')).toEqual({
+test('a variable named after an Object.prototype member is unset in a plain-object env', async () => {
+  await expect(run(['inherited'], {}, 'plain')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'inherited:undefined:false\nresolved:0\n',
   });
 });
 
-test('an abort during the source call awaits it and dispatches nothing', () => {
-  expect(invoke(fixture, ['full', 'cancel'], { env: { FIXTURE_SOURCE: 'cancel' } })).toEqual({
+test('an abort during the source call awaits it and dispatches nothing', async () => {
+  await expect(
+    invokeFixture(fixture, ['full', 'cancel'], { env: { FIXTURE_SOURCE: 'cancel' } }),
+  ).resolves.toEqual({
     status: 130,
     stderr: '',
     stdout:
@@ -652,12 +750,12 @@ test('an abort during the source call awaits it and dispatches nothing', () => {
   });
 });
 
-test("the source's own options resolve before the call and are never requested", () => {
-  const fromEnvironment = run([], { FIXTURE_CONFIG_FILE: 'other.json' });
+test("the source's own options resolve before the call and are never requested", async () => {
+  const fromEnvironment = await run([], { FIXTURE_CONFIG_FILE: 'other.json' });
   expect(line(fromEnvironment.stdout, 'source')).toBe(
     'source:{"options":{"config":"other.json"},"requests":["limit","level"]}',
   );
-  const fromArgv = run(['--config', 'argv.json'], { FIXTURE_CONFIG_FILE: 'other.json' });
+  const fromArgv = await run(['--config', 'argv.json'], { FIXTURE_CONFIG_FILE: 'other.json' });
   expect(line(fromArgv.stdout, 'source')).toBe(
     'source:{"options":{"config":"argv.json"},"requests":["limit","level"]}',
   );
@@ -668,8 +766,10 @@ function envs(options: { env: unknown; name: string }[]) {
   return options.map((option) => [option.name, option.env]);
 }
 
-test('inspect() publishes env on bound and unbound options of every kind', () => {
-  const graph = JSON.parse(invoke(fixture, ['full', 'inspect']).stdout);
+test('inspect() publishes env on bound and unbound options of every kind', async () => {
+  const graph = JSON.parse(
+    await invokeFixture(fixture, ['full', 'inspect']).then((fixtureResult) => fixtureResult.stdout),
+  );
   expect(envs(graph.globals)).toEqual([
     ['limit', ['FIXTURE_LIMIT']],
     ['config', ['FIXTURE_CONFIG_FILE']],
@@ -698,50 +798,73 @@ test('inspect() publishes env on bound and unbound options of every kind', () =>
 });
 
 /** One option's value after a `region` run. */
-function regionValue(name: string, env: Record<string, string>, argv: string[] = []) {
-  return valueOf(run(['region', ...argv], env, 'plain').stdout, 'region', name);
+async function regionValue(name: string, env: Record<string, string>, argv: string[] = []) {
+  return valueOf(
+    await run(['region', ...argv], env, 'plain').then((fixtureResult) => fixtureResult.stdout),
+    'region',
+    name,
+  );
 }
 
-test('the first name in a list that holds a value supplies the option', () => {
-  expect(regionValue('area', { FIXTURE_AREA: '1', FIXTURE_DEFAULT_AREA: '2' })).toBe('1');
-  expect(regionValue('area', { FIXTURE_DEFAULT_AREA: '2' })).toBe('2');
-  expect(regionValue('area', {})).toBeUndefined();
-  expect(regionValue('area', { FIXTURE_AREA: '1' }, ['--area', '9'])).toBe('9');
+test('the first name in a list that holds a value supplies the option', async () => {
+  await expect(regionValue('area', { FIXTURE_AREA: '1', FIXTURE_DEFAULT_AREA: '2' })).resolves.toBe(
+    '1',
+  );
+  await expect(regionValue('area', { FIXTURE_DEFAULT_AREA: '2' })).resolves.toBe('2');
+  await expect(regionValue('area', {})).resolves.toBeUndefined();
+  await expect(regionValue('area', { FIXTURE_AREA: '1' }, ['--area', '9'])).resolves.toBe('9');
 });
 
-test('an empty value in a list counts as unset and the next name is read', () => {
-  expect(regionValue('area', { FIXTURE_AREA: '', FIXTURE_DEFAULT_AREA: '2' })).toBe('2');
-  expect(regionValue('debug', { FIXTURE_DEBUG: '', FIXTURE_DEBUG_FALLBACK: 'true' })).toBe(true);
-  expect(regionValue('depth', { FIXTURE_DEPTH: '', FIXTURE_DEPTH_FALLBACK: '3' })).toBe(3);
+test('an empty value in a list counts as unset and the next name is read', async () => {
+  await expect(regionValue('area', { FIXTURE_AREA: '', FIXTURE_DEFAULT_AREA: '2' })).resolves.toBe(
+    '2',
+  );
+  await expect(
+    regionValue('debug', { FIXTURE_DEBUG: '', FIXTURE_DEBUG_FALLBACK: 'true' }),
+  ).resolves.toBe(true);
+  await expect(
+    regionValue('depth', { FIXTURE_DEPTH: '', FIXTURE_DEPTH_FALLBACK: '3' }),
+  ).resolves.toBe(3);
 });
 
-test('a Boolean or count value outside its grammar on a listed name fails naming that variable', () => {
-  expect(
+test('a Boolean or count value outside its grammar on a listed name fails naming that variable', async () => {
+  await expect(
     run(['region'], { FIXTURE_DEBUG: 'maybe', FIXTURE_DEBUG_FALLBACK: 'true' }, 'plain'),
-  ).toEqual({
+  ).resolves.toEqual({
     status: 2,
     stderr:
       'app: Option "--debug" (from FIXTURE_DEBUG): Use true, false, yes, no, y, n, on, off, 1, or 0.\n',
     stdout: 'resolved:2\n',
   });
-  expect(run(['region'], { FIXTURE_DEPTH: 'x', FIXTURE_DEPTH_FALLBACK: '2' }, 'plain').stderr).toBe(
-    'app: Option "--depth" (from FIXTURE_DEPTH): Use a whole number of 0 or more.\n',
-  );
+  await expect(
+    run(['region'], { FIXTURE_DEPTH: 'x', FIXTURE_DEPTH_FALLBACK: '2' }, 'plain').then(
+      (fixtureResult) => fixtureResult.stderr,
+    ),
+  ).resolves.toBe('app: Option "--depth" (from FIXTURE_DEPTH): Use a whole number of 0 or more.\n');
   // A later name is read only when the earlier ones are unset.
-  expect(run(['region'], { FIXTURE_DEBUG_FALLBACK: 'maybe' }, 'plain').stderr).toBe(
+  await expect(
+    run(['region'], { FIXTURE_DEBUG_FALLBACK: 'maybe' }, 'plain').then(
+      (fixtureResult) => fixtureResult.stderr,
+    ),
+  ).resolves.toBe(
     'app: Option "--debug" (from FIXTURE_DEBUG_FALLBACK): Use true, false, yes, no, y, n, on, off, 1, or 0.\n',
   );
 });
 
-test('a failure on a listed string value labels the variable that supplied it', () => {
-  expect(run(['region'], { FIXTURE_AREA: '', FIXTURE_DEFAULT_AREA: 'x' }, 'plain').stderr).toBe(
-    'app: Option "--area" (from FIXTURE_DEFAULT_AREA): Supply a whole number.\n',
-  );
+test('a failure on a listed string value labels the variable that supplied it', async () => {
+  await expect(
+    run(['region'], { FIXTURE_AREA: '', FIXTURE_DEFAULT_AREA: 'x' }, 'plain').then(
+      (fixtureResult) => fixtureResult.stderr,
+    ),
+  ).resolves.toBe('app: Option "--area" (from FIXTURE_DEFAULT_AREA): Supply a whole number.\n');
 });
 
 /** Every input source declaration rule throws from the call or the attach that first proves it. */
-function build(scenario: string, mode: 'inspect' | 'run') {
-  return invoke(new URL('fixtures/sources/build.mjs', import.meta.url), [scenario, mode]);
+async function build(scenario: string, mode: 'inspect' | 'run') {
+  return await invokeFixture(new URL('fixtures/sources/build.mjs', import.meta.url), [
+    scenario,
+    mode,
+  ]);
 }
 
 test.each([
@@ -769,75 +892,94 @@ test.each([
     'second-source',
     'Plugin "@acme/yaml" declares a configuration source, which plugin "@acme/config" already declares. Install one source.',
   ],
-])('the declaration that makes %s wrong throws', (scenario, message) => {
-  expect(build(scenario, 'inspect')).toEqual({
+])('the declaration that makes %s wrong throws', async (scenario, message) => {
+  await expect(build(scenario, 'inspect')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `thrown:1: ${message}\n`,
   });
 });
 
-test('a binding that names one variable twice binds it once', () => {
-  expect(build('env-list-repeat', 'inspect').stdout).toBe('inspected\n');
+test('a binding that names one variable twice binds it once', async () => {
+  await expect(
+    build('env-list-repeat', 'inspect').then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('inspected\n');
 });
 
-test('a list that shares a name across sibling Commands is accepted', () => {
-  expect(build('sibling-list', 'inspect').stdout).toBe('inspected\n');
+test('a list that shares a name across sibling Commands is accepted', async () => {
+  await expect(
+    build('sibling-list', 'inspect').then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('inspected\n');
 });
 
-test('one variable bound on two sibling Commands is accepted', () => {
-  expect(build('sibling-variable', 'inspect').stdout).toBe('inspected\n');
+test('one variable bound on two sibling Commands is accepted', async () => {
+  await expect(
+    build('sibling-variable', 'inspect').then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('inspected\n');
 });
 
-test('the source reads the graph inspect() returns, with each request a node inside it', () => {
-  const result = run(['select'], { FIXTURE_SOURCE: 'context', ...settings({ fields: ['a'] }) });
+test('the source reads the graph inspect() returns, with each request a node inside it', async () => {
+  const result = await run(['select'], {
+    FIXTURE_SOURCE: 'context',
+    ...settings({ fields: ['a'] }),
+  });
   expect(result.status).toBe(0);
   expect(line(result.stdout, 'context')).toBe(
     'context:{"globals":[true,true,false,false],"name":"app","routed":true,"style":"function"}',
   );
 });
 
-test('a source warns through lanes.warn, ahead of a takeover, and an override reaches it', () => {
+test('a source warns through lanes.warn, ahead of a takeover, and an override reaches it', async () => {
   const warned = 'Skipped a.json: the file is not valid JSON.\n';
-  expect(run([], { FIXTURE_SOURCE: 'warn' })).toEqual({
+  await expect(run([], { FIXTURE_SOURCE: 'warn' })).resolves.toEqual({
     status: 0,
     stderr: `⚠ ${warned}`,
     stdout: `source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nroot:{${full}}\nresolved:0\n`,
   });
-  expect(run(['--help'], { FIXTURE_SOURCE: 'warn' })).toEqual({
+  await expect(run(['--help'], { FIXTURE_SOURCE: 'warn' })).resolves.toEqual({
     status: 0,
     stderr: `⚠ ${warned}`,
     stdout:
       'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nhelp\nresolved:0\n',
   });
-  expect(run([], { FIXTURE_SOURCE: 'warn', FIXTURE_VIEWS: 'warn' }).stderr).toBe(
-    `warned: ${warned}`,
-  );
+  await expect(
+    run([], { FIXTURE_SOURCE: 'warn', FIXTURE_VIEWS: 'warn' }).then(
+      (fixtureResult) => fixtureResult.stderr,
+    ),
+  ).resolves.toBe(`warned: ${warned}`);
 });
 
-test('an InputError from the resolver is a usage failure that replaces every other problem', () => {
+test('an InputError from the resolver is a usage failure that replaces every other problem', async () => {
   const failure = 'app: Option "--config": File "missing.json" does not exist.\n';
-  expect(run([], { FIXTURE_SOURCE: 'input-error' })).toEqual({
+  await expect(run([], { FIXTURE_SOURCE: 'input-error' })).resolves.toEqual({
     status: 2,
     stderr: failure,
     stdout:
       'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nresolved:2\n',
   });
   // The required --max is never validated once the source has raised its own problem.
-  expect(run(['count'], { FIXTURE_SOURCE: 'input-error' })).toMatchObject({
+  await expect(run(['count'], { FIXTURE_SOURCE: 'input-error' })).resolves.toMatchObject({
     status: 2,
     stderr: failure,
   });
-  expect(run(['--help'], { FIXTURE_SOURCE: 'input-error' })).toEqual({
+  await expect(run(['--help'], { FIXTURE_SOURCE: 'input-error' })).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout:
       'source:{"options":{"config":"fixture.json"},"requests":["limit","level"]}\nhelp\nresolved:0\n',
   });
-  expect(run([], { FIXTURE_SOURCE: 'input-error', FIXTURE_VIEWS: 'input' }).stderr).toBe(
+  await expect(
+    run([], { FIXTURE_SOURCE: 'input-error', FIXTURE_VIEWS: 'input' }).then(
+      (fixtureResult) => fixtureResult.stderr,
+    ),
+  ).resolves.toBe(
     '[{"input":{"global":true,"kind":"option","name":"config"},"issues":[{"message":"File \\"missing.json\\" does not exist."}],"reason":"invalid","spelling":"--config"}]\n',
   );
-  expect(run(['count', '--bogus'], { FIXTURE_SOURCE: 'input-error' }).stderr).toBe(
+  await expect(
+    run(['count', '--bogus'], { FIXTURE_SOURCE: 'input-error' }).then(
+      (fixtureResult) => fixtureResult.stderr,
+    ),
+  ).resolves.toBe(
     'app: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\n',
   );
 });
@@ -855,22 +997,25 @@ test.each([
     { FIXTURE_SOURCE: 'declared-value-getter' },
     'Plugin "@fixture/config" failed in its configuration source: The settings registry is unavailable.',
   ],
-])('%j stays a plugin fault with code 1', (env, sentence) => {
-  expect(run([], env)).toMatchObject({ status: 1, stderr: 'app: Something went wrong.\n' });
-  const result = run([], { ...env, FIXTURE_BUILD: 'development' });
+])('%j stays a plugin fault with code 1', async (env, sentence) => {
+  await expect(run([], env)).resolves.toMatchObject({
+    status: 1,
+    stderr: 'app: Something went wrong.\n',
+  });
+  const result = await run([], { ...env, FIXTURE_BUILD: 'development' });
   expect(result.status).toBe(1);
   expect(result.stderr).toContain(`\n\n${sentence}\n`);
 });
 
 test.each(['declared', 'declared-sync'])(
   'a failure class the resolver raises in %s mode reports with its declared code',
-  (mode) => {
-    expect(run(['count'], { FIXTURE_SOURCE: mode })).toMatchObject({
+  async (mode) => {
+    await expect(run(['count'], { FIXTURE_SOURCE: mode })).resolves.toMatchObject({
       status: 69,
       stderr: 'The settings registry is unavailable.\n',
     });
     // The failure is held like any source fault, so a takeover reports nothing.
-    expect(run(['--help'], { FIXTURE_SOURCE: mode })).toMatchObject({
+    await expect(run(['--help'], { FIXTURE_SOURCE: mode })).resolves.toMatchObject({
       status: 0,
       stderr: '',
     });
@@ -882,7 +1027,7 @@ test.each([
   [{ FIXTURE_SOURCE: 'result-error' }, 'app: Something went wrong.\n'],
 ])(
   'a core failure class the resolver raises in %j reports as itself with code 1',
-  (env, stderr) => {
-    expect(run([], env)).toMatchObject({ status: 1, stderr });
+  async (env, stderr) => {
+    await expect(run([], env)).resolves.toMatchObject({ status: 1, stderr });
   },
 );

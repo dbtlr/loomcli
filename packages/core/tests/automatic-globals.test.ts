@@ -1,9 +1,9 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
-test('an independently declared Command receives the Application globals and schema outputs', () => {
-  const result = invoke(new URL('fixtures/automatic-globals.mjs', import.meta.url), [
+test('an independently declared Command receives the Application globals and schema outputs', async () => {
+  const result = await invokeFixture(new URL('fixtures/automatic-globals.mjs', import.meta.url), [
     'read',
     'document',
     '--raw',

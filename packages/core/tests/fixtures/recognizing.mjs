@@ -1,53 +1,69 @@
 import { Application, Command, plugin } from '@loomcli/core';
 
-// Prints, for each value, whether `instanceof Application` recognizes it, and under `subclass`,
-// Whether `instanceof` an author's own subclass of Application recognizes each value.
+import { scenario as fixtureScenario } from './scenario.mjs';
 
-/** A plugin the Application installs, so a constructed value carries its globals. */
-const installed = plugin('@fixture/recognizing', {});
+/** Runs a fresh fixture scenario with only the supplied process facts. */
+async function runFixture(words, fixtureOptions = {}) {
+  const fixture = fixtureScenario({ ...fixtureOptions, argv: words });
+  const { stdout: writeStdout } = fixture;
+  try {
+    // Prints, for each value, whether `instanceof Application` recognizes it, and under `subclass`,
+    // Whether `instanceof` an author's own subclass of Application recognizes each value.
 
-/** A result view that prints its value, which `result()`, `rows()`, and `views()` take. */
-const text = { render: () => 'value\n' };
-const row = { row: () => 'row\n' };
+    /** A plugin the Application installs, so a constructed value carries its globals. */
+    const installed = plugin('@fixture/recognizing', {});
 
-const bare = new Application('probe', { description: 'Probe recognition.' });
-const withPlugin = new Application('probe', { description: 'Probe.', plugins: [installed] });
-const child = new Command('child', { description: 'A child.' }).action(() => undefined);
+    /** A result view that prints its value, which `result()`, `rows()`, and `views()` take. */
+    const text = { render: () => 'value\n' };
+    const row = { row: () => 'row\n' };
 
-const values = {
-  aCommand: child,
-  aFunction: () => bare,
-  aNull: null,
-  aPlainObject: { name: 'probe' },
-  aPrototypeCopy: { ...bare },
-  action: bare.action(() => undefined),
-  argument: bare.argument('subject', { description: 'The subject.' }),
-  bare,
-  chained: bare
-    .globalOption('trace', { description: 'Trace.', type: 'boolean' })
-    .option('limit', { description: 'The limit.', type: 'string' })
-    .action(() => undefined),
-  command: bare.command(child),
-  extend: bare.extend(),
-  globalOption: bare.globalOption('trace', { description: 'Trace.', type: 'boolean' }),
-  option: bare.option('limit', { description: 'The limit.', type: 'string' }),
-  plugins: withPlugin.action(() => undefined),
-  result: bare.result({ views: { text } }),
-  rows: bare.rows({ views: { text: row } }),
-  unconfigured: new Application('probe'),
-  views: bare.result({ views: { text } }).views({ text }),
-};
+    const bare = new Application('probe', { description: 'Probe recognition.' });
+    const withPlugin = new Application('probe', { description: 'Probe.', plugins: [installed] });
+    const child = new Command('child', { description: 'A child.' }).action(() => undefined);
 
-const recognized = Object.entries(values).map(([name, value]) => [
-  name,
-  value instanceof Application,
-]);
+    const values = {
+      aCommand: child,
+      aFunction: () => bare,
+      aNull: null,
+      aPlainObject: { name: 'probe' },
+      aPrototypeCopy: { ...bare },
+      action: bare.action(() => undefined),
+      argument: bare.argument('subject', { description: 'The subject.' }),
+      bare,
+      chained: bare
+        .globalOption('trace', { description: 'Trace.', type: 'boolean' })
+        .option('limit', { description: 'The limit.', type: 'string' })
+        .action(() => undefined),
+      command: bare.command(child),
+      extend: bare.extend(),
+      globalOption: bare.globalOption('trace', { description: 'Trace.', type: 'boolean' }),
+      option: bare.option('limit', { description: 'The limit.', type: 'string' }),
+      plugins: withPlugin.action(() => undefined),
+      result: bare.result({ views: { text } }),
+      rows: bare.rows({ views: { text: row } }),
+      unconfigured: new Application('probe'),
+      views: bare.result({ views: { text } }).views({ text }),
+    };
 
-/** An author's own subclass, which `instanceof` reads by its prototype chain alone. */
-class Sub extends Application {}
+    const recognized = Object.entries(values).map(([name, value]) => [
+      name,
+      value instanceof Application,
+    ]);
 
-const subclass = {
-  aSubclassInstance: new Sub('y') instanceof Sub,
-  anApplication: new Application('y') instanceof Sub,
-};
-process.stdout.write(`${JSON.stringify({ ...Object.fromEntries(recognized), subclass })}\n`);
+    /** An author's own subclass, which `instanceof` reads by its prototype chain alone. */
+    class Sub extends Application {}
+
+    const subclass = {
+      aSubclassInstance: new Sub('y') instanceof Sub,
+      anApplication: new Application('y') instanceof Sub,
+    };
+    writeStdout(`${JSON.stringify({ ...Object.fromEntries(recognized), subclass })}\n`);
+  } catch (error) {
+    if (error !== fixture.stopped) {
+      fixture.thrown(error);
+    }
+  }
+  return fixture.result();
+}
+
+export { runFixture as run };

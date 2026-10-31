@@ -1,3 +1,6 @@
+import { expect, test } from 'vite-plus/test';
+
+import { invoke } from '../../../scripts/test-process.js';
 /*
  * Acceptance plan for Developer Diagnostics
  * (docs/core/declaration-faults.md#developer-diagnostics).
@@ -41,21 +44,20 @@
  *   one registry test per package checks that every rule there has one declaration, a one-line
  *   headline, and an explanation of whole sentences on one line.
  */
-
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
 import { coreRuleParts } from './rule-parts.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
-function diagnostics(scenario: string) {
-  const result = invoke(new URL('fixtures/diagnostics.mjs', import.meta.url), [scenario]);
+async function diagnostics(scenario: string) {
+  const result = await invokeFixture(new URL('fixtures/diagnostics.mjs', import.meta.url), [
+    scenario,
+  ]);
   expect(result.stderr).toBe('');
   return result.stdout;
 }
 
 // The text core's reference shows for the fixture plugin's retry(50).
-test("a third-party rule's thrown fault carries its whole diagnostic in message", () => {
-  expect(diagnostics('retry')).toBe(
+test("a third-party rule's thrown fault carries its whole diagnostic in message", async () => {
+  await expect(diagnostics('retry')).resolves.toBe(
     [
       '-- RETRY LIMIT OUT OF RANGE ---------------------------- @acme/retry/retry-limit',
       '',
@@ -73,8 +75,8 @@ test("a third-party rule's thrown fault carries its whole diagnostic in message"
   );
 });
 
-test('a structured fault keeps its parts on fields of their own', () => {
-  expect(JSON.parse(diagnostics('fields'))).toEqual({
+test('a structured fault keeps its parts on fields of their own', async () => {
+  expect(JSON.parse(await diagnostics('fields'))).toEqual({
     correction: 'Pass a whole number from 0 through 10.',
     exitCode: 1,
     findings: [{ arguments: [50], call: 'retry', mark: '0', note: 'from 0 through 10' }],
@@ -85,8 +87,8 @@ test('a structured fault keeps its parts on fields of their own', () => {
   });
 });
 
-test('a sentence-only fault renders the generic banner and its sentence alone', () => {
-  expect(diagnostics('sentence-only')).toBe(
+test('a sentence-only fault renders the generic banner and its sentence alone', async () => {
+  await expect(diagnostics('sentence-only')).resolves.toBe(
     [
       '-- INVALID DECLARATION ---------------------------------------------------------',
       '',
@@ -94,7 +96,7 @@ test('a sentence-only fault renders the generic banner and its sentence alone', 
       '',
     ].join('\n'),
   );
-  expect(JSON.parse(diagnostics('sentence-only-fields'))).toEqual({
+  expect(JSON.parse(await diagnostics('sentence-only-fields'))).toEqual({
     cause: 'why',
     correction: null,
     findings: [],
@@ -103,8 +105,8 @@ test('a sentence-only fault renders the generic banner and its sentence alone', 
   });
 });
 
-test('a fault between two declarations carries a finding for each, and a correction list prints one fix per line', () => {
-  expect(diagnostics('collision')).toBe(
+test('a fault between two declarations carries a finding for each, and a correction list prints one fix per line', async () => {
+  await expect(diagnostics('collision')).resolves.toBe(
     [
       '-- OPTION DECLARED TWICE -------------------------- @acme/trace/option-collision',
       '',
@@ -135,8 +137,8 @@ test('a fault between two declarations carries a finding for each, and a correct
  * sentence, and correction, and the registry test checks each explanation.
  */
 
-test("a core declaration fault between two calls prints a finding for each, then the rule's explanation and correction", () => {
-  const result = invoke(new URL('fixtures/command-diagnostics.mjs', import.meta.url), [
+test("a core declaration fault between two calls prints a finding for each, then the rule's explanation and correction", async () => {
+  const result = await invokeFixture(new URL('fixtures/command-diagnostics.mjs', import.meta.url), [
     'argument-twice',
   ]);
   expect(result).toEqual({
@@ -166,8 +168,8 @@ test("a core declaration fault between two calls prints a finding for each, then
   });
 });
 
-test('a core declaration fault no call declared reports from run() with no finding', () => {
-  const result = invoke(new URL('fixtures/command-diagnostics.mjs', import.meta.url), [
+test('a core declaration fault no call declared reports from run() with no finding', async () => {
+  const result = await invokeFixture(new URL('fixtures/command-diagnostics.mjs', import.meta.url), [
     'root-without-action',
   ]);
   expect(result).toEqual({
@@ -188,7 +190,7 @@ test('a core declaration fault no call declared reports from run() with no findi
   });
 });
 
-test("a defect prints its sentence, the thrown value's source and stack, then the rule's explanation and correction", () => {
+test("a defect prints its sentence, the thrown value's source and stack, then the rule's explanation and correction", async () => {
   const result = invoke(new URL('fixtures/translators.mjs', import.meta.url), ['broken-throws'], {
     env: { FIXTURE_BUILD: 'development' },
   });
@@ -231,16 +233,18 @@ test("a defect prints its sentence, the thrown value's source and stack, then th
   );
 });
 
-test('a diagnostic escapes every control, line separator, and bidirectional control it repeats', () => {
-  const text = diagnostics('escaped');
+test('a diagnostic escapes every control, line separator, and bidirectional control it repeats', async () => {
+  const text = await diagnostics('escaped');
   // The author's own line break in a sentence stays a break; every other control is escaped.
   expect(text).toContain('retry() received "a\\u202eb\nc".');
   expect(text).toContain(String.raw`    retry('a\u202eb\u000ac')`);
   expect(text).not.toContain('\u202e');
 });
 
-test('an InternalError takes a rule and keeps its sentence as its message', () => {
-  const [structured, plain] = diagnostics('internal').trimEnd().split('\n');
+test('an InternalError takes a rule and keeps its sentence as its message', async () => {
+  const [structured, plain] = await diagnostics('internal').then((fixtureResult) =>
+    fixtureResult.trimEnd().split('\n'),
+  );
   expect(JSON.parse(structured ?? '')).toEqual({
     cause: true,
     correction: 'Fix the loop.',
@@ -251,8 +255,8 @@ test('an InternalError takes a rule and keeps its sentence as its message', () =
   expect(JSON.parse(plain ?? '')).toEqual({ message: 'Plain.', rule: null, sentence: 'Plain.' });
 });
 
-test('diagnosticRule() returns a frozen descriptor', () => {
-  expect(JSON.parse(diagnostics('frozen'))).toEqual({
+test('diagnosticRule() returns a frozen descriptor', async () => {
+  expect(JSON.parse(await diagnostics('frozen'))).toEqual({
     docs: 'https://example.com/rules/option-collision',
     frozen: true,
     headline: 'Option declared twice',
@@ -261,8 +265,8 @@ test('diagnosticRule() returns a frozen descriptor', () => {
   });
 });
 
-test('diagnosticRule() accepts subpath segments between the package and the rule name', () => {
-  expect(diagnostics('subpath-identity')).toBe('@acme/retry/backoff/retry-limit\n');
+test('diagnosticRule() accepts subpath segments between the package and the rule name', async () => {
+  await expect(diagnostics('subpath-identity')).resolves.toBe('@acme/retry/backoff/retry-limit\n');
 });
 
 const identityFix =
@@ -305,15 +309,15 @@ test.each([
     'Diagnostic rule "@acme/retry/backoff/" has no package part, or a subpath or rule name that is not kebab-case.',
     identityFix,
   ],
-])('diagnosticRule() rejects %s', (scenario, rule, sentence, correction) => {
-  const text = diagnostics(scenario);
+])('diagnosticRule() rejects %s', async (scenario, rule, sentence, correction) => {
+  const text = await diagnostics(scenario);
   expect(text).toContain(' @loomcli/core/rule-');
   expect(coreRuleParts(text)).toEqual({ correction, rule, sentence });
 });
 
 /** What a development run that meets the fault writes on stderr, on the terminal the test names. */
-function runDiagnostic(input: Record<string, unknown>): string {
-  const result = invoke(new URL('fixtures/diagnostics.mjs', import.meta.url), [
+async function runDiagnostic(input: Record<string, unknown>): Promise<string> {
+  const result = await invokeFixture(new URL('fixtures/diagnostics.mjs', import.meta.url), [
     'run-width',
     JSON.stringify(input),
   ]);
@@ -332,16 +336,16 @@ const explanationAt100 = [
   'minutes. The plugin accepts from 0 through 10 retries.',
 ];
 
-test("the banner fills stderr's width and the explanation wraps at it", () => {
-  const stderr = runDiagnostic({ terminal: stderrTerminal({ columns: 100 }) });
+test("the banner fills stderr's width and the explanation wraps at it", async () => {
+  const stderr = await runDiagnostic({ terminal: stderrTerminal({ columns: 100 }) });
   expect(stderr.split('\n')[0]).toBe(
     `-- RETRY LIMIT OUT OF RANGE ${'-'.repeat(48)} @acme/retry/retry-limit`,
   );
   expect(stderr).toContain(`\n\n${explanationAt100.join('\n')}\n\n`);
 });
 
-test('COLUMNS narrows the width the diagnostic fills', () => {
-  const stderr = runDiagnostic({
+test('COLUMNS narrows the width the diagnostic fills', async () => {
+  const stderr = await runDiagnostic({
     env: { COLUMNS: '60' },
     terminal: stderrTerminal({ columns: 100 }),
   });
@@ -359,8 +363,8 @@ test('COLUMNS narrows the width the diagnostic fills', () => {
   );
 });
 
-test('a stderr that is not a terminal falls back to 80 columns, whatever width it reports', () => {
-  const stderr = runDiagnostic({ terminal: stderrTerminal({ columns: 100, isTTY: false }) });
+test('a stderr that is not a terminal falls back to 80 columns, whatever width it reports', async () => {
+  const stderr = await runDiagnostic({ terminal: stderrTerminal({ columns: 100, isTTY: false }) });
   expect(stderr.split('\n')[0]).toBe(
     `-- RETRY LIMIT OUT OF RANGE ${'-'.repeat(28)} @acme/retry/retry-limit`,
   );
@@ -369,12 +373,12 @@ test('a stderr that is not a terminal falls back to 80 columns, whatever width i
   );
 });
 
-test('a terminal that reports no width falls back to 80 columns', () => {
-  const stderr = runDiagnostic({ terminal: stderrTerminal({ columns: undefined }) });
+test('a terminal that reports no width falls back to 80 columns', async () => {
+  const stderr = await runDiagnostic({ terminal: stderrTerminal({ columns: undefined }) });
   expect(stderr.split('\n')[0]).toHaveLength(80);
 });
 
-test('the explanation wraps by display width, so wide characters fill two columns', () => {
-  const stderr = runDiagnostic({ terminal: stderrTerminal({ columns: 25 }), wide: true });
+test('the explanation wraps by display width, so wide characters fill two columns', async () => {
+  const stderr = await runDiagnostic({ terminal: stderrTerminal({ columns: 25 }), wide: true });
   expect(stderr).toContain('\n界界界界界 界界界界界\n界界界界界\n');
 });

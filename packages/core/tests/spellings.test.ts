@@ -1,10 +1,13 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
-function invokeSpellings(argv: string[]) {
+async function invokeSpellings(argv: string[]) {
   // The fixture prefix prevents Bun from consuming a leading passthrough delimiter.
-  return invoke(new URL('fixtures/spellings.mjs', import.meta.url), ['invoke', ...argv]);
+  return await invokeFixture(new URL('fixtures/spellings.mjs', import.meta.url), [
+    'invoke',
+    ...argv,
+  ]);
 }
 
 /** Ordered entries, because the globals bind before a Command's own options in `options`. */
@@ -24,8 +27,8 @@ test.each([
   [['cache', 'set'], 'set', []],
 ] satisfies [string[], string, [string, unknown][]][])(
   'one spelling reads its own value shape for %j',
-  (argv, command, options) => {
-    expect(invokeSpellings(argv)).toEqual({
+  async (argv, command, options) => {
+    await expect(invokeSpellings(argv)).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: report(command, options),
@@ -33,8 +36,10 @@ test.each([
   },
 );
 
-test('the global alias and a local alias of the same letter case stay separate', () => {
-  expect(invokeSpellings(['select', '-F', 'a', '-f', 'doc.json', '-F', 'b'])).toEqual({
+test('the global alias and a local alias of the same letter case stay separate', async () => {
+  await expect(
+    invokeSpellings(['select', '-F', 'a', '-f', 'doc.json', '-F', 'b']),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: report('select', [
@@ -42,7 +47,7 @@ test('the global alias and a local alias of the same letter case stay separate',
       ['field', ['a', 'b']],
     ]),
   });
-  expect(invokeSpellings(['-f', 'doc.json', 'cache', 'set', '--field=x'])).toEqual({
+  await expect(invokeSpellings(['-f', 'doc.json', 'cache', 'set', '--field=x'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: report('set', [
@@ -52,19 +57,19 @@ test('the global alias and a local alias of the same letter case stay separate',
   });
 });
 
-test('an option word no global option declares ends routing, and names the Commands that declare it', () => {
-  expect(invokeSpellings(['count', '--field', 'select'])).toEqual({
+test('an option word no global option declares ends routing, and names the Commands that declare it', async () => {
+  await expect(invokeSpellings(['count', '--field', 'select'])).resolves.toEqual({
     status: 2,
     stderr: 'spellings: Command "count" accepts no arguments. Remove the supplied values.\n',
     stdout: '',
   });
-  expect(invokeSpellings(['--field', 'name', 'select'])).toEqual({
+  await expect(invokeSpellings(['--field', 'name', 'select'])).resolves.toEqual({
     status: 2,
     stderr:
       'spellings: Option "--field" belongs to commands select, count, cache set. Supply it after the command name.\n',
     stdout: '',
   });
-  expect(invokeSpellings(['cache', '--field', 'x'])).toEqual({
+  await expect(invokeSpellings(['cache', '--field', 'x'])).resolves.toEqual({
     status: 2,
     stderr:
       'spellings: Option "--field" belongs to command "cache set". Supply it after "cache set".\n',
@@ -77,8 +82,8 @@ test.each([
   [['count', '--field=true'], '"--field"'],
   [['cache', 'set', '--no-field'], '"--no-field"'],
   [['select', '-F'], '"-F"'],
-])('a sibling shape never accepts %j', (argv, spelling) => {
-  const result = invokeSpellings(argv);
+])('a sibling shape never accepts %j', async (argv, spelling) => {
+  const result = await invokeSpellings(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain(spelling);

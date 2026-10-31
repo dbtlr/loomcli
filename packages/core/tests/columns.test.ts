@@ -1,13 +1,16 @@
+import { expect, test } from 'vite-plus/test';
 // Acceptance plan: see packages/core/tests/style.test.ts.
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/columns.mjs', import.meta.url);
 
-function columns(input: Record<string, unknown>, env?: Record<string, string>) {
-  return invoke(fixture, [JSON.stringify(input)], env === undefined ? undefined : { env });
+async function columns(input: Record<string, unknown>, env?: Record<string, string>) {
+  return await invokeFixture(
+    fixture,
+    [JSON.stringify(input)],
+    env === undefined ? undefined : { env },
+  );
 }
 
 const terminal = (stdout: object, stderr: object) => ({
@@ -21,30 +24,30 @@ function written(stdout: string, stderr: string, host: string) {
   return { status: 0, stderr: `stderr:${stderr}\n`, stdout: `stdout:${stdout}\nhost:${host}\n` };
 }
 
-test('a view rendered to stdout reads stdout width and one rendered to stderr reads stderr width', () => {
-  expect(columns({ env: {}, terminal: terminal({ columns: 100 }, { columns: 60 }) })).toEqual(
-    written('100:whole', '60:wrapped', '100,60'),
-  );
+test('a view rendered to stdout reads stdout width and one rendered to stderr reads stderr width', async () => {
+  await expect(
+    columns({ env: {}, terminal: terminal({ columns: 100 }, { columns: 60 }) }),
+  ).resolves.toEqual(written('100:whole', '60:wrapped', '100,60'));
 });
 
-test('a destination that is not a terminal reads no columns when the other one is a terminal', () => {
-  expect(
+test('a destination that is not a terminal reads no columns when the other one is a terminal', async () => {
+  await expect(
     columns({ env: {}, terminal: terminal({ columns: 100, isTTY: false }, { columns: 60 }) }),
-  ).toEqual(written('undefined:whole', '60:wrapped', '100,60'));
+  ).resolves.toEqual(written('undefined:whole', '60:wrapped', '100,60'));
 });
 
-test('a pipe reads no columns and wrap leaves the text whole, with COLUMNS set', () => {
-  expect(columns({}, { COLUMNS: '60' })).toEqual(
+test('a pipe reads no columns and wrap leaves the text whole, with COLUMNS set', async () => {
+  await expect(columns({}, { COLUMNS: '60' })).resolves.toEqual(
     written('undefined:whole', 'undefined:whole', 'undefined,undefined'),
   );
   const piped = terminal({ columns: 100, isTTY: false }, { columns: 100, isTTY: false });
-  expect(columns({ env: { COLUMNS: '60' }, terminal: piped })).toEqual(
+  await expect(columns({ env: { COLUMNS: '60' }, terminal: piped })).resolves.toEqual(
     written('undefined:whole', 'undefined:whole', '100,100'),
   );
 });
 
-test('an invocation by name reads no columns, with COLUMNS set', () => {
-  const result = columns({ scenario: 'invoke' }, { COLUMNS: '60' });
+test('an invocation by name reads no columns, with COLUMNS set', async () => {
+  const result = await columns({ scenario: 'invoke' }, { COLUMNS: '60' });
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout)).toEqual({
     messages: '',
@@ -58,8 +61,8 @@ test.each([
   ['150', 100],
   ['060', 60],
   ['100', 100],
-])('COLUMNS=%j narrows a terminal 100 columns wide to %i', (value, expected) => {
-  const result = columns({
+])('COLUMNS=%j narrows a terminal 100 columns wide to %i', async (value, expected) => {
+  const result = await columns({
     env: { COLUMNS: value },
     terminal: terminal({ columns: 100 }, { columns: 100 }),
   });
@@ -71,8 +74,8 @@ test.each([
 
 test.each([' 60', '+60', '60 ', '6e1', '0', 'abc', '-5', '60.5', '', '9007199254740992'])(
   'COLUMNS=%j is not a positive integer, so a terminal 100 columns wide reads 100',
-  (value) => {
-    const result = columns({
+  async (value) => {
+    const result = await columns({
       env: { COLUMNS: value },
       terminal: terminal({ columns: 100 }, { columns: 100 }),
     });
@@ -80,18 +83,18 @@ test.each([' 60', '+60', '60 ', '6e1', '0', 'abc', '-5', '60.5', '', '9007199254
   },
 );
 
-test('a terminal that reports no width reads a valid COLUMNS, and no columns without one', () => {
+test('a terminal that reports no width reads a valid COLUMNS, and no columns without one', async () => {
   const unknown = terminal({ columns: undefined }, { columns: undefined });
-  expect(columns({ env: { COLUMNS: '60' }, terminal: unknown })).toEqual(
+  await expect(columns({ env: { COLUMNS: '60' }, terminal: unknown })).resolves.toEqual(
     written('60:wrapped', '60:wrapped', 'undefined,undefined'),
   );
-  expect(columns({ env: {}, terminal: unknown })).toEqual(
+  await expect(columns({ env: {}, terminal: unknown })).resolves.toEqual(
     written('undefined:whole', 'undefined:whole', 'undefined,undefined'),
   );
 });
 
-test('core reads the width for each render call just before it calls the view', () => {
-  expect(columns({ argv: ['pieces'], scenario: 'fresh' })).toEqual({
+test('core reads the width for each render call just before it calls the view', async () => {
+  await expect(columns({ argv: ['pieces'], scenario: 'fresh' })).resolves.toEqual({
     status: 1,
     stderr: 'message:62:wrapped\ndraw:63:wrapped\nfailure:90:wrapped\n',
     stdout: [
@@ -105,24 +108,24 @@ test('core reads the width for each render call just before it calls the view', 
   });
 });
 
-test('a result render reads the width at its render', () => {
-  expect(columns({ argv: ['result'], scenario: 'fresh' })).toEqual({
+test('a result render reads the width at its render', async () => {
+  await expect(columns({ argv: ['result'], scenario: 'fresh' })).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'result:65:wrapped\n',
   });
 });
 
-test('a whole view over a sequence reads the width when it renders, after the source ends', () => {
-  expect(columns({ argv: ['whole'], scenario: 'fresh' })).toEqual({
+test('a whole view over a sequence reads the width when it renders, after the source ends', async () => {
+  await expect(columns({ argv: ['whole'], scenario: 'fresh' })).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'whole:81:wrapped\n',
   });
 });
 
-test('the incomplete-result line reads the width when it renders', () => {
-  const result = columns({ argv: ['stopped'], scenario: 'fresh' });
+test('the incomplete-result line reads the width when it renders', async () => {
+  const result = await columns({ argv: ['stopped'], scenario: 'fresh' });
   expect(result.stdout).toBe('a:30:wrapped\n');
   expect(result.stderr).toMatch(/^incomplete:44:wrapped\n/u);
 });
@@ -135,9 +138,9 @@ test.each([
   [['missing-command-name']],
 ])(
   "core's default failure text for %j stays one line per sentence on a narrow terminal",
-  (argv) => {
+  async (argv) => {
     for (const tty of [true, false]) {
-      const result = columns({ argv, scenario: 'failure', tty });
+      const result = await columns({ argv, scenario: 'failure', tty });
       expect(result.status).not.toBe(0);
       expect(result.stderr.trimEnd().length).toBeGreaterThan(20);
       expect(result.stderr.trimEnd()).not.toContain('\n');
@@ -156,9 +159,9 @@ test.each([
   { argv: ['refuse'], resolved: true },
 ])(
   'a nowrap frame in the default failure text of $argv resolves: $resolved',
-  ({ argv, resolved }) => {
+  async ({ argv, resolved }) => {
     for (const tty of [true, false]) {
-      const { stderr } = columns({ argv, scenario: 'failure', tty });
+      const { stderr } = await columns({ argv, scenario: 'failure', tty });
       expect(stderr).toContain('/Users/a/Application Support/x.json');
       expect(/[\uE000-\uE003]/u.test(stderr)).toBe(!resolved);
       expect(stderr.includes('["nowrap"]')).toBe(!resolved);
@@ -166,15 +169,15 @@ test.each([
   },
 );
 
-test('a failure view override receives the columns and wraps its own text', () => {
-  expect(columns({ argv: ['stop'], override: true, scenario: 'failure' })).toEqual({
+test('a failure view override receives the columns and wraps its own text', async () => {
+  await expect(columns({ argv: ['stop'], override: true, scenario: 'failure' })).resolves.toEqual({
     status: 1,
     stderr: '20|The configuration\nfile names a profile\nthat this machine\ndoes not have.\n',
     stdout: '',
   });
 });
 
-test('out.draw counts rows against the real stderr width, under COLUMNS and after a resize', () => {
-  const result = columns({ scenario: 'draw' });
+test('out.draw counts rows against the real stderr width, under COLUMNS and after a resize', async () => {
+  const result = await columns({ scenario: 'draw' });
   expect(JSON.parse(result.stdout)).toEqual({ counted: [1, 2], seen: [60, 40] });
 });

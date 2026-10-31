@@ -1,5 +1,5 @@
+import { readFileSync } from 'node:fs';
 // @module-tag docs
-
 /*
  * Acceptance plan for the marked-string wire contract (docs/maintaining/style-wire.md).
  *
@@ -161,54 +161,58 @@
  * file.
  */
 
-import { readFileSync } from 'node:fs';
-
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
-function styled(scenario: string) {
-  return invoke(new URL('fixtures/style.mjs', import.meta.url), [scenario]);
+async function styled(scenario: string) {
+  return await invokeFixture(new URL('fixtures/style.mjs', import.meta.url), [scenario]);
 }
 
-test('each run captures fresh capability facts and supplies one immutable view context', () => {
-  expect(styled('fresh')).toEqual({ status: 0, stderr: '', stdout: '\u001b[31mX\u001b[39mX' });
+test('each run captures fresh capability facts and supplies one immutable view context', async () => {
+  await expect(styled('fresh')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '\u001b[31mX\u001b[39mX',
+  });
 });
 
-test('styles compose as ordinary strings and restore the enclosing foreground', () => {
-  expect(styled('nesting')).toEqual({
+test('styles compose as ordinary strings and restore the enclosing foreground', async () => {
+  await expect(styled('nesting')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '\u001b[31mA\u001b[34mB\u001b[31mC\u001b[39m\n',
   });
 });
 
-test('one policy resolves stdout and stderr separately, with a prefix-free print lane', () => {
-  expect(styled('destinations')).toEqual({
+test('one policy resolves stdout and stderr separately, with a prefix-free print lane', async () => {
+  await expect(styled('destinations')).resolves.toEqual({
     status: 0,
     stderr: 'i \u001b[31mready\u001b[39m\n  next\n',
     stdout: 'plain\n',
   });
 });
 
-test('a theme contributes concrete chains and contextual names without changing glyph identity', () => {
-  expect(styled('theme')).toEqual({
+test('a theme contributes concrete chains and contextual names without changing glyph identity', async () => {
+  await expect(styled('theme')).resolves.toEqual({
     status: 0,
     stderr: '\u001b[32;1mi\u001b[39;22m ready\n',
     stdout: '\u001b[36mcustom\u001b[39m\n',
   });
 });
 
-function resolve(text: string, options: Record<string, unknown> = {}) {
-  return invoke(new URL('fixtures/resolve-style.mjs', import.meta.url), [
+async function resolve(text: string, options: Record<string, unknown> = {}) {
+  return await invokeFixture(new URL('fixtures/resolve-style.mjs', import.meta.url), [
     JSON.stringify({ text, ...options }),
   ]);
 }
 
 const redSpan = (body: string) => `\uE000["style",[["foreground","red"]]]\uE001${body}\uE002`;
 
-test('embedded ANSI resets restore enclosing Loom attributes and close at the call boundary', () => {
-  expect(resolve(redSpan('A\u001b[34mB\u001b[39mC'), { rendering: { color: 'always' } })).toEqual({
+test('embedded ANSI resets restore enclosing Loom attributes and close at the call boundary', async () => {
+  await expect(
+    resolve(redSpan('A\u001b[34mB\u001b[39mC'), { rendering: { color: 'always' } }),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '\u001b[31mA\u001b[34mB\u001b[31mC\u001b[39m',
@@ -217,41 +221,47 @@ test('embedded ANSI resets restore enclosing Loom attributes and close at the ca
 
 const bold = (body: string) => `\uE000["style",[["modifier","bold"]]]\uE001${body}\uE002`;
 
-test('preserved unmodeled SGR closes at each output boundary', () => {
+test('preserved unmodeled SGR closes at each output boundary', async () => {
   const rendering = { color: 'always', terminalControls: 'preserve' };
-  expect(resolve('', { rendering, texts: ['\u001b[5mblink', 'plain'] }).stdout).toBe(
-    '\u001b[5mblink\u001b[0mplain',
-  );
-  expect(resolve('\u009b5mX', { rendering }).stdout).toBe('\u001b[5mX\u001b[0m');
-  expect(resolve(redSpan('\u001b[5mX'), { rendering }).stdout).toBe(
-    '\u001b[31m\u001b[5mX\u001b[39m\u001b[0m',
-  );
+  await expect(
+    resolve('', { rendering, texts: ['\u001b[5mblink', 'plain'] }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('\u001b[5mblink\u001b[0mplain');
+  await expect(
+    resolve('\u009b5mX', { rendering }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[5mX\u001b[0m');
+  await expect(
+    resolve(redSpan('\u001b[5mX'), { rendering }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[31m\u001b[5mX\u001b[39m\u001b[0m');
 });
 
-test('closing a Loom frame restores outer raw and Loom attributes together', () => {
-  expect(
+test('closing a Loom frame restores outer raw and Loom attributes together', async () => {
+  await expect(
     resolve(redSpan(`A${bold('\u001b[34mB')}C`), {
       rendering: { color: 'always', modifiers: 'always' },
-    }).stdout,
-  ).toBe('\u001b[31mA\u001b[34;1mB\u001b[31;22mC\u001b[39m');
-  expect(resolve(`\u001b[34mA${redSpan('B')}C`, { rendering: { color: 'always' } }).stdout).toBe(
-    '\u001b[34mA\u001b[31mB\u001b[34mC\u001b[39m',
-  );
+    }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[31mA\u001b[34;1mB\u001b[31;22mC\u001b[39m');
+  await expect(
+    resolve(`\u001b[34mA${redSpan('B')}C`, { rendering: { color: 'always' } }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('\u001b[34mA\u001b[31mB\u001b[34mC\u001b[39m');
 });
 
-test('ANSI recognition spans removed Loom frames before policy filters a command', () => {
-  expect(
+test('ANSI recognition spans removed Loom frames before policy filters a command', async () => {
+  await expect(
     resolve(`\u001b[3${redSpan('1mX')}`, {
       rendering: { color: 'never', modifiers: 'never', terminalControls: 'preserve' },
     }),
-  ).toEqual({
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'X',
   });
-  expect(
+  await expect(
     resolve(`${redSpan('\u001b]0;hidden')}\u0007X`, { rendering: { color: 'always' } }),
-  ).toEqual({
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'X',
@@ -261,62 +271,91 @@ test('ANSI recognition spans removed Loom frames before policy filters a command
 const padded = (body: string, columns: number, align = 'left') =>
   `\uE000["pad",${columns},"${align}"]\uE001${body}\uE002`;
 
-test('interrupted ANSI prefixes cannot assemble forbidden commands', () => {
+test('interrupted ANSI prefixes cannot assemble forbidden commands', async () => {
   const rendering = { color: 'never', modifiers: 'never', terminalControls: 'preserve' };
-  expect(resolve('', { rendering, texts: ['\u001b[3\u001b', '1mX'] }).stdout).toBe('1mX');
-  expect(resolve('\u001b\u001b[31m[31mX', { rendering }).stdout).toBe('[31mX');
+  await expect(
+    resolve('', { rendering, texts: ['\u001b[3\u001b', '1mX'] }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('1mX');
+  await expect(
+    resolve('\u001b\u001b[31m[31mX', { rendering }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('[31mX');
 });
 
-test('padding preserves composed graphemes, CRLF, and terminal empty lines', () => {
-  expect(resolve(`${padded('👩', 0)}‍💻`, { measure: true }).stdout).toBe('2');
-  expect(resolve(padded(`👩${padded('‍💻', 0)}`, 3)).stdout).toBe('👩‍💻 ');
-  expect(resolve(padded(`\r${padded('\n', 0)}`, 5)).stdout).toBe('     \r\n');
-  expect(resolve(padded(`cat\n${padded('', 0)}`, 5)).stdout).toBe('cat  \n');
-  expect(resolve(`\r${padded('\n', 1)}`).stdout).toBe(' \r\n');
-  expect(resolve(padded('\u0600', 2)).stdout).toBe('\u0600  ');
+test('padding preserves composed graphemes, CRLF, and terminal empty lines', async () => {
+  await expect(
+    resolve(`${padded('👩', 0)}‍💻`, { measure: true }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('2');
+  await expect(
+    resolve(padded(`👩${padded('‍💻', 0)}`, 3)).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('👩‍💻 ');
+  await expect(
+    resolve(padded(`\r${padded('\n', 0)}`, 5)).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('     \r\n');
+  await expect(
+    resolve(padded(`cat\n${padded('', 0)}`, 5)).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('cat  \n');
+  await expect(
+    resolve(`\r${padded('\n', 1)}`).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe(' \r\n');
+  await expect(
+    resolve(padded('\u0600', 2)).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u0600  ');
 });
 
-test('zero-width terminal envelopes after a newline do not create a padded extra line', () => {
+test('zero-width terminal envelopes after a newline do not create a padded extra line', async () => {
   const linkOpen = '\u001b]8;;https://example.com\u001b\\';
   const linkClose = '\u001b]8;;\u001b\\';
-  expect(
-    resolve(padded(`${linkOpen}cat\n${linkClose}`, 5), { rendering: { hyperlinks: 'always' } })
-      .stdout,
-  ).toBe(`${linkOpen}cat  \n${linkClose}`);
-  expect(
-    resolve(padded('cat\n\u001b[0K', 5), { rendering: { terminalControls: 'preserve' } }).stdout,
-  ).toBe('cat  \n\u001b[0K');
+  await expect(
+    resolve(padded(`${linkOpen}cat\n${linkClose}`, 5), {
+      rendering: { hyperlinks: 'always' },
+    }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe(`${linkOpen}cat  \n${linkClose}`);
+  await expect(
+    resolve(padded('cat\n\u001b[0K', 5), {
+      rendering: { terminalControls: 'preserve' },
+    }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('cat  \n\u001b[0K');
 });
 
-test('padding spaces inherit the surrounding raw ANSI attributes', () => {
-  expect(resolve(`\u001b[34m${padded('X', 3)}`, { rendering: { color: 'always' } }).stdout).toBe(
-    '\u001b[34mX  \u001b[39m',
-  );
+test('padding spaces inherit the surrounding raw ANSI attributes', async () => {
+  await expect(
+    resolve(`\u001b[34m${padded('X', 3)}`, { rendering: { color: 'always' } }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('\u001b[34mX  \u001b[39m');
 });
 
-test('empty styled padding cannot change the scope of following text', () => {
+test('empty styled padding cannot change the scope of following text', async () => {
   const blue = '\uE000["style",[["foreground","blue"]]]\uE001X\uE002';
-  expect(resolve(`${redSpan(padded('', 3))}X`, { rendering: { color: 'always' } }).stdout).toBe(
-    '\u001b[31m   \u001b[39mX',
-  );
-  expect(
-    resolve(`${redSpan(padded('', 3))}${blue}`, { rendering: { color: 'always' } }).stdout,
-  ).toBe('\u001b[31m   \u001b[34mX\u001b[39m');
+  await expect(
+    resolve(`${redSpan(padded('', 3))}X`, { rendering: { color: 'always' } }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('\u001b[31m   \u001b[39mX');
+  await expect(
+    resolve(`${redSpan(padded('', 3))}${blue}`, { rendering: { color: 'always' } }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('\u001b[31m   \u001b[34mX\u001b[39m');
 });
 
-test('large empty boundaries and deep unchanged multiline padding stay bounded', () => {
-  expect(resolve(padded('', 0), { repeat: 100_000 })).toEqual({
+test('large empty boundaries and deep unchanged multiline padding stay bounded', async () => {
+  await expect(resolve(padded('', 0), { repeat: 100_000 })).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '',
   });
-  expect(
+  await expect(
     resolve('X\n', { measure: true, nest: { depth: 32_000, width: 0 }, repeat: 32_000 }),
-  ).toEqual({ status: 0, stderr: '', stdout: '1' });
-  expect(
+  ).resolves.toEqual({ status: 0, stderr: '', stdout: '1' });
+  await expect(
     resolve('X\n', { measure: true, nest: { depth: 10_000, width: 1 }, repeat: 10_000 }),
-  ).toEqual({ status: 0, stderr: '', stdout: '1' });
-  expect(resolve('\uE000', { measure: true, repeat: 100_000 })).toEqual({
+  ).resolves.toEqual({ status: 0, stderr: '', stdout: '1' });
+  await expect(resolve('\uE000', { measure: true, repeat: 100_000 })).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '100000',
@@ -327,15 +366,20 @@ test.each([
   ['reset', '39;49;22', '31;44;1'],
   ['resetForeground', '39', '31'],
   ['resetBackground', '49', '44'],
-])('scoped %s clears only the requested inherited attributes', (reset, clearing, restoring) => {
-  const inside = `\uE000["style",[["${reset}"]]]\uE001B\uE002`;
-  const text = `\uE000["style",[["foreground","red"],["background","blue"],["modifier","bold"]]]\uE001A${inside}C\uE002`;
-  expect(resolve(text, { rendering: { color: 'always', modifiers: 'always' } }).stdout).toBe(
-    `\u001b[31;44;1mA\u001b[${clearing}mB\u001b[${restoring}mC\u001b[39;49;22m`,
-  );
-});
+])(
+  'scoped %s clears only the requested inherited attributes',
+  async (reset, clearing, restoring) => {
+    const inside = `\uE000["style",[["${reset}"]]]\uE001B\uE002`;
+    const text = `\uE000["style",[["foreground","red"],["background","blue"],["modifier","bold"]]]\uE001A${inside}C\uE002`;
+    await expect(
+      resolve(text, { rendering: { color: 'always', modifiers: 'always' } }).then(
+        (fixtureResult) => fixtureResult.stdout,
+      ),
+    ).resolves.toBe(`\u001b[31;44;1mA\u001b[${clearing}mB\u001b[${restoring}mC\u001b[39;49;22m`);
+  },
+);
 
-test('every exported glyph matches the pinned main and compatibility catalog', () => {
+test('every exported glyph matches the pinned main and compatibility catalog', async () => {
   const catalog = readFileSync(
     new URL('../../../docs/maintaining/glyphs.md', import.meta.url),
     'utf8',
@@ -346,25 +390,33 @@ test('every exported glyph matches the pinned main and compatibility catalog', (
   expect(rows.length).toBeGreaterThan(70);
   const main = rows.map((row) => row.groups?.main).join('\n');
   const compat = rows.map((row) => row.groups?.compat).join('\n');
-  expect(resolve('', { env: { NO_COLOR: '1' }, glyph: 'all' }).stdout).toBe(main);
-  expect(resolve('', { env: { FORCE_COLOR: '1', TERM: 'linux' }, glyph: 'all' }).stdout).toBe(
-    compat,
-  );
+  await expect(
+    resolve('', { env: { NO_COLOR: '1' }, glyph: 'all' }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe(main);
+  await expect(
+    resolve('', { env: { FORCE_COLOR: '1', TERM: 'linux' }, glyph: 'all' }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe(compat);
 });
 
-test('padding resolves compatibility glyphs and measures Unicode columns, tabs, and lines', () => {
+test('padding resolves compatibility glyphs and measures Unicode columns, tabs, and lines', async () => {
   const radio = '\uE000["glyph","radioOn"]\uE001\uE002';
-  expect(resolve(padded(padded(radio, 5), 8, 'center'), { env: { TERM: 'linux' } })).toEqual({
+  await expect(
+    resolve(padded(padded(radio, 5), 8, 'center'), { env: { TERM: 'linux' } }),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: ' (*)    ',
   });
-  expect(resolve(padded('a\tb\r\n古\n\n', 11, 'right'))).toEqual({
+  await expect(resolve(padded('a\tb\r\n古\n\n', 11, 'right'))).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '  a       b\r\n         古\n           \n',
   });
-  expect(resolve('é👨‍👩‍👧‍👦🇺🇸\n古\ta', { measure: true })).toEqual({
+  await expect(resolve('é👨‍👩‍👧‍👦🇺🇸\n古\ta', { measure: true })).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '9',
@@ -373,29 +425,49 @@ test('padding resolves compatibility glyphs and measures Unicode columns, tabs, 
 
 const unbroken = (body: string) => `\uE000["nowrap"]\uE001${body}\uE002`;
 
-test('a no-wrap frame resolves to its body byte for byte and measures as its body', () => {
+test('a no-wrap frame resolves to its body byte for byte and measures as its body', async () => {
   const radio = '\uE000["glyph","radioOn"]\uE001\uE002';
   const color = { rendering: { color: 'always' } };
-  expect(resolve(unbroken(redSpan(`a\tb ${radio}`)), color).stdout).toBe(
-    '\u001b[31ma\tb ◉\u001b[39m',
-  );
-  expect(resolve(redSpan(`A${unbroken('B')}C`), color).stdout).toBe('\u001b[31mABC\u001b[39m');
-  expect(resolve(unbroken(radio), { env: { TERM: 'linux' } }).stdout).toBe('(*)');
-  expect(resolve(padded(unbroken('ab'), 4)).stdout).toBe('ab  ');
-  expect(resolve(unbroken(padded('ab', 4))).stdout).toBe('ab  ');
-  expect(resolve(unbroken('a\tb'), { measure: true }).stdout).toBe('9');
-  expect(resolve(unbroken(unbroken('a b'))).stdout).toBe('a b');
+  await expect(
+    resolve(unbroken(redSpan(`a\tb ${radio}`)), color).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('\u001b[31ma\tb ◉\u001b[39m');
+  await expect(
+    resolve(redSpan(`A${unbroken('B')}C`), color).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[31mABC\u001b[39m');
+  await expect(
+    resolve(unbroken(radio), { env: { TERM: 'linux' } }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('(*)');
+  await expect(
+    resolve(padded(unbroken('ab'), 4)).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('ab  ');
+  await expect(
+    resolve(unbroken(padded('ab', 4))).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('ab  ');
+  await expect(
+    resolve(unbroken('a\tb'), { measure: true }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('9');
+  await expect(
+    resolve(unbroken(unbroken('a b'))).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('a b');
   const malformed = '\uE000["nowrap",1]\uE001X\uE002';
-  expect(resolve(malformed).stdout).toBe(malformed);
+  await expect(resolve(malformed).then((fixtureResult) => fixtureResult.stdout)).resolves.toBe(
+    malformed,
+  );
 });
 
-test('nowrap builds the no-wrap frame and rejects a value that is not a string', () => {
-  expect(resolve('/Users/a/Application Support', { nowrap: true }).stdout).toBe(
-    '/Users/a/Application Support',
-  );
-  expect(resolve('', { nowrapProbe: true }).stdout).toBe(
-    `${unbroken('a b')}\nTypeError: Style helpers require a string.\n`,
-  );
+test('nowrap builds the no-wrap frame and rejects a value that is not a string', async () => {
+  await expect(
+    resolve('/Users/a/Application Support', { nowrap: true }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('/Users/a/Application Support');
+  await expect(
+    resolve('', { nowrapProbe: true }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe(`${unbroken('a b')}\nTypeError: Style helpers require a string.\n`);
 });
 
 const namedColors = [
@@ -419,18 +491,20 @@ const namedColors = [
 
 test.each(namedColors)(
   'the %s foreground and background preserve their terminal palette identity',
-  (name, code) => {
-    expect(
+  async (name, code) => {
+    await expect(
       resolve('X', {
         chain: [name],
         env: { COLORTERM: 'truecolor' },
         rendering: { color: 'always' },
-      }).stdout,
-    ).toBe(`\u001b[${code}mX\u001b[39m`);
+      }).then((fixtureResult) => fixtureResult.stdout),
+    ).resolves.toBe(`\u001b[${code}mX\u001b[39m`);
     const background = `bg${name.charAt(0).toUpperCase()}${name.slice(1)}`;
-    expect(resolve('X', { chain: [background], rendering: { color: 'always' } }).stdout).toBe(
-      `\u001b[${code + 10}mX\u001b[49m`,
-    );
+    await expect(
+      resolve('X', { chain: [background], rendering: { color: 'always' } }).then(
+        (fixtureResult) => fixtureResult.stdout,
+      ),
+    ).resolves.toBe(`\u001b[${code + 10}mX\u001b[49m`);
   },
 );
 
@@ -445,48 +519,55 @@ test.each([
   ['overline', 53, 55],
 ] as const)(
   '%s has an independent modifier policy and closes at the call boundary',
-  (name, on, off) => {
-    expect(
-      resolve('X', { chain: [name], rendering: { color: 'never', modifiers: 'always' } }).stdout,
-    ).toBe(`\u001b[${on}mX\u001b[${off}m`);
-    expect(resolve(`\u001b[${on}mX`, { rendering: { modifiers: 'never' }, tty: true }).stdout).toBe(
-      'X',
-    );
+  async (name, on, off) => {
+    await expect(
+      resolve('X', {
+        chain: [name],
+        rendering: { color: 'never', modifiers: 'always' },
+      }).then((fixtureResult) => fixtureResult.stdout),
+    ).resolves.toBe(`\u001b[${on}mX\u001b[${off}m`);
+    await expect(
+      resolve(`\u001b[${on}mX`, { rendering: { modifiers: 'never' }, tty: true }).then(
+        (fixtureResult) => fixtureResult.stdout,
+      ),
+    ).resolves.toBe('X');
   },
 );
 
-test('color helpers normalize input and degrade to the nearest indexed color', () => {
-  expect(
+test('color helpers normalize input and degrade to the nearest indexed color', async () => {
+  await expect(
     resolve('X', {
       chain: [['hex', '#F00']],
       env: { COLORTERM: 'truecolor' },
       rendering: { color: 'always' },
-    }).stdout,
-  ).toBe('\u001b[38;2;255;0;0mX\u001b[39m');
-  expect(
+    }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[38;2;255;0;0mX\u001b[39m');
+  await expect(
     resolve('X', {
       chain: [['rgb', 255, 0, 0]],
       env: { TERM: 'xterm-256color' },
       rendering: { color: 'always' },
-    }).stdout,
-  ).toBe('\u001b[91mX\u001b[39m');
-  expect(resolve('X', { chain: [['ansi256', 196]], rendering: { color: 'always' } }).stdout).toBe(
-    '\u001b[91mX\u001b[39m',
-  );
-  expect(
+    }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[91mX\u001b[39m');
+  await expect(
+    resolve('X', { chain: [['ansi256', 196]], rendering: { color: 'always' } }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('\u001b[91mX\u001b[39m');
+  await expect(
     resolve('X', {
       chain: [['bgHex', '#123']],
       env: { COLORTERM: '24bit' },
       rendering: { color: 'always' },
-    }).stdout,
-  ).toBe('\u001b[48;2;17;34;51mX\u001b[49m');
-  expect(
+    }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[48;2;17;34;51mX\u001b[49m');
+  await expect(
     resolve('X', {
       chain: [['bgAnsi256', 196]],
       env: { TERM_PROGRAM: 'Apple_Terminal' },
       rendering: { color: 'always' },
-    }).stdout,
-  ).toBe('\u001b[48;5;196mX\u001b[49m');
+    }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[48;5;196mX\u001b[49m');
 });
 
 test.each(
@@ -498,8 +579,8 @@ test.each(
     [['ansi256', -1]],
     [['bgRgb', 0, 0, 999]],
   ].map((chain) => ({ chain })),
-)('invalid color helper input is rejected before rendering: %j', ({ chain }) => {
-  const result = resolve('X', { chain });
+)('invalid color helper input is rejected before rendering: %j', async ({ chain }) => {
+  const result = await resolve('X', { chain });
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toMatch(/Color channels|Hex colors/u);
@@ -516,8 +597,8 @@ test.each([
   [{ FORCE_COLOR: '' }, false, false, false],
 ] as const)(
   'automatic color and modifier policy uses captured facts %j, tty %s',
-  (env, tty, color, modifier) => {
-    const result = resolve('X', { chain: ['red', 'bold'], env, tty });
+  async (env, tty, color, modifier) => {
+    const result = await resolve('X', { chain: ['red', 'bold'], env, tty });
     const starts = [color ? 31 : undefined, modifier ? 1 : undefined].filter(
       (value) => value !== undefined,
     );
@@ -532,46 +613,58 @@ test.each([
   },
 );
 
-test('invocation policy overrides supplied fields and explicit auto restores detection', () => {
-  expect(
+test('invocation policy overrides supplied fields and explicit auto restores detection', async () => {
+  await expect(
     resolve('X', {
       chain: ['red', 'bold'],
       rendering: { color: 'always', modifiers: 'always' },
       runRendering: { color: 'auto' },
-    }).stdout,
-  ).toBe('\u001b[1mX\u001b[22m');
-  expect(
+    }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[1mX\u001b[22m');
+  await expect(
     resolve('X', {
       chain: ['red', 'bold'],
       env: { NO_COLOR: '1' },
       rendering: { color: 'never', modifiers: 'always' },
       runRendering: { color: 'always' },
-    }).stdout,
-  ).toBe('\u001b[31;1mX\u001b[39;22m');
+    }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[31;1mX\u001b[39;22m');
 });
 
 const link = '\u001b]8;;https://example.test\u001b\\label\u001b]8;;\u001b\\';
 
-test('hyperlinks and general terminal controls have independent policies', () => {
-  expect(resolve(`${link}\u001b[2J\u0007`).stdout).toBe('label');
-  expect(resolve(`${link}\u001b[2J\u0007`, { rendering: { hyperlinks: 'always' } }).stdout).toBe(
-    link,
-  );
-  expect(
-    resolve(`${link}\u001b[2J\u0007`, { rendering: { terminalControls: 'preserve' } }).stdout,
-  ).toBe('label\u001b[2J\u0007');
-  expect(resolve('\u001b]8;;https://example.test\u001b\\X', { tty: true }).stdout).toBe(
-    '\u001b]8;;https://example.test\u001b\\X\u001b]8;;\u001b\\',
-  );
-  expect(resolve(link, { measure: true, tty: true }).stdout).toBe('5');
+test('hyperlinks and general terminal controls have independent policies', async () => {
+  await expect(
+    resolve(`${link}\u001b[2J\u0007`).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('label');
+  await expect(
+    resolve(`${link}\u001b[2J\u0007`, { rendering: { hyperlinks: 'always' } }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe(link);
+  await expect(
+    resolve(`${link}\u001b[2J\u0007`, { rendering: { terminalControls: 'preserve' } }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('label\u001b[2J\u0007');
+  await expect(
+    resolve('\u001b]8;;https://example.test\u001b\\X', { tty: true }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('\u001b]8;;https://example.test\u001b\\X\u001b]8;;\u001b\\');
+  await expect(
+    resolve(link, { measure: true, tty: true }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('5');
 });
 
 test.each(['\u001b[3', '\u001b', '\u001b]0;hidden', '\u001bPpayload', '\u009d0;hidden'])(
   'incomplete ANSI is discarded even when controls are preserved: %j',
-  (raw) => {
-    expect(
-      resolve('', { rendering: { terminalControls: 'preserve' }, texts: [raw, '1mX'] }).stdout,
-    ).toBe('1mX');
+  async (raw) => {
+    await expect(
+      resolve('', { rendering: { terminalControls: 'preserve' }, texts: [raw, '1mX'] }).then(
+        (fixtureResult) => fixtureResult.stdout,
+      ),
+    ).resolves.toBe('1mX');
   },
 );
 
@@ -580,18 +673,24 @@ test.each([
   '\u001bPpayload\u001b\\',
   '\u001b_payload\u001b\\',
   '\u009d0;hidden\u009c',
-])('control payload is opaque and completely filtered: %j', (raw) => {
-  expect(resolve(`${raw}X`).stdout).toBe('X');
-  expect(resolve(`${raw}X`, { measure: true }).stdout).toBe('1');
+])('control payload is opaque and completely filtered: %j', async (raw) => {
+  await expect(resolve(`${raw}X`).then((fixtureResult) => fixtureResult.stdout)).resolves.toBe('X');
+  await expect(
+    resolve(`${raw}X`, { measure: true }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('1');
 });
 
-test('literal escaping decodes once while malformed frames retain their data', () => {
+test('literal escaping decodes once while malformed frames retain their data', async () => {
   const literal = '\uE000\uE001\uE002\uE003';
-  expect(resolve(literal, { escapeTimes: 1 }).stdout).toBe(literal);
-  expect(resolve(literal, { escapeTimes: 2 }).stdout).toBe(
-    '\uE003E000\uE003E001\uE003E002\uE003E003',
-  );
-  expect(resolve(redSpan('X'), { escapeTimes: 1 }).stdout).toBe(redSpan('X'));
+  await expect(
+    resolve(literal, { escapeTimes: 1 }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe(literal);
+  await expect(
+    resolve(literal, { escapeTimes: 2 }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\uE003E000\uE003E001\uE003E002\uE003E003');
+  await expect(
+    resolve(redSpan('X'), { escapeTimes: 1 }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe(redSpan('X'));
   for (const input of [
     '\uE000["glyph","tick"]\uE001KEEP\uE002',
     '\uE000["glyph","missing"]\uE001\uE002',
@@ -601,47 +700,54 @@ test('literal escaping decodes once while malformed frames retain their data', (
     '\uE003E004',
     '\uE001\uE002',
   ]) {
-    expect(resolve(input).stdout).toBe(input);
-    expect(resolve(input, { measure: true }).stdout).toBe(String(input.length));
+    await expect(resolve(input).then((fixtureResult) => fixtureResult.stdout)).resolves.toBe(input);
+    await expect(
+      resolve(input, { measure: true }).then((fixtureResult) => fixtureResult.stdout),
+    ).resolves.toBe(String(input.length));
   }
-  expect(
-    resolve('\uE000["style",[["foreground","red"]]]\uE001X', { rendering: { color: 'always' } })
-      .stdout,
-  ).toBe('\u001b[31mX\u001b[39m');
+  await expect(
+    resolve('\uE000["style",[["foreground","red"]]]\uE001X', {
+      rendering: { color: 'always' },
+    }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[31mX\u001b[39m');
 });
 
-test('two plugins that claim the theme slot are a fault, and one theme resolves its entries', () => {
-  const result = resolve('X', { themes: [{}, {}] });
+test('two plugins that claim the theme slot are a fault, and one theme resolves its entries', async () => {
+  const result = await resolve('X', { themes: [{}, {}] });
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toMatch(/theme slot/u);
-  expect(resolve('X', { contextKey: 'identifier', themes: [{ identifier: null }] }).stdout).toBe(
-    'X',
-  );
-  expect(
+  await expect(
+    resolve('X', { contextKey: 'identifier', themes: [{ identifier: null }] }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('X');
+  await expect(
     resolve('X', {
       contextKey: 'identifier',
       rendering: { color: 'always', modifiers: 'always' },
       themes: [{ identifier: ['cyan', 'bold'] }],
-    }).stdout,
-  ).toBe('\u001b[36;1mX\u001b[39;22m');
+    }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[36;1mX\u001b[39;22m');
 });
 
 test.each([
   [{}, '32'],
   [{ TERM: 'xterm-256color' }, '38;5;108'],
   [{ COLORTERM: 'truecolor' }, '38;2;122;143;123'],
-])('explicit RGB fallbacks select only the destination depth %j', (env, code) => {
-  expect(
+])('explicit RGB fallbacks select only the destination depth %j', async (env, code) => {
+  await expect(
     resolve('X', {
       chain: [['hex', '#7A8F7B', { ansi16: 'green', ansi256: 108 }]],
       env: { FORCE_COLOR: '1', ...env },
     }),
-  ).toEqual({ status: 0, stderr: '', stdout: `\u001b[${code}mX\u001b[39m` });
+  ).resolves.toEqual({ status: 0, stderr: '', stdout: `\u001b[${code}mX\u001b[39m` });
 });
 
-test('fallback helpers validate at construction and copy accepted values', () => {
-  expect(invoke(new URL('fixtures/color-fallbacks.mjs', import.meta.url))).toEqual({
+test('fallback helpers validate at construction and copy accepted values', async () => {
+  await expect(
+    invokeFixture(new URL('fixtures/color-fallbacks.mjs', import.meta.url)),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'validated and copied\n',
@@ -653,19 +759,19 @@ test.each([
   [[{}], '90', '90'],
   [[{ ansi256: 108 }], '90', '38;5;108'],
   [[{ ansi16: 'green' }], '32', '90'],
-])('fallbacks %j never affect another depth', (options, ansi16, ansi256) => {
+])('fallbacks %j never affect another depth', async (options, ansi16, ansi256) => {
   for (const [env, code] of [
     [{}, ansi16],
     [{ TERM: 'xterm-256color' }, ansi256],
     [{ COLORTERM: 'truecolor' }, '38;2;122;143;123'],
   ] as const) {
-    expect(
+    await expect(
       resolve('X', {
         chain: [['rgb', 122, 143, 123, ...options]],
         env,
         rendering: { color: 'always' },
-      }).stdout,
-    ).toBe(`\u001b[${code}mX\u001b[39m`);
+      }).then((fixtureResult) => fixtureResult.stdout),
+    ).resolves.toBe(`\u001b[${code}mX\u001b[39m`);
   }
 });
 
@@ -687,51 +793,68 @@ test.each([
     '48;2;122;143;123',
     '49',
   ],
-])('color helper %j uses explicit fallbacks', (helper, ansi16, ansi256, truecolor, reset) => {
+])('color helper %j uses explicit fallbacks', async (helper, ansi16, ansi256, truecolor, reset) => {
   for (const [env, code] of [
     [{}, ansi16],
     [{ TERM: 'xterm-256color' }, ansi256],
     [{ COLORTERM: 'truecolor' }, truecolor],
   ] as const) {
-    expect(resolve('X', { chain: [helper], env, rendering: { color: 'always' } }).stdout).toBe(
-      `\u001b[${code}mX\u001b[${reset}m`,
-    );
+    await expect(
+      resolve('X', { chain: [helper], env, rendering: { color: 'always' } }).then(
+        (fixtureResult) => fixtureResult.stdout,
+      ),
+    ).resolves.toBe(`\u001b[${code}mX\u001b[${reset}m`);
   }
 });
 
-test('whole-color replacement and background composition preserve independent choices', () => {
+test('whole-color replacement and background composition preserve independent choices', async () => {
   const sage = ['hex', '#7A8F7B', { ansi16: 'green', ansi256: 108 }];
-  expect(resolve('X', { chain: [sage, 'blue'], rendering: { color: 'always' } }).stdout).toBe(
-    '\u001b[34mX\u001b[39m',
-  );
-  expect(
+  await expect(
+    resolve('X', { chain: [sage, 'blue'], rendering: { color: 'always' } }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('\u001b[34mX\u001b[39m');
+  await expect(
     resolve('X', {
       chain: [sage, ['bgHex', '#C04532', { ansi16: 'red' }]],
       rendering: { color: 'always' },
-    }).stdout,
-  ).toBe('\u001b[32;41mX\u001b[39;49m');
-  expect(resolve('X', { chain: [sage], env: { NO_COLOR: '1' }, tty: true }).stdout).toBe('X');
-  expect(resolve('X', { chain: [sage] }).stdout).toBe('X');
+    }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('\u001b[32;41mX\u001b[39;49m');
+  await expect(
+    resolve('X', { chain: [sage], env: { NO_COLOR: '1' }, tty: true }).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toBe('X');
+  await expect(
+    resolve('X', { chain: [sage] }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('X');
 });
 
 test.each([
   [{}, '32', '42'],
   [{ TERM: 'xterm-256color' }, '38;5;108', '48;5;108'],
   [{ COLORTERM: 'truecolor' }, '38;2;122;143;123', '48;2;122;143;123'],
-])('nested and embedded resets restore fallback colors at %j', (env, foreground, background) => {
-  const options = {
-    chain: [
-      ['hex', '#7A8F7B', { ansi16: 'green', ansi256: 108 }],
-      ['bgHex', '#7A8F7B', { ansi16: 'green', ansi256: 108 }],
-      'bold',
-    ],
-    env,
-    rendering: { color: 'always', modifiers: 'always' },
-  };
-  expect(resolve(`A${redSpan('B')}C\u001b[34;45mD\u001b[0mE`, options).stdout).toBe(
-    `\u001b[${foreground};${background};1mA\u001b[31mB\u001b[${foreground}mC\u001b[34;45mD\u001b[${foreground};${background}mE\u001b[39;49;22m`,
-  );
-});
+])(
+  'nested and embedded resets restore fallback colors at %j',
+  async (env, foreground, background) => {
+    const options = {
+      chain: [
+        ['hex', '#7A8F7B', { ansi16: 'green', ansi256: 108 }],
+        ['bgHex', '#7A8F7B', { ansi16: 'green', ansi256: 108 }],
+        'bold',
+      ],
+      env,
+      rendering: { color: 'always', modifiers: 'always' },
+    };
+    await expect(
+      resolve(`A${redSpan('B')}C\u001b[34;45mD\u001b[0mE`, options).then(
+        (fixtureResult) => fixtureResult.stdout,
+      ),
+    ).resolves.toBe(
+      `\u001b[${foreground};${background};1mA\u001b[31mB\u001b[${foreground}mC\u001b[34;45mD\u001b[${foreground};${background}mE\u001b[39;49;22m`,
+    );
+  },
+);
 
 test.each([
   ['rgb', 122, 143, 123, { ansi16: null }],
@@ -745,10 +868,12 @@ test.each([
   ['ansi256', 108, { ansi16: null }],
   ['ansi256', 108, null],
   ['ansi256', 108, {}, {}],
-])('malformed fallback wire color %j stays literal and measurable', (...color) => {
+])('malformed fallback wire color %j stays literal and measurable', async (...color) => {
   const text = `\uE000${JSON.stringify(['style', [['foreground', color]]])}\uE001X\uE002`;
-  expect(resolve(text).stdout).toBe(text);
-  expect(resolve(text, { measure: true }).stdout).toBe(String(text.length));
+  await expect(resolve(text).then((fixtureResult) => fixtureResult.stdout)).resolves.toBe(text);
+  await expect(
+    resolve(text, { measure: true }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe(String(text.length));
 });
 
 test.each([
@@ -758,10 +883,12 @@ test.each([
   [['ansi256', 108], '90'],
   [['ansi256', 108, {}], '90'],
   [['ansi256', 108, { ansi16: 'green' }], '32'],
-])('valid wire color %j resolves through output and width', (color, code) => {
+])('valid wire color %j resolves through output and width', async (color, code) => {
   const text = `\uE000${JSON.stringify(['style', [['foreground', color]]])}\uE001X\uE002`;
-  expect(resolve(text, { rendering: { color: 'always' } }).stdout).toBe(
-    `\u001b[${code}mX\u001b[39m`,
-  );
-  expect(resolve(text, { measure: true }).stdout).toBe('1');
+  await expect(
+    resolve(text, { rendering: { color: 'always' } }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe(`\u001b[${code}mX\u001b[39m`);
+  await expect(
+    resolve(text, { measure: true }).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toBe('1');
 });

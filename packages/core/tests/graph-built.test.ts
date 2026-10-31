@@ -1,3 +1,4 @@
+import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for judging the built graph (docs/core/lifecycle-hooks.md#judging-the-built-graph).
  *
@@ -16,9 +17,7 @@
  * - Types. The negative type checks reject a hook that returns a value.
  */
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/plugins/graph-built.mjs', import.meta.url);
 
@@ -30,8 +29,8 @@ interface Ran {
 }
 
 /** The fixture's JSON report for one scenario, under the build it names. */
-function report(scenario: string, build = 'distributed'): string {
-  const result = invoke(fixture, [scenario, build]);
+async function report(scenario: string, build = 'distributed'): Promise<string> {
+  const result = await invokeFixture(fixture, [scenario, build]);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return result.stdout;
@@ -44,8 +43,8 @@ interface Rejected {
   ran: Ran;
 }
 
-test('every hook runs once per run(), inspect(), and app.invoke(), in installation order, never for an action invoke', () => {
-  expect(JSON.parse(report('order'))).toEqual({
+test('every hook runs once per run(), inspect(), and app.invoke(), in installation order, never for an action invoke', async () => {
+  expect(JSON.parse(await report('order'))).toEqual({
     calls: [
       {
         commands: ['', 'doctor', 'count', 'caller'],
@@ -68,8 +67,8 @@ test('every hook runs once per run(), inspect(), and app.invoke(), in installati
   });
 });
 
-test("a hook's DeclarationError fails run() with exit 1, stops later hooks, and runs no onFailure hook", () => {
-  const distributed: Rejected = JSON.parse(report('reject'));
+test("a hook's DeclarationError fails run() with exit 1, stops later hooks, and runs no onFailure hook", async () => {
+  const distributed: Rejected = JSON.parse(await report('reject'));
   expect(distributed.ran).toEqual({
     exitCode: 1,
     stderr: 'probe: Something went wrong.\n',
@@ -79,35 +78,35 @@ test("a hook's DeclarationError fails run() with exit 1, stops later hooks, and 
   expect(distributed.inspected).toContain('Commands "a" and "b" share one description.');
 });
 
-test("a hook's DeclarationError prints as its own Developer Diagnostic in a development build", () => {
-  const development: Rejected = JSON.parse(report('reject', 'development'));
+test("a hook's DeclarationError prints as its own Developer Diagnostic in a development build", async () => {
+  const development: Rejected = JSON.parse(await report('reject', 'development'));
   expect(development.ran.exitCode).toBe(1);
   expect(development.ran.stderr).toMatch(
     /^-- TWO COMMANDS SHARE ONE DESCRIPTION -+ @fixture\/judge\/shared-name\n\nCommands "a" and "b" share one description\.\n/u,
   );
 });
 
-test('a hook that throws reports broken-graph-hook with exit 1', () => {
-  const distributed: Ran = JSON.parse(report('broken'));
+test('a hook that throws reports broken-graph-hook with exit 1', async () => {
+  const distributed: Ran = JSON.parse(await report('broken'));
   expect(distributed).toEqual({
     exitCode: 1,
     stderr: 'probe: Something went wrong.\n',
     stdout: '',
   });
-  const development: Ran = JSON.parse(report('broken', 'development'));
+  const development: Ran = JSON.parse(await report('broken', 'development'));
   expect(development.exitCode).toBe(1);
   expect(development.stderr).toMatch(
     /^-- BROKEN GRAPH HOOK -+ @loomcli\/core\/broken-graph-hook\n/u,
   );
 });
 
-test("a broken hook's fault keeps the value the hook threw as its cause", () => {
-  expect(JSON.parse(report('cause'))).toEqual({ cause: true });
+test("a broken hook's fault keeps the value the hook threw as its cause", async () => {
+  expect(JSON.parse(await report('cause'))).toEqual({ cause: true });
 });
 
-test('the graph is frozen: a write throws, a caught write leaves the graph unchanged, and an uncaught one is a broken hook', () => {
+test('the graph is frozen: a write throws, a caught write leaves the graph unchanged, and an uncaught one is a broken hook', async () => {
   const frozen: { quiet: Ran; seen: string[]; unguarded: Ran } = JSON.parse(
-    report('frozen', 'development'),
+    await report('frozen', 'development'),
   );
   expect(frozen.seen).toEqual(['threw']);
   expect(frozen.quiet).toEqual({ exitCode: 0, stderr: '', stdout: '1\n' });

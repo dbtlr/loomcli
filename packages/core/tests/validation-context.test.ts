@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** The fixture encodes a declared `undefined` as this marker, which JSON alone cannot carry. */
 const none = '#undefined';
@@ -8,8 +8,8 @@ const none = '#undefined';
 /** The fixture overrides the captured cwd, so the echoed host is the one the action receives. */
 const cwd = '/loom/context';
 
-function context(scenario: string, argv: string[] = []) {
-  const result = invoke(new URL('fixtures/validation-context.mjs', import.meta.url), [
+async function context(scenario: string, argv: string[] = []) {
+  const result = await invokeFixture(new URL('fixtures/validation-context.mjs', import.meta.url), [
     scenario,
     ...argv,
   ]);
@@ -18,7 +18,7 @@ function context(scenario: string, argv: string[] = []) {
   return JSON.parse(result.stdout);
 }
 
-test('every invocation validator call reads the routed path, passthrough, and supplied tokens', () => {
+test('every invocation validator call reads the routed path, passthrough, and supplied tokens', async () => {
   const argv = [
     '--mode',
     'fast',
@@ -56,7 +56,7 @@ test('every invocation validator call reads the routed path, passthrough, and su
     },
     suppliedKey: true,
   };
-  expect(context('root', argv)).toEqual({
+  await expect(context('root', argv)).resolves.toEqual({
     records: [
       {
         context: { ...shared, input: { global: true, kind: 'option', name: 'mode' } },
@@ -98,7 +98,7 @@ test('every invocation validator call reads the routed path, passthrough, and su
   });
 });
 
-test('a nested Command reports its whole route and its own supplied inputs', () => {
+test('a nested Command reports its whole route and its own supplied inputs', async () => {
   const argv = ['cache', 'clear', '--force', 'yes', '--mode', 'fast'];
   const shared = {
     command: ['cache', 'clear'],
@@ -108,7 +108,7 @@ test('a nested Command reports its whole route and its own supplied inputs', () 
     supplied: { args: {}, options: { force: 'yes', mode: 'fast' } },
     suppliedKey: true,
   };
-  expect(context('nested', argv)).toEqual({
+  await expect(context('nested', argv)).resolves.toEqual({
     records: [
       {
         context: { ...shared, input: { global: true, kind: 'option', name: 'mode' } },
@@ -125,7 +125,7 @@ test('a nested Command reports its whole route and its own supplied inputs', () 
   });
 });
 
-test('a route walked through aliases reports the canonical names', () => {
+test('a route walked through aliases reports the canonical names', async () => {
   const argv = ['c', 'cl', '--force', 'yes', '--mode', 'fast'];
   const shared = {
     command: ['cache', 'clear'],
@@ -135,7 +135,7 @@ test('a route walked through aliases reports the canonical names', () => {
     supplied: { args: {}, options: { force: 'yes', mode: 'fast' } },
     suppliedKey: true,
   };
-  expect(context('nested', argv)).toEqual({
+  await expect(context('nested', argv)).resolves.toEqual({
     records: [
       {
         context: { ...shared, input: { global: true, kind: 'option', name: 'mode' } },
@@ -152,10 +152,10 @@ test('a route walked through aliases reports the canonical names', () => {
   });
 });
 
-test('a default validates in its own phase, with the host and no supplied inputs', () => {
+test('a default validates in its own phase, with the host and no supplied inputs', async () => {
   const argv = ['--size', '2'];
   const host = { argv, cwd };
-  expect(context('default', argv)).toEqual({
+  await expect(context('default', argv)).resolves.toEqual({
     records: [
       {
         context: {
@@ -185,16 +185,16 @@ test('a default validates in its own phase, with the host and no supplied inputs
   });
 });
 
-test('a schema another caller runs, and a foreign carrier, read no context', () => {
-  expect(context('direct')).toEqual({
+test('a schema another caller runs, and a foreign carrier, read no context', async () => {
+  await expect(context('direct')).resolves.toEqual({
     foreign: null,
     none: null,
     records: [{ context: null, label: 'direct', value: 'value' }],
   });
 });
 
-test('the context is a snapshot, so a validator that writes to it changes nothing', () => {
-  expect(context('snapshot', ['a', 'b', '--multi', 'x', '--', 'tail'])).toEqual({
+test('the context is a snapshot, so a validator that writes to it changes nothing', async () => {
+  await expect(context('snapshot', ['a', 'b', '--multi', 'x', '--', 'tail'])).resolves.toEqual({
     args: { files: ['a', 'b'] },
     options: { multi: ['x'] },
     passthrough: ['tail'],
@@ -202,9 +202,9 @@ test('the context is a snapshot, so a validator that writes to it changes nothin
   });
 });
 
-test('a Zod schema validates as it does without the context', () => {
-  expect(context('zod', ['--size', '12'])).toEqual({ size: 12 });
-  const failed = invoke(new URL('fixtures/validation-context.mjs', import.meta.url), [
+test('a Zod schema validates as it does without the context', async () => {
+  await expect(context('zod', ['--size', '12'])).resolves.toEqual({ size: 12 });
+  const failed = await invokeFixture(new URL('fixtures/validation-context.mjs', import.meta.url), [
     'zod',
     '--size',
     'bad',

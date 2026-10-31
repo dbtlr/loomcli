@@ -1,11 +1,45 @@
-import { Application, plugin, processHandle } from '@loomcli/core';
+import { Application, plugin } from '@loomcli/core';
 
+import { scenario as fixtureScenario } from '../scenario.mjs';
 import { configKey } from '../sources/extension.mjs';
+import { sourceModule } from '../sources/source.mjs';
 
-/**
- * A plugin that reports the spellings its middleware reads, and whether the record is frozen.
- * `level` is bound to a variable, `from` to the configuration source, and `mode` has a default.
- */
+/** Runs a fresh fixture scenario with only the supplied process facts. */
+async function runFixture(fixtureWords, fixtureOptions = {}) {
+  const fixture = fixtureScenario({ ...fixtureOptions, argv: fixtureWords });
+  const { createProcess, env: fixtureEnv, stdout: writeStdout } = fixture;
+  try {
+    const config = () =>
+      plugin('@fixture/config', {
+        extensions: [configKey],
+        source: {
+          binding: configKey,
+          load: () => sourceModule({ abort: () => {}, env: fixtureEnv, stdout: writeStdout }),
+        },
+      });
+    /**
+     * A plugin that reports the spellings its middleware reads, and whether the record is frozen.
+     * `level` is bound to a variable, `from` to the configuration source, and `mode` has a default.
+     */
+
+    /** Another plugin's option, which the spelled plugin never reads. */
+
+    /** The configuration source, which answers `from` out of `FIXTURE_SETTINGS`. */
+
+    const code = await new Application('app', { plugins: [config(), spelled(), neighbor()] })
+      .globalOption('file', { short: 'F', type: 'string' })
+      .option('local', { type: 'boolean' })
+      .action(({ out }) => out.print('root'))
+      .run({ process: createProcess({ argv: fixtureWords }) });
+    writeStdout(`resolved:${code}\n`);
+  } catch (error) {
+    if (error !== fixture.stopped) {
+      fixture.thrown(error);
+    }
+  }
+  return fixture.result();
+}
+
 const spelled = () =>
   plugin('@fixture/spelled', {
     middleware: {
@@ -30,20 +64,6 @@ const spelled = () =>
       quiet: { short: 'q', type: 'boolean' },
     },
   });
-
-/** Another plugin's option, which the spelled plugin never reads. */
 const neighbor = () => plugin('@fixture/neighbor', { options: { loud: { type: 'boolean' } } });
 
-/** The configuration source, which answers `from` out of `FIXTURE_SETTINGS`. */
-const config = () =>
-  plugin('@fixture/config', {
-    extensions: [configKey],
-    source: { binding: configKey, load: () => import('../sources/source.mjs') },
-  });
-
-const code = await new Application('app', { plugins: [config(), spelled(), neighbor()] })
-  .globalOption('file', { short: 'F', type: 'string' })
-  .option('local', { type: 'boolean' })
-  .action(({ out }) => out.print('root'))
-  .run({ process: processHandle({ argv: process.argv.slice(2) }) });
-process.stdout.write(`resolved:${code}\n`);
+export { runFixture as run };

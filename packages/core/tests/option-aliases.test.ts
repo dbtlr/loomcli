@@ -1,16 +1,16 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/option-aliases.mjs', import.meta.url);
 
-function sizes(argv: string[], env: Record<string, string> = {}) {
-  return invoke(fixture, ['run', ...argv], { env });
+async function sizes(argv: string[], env: Record<string, string> = {}) {
+  return await invokeFixture(fixture, ['run', ...argv], { env });
 }
 
 /** The values the root action received, for an invocation that dispatched. */
-function received(argv: string[], env: Record<string, string> = {}): unknown {
-  const result = sizes(argv, env);
+async function received(argv: string[], env: Record<string, string> = {}): Promise<unknown> {
+  const result = await sizes(argv, env);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return JSON.parse(result.stdout).options;
@@ -31,8 +31,8 @@ test.each([
   [['--debug'], { trace: true }],
 ] satisfies [string[], Record<string, unknown>][])(
   'an alias binds the option it belongs to %j',
-  (argv, values) => {
-    expect(received(argv)).toEqual({ ...unset, ...values });
+  async (argv, values) => {
+    await expect(received(argv)).resolves.toEqual({ ...unset, ...values });
   },
 );
 
@@ -43,30 +43,30 @@ test.each([
   [['--silent'], 'Unknown option "--silent".'],
 ] satisfies [string[], string][])(
   'a fault the parser finds names the typed alias %j',
-  (argv, sentence) => {
-    const result = sizes(argv);
+  async (argv, sentence) => {
+    const result = await sizes(argv);
     expect(result.status).toBe(2);
     expect(result.stderr).toContain(`sizes: ${sentence}`);
   },
 );
 
-test('a typed alias is the flag, so it wins over the variable its option binds', () => {
-  expect(received(['--minimum', '1'], { SIZES_MIN_BYTES: '5' })).toEqual({
+test('a typed alias is the flag, so it wins over the variable its option binds', async () => {
+  await expect(received(['--minimum', '1'], { SIZES_MIN_BYTES: '5' })).resolves.toEqual({
     ...unset,
     'min-bytes': '1',
   });
 });
 
-test('validation names the option by its own long spelling whichever alias supplied it', () => {
-  expect(sizes(['--minimum', 'x'])).toEqual({
+test('validation names the option by its own long spelling whichever alias supplied it', async () => {
+  await expect(sizes(['--minimum', 'x'])).resolves.toEqual({
     status: 2,
     stderr: 'sizes: Option "--min-bytes": Use a whole number.\n',
     stdout: '',
   });
 });
 
-test('inspection reports the declared aliases beside the spellings the declared name derives', () => {
-  const result = invoke(fixture, ['inspect']);
+test('inspection reports the declared aliases beside the spellings the declared name derives', async () => {
+  const result = await invokeFixture(fixture, ['inspect']);
   expect(result.stderr).toBe('');
   expect(JSON.parse(result.stdout)).toEqual({
     globals: [
@@ -88,15 +88,17 @@ test.each([
   [['--input', 'doc.json', 'li'], { kind: 'command', prefix: 'li' }],
 ] satisfies [string[], Record<string, string>][])(
   'locate reads a typed alias as the parser does %j',
-  (words, position) => {
-    const result = invoke(fixture, ['locate', ...words]);
+  async (words, position) => {
+    const result = await invokeFixture(fixture, ['locate', ...words]);
     expect(result.stderr).toBe('');
     expect(JSON.parse(result.stdout)).toEqual(position);
   },
 );
 
-test('an alias an option already answers to adds nothing, and the option keeps every spelling', () => {
-  expect(invoke(fixture, ['repeated', '--minimum', '5', '--no-color'])).toEqual({
+test('an alias an option already answers to adds nothing, and the option keeps every spelling', async () => {
+  await expect(
+    invokeFixture(fixture, ['repeated', '--minimum', '5', '--no-color']),
+  ).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: [

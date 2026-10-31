@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 interface Report {
   args: Record<string, unknown>;
@@ -9,20 +9,26 @@ interface Report {
   passthrough: string[];
 }
 
-function invokeCommands(argv: string[]) {
+async function invokeCommands(argv: string[]) {
   // The fixture prefix prevents Bun from consuming a leading passthrough delimiter.
-  return invoke(new URL('fixtures/commands.mjs', import.meta.url), ['invoke', ...argv]);
+  return await invokeFixture(new URL('fixtures/commands.mjs', import.meta.url), [
+    'invoke',
+    ...argv,
+  ]);
 }
 
-function report(argv: string[]): Report {
-  const result = invokeCommands(argv);
+async function report(argv: string[]): Promise<Report> {
+  const result = await invokeCommands(argv);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return JSON.parse(result.stdout);
 }
 
-function invokeGraph(scenario: string, argv: string[] = []) {
-  const result = invoke(new URL('fixtures/graph.mjs', import.meta.url), [scenario, ...argv]);
+async function invokeGraph(scenario: string, argv: string[] = []) {
+  const result = await invokeFixture(new URL('fixtures/graph.mjs', import.meta.url), [
+    scenario,
+    ...argv,
+  ]);
   expect(result.stderr).toBe('');
   return JSON.parse(result.stdout);
 }
@@ -38,8 +44,13 @@ test.each([
   [['--file', 'data.json', 'keys'], 'keys', {}, { file: 'data.json', quiet: false }],
 ] satisfies [string[], string, Record<string, unknown>, Record<string, unknown>][])(
   'routes %j to its Command with the global and local values',
-  (argv, command, args, options) => {
-    expect(report(argv)).toEqual({ args, command, options, passthrough: [] });
+  async (argv, command, args, options) => {
+    await expect(report(argv)).resolves.toEqual({
+      args,
+      command,
+      options,
+      passthrough: [],
+    });
   },
 );
 
@@ -49,26 +60,20 @@ test.each([
   [['get', 'a.b', '--file', 'data.json']],
   [['get', 'a.b', '--file=data.json']],
   [['-f', 'data.json', 'get', 'a.b']],
-] satisfies [string[]][])('accepts a global before, between, or after routing in %j', (argv) => {
-  expect(report(argv)).toEqual({
-    args: { path: 'a.b' },
-    command: 'get',
-    options: { file: 'data.json', quiet: false, raw: false },
-    passthrough: [],
-  });
-});
+] satisfies [string[]][])(
+  'accepts a global before, between, or after routing in %j',
+  async (argv) => {
+    await expect(report(argv)).resolves.toEqual({
+      args: { path: 'a.b' },
+      command: 'get',
+      options: { file: 'data.json', quiet: false, raw: false },
+      passthrough: [],
+    });
+  },
+);
 
-test('consumes an all-global short group and leaves local letters to the Command', () => {
-  expect(report(['-qf', 'data.json', 'get', '-r', 'a.b'])).toEqual({
-    args: { path: 'a.b' },
-    command: 'get',
-    options: { file: 'data.json', quiet: true, raw: true },
-    passthrough: [],
-  });
-});
-
-test('accepts a local option strictly after its own argument', () => {
-  expect(report(['-qf', 'data.json', 'get', 'a.b', '-r'])).toEqual({
+test('consumes an all-global short group and leaves local letters to the Command', async () => {
+  await expect(report(['-qf', 'data.json', 'get', '-r', 'a.b'])).resolves.toEqual({
     args: { path: 'a.b' },
     command: 'get',
     options: { file: 'data.json', quiet: true, raw: true },
@@ -76,8 +81,17 @@ test('accepts a local option strictly after its own argument', () => {
   });
 });
 
-test('a local option on a root with children commits to the root action', () => {
-  expect(report(['--file', 'data.json', '--pretty'])).toEqual({
+test('accepts a local option strictly after its own argument', async () => {
+  await expect(report(['-qf', 'data.json', 'get', 'a.b', '-r'])).resolves.toEqual({
+    args: { path: 'a.b' },
+    command: 'get',
+    options: { file: 'data.json', quiet: true, raw: true },
+    passthrough: [],
+  });
+});
+
+test('a local option on a root with children commits to the root action', async () => {
+  await expect(report(['--file', 'data.json', '--pretty'])).resolves.toEqual({
     args: {},
     command: 'root',
     options: { file: 'data.json', pretty: true, quiet: false },
@@ -85,8 +99,8 @@ test('a local option on a root with children commits to the root action', () => 
   });
 });
 
-test('a global value wins over a token that also names a child', () => {
-  expect(report(['--file', 'keys', 'get', 'name'])).toEqual({
+test('a global value wins over a token that also names a child', async () => {
+  await expect(report(['--file', 'keys', 'get', 'name'])).resolves.toEqual({
     args: { path: 'name' },
     command: 'get',
     options: { file: 'keys', quiet: false, raw: false },
@@ -94,8 +108,10 @@ test('a global value wins over a token that also names a child', () => {
   });
 });
 
-test('words after the first bare -- are never read as global options', () => {
-  expect(report(['--file', 'data.json', 'get', 'a.b', '--', '--file', 'other', '-qf'])).toEqual({
+test('words after the first bare -- are never read as global options', async () => {
+  await expect(
+    report(['--file', 'data.json', 'get', 'a.b', '--', '--file', 'other', '-qf']),
+  ).resolves.toEqual({
     args: { path: 'a.b' },
     command: 'get',
     options: { file: 'data.json', quiet: false, raw: false },
@@ -103,8 +119,8 @@ test('words after the first bare -- are never read as global options', () => {
   });
 });
 
-test('a validated global reaches the action as its schema output', () => {
-  expect(report(['--file', 'data.json', '--limit', '12', 'keys'])).toEqual({
+test('a validated global reaches the action as its schema output', async () => {
+  await expect(report(['--file', 'data.json', '--limit', '12', 'keys'])).resolves.toEqual({
     args: {},
     command: 'keys',
     options: { file: 'data.json', limit: 12, quiet: false },
@@ -161,26 +177,29 @@ test.each([
     'Option "--limit": Use decimal digits.\njsonkit: Argument "path" requires a value. Supply a value for "path".',
   ],
   [['--file', 'data.json', '--limit', 'abc', 'keys'], 'Option "--limit": Use decimal digits.'],
-] satisfies [string[], string][])('rejects %j without dispatch', (argv, reason) => {
-  const result = invokeCommands(argv);
+] satisfies [string[], string][])('rejects %j without dispatch', async (argv, reason) => {
+  const result = await invokeCommands(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toBe(`jsonkit: ${reason}\n`);
 });
 
-function invokeAuthoring(scenario: string, argv: string[] = []) {
-  return invoke(new URL('fixtures/authoring.mjs', import.meta.url), [scenario, ...argv]);
+async function invokeAuthoring(scenario: string, argv: string[] = []) {
+  return await invokeFixture(new URL('fixtures/authoring.mjs', import.meta.url), [
+    scenario,
+    ...argv,
+  ]);
 }
 
-function authoringReport(scenario: string, argv: string[] = []) {
-  const result = invokeAuthoring(scenario, argv);
+async function authoringReport(scenario: string, argv: string[] = []) {
+  const result = await invokeAuthoring(scenario, argv);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return JSON.parse(result.stdout);
 }
 
-function invokeOrder(argv: string[]) {
-  return invoke(new URL('fixtures/order.mjs', import.meta.url), argv);
+async function invokeOrder(argv: string[]) {
+  return await invokeFixture(new URL('fixtures/order.mjs', import.meta.url), argv);
 }
 
 test.each([
@@ -198,8 +217,8 @@ test.each([
   ['plain', ['keys'], { args: {}, command: 'keys', options: {} }],
 ] satisfies [string, string[], Record<string, unknown>][])(
   'runs the %s declaration with %j',
-  (scenario, argv, expected) => {
-    expect(authoringReport(scenario, argv)).toEqual(expected);
+  async (scenario, argv, expected) => {
+    await expect(authoringReport(scenario, argv)).resolves.toEqual(expected);
   },
 );
 
@@ -214,16 +233,16 @@ test.each([
   ['plain', ['ls'], 'plain: Unknown command "ls". Use one of: keys.'],
 ] satisfies [string, string[], string][])(
   'leaves the %s receiver without the later declaration for %j',
-  (scenario, argv, line) => {
-    const result = invokeAuthoring(scenario, argv);
+  async (scenario, argv, line) => {
+    const result = await invokeAuthoring(scenario, argv);
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
     expect(result.stderr).toBe(`${line}\n`);
   },
 );
 
-test('validation reports the globals in authoring order, then the Command declarations', () => {
-  const result = invokeOrder(['order', '--alpha', 'a', '--beta', 'b', '--local', 'l', 'x']);
+test('validation reports the globals in authoring order, then the Command declarations', async () => {
+  const result = await invokeOrder(['order', '--alpha', 'a', '--beta', 'b', '--local', 'l', 'x']);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toBe(
@@ -237,8 +256,8 @@ test('validation reports the globals in authoring order, then the Command declar
   );
 });
 
-test('scalar arguments bind the positional tokens in declaration order', () => {
-  const result = invokeOrder(['pair', 'a', 'b']);
+test('scalar arguments bind the positional tokens in declaration order', async () => {
+  const result = await invokeOrder(['pair', 'a', 'b']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   expect(result.stdout).toBe('{"one":"a","two":"b"}\n');
@@ -247,8 +266,8 @@ test('scalar arguments bind the positional tokens in declaration order', () => {
 test.each([
   [['pair', 'a'], 'Argument "two" requires a value. Supply a value for "two".'],
   [['pair', 'a', 'b', 'd'], 'Command "pair" accepts 2 arguments. Remove the extra values.'],
-] satisfies [string[], string][])('rejects the scalar invocation %j', (argv, reason) => {
-  const result = invokeOrder(argv);
+] satisfies [string[], string][])('rejects the scalar invocation %j', async (argv, reason) => {
+  const result = await invokeOrder(argv);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toBe(`order: ${reason}\n`);
@@ -359,8 +378,10 @@ test.each([
   ],
 ] satisfies [string, string][])(
   'the call that makes the %s graph wrong throws before any build',
-  (scenario, reason) => {
-    expect(invoke(new URL('fixtures/graph.mjs', import.meta.url), [scenario, 'get'])).toEqual({
+  async (scenario, reason) => {
+    await expect(
+      invokeFixture(new URL('fixtures/graph.mjs', import.meta.url), [scenario, 'get']),
+    ).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: `thrown:1: ${reason}\n`,
@@ -375,8 +396,10 @@ test.each([
   ['digit-application-name', ['get']],
 ] satisfies [string, string[]][])(
   'a name of portable filename characters is accepted in the %s graph',
-  (scenario, argv) => {
-    expect(invoke(new URL('fixtures/graph.mjs', import.meta.url), [scenario, ...argv])).toEqual({
+  async (scenario, argv) => {
+    await expect(
+      invokeFixture(new URL('fixtures/graph.mjs', import.meta.url), [scenario, ...argv]),
+    ).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: 'dispatched\n{"chunks":[],"code":0}\n',
@@ -384,8 +407,8 @@ test.each([
   },
 );
 
-test('a declared default on a child Command is validated before any token is parsed', () => {
-  expect(invokeGraph('child-invalid-default')).toEqual({
+test('a declared default on a child Command is validated before any token is parsed', async () => {
+  await expect(invokeGraph('child-invalid-default')).resolves.toEqual({
     chunks: ['graph: Something went wrong.\n'],
     code: 1,
   });

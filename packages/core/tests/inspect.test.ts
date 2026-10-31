@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** The fixture encodes a declared `undefined` as this marker, which JSON alone cannot carry. */
 const none = '#undefined';
@@ -19,8 +19,11 @@ const owned = {
   schema: null,
 };
 
-function invokeInspect(graph: string, mode = 'json') {
-  const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), [graph, mode]);
+async function invokeInspect(graph: string, mode = 'json') {
+  const result = await invokeFixture(new URL('fixtures/inspect.mjs', import.meta.url), [
+    graph,
+    mode,
+  ]);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return JSON.parse(result.stdout);
@@ -40,8 +43,8 @@ const leaf = {
   result: null,
 };
 
-test('inspects a graph of globals, a root action, and three children', () => {
-  expect(invokeInspect('jsonkit')).toEqual({
+test('inspects a graph of globals, a root action, and three children', async () => {
+  await expect(invokeInspect('jsonkit')).resolves.toEqual({
     configuration: null,
     description: none,
     globals: [
@@ -161,12 +164,12 @@ test('inspects a graph of globals, a root action, and three children', () => {
   });
 });
 
-test('an explicit version of 0.0.0 inspects identically to an omitted version', () => {
-  expect(invokeInspect('jsonkit-versioned')).toEqual(invokeInspect('jsonkit'));
+test('an explicit version of 0.0.0 inspects identically to an omitted version', async () => {
+  await expect(invokeInspect('jsonkit-versioned')).resolves.toEqual(await invokeInspect('jsonkit'));
 });
 
-test('reports the version and every declared description, and the root reports the graph one', () => {
-  expect(invokeInspect('described')).toEqual({
+test('reports the version and every declared description, and the root reports the graph one', async () => {
+  await expect(invokeInspect('described')).resolves.toEqual({
     configuration: null,
     description: 'Reads a JSON document.',
     globals: [
@@ -250,8 +253,8 @@ test('reports the version and every declared description, and the root reports t
   });
 });
 
-test('reports hidden and deprecated on every Command and option, and neither on the root', () => {
-  expect(invokeInspect('listing')).toEqual({
+test('reports hidden and deprecated on every Command and option, and neither on the root', async () => {
+  await expect(invokeInspect('listing')).resolves.toEqual({
     configuration: null,
     description: none,
     globals: [
@@ -341,8 +344,8 @@ test('reports hidden and deprecated on every Command and option, and neither on 
   });
 });
 
-test('inspects a group at two named levels below the root', () => {
-  expect(invokeInspect('nested')).toEqual({
+test('inspects a group at two named levels below the root', async () => {
+  await expect(invokeInspect('nested')).resolves.toEqual({
     configuration: null,
     description: none,
     globals: [],
@@ -386,9 +389,12 @@ test('inspects a group at two named levels below the root', () => {
   });
 });
 
-test('reports the declared result on every Command, and null where none is declared', () => {
-  const children = invokeInspect('results').root.children.map(
-    (child: { name: string; result: unknown }) => [child.name, child.result],
+test('reports the declared result on every Command, and null where none is declared', async () => {
+  const children = await invokeInspect('results').then((fixtureResult) =>
+    fixtureResult.root.children.map((child: { name: string; result: unknown }) => [
+      child.name,
+      child.result,
+    ]),
   );
   expect(children).toEqual([
     ['count', { default: 'table', kind: 'value', mediaTypes: { table: null }, views: ['table'] }],
@@ -405,11 +411,15 @@ test('reports the declared result on every Command, and null where none is decla
     ],
     ['plain', null],
   ]);
-  expect(invokeInspect('results').root.result).toBeNull();
+  await expect(
+    invokeInspect('results').then((fixtureResult) => fixtureResult.root.result),
+  ).resolves.toBeNull();
 });
 
-test('reports the accepted spellings of each polarity and of a short-only option', () => {
-  expect(invokeInspect('polarity').root.options).toEqual([
+test('reports the accepted spellings of each polarity and of a short-only option', async () => {
+  await expect(
+    invokeInspect('polarity').then((fixtureResult) => fixtureResult.root.options),
+  ).resolves.toEqual([
     {
       ...owned,
       color: false,
@@ -467,8 +477,10 @@ test('reports the accepted spellings of each polarity and of a short-only option
   ]);
 });
 
-test('reads each spelling role from the table, including a name that begins with "no-"', () => {
-  expect(invokeInspect('roles').root.options).toEqual([
+test('reads each spelling role from the table, including a name that begins with "no-"', async () => {
+  await expect(
+    invokeInspect('roles').then((fixtureResult) => fixtureResult.root.options),
+  ).resolves.toEqual([
     {
       ...owned,
       color: false,
@@ -502,8 +514,8 @@ test('reads each spelling role from the table, including a name that begins with
   ]);
 });
 
-test('wraps a declared default and leaves an undeclared one undefined', () => {
-  const root = invokeInspect('defaults').root;
+test('wraps a declared default and leaves an undeclared one undefined', async () => {
+  const root = await invokeInspect('defaults').then((fixtureResult) => fixtureResult.root);
   expect(root.options).toEqual([
     {
       ...owned,
@@ -574,8 +586,8 @@ test('wraps a declared default and leaves an undeclared one undefined', () => {
   ]);
 });
 
-test('reports the option and the argument that validate their own omission', () => {
-  const root = invokeInspect('omission').root;
+test('reports the option and the argument that validate their own omission', async () => {
+  const root = await invokeInspect('omission').then((fixtureResult) => fixtureResult.root);
   expect(root.options).toEqual([
     {
       ...owned,
@@ -628,16 +640,18 @@ test('reports the option and the argument that validate their own omission', () 
   ]);
 });
 
-test('throws a DeclarationError a consumer catches by class, without run()', () => {
-  expect(invokeInspect('invalid', 'catch')).toEqual({
+test('throws a DeclarationError a consumer catches by class, without run()', async () => {
+  await expect(invokeInspect('invalid', 'catch')).resolves.toEqual({
     caught: true,
     message: 'The root Command has no action. Register an action.',
     name: 'DeclarationError',
   });
 });
 
-test('reports an optional variadic argument with its declared default', () => {
-  expect(invokeInspect('tails').root.arguments).toEqual([
+test('reports an optional variadic argument with its declared default', async () => {
+  await expect(
+    invokeInspect('tails').then((fixtureResult) => fixtureResult.root.arguments),
+  ).resolves.toEqual([
     {
       ...bare,
       default: { value: ['a'] },
@@ -651,9 +665,11 @@ test('reports an optional variadic argument with its declared default', () => {
   ]);
 });
 
-test('inspect() leaves a default that only its validator rejects to run()', () => {
-  expect(invokeInspect('schema-default', 'catch')).toEqual({ caught: false });
-  const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), [
+test('inspect() leaves a default that only its validator rejects to run()', async () => {
+  await expect(invokeInspect('schema-default', 'catch')).resolves.toEqual({
+    caught: false,
+  });
+  const result = await invokeFixture(new URL('fixtures/inspect.mjs', import.meta.url), [
     'schema-default',
     'run',
   ]);
@@ -661,14 +677,17 @@ test('inspect() leaves a default that only its validator rejects to run()', () =
   expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
 });
 
-test('run() still reports a build fault with code 1', () => {
-  const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url), ['invalid', 'run']);
+test('run() still reports a build fault with code 1', async () => {
+  const result = await invokeFixture(new URL('fixtures/inspect.mjs', import.meta.url), [
+    'invalid',
+    'run',
+  ]);
   expect(result.stderr).toBe('invalid: Something went wrong.\n');
   expect(JSON.parse(result.stdout)).toEqual({ code: 1 });
 });
 
-test('returns frozen data and builds a new graph on each call', () => {
-  expect(invokeInspect('jsonkit', 'freeze')).toEqual({
+test('returns frozen data and builds a new graph on each call', async () => {
+  await expect(invokeInspect('jsonkit', 'freeze')).resolves.toEqual({
     attempts: [
       { label: 'name', rejected: true },
       { label: 'globals', rejected: true },

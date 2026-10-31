@@ -1,21 +1,25 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
-function failures(scenario: string, argv: string[] = [], env: Record<string, string> = {}) {
-  return invoke(new URL('fixtures/failures.mjs', import.meta.url), [scenario, ...argv], { env });
+async function failures(scenario: string, argv: string[] = [], env: Record<string, string> = {}) {
+  return await invokeFixture(
+    new URL('fixtures/failures.mjs', import.meta.url),
+    [scenario, ...argv],
+    { env },
+  );
 }
 
 /** The override serializes the failure, so a test reads the facts it received. */
-function reported(argv: string[], scenario = 'usage', status = 2): unknown {
-  const result = failures(scenario, argv);
+async function reported(argv: string[], scenario = 'usage', status = 2): Promise<unknown> {
+  const result = await failures(scenario, argv);
   expect(result.stdout).toBe(`resolved:${status}\n`);
   expect(result.status).toBe(status);
   return JSON.parse(result.stderr);
 }
 
-test('an unknown command reaches the view with its token and the callable names', () => {
-  expect(reported(['-f', 'x', 'nope'])).toEqual({
+test('an unknown command reaches the view with its token and the callable names', async () => {
+  await expect(reported(['-f', 'x', 'nope'])).resolves.toEqual({
     candidates: ['get', 'cache'],
     exitCode: 2,
     message: 'Unknown command "nope". Use one of: get, cache.',
@@ -24,8 +28,8 @@ test('an unknown command reaches the view with its token and the callable names'
   });
 });
 
-test('a group names the routed path and the children that answer', () => {
-  expect(reported(['-f', 'x', 'cache'])).toEqual({
+test('a group names the routed path and the children that answer', async () => {
+  await expect(reported(['-f', 'x', 'cache'])).resolves.toEqual({
     candidates: ['keys'],
     command: ['cache'],
     exitCode: 2,
@@ -34,8 +38,8 @@ test('a group names the routed path and the children that answer', () => {
   });
 });
 
-test('extra positional tokens name the routed path, the count accepted, and the extras', () => {
-  expect(reported(['-f', 'x', 'get', 'a', 'b'])).toEqual({
+test('extra positional tokens name the routed path, the count accepted, and the extras', async () => {
+  await expect(reported(['-f', 'x', 'get', 'a', 'b'])).resolves.toEqual({
     accepted: 1,
     command: ['get'],
     exitCode: 2,
@@ -108,13 +112,13 @@ test.each([
   ],
 ] satisfies [string[], Record<string, unknown>][])(
   'a token fault reaches the view with the facts its sentence names for %j',
-  (argv, expected) => {
-    expect(reported(argv)).toEqual({ exitCode: 2, ...expected });
+  async (argv, expected) => {
+    await expect(reported(argv)).resolves.toEqual({ exitCode: 2, ...expected });
   },
 );
 
-test('an omitted option and an omitted required argument aggregate as one input failure', () => {
-  expect(reported(['get'], 'required')).toEqual({
+test('an omitted option and an omitted required argument aggregate as one input failure', async () => {
+  await expect(reported(['get'], 'required')).resolves.toEqual({
     exitCode: 2,
     message:
       'Argument "path" requires a value. Supply a value for "path".\nOption "--depth" is required. Supply a value.',
@@ -134,8 +138,8 @@ test('an omitted option and an omitted required argument aggregate as one input 
   });
 });
 
-test('a rejected scalar carries its identity, spelling, and the issues the schema returned', () => {
-  expect(reported(['-f', 'x', 'get', 'a', '-d', 'abc'])).toEqual({
+test('a rejected scalar carries its identity, spelling, and the issues the schema returned', async () => {
+  await expect(reported(['-f', 'x', 'get', 'a', '-d', 'abc'])).resolves.toEqual({
     exitCode: 2,
     message: 'Option "--depth": Use decimal digits.',
     name: 'InputError',
@@ -150,8 +154,8 @@ test('a rejected scalar carries its identity, spelling, and the issues the schem
   });
 });
 
-test('a shortOnly option is named by the spelling an operator would type', () => {
-  expect(reported(['-f', 'x', 'get', 'a', '-m', 'fast'])).toEqual({
+test('a shortOnly option is named by the spelling an operator would type', async () => {
+  await expect(reported(['-f', 'x', 'get', 'a', '-m', 'fast'])).resolves.toEqual({
     exitCode: 2,
     message: 'Option "-m": Use fast or slow.',
     name: 'InputError',
@@ -166,8 +170,8 @@ test('a shortOnly option is named by the spelling an operator would type', () =>
   });
 });
 
-test('a rejected value in a multiple option is reported at its position, with its own fields', () => {
-  expect(reported(['-f', 'x', 'get', 'a', '-F', 'ok', '-F', ''])).toEqual({
+test('a rejected value in a multiple option is reported at its position, with its own fields', async () => {
+  await expect(reported(['-f', 'x', 'get', 'a', '-F', 'ok', '-F', ''])).resolves.toEqual({
     exitCode: 2,
     message: 'Option "--field" at 1: Supply a field name.',
     name: 'InputError',
@@ -192,26 +196,26 @@ test('a rejected value in a multiple option is reported at its position, with it
   });
 });
 
-test('resolution takes the most derived override and falls back to the base one', () => {
-  expect(failures('derived', ['get'])).toEqual({
+test('resolution takes the most derived override and falls back to the base one', async () => {
+  await expect(failures('derived', ['get'])).resolves.toEqual({
     status: 2,
     stderr: 'input: Argument "path" requires a value. Supply a value for "path".\n',
     stdout: 'resolved:2\n',
   });
-  expect(failures('derived', ['-f', 'x', 'nope'])).toEqual({
+  await expect(failures('derived', ['-f', 'x', 'nope'])).resolves.toEqual({
     status: 2,
     stderr: 'usage: Unknown command "nope". Use one of: get, cache.\n',
     stdout: 'resolved:2\n',
   });
 });
 
-test('an override for a fatal subclass answers it without answering the base', () => {
-  expect(failures('fatal')).toEqual({
+test('an override for a fatal subclass answers it without answering the base', async () => {
+  await expect(failures('fatal')).resolves.toEqual({
     status: 1,
     stderr: 'config: Config is unreadable.\n',
     stdout: 'resolved:1\n',
   });
-  expect(failures('fatal-base')).toEqual({
+  await expect(failures('fatal-base')).resolves.toEqual({
     status: 1,
     stderr: 'Expected failure.\n',
     stdout: 'resolved:1\n',
@@ -221,28 +225,32 @@ test('an override for a fatal subclass answers it without answering the base', (
 test.each([
   ['internal', 'internal: Unexpected failure.\n'],
   ['declaration', 'declaration: The root Command has no action.\n'],
-])('an author-facing %s failure reaches its override', (scenario, stderr) => {
-  expect(failures(scenario)).toEqual({ status: 1, stderr, stdout: 'resolved:1\n' });
+])('an author-facing %s failure reaches its override', async (scenario, stderr) => {
+  await expect(failures(scenario)).resolves.toEqual({
+    status: 1,
+    stderr,
+    stdout: 'resolved:1\n',
+  });
 });
 
-test('a view failure the action never awaited is reported through the registry with its cause', () => {
-  expect(failures('render-failure')).toEqual({
+test('a view failure the action never awaited is reported through the registry with its cause', async () => {
+  await expect(failures('render-failure')).resolves.toEqual({
     status: 1,
     stderr: 'internal: Cannot render the failure. (cause: Cannot render the failure.)\n',
     stdout: 'resolved:1\n',
   });
 });
 
-test('two overrides for one class in one contributor resolve to the first', () => {
-  expect(failures('duplicate', ['get'])).toEqual({
+test('two overrides for one class in one contributor resolve to the first', async () => {
+  await expect(failures('duplicate', ['get'])).resolves.toEqual({
     status: 2,
     stderr: 'one: Argument "path" requires a value. Supply a value for "path".\n',
     stdout: 'resolved:2\n',
   });
 });
 
-test('a validator that rejects without an explanation reports the placeholder issue', () => {
-  expect(failures('empty-issues', ['--tag', 'x'])).toEqual({
+test('a validator that rejects without an explanation reports the placeholder issue', async () => {
+  await expect(failures('empty-issues', ['--tag', 'x'])).resolves.toEqual({
     status: 2,
     stderr:
       'issue: The validator rejected this value without an explanation. Supply a different value.\n',
@@ -259,8 +267,8 @@ const rightToLeftEscape = String.raw`\u202e`;
 /** A developer emoji: a zero-width joiner between two emoji, which is ordinary text. */
 const developer = '\u{1f469}\u{200d}\u{1f4bb}';
 
-test('the default text opens a usage failure with the application name', () => {
-  expect(failures('default', ['-f', 'x', 'nope'])).toEqual({
+test('the default text opens a usage failure with the application name', async () => {
+  await expect(failures('default', ['-f', 'x', 'nope'])).resolves.toEqual({
     status: 2,
     stderr: 'failures: Unknown command "nope". Use one of: get, cache.\n',
     stdout: 'resolved:2\n',
@@ -280,13 +288,17 @@ test.each([
   ],
 ])(
   'the default text opens every problem line of %s with the application name',
-  (_subject, argv, stderr) => {
-    expect(failures('default', argv)).toEqual({ status: 2, stderr, stdout: 'resolved:2\n' });
+  async (_subject, argv, stderr) => {
+    await expect(failures('default', argv)).resolves.toEqual({
+      status: 2,
+      stderr,
+      stdout: 'resolved:2\n',
+    });
   },
 );
 
-test('the plain fallback path opens every problem line with the application name', () => {
-  expect(failures('broken-usage', ['get', 'x', '-d', 'abc', '-m', 'fast'])).toEqual({
+test('the plain fallback path opens every problem line with the application name', async () => {
+  await expect(failures('broken-usage', ['get', 'x', '-d', 'abc', '-m', 'fast'])).resolves.toEqual({
     status: 1,
     stderr:
       'failures: Option "--depth": Use decimal digits.\nfailures: Option "-m": Use fast or slow.\nfailures: Something went wrong.\n',
@@ -315,43 +327,47 @@ test.each([
     ['get', 'x', '--key', `a${rightToLeft}b`],
     `failures: Option "--key" at a${rightToLeftEscape}b: Supply a known key.\n`,
   ],
-])('the default text escapes a right-to-left override in %s', (_subject, argv, stderr) => {
-  expect(failures('default', argv)).toEqual({ status: 2, stderr, stdout: 'resolved:2\n' });
+])('the default text escapes a right-to-left override in %s', async (_subject, argv, stderr) => {
+  await expect(failures('default', argv)).resolves.toEqual({
+    status: 2,
+    stderr,
+    stdout: 'resolved:2\n',
+  });
 });
 
-test('the default text keeps a zero-width joiner inside an emoji as it is', () => {
-  expect(failures('default', [developer])).toEqual({
+test('the default text keeps a zero-width joiner inside an emoji as it is', async () => {
+  await expect(failures('default', [developer])).resolves.toEqual({
     status: 2,
     stderr: `failures: Unknown command "${developer}". Use one of: get, cache.\n`,
     stdout: 'resolved:2\n',
   });
 });
 
-test('a failure keeps the raw token while its sentence escapes it', () => {
-  expect(reported([`a${rightToLeft}b`])).toEqual({
+test('a failure keeps the raw token while its sentence escapes it', async () => {
+  await expect(reported([`a${rightToLeft}b`])).resolves.toEqual({
     candidates: ['get', 'cache'],
     exitCode: 2,
     message: `Unknown command "a${rightToLeftEscape}b". Use one of: get, cache.`,
     name: 'UnknownCommandError',
     token: `a${rightToLeft}b`,
   });
-  expect(reported([`-q${rightToLeft}`])).toMatchObject({
+  await expect(reported([`-q${rightToLeft}`])).resolves.toMatchObject({
     message: `Unknown option "-${rightToLeftEscape}". Supply a declared option; prefix a hyphenated path with "./".`,
     name: 'UnknownOptionError',
     spelling: `-${rightToLeft}`,
   });
-  expect(reported(['get', 'x', `--a${rightToLeft}`])).toMatchObject({
+  await expect(reported(['get', 'x', `--a${rightToLeft}`])).resolves.toMatchObject({
     message: `Unknown option "--a${rightToLeftEscape}". Supply a declared option; prefix a hyphenated path with "./".`,
     name: 'UnknownOptionError',
     spelling: `--a${rightToLeft}`,
   });
-  expect(reported(['get', 'x', '--key', `a${rightToLeft}b`])).toMatchObject({
+  await expect(reported(['get', 'x', '--key', `a${rightToLeft}b`])).resolves.toMatchObject({
     problems: [{ issues: [{ path: [`a${rightToLeft}b`] }] }],
   });
 });
 
-test('a broken view on a usage class writes the default text and returns 1', () => {
-  expect(failures('broken-usage', ['-f', 'x', 'nope'])).toEqual({
+test('a broken view on a usage class writes the default text and returns 1', async () => {
+  await expect(failures('broken-usage', ['-f', 'x', 'nope'])).resolves.toEqual({
     status: 1,
     stderr:
       'failures: Unknown command "nope". Use one of: get, cache.\nfailures: Something went wrong.\n',
@@ -359,20 +375,20 @@ test('a broken view on a usage class writes the default text and returns 1', () 
   });
 });
 
-test('a failure view that throws falls back to the default text and a diagnostic', () => {
-  expect(failures('broken')).toEqual({
+test('a failure view that throws falls back to the default text and a diagnostic', async () => {
+  await expect(failures('broken')).resolves.toEqual({
     status: 1,
     stderr: `Expected failure.\nfailures: Something went wrong.\n`,
     stdout: 'resolved:1\n',
   });
   // A development build states the broken view's reason in its Developer Diagnostic.
-  const { stderr } = failures('broken', [], { FIXTURE_BUILD: 'development' });
+  const { stderr } = await failures('broken', [], { FIXTURE_BUILD: 'development' });
   expect(stderr).toContain(`Expected failure.\n\n-- BROKEN FAILURE VIEW -`);
   expect(stderr).toContain(`\n\nRendering the failure failed: Cannot render the failure.\n`);
 });
 
-test('an unusable fallback destination still resolves the failure status', () => {
-  expect(failures('broken-fallback')).toEqual({
+test('an unusable fallback destination still resolves the failure status', async () => {
+  await expect(failures('broken-fallback')).resolves.toEqual({
     status: 1,
     stderr: '',
     stdout: 'resolved:1\n',

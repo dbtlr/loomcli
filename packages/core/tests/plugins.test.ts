@@ -1,15 +1,18 @@
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { Application, Command, plugin } from '../src/index.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 /**
  * One plugin declaration scenario. A fault a call can judge throws from that call, and a build fault
  * answers in `inspect()` and in `run()` alike, where `run()` returns 1.
  */
-function build(scenario: string, mode: 'inspect' | 'rule' | 'run') {
-  return invoke(new URL('fixtures/plugins/build.mjs', import.meta.url), [scenario, mode]);
+async function build(scenario: string, mode: 'inspect' | 'rule' | 'run') {
+  return await invokeFixture(new URL('fixtures/plugins/build.mjs', import.meta.url), [
+    scenario,
+    mode,
+  ]);
 }
 
 /**
@@ -95,8 +98,8 @@ const thrown = [
   ],
 ] satisfies [string, string][];
 
-test.each(thrown)('the call that declares the %s fault throws it', (scenario, message) => {
-  expect(build(scenario, 'inspect')).toEqual({
+test.each(thrown)('the call that declares the %s fault throws it', async (scenario, message) => {
+  await expect(build(scenario, 'inspect')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `thrown:1: ${message}\n`,
@@ -163,18 +166,21 @@ const rejected = [
   ],
 ] satisfies [string, string][];
 
-test.each(rejected)('inspect() and run() reject the %s declaration alike', (scenario, message) => {
-  expect(build(scenario, 'inspect')).toEqual({
-    status: 0,
-    stderr: '',
-    stdout: `declaration:1: ${message}\n`,
-  });
-  expect(build(scenario, 'run')).toEqual({
-    status: 1,
-    stderr: `app: Something went wrong.\n`,
-    stdout: 'resolved:1\n',
-  });
-});
+test.each(rejected)(
+  'inspect() and run() reject the %s declaration alike',
+  async (scenario, message) => {
+    await expect(build(scenario, 'inspect')).resolves.toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `declaration:1: ${message}\n`,
+    });
+    await expect(build(scenario, 'run')).resolves.toEqual({
+      status: 1,
+      stderr: `app: Something went wrong.\n`,
+      stdout: 'resolved:1\n',
+    });
+  },
+);
 
 /**
  * The reason rule each hook collision breaks.
@@ -197,8 +203,8 @@ const hookCollisionRules = [
   ['hook-spelling-collision', 'spelling-taken'],
 ] satisfies [string, string][];
 
-test.each(hookCollisionRules)('the %s fault reports under %s', (scenario, rule) => {
-  expect(build(scenario, 'rule')).toEqual({
+test.each(hookCollisionRules)('the %s fault reports under %s', async (scenario, rule) => {
+  await expect(build(scenario, 'rule')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: `@loomcli/core/${rule}\n`,
@@ -206,43 +212,47 @@ test.each(hookCollisionRules)('the %s fault reports under %s', (scenario, rule) 
 });
 
 /** The same graph under the views one scenario's contributors contributed. */
-function rendered(scenario: string, argv: string[], env: Record<string, string> = {}) {
-  return invoke(
+async function rendered(scenario: string, argv: string[], env: Record<string, string> = {}) {
+  return await invokeFixture(
     new URL('fixtures/plugins/invoke.mjs', import.meta.url),
     [scenario, 'run', ...argv],
     { env },
   );
 }
 
-test("a plugin's failure views answer the classes the application leaves to them", () => {
-  expect(rendered('failures', ['get'])).toEqual({
+test("a plugin's failure views answer the classes the application leaves to them", async () => {
+  await expect(rendered('failures', ['get'])).resolves.toEqual({
     status: 2,
     stderr: 'plugin input: Argument "path" requires a value. Supply a value for "path".\n',
     stdout: 'resolved:2\n',
   });
-  expect(rendered('failures', ['get', 'a.b'], { LOOM_FIXTURE_ACTION: 'fatal' })).toEqual({
+  await expect(
+    rendered('failures', ['get', 'a.b'], { LOOM_FIXTURE_ACTION: 'fatal' }),
+  ).resolves.toEqual({
     status: 1,
     stderr: 'plugin fatal: the action stopped the invocation\n',
     stdout: 'resolved:1\n',
   });
 });
 
-test('one class overridden by the application and by a plugin resolves first-in-wins', () => {
-  expect(rendered('failures-both', ['get'])).toEqual({
+test('one class overridden by the application and by a plugin resolves first-in-wins', async () => {
+  await expect(rendered('failures-both', ['get'])).resolves.toEqual({
     status: 2,
     stderr: 'app input: Argument "path" requires a value. Supply a value for "path".\n',
     stdout: 'resolved:2\n',
   });
   // The plugin still answers the class the application left to it.
-  expect(rendered('failures-both', ['get', 'a.b'], { LOOM_FIXTURE_ACTION: 'fatal' })).toEqual({
+  await expect(
+    rendered('failures-both', ['get', 'a.b'], { LOOM_FIXTURE_ACTION: 'fatal' }),
+  ).resolves.toEqual({
     status: 1,
     stderr: 'plugin fatal: the action stopped the invocation\n',
     stdout: 'resolved:1\n',
   });
 });
 
-test('a hook declares an option after the action, which the closures do not close', () => {
-  expect(build('hook-late-option', 'inspect')).toEqual({
+test('a hook declares an option after the action, which the closures do not close', async () => {
+  await expect(build('hook-late-option', 'inspect')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'inspected\n',
@@ -271,9 +281,13 @@ test('an alias of an option a hook declares binds that option', async () => {
   expect(received).toEqual([{ shape: 'round' }]);
 });
 
-test('a plugin that declares nothing installs and costs the invocation nothing', () => {
-  expect(build('installed', 'inspect')).toEqual({ status: 0, stderr: '', stdout: 'inspected\n' });
-  expect(build('installed', 'run')).toEqual({
+test('a plugin that declares nothing installs and costs the invocation nothing', async () => {
+  await expect(build('installed', 'inspect')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'inspected\n',
+  });
+  await expect(build('installed', 'run')).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: 'dispatched\nresolved:0\n',

@@ -1,3 +1,4 @@
+import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for the view registry (docs/core/views.md).
  *
@@ -25,12 +26,10 @@
  *   `Renderer` cases moved to `View`.
  */
 
-import { expect, test } from 'vite-plus/test';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
-import { invoke } from '../../../scripts/test-process.js';
-
-function views(scenario: string, argv: string[] = []) {
-  return invoke(new URL('fixtures/views.mjs', import.meta.url), [scenario, ...argv]);
+async function views(scenario: string, argv: string[] = []) {
+  return await invokeFixture(new URL('fixtures/views.mjs', import.meta.url), [scenario, ...argv]);
 }
 
 /** One invocation that wrote its whole result to stdout and reported no failure. */
@@ -41,64 +40,68 @@ function rendered(stdout: string) {
 /** One invocation a declaration rule rejected, which a distributed build reports generically. */
 const rejected = { status: 1, stderr: 'views: Something went wrong.\n', stdout: 'resolved:1\n' };
 
-test('a declared view with no override renders through its own default function', () => {
-  expect(views('declared-default')).toEqual(rendered('page: one\nresolved:0\n'));
+test('a declared view with no override renders through its own default function', async () => {
+  await expect(views('declared-default')).resolves.toEqual(rendered('page: one\nresolved:0\n'));
 });
 
-test("a plugin's override of the view it declares supersedes that default", () => {
-  expect(views('plugin-override')).toEqual(rendered('plugin: one\nresolved:0\n'));
+test("a plugin's override of the view it declares supersedes that default", async () => {
+  await expect(views('plugin-override')).resolves.toEqual(rendered('plugin: one\nresolved:0\n'));
 });
 
-test('one key overridden by the application and by a plugin resolves to the application', () => {
-  expect(views('shared-key')).toEqual(rendered('app: one\nresolved:0\n'));
+test('one key overridden by the application and by a plugin resolves to the application', async () => {
+  await expect(views('shared-key')).resolves.toEqual(rendered('app: one\nresolved:0\n'));
 });
 
-test('one key overridden twice in one contributor resolves to the first override', () => {
-  expect(views('app-duplicate-view')).toEqual(rendered('one: one\nresolved:0\n'));
+test('one key overridden twice in one contributor resolves to the first override', async () => {
+  await expect(views('app-duplicate-view')).resolves.toEqual(rendered('one: one\nresolved:0\n'));
 });
 
-test("a declared row view in a plugin's list resolves through its own default functions", () => {
-  expect(views('row-declared')).toEqual(rendered('ROWS\n0: one\n1: two\nresolved:0\n'));
+test("a declared row view in a plugin's list resolves through its own default functions", async () => {
+  await expect(views('row-declared')).resolves.toEqual(
+    rendered('ROWS\n0: one\n1: two\nresolved:0\n'),
+  );
 });
 
-test('an override keyed by a declared row view supersedes its whole shape', () => {
-  expect(views('row-override')).toEqual(rendered('app: one\napp: two\nresolved:0\n'));
+test('an override keyed by a declared row view supersedes its whole shape', async () => {
+  await expect(views('row-override')).resolves.toEqual(
+    rendered('app: one\napp: two\nresolved:0\n'),
+  );
 });
 
-test('an override for a view no installed plugin declares is inert', () => {
-  expect(views('inert')).toEqual({
+test('an override for a view no installed plugin declares is inert', async () => {
+  await expect(views('inert')).resolves.toEqual({
     status: 2,
     stderr: 'views: Option "--file" is required. Supply a value.\n',
     stdout: 'resolved:2\n',
   });
 });
 
-test('that same override applies the moment its view is rendered', () => {
-  expect(views('inert-rendered')).toEqual(rendered('app: one\nresolved:0\n'));
+test('that same override applies the moment its view is rendered', async () => {
+  await expect(views('inert-rendered')).resolves.toEqual(rendered('app: one\nresolved:0\n'));
 });
 
-test('a hand-built object with an identity field is a bare view and consults no override', () => {
-  expect(views('bare-identity')).toEqual(rendered('forged: one\nresolved:0\n'));
+test('a hand-built object with an identity field is a bare view and consults no override', async () => {
+  await expect(views('bare-identity')).resolves.toEqual(rendered('forged: one\nresolved:0\n'));
 });
 
-test('an application override for UsageError beats a plugin override for InputError', () => {
-  expect(views('usage-over-input')).toEqual({
+test('an application override for UsageError beats a plugin override for InputError', async () => {
+  await expect(views('usage-over-input')).resolves.toEqual({
     status: 2,
     stderr: 'app usage: Option "--file" is required. Supply a value.\n',
     stdout: 'resolved:2\n',
   });
 });
 
-test("an earlier plugin's UsageError override beats a later plugin's InputError override", () => {
-  expect(views('plugins-order')).toEqual({
+test("an earlier plugin's UsageError override beats a later plugin's InputError override", async () => {
+  await expect(views('plugins-order')).resolves.toEqual({
     status: 2,
     stderr: 'first usage: Option "--file" is required. Supply a value.\n',
     stdout: 'resolved:2\n',
   });
 });
 
-test("a build fault reaches the application's own overrides", () => {
-  expect(views('build-fault')).toEqual({
+test("a build fault reaches the application's own overrides", async () => {
+  await expect(views('build-fault')).resolves.toEqual({
     status: 1,
     stderr: 'app declaration: The root Command has no action. Register an action.\n',
     stdout: 'resolved:1\n',
@@ -121,37 +124,45 @@ test.each([
   ],
 ] satisfies [string, string][])(
   'the %s fault throws from its call, so no override renders it',
-  (scenario, message) => {
-    expect(views(scenario)).toEqual(thrown(message));
+  async (scenario, message) => {
+    await expect(views(scenario)).resolves.toEqual(thrown(message));
   },
 );
 
-test("a build fault does not consult a plugin's overrides", () => {
-  expect(views('build-fault-unbranded')).toEqual(rejected);
+test("a build fault does not consult a plugin's overrides", async () => {
+  await expect(views('build-fault-unbranded')).resolves.toEqual(rejected);
 });
 
-test('an override of a lane view is observed through its semantic method with one newline', () => {
-  expect(views('lane-warn')).toEqual({
+test('an override of a lane view is observed through its semantic method with one newline', async () => {
+  await expect(views('lane-warn')).resolves.toEqual({
     status: 0,
     stderr: 'warned: careful\n',
     stdout: 'resolved:0\n',
   });
 });
 
-test('a lane override that returns the empty string still writes the one newline', () => {
-  expect(views('lane-empty')).toEqual({ status: 0, stderr: '\n', stdout: 'resolved:0\n' });
+test('a lane override that returns the empty string still writes the one newline', async () => {
+  await expect(views('lane-empty')).resolves.toEqual({
+    status: 0,
+    stderr: '\n',
+    stdout: 'resolved:0\n',
+  });
 });
 
-test('a broken lane view rejects its own call, which the action catches', () => {
-  expect(views('lane-broken')).toEqual({ status: 0, stderr: '', stdout: 'caught\nresolved:0\n' });
+test('a broken lane view rejects its own call, which the action catches', async () => {
+  await expect(views('lane-broken')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'caught\nresolved:0\n',
+  });
 });
 
-test('a lane view rendered through out.render writes its message with no newline', () => {
-  expect(views('lane-rendered')).toEqual(rendered('bareresolved:0\n'));
+test('a lane view rendered through out.render writes its message with no newline', async () => {
+  await expect(views('lane-rendered')).resolves.toEqual(rendered('bareresolved:0\n'));
 });
 
-test('a failure the action raised stays primary, and an unawaited broken render reports after it', () => {
-  expect(views('render-then-failure')).toEqual({
+test('a failure the action raised stays primary, and an unawaited broken render reports after it', async () => {
+  await expect(views('render-then-failure')).resolves.toEqual({
     status: 2,
     stderr: 'views: Option "--file" is required. Supply a value.\nviews: Something went wrong.\n',
     stdout: 'resolved:2\n',
@@ -169,7 +180,7 @@ test.each([
   ],
 ] satisfies [string, string][])(
   'the call that declares the %s views throws',
-  (scenario, message) => {
-    expect(views(scenario)).toEqual(thrown(message));
+  async (scenario, message) => {
+    await expect(views(scenario)).resolves.toEqual(thrown(message));
   },
 );

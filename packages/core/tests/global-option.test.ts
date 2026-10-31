@@ -1,24 +1,24 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/global-option.mjs', import.meta.url);
 
-test('globalOption derives an Application without changing its receiver', () => {
-  expect(invoke(fixture, ['original'])).toEqual({
+test('globalOption derives an Application without changing its receiver', async () => {
+  await expect(invokeFixture(fixture, ['original'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '{"quiet":false}\n',
   });
-  expect(invoke(fixture, ['derived'])).toEqual({
+  await expect(invokeFixture(fixture, ['derived'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: '{"quiet":false,"limit":"10"}\n',
   });
 });
 
-test('a global declared after a colliding root-local option throws from globalOption()', () => {
-  expect(invoke(fixture, ['local-first'])).toEqual({
+test('a global declared after a colliding root-local option throws from globalOption()', async () => {
+  await expect(invokeFixture(fixture, ['local-first'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout:

@@ -1,3 +1,4 @@
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 /*
  * Acceptance plan for verbosity (docs/core/verbosity.md#verbosity).
  *
@@ -41,14 +42,12 @@
  *   mark, throws under its rule from the moment the reference names, and the negative type checks
  *   reject the rules the types state.
  */
-
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterAll, expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** The fetchit application, which marks its own `-v, --verbose` and `-q, --quiet`. */
 const fixture = new URL('fixtures/verbosity.mjs', import.meta.url);
@@ -65,13 +64,13 @@ afterAll(() => {
 });
 
 /** One run of the fixture: the variant, the terminal, the command line, and any variables. */
-function fetchit(
+async function fetchit(
   variant: string,
   terminal: 'tty' | 'pipe' | 'invoke',
   argv: readonly string[],
   env: Record<string, string | undefined> = {},
 ) {
-  return invoke(fixture, [variant, terminal, ...argv], {
+  return await invokeFixture(fixture, [variant, terminal, ...argv], {
     env: { ...plain, PROBE_CWD: directory, ...env },
   });
 }
@@ -93,14 +92,14 @@ test.each([
   [['-qq'], shown.quiet],
   [['-v', '-q'], shown.default],
   [['-vv', '-q'], shown.debug],
-])('%j writes the lanes its verbosity shows', (flags, stderr) => {
-  const result = fetchit('own', 'pipe', [...flags, 'get', 'u']);
+])('%j writes the lanes its verbosity shows', async (flags, stderr) => {
+  const result = await fetchit('own', 'pipe', [...flags, 'get', 'u']);
   expect(result.stderr).toBe(stderr);
   expect(result.status).toBe(0);
 });
 
-test('print and render write at every verbosity', () => {
-  const result = fetchit('own', 'pipe', ['-q', 'get', 'u']);
+test('print and render write at every verbosity', async () => {
+  const result = await fetchit('own', 'pipe', ['-q', 'get', 'u']);
   expect(result.stdout).toBe('print\nrender\n{"quiet":1,"verbose":0}\n');
 });
 
@@ -112,46 +111,54 @@ test.each([
   ["a group with the Command's own value letter", ['get', '-vF', 'name', 'u'], shown.debug],
   ['occurrences on both sides of the Command name', ['-v', 'get', 'u', '-v'], shown.trace],
   ['a spelling after the bare --', ['get', 'u', '--', '-v'], shown.default],
-])('%s settles what the ordinary parse reads', (_case, argv, stderr) => {
-  expect(fetchit('own', 'pipe', argv).stderr).toBe(stderr);
+])('%s settles what the ordinary parse reads', async (_case, argv, stderr) => {
+  await expect(
+    fetchit('own', 'pipe', argv).then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toBe(stderr);
 });
 
-test('a letter an onCommandAttach hook declared reads beside -v in one group', () => {
-  expect(fetchit('hooked', 'pipe', ['get', '-vx', 'u']).stderr).toBe(shown.debug);
+test('a letter an onCommandAttach hook declared reads beside -v in one group', async () => {
+  await expect(
+    fetchit('hooked', 'pipe', ['get', '-vx', 'u']).then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toBe(shown.debug);
 });
 
-test("a short-only verbose option's letter raises the verbosity", () => {
-  expect(fetchit('short-only', 'pipe', ['-vv', 'get', 'u']).stderr).toBe(shown.trace);
+test("a short-only verbose option's letter raises the verbosity", async () => {
+  await expect(
+    fetchit('short-only', 'pipe', ['-vv', 'get', 'u']).then(
+      (fixtureResult) => fixtureResult.stderr,
+    ),
+  ).resolves.toBe(shown.trace);
 });
 
-test('an occurrence the parse faults counts nothing', () => {
-  const result = fetchit('own', 'pipe', ['--verbose=2', 'get', 'u']);
+test('an occurrence the parse faults counts nothing', async () => {
+  const result = await fetchit('own', 'pipe', ['--verbose=2', 'get', 'u']);
   expect(result.status).toBe(2);
   expect(result.stderr).not.toContain('›');
   expect(result.stderr).toContain('"--verbose"');
 });
 
-test("an unknown command's failure prints under -q", () => {
-  const result = fetchit('own', 'pipe', ['-q', 'nope']);
+test("an unknown command's failure prints under -q", async () => {
+  const result = await fetchit('own', 'pipe', ['-q', 'nope']);
   expect(result.status).toBe(2);
   expect(result.stderr).toContain('"nope"');
 });
 
-test('debug and trace reach stderr on a Command that declares a result, whose stdout holds it alone', () => {
-  const result = fetchit('own', 'pipe', ['-vv', 'show']);
+test('debug and trace reach stderr on a Command that declares a result, whose stdout holds it alone', async () => {
+  const result = await fetchit('own', 'pipe', ['-vv', 'show']);
   expect(result).toEqual({ status: 0, stderr: '› debug\n  ┆ trace\n', stdout: 'record\n' });
 });
 
-test('the incomplete-result line and the failure print under -q', () => {
-  const result = fetchit('own', 'pipe', ['-q', 'list']);
+test('the incomplete-result line and the failure print under -q', async () => {
+  const result = await fetchit('own', 'pipe', ['-q', 'list']);
   expect(result.stdout).toBe('"first"\n');
   expect(result.stderr).toContain('Output is incomplete:');
   expect(result.stderr).toContain('Something went wrong.');
   expect(result.status).toBe(1);
 });
 
-test('a failure prints under -q', () => {
-  const result = fetchit('own', 'pipe', ['-q', 'fail']);
+test('a failure prints under -q', async () => {
+  const result = await fetchit('own', 'pipe', ['-q', 'fail']);
   expect(result.stderr).toContain('It failed.');
   expect(result.status).toBe(1);
 });
@@ -159,22 +166,22 @@ test('a failure prints under -q', () => {
 /** One SGR sequence. */
 const escape = String.fromCodePoint(27);
 
-test('on a terminal a debug line is dim and a trace line nests deeper and adds faint', () => {
-  const result = fetchit('themed', 'tty', ['-vv', 'show']);
+test('on a terminal a debug line is dim and a trace line nests deeper and adds faint', async () => {
+  const result = await fetchit('themed', 'tty', ['-vv', 'show']);
   expect(result.stderr).toBe(
     `${escape}[90m›${escape}[39m ${escape}[90mdebug${escape}[39m\n  ${escape}[90;2m┆${escape}[39;22m ${escape}[90;2mtrace${escape}[39;22m\n`,
   );
 });
 
-test('under NO_COLOR a trace line keeps faint and a debug line drops its color', () => {
-  const result = fetchit('themed', 'tty', ['-vv', 'show'], { NO_COLOR: '1' });
+test('under NO_COLOR a trace line keeps faint and a debug line drops its color', async () => {
+  const result = await fetchit('themed', 'tty', ['-vv', 'show'], { NO_COLOR: '1' });
   expect(result.stderr).toBe(
     `› debug\n  ${escape}[2m┆${escape}[22m ${escape}[2mtrace${escape}[22m\n`,
   );
 });
 
-test('a long message wraps at the columns right of its gutter, continuations under the message', () => {
-  const result = fetchit('long', 'tty', ['-vv', 'get', 'u'], { NO_COLOR: '1', TERM: 'dumb' });
+test('a long message wraps at the columns right of its gutter, continuations under the message', async () => {
+  const result = await fetchit('long', 'tty', ['-vv', 'get', 'u'], { NO_COLOR: '1', TERM: 'dumb' });
   expect(result.stderr.split('\n')).toEqual([
     '› one two three four five six seven',
     '  eight nine ten',
@@ -184,81 +191,105 @@ test('a long message wraps at the columns right of its gutter, continuations und
   ]);
 });
 
-test('a debug or trace call creates no log event', () => {
-  expect(fetchit('logged', 'pipe', ['-vv', 'get', 'u']).stdout).toContain('heard []\n');
+test('a debug or trace call creates no log event', async () => {
+  await expect(
+    fetchit('logged', 'pipe', ['-vv', 'get', 'u']).then((fixtureResult) => fixtureResult.stdout),
+  ).resolves.toContain('heard []\n');
 });
 
-test("the logging plugin's console destination writes no record for a debug or trace call", () => {
+test("the logging plugin's console destination writes no record for a debug or trace call", async () => {
   // The action logs one event of its own, so the one record shows the destination writes.
-  const lines = fetchit('console', 'pipe', ['-vv', 'get', 'u']).stderr.split('\n');
+  const lines = await fetchit('console', 'pipe', ['-vv', 'get', 'u']).then((fixtureResult) =>
+    fixtureResult.stderr.split('\n'),
+  );
   const records = lines.filter((line) => line.startsWith('{'));
   expect(records).toHaveLength(1);
   expect(records[0]).toContain('"logged"');
   expect(lines.filter((line) => !line.startsWith('{')).join('\n')).toBe(shown.trace);
 });
 
-test('a hidden call calls no override of its lane view', () => {
-  expect(fetchit('override', 'pipe', ['get', 'u']).status).toBe(0);
-  expect(fetchit('override', 'pipe', ['-v', 'get', 'u']).status).toBe(1);
+test('a hidden call calls no override of its lane view', async () => {
+  await expect(
+    fetchit('override', 'pipe', ['get', 'u']).then((fixtureResult) => fixtureResult.status),
+  ).resolves.toBe(0);
+  await expect(
+    fetchit('override', 'pipe', ['-v', 'get', 'u']).then((fixtureResult) => fixtureResult.status),
+  ).resolves.toBe(1);
 });
 
-test("a configuration source's debug line prints under -v and not without it", () => {
-  expect(fetchit('config', 'pipe', ['-v', 'get', 'u']).stderr).toContain('› Read .fetchit.json.\n');
-  expect(fetchit('config', 'pipe', ['get', 'u']).stderr).not.toContain('Read .fetchit.json.');
+test("a configuration source's debug line prints under -v and not without it", async () => {
+  await expect(
+    fetchit('config', 'pipe', ['-v', 'get', 'u']).then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toContain('› Read .fetchit.json.\n');
+  await expect(
+    fetchit('config', 'pipe', ['get', 'u']).then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.not.toContain('Read .fetchit.json.');
 });
 
-test('a dotenv warning prints under -q', () => {
+test('a dotenv warning prints under -q', async () => {
   // The show action writes no warning of its own, so the line can only come from dotenv.
-  expect(fetchit('dotenv', 'pipe', ['-q', 'show']).stderr).toBe(
+  await expect(
+    fetchit('dotenv', 'pipe', ['-q', 'show']).then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toBe(
     '⚠ Skipped FETCHIT_TOKEN on line 1 of .env: the line is not a valid assignment. Correct the line, or remove it.\n',
   );
 });
 
-test("a middleware's out follows the run's verbosity", () => {
-  expect(fetchit('middleware', 'pipe', ['-v', 'get', 'u']).stderr).toContain(
-    '› middleware debug\n',
+test("a middleware's out follows the run's verbosity", async () => {
+  await expect(
+    fetchit('middleware', 'pipe', ['-v', 'get', 'u']).then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.toContain('› middleware debug\n');
+  const plainRun = await fetchit('middleware', 'pipe', ['get', 'u']).then(
+    (fixtureResult) => fixtureResult.stderr,
   );
-  const plainRun = fetchit('middleware', 'pipe', ['get', 'u']).stderr;
   expect(plainRun).toContain('ℹ middleware info\n');
   expect(plainRun).not.toContain('middleware debug');
-  expect(fetchit('middleware', 'pipe', ['-q', 'get', 'u']).stderr).not.toContain('middleware info');
+  await expect(
+    fetchit('middleware', 'pipe', ['-q', 'get', 'u']).then((fixtureResult) => fixtureResult.stderr),
+  ).resolves.not.toContain('middleware info');
 });
 
-test('a declaration error from graph build prints under -q', () => {
-  const result = fetchit('graph', 'pipe', ['-q', 'get', 'u']);
+test('a declaration error from graph build prints under -q', async () => {
+  const result = await fetchit('graph', 'pipe', ['-q', 'get', 'u']);
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('The judge rejects the graph.');
 });
 
 /** The outcome an invocation by name with these option values captures. */
-function byName(values: Record<string, unknown>): unknown {
-  const result = fetchit('own', 'invoke', [JSON.stringify(values)]);
+async function byName(values: Record<string, unknown>): Promise<unknown> {
+  const result = await fetchit('own', 'invoke', [JSON.stringify(values)]);
   expect(result.status).toBe(0);
   return JSON.parse(result.stdout);
 }
 
-test('invoke with verbose: 2 captures the debug and trace lines in messages', () => {
-  expect(byName({ verbose: 2 })).toMatchObject({
+test('invoke with verbose: 2 captures the debug and trace lines in messages', async () => {
+  await expect(byName({ verbose: 2 })).resolves.toMatchObject({
     messages: '  ┆ trace\n› debug\nℹ info\n✔ success\n⚠ warn\n✘ error\n[draw]',
     status: 'completed',
   });
 });
 
-test('a call inherits nothing from a parent run started with -vv', () => {
-  const result = fetchit('own', 'pipe', ['-vv', 'nested']);
+test('a call inherits nothing from a parent run started with -vv', async () => {
+  const result = await fetchit('own', 'pipe', ['-vv', 'nested']);
   expect(result.stdout).toBe(`${JSON.stringify(shown.default)}\n`);
 });
 
-test('verbose: 1.5 fails with its counted-option issue and exit 2', () => {
-  expect(byName({ verbose: 1.5 })).toMatchObject({ exitCode: 2, status: 'failed' });
+test('verbose: 1.5 fails with its counted-option issue and exit 2', async () => {
+  await expect(byName({ verbose: 1.5 })).resolves.toMatchObject({ exitCode: 2, status: 'failed' });
 });
 
-test.each([[['-vv']], [['-q']]])('an Application with neither mark ignores %j', (flags) => {
-  expect(fetchit('unmarked', 'pipe', [...flags, 'get', 'u']).stderr).toBe(shown.default);
+test.each([[['-vv']], [['-q']]])('an Application with neither mark ignores %j', async (flags) => {
+  await expect(
+    fetchit('unmarked', 'pipe', [...flags, 'get', 'u']).then(
+      (fixtureResult) => fixtureResult.stderr,
+    ),
+  ).resolves.toBe(shown.default);
 });
 
-test('options.verbose and options.quiet read the counts the operator typed', () => {
-  expect(fetchit('own', 'pipe', ['-vvv', '-qq', 'get', 'u']).stdout).toContain(
-    '{"quiet":2,"verbose":3}\n',
-  );
+test('options.verbose and options.quiet read the counts the operator typed', async () => {
+  await expect(
+    fetchit('own', 'pipe', ['-vvv', '-qq', 'get', 'u']).then(
+      (fixtureResult) => fixtureResult.stdout,
+    ),
+  ).resolves.toContain('{"quiet":2,"verbose":3}\n');
 });

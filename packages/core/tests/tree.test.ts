@@ -1,9 +1,9 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
-test('a Command value is claimed per build, so repeated builds, separate Applications, and same-named values under different parents all build', () => {
-  const result = invoke(new URL('fixtures/tree.mjs', import.meta.url));
+test('a Command value is claimed per build, so repeated builds, separate Applications, and same-named values under different parents all build', async () => {
+  const result = await invokeFixture(new URL('fixtures/tree.mjs', import.meta.url));
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout)).toEqual({

@@ -1,3 +1,4 @@
+import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for the failure form (docs/core/failures.md#the-failure-form).
  *
@@ -19,24 +20,26 @@
  * - Frozen. An assignment to a form's member throws in strict mode code.
  */
 
-import { expect, test } from 'vite-plus/test';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
-import { invoke } from '../../../scripts/test-process.js';
-
-function form(
+async function form(
   scenario: string,
   build: 'development' | 'distributed' = 'distributed',
   env: Record<string, string> = {},
-): unknown {
-  const result = invoke(new URL('fixtures/failure-form.mjs', import.meta.url), [scenario, build], {
-    env,
-  });
+): Promise<unknown> {
+  const result = await invokeFixture(
+    new URL('fixtures/failure-form.mjs', import.meta.url),
+    [scenario, build],
+    {
+      env,
+    },
+  );
   expect(result.stderr).toBe('');
   return JSON.parse(result.stdout);
 }
 
-test("a failed outcome and its handler carry one frozen form, whose keys read in the contract's order", () => {
-  expect(form('fatal')).toEqual({
+test("a failed outcome and its handler carry one frozen form, whose keys read in the contract's order", async () => {
+  await expect(form('fatal')).resolves.toEqual({
     exitCode: 1,
     form: { code: 'fatal', exitCode: 1, hints: [], message: 'The registry is down.' },
     frozen: true,
@@ -45,8 +48,8 @@ test("a failed outcome and its handler carry one frozen form, whose keys read in
   });
 });
 
-test('an input error with two problems holds both lines, with no application name and no trailing newline', () => {
-  expect(form('two-problems')).toEqual({
+test('an input error with two problems holds both lines, with no application name and no trailing newline', async () => {
+  await expect(form('two-problems')).resolves.toEqual({
     code: 'invalid-input',
     exitCode: 2,
     hints: [],
@@ -55,8 +58,8 @@ test('an input error with two problems holds both lines, with no application nam
   });
 });
 
-test('a marked message and a marked hint read as plain text', () => {
-  expect(form('plain', 'distributed', { FORCE_COLOR: '1' })).toEqual({
+test('a marked message and a marked hint read as plain text', async () => {
+  await expect(form('plain', 'distributed', { FORCE_COLOR: '1' })).resolves.toEqual({
     code: 'fatal',
     exitCode: 1,
     hints: ['Run it again.'],
@@ -64,14 +67,14 @@ test('a marked message and a marked hint read as plain text', () => {
   });
 });
 
-test('a defect reads the generic message from a bundle and its sentence from source, with no stack', () => {
-  expect(form('defect', 'distributed')).toEqual({
+test('a defect reads the generic message from a bundle and its sentence from source, with no stack', async () => {
+  await expect(form('defect', 'distributed')).resolves.toEqual({
     code: 'internal',
     exitCode: 1,
     hints: [],
     message: 'Something went wrong.',
   });
-  expect(form('defect', 'development')).toEqual({
+  await expect(form('defect', 'development')).resolves.toEqual({
     code: 'internal',
     exitCode: 1,
     hints: [],
@@ -79,16 +82,16 @@ test('a defect reads the generic message from a bundle and its sentence from sou
   });
 });
 
-test("two plugins' hints read in installation order, and a build fault reads none", () => {
-  expect(form('hints')).toEqual(['First hint.', 'Second.', 'Third.']);
-  expect(form('build-fault')).toEqual({
+test("two plugins' hints read in installation order, and a build fault reads none", async () => {
+  await expect(form('hints')).resolves.toEqual(['First hint.', 'Second.', 'Third.']);
+  await expect(form('build-fault')).resolves.toEqual({
     exitCode: 1,
     form: { code: 'internal', exitCode: 1, hints: [], message: 'Something went wrong.' },
   });
 });
 
-test("a broken hook forces 1 on the outcome while the form keeps the failure's own exit code", () => {
-  expect(form('broken-hook')).toEqual({
+test("a broken hook forces 1 on the outcome while the form keeps the failure's own exit code", async () => {
+  await expect(form('broken-hook')).resolves.toEqual({
     exitCode: 1,
     form: {
       code: 'unknown-command',
@@ -99,6 +102,6 @@ test("a broken hook forces 1 on the outcome while the form keeps the failure's o
   });
 });
 
-test("an assignment to a form's member throws in strict mode code", () => {
-  expect(form('frozen')).toBe('TypeError');
+test("an assignment to a form's member throws in strict mode code", async () => {
+  await expect(form('frozen')).resolves.toBe('TypeError');
 });

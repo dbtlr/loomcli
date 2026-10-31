@@ -1,3 +1,4 @@
+import { Application } from '@loomcli/core';
 /*
  * Acceptance plan for interaction (docs/core/interaction.md#interaction).
  *
@@ -28,12 +29,10 @@
  *   the interaction mark fail with the two-marks error. A plugin option's Boolean variable reads
  *   core's grammar, proven under Input sources acceptance.
  */
-
-import { Application } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** The terminal width and the text that each draw scenario wraps against. */
 const whole = { columns: 4, text: 'abcdef\n界界\n' };
@@ -61,8 +60,8 @@ async function draw(scenario?: keyof typeof drawn) {
   return { code, rows, text: mock.stderr.text };
 }
 
-test('conditional requiredness rejects missing input before dispatch without interaction', () => {
-  const result = invoke(new URL('fixtures/interaction.mjs', import.meta.url));
+test('conditional requiredness rejects missing input before dispatch without interaction', async () => {
+  const result = await invokeFixture(new URL('fixtures/interaction.mjs', import.meta.url));
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain(
@@ -100,8 +99,11 @@ test("under CI=true an omitted required: 'non-interactive' option fails before t
   );
 });
 
-test('actions see the raw supplied value beside the validated value', () => {
-  const result = invoke(new URL('fixtures/interaction.mjs', import.meta.url), ['--port', '8080']);
+test('actions see the raw supplied value beside the validated value', async () => {
+  const result = await invokeFixture(new URL('fixtures/interaction.mjs', import.meta.url), [
+    '--port',
+    '8080',
+  ]);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   expect(JSON.parse(result.stdout)).toEqual({ interactive: false, port: 8080, raw: '8080' });
@@ -112,21 +114,31 @@ test.each([
   ['disabled', { interactive: false }],
   ['env', { interactive: false }],
   ['invoke', { interactive: false }],
-])('the run interaction decision honors capabilities and intent: %s', (scenario, expected) => {
-  const result = invoke(new URL('fixtures/interaction-policy.mjs', import.meta.url), [scenario]);
-  expect(result.status).toBe(0);
-  expect(result.stderr).toBe('');
-  expect(JSON.parse(result.stdout)).toEqual(expected);
-});
+])(
+  'the run interaction decision honors capabilities and intent: %s',
+  async (scenario, expected) => {
+    const result = await invokeFixture(
+      new URL('fixtures/interaction-policy.mjs', import.meta.url),
+      [scenario],
+    );
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(JSON.parse(result.stdout)).toEqual(expected);
+  },
+);
 
-test('action cancellation is silent and resolves the normal cancellation status', () => {
-  const result = invoke(new URL('fixtures/interaction-policy.mjs', import.meta.url), ['cancel']);
+test('action cancellation is silent and resolves the normal cancellation status', async () => {
+  const result = await invokeFixture(new URL('fixtures/interaction-policy.mjs', import.meta.url), [
+    'cancel',
+  ]);
   expect(result.status).toBe(130);
   expect(result.stderr).toBe('');
 });
 
-test('two interaction marks fail at declaration, naming each option as its own site does', () => {
-  const result = invoke(new URL('fixtures/interaction-policy.mjs', import.meta.url), ['twice']);
+test('two interaction marks fail at declaration, naming each option as its own site does', async () => {
+  const result = await invokeFixture(new URL('fixtures/interaction-policy.mjs', import.meta.url), [
+    'twice',
+  ]);
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout)).toMatchObject({ name: 'DeclarationError' });
   expect(JSON.parse(result.stdout).message).toContain(
@@ -142,13 +154,13 @@ test('draw preserves controls only on terminal stderr, reports wrapped rows, and
   });
 });
 
-test('help and manifest preserve required as Boolean and publish conditional requiredness', () => {
+test('help and manifest preserve required as Boolean and publish conditional requiredness', async () => {
   const fixture = new URL('fixtures/interaction-projection.mjs', import.meta.url);
-  const help = invoke(fixture, ['--help']);
+  const help = await invokeFixture(fixture, ['--help']);
   expect(help.status).toBe(0);
   expect(help.stdout).toContain('required when not interactive');
   expect(help.stdout).toContain('setup [options]');
-  const printed = invoke(fixture, ['--manifest']);
+  const printed = await invokeFixture(fixture, ['--manifest']);
   expect(printed.status).toBe(0);
   expect(JSON.parse(printed.stdout)).toMatchObject({
     command: { options: [{ name: 'port', required: false, requiredWhen: 'non-interactive' }] },
@@ -162,8 +174,8 @@ test('draw counts wide graphemes that cannot fit the final cell of a terminal ro
   await expect(draw('wide')).resolves.toMatchObject({ code: 0, rows: 3 });
 });
 
-test('an unawaited draw failure stays in the ordinary run failure path', () => {
-  const result = invoke(new URL('fixtures/unawaited-draw.mjs', import.meta.url));
+test('an unawaited draw failure stays in the ordinary run failure path', async () => {
+  const result = await invokeFixture(new URL('fixtures/unawaited-draw.mjs', import.meta.url));
   expect(result).toEqual({
     status: 1,
     stderr: 'draw: Something went wrong.\n',
@@ -175,8 +187,8 @@ test('draw measures tab stops before counting terminal wrapping', async () => {
   await expect(draw('tab')).resolves.toMatchObject({ code: 0, rows: 2 });
 });
 
-test('view plain text strips styles and controls while retaining destination glyph forms', () => {
-  const result = invoke(new URL('fixtures/view-context.mjs', import.meta.url));
+test('view plain text strips styles and controls while retaining destination glyph forms', async () => {
+  const result = await invokeFixture(new URL('fixtures/view-context.mjs', import.meta.url));
   expect(result).toEqual({ status: 0, stderr: '', stdout: '{"cells":6,"plain":"Name >"}\n' });
 });
 

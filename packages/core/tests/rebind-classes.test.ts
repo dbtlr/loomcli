@@ -1,8 +1,7 @@
+import { expect, test } from 'vite-plus/test';
 // Acceptance plan: see packages/core/tests/options.test.ts.
 
-import { expect, test } from 'vite-plus/test';
-
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/counted-implied.mjs', import.meta.url);
 
@@ -28,8 +27,8 @@ const pairs = classes.flatMap((parent) => classes.map((child) => [parent, child]
 
 test.each(pairs.filter(([parent, child]) => parent === child))(
   "a parent's own %s option rebinds to the %s child's option of the same value class",
-  (parent, child) => {
-    const result = invoke(fixture, ['rebind', 'run', ...supplied(parent), child, 'a']);
+  async (parent, child) => {
+    const result = await invokeFixture(fixture, ['rebind', 'run', ...supplied(parent), child, 'a']);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     const line = result.stdout.split('\n').find((entry) => entry.startsWith('run:')) ?? '';
@@ -43,8 +42,8 @@ test.each(pairs.filter(([parent, child]) => parent === child))(
 
 test.each(pairs.filter(([parent, child]) => parent !== child))(
   "a parent's own %s option is misplaced before the %s child, which declares its spelling with another value class",
-  (parent, child) => {
-    const result = invoke(fixture, ['rebind', 'run', ...supplied(parent), child, 'a']);
+  async (parent, child) => {
+    const result = await invokeFixture(fixture, ['rebind', 'run', ...supplied(parent), child, 'a']);
     expect(result.status).toBe(2);
     expect(JSON.parse(result.stderr)).toEqual({
       commands: [[child]],

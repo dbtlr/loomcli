@@ -1,17 +1,17 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke as invokeFixture } from './run-fixture.ts';
 
 const fixture = new URL('fixtures/plugins/attach.mjs', import.meta.url);
 
 /** One invocation of the fixture application under the hooks one scenario installs. */
-function run(scenario: string, argv: string[] = []) {
-  return invoke(fixture, [scenario, 'run', ...argv]);
+async function run(scenario: string, argv: string[] = []) {
+  return await invokeFixture(fixture, [scenario, 'run', ...argv]);
 }
 
 /** The same graph read as plain data, which builds the graph and runs the hooks alone. */
-function inspect(scenario: string) {
-  return invoke(fixture, [scenario, 'inspect']);
+async function inspect(scenario: string) {
+  return await invokeFixture(fixture, [scenario, 'inspect']);
 }
 
 /** The lines one build wrote, which are the facts its hooks read. */
@@ -22,20 +22,20 @@ function lines(stdout: string): unknown[] {
     .map((line: string): unknown => JSON.parse(line));
 }
 
-test('a hook declares an option the action reads and the request carries', () => {
-  const result = run('option', ['count', '--format', 'json']);
+test('a hook declares an option the action reads and the request carries', async () => {
+  const result = await run('option', ['count', '--format', 'json']);
   expect(result.stderr).toBe('');
   expect(result.stdout).toBe('request:{"format":"json"}\ntext:{"format":"json"}\nresolved:0\n');
 });
 
-test('the root arrives through the same surface, where option() declares a root-local option', () => {
-  const result = run('root', ['--quiet']);
+test('the root arrives through the same surface, where option() declares a root-local option', async () => {
+  const result = await run('root', ['--quiet']);
   expect(result.stderr).toBe('');
   expect(result.stdout).toBe('{"name":null,"path":[]}\nroot:{"quiet":true}\nresolved:0\n');
 });
 
-test('a hook reads the result and the action of every Command it receives', () => {
-  const seen = lines(run('facts').stdout);
+test('a hook reads the result and the action of every Command it receives', async () => {
+  const seen = lines(await run('facts').then((fixtureResult) => fixtureResult.stdout));
   expect(seen[0]).toMatchObject({ hasAction: true, name: null, result: null });
   expect(seen[1]).toMatchObject({
     hasAction: true,
@@ -50,14 +50,14 @@ test('a hook reads the result and the action of every Command it receives', () =
   expect(seen[3]).toMatchObject({ hasAction: false, name: 'cache', result: null });
 });
 
-test('the arguments and the options a hook reads are frozen lists', () => {
-  const result = run('frozen', ['count']);
+test('the arguments and the options a hook reads are frozen lists', async () => {
+  const result = await run('frozen', ['count']);
   expect(result.stderr).toBe('');
   expect(lines(result.stdout)[0]).toEqual({ arguments: 'threw', options: 'threw' });
 });
 
-test('a hook reads the arguments and the local options each Command declares', () => {
-  const seen = lines(run('facts').stdout);
+test('a hook reads the arguments and the local options each Command declares', async () => {
+  const seen = lines(await run('facts').then((fixtureResult) => fixtureResult.stdout));
   expect(seen[2]).toMatchObject({ arguments: ['path'], name: 'get', options: ['raw'] });
 });
 
@@ -68,8 +68,8 @@ function pathsOf(stdout: string): unknown[] {
   );
 }
 
-test('the hooks walk the root first and then each child depth first', () => {
-  expect(pathsOf(run('facts').stdout)).toEqual([
+test('the hooks walk the root first and then each child depth first', async () => {
+  expect(pathsOf(await run('facts').then((fixtureResult) => fixtureResult.stdout))).toEqual([
     [],
     ['count'],
     ['get'],
@@ -78,8 +78,8 @@ test('the hooks walk the root first and then each child depth first', () => {
   ]);
 });
 
-test('a views() call reshapes the result the same hook then reads', () => {
-  const result = run('views', ['count']);
+test('a views() call reshapes the result the same hook then reads', async () => {
+  const result = await run('views', ['count']);
   expect(result.stdout).toBe(
     [
       '{"after":{"default":"json","kind":"value","mediaTypes":{"text":null,"json":null},"views":["text","json"]},"before":{"default":"text","kind":"value","mediaTypes":{"text":null},"views":["text"]}}',
@@ -90,15 +90,15 @@ test('a views() call reshapes the result the same hook then reads', () => {
   );
 });
 
-test("two plugins' hooks run in installation order and the later replaces a view by name", () => {
-  const result = run('compose', ['count']);
+test("two plugins' hooks run in installation order and the later replaces a view by name", async () => {
+  const result = await run('compose', ['count']);
   expect(result.stdout).toBe(
     '{"identity":"@loomcli/plugins/format","views":["text","json"]}\nsecond:{}\nresolved:0\n',
   );
 });
 
-test("inspect() runs the hooks and publishes a hook's option as the Command's own", () => {
-  const result = inspect('option');
+test("inspect() runs the hooks and publishes a hook's option as the Command's own", async () => {
+  const result = await inspect('option');
   expect(result.stderr).toBe('');
   expect(lines(result.stdout)[0]).toEqual({
     options: [{ name: 'format' }],
@@ -106,8 +106,10 @@ test("inspect() runs the hooks and publishes a hook's option as the Command's ow
   });
 });
 
-test('inspect() publishes the views a hook reshaped', () => {
-  expect(lines(inspect('views').stdout).at(-1)).toEqual({
+test('inspect() publishes the views a hook reshaped', async () => {
+  expect(
+    lines(await inspect('views').then((fixtureResult) => fixtureResult.stdout)).at(-1),
+  ).toEqual({
     options: [],
     result: {
       default: 'json',
