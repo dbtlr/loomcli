@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { childEnvironment } from '../../../scripts/test-process.js';
 import { put, temporaryRoot } from './fixture.js';
+import { run } from './run.js';
 
 /** The repository root, whose installed packages a fixture package links. */
 const repository = fileURLToPath(new URL('../../../', import.meta.url));
@@ -26,9 +27,6 @@ const loomTimeout = 120_000;
 
 /** The built loom bin every process test runs. */
 export const cli = fileURLToPath(new URL('../dist/main.js', import.meta.url));
-
-/** The runtimes every artifact runs under. */
-export const runtimes = ['node', 'bun'] as const;
 
 /** A link a fixture package holds: a Loom package, the TypeScript compiler, or Node's type declarations. */
 export type Link = keyof typeof installed;
@@ -62,8 +60,17 @@ export function linkInstalled(root: string, links: readonly Link[]) {
   }
 }
 
-/** One run of the loom bin under the runtime the test run names, with a generous timeout. */
+/** One in-process toolchain run in a fixture package. */
 export function loom(
+  cwd: string,
+  args: string[],
+  options: { env?: Record<string, string | undefined>; runtime?: string } = {},
+) {
+  return run(args, { ...options, cwd });
+}
+
+/** A built toolchain run for application-export reads that require the bundled helper. */
+export async function loomProcess(
   cwd: string,
   args: string[],
   options: { env?: Record<string, string | undefined>; runtime?: string } = {},

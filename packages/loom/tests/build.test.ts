@@ -1,8 +1,8 @@
 /*
  * Acceptance plan for loom build (docs/toolchain/build.md#loom-build).
  *
- * `loom build` is proven when process runs of the packed `loom` bin produce these results under
- * Node and Bun, with the artifacts run under both:
+ * `loom build` runs in-process on a mock process, with real Bun builds and artifact processes.
+ * The CI matrix selects the runtime. Signal and watch cases retain the real toolchain process.
  *
  * - Targets. `--target node` and `--target bun` each write a bundle that reads `{ build:
  *   'distributed' }`. The host's compile target, by default and by name, writes `dist/<name>`, a
@@ -32,8 +32,7 @@
  *
  * Acceptance plan for one package directory (docs/toolchain/build.md#one-package-directory).
  *
- * The package directory is proven when process runs of the packed `loom` bin produce these results
- * under Node and Bun:
+ * The package directory is proven by in-process runs against fixture packages:
  *
  * - The nearest package. `loom changelog check` run in a package's `src/` validates that package's
  *   `.changes/`.
@@ -68,7 +67,7 @@ import { afterEach, expect, test } from 'vite-plus/test';
 import { childEnvironment, start } from '../../../scripts/test-process.js';
 import { removeCreatedDirectories } from '../src/helpers/build.js';
 import { put, removeRoots, temporaryRoot } from './fixture.js';
-import { cli, execute, fixturePackage, loom, runtimes, snapshot } from './package.js';
+import { cli, execute, fixturePackage, loom, snapshot } from './package.js';
 
 afterEach(() => {
   removeRoots();
@@ -141,8 +140,8 @@ function executableOf(runtime: string): string {
 }
 
 /** What `loom build` printed when it built nothing but the facts. */
-function printed(root: string, args: string[]) {
-  const result = loom(root, ['build', ...args]);
+async function printed(root: string, args: string[]) {
+  const result = await loom(root, ['build', ...args]);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   return result.stdout;
@@ -165,17 +164,17 @@ function hostTarget() {
   return `bun-${os}-${process.arch}${musl}`;
 }
 
-test('a build outside any package fails and says to run it inside a package directory', () => {
+test('a build outside any package fails and says to run it inside a package directory', async () => {
   const root = temporaryRoot('loom-build-');
-  const result = loom(root, ['build', '--target', 'node']);
+  const result = await loom(root, ['build', '--target', 'node']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('Run loom inside a package directory.');
 });
 
-test('--target node writes a bundle of the entry and the application module that reads distributed', () => {
+test('--target node writes a bundle of the entry and the application module that reads distributed', async () => {
   const root = probePackage();
-  const result = loom(root, ['build', '--target', 'node']);
+  const result = await loom(root, ['build', '--target', 'node']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   const files = readdirSync(join(root, 'dist'));
@@ -185,7 +184,8 @@ test('--target node writes a bundle of the entry and the application module that
     expect.arrayContaining([expect.stringMatching(/^chunk-[\da-z]+\.js$/u)]),
   );
   expect(readFileSync(join(root, 'dist/main.js'), 'utf8')).toMatch(/^#!\/usr\/bin\/env node\n/u);
-  for (const runtime of runtimes) {
+  {
+    const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
     expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({ build: 'distributed' });
     expect(execute(join(root, 'dist/main.js'), ['throw'], { runtime })).toEqual(generic);
     expect(programOf(join(root, 'dist/main.js'), runtime)).toEqual([
@@ -195,9 +195,10 @@ test('--target node writes a bundle of the entry and the application module that
   }
 });
 
-test('the built application module runs on a caller host with the facts the build baked', () => {
+test('the built application module runs on a caller host with the facts the build baked', async () => {
   const root = probePackage();
-  expect(loom(root, ['build', '--target', 'node']).status).toBe(0);
+  const runResult = await loom(root, ['build', '--target', 'node']);
+  expect(runResult.status).toBe(0);
   const caller = join(root, 'caller.mjs');
   writeFileSync(
     caller,
@@ -206,24 +207,26 @@ const outcome = await probe.invoke(['facts'], {});
 process.stdout.write(outcome.output);
 `,
   );
-  for (const runtime of runtimes) {
+  {
+    const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
     const result = execute(caller, [], { runtime });
     expect(result.stderr).toBe('');
     expect(JSON.parse(result.stdout)).toEqual({ build: 'distributed' });
   }
 });
 
-test('--target bun writes a bundle that reads distributed', () => {
+test('--target bun writes a bundle that reads distributed', async () => {
   const root = probePackage();
-  const result = loom(root, ['build', '--target', 'bun']);
+  const result = await loom(root, ['build', '--target', 'bun']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
-  for (const runtime of runtimes) {
+  {
+    const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
     expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({ build: 'distributed' });
   }
 });
 
-test('--entry builds the module it names, and with no --entry the build reads src/main.ts', () => {
+test('--entry builds the module it names, and with no --entry the build reads src/main.ts', async () => {
   const root = probePackage(
     {},
     {
@@ -235,18 +238,19 @@ await probe.run();
 `,
     },
   );
-  const named = loom(join(root, 'src'), ['build', '--target', 'node', '--entry', 'cli.ts']);
+  const named = await loom(join(root, 'src'), ['build', '--target', 'node', '--entry', 'cli.ts']);
   expect(named.stderr).toBe('');
   expect(named.status).toBe(0);
   expect(existsSync(join(root, 'dist/main.js'))).toBe(false);
   expect(execute(join(root, 'dist/cli.js'), ['facts'], { runtime: 'node' }).stdout).toBe(
     'cli\n{"build":"distributed"}\n',
   );
-  expect(loom(root, ['build', '--target', 'node']).status).toBe(0);
+  const runResult = await loom(root, ['build', '--target', 'node']);
+  expect(runResult.status).toBe(0);
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({ build: 'distributed' });
 });
 
-test('an entry outside src is named for its module beside the application module', () => {
+test('an entry outside src is named for its module beside the application module', async () => {
   const root = probePackage(
     {},
     {
@@ -257,7 +261,7 @@ await probe.run();
 `,
     },
   );
-  const result = loom(root, ['build', '--target', 'node', '--entry', 'bin/cli.ts']);
+  const result = await loom(root, ['build', '--target', 'node', '--entry', 'bin/cli.ts']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   const files = readdirSync(join(root, 'dist'));
@@ -269,7 +273,7 @@ await probe.run();
 test.each([
   ['with an application module', 'application'],
   ['without an application module', 'implementation'],
-])('a nested entry, src/cli/main.ts, writes dist/main.js %s', (_case, module) => {
+])('a nested entry, src/cli/main.ts, writes dist/main.js %s', async (_case, module) => {
   const root = fixturePackage({
     'package.json': '{"name":"nested","type":"module","version":"1.0.0"}\n',
     [`src/${module}.ts`]: application,
@@ -279,7 +283,7 @@ import { probe } from '../${module}.js';
 await probe.run();
 `,
   });
-  const result = loom(root, ['build', '--target', 'node', '--entry', 'src/cli/main.ts']);
+  const result = await loom(root, ['build', '--target', 'node', '--entry', 'src/cli/main.ts']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({ build: 'distributed' });
@@ -290,7 +294,7 @@ test.each([
   ['src/cli/index.ts', 'src/index.ts', ['--application', 'src/index.ts'], 'index.js'],
 ])(
   'an entry, %s, that builds to the same file as the application module fails naming both',
-  (entryPath, applicationPath, options, file) => {
+  async (entryPath, applicationPath, options, file) => {
     const root = fixturePackage({
       'package.json': '{"name":"twins","type":"module","version":"1.0.0"}\n',
       [applicationPath]: application,
@@ -300,7 +304,14 @@ import { probe } from '../${applicationPath.slice('src/'.length).replace('.ts', 
 await probe.run();
 `,
     });
-    const result = loom(root, ['build', '--target', 'node', '--entry', entryPath, ...options]);
+    const result = await loom(root, [
+      'build',
+      '--target',
+      'node',
+      '--entry',
+      entryPath,
+      ...options,
+    ]);
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain(
@@ -316,9 +327,9 @@ test.each([
     '--entry and --application naming one module',
     ['--entry', 'src/application.ts', '--application', 'src/application.ts'],
   ],
-])('%s bundles that module once and builds dist/application.js', (_case, options) => {
+])('%s bundles that module once and builds dist/application.js', async (_case, options) => {
   const root = probePackage({}, { 'src/application.ts': `${application}\nawait probe.run();\n` });
-  const result = loom(root, ['build', '--target', 'node', ...options]);
+  const result = await loom(root, ['build', '--target', 'node', ...options]);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   expect(readdirSync(join(root, 'dist'))).toContain('application.js');
@@ -326,37 +337,37 @@ test.each([
   expect(factsOf(join(root, 'dist/application.js'), 'node')).toEqual({ build: 'distributed' });
 });
 
-test('a package without src/application.ts bundles its entry alone', () => {
+test('a package without src/application.ts bundles its entry alone', async () => {
   const root = fixturePackage({
     'package.json': '{"name":"solo","type":"module","version":"1.0.0"}\n',
     'src/main.ts': `${application.replace('export const', 'const')}\nawait probe.run();\n`,
   });
-  const result = loom(root, ['build', '--target', 'node']);
+  const result = await loom(root, ['build', '--target', 'node']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   expect(readdirSync(join(root, 'dist'))).toEqual(['main.js']);
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({ build: 'distributed' });
 });
 
-test('--application bundles the module it names, and one that does not exist fails naming it', () => {
+test('--application bundles the module it names, and one that does not exist fails naming it', async () => {
   const root = probePackage({}, { 'src/app.ts': application });
-  const named = loom(root, ['build', '--target', 'node', '--application', 'src/app.ts']);
+  const named = await loom(root, ['build', '--target', 'node', '--application', 'src/app.ts']);
   expect(named.status).toBe(0);
   expect(readdirSync(join(root, 'dist'))).toContain('app.js');
-  const missing = loom(root, ['build', '--target', 'node', '--application', 'src/gone.ts']);
+  const missing = await loom(root, ['build', '--target', 'node', '--application', 'src/gone.ts']);
   expect(missing.status).toBe(1);
   expect(missing.stdout).toBe('');
   expect(missing.stderr).toContain('src/gone.ts');
 });
 
-test('paths.source in loom.config.json moves the entry and the application module the build reads', () => {
+test('paths.source in loom.config.json moves the entry and the application module the build reads', async () => {
   const root = fixturePackage({
     'lib/application.ts': application,
     'lib/main.ts': entry,
     'loom.config.json': '{ "paths": { "source": "lib" } }\n',
     'package.json': '{"name":"moved","type":"module","version":"1.0.0"}\n',
   });
-  const result = loom(root, ['build', '--target', 'node']);
+  const result = await loom(root, ['build', '--target', 'node']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   expect(readdirSync(join(root, 'dist'))).toEqual(
@@ -365,24 +376,24 @@ test('paths.source in loom.config.json moves the entry and the application modul
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({ build: 'distributed' });
 });
 
-test('with only paths.source set, a missing conventional application module leaves the entry alone', () => {
+test('with only paths.source set, a missing conventional application module leaves the entry alone', async () => {
   const root = fixturePackage({
     'lib/main.ts': `${application.replace('export const', 'const')}\nawait probe.run();\n`,
     'loom.config.json': '{ "paths": { "source": "lib" } }\n',
     'package.json': '{"name":"solo","type":"module","version":"1.0.0"}\n',
   });
-  const result = loom(root, ['build', '--target', 'node']);
+  const result = await loom(root, ['build', '--target', 'node']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   expect(readdirSync(join(root, 'dist'))).toEqual(['main.js']);
 });
 
-test('an application module paths.application names that does not exist fails the build and names the key', () => {
+test('an application module paths.application names that does not exist fails the build and names the key', async () => {
   const root = probePackage(
     {},
     { 'loom.config.json': '{ "paths": { "application": "src/app.ts" } }\n' },
   );
-  const result = loom(root, ['build', '--target', 'node']);
+  const result = await loom(root, ['build', '--target', 'node']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain(
@@ -391,7 +402,7 @@ test('an application module paths.application names that does not exist fails th
   expect(existsSync(join(root, 'dist'))).toBe(false);
 });
 
-test('--entry and --application beat the modules loom.config.json names', () => {
+test('--entry and --application beat the modules loom.config.json names', async () => {
   const root = probePackage(
     {},
     {
@@ -403,13 +414,13 @@ test('--entry and --application beat the modules loom.config.json names', () => 
       'src/file-main.ts': entry.replace('./application.js', './file-app.js'),
     },
   );
-  const configured = loom(root, ['build', '--target', 'node']);
+  const configured = await loom(root, ['build', '--target', 'node']);
   expect(configured.status).toBe(0);
   expect(readdirSync(join(root, 'dist'))).toEqual(
     expect.arrayContaining(['file-app.js', 'file-main.js']),
   );
   rmSync(join(root, 'dist'), { recursive: true });
-  const named = loom(root, [
+  const named = await loom(root, [
     'build',
     '--target',
     'node',
@@ -427,9 +438,9 @@ test('--entry and --application beat the modules loom.config.json names', () => 
   expect(existsSync(join(root, 'dist/file-app.js'))).toBe(false);
 });
 
-test('an entry paths.entry names that does not exist fails the build and names the key', () => {
+test('an entry paths.entry names that does not exist fails the build and names the key', async () => {
   const root = probePackage({}, { 'loom.config.json': '{ "paths": { "entry": "src/cli.ts" } }\n' });
-  const result = loom(root, ['build', '--target', 'node']);
+  const result = await loom(root, ['build', '--target', 'node']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain(
@@ -438,19 +449,21 @@ test('an entry paths.entry names that does not exist fails the build and names t
   expect(existsSync(join(root, 'dist'))).toBe(false);
 });
 
-test('paths.out moves the output, and --out beats it', () => {
+test('paths.out moves the output, and --out beats it', async () => {
   const root = probePackage({}, { 'loom.config.json': '{ "paths": { "out": "build" } }\n' });
-  expect(loom(root, ['build', '--target', 'node']).status).toBe(0);
+  const configured = await loom(root, ['build', '--target', 'node']);
+  expect(configured.status).toBe(0);
   expect(existsSync(join(root, 'dist'))).toBe(false);
   expect(factsOf(join(root, 'build/main.js'), 'node')).toEqual({ build: 'distributed' });
-  expect(loom(root, ['build', '--target', 'node', '--out', 'other']).status).toBe(0);
+  const named = await loom(root, ['build', '--target', 'node', '--out', 'other']);
+  expect(named.status).toBe(0);
   expect(factsOf(join(root, 'other/main.js'), 'node')).toEqual({ build: 'distributed' });
 });
 
-test('--application with a compile target is an option error that says it applies to a bundle', () => {
+test('--application with a compile target is an option error that says it applies to a bundle', async () => {
   const root = probePackage({ bin: { probe: 'dist/main.js' } });
   for (const target of [['--target', 'bun-linux-x64'], []]) {
-    const result = loom(root, ['build', ...target, '--application', 'src/application.ts']);
+    const result = await loom(root, ['build', ...target, '--application', 'src/application.ts']);
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('--application applies to a node or bun bundle');
@@ -460,12 +473,12 @@ test('--application with a compile target is an option error that says it applie
 
 test(
   'the host compile target, by default, writes dist/<name>, a binary that runs with no runtime',
-  () => {
+  async () => {
     const root = probePackage({
       bin: { probe: 'dist/main.js' },
       repository: 'git+https://github.com/acme/probe.git',
     });
-    const result = loom(root, ['build', '--release']);
+    const result = await loom(root, ['build', '--release']);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     const binary = join(root, 'dist/probe');
@@ -489,9 +502,9 @@ test(
 
 test(
   'the host compile target, by name, writes the binary its --out names',
-  () => {
+  async () => {
     const root = probePackage();
-    const result = loom(root, ['build', '--target', hostTarget(), '--out', 'bin/named']);
+    const result = await loom(root, ['build', '--target', hostTarget(), '--out', 'bin/named']);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(factsOf(join(root, 'bin/named'))).toEqual({ build: 'distributed' });
@@ -503,9 +516,9 @@ test(
 
 test(
   'the host compile target, by name with no --out, writes dist/<name>',
-  () => {
+  async () => {
     const root = probePackage({ bin: { notes: 'dist/main.js' } });
-    const result = loom(root, ['build', '--target', hostTarget()]);
+    const result = await loom(root, ['build', '--target', hostTarget()]);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(result.stdout).toBe(`Built dist/notes for ${hostTarget()}.\n`);
@@ -514,11 +527,11 @@ test(
   slow,
 );
 
-test('a compile target whose output is an existing directory fails before building and names --out', () => {
+test('a compile target whose output is an existing directory fails before building and names --out', async () => {
   const root = probePackage({ bin: { probe: 'dist/main.js' } });
   put(root, 'dist/notes.txt', 'Not the build’s.\n');
   const before = snapshot(join(root, 'dist'));
-  const result = loom(root, ['build', '--target', 'bun-linux-x64', '--out', 'dist']);
+  const result = await loom(root, ['build', '--target', 'bun-linux-x64', '--out', 'dist']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('--out');
@@ -534,10 +547,10 @@ test.each([
   ['bun-linux-x64-foo', /bun-linux-x64-foo/u],
   ['bun-darwin-arm64-musl', /bun-darwin-arm64-musl/u],
   ['bun-windows-x64', /bun-windows-x64/u],
-])('--target %s exits with an error that names the targets', (target, named) => {
+])('--target %s exits with an error that names the targets', async (target, named) => {
   const root = probePackage({ bin: { probe: 'dist/main.js' }, repository: 'acme/probe' });
   for (const print of [[], ['--release', '--facts'], ['--define']]) {
-    const result = loom(root, ['build', '--target', target, ...print]);
+    const result = await loom(root, ['build', '--target', target, ...print]);
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
     expect(result.stderr).toMatch(named);
@@ -573,18 +586,25 @@ test('a build with no --target on a host Bun names no target for fails and says 
   expect(existsSync(join(root, 'dist'))).toBe(false);
 });
 
-test('a Bun compile target with its variants names its asset with them', () => {
+test('a Bun compile target with its variants names its asset with them', async () => {
   const root = probePackage({ bin: { probe: 'dist/main.js' }, repository: 'acme/probe' });
-  const facts = printed(root, ['--target', 'bun-linux-x64-musl-baseline', '--release', '--facts']);
+  const facts = await printed(root, [
+    '--target',
+    'bun-linux-x64-musl-baseline',
+    '--release',
+    '--facts',
+  ]);
   expect(JSON.parse(facts)).toMatchObject({
     release: { asset: 'probe-linux-x64-musl-baseline' },
   });
 });
 
-test('--build development writes an artifact that reads development and shows its author a defect', () => {
+test('--build development writes an artifact that reads development and shows its author a defect', async () => {
   const root = probePackage();
-  expect(loom(root, ['build', '--target', 'node', '--build', 'development']).status).toBe(0);
-  for (const runtime of runtimes) {
+  const runResult = await loom(root, ['build', '--target', 'node', '--build', 'development']);
+  expect(runResult.status).toBe(0);
+  {
+    const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
     expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({ build: 'development' });
     const failed = execute(join(root, 'dist/main.js'), ['throw'], { runtime });
     expect(failed.status).toBe(1);
@@ -592,9 +612,9 @@ test('--build development writes an artifact that reads development and shows it
   }
 });
 
-test('--build takes development or distributed alone', () => {
+test('--build takes development or distributed alone', async () => {
   const root = probePackage();
-  const result = loom(root, ['build', '--target', 'node', '--build', 'source']);
+  const result = await loom(root, ['build', '--target', 'node', '--build', 'source']);
   expect(result.status).toBe(2);
   expect(result.stderr).toContain('development or distributed');
 });
@@ -670,9 +690,16 @@ test(
   slow,
 );
 
-test('--watch with --build distributed is an option error', () => {
+test('--watch with --build distributed is an option error', async () => {
   const root = probePackage();
-  const result = loom(root, ['build', '--watch', '--build', 'distributed', '--target', 'node']);
+  const result = await loom(root, [
+    'build',
+    '--watch',
+    '--build',
+    'distributed',
+    '--target',
+    'node',
+  ]);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('--watch');
@@ -684,10 +711,12 @@ test.each([
   ['2.0.0', 'stable'],
 ])(
   '--release in a package at %s reads its version, channel %s, and repository with no asset',
-  (version, channel) => {
+  async (version, channel) => {
     const root = probePackage({ repository: 'git+https://github.com/acme/probe.git', version });
-    expect(loom(root, ['build', '--target', 'node', '--release']).status).toBe(0);
-    for (const runtime of runtimes) {
+    const runResult = await loom(root, ['build', '--target', 'node', '--release']);
+    expect(runResult.status).toBe(0);
+    {
+      const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
       expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({
         build: 'distributed',
         release: { channel, repository: 'acme/probe', version },
@@ -697,11 +726,17 @@ test.each([
   },
 );
 
-test('--repository overrides the repository field', () => {
+test('--repository overrides the repository field', async () => {
   const root = probePackage({ repository: 'git+https://github.com/acme/probe.git' });
-  expect(
-    loom(root, ['build', '--target', 'node', '--release', '--repository', 'other/fork']).status,
-  ).toBe(0);
+  const runResult = await loom(root, [
+    'build',
+    '--target',
+    'node',
+    '--release',
+    '--repository',
+    'other/fork',
+  ]);
+  expect(runResult.status).toBe(0);
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({
     build: 'distributed',
     release: { channel: 'stable', repository: 'other/fork', version: '1.0.0' },
@@ -717,26 +752,26 @@ test.each([
   ['the owner/name shorthand', 'acme/probe'],
   ['the github: shorthand', 'github:acme/probe'],
   ['an object with a url', { type: 'git', url: 'git+https://github.com/acme/probe.git' }],
-])('--release reads the repository from %s', (_form, repository) => {
+])('--release reads the repository from %s', async (_form, repository) => {
   const root = probePackage({ repository });
-  expect(JSON.parse(printed(root, ['--target', 'node', '--release', '--facts']))).toEqual({
+  expect(JSON.parse(await printed(root, ['--target', 'node', '--release', '--facts']))).toEqual({
     build: 'distributed',
     release: { repository: 'acme/probe', version: '1.0.0' },
   });
 });
 
-test('--release with no repository field and no --repository exits 1 and names --repository', () => {
+test('--release with no repository field and no --repository exits 1 and names --repository', async () => {
   const root = probePackage();
-  const result = loom(root, ['build', '--target', 'node', '--release']);
+  const result = await loom(root, ['build', '--target', 'node', '--release']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('--repository');
   expect(existsSync(join(root, 'dist'))).toBe(false);
 });
 
-test('--release with a repository field it cannot read exits 1 and names --repository', () => {
+test('--release with a repository field it cannot read exits 1 and names --repository', async () => {
   const root = probePackage({ repository: 'https://example.com/' });
-  const result = loom(root, ['build', '--target', 'node', '--release']);
+  const result = await loom(root, ['build', '--target', 'node', '--release']);
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('--repository');
 });
@@ -744,34 +779,37 @@ test('--release with a repository field it cannot read exits 1 and names --repos
 test.each([
   ['a nested group', 'https://gitlab.com/group/sub/notes.git'],
   ['a path below the repository', 'https://github.com/acme/notes/tree/main/x'],
-])('--release with a repository field naming %s exits 1 and names --repository', (_case, url) => {
-  const root = probePackage({ repository: url });
-  const result = loom(root, ['build', '--target', 'node', '--release', '--facts']);
-  expect(result.status).toBe(1);
-  expect(result.stdout).toBe('');
-  expect(result.stderr).toContain('--repository');
-});
+])(
+  '--release with a repository field naming %s exits 1 and names --repository',
+  async (_case, url) => {
+    const root = probePackage({ repository: url });
+    const result = await loom(root, ['build', '--target', 'node', '--release', '--facts']);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('--repository');
+  },
+);
 
-test('--repository without --release is an option error that says it applies to a release', () => {
+test('--repository without --release is an option error that says it applies to a release', async () => {
   const root = probePackage();
-  const result = loom(root, ['build', '--target', 'node', '--repository', 'acme/probe']);
+  const result = await loom(root, ['build', '--target', 'node', '--repository', 'acme/probe']);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('--repository applies to a --release build');
   expect(existsSync(join(root, 'dist'))).toBe(false);
 });
 
-test('--release with no version exits 1 and names the version field', () => {
+test('--release with no version exits 1 and names the version field', async () => {
   const root = probePackage({ repository: 'acme/probe', version: undefined });
-  const result = loom(root, ['build', '--target', 'node', '--release']);
+  const result = await loom(root, ['build', '--target', 'node', '--release']);
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('version');
   expect(result.stderr).toContain('package.json');
 });
 
-test('a compile target with no bin and no --name exits 1 and names --name', () => {
+test('a compile target with no bin and no --name exits 1 and names --name', async () => {
   const root = probePackage();
-  const result = loom(root, ['build', '--target', 'bun-linux-x64']);
+  const result = await loom(root, ['build', '--target', 'bun-linux-x64']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('--name');
@@ -783,9 +821,15 @@ test.each([
   ['an object bin with one key, that key', { bin: { notes: 'dist/main.js' } }, [], 'notes'],
   ['--name over the bin', { bin: { notes: 'dist/main.js' } }, ['--name', 'jot'], 'jot'],
   ['--name with no bin', {}, ['--name', 'jot'], 'jot'],
-])('a compile target names its asset from %s', (_case, manifest, args, name) => {
+])('a compile target names its asset from %s', async (_case, manifest, args, name) => {
   const root = probePackage({ repository: 'acme/probe', ...manifest });
-  const facts = printed(root, ['--target', 'bun-linux-x64-musl', '--release', '--facts', ...args]);
+  const facts = await printed(root, [
+    '--target',
+    'bun-linux-x64-musl',
+    '--release',
+    '--facts',
+    ...args,
+  ]);
   expect(JSON.parse(facts)).toEqual({
     build: 'distributed',
     compiled: true,
@@ -793,38 +837,44 @@ test.each([
   });
 });
 
-test('--facts for a compile target prints compiled true with and without --release, and for node and bun prints none', () => {
+test('--facts for a compile target prints compiled true with and without --release, and for node and bun prints none', async () => {
   const root = probePackage({ bin: { probe: 'dist/main.js' }, repository: 'acme/probe' });
-  expect(printed(root, ['--target', 'bun-linux-x64', '--facts'])).toBe(
+  await expect(printed(root, ['--target', 'bun-linux-x64', '--facts'])).resolves.toBe(
     '{"build":"distributed","compiled":true}\n',
   );
-  expect(printed(root, ['--target', 'bun-darwin-arm64', '--release', '--facts'])).toBe(
+  await expect(
+    printed(root, ['--target', 'bun-darwin-arm64', '--release', '--facts']),
+  ).resolves.toBe(
     '{"build":"distributed","compiled":true,"release":{"asset":"probe-darwin-arm64","repository":"acme/probe","version":"1.0.0"}}\n',
   );
-  expect(printed(root, ['--target', 'bun-linux-x64', '--define'])).toBe(
+  await expect(printed(root, ['--target', 'bun-linux-x64', '--define'])).resolves.toBe(
     '__LOOM_RELEASE__={"build":"distributed","compiled":true}\n',
   );
   for (const target of ['node', 'bun']) {
-    expect(printed(root, ['--target', target, '--facts'])).toBe('{"build":"distributed"}\n');
-    expect(printed(root, ['--target', target, '--release', '--facts'])).not.toContain('compiled');
+    await expect(printed(root, ['--target', target, '--facts'])).resolves.toBe(
+      '{"build":"distributed"}\n',
+    );
+    await expect(
+      printed(root, ['--target', target, '--release', '--facts']),
+    ).resolves.not.toContain('compiled');
   }
 });
 
-test('an object bin with several keys and no --name names --name', () => {
+test('an object bin with several keys and no --name names --name', async () => {
   const root = probePackage({
     bin: { one: 'dist/one.js', two: 'dist/two.js' },
     repository: 'acme/probe',
   });
-  const result = loom(root, ['build', '--target', 'bun-linux-x64', '--release', '--facts']);
+  const result = await loom(root, ['build', '--target', 'bun-linux-x64', '--release', '--facts']);
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('--name');
 });
 
-test('--facts and --define each print one line, write no file, and compose a build that reads the same facts', () => {
+test('--facts and --define each print one line, write no file, and compose a build that reads the same facts', async () => {
   const root = probePackage({ repository: 'acme/probe', version: '1.1.0-next.3' });
   const args = ['--target', 'node', '--release', '--build', 'development'];
-  const facts = printed(root, [...args, '--facts']);
-  const define = printed(root, [...args, '--define']);
+  const facts = await printed(root, [...args, '--facts']);
+  const define = await printed(root, [...args, '--define']);
   expect(existsSync(join(root, 'dist'))).toBe(false);
   expect(facts.split('\n')).toHaveLength(2);
   expect(JSON.parse(facts)).toEqual({
@@ -836,7 +886,8 @@ test('--facts and --define each print one line, write no file, and compose a bui
     build: 'development',
     release: { channel: 'next', repository: 'acme/probe', version: '1.1.0-next.3' },
   };
-  expect(loom(root, ['build', ...args]).status).toBe(0);
+  const runResult = await loom(root, ['build', ...args]);
+  expect(runResult.status).toBe(0);
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual(expected);
   const command = spawnSync(
     'bun',
@@ -871,22 +922,23 @@ process.exitCode = result.success ? 0 : 1;
   expect(factsOf(join(root, 'by-api/main.js'), 'node')).toEqual(expected);
 });
 
-test('--facts and --define exclude each other', () => {
+test('--facts and --define exclude each other', async () => {
   const root = probePackage();
-  const result = loom(root, ['build', '--target', 'node', '--facts', '--define']);
+  const result = await loom(root, ['build', '--target', 'node', '--facts', '--define']);
   expect(result.status).toBe(2);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('--facts');
   expect(result.stderr).toContain('--define');
 });
 
-test('a syntax error in the entry exits 1 and leaves the earlier output byte-identical', () => {
+test('a syntax error in the entry exits 1 and leaves the earlier output byte-identical', async () => {
   const root = probePackage();
-  expect(loom(root, ['build', '--target', 'node']).status).toBe(0);
+  const runResult = await loom(root, ['build', '--target', 'node']);
+  expect(runResult.status).toBe(0);
   put(root, 'dist/notes.txt', 'Not the build’s.\n');
   const before = snapshot(join(root, 'dist'));
   writeFileSync(join(root, 'src/main.ts'), 'const broken = ;\n');
-  const result = loom(root, ['build', '--target', 'node']);
+  const result = await loom(root, ['build', '--target', 'node']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('src/main.ts');
@@ -894,10 +946,10 @@ test('a syntax error in the entry exits 1 and leaves the earlier output byte-ide
   expect(readdirSync(root).toSorted()).toEqual(['dist', 'node_modules', 'package.json', 'src']);
 });
 
-test('a failed first build leaves no dist directory behind', () => {
+test('a failed first build leaves no dist directory behind', async () => {
   const root = probePackage();
   writeFileSync(join(root, 'src/main.ts'), 'const broken = ;\n');
-  const result = loom(root, ['build', '--target', 'node']);
+  const result = await loom(root, ['build', '--target', 'node']);
   expect(result.status).toBe(1);
   expect(readdirSync(root).toSorted()).toEqual(['node_modules', 'package.json', 'src']);
 });
@@ -995,8 +1047,9 @@ test('undoing a build removes only the directories it created that nothing else 
 });
 
 /** Every file a complete build of the probe package writes, read from one uninterrupted build. */
-function completeBuild(root: string) {
-  expect(loom(root, ['build', '--target', 'node']).status).toBe(0);
+async function completeBuild(root: string) {
+  const runResult = await loom(root, ['build', '--target', 'node']);
+  expect(runResult.status).toBe(0);
   const built = snapshot(join(root, 'dist'));
   rmSync(join(root, 'dist'), { recursive: true });
   return built;
@@ -1006,7 +1059,7 @@ test.each(['SIGINT', 'SIGTERM'] as const)(
   'a %s the moment a first build creates its output removes the output, or ends once the build is complete',
   async (signal) => {
     const root = probePackage();
-    const built = completeBuild(root);
+    const built = await completeBuild(root);
     for (let round = 0; round < 3; round += 1) {
       const received = await signalWhenWritten(root, signal, root, (name) => name === 'dist');
       expect(received).toBe(signal);
@@ -1023,7 +1076,7 @@ test.each(['SIGINT', 'SIGTERM'] as const)(
   'a %s the moment a rebuild creates its staging directory leaves the earlier output whole, or the new output whole',
   async (signal) => {
     const root = probePackage();
-    const built = completeBuild(root);
+    const built = await completeBuild(root);
     const stale = () => {
       for (const file of built.keys()) {
         put(root, join('dist', file), `An earlier ${file}.\n`);
@@ -1173,9 +1226,11 @@ process.stdout.write(\`\${mode} \${process.env.NODE_ENV}\\n\`);
   });
 }
 
-test('a distributed bundle reads production code from its dependencies, whatever NODE_ENV the build ran under', () => {
+test('a distributed bundle reads production code from its dependencies, whatever NODE_ENV the build ran under', async () => {
   const root = modesPackage();
-  const result = loom(root, ['build', '--target', 'node'], { env: { NODE_ENV: 'development' } });
+  const result = await loom(root, ['build', '--target', 'node'], {
+    env: { NODE_ENV: 'development' },
+  });
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   const run = execute(join(root, 'dist/main.js'), [], {
@@ -1185,9 +1240,9 @@ test('a distributed bundle reads production code from its dependencies, whatever
   expect(run.stdout).toBe('production production\n');
 });
 
-test('a development bundle reads the development code its dependencies ship', () => {
+test('a development bundle reads the development code its dependencies ship', async () => {
   const root = modesPackage();
-  const built = loom(root, ['build', '--target', 'node', '--build', 'development'], {
+  const built = await loom(root, ['build', '--target', 'node', '--build', 'development'], {
     env: { NODE_ENV: undefined },
   });
   expect(built.status).toBe(0);
@@ -1200,14 +1255,16 @@ test('a development bundle reads the development code its dependencies ship', ()
 
 test(
   'a compiled binary reads production code from its dependencies in a distributed build and development code in a development one',
-  () => {
+  async () => {
     const root = modesPackage();
     const shell = { NODE_ENV: undefined };
     for (const [build, expected] of [
       ['distributed', 'production production\n'],
       ['development', 'development development\n'],
     ] as const) {
-      const built = loom(root, ['build', '--name', 'modes', '--build', build], { env: shell });
+      const built = await loom(root, ['build', '--name', 'modes', '--build', build], {
+        env: shell,
+      });
       expect(built.status).toBe(0);
       const run = execute(join(root, 'dist/modes'), [], { env: childEnvironment(shell) });
       expect(run.stdout).toBe(expected);
@@ -1216,7 +1273,7 @@ test(
   slow,
 );
 
-test("a build reads the package's bunfig.toml, whose loader setting applies to the bundle", () => {
+test("a build reads the package's bunfig.toml, whose loader setting applies to the bundle", async () => {
   const root = fixturePackage({
     'bunfig.toml': '[loader]\n".greeting" = "text"\n',
     'package.json': '{"name":"greeter","type":"module","version":"1.0.0"}\n',
@@ -1227,7 +1284,7 @@ import greeting from './hello.greeting';
 process.stdout.write(greeting);
 `,
   });
-  const result = loom(root, ['build', '--target', 'node']);
+  const result = await loom(root, ['build', '--target', 'node']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
   expect(execute(join(root, 'dist/main.js'), [], { runtime: 'node' }).stdout).toBe(
@@ -1235,21 +1292,22 @@ process.stdout.write(greeting);
   );
 });
 
-test('a rebuild replaces the files it writes and leaves every other file alone', () => {
+test('a rebuild replaces the files it writes and leaves every other file alone', async () => {
   const root = probePackage();
   put(root, 'dist/notes.txt', 'Not the build’s.\n');
   put(root, 'dist/main.js', 'stale\n');
-  expect(loom(root, ['build', '--target', 'node']).status).toBe(0);
+  const runResult = await loom(root, ['build', '--target', 'node']);
+  expect(runResult.status).toBe(0);
   expect(readFileSync(join(root, 'dist/notes.txt'), 'utf8')).toBe('Not the build’s.\n');
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({ build: 'distributed' });
 });
 
-test('a build with no Bun on the PATH exits 1 and names Bun', () => {
+test('a build with no Bun on the PATH exits 1 and names Bun', async () => {
   const root = probePackage();
   const runtime = spawnSync(process.env.LOOM_TEST_RUNTIME ?? 'node', ['-p', 'process.execPath'], {
     encoding: 'utf8',
   }).stdout.trim();
-  const result = loom(root, ['build', '--target', 'node'], {
+  const result = await loom(root, ['build', '--target', 'node'], {
     env: { PATH: temporaryRoot('loom-empty-path-') },
     runtime,
   });
