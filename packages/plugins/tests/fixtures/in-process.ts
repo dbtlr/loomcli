@@ -22,8 +22,10 @@ export async function runOnMock(
 ): Promise<Outcome> {
   const mock = mockProcess(fields);
   const { stdout, stderr, publishEnv, afterRun, ...runOptions } = options;
-  // A sink or an environment publisher replaces only that effect; the composed handle forwards the
-  // Exit code to the mock, so the status is always the code the run wrote.
+  /*
+   * A sink or an environment publisher replaces only that effect; the composed handle forwards the
+   * exit code to the mock, so the status is always the code the run wrote.
+   */
   const handle: ProcessHandle =
     stdout === undefined && stderr === undefined && publishEnv === undefined
       ? mock

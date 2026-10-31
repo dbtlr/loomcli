@@ -11,8 +11,8 @@
  *
  * - Updating. Under umask `077`, in a real process because a real process owns the umask, a binary
  *   with mode `755` at `1.4.2` on `stable` fetches `releases/latest`, `SHA256SUMS`, and the asset
- *   of the latest release, replaces the file with the asset's bytes and mode `755`, rewrites `install.json` with the pinned bytes and the new
- *   digest, prints the update line, calls `afterReplace` once with `1.4.2`, the new version, and
+ *   of the latest release, replaces the file with the asset's bytes and mode `755`, rewrites
+ *   `install.json` with the pinned bytes and the new digest, prints the update line, calls `afterReplace` once with `1.4.2`, the new version, and
  *   the recorded path, and exits 0. A leftover staging file from an earlier run is gone afterwards.
  * - Channels. A binary at `1.6.0-next.1` resolves the highest `next` or stable release in the feed,
  *   passing over a `beta` release, a tag that is not a version, and a higher `next` tag whose

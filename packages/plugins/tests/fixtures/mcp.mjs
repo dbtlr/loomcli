@@ -7,10 +7,11 @@ import { ruleText } from './rule-text.mjs';
 const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
 const [name, ...argv] = process.argv.slice(2);
 
-// A fault the call that declares it can detect throws before any run.
+// The process entry alone sets COLUMNS for the scenarios that read it, before building them.
 if (Object.hasOwn(processColumns, name)) {
   process.env.COLUMNS = processColumns[name];
 }
+// A fault the call that declares it can detect throws before any run.
 try {
   const application = createScenario(name, process.env);
   if (argv[0] === 'inspect') {

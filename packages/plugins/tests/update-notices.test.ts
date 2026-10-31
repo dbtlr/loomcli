@@ -378,8 +378,10 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {
     scenario.program === undefined || typeof scenario.program === 'string'
       ? ['notice-refresh']
       : scenario.program;
-  // A program the scenario names stands for a file that is not there: it cannot start, so its
-  // Exit settles as `unstarted`, as a real spawn of a missing file does.
+  /*
+   * A program the scenario names stands for a file that is not there: it cannot start, so its exit
+   * settles as `unstarted`, as a real spawn of a missing file does.
+   */
   const programs: Record<string, Program> = { 'notice-refresh': refresh };
   const [named] = program;
   if (named !== undefined && named !== 'notice-refresh') {
