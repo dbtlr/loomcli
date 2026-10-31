@@ -3,7 +3,8 @@ import { join } from 'node:path';
 
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
-import { requireClosedBlocks, withoutByteOrderMark } from './markdown.js';
+import { withoutByteOrderMark } from './byte-order-mark.js';
+import { requireClosedBlocks } from './markdown.js';
 import { readDirectory, readRegularFile } from './repository.js';
 import type { Checkout } from './repository.js';
 

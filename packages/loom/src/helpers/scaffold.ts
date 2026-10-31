@@ -1,8 +1,8 @@
 import { safeParse } from 'valibot';
 
+import { withoutByteOrderMark } from './byte-order-mark.js';
 import { jsonObject } from './json-object.js';
 import { parseManifest } from './manifest.js';
-import { withoutByteOrderMark } from './markdown.js';
 import { checkScript, toolDependencies, toolRanges } from './tooling.js';
 import type { Tooling } from './tooling.js';
 

@@ -15,7 +15,7 @@ function spawn(): never {
 /** The working tree at the root, read with no git, so its host starts no program. */
 function workingTree(root: string): Checkout {
   return {
-    host: { spawn, tmpdir: root },
+    host: { env: {}, spawn, tmpdir: root },
     onShutdown: () => () => undefined,
     root,
     signal: new AbortController().signal,

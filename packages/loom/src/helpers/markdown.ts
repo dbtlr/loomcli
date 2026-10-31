@@ -1,5 +1,7 @@
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
+import { withoutByteOrderMark } from './byte-order-mark.js';
+
 type Node = ReturnType<typeof fromMarkdown>['children'][number];
 
 type Heading = Extract<Node, { type: 'heading' }>;
@@ -31,11 +33,6 @@ export interface ReleaseLocation {
 
 export function headingText(heading: Heading) {
   return text(heading.children);
-}
-
-// A leading U+FEFF marks the encoding and is not content.
-export function withoutByteOrderMark(source: string) {
-  return source.startsWith('\uFEFF') ? source.slice(1) : source;
 }
 
 // A changelog opens every release with a depth-2 heading whose first word is the version.

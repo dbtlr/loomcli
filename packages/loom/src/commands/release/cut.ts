@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { Command } from '@loomcli/core';
+import type { ActionHandler } from '@loomcli/core';
 
 import { insertSection, readNarrative, releaseDate } from '../../helpers/changelog.js';
 import { withVersion } from '../../helpers/manifest.js';
@@ -11,6 +11,7 @@ import type { Release } from '../../helpers/release.js';
 import { report } from '../../helpers/report.js';
 import { git, gitLine, readWorkingFile } from '../../helpers/repository.js';
 import type { Checkout } from '../../helpers/repository.js';
+import type { releaseCut } from './command.js';
 
 /** Whether the checkout's HEAD or working tree moved away from the prepared release. */
 async function checkoutMoved(checkout: Checkout, release: Release) {
@@ -157,41 +158,20 @@ async function prepare(
  * This repository's synchronized cut under ADR-0012, which also writes every participating
  * library's version and the lockfile and reports material changes. `--dry-run` writes nothing.
  */
-export const cut = new Command('cut', {
-  description:
-    'Cut the next synchronized release: update the changelog, versions, and lockfile, and consume the fragments.',
-})
-  .option('target', {
-    description: 'Select a stable 0.x version at or above the fragment-derived minimum.',
-    type: 'string',
-  })
-  .option('dry-run', {
-    description: 'Print the next release section without writing any file.',
-    type: 'boolean',
-  })
-  .option('date', {
-    description: 'Date the release as YYYY-MM-DD instead of today.',
-    type: 'string',
-  })
-  .option('initial', {
-    description: 'Cut the first release from version 0.0.0.',
-    type: 'boolean',
-  })
-  .option('since', {
-    description: 'Name the revision whose changes the release covers.',
-    type: 'string',
-  })
-  .option('narrative', {
-    description: 'Read the release narrative from this Markdown file.',
-    type: 'string',
-  })
-  .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
-    await report({ out, passthrough, signal }, async () => {
-      const checkout = { host, onShutdown, root: host.cwd, signal };
-      const release = await prepare(checkout, options);
-      if (!options['dry-run']) {
-        await writeRelease(checkout, release);
-      }
-      return release.section;
-    });
+export const cutRelease: ActionHandler<typeof releaseCut> = async ({
+  host,
+  onShutdown,
+  options,
+  out,
+  passthrough,
+  signal,
+}) => {
+  await report({ out, passthrough, signal }, async () => {
+    const checkout = { host, onShutdown, root: host.cwd, signal };
+    const release = await prepare(checkout, options);
+    if (!options['dry-run']) {
+      await writeRelease(checkout, release);
+    }
+    return release.section;
   });
+};
