@@ -14,7 +14,7 @@ An agent release skill coordinates preparation and reviews the result. Merging t
 
 ## Commands
 
-Run `pnpm build` after installing dependencies or changing the application source. Run the following commands from the repository root. The compiled application runs with Node 22.23.2 or Bun 1.4.0. The root command preserves the repository as the working directory.
+Run `pnpm build` after installing dependencies or changing the application source. Run the following commands from the repository root. The compiled application runs with Node 22.23.2 or Bun 1.4.4. The root command preserves the repository as the working directory.
 
 ```sh
 pnpm loom changelog check
