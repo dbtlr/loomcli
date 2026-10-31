@@ -88,17 +88,20 @@ export async function runBun(
  * cancellation, so a stopped run never builds to its end; a shutdown that ends before Bun does
  * kills it. With `collect`, Bun's stdout and stderr are collected together in the order they
  * arrive, as nearly as two pipes allow; with `inherit`, Bun writes to the run's own streams and the
- * output is empty. A missing Bun fails with a sentence that names it.
+ * output is empty. Bun runs in the run's environment, or in `env` when one is given, which
+ * replaces it whole. A missing Bun fails with a sentence that names it.
  */
 export async function superviseBun(
   args: readonly string[],
   cwd: string,
   output: 'collect' | 'inherit',
   run: RunHost,
+  env: Readonly<Record<string, string | undefined>> = run.host.env,
 ): Promise<BunResult> {
   const collected = output === 'collect' ? collector() : undefined;
   const child = run.host.spawn('bun', args, {
     cwd,
+    env,
     stderr: collected?.stderr ?? 'inherit',
     stdout: collected?.stdout ?? 'inherit',
   });

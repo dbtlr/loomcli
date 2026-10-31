@@ -53,8 +53,11 @@ const exportsResult = union([
   strictObject({ failure: string(), loaded: boolean() }),
 ]);
 
-/** The script the reading process runs, shipped beside this module in `dist`. */
-const script = fileURLToPath(new URL('../read-application.js', import.meta.url));
+/**
+ * The script the reading process runs. The build writes it into `dist` beside the bundle's
+ * modules, this one included.
+ */
+const script = fileURLToPath(new URL('read-application.js', import.meta.url));
 
 /** One read of an application module, as the reading process writes it to its result file. */
 export type ApplicationExports = InferOutput<typeof exportsResult>;

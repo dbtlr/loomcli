@@ -48,6 +48,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
@@ -56,7 +57,7 @@ import {
   watch as watchDirectory,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join, relative, sep } from 'node:path';
+import { basename, join, relative, sep } from 'node:path';
 import { Writable } from 'node:stream';
 import { setTimeout as after } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
@@ -65,6 +66,7 @@ import { processHandle } from '@loomcli/core';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { childEnvironment, start } from '../../../scripts/test-process.js';
+import { removeCreatedDirectories } from '../src/helpers/build.js';
 import { put, removeRoots, temporaryRoot } from './fixture.js';
 import { cli, execute, fixturePackage, loom, runtimes, snapshot } from './package.js';
 
@@ -887,21 +889,10 @@ function temporaryLeftovers(root: string) {
 
 test('undoing a build removes only the directories it created that nothing else has filled', () => {
   const root = temporaryRoot('loom-undo-');
-  const helpers = pathToFileURL(join(dirname(cli), 'helpers/build.js')).href;
-  put(
-    root,
-    'undo.mjs',
-    `import { mkdirSync, writeFileSync } from 'node:fs';
-import { removeCreatedDirectories } from ${JSON.stringify(helpers)};
-
-// A build created out/dist/bin, and a build running beside it wrote into out/dist.
-const created = mkdirSync('out/dist/bin', { recursive: true });
-writeFileSync('out/dist/other.js', '');
-removeCreatedDirectories('out/dist/bin', created);
-`,
-  );
-  const result = spawnSync(process.env.LOOM_TEST_RUNTIME ?? 'node', ['undo.mjs'], { cwd: root });
-  expect(result.status).toBe(0);
+  // A build created out/dist/bin, and a build running beside it wrote into out/dist.
+  const created = mkdirSync(join(root, 'out/dist/bin'), { recursive: true });
+  writeFileSync(join(root, 'out/dist/other.js'), '');
+  removeCreatedDirectories(join(root, 'out/dist/bin'), created);
   expect(readdirSync(join(root, 'out/dist'))).toEqual(['other.js']);
 });
 
@@ -1059,6 +1050,69 @@ test(
       expect(factsOf(join(root, 'dist/b'))).toEqual({ build: 'distributed' });
       expect(temporaryLeftovers(root)).toEqual([]);
       rmSync(join(root, 'dist'), { recursive: true });
+    }
+  },
+  slow,
+);
+
+/**
+ * A package whose entry prints the mode its dependency resolved and the `NODE_ENV` its bundle
+ * reads. The dependency ships a development build beside its default, as micromark does.
+ */
+function modesPackage() {
+  return fixturePackage({
+    'node_modules/modes/development.js': "export const mode = 'development';\n",
+    // Conditions match in the order they are written, so `development` comes before `default`.
+    'node_modules/modes/package.json':
+      '{"exports":{".":{"development":"./development.js","default":"./production.js"}},"name":"modes","type":"module","version":"1.0.0"}\n',
+    'node_modules/modes/production.js': "export const mode = 'production';\n",
+    'package.json': '{"name":"modes-probe","type":"module","version":"1.0.0"}\n',
+    'src/main.ts': `// @ts-expect-error The fixture dependency ships no declarations.
+import { mode } from 'modes';
+
+process.stdout.write(\`\${mode} \${process.env.NODE_ENV}\\n\`);
+`,
+  });
+}
+
+test('a distributed bundle reads production code from its dependencies, whatever NODE_ENV the build ran under', () => {
+  const root = modesPackage();
+  const result = loom(root, ['build', '--target', 'node'], { env: { NODE_ENV: 'development' } });
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  const run = execute(join(root, 'dist/main.js'), [], {
+    env: childEnvironment({ NODE_ENV: undefined }),
+    runtime: 'node',
+  });
+  expect(run.stdout).toBe('production production\n');
+});
+
+test('a development bundle reads the development code its dependencies ship', () => {
+  const root = modesPackage();
+  const built = loom(root, ['build', '--target', 'node', '--build', 'development'], {
+    env: { NODE_ENV: undefined },
+  });
+  expect(built.status).toBe(0);
+  const run = execute(join(root, 'dist/main.js'), [], {
+    env: childEnvironment({ NODE_ENV: undefined }),
+    runtime: 'node',
+  });
+  expect(run.stdout).toBe('development development\n');
+});
+
+test(
+  'a compiled binary reads production code from its dependencies in a distributed build and development code in a development one',
+  () => {
+    const root = modesPackage();
+    const shell = { NODE_ENV: undefined };
+    for (const [build, expected] of [
+      ['distributed', 'production production\n'],
+      ['development', 'development development\n'],
+    ] as const) {
+      const built = loom(root, ['build', '--name', 'modes', '--build', build], { env: shell });
+      expect(built.status).toBe(0);
+      const run = execute(join(root, 'dist/modes'), [], { env: childEnvironment(shell) });
+      expect(run.stdout).toBe(expected);
     }
   },
   slow,

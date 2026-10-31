@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
@@ -35,6 +37,50 @@ test('--help prints the help page of the routed release Command', () => {
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('loom release plan');
   expect(result.stderr).toBe('');
+});
+
+/** The built bin, started behind the hook that records each file of the bundle it loads. */
+const loads = new URL('fixtures/loads.mjs', import.meta.url);
+
+/** Bun writes the source path of each module it bundles in a comment above that module's code. */
+const bundledModule = /^\/\/ (?:\.\.\/)*(?<path>src\/\S+\.ts)$/gmu;
+
+/** The toolchain's own command modules one invocation of the built bin loads, by source path. */
+function loadedCommandModules(args: string[]) {
+  const directory = mkdtempSync(join(tmpdir(), 'loom-loads-'));
+  const marks = join(directory, 'marks.txt');
+  try {
+    const result = invoke(loads, args, { env: { LOOM_FIXTURE_MARKS: marks } });
+    expect(result.status).toBe(0);
+    const files = readFileSync(marks, 'utf8').split('\n').filter(Boolean);
+    const modules = files.flatMap((file) =>
+      [...readFileSync(file, 'utf8').matchAll(bundledModule)].flatMap(
+        (found) => found.groups?.path ?? [],
+      ),
+    );
+    return [...new Set(modules)]
+      .filter((path) => path.startsWith('src/commands/'))
+      .toSorted((left, right) => left.localeCompare(right));
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+}
+
+test('--help loads every command declaration and the work of no command', () => {
+  expect(loadedCommandModules(['--help'])).toEqual([
+    'src/commands/build/command.ts',
+    'src/commands/changelog/command.ts',
+    'src/commands/init/command.ts',
+    'src/commands/pr/command.ts',
+    'src/commands/release/command.ts',
+  ]);
+});
+
+test("changelog check loads its own work and no other command's", () => {
+  const modules = loadedCommandModules(['changelog', 'check']);
+  expect(modules.filter((path) => !path.endsWith('/command.ts'))).toEqual([
+    'src/commands/changelog/check.ts',
+  ]);
 });
 
 test('--version prints the version of the @loomcli/loom package', () => {

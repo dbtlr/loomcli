@@ -1,14 +1,10 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 import { Command } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
-import { parseOrThrow } from '../../helpers/parse-or-throw.js';
-import { planRelease, planSchema, renderPlan } from '../../helpers/release-plan.js';
-import { recordRelease } from '../../helpers/release-record.js';
-import { report } from '../../helpers/report.js';
-import { cut } from './cut.js';
+/*
+ * Each action imports its work when it runs, so a run of any other command, help included, loads
+ * none of it.
+ */
 
 const defaultRegistry = 'https://registry.npmjs.org';
 const defaultGitHubApi = 'https://api.github.com';
@@ -23,124 +19,129 @@ const count = createValidator({
       : { issues: [{ message: 'Supply a whole number.' }] },
 });
 
+/** This repository's synchronized cut under ADR-0012. */
+export const releaseCut = new Command('cut', {
+  description:
+    'Cut the next synchronized release: update the changelog, versions, and lockfile, and consume the fragments.',
+})
+  .option('target', {
+    description: 'Select a stable 0.x version at or above the fragment-derived minimum.',
+    type: 'string',
+  })
+  .option('dry-run', {
+    description: 'Print the next release section without writing any file.',
+    type: 'boolean',
+  })
+  .option('date', {
+    description: 'Date the release as YYYY-MM-DD instead of today.',
+    type: 'string',
+  })
+  .option('initial', {
+    description: 'Cut the first release from version 0.0.0.',
+    type: 'boolean',
+  })
+  .option('since', {
+    description: 'Name the revision whose changes the release covers.',
+    type: 'string',
+  })
+  .option('narrative', {
+    description: 'Read the release narrative from this Markdown file.',
+    type: 'string',
+  })
+  .action(async (context) => {
+    const { cutRelease } = await import('./cut.js');
+    await cutRelease(context);
+  });
+
+export const releasePlan = new Command('plan', {
+  description: 'Reconcile the head with the registry and write a release plan.',
+})
+  .option('repository', {
+    description: 'Name the GitHub repository as owner/name.',
+    required: true,
+    type: 'string',
+  })
+  .option('output', {
+    description: 'Write the release plan JSON to this file.',
+    required: true,
+    type: 'string',
+  })
+  .option('registry', {
+    default: defaultRegistry,
+    description: 'Name the package registry URL.',
+    type: 'string',
+  })
+  .option('github-api', {
+    default: defaultGitHubApi,
+    description: 'Name the GitHub API URL.',
+    type: 'string',
+  })
+  .option('head', {
+    default: 'HEAD',
+    description: 'Name the revision to plan the release for.',
+    type: 'string',
+  })
+  .option('request-timeout-ms', {
+    default: '30000',
+    description: 'Give the milliseconds each request may take.',
+    type: 'string',
+    validate: count,
+  })
+  .action(async (context) => {
+    const { writeReleasePlan } = await import('./plan.js');
+    await writeReleasePlan(context);
+  });
+
+export const releaseRecord = new Command('record', {
+  description: 'Record a planned release as a tag and a GitHub release.',
+})
+  .option('repository', {
+    description: 'Name the GitHub repository as owner/name.',
+    required: true,
+    type: 'string',
+  })
+  .option('plan', {
+    description: 'Read the release plan JSON from this file.',
+    required: true,
+    type: 'string',
+  })
+  .option('registry', {
+    default: defaultRegistry,
+    description: 'Name the package registry URL.',
+    type: 'string',
+  })
+  .option('github-api', {
+    default: defaultGitHubApi,
+    description: 'Name the GitHub API URL.',
+    type: 'string',
+  })
+  .option('request-timeout-ms', {
+    default: '30000',
+    description: 'Give the milliseconds each request may take.',
+    type: 'string',
+    validate: count,
+  })
+  .option('retry-attempts', {
+    default: '8',
+    description: 'Give how many times to retry a pending read.',
+    type: 'string',
+    validate: count,
+  })
+  .option('retry-delay-ms', {
+    default: '5000',
+    description: 'Give the milliseconds to wait between retries.',
+    type: 'string',
+    validate: count,
+  })
+  .action(async (context) => {
+    const { recordPlannedRelease } = await import('./record.js');
+    await recordPlannedRelease(context);
+  });
+
 export const release = new Command('release', {
   description: 'Cut, plan, and record a release.',
   hidden: true,
 })
-  .command(cut)
-  .command(
-    new Command('plan', {
-      description: 'Reconcile the head with the registry and write a release plan.',
-    })
-      .option('repository', {
-        description: 'Name the GitHub repository as owner/name.',
-        required: true,
-        type: 'string',
-      })
-      .option('output', {
-        description: 'Write the release plan JSON to this file.',
-        required: true,
-        type: 'string',
-      })
-      .option('registry', {
-        default: defaultRegistry,
-        description: 'Name the package registry URL.',
-        type: 'string',
-      })
-      .option('github-api', {
-        default: defaultGitHubApi,
-        description: 'Name the GitHub API URL.',
-        type: 'string',
-      })
-      .option('head', {
-        default: 'HEAD',
-        description: 'Name the revision to plan the release for.',
-        type: 'string',
-      })
-      .option('request-timeout-ms', {
-        default: '30000',
-        description: 'Give the milliseconds each request may take.',
-        type: 'string',
-        validate: count,
-      })
-      .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
-        await report({ out, passthrough, signal }, async () => {
-          const plan = await planRelease({
-            checkout: { host, onShutdown, root: host.cwd, signal },
-            githubApi: options['github-api'],
-            head: options.head,
-            policy: { requestTimeoutMs: options['request-timeout-ms'] },
-            registry: options.registry,
-            repository: options.repository,
-            token: host.env.GH_TOKEN,
-          });
-          writeFileSync(resolve(host.cwd, options.output), `${JSON.stringify(plan, null, 2)}\n`);
-          return renderPlan(plan);
-        });
-      }),
-  )
-  .command(
-    new Command('record', {
-      description: 'Record a planned release as a tag and a GitHub release.',
-    })
-      .option('repository', {
-        description: 'Name the GitHub repository as owner/name.',
-        required: true,
-        type: 'string',
-      })
-      .option('plan', {
-        description: 'Read the release plan JSON from this file.',
-        required: true,
-        type: 'string',
-      })
-      .option('registry', {
-        default: defaultRegistry,
-        description: 'Name the package registry URL.',
-        type: 'string',
-      })
-      .option('github-api', {
-        default: defaultGitHubApi,
-        description: 'Name the GitHub API URL.',
-        type: 'string',
-      })
-      .option('request-timeout-ms', {
-        default: '30000',
-        description: 'Give the milliseconds each request may take.',
-        type: 'string',
-        validate: count,
-      })
-      .option('retry-attempts', {
-        default: '8',
-        description: 'Give how many times to retry a pending read.',
-        type: 'string',
-        validate: count,
-      })
-      .option('retry-delay-ms', {
-        default: '5000',
-        description: 'Give the milliseconds to wait between retries.',
-        type: 'string',
-        validate: count,
-      })
-      .action(async ({ host, onShutdown, options, out, passthrough, signal }) => {
-        await report({ out, passthrough, signal }, async () => {
-          const token = host.env.GH_TOKEN;
-          if (token === undefined || token === '') {
-            throw new Error('Recording a release requires GH_TOKEN.');
-          }
-          const source: unknown = JSON.parse(readFileSync(resolve(host.cwd, options.plan), 'utf8'));
-          return recordRelease({
-            checkout: { host, onShutdown, root: host.cwd, signal },
-            githubApi: options['github-api'],
-            plan: parseOrThrow(planSchema, source),
-            registry: options.registry,
-            repository: options.repository,
-            retry: {
-              attempts: options['retry-attempts'],
-              delayMs: options['retry-delay-ms'],
-              requestTimeoutMs: options['request-timeout-ms'],
-            },
-            token,
-          });
-        });
-      }),
-  );
+  .command(releaseCut)
+  .command(releasePlan)
+  .command(releaseRecord);

@@ -8,7 +8,7 @@ Loom CLI is a TypeScript framework for command applications. The current increme
 
 ## Run textstat
 
-Install dependencies, build the packages, and bundle the examples. Bundling needs [Bun](https://bun.sh), because each example is bundled with [`loom build --target node`](docs/toolchain/build.md#loom-build), which runs `bun build` and bakes the [release facts](docs/core/release-facts.md) of a distributed build into the bundle through the `__LOOM_RELEASE__` define:
+Install dependencies, build the packages, and bundle the examples. The build needs [Bun](https://bun.sh), because the `loom` bin and each example are bundled with [`loom build --target node`](docs/toolchain/build.md#loom-build), which runs `bun build` and bakes the [release facts](docs/core/release-facts.md) of a distributed build into the bundle through the `__LOOM_RELEASE__` define:
 
 ```sh
 pnpm install --frozen-lockfile

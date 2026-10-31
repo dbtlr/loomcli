@@ -316,23 +316,25 @@ try {
   for (const name of ['core', 'plugins', 'validators', 'prompts', 'testing', 'eslint-plugin']) {
     pnpm(['exec', 'attw', join(temporary, `${name}.tgz`), '--profile', 'esm-only'], root);
   }
-  // The packed manifest must pin each first-party dependency at the synchronized version itself.
-  // The overrides below would hide an unrewritten workspace spec that no registry consumer resolves.
+  // The toolchain's bin is a bundle that carries every module it runs, so installing it installs
+  // No runtime dependency. Its optional peers, pnpm and TypeScript, stay the consumer's own.
   const loomManifest = run('tar', ['-xzOf', 'loom.tgz', 'package/package.json'], temporary);
   assert.equal(loomManifest.status, 0, loomManifest.output);
   const loomPackage = JSON.parse(loomManifest.stdout);
-  for (const name of [
-    '@loomcli/core',
-    '@loomcli/eslint-plugin',
-    '@loomcli/plugins',
-    '@loomcli/prompts',
-    '@loomcli/validators',
-  ]) {
-    const pinned = loomPackage.dependencies?.[name];
-    assert.equal(
-      pinned,
-      version,
-      `The packed @loomcli/loom must depend on ${name} ${version}, not "${pinned}".`,
+  assert.deepEqual(
+    loomPackage.dependencies ?? {},
+    {},
+    'The packed @loomcli/loom must declare no runtime dependency, because its bundle carries them.',
+  );
+  // The bundle carries third-party and workspace code, so the tarball must carry their notices.
+  // The build derives the notices from the packages it found in the bundle.
+  const loomNotice = run('tar', ['-xzOf', 'loom.tgz', 'package/dist/NOTICE'], temporary);
+  assert.equal(loomNotice.status, 0, loomNotice.output);
+  for (const bundled of ['yaml', '@loomcli/core']) {
+    assert.match(
+      loomNotice.stdout,
+      new RegExp(`^${bundled} \\d`, 'm'),
+      `The packed @loomcli/loom NOTICE does not name ${bundled}.`,
     );
   }
   // The toolchain exports no ./build subpath; the build bakes the release facts through a define.
@@ -395,8 +397,7 @@ try {
       type: 'module',
     }),
   );
-  // The packed toolchain depends on core, the plugin pack, the prompts, and the lint plugin at the
-  // Synchronized version. The overrides resolve them to the packed tarballs, so the check never
+  // The overrides resolve every first-party package to the packed tarballs, so the check never
   // Reads any from the registry, where a release cut's version is not yet published.
   await writeFile(join(temporary, 'pnpm-workspace.yaml'), workspaceOverrides(temporary));
   pnpm(['install', '--prefer-offline', '--ignore-scripts', '--lockfile=false'], temporary);

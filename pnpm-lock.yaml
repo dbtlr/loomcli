@@ -304,7 +304,7 @@ importers:
         version: 6.0.3
 
   packages/loom:
-    dependencies:
+    devDependencies:
       '@loomcli/core':
         specifier: workspace:*
         version: link:../core
@@ -323,19 +323,18 @@ importers:
       mdast-util-from-markdown:
         specifier: ^2.0.3
         version: 2.0.3(supports-color@7.2.0)
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
-      yaml:
-        specifier: ^2.9.1
-        version: 2.9.1
-    devDependencies:
       pnpm:
         specifier: 12.8.1
         version: 12.8.1
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
 
   packages/mcp: {}
 

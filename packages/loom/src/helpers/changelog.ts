@@ -3,14 +3,10 @@ import { resolve } from 'node:path';
 
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
+import { withoutByteOrderMark } from './byte-order-mark.js';
 import type { FragmentKind } from './fragments.js';
 import { readFragments } from './fragments.js';
-import {
-  headingText,
-  locateRelease,
-  requireClosedBlocks,
-  withoutByteOrderMark,
-} from './markdown.js';
+import { headingText, locateRelease, requireClosedBlocks } from './markdown.js';
 import { git, gitLine, requireFullHistory } from './repository.js';
 import type { Checkout } from './repository.js';
 

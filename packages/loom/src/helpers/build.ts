@@ -73,6 +73,16 @@ function bunArguments(plan: BuildPlan, out: string): string[] {
   ];
 }
 
+/**
+ * The environment Bun builds the plan under. A distributed build sets `NODE_ENV` to `production`,
+ * so Bun resolves each dependency's production export and inlines `production` for
+ * `process.env.NODE_ENV`, whatever the shell holds. A development build keeps the run's
+ * environment, under which Bun resolves development exports unless `NODE_ENV` says otherwise.
+ */
+function bunEnvironment(plan: BuildPlan, env: Readonly<Record<string, string | undefined>>) {
+  return plan.facts.build === 'distributed' ? { ...env, NODE_ENV: 'production' } : env;
+}
+
 /** Every file under a directory, by its path relative to that directory. */
 function filesUnder(directory: string): string[] {
   return readdirSync(directory, { recursive: true, withFileTypes: true })
@@ -157,7 +167,13 @@ export async function build(plan: BuildPlan, run: RunHost): Promise<void> {
   const removeUndo = run.onShutdown(undo);
   try {
     const out = plan.target.kind === 'compile' ? join(staging, basename(plan.out)) : staging;
-    const result = await superviseBun(bunArguments(plan, out), staging, 'collect', run);
+    const result = await superviseBun(
+      bunArguments(plan, out),
+      staging,
+      'collect',
+      run,
+      bunEnvironment(plan, run.host.env),
+    );
     if (run.signal.aborted) {
       undo();
       return;

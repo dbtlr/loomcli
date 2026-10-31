@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs';
-
+import manifest from '../package.json' with { type: 'json' };
 import { discardedDeclaration } from './rules/discarded-declaration.js';
 import { hostBypass } from './rules/host-bypass.js';
 import { nameShape } from './rules/name-shape.js';
@@ -12,20 +11,6 @@ const packageName = '@loomcli/eslint-plugin';
 
 /** The namespace ESLint's scoped-plugin convention gives `@loomcli/eslint-plugin`. */
 const namespace = '@loomcli';
-
-/** The version the package manifest declares, read once so the plugin never states its own. */
-function manifestVersion(): string {
-  const manifest: unknown = JSON.parse(
-    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-  );
-  if (typeof manifest === 'object' && manifest !== null && 'version' in manifest) {
-    const { version } = manifest;
-    if (typeof version === 'string') {
-      return version;
-    }
-  }
-  throw new TypeError(`${packageName} found no version in its package.json.`);
-}
 
 /** Every rule the plugin ships, by the name that follows the namespace in a rule id. */
 const rules = {
@@ -51,7 +36,8 @@ const enabledRules = Object.fromEntries(
   ]),
 );
 
-const meta = { name: packageName, version: manifestVersion() };
+/** The version comes from the package manifest, so the plugin never states its own. */
+const meta = { name: packageName, version: manifest.version };
 
 /**
  * The ESLint flat-config object that registers the plugin under `@loomcli` and turns every rule

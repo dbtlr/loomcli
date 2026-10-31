@@ -1,8 +1,8 @@
 import { safeParse } from 'valibot';
 
+import { withoutByteOrderMark } from './byte-order-mark.js';
 import { jsonFault } from './json-fault.js';
 import { jsonObject } from './json-object.js';
-import { withoutByteOrderMark } from './markdown.js';
 
 // The end of the JSON string that opens at the index, past its closing quote.
 function stringEnd(source: string, start: number) {
