@@ -4,7 +4,7 @@ description: "How an Application is declared: its name, version, description, ro
 
 # Application declarations
 
-`new Application(name)` creates an application with an unnamed root Command. The name is a [portable name](../glossary.md#names-and-routing): `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, not starting with `-` or `.`, because an operator types it as a command at the shell prompt. Core exports the predicate as `isPortableName(name)`, which the [lint plugin](../libs/eslint-plugin.md) calls to judge a literal name as core does. The constructor takes no input type parameter. `new Application(name, options)` takes one options object. `plugins` installs the plugins described in [Plugins](plugin-contract.md) in composition order, and `views` holds the view overrides described in [Views](views.md), which is where an application replaces the view function of a failure class, a lane, a help page, or any other declared view. `description` and `version` are core graph facts every projection reads, and `extensions` carries the root's [extension values](extensions.md). An omitted `version` is `0.0.0`, which means unversioned, so the graph always carries one; the root cannot be hidden or deprecated, so the Application options carry neither fact. `translators` holds the application's [translators](failures.md#translators). `shutdown.timeout` is the [shutdown budget](signals.md#the-shutdown), the milliseconds a run gets to unwind after an ending signal, 500 unless the application sets another; it is a whole number from 0 through 2147483647, and any other value is a declaration error from the constructor. A larger budget makes every cancelled run take longer to end when its work does not stop, so an application keeps its unwind short and the budget small. `uses` lists the [providers](providers.md) whose values the root's own action reads under `provided`; a child Command opts in through its own options. `postInstall` declares the [post-install message and command](#the-post-install-declaration) the installer script prints and runs. The build an application runs as is not an option: core reads it from the [release facts](release-facts.md) the build baked in.
+`new Application(name)` creates an application with an unnamed root Command. The name is a [portable name](../glossary.md#names-and-routing): `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, not starting with `-` or `.`, because an operator types it as a command at the shell prompt. Core exports the predicate as `isPortableName(name)`, which the [lint plugin](../libs/eslint-plugin.md) calls to judge a literal name as core does. The constructor takes no input type parameter. `new Application(name, options)` takes one options object. `plugins` installs the plugins described in [Plugins](plugin-contract.md) in composition order, and `views` holds the view overrides described in [Views](views.md), which is where an application replaces the view function of a failure class, a lane, a help page, or any other declared view. `description` and `version` are core graph facts every projection reads, and `extensions` carries the root's [extension values](extensions.md). An omitted `version` is `0.0.0`, which means unversioned, so the graph always carries one; the root cannot be hidden or deprecated, so the Application options carry neither fact. `translators` holds the application's [translators](failures.md#translators). `shutdown.timeout` is the [shutdown budget](signals.md#the-shutdown), the milliseconds a run gets to unwind after an ending signal, 500 unless the application sets another; it is a whole number from 0 through 2147483647, and any other value is a declaration error from the constructor. A larger budget makes every cancelled run take longer to end when its work does not stop, so an application keeps its unwind short and the budget small. `uses` lists the [providers](providers.md) whose values the root's own action reads under `provided`; a child Command opts in through its own options. The build an application runs as is not an option: core reads it from the [release facts](release-facts.md) the build baked in.
 
 ```ts
 interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[], Uses extends readonly AnyProvider[] = []> {
@@ -17,7 +17,6 @@ interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin
   extensions?: readonly ExtensionValue<'command'>[];
   shutdown?: { readonly timeout?: number };
   uses?: Uses; // see Providers
-  postInstall?: PostInstall; // see The post-install declaration
 }
 ```
 
@@ -80,30 +79,7 @@ Application methods apply the same declaration transitions as a Command to the u
 
 ## The post-install declaration
 
-```ts
-interface PostInstall {
-  readonly message?: string;
-  readonly command?: readonly [string, ...string[]];
-}
-interface CommandGraph {
-  // ...
-  readonly postInstall: PostInstall | undefined;
-}
-```
-
-```ts
-const app = new Application('mimir', {
-  postInstall: { command: ['setup'], message: 'Run mimir init in a project to start tracking work.' },
-  plugins: [help(), mcp(), skills({ skills })],
-}).command(setup);
-```
-
-`postInstall` declares what the [installer script](../toolchain/install.md) does after it installs and records the binary: `command` is the argument words of the [post-install command](../toolchain/install.md#the-post-install-command), which it runs as the installed binary with those words, and `message` is the [post-install message](../toolchain/install.md#the-post-install-message), which it prints last. It is an installation fact, as the [installation record](installation-record.md) and the [release facts](release-facts.md) are, and core never acts on it at run time. [ADR-0113](../decisions/0113-an-application-declares-a-post-install-message-and-command-that-the-installer-script-prints-and-runs.md) records the decision.
-
-- **On the graph.** The built graph carries it as `CommandGraph.postInstall`, the members the author declared, frozen, or `undefined` when the Application declares neither member. `inspect()` reports it, and `loom init` reads it from there.
-- **The words.** `command` holds what an operator types after the application's name, such as `['setup']` or `['completion', 'install', '--shell', 'zsh']`, and the type rejects an empty list. One command, not a list of them: an application with several steps writes a Command that runs them. Core judges no character of a word or of the message, and init quotes each for the shell.
-- **The words route.** In a [development build](release-facts.md#development-builds), `inspect()` and `run()` route the words as an invocation's argv routes, global options included, and report the build fault [`@loomcli/core/post-install-unrouted`](declaration-faults.md#at-build) when routing selects no Command, or a Command with no action, such as a group; [`check()`](graph-inspection.md#checking-the-declarations) and the assembly check report it in every build, as they report a failing converter. The routed Command's own arguments and options are not parsed, so words its parser rejects fail at install, under the script's failure line. A distributed `inspect()` and `run()` run no such check.
-- **Names.** `PostInstall` is exported from `@loomcli/core`.
+The Application declares no installation step. The [post-install command and message](../toolchain/install.md#the-post-install-command) the installer script runs and prints live in the `postInstall` key of the package's [toolchain configuration file](../toolchain/build.md#the-configuration-file), because only `loom init` reads them. [ADR-0131](../decisions/0131-the-post-install-declaration-moves-from-the-application-into-loom-config-json.md) records the decision.
 
 ## When author code fails
 

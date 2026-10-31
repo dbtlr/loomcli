@@ -63,7 +63,7 @@ typescript-eslint supports TypeScript below 6.1 and reads the TypeScript 6 API, 
 
 `loom init --linter eslint` writes both keys in a new scaffold, and an application that already declares `typescript` adds them by hand. The alias goes once typescript-eslint supports TypeScript 7.
 
-`configs.recommended` registers the plugin under `@loomcli` and turns every rule on at `error`. To change a rule, set it in a later config object, such as `'@loomcli/name-shape': 'warn'`.
+`configs.recommended` registers the plugin under `@loomcli` and turns every rule on at `error`, except [`unrooted-configuration`](#unrooted-configuration), which is advice and is on at `warn`. To change a rule, set it in a later config object, such as `'@loomcli/name-shape': 'warn'`.
 
 ## How the rules find a declaration
 
@@ -77,7 +77,7 @@ Type assertions around a value (`as`, `satisfies`, `!`) do not change what it is
 
 A rule reports only what it can trace. Apart from what [`host-bypass`](#host-bypass) traces through a destructure, a parameter, a `let` variable, a destructured binding, a spread options object, a computed name, a name held in a variable, and a `Command` that does not come from `@loomcli/core` all get no report. A false report is worse than a missed one.
 
-`host-bypass` judges no declaration. It reads scope analysis and import declarations, under the forms [its section](#host-bypass) lists. `strict-configuration-schema` judges the schema passed to the configuration plugin, under the forms [its section](#strict-configuration-schema) lists.
+`host-bypass` judges no declaration. It reads scope analysis and import declarations, under the forms [its section](#host-bypass) lists. `strict-configuration-schema` judges the schema passed to the configuration plugin, and `unrooted-configuration` the settings passed to it, under the forms their sections list.
 
 ## Rules
 
@@ -200,6 +200,26 @@ export const { plugin: configPlugin, values: config } = configuration({
 - **The forms.** zod's `strictObject(...)`, called on a binding imported from `zod`, `zod/v4`, `zod/mini`, `zod/v4/mini`, `zod/v4-mini`, or `zod/v3`, through the whole module such as `z.strictObject(...)` included, and a `.strict()` call on a schema the rule traces to zod: a call on a zod import, a method call on one, or a `const` that holds one. The whole module is a namespace import, a default import, or the named `z` import.
 - **What it leaves alone.** valibot's and ArkType's strict objects, a `.strict()` whose receiver does not trace to zod, such as yup's, which turns off coercion, a schema imported from another module, held in a `let` variable, passed through a parameter, or built by a call the rule cannot see into, and every strict object outside a `configuration` call's `schema`. A strict object that reaches the schema only as something else is left alone too: loosened by `.loose()`, `.strip()`, `.passthrough()`, or `.catchall()`, turned into the enum of its keys by `.keyof()`, the same through zod mini's `z.keyof(...)` and `z.catchall(...)`, read for a field such as `.shape` or `...State.shape`, or used inside a function that runs on the parsed value, such as a `refine` callback.
 - **The message.** `A zod strict object drops its whole section from the configuration when the file holds a key it does not list. Use z.object, which strips unknown keys.`
+
+### `unrooted-configuration`
+
+Reports a call to the [configuration plugin](../plugins/config.md) that reads the project scope and names no root marker. The project scope walks up from the start directory, and with no marker the walk climbs past the project to the directory below home or to the filesystem root, so a file in an enclosing project, such as a monorepo's root, answers for this one. Most projects have an entry that marks their root, such as `package.json` or `.git`, but not every project has an obvious one, so the rule is advice. [ADR-0129](../decisions/0129-an-author-chooses-the-configuration-scopes-an-application-reads-and-a-root-marker-where-the-project-walk-stops.md) records the decision.
+
+```ts
+import { configuration } from '@loomcli/plugins/config';
+import * as v from 'valibot';
+
+// Reported: the walk from a package can read a file above the package.
+export const { plugin: configPlugin, values: config } = configuration({
+  file: '.collector.json',
+  schema: v.object({ channel: v.optional(v.string()) }),
+});
+```
+
+- **At `warn`.** `configs.recommended` and `configs.oxlint` turn the rule on at `warn`, the one rule they do not turn on at `error`. An author silences it for one call by naming a marker, by `root: false`, which states that the project has none, or by a `scopes` list without `'project'`.
+- **Where it looks.** The settings object literal passed to `configuration`, where the binding is imported from `@loomcli/plugins/config`, a renamed import and a namespace import included. The call reads the project scope when the object has no `scopes` property or its `scopes` property is an array literal that holds the string `'project'`. The rule reports such a call when the object has no `root` property.
+- **What it leaves alone.** A settings object that is not an object literal at the call, an object literal holding a spread, a `scopes` value that is not an array literal, and a `root` property of any value, `undefined` included, because a false report is worse than a missed one.
+- **The message.** `This configuration reads the project scope with no root marker, so its walk climbs past the project. Name the file that marks the project's root, such as root: 'package.json', or set root: false.`
 
 ## Add a rule
 

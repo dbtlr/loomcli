@@ -4,7 +4,7 @@ title: ADR-0119 - The configuration lookup walks to home, reads an author-named 
 description: Without --config, the configuration plugin reads the file an author-named variable names, or else the first file found by a walk from the start directory up to the home directory, or to the root outside home, then the home file, then the XDG user file. A discovered file that is broken warns once and the run has no configuration; no later location answers. A missing file is silent, and an author setting turns on a notice when nothing is found. An opt-in global option moves where the walk starts without changing host.cwd. This supersedes ADR-0054's lookup in the working directory and then the home directory, its fallback past a broken file, and its rejection of a per-user XDG file.
 status: proposed
 created: 2026-10-28
-modified: 2026-10-29
+modified: 2026-10-31
 ---
 
 # ADR-0119 - The configuration lookup walks to home, reads an author-named variable and the XDG user file, and never falls back after a broken file
@@ -61,3 +61,4 @@ Proposed. It moves to accepted in the release PR of the release that ships the l
 
 - 2026-10-28: Proposed with the configuration contract (LM-426). It supersedes ADR-0054's lookup in the working directory and then the home directory, its clause that a broken discovered file is absent so the lookup goes on, and its rejection of a per-user XDG file. ADR-0054 carries a dated entry.
 - 2026-10-29: `--no-config` joins the decision (LM-378): a control option with which a run reads no file and writes no notice, and which fails with code 2 beside `--config`. [ADR-0120](0120-a-json-configuration-file-holds-comments-and-a-file-that-does-not-parse-names-its-line-and-column.md), proposed, adds the line and column where a file breaks to the broken-file sentences, and lets a candidate whose extension is `jsonc` name the user file `config.jsonc`. It binds when that record is accepted.
+- 2026-10-31: [ADR-0129](0129-an-author-chooses-the-configuration-scopes-an-application-reads-and-a-root-marker-where-the-project-walk-stops.md), proposed, lets the author choose the scopes the lookup reads, the project scope being the walk and the user scope the home file and the XDG user file, and name a root marker after whose directory the walk stops. The project walk no longer looks in the home directory, which belongs to the user scope, so with both scopes the order of directories is unchanged. With neither setting the lookup is this record's. It binds when that record is accepted.

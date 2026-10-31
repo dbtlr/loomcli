@@ -4,7 +4,7 @@ title: ADR-0099 - An assembly check from @loomcli/testing replaces loom check
 description: loom check retires, and the loom bin does only what no standard tool does. @loomcli/testing ships an assembly check that bun test and vitest run, which throws an Error whose message is the Developer Diagnostic of each fault Application.check() returns. loom init writes the first test with a comment on why to keep it, and the scaffold's check script runs tsc --noEmit, the linter, and the test runner. Every other provision of ADR-0066 carries forward. It supersedes ADR-0066.
 status: accepted
 created: 2026-10-20
-modified: 2026-10-22
+modified: 2026-10-31
 ---
 
 # ADR-0099 - An assembly check from @loomcli/testing replaces loom check
@@ -53,3 +53,4 @@ Accepted in 0.15.0.
 ## Changelog
 
 - 2026-10-20: Proposed with the 0.15.0 rescope.
+- 2026-10-31: [ADR-0130](0130-the-loom-toolchain-reads-loom-config-json-from-the-package-directory-and-every-path-it-owns-is-a-key.md), proposed, supersedes the incorporated provision that the bin reads no configuration file: the bin reads `loom.config.json` from the package directory through the configuration plugin, and every value is a command option, a key of that file, a convention, or a standard `package.json` field. The bin still acts on one package directory. It binds when that record is accepted.

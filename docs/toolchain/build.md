@@ -4,7 +4,7 @@ description: "loom build: one package directory and the build that bundles an ap
 
 # Build reference
 
-This page documents how `loom` finds the one package directory a command acts on, and how `loom build` bundles an application. An author uses it to build an application for development or for distribution.
+This page documents how `loom` finds the one package directory a command acts on, the configuration file it reads there, and how `loom build` bundles an application. An author uses it to build an application for development or for distribution.
 
 ## One package directory
 
@@ -27,11 +27,46 @@ Every `loom` command acts on one package: the package whose directory it runs in
 - **The package directory.** It is the directory of the nearest `package.json` at or above the working directory. A command run with no `package.json` at or above it fails with exit 1 and says to run it inside a package directory. `loom init` is the one exception: it scaffolds an empty directory, and at a terminal it offers to create a `package.json` in a directory that has none, under [loom init](init.md).
 - **An unreadable `package.json`.** Every command reads `package.json` through one reader. A file that is not valid JSON fails with exit 1 and names the file's path, the line and column where the JSON breaks, counted from 1 with the column in characters, what JSON needs there, and the fix: `/work/notes/package.json is not valid JSON: line 3, column 1 needs a property name in double quotes, so fix it there and run loom again.` A file that holds JSON other than an object fails and names its path, and a leading byte order mark is ignored.
 - **One package, never a set.** Loom never acts on a repository root as a set of packages and holds no list of the packages a repository ships. In a monorepo, the monorepo's own tool runs a command in each package, or the author runs it in each one. A command run at a monorepo root acts on the root's own `package.json`.
-- **No configuration file.** Every value is a command option, a convention, or a standard `package.json` field, such as `version`, `bin`, or `repository`. An option overrides the convention.
-- **Paths.** A path an option names resolves against the working directory, as any command-line path does. A conventional path, such as `src/main.ts`, resolves against the package directory.
+- **Where values come from.** Every value is a command option, a key of the [configuration file](#the-configuration-file), a convention, or a standard `package.json` field, such as `version`, `bin`, or `repository`. An option beats the file, and the file beats the convention.
+- **Paths.** A path an option names resolves against the working directory, as any command-line path does. A path in the configuration file and a conventional path, such as `src/main.ts`, resolve against the package directory.
 - **Bun.** `loom build` does its work under Bun, whichever runtime runs `loom`, so Bun must be on the `PATH`. A missing Bun fails the command with exit 1 and names Bun.
 - **Exit codes.** 0 is success. 1 is a failed build, a failed changelog check, invalid content, or an operational failure, reported on stderr. 2 is a command or option error, as in every Loom application.
 - **Out of this contract.** Release orchestration stays with each repository: PR guards, publishing to npm or GitHub, prerelease channels, release workflows, and cuts across several packages. The [installer script](install.md) reads the [release shape](install.md#the-release-shape) those workflows publish.
+
+## The configuration file
+
+```jsonc
+// packages/cli/loom.config.json
+{
+  "paths": {
+    "source": "lib",
+    "installer": "../../install.sh"
+  }
+}
+```
+
+A package may keep `loom.config.json` beside its `package.json` to depart from a convention. Every key is optional, and a package with no file builds on conventions. [ADR-0130](../decisions/0130-the-loom-toolchain-reads-loom-config-json-from-the-package-directory-and-every-path-it-owns-is-a-key.md) records the decision.
+
+- **The lookup.** `loom` installs the [configuration plugin](../plugins/config.md) with the file `loom.config.json`, the project scope alone, and `package.json` as its root marker. A run reads the first `loom.config.json` from the working directory up to the package directory, and never one above the package directory, in the home directory, or in a user folder.
+- **Reading.** The file reads as JSON with comments. An unknown key is ignored, and a value the file's schema rejects is dropped, its convention applies, and `-v` names it; `loom` installs the [verbose plugin](../plugins/verbose.md) for that. A file that cannot be read or does not parse warns once, and the run uses conventions, as the plugin's [broken files](../plugins/config.md#missing-and-broken-files) rule states.
+- **`--config` and `--no-config`.** `--config <path>` reads that file, of any name, in place of the lookup, and a missing or broken one fails the run with code 2. `--no-config` reads no file, so CI can check that a package also builds on conventions.
+- **`paths`.** Each key names where the package keeps something `loom` reads or writes:
+
+  | Key | Default | Read by |
+  | --- | --- | --- |
+  | `source` | `src` | `init` |
+  | `application` | `<source>/application.ts` | `build`, `init` |
+  | `entry` | `<source>/main.ts` | `build`, `init` |
+  | `out` | `dist` | `build`, `init` |
+  | `changes` | `.changes` | `changelog check`, `changelog write`, `init` |
+  | `changelog` | `CHANGELOG.md` | `changelog write` |
+  | `installer` | `install.sh` | `init` |
+  | `skills` | `skills` | `build` |
+
+  Each path is a nonempty string, relative or absolute, and a relative path may hold `..`; an empty string or a value of another type is dropped and its convention applies. `application` and `entry` follow `source` unless set themselves. `skills` is the folder of agent skills the application installs for its operator, the layout `npx skills` reads; how the build reads it is recorded separately.
+- **One base.** Every path in the file resolves against the package directory, whichever directory the file sits in, and an absolute path stays as written. A path may leave the package directory, such as a monorepo's root `install.sh`.
+- **`postInstall`.** The [post-install command and message](install.md#the-post-install-command) the installer script runs and prints: `{ "message": "…", "command": ["setup"] }`.
+- **Fixed paths.** `package.json`, `tsconfig.json`, the linter's configuration file, `bunfig.toml`, and the [changelog skill](init.md#managed-files) are where other tools look for them, so the file does not move them.
 
 ## loom build
 
@@ -54,11 +89,11 @@ bun build src/main.ts src/application.ts --outdir dist --splitting --target node
 `loom build` builds the package's application for one target and bakes its [release facts](../core/release-facts.md) into the artifact through the define `__LOOM_RELEASE__`.
 
 - **One target per call.** `--target` takes `node`, `bun`, or a Bun compile target, `bun-<os>-<arch>` for `linux` or `darwin` on `x64` or `arm64`, then `-musl` on Linux and `-baseline` or `-modern` on x64, such as `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-arm64`, `bun-linux-x64-musl`, or `bun-linux-x64-musl-baseline`. No `bun-windows-*` target is offered, under [ADR-0100](../decisions/0100-acceptance-plans-live-beside-the-tests.md); an author who wants a Windows binary calls `bun build --compile` directly. Any other value is an option error that names the targets, `--facts` and `--define` included. The default is the compile target Bun names for a Linux or macOS host. `node` and `bun` write a JavaScript bundle for that runtime, and a compile target compiles a single binary. `browser` is refused, because a Loom application runs as a command. Several targets take several calls, and cross-compiling and building on each platform are both valid.
-- **The entry.** `--entry` names the module that calls `run()`. The default is `src/main.ts`.
-- **The application module.** `--application` names the module that exports the Application, by default `src/application.ts`, the module a test imports for the assembly check. A `node` or `bun` bundle carries it as a second bundle entry point beside the entry, so an embedded caller or a test imports the built Application with its baked facts. Each entry point's file is named for its module alone, whatever directory the module lives in, such as `main.js` and `application.js`, beside the chunks they share. An entry and an application module with the same base name, such as `src/cli/application.ts` beside `src/application.ts`, would build to one file, so the build fails before it starts, names both modules, and says to rename one of them or name another module with `--entry` or `--application`. A bundle splits, so each plugin's lazily loaded middleware stays in a chunk of its own. When `src/application.ts` does not exist, the bundle carries the entry alone, and a module `--application` names that does not exist fails the build and names it. A compile target compiles the entry alone, so `--application` with a compile target is an option error that says it applies to a `node` or `bun` bundle.
+- **The entry.** `--entry` names the module that calls `run()`. The default is `paths.entry`, `src/main.ts` by convention.
+- **The application module.** `--application` names the module that exports the Application, by default `paths.application`, `src/application.ts` by convention, the module a test imports for the assembly check. A `node` or `bun` bundle carries it as a second bundle entry point beside the entry, so an embedded caller or a test imports the built Application with its baked facts. Each entry point's file is named for its module alone, whatever directory the module lives in, such as `main.js` and `application.js`, beside the chunks they share. An entry and an application module with the same base name, such as `src/cli/application.ts` beside `src/application.ts`, would build to one file, so the build fails before it starts, names both modules, and says to rename one of them or name another module with `--entry` or `--application`. A bundle splits, so each plugin's lazily loaded middleware stays in a chunk of its own. When the conventional application module does not exist, `<source>/application.ts` included when the file sets only `source`, the bundle carries the entry alone, and a module `--application` names, or an `application` key the file sets names, that does not exist fails the build and names the option or the key. A compile target compiles the entry alone, so `--application` with a compile target is an option error that says it applies to a `node` or `bun` bundle.
 - **The package's Bun configuration.** Bun reads the package's `bunfig.toml`, when it holds one, from any working directory, so a setting such as a `[loader]` applies to the build and to `--watch`.
 - **The dependencies.** `loom build` bundles the package's dependencies, `@loomcli/core` included, so the define reaches core and the artifact reads the facts it bakes.
-- **The output.** `--out` names a binary's file, by default `dist/<name>`, or a bundle's directory, by default `dist/`. A binary's output that is an existing directory fails the build before anything builds and names `--out`.
+- **The output.** `--out` names a binary's file, by default `<out>/<name>`, or a bundle's directory, by default `<out>/`, where `<out>` is `paths.out`, `dist` by convention. A binary's output that is an existing directory fails the build before anything builds and names `--out`.
 - **The name.** A binary's default path and its asset name read the application's name from `package.json` `bin`: a string `bin` gives the package name without its scope, and an object `bin` with one key gives that key. `--name` overrides it. With no `bin`, or a `bin` with several keys, and no `--name`, a build that needs the name fails and names `--name`.
 - **The build.** `--build` takes `development` or `distributed`, and the default is `distributed`. Those are the `build` values the artifact reads.
 - **Watching.** `--watch` runs `bun build --watch` for the target and passes the facts with `--define`, with `build` set to `development`. It rebuilds on each change until it is stopped, and it writes as `bun build --watch` writes. Bun runs in the package directory, so it follows a source file that an atomic save or a checkout replaces. When the watch ends, a stopped watch included, `loom` removes each output directory it created that nothing filled, and for a compile target the `.bun-build` files that appeared in the package directory while it watched, where Bun writes a binary's temporary file. `--watch` with `--build distributed` is an option error.

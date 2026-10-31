@@ -20,7 +20,7 @@ loom changelog write --dry-run        # prints the section and 1.5.0, writes not
 loom changelog write --date 2026-10-07
 ```
 
-A package's changelog cuts its version from its pending fragments. `.changes/` and `CHANGELOG.md` live in the package directory, the version is the package's `package.json` `version`, and git tags never enter.
+A package's changelog cuts its version from its pending fragments. `.changes/` and `CHANGELOG.md` live in the package directory unless the [configuration file](build.md#the-configuration-file)'s `paths.changes` and `paths.changelog` name other places, the version is the package's `package.json` `version`, and git tags never enter. Every mention of `.changes/` and `CHANGELOG.md` on this page means the configured folder and file.
 
 - **Three kinds.** A fragment named `breaking.<slug>.md` is a breaking change, `feature.<slug>.md` a feature, and `<slug>.md` a fix. A bare `breaking.md` or `feature.md` is invalid. A fragment's body follows the grammar of the fragment guide `loom init` writes: Markdown bullets with no frontmatter or headings, and for a breaking fragment one `### Migration` section with the five labels. A subdirectory or a non-Markdown file in `.changes/` is invalid. A hidden entry, one whose name starts with `.`, is not a fragment and is ignored. `.changes/README.md` is the guide, not a fragment.
 - **The bump.** The highest kind present decides the next version.

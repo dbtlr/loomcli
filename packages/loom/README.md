@@ -21,9 +21,10 @@ pnpm check
 
 In an empty directory nothing is installed yet, so the first run goes through the package runner. Inside a package that already depends on `@loomcli/loom`, the bin is `loom`.
 
+- **Paths.** Each path below is a convention. A `loom.config.json` beside `package.json` moves any of them through its `paths` key, such as `"source": "lib"` or `"installer": "../../install.sh"`, and holds the installer's `postInstall` step. See [the configuration file](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain/build.md#the-configuration-file).
 - **Scaffold files.** `src/application.ts`, `src/main.ts`, `tsconfig.json`, `src/application.test.ts`, the lint file (`.oxlintrc.json` or `eslint.config.js`), and the `package.json` keys `bin`, `scripts.build`, `scripts.check`, the Loom dependencies, and the tool packages at the ranges `@loomcli/loom` declares are written once, only when missing. Init never overwrites them, because they are your code from then on.
 - **Managed files.** `.changes/README.md`, the fragment guide, `.agents/skills/loom-changelog/SKILL.md`, the changelog skill, and `install.sh`, the installer script, carry a header with a checksum. Init re-renders an unedited one, so it follows the installed toolchain. An edited one draws a warning and is left alone, and `--force` restores it. Delete the header to keep the file as your own.
-- **The installer script.** When `package.json` `repository` names a GitHub repository, such as `owner/name`, init writes `install.sh`, executable. Under POSIX `sh` on Linux and macOS it downloads the platform's binary from the repository's GitHub Release, verifies it against the release's `SHA256SUMS`, installs it into `~/.local/bin` or the `--dir` it is given, and records the installation. An Application that declares `postInstall` gets a script that then runs its post-install command, which `--skip-post-install` skips, and prints its post-install message; init reads the declaration from `src/application.ts`. Without a GitHub repository, init writes no script and prints a warning. See [the installer script](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain/install.md) for its arguments and the release shape your release workflow publishes.
+- **The installer script.** When `package.json` `repository` names a GitHub repository, such as `owner/name`, init writes `install.sh`, executable. Under POSIX `sh` on Linux and macOS it downloads the platform's binary from the repository's GitHub Release, verifies it against the release's `SHA256SUMS`, installs it into `~/.local/bin` or the `--dir` it is given, and records the installation. A package whose `loom.config.json` declares `postInstall` gets a script that then runs its post-install command, which `--skip-post-install` skips, and prints its post-install message. Without a GitHub repository, init writes no script and prints a warning. See [the installer script](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain/install.md) for its arguments and the release shape your release workflow publishes.
 - **The check script.** `scripts.check` runs `tsc --noEmit`, the linter, and the test runner. The test passes the Application to the assembly check of `@loomcli/testing`, so a fault only the assembled application reveals fails there.
 - **Options.** `--only <piece>` limits init to `application`, `entry`, `tsconfig`, `test`, `lint`, `package`, `changes`, `skill`, or `install`, and may repeat. `--linter oxlint|eslint` and `--test-runner bun|vitest` choose the tools, by default oxlint and Bun. A lint configuration or a `vitest` dependency the package holds selects its tool, and at a terminal init asks when nothing does. Init installs nothing, so run your package manager afterward.
 
@@ -31,7 +32,7 @@ See [loom init](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain/init.m
 
 ## Changelog
 
-A package keeps its pending changes as fragments in `.changes/` and cuts its `package.json` version from them.
+A package keeps its pending changes as fragments in `.changes/`, or the folder `paths.changes` names in `loom.config.json`, and cuts its `package.json` version from them. `CHANGELOG.md` is likewise the default of `paths.changelog`.
 
 ```sh
 mkdir -p .changes
@@ -59,7 +60,7 @@ loom build --watch --target node               # rebuilds on change, { build: 'd
 ```
 
 - **Targets.** `--target` takes `node`, `bun`, or a Bun compile target such as `bun-linux-x64`, by default the host's compile target. One call builds one target.
-- **The modules.** The entry is `src/main.ts`, or `--entry`. A bundle also carries the application module, `src/application.ts` or `--application`, as a file named for the module, such as `application.js`, so a test imports the built Application with its baked facts. When `src/application.ts` does not exist, the bundle carries the entry alone.
+- **The modules.** The entry is `src/main.ts`, or `paths.entry` in `loom.config.json`, or `--entry`. A bundle also carries the application module, `src/application.ts`, `paths.application`, or `--application`, as a file named for the module, such as `application.js`, so a test imports the built Application with its baked facts. When the conventional application module does not exist, the bundle carries the entry alone.
 - **The release.** `--release` reads `version` and `repository` from `package.json`, and `--repository <owner/name>` overrides the field. A binary's path and asset name read the application's name from `bin`, or `--name`.
 - **A failed build changes nothing.** The build writes into a temporary directory and moves its files into place only once it succeeds.
 

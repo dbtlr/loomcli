@@ -4,7 +4,7 @@ title: ADR-0113 - An application declares a post-install message and command tha
 description: The Application's postInstall option declares a message and one command as argument words, carried on the built graph and never acted on by core at run time. A development build's graph check reports words that route to no Command with an action. loom init renders them into install.sh, which, after the binary is verified, placed, and recorded, announces and runs the installed binary with the words, its stdin the operator's terminal when there is one and /dev/null otherwise, warns and still exits 0 when the command fails, skips it under --skip-post-install, and prints the message last. Self-update never runs the command. A file an application writes in its installation record under a name no first-party writer uses is the application's own.
 status: accepted
 created: 2026-10-27
-modified: 2026-10-27
+modified: 2026-10-31
 ---
 
 # ADR-0113 - An application declares a post-install message and command that the installer script prints and runs
@@ -57,3 +57,7 @@ An application that binds its directories at install, such as Mimir, binds them 
 ## Status
 
 Accepted in 0.16.0.
+
+## Changelog
+
+- 2026-10-31: [ADR-0131](0131-the-post-install-declaration-moves-from-the-application-into-loom-config-json.md), proposed, supersedes the core option, the development check that the words route and `check()`'s run of it, the rule that init loads the application module to read the declaration, and the rejection of "a check only in `loom init`": the declaration moves into `loom.config.json` with the same message and command, nothing checks that the words route, and `@loomcli/core/post-install-unrouted` retires. The installer script's behavior stands. It binds when that record is accepted.
