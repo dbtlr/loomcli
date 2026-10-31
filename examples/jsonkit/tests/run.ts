@@ -10,8 +10,10 @@ import { vi } from 'vite-plus/test';
 
 import { jsonkit } from '../src/application.js';
 
-// The source imports `get.md` as text, which only Loom's bundler and Bun resolve, so the test
-// Supplies the same text from the file.
+/*
+ * The source imports `get.md` as text, which only Loom's bundler and Bun resolve, so the test
+ * supplies the same text from the file.
+ */
 vi.mock('../src/commands/get.md', async () => {
   const { readFileSync } = await import('node:fs');
   return { default: readFileSync(new URL('../src/commands/get.md', import.meta.url), 'utf8') };
