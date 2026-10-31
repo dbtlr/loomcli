@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { invoke } from '../../../scripts/test-process.js';
-import { document, main, withDocuments } from './documents.js';
+import { document, withDocuments } from './documents.js';
+import { inspection, run } from './run.js';
 
 /** The application's own manifest, which is where its declared version comes from. */
 const manifest = z
@@ -53,8 +53,8 @@ const inspected = z.object({
   version: z.string(),
 });
 
-test('only document-reading Commands claim stdin through their local native file option', () => {
-  const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
+test('only document-reading Commands claim stdin through their local native file option', async () => {
+  const result = inspection();
   expect(result).toMatchObject({ status: 0, stderr: '' });
   const option = z.object({
     name: z.string(),
@@ -92,11 +92,11 @@ test('only document-reading Commands claim stdin through their local native file
 
 test.each(['--explain', '-e'])(
   'jsonkit get %s explains the routed Command and reads no document',
-  (spelling) => {
+  async (spelling) => {
     // The invocation names no document. Dispatch would fail on the required path instead of
     // Completing with the explanation, and the document remains unread.
-    withDocuments({ 'doc.json': document }, (cwd) => {
-      expect(invoke(main, ['get', spelling], { cwd })).toEqual({
+    await withDocuments({ 'doc.json': document }, async (cwd) => {
+      await expect(run(['get', spelling], { cwd })).resolves.toEqual({
         status: 0,
         stderr: '',
         stdout: command,
@@ -105,9 +105,9 @@ test.each(['--explain', '-e'])(
   },
 );
 
-test('jsonkit explains the root when no subcommand is routed', () => {
-  withDocuments({ 'doc.json': document }, (cwd) => {
-    expect(invoke(main, ['--explain'], { cwd })).toEqual({
+test('jsonkit explains the root when no subcommand is routed', async () => {
+  await withDocuments({ 'doc.json': document }, async (cwd) => {
+    await expect(run(['--explain'], { cwd })).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: application,
@@ -115,13 +115,13 @@ test('jsonkit explains the root when no subcommand is routed', () => {
   });
 });
 
-test('jsonkit explains an otherwise invalid invocation instead of rejecting it', () => {
+test('jsonkit explains an otherwise invalid invocation instead of rejecting it', async () => {
   /**
    * `get` needs its required path, and the named document does not exist. The middleware takes
    * over while preparation faults are held, so dispatch never raises them.
    */
-  withDocuments({}, (cwd) => {
-    expect(invoke(main, ['get', '--explain', '--file', 'missing.json'], { cwd })).toEqual({
+  await withDocuments({}, async (cwd) => {
+    await expect(run(['get', '--explain', '--file', 'missing.json'], { cwd })).resolves.toEqual({
       status: 0,
       stderr: '',
       stdout: command,
@@ -129,8 +129,8 @@ test('jsonkit explains an otherwise invalid invocation instead of rejecting it',
   });
 });
 
-test("the inspected graph carries the plugin's option, the extension value, and the version", () => {
-  const result = invoke(new URL('fixtures/inspect.mjs', import.meta.url));
+test("the inspected graph carries the plugin's option, the extension value, and the version", async () => {
+  const result = inspection();
   expect(result.status).toBe(0);
   const graph = inspected.parse(JSON.parse(result.stdout));
   expect(graph.version).toBe(manifest.version);
@@ -202,9 +202,9 @@ test("the inspected graph carries the plugin's option, the extension value, and 
   });
 });
 
-test('an unknown option gains the hint that names the explain spelling for the routed Command', () => {
-  withDocuments({ 'doc.json': document }, (cwd) => {
-    expect(invoke(main, ['get', '--bogus', '-f', 'doc.json'], { cwd })).toEqual({
+test('an unknown option gains the hint that names the explain spelling for the routed Command', async () => {
+  await withDocuments({ 'doc.json': document }, async (cwd) => {
+    await expect(run(['get', '--bogus', '-f', 'doc.json'], { cwd })).resolves.toEqual({
       status: 2,
       stderr:
         'jsonkit: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".\nRun "jsonkit get --help" to see the usage.\nRun "jsonkit get --explain" to explain this command.\n',

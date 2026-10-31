@@ -2,6 +2,7 @@ import { Writable } from 'node:stream';
 
 import { processHandle } from '@loomcli/core';
 
+import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
 import { jsonkit } from '../../dist/application.js';
 
 const [scenario, file] = process.argv.slice(2);
@@ -49,6 +50,7 @@ const scenarios = {
       process: processHandle({
         argv: ['keys', '-f', file],
         cwd: '/srv/override',
+        home: fixtureHome(),
         stderr: stderr.stream,
         stdout: stdout.stream,
       }),
@@ -56,7 +58,7 @@ const scenarios = {
     const named = await jsonkit.invoke(
       ['keys'],
       { options: { file } },
-      { process: processHandle({ cwd: '/srv/override' }) },
+      { process: processHandle({ cwd: '/srv/override', home: fixtureHome() }) },
     );
     const ran = { code, stderr: stderr.text(), stdout: stdout.text() };
     process.stdout.write(`${JSON.stringify({ named: described(named), ran })}\n`);

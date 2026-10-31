@@ -9,7 +9,7 @@ const source = new URL('../src/main.ts', import.meta.url);
 /** The fixture that prints every fault `check()` returns for jsonkit's declarations. */
 const checked = new URL('fixtures/check.mjs', import.meta.url);
 
-test('jsonkit declares no fault check() returns, from the bundle and from source', () => {
+test('jsonkit declares no fault check() returns, from the bundle and from source', async () => {
   const clean = { status: 0, stderr: '', stdout: '[]\n' };
   expect(invoke(checked, ['bundle'])).toEqual(clean);
   expect(invoke(checked, ['source'], { runtime: 'bun' })).toEqual(clean);
@@ -33,10 +33,13 @@ test.each([
     ['gte', '-f', 'doc.json'],
     'jsonkit: Unknown command "gte". Did you mean "get"?\nRun "jsonkit --help" to see the usage.\n',
   ],
-])('jsonkit %j prints the same usage error from the bundle and from source', (argv, stderr) => {
-  withDocuments({ 'doc.json': document }, (cwd) => {
-    const expected = { status: 2, stderr, stdout: '' };
-    expect(invoke(main, argv, { cwd })).toEqual(expected);
-    expect(invoke(source, argv, { cwd, runtime: 'bun' })).toEqual(expected);
-  });
-});
+])(
+  'jsonkit %j prints the same usage error from the bundle and from source',
+  async (argv, stderr) => {
+    await withDocuments({ 'doc.json': document }, (cwd) => {
+      const expected = { status: 2, stderr, stdout: '' };
+      expect(invoke(main, argv, { cwd })).toEqual(expected);
+      expect(invoke(source, argv, { cwd, runtime: 'bun' })).toEqual(expected);
+    });
+  },
+);
