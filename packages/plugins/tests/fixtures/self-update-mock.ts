@@ -14,13 +14,12 @@ export async function runSelfUpdate(
   scenario: UpdateScenario,
   fields: MockFields,
   options: {
-    readonly umask?: number | undefined;
     readonly requested?: (url: string) => void;
     /** Receives the mock once the run returns, so a test can read what it records later. */
     readonly afterRun?: (mock: MockProcess) => void;
   } = {},
 ) {
-  const { umask = 0o022, requested = () => {}, afterRun } = options;
+  const { requested = () => {}, afterRun } = options;
   let recording: Writable | undefined = undefined;
   const controller = new AbortController();
   const { app, fetch, stderr } = selfUpdateApplication(scenario, controller, {
@@ -33,7 +32,6 @@ export async function runSelfUpdate(
     },
   });
   const previousFetch = globalThis.fetch;
-  const previousUmask = process.umask(umask);
   globalThis.fetch = fetch;
   try {
     return await runOnMock(
@@ -50,6 +48,5 @@ export async function runSelfUpdate(
     );
   } finally {
     globalThis.fetch = previousFetch;
-    process.umask(previousUmask);
   }
 }

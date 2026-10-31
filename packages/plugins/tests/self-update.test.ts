@@ -9,9 +9,9 @@
  * releases, redirects asset downloads to another HTTPS host as GitHub does, and records each
  * request:
  *
- * - Updating. Under umask `077`, a binary with mode `755` at `1.4.2` on `stable` fetches
- *   `releases/latest`, `SHA256SUMS`, and the asset of the latest release, replaces the file with
- *   the asset's bytes and mode `755`, rewrites `install.json` with the pinned bytes and the new
+ * - Updating. Under umask `077`, in a real process because a real process owns the umask, a binary
+ *   with mode `755` at `1.4.2` on `stable` fetches `releases/latest`, `SHA256SUMS`, and the asset
+ *   of the latest release, replaces the file with the asset's bytes and mode `755`, rewrites `install.json` with the pinned bytes and the new
  *   digest, prints the update line, calls `afterReplace` once with `1.4.2`, the new version, and
  *   the recorded path, and exits 0. A leftover staging file from an earlier run is gone afterwards.
  * - Channels. A binary at `1.6.0-next.1` resolves the highest `next` or stable release in the feed,
@@ -69,6 +69,7 @@ import { join } from 'node:path';
 import type { ReleaseFacts } from '@loomcli/core';
 import { afterEach, expect, test } from 'vite-plus/test';
 
+import { invoke } from '../../../scripts/test-process.js';
 import {
   channelOf,
   compareVersions,
@@ -215,23 +216,38 @@ function facts(box: Sandbox, version: string, overrides: Scenario = {}): Release
   };
 }
 
-/** Runs `notes self-update ...argv` in the sandbox, its fake GitHub built from the scenario. */
-function run(box: Sandbox, argv: string[], scenario: Scenario = {}) {
+const fixture = new URL('fixtures/self-update-run.mjs', import.meta.url);
+
+/**
+ * Runs `notes self-update ...argv` in the sandbox, its fake GitHub built from the scenario. A run
+ * under a scenario's umask is a real process, because a real process owns the umask; every other
+ * run is in-process.
+ */
+async function run(box: Sandbox, argv: string[], scenario: Scenario = {}) {
   const env = { HOME: box.home, XDG_STATE_HOME: box.state, ...scenario.env };
   const release = facts(box, scenario.version ?? '1.4.2', scenario);
-  return runSelfUpdate(
-    {
-      abortAfterRename: scenario.abortAfterRename,
-      github: { ...defaultGitHub, ...scenario.github },
-      hook: scenario.hook ?? 'record',
-      hookLog: box.hookLog,
-      release,
-      requests: box.requests,
-      rules: scenario.rules,
-    },
-    { argv: ['self-update', ...argv], env, home: env.HOME, release },
-    { umask: scenario.umask },
-  );
+  const application = {
+    abortAfterRename: scenario.abortAfterRename,
+    github: { ...defaultGitHub, ...scenario.github },
+    hook: scenario.hook ?? 'record',
+    hookLog: box.hookLog,
+    release,
+    requests: box.requests,
+    rules: scenario.rules,
+  };
+  if (scenario.umask !== undefined) {
+    const file = join(box.root, 'scenario.json');
+    writeFileSync(file, JSON.stringify({ ...application, env }));
+    return invoke(fixture, [file, 'self-update', ...argv], {
+      env: { FIXTURE_UMASK: scenario.umask.toString(8) },
+    });
+  }
+  return await runSelfUpdate(application, {
+    argv: ['self-update', ...argv],
+    env,
+    home: env.HOME,
+    release,
+  });
 }
 
 function requests(box: Sandbox): string[] {
