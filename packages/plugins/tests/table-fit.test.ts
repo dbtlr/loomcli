@@ -5,8 +5,9 @@
  * viewContext with the simple measures of view-measures.ts and checks the branch the view took and
  * the content it printed, not its layout; the levelling formula is checked on `levelWidths` itself.
  * A case about the run around a view, embedded color and hyperlinks under a rendering policy, a
- * resize, `COLUMNS`, a pipe, an invocation by name, or a streamed row, renders in a child process
- * and checks exact bytes, pack-fit.test.ts checks once per view that a real render fits a narrow
+ * pipe, an invocation by name, or a streamed row, renders on mockProcess through
+ * fixtures/view-run.ts and checks exact bytes; a resize between renders and `COLUMNS` still render
+ * in a child process; pack-fit.test.ts checks once per view that a real render fits a narrow
  * terminal, and a pty-backed host checks the resize cases. The acceptance tests cover:
  *
  * - At natural width. A table whose natural width is less than `columns`, one exactly equal to it,
@@ -431,16 +432,18 @@ test.each(['right', 'center'] as const)(
   },
 );
 
-test('the records fallback keeps a format cell and its color, with every indent bare', () => {
+test('the records fallback keeps a format cell and its color, with every indent bare', async () => {
   const rows = [{ name: 'abcdefghijkl', note: 'one two three four five' }];
-  const config = {
+  const view = table<{ name: string; note: string }>({
     columns: [
       { header: 'NAME', key: 'name' },
-      { format: 'red', header: 'NOTE', key: 'note' },
+      { format: (value, _row, { style }) => style.red(value), header: 'NOTE', key: 'note' },
     ],
-  };
+  });
   const rendering = { color: 'always', modifiers: 'never' } as const;
-  expect(render({ config, rendering, rows, view: 'table', widths: [15] })).toBe(
+  await expect(
+    renderEach({ rendering, widths: [15] }, (out) => out.render(rows, view)),
+  ).resolves.toBe(
     lines(
       'NAME  abcdefghijkl',
       'NOTE  \u001B[31mone two\u001B[39m',
@@ -461,16 +464,16 @@ test('a format cell is measured and wrapped by its output', () => {
   expect(onOneLine(output, '<hello world>')).toBe(false);
 });
 
-test('a styled cell that wraps closes its style on each line, so no style leaks into a neighbor', () => {
+test('a styled cell that wraps closes its style on each line, so no style leaks into a neighbor', async () => {
   const rows = [{ first: 'x', second: 'hello world' }];
-  const config = {
+  const view = table<{ first: string; second: string }>({
     columns: [
       { header: 'a', key: 'first' },
-      { format: 'red', key: 'second' },
+      { format: (value, _row, { style }) => style.red(value), key: 'second' },
     ],
-  };
+  });
   const rendering = { color: 'always', modifiers: 'never' } as const;
-  const output = render({ config, rendering, rows, view: 'table', widths: [10] });
+  const output = await renderEach({ rendering, widths: [10] }, (out) => out.render(rows, view));
   expect(output.split('\n').slice(1)).toEqual([
     'x  \u001B[31mhello\u001B[39m',
     '   \u001B[31mworld\u001B[39m',
@@ -481,22 +484,27 @@ test('a styled cell that wraps closes its style on each line, so no style leaks 
 const link = '\u001B]8;;https://example.com\u001B\\';
 const unlink = '\u001B]8;;\u001B\\';
 
-test('a hyperlink in a wrapped cell closes on each line, so it covers neither the gap nor the next column', () => {
+test('a hyperlink in a wrapped cell closes on each line, so it covers neither the gap nor the next column', async () => {
   const rows = [{ doc: 'see the release notes', owner: 'drew' }];
-  const config = { columns: [{ format: 'link', key: 'doc' }, 'owner'] };
+  const view = table<{ doc: string; owner: string }>({
+    columns: [{ format: (value) => `${link}${value}${unlink}`, key: 'doc' }, 'owner'],
+  });
   const rendering = { color: 'never', hyperlinks: 'always', modifiers: 'never' } as const;
-  const output = render({ config, rendering, rows, view: 'table', widths: [20] });
+  const output = await renderEach({ rendering, widths: [20] }, (out) => out.render(rows, view));
   expect(output.split('\n').slice(1, 3)).toEqual([
     `${link}see the${unlink}${' '.repeat(6)}  drew`,
     `${link}release notes${unlink}`,
   ]);
 });
 
-test('a raw SGR color in a wrapped cell ends on each line, so it colors no neighbor', () => {
+test('a raw SGR color in a wrapped cell ends on each line, so it colors no neighbor', async () => {
   const rows = [{ note: 'one two three', owner: 'drew' }];
-  const config = { columns: [{ format: 'sgr', key: 'note' }, 'owner'] };
+  const view = table<{ note: string; owner: string }>({
+    columns: [{ format: (value) => `\u001B[31m${value}\u001B[39m`, key: 'note' }, 'owner'],
+  });
   const rendering = { color: 'always', modifiers: 'never' } as const;
-  const output = render({ config, rendering, rows, view: 'table', widths: [12] }).split('\n');
+  const rendered = await renderEach({ rendering, widths: [12] }, (out) => out.render(rows, view));
+  const output = rendered.split('\n');
   expect(output[1]).toBe('\u001B[31mone\u001B[39m    drew');
   expect(output[2]?.trimEnd()).toBe('\u001B[31mtwo\u001B[39m');
   expect(output[3]?.trimEnd()).toBe('\u001B[31mthree\u001B[39m');
