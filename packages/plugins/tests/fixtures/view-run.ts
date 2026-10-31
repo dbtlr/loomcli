@@ -58,14 +58,17 @@ function baseApplication(run: ViewRun) {
   });
 }
 
-/** Runs the application on the mock and answers its stdout, after the run exited cleanly. */
+/**
+ * Runs the application on the mock and answers its stdout, after the run wrote exit code 0 to the
+ * mock and nothing to stderr.
+ */
 async function rendered(app: Pick<Application, 'run'>, mock: MockProcess, run: ViewRun) {
-  const code = await app.run({
+  await app.run({
     process: mock,
     rendering: run.rendering ?? { color: 'never', modifiers: 'never' },
   });
   expect(mock.stderr.text).toBe('');
-  expect(code).toBe(0);
+  expect(mock.exitCode).toBe(0);
   return mock.stdout.text;
 }
 
@@ -90,7 +93,9 @@ async function renderEach(run: ViewRun, draw: (out: Out) => Promise<void>): Prom
     });
     if (run.invoke === true) {
       const outcome = await app.invoke([], {}, { process: mock });
+      // An invocation by name writes to neither of the handle's streams.
       expect(mock.stderr.text).toBe('');
+      expect(mock.stdout.text).toBe('');
       if (outcome.status !== 'completed') {
         throw new Error(`The invocation ended ${outcome.status}.`);
       }
