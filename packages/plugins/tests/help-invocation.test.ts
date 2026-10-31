@@ -2,20 +2,25 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { Application, Command, DeclarationError } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
+import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
+import { run as fixtureRun } from './fixtures/run-app.ts';
 
 const fixture = new URL('fixtures/run.mjs', import.meta.url);
-const rejected = new URL('fixtures/build.mjs', import.meta.url);
 
-function run(scenario: string, argv: string[]) {
-  return invoke(fixture, [scenario, ...argv]);
+/** One invocation of the fixture application on mockProcess, under the scenario it names. */
+async function run(scenario: string, argv: string[]) {
+  return await fixtureRun([scenario, ...argv]);
 }
 
 /**
- * The same invocation with a marks file, so a test reads which plugin middleware modules the
- * invocation evaluated. A module the chain never reached leaves no line.
+ * The same invocation as a process with a marks file, so a test reads which plugin middleware
+ * modules the invocation evaluated. A module the chain never reached leaves no line. A process
+ * test: only a fresh process has not yet evaluated a module that a test worker has already loaded.
  */
 function loaded(scenario: string, argv: string[]) {
   const directory = mkdtempSync(join(tmpdir(), 'loom-plugins-marks-'));
@@ -83,8 +88,8 @@ test('--help --version prints help and never loads the version middleware module
   expect(result).toMatchObject({ status: 0, stderr: '', stdout: root });
 });
 
-test('--version --help prints help too, because installation order decides the takeover', () => {
-  expect(run('version', ['--version', '--help'])).toEqual({
+test('--version --help prints help too, because installation order decides the takeover', async () => {
+  await expect(run('version', ['--version', '--help'])).resolves.toEqual({
     status: 0,
     stderr: '',
     stdout: root,
@@ -97,12 +102,16 @@ test('--version alone loads the version middleware module and no other', () => {
   expect(result).toMatchObject({ status: 0, stderr: '', stdout: 'app v1.2.0\n' });
 });
 
-test('-h renders while a required argument is missing and a local option is unknown', () => {
-  expect(run('usage', ['run', '-h', '--nope'])).toEqual({ status: 0, stderr: '', stdout: job });
+test('-h renders while a required argument is missing and a local option is unknown', async () => {
+  await expect(run('usage', ['run', '-h', '--nope'])).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: job,
+  });
 });
 
-test('an unknown command still fails in routing, before any middleware runs', () => {
-  expect(run('usage', ['nope', '--help'])).toEqual({
+test('an unknown command still fails in routing, before any middleware runs', async () => {
+  await expect(run('usage', ['nope', '--help'])).resolves.toEqual({
     status: 2,
     stderr:
       'app: Unknown command "nope". Use one of: run, pack.\nRun "app --help" to see the usage.\n',
@@ -110,15 +119,15 @@ test('an unknown command still fails in routing, before any middleware runs', ()
   });
 });
 
-test("a short group mixes help's letter with a local letter, so -ht renders the compact page", () => {
-  const page = run('cells', ['-h']);
+test("a short group mixes help's letter with a local letter, so -ht renders the compact page", async () => {
+  const page = await run('cells', ['-h']);
   expect(page.status).toBe(0);
-  expect(run('cells', ['-ht'])).toEqual(page);
-  expect(run('cells', ['-thmwords'])).toEqual(page);
+  await expect(run('cells', ['-ht'])).resolves.toEqual(page);
+  await expect(run('cells', ['-thmwords'])).resolves.toEqual(page);
 });
 
-test('a letter that faults ends its group, so -xh reports the unknown option and help never runs', () => {
-  expect(run('cells', ['-xh'])).toEqual({
+test('a letter that faults ends its group, so -xh reports the unknown option and help never runs', async () => {
+  await expect(run('cells', ['-xh'])).resolves.toEqual({
     status: 2,
     stderr:
       'app: Unknown option "-x". Supply a declared option; prefix a hyphenated path with "./".\nRun "app --help" to see the usage.\n',
@@ -126,36 +135,66 @@ test('a letter that faults ends its group, so -xh reports the unknown option and
   });
 });
 
-test('a missing value and a repeated --help are held, so help after them renders the page', () => {
-  const page = run('cells', ['--help']);
+test('a missing value and a repeated --help are held, so help after them renders the page', async () => {
+  const page = await run('cells', ['--help']);
   expect(page.status).toBe(0);
-  expect(run('cells', ['--file', '--help'])).toEqual(page);
-  expect(run('cells', ['--help', '--help'])).toEqual(page);
+  await expect(run('cells', ['--file', '--help'])).resolves.toEqual(page);
+  await expect(run('cells', ['--help', '--help'])).resolves.toEqual(page);
 });
 
+/**
+ * What building an application throws: the fault's exit code, sentence, and correction. The call
+ * that carries the value validates it, so the fault throws before any run.
+ */
+function rejection(build: () => unknown): string {
+  try {
+    build();
+  } catch (error) {
+    if (error instanceof DeclarationError) {
+      const correction = error.correction === undefined ? [] : [error.correction].flat();
+      return `thrown:${error.exitCode}: ${[error.sentence, ...correction].join(' ')}\n`;
+    }
+    throw error;
+  }
+  throw new Error('The application was built without a fault.');
+}
+
 test('a whitespace-only Details value is rejected at its call the way any extension value is', () => {
-  expect(invoke(rejected, ['blank-details'])).toEqual({
-    status: 0,
-    stderr: '',
-    stdout:
-      'thrown:1: The root Command holds an invalid "@loomcli/plugins/help/command" value: Supply Markdown that holds a character other than whitespace. Correct the value.\n',
-  });
+  const thrown = rejection(() =>
+    new Application('app', {
+      extensions: [helpCommand({ details: ' \t\n ' })],
+      plugins: [help()],
+    }).action(({ out }) => out.print('dispatched')),
+  );
+  expect(thrown).toBe(
+    'thrown:1: The root Command holds an invalid "@loomcli/plugins/help/command" value: Supply Markdown that holds a character other than whitespace. Correct the value.\n',
+  );
 });
 
 test('an example command that spans two lines is rejected', () => {
-  expect(invoke(rejected, ['example-line'])).toEqual({
-    status: 0,
-    stderr: '',
-    stdout:
-      'thrown:1: Command "get" holds an invalid "@loomcli/plugins/help/command" value: Supply one line that holds a character other than whitespace. Correct the value.\n',
+  const thrown = rejection(() => {
+    const get = new Command('get', {
+      extensions: [helpCommand({ examples: [{ command: 'get\none' }] })],
+    }).action(({ out }) => out.print('dispatched'));
+    return new Application('app', { plugins: [help()] })
+      .command(get)
+      .action(({ out }) => out.print('dispatched'));
   });
+  expect(thrown).toBe(
+    'thrown:1: Command "get" holds an invalid "@loomcli/plugins/help/command" value: Supply one line that holds a character other than whitespace. Correct the value.\n',
+  );
 });
 
 test('a placeholder that holds whitespace is rejected', () => {
-  expect(invoke(rejected, ['placeholder-whitespace'])).toEqual({
-    status: 0,
-    stderr: '',
-    stdout:
-      'thrown:1: Global option "file" holds an invalid "@loomcli/plugins/help/input" value: Supply one word with no whitespace. Correct the value.\n',
-  });
+  const thrown = rejection(() =>
+    new Application('app', { plugins: [help()] })
+      .globalOption('file', {
+        extensions: [helpInput({ placeholder: 'a path' })],
+        type: 'string',
+      })
+      .action(({ out }) => out.print('dispatched')),
+  );
+  expect(thrown).toBe(
+    'thrown:1: Global option "file" holds an invalid "@loomcli/plugins/help/input" value: Supply one word with no whitespace. Correct the value.\n',
+  );
 });

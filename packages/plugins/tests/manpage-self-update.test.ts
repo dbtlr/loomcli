@@ -4,14 +4,13 @@ import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
+import type { ReleaseFacts } from '@loomcli/core';
+import type { Program } from '@loomcli/testing';
 import { afterEach, expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
-
-const updateFixture = new URL('fixtures/self-update-run.mjs', import.meta.url);
-const manpageFixture = new URL('fixtures/manpage-run.mjs', import.meta.url);
+import { run as runManpage } from './fixtures/manpage-app.ts';
+import { runSelfUpdate } from './fixtures/self-update-mock.ts';
 
 const asset = 'notes-linux-x64';
 const oldBytes = 'notes 1.4.2 binary\n';
@@ -28,7 +27,21 @@ function digestOf(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
 
-test('an update rewrites a recorded page to the replaced binary’s version', () => {
+/**
+ * The program for a notes binary: it runs the man page application, as the update's refresh spawns
+ * it, at the version the bytes at its path name, so the run reaches the binary the update wrote.
+ */
+const notesBinary: Program = async (call) => {
+  const version = /^notes (?<version>\S+) binary$/u.exec(readFileSync(call.command, 'utf8').trim())
+    ?.groups?.version;
+  if (version === undefined) {
+    throw new Error(`${call.command} is not a notes binary.`);
+  }
+  const outcome = await runManpage([...call.args], { cwd: call.cwd, env: call.env, version });
+  return { code: outcome.status, stderr: outcome.stderr, stdout: outcome.stdout };
+};
+
+test('an update rewrites a recorded page to the replaced binary’s version', async () => {
   const root = mkdtempSync(join(tmpdir(), 'loom-manpage-update-'));
   roots.push(root);
   const home = join(root, 'home');
@@ -50,23 +63,19 @@ test('an update rewrites a recorded page to the replaced binary’s version', ()
     XDG_STATE_HOME: state,
   };
   // The old version installed its pages.
-  const oldScenario = join(root, 'old-scenario.json');
-  writeFileSync(oldScenario, JSON.stringify({ cwd: root, env, version: '1.4.2' }));
-  expect(
-    invoke(manpageFixture, ['manpage', 'install'], { env: { MANPAGE_SCENARIO: oldScenario } })
-      .status,
-  ).toBe(0);
+  const installed = await runManpage(['manpage', 'install'], { cwd: root, env, version: '1.4.2' });
+  expect(installed.status).toBe(0);
   const page = join(home, '.local', 'share', 'man', 'man1', 'notes.1');
   expect(readFileSync(page, 'utf8').split('\n')[0]).toBe('.TH "NOTES" "1" "" "notes 1.4.2" ""');
   // The new binary runs the same application at the new version.
-  const newScenario = join(root, 'new-scenario.json');
-  writeFileSync(newScenario, JSON.stringify({ cwd: root, env, version: '1.5.0' }));
-  const bytes = `#!${process.execPath}\nimport(${JSON.stringify(fileURLToPath(manpageFixture))});\n`;
-  const file = join(root, 'scenario.json');
-  writeFileSync(
-    file,
-    JSON.stringify({
-      env: { ...env, MANPAGE_SCENARIO: newScenario },
+  const bytes = 'notes 1.5.0 binary\n';
+  const release: ReleaseFacts = {
+    build: 'distributed',
+    installation: { digest: `sha256:${digestOf(oldBytes)}`, method: 'script', path: binary },
+    release: { asset, channel: 'stable', repository: 'acme/notes', version: '1.4.2' },
+  };
+  const result = await runSelfUpdate(
+    {
       github: {
         feed: ['v1.5.0'],
         latest: 'v1.5.0',
@@ -76,15 +85,11 @@ test('an update rewrites a recorded page to the replaced binary’s version', ()
         repository: 'acme/notes',
       },
       hook: 'refresh-manpages',
-      release: {
-        build: 'distributed',
-        installation: { digest: `sha256:${digestOf(oldBytes)}`, method: 'script', path: binary },
-        release: { asset, channel: 'stable', repository: 'acme/notes', version: '1.4.2' },
-      },
+      release,
       requests: join(root, 'requests.txt'),
-    }),
+    },
+    { argv: ['self-update'], env, home, programs: { [binary]: notesBinary }, release },
   );
-  const result = invoke(updateFixture, [file, 'self-update']);
   expect(result.status).toBe(0);
   expect(result.stderr).toContain('Updated notes from 1.4.2 to 1.5.0.');
   expect(result.stderr).toContain(

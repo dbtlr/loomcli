@@ -7,7 +7,15 @@ import { expect, test, vi } from 'vite-plus/test';
 import { records } from '../src/records.js';
 import { table } from '../src/table.js';
 import { lines, render } from './fit-render.js';
+import { renderEach, renderStream } from './fixtures/view-run.ts';
 import { TAB, expandTabs, linesOf, measured, width, wordsOf, wrap } from './view-measures.js';
+
+/** The formatters a run-policy case names: an OSC 8 hyperlink and a raw SGR color, as an author's own bytes. */
+const formats = {
+  link: (value: unknown) =>
+    `\u001B]8;;https://example.com\u001B\\${String(value)}\u001B]8;;\u001B\\`,
+  sgr: (value: unknown) => `\u001B[31m${String(value)}\u001B[39m`,
+};
 
 const tagRows = [
   { key: 'tags', kind: 'array of 12 strings, none empty or longer than 40 characters' },
@@ -78,10 +86,13 @@ test.each([
   },
 ] as const)(
   'a $format value that wraps leaves its continuation indent bare',
-  ({ format, lines: expected, rendering }) => {
+  async ({ format, lines: expected, rendering }) => {
     const rows = [{ key: 'a', note: 'see the release notes' }];
-    const config = { fields: ['key', { format, key: 'note' }], identifier: 'key' };
-    const output = render({ config, rendering, rows, view: 'records', widths: [20] });
+    const view = records<{ key: string; note: string }>({
+      fields: ['key', { format: formats[format], key: 'note' }],
+      identifier: 'key',
+    });
+    const output = await renderEach({ rendering, widths: [20] }, (out) => out.render(rows, view));
     expect(output.split('\n').slice(1, 3)).toEqual(expected);
   },
 );
@@ -129,16 +140,15 @@ test('a value with no column left after the label stays unwrapped', () => {
   expect(output.some((line) => line.endsWith('two words'))).toBe(true);
 });
 
-test('a streamed row after a resize wraps at the new width, and the rows before keep theirs', () => {
-  const config = { identifier: 'key' };
+test('a streamed row after a resize wraps at the new width, and the rows before keep theirs', async () => {
   const kind = 'array of 12 strings, none empty or longer than 40 characters';
   const rows = [
     { key: 'before', kind },
     { key: 'after', kind },
   ];
-  const output = render({ config, rows, stream: true, view: 'records', widths: [100, 30] }).split(
-    '\n',
-  );
+  const view = records<{ key: string; kind: string }>({ identifier: 'key' });
+  const streamed = await renderStream({ widths: [100, 30] }, rows, view);
+  const output = streamed.split('\n');
   expect(output).toContain(`kind  ${kind}`);
   const start = output.indexOf('key   after');
   const block = output.slice(start, output.indexOf('', start));
@@ -155,13 +165,13 @@ test('a streamed row after a resize wraps at the new width, and the rows before 
 
 test.each([{ invoke: false }, { invoke: true }])(
   'records piped or invoked by name ($invoke) are byte for byte today, authored breaks and COLUMNS included',
-  ({ invoke }) => {
-    const config = { identifier: 'key' };
+  async ({ invoke }) => {
     const rows = [{ key: 'one', kind: 'first\nsecond words here' }];
+    const view = records<{ key: string; kind: string }>({ identifier: 'key' });
     const env = { COLUMNS: '10' };
-    expect(render({ config, env, invoke, rows, view: 'records', widths: [null] })).toBe(
-      lines('key   one', 'kind  first', 'second words here', '', '1 record'),
-    );
+    await expect(
+      renderEach({ env, invoke, widths: [null] }, (out) => out.render(rows, view)),
+    ).resolves.toBe(lines('key   one', 'kind  first', 'second words here', '', '1 record'));
   },
 );
 

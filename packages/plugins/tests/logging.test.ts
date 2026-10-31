@@ -1,8 +1,10 @@
 /*
  * Acceptance plan for the logging plugin (docs/plugins/logging.md#logging-plugin).
  *
- * The plugin is proven when process tests under Node and Bun, each with a temporary home and state
- * directory, produce these results:
+ * The plugin is proven when in-process tests under Node and Bun, each running an application on
+ * mockProcess with a temporary home and state directory, produce these results. A record that
+ * survives `process.exit()` and two processes writing one file need real processes, so those
+ * cases start fixtures (ADR-0103):
  *
  * - Records. An application that installs `logging()` and logs at each level appends one pinned
  *   line per event at or above `info` to `$XDG_STATE_HOME/<app>/<app>.jsonl`, with the keys in the
@@ -40,9 +42,14 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import type { LoggingSettings } from '@loomcli/plugins/logging';
+import { mockProcess } from '@loomcli/testing';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { invoke, start } from '../../../scripts/test-process.js';
+import type { Outcome } from './fixtures/in-process.ts';
+import { loggingApplication } from './fixtures/logging-app.ts';
+import type { OnError } from './fixtures/logging-app.ts';
 
 const fixture = new URL('fixtures/logging-run.mjs', import.meta.url);
 const turns = new URL('fixtures/logging-turns.mjs', import.meta.url);
@@ -96,25 +103,64 @@ function sandbox(): Sandbox {
   return { file: join(state, 'heimdall', 'heimdall.jsonl'), home, root, state, work };
 }
 
+/** The host facts a case replaces, and the `onError` it picks. */
+interface Facts {
+  /** The run's whole environment; `HOME` and `XDG_STATE_HOME` in the sandbox when unnamed. */
+  readonly env?: Record<string, string>;
+  /** Pinned so a test reads the same row on every machine; the darwin case names its own. */
+  readonly platform?: string;
+  readonly onError?: 'print' | 'throw';
+}
+
+/** The throwing `onError` when the case picks it. */
+function onErrorThrows(facts: Facts): OnError | undefined {
+  return facts.onError === 'throw' ? { mode: 'throw' } : undefined;
+}
+
+/** The mock a case runs on, in the sandbox's working directory, and the application it runs. */
+function prepare(box: Sandbox, argv: string[], facts: Facts, settings?: LoggingSettings) {
+  const env = facts.env ?? { HOME: box.home, XDG_STATE_HOME: box.state };
+  // The home is the HOME the run was given, as it is, and no home when there is none.
+  const mock = mockProcess({
+    argv,
+    cwd: box.work,
+    env,
+    home: env.HOME ?? '',
+    platform: facts.platform ?? 'linux',
+  });
+  // `print` writes each failure to the run's own stdout.
+  const onError: OnError | undefined =
+    facts.onError === 'print'
+      ? { mode: 'print', write: (line) => mock.stdout.write(line) }
+      : onErrorThrows(facts);
+  return { app: loggingApplication(settings, onError), mock };
+}
+
 /** One run of the fixture application in the sandbox, its environment pointing into it. */
-function run(
+async function run(
   box: Sandbox,
   argv: string[],
-  env: Record<string, string | undefined> = {},
-  settings?: Record<string, unknown>,
+  facts: Facts = {},
+  settings?: LoggingSettings,
+): Promise<Outcome> {
+  const { app, mock } = prepare(box, argv, facts, settings);
+  await app.run({ process: mock });
+  if (mock.exitCode === undefined) {
+    throw new Error('The application run did not record its exit code.');
+  }
+  return { status: mock.exitCode, stderr: mock.stderr.text, stdout: mock.stdout.text };
+}
+
+/** One `app.invoke(argv)` on the same facts, its outcome's status beside the mock's streams. */
+async function invokeByName(
+  box: Sandbox,
+  argv: string[],
+  facts: Facts = {},
+  settings?: LoggingSettings,
 ) {
-  return invoke(fixture, argv, {
-    cwd: box.work,
-    env: {
-      // The platform is pinned so a test reads the same row on every machine.
-      // The darwin case names its own.
-      FIXTURE_PLATFORM: 'linux',
-      HOME: box.home,
-      XDG_STATE_HOME: box.state,
-      ...(settings === undefined ? {} : { FIXTURE_SETTINGS: JSON.stringify(settings) }),
-      ...env,
-    },
-  });
+  const { app, mock } = prepare(box, [], facts, settings);
+  const outcome = await app.invoke(argv, {}, { process: mock });
+  return { status: outcome.status, stderr: mock.stderr.text, stdout: mock.stdout.text };
 }
 
 /** A record's text with the two values that differ between runs, the time and the run id, fixed. */
@@ -147,15 +193,15 @@ const logged = {
 
 // Records
 
-test('an application that installs logging() appends one pinned line for each event at or above info', () => {
+test('an application that installs logging() appends one pinned line for each event at or above info', async () => {
   const box = sandbox();
-  expect(run(box, ['log'])).toEqual({ status: 0, stderr: '', stdout: '' });
+  await expect(run(box, ['log'])).resolves.toEqual({ status: 0, stderr: '', stdout: '' });
   expect(lines(box.file)).toEqual([logged.info, logged.warn, logged.error]);
 });
 
-test('level trace writes all five levels, in call order', () => {
+test('level trace writes all five levels, in call order', async () => {
   const box = sandbox();
-  run(box, ['log'], {}, { level: 'trace' });
+  await run(box, ['log'], {}, { level: 'trace' });
   expect(lines(box.file)).toEqual([
     logged.trace,
     logged.debug,
@@ -165,9 +211,9 @@ test('level trace writes all five levels, in call order', () => {
   ]);
 });
 
-test('a record holds its keys in the pinned order and omits the absent ones', () => {
+test('a record holds its keys in the pinned order and omits the absent ones', async () => {
   const box = sandbox();
-  run(box, ['fail'], {}, { level: 'error' });
+  await run(box, ['fail'], {}, { level: 'error' });
   const [only, ...rest] = lines(box.file);
   expect(rest).toEqual([]);
   expect(Object.keys(JSON.parse(only ?? ''))).toEqual([
@@ -183,9 +229,9 @@ test('a record holds its keys in the pinned order and omits the absent ones', ()
   ]);
 });
 
-test('level error still writes the fatal record of a defect, with its stack', () => {
+test('level error still writes the fatal record of a defect, with its stack', async () => {
   const box = sandbox();
-  const result = run(box, ['defect'], {}, { level: 'error' });
+  const result = await run(box, ['defect'], {}, { level: 'error' });
   expect(result.status).toBe(1);
   const [only, ...rest] = lines(box.file);
   expect(rest).toEqual([]);
@@ -207,17 +253,24 @@ test('level error still writes the fatal record of a defect, with its stack', ()
   expect(written.defect.stack).toContain('The action failed.');
 });
 
-test('a record survives a process.exit() that follows the call', () => {
+// A process test under ADR-0103: the action ends a real process with process.exit(), and only a
+// Record written before the process ended survives in the file.
+test('a record survives a process.exit() that follows the call', async () => {
   const box = sandbox();
-  expect(run(box, ['leave']).status).toBe(3);
+  expect(
+    invoke(fixture, ['leave'], {
+      cwd: box.work,
+      env: { HOME: box.home, XDG_STATE_HOME: box.state },
+    }).status,
+  ).toBe(3);
   expect(lines(box.file)).toEqual([record('info', 'Before the exit.', {}, ['leave'])]);
 });
 
 // The file
 
-test('file names a file inside the default directory', () => {
+test('file names a file inside the default directory', async () => {
   const box = sandbox();
-  run(box, ['log'], {}, { file: 'collector.jsonl' });
+  await run(box, ['log'], {}, { file: 'collector.jsonl' });
   expect(lines(join(box.state, 'heimdall', 'collector.jsonl'))).toEqual([
     logged.info,
     logged.warn,
@@ -226,32 +279,32 @@ test('file names a file inside the default directory', () => {
   expect(existsSync(box.file)).toBe(false);
 });
 
-test('a relative file resolves inside the default directory and never in the working directory', () => {
+test('a relative file resolves inside the default directory and never in the working directory', async () => {
   const box = sandbox();
-  run(box, ['log'], {}, { file: 'logs/sub/collector.jsonl' });
+  await run(box, ['log'], {}, { file: 'logs/sub/collector.jsonl' });
   expect(lines(join(box.state, 'heimdall', 'logs', 'sub', 'collector.jsonl'))).toHaveLength(3);
   expect(readdirSync(box.work)).toEqual([]);
 });
 
-test('an absolute file writes where it names, creating the missing directories', () => {
+test('an absolute file writes where it names, creating the missing directories', async () => {
   const box = sandbox();
   const file = join(box.root, 'elsewhere', 'deep', 'x.jsonl');
-  run(box, ['log'], {}, { file });
+  await run(box, ['log'], {}, { file });
   expect(lines(file)).toHaveLength(3);
   expect(existsSync(join(box.state, 'heimdall'))).toBe(false);
 });
 
-test('~/ resolves from the home directory the run was given', () => {
+test('~/ resolves from the home directory the run was given', async () => {
   const box = sandbox();
-  run(box, ['log'], {}, { file: '~/x.jsonl' });
+  await run(box, ['log'], {}, { file: '~/x.jsonl' });
   expect(lines(join(box.home, 'x.jsonl'))).toHaveLength(3);
 });
 
-test('the darwin row resolves from HOME under Library/Logs', () => {
+test('the darwin row resolves from HOME under Library/Logs', async () => {
   const box = sandbox();
-  run(box, ['log'], {
-    FIXTURE_HOST_ENV: JSON.stringify({ HOME: box.home, XDG_STATE_HOME: box.state }),
-    FIXTURE_PLATFORM: 'darwin',
+  await run(box, ['log'], {
+    env: { HOME: box.home, XDG_STATE_HOME: box.state },
+    platform: 'darwin',
   });
   expect(lines(join(box.home, 'Library', 'Logs', 'heimdall', 'heimdall.jsonl'))).toHaveLength(3);
   expect(existsSync(box.file)).toBe(false);
@@ -260,21 +313,18 @@ test('the darwin row resolves from HOME under Library/Logs', () => {
 test.each([
   ['unset', undefined],
   ['not absolute', 'relative/state'],
-])('XDG_STATE_HOME %s falls back to HOME/.local/state', (_name, xdg) => {
+])('XDG_STATE_HOME %s falls back to HOME/.local/state', async (_name, xdg) => {
   const box = sandbox();
-  const env = JSON.stringify({
-    HOME: box.home,
-    ...(xdg === undefined ? {} : { XDG_STATE_HOME: xdg }),
-  });
-  run(box, ['log'], { FIXTURE_HOST_ENV: env, FIXTURE_PLATFORM: 'linux' });
+  const env = { HOME: box.home, ...(xdg === undefined ? {} : { XDG_STATE_HOME: xdg }) };
+  await run(box, ['log'], { env, platform: 'linux' });
   expect(lines(join(box.home, '.local', 'state', 'heimdall', 'heimdall.jsonl'))).toHaveLength(3);
 });
 
 // Rotation
 
-test('with maxBytes 200 and keep 2, writes past the size leave the file, .1, and .2', () => {
+test('with maxBytes 200 and keep 2, writes past the size leave the file, .1, and .2', async () => {
   const box = sandbox();
-  run(box, ['burst', '5', '0', 'm'], {}, { keep: 2, maxBytes: 200 });
+  await run(box, ['burst', '5', '0', 'm'], {}, { keep: 2, maxBytes: 200 });
   const directory = join(box.state, 'heimdall');
   expect(readdirSync(directory).toSorted()).toEqual([
     'heimdall.1.jsonl',
@@ -289,39 +339,39 @@ test('with maxBytes 200 and keep 2, writes past the size leave the file, .1, and
   ]).toEqual(['m5', 'm4', 'm3']);
 });
 
-test('with keep 0, a write past maxBytes deletes the file and a new one starts, with no copy', () => {
+test('with keep 0, a write past maxBytes deletes the file and a new one starts, with no copy', async () => {
   const box = sandbox();
-  run(box, ['burst', '3', '0', 'm'], {}, { keep: 0, maxBytes: 200 });
+  await run(box, ['burst', '3', '0', 'm'], {}, { keep: 0, maxBytes: 200 });
   expect(readdirSync(join(box.state, 'heimdall'))).toEqual(['heimdall.jsonl']);
   expect(lines(box.file).map((line) => JSON.parse(line).message)).toEqual(['m3']);
 });
 
-test('a copy of a file with no extension puts its number after the name', () => {
+test('a copy of a file with no extension puts its number after the name', async () => {
   const box = sandbox();
-  run(box, ['burst', '3', '0', 'm'], {}, { file: 'hub', keep: 2, maxBytes: 200 });
+  await run(box, ['burst', '3', '0', 'm'], {}, { file: 'hub', keep: 2, maxBytes: 200 });
   expect(readdirSync(join(box.state, 'heimdall')).toSorted()).toEqual(['hub', 'hub.1', 'hub.2']);
 });
 
-test('a record larger than maxBytes lands whole in a new file', () => {
+test('a record larger than maxBytes lands whole in a new file', async () => {
   const box = sandbox();
   const settings = { maxBytes: 200 };
-  run(box, ['burst', '1', '0', 's'], {}, settings);
-  run(box, ['burst', '1', '600', 'big'], {}, settings);
+  await run(box, ['burst', '1', '0', 's'], {}, settings);
+  await run(box, ['burst', '1', '600', 'big'], {}, settings);
   const directory = join(box.state, 'heimdall');
   const big = JSON.parse(readFileSync(join(directory, 'heimdall.jsonl'), 'utf8'));
   expect(big.message).toBe('big1');
   expect(big.fields.payload).toHaveLength(600);
   expect(JSON.parse(readFileSync(join(directory, 'heimdall.1.jsonl'), 'utf8')).message).toBe('s1');
-  run(box, ['burst', '1', '0', 't'], {}, settings);
+  await run(box, ['burst', '1', '0', 't'], {}, settings);
   expect(JSON.parse(readFileSync(join(directory, 'heimdall.jsonl'), 'utf8')).message).toBe('t1');
   expect(JSON.parse(readFileSync(join(directory, 'heimdall.1.jsonl'), 'utf8')).message).toBe(
     'big1',
   );
 });
 
-test('an oversize record written to a file that does not exist lands whole in it', () => {
+test('an oversize record written to a file that does not exist lands whole in it', async () => {
   const box = sandbox();
-  run(box, ['burst', '1', '600', 'big'], {}, { maxBytes: 200 });
+  await run(box, ['burst', '1', '600', 'big'], {}, { maxBytes: 200 });
   expect(readdirSync(join(box.state, 'heimdall'))).toEqual(['heimdall.jsonl']);
   expect(JSON.parse(readFileSync(box.file, 'utf8')).fields.payload).toHaveLength(600);
 });
@@ -378,12 +428,12 @@ test('two processes that append and rotate one file at once write every line who
 
 // The console
 
-test('to console writes the same bytes to stderr as the file, and none to stdout', () => {
+test('to console writes the same bytes to stderr as the file, and none to stdout', async () => {
   const box = sandbox();
-  const settings = { level: 'trace' };
-  run(box, ['log'], {}, settings);
+  const settings: LoggingSettings = { level: 'trace' };
+  await run(box, ['log'], {}, settings);
   const written = lines(box.file);
-  const result = run(box, ['log'], {}, { ...settings, to: 'console' });
+  const result = await run(box, ['log'], {}, { ...settings, to: 'console' });
   expect(result.status).toBe(0);
   expect(result.stdout).toBe('');
   expect(result.stderr.split('\n').slice(0, -1).map(pinned)).toEqual(written);
@@ -391,33 +441,31 @@ test('to console writes the same bytes to stderr as the file, and none to stdout
   expect(lines(box.file)).toEqual(written);
 });
 
-test('to console writes no file', () => {
+test('to console writes no file', async () => {
   const box = sandbox();
-  run(box, ['log'], {}, { to: 'console' });
+  await run(box, ['log'], {}, { to: 'console' });
   expect(readdirSync(box.state)).toEqual([]);
 });
 
-test('an app.invoke writes nothing to stderr with to console', () => {
+test('an app.invoke writes nothing to stderr with to console', async () => {
   const box = sandbox();
-  const result = run(box, ['invoke', 'log'], {}, { to: 'console' });
-  expect(result).toEqual({ status: 0, stderr: '', stdout: 'invoked:completed\n' });
+  const result = await invokeByName(box, ['log'], {}, { to: 'console' });
+  expect(result).toEqual({ status: 'completed', stderr: '', stdout: '' });
   expect(readdirSync(box.state)).toEqual([]);
 });
 
-test('an app.invoke still writes the file from the env it captured', () => {
+test('an app.invoke still writes the file from the env it captured', async () => {
   const box = sandbox();
-  const result = run(box, ['invoke', 'log']);
-  expect(result).toEqual({ status: 0, stderr: '', stdout: 'invoked:completed\n' });
+  const result = await invokeByName(box, ['log']);
+  expect(result).toEqual({ status: 'completed', stderr: '', stdout: '' });
   expect(lines(box.file)).toHaveLength(3);
 });
 
-test('an app.invoke writes the file from the env its host replaced', () => {
+test('an app.invoke writes the file from the env its host replaced', async () => {
   const box = sandbox();
   const replaced = join(box.root, 'replaced');
-  const result = run(box, ['invoke', 'log'], {
-    FIXTURE_HOST_ENV: JSON.stringify({ XDG_STATE_HOME: replaced }),
-  });
-  expect(result).toEqual({ status: 0, stderr: '', stdout: 'invoked:completed\n' });
+  const result = await invokeByName(box, ['log'], { env: { XDG_STATE_HOME: replaced } });
+  expect(result).toEqual({ status: 'completed', stderr: '', stdout: '' });
   expect(lines(join(replaced, 'heimdall', 'heimdall.jsonl'))).toHaveLength(3);
   expect(existsSync(box.file)).toBe(false);
 });
@@ -434,10 +482,10 @@ function readOnly(path: string): void {
 
 test.skipIf(!unprivileged)(
   'a read-only log directory reports an append failure for each record',
-  () => {
+  async () => {
     const box = sandbox();
     readOnly(join(box.state, 'heimdall'));
-    const result = run(box, ['burst', '2', '0', 'm'], { FIXTURE_ON_ERROR: 'print' });
+    const result = await run(box, ['burst', '2', '0', 'm'], { onError: 'print' });
     const failure = { cause: 'EACCES', kind: 'append', path: box.file };
     expect(result).toEqual({
       status: 0,
@@ -449,10 +497,10 @@ test.skipIf(!unprivileged)(
 
 test.skipIf(!unprivileged)(
   'a state directory that cannot hold the log directory reports a create-directory failure for each record',
-  () => {
+  async () => {
     const box = sandbox();
     readOnly(box.state);
-    const result = run(box, ['burst', '2', '0', 'm'], { FIXTURE_ON_ERROR: 'print' });
+    const result = await run(box, ['burst', '2', '0', 'm'], { onError: 'print' });
     const failure = {
       cause: 'EACCES',
       kind: 'create-directory',
@@ -465,12 +513,12 @@ test.skipIf(!unprivileged)(
   },
 );
 
-test('an unset HOME reports an unresolved directory that names the variable', () => {
+test('an unset HOME reports an unresolved directory that names the variable', async () => {
   const box = sandbox();
-  const result = run(box, ['burst', '2', '0', 'm'], {
-    FIXTURE_HOST_ENV: '{}',
-    FIXTURE_ON_ERROR: 'print',
-    FIXTURE_PLATFORM: 'linux',
+  const result = await run(box, ['burst', '2', '0', 'm'], {
+    env: {},
+    onError: 'print',
+    platform: 'linux',
   });
   const failure = '{"kind":"unresolved-directory","path":null,"variable":"HOME"}';
   expect(result).toEqual({
@@ -483,12 +531,12 @@ test('an unset HOME reports an unresolved directory that names the variable', ()
 test.each([
   ['the default directory', undefined],
   ['a file under ~/', '~/x.jsonl'],
-])('a relative HOME reports an unresolved directory for %s', (_case, file) => {
+])('a relative HOME reports an unresolved directory for %s', async (_case, file) => {
   const box = sandbox();
-  const result = run(
+  const result = await run(
     box,
     ['burst', '1', '0', 'm'],
-    { FIXTURE_HOST_ENV: JSON.stringify({ HOME: 'home' }), FIXTURE_ON_ERROR: 'print' },
+    { env: { HOME: 'home' }, onError: 'print' },
     file === undefined ? undefined : { file },
   );
   const failure = '{"kind":"unresolved-directory","path":null,"variable":"HOME"}';
@@ -496,15 +544,15 @@ test.each([
   expect(readdirSync(box.work)).toEqual([]);
 });
 
-test('a rotation that fails reports it, and the record is still written', () => {
+test('a rotation that fails reports it, and the record is still written', async () => {
   const box = sandbox();
   const directory = join(box.state, 'heimdall');
   // A copy that is a directory cannot be deleted as the copy past keep.
   mkdirSync(join(directory, 'heimdall.1.jsonl', 'inside'), { recursive: true });
-  const result = run(
+  const result = await run(
     box,
     ['burst', '2', '0', 'm'],
-    { FIXTURE_ON_ERROR: 'print' },
+    { onError: 'print' },
     { keep: 1, maxBytes: 200 },
   );
   const reported = result.stdout.trimEnd().split('\n');
@@ -518,23 +566,24 @@ test('a rotation that fails reports it, and the record is still written', () => 
 
 test.skipIf(!unprivileged)(
   'with no onError a failed write leaves the run its own exit code and writes nothing to stderr',
-  () => {
+  async () => {
     const box = sandbox();
     const writable = sandbox();
     readOnly(join(box.state, 'heimdall'));
-    expect(run(box, ['log'])).toEqual({ status: 0, stderr: '', stdout: '' });
-    const failed = run(box, ['fail']);
+    await expect(run(box, ['log'])).resolves.toEqual({ status: 0, stderr: '', stdout: '' });
+    const failed = await run(box, ['fail']);
     expect(failed.status).toBe(1);
-    expect(failed.stderr).toBe(run(writable, ['fail']).stderr);
+    const reference = await run(writable, ['fail']);
+    expect(failed.stderr).toBe(reference.stderr);
     expect(failed.stderr).not.toBe('');
   },
 );
 
-test.skipIf(!unprivileged)('a later record lands once the directory is writable', () => {
+test.skipIf(!unprivileged)('a later record lands once the directory is writable', async () => {
   const box = sandbox();
   const directory = join(box.state, 'heimdall');
   readOnly(directory);
-  const result = run(box, ['heal', directory], { FIXTURE_ON_ERROR: 'print' });
+  const result = await run(box, ['heal', directory], { onError: 'print' });
   expect(result.stdout).toBe(
     `onError:${JSON.stringify({ cause: 'EACCES', kind: 'append', path: box.file })}\n`,
   );
@@ -543,10 +592,10 @@ test.skipIf(!unprivileged)('a later record lands once the directory is writable'
 
 test.skipIf(!unprivileged)(
   'an onError that throws is reported as a foreign throw from the hook and the run exits 1',
-  () => {
+  async () => {
     const box = sandbox();
     readOnly(join(box.state, 'heimdall'));
-    const result = run(box, ['log'], { FIXTURE_ON_ERROR: 'throw' });
+    const result = await run(box, ['log'], { onError: 'throw' });
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toMatch(

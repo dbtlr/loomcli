@@ -49,7 +49,7 @@ import { glyph } from '@loomcli/core';
 import { expect, test, vi } from 'vite-plus/test';
 
 import { list } from '../src/list.js';
-import { render } from './pack-render.js';
+import { renderEach, renderRows } from './fixtures/view-run.ts';
 import { TAB, expandTabs, indentOf, linesOf, measured, plain, width } from './view-measures.js';
 
 interface Service {
@@ -90,9 +90,12 @@ test.each([40, undefined])(
   },
 );
 
-test('list() renders as the default view of a declared rows result', () => {
-  const input = { data: ['one', 'two'], view: 'list', widths: [40] } as const;
-  expect(render({ ...input, declared: true })).toBe(render(input));
+test('list() renders as the default view of a declared rows result', async () => {
+  const run = { widths: [40] };
+  const data = ['one', 'two'];
+  await expect(renderRows(run, data, { view: list<string>() })).resolves.toBe(
+    await renderEach(run, (out) => out.render(data, list<string>())),
+  );
 });
 
 test('an ordered list numbers its items from 1. to 10. and right-aligns the markers, so every text starts in one column', () => {
@@ -227,15 +230,15 @@ test('a tab in an item expands on a terminal and is kept when piped', () => {
   expect(linesOf(view.render(['a\tb'], measured(view, undefined)))).toEqual([`${bullet} a\tb`]);
 });
 
-test('a list styles its markers dim and a default item primary', () => {
+test('a list styles its markers dim and a default item primary', async () => {
   const rendering = { color: 'always', modifiers: 'always' } as const;
-  expect(render({ data: ['a', null], rendering, theme: true, view: 'list', widths: [40] })).toBe(
-    '\u001B[90m●\u001B[39m \u001B[36ma\u001B[39m\n\u001B[90m●\u001B[39m\n',
-  );
-  const config = { ordered: true };
-  expect(render({ config, data: ['a'], rendering, theme: true, view: 'list', widths: [40] })).toBe(
-    '\u001B[90m1.\u001B[39m \u001B[36ma\u001B[39m\n',
-  );
+  const run = { rendering, theme: true, widths: [40] };
+  await expect(
+    renderEach(run, (out) => out.render(['a', null], list<string | null>())),
+  ).resolves.toBe('\u001B[90m●\u001B[39m \u001B[36ma\u001B[39m\n\u001B[90m●\u001B[39m\n');
+  await expect(
+    renderEach(run, (out) => out.render(['a'], list<string>({ ordered: true }))),
+  ).resolves.toBe('\u001B[90m1.\u001B[39m \u001B[36ma\u001B[39m\n');
 });
 
 test('an empty sequence prints nothing, on a terminal and piped', () => {

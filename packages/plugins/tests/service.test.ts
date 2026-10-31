@@ -83,6 +83,8 @@ import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 import { ruleParts } from '../../../scripts/test-rules.js';
+import { runOnMock } from './fixtures/in-process.ts';
+import { checked, inspected, serviceGraphApplication } from './fixtures/service-graph.ts';
 import { servicePrograms } from './fixtures/service-programs.js';
 import { run as fixtureRun } from './fixtures/service-run-app.js';
 
@@ -1330,9 +1332,12 @@ function unrouted(words: string): string {
   return `@loomcli/plugins/service/run-unrouted: Plugin "@loomcli/plugins/service" setting "run" does not route to a Command with an action: ${words}. Name the words of a Command that has an action, as the application's command line takes them.\n`;
 }
 
-describe('settings and the graph', () => {
-  const graphFixture = new URL('fixtures/service-graph.mjs', import.meta.url);
+/** Runs `notes serve` with the service run on these words, in a build of the kind named. */
+async function runGraph(words: readonly string[], build: 'distributed' | 'development') {
+  return await runOnMock(serviceGraphApplication(words), { argv: ['serve'], release: { build } });
+}
 
+describe('settings and the graph', () => {
   it.each([
     ['an unknown Command', ['bogus']],
     ['a group', ['cache']],
@@ -1342,19 +1347,10 @@ describe('settings and the graph', () => {
     ['an option with no value', ['serve', '--port']],
   ])(
     'run words naming %s fail the build with run-unrouted, and check() reports it',
-    (_name, words) => {
-      const json = JSON.stringify(words);
-      expect(invoke(graphFixture, [json, 'check'])).toEqual({
-        status: 0,
-        stderr: '',
-        stdout: unrouted(words.join(' ')),
-      });
-      expect(invoke(graphFixture, [json, 'inspect'])).toEqual({
-        status: 0,
-        stderr: '',
-        stdout: `thrown:${unrouted(words.join(' '))}`,
-      });
-      expect(invoke(graphFixture, [json, 'run'])).toEqual({
+    async (_name, words) => {
+      expect(checked(words)).toBe(unrouted(words.join(' ')));
+      expect(inspected(words)).toBe(`thrown:${unrouted(words.join(' '))}`);
+      await expect(runGraph(words, 'distributed')).resolves.toEqual({
         status: 1,
         stderr: 'notes: Something went wrong.\n',
         stdout: '',
@@ -1362,10 +1358,8 @@ describe('settings and the graph', () => {
     },
   );
 
-  it('a development build renders the run-unrouted Developer Diagnostic', () => {
-    const result = invoke(graphFixture, ['["bogus"]', 'run'], {
-      env: { FIXTURE_BUILD: 'development' },
-    });
+  it('a development build renders the run-unrouted Developer Diagnostic', async () => {
+    const result = await runGraph(['bogus'], 'development');
     expect(result).toMatchObject({ status: 1, stdout: '' });
     expect(ruleParts(result.stderr)).toEqual({
       correction:
@@ -1382,12 +1376,9 @@ describe('settings and the graph', () => {
     [['serve', '--port', '8080']],
     [['serve', '--verbose', '--port=1']],
     [['cache', 'clear']],
-  ])('run words %j route and pass', (words) => {
-    expect(invoke(graphFixture, [JSON.stringify(words), 'check'])).toEqual({
-      status: 0,
-      stderr: '',
-      stdout: 'clean\n',
-    });
-    expect(invoke(graphFixture, [JSON.stringify(words), 'run']).status).toBe(0);
+  ])('run words %j route and pass', async (words) => {
+    expect(checked(words)).toBe('clean\n');
+    const result = await runGraph(words, 'distributed');
+    expect(result.status).toBe(0);
   });
 });

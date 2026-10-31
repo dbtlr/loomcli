@@ -6,13 +6,13 @@ import { Application, Command, DeclarationError } from '@loomcli/core';
 import { describe, expect, it } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { ruleParts } from '../../../scripts/test-rules.js';
 import { findOnPath } from '../../../scripts/test-shell.js';
 import { configInput } from '../src/config/extension.js';
 import { helpCommand, helpInput } from '../src/help/extension.js';
 import { manPages } from '../src/manpage/page.js';
 import { manpage } from '../src/manpage/plugin.js';
+import { run as collideRun } from './fixtures/manpage-collide.js';
 
 const noop = () => undefined;
 
@@ -470,19 +470,16 @@ describe('names that collide', () => {
 
   it.each<[string, string]>([
     ['hyphen', 'Commands "foo-bar" and "foo bar" both give the man page kit-foo-bar.'],
-  ])('the %s collision fails every run with the pinned diagnostic', (scenario, sentence) => {
-    const collide = new URL('fixtures/manpage-collide.mjs', import.meta.url);
+  ])('the %s collision fails every run with the pinned diagnostic', async (scenario, sentence) => {
     for (const argv of [['manpage', 'install'], ['--help']]) {
-      const developed = invoke(collide, [scenario, ...argv], {
-        env: { FIXTURE_BUILD: 'development' },
-      });
+      const developed = await collideRun([scenario, ...argv], { FIXTURE_BUILD: 'development' });
       expect(developed).toMatchObject({ status: 1, stdout: '' });
       expect(ruleParts(developed.stderr)).toEqual({
         correction: 'Rename one of them, or hide one.',
         identity: '@loomcli/plugins/manpage/page-name-taken',
         sentence,
       });
-      expect(invoke(collide, [scenario, ...argv])).toEqual({
+      await expect(collideRun([scenario, ...argv])).resolves.toEqual({
         status: 1,
         stderr: 'kit: Something went wrong.\n',
         stdout: '',

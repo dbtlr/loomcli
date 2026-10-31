@@ -4,7 +4,7 @@ import { expect, test, vi } from 'vite-plus/test';
 
 import { rule } from '../src/rule.js';
 import { lines } from './fit-render.js';
-import { render } from './pack-render.js';
+import { renderEach, renderResult } from './fixtures/view-run.ts';
 import {
   TAB,
   expandTabs,
@@ -48,9 +48,11 @@ test.each([
   expect(dim).toHaveBeenCalledWith(glyph.line.repeat(spans));
 });
 
-test('rule() renders as the default view of a declared string result', () => {
-  const input = { data: 'Checks', view: 'rule', widths: [60] } as const;
-  expect(render({ ...input, declared: true })).toBe(render(input));
+test('rule() renders as the default view of a declared string result', async () => {
+  const run = { widths: [60] };
+  await expect(renderResult(run, 'Checks', rule())).resolves.toBe(
+    await renderEach(run, (out) => out.render('Checks', rule())),
+  );
 });
 
 test('a label wrapped at a narrow width hangs its later lines under the label, and only its last line carries the line', () => {
@@ -126,17 +128,17 @@ test('a blank last label line carries the line after it', () => {
   expect(isBare(shown[1]?.trimStart())).toBe(true);
 });
 
-test('a rule styles its lines dim and adds no style to its label', () => {
+test('a rule styles its lines dim and adds no style to its label', async () => {
   const rendering = { color: 'always', modifiers: 'always' } as const;
-  expect(render({ data: 'Hi', rendering, theme: true, view: 'rule', widths: [12] })).toBe(
-    '\u001B[90m── \u001B[39mHi\u001B[90m ──────\u001B[39m\n',
-  );
+  await expect(
+    renderEach({ rendering, theme: true, widths: [12] }, (out) => out.render('Hi', rule())),
+  ).resolves.toBe('\u001B[90m── \u001B[39mHi\u001B[90m ──────\u001B[39m\n');
 });
 
-test('an invocation by name has no width, so the rule draws 80', () => {
-  expect(render({ data: 'Checks', invoke: true, view: 'rule', widths: [null] })).toBe(
-    lines(`── Checks ${line.repeat(70)}`),
-  );
+test('an invocation by name has no width, so the rule draws 80', async () => {
+  await expect(
+    renderEach({ invoke: true, widths: [null] }, (out) => out.render('Checks', rule())),
+  ).resolves.toBe(lines(`── Checks ${line.repeat(70)}`));
 });
 
 test('a tab in a label expands on a terminal', () => {

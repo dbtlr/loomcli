@@ -1,27 +1,20 @@
 // Acceptance plan: see examples/jsonkit/tests/completion.test.ts.
 
 import { createHash } from 'node:crypto';
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
+import type { ReleaseFacts } from '@loomcli/core';
+import type { Program } from '@loomcli/testing';
 import { afterEach, expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { bashScript } from '../src/completion/bash.js';
-
-const fixture = new URL('fixtures/completion-refresh.mjs', import.meta.url);
-const updateFixture = new URL('fixtures/self-update-run.mjs', import.meta.url);
-const installFixture = fileURLToPath(new URL('fixtures/completion-install.mjs', import.meta.url));
+import { run as runInstallation } from './fixtures/completion-install-app.ts';
+import { runOnMock } from './fixtures/in-process.ts';
+import { refreshApplication } from './fixtures/refresh-app.ts';
+import type { Observed } from './fixtures/refresh-app.ts';
+import { runSelfUpdate } from './fixtures/self-update-mock.ts';
 
 const roots: string[] = [];
 
@@ -31,66 +24,41 @@ afterEach(() => {
   }
 });
 
-/** A sandbox with a working directory, and the files the fixture and its child write. */
-function sandbox() {
-  const root = mkdtempSync(join(tmpdir(), 'loom-completion-refresh-'));
-  roots.push(root);
-  const work = join(root, 'work');
-  mkdirSync(work);
-  return {
-    child: join(root, 'child.mjs'),
-    events: join(root, 'events.jsonl'),
-    resolved: join(root, 'resolved'),
-    root,
-    scenario: join(root, 'scenario.json'),
-    work,
-  };
-}
+/** Where the mock runs the application and where the refreshed binary lies. */
+const work = '/loom-test/work';
+const refreshed = '/loom-test/bin/jsonkit';
 
-type Box = ReturnType<typeof sandbox>;
-
-/** Writes a child program that runs under the test's runtime, as an executable with a shebang. */
-function childProgram(box: Box, body: string): string {
-  writeFileSync(box.child, `#!${process.execPath}\n${body}\n`);
-  chmodSync(box.child, 0o755);
-  return box.child;
-}
-
-/** Runs the fixture's `refresh` Command against the binary at `path`. */
-function refresh(box: Box, path: string) {
-  writeFileSync(
-    box.scenario,
-    JSON.stringify({
-      cwd: box.work,
-      env: { FROM_HOST: 'yes' },
-      events: box.events,
-      path,
-      resolved: box.resolved,
-    }),
-  );
-  return invoke(fixture, [], { env: { COMPLETION_SCENARIO: box.scenario } });
-}
-
-/** The log events the fixture observed. */
-function events(box: Box): { level: string; message: string; fields: Record<string, unknown> }[] {
-  return existsSync(box.events)
-    ? readFileSync(box.events, 'utf8')
-        .trim()
-        .split('\n')
-        .map((line) => JSON.parse(line))
-    : [];
+/**
+ * Runs the application's `refresh` Command on mockProcess against the binary at `path`, whose
+ * child is the script `programs` holds for it.
+ */
+async function refresh(path: string, programs: Record<string, Program>) {
+  const events: Observed[] = [];
+  let resolved = false;
+  const app = refreshApplication('completion', path, {
+    observe: (event) => events.push(event),
+    resolved: () => {
+      resolved = true;
+    },
+  });
+  const result = await runOnMock(app, {
+    argv: ['refresh'],
+    cwd: work,
+    env: { FROM_HOST: 'yes' },
+    programs,
+  });
+  return { ...result, events, resolved };
 }
 
 const warning = 'Completion was not refreshed after the update.';
 
-test('runs the binary with completion update, host.env, and host.cwd, pipes its output, and resolves', () => {
-  const box = sandbox();
-  const path = childProgram(
-    box,
-    `process.stdout.write(JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), from: process.env.FROM_HOST }) + '\\n');
-process.stderr.write('child says hello\\n');`,
-  );
-  const result = refresh(box, path);
+test('runs the binary with completion update, host.env, and host.cwd, pipes its output, and resolves', async () => {
+  const result = await refresh(refreshed, {
+    [refreshed]: (call) => ({
+      stderr: 'child says hello\n',
+      stdout: `${JSON.stringify({ argv: call.args, cwd: call.cwd, from: call.env.FROM_HOST })}\n`,
+    }),
+  });
   expect(result.status).toBe(0);
   const printed = result.stdout.split('\n').find((line) => line.startsWith('{'));
   expect(JSON.parse(printed ?? '{}')).toMatchObject({
@@ -99,29 +67,32 @@ process.stderr.write('child says hello\\n');`,
   });
   expect(JSON.parse(printed ?? '{}').cwd).toMatch(/work$/u);
   expect(result.stderr).toContain('child says hello\n');
-  expect(existsSync(box.resolved)).toBe(true);
-  expect(events(box)).toEqual([]);
+  expect(result.resolved).toBe(true);
+  expect(result.events).toEqual([]);
 });
 
-test('adds the warn event with the exit code for a child that exits 1, and resolves', () => {
-  const box = sandbox();
-  const path = childProgram(box, 'process.exitCode = 1;');
-  const result = refresh(box, path);
+test('adds the warn event with the exit code for a child that exits 1, and resolves', async () => {
+  const path = refreshed;
+  const result = await refresh(path, { [path]: () => ({ code: 1 }) });
   expect(result.status).toBe(0);
-  expect(existsSync(box.resolved)).toBe(true);
-  expect(events(box)).toEqual([{ fields: { code: 1, path }, level: 'warn', message: warning }]);
+  expect(result.resolved).toBe(true);
+  expect(result.events).toEqual([{ fields: { code: 1, path }, level: 'warn', message: warning }]);
 });
 
-test('adds the warn event and writes the pinned line for a path that cannot start', () => {
-  const box = sandbox();
-  const path = join(box.root, 'missing', 'jsonkit');
-  const result = refresh(box, path);
+test('adds the warn event and writes the pinned line for a path that cannot start', async () => {
+  const path = '/loom-test/missing/jsonkit';
+  const result = await refresh(path, {
+    // A script that throws stands for a binary that could not start, as a missing file cannot.
+    [path]: (call) => {
+      throw new Error(`spawn ${call.command} ENOENT`);
+    },
+  });
   expect(result.status).toBe(0);
   expect(result.stderr).toBe(
     `Completion was not refreshed because ${path} could not start. Run jsonkit completion update.\n`,
   );
-  expect(existsSync(box.resolved)).toBe(true);
-  const [event, ...rest] = events(box);
+  expect(result.resolved).toBe(true);
+  const [event, ...rest] = result.events;
   expect(rest).toEqual([]);
   expect(event).toMatchObject({ level: 'warn', message: warning });
   expect(event?.fields.path).toBe(path);
@@ -132,7 +103,7 @@ function digestOf(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
 
-test('a self-update rewrites a recorded script to the replaced binary’s version', () => {
+test('a self-update rewrites a recorded script to the replaced binary’s version', async () => {
   const root = mkdtempSync(join(tmpdir(), 'loom-completion-update-'));
   roots.push(root);
   const home = join(root, 'home');
@@ -161,22 +132,28 @@ test('a self-update rewrites a recorded script to the replaced binary’s versio
     join(installation, 'completion.bash.json'),
     `{"format":1,"state":"committed","directories":[],"files":[{"path":${JSON.stringify(script)},"digest":"sha256:${digestOf('old script\n')}"}]}\n`,
   );
-  // The replacing binary runs the completion fixture application with the arguments it was given.
-  const bytes = `#!${process.execPath}\nimport(${JSON.stringify(installFixture)});\n`;
-  const scenario = join(root, 'completion-scenario.json');
-  writeFileSync(
-    scenario,
-    JSON.stringify({
-      cwd: root,
+  // The replacing binary runs the completion fixture application with the arguments it was given,
+  // Once the update wrote its bytes at the recorded path.
+  const bytes = 'jsonkit 1.5.0 binary\n';
+  const replacing: Program = async (call) => {
+    if (readFileSync(call.command, 'utf8') !== bytes) {
+      throw new Error(`${call.command} is not the new jsonkit binary.`);
+    }
+    const outcome = await runInstallation([...call.args], {
+      cwd: call.cwd,
       env: { HOME: home, XDG_DATA_HOME: data, XDG_STATE_HOME: state },
-    }),
-  );
+    });
+    return { code: outcome.status, stderr: outcome.stderr, stdout: outcome.stdout };
+  };
   const asset = 'jsonkit-linux-x64';
-  const file = join(root, 'scenario.json');
-  writeFileSync(
-    file,
-    JSON.stringify({
-      env: { COMPLETION_SCENARIO: scenario, HOME: home, XDG_STATE_HOME: state },
+  const release: ReleaseFacts = {
+    build: 'distributed',
+    installation: { digest: `sha256:${digestOf(oldBytes)}`, method: 'script', path: binary },
+    release: { asset, channel: 'stable', repository: 'acme/jsonkit', version: '1.4.2' },
+  };
+  const env = { HOME: home, XDG_STATE_HOME: state };
+  const result = await runSelfUpdate(
+    {
       github: {
         feed: ['v1.5.0'],
         latest: 'v1.5.0',
@@ -186,15 +163,11 @@ test('a self-update rewrites a recorded script to the replaced binary’s versio
         repository: 'acme/jsonkit',
       },
       hook: 'completion',
-      release: {
-        build: 'distributed',
-        installation: { digest: `sha256:${digestOf(oldBytes)}`, method: 'script', path: binary },
-        release: { asset, channel: 'stable', repository: 'acme/jsonkit', version: '1.4.2' },
-      },
+      release,
       requests: join(root, 'requests.txt'),
-    }),
+    },
+    { argv: ['self-update'], cwd: root, env, home, programs: { [binary]: replacing }, release },
   );
-  const result = invoke(updateFixture, [file, 'self-update']);
   expect(result.status).toBe(0);
   expect(result.stderr).toContain(`Updated the bash completion script in ${script}.`);
   expect(readFileSync(script, 'utf8')).toBe(bashScript('jsonkit'));

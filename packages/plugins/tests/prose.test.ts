@@ -4,7 +4,7 @@ import { expect, test, vi } from 'vite-plus/test';
 
 import { prose } from '../src/prose.js';
 import { lines } from './fit-render.js';
-import { render } from './pack-render.js';
+import { renderEach, renderResult } from './fixtures/view-run.ts';
 import { TAB, expandTabs, linesOf, measured, width, wordsOf } from './view-measures.js';
 
 const summary =
@@ -19,9 +19,11 @@ test('prose() wraps at the columns on a terminal and prints as written when pipe
   expect(view.render(summary, measured(view, undefined))).toBe(`${summary}\n`);
 });
 
-test('prose() renders as the default view of a declared string result', () => {
-  const input = { data: summary, view: 'prose', widths: [34] } as const;
-  expect(render({ ...input, declared: true })).toBe(render(input));
+test('prose() renders as the default view of a declared string result', async () => {
+  const run = { widths: [34] };
+  await expect(renderResult(run, summary, prose())).resolves.toBe(
+    await renderEach(run, (out) => out.render(summary, prose())),
+  );
 });
 
 test('a blank line separates two paragraphs', () => {
@@ -71,12 +73,12 @@ test.each([
   },
 );
 
-test('prose adds no styling and keeps its author styling', () => {
+test('prose adds no styling and keeps its author styling', async () => {
   const data = '["style",[["foreground","red"]]]Hi there';
   const rendering = { color: 'always', modifiers: 'always' } as const;
-  expect(render({ data, rendering, theme: true, view: 'prose', widths: [40] })).toBe(
-    '\u001B[31mHi\u001B[39m there\n',
-  );
+  await expect(
+    renderEach({ rendering, theme: true, widths: [40] }, (out) => out.render(data, prose())),
+  ).resolves.toBe('\u001B[31mHi\u001B[39m there\n');
 });
 
 test('the empty string prints nothing', () => {
@@ -85,12 +87,12 @@ test('the empty string prints nothing', () => {
   expect(view.render('', measured(view, undefined))).toBe('');
 });
 
-test('an OSC 8 hyperlink closes at the end of each wrapped line', () => {
+test('an OSC 8 hyperlink closes at the end of each wrapped line', async () => {
   const open = '\u001B]8;;https://example.com\u001B\\';
   const close = '\u001B]8;;\u001B\\';
   const rendering = { color: 'never', hyperlinks: 'always', modifiers: 'never' } as const;
   const data = `${open}see the release notes${close}`;
-  expect(render({ data, rendering, view: 'prose', widths: [14] })).toBe(
-    lines(`${open}see the${close}`, `${open}release notes${close}`),
-  );
+  await expect(
+    renderEach({ rendering, widths: [14] }, (out) => out.render(data, prose())),
+  ).resolves.toBe(lines(`${open}see the${close}`, `${open}release notes${close}`));
 });

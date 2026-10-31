@@ -1,3 +1,4 @@
+// JavaScript intentionally supplies settings and declarations that the public types reject.
 import { DeclarationError } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import { dotenv } from '@loomcli/plugins/dotenv';
@@ -38,12 +39,14 @@ const scenarios = {
   'version-number': () => version({ postfix: 1 }),
 };
 
-try {
-  scenarios[process.argv[2]]();
-  process.stdout.write('returned\n');
-} catch (error) {
-  if (!(error instanceof DeclarationError)) {
-    throw error;
+export function diagnostic(scenario) {
+  try {
+    scenarios[scenario]();
+    return 'returned\n';
+  } catch (error) {
+    if (!(error instanceof DeclarationError)) {
+      throw error;
+    }
+    return `${error.message}\n`;
   }
-  process.stdout.write(`${error.message}\n`);
 }

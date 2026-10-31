@@ -9,25 +9,25 @@ export interface Outcome {
   stdout: string;
   stderr: string;
 }
-export type FixtureRun = (
-  args?: string[],
-  env?: Record<string, string | undefined>,
-) => Promise<Outcome>;
-
 /** Run an application on sealed facts and return only the process effects it recorded. */
 export async function runOnMock(
   application: Pick<Application, 'run'>,
   fields: MockFields = {},
   options: Omit<RunOptions, 'process'> & {
     stdout?: Writable;
+    stderr?: (recording: Writable) => Writable;
+    publishEnv?: (name: string, value: string) => void;
     afterRun?: (mock: MockProcess) => void;
   } = {},
 ): Promise<Outcome> {
   const mock = mockProcess(fields);
-  const { stdout, afterRun, ...runOptions } = options;
-  // The large-sequence fixture deliberately sends the rendered table to a sink.
+  const { stdout, stderr, publishEnv, afterRun, ...runOptions } = options;
+  /*
+   * A sink or an environment publisher replaces only that effect; the composed handle forwards the
+   * exit code to the mock, so the status is always the code the run wrote.
+   */
   const handle: ProcessHandle =
-    stdout === undefined
+    stdout === undefined && stderr === undefined && publishEnv === undefined
       ? mock
       : {
           ...mock,
@@ -37,7 +37,9 @@ export async function runOnMock(
           set exitCode(value) {
             mock.exitCode = value;
           },
-          stdout,
+          stderr: stderr?.(mock.stderr) ?? mock.stderr,
+          stdout: stdout ?? mock.stdout,
+          ...(publishEnv === undefined ? {} : { publishEnv }),
         };
   await application.run({ ...runOptions, process: handle });
   const status = mock.exitCode;
