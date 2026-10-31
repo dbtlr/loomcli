@@ -1,5 +1,5 @@
 // Acceptance plan: see packages/plugins/tests/list.test.ts.
-import { glyph, nowrap, style } from '@loomcli/core';
+import { glyph, nowrap, override, style, view as declareView } from '@loomcli/core';
 import type { View, ViewContext } from '@loomcli/core';
 import type { ViewValues } from '@loomcli/testing';
 import { expect, test, vi } from 'vite-plus/test';
@@ -8,7 +8,8 @@ import { box } from '../src/box.js';
 import { prose } from '../src/prose.js';
 import { table } from '../src/table.js';
 import { lines } from './fit-render.js';
-import { render, run } from './pack-render.js';
+import { renderEach, renderResult, renderRows } from './fixtures/view-run.ts';
+import { run as runProcess } from './pack-render.js';
 import {
   TAB,
   expandTabs,
@@ -129,10 +130,12 @@ test.each([60, undefined])(
   },
 );
 
-test('box() renders as the default view of a declared string result', () => {
-  const config = { title: 'Result' };
-  const input = { config, data: 'All checks passed.', view: 'box', widths: [40] } as const;
-  expect(render({ ...input, declared: true })).toBe(render(input));
+test('box() renders as the default view of a declared string result', async () => {
+  const run = { widths: [40] };
+  const data = 'All checks passed.';
+  await expect(renderResult(run, data, box({ title: 'Result' }))).resolves.toBe(
+    await renderEach(run, (out) => out.render(data, box({ title: 'Result' }))),
+  );
 });
 
 test('a title wider than the text widens the box to hold the title and a line after it', () => {
@@ -162,10 +165,12 @@ test.each([60, undefined])('a box frames a table, at %s columns', (columns) => {
   ]);
 });
 
-test('a boxed table renders as the default view of a declared rows result', () => {
-  const config = { content: { table: {} }, title: 'Pools' };
-  const input = { config, data: pools, view: 'box', widths: [60] } as const;
-  expect(render({ ...input, declared: true })).toBe(render(input));
+test('a boxed table renders as the default view of a declared rows result', async () => {
+  const run = { widths: [60] };
+  const boxed = box({ content: table<Record<string, unknown>>(), title: 'Pools' });
+  await expect(renderRows(run, pools, { view: boxed })).resolves.toBe(
+    await renderEach(run, (out) => out.render(pools, boxed)),
+  );
 });
 
 test('a framed table renders at the columns the box leaves it, and shrinks to fit them', () => {
@@ -210,11 +215,19 @@ test('a content view that ignores columns widens the box past them', () => {
   expect(width(linesOf(output)[0] ?? '')).toBeGreaterThan(30);
 });
 
-test('a declared view override does not apply inside a box', () => {
+test('a declared view override does not apply inside a box', async () => {
   const data = [{ pool: 'blue' }];
-  expect(render({ config: { content: 'declared' }, data, view: 'box', widths: [null] })).toBe(
-    lines('override', ...framed('pool', 'blue')),
-  );
+  // A declared table the Application overrides, so a render outside a box shows the override.
+  const declared = declareView('@fixture/pack-views/table', table<{ pool: string }>());
+  const run = {
+    views: [override(declared, { render: () => 'override\n' })],
+    widths: [null],
+  };
+  const output = await renderEach(run, async (out) => {
+    await out.render(data, declared);
+    await out.render(data, box({ content: declared }));
+  });
+  expect(output).toBe(lines('override', ...framed('pool', 'blue')));
 });
 
 test("a tab in piped content is left to each line's padding, so the box expands no tab off a terminal", () => {
@@ -273,20 +286,23 @@ test('a text box over a value that is not a string fails the run the ordinary wa
     view: 'box',
     widths: [40],
   } as const;
-  expect(run(input)).toEqual({
+  expect(runProcess(input)).toEqual({
     status: 1,
     stderr: 'pack-views: Something went wrong.\n',
     stdout: '',
   });
-  expect(run({ ...input, build: 'development' }).stderr).toContain(
+  expect(runProcess({ ...input, build: 'development' }).stderr).toContain(
     '\n\nStyle helpers require a string.\n',
   );
 });
 
-test('a box styles its borders dim and its title primary and bold', () => {
+test('a box styles its borders dim and its title primary and bold', async () => {
   const rendering = { color: 'always', modifiers: 'always' } as const;
-  const config = { title: 'T' };
-  expect(render({ config, data: 'Hi', rendering, theme: true, view: 'box', widths: [40] })).toBe(
+  await expect(
+    renderEach({ rendering, theme: true, widths: [40] }, (out) =>
+      out.render('Hi', box({ title: 'T' })),
+    ),
+  ).resolves.toBe(
     [
       '\u001B[90m╭─ \u001B[36;1mT\u001B[90;22m ─╮\u001B[39m',
       '\u001B[90m│\u001B[39m Hi  \u001B[90m│\u001B[39m',

@@ -1,14 +1,13 @@
 /*
  * Acceptance plan for update notices (docs/plugins/self-update.md#update-notices).
  *
- * Update notices are proven when process tests under Node and Bun produce these results. Each
- * fixture sets `HOME` and `XDG_CACHE_HOME` to temporary directories and runs an application that
- * installs `selfUpdate()` and declares a Command that prints one line through `out.success`,
- * through `run({ process: processHandle({ release, terminal, program }) })`, whose release group holds an asset and
- * an installation with the method `script`, whose stdout and stderr terminals report `isTTY: true`
- * and 80 columns, with an `env` that holds no `COLUMNS`, and whose `program` starts the same
- * fixture with its scenario, so the child reads the same release facts and the fake GitHub of
- * Self-update acceptance (packages/plugins/tests/self-update.test.ts):
+ * The cases run on mockProcess under Node and Bun. The shared application installs selfUpdate()
+ * and declares a Command that prints through out.success, with the same fake GitHub as Self-update
+ * acceptance (packages/plugins/tests/self-update.test.ts). Its release facts name a script
+ * installation and its terminal is 80 columns. The refresh program the run spawns runs the same
+ * application in-process with the words, directory, and environment of the spawn. The session and
+ * process group a refresh child leads are a real process's, so that case alone starts the process
+ * fixture (ADR-0103: signals and process identity).
  *
  * - The notice. A fresh cache naming `1.5.1` on the running `stable` channel prints the Command's
  *   line and then the pinned notice on stderr, the notice through `lanes.info`, wrapped at the
@@ -19,9 +18,8 @@
  *   a time, or that is a directory is stale.
  * - The refresh. A missing cache, one whose `checked` is 25 hours old, one dated an hour ahead, one
  *   for another channel, and one holding `{` each start one child, which finds the run's `checked`
- *   already in `update.json` when it starts; the run exits before the child, whose GitHub responses
- *   the fake holds until the run's process has exited, and the child then writes the pinned line
- *   with the latest version. A compiled fixture binary built with `--release` starts its child from
+ *   already in `update.json` when it starts; the run returns before the child's first request, and
+ *   the child then writes the pinned line with the latest version. A compiled fixture binary built with `--release` starts its child from
  *   `[execPath]` alone, with the same result. A cache naming `1.5.1` whose `checked` is 25 hours
  *   old, an hour ahead, or not a time prints the notice and starts a child, and the run's `checked`
  *   keeps `1.5.1` as `latest`. A fresh cache starts none. A `503` from the fake makes the child
@@ -54,6 +52,7 @@
 
 import { createHash } from 'node:crypto';
 import {
+  appendFileSync,
   chmodSync,
   existsSync,
   mkdirSync,
@@ -68,13 +67,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
+import type { ReleaseFacts } from '@loomcli/core';
 import { Application, locate } from '@loomcli/core';
+import type { NoticeSettings } from '@loomcli/plugins/self-update';
+import type { MockProcess, Program } from '@loomcli/testing';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 import { answer } from '../src/completion/answer.js';
 import { judgeCache } from '../src/self-update/cache.js';
 import { selfUpdate } from '../src/self-update/plugin.js';
+import { runSelfUpdate } from './fixtures/self-update-mock.ts';
 
 const fixture = new URL('fixtures/self-update-run.mjs', import.meta.url);
 
@@ -94,8 +97,11 @@ const noticeLines = [
   '  update from 1.5.0.',
 ];
 
-/** How long a test waits for a child that should never start before it concludes none did. */
-const quiet = 1500;
+/**
+ * How long a test waits for a child that should never start before it concludes none did. A
+ * refresh program starts once `spawn` returns, within the run's own turns, so a short wait holds.
+ */
+const quiet = 100;
 
 /** How long a test waits for a refresh child to end. */
 const childDeadline = 10_000;
@@ -104,7 +110,9 @@ function digestOf(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
 
-function release(version: string): [string, { assets: Record<string, string>; sums: string }] {
+function githubRelease(
+  version: string,
+): [string, { assets: Record<string, string>; sums: string }] {
   const bytes = `notes ${version} binary\n`;
   return [`v${version}`, { assets: { [asset]: bytes }, sums: `${digestOf(bytes)}  ${asset}\n` }];
 }
@@ -119,7 +127,7 @@ interface GitHub {
 const defaultGitHub: GitHub = {
   feed: ['v1.5.1', 'v1.5.0'],
   latest: 'v1.5.1',
-  releases: Object.fromEntries([release('1.5.1'), release('1.5.0')]),
+  releases: Object.fromEntries([githubRelease('1.5.1'), githubRelease('1.5.0')]),
   repository: 'acme/notes',
 };
 
@@ -220,24 +228,26 @@ interface Scenario {
   readonly version?: string;
   readonly channel?: string;
   /** The release facts, replacing the default `distributed` ones whole. */
-  readonly releaseFacts?: unknown;
+  readonly releaseFacts?: ReleaseFacts;
   readonly github?: Partial<GitHub>;
   readonly rules?: Record<string, string | number>;
   readonly env?: Record<string, string>;
   readonly tty?: { readonly stdout: boolean; readonly stderr: boolean };
-  readonly notices?: unknown;
+  readonly notices?: false | NoticeSettings;
   /** Where the help plugin sits beside `selfUpdate()`, when the application installs it. */
   readonly help?: 'before' | 'after';
   readonly restyle?: boolean;
-  readonly hold?: boolean;
   /** Each run and refresh child records its process group and session. */
   readonly session?: boolean;
-  /** `fixture` starts the fixture again with its scenario; `inert` starts a runtime that does nothing. */
+  /**
+   * `fixture` starts the fixture again with its scenario; `inert` starts a runtime that does
+   * nothing; words name a program, which under `run` is a missing file that cannot start.
+   */
   readonly program?: 'fixture' | 'inert' | readonly string[];
 }
 
 /** The release facts of a script-installed binary at `version`, on the channel it derives. */
-function scriptFacts(box: Sandbox, version: string, channel: string) {
+function scriptFacts(box: Sandbox, version: string, channel: string): ReleaseFacts {
   return {
     build: 'distributed',
     installation: { digest: `sha256:${digestOf(binaryBytes)}`, method: 'script', path: box.binary },
@@ -245,8 +255,11 @@ function scriptFacts(box: Sandbox, version: string, channel: string) {
   };
 }
 
-/** Runs `notes ...argv` at a terminal in the sandbox, the fixture its own refresh program. */
-function run(box: Sandbox, argv: string[], scenario: Scenario = {}) {
+/**
+ * Runs `notes ...argv` as a real process at a terminal in the sandbox, the fixture its own refresh
+ * program, for the one case that reads a real session and process group.
+ */
+function runProcess(box: Sandbox, argv: string[], scenario: Scenario = {}) {
   const file = join(box.root, 'scenario.json');
   const program =
     scenario.program === 'inert' ? [process.execPath, '-e', ''] : (scenario.program ?? 'fixture');
@@ -266,7 +279,6 @@ function run(box: Sandbox, argv: string[], scenario: Scenario = {}) {
       events: box.events,
       github: { ...defaultGitHub, ...scenario.github },
       help: scenario.help,
-      hold: scenario.hold,
       ...('notices' in scenario ? { notices: scenario.notices } : {}),
       program,
       release:
@@ -283,6 +295,134 @@ function run(box: Sandbox, argv: string[], scenario: Scenario = {}) {
   return invoke(fixture, [file, ...argv]);
 }
 
+/** What `update.json` in a directory holds, or `null` when nothing readable is there. */
+function cacheIn(directory: string): string | null {
+  try {
+    return readFileSync(join(directory, 'update.json'), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/** Appends one event to the sandbox's events file. */
+function record(box: Sandbox, event: FixtureEvent): void {
+  appendFileSync(box.events, `${JSON.stringify(event)}\n`);
+}
+
+/**
+ * Runs `notes ...argv` on sealed facts at an 80-column terminal. The refresh program runs the same
+ * application in-process with the words, directory, and environment the run spawned it with, and
+ * records when it started, what the cache held then, and its exit; `inert` answers and records
+ * nothing.
+ */
+async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {}) {
+  const env = {
+    CI: '',
+    HOME: box.home,
+    NO_COLOR: '1',
+    NO_UPDATE_NOTIFIER: '',
+    XDG_CACHE_HOME: box.cacheHome,
+    XDG_STATE_HOME: box.state,
+    ...scenario.env,
+  };
+  const release =
+    'releaseFacts' in scenario
+      ? scenario.releaseFacts
+      : scriptFacts(box, scenario.version ?? '1.5.0', scenario.channel ?? 'stable');
+  const tty = scenario.tty ?? { stderr: true, stdout: true };
+  const streams: ('stdout' | 'stderr')[] = [];
+  if (tty.stdout) {
+    streams.push('stdout');
+  }
+  if (tty.stderr) {
+    streams.push('stderr');
+  }
+  const application = {
+    github: { ...defaultGitHub, ...scenario.github },
+    help: scenario.help,
+    notices: scenario.notices,
+    release,
+    requests: box.requests,
+    restyle: scenario.restyle,
+    rules: scenario.rules,
+  };
+  const runReturned = Promise.withResolvers<void>();
+  const refresh: Program = async (call) => {
+    if (scenario.program === 'inert') {
+      return {};
+    }
+    record(box, { cache: cacheIn(call.cwd), cwd: call.cwd, event: 'start', role: 'child' });
+    // One fake GitHub replaces fetch at a time, so the refresh runs once the run that started it
+    // Has returned, as the process fixture held a child's requests until its run had exited.
+    await runReturned.promise;
+    const child = await runSelfUpdate(
+      application,
+      {
+        argv: call.args,
+        cwd: call.cwd,
+        env: call.env,
+        ...(release === undefined ? {} : { release }),
+      },
+      { requested: (url) => record(box, { event: 'request', role: 'child', url }) },
+    );
+    record(box, {
+      cache: cacheIn(box.cache),
+      code: child.status,
+      event: 'exit',
+      role: 'child',
+      stderr: child.stderr,
+    });
+    return { code: child.status, stderr: child.stderr, stdout: child.stdout };
+  };
+  const program =
+    scenario.program === undefined || typeof scenario.program === 'string'
+      ? ['notice-refresh']
+      : scenario.program;
+  // A program the scenario names stands for a file that is not there: it cannot start, so its
+  // Exit settles as `unstarted`, as a real spawn of a missing file does.
+  const programs: Record<string, Program> = { 'notice-refresh': refresh };
+  const [named] = program;
+  if (named !== undefined && named !== 'notice-refresh') {
+    programs[named] = () => {
+      throw new Error(`spawn ${named} ENOENT`);
+    };
+  }
+  try {
+    const result = await runSelfUpdate(
+      application,
+      {
+        argv,
+        env,
+        home: env.HOME,
+        ...(release === undefined ? {} : { release }),
+        program,
+        programs,
+        ...(streams.length === 0 ? {} : { terminal: { columns: 80, rows: 24, streams } }),
+      },
+      { afterRun: (mock) => runMocks.set(box, mock) },
+    );
+    record(box, { cache: cacheIn(box.cache), code: result.status, event: 'exit', role: 'run' });
+    return result;
+  } finally {
+    runReturned.resolve();
+  }
+}
+
+/** The mock of the last run in each sandbox, which keeps recording after the run returns. */
+const runMocks = new WeakMap<Sandbox, MockProcess>();
+
+/**
+ * What the last run's own streams hold now. Read after `childrenDone`, it shows whether a refresh
+ * child, which runs after its run returned, wrote anything there.
+ */
+function runStreams(box: Sandbox): { stderr: string; stdout: string } {
+  const mock = runMocks.get(box);
+  if (mock === undefined) {
+    throw new Error('No run has recorded its mock in this sandbox.');
+  }
+  return { stderr: mock.stderr.text, stdout: mock.stdout.text };
+}
+
 /** One event the fixture recorded: a run's or a child's start, request, exit, or session. */
 interface FixtureEvent {
   readonly event: 'start' | 'request' | 'exit' | 'session';
@@ -290,6 +430,8 @@ interface FixtureEvent {
   readonly cache?: string | null;
   readonly cwd?: string;
   readonly code?: number;
+  /** What a refresh child answered on stderr, on its exit. */
+  readonly stderr?: string;
   readonly url?: string;
   readonly group?: number;
   readonly session?: number;
@@ -353,14 +495,14 @@ test('a fresh cache naming a newer release prints the notice after the Command l
   const box = sandbox();
   const line = cacheLine();
   writeCache(box, line);
-  const result = run(box, ['add']);
+  const result = await run(box, ['add']);
   expect(result.status).toBe(0);
   expect(result.stdout).toBe('');
   expect(result.stderr).toBe(`✔ Added note 12.\nℹ ${noticeLines.join('\n')}\n`);
 
   const restyled = sandbox();
   writeCache(restyled, line);
-  const styled = run(restyled, ['add'], { restyle: true });
+  const styled = await run(restyled, ['add'], { restyle: true });
   // The override owns the lane, wrapping included, so its notice stays one line.
   expect(styled.stderr).toBe(`✔ Added note 12.\n[info] ${notice}\n`);
 
@@ -369,10 +511,10 @@ test('a fresh cache naming a newer release prints the notice after the Command l
   expect(readFileSync(box.file, 'utf8')).toBe(line);
 });
 
-test('a cache naming 1.10.0 prints the notice to a run of 1.9.0, by SemVer precedence', () => {
+test('a cache naming 1.10.0 prints the notice to a run of 1.9.0, by SemVer precedence', async () => {
   const box = sandbox();
   writeCache(box, cacheLine({ latest: '1.10.0' }));
-  const result = run(box, ['add'], { program: 'inert', version: '1.9.0' });
+  const result = await run(box, ['add'], { program: 'inert', version: '1.9.0' });
   expect(lines(result.stderr)).toEqual([
     'Added note 12.',
     'notes 1.10.0 is available on the stable channel. Run notes self-update to',
@@ -386,10 +528,10 @@ test.each([
   ['null', cacheLine({ latest: null })],
   ['another channel', cacheLine({ channel: 'next', latest: '1.6.0-next.1' })],
   ['another repository', cacheLine({ repository: 'acme/other' })],
-])('a cache naming %s prints no notice', (_label, line) => {
+])('a cache naming %s prints no notice', async (_label, line) => {
   const box = sandbox();
   writeCache(box, line);
-  const result = run(box, ['add'], { program: 'inert' });
+  const result = await run(box, ['add'], { program: 'inert' });
   expect(result.status).toBe(0);
   expect(lines(result.stderr)).toEqual(['Added note 12.']);
 });
@@ -398,7 +540,7 @@ test('a fresh cache with an extra member and its members reordered reads the sam
   const box = sandbox();
   const line = `{"latest":"1.5.1","note":"kept","channel":"stable","repository":"acme/notes","checked":"${hoursAgo(1)}","format":1}\n`;
   writeCache(box, line);
-  const result = run(box, ['add']);
+  const result = await run(box, ['add']);
   expect(lines(result.stderr)).toEqual(['Added note 12.', ...noticeLines]);
   await sleep(quiet);
   expect(childEvents(box)).toEqual([]);
@@ -412,17 +554,17 @@ test.each([
   const box = sandbox();
   writeCache(box, line);
   const from = Date.now();
-  const result = run(box, ['add']);
+  const result = await run(box, ['add']);
   expect(lines(result.stderr)).toEqual(['Added note 12.', ...expected]);
   const children = await childrenDone(box);
   expect(children.filter(({ event }) => event === 'start')).toHaveLength(1);
   expectRefreshed(readFileSync(box.file, 'utf8'), from, '1.5.1');
 });
 
-test('a cache that is a directory is stale, so it names no release', () => {
+test('a cache that is a directory is stale, so it names no release', async () => {
   const box = sandbox();
   mkdirSync(box.file, { recursive: true });
-  const result = run(box, ['add'], { program: 'inert' });
+  const result = await run(box, ['add'], { program: 'inert' });
   expect(result.status).toBe(0);
   expect(lines(result.stderr)).toEqual(['Added note 12.']);
 });
@@ -441,7 +583,7 @@ test.each([
       writeCache(box, line);
     }
     const from = Date.now();
-    const result = run(box, ['add'], { hold: true });
+    const result = await run(box, ['add']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual(['Added note 12.']);
 
@@ -477,7 +619,7 @@ test.each([
     const box = sandbox();
     writeCache(box, cacheLine({ checked }));
     const from = Date.now();
-    const result = run(box, ['add'], { github: { latest: 'v1.5.0' }, hold: true });
+    const result = await run(box, ['add'], { github: { latest: 'v1.5.0' } });
     expect(lines(result.stderr)).toEqual(['Added note 12.', ...noticeLines]);
     await childrenDone(box);
     const runExit = events(box).find(({ event, role }) => event === 'exit' && role === 'run');
@@ -492,7 +634,7 @@ test('a cache directory whose parents are missing is created with them, by the r
   const cacheHome = join(box.root, 'a', 'b');
   const cache = join(cacheHome, 'notes');
   const from = Date.now();
-  const result = run(box, ['add'], { env: { XDG_CACHE_HOME: cacheHome } });
+  const result = await run(box, ['add'], { env: { XDG_CACHE_HOME: cacheHome } });
   expect(result).toEqual({ status: 0, stderr: '✔ Added note 12.\n', stdout: '' });
   const children = await childrenDone(box);
   const start = children.find(({ event }) => event === 'start');
@@ -503,11 +645,13 @@ test('a cache directory whose parents are missing is created with them, by the r
   expectRefreshed(readFileSync(join(cache, 'update.json'), 'utf8'), from, '1.5.1');
 });
 
+// A process test under ADR-0103: a session and a process group belong to real processes, which
+// `detached` gives the refresh child, and no mock holds them.
 test.skipIf(process.platform !== 'linux')(
   'the refresh child leads its own session and process group, apart from the run',
   async () => {
     const box = sandbox();
-    run(box, ['add'], { session: true });
+    runProcess(box, ['add'], { session: true });
     const children = await childrenDone(box);
     const sessions = events(box).filter(({ event }) => event === 'session');
     const runSession = sessions.find(({ role }) => role === 'run');
@@ -525,26 +669,28 @@ test.skipIf(process.platform !== 'linux')(
 test('a 503 makes the child exit 1 and write nothing, so the run’s checked stays and a second run starts no child', async () => {
   const box = sandbox();
   const from = Date.now();
-  const first = run(box, ['add'], { rules: { 'releases/latest': 503 } });
-  // The child's own failure sentence never reaches the run's streams.
+  const first = await run(box, ['add'], { rules: { 'releases/latest': 503 } });
   expect(first).toEqual({ status: 0, stderr: '✔ Added note 12.\n', stdout: '' });
   const children = await childrenDone(box);
   expect(children.at(-1)).toMatchObject({ code: 1, event: 'exit' });
+  // The child answered its own failure sentence, which never reaches the run's streams.
+  expect(children.at(-1)?.stderr).not.toBe('');
+  expect(runStreams(box)).toEqual({ stderr: first.stderr, stdout: first.stdout });
   const runExit = events(box).find(({ event, role }) => event === 'exit' && role === 'run');
   expect(readFileSync(box.file, 'utf8')).toBe(runExit?.cache);
   expectRefreshed(runExit?.cache, from, null);
 
   rmSync(box.events);
-  const second = run(box, ['add']);
+  const second = await run(box, ['add']);
   expect(lines(second.stderr)).toEqual(['Added note 12.']);
   await sleep(quiet);
   expect(childEvents(box)).toEqual([]);
 });
 
-test('self-update --refresh-notice resolves stable through releases/latest, requests no asset, writes the pinned line, and prints nothing', () => {
+test('self-update --refresh-notice resolves stable through releases/latest, requests no asset, writes the pinned line, and prints nothing', async () => {
   const box = sandbox();
   const from = Date.now();
-  const result = run(box, ['self-update', '--refresh-notice'], {
+  const result = await run(box, ['self-update', '--refresh-notice'], {
     tty: { stderr: false, stdout: false },
   });
   expect(result).toEqual({ status: 0, stderr: '', stdout: '' });
@@ -554,13 +700,13 @@ test('self-update --refresh-notice resolves stable through releases/latest, requ
   expectRefreshed(readFileSync(box.file, 'utf8'), from, '1.5.1');
 });
 
-test('self-update --refresh-notice on next resolves through the feed past a tag whose SHA256SUMS answers 404', () => {
+test('self-update --refresh-notice on next resolves through the feed past a tag whose SHA256SUMS answers 404', async () => {
   const box = sandbox();
-  const result = run(box, ['self-update', '--refresh-notice'], {
+  const result = await run(box, ['self-update', '--refresh-notice'], {
     channel: 'next',
     github: {
       feed: ['v1.7.0-next.1', 'v1.6.0-next.2', 'v1.5.1'],
-      releases: Object.fromEntries([release('1.6.0-next.2'), release('1.5.1')]),
+      releases: Object.fromEntries([githubRelease('1.6.0-next.2'), githubRelease('1.5.1')]),
     },
     version: '1.6.0-next.1',
   });
@@ -576,19 +722,19 @@ test('self-update --refresh-notice on next resolves through the feed past a tag 
   expect(written).toMatchObject({ channel: 'next', latest: '1.6.0-next.2' });
 });
 
-test('self-update --refresh-notice writes null for a channel with no release', () => {
+test('self-update --refresh-notice writes null for a channel with no release', async () => {
   const box = sandbox();
   const from = Date.now();
-  const result = run(box, ['self-update', '--refresh-notice'], { github: { latest: null } });
+  const result = await run(box, ['self-update', '--refresh-notice'], { github: { latest: null } });
   expect(result).toEqual({ status: 0, stderr: '', stdout: '' });
   expectRefreshed(readFileSync(box.file, 'utf8'), from, null);
 });
 
 test.each([[['1.4.0']], [['--channel', 'next']], [['--check']]])(
   'self-update --refresh-notice beside %j is a usage error',
-  (argv) => {
+  async (argv) => {
     const box = sandbox();
-    const result = run(box, ['self-update', '--refresh-notice', ...argv]);
+    const result = await run(box, ['self-update', '--refresh-notice', ...argv]);
     expect(result.status).toBe(2);
     expect(result.stderr).toContain(
       'Option "--refresh-notice" cannot be given with other inputs. Leave out the other inputs.',
@@ -598,9 +744,9 @@ test.each([[['1.4.0']], [['--channel', 'next']], [['--check']]])(
   },
 );
 
-test('self-update --refresh-notice refuses a run with no asset and a run whose cache directory does not resolve', () => {
+test('self-update --refresh-notice refuses a run with no asset and a run whose cache directory does not resolve', async () => {
   const box = sandbox();
-  const unbuilt = run(box, ['self-update', '--refresh-notice'], {
+  const unbuilt = await run(box, ['self-update', '--refresh-notice'], {
     releaseFacts: {
       build: 'distributed',
       release: { channel: 'stable', repository: 'acme/notes', version: '1.5.0' },
@@ -610,7 +756,7 @@ test('self-update --refresh-notice refuses a run with no asset and a run whose c
   expect(unbuilt.stderr).toBe(
     'notes was not built as a release binary, so it cannot update itself. Update it the way you installed it.\n',
   );
-  const homeless = run(box, ['self-update', '--refresh-notice'], {
+  const homeless = await run(box, ['self-update', '--refresh-notice'], {
     env: { HOME: 'home', XDG_CACHE_HOME: '' },
   });
   expect(homeless.status).toBe(1);
@@ -623,11 +769,11 @@ test('self-update --refresh-notice refuses a run with no asset and a run whose c
 
 test.skipIf(process.getuid?.() === 0)(
   'self-update --refresh-notice exits 1 with the write sentence when its cache directory cannot be written',
-  () => {
+  async () => {
     const box = sandbox();
     mkdirSync(box.cache);
     chmodSync(box.cache, 0o555);
-    const result = run(box, ['self-update', '--refresh-notice'], {
+    const result = await run(box, ['self-update', '--refresh-notice'], {
       tty: { stderr: false, stdout: false },
     });
     expect(result).toEqual({
@@ -639,9 +785,9 @@ test.skipIf(process.getuid?.() === 0)(
   },
 );
 
-test('--refresh-notice is listed by no help page', () => {
+test('--refresh-notice is listed by no help page', async () => {
   const box = sandbox();
-  const result = run(box, ['self-update', '--help'], {
+  const result = await run(box, ['self-update', '--help'], {
     help: 'before',
     tty: { stderr: false, stdout: false },
   });
@@ -650,7 +796,7 @@ test('--refresh-notice is listed by no help page', () => {
   expect(result.stdout).not.toContain('refresh');
 });
 
-test('--refresh-notice is offered by no completion', () => {
+test('--refresh-notice is offered by no completion', async () => {
   const graph = new Application('notes', { plugins: [selfUpdate()] }).inspect();
   const offered = answer(graph, locate(graph, ['self-update', '--']));
   expect(offered).toContain('--check');
@@ -691,7 +837,13 @@ const leftOut: [string, string[], (box: Sandbox) => Scenario][] = [
     (box) => {
       const { build, installation } = scriptFacts(box, '1.5.0', 'stable');
       const group = { channel: 'stable', repository: 'acme/notes', version: '1.5.0' };
-      return { releaseFacts: { build, installation, release: group } };
+      return {
+        releaseFacts: {
+          build,
+          ...(installation === undefined ? {} : { installation }),
+          release: group,
+        },
+      };
     },
   ],
   [
@@ -699,7 +851,16 @@ const leftOut: [string, string[], (box: Sandbox) => Scenario][] = [
     ['add'],
     (box) => {
       const base = scriptFacts(box, '1.5.0', 'stable');
-      return { releaseFacts: { ...base, installation: { ...base.installation, method: 'npm' } } };
+      return {
+        releaseFacts: {
+          ...base,
+          installation: {
+            digest: `sha256:${digestOf(binaryBytes)}`,
+            method: 'npm',
+            path: box.binary,
+          },
+        },
+      };
     },
   ],
   [
@@ -707,7 +868,7 @@ const leftOut: [string, string[], (box: Sandbox) => Scenario][] = [
     ['add'],
     (box) => {
       const { build, release: group } = scriptFacts(box, '1.5.0', 'stable');
-      return { releaseFacts: { build, release: group } };
+      return { releaseFacts: { build, ...(group === undefined ? {} : { release: group }) } };
     },
   ],
   [
@@ -726,7 +887,7 @@ test('runs left out print no notice, write no cache, and start no child', async 
     const box = sandbox();
     boxes.set(label, box);
     writeCache(box, line);
-    const result = run(box, argv, scenario(box));
+    const result = await run(box, argv, scenario(box));
     observed[label] = {
       cache: readdirSync(box.cache).map((name) => [
         name,
@@ -750,7 +911,7 @@ test('a run whose action returns once it is cancelled exits 130, prints no notic
   const box = sandbox();
   const line = cacheLine({ checked: hoursAgo(25) });
   writeCache(box, line);
-  const result = run(box, ['interrupt']);
+  const result = await run(box, ['interrupt']);
   expect(result.status).toBe(130);
   expect(`${result.stdout}${result.stderr}`).not.toContain('is available');
   await sleep(quiet);
@@ -759,20 +920,20 @@ test('a run whose action returns once it is cancelled exits 130, prints no notic
   expect(childEvents(box)).toEqual([]);
 });
 
-test('NO_UPDATE_NOTIFIER and the author’s env set to the empty string do not turn notices off', () => {
+test('NO_UPDATE_NOTIFIER and the author’s env set to the empty string do not turn notices off', async () => {
   const box = sandbox();
   writeCache(box, cacheLine());
-  const result = run(box, ['add'], {
+  const result = await run(box, ['add'], {
     env: { NOTES_NO_UPDATE_NOTICE: '', NO_UPDATE_NOTIFIER: '' },
     notices: { env: 'NOTES_NO_UPDATE_NOTICE' },
   });
   expect(lines(result.stderr)).toEqual(['Added note 12.', ...noticeLines]);
 });
 
-test('CI=false does not turn notices off, as ci-info reads it', () => {
+test('CI=false does not turn notices off, as ci-info reads it', async () => {
   const box = sandbox();
   writeCache(box, cacheLine());
-  const result = run(box, ['add'], { env: { CI: 'false' } });
+  const result = await run(box, ['add'], { env: { CI: 'false' } });
   expect(lines(result.stderr)).toEqual(['Added note 12.', ...noticeLines]);
 });
 
@@ -782,22 +943,22 @@ test.skipIf(process.getuid?.() === 0)(
     const box = sandbox();
     mkdirSync(box.cache);
     chmodSync(box.cache, 0o555);
-    const result = run(box, ['add']);
+    const result = await run(box, ['add']);
     expect(result).toEqual({ status: 0, stderr: '✔ Added note 12.\n', stdout: '' });
     await sleep(quiet);
     expect(childEvents(box)).toEqual([]);
   },
 );
 
-test('a program naming a missing file exits 0 with the Command line alone', () => {
+test('a program naming a missing file exits 0 with the Command line alone', async () => {
   const box = sandbox();
-  const result = run(box, ['add'], { program: [join(box.root, 'missing-runtime')] });
+  const result = await run(box, ['add'], { program: [join(box.root, 'missing-runtime')] });
   expect(result).toEqual({ status: 0, stderr: '✔ Added note 12.\n', stdout: '' });
   // The run still wrote `checked`, so the next run waits a day before it looks again.
   expect(JSON.parse(readFileSync(box.file, 'utf8'))).toMatchObject({ latest: null });
 });
 
-test('the cache is fresh from its checked time until 24 hours later, and stale outside that span', () => {
+test('the cache is fresh from its checked time until 24 hours later, and stale outside that span', async () => {
   const now = Date.parse('2026-10-14T12:00:00.000Z');
   const lookup = { channel: 'stable', repository: 'acme/notes' };
   const at = (checked: string) => judgeCache(cacheLine({ checked }), lookup, now);

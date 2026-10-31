@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
 import { registeredRules, ruleContract, ruleParts } from '../../../scripts/test-rules.js';
+import { diagnostic } from './fixtures/pack-diagnostics.mjs';
 
 /** One fault by the parts its rule's test pins: the rule under the pack's name, the sentence, the fix. */
 interface Expected {
@@ -112,9 +112,8 @@ const settingsCases: Record<string, Expected> = {
 test.each(Object.entries(settingsCases))(
   'the %s fault throws its rule’s diagnostic',
   (scenario, expected) => {
-    const result = invoke(new URL('fixtures/pack-diagnostics.mjs', import.meta.url), [scenario]);
-    expect(result).toMatchObject({ status: 0, stderr: '' });
-    expect(ruleParts(result.stdout)).toEqual({
+    const result = diagnostic(scenario);
+    expect(ruleParts(result)).toEqual({
       correction: expected.correction,
       identity: `@loomcli/plugins/${expected.rule}`,
       sentence: expected.sentence,

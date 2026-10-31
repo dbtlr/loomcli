@@ -56,10 +56,11 @@
 
 import { describe, expect, it } from 'vite-plus/test';
 
-import { childEnvironment, invoke } from '../../../scripts/test-process.js';
+import { childEnvironment } from '../../../scripts/test-process.js';
 import { ruleParts } from '../../../scripts/test-rules.js';
 import { handshakeRequest, initialize, launch, meta, request } from '../../mcp/tests/session.js';
 import type { Message } from '../../mcp/tests/session.js';
+import { inspectScenario, run } from './fixtures/mcp-app.js';
 
 const fixture = new URL('fixtures/mcp.mjs', import.meta.url);
 
@@ -819,15 +820,13 @@ describe('build faults', () => {
       'Command "get" requires options "message" and "file" together and excludes "file" from its MCP tool, so a call that supplies the rest always fails.',
       'Exclude every option of the group from the tool, or none.',
     ],
-  ])('%s fails every build under its rule', (scenario, rule, sentence, correction) => {
-    expect(invoke(fixture, [scenario, 'inspect'])).toEqual({
-      status: 0,
-      stderr: '',
+  ])('%s fails every build under its rule', async (scenario, rule, sentence, correction) => {
+    expect(inspectScenario(scenario)).toEqual({
       stdout: `thrown:1:@loomcli/plugins/mcp/${rule}: ${sentence} ${correction}\n`,
     });
     // A run that never serves a tool fails as the run that serves them does.
     for (const argv of [['plain'], ['mcp']]) {
-      const developed = invoke(fixture, [scenario, ...argv], {
+      const developed = await run([scenario, ...argv], {
         env: { FIXTURE_BUILD: 'development' },
       });
       expect(developed).toMatchObject({ status: 1, stdout: '' });
@@ -836,7 +835,7 @@ describe('build faults', () => {
         identity: `@loomcli/plugins/mcp/${rule}`,
         sentence,
       });
-      expect(invoke(fixture, [scenario, ...argv])).toEqual({
+      await expect(run([scenario, ...argv])).resolves.toEqual({
         status: 1,
         stderr: 'app: Something went wrong.\n',
         stdout: '',
@@ -846,19 +845,15 @@ describe('build faults', () => {
 
   it.each(['optional-input-excluded', 'one-required-some-excluded', 'together-all-excluded'])(
     '%s raises no fault, because a call can still satisfy every rule',
-    (scenario) => {
-      expect(invoke(fixture, [scenario, 'inspect'])).toEqual({
-        status: 0,
-        stderr: '',
+    async (scenario) => {
+      expect(inspectScenario(scenario)).toEqual({
         stdout: 'inspected\n',
       });
     },
   );
 
-  it('an application whose root declares arguments cannot install the plugin', () => {
-    expect(invoke(fixture, ['root-arguments'])).toEqual({
-      status: 0,
-      stderr: '',
+  it('an application whose root declares arguments cannot install the plugin', async () => {
+    expect(inspectScenario('root-arguments')).toEqual({
       stdout:
         'thrown:1:@loomcli/core/arguments-beside-children: The root Command declares argument "files" and attaches child "mcp". Move the argument into a child Command or remove the children.\n',
     });
@@ -889,11 +884,11 @@ describe('excluded options', () => {
     expect(JSON.stringify(tool.inputSchema.allOf)).toContain('"left"');
   });
 
-  it('help and the manifest still show the excluded options', () => {
-    const help = invoke(fixture, ['excluded', 'show', '--help']);
+  it('help and the manifest still show the excluded options', async () => {
+    const help = await run(['excluded', 'show', '--help']);
     expect(help).toMatchObject({ status: 0, stderr: '' });
     expect(help.stdout).toContain('--secret');
-    const manifest = invoke(fixture, ['excluded', '--manifest']);
+    const manifest = await run(['excluded', '--manifest']);
     expect(manifest).toMatchObject({ status: 0, stderr: '' });
     expect(manifest.stdout).toContain('"secret"');
     expect(manifest.stdout).toContain('"region"');
@@ -925,9 +920,8 @@ describe('excluded options', () => {
     });
   });
 
-  it('an mcpInput value that holds a description and exclude is the invalid-extension-value fault', () => {
-    expect(invoke(fixture, ['both-keys', 'inspect']).stdout).toContain(
-      'thrown:1:@loomcli/core/invalid-extension-value:',
-    );
+  it('an mcpInput value that holds a description and exclude is the invalid-extension-value fault', async () => {
+    const invocation1 = inspectScenario('both-keys');
+    expect(invocation1.stdout).toContain('thrown:1:@loomcli/core/invalid-extension-value:');
   });
 });

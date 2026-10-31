@@ -3,7 +3,7 @@ import { glyph, nowrap, style } from '@loomcli/core';
 import { expect, test, vi } from 'vite-plus/test';
 
 import { heading } from '../src/heading.js';
-import { render } from './pack-render.js';
+import { renderEach, renderResult } from './fixtures/view-run.ts';
 import { linesOf, measured, plain, width } from './view-measures.js';
 
 /** The line glyph as a render shows it. */
@@ -37,9 +37,11 @@ test.each([40, undefined])('a level 2 heading is its text alone, at %s columns',
   expect(linesOf(view.render('Services', measured(view, columns)))).toEqual(['Services']);
 });
 
-test('heading() renders as the default view of a declared string result', () => {
-  const input = { data: 'Services', view: 'heading', widths: [40] } as const;
-  expect(render({ ...input, declared: true })).toBe(render(input));
+test('heading() renders as the default view of a declared string result', async () => {
+  const run = { widths: [40] };
+  await expect(renderResult(run, 'Services', heading())).resolves.toBe(
+    await renderEach(run, (out) => out.render('Services', heading())),
+  );
 });
 
 test('a level 1 underline is as wide as the context measures a CJK text and a styled text', () => {
@@ -97,10 +99,10 @@ test.each([
   },
 );
 
-test('a heading styles its text and underline dim and keeps its author styling', () => {
+test('a heading styles its text and underline dim and keeps its author styling', async () => {
   const data = 'Hi \uE000["style",[["foreground","red"]]]\uE001there\uE002';
   const rendering = { color: 'always', modifiers: 'always' } as const;
-  expect(render({ data, rendering, theme: true, view: 'heading', widths: [40] })).toBe(
-    '\u001B[90mHi \u001B[31mthere\u001B[39m\n\u001B[90m────────\u001B[39m\n',
-  );
+  await expect(
+    renderEach({ rendering, theme: true, widths: [40] }, (out) => out.render(data, heading())),
+  ).resolves.toBe('\u001B[90mHi \u001B[31mthere\u001B[39m\n\u001B[90m────────\u001B[39m\n');
 });

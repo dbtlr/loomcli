@@ -1,4 +1,5 @@
 import { Application } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
 import { help } from '../src/help/plugin.js';
@@ -27,7 +28,7 @@ test.each([
         type: 'content',
       })
       .action(() => undefined);
-    const outcome = await app.invoke([], { options: { help: true } });
+    const outcome = await app.invoke([], { options: { help: true } }, { process: mockProcess() });
     if (outcome.status !== 'completed') {
       throw new Error('Expected the help takeover to complete.');
     }
