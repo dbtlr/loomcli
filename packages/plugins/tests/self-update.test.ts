@@ -230,7 +230,7 @@ function run(box: Sandbox, argv: string[], scenario: Scenario = {}) {
       rules: scenario.rules,
     },
     { argv: ['self-update', ...argv], env, home: env.HOME, release },
-    scenario.umask,
+    { umask: scenario.umask },
   );
 }
 

@@ -6,13 +6,23 @@ import { runOnMock } from './in-process.ts';
 import { selfUpdateApplication } from './self-update-app.ts';
 import type { UpdateScenario } from './self-update-app.ts';
 
-/** Run with a scoped fake GitHub and forward the observing sink into the mock's recording. */
-export async function runSelfUpdate(scenario: UpdateScenario, fields: MockFields, umask = 0o022) {
+/**
+ * Run with a scoped fake GitHub and forward the observing sink into the mock's recording;
+ * `requested` receives the URL of each request the fake answers.
+ */
+export async function runSelfUpdate(
+  scenario: UpdateScenario,
+  fields: MockFields,
+  options: {
+    readonly umask?: number | undefined;
+    readonly requested?: (url: string) => void;
+  } = {},
+) {
+  const { umask = 0o022, requested = () => {} } = options;
   let recording: Writable | undefined = undefined;
   const controller = new AbortController();
   const { app, fetch, stderr } = selfUpdateApplication(scenario, controller, {
-    holdForRun: async () => {},
-    record: () => {},
+    requested,
     writeStderr: (chunk) => {
       if (recording === undefined) {
         throw new Error('The stderr recorder is not attached.');

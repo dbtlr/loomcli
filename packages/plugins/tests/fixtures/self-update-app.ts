@@ -57,12 +57,12 @@ function selfUpdateApplication(
   scenario: UpdateScenario,
   controller: AbortController,
   effects: {
-    holdForRun: () => Promise<void>;
-    record: (event: string, details: Record<string, unknown>) => void;
+    /** Receives the URL of each request the fake answers. */
+    requested: (url: string) => void;
     writeStderr: (chunk: string | Uint8Array) => void;
   },
 ) {
-  const { holdForRun, record } = effects;
+  const { requested } = effects;
   const github = scenario.github;
   const assetHost = 'https://release-assets.example';
 
@@ -202,9 +202,8 @@ function selfUpdateApplication(
 
   const fetch: typeof globalThis.fetch = async (input, init = {}) => {
     const text = input instanceof Request ? input.url : String(input);
-    await holdForRun();
     appendFileSync(scenario.requests, `${text}\n`);
-    record('request', { url: text });
+    requested(text);
     if (init.redirect !== 'manual') {
       throw new TypeError(`The fake GitHub only answers manual redirects, not ${init.redirect}.`);
     }

@@ -1,6 +1,5 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
 import { processHandle } from '@loomcli/core';
@@ -61,21 +60,6 @@ process.on('exit', (code) => {
   record('exit', { cache: scenario.cache === undefined ? null : cacheIn(scenario.cache), code });
 });
 
-/**
- * Holds a refresh child's requests until the run that started it has exited, as a slow network
- * would, so the test sees that the run never waits for its child.
- */
-async function holdForRun() {
-  if (!child || scenario.hold !== true) {
-    return;
-  }
-  // A detached child's parent is its run until the run exits and the child is adopted.
-  const run = Number(process.env.FIXTURE_RUN_PID);
-  while (process.ppid === run) {
-    await sleep(10);
-  }
-}
-
 if (process.env.FIXTURE_UMASK !== undefined) {
   process.umask(Number.parseInt(process.env.FIXTURE_UMASK, 8));
 }
@@ -106,8 +90,7 @@ function terminal() {
 }
 
 const { app, fetch, stderr } = selfUpdateApplication(scenario, controller, {
-  holdForRun,
-  record,
+  requested: (url) => record('request', { url }),
   writeStderr: (chunk) => process.stderr.write(chunk),
 });
 globalThis.fetch = fetch;
@@ -115,12 +98,7 @@ process.exitCode = await app.run({
   // The platform is pinned so the record directory reads the same row on every machine.
   process: processHandle({
     argv,
-    // A run tells the child it starts which process to wait for.
-    env: {
-      ...process.env,
-      ...scenario.env,
-      ...(child ? {} : { FIXTURE_RUN_PID: String(process.pid) }),
-    },
+    env: { ...process.env, ...scenario.env },
     // The handle's home is the test's HOME as given, never the user database's.
     home: fixtureHome({ ...process.env, ...scenario.env }),
     platform: 'linux',
