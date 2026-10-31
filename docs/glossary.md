@@ -765,8 +765,16 @@ The value of `NODE_ENV` in the environment the dotenv plugin receives, which nam
 _Avoid_: Environment (for the mode), stage, profile
 
 **Configuration file**:
-The one JSON, TOML, or YAML file the first-party configuration plugin reads in a run, never merged with another: the file `--config` names, or the file the author's variable names, or else the first found by the walk from the start directory up to the home directory, then the home file, then the XDG user file. A run under `--no-config` reads none. A JSON file may hold comments and trailing commas. Only the file `--config` names can fail a run; a broken file found any other way warns and leaves the run with no configuration.
+The one JSON, TOML, or YAML file the first-party configuration plugin reads in a run, never merged with another: the file `--config` names, or the file the author's variable names, or else the first found in the configuration scopes the author chooses: the walk from the start directory up to below the home directory or to a root marker, then the home file, then the XDG user file. A run under `--no-config` reads none. A JSON file may hold comments and trailing commas. Only the file `--config` names can fail a run; a broken file found any other way warns and leaves the run with no configuration.
 _Avoid_: Config, settings file, rc file, dotfile
+
+**Configuration scope**:
+One of the places the configuration plugin's lookup looks, which the author chooses for an application: the project scope is the walk up from the start directory, for an application run from a project, and the user scope is the home file and then the XDG user file, for an application run from the operator's shell. The project scope is always read before the user scope, and an application that names none reads both. `--config` and the author's variable belong to no scope.
+_Avoid_: Config level, search strategy, layer
+
+**Root marker**:
+A name, such as `package.json` or `.git`, whose presence in a directory ends the configuration plugin's project walk after it looks in that directory, so a file above the project is never read. The author names it with `root`; with none, the walk runs to the directory below home or to the filesystem root.
+_Avoid_: Project root (for the marker), stop file, boundary file
 
 **Configuration schema**:
 The one Standard Schema an author writes for the whole configuration file, in which every object key outside an array item or a record value is optional so that an empty file passes. Application code reads its output as the configuration's provided value. The configuration plugin passes it to the configuration source with a `$schema` property added, so core publishes the file's JSON Schema as the graph's `configuration` fact, which the manifest prints.
@@ -908,12 +916,16 @@ _Avoid_: Host (the process environment), agent (for the folder), provider
 The directory of the nearest `package.json` at or above where a `loom` command runs. Every command acts on that one package, never on a repository as a set of packages.
 _Avoid_: Project root, workspace, repository root
 
+**Toolchain configuration file**:
+`loom.config.json`, the configuration file the `loom` bin reads at or below the package directory and never above it. Its `paths` key names where the package keeps what the bin reads and writes, each path defaulting to the convention and resolving against the package directory, and its `postInstall` key holds the post-install command and message. A command option beats the file, and the file beats the convention.
+_Avoid_: Loom config, toolchain settings, rc file
+
 **Entry**:
-The module that calls `run()`, by default `src/main.ts`. `loom build` bundles from it, and a test never imports it, because importing it runs the application.
+The module that calls `run()`, by default `src/main.ts`, or the toolchain configuration file's `paths.entry`. `loom build` bundles from it, and a test never imports it, because importing it runs the application.
 _Avoid_: Main file, bin script
 
 **Application module**:
-The module that exports the Application, by default `src/application.ts`. A test imports it and passes the Application to the assembly check, which reads every fault, and a `node` or `bun` bundle carries it beside the entry, so a caller imports the built Application with its baked release facts.
+The module that exports the Application, by default `src/application.ts`, or the toolchain configuration file's `paths.application`. A test imports it and passes the Application to the assembly check, which reads every fault, and a `node` or `bun` bundle carries it beside the entry, so a caller imports the built Application with its baked release facts.
 _Avoid_: App file, application entry
 
 **Scaffold file**:
@@ -925,15 +937,15 @@ A file `loom init` keeps current, such as the fragment guide, marked by a header
 _Avoid_: Generated file, owned file, vendored file
 
 **Installer script**:
-The managed `install.sh` that `loom init` renders for an application with a GitHub repository. Under POSIX `sh` on Linux and macOS it installs the platform's release asset, verified against the release's `SHA256SUMS`, and writes `install.json` in the installation record with the method `script`, so self-update may later replace the binary, and, when the Application declares them, runs its post-install command and prints its post-install message.
+The managed `install.sh` that `loom init` renders for an application with a GitHub repository. Under POSIX `sh` on Linux and macOS it installs the platform's release asset, verified against the release's `SHA256SUMS`, and writes `install.json` in the installation record with the method `script`, so self-update may later replace the binary, and, when `loom.config.json` declares them, runs its post-install command and prints its post-install message.
 _Avoid_: Installer (alone), bootstrap script, setup script
 
 **Post-install command**:
-The one command an Application declares as argument words in `postInstall.command`, such as `setup`, that the installer script runs as the installed binary once the binary is verified, placed, and recorded. The script announces it first, gives it the operator's terminal or `/dev/null` as stdin, warns and still succeeds when it fails, and skips it under `--skip-post-install`; self-update never runs it. What it writes is the application's.
+The one command a package declares as argument words in `postInstall.command` of `loom.config.json`, such as `setup`, that the installer script runs as the installed binary once the binary is verified, placed, and recorded. The script announces it first, gives it the operator's terminal or `/dev/null` as stdin, warns and still succeeds when it fails, and skips it under `--skip-post-install`; self-update never runs it. What it writes is the application's.
 _Avoid_: Post-install hook, setup hook, install script, lifecycle script
 
 **Post-install message**:
-The text an Application declares in `postInstall.message` that the installer script prints last, each line opening with the application's name, whether the post-install command ran, failed, or was skipped.
+The text a package declares in `postInstall.message` of `loom.config.json` that the installer script prints last, each line opening with the application's name, whether the post-install command ran, failed, or was skipped.
 _Avoid_: Caveats, notes, install notice
 
 **Lint rule**:

@@ -8,7 +8,7 @@ This page documents `install.sh`, the installer script that installs an applicat
 
 ```text
 install.sh [--dir <directory>] [<version>]
-install.sh [--dir <directory>] [--skip-post-install] [<version>]   # when the application declares a post-install command
+install.sh [--dir <directory>] [--skip-post-install] [<version>]   # when the package declares a post-install command
 install.sh --help
 ```
 
@@ -24,11 +24,11 @@ notes: /home/me/.local/bin is not on PATH. Add it to your shell's PATH to run no
   export PATH="/home/me/.local/bin:$PATH"
 ```
 
-```ts
-const app = new Application('mimir', {
-  postInstall: { command: ['setup'], message: 'Run mimir init in a project to start tracking work.' },
-  // ...
-});
+```jsonc
+// loom.config.json
+{
+  "postInstall": { "command": ["setup"], "message": "Run mimir init in a project to start tracking work." }
+}
 ```
 
 ```text
@@ -40,9 +40,9 @@ Registered mimir with Claude Code.
 mimir: Run mimir init in a project to start tracking work.
 ```
 
-`install.sh` installs the application's binary from a GitHub Release, verified against the release's `SHA256SUMS`, and records the installation in the [installation record](../core/installation-record.md), so self-update may later replace the binary. An application may declare a [post-install command](#the-post-install-command) the script runs once the install is recorded and a [post-install message](#the-post-install-message) it prints last. `loom init` renders it as a [managed file](init.md#managed-files). It runs under POSIX `sh` on Linux and macOS. [ADR-0072](../decisions/0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md) records the decision.
+`install.sh` installs the application's binary from a GitHub Release, verified against the release's `SHA256SUMS`, and records the installation in the [installation record](../core/installation-record.md), so self-update may later replace the binary. A package's configuration file may declare a [post-install command](#the-post-install-command) the script runs once the install is recorded and a [post-install message](#the-post-install-message) it prints last. `loom init` renders it as a [managed file](init.md#managed-files). It runs under POSIX `sh` on Linux and macOS. [ADR-0072](../decisions/0072-init-renders-an-installer-script-that-installs-a-verified-release-binary-and-records-it.md) records the decision.
 
-- **What init renders.** The piece `install` writes `install.sh` in the package directory, executable, from the application's name, under [the application's name](init.md#scaffold-files), and the GitHub repository, read from `package.json` `repository` with the rule `loom build --release` uses, when the address names GitHub: `owner/name`, `github:owner/name`, or a URL or SSH address whose host is `github.com`. When `repository` is missing, cannot be read, or names another host, init writes no script and prints `warning: install.sh was not written because package.json names no GitHub repository. Set repository to a GitHub address such as owner/name, then run loom init again.` The script records the installation under that name, and core reads the record under the Application's name, so the two must match, as a scaffold keeps them. Init loads the [application module](../glossary.md#toolchain) on every run that writes `install.sh`, whether or not it writes the entry, and reads the Application's [`postInstall`](../core/application.md#the-post-install-declaration) from its built graph. A package with no application module, and one whose module init writes in the same run, gets a script with no post-install step. A module that cannot be loaded prints `warning: install.sh was not written because src/application.ts could not be loaded: <reason>. Install the package and run loom init again.`, and one that exports no Application loom can read prints `warning: install.sh was not written because src/application.ts exports no Application loom can read. Export one Application from src/application.ts, then run loom init again.`, and in both init writes no script and leaves an existing one alone. A declaration fault, thrown while the module loads or raised by the build of its graph, `@loomcli/core/post-install-unrouted` included, prints its Developer Diagnostic, init writes no script, and init exits 1 once it has written the other pieces.
+- **What init renders.** The piece `install` writes `install.sh` at the configuration file's `paths.installer`, by default `install.sh` in the package directory, executable, from the application's name, under [the application's name](init.md#scaffold-files), and the GitHub repository, read from `package.json` `repository` with the rule `loom build --release` uses, when the address names GitHub: `owner/name`, `github:owner/name`, or a URL or SSH address whose host is `github.com`. When `repository` is missing, cannot be read, or names another host, init writes no script and prints `warning: install.sh was not written because package.json names no GitHub repository. Set repository to a GitHub address such as owner/name, then run loom init again.` The script records the installation under that name, and core reads the record under the Application's name, so the two must match, as a scaffold keeps them. Init reads the [post-install command and message](#the-post-install-command) from the `postInstall` key of the [configuration file](build.md#the-configuration-file) and loads no application module for the script, so a package whose file declares none gets a script with no post-install step.
 - **The header.** A shell file's managed header is `# Managed by loom init. sha256:<hex>` on the line after its `#!` line, and the checksum covers the file without that line.
 - **The version.** An optional argument, such as `1.4.0` or `1.5.0-next.2`, with or without a leading `v`, names the release `v<version>`. With no version, the script installs the repository's latest release, which GitHub never resolves to a draft or a prerelease. A version holding any character other than a letter, a digit, `.`, `-`, or `+` is an argument error.
 - **The directory.** `--dir <directory>` names the install directory, by default `$HOME/.local/bin`. It must be an absolute path, and like every installed path it holds no quote, backslash, or control character. Trailing slashes are removed from it. With no `--dir`, a `HOME` that is unset, empty, or not an absolute path fails with the recipe's `HOME` sentence, whatever `XDG_STATE_HOME` holds. The script creates the directory when it is missing, just before it downloads, and a failed install leaves a directory it created empty. The binary is `<directory>/<name>`, and a directory at that path fails the install.
@@ -80,9 +80,9 @@ mimir: Skipped the post-install command. Run it to finish setting up mimir:
   /home/me/.local/bin/mimir setup
 ```
 
-The post-install command is one command the application declares as argument words in [`postInstall.command`](../core/application.md#the-post-install-declaration), such as `['setup']` or `['completion', 'install']`. The script runs the installed binary with those words once the install is recorded. [ADR-0113](../decisions/0113-an-application-declares-a-post-install-message-and-command-that-the-installer-script-prints-and-runs.md) records the decision.
+The post-install command is one command a package declares as argument words in `postInstall.command` of its [configuration file](build.md#the-configuration-file), such as `["setup"]` or `["completion", "install"]`: a non-empty array of strings, the words an operator types after the application's name. The script runs the installed binary with those words once the install is recorded. [ADR-0113](../decisions/0113-an-application-declares-a-post-install-message-and-command-that-the-installer-script-prints-and-runs.md) records the decision, and [ADR-0131](../decisions/0131-the-post-install-declaration-moves-from-the-application-into-loom-config-json.md) moves the declaration into the file.
 
-- **The words.** Init renders each word as a single-quoted shell word, so the script passes it to the binary byte for byte, and no character is rejected. In a development build, core checks that the words route to a Command with an action, under [the post-install declaration](../core/application.md#the-post-install-declaration).
+- **The words.** Init renders each word as a single-quoted shell word, so the script passes it to the binary byte for byte, and no character is rejected. Nothing checks that the words route to a Command with an action; words that route nowhere fail on the operator's install through **A failure** below.
 - **When.** The command runs once, after `install.json` is written and after the PATH advice, so a command that reads the installation record finds the installation it describes. It runs as `<directory>/<name>` followed by the words, by absolute path, so an install directory that is not on `PATH` runs it the same.
 - **The command line.** The script prints the command on a line of its own, indented two spaces, as the installed path and the words, each quoted for `sh` when it holds a character the shell reads specially, so the operator can copy it to run the command again. Each line below that names the command ends with a colon and is followed by that line.
 - **The announcement.** Before it runs, the script prints `<name>: Running the post-install command:` and the command line.
@@ -96,7 +96,7 @@ The post-install command is one command the application declares as argument wor
 
 ## The post-install message
 
-The post-install message is text the application declares in [`postInstall.message`](../core/application.md#the-post-install-declaration), such as what to run next. The script prints it last, after the post-install command ran, failed, or was skipped, and after the PATH advice when no command is declared.
+The post-install message is text a package declares in `postInstall.message` of its [configuration file](build.md#the-configuration-file), such as what to run next. The script prints it last, after the post-install command ran, failed, or was skipped, and after the PATH advice when no command is declared.
 
 - **The text.** Init renders the message as a single-quoted shell word, so it prints byte for byte, and no character is rejected. It holds no placeholder; the installed path is in the lines above it.
 - **Each line.** The message goes to stderr, and each of its lines opens with `<name>: `. A line break at the end of the message ends its last line.
