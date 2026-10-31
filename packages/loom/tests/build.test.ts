@@ -184,15 +184,13 @@ test('--target node writes a bundle of the entry and the application module that
     expect.arrayContaining([expect.stringMatching(/^chunk-[\da-z]+\.js$/u)]),
   );
   expect(readFileSync(join(root, 'dist/main.js'), 'utf8')).toMatch(/^#!\/usr\/bin\/env node\n/u);
-  {
-    const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
-    expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({ build: 'distributed' });
-    expect(execute(join(root, 'dist/main.js'), ['throw'], { runtime })).toEqual(generic);
-    expect(programOf(join(root, 'dist/main.js'), runtime)).toEqual([
-      executableOf(runtime),
-      join(root, 'dist/main.js'),
-    ]);
-  }
+  const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
+  expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({ build: 'distributed' });
+  expect(execute(join(root, 'dist/main.js'), ['throw'], { runtime })).toEqual(generic);
+  expect(programOf(join(root, 'dist/main.js'), runtime)).toEqual([
+    executableOf(runtime),
+    join(root, 'dist/main.js'),
+  ]);
 });
 
 test('the built application module runs on a caller host with the facts the build baked', async () => {
@@ -207,12 +205,10 @@ const outcome = await probe.invoke(['facts'], {});
 process.stdout.write(outcome.output);
 `,
   );
-  {
-    const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
-    const result = execute(caller, [], { runtime });
-    expect(result.stderr).toBe('');
-    expect(JSON.parse(result.stdout)).toEqual({ build: 'distributed' });
-  }
+  const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
+  const result = execute(caller, [], { runtime });
+  expect(result.stderr).toBe('');
+  expect(JSON.parse(result.stdout)).toEqual({ build: 'distributed' });
 });
 
 test('--target bun writes a bundle that reads distributed', async () => {
@@ -220,10 +216,8 @@ test('--target bun writes a bundle that reads distributed', async () => {
   const result = await loom(root, ['build', '--target', 'bun']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
-  {
-    const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
-    expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({ build: 'distributed' });
-  }
+  const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
+  expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({ build: 'distributed' });
 });
 
 test('--entry builds the module it names, and with no --entry the build reads src/main.ts', async () => {
@@ -603,13 +597,11 @@ test('--build development writes an artifact that reads development and shows it
   const root = probePackage();
   const runResult = await loom(root, ['build', '--target', 'node', '--build', 'development']);
   expect(runResult.status).toBe(0);
-  {
-    const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
-    expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({ build: 'development' });
-    const failed = execute(join(root, 'dist/main.js'), ['throw'], { runtime });
-    expect(failed.status).toBe(1);
-    expect(failed.stderr).toMatch(foreignThrow);
-  }
+  const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
+  expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({ build: 'development' });
+  const failed = execute(join(root, 'dist/main.js'), ['throw'], { runtime });
+  expect(failed.status).toBe(1);
+  expect(failed.stderr).toMatch(foreignThrow);
 });
 
 test('--build takes development or distributed alone', async () => {
@@ -715,14 +707,12 @@ test.each([
     const root = probePackage({ repository: 'git+https://github.com/acme/probe.git', version });
     const runResult = await loom(root, ['build', '--target', 'node', '--release']);
     expect(runResult.status).toBe(0);
-    {
-      const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
-      expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({
-        build: 'distributed',
-        release: { channel, repository: 'acme/probe', version },
-      });
-      expect(execute(join(root, 'dist/main.js'), ['throw'], { runtime })).toEqual(generic);
-    }
+    const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
+    expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({
+      build: 'distributed',
+      release: { channel, repository: 'acme/probe', version },
+    });
+    expect(execute(join(root, 'dist/main.js'), ['throw'], { runtime })).toEqual(generic);
   },
 );
 
@@ -1304,12 +1294,8 @@ test('a rebuild replaces the files it writes and leaves every other file alone',
 
 test('a build with no Bun on the PATH exits 1 and names Bun', async () => {
   const root = probePackage();
-  const runtime = spawnSync(process.env.LOOM_TEST_RUNTIME ?? 'node', ['-p', 'process.execPath'], {
-    encoding: 'utf8',
-  }).stdout.trim();
   const result = await loom(root, ['build', '--target', 'node'], {
     env: { PATH: temporaryRoot('loom-empty-path-') },
-    runtime,
   });
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('Bun');
