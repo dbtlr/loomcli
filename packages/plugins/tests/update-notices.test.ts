@@ -239,7 +239,10 @@ interface Scenario {
   readonly restyle?: boolean;
   /** Each run and refresh child records its process group and session. */
   readonly session?: boolean;
-  /** `fixture` starts the fixture again with its scenario; `inert` starts a runtime that does nothing. */
+  /**
+   * `fixture` starts the fixture again with its scenario; `inert` starts a runtime that does
+   * nothing; words name a program, which under `run` is a missing file that cannot start.
+   */
   readonly program?: 'fixture' | 'inert' | readonly string[];
 }
 
@@ -365,17 +368,27 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {
     record(box, { cache: cacheIn(box.cache), code: child.status, event: 'exit', role: 'child' });
     return { code: child.status, stderr: child.stderr, stdout: child.stdout };
   };
+  const program =
+    scenario.program === undefined || typeof scenario.program === 'string'
+      ? ['notice-refresh']
+      : scenario.program;
+  // A program the scenario names stands for a file that is not there: it cannot start, so its
+  // Exit settles as `unstarted`, as a real spawn of a missing file does.
+  const programs: Record<string, Program> = { 'notice-refresh': refresh };
+  const [named] = program;
+  if (named !== undefined && named !== 'notice-refresh') {
+    programs[named] = () => {
+      throw new Error(`spawn ${named} ENOENT`);
+    };
+  }
   try {
     const result = await runSelfUpdate(application, {
       argv,
       env,
       home: env.HOME,
       ...(release === undefined ? {} : { release }),
-      program:
-        scenario.program === undefined || typeof scenario.program === 'string'
-          ? ['notice-refresh']
-          : scenario.program,
-      programs: { 'notice-refresh': refresh },
+      program,
+      programs,
       ...(streams.length === 0 ? {} : { terminal: { columns: 80, rows: 24, streams } }),
     });
     record(box, { cache: cacheIn(box.cache), code: result.status, event: 'exit', role: 'run' });
