@@ -51,17 +51,18 @@ const sharedHome = join(tmpdir(), 'loom-test-home');
  * temporary directory, so a path a test builds under `tmpdir()` is the one the fixture sees. The
  * home is a temporary one and the cache, configuration, and data folders follow it, so a fixture
  * reads no configuration from the developer's home and writes nothing there, and git reads no system
- * configuration. A test that names its own home moves those folders with it, and one that unsets
- * the home leaves them unset. Nothing else reaches a fixture: a color, pager, or terminal setting, a
- * `CI` the runner sets, or a binding an example reads would otherwise change what the fixture
- * prints. The test's own variables and the capture marker apply on top, and a variable a test sets
- * to `undefined` stays unset.
+ * or global configuration, not even from the shared home. A test that names its own home moves
+ * those folders with it, and one that unsets the home leaves them unset. Nothing else reaches a
+ * fixture: a color, pager, or terminal setting, a `CI` the runner sets, or a binding an example
+ * reads would otherwise change what the fixture prints. The test's own variables and the capture
+ * marker apply on top, and a variable a test sets to `undefined` stays unset.
  */
 export function childEnvironment(
   env: Record<string, string | undefined> = {},
 ): Record<string, string> {
   const home = 'HOME' in env ? env.HOME : sharedHome;
   const built: Record<string, string | undefined> = {
+    GIT_CONFIG_GLOBAL: '/dev/null',
     GIT_CONFIG_NOSYSTEM: '1',
     HOME: home,
     LOOM_CAPTURE_TEST: 'present',
