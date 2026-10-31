@@ -1,25 +1,16 @@
 import { Readable, Writable } from 'node:stream';
 
-import { Application, processHandle } from '@loomcli/core';
-import { background } from '@loomcli/plugins/background';
-import { help } from '@loomcli/plugins/help';
-import { manifest } from '@loomcli/plugins/manifest';
-import { loomTheme } from '@loomcli/plugins/theme';
+import { processHandle } from '@loomcli/core';
+
+import { backgroundApplication } from './background-app.ts';
 
 /**
- * One run of an application that installs the Loom theme and the background plugin, on a scripted
- * terminal that answers the background query as light. The host states all three streams as
- * terminals, because core queries only then; stdout is wide, so help never wraps. The arguments are
- * the command line, and the action prints the highlight token and the settled background.
+ * One run of the background fixture application on a scripted terminal that answers the background
+ * query as light. The host states all three streams as terminals, because core queries only then;
+ * stdout is wide, so help never wraps. The arguments are the command line.
  */
 const argv = process.argv.slice(2);
-const plugins = [help(), manifest(), loomTheme(), background()];
-
-const app = new Application('notes', { description: 'Keep notes.', plugins, version: '1.0.0' })
-  .globalOption('tag', { description: 'Tag the note.', type: 'string' })
-  .action(({ host, out, style }) =>
-    out.print(`${style.highlight('Saved')} ${host.terminal.background ?? 'undefined'}`),
-  );
+const app = backgroundApplication();
 
 const queried = { count: 0 };
 
