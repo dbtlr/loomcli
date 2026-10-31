@@ -652,6 +652,31 @@ function powershellCompletion(report: string): PowerShellCompletion {
 }
 
 /**
+ * Runs one `pwsh` completion. A pwsh start that stalls under load is killed by the timeout with
+ * no output and no status (CI run 41002731816 failed that way after the full step timeout). A
+ * normal run takes well under a second, so a stalled start is retried once, with two attempts
+ * fitting inside one test's timeout; any other failure is the program's answer and is not retried.
+ */
+function runPowershell(
+  command: string,
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+): SpawnSyncReturns<string> {
+  const attempt = (): SpawnSyncReturns<string> =>
+    spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-Command', command], {
+      cwd,
+      encoding: 'utf8',
+      env,
+      timeout: stepTimeout / 2,
+    });
+  const first = attempt();
+  // A timeout of spawnSync reports ETIMEDOUT however the child ended, by a signal or a status.
+  const timedOut =
+    first.error !== undefined && 'code' in first.error && first.error.code === 'ETIMEDOUT';
+  return timedOut ? attempt() : first;
+}
+
+/**
  * A PowerShell session: each Tab starts `pwsh -NoProfile -NonInteractive -Command`, which
  * dot-sources the printed script, or the real home's profile, and asks `TabExpansion2` for the
  * line. A sole match replaces the span it names, as Tab inserts it; with none or several, the line
@@ -662,14 +687,14 @@ function openPowerShellSession(options: SessionOptions): Session {
   const { env, root, script } = prepareProgram(options);
   const command = powershellCommand(options.before ?? [], script);
   const complete = async (line: string): Promise<Completed> => {
-    const result = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-Command', command], {
-      cwd,
-      encoding: 'utf8',
-      env: { ...env, LOOM_TEST_LINE: line, LOOM_TEST_SCRIPT: script },
-      timeout: stepTimeout,
+    const result = runPowershell(command, cwd, {
+      ...env,
+      LOOM_TEST_LINE: line,
+      LOOM_TEST_SCRIPT: script,
     });
     if (result.status !== 0 || result.stderr !== '') {
-      throw new Error(`pwsh TabExpansion2 failed:\n${result.stdout}${result.stderr}`);
+      const ended = `status ${String(result.status)}, signal ${String(result.signal)}, error ${String(result.error?.message)}`;
+      throw new Error(`pwsh TabExpansion2 failed (${ended}):\n${result.stdout}${result.stderr}`);
     }
     const { index, length, matches } = powershellCompletion(result.stdout);
     const [sole] = matches;
