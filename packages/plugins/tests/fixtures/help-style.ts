@@ -1,40 +1,34 @@
+import type { Plugin } from '@loomcli/core';
 import { Application, Command, style } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { loomTheme, theme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
-import { mockProcess } from '@loomcli/testing';
+import { z } from 'zod';
+
+import { runOnMock } from './in-process.ts';
+import { renderingInput } from './rendering-input.js';
+
+const inputSchema = z.object({
+  argv: z.array(z.string()).optional(),
+  columns: z.number().optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  kinds: z.boolean().optional(),
+  leaf: z.boolean().optional(),
+  minimal: z.boolean().optional(),
+  name: z.string().optional(),
+  postfix: z.string().optional(),
+  rendering: renderingInput.optional(),
+  theme: z.string().optional(),
+  tty: z.boolean().optional(),
+  version: z.string().optional(),
+});
 
 /** Runs the fixture on isolated process facts and returns its recorded output. */
-async function run(args = [], env = {}) {
-  const status = 0;
-  const output = mockProcess({ env });
-  const handles = [output];
-  let captured = output;
-  const capture = (fields) => {
-    const { terminal, ...facts } = fields;
-    const handle = mockProcess({
-      env,
-      ...facts,
-      ...(terminal !== undefined
-        ? {
-            terminal: {
-              columns: terminal.stdout?.columns ?? terminal.stderr?.columns,
-              rows: 24,
-              streams: ['stdout', 'stderr'].filter((name) => terminal[name]?.isTTY),
-              ...(terminal.background === undefined ? {} : { background: terminal.background }),
-            },
-          }
-        : {}),
-    });
-    handles.push(handle);
-    captured = handle;
-    return handle;
-  };
+async function run(args: string[] = []) {
+  const input = inputSchema.parse(JSON.parse(args[0] ?? '{}'));
 
-  const input = JSON.parse(args[0]);
-
-  const plugins = [
+  const plugins: Plugin[] = [
     help(),
     version(input.postfix === undefined ? undefined : { postfix: input.postfix }),
   ];
@@ -55,7 +49,7 @@ async function run(args = [], env = {}) {
   const root = new Application(input.name ?? 'app', {
     description: 'Read values.',
     plugins,
-    version: input.version,
+    ...(input.version === undefined ? {} : { version: input.version }),
   })
     .extend(
       helpCommand({
@@ -123,23 +117,17 @@ async function run(args = [], env = {}) {
 
   const app = pages[pageOf()];
 
-  await app.run({
-    process: capture({
+  return await runOnMock(
+    app,
+    {
       argv: input.argv ?? ['--version'],
       env: input.env ?? {},
-      terminal: {
-        stderr: { isTTY: false },
-        stdin: { isTTY: false },
-        stdout: { columns: input.columns, isTTY: input.tty ?? false },
-      },
-    }),
-    rendering: input.rendering,
-  });
-  return {
-    status: captured.exitCode ?? status,
-    stderr: handles.map((handle) => handle.stderr.text).join(''),
-    stdout: handles.map((handle) => handle.stdout.text).join(''),
-  };
+      ...(input.tty
+        ? { terminal: { columns: input.columns ?? 80, rows: 24, streams: ['stdout'] } }
+        : {}),
+    },
+    input.rendering === undefined ? {} : { rendering: input.rendering },
+  );
 }
 
 export { run };

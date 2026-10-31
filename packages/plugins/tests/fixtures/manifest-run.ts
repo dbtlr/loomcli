@@ -1,4 +1,11 @@
 import { Application, Command, extension, plugin } from '@loomcli/core';
+import type {
+  ActionContext,
+  StandardSchemaV1,
+  StandardJSONSchemaV1,
+  View,
+  OptionConfig,
+} from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { json } from '@loomcli/plugins/format/views';
 import { help } from '@loomcli/plugins/help';
@@ -6,44 +13,24 @@ import { helpCommand } from '@loomcli/plugins/help/extension';
 import { manifest } from '@loomcli/plugins/manifest';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 import { version } from '@loomcli/plugins/version';
-import { mockProcess } from '@loomcli/testing';
 import { z } from 'zod';
 
+import { runOnMock } from './in-process.ts';
+
 /** Runs the fixture on isolated process facts and returns its recorded output. */
-async function run(args = [], env = {}) {
-  const status = 0;
-  const output = mockProcess({ env });
-  const handles = [output];
-  let captured = output;
-  const capture = (fields) => {
-    const { terminal, ...facts } = fields;
-    const handle = mockProcess({
-      env,
-      ...facts,
-      ...(terminal !== undefined
-        ? {
-            terminal: {
-              columns: terminal.stdout?.columns ?? terminal.stderr?.columns,
-              rows: 24,
-              streams: ['stdout', 'stderr'].filter((name) => terminal[name]?.isTTY),
-              ...(terminal.background === undefined ? {} : { background: terminal.background }),
-            },
-          }
-        : {}),
-    });
-    handles.push(handle);
-    captured = handle;
-    return handle;
+async function run(args: string[] = [], env: Record<string, string | undefined> = {}) {
+  // A test that reads a defect's own sentence runs the fixture as a development build.
+  const release = {
+    build: z
+      .enum(['source', 'development', 'distributed'])
+      .parse(env.FIXTURE_BUILD ?? 'distributed'),
   };
 
-  // A test that reads a defect's own sentence runs the fixture as a development build.
-  const release = { build: env.FIXTURE_BUILD ?? 'distributed' };
-
   /** The view a result names, so the formatter adds `json`, `jsonl`, and `--format` beside it. */
-  const text = { render: (value) => `${value}\n` };
+  const text: View<string> = { render: (value) => `${value}\n` };
 
   /** Every entry rule the manifest states, spread over a small application. */
-  function application(settings) {
+  function application(settings?: Parameters<typeof manifest>[0]) {
     const get = new Command('get', {
       description: 'Read one value.',
       extensions: [
@@ -80,7 +67,7 @@ async function run(args = [], env = {}) {
       .action(dispatch)
       .extend(manifestCommand({ examples: [{ command: 'get a' }] }));
     const show = new Command('show', { description: 'Show a value.' })
-      .result({ views: { text } })
+      .result<string>({ views: { text } })
       .action(({ out }) => out.results('shown'));
     const old = new Command('old', { deprecated: 'Use get instead.' }).action(dispatch);
     const secret = new Command('secret', { description: 'A hidden command.', hidden: true }).action(
@@ -126,7 +113,7 @@ async function run(args = [], env = {}) {
   const configKey = extension('@fixture/config/key', { schema: z.string(), target: 'option' });
 
   /** An application whose configuration source declares the schema `input` publishes. */
-  const configured = (input) => () =>
+  const configured = (input: () => Record<string, unknown>) => () =>
     new Application('app', {
       description: 'Probe a configuration.',
       plugins: [
@@ -152,7 +139,7 @@ async function run(args = [], env = {}) {
    */
   const wired = () =>
     new Application('app', { plugins: [format(), manifest()] })
-      .result({ views: { json: text, wire: json({ map: (value) => ({ value }) }) } })
+      .result<string>({ views: { json: text, wire: json({ map: (value) => ({ value }) }) } })
       .action(({ out }) => out.results('wired'));
 
   /** Descriptions and a deprecation message an author wrote across several lines. */
@@ -176,7 +163,7 @@ async function run(args = [], env = {}) {
     map: () => defaulted(new Map()),
     multiline,
     nan: () => defaulted(Number.NaN),
-    'null-prototype': () => bare(Object.assign(Object.create(null), { plain: [1, { two: null }] })),
+    'null-prototype': () => bare({ __proto__: null, plain: [1, { two: null }] }),
     schema: published(() => ({ minimum: Number.NaN, type: 'number' })),
     'schema-cycle': published(looped),
     short: () => application({ short: 'M' }),
@@ -188,35 +175,35 @@ async function run(args = [], env = {}) {
   // `COLOR=always` forces color and modifiers on, so a test compares the bytes under both settings.
   const forced = env.COLOR === 'always';
 
-  await scenarios[scenario]().run({
-    process: capture({ argv, release }),
-    ...(forced ? { rendering: { color: 'always', modifiers: 'always' } } : {}),
-  });
-  return {
-    status: captured.exitCode ?? status,
-    stderr: handles.map((handle) => handle.stderr.text).join(''),
-    stdout: handles.map((handle) => handle.stdout.text).join(''),
-  };
+  const factory = Object.entries(scenarios).find(([name]) => name === scenario)?.[1];
+  if (factory === undefined) {
+    throw new Error(`Unknown fixture scenario: ${scenario}`);
+  }
+  return await runOnMock(
+    factory(),
+    { argv, release },
+    forced ? { rendering: { color: 'always', modifiers: 'always' } } : {},
+  );
 }
 
-const dispatch = ({ out }) => out.print('dispatched');
-function publishing(input) {
+const dispatch = ({ out }: Pick<ActionContext<unknown>, 'out'>) => out.print('dispatched');
+function publishing(input: () => Record<string, unknown>): StandardSchemaV1 & StandardJSONSchemaV1 {
   return {
     '~standard': {
       jsonSchema: { input, output: () => ({}) },
-      validate: (value) => ({ value }),
+      validate: (value: unknown) => ({ value }),
       vendor: 'fixture',
       version: 1,
     },
   };
 }
 function looped() {
-  const value = { type: 'string' };
+  const value: Record<string, unknown> = { type: 'string' };
   value.self = value;
   return value;
 }
 
-function defaulted(value) {
+function defaulted(value: unknown) {
   return new Application('app', {
     description: 'Probe a default.',
     plugins: [manifest()],
@@ -225,26 +212,26 @@ function defaulted(value) {
       default: value,
       description: 'An odd default.',
       type: 'string',
-      validate: z.any(),
+      validate: z.unknown(),
     })
     .action(dispatch);
 }
-function bare(value) {
+function bare(value: unknown) {
   return new Application('app', { plugins: [manifest()] })
-    .option('odd', { default: value, type: 'string', validate: z.any() })
+    .option('odd', { default: value, type: 'string', validate: z.unknown() })
     .action(dispatch);
 }
-const published = (input) => () =>
+const published = (input: () => Record<string, unknown>) => () =>
   new Application('app', { description: 'Probe a schema.', plugins: [manifest()] })
     .option('odd', { description: 'An odd schema.', type: 'string', validate: publishing(input) })
     .action(dispatch);
-function placed(where, value) {
+function placed(where: string, value: unknown) {
   const odd = {
     default: value,
     description: 'An odd default.',
     type: 'string',
-    validate: z.any(),
-  };
+    validate: z.unknown(),
+  } satisfies OptionConfig;
   const app = new Application('app', {
     description: 'Probe a default.',
     plugins: [manifest()],
@@ -254,7 +241,7 @@ function placed(where, value) {
   }
   if (where === 'argument') {
     return app
-      .argument('odd', { default: value, description: 'An odd default.', validate: z.any() })
+      .argument('odd', { default: value, description: 'An odd default.', validate: z.unknown() })
       .action(dispatch);
   }
   return app

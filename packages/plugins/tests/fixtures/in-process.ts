@@ -1,6 +1,8 @@
-import type { Application, RunOptions } from '@loomcli/core';
+import type { Writable } from 'node:stream';
+
+import type { Application, ProcessHandle, RunOptions } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
-import type { MockFields } from '@loomcli/testing';
+import type { MockFields, MockProcess } from '@loomcli/testing';
 
 export interface Outcome {
   status: number;
@@ -16,13 +18,32 @@ export type FixtureRun = (
 export async function runOnMock(
   application: Pick<Application, 'run'>,
   fields: MockFields = {},
-  options: Omit<RunOptions, 'process'> = {},
+  options: Omit<RunOptions, 'process'> & {
+    stdout?: Writable;
+    afterRun?: (mock: MockProcess) => void;
+  } = {},
 ): Promise<Outcome> {
   const mock = mockProcess(fields);
-  await application.run({ ...options, process: mock });
+  const { stdout, afterRun, ...runOptions } = options;
+  // The large-sequence fixture deliberately sends the rendered table to a sink.
+  const handle: ProcessHandle =
+    stdout === undefined
+      ? mock
+      : {
+          ...mock,
+          get exitCode() {
+            return mock.exitCode;
+          },
+          set exitCode(value) {
+            mock.exitCode = value;
+          },
+          stdout,
+        };
+  await application.run({ ...runOptions, process: handle });
   const status = mock.exitCode;
   if (status === undefined) {
     throw new Error('The application run did not record its exit code.');
   }
+  afterRun?.(mock);
   return { status, stderr: mock.stderr.text, stdout: mock.stdout.text };
 }

@@ -1,47 +1,29 @@
 import { Application, Command, FatalError } from '@loomcli/core';
+import type { StandardSchemaV1, View } from '@loomcli/core';
 import { format, json } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { version } from '@loomcli/plugins/version';
-import { mockProcess } from '@loomcli/testing';
+import { z } from 'zod';
+
+import { runOnMock } from './in-process.ts';
 
 /** Runs the fixture on isolated process facts and returns its recorded output. */
-async function run(args = [], env = {}) {
-  let status = 0;
-  const output = mockProcess({ env });
-  const handles = [output];
-  let captured = output;
-  const capture = (fields) => {
-    const { terminal, ...facts } = fields;
-    const handle = mockProcess({
-      env,
-      ...facts,
-      ...(terminal !== undefined
-        ? {
-            terminal: {
-              columns: terminal.stdout?.columns ?? terminal.stderr?.columns,
-              rows: 24,
-              streams: ['stdout', 'stderr'].filter((name) => terminal[name]?.isTTY),
-              ...(terminal.background === undefined ? {} : { background: terminal.background }),
-            },
-          }
-        : {}),
-    });
-    handles.push(handle);
-    captured = handle;
-    return handle;
-  };
-
+async function run(args: string[] = []) {
   /** A validator that accepts decimal digits alone. */
   const digits = {
     '~standard': {
-      validate: (value) =>
-        /^\d+$/u.test(value) ? { value } : { issues: [{ message: 'Use decimal digits.' }] },
+      validate: (value: unknown) =>
+        typeof value === 'string' && /^\d+$/u.test(value)
+          ? { value }
+          : { issues: [{ message: 'Use decimal digits.' }] },
       vendor: 'fixture',
       version: 1,
     },
-  };
+  } satisfies StandardSchemaV1;
 
-  const table = { render: (data) => `table:${data.label}\n` };
+  const table: View<unknown> = {
+    render: (data) => `table:${z.object({ label: z.string() }).parse(data).label}\n`,
+  };
 
   /** Every scenario installs the pack in the order the examples do. */
   const plugins = [help(), version(), format()];
@@ -78,15 +60,13 @@ async function run(args = [], env = {}) {
   };
 
   const [name, ...argv] = args;
+  const selectedName = name === 'inspect' ? argv[0] : name;
+  const factory = Object.entries(scenarios).find(([key]) => key === selectedName)?.[1];
+  if (factory === undefined) {
+    throw new Error(`Unknown scenario: ${selectedName}`);
+  }
 
-  status = await scenarios[name]().run({
-    process: capture({ argv }),
-  });
-  return {
-    status: captured.exitCode ?? status,
-    stderr: handles.map((handle) => handle.stderr.text).join(''),
-    stdout: handles.map((handle) => handle.stdout.text).join(''),
-  };
+  return await runOnMock(factory(), { argv });
 }
 
 export { run };

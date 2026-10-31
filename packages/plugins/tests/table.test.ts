@@ -21,7 +21,7 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { run as fixtureRun } from './fixtures/table.mjs';
+import { run as fixtureRun } from './fixtures/table.js';
 
 test('table() renders explicit columns through out.render', async () => {
   await expect(fixtureRun(['explicit'])).resolves.toEqual({

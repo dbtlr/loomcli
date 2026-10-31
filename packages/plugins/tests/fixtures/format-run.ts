@@ -1,39 +1,20 @@
 import { Application, Command, plugin } from '@loomcli/core';
+import type { MiddlewareContext, View } from '@loomcli/core';
 import { format, json } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { version } from '@loomcli/plugins/version';
-import { mockProcess } from '@loomcli/testing';
+import { z } from 'zod';
 
-import { recordLoads } from '../../../../scripts/record-loads.mjs';
+import { runOnMock } from './in-process.ts';
 
 /** Runs the fixture on isolated process facts and returns its recorded output. */
-async function run(args = [], env = {}) {
-  let status = 0;
-  const output = mockProcess({ env });
-  const handles = [output];
-  let current = output;
-  const capture = (fields) => {
-    const { terminal, ...facts } = fields;
-    const handle = mockProcess({
-      env,
-      ...facts,
-      ...(terminal?.stdout?.isTTY || terminal?.stderr?.isTTY
-        ? {
-            terminal: {
-              columns: terminal.stdout?.columns ?? terminal.stderr?.columns,
-              rows: 24,
-              streams: [terminal.stdout?.isTTY ? 'stdout' : 'stderr'],
-              ...(terminal.background === undefined ? {} : { background: terminal.background }),
-            },
-          }
-        : {}),
-    });
-    handles.push(handle);
-    current = handle;
-    return handle;
+function fixtureApplication(name: string) {
+  const table: View<unknown> = {
+    render: (data) => {
+      const row = z.object({ label: z.string(), value: z.number() }).parse(data);
+      return `table:${row.label}:${row.value}\n`;
+    },
   };
-
-  const table = { render: (data) => `table:${data.label}:${data.value}\n` };
 
   /** Every scenario installs the pack in the order the examples do, so help wins a tie. */
   const plugins = [help(), version(), format()];
@@ -44,7 +25,7 @@ async function run(args = [], env = {}) {
       activate: 'always',
       load: () =>
         Promise.resolve({
-          default: async (context) => {
+          default: async (context: MiddlewareContext) => {
             if (context.view !== null) {
               context.view = 'table';
             }
@@ -61,8 +42,10 @@ async function run(args = [], env = {}) {
         : command.views({ custom: table, json: table }, { default: 'custom' }),
   });
 
-  function hookOrder(before) {
-    const count = new Command('count').result({ views: { table } }).action(dispatch);
+  function hookOrder(before: boolean) {
+    const count = new Command('count')
+      .result({ views: { table } })
+      .action(({ out }) => out.results({ label: 'a', value: 1 }));
     return new Application('app', {
       plugins: before ? [changeDefault, ...plugins] : [...plugins, changeDefault],
     }).command(count);
@@ -71,67 +54,74 @@ async function run(args = [], env = {}) {
   const scenarios = {
     /** An author-declared "json" view kept with its own map and its declared position. */
     'author-json': () => {
-      const mapped = json({ map: (data) => ({ label: data.label }) });
+      const mapped = json({
+        map: (data) => ({ label: z.object({ label: z.string() }).parse(data).label }),
+      });
       const count = new Command('count')
         .result({ views: { json: mapped, table } })
-        .action(dispatch);
-      return new Application('app', { plugins }).command(count).action(dispatch);
+        .action(({ out }) => out.results({ label: 'a', value: 1 }));
+      return new Application('app', { plugins })
+        .command(count)
+        .action(({ out }) => out.print('dispatched'));
     },
     /** An author-declared "ndjson" key, so the alias no longer serves and names it directly. */
     'author-ndjson': () => {
       const count = new Command('count')
         .result({ views: { ndjson: table, table } })
-        .action(dispatch);
-      return new Application('app', { plugins }).command(count).action(dispatch);
+        .action(({ out }) => out.results({ label: 'a', value: 1 }));
+      return new Application('app', { plugins })
+        .command(count)
+        .action(({ out }) => out.print('dispatched'));
     },
     'earlier-default': () => hookOrder(true),
     /** An earlier plugin assigns a view; an omitted --format leaves that assignment in place. */
     'earlier-view': () => {
       const count = new Command('count')
         .result({ views: { json: json(), table } })
-        .action(dispatch);
+        .action(({ out }) => out.results({ label: 'a', value: 1 }));
       return new Application('app', { plugins: [earlier, ...plugins] })
         .command(count)
-        .action(dispatch);
+        .action(({ out }) => out.print('dispatched'));
     },
     'later-default': () => hookOrder(false),
     'no-formatter': () =>
       new Application('app', { plugins: [help()] }).command(
-        new Command('count').result({ views: { table } }).action(dispatch),
+        new Command('count')
+          .result({ views: { table } })
+          .action(({ out }) => out.results({ label: 'a', value: 1 })),
       ),
     /** A Command with no result, so --format is the unknown-option error and no help row. */
     'no-result': () => {
-      const count = new Command('count').action(dispatch);
-      return new Application('app', { plugins }).command(count).action(dispatch);
+      const count = new Command('count').action(({ out }) => out.print('dispatched'));
+      return new Application('app', { plugins })
+        .command(count)
+        .action(({ out }) => out.print('dispatched'));
     },
     /** The formatter given the short spelling -f, so -f selects a view as --format does. */
     short: () => {
-      const count = new Command('count').result({ views: { table } }).action(dispatch);
+      const count = new Command('count')
+        .result({ views: { table } })
+        .action(({ out }) => out.results({ label: 'a', value: 1 }));
       return new Application('app', {
         plugins: [help(), version(), format({ short: 'f' })],
       }).command(count);
     },
   };
 
-  await recordLoads();
-
-  const [name, ...argv] = args;
-
-  // "inspect <scenario>" prints the graph instead of running it, so a test reads the view names.
-  if (name === 'inspect') {
-    const [scenario] = argv;
-    current.stdout.write(`${JSON.stringify(scenarios[scenario]().inspect())}\n`);
-  } else {
-    status = await scenarios[name]().run({
-      process: capture({ argv }),
-    });
+  const factory = Object.entries(scenarios).find(([key]) => key === name)?.[1];
+  if (factory === undefined) {
+    throw new Error(`Unknown fixture scenario: ${name}`);
   }
-  return {
-    status: current.exitCode ?? status,
-    stderr: handles.map((handle) => handle.stderr.text).join(''),
-    stdout: handles.map((handle) => handle.stdout.text).join(''),
-  };
+  return factory();
 }
 
-const dispatch = ({ out }) => out.results({ label: 'a', value: 1 });
-export { run };
+async function run(args: string[] = []) {
+  const [name = '', ...argv] = args;
+  return await runOnMock(fixtureApplication(name), { argv, release: { build: 'distributed' } });
+}
+
+function inspect(name: string) {
+  return fixtureApplication(name).inspect();
+}
+
+export { inspect, run };

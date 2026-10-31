@@ -29,7 +29,7 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { run as fixtureRun } from './fixtures/help-accepted.mjs';
+import { run as fixtureRun } from './fixtures/help-accepted.js';
 
 /** The lines of one section of a page, from its title to the next blank line. */
 function section(page: string, title: string): string[] {

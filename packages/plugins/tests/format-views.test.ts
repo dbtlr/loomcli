@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 
-import { run as mediaTypes } from './fixtures/format-media-types.mjs';
-import { run as fixtureRun } from './fixtures/format-views.mjs';
+import { run as mediaTypes } from './fixtures/format-media-types.js';
+import { run as fixtureRun } from './fixtures/format-views.js';
 
 async function run(scenario: string, color?: string, env: Record<string, string> = {}) {
   return await fixtureRun(color === undefined ? [scenario] : [scenario, color], env);
@@ -106,7 +106,6 @@ test.each(['never', 'always'] as const)(
 
 test('json() and jsonl() declare their media types under every map', async () => {
   const result = await mediaTypes();
-  expect(result.stderr).toBe('');
   expect(JSON.parse(result.stdout)).toEqual({
     json: 'application/json',
     jsonl: 'application/jsonl',

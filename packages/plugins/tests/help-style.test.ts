@@ -38,7 +38,7 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { run as fixtureRun } from './fixtures/help-style.mjs';
+import { run as fixtureRun } from './fixtures/help-style.js';
 
 async function run(options: Record<string, unknown> = {}) {
   return await fixtureRun([JSON.stringify(options)]);

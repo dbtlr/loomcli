@@ -55,7 +55,7 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { run as fixtureRun } from './fixtures/help-wrap.mjs';
+import { run as fixtureRun } from './fixtures/help-wrap.js';
 
 /** One width a page reads: a terminal that wide, or a pipe. */
 type Width = number | null;

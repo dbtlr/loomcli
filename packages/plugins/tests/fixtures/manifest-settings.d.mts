@@ -1,3 +1,1 @@
-import type { FixtureRun } from './in-process.js';
-
-export declare const run: FixtureRun;
+export declare function run(args?: string[]): Promise<{ stdout: string }>;

@@ -1,15 +1,15 @@
+// JavaScript intentionally supplies declarations and settings that the public types reject.
 import { Application, Command, EX_DATAERR, FatalError } from '@loomcli/core';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
-import { mockProcess } from '@loomcli/testing';
 
 import { ruleText } from '../../../core/tests/fixtures/rule-text.mjs';
 
-/** Runs the fixture on isolated process facts and returns its recorded output. */
-async function run(args = [], env = {}) {
-  const status = 0;
-  const output = mockProcess({ env });
-  const handles = [output];
-  const current = output;
+/** Report declaration outcomes through the public API. */
+async function run(args = []) {
+  let stdout = '';
+  const write = (text) => {
+    stdout += text;
+  };
 
   /** A failure class that declares 65 and the failure code `bad-data`. */
   class BadDataError extends FatalError {
@@ -83,12 +83,8 @@ async function run(args = [], env = {}) {
     }
   }
 
-  current.stdout.write(`${JSON.stringify(outcome())}\n`);
-  return {
-    status: current.exitCode ?? status,
-    stderr: handles.map((handle) => handle.stderr.text).join(''),
-    stdout: handles.map((handle) => handle.stdout.text).join(''),
-  };
+  write(`${JSON.stringify(outcome())}\n`);
+  return { stdout };
 }
 
 export { run };

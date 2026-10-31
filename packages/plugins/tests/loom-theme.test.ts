@@ -32,7 +32,7 @@ import { DeclarationError } from '@loomcli/core';
  */
 import { expect, test } from 'vite-plus/test';
 
-import { run as fixtureRun } from './fixtures/loom-theme.mjs';
+import { run as fixtureRun } from './fixtures/loom-theme.js';
 
 async function palette(options: Record<string, unknown> = {}) {
   return await fixtureRun([JSON.stringify(options)]);

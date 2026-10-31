@@ -1,15 +1,15 @@
+import type { ApplicationOptions, CommandNode } from '@loomcli/core';
 import { Application, Command, plugin, readExtension } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand } from '@loomcli/plugins/help/extension';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
-import { mockProcess } from '@loomcli/testing';
 
-/** Runs the fixture on isolated process facts and returns its recorded output. */
-async function run(args = [], env = {}) {
-  const status = 0;
-  const output = mockProcess({ env });
-  const handles = [output];
-  const current = output;
+/** Report declaration outcomes through the public API. */
+async function run(args: string[] = []) {
+  let stdout = '';
+  const write = (text: string) => {
+    stdout += text;
+  };
 
   const scenario = args[0];
 
@@ -33,33 +33,34 @@ async function run(args = [], env = {}) {
   });
 
   const scenarios = {
-    'no-help': () => commands(new Application('app', { extensions: [rootHelp] })),
-    'replaced-later': () => commands(new Application('app', { plugins: [help(), replacing] })),
-    supplied: () => commands(new Application('app', { extensions: [rootHelp], plugins: [help()] })),
+    'no-help': () => commands({ extensions: [rootHelp] }),
+    'replaced-later': () => commands({ plugins: [help(), replacing] }),
+    supplied: () => commands({ extensions: [rootHelp], plugins: [help()] }),
   };
 
-  const graph = scenarios[scenario]().inspect();
+  const factory = Object.entries(scenarios).find(([name]) => name === scenario)?.[1];
+  if (factory === undefined) {
+    throw new Error(`Unknown scenario: ${scenario}`);
+  }
+  const graph = factory().inspect();
 
   const byName = Object.fromEntries(
     graph.root.children.map((child) => [child.name, manifest(child)]),
   );
 
-  current.stdout.write(`${JSON.stringify({ root: manifest(graph.root), ...byName })}\n`);
+  write(`${JSON.stringify({ root: manifest(graph.root), ...byName })}\n`);
 
   const noted = graph.root.children.find((child) => child.name === 'noted');
 
-  current.stdout.write(
-    `${JSON.stringify({ helpOnNoted: readExtension(noted, helpCommand) ?? null })}\n`,
-  );
-  return {
-    status: current.exitCode ?? status,
-    stderr: handles.map((handle) => handle.stderr.text).join(''),
-    stdout: handles.map((handle) => handle.stdout.text).join(''),
-  };
+  if (noted === undefined) {
+    throw new Error('The fixture declares noted.');
+  }
+  write(`${JSON.stringify({ helpOnNoted: readExtension(noted, helpCommand) ?? null })}\n`);
+  return { stdout };
 }
 
-function commands(app) {
-  return app
+function commands(options: ApplicationOptions) {
+  return new Application('app', options)
     .command(
       new Command('noted', {
         extensions: [
@@ -76,5 +77,5 @@ function commands(app) {
       }).action(() => {}),
     );
 }
-const manifest = (node) => readExtension(node, manifestCommand);
+const manifest = (node: CommandNode) => readExtension(node, manifestCommand);
 export { run };

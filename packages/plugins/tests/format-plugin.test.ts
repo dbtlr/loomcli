@@ -1,7 +1,8 @@
 import { expect, test } from 'vite-plus/test';
+import { z } from 'zod';
 
-import { run as buildRun } from './fixtures/format-build.mjs';
-import { run as fixtureRun } from './fixtures/format-run.mjs';
+import { inspect as buildInspect, run as buildRun } from './fixtures/format-build.js';
+import { inspect as fixtureInspect, run as fixtureRun } from './fixtures/format-run.js';
 /*
  * Acceptance plan for the formatter plugin (docs/plugins/format.md).
  *
@@ -32,21 +33,28 @@ async function run(scenario: string, argv: string[]) {
   return await fixtureRun([scenario, ...argv]);
 }
 
-interface InspectedGraph {
-  root: {
-    children: {
-      name: string;
-      options: { name: string; schema?: unknown; short?: string | null }[];
-      result: unknown;
-    }[];
-  };
-}
+const inspectedGraphSchema = z.looseObject({
+  root: z.looseObject({
+    children: z.array(
+      z.looseObject({
+        name: z.string(),
+        options: z.array(
+          z.looseObject({
+            name: z.string(),
+            schema: z.unknown().optional(),
+            short: z.string().nullable().optional(),
+          }),
+        ),
+        result: z.unknown(),
+      }),
+    ),
+  }),
+});
+type InspectedGraph = z.infer<typeof inspectedGraphSchema>;
 
 async function inspect(scenario: string): Promise<InspectedGraph> {
-  const result = await fixtureRun(['inspect', scenario]);
-  expect(result.status).toBe(0);
-  const graph: InspectedGraph = JSON.parse(result.stdout);
-  return graph;
+  const document = JSON.stringify(fixtureInspect(scenario));
+  return inspectedGraphSchema.parse(JSON.parse(document));
 }
 
 test('an author-declared json view is kept with its own map and its declared position', async () => {
@@ -148,9 +156,7 @@ test("the hook-collision error names another plugin's option", async () => {
 
 /** The rule, sentence, and finding notes of the fault one build scenario's inspect() throws. */
 async function buildFault(scenario: string): Promise<unknown> {
-  const result = await buildRun(['inspect', scenario]);
-  expect(result.stderr).toBe('');
-  return JSON.parse(result.stdout);
+  return buildInspect(scenario);
 }
 
 test('format() gives --format no short spelling by default', async () => {
@@ -200,7 +206,6 @@ test("a short spelling another plugin's option holds is the hook-collision error
 /** The fault a `format()` call throws for settings given as JSON, or `"returned"` when it returns. */
 async function callFault(settings: unknown): Promise<Record<string, unknown> | 'returned'> {
   const result = await settingsRun(settings === undefined ? [] : [JSON.stringify(settings)]);
-  expect(result.stderr).toBe('');
   return JSON.parse(result.stdout);
 }
 

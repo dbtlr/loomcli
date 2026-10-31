@@ -2,7 +2,7 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { run as fixtureRun } from './fixtures/format-failures.mjs';
+import { run as fixtureRun } from './fixtures/format-failures.js';
 
 async function run(scenario: string, argv: string[]) {
   return await fixtureRun([scenario, ...argv]);

@@ -44,17 +44,15 @@ import { expect, test } from 'vite-plus/test';
  *   and layout. No version field changes in the implementation PR.
  */
 
-import { run as fixtureRun } from './fixtures/help-sections.mjs';
+import { graphOrder, metadata, run as fixtureRun } from './fixtures/help-sections.js';
+import { rejectedSections } from './fixtures/invalid-help-sections.mjs';
 
 function page(...lines: string[]) {
   return { status: 0, stderr: '', stdout: `${lines.join('\n')}\n` };
 }
 
 test('section paths and page orders are frozen help metadata, without installing help', async () => {
-  const result = await fixtureRun(['metadata']);
-  expect(result.status).toBe(0);
-  expect(result.stderr).toBe('');
-  expect(JSON.parse(result.stdout)).toEqual({
+  expect(metadata()).toEqual({
     command: {
       commandSections: [['Work', 'Read']],
       optionSections: [['Output']],
@@ -168,10 +166,7 @@ test.each(['ordered', 'parent-order'])(
 );
 
 test('invalid paths are rejected by ordinary extension validation in every declaration slot', async () => {
-  const result = await fixtureRun(['invalid']);
-  expect(result.status).toBe(0);
-  expect(result.stderr).toBe('');
-  const rejected: unknown = JSON.parse(result.stdout);
+  const rejected = rejectedSections();
   expect(rejected).toHaveLength(36);
   expect(rejected).toEqual(Array(36).fill('@loomcli/core/invalid-extension-value'));
 });
@@ -236,9 +231,7 @@ test('a nested Command uses its own child section order, without enclosing its p
 });
 
 test('grouping preserves graph authoring order, including hidden and plugin-attached Commands', async () => {
-  const result = await fixtureRun(['graph']);
-  expect(result.status).toBe(0);
-  expect(JSON.parse(result.stdout)).toEqual([
+  expect(graphOrder()).toEqual([
     'info',
     'hidden',
     'doctor',

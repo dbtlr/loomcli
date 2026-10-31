@@ -1,39 +1,19 @@
 import { Application, InternalError, override } from '@loomcli/core';
+import type { View } from '@loomcli/core';
 import { json, jsonl } from '@loomcli/plugins/format/views';
-import { mockProcess } from '@loomcli/testing';
+import { z } from 'zod';
+
+import { runOnMock } from './in-process.ts';
 
 /** Runs the fixture on isolated process facts and returns its recorded output. */
-async function run(args = [], env = {}) {
-  const status = 0;
-  const output = mockProcess({ env });
-  const handles = [output];
-  let captured = output;
-  const capture = (fields) => {
-    const { terminal, ...facts } = fields;
-    const handle = mockProcess({
-      env,
-      ...facts,
-      ...(terminal !== undefined
-        ? {
-            terminal: {
-              columns: terminal.stdout?.columns ?? terminal.stderr?.columns,
-              rows: 24,
-              streams: ['stdout', 'stderr'].filter((name) => terminal[name]?.isTTY),
-              ...(terminal.background === undefined ? {} : { background: terminal.background }),
-            },
-          }
-        : {}),
-    });
-    handles.push(handle);
-    captured = handle;
-    return handle;
-  };
-
+async function run(args: string[] = [], env: Record<string, string | undefined> = {}) {
   const [scenario, color] = args;
 
   /** A value whose own `toJSON` decides what JSON.stringify sees, unrelated to its other keys. */
   class Wrapped {
-    constructor(value) {
+    readonly value: unknown;
+    readonly ignored: () => undefined;
+    constructor(value: unknown) {
       this.value = value;
       this.ignored = () => undefined;
     }
@@ -47,10 +27,10 @@ async function run(args = [], env = {}) {
   // 27 is U+001B, 155 is U+009B, 127 is U+007F.
   const controls = `a${String.fromCharCode(27)}b${String.fromCharCode(155)}c${String.fromCharCode(127)}d`;
 
-  const scenarios = {
+  const scenarios: Record<string, () => View<unknown>> = {
     'json-array': () => json(),
     'json-empty-array': () => json(),
-    'json-map': () => json({ map: (data) => data.kept }),
+    'json-map': () => json({ map: (data) => z.object({ kept: z.unknown() }).parse(data).kept }),
     'json-object': () => json(),
     'json-tojson': () => json(),
     'json-undefined': () => json(),
@@ -59,12 +39,19 @@ async function run(args = [], env = {}) {
     'jsonl-bigint-cause': () => jsonl(),
     'jsonl-controls': () => jsonl(),
     'jsonl-empty-array': () => jsonl(),
-    'jsonl-map': () => jsonl({ map: (rows) => rows.map((row) => row.count) }),
+    'jsonl-map': () =>
+      jsonl({
+        map: (rows) =>
+          z
+            .array(z.object({ count: z.number() }))
+            .parse(rows)
+            .map((row) => row.count),
+      }),
     'jsonl-non-array': () => jsonl(),
     'jsonl-tojson': () => jsonl(),
   };
 
-  const values = {
+  const values: Record<string, unknown> = {
     'json-array': [1, 2, 3],
     'json-empty-array': [],
     'json-map': { discarded: 'x', kept: { count: 2 } },
@@ -81,32 +68,45 @@ async function run(args = [], env = {}) {
     'jsonl-tojson': [new Wrapped(1), new Wrapped(2)],
   };
 
-  const view = scenarios[scenario]();
+  const factory = scenarios[scenario ?? ''];
+  if (factory === undefined) {
+    throw new Error(`Unknown fixture scenario: ${scenario}`);
+  }
+  const view = factory();
 
-  const value = values[scenario];
+  const value = values[scenario ?? ''];
 
   // The internal failure wraps the error the view threw, so its cause is the view's own cause.
   const causeView = override(InternalError, {
-    render: (failure) => `cause: ${failure.cause.cause.constructor.name}\n`,
+    render: (failure) => {
+      if (!(failure.cause instanceof Error) || !(failure.cause.cause instanceof Error)) {
+        throw new Error('The fixture expects a nested Error cause.');
+      }
+      return `cause: ${failure.cause.cause.constructor.name}\n`;
+    },
   });
 
   const app = new Application('format-views', {
     description: 'The format-views application.',
-    rendering: color === undefined ? {} : { color },
+    rendering:
+      color === undefined ? {} : { color: z.enum(['auto', 'always', 'never']).parse(color) },
     views: scenario === 'jsonl-bigint-cause' ? [causeView] : [],
   }).action(({ out }) => out.render(value, view));
 
   // A test that reads a defect's own sentence runs the fixture as a development build.
-  const release = { build: env.FIXTURE_BUILD ?? 'distributed' };
-
-  const code = await app.run({ process: capture({ argv: [], release }) });
-
-  captured.stdout.write(`resolved:${String(code)}\n`);
-  return {
-    status: captured.exitCode ?? status,
-    stderr: handles.map((handle) => handle.stderr.text).join(''),
-    stdout: handles.map((handle) => handle.stdout.text).join(''),
+  const release = {
+    build: z
+      .enum(['source', 'development', 'distributed'])
+      .parse(env.FIXTURE_BUILD ?? 'distributed'),
   };
+
+  return await runOnMock(
+    app,
+    { argv: [], release },
+    {
+      afterRun: (mock) => mock.stdout.write(`resolved:${String(mock.exitCode)}\n`),
+    },
+  );
 }
 
 export { run };

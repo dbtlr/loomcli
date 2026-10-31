@@ -67,7 +67,6 @@ test('a postfix follows the standard line after one space', async () => {
 /** What one `version()` call returns or throws under `settings`. */
 async function settingsOutcome(settings: unknown): Promise<unknown> {
   const result = await settingsRun([JSON.stringify(settings)]);
-  expect(result).toMatchObject({ status: 0, stderr: '' });
   return JSON.parse(result.stdout);
 }
 

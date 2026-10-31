@@ -1,7 +1,7 @@
 // Acceptance plan: see packages/plugins/tests/table.test.ts.
 import { expect, test } from 'vite-plus/test';
 
-import { run as fixtureRun } from './fixtures/records.mjs';
+import { run as fixtureRun } from './fixtures/records.js';
 
 test('records() renders rows and a counted tail through out.render', async () => {
   await expect(fixtureRun(['default'])).resolves.toEqual({

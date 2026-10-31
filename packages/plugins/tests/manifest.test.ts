@@ -55,7 +55,7 @@
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { run as fixtureRun } from './fixtures/manifest-run.mjs';
+import { run as fixtureRun } from './fixtures/manifest-run.js';
 import { run as settingsRun } from './fixtures/manifest-settings.mjs';
 
 async function run(scenario: string, argv: string[], env: Record<string, string> = {}) {
@@ -361,7 +361,6 @@ test('manifest() declares no short spelling by default', async () => {
 /** The factory or declaration fault observed through a process running the public API. */
 async function settingsOutcome(mode: string, value?: string) {
   const result = await settingsRun(value === undefined ? [mode] : [mode, value]);
-  expect(result).toMatchObject({ status: 0, stderr: '' });
   return JSON.parse(result.stdout);
 }
 

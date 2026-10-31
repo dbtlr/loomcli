@@ -1,14 +1,14 @@
+// JavaScript intentionally supplies declarations and settings that the public types reject.
 import { Application } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { manifest } from '@loomcli/plugins/manifest';
-import { mockProcess } from '@loomcli/testing';
 
-/** Runs the fixture on isolated process facts and returns its recorded output. */
-async function run(args = [], env = {}) {
-  const status = 0;
-  const output = mockProcess({ env });
-  const handles = [output];
-  const current = output;
+/** Report declaration outcomes through the public API. */
+async function run(args = []) {
+  let stdout = '';
+  const write = (text) => {
+    stdout += text;
+  };
   const [mode, value] = args;
 
   /** Public declarations that compete with the manifest's chosen spelling. */
@@ -34,19 +34,15 @@ async function run(args = [], env = {}) {
     } else {
       manifest(JSON.parse(value));
     }
-    current.stdout.write('"returned"\n');
+    write('"returned"\n');
   } catch (error) {
     const { correction, findings, message, rule, sentence } = error;
     const marks = findings.map(({ call, mark, note }) => ({ call, mark, note }));
-    current.stdout.write(
+    write(
       `${JSON.stringify({ correction, findings: marks, message, rule: rule?.identity, sentence })}\n`,
     );
   }
-  return {
-    status: current.exitCode ?? status,
-    stderr: handles.map((handle) => handle.stderr.text).join(''),
-    stdout: handles.map((handle) => handle.stdout.text).join(''),
-  };
+  return { stdout };
 }
 
 export { run };

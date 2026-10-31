@@ -1,161 +1,53 @@
-import { Application, Command, DeclarationError, plugin, readExtension } from '@loomcli/core';
+import { Application, Command, plugin, readExtension } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
 import { loomTheme } from '@loomcli/plugins/theme';
-import { mockProcess } from '@loomcli/testing';
 
-/** Runs the fixture on isolated process facts and returns its recorded output. */
-async function run(args = [], env = {}) {
-  const status = 0;
-  const output = mockProcess({ env });
-  const handles = [output];
-  let current = output;
-  const capture = (fields) => {
-    const { terminal, ...facts } = fields;
-    const handle = mockProcess({
-      env,
-      ...facts,
-      ...(terminal?.stdout?.isTTY || terminal?.stderr?.isTTY
-        ? {
-            terminal: {
-              columns: terminal.stdout?.columns ?? terminal.stderr?.columns,
-              rows: 24,
-              streams: [terminal.stdout?.isTTY ? 'stdout' : 'stderr'],
-              ...(terminal.background === undefined ? {} : { background: terminal.background }),
-            },
-          }
-        : {}),
-    });
-    handles.push(handle);
-    current = handle;
-    return handle;
-  };
+import { runOnMock } from './in-process.ts';
 
-  const [scenario, ...argv] = args;
+type SectionPath = NonNullable<Parameters<typeof helpCommand>[0]['section']>;
 
-  function metadata() {
-    const app = new Application('sections', {
-      extensions: [
-        helpCommand({
-          commandSections: [['Work', 'Read']],
-          optionSections: [['Output']],
-          section: [' Root ', 'Unused'],
-        }),
-      ],
-    })
-      .globalOption('quiet', {
-        extensions: [helpInput({ section: ['Output', 'Logging'] })],
-        type: 'boolean',
-      })
-      .action(() => {});
-    const graph = app.inspect();
-    const command = readExtension(graph.root, helpCommand);
-    const input = readExtension(graph.globals[0], helpInput);
-    current.stdout.write(
-      `${JSON.stringify({
-        command,
-        frozen: [
-          command,
-          command.section,
-          command.commandSections,
-          command.commandSections?.[0],
-          command.optionSections,
-          command.optionSections?.[0],
-          input,
-          input.section,
-        ].every(Object.isFrozen),
-        input,
-      })}\n`,
-    );
-  }
-
-  function invalid() {
-    const values = [[], ['One', 'Two', 'Three'], [1], [' '], ['One\nTwo'], 'One'];
-    const rejected = [];
-    for (const path of values) {
-      for (const slot of ['command', 'local', 'global', 'plugin', 'commands', 'options']) {
-        try {
-          const value = helpInput({ section: path });
-          let app = new Application('invalid');
-          switch (slot) {
-            case 'command': {
-              app = app.extend(helpCommand({ section: path }));
-              break;
-            }
-            case 'local': {
-              app = app.option('quiet', { extensions: [value], type: 'boolean' });
-              break;
-            }
-            case 'global': {
-              app = app.globalOption('quiet', { extensions: [value], type: 'boolean' });
-              break;
-            }
-            case 'plugin': {
-              app = new Application('invalid', {
-                plugins: [
-                  plugin('@fixture/invalid', {
-                    options: { quiet: { extensions: [value], type: 'boolean' } },
-                  }),
-                ],
-              });
-              break;
-            }
-            case 'commands': {
-              app = app.extend(helpCommand({ commandSections: [path] }));
-              break;
-            }
-            case 'options': {
-              app = app.extend(helpCommand({ optionSections: [path] }));
-              break;
-            }
-          }
-          app.action(() => {}).inspect();
-          rejected.push('accepted');
-        } catch (error) {
-          rejected.push(error instanceof DeclarationError ? error.rule.identity : 'wrong error');
-        }
-      }
-    }
-    current.stdout.write(`${JSON.stringify(rejected)}\n`);
-  }
-
-  const scenarios = {
-    'child-order': () => childOrder().run({ process: capture({ argv }) }),
-    commands: () => commands().run({ process: capture({ argv }) }),
-    completion: () => completing().run({ process: capture({ argv }) }),
-    graph: () => {
-      current.stdout.write(
-        `${JSON.stringify(
-          ordered()
-            .inspect()
-            .root.children.map((child) => child.name),
-        )}\n`,
-      );
-    },
-    invalid,
-    metadata,
-    'named-only': () => commands(false).run({ process: capture({ argv }) }),
-    options: () => options().run({ process: capture({ argv }) }),
-    ordered: () => ordered().run({ process: capture({ argv }) }),
-    'parent-order': () => ordered(true).run({ process: capture({ argv }) }),
-    scoped: () => scoped().run({ process: capture({ argv }) }),
-    wide: () => wide().run({ process: capture({ argv }) }),
-    'wide-styled': () =>
-      wide().run({
-        process: capture({ argv, env: {} }),
-        rendering: { color: 'always', modifiers: 'always' },
+function metadata() {
+  const app = new Application('sections', {
+    extensions: [
+      helpCommand({
+        commandSections: [['Work', 'Read']],
+        optionSections: [['Output']],
+        section: [' Root ', 'Unused'],
       }),
-  };
-
-  await scenarios[scenario](argv);
+    ],
+  })
+    .globalOption('quiet', {
+      extensions: [helpInput({ section: ['Output', 'Logging'] })],
+      type: 'boolean',
+    })
+    .action(() => {});
+  const graph = app.inspect();
+  const command = readExtension(graph.root, helpCommand);
+  const global = graph.globals[0];
+  if (global === undefined) {
+    throw new Error('The fixture declares one global.');
+  }
+  const input = readExtension(global, helpInput);
+  if (command === undefined || input === undefined) {
+    throw new Error('The fixture declares help metadata.');
+  }
   return {
-    status: current.exitCode ?? status,
-    stderr: handles.map((handle) => handle.stderr.text).join(''),
-    stdout: handles.map((handle) => handle.stdout.text).join(''),
+    command,
+    frozen: [
+      command,
+      command.section,
+      command.commandSections,
+      command.commandSections?.[0],
+      command.optionSections,
+      command.optionSections?.[0],
+      input,
+      input.section,
+    ].every(Object.isFrozen),
+    input,
   };
 }
-
 function commands(includeDefault = true) {
   const next = new Command('next', {
     description: 'Find ready tasks.',
@@ -221,9 +113,14 @@ function options() {
     .option('strict', { description: 'Reject unreadable files.', type: 'boolean' })
     .action(() => {});
 }
-function sectionedCommand(name, section, description, hidden = false) {
+function sectionedCommand(
+  name: string,
+  section?: SectionPath,
+  description?: string,
+  hidden = false,
+) {
   return new Command(name, {
-    description,
+    ...(description === undefined ? {} : { description }),
     extensions: section === undefined ? [] : [helpCommand({ section })],
     hidden,
   }).action(() => {});
@@ -314,7 +211,7 @@ function ordered(parentOnly = false) {
     extensions: [
       helpCommand({
         commandSections: [
-          ...(parentOnly ? [['Work']] : []),
+          ...(parentOnly ? [['Work'] satisfies SectionPath] : []),
           ['Work', 'Archive'],
           ['Machinery'],
           ['Work', 'Read'],
@@ -339,4 +236,34 @@ function ordered(parentOnly = false) {
     .command(sectionedCommand('alpha', ['Alpha']))
     .command(sectionedCommand('zeta', ['Zeta']));
 }
-export { run };
+
+function graphOrder() {
+  return ordered()
+    .inspect()
+    .root.children.map((child) => child.name);
+}
+async function run(args: string[] = []) {
+  const [name, ...argv] = args;
+  const scenarios = {
+    'child-order': childOrder,
+    commands,
+    completion: completing,
+    'named-only': () => commands(false),
+    options,
+    ordered,
+    'parent-order': () => ordered(true),
+    scoped,
+    wide,
+    'wide-styled': wide,
+  };
+  const factory = Object.entries(scenarios).find(([key]) => key === name)?.[1];
+  if (factory === undefined) {
+    throw new Error(`Unknown fixture scenario: ${name}`);
+  }
+  return await runOnMock(
+    factory(),
+    { argv },
+    name === 'wide-styled' ? { rendering: { color: 'always', modifiers: 'always' } } : {},
+  );
+}
+export { graphOrder, metadata, run };

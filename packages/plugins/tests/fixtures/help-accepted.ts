@@ -1,46 +1,27 @@
 import { Application, Command } from '@loomcli/core';
+import type { OptionConfig, StandardSchemaV1, StandardJSONSchemaV1 } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpArgument, helpInput } from '@loomcli/plugins/help/extension';
-import { mockProcess } from '@loomcli/testing';
+
+import { runOnMock } from './in-process.ts';
 
 /** Runs the fixture on isolated process facts and returns its recorded output. */
-async function run(args = [], env = {}) {
-  const status = 0;
-  const output = mockProcess({ env });
-  const handles = [output];
-  let captured = output;
-  const capture = (fields) => {
-    const { terminal, ...facts } = fields;
-    const handle = mockProcess({
-      env,
-      ...facts,
-      ...(terminal !== undefined
-        ? {
-            terminal: {
-              columns: terminal.stdout?.columns ?? terminal.stderr?.columns,
-              rows: 24,
-              streams: ['stdout', 'stderr'].filter((name) => terminal[name]?.isTTY),
-              ...(terminal.background === undefined ? {} : { background: terminal.background }),
-            },
-          }
-        : {}),
-    });
-    handles.push(handle);
-    captured = handle;
-    return handle;
-  };
-
-  /** A validator that accepts any value and publishes exactly the given input-side JSON Schema. */
-
+async function run(args: string[] = []) {
   /** One string option whose schema is the given JSON Schema. */
-  const one = (json, more = {}) => ({ type: 'string', validate: shaped(json), ...more });
+  const one = (
+    json: Record<string, unknown>,
+    more: {
+      description?: string;
+      default?: string;
+      extensions?: ReturnType<typeof helpInput>[];
+    } = {},
+  ) => ({ type: 'string', validate: shaped(json), ...more }) satisfies OptionConfig;
 
   /** One multiple string option whose validator publishes the given JSON Schema for each value. */
-  const many = (json) => ({ multiple: true, type: 'string', validate: shaped(json) });
+  const many = (json: Record<string, unknown>) =>
+    ({ multiple: true, type: 'string', validate: shaped(json) }) satisfies OptionConfig;
 
   const nine = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
-
-  /** An array of the given length with a hole wherever `entries` names no index. */
 
   /** Each option exercises one rule of accepted values; its name says which. */
   const shapes = new Command('shapes', { description: 'Every derivation rule.' })
@@ -145,7 +126,7 @@ async function run(args = [], env = {}) {
     .action(() => {});
 
   /** One Command per variadic case, since a Command holds one variadic argument. */
-  const variadic = (name, json) =>
+  const variadic = (name: string, json: Record<string, unknown>) =>
     new Command(name)
       .argument('values', { validate: shaped(json), variadic: true })
       .action(() => {});
@@ -164,26 +145,23 @@ async function run(args = [], env = {}) {
     new Application('app', { plugins: [help()] }).command(shapes).command(pick),
   );
 
-  await app.run({ process: capture({ argv: args }) });
-  return {
-    status: captured.exitCode ?? status,
-    stderr: handles.map((handle) => handle.stderr.text).join(''),
-    stdout: handles.map((handle) => handle.stdout.text).join(''),
-  };
+  return await runOnMock(app, { argv: args });
 }
 
-function shaped(json) {
+/** A validator that publishes the schema exactly as supplied. */
+function shaped(json: Record<string, unknown>): StandardSchemaV1 & StandardJSONSchemaV1 {
   return {
     '~standard': {
       jsonSchema: { input: () => json, output: () => ({}) },
-      validate: (value) => ({ value }),
+      validate: (value: unknown) => ({ value }),
       vendor: 'fixture',
       version: 1,
     },
   };
 }
-function sparse(length, entries) {
-  const list = [];
+/** An array with a hole wherever entries names no index. */
+function sparse(length: number, entries: Readonly<Record<number, unknown>>) {
+  const list: unknown[] = [];
   list.length = length;
   return Object.assign(list, entries);
 }
