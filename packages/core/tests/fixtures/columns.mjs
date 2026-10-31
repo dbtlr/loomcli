@@ -48,10 +48,13 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         env: input.env ?? fixtureOptions.env ?? {},
         ...(oneScreen ? { terminal: { columns, rows: 24 } } : {}),
       });
-      // Distinct destination widths, widths retained on pipes, and unknown widths need a
-      // Custom ProcessTerminal: mockProcess describes one screen with a known size.
-      // This composed handle keeps the mock's recording streams and never mutates its terminal.
-      await app.run({
+      /*
+       * Distinct destination widths, widths retained on pipes, and unknown widths need a custom
+       * ProcessTerminal, because mockProcess describes one screen with a known size. The composed
+       * handle keeps the mock's recording streams and holds its own exit code, so the code the run
+       * returns is the scenario's status.
+       */
+      fixture.exitCode = await app.run({
         process:
           supplied === undefined || oneScreen
             ? mock

@@ -6,9 +6,9 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
  * APIs alone. The suites cover it with in-repository fixture plugins rather than a published
  * package, each case under Node and Bun:
  *
- * - A plugin with option-activated middleware whose implementation module records its own
- *   evaluation, so a test shows the module is never loaded on an invocation that does not supply
- *   its option and never loaded when an earlier middleware takes over.
+ * - A plugin with option-activated middleware whose loader records each call, so a test shows
+ *   the implementation module is never loaded on an invocation that does not supply its option
+ *   and never loaded when an earlier middleware takes over.
  * - A plugin with always-on middleware that wraps `next()` and observes each outcome value.
  * - A plugin whose loader is pending when a caller abort lands, so a test shows the run resolves
  *   130 once the loader settles and the middleware never runs
