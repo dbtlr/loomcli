@@ -1,5 +1,4 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { Application, Command } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
@@ -7,7 +6,6 @@ import { help } from '@loomcli/plugins/help';
 import { mockProcess } from '@loomcli/testing';
 
 import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
-import { externalProgram } from './in-process.ts';
 
 /** Runs the fixture on isolated process facts and returns its recorded output. */
 async function run(args = [], given = {}) {
@@ -22,21 +20,7 @@ async function run(args = [], given = {}) {
       env,
       ...facts,
       cwd: given.cwd,
-      programs: {
-        launchctl: externalProgram,
-        loginctl: externalProgram,
-        systemctl: externalProgram,
-        ...Object.fromEntries(
-          (facts.env?.PATH ?? '')
-            .split(':')
-            .flatMap((folder) =>
-              ['systemctl', 'loginctl', 'launchctl', 'pwsh'].map((name) => [
-                join(folder, name),
-                externalProgram,
-              ]),
-            ),
-        ),
-      },
+      programs: given.programs,
       uid: given.uid,
       ...(terminal !== undefined
         ? {
@@ -54,12 +38,7 @@ async function run(args = [], given = {}) {
     return handle;
   };
 
-  /**
-   * One run of an application named `jsonkit` that installs `completion()`. The scenario file, named
-   * by `COMPLETION_SCENARIO`, holds the host's environment, working directory, and platform, the
-   * umask, and the marker file whose appearance aborts the run, so a test sets every folder the
-   * plugin reads and nothing reaches the real home.
-   */
+  /** Completion installation on the scenario's isolated folders and terminal facts. */
   const scenario = given;
 
   const controller = new AbortController();

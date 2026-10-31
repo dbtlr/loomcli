@@ -1,5 +1,4 @@
 import { existsSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { Application, Command } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
@@ -7,7 +6,6 @@ import { service } from '@loomcli/plugins/service';
 import { mockProcess } from '@loomcli/testing';
 
 import { fixtureHome } from '../../../../scripts/fixture-home.mjs';
-import { externalProgram } from './in-process.ts';
 
 /** Runs the fixture on isolated process facts and returns its recorded output. */
 async function run(args = [], given = {}) {
@@ -22,21 +20,7 @@ async function run(args = [], given = {}) {
       env,
       ...facts,
       cwd: given.cwd,
-      programs: {
-        launchctl: externalProgram,
-        loginctl: externalProgram,
-        systemctl: externalProgram,
-        ...Object.fromEntries(
-          (facts.env?.PATH ?? '')
-            .split(':')
-            .flatMap((folder) =>
-              ['systemctl', 'loginctl', 'launchctl', 'pwsh'].map((name) => [
-                join(folder, name),
-                externalProgram,
-              ]),
-            ),
-        ),
-      },
+      programs: given.programs,
       uid: given.uid,
       ...(terminal !== undefined
         ? {
@@ -54,11 +38,7 @@ async function run(args = [], given = {}) {
     return handle;
   };
 
-  /**
-   * One run of an application that installs `service()`, against fake service managers the test puts
-   * first on `PATH`. The scenario file names the platform, the program, the release facts, the label
-   * and run words, the probe, and the marker file whose appearance aborts the run.
-   */
+  /** Service commands on the scenario's platform, program, release, and scripted managers. */
   const argv = args;
 
   const scenario = given;

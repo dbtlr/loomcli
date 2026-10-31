@@ -22,7 +22,7 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { run as fixtureRun } from './fixtures/run-app.mjs';
+import { run as fixtureRun } from './fixtures/run-app.js';
 
 /** One page the fixture printed, with the single newline `out.print` appends. */
 async function run(scenario: string, argv: string[]) {

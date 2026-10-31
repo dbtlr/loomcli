@@ -34,9 +34,8 @@ async function run(args = [], given = {}) {
   };
 
   /**
-   * One run of an application that installs `skills()`. The scenario file, named by
-   * `SKILLS_SCENARIO`, holds the skills with the files each loader answers, the host's environment,
-   * working directory, and platform, the umask, the file each loader call is appended to, and the
+   * One run of an application that installs `skills()`. The supplied scenario holds the skills with the files each loader answers, the host's environment,
+   * working directory, platform, the file each loader call is appended to, and the
    * ceiling. A skill with `throws` has a loader that rejects, and one with `result` answers that
    * value as given.
    *
@@ -77,8 +76,6 @@ async function run(args = [], given = {}) {
     const { help } = await import('@loomcli/plugins/help');
 
     const { skills } = await import('@loomcli/plugins/skills');
-
-    /** A file as the loader answers it: text, or the bytes the scenario lists. */
 
     /** The skill a scenario entry describes, its loader recording each call. */
     function skillOf(entry) {
@@ -133,6 +130,7 @@ async function run(args = [], given = {}) {
   };
 }
 
+/** A file as the loader answers it: text, or the bytes the scenario lists. */
 function fileOf({ bytes, content, executable, path }) {
   return {
     content: bytes === undefined ? content : Uint8Array.from(bytes),

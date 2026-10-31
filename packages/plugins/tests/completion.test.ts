@@ -19,7 +19,7 @@ import { zshInstalledScript, zshScript } from '../src/completion/zsh.js';
 import { format } from '../src/format/plugin.js';
 import { help } from '../src/help/plugin.js';
 import { verbose } from '../src/verbose/plugin.js';
-import { run as fixtureRun } from './fixtures/completion-app.mjs';
+import { run as fixtureRun } from './fixtures/completion-app.js';
 
 /** The answer `__complete` writes for the words after the application name. */
 async function complete(...words: string[]) {

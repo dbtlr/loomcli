@@ -1,3 +1,4 @@
+import { DeclarationError } from '@loomcli/core';
 /*
  * Acceptance plan for the Loom theme (docs/plugins/theme.md).
  *
@@ -29,7 +30,6 @@
  * include it. It verifies compilation and editor completion, not palette merging or output
  * behavior. For a standalone run, use `pnpm build && node scripts/check-theme-contract.mjs`.
  */
-
 import { expect, test } from 'vite-plus/test';
 
 import { run as fixtureRun } from './fixtures/loom-theme.mjs';
@@ -175,11 +175,9 @@ test('FORCE_COLOR retains precedence over NO_COLOR without a TTY', async () => {
 test.each(['identity', 'slot'])(
   'the named theme retains the existing %s collision rule',
   async (collision) => {
-    const result = await palette({ collision });
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('@loomcli/plugins/theme');
-    expect(result.stderr).toContain(
+    await expect(palette({ collision })).rejects.toThrow(DeclarationError);
+    await expect(palette({ collision })).rejects.toThrow('@loomcli/plugins/theme');
+    await expect(palette({ collision })).rejects.toThrow(
       collision === 'identity' ? 'Install each plugin once.' : 'theme slot',
     );
   },

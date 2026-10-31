@@ -1,6 +1,5 @@
-// Acceptance plan: see examples/jsonkit/tests/completion.test.ts.
-
 import { createHash } from 'node:crypto';
+// Acceptance plan: see examples/jsonkit/tests/completion.test.ts.
 import {
   chmodSync,
   existsSync,
@@ -18,6 +17,7 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 
+import type { Program } from '@loomcli/testing';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
@@ -70,6 +70,8 @@ function sandbox() {
 
 type Box = ReturnType<typeof sandbox>;
 
+const programs: Record<string, Program> = {};
+
 interface Scenario {
   /** The width of the terminal the run writes to, or a pipe when left out. */
   readonly columns?: number;
@@ -107,7 +109,7 @@ async function run(box: Box, argv: string[], scenario: Scenario = {}) {
   if (scenario.umask !== undefined) {
     return invoke(fixture, argv, { cwd, env: { COMPLETION_SCENARIO: box.scenario } });
   }
-  return await fixtureRun(argv, JSON.parse(readFileSync(box.scenario, 'utf8')));
+  return await fixtureRun(argv, { ...JSON.parse(readFileSync(box.scenario, 'utf8')), programs });
 }
 
 /** The lines a run wrote to stderr, each with any lane glyph and the space after it removed. */
@@ -1323,7 +1325,12 @@ describe('uninstall', () => {
 });
 
 /** A fixture `pwsh`: a shell script that records how it ran and answers the given text. */
-function fakePwsh(folder: string, answer: string, extra = ''): string {
+function fakePwsh(
+  folder: string,
+  answer: string,
+  extra = '',
+  options: { code?: number; crlf?: boolean; abortMarker?: string } = {},
+): string {
   mkdirSync(folder, { recursive: true });
   const program = join(folder, 'pwsh');
   writeFileSync(
@@ -1331,6 +1338,24 @@ function fakePwsh(folder: string, answer: string, extra = ''): string {
     `#!/bin/sh\nprintf '%s\\n' "$PWD" "$@" > "$PWSH_LOG"\n${extra}printf '%s\\n' '${answer}'\n`,
   );
   chmodSync(program, 0o755);
+  programs[program] = async (call) => {
+    const log = call.env.PWSH_LOG;
+    if (log === undefined) {
+      throw new Error('The fixture requires PWSH_LOG.');
+    }
+    writeFileSync(log, `${realpathSync(call.cwd)}\n${call.args.join('\n')}\n`);
+    if (options.abortMarker !== undefined) {
+      writeFileSync(options.abortMarker, '');
+      await new Promise<void>((resolve) =>
+        call.signal.addEventListener('abort', () => resolve(), { once: true }),
+      );
+      return {};
+    }
+    return {
+      code: options.code ?? 0,
+      stdout: options.code === 1 ? '' : `${answer}${options.crlf ? '\r\n' : '\n'}`,
+    };
+  };
   return program;
 }
 
@@ -1387,7 +1412,7 @@ describe('PowerShell', () => {
     [
       'exits 1',
       (box: Box, bin: string) => {
-        fakePwsh(bin, 'x', 'exit 1\n');
+        fakePwsh(bin, 'x', 'exit 1\n', { code: 1 });
       },
       'jsonkit cannot find the profile of pwsh, because pwsh exited with code 1. Install pwsh, or name the shell you use.',
     ],
@@ -1448,7 +1473,7 @@ describe('PowerShell', () => {
     const profile = join(box.home, 'profile.ps1');
     const bin = join(box.root, 'bin');
     const answer = answerOf(profile);
-    fakePwsh(bin, answer, `printf '%s\\r\\n' '${answer}'\nexit 0\n`);
+    fakePwsh(bin, answer, `printf '%s\\r\\n' '${answer}'\nexit 0\n`, { crlf: true });
     const result = await run(box, ['completion', 'install', 'pwsh'], { env: pwshEnv(box, bin) });
     expect(result.status).toBe(0);
     expect(readFileSync(profile, 'utf8')).toBe(`${powershellLine(scripts.pwsh(box))}\n`);
@@ -1458,7 +1483,7 @@ describe('PowerShell', () => {
     const box = sandbox();
     const bin = join(box.root, 'bin');
     const abortMarker = join(box.root, 'abort');
-    fakePwsh(bin, 'x', `: > '${abortMarker}'\nexec /bin/sleep 30\n`);
+    fakePwsh(bin, 'x', `: > '${abortMarker}'\nexec /bin/sleep 30\n`, { abortMarker });
     const result = await run(box, ['completion', 'install', 'pwsh'], {
       abortMarker,
       env: pwshEnv(box, bin),

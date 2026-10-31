@@ -24,7 +24,7 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { run as fixtureRun } from './fixtures/run-app.mjs';
+import { run as fixtureRun } from './fixtures/run-app.js';
 
 async function run(scenario: string, argv: string[]) {
   return await fixtureRun([scenario, ...argv]);

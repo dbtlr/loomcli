@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
-import { run as fixtureRun } from './fixtures/run-app.mjs';
+import { run as fixtureRun } from './fixtures/run-app.js';
 import { run as settingsRun } from './fixtures/version-settings.mjs';
 
 /** One invocation of the fixture application under the version one scenario declares. */

@@ -1,37 +1,12 @@
 import { Application, Command } from '@loomcli/core';
+import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { help } from '@loomcli/plugins/help';
-import { mockProcess } from '@loomcli/testing';
+
+import { runOnMock } from './in-process.ts';
 
 /** Runs the fixture on isolated process facts and returns its recorded output. */
-async function run(args = [], env = {}) {
-  const status = 0;
-  const output = mockProcess({ env });
-  const handles = [output];
-  let current = output;
-  const capture = (fields) => {
-    const { terminal, ...facts } = fields;
-    const handle = mockProcess({
-      env,
-      ...facts,
-      ...(terminal?.stdout?.isTTY || terminal?.stderr?.isTTY
-        ? {
-            terminal: {
-              columns: terminal.stdout?.columns ?? terminal.stderr?.columns,
-              rows: 24,
-              streams: [terminal.stdout?.isTTY ? 'stdout' : 'stderr'],
-              ...(terminal.background === undefined ? {} : { background: terminal.background }),
-            },
-          }
-        : {}),
-    });
-    handles.push(handle);
-    current = handle;
-    return handle;
-  };
-
-  /** A validator that accepts any value and publishes exactly the given input-side JSON Schema. */
-
+function completionApplication() {
   /**
    * Closed-set values a shell must insert as text, and values completion leaves out: a newline, a
    * tab, the ActiveHelp marker, a lone surrogate, a C1 control, a line separator, and the empty
@@ -152,22 +127,22 @@ async function run(args = [], env = {}) {
     .command(quotes)
     .command(backups);
 
-  await app.run({ process: capture({ argv: args }) });
-  return {
-    status: current.exitCode ?? status,
-    stderr: handles.map((handle) => handle.stderr.text).join(''),
-    stdout: handles.map((handle) => handle.stdout.text).join(''),
-  };
+  return app;
 }
 
-function shaped(json) {
+/** A validator that accepts any value and publishes exactly the given input-side JSON Schema. */
+function shaped(json: { enum: string[] }): StandardSchemaV1 & StandardJSONSchemaV1 {
   return {
     '~standard': {
       jsonSchema: { input: () => json, output: () => ({}) },
-      validate: (value) => ({ value }),
+      validate: (value: unknown) => ({ value }),
       vendor: 'fixture',
       version: 1,
     },
   };
 }
-export { run };
+async function run(args: string[] = []) {
+  return await runOnMock(completionApplication(), { argv: args });
+}
+
+export { completionApplication, run };

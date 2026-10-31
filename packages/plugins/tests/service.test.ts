@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 /*
  * Acceptance plan for the service plugin (docs/plugins/service.md#the-children).
  *
- * The plugin is proven when process tests under Node and Bun produce these results. Each fixture
+ * The plugin is proven when isolated runs under Node and Bun produce these results. Each fixture
  * sets `HOME`, `XDG_CONFIG_HOME`, and `XDG_STATE_HOME` to temporary directories, puts fake
  * `systemctl`, `loginctl`, and `launchctl` programs first on `PATH` that answer from a scenario
  * file and record each call, and runs an application that installs `service()` through
@@ -59,8 +60,6 @@
  * - Packaging. `pnpm check:packed` resolves `@loomcli/plugins/service` from the packed tarball
  *   under Node and Bun.
  */
-
-import { createHash } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
@@ -80,6 +79,7 @@ import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 import { ruleParts } from '../../../scripts/test-rules.js';
+import { servicePrograms } from './fixtures/service-programs.js';
 import { run as fixtureRun } from './fixtures/service-run-app.mjs';
 
 const fixture = new URL('fixtures/service-run.mjs', import.meta.url);
@@ -204,10 +204,10 @@ async function run(box: Box, argv: string[], scenario: Scenario = {}) {
   ) {
     return invoke(fixture, [join(box.root, 'scenario.json'), 'service', ...argv]);
   }
-  return await fixtureRun(
-    ['service', ...argv],
-    JSON.parse(readFileSync(join(box.root, 'scenario.json'), 'utf8')),
-  );
+  return await fixtureRun(['service', ...argv], {
+    ...JSON.parse(readFileSync(join(box.root, 'scenario.json'), 'utf8')),
+    programs: servicePrograms({ bin: box.bin, calls: box.calls, abortMarker: box.marker, answers }),
+  });
 }
 
 /** Every call the fake managers received, as their words. */

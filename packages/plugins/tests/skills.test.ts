@@ -1,7 +1,7 @@
 /*
  * Acceptance plan for the skills plugin (docs/plugins/skills.md#global-installs).
  *
- * The plugin is proven when process tests under Node and Bun produce these results. Each fixture
+ * The plugin is proven when isolated runs under Node and Bun produce these results. Each fixture
  * sets `HOME`, `XDG_STATE_HOME`, and the working directory to temporary directories, clears
  * `CLAUDE_CONFIG_DIR` unless a case sets it, and runs an application that installs `skills()` with
  * fixture skills through `run({ process })`:
@@ -140,6 +140,7 @@ function sandbox() {
 type Box = ReturnType<typeof sandbox>;
 
 interface Scenario {
+  readonly processCeiling?: boolean;
   /** The width of the terminal the run writes to, or a pipe when left out. */
   readonly columns?: number;
   readonly skills?: readonly SkillEntry[];
@@ -166,8 +167,9 @@ async function run(box: Box, argv: string[], scenario: Scenario = {}) {
       umask: scenario.umask,
     }),
   );
-  // A real process owns the umask.
-  if (scenario.umask !== undefined) {
+  // A real process owns the umask. Bun also needs a fresh process for the .git ceiling:
+  // Its builtin ESM exports are fixed before an in-process fixture can install the trap.
+  if (scenario.umask !== undefined || scenario.processCeiling === true) {
     return invoke(fixture, argv, { env: { SKILLS_SCENARIO: box.scenario } });
   }
   return await fixtureRun(argv, JSON.parse(readFileSync(box.scenario, 'utf8')));
@@ -976,6 +978,7 @@ describe('project installs', () => {
     mkdirSync(start);
     const result = await run(box, ['skills', 'install', '--project', '--agent', 'claude'], {
       cwd: start,
+      processCeiling: true,
     });
     expect(result.status).toBe(0);
     expect(tree(projectFolder(start, 'claude'))).toEqual(holding(written));
@@ -1051,6 +1054,7 @@ describe('project installs', () => {
     const box = sandbox();
     const result = await run(box, ['skills', 'install', '--project', '--agent', 'agents'], {
       cwd: box.home,
+      processCeiling: true,
     });
     expect(result.status).toBe(1);
     expect(lines(result.stderr)).toEqual([guard(folderOf(box, 'agents'))]);

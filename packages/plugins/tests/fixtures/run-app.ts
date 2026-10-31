@@ -1,4 +1,5 @@
 import { Application, Command, override } from '@loomcli/core';
+import type { ActionContext, Plugin, ViewOverride } from '@loomcli/core';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
@@ -6,16 +7,22 @@ import { helpPage } from '@loomcli/plugins/help/views';
 import { verbose } from '@loomcli/plugins/verbose';
 import { version } from '@loomcli/plugins/version';
 import { versionLine } from '@loomcli/plugins/version/views';
-import { mockProcess } from '@loomcli/testing';
 import { z } from 'zod';
 
-const dispatch = ({ out }) => out.print('dispatched');
+import { runOnMock } from './in-process.ts';
+
+type Settings = Pick<
+  NonNullable<ConstructorParameters<typeof Application>[1]>,
+  'description' | 'version'
+>;
+
+const dispatch = ({ out }: Pick<ActionContext<{}>, 'out'>) => out.print('dispatched');
 
 /** Every scenario installs the pack in the order the examples do, so help wins a tie. */
 const plugins = [help(), version()];
 
 /** The same pack under the view overrides one scenario lists, so the plugins stay installed. */
-function branded(views, declared = {}, installed = plugins) {
+function branded(views: ViewOverride[], declared: Settings = {}, installed: Plugin[] = plugins) {
   const child = new Command('get', { description: 'Read one value at a path.' }).action(dispatch);
   return new Application('app', {
     description: 'A fixture application.',
@@ -36,7 +43,7 @@ const breaks = {
 };
 
 /** One application whose declared version is the scenario, so the printed line is the only rule. */
-function versioned(declared, installed = plugins) {
+function versioned(declared: Settings, installed: Plugin[] = plugins) {
   const child = new Command('get', { description: 'Read one value at a path.' }).action(dispatch);
   return new Application('app', {
     description: 'A fixture application.',
@@ -277,7 +284,7 @@ function prose() {
  * A root whose only extended block is EXAMPLES, a child whose only one is Details, and a child with
  * neither, so each compact page shows whether it points to the extended page.
  */
-function variants(views = []) {
+function variants(views: ViewOverride[] = []) {
   const get = new Command('get', {
     description: 'Read one value at a path.',
     extensions: [helpCommand({ details: 'Reads the value at one dot path.' })],
@@ -531,12 +538,18 @@ const scenarios = {
   'version-upper': () => versioned({ version: 'V0.2.0' }),
 };
 
-/** Run one newly assembled scenario on an isolated process handle. */
-async function runFixture(args = []) {
-  const [name, ...argv] = args;
-  const mock = mockProcess({ argv, release: { build: 'distributed' } });
-  await scenarios[name]().run({ process: mock });
-  return { status: mock.exitCode, stderr: mock.stderr.text, stdout: mock.stdout.text };
+/** Build one scenario for an isolated run or the process fixture. */
+function fixtureApplication(name: string) {
+  const entry = Object.entries(scenarios).find(([key]) => key === name);
+  if (entry === undefined) {
+    throw new Error(`Unknown fixture scenario: ${name}`);
+  }
+  return entry[1]();
 }
 
-export { runFixture as run };
+async function runFixture(args: string[] = []) {
+  const [name = '', ...argv] = args;
+  return await runOnMock(fixtureApplication(name), { argv, release: { build: 'distributed' } });
+}
+
+export { fixtureApplication, runFixture as run };

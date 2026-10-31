@@ -1,4 +1,4 @@
-import { Application, DeclarationError, plugin, style } from '@loomcli/core';
+import { Application, plugin, style } from '@loomcli/core';
 import { loomTheme, theme } from '@loomcli/plugins/theme';
 import { mockProcess } from '@loomcli/testing';
 
@@ -64,7 +64,7 @@ async function run(args = [], env = {}) {
     plugins.push(plugin('another', { theme: {} }));
   }
 
-  try {
+  {
     const app = new Application('palette', { plugins }).action(({ out, style: contextual }) => {
       const tokens = input.tokens ?? [
         'primary',
@@ -98,11 +98,6 @@ async function run(args = [], env = {}) {
       }),
       rendering: input.rendering,
     });
-  } catch (error) {
-    if (!(error instanceof DeclarationError)) {
-      throw error;
-    }
-    return { status: 1, stderr: error.message, stdout: '' };
   }
   return {
     status: captured.exitCode ?? status,
