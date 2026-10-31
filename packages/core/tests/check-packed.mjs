@@ -326,8 +326,8 @@ try {
     {},
     'The packed @loomcli/loom must declare no runtime dependency, because its bundle carries them.',
   );
-  // The bundle carries third-party and workspace code, so the packed tarball must carry the notices
-  // For it, derived from the packages the build found in the bundle.
+  // The bundle carries third-party and workspace code, so the tarball must carry their notices.
+  // The build derives the notices from the packages it found in the bundle.
   const loomNotice = run('tar', ['-xzOf', 'loom.tgz', 'package/dist/NOTICE'], temporary);
   assert.equal(loomNotice.status, 0, loomNotice.output);
   for (const bundled of ['yaml', '@loomcli/core']) {
