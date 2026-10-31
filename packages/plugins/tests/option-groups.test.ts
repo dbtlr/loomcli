@@ -1,18 +1,24 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke, childEnvironment } from '../../../scripts/test-process.js';
+import { childEnvironment } from '../../../scripts/test-process.js';
 import { launch, request } from '../../mcp/tests/session.js';
+import { runOnMock } from './fixtures/in-process.js';
+import { application } from './fixtures/option-groups-app.js';
+
+async function run(argv: string[]) {
+  return await runOnMock(application(), { argv });
+}
 
 const fixture = new URL('fixtures/option-groups.mjs', import.meta.url);
 
-test('help states visible groups and the manifest publishes the same graph facts', () => {
-  const help = invoke(fixture, ['--help']);
+test('help states visible groups and the manifest publishes the same graph facts', async () => {
+  const help = await run(['--help']);
   expect(help.status).toBe(0);
   expect(help.stdout).toContain('Use at most one of --json and --yaml.');
   expect(help.stdout).toContain('Supply at least one of --json and --yaml.');
   expect(help.stdout).toContain('Use --user and --password together.');
   expect(help.stdout).not.toContain('--secret');
-  const manifest = invoke(fixture, ['--manifest']);
+  const manifest = await run(['--manifest']);
   expect(manifest.status).toBe(0);
   expect(JSON.parse(manifest.stdout).command.optionGroups).toEqual([
     { kind: 'exclusive', options: ['json', 'yaml'] },
@@ -21,33 +27,33 @@ test('help states visible groups and the manifest publishes the same graph facts
   ]);
 });
 
-test('completion suppresses exclusive siblings after a claiming spelling, an alias included', () => {
+test('completion suppresses exclusive siblings after a claiming spelling, an alias included', async () => {
   for (const supplied of ['--json', '--js']) {
-    const result = invoke(fixture, ['completion', '__complete', '--', supplied, '--']);
+    const result = await run(['completion', '__complete', '--', supplied, '--']);
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain('--yaml');
     expect(result.stdout).toContain('--user');
   }
 });
 
-test('completion still offers exclusive siblings after a spelling that gives a Boolean its absent value', () => {
-  const result = invoke(fixture, ['completion', '__complete', '--', '--no-json', '--']);
+test('completion still offers exclusive siblings after a spelling that gives a Boolean its absent value', async () => {
+  const result = await run(['completion', '__complete', '--', '--no-json', '--']);
   expect(result.status).toBe(0);
   expect(result.stdout).toContain('--yaml');
 });
 
-test('completion suppresses exclusive siblings after a negative Boolean spelling', () => {
-  const result = invoke(fixture, ['completion', '__complete', '--', 'negated', '--no-cache', '--']);
+test('completion suppresses exclusive siblings after a negative Boolean spelling', async () => {
+  const result = await run(['completion', '__complete', '--', 'negated', '--no-cache', '--']);
   expect(result.status).toBe(0);
   expect(result.stdout).not.toContain('--json');
   expect(result.stdout).not.toContain('--yaml');
 });
 
-test('a false Boolean spelling claims no exclusive group, and group diagnostics retain the reported spelling', () => {
-  const negative = invoke(fixture, ['--no-json', '--yaml']);
+test('a false Boolean spelling claims no exclusive group, and group diagnostics retain the reported spelling', async () => {
+  const negative = await run(['--no-json', '--yaml']);
   expect(negative.status).toBe(0);
   expect(negative.stdout).toBe('action\n');
-  const alias = invoke(fixture, ['--js', '--yaml']);
+  const alias = await run(['--js', '--yaml']);
   expect(alias.status).toBe(2);
   expect(alias.stderr).toContain(
     'groups: Options "--json" and "--yaml" cannot be used together. Supply only one of them.\n',

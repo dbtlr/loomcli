@@ -56,14 +56,12 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { run as fixtureRun } from './fixtures/markdown-help.js';
 import { blockCases, inlineCases } from './markdown-cases.js';
 
 /** Runs Markdown through the shipped help view, with an independent expected block. */
-function run(details: string, options: Record<string, unknown> = {}) {
-  return invoke(new URL('fixtures/markdown-help.mjs', import.meta.url), [
-    JSON.stringify({ details, ...options }),
-  ]);
+async function run(details: string, options: Record<string, unknown> = {}) {
+  return await fixtureRun([JSON.stringify({ details, ...options })]);
 }
 
 /** The complete plain page around Details, authored from the contract. */
@@ -87,12 +85,12 @@ function page(lines: string[]) {
   };
 }
 
-test('Details renders authored paragraphs, headings, lists, code, and links', () => {
-  expect(
+test('Details renders authored paragraphs, headings, lists, code, and links', async () => {
+  await expect(
     run(
       'Intro.\n\n# Title\n- A **key**: `a.b`.\n- See [format](https://example.org).\n\n```ts\n**literal**\n```',
     ),
-  ).toEqual(
+  ).resolves.toEqual(
     page([
       '  Intro.',
       '',
@@ -106,18 +104,16 @@ test('Details renders authored paragraphs, headings, lists, code, and links', ()
   );
 });
 
-test.each(blockCases)('built Markdown blocks: %s', (_name, source, lines) => {
-  expect(run(source)).toEqual(page(lines));
+test.each(blockCases)('built Markdown blocks: %s', async (_name, source, lines) => {
+  await expect(run(source)).resolves.toEqual(page(lines));
 });
 
-test.each(inlineCases)('built Markdown inline: %s', (_name, source, line) => {
-  expect(run(source)).toEqual(page([`  ${line}`]));
+test.each(inlineCases)('built Markdown inline: %s', async (_name, source, line) => {
+  await expect(run(source)).resolves.toEqual(page([`  ${line}`]));
 });
 
-test('the manifest retains Markdown source bytes including its final terminator', () => {
-  expect(run('# Heading\n\n- item\n', { inspect: true })).toEqual({
-    status: 0,
-    stderr: '',
+test('the manifest retains Markdown source bytes including its final terminator', async () => {
+  await expect(run('# Heading\n\n- item\n', { inspect: true })).resolves.toEqual({
     stdout: '[{"details":"# Heading\\n\\n- item\\n"}]\n',
   });
 });

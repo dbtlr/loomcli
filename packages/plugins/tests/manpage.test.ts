@@ -45,7 +45,7 @@
  *   mode `644` under umask `077`, replaces a page of the same name and a symbolic link of that
  *   name, leaves every other file, and writes no installation record. A `--out` that names a file
  *   fails with the pinned sentence and writes nothing, and a run without `--out` exits 2.
- * - Installing. Process tests set `HOME`, `XDG_STATE_HOME`, and the working directory to temporary
+ * - Installing. Isolated runs set `HOME`, `XDG_STATE_HOME`, and the working directory to temporary
  *   directories, and clear `MANPATH` and `SHELL` unless a case sets them:
  *   - `install` writes the set under `<home>/.local/share/man/man1` with the modes above, records
  *     it in `manpage.json`, and prints the pinned lines; a second `install` prints the unchanged
@@ -85,7 +85,6 @@
  * - Packed consumers. A consumer installs the packed pack, imports `@loomcli/plugins/manpage`,
  *   compiles against its declaration, and generates the pages.
  */
-
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -107,8 +106,7 @@ import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
 import { findOnPath, sealedShellEnvironment } from '../../../scripts/test-shell.js';
-
-const fixture = new URL('fixtures/manpage-run.mjs', import.meta.url);
+import { run as fixtureRun } from './fixtures/manpage-app.js';
 
 const roots: string[] = [];
 
@@ -151,25 +149,29 @@ interface Scenario {
  * Runs `notes ...argv` in the sandbox. `MANPATH` and `SHELL` are cleared and `PATH` holds the
  * home's `.local/bin`, unless the scenario sets them.
  */
-function run(box: Box, argv: string[], scenario: Scenario = {}) {
+async function run(box: Box, argv: string[], scenario: Scenario = {}) {
   const home = scenario.home ?? box.home;
-  writeFileSync(
-    box.scenario,
-    JSON.stringify({
-      commands: scenario.commands,
-      cwd: box.cwd,
-      env: {
-        HOME: home,
-        PATH: `${join(home, '.local', 'bin')}:/usr/bin`,
-        XDG_STATE_HOME: box.state,
-        ...scenario.env,
-      },
-      platform: scenario.platform,
-      umask: scenario.umask,
-      version: scenario.version,
-    }),
-  );
-  return invoke(fixture, argv, { env: { MANPAGE_SCENARIO: box.scenario } });
+  const facts = {
+    commands: scenario.commands,
+    cwd: box.cwd,
+    env: {
+      HOME: home,
+      PATH: `${join(home, '.local', 'bin')}:/usr/bin`,
+      XDG_STATE_HOME: box.state,
+      ...scenario.env,
+    },
+    platform: scenario.platform,
+    umask: scenario.umask,
+    version: scenario.version,
+  };
+  writeFileSync(box.scenario, JSON.stringify(facts));
+  // The process fixture owns the umask, as in the other installation suites.
+  if (scenario.umask !== undefined) {
+    return invoke(new URL('fixtures/manpage-run.mjs', import.meta.url), argv, {
+      env: { MANPAGE_SCENARIO: box.scenario },
+    });
+  }
+  return await fixtureRun(argv, facts);
 }
 
 /** The lines a run wrote to stderr, each with any lane glyph and the space after it removed. */
@@ -268,9 +270,9 @@ function digestOf(text: string): string {
 }
 
 describe('generate', () => {
-  it('creates a missing folder and its parents with mode 755 and pages with mode 644 under umask 077', () => {
+  it('creates a missing folder and its parents with mode 755 and pages with mode 644 under umask 077', async () => {
     const box = sandbox();
-    const result = run(box, ['manpage', 'generate', '--out', 'build/man'], { umask: 0o077 });
+    const result = await run(box, ['manpage', 'generate', '--out', 'build/man'], { umask: 0o077 });
     const folder = join(box.cwd, 'build', 'man');
     expect(result).toEqual({
       status: 0,
@@ -287,7 +289,7 @@ describe('generate', () => {
     expect(existsSync(join(box.state, 'notes'))).toBe(false);
   });
 
-  it('replaces a page and a symbolic link of the same name, and leaves every other file', () => {
+  it('replaces a page and a symbolic link of the same name, and leaves every other file', async () => {
     const box = sandbox();
     const folder = join(box.root, 'out');
     mkdirSync(folder);
@@ -295,7 +297,8 @@ describe('generate', () => {
     writeFileSync(join(box.root, 'target'), 'kept\n');
     symlinkSync(join(box.root, 'target'), join(folder, 'notes-ping.1'));
     writeFileSync(join(folder, 'README'), 'mine\n');
-    expect(run(box, ['manpage', 'generate', '--out', folder]).status).toBe(0);
+    const invocation1 = await run(box, ['manpage', 'generate', '--out', folder]);
+    expect(invocation1.status).toBe(0);
     expect(readFileSync(join(folder, 'notes.1'), 'utf8')).toMatch(/^\.TH "NOTES" "1" ""/u);
     expect(lstatSync(join(folder, 'notes-ping.1')).isFile()).toBe(true);
     expect(readFileSync(join(box.root, 'target'), 'utf8')).toBe('kept\n');
@@ -303,25 +306,25 @@ describe('generate', () => {
     expect(readdirSync(folder).filter((name) => name.startsWith('.'))).toEqual([]);
   });
 
-  it('two runs under another HOME, TERM, COLUMNS, and locale write the same bytes', () => {
+  it('two runs under another HOME, TERM, COLUMNS, and locale write the same bytes', async () => {
     const box = sandbox();
     const first = join(box.root, 'first');
     const second = join(box.root, 'second');
-    expect(run(box, ['manpage', 'generate', '--out', first]).status).toBe(0);
-    expect(
-      run(box, ['manpage', 'generate', '--out', second], {
-        env: { COLUMNS: '40', LANG: 'de_DE.UTF-8', LC_ALL: 'de_DE.UTF-8', TERM: 'dumb' },
-        home: box.other,
-      }).status,
-    ).toBe(0);
+    const invocation2 = await run(box, ['manpage', 'generate', '--out', first]);
+    expect(invocation2.status).toBe(0);
+    const invocation3 = await run(box, ['manpage', 'generate', '--out', second], {
+      env: { COLUMNS: '40', LANG: 'de_DE.UTF-8', LC_ALL: 'de_DE.UTF-8', TERM: 'dumb' },
+      home: box.other,
+    });
+    expect(invocation3.status).toBe(0);
     expect(tree(second)).toEqual(tree(first));
   });
 
-  it('generate and install write identical pages', () => {
+  it('generate and install write identical pages', async () => {
     const box = sandbox();
     const out = join(box.root, 'out');
-    run(box, ['manpage', 'generate', '--out', out]);
-    run(box, ['manpage', 'install']);
+    await run(box, ['manpage', 'generate', '--out', out]);
+    await run(box, ['manpage', 'install']);
     for (const file of defaultSet) {
       expect(readFileSync(join(folderOf(box.home), file), 'utf8')).toBe(
         readFileSync(join(out, file), 'utf8'),
@@ -329,11 +332,11 @@ describe('generate', () => {
     }
   });
 
-  it('an --out that names a file fails with the pinned sentence and writes nothing', () => {
+  it('an --out that names a file fails with the pinned sentence and writes nothing', async () => {
     const box = sandbox();
     const file = join(box.cwd, 'man');
     writeFileSync(file, 'a file\n');
-    const result = run(box, ['manpage', 'generate', '--out', 'man']);
+    const result = await run(box, ['manpage', 'generate', '--out', 'man']);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       `${file} is not a folder. Name a folder, or a path where notes can create one.`,
@@ -344,11 +347,11 @@ describe('generate', () => {
 
   it.each(['man/sub', 'man/sub/deeper'])(
     'an --out under a file, %s, fails with the pinned sentence and writes nothing',
-    (out) => {
+    async (out) => {
       const box = sandbox();
       const file = join(box.cwd, 'man');
       writeFileSync(file, 'a file\n');
-      const result = run(box, ['manpage', 'generate', '--out', out]);
+      const result = await run(box, ['manpage', 'generate', '--out', out]);
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(
         `${join(box.cwd, out)} is not a folder. Name a folder, or a path where notes can create one.`,
@@ -358,10 +361,10 @@ describe('generate', () => {
     },
   );
 
-  it('an --out under a symbolic link whose target is missing fails with the pinned sentence and writes nothing', () => {
+  it('an --out under a symbolic link whose target is missing fails with the pinned sentence and writes nothing', async () => {
     const box = sandbox();
     symlinkSync(join(box.cwd, 'missing'), join(box.cwd, 'man'));
-    const result = run(box, ['manpage', 'generate', '--out', 'man/sub']);
+    const result = await run(box, ['manpage', 'generate', '--out', 'man/sub']);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       `${join(box.cwd, 'man/sub')} is not a folder. Name a folder, or a path where notes can create one.`,
@@ -369,17 +372,18 @@ describe('generate', () => {
     expect(readdirSync(box.cwd)).toEqual(['man']);
   });
 
-  it('a run without --out is a usage error with exit 2', () => {
+  it('a run without --out is a usage error with exit 2', async () => {
     const box = sandbox();
-    expect(run(box, ['manpage', 'generate']).status).toBe(2);
+    const invocation4 = await run(box, ['manpage', 'generate']);
+    expect(invocation4.status).toBe(2);
   });
 });
 
 describe('install', () => {
-  it('writes the set under the home with the modes, records it, and a second install changes no byte', () => {
+  it('writes the set under the home with the modes, records it, and a second install changes no byte', async () => {
     const box = sandbox();
     const folder = folderOf(box.home);
-    const first = run(box, ['manpage', 'install'], { umask: 0o077 });
+    const first = await run(box, ['manpage', 'install'], { umask: 0o077 });
     expect(first.status).toBe(0);
     expect(first.stdout).toBe('');
     expect(rawLines(first.stderr)).toEqual([
@@ -400,7 +404,7 @@ describe('install', () => {
     }
     expect(recordedPaths(box)).toEqual(defaultSet.map((file) => join(folder, file)));
     const before = snapshot(box);
-    const second = run(box, ['manpage', 'install']);
+    const second = await run(box, ['manpage', 'install']);
     expect(second.status).toBe(0);
     expect(rawLines(second.stderr)).toEqual([
       laned('info', `The 8 man pages in ${folder} are unchanged.`),
@@ -411,9 +415,9 @@ describe('install', () => {
 
   it.skipIf(findOnPath('man') === undefined)(
     'man finds an installed page with MANPATH unset and the home bin folder on PATH',
-    () => {
+    async () => {
       const box = sandbox();
-      run(box, ['manpage', 'install']);
+      await run(box, ['manpage', 'install']);
       const found = spawnSync('man', ['-w', 'notes-ping'], {
         encoding: 'utf8',
         env: { HOME: box.home, PATH: `${join(box.home, '.local', 'bin')}:${process.env.PATH}` },
@@ -422,18 +426,18 @@ describe('install', () => {
     },
   );
 
-  it('after an installed page is deleted, install writes it again', () => {
+  it('after an installed page is deleted, install writes it again', async () => {
     const box = sandbox();
-    run(box, ['manpage', 'install']);
+    await run(box, ['manpage', 'install']);
     rmSync(join(folderOf(box.home), 'notes-ping.1'));
-    const result = run(box, ['manpage', 'install']);
+    const result = await run(box, ['manpage', 'install']);
     expect(lines(result.stderr)[0]).toBe(`Installed 8 man pages in ${folderOf(box.home)}.`);
     expect(existsSync(join(folderOf(box.home), 'notes-ping.1'))).toBe(true);
   });
 
-  it('after an install killed once every page was written, the next install recovers the record', () => {
+  it('after an install killed once every page was written, the next install recovers the record', async () => {
     const box = sandbox();
-    run(box, ['manpage', 'install']);
+    await run(box, ['manpage', 'install']);
     const folder = folderOf(box.home);
     // A kill after the last rename and before the commit leaves every page and a pending record.
     writeFileSync(
@@ -449,16 +453,16 @@ describe('install', () => {
         state: 'pending',
       })}\n`,
     );
-    const result = run(box, ['manpage', 'install']);
+    const result = await run(box, ['manpage', 'install']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)[0]).toBe(`Installed 8 man pages in ${folder}.`);
     expect(JSON.parse(readFileSync(recordPath(box), 'utf8')).state).toBe('committed');
     expect(recordedPaths(box)).toEqual(defaultSet.map((file) => join(folder, file)));
   });
 
-  it('a home that is not an absolute path fails with the pinned sentence', () => {
+  it('a home that is not an absolute path fails with the pinned sentence', async () => {
     const box = sandbox();
-    const result = run(box, ['manpage', 'install'], { home: 'relative' });
+    const result = await run(box, ['manpage', 'install'], { home: 'relative' });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       'notes cannot find your home folder because HOME is not an absolute path. Set HOME to an absolute path, then run the command again.',
@@ -480,12 +484,12 @@ describe('advice when man will not find the pages', () => {
       'MANPATH holds an empty entry while PATH lacks the home bin folder',
       { MANPATH: ':/usr/share/man', PATH: '/usr/bin' },
     ],
-  ])('%s: the advice and the export line on stdout', (_name, env) => {
+  ])('%s: the advice and the export line on stdout', async (_name, env) => {
     const box = sandbox();
     const resolved = Object.fromEntries(
       Object.entries(env).map(([key, value]) => [key, value?.replace('HOME', box.home)]),
     );
-    const result = run(box, ['manpage', 'install'], { env: resolved });
+    const result = await run(box, ['manpage', 'install'], { env: resolved });
     const manFolder = join(box.home, '.local', 'share', 'man');
     expect(result.status).toBe(0);
     expect(rawLines(result.stderr)).toEqual([
@@ -502,11 +506,11 @@ describe('advice when man will not find the pages', () => {
     }
   });
 
-  it('a home holding shell characters is escaped in the export line', () => {
+  it('a home holding shell characters is escaped in the export line', async () => {
     const box = sandbox();
     const home = join(box.root, 'a"b$c`d\\e');
     mkdirSync(home);
-    const result = run(box, ['manpage', 'install'], { env: { PATH: '/usr/bin' }, home });
+    const result = await run(box, ['manpage', 'install'], { env: { PATH: '/usr/bin' }, home });
     const manFolder = join(home, '.local', 'share', 'man');
     const shell = spawnSync('bash', ['-u', '-c', `${result.stdout}printf %s "$MANPATH"`], {
       encoding: 'utf8',
@@ -515,9 +519,9 @@ describe('advice when man will not find the pages', () => {
     expect(shell.stdout).toBe(`${manFolder}:`);
   });
 
-  it('a SHELL ending in fish gets the Fish line', () => {
+  it('a SHELL ending in fish gets the Fish line', async () => {
     const box = sandbox();
-    const result = run(box, ['manpage', 'install'], {
+    const result = await run(box, ['manpage', 'install'], {
       env: { PATH: '/usr/bin', SHELL: '/usr/local/bin/fish' },
     });
     const manFolder = join(box.home, '.local', 'share', 'man');
@@ -526,9 +530,9 @@ describe('advice when man will not find the pages', () => {
 
   it.skipIf(findOnPath('fish') === undefined)(
     'a real Fish runs the Fish line to the same MANPATH, with MANPATH unset and set',
-    () => {
+    async () => {
       const box = sandbox();
-      const result = run(box, ['manpage', 'install'], {
+      const result = await run(box, ['manpage', 'install'], {
         env: { PATH: '/usr/bin', SHELL: '/usr/local/bin/fish' },
       });
       const manFolder = join(box.home, '.local', 'share', 'man');
@@ -563,9 +567,9 @@ describe('advice when man will not find the pages', () => {
       'MANPATH unset, with the home bin folder on PATH with a trailing slash',
       { PATH: 'HOME/.local/bin/:/usr/bin' },
     ],
-  ])('%s prints Read them', (_name, env) => {
+  ])('%s prints Read them', async (_name, env) => {
     const box = sandbox();
-    const result = run(box, ['manpage', 'install'], {
+    const result = await run(box, ['manpage', 'install'], {
       env: Object.fromEntries(
         Object.entries(env).map(([key, value]) => [key, value.replace('HOME', box.home)]),
       ),
@@ -581,23 +585,23 @@ describe('files the record does not list', () => {
     ['a page generate wrote into the folder', 'update', 'generate'],
     ['a symbolic link at a page path', 'install', 'link'],
     ['a symbolic link at a page path', 'update', 'link'],
-  ])('%s refuses %s, which changes no byte', (_name, verb, kind) => {
+  ])('%s refuses %s, which changes no byte', async (_name, verb, kind) => {
     const box = sandbox();
     const folder = folderOf(box.home);
     // Update acts on an installed set, so the file sits at the page of a Command added since.
     const commands = verb === 'update' ? ['ping', 'sync', 'tidy'] : ['ping', 'sync'];
     const page = join(folder, verb === 'update' ? 'notes-tidy.1' : 'notes-ping.1');
     if (verb === 'update') {
-      run(box, ['manpage', 'install']);
+      await run(box, ['manpage', 'install']);
     }
     if (kind === 'generate') {
-      run(box, ['manpage', 'generate', '--out', folder], { commands });
+      await run(box, ['manpage', 'generate', '--out', folder], { commands });
     } else {
       mkdirSync(folder, { recursive: true });
       symlinkSync(join(box.root, 'elsewhere'), page);
     }
     const before = snapshot(box);
-    const result = run(box, ['manpage', verb], { commands });
+    const result = await run(box, ['manpage', verb], { commands });
     expect(result.status).toBe(1);
     expect(rawLines(result.stderr)).toContain(
       laned('warning', `${page} was not installed by notes manpage install.`),
@@ -608,13 +612,13 @@ describe('files the record does not list', () => {
     expect(snapshot(box)).toEqual(before);
   });
 
-  it.each(['install', 'update'])('a recorded page edited since refuses %s', (verb) => {
+  it.each(['install', 'update'])('a recorded page edited since refuses %s', async (verb) => {
     const box = sandbox();
-    run(box, ['manpage', 'install']);
+    await run(box, ['manpage', 'install']);
     const page = join(folderOf(box.home), 'notes-ping.1');
     writeFileSync(page, 'edited\n');
     const before = snapshot(box);
-    const result = run(box, ['manpage', verb], { version: '2.0.0' });
+    const result = await run(box, ['manpage', verb], { version: '2.0.0' });
     expect(result.status).toBe(1);
     expect(lines(result.stderr)[0]).toBe(`${page} changed since notes manpage install wrote it.`);
     expect(result.stderr).toContain(
@@ -625,9 +629,9 @@ describe('files the record does not list', () => {
 
   it.each(['install', 'update'])(
     'a page holding the bytes this run would write, whose record holds an older digest, refuses %s',
-    (verb) => {
+    async (verb) => {
       const box = sandbox();
-      run(box, ['manpage', 'install']);
+      await run(box, ['manpage', 'install']);
       const page = join(folderOf(box.home), 'notes-ping.1');
       const record: { files: { digest: string; path: string }[] } = JSON.parse(
         readFileSync(recordPath(box), 'utf8'),
@@ -637,7 +641,7 @@ describe('files the record does not list', () => {
       }
       writeFileSync(recordPath(box), `${JSON.stringify(record)}\n`);
       const before = snapshot(box);
-      const result = run(box, ['manpage', verb]);
+      const result = await run(box, ['manpage', verb]);
       expect(result.status).toBe(1);
       expect(lines(result.stderr)[0]).toBe(`${page} changed since notes manpage install wrote it.`);
       expect(result.stderr).not.toContain('unchanged');
@@ -647,10 +651,10 @@ describe('files the record does not list', () => {
 });
 
 describe('moving and changing the set', () => {
-  it('on linux, after HOME changes with XDG_STATE_HOME held, install moves the set to the new home', () => {
+  it('on linux, after HOME changes with XDG_STATE_HOME held, install moves the set to the new home', async () => {
     const box = sandbox();
-    run(box, ['manpage', 'install']);
-    const result = run(box, ['manpage', 'install'], { home: box.other });
+    await run(box, ['manpage', 'install']);
+    const result = await run(box, ['manpage', 'install'], { home: box.other });
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `Installed 8 man pages in ${folderOf(box.other)}.`,
@@ -661,10 +665,10 @@ describe('moving and changing the set', () => {
     expect(readdirSync(folderOf(box.other)).toSorted()).toEqual(defaultSet.toSorted());
   });
 
-  it('a record with pages in two folders fails update, uninstall removes both, and install puts the set in one', () => {
+  it('a record with pages in two folders fails update, uninstall removes both, and install puts the set in one', async () => {
     const box = sandbox();
-    run(box, ['manpage', 'install']);
-    run(box, ['manpage', 'generate', '--out', folderOf(box.other)]);
+    await run(box, ['manpage', 'install']);
+    await run(box, ['manpage', 'generate', '--out', folderOf(box.other)]);
     // An install killed while it moved the set left some pages in each folder, all recorded.
     const files = defaultSet.map((file, index) => {
       const path = join(folderOf(index < 3 ? box.other : box.home), file);
@@ -681,22 +685,22 @@ describe('moving and changing the set', () => {
       `${JSON.stringify({ directories: [], files, format: 1, state: 'committed' })}\n`,
     );
     const before = snapshot(box);
-    const update = run(box, ['manpage', 'update']);
+    const update = await run(box, ['manpage', 'update']);
     expect(update.status).toBe(1);
     expect(update.stderr).toContain(
       `${recordPath(box)} lists man pages in more than one folder, so notes manpage update cannot tell where they belong. Run notes manpage install to put them in one folder.`,
     );
     expect(snapshot(box)).toEqual(before);
-    const install = run(box, ['manpage', 'install']);
+    const install = await run(box, ['manpage', 'install']);
     expect(install.status).toBe(0);
     expect(readdirSync(folderOf(box.home)).toSorted()).toEqual(defaultSet.toSorted());
     expect(readdirSync(folderOf(box.other))).toEqual([]);
   });
 
-  it('uninstall removes the pages of both folders with one removed line for each folder', () => {
+  it('uninstall removes the pages of both folders with one removed line for each folder', async () => {
     const box = sandbox();
-    run(box, ['manpage', 'install']);
-    run(box, ['manpage', 'generate', '--out', folderOf(box.other)]);
+    await run(box, ['manpage', 'install']);
+    await run(box, ['manpage', 'generate', '--out', folderOf(box.other)]);
     const files = defaultSet.map((file, index) => {
       const path = join(folderOf(index < 3 ? box.other : box.home), file);
       return { digest: digestOf(readFileSync(path, 'utf8')), path };
@@ -705,7 +709,7 @@ describe('moving and changing the set', () => {
       recordPath(box),
       `${JSON.stringify({ directories: [], files, format: 1, state: 'committed' })}\n`,
     );
-    const result = run(box, ['manpage', 'uninstall']);
+    const result = await run(box, ['manpage', 'uninstall']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       `Removed 3 man pages from ${folderOf(box.other)}.`,
@@ -716,12 +720,12 @@ describe('moving and changing the set', () => {
 
   it.each(['install', 'update'])(
     'after a Command is removed, %s removes its unchanged page and keeps an edited one',
-    (verb) => {
+    async (verb) => {
       const box = sandbox();
-      run(box, ['manpage', 'install'], { commands: ['ping', 'sync', 'tidy'] });
+      await run(box, ['manpage', 'install'], { commands: ['ping', 'sync', 'tidy'] });
       const folder = folderOf(box.home);
       writeFileSync(join(folder, 'notes-tidy.1'), 'edited\n');
-      const result = run(box, ['manpage', verb], { commands: ['ping'] });
+      const result = await run(box, ['manpage', verb], { commands: ['ping'] });
       expect(result.status).toBe(0);
       const said = rawLines(result.stderr);
       expect(said[0]).toBe(
@@ -742,10 +746,10 @@ describe('moving and changing the set', () => {
     },
   );
 
-  it('after a Command is added, update writes its page into the recorded folder, even under a new HOME', () => {
+  it('after a Command is added, update writes its page into the recorded folder, even under a new HOME', async () => {
     const box = sandbox();
-    run(box, ['manpage', 'install']);
-    const result = run(box, ['manpage', 'update'], {
+    await run(box, ['manpage', 'install']);
+    const result = await run(box, ['manpage', 'update'], {
       commands: ['ping', 'sync', 'tidy'],
       home: box.other,
     });
@@ -755,39 +759,41 @@ describe('moving and changing the set', () => {
     expect(existsSync(join(box.other, '.local'))).toBe(false);
   });
 
-  it('update rewrites a page to this version, and an unchanged set prints the unchanged line', () => {
+  it('update rewrites a page to this version, and an unchanged set prints the unchanged line', async () => {
     const box = sandbox();
-    run(box, ['manpage', 'install']);
+    await run(box, ['manpage', 'install']);
     const page = join(folderOf(box.home), 'notes.1');
-    expect(lines(run(box, ['manpage', 'update']).stderr)).toEqual([
+    const invocation5 = await run(box, ['manpage', 'update']);
+    expect(lines(invocation5.stderr)).toEqual([
       `The 8 man pages in ${folderOf(box.home)} are unchanged.`,
     ]);
-    run(box, ['manpage', 'update'], { version: '2.0.0' });
+    await run(box, ['manpage', 'update'], { version: '2.0.0' });
     expect(readFileSync(page, 'utf8').split('\n')[0]).toBe('.TH "NOTES" "1" "" "notes 2.0.0" ""');
   });
 });
 
 describe('uninstall and the nothing-to lines', () => {
-  it('with nothing recorded, update and uninstall print their nothing-to lines and exit 0', () => {
+  it('with nothing recorded, update and uninstall print their nothing-to lines and exit 0', async () => {
     const box = sandbox();
-    expect(run(box, ['manpage', 'update'])).toMatchObject({ status: 0, stdout: '' });
-    expect(lines(run(box, ['manpage', 'update']).stderr)).toEqual([
+    await expect(run(box, ['manpage', 'update'])).resolves.toMatchObject({ status: 0, stdout: '' });
+    const invocation6 = await run(box, ['manpage', 'update']);
+    expect(lines(invocation6.stderr)).toEqual([
       'notes has no man pages installed, so there is nothing to update. Run notes manpage install to install them.',
     ]);
-    const removed = run(box, ['manpage', 'uninstall']);
+    const removed = await run(box, ['manpage', 'uninstall']);
     expect(removed.status).toBe(0);
     expect(lines(removed.stderr)).toEqual([
       'notes has no man pages installed, so there is nothing to remove.',
     ]);
   });
 
-  it('with every recorded page deleted, uninstall prints the nothing-to-remove line and deletes the record', () => {
+  it('with every recorded page deleted, uninstall prints the nothing-to-remove line and deletes the record', async () => {
     const box = sandbox();
-    run(box, ['manpage', 'install']);
+    await run(box, ['manpage', 'install']);
     for (const file of defaultSet) {
       rmSync(join(folderOf(box.home), file));
     }
-    const result = run(box, ['manpage', 'uninstall']);
+    const result = await run(box, ['manpage', 'uninstall']);
     expect(result.status).toBe(0);
     expect(lines(result.stderr)).toEqual([
       'notes has no man pages installed, so there is nothing to remove.',
@@ -795,12 +801,12 @@ describe('uninstall and the nothing-to lines', () => {
     expect(existsSync(recordPath(box))).toBe(false);
   });
 
-  it('uninstall removes unchanged pages and empty created folders, and keeps an edited page', () => {
+  it('uninstall removes unchanged pages and empty created folders, and keeps an edited page', async () => {
     const box = sandbox();
-    run(box, ['manpage', 'install']);
+    await run(box, ['manpage', 'install']);
     const folder = folderOf(box.home);
     writeFileSync(join(folder, 'notes-ping.1'), 'edited\n');
-    const result = run(box, ['manpage', 'uninstall']);
+    const result = await run(box, ['manpage', 'uninstall']);
     expect(result.status).toBe(0);
     expect(rawLines(result.stderr)).toEqual([
       laned('success', `Removed 7 man pages from ${folder}.`),
@@ -813,14 +819,15 @@ describe('uninstall and the nothing-to lines', () => {
     expect(existsSync(recordPath(box))).toBe(false);
   });
 
-  it('uninstall removes every created folder then empty, and leaves a man1 folder that holds another file', () => {
+  it('uninstall removes every created folder then empty, and leaves a man1 folder that holds another file', async () => {
     const box = sandbox();
-    run(box, ['manpage', 'install']);
-    expect(run(box, ['manpage', 'uninstall']).status).toBe(0);
+    await run(box, ['manpage', 'install']);
+    const invocation7 = await run(box, ['manpage', 'uninstall']);
+    expect(invocation7.status).toBe(0);
     expect(readdirSync(box.home)).toEqual([]);
-    run(box, ['manpage', 'install']);
+    await run(box, ['manpage', 'install']);
     writeFileSync(join(folderOf(box.home), 'other.1'), 'theirs\n');
-    run(box, ['manpage', 'uninstall']);
+    await run(box, ['manpage', 'uninstall']);
     expect(readdirSync(folderOf(box.home))).toEqual(['other.1']);
   });
 });
@@ -832,12 +839,12 @@ describe('record and platform checks', () => {
     ['uninstall', 'uninstall'],
   ])(
     'a damaged manpage.json fails %s with the pinned sentence and writes nothing',
-    (verb, named) => {
+    async (verb, named) => {
       const box = sandbox();
       mkdirSync(join(box.state, 'notes', 'installation'), { recursive: true });
       writeFileSync(recordPath(box), '{"format":1,"state":');
       const before = snapshot(box);
-      const result = run(box, ['manpage', verb]);
+      const result = await run(box, ['manpage', verb]);
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(
         `${recordPath(box)} cannot be read, so notes will not change the man pages it lists. Remove it and the pages it lists, then run notes manpage ${named} again.`,
