@@ -14,5 +14,5 @@ const reference = readFileSync(
 
 test('the ESLint plugin reference shows the lint files init writes, byte for byte', () => {
   expect(reference).toContain(`\`\`\`json\n${oxlintConfig}\`\`\``);
-  expect(reference).toContain(`\`\`\`js\n${eslintConfig}\`\`\``);
+  expect(reference).toContain(`\`\`\`js\n${eslintConfig('src')}\`\`\``);
 });

@@ -25,10 +25,14 @@ const eslintConfigNames = ['js', 'mjs', 'cjs', 'ts', 'mts', 'cts'].map(
 );
 
 /**
- * The linter command of the `check` script. oxlint lints `src` alone, because it skips
- * `node_modules` only where a `.gitignore` names it, which a new scaffold does not have yet.
+ * The linter command of the `check` script for the source folder. oxlint lints the source folder
+ * alone, because it skips `node_modules` only where a `.gitignore` names it, which a new scaffold
+ * does not have yet.
  */
-const lintCommands: Record<Linter, string> = { eslint: 'eslint .', oxlint: 'oxlint src' };
+const lintCommands: Record<Linter, (source: string) => string> = {
+  eslint: () => 'eslint .',
+  oxlint: (source) => `oxlint ${source}`,
+};
 
 /** The test command of each runner. */
 const testCommands: Record<TestRunner, string> = { bun: 'bun test', vitest: 'vitest run' };
@@ -89,9 +93,12 @@ export function existingLinter(directory: string): Linter | undefined {
   return linters.find((linter) => hasLintConfig(directory, linter));
 }
 
-/** The `check` script of a scaffold: the type check, the linter, and the test runner. */
-export function checkScript({ linter, runner }: Tooling): string {
-  return `tsc --noEmit && ${lintCommands[linter]} && ${testCommands[runner]}`;
+/**
+ * The `check` script of a scaffold: the type check, the linter over `source`, the source folder
+ * relative to the package directory, and the test runner.
+ */
+export function checkScript({ linter, runner }: Tooling, source: string): string {
+  return `tsc --noEmit && ${lintCommands[linter](source)} && ${testCommands[runner]}`;
 }
 
 /** The tool packages the linter and the runner need as development dependencies. */

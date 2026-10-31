@@ -8,8 +8,8 @@ function quoted(text: string) {
 }
 
 /**
- * The application module a new scaffold writes to `src/application.ts`: an Application with a
- * description and one action, so the scaffold assembles and runs.
+ * The application module a new scaffold writes to `paths.application`, `src/application.ts` by
+ * convention: an Application with a description and one action, so the scaffold assembles and runs.
  */
 export function applicationModule(name: string, identifier: string): string {
   return `import { Application } from '@loomcli/core';
@@ -29,25 +29,30 @@ export interface ApplicationImport {
   readonly kind: 'default' | 'named';
 }
 
-/** The entry a scaffold writes to `src/main.ts`, which runs the application module's Application. */
-export function entryModule({ identifier, kind }: ApplicationImport): string {
+/**
+ * The entry a scaffold writes to `paths.entry`, `src/main.ts` by convention, which runs the
+ * Application of the module at `specifier`, the application module's path relative to the entry.
+ */
+export function entryModule({ identifier, kind }: ApplicationImport, specifier: string): string {
   const binding = kind === 'named' ? `{ ${identifier} }` : identifier;
   return `#!/usr/bin/env node
-import ${binding} from './application.js';
+import ${binding} from ${quoted(specifier)};
 
 await ${identifier}.run();
 `;
 }
 
 /**
- * The test a scaffold writes to `src/application.test.ts`: it passes the Application to the
- * assembly check of `@loomcli/testing`, under the test runner. The comment says why to keep it.
+ * The test a scaffold writes to `<source>/application.test.ts`: it imports the Application from
+ * `specifier`, the application module's path relative to the test, and passes it to the assembly
+ * check of `@loomcli/testing`, under the test runner. The comment says why to keep it.
  * A Bun test names its types with a reference directive, because TypeScript loads no `@types`
  * package unless a configuration lists it, and a package's own `tsconfig.json` may not.
  */
 export function applicationTest(
   runner: TestRunner,
   { identifier, kind }: ApplicationImport,
+  specifier: string,
 ): string {
   const binding = kind === 'named' ? `{ ${identifier} }` : identifier;
   const imports =
@@ -59,7 +64,7 @@ import { assertAssembles } from '@loomcli/testing';`
 import { test } from 'vitest';`;
   return `${imports}
 
-import ${binding} from './application.js';
+import ${binding} from ${quoted(specifier)};
 
 // Keep this test. It is the check that the whole application assembles, so a fault only the
 // assembled application reveals fails CI rather than the operator's first run.
@@ -74,36 +79,43 @@ export const oxlintConfig = `${JSON.stringify(loomPlugin.configs.oxlint, undefin
 
 /**
  * The `eslint.config.js` a scaffold writes: the plugin's recommended configuration for the
- * TypeScript source, with the TypeScript parser ESLint needs to read it.
+ * TypeScript source under `source`, the source folder relative to the package directory, with the
+ * TypeScript parser ESLint needs to read it.
  */
-export const eslintConfig = `import loom from '@loomcli/eslint-plugin';
+export function eslintConfig(source: string): string {
+  const files = quoted(source === '.' ? '**/*.ts' : `${source}/**/*.ts`);
+  return `import loom from '@loomcli/eslint-plugin';
 import tseslint from 'typescript-eslint';
 
 export default [
-  { files: ['src/**/*.ts'], languageOptions: { parser: tseslint.parser } },
-  { files: ['src/**/*.ts'], ...loom.configs.recommended },
+  { files: [${files}], languageOptions: { parser: tseslint.parser } },
+  { files: [${files}], ...loom.configs.recommended },
 ];
 `;
+}
 
 /**
  * The `tsconfig.json` a scaffold writes: a strict configuration for a Node ESM application that
- * `loom build` bundles, so the compiler only type-checks, which the `check` script runs.
+ * `loom build` bundles, so the compiler only type-checks, which the `check` script runs. It
+ * includes `source`, the source folder relative to the package directory.
  */
-export const typescriptConfig = `${JSON.stringify(
-  {
-    compilerOptions: {
-      module: 'NodeNext',
-      moduleResolution: 'NodeNext',
-      noEmit: true,
-      skipLibCheck: true,
-      strict: true,
-      target: 'ES2022',
+export function typescriptConfig(source: string): string {
+  return `${JSON.stringify(
+    {
+      compilerOptions: {
+        module: 'NodeNext',
+        moduleResolution: 'NodeNext',
+        noEmit: true,
+        skipLibCheck: true,
+        strict: true,
+        target: 'ES2022',
+      },
+      include: [source],
     },
-    include: ['src'],
-  },
-  undefined,
-  2,
-)}\n`;
+    undefined,
+    2,
+  )}\n`;
+}
 
 /** The `package.json` init writes in an empty directory, before it adds the scaffold keys. */
 export function newManifest(name: string): string {

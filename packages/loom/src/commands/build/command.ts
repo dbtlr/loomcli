@@ -3,6 +3,7 @@ import { createValidator } from '@loomcli/validators';
 
 import { ownerName } from '../../helpers/build-facts.js';
 import { targetOption } from '../../helpers/build-target.js';
+import { loomConfig } from '../../helpers/loom-config.js';
 
 /*
  * The action imports its work when it runs, so a run of any other command, help included, loads
@@ -31,6 +32,7 @@ const repositoryOption = createValidator({
 
 export const buildCommand = new Command('build', {
   description: "Build the package's application for one target with its release facts baked in.",
+  uses: [loomConfig],
 })
   .option('target', {
     description:
@@ -40,16 +42,17 @@ export const buildCommand = new Command('build', {
   })
   .option('out', {
     description:
-      "Write to this path: a bundle's directory, by default dist/, or a binary's file, by default dist/<name>.",
+      "Write to this path: a bundle's directory, by default paths.out, dist/ by convention, or a binary's file, by default <paths.out>/<name>.",
     type: 'string',
   })
   .option('entry', {
-    description: 'Build from this module, which calls run(), instead of src/main.ts.',
+    description:
+      'Build from this module, which calls run(), instead of paths.entry, by default src/main.ts.',
     type: 'string',
   })
   .option('application', {
     description:
-      'Bundle this module, which exports the Application, instead of src/application.ts.',
+      'Bundle this module, which exports the Application, instead of paths.application, by default src/application.ts.',
     type: 'string',
   })
   .option('build', {

@@ -50,7 +50,10 @@ test('a build still needs a bin to name its application', () => {
 });
 
 const versions = { loom: '1.2.3', typescript: '^7.0.0' };
-const keys = scaffoldKeys('notes', versions, defaultTooling);
+/** Where a package with no configuration file keeps its entry's bundle and its source. */
+const conventional = { bin: 'dist/main.js', source: 'src' };
+
+const keys = scaffoldKeys('notes', versions, defaultTooling, conventional);
 
 test('every missing key is added at the end of its object, in the scaffold order', () => {
   const { added, text } = addMissingKeys('{\n  "name": "notes",\n  "type": "module"\n}\n', keys);
@@ -123,7 +126,10 @@ test.each<[Tooling, string, Record<string, string>]>([
     },
   ],
 ])('the tooling %j writes the check script and the packages it needs', (tooling, script, tools) => {
-  const { text } = addMissingKeys('{"name":"notes"}', scaffoldKeys('notes', versions, tooling));
+  const { text } = addMissingKeys(
+    '{"name":"notes"}',
+    scaffoldKeys('notes', versions, tooling, conventional),
+  );
   const written = JSON.parse(text);
   expect(written.scripts.check).toBe(script);
   expect(written.devDependencies).toEqual({
@@ -138,7 +144,7 @@ test('an ESLint scaffold leaves an existing typescript key alone and adds no sec
   const source = '{"name":"notes","devDependencies":{"typescript":"^7.0.0"}}';
   const { added, text } = addMissingKeys(
     source,
-    scaffoldKeys('notes', versions, { linter: 'eslint', runner: 'bun' }),
+    scaffoldKeys('notes', versions, { linter: 'eslint', runner: 'bun' }, conventional),
   );
   expect(JSON.parse(text).devDependencies.typescript).toBe('^7.0.0');
   expect(added).not.toContain('devDependencies.typescript');

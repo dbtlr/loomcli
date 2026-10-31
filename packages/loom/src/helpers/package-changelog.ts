@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { object, safeParse, string } from 'valibot';
 
 import { highestKind, insertSection, landedFragments, renderSection } from './changelog.js';
+import type { ChangelogFiles } from './changelog.js';
 import { parseManifest, withVersion } from './manifest.js';
 import { isRepository, isShallow, readWorkingFile } from './repository.js';
 import type { Checkout } from './repository.js';
@@ -52,19 +53,21 @@ async function requireHistory(checkout: Checkout) {
 
 /**
  * A package's next cut, prepared without writing: the section its pending fragments render, the
- * version they decide, and the new contents of `CHANGELOG.md` and `package.json`.
+ * version they decide, and the new contents of its changelog and `package.json`. `files` names the
+ * changelog and the fragment folder relative to the package directory, and either may leave it.
  */
 export async function preparePackageCut(
   checkout: Checkout,
   options: { date: string; narrative: string | undefined },
+  files: ChangelogFiles,
 ) {
   const directory = checkout.root;
   const manifest = readWorkingFile(directory, 'package.json');
   const current = packageVersion(manifest, join(directory, 'package.json'));
   await requireHistory(checkout);
-  const { fragments } = await landedFragments(checkout);
+  const { fragments } = await landedFragments(checkout, undefined, files.changes);
   if (fragments.length === 0) {
-    throw new Error('No fragments to release, so add a fragment to .changes/ first.');
+    throw new Error(`No fragments to release, so add a fragment to ${files.changes}/ first.`);
   }
   const version = nextVersion(current, highestKind(fragments));
   const section = renderSection({
@@ -73,11 +76,12 @@ export async function preparePackageCut(
     narrative: options.narrative,
     version,
   });
-  const changelog = existsSync(join(directory, 'CHANGELOG.md'))
-    ? readWorkingFile(directory, 'CHANGELOG.md')
+  const changelog = existsSync(join(directory, files.changelog))
+    ? readWorkingFile(directory, files.changelog)
     : '# Changelog\n';
   return {
-    changelog: insertSection(changelog, section, version),
+    changelog: insertSection(changelog, section, version, files),
+    files,
     fragments,
     manifest: withVersion(manifest, version),
     section,
@@ -89,8 +93,8 @@ export async function preparePackageCut(
 export type PackageCut = Awaited<ReturnType<typeof preparePackageCut>>;
 
 /**
- * Installs a prepared cut. The new files are staged in a temporary directory beside the originals,
- * so a failure while staging changes nothing. The replacement then moves each original and each
+ * Installs a prepared cut. The new files are staged in a temporary directory in the package
+ * directory, so a failure while staging changes nothing. The replacement then moves each original and each
  * consumed fragment into that directory and the staged files into place, and a failure undoes every
  * move made so far. Only when the undo itself fails does the directory stay, holding the originals.
  */
@@ -103,24 +107,28 @@ export function writePackageCut(directory: string, cut: PackageCut) {
   };
   let keep = false;
   try {
+    // Each file is staged under its conventional name, wherever the configuration puts the changelog.
     const files = [
-      ['CHANGELOG.md', cut.changelog],
-      ['package.json', cut.manifest],
-    ] satisfies [string, string][];
-    for (const [name, contents] of files) {
+      ['CHANGELOG.md', join(directory, cut.files.changelog), cut.changelog],
+      ['package.json', join(directory, 'package.json'), cut.manifest],
+    ] satisfies [string, string, string][];
+    for (const [name, path, contents] of files) {
       writeFileSync(join(stage, `new.${name}`), contents);
-      if (existsSync(join(directory, name))) {
-        chmodSync(join(stage, `new.${name}`), statSync(join(directory, name)).mode);
+      if (existsSync(path)) {
+        chmodSync(join(stage, `new.${name}`), statSync(path).mode);
       }
     }
-    for (const [name] of files) {
-      if (existsSync(join(directory, name))) {
-        move(join(directory, name), join(stage, `old.${name}`));
+    for (const [name, path] of files) {
+      if (existsSync(path)) {
+        move(path, join(stage, `old.${name}`));
       }
-      move(join(stage, `new.${name}`), join(directory, name));
+      move(join(stage, `new.${name}`), path);
     }
     for (const fragment of cut.fragments) {
-      move(join(directory, '.changes', fragment.name), join(stage, `fragment.${fragment.name}`));
+      move(
+        join(directory, cut.files.changes, fragment.name),
+        join(stage, `fragment.${fragment.name}`),
+      );
     }
   } catch (error) {
     const failed: string[] = [];

@@ -1,6 +1,7 @@
 import { Command } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
+import { loomConfig } from '../../helpers/loom-config.js';
 import { defaultTooling, linters, testRunners } from '../../helpers/tooling.js';
 
 /*
@@ -51,6 +52,7 @@ const runnerOption = choiceOption(testRunners, 'Use bun or vitest.');
 export const init = new Command('init', {
   description:
     'Scaffold a new application in an empty directory, or add the pieces a package lacks.',
+  uses: [loomConfig],
 })
   .option('only', {
     description:

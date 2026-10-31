@@ -310,6 +310,38 @@ test('write cuts a member package: section prepended, only the version changed, 
   ]);
 });
 
+test("write cuts from the folder and into the changelog loom.config.json names, at a monorepo's root", () => {
+  const changelog = '# Changelog\n\n## v1.4.7 - 2026-01-01\n\n### Fixes\n\n- Old entry.\n';
+  const root = repository({
+    files: {
+      '.changes/feature.tags.md': '- Add tags.\n',
+      'CHANGELOG.md': changelog,
+      'package.json': '{"name":"workspace","private":true}\n',
+      'packages/notes/.changes/fix.md': '- Not this package.\n',
+      'packages/notes/loom.config.json':
+        '{ "paths": { "changes": "../../.changes", "changelog": "../../CHANGELOG.md" } }\n',
+      'packages/notes/package.json': '{"name":"notes","version":"1.4.7"}\n',
+    },
+    prefix: 'loom-changelog-',
+  }).root;
+  const notes = join(root, 'packages/notes');
+  const section = '## v1.5.0 - 2026-10-07\n\n### Features\n\n- Add tags.\n\n';
+  expect(run(notes, 'write', '--date', '2026-10-07')).toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `${section}Next version: 1.5.0\n`,
+  });
+  expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(
+    changelog.replace('## v1.4.7', `${section}## v1.4.7`),
+  );
+  expect(readFileSync(join(notes, 'package.json'), 'utf8')).toBe(
+    '{"name":"notes","version":"1.5.0"}\n',
+  );
+  expect(readdirSync(join(root, '.changes'))).toEqual([]);
+  expect(readdirSync(join(notes, '.changes'))).toEqual(['fix.md']);
+  expect(readdirSync(notes).toSorted()).toEqual(['.changes', 'loom.config.json', 'package.json']);
+});
+
 test('write creates CHANGELOG.md with a title when it is missing', () => {
   const root = packageRepository('0.0.0', { '.changes/fix.md': '- Fix output.\n' });
   expect(run(root, 'write', '--date', '2026-10-07').status).toBe(0);

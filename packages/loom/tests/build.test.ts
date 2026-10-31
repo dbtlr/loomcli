@@ -349,6 +349,57 @@ test('--application bundles the module it names, and one that does not exist fai
   expect(missing.stderr).toContain('src/gone.ts');
 });
 
+test('paths.source in loom.config.json moves the entry and the application module the build reads', () => {
+  const root = fixturePackage({
+    'lib/application.ts': application,
+    'lib/main.ts': entry,
+    'loom.config.json': '{ "paths": { "source": "lib" } }\n',
+    'package.json': '{"name":"moved","type":"module","version":"1.0.0"}\n',
+  });
+  const result = loom(root, ['build', '--target', 'node']);
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  expect(readdirSync(join(root, 'dist'))).toEqual(
+    expect.arrayContaining(['application.js', 'main.js']),
+  );
+  expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({ build: 'distributed' });
+});
+
+test('with only paths.source set, a missing conventional application module leaves the entry alone', () => {
+  const root = fixturePackage({
+    'lib/main.ts': `${application.replace('export const', 'const')}\nawait probe.run();\n`,
+    'loom.config.json': '{ "paths": { "source": "lib" } }\n',
+    'package.json': '{"name":"solo","type":"module","version":"1.0.0"}\n',
+  });
+  const result = loom(root, ['build', '--target', 'node']);
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+  expect(readdirSync(join(root, 'dist'))).toEqual(['main.js']);
+});
+
+test('an application module paths.application names that does not exist fails the build and names the key', () => {
+  const root = probePackage(
+    {},
+    { 'loom.config.json': '{ "paths": { "application": "src/app.ts" } }\n' },
+  );
+  const result = loom(root, ['build', '--target', 'node']);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain(
+    'src/app.ts does not exist, so create it or name the module with paths.application.',
+  );
+  expect(existsSync(join(root, 'dist'))).toBe(false);
+});
+
+test('paths.out moves the output, and --out beats it', () => {
+  const root = probePackage({}, { 'loom.config.json': '{ "paths": { "out": "build" } }\n' });
+  expect(loom(root, ['build', '--target', 'node']).status).toBe(0);
+  expect(existsSync(join(root, 'dist'))).toBe(false);
+  expect(factsOf(join(root, 'build/main.js'), 'node')).toEqual({ build: 'distributed' });
+  expect(loom(root, ['build', '--target', 'node', '--out', 'other']).status).toBe(0);
+  expect(factsOf(join(root, 'other/main.js'), 'node')).toEqual({ build: 'distributed' });
+});
+
 test('--application with a compile target is an option error that says it applies to a bundle', () => {
   const root = probePackage({ bin: { probe: 'dist/main.js' } });
   for (const target of [['--target', 'bun-linux-x64'], []]) {
