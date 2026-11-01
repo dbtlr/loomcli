@@ -195,6 +195,29 @@ test("a distributed bundle's copy sits in dist/loom-skills and a rebuild replace
   expect(readFileSync(join(root, 'dist/notes.txt'), 'utf8')).toBe('Not the build’s.\n');
 });
 
+test('a folder that holds no skill beside a listed one carries an empty copy', async () => {
+  const listed = `import { Application } from '@loomcli/core';
+import { skills } from '@loomcli/plugins/skills';
+
+export const notes = new Application('notes', {
+  description: 'Keep notes.',
+  plugins: [
+    skills({
+      folder: new URL('../skills/', import.meta.url),
+      skills: [{ files: () => [{ content: '# Listed\\n', path: 'SKILL.md' }], name: 'listed' }],
+    }),
+  ],
+});
+`;
+  const root = notesPackage({ 'src/application.ts': listed });
+  put(root, 'dist/loom-skills/stale/SKILL.md', '# Stale\n');
+  rmSync(join(root, 'skills/notes'), { recursive: true });
+  const built = await loom(root, ['build', '--target', 'node']);
+  expect(built.stderr).toBe('');
+  expect(built.status).toBe(0);
+  expect(readdirSync(join(root, 'dist/loom-skills'))).toEqual([]);
+});
+
 test('a development build names the source folder, so an edit after the build installs', async () => {
   const root = notesPackage();
   const built = await loom(root, ['build', '--target', 'node', '--build', 'development']);

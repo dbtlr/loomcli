@@ -172,6 +172,8 @@ function stageSkills(plan: BuildPlan, directory: string): void {
     return;
   }
   const { folder, skills } = plan.skills;
+  // A folder that holds no skill beside listed ones carries an empty copy, which replaces the last.
+  mkdirSync(join(directory, carriedFolder), { recursive: true });
   for (const { files, name } of skills) {
     for (const { path } of files) {
       const parts = path.split('/');
@@ -310,7 +312,8 @@ async function build(plan: BuildPlan, run: RunHost): Promise<BuildOutcome> {
     if (carriesCopy(plan)) {
       stageSkills(plan, compiles ? staging : written);
       // Bun embeds the folder at its path relative to its working directory, beside the program.
-      extra.push(...(compiles ? ['--asset', carriedFolder] : []));
+      const embeds = compiles && plan.skills.kind === 'read' && plan.skills.skills.length > 0;
+      extra.push(...(embeds ? ['--asset', carriedFolder] : []));
     }
     const listed = join(staging, 'metafile.json');
     extra.push(...(plan.skills.kind === 'unread' ? [`--metafile=${listed}`] : []));
