@@ -1,7 +1,8 @@
 /*
  * The skills folder reader: each directory directly inside the folder is one skill named for it,
- * holding every file below it. It reads through `node:fs` alone, so it reads the same way under
- * Node and Bun, and it serves an unbuilt run, a development build, and the build's own judging.
+ * holding every file below it whose path has no segment that starts with `.`. It reads through
+ * `node:fs` alone, so it reads the same way under Node and Bun, and it serves an unbuilt run, a
+ * development build, and the build's own judging.
  */
 import { lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import type { Stats } from 'node:fs';
@@ -14,7 +15,7 @@ import { judged } from './judge.js';
 import { identity, isSkillName } from './settings.js';
 import type { SkillFile } from './types.js';
 
-/** One skill the folder holds: its directory's name and every file below it. */
+/** One skill the folder holds: its directory's name and the files below it that it carries. */
 interface FolderSkill {
   readonly name: string;
   readonly files: readonly SkillFile[];
@@ -122,14 +123,21 @@ function entryFiles(skill: string, path: string, relative: string): SkillFile[] 
   return [fileOf(path, relative, named)];
 }
 
+/** Whether a name is a dot entry, such as `.DS_Store`, which the folder never reads. */
+function isDotName(name: string): boolean {
+  return name.startsWith('.');
+}
+
 /**
  * Every file below a skill's directory, at its path relative to the skill's directory with `/`
- * between segments, in name order, or the first fault an entry holds.
+ * between segments, in name order, or the first fault an entry holds. A dot entry, at any depth,
+ * is skipped by its name before it is examined, so an editor's lock link that names nothing is no
+ * fault.
  */
 function skillFiles(skill: string, directory: string, prefix = ''): SkillFile[] {
-  return sortedNames(directory).flatMap((name) =>
-    entryFiles(skill, join(directory, name), `${prefix}${name}`),
-  );
+  return sortedNames(directory)
+    .filter((name) => !isDotName(name))
+    .flatMap((name) => entryFiles(skill, join(directory, name), `${prefix}${name}`));
 }
 
 /** One skill directory directly inside the folder, judged as the plugin judges a loader's files. */
@@ -144,18 +152,20 @@ function readSkill(folder: string, name: string): FolderSkill {
 type Missing = 'setting' | 'built';
 
 /**
- * The skills directly inside the folder, in name order: each directory, or link to one, whose name
- * does not start with `.`, read and judged. A link that names nothing is a fault, and a file or a
- * link to one is ignored.
+ * The skills directly inside the folder, in name order: each directory, or link to one, read and
+ * judged. A dot entry is skipped by its name before it is examined, a link that names nothing is a
+ * fault, and a file or a link to one is ignored.
  */
 function skillsIn(folder: string): FolderSkill[] {
-  return sortedNames(folder).flatMap((name) => {
-    const entry = followed(join(folder, name));
-    if (entry === undefined) {
-      throw faults.brokenLink(folder, name);
-    }
-    return entry.isDirectory() && !name.startsWith('.') ? [readSkill(folder, name)] : [];
-  });
+  return sortedNames(folder)
+    .filter((name) => !isDotName(name))
+    .flatMap((name) => {
+      const entry = followed(join(folder, name));
+      if (entry === undefined) {
+        throw faults.brokenLink(folder, name);
+      }
+      return entry.isDirectory() ? [readSkill(folder, name)] : [];
+    });
 }
 
 /**
