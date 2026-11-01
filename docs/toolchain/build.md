@@ -124,6 +124,6 @@ skills({ folder: new URL('../../../skills/', import.meta.url) }) // a monorepo's
   | `distributed` compile target | the same files embedded in the binary, with each file's executable bit, because an embedded file keeps no mode |
   | a build that read nothing, or found no folder | which of the two, so a run whose setting names a folder fails and says why |
 
-- **The bundle's `loom-skills/`.** It is the build's own folder, so it is replaced whole with the rest of the output, and a skill the source folder dropped leaves it, unlike the other files a build does not write. A bundle whose `loom-skills/` would be the skills folder, inside it, or hold it, as `--out` naming the package directory does, fails before it builds, because the build never writes into the source tree.
+- **The bundle's `loom-skills/`.** It is the build's own folder, so it is replaced whole with the rest of the output, and a skill the source folder dropped leaves it, unlike the other files a build does not write. A bundle whose `loom-skills/` would be the skills folder, inside it, or hold it, as `--out skills` does in a package whose folder is `skills/`, fails before it builds, because the build never writes into the source tree.
 - **Watching.** `--watch` reads the declaration once, when it starts, so a change to the `folder` setting takes a restart, and a change inside the folder needs none.
 - **A custom build.** `--define` and `--facts` print the release facts alone, so a bundle built with Bun directly carries no folder, and its skills plugin reads the setting as a source run does.
