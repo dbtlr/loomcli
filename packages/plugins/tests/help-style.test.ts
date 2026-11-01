@@ -8,8 +8,7 @@
  * - Root, leaf, group, and hybrid pages retain their content rules. Cover hidden-member filtering,
  *   a directly requested hidden Command, a group with only hidden children, omitted empty sections,
  *   and root-only folding of globals.
- * - Compare complete plain text for jsonkit root, jsonkit select, and textstat against the examples
- *   above. Check one final newline, no trailing row padding, required and variadic forms, Boolean
+ * - Compare complete plain text for fixture root, leaf, and group pages against the pages above. Check one final newline, no trailing row padding, required and variadic forms, Boolean
  *   polarity, short-only options, and existing default serialization.
  * - Pin exact themed bytes for the style mapping, including placeholders beside highlighted
  *   spellings, the accepted-values sentence, dim fact punctuation around warning deprecation,

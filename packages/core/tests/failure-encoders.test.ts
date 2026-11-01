@@ -3,33 +3,33 @@ import { expect, test } from 'vite-plus/test';
  * Acceptance plan for failure encoders (docs/core/failure-views.md#failure-encoders).
  *
  * Failure encoders are proven when public APIs alone produce these results under Node and Bun, with
- * textstat and jsonkit installing the formatter:
+ * a fixture application whose `--pick` option selects among a row view with a JSON media type and a
+ * text view, and, for the formatter plugin's own `--format`, the fixtures in
+ * packages/plugins/tests/format-failures.test.ts:
  *
- * - A held fault. `textstat --format json --metric nope one.txt` writes exactly
- *   `{"error":{"code":"invalid-input","exitCode":2,"message":"Option \"--metric\": Expected one of:
- *   bytes, words, lines.","hints":["Run \"textstat --help\" to see the usage."]}}` and one newline
- *   to stderr, nothing to stdout, and exits 2. `--format jsonl` writes the same bytes. `textstat
- *   --format json --bogus one.txt` writes the `unknown-option` line and exits 2, and `textstat
- *   --format json -c missing.json one.txt` writes the configuration failure's `invalid-input` line
- *   and exits 2, because core validates the formatter's `--format` under the held structural and
- *   input-source faults.
- * - An action failure. `jsonkit paths --format json -f broken.json` writes the `invalid-json` line
- *   with exit code 65, and `jsonkit paths --format jsonl -f <document with a refused key>` writes
- *   nothing on stdout, because `jsonl()` is a whole view and the sequence stopped, and the `fatal`
- *   line alone on stderr, with no incomplete-result line. A fixture row view under an encoded media
- *   type writes its earlier rows on stdout and the line alone on stderr.
- * - Text. `textstat --metric nope one.txt`, `textstat --format yaml one.txt`, and `jsonkit typo
- *   --format json -f doc.json` write their text diagnostics unchanged, as does a build fault under
- *   `--format json`, and `jsonkit paths -f <document with a refused key>` still writes the
- *   incomplete-result line ahead of its text.
+ * - A held fault. `list --pick json --depth x` writes exactly
+ *   `{"error":{"code":"invalid-input","exitCode":2,"message":"Option \"--depth\": Use decimal
+ *   digits.","hints":["Run \"enc --help\" to see the usage."]}}` and one newline to stderr, nothing
+ *   to stdout, and exits 2. `--bogus` writes the `unknown-option` line and exits 2, and a failing
+ *   input source writes the `invalid-input` line and exits 2, because core validates the selection
+ *   under the held structural and input-source faults. The formatter's `--format json` and
+ *   `--format jsonl` write the same bytes (format-failures.test.ts).
+ * - An action failure. A Command that fails after its first row under `--pick json` writes the row
+ *   on stdout and the `fatal` line alone on stderr, with no incomplete-result line. The formatter's
+ *   `jsonl()` is a whole view, so a sequence that stops under `--format jsonl` writes nothing on
+ *   stdout and the `fatal` line alone on stderr (format-failures.test.ts).
+ * - Text. A selection that names no encoded media type, such as `list` or `list --depth x`, an
+ *   unknown Command under `--pick json`, and a build fault write their text diagnostics unchanged,
+ *   and `list` still writes the incomplete-result line ahead of its text. The formatter's rejected
+ *   `--format yaml` writes its text diagnostic (format-failures.test.ts).
  * - The default view. A fixture Command whose default view is `json()` writes the JSON line for a
  *   failure with no `--format`.
  * - Defects. A fixture action that throws a `TypeError` under `--format json` writes
  *   `{"error":{"code":"internal","exitCode":1,"message":"Something went wrong.","hints":[]}}` from
  *   a bundle, with no generic text line, and its Developer Diagnostic and then the line with its
  *   sentence from source.
- * - Overrides. jsonkit's `FatalError` override renders `jsonkit paths -f broken.json` and is not
- *   consulted under `--format json`.
+ * - Overrides. A fixture `FatalError` override renders the text failure and is not consulted under
+ *   `--pick json`.
  * - Registration faults. Two encodings for one media type in one plugin, and in two installed
  *   plugins, throw `@loomcli/core/failure-encoder-taken`.
  * - Broken. An encoder that throws, one that returns a number, and one that returns a promise each
@@ -43,7 +43,7 @@ import { expect, test } from 'vite-plus/test';
  *   fails with an `ENOSPC`-style error writes the line beside its plain fallback report and exits
  *   1. A stdout whose reader closed the pipe writes no line and exits 141, under Signals and
  *   cancellation.
- * - By name. `textstat.invoke([], …, { view: 'json' })` with an invalid metric captures the text
+ * - By name. A fixture's `invoke` with an invalid option under `view: 'json'` captures the text
  *   diagnostic in `messages`, calls no encoder, and carries the form on the outcome.
  */
 
@@ -104,6 +104,22 @@ test('a held fault under an encoded selection writes the encoded line alone, and
       message:
         'Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".',
     }),
+  );
+});
+
+test('an input-source fault under an encoded selection writes the encoded line, because core validates the selection under the held fault', async () => {
+  const env = { FIXTURE_SOURCE: 'fails' };
+  await expect(run(['list', '--pick', 'json'], { env })).resolves.toEqual({
+    status: 2,
+    stderr: line({
+      code: 'invalid-input',
+      exitCode: 2,
+      message: 'The settings file cannot be read.',
+    }),
+    stdout: 'exit:2\n',
+  });
+  await expect(run(['list'], { env }).then((fixtureResult) => fixtureResult.stderr)).resolves.toBe(
+    `enc: The settings file cannot be read.\n${hint}\n`,
   );
 });
 

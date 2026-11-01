@@ -1,4 +1,53 @@
-// Acceptance plan: see examples/textstat/tests/configuration.test.ts.
+/*
+ * Acceptance plan for the configuration plugin (docs/plugins/config.md#configuration-plugin).
+ *
+ * The configuration plugin is proven when public APIs alone produce these results, with `HOME`
+ * pointed at a temporary directory through the mock process's environment. The fixture
+ * application in fixtures/config-run.ts installs `configuration()` with the settings a case
+ * names and binds its options (`--limit`, `--title`, `--verbose`, `--backup`, `--root`) to keys
+ * with `configInput`. config-formats.test.ts reads the parsers directly.
+ *
+ * - Lookup. The fixture reads a key from `.app.json` in `host.cwd`, from the home file when the
+ *   working directory holds no candidate, and from no file when neither holds one. A file in the
+ *   working directory hides the home file entirely, and a broken file in the working directory
+ *   warns and no later location answers. The walk, a root marker, `scopes`, the user file, and
+ *   `directory` change where the lookup starts and ends, and `configuration()` with no settings
+ *   reads `.<app>.json`.
+ * - Precedence. The variable `env` names beats the file, and a flag beats both.
+ * - `--config`. `--config` and its short each name a file that answers alone, so a file in the
+ *   working directory is not read. A named file that does not exist, is not valid in its format,
+ *   or holds an array prints its failure with code 2, reports nothing under `--help`, and a run
+ *   that fills every bound option from argv reads no file and exits 0. `inspect()` reads
+ *   `control: true` on `--config` and `--no-config`.
+ * - `--no-config`. A run with `--no-config` reads no file, and `--no-config` beside `--config`
+ *   fails with code 2.
+ * - Discovered files. A missing file prints nothing. A directory in its place, an empty JSON file,
+ *   invalid JSON, and a top-level array each print one warning and the run exits 0, and a file
+ *   that does not parse names the line and column where it breaks, in the warning and in the
+ *   `--config` failure.
+ * - Formats. The extension chooses the parser: TOML, YAML, JSON with comments and trailing commas,
+ *   and an extensionless or unknown extension as JSON. With several candidates in one directory the
+ *   first answers and one warning prints. A JSON run loads neither the TOML nor the YAML parser,
+ *   proven in config-formats.test.ts. A broken TOML or YAML file, an empty YAML file, and a YAML
+ *   file with a second document or a `!!binary` tag each print their warning when discovered and
+ *   fail with code 2 when named.
+ * - Values. A counted option reads `3` as `3` and `0` as `0`, and `"3"`, `-1`, and `1.5` fall to its
+ *   default. A string for a Boolean and an object for a string option are dropped by the schema and
+ *   fill nothing, with exit code 0. An array fills a multiple option, and an item with the wrong
+ *   value fills nothing. A TOML date and a local time fill their text as written, a TOML integer
+ *   beyond the safe range fills its exact digits, and a YAML `no` fills a Boolean option with
+ *   nothing.
+ * - Paths. A path that meets a non-object leaves the option unanswered, and `configInput({ path:
+ *   'a..b' })` throws at the call.
+ * - Escaping. A `--config` path that holds U+001B prints it as `\u001b` in its failure.
+ * - Edges. A `file` that is absolute, that holds a glob outside the extension, or that lists an
+ *   unknown extension throws from `configuration()` under its rule, a file that starts with a byte
+ *   order mark reads, the `problems` of a source `InputError` reach an override of the
+ *   `InputError` view, and a local structure fault outranks a source `InputError`.
+ * - Packed consumers. A consumer installs the packed pack, imports `@loomcli/plugins/config` and
+ *   `@loomcli/plugins/config/extension`, compiles against their declarations, and reads a value
+ *   from a file.
+ */
 
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -1207,13 +1256,19 @@ test(
 test('inspect() lists the --config and --no-config options and the binding value on each bound option', () => {
   const graph = inspected({});
   expect(graph.globals.find((option: { name: string }) => option.name === 'config')).toMatchObject({
+    control: true,
     description: 'Read configuration from this file alone.',
     short: null,
     type: 'string',
   });
   expect(
     graph.globals.find((option: { name: string }) => option.name === 'no-config'),
-  ).toMatchObject({ description: 'Read no configuration file.', short: null, type: 'boolean' });
+  ).toMatchObject({
+    control: true,
+    description: 'Read no configuration file.',
+    short: null,
+    type: 'boolean',
+  });
   expect(
     graph.root.options.find((option: { name: string }) => option.name === 'limit')?.extensions,
   ).toEqual({ '@loomcli/plugins/config/input': { path: 'limits.bytes' } });
@@ -2354,6 +2409,16 @@ test(
         },
       ])}\n`,
       status: 'failed',
+    });
+  }),
+);
+
+test(
+  'a local structure fault outranks the InputError a --config file that is missing would raise',
+  inWorkspace(async (space) => {
+    await expect(space.run(['--config', 'missing.json', '--limit'])).resolves.toMatchObject({
+      status: 2,
+      stderr: expect.stringContaining('Option "--limit" requires a value.'),
     });
   }),
 );

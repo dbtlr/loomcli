@@ -6,11 +6,10 @@ import { inspect as fixtureInspect, run as fixtureRun } from './fixtures/format-
 /*
  * Acceptance plan for the formatter plugin (docs/plugins/format.md).
  *
- * The formatter is proven when textstat installs `format({ short: 'f' })` and jsonkit installs
- * `format({ short: 'o' })`, after `help()` and `version()` and ahead of the example plugin, and
- * public APIs alone produce the transcripts that examples/textstat/tests/format.test.ts and
- * examples/jsonkit/tests/format.test.ts pin. This suite and format-views.test.ts cover the rest.
- * Each case runs under Node and Bun. The cases:
+ * The formatter is proven when public APIs alone produce these transcripts through the fixture
+ * applications in fixtures/format-run.ts, which install `help()`, `version()`, and `format()` in
+ * that order, and in fixtures/format-build.ts, which declare the collisions. This suite and
+ * format-views.test.ts cover the views. Each case runs under Node and Bun. The cases:
  *
  * - Views. Both views under both units with an empty array and with a map, a `bigint` and a
  *   top-level `undefined` as view faults, and U+009B and U+001B inside a string printed as escapes
@@ -119,6 +118,12 @@ test('--format on a Command with no result is the unknown-option error', async (
       'app: Unknown option "--format". Supply a declared option; prefix a hyphenated path with "./".\nRun "app count --help" to see the usage.\n',
     stdout: '',
   });
+});
+
+test('--format yaml --help still prints the help page', async () => {
+  const page = await run('short', ['count', '--help']);
+  expect(page.status).toBe(0);
+  await expect(run('short', ['count', '--format', 'yaml', '--help'])).resolves.toEqual(page);
 });
 
 test('a no-result Command has no --format row on its help page', async () => {

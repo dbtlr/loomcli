@@ -3,12 +3,8 @@
  *
  * Markdown details are proven when public APIs alone produce these results under Node and Bun:
  *
- * - Example page. jsonkit's `get` reads its help `details` from `src/commands/get.md` through a
- *   text import, and `jsonkit get --help` prints the page above, byte for byte, with color and
- *   modifiers disabled, from the `loom build --target node` bundle the example tests run. `jsonkit
- *   get -h` omits the block and prints the pointer. `jsonkit get --manifest` carries the file's
- *   text as written, final line terminator included. Every other example page and manifest is
- *   unchanged.
+ * - Source text. A Command's `--manifest` carries the details source text as written, final line
+ *   terminator included, while its help page prints the rendered block.
  * - Packed consumer. `check:packed` bundles a fixture entry whose details come from a text import
  *   of a `.md` file with the packed `loom build --target node`, as it bundles its release fixture,
  *   and the bundle's `--help` page prints the rendered block under Node and Bun. The `tsc`-compiled
@@ -43,9 +39,8 @@
  *   call on `helpCommand` and on `manifestCommand`; details that renders no line prints no block,
  *   and the compact page prints no pointer for it when the Command has no examples; and no page
  *   line ends in whitespace.
- * - Compatibility. jsonkit's root and textstat's root, whose details use no Markdown syntax, print
- *   their pages unchanged, and so does a multi-line details value with no Markdown syntax and no
- *   whitespace at either end of a line.
+ * - Compatibility. A multi-line details value with no Markdown syntax and no whitespace at either
+ *   end of a line prints unchanged.
  * - Styles and escaping. Exact themed bytes pin each style above: a plain paragraph line as one
  *   `primary` value, a heading, nested emphasis, a code span inside a heading and inside strong
  *   emphasis, a link inside emphasis with its destination, a link and an autolink that print an

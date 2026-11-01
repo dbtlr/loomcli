@@ -18,7 +18,7 @@ type Settings = Pick<
 
 const dispatch = ({ out }: Pick<ActionContext<{}>, 'out'>) => out.print('dispatched');
 
-/** Every scenario installs the pack in the order the examples do, so help wins a tie. */
+/** Every scenario installs the pack in the order a first-party Application does, so help wins a tie. */
 const plugins = [help(), version()];
 
 /** The same pack under the view overrides one scenario lists, so the plugins stay installed. */

@@ -58,13 +58,7 @@ const workersPerCore = 1.5,
 
 export default defineConfig({
   fmt: {
-    ignorePatterns: [
-      'dist/**',
-      '**/*.generated.ts',
-      '**/*.{md,mdx,markdown}',
-      // A pinned manifest document holds the exact bytes the plugin prints, so it is never rewritten.
-      'examples/*/tests/fixtures/manifest/*.json',
-    ],
+    ignorePatterns: ['dist/**', '**/*.generated.ts', '**/*.{md,mdx,markdown}'],
     singleQuote: true,
     sortImports: { ignoreCase: true },
   },
@@ -342,11 +336,7 @@ export default defineConfig({
         },
       },
       {
-        files: [
-          'packages/*/tests/fixtures/**',
-          'packages/*/tests/type-consumer/**',
-          'examples/*/tests/fixtures/**',
-        ],
+        files: ['packages/*/tests/fixtures/**', 'packages/*/tests/type-consumer/**'],
         rules: {
           // These consumers exercise ignored promises, values, and rejected SDK calls.
           'eslint/no-new': 'off',

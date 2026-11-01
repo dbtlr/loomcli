@@ -4,10 +4,9 @@ import { expect, test } from 'vite-plus/test';
  *
  * The failure form is proven when public APIs alone produce these results under Node and Bun:
  *
- * - The example. The `invoke` above reads the form in its comment, and `jsonkit.invoke(['get'], {
- *   args: { path: 'missing' }, options: { file: 'doc.json' } })` reads `{ code: 'path-not-found',
- *   exitCode: 65, message: 'Path not found: "missing". Run jsonkit keys to list the keys at the
- *   root.', hints: [] }`.
+ * - A fatal failure. A failed outcome and its handler carry one frozen form that reads `{ code:
+ *   'fatal', exitCode: 1, message: 'The registry is down.', hints: [] }` in the contract's key
+ *   order.
  * - Two problems. An `InputError` with two problems reads both lines in `message`, with no
  *   application name and no trailing newline.
  * - Plain text. A `FatalError` whose message carries a style mark, and a hint that carries one,

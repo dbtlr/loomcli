@@ -6,12 +6,9 @@ import { expect, test } from 'vite-plus/test';
  *
  * - Core's codes. Each class in the table reads its code without an instance, and a failure core
  *   raises for each reaches `invoke`'s `failed.form.code` with it.
- * - Inherited. A `FatalError` subclass that declares nothing reads `fatal`, a subclass of
- *   `PathNotFoundError` that declares nothing reads `path-not-found`, and a direct `LoomError`
- *   subclass that declares nothing reads `failure`.
- * - The example. jsonkit's `PathNotFoundError` declares `path-not-found` and its `InvalidJsonError`
- *   declares `invalid-json`, and `jsonkit.invoke(['get'], { args: { path: 'missing' }, options: {
- *   file: 'doc.json' } })` reads `path-not-found` with exit 65.
+ * - Inherited. A `FatalError` subclass that declares nothing reads `fatal`, a subclass of a fixture
+ *   `PathNotFoundError` that declares `path-not-found` and declares nothing itself reads
+ *   `path-not-found`, and a direct `LoomError` subclass that declares nothing reads `failure`.
  * - Invalid. Classes that declare `'Path_Not_Found'`, `''`, `'-x'`, `'a--b'`, `'path not found'`,
  *   and `42` each throw `@loomcli/core/failure-code` at construction, and an action that constructs
  *   one exits 1 with the Developer Diagnostic from source and the generic defect message from a

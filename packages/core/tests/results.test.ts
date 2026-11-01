@@ -2,13 +2,12 @@ import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for results (docs/core/results.md).
  *
- * Results are proven when examples/textstat declares its table as a result with one whole view
- * under the key `table` and prints the table bytes that packages/plugins/tests/table.test.ts pins,
- * with its `--timing` line still on stderr. They are also proven when a hidden jsonkit Command
- * declares `rows<Entry>` over the document's paths with a row view as its default and a whole view
- * under a second key, writes each row as an async generator yields it, and leaves a partial list
- * and the incomplete line behind when the generator throws. Each case runs under Node and Bun. The
- * cases:
+ * Results are proven when a fixture Command declares a result with one whole view, prints its
+ * rendered bytes on stdout, and keeps every other line, an informational line included, on stderr.
+ * They are also proven when a fixture Command declares `rows<Entry>` with a row view as its default
+ * and a whole view under a second key, writes each row as an async generator yields it, and leaves
+ * a partial list and the incomplete line behind when the generator throws. Each case runs under
+ * Node and Bun. The cases:
  *
  * - Rendering. Both shapes of `out.render` with a row view under a synchronous and an asynchronous
  *   iterable. `out.results` under each declaration with an array, a generator, and an async

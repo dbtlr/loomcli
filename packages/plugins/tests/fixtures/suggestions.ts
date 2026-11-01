@@ -156,5 +156,18 @@ async function runScenario(scenario: Scenario, argv: readonly string[]) {
   return { status: mock.exitCode, stderr: mock.stderr.text, stdout: mock.stdout.text };
 }
 
-export { runScenario };
+/**
+ * One invocation by name of a scenario's application on the same mock process, resolved as the
+ * outcome `invoke()` returns: the options are named by their declared names, not their spellings.
+ */
+async function invokeScenario(
+  scenario: Scenario,
+  path: readonly string[],
+  values: Parameters<Application['invoke']>[1],
+) {
+  const mock = mockProcess({ release: { build: 'distributed' } });
+  return scenarios[scenario]().invoke(path, values, { process: mock });
+}
+
+export { invokeScenario, runScenario };
 export type { Scenario };

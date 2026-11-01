@@ -5,23 +5,22 @@ import { expect, test } from 'vite-plus/test';
  * `view` and `mediaType` are proven when public APIs alone produce these results under Node and
  * Bun, each read by a fixture view override and a fixture `onFailure` hook alike:
  *
- * - After dispatch. `jsonkit paths --format json -f <document with a refused key>` reads `json` and
- *   `application/json`, and `jsonkit paths -f <the same document>` reads the default view, `list`,
- *   and `undefined`.
- * - A held fault. `textstat --format json --metric nope one.txt` and `textstat --format json
- *   --bogus one.txt` read `json` and `application/json`, the second because core validates the
- *   formatter's `--format` under the held unknown option. `textstat --metric nope one.txt` reads
- *   the default view, `table`, and `undefined`.
- * - The default view. `textstat --format yaml one.txt` reads `table` and `undefined`, because the
- *   rejected `--format` assigns nothing. A fixture Command whose default view is `json()` reads
- *   `json` and `application/json` for a failure with no `--format`.
- * - No selection. `jsonkit typo --format json -f doc.json`, a build fault, a declared default its
- *   validator rejects, and a failure on jsonkit's `get`, which declares no result, each read
- *   `undefined` for both.
+ * - After dispatch. A fixture `list --pick json` that fails after dispatch reads `json` and
+ *   `application/json`, and `list` with no `--pick` reads the default view, `table`, and
+ *   `undefined`.
+ * - A held fault. `list --pick json --depth x` and `list --pick json --bogus` read `json` and
+ *   `application/json`, the second because core validates the selecting option under the held
+ *   unknown option. `list --depth x` reads the default view, `table`, and `undefined`.
+ * - The default view. `list --pick yaml` reads `table` and `undefined`, because the rejected
+ *   selection assigns nothing. A fixture Command whose default view is `json()` reads `json` and
+ *   `application/json` for a failure with no `--pick`.
+ * - No selection. An unknown command under `--pick json`, a build fault, a declared default its
+ *   validator rejects, and a failure on a Command that declares no result each read `undefined`
+ *   for both.
  * - A bad selection. A fixture middleware that assigns `yaml` to `view` and then calls `next()`
  *   under a held fault reads `undefined` for both.
- * - By name. `invoke(['paths'], …, { view: 'json' })` against a document with a refused key reads
- *   `json` and `application/json` on both contexts.
+ * - By name. `invoke(['list'], …, { view: 'json' })` on a failing Command reads `json` and
+ *   `application/json` on both contexts.
  */
 
 import { invoke as invokeFixture } from './run-fixture.ts';

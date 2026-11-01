@@ -5,12 +5,14 @@
  * An unreadable working directory is proven when public APIs alone produce these results under Node
  * and Bun:
  *
- * - Both builds. A process test removes its working directory and runs jsonkit's bundle and
- *   jsonkit's source with `keys -f <absolute path>`. Each writes exactly `jsonkit: The current
- *   working directory cannot be read. Change to a directory that exists and run the command again.`
- *   and one newline to stderr, writes nothing to stdout, prints no stack, and exits 1. The same run
- *   with `--format json` on `paths` writes the same text line.
- * - Embedding. `jsonkit.invoke(['keys'], …)` from a removed directory resolves `failed` with exit
+ * - A removed directory. A process test removes its working directory and runs a fixture
+ *   application's `run()`. It writes exactly `cwd: The current working directory cannot be read.
+ *   Change to a directory that exists and run the command again.` and one newline to stderr, writes
+ *   nothing to stdout, and exits 1.
+ * - Both builds. A process whose working directory capture throws, in a distributed and a
+ *   development build, writes the same line to the captured stderr and runs no hook, view override,
+ *   or action.
+ * - Embedding. `app.invoke([...], …)` from a process whose working directory capture throws resolves `failed` with exit
  *   1, a `WorkingDirectoryError`, the form `{ code: 'working-directory-unreadable', exitCode: 1,
  *   message, hints: [] }`, and the line in `messages`, and never rejects.
  * - Overrides. `run({ process: processHandle({ cwd }) })` and `app.invoke` with `process: processHandle({ cwd })` from a removed
@@ -21,7 +23,7 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke, invokeFromRemovedDirectory } from '../../../scripts/test-process.js';
 
 /** The sentence a `WorkingDirectoryError` carries, which core's default text opens with the name. */
 const message =
@@ -36,6 +38,12 @@ function report(scenario: string, build: 'development' | 'distributed' = 'distri
   expect(result.stderr).toBe('');
   return { ...JSON.parse(result.stdout), status: result.status };
 }
+
+test('run() from a really removed working directory writes the line to stderr, nothing to stdout, and exits 1', () => {
+  expect(
+    invokeFromRemovedDirectory(new URL('fixtures/working-directory-real.mjs', import.meta.url)),
+  ).toEqual({ status: 1, stderr: `cwd: ${message}\n`, stdout: '' });
+});
 
 test('the class reads its failure code and exit code without an instance, and its cause is the thrown value', () => {
   expect(report('statics')).toEqual({

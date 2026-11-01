@@ -7,6 +7,13 @@ import { z } from 'zod';
 
 import { runOnMock } from './in-process.ts';
 
+/** Rows whose source throws after its first row. */
+async function* refusedRows() {
+  yield { key: 'a' };
+  await Promise.resolve();
+  throw new FatalError('The key "b" is refused.');
+}
+
 /** Runs the fixture on isolated process facts and returns its recorded output. */
 async function run(args: string[] = []) {
   /** A validator that accepts decimal digits alone. */
@@ -25,7 +32,7 @@ async function run(args: string[] = []) {
     render: (data) => `table:${z.object({ label: z.string() }).parse(data).label}\n`,
   };
 
-  /** Every scenario installs the pack in the order the examples do. */
+  /** Every scenario installs the pack in the order a first-party Application does. */
   const plugins = [help(), version(), format()];
 
   /** A Command that fails as `--fail` names, after its own options validated. */
@@ -43,6 +50,11 @@ async function run(args: string[] = []) {
       return out.results({ label: 'a' });
     });
 
+  /** A Command whose table view writes each row as it arrives, and which format() adds json and jsonl to. */
+  const walk = new Command('walk')
+    .rows<{ key: string }>({ views: { table: { row: (row) => `${row.key}\n` } } })
+    .action(({ out }) => out.results(refusedRows()));
+
   const scenarios = {
     /** A Command whose default view is `json()`, so a failure with no --format encodes. */
     'json-default': () =>
@@ -57,6 +69,8 @@ async function run(args: string[] = []) {
       new Application('app', { plugins, rendering: { terminalControls: 'preserve' } }).command(
         count,
       ),
+    /** A sequence of rows that stops after one row. */
+    rows: () => new Application('app', { plugins }).command(walk),
   };
 
   const [name, ...argv] = args;

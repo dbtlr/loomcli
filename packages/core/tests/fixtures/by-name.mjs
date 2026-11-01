@@ -182,9 +182,15 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
                 ({ out }) => out.print('purged'),
               ),
             ),
+        )
+        .command(
+          new Command('list', { description: 'The list command.' })
+            .alias('ls')
+            .action(({ out }) => out.print('listed')),
         );
       const env = { PROBE_MIN_BYTES: 'many' };
       print({
+        alias: await app.invoke(['ls'], {}, { process: createProcess({ release }) }),
         byName: await app.invoke(
           ['pair'],
           { args: { second: 'x' } },
@@ -211,6 +217,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
           { options: { verbos: true } },
           { process: createProcess({ release }) },
         ),
+        unknownPath: await app.invoke(['nope'], {}, { process: createProcess({ release }) }),
       });
       fixture.exitCode = 0;
     } else if (scenario === 'capture') {
@@ -567,6 +574,64 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       await app.run({ process: mock });
       const named = await app.invoke([], {}, { process: createProcess({ release }) });
       print({ argv: mock.stderr.text, named: named.messages, seen });
+      fixture.exitCode = 0;
+    } else if (scenario === 'wedge') {
+      /** A failure that declares its own exit code, as an application's data error would. */
+      class MissingError extends FatalError {
+        static code = 'missing';
+        static exitCode = 65;
+
+        constructor(name) {
+          super(`Missing: "${name}".`);
+          this.name = 'MissingError';
+        }
+      }
+      const app = new Application('probe', probe)
+        .command(
+          new Command('say', { description: 'The say command.' })
+            .argument('text', { description: 'The text argument.', required: true })
+            .option('times', {
+              description: 'The times option.',
+              type: 'string',
+              validate: wholeNumber,
+            })
+            .action(async ({ args, options, out }) => {
+              await out.print(args.text.repeat(options.times ?? 1));
+              await out.info('said');
+            }),
+        )
+        .command(
+          new Command('fail', { description: 'The fail command.' }).action(() => {
+            throw new MissingError('gone');
+          }),
+        );
+      const cases = [
+        { argv: ['say', 'hi'], path: ['say'], values: { args: { text: 'hi' } } },
+        {
+          argv: ['say', 'hi', '--times', '2'],
+          path: ['say'],
+          values: { args: { text: 'hi' }, options: { times: '2' } },
+        },
+        { argv: ['fail'], path: ['fail'], values: {} },
+        {
+          argv: ['say', 'hi', '--times', 'x'],
+          path: ['say'],
+          values: { args: { text: 'hi' }, options: { times: 'x' } },
+        },
+      ];
+      const reports = [];
+      for (const entry of cases) {
+        const mock = createProcess({ argv: entry.argv, record: false, release });
+        const code = await app.run({ process: mock });
+        const named = await app.invoke(entry.path, entry.values, {
+          process: createProcess({ release }),
+        });
+        reports.push({
+          argv: { code, stderr: mock.stderr.text, stdout: mock.stdout.text },
+          named: { code: named.exitCode ?? 0, stderr: named.messages, stdout: named.output },
+        });
+      }
+      print(reports);
       fixture.exitCode = 0;
     }
 

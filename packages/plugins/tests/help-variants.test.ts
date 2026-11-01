@@ -3,10 +3,8 @@
  *
  * Help variants are proven when public APIs alone produce these results under Node and Bun:
  *
- * - Example pages. `textstat --help`, `textstat -h`, `jsonkit -h`, and `jsonkit select -h` print
- *   the pages above, byte for byte, with color and modifiers disabled, and `jsonkit --help` and
- *   `jsonkit select --help` print their pages unchanged. The example applications' help goldens are
- *   re-pinned to these pages.
+ * - Pages. A fixture root's `--help` and `-h` and a fixture leaf's `-h` print the pages above, byte
+ *   for byte, with color and modifiers disabled.
  * - Selection. `-h` prints the compact page, `-Vh` the compact page, and `-h --help` the compact
  *   page, because the earlier `-h` stands when the repeated option is held.
  * - Spellings. A fixture plugin's middleware reads `--flag`, `-f`, and `--no-flag` for its typed

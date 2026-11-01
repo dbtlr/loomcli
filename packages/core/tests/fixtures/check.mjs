@@ -78,6 +78,20 @@ const declarations = {
   // A root with neither children nor an action, which ends the build.
   'build-fault': () =>
     new Application('probe', { description: 'Probe the checks.', plugins: [accepting] }),
+  // A declaration with nothing wrong in it.
+  clean: () =>
+    new Application('probe', { description: 'Probe the checks.', plugins: [accepting] })
+      .globalOption('level', { description: 'The level.', type: 'string', validate: digits })
+      .command(
+        new Command('get', { description: 'Get one value.' })
+          .option('limit', {
+            default: '3',
+            description: 'The limit.',
+            type: 'string',
+            validate: digits,
+          })
+          .action(({ out }) => out.print('ran')),
+      ),
   // A declared default its validator rejects, which only a run validates.
   defaults: () =>
     new Application('probe', { description: 'Probe the checks.' })

@@ -6,11 +6,10 @@ import { invoke as invokeFixture } from './run-fixture.ts';
  *
  * Control options are proven when public APIs alone produce these results under Node and Bun:
  *
- * - The first-party marks. `inspect()` on jsonkit reports `control: true` on `--help`, `--version`,
- *   `--manifest`, `--explain`, `--color`, `--verbose`, `--quiet`, and the `--format` the
- *   formatter's hook declares on `paths`, and `control: false` on `--file` and `select`'s
- *   `--field`, and `inspect()` on textstat reports `control: true` on `--config`. Every help page
- *   the examples pin is unchanged byte for byte.
+ * - The first-party marks. `inspect()` on a fixture that installs the first-party plugins reports
+ *   `control: true` on `--help`, `--version`, `--manifest`, `--color`, `--verbose`, `--quiet`,
+ *   `--config`, and the `--format` the formatter's hook declares on a Command with a result, and
+ *   `control: false` on a work option. packages/plugins/tests/control-marks.test.ts proves it.
  * - Every declarer. A fixture marks a local option, a global option, a plugin's option, and an
  *   option a lifecycle hook declares, and each node reads `true`; an omitted `control` reads
  *   `false`.

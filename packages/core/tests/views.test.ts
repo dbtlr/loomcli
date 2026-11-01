@@ -2,9 +2,9 @@ import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for the view registry (docs/core/views.md).
  *
- * The registry is proven when jsonkit's `FatalError` override produces the failure bytes that
- * examples/jsonkit/tests pins, and when an override of `helpPage` in a test application changes
- * `jsonkit --help` while `help()` stays installed. Each case runs under Node and Bun. The cases:
+ * The registry is proven when fixture applications and fixture plugins alone resolve, apply, and
+ * break views as the cases below state; overrides of the help plugin's `helpPage` are proven by
+ * packages/plugins/tests/help-variants.test.ts. Each case runs under Node and Bun. The cases:
  *
  * - Resolution order. One application override and one plugin override for a shared key resolve to
  *   the application's. An application override for `UsageError` beside a plugin override for
@@ -17,8 +17,7 @@ import { expect, test } from 'vite-plus/test';
  * - Markers. A help page and a version line whose graph facts carry marker characters print them
  *   literally.
  * - Build rules. Each build rule the reference lists.
- * - Broken views. A broken lane view, a broken `helpPage` override under `jsonkit --help` returning
- *   1 with one diagnostic on stderr, an action that throws an `InputError` after an unawaited
+ * - Broken views. A broken lane view, an action that throws an `InputError` after an unawaited
  *   broken `out.render` returning 2 with one diagnostic, and a broken failure view under the
  *   fallback path.
  * - Type checks. The negative type checks cover the invariance cases, a replacement that requires

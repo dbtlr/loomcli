@@ -307,15 +307,15 @@ test('a collection maximum includes automatically appended stdin', async () => {
   }
 });
 
-test.each(['named-empty', 'named-dash'])(
-  'named content invocation rejects unavailable stdin: %s',
-  async (scenario) => {
-    const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [
-      scenario,
-    ]);
-    expect(JSON.parse(result.stdout)).toMatchObject({ exitCode: 2, output: '', status: 'failed' });
-  },
-);
+test.each([
+  ['named-empty', 'Expected at least 1 readable source.'],
+  ['named-dash', 'Expected piped or redirected stdin.'],
+])('named content invocation rejects unavailable stdin: %s', async (scenario, message) => {
+  const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [scenario]);
+  const outcome: { messages: string } = JSON.parse(result.stdout);
+  expect(outcome).toMatchObject({ exitCode: 2, output: '', status: 'failed' });
+  expect(outcome.messages).toContain(message);
+});
 
 test('an explicit - at a terminal is an input error', async () => {
   const result = await invokeFixture(new URL('fixtures/content.mjs', import.meta.url), [

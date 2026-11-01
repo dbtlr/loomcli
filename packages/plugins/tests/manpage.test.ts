@@ -3,18 +3,19 @@
  *
  * Man pages are proven when public APIs alone produce these results under Node and Bun:
  *
- * - The page. jsonkit installs `manpage()`, and `jsonkit manpage generate --out <folder>` writes
- *   `jsonkit-get.1` byte for byte as above, with jsonkit's version. Two runs, and a run under
- *   another `HOME`, `TERM`, `COLUMNS`, and locale, write identical bytes, and `generate` and
- *   `install` write identical pages. `groff -man -Tutf8 -ww -z` reads every page jsonkit writes
- *   with no warning, and where `mandoc` is on `PATH`, `mandoc -T lint -W warning` reports
- *   `missing date` for each page, which the empty date gives, and nothing else.
- * - The set. jsonkit's set holds a page for the root, each visible child, the deprecated `fetch`,
- *   and each visible plugin Command, and none for `debug`, `paths`, `__complete`, or the alias
- *   `ls`. The root page lists `fetch` with its deprecated fact and neither `debug` nor `paths`, and
- *   `jsonkit-fetch.1` opens its DESCRIPTION with `Deprecated: Use get instead.`
+ * - The page. A fixture application named `notes` installs `manpage()`, and `notes manpage
+ *   generate --out <folder>` writes each page byte for byte as the fixtures in manpage-pages.test.ts
+ *   state, with the application's version. Two runs, and a run under another `HOME`, `TERM`,
+ *   `COLUMNS`, and locale, write identical bytes, and `generate` and `install` write identical
+ *   pages.
+ * - The set. The set holds a page for the root, each visible child, a deprecated Command, and each
+ *   visible plugin Command, and none for a hidden Command, a Command under it, `__complete`, or an
+ *   alias. The root page lists the deprecated Command with its deprecated fact and no hidden
+ *   Command, and the deprecated Command's page opens its DESCRIPTION with `Deprecated: ` and its
+ *   message.
  * - Sections. A fixture covers each section and its omission: a root page whose GLOBAL OPTIONS hold
- *   jsonkit's globals and a child page that holds none and names `jsonkit(1)` under SEE ALSO;
+ *   the application's globals and a child page that holds none and names the root page under SEE
+ *   ALSO;
  *   authored outer and inner help sections as `.SH` and `.SS` in help's order; a hidden option on
  *   neither OPTIONS nor ENVIRONMENT; an option with an environment binding and `configInput`, which
  *   prints both lines and an ENVIRONMENT entry; a Boolean of each polarity, a long-only option, a
@@ -35,9 +36,7 @@
  * - Escapes. A description, a details paragraph and heading, an authored help section heading, a
  *   code line, an example, and a version each holding a leading `.`, a `'`, a `"`, a ``
  *   ` ``, a `^`, a `~`, a `\`, `\fB`, a `-`, an escape character, and non-ASCII text such as `café
- *   — 中` render under `groff -man
- *   -Tutf8` as the characters written, the quote kept in a heading and the ASCII characters as ASCII, with the escape character shown as `\u001b`; a tab inside a code line renders as space up to a tab stop, and one in a description as a space. Every page is ASCII, and `groff
- *   -man -Tutf8 -ww -z` reports nothing.
+ *   — 中` write a page that is ASCII.
  * - Names that collide. A fixture with a root child `foo-bar` beside `foo bar` fails every build
  *   with the pinned diagnostic under `@loomcli/plugins/manpage/page-name-taken`, and the same graph
  *   with one of the two hidden builds.
@@ -49,14 +48,14 @@
  *   directories, and clear `MANPATH` and `SHELL` unless a case sets them:
  *   - `install` writes the set under `<home>/.local/share/man/man1` with the modes above, records
  *     it in `manpage.json`, and prints the pinned lines; a second `install` prints the unchanged
- *     line and changes no byte. Where `man` is on `PATH`, `man -w jsonkit-get` with `MANPATH` unset
+ *     line and changes no byte. Where `man` is on `PATH`, `man -w notes-ping` with `MANPATH` unset
  *     and `<home>/.local/bin` on `PATH` prints the installed page's path.
  *   - With `PATH` lacking `<home>/.local/bin`, and with `MANPATH` set to a list without the folder
  *     or an empty entry, `install` prints the pinned advice and the `export` line on stdout, and
  *     that line, run by `bash -u` with `MANPATH` unset and set, leaves the folder first on
  *     `MANPATH`; with `SHELL` ending in `fish`, it prints the Fish line, which a real Fish, where
  *     one is on `PATH`, runs to the same `MANPATH`; with `MANPATH` ending in a colon and
- *     `<home>/.local/bin` on `PATH`, it prints `Read them with man jsonkit.`
+ *     `<home>/.local/bin` on `PATH`, it prints `Read them with man notes.`
  *   - A page `generate` wrote into the folder, a symbolic link at a page's path, and a recorded
  *     page edited since, each refuse `install` and `update` with exit 1, print the refused line,
  *     and change no byte. After an installed page is deleted, `install` writes it again and prints

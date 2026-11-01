@@ -1,36 +1,10 @@
 /*
  * Acceptance plan for the suggestions plugin (docs/plugins/suggestions.md).
  *
- * Both example applications install `suggestions()`. jsonkit drops its `unknownCommand` and
+ * An application that installs `suggestions()` can drop its own `unknownCommand` and
  * `inputProblems` overrides, because core's default text names the application under Failure
- * classes (docs/core/failures.md#failure-classes), so the one override it keeps is the literal
- * `FatalError` view, and its example coverage (docs/core/commands.md) reads as the
- * rows below. Every usage diagnostic both examples pin gains help's hint line. Where help's hint
- * and the explain hint both apply, help's prints first, because `help()` is installed first.
- *
- * - `jsonkit gte name -f doc.json`: `jsonkit: Unknown command "gte". Did you mean "get"?` then `Run
- *   "jsonkit --help" to see the usage.`, code 2.
- * - `jsonkit Get name -f doc.json`: `jsonkit: Unknown command "Get". Did you mean "get"?` then the
- *   help hint, code 2.
- * - `jsonkit typo -f doc.json`: `jsonkit: Unknown command "typo". Use one of: doctor, completion,
- *   mcp, manpage, get, keys, select.` then the help hint, code 2.
- * - `jsonkit lss -f doc.json`: core's text, because `ls` is an alias and `keys` is too far, code 2.
- * - `jsonkit fetc -f doc.json`: core's text, because `fetch` is deprecated, code 2.
- * - `jsonkit select --fields name -f doc.json`: `jsonkit: Unknown option "--fields". Did you mean
- *   "--field"?` then the help hint, then `Run "jsonkit select --explain" to explain this command.`,
- *   code 2.
- * - `jsonkit select --fiel name -f doc.json`: `jsonkit: Unknown option "--fiel". Did you mean one
- *   of these: --file, --field?`, both at distance 1 in declaration order, file before field, then
- *   the help hint and the explain hint, code 2.
- * - `jsonkit get --hlep name -f doc.json`: `jsonkit: Unknown option "--hlep". Did you mean
- *   "--help"?` then the help hint and the explain hint, code 2.
- * - `jsonkit get -f doc.json`: `jsonkit: Argument "path" requires a value. Supply a value for
- *   "path".` then `Run "jsonkit get --help" to see the usage.`, code 2.
- * - `textstat --totl one.txt`: `textstat: Unknown option "--totl". Did you mean "--total"?` then
- *   `Run "textstat --help" to see the usage.` and the explain hint, code 2.
- * - `textstat --minimun 5 one.txt`: core's text, because `--minimum` is an alias and `--min-bytes`
- *   is too far, code 2.
- * - `textstat --timin one.txt`: core's text, because `--timing` is hidden, code 2.
+ * classes (docs/core/failures.md#failure-classes). Where help's hint and another plugin's hint
+ * both apply, help's prints first, because `help()` is installed first.
  *
  * The acceptance tests cover, through public APIs with fixture applications and fixture plugins:
  *
@@ -53,6 +27,7 @@
  * - a counted option and an implied-value option suggested by their long spelling alone, the
  *   implied-value option's typo bare and with an attached value;
  * - a plugin's option suggested;
+ * - under `invoke()`, an unknown option suggested by its declared name, not by its spelling;
  * - a hidden child, a deprecated child, a hidden option, a deprecated option, and an alias never
  *   suggested, each with the typo one edit from the excluded name;
  * - the plugin's hook adding no hint line, so a second plugin's hint is the only line under the
@@ -69,8 +44,7 @@
  * - help's hint on each `UsageError` class, an `InputError` an action throws included, with the
  *   command line of the root, of a group, and of a nested Command;
  * - help's hint absent on a `FatalError`, an `InternalError`, and a `DeclarationError` a run
- *   reports;
- * - the example rows above.
+ *   reports.
  *
  * Each case runs under Node and Bun. A consumer installs the packed pack, imports
  * `@loomcli/plugins/suggestions`, compiles against its declaration, and prints a suggestion.
@@ -79,7 +53,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 
 import { runShared } from './fixtures/suggestions-shared.ts';
-import { runScenario } from './fixtures/suggestions.ts';
+import { invokeScenario, runScenario } from './fixtures/suggestions.ts';
 import type { Scenario } from './fixtures/suggestions.ts';
 
 /** One run of a fixture scenario. */
@@ -281,6 +255,19 @@ describe('the matcher', () => {
         '',
       ].join('\n'),
     );
+  });
+});
+
+describe('an invocation by name', () => {
+  it('an unknown option suggests the declared name, where argv suggests the spelling', async () => {
+    await expect(suggested(['opts', '--kepe'])).resolves.toBe(
+      option('--kepe', 'Did you mean "--keep"?'),
+    );
+    const invoked = await invokeScenario('plain', ['opts'], { options: { kepe: true } });
+    expect(invoked).toMatchObject({
+      messages: option('kepe', 'Did you mean "keep"?'),
+      status: 'failed',
+    });
   });
 });
 

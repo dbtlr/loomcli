@@ -3,10 +3,9 @@
  *
  * Release facts are proven when public APIs and process runs alone produce these results:
  *
- * - The examples. jsonkit and textstat carry no packet and build with `loom build --target node`.
- *   The process tests run each bundle under Node and Bun, and every golden they pin is unchanged,
- *   because operator failures print the same bytes in both builds. A process test runs `bun
- *   src/main.ts` for each example and pins the same bytes for its usage errors.
+ * - Operator failures. A fixture whose `get` Command lacks its required argument writes the same
+ *   usage error and exits 2, from source and from bundles baking a distributed and a development
+ *   build, under Node and Bun, because an operator's failure prints the same bytes in every build.
  * - A source run. A fixture action that prints `host.release` prints `{ build: 'source' }` from
  *   source. When the action throws a `TypeError` instead, the run writes the Developer Diagnostic
  *   of `@loomcli/core/foreign-throw` and exits 1.
@@ -149,6 +148,23 @@ test.each(runtimes)(
       frozen: true,
     });
     expect(fromBundle(distributed, runtime, 'throw')).toEqual(generic);
+  },
+);
+
+const usageError = {
+  status: 2,
+  stderr: 'probe: Argument "path" requires a value. Supply a value for "path".\n',
+  stdout: '',
+};
+
+test.each(runtimes)(
+  'an operator failure prints the same bytes from source and from distributed and development bundles under %s',
+  (runtime) => {
+    expect(fromSource('usage')).toEqual(usageError);
+    expect(fromBundle(distributed, runtime, 'usage')).toEqual(usageError);
+    expect(fromBundle(JSON.stringify({ build: 'development' }), runtime, 'usage')).toEqual(
+      usageError,
+    );
   },
 );
 

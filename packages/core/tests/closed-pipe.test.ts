@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
-import { invoke } from '../../../scripts/test-process.js';
+import { invoke, start } from '../../../scripts/test-process.js';
 
 const fixture = new URL('fixtures/closed-pipe.mjs', import.meta.url);
 
@@ -8,6 +8,23 @@ const fixture = new URL('fixtures/closed-pipe.mjs', import.meta.url);
 function run(scenario: string) {
   return invoke(fixture, [scenario]);
 }
+
+test('a reader that closes the real stdout pipe after the first line ends the process with 141 and nothing on stderr', async () => {
+  const { child, exit } = start(new URL('fixtures/closed-pipe-real.mjs', import.meta.url));
+  // The reader closes its end once the first line arrives, as `head -1` does.
+  child.stdout.on('data', (chunk: string) => {
+    if (chunk.includes('\n')) {
+      child.stdout.destroy();
+    }
+  });
+  const ended = await exit;
+  expect({ signal: ended.signal, status: ended.status, stderr: ended.stderr }).toEqual({
+    signal: null,
+    status: 141,
+    stderr: '',
+  });
+  expect(ended.stdout.split('\n')[0]).toBe('0');
+});
 
 test('a closed reader on stdout stops a streaming row source and resolves 141 with nothing on stderr', () => {
   expect(run('rows')).toEqual({

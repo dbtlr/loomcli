@@ -23,8 +23,6 @@ import { expect, test } from 'vite-plus/test';
  *   internal-error line through the fallback path, and the run returns 1.
  * - Exports. The fifteen constants hold their `sysexits.h` values, `EX_OK` is absent, and
  *   `FailureExitCode` accepts 1 and 125 and rejects 0 and 126.
- * - Example. `jsonkit get missing -f doc.json` and `jsonkit keys missing -f doc.json` exit 65, as
- *   the failure example coverage pins.
  */
 
 import { invoke as invokeFixture } from './run-fixture.ts';

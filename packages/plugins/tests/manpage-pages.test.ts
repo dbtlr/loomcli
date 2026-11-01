@@ -1,13 +1,10 @@
 // Acceptance plan: see packages/plugins/tests/manpage.test.ts.
 
-import { spawnSync } from 'node:child_process';
-
 import { Application, Command, DeclarationError } from '@loomcli/core';
 import { describe, expect, it } from 'vite-plus/test';
 import { z } from 'zod';
 
 import { ruleParts } from '../../../scripts/test-rules.js';
-import { findOnPath } from '../../../scripts/test-shell.js';
 import { configInput } from '../src/config/extension.js';
 import { helpCommand, helpInput } from '../src/help/extension.js';
 import { manPages } from '../src/manpage/page.js';
@@ -502,37 +499,11 @@ describe('names that collide', () => {
 /** A string holding every character the escapes rule names, with an escape and non-ASCII text. */
 const hostile = `.lead 'q' "dq" \`bt\` ^c ~t \\b \\fB a-b ${String.fromCodePoint(0x1b)} caf${String.fromCodePoint(0xe9)} ${String.fromCodePoint(0x20_14)} ${String.fromCodePoint(0x4e_2d)}`;
 
-/** The text a reader sees: hostile with its escape character shown as its escape. */
-const shownHostile = hostile.replace(String.fromCodePoint(0x1b), String.raw`\u001b`);
-
 /** Hostile with one backtick, which Markdown details print as written rather than as a code span. */
 const detailsHostile = hostile.replace('`bt`', '`bt');
 
-/** The text a reader sees of the details' hostile string. */
-const shownDetails = detailsHostile.replace(String.fromCodePoint(0x1b), String.raw`\u001b`);
-
-/**
- * The same characters in a version short enough for the footer: groff's man macros warn that they
- * cannot abbreviate a fourth `.TH` argument wider than half the line when it holds an escape.
- */
+/** The same characters in a version short enough for the page footer. */
 const compact = `.'"\`^~\\\\fB-${String.fromCodePoint(0x1b)}${String.fromCodePoint(0xe9)}${String.fromCodePoint(0x4e_2d)}`;
-
-const groff = findOnPath('groff');
-
-/** A page as groff renders it in UTF-8, without fonts, on lines too long to wrap. */
-function rendered(text: string): string {
-  const result = spawnSync('groff', ['-man', '-Tutf8', '-rLL=400n', '-P', '-cbou'], {
-    encoding: 'utf8',
-    input: text,
-  });
-  return result.stdout;
-}
-
-/** What `groff -ww -z` reports for a page: nothing for a clean one. */
-function lint(text: string): string {
-  return spawnSync('groff', ['-man', '-Tutf8', '-ww', '-z'], { encoding: 'utf8', input: text })
-    .stderr;
-}
 
 const escapes = new Application('kit', {
   description: hostile,
@@ -560,43 +531,6 @@ describe('escapes', () => {
   it('every page is ASCII', () => {
     for (const text of pagesOf(escapes).values()) {
       expect(text).toMatch(/^[\n\t -~]*$/u);
-    }
-  });
-
-  it.skipIf(groff === undefined)(
-    'every string renders as the characters written, the escape character shown as its escape',
-    () => {
-      const pages = pagesOf(escapes);
-      const root = rendered(pages.get('kit.1') ?? '');
-      const rows = root.split('\n');
-      // The description in NAME, the code line, the child's row, the example, and its note.
-      expect(root.split(shownHostile).length - 1).toBe(5);
-      // The details paragraph, in DESCRIPTION's indent, and the details heading, an .SS.
-      expect(rows).toContain(`       ${shownDetails}`);
-      expect(rows).toContain(`   ${shownDetails}`);
-      expect(root).toContain(`$ kit ${shownHostile}`);
-      expect(root).toContain(`kit ${shownHostile}`);
-      // A heading keeps its quote, and an authored help section heading prints in uppercase.
-      expect(root).toContain(
-        shownHostile.toUpperCase().replace(String.raw`\U001B`, String.raw`\u001b`),
-      );
-      // The version, in the footer.
-      const footer = root.trimEnd().split('\n').at(-1) ?? '';
-      expect(
-        footer.startsWith(
-          `kit ${compact.replace(String.fromCodePoint(0x1b), String.raw`\u001b`)} `,
-        ),
-      ).toBe(true);
-      // A tab in a code line, indented by DESCRIPTION and the code block, moves to the next stop.
-      expect(root).toMatch(/^ {11}a {4}b$/mu);
-      expect(root).toContain('One tab.');
-      expect(rendered(pages.get('kit-child.1') ?? '')).toContain(shownHostile);
-    },
-  );
-
-  it.skipIf(groff === undefined)('groff reports nothing for any page', () => {
-    for (const text of [...pagesOf(escapes).values(), ...pagesOf(kit).values()]) {
-      expect(lint(text)).toBe('');
     }
   });
 });

@@ -4,11 +4,8 @@ import { expect, test } from 'vite-plus/test';
  *
  * Translators are proven when public APIs alone produce these results under Node and Bun:
  *
- * - Example. jsonkit's reader holds no `JSON.parse` catch, and its application registers the
- *   translation above. `jsonkit get name -f broken.json` and the same document piped to `jsonkit
- *   get name` exit 65 and write `The document is not valid JSON. Correct its syntax, or supply
- *   another document.`, and an `onFailure` hook in a fixture reads the `SyntaxError` as the
- *   failure's `cause`.
+ * - Cause. A translated failure carries the foreign throw as its `cause` when the translator
+ *   passes it, and an `onFailure` hook reads it there.
  * - Untranslated. A `TypeError` from an action with no translation for it reports as an
  *   `InternalError` with exit 1.
  * - Order. An application's translation and a plugin's for one class resolve to the application's;

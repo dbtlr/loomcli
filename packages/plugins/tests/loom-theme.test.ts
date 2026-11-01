@@ -19,9 +19,9 @@ import { DeclarationError } from '@loomcli/core';
  * - Compiler checks cover literal custom names, an adaptive override and an adaptive custom key,
  *   independent imported styles, invalid values, reserved names, and semantic references. An editor
  *   completion check suggests all seven core keys and omits keys already supplied.
- * - Both examples install `loomTheme()`. `textstat --total` uses the default highlight for its
- *   total row on a color terminal. Under ordinary piping or automatic `NO_COLOR`, the same content
- *   and layout contain no color escapes. Help and version restyling remains a separate increment.
+ * - A fixture application installs `loomTheme()` and styles a token with the default highlight on
+ *   a color terminal. Under ordinary piping or automatic `NO_COLOR`, the same content and layout
+ *   contain no color escapes. Help and version restyling remains a separate increment.
  * - Process fixtures run on Node and Bun against the built packages. Packed-consumer evidence
  *   exercises the published declarations and the named palette at each color depth.
  *

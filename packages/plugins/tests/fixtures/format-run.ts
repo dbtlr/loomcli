@@ -16,7 +16,7 @@ function fixtureApplication(name: string) {
     },
   };
 
-  /** Every scenario installs the pack in the order the examples do, so help wins a tie. */
+  /** Every scenario installs the pack in the order a first-party Application does, so help wins a tie. */
   const plugins = [help(), version(), format()];
 
   /** A plugin ahead of format() whose always-on middleware assigns a view of its own. */

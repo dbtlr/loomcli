@@ -4,14 +4,12 @@ import { expect, test } from 'vite-plus/test';
  *
  * Invocation by name is proven when public APIs alone produce these results under Node and Bun:
  *
- * - The equivalence wedge. For each jsonkit invocation below, `run()` with argv and a sink host,
- *   and `invoke` with the same path and values, write identical stdout and stderr bytes and resolve
- *   the same exit code: `get name -f doc.json`, `keys -f doc.json`, `select --field a --field b -f
- *   doc.json`, `paths --format json -f doc.json` against `invoke(['paths'], …, { view: 'json' })`,
- *   `get missing -f doc.json` with exit 65, `get name -f broken.json` with exit 65, and `select
- *   --field '' -f doc.json` with exit 2. The bytes differ only where a problem names an input: by
- *   its reported spelling under `run()` and by its declared name under `invoke`. Help's hint and
- *   the explain hint print under `run()` alone.
+ * - The equivalence wedge. For a fixture Command that prints a line and logs one, a fixture Command
+ *   that fails with a declared exit code 65, and a value the option's validator rejects, `run()`
+ *   with argv and a sink host, and `invoke` with the same path and values, write identical stdout
+ *   and stderr bytes and resolve the same exit code. The bytes differ only where a problem names an
+ *   input: by its reported spelling under `run()` and by its declared name under `invoke`, and
+ *   help's hint prints under `run()` alone.
  * - Lowering. A fixture pins every row of the table and each unlowerable value's issue. `false` on
  *   a positive option is absence, and a bound variable still fills it. An empty array on a required
  *   multiple option is the missing-input problem. A number on an unvalidated string option reaches
@@ -19,13 +17,12 @@ import { expect, test } from 'vite-plus/test';
  *   and `3` on a counted option reads `3`. `null`, an object, `NaN`, `1.5` on a counted option, and
  *   `true` on an argument each report their sentence with exit 2.
  * - Names. An unknown option name, an unknown argument name, and an unknown path element report
- *   their by-name sentences with exit 2. `jsonkit.invoke(['nope'], {})` lists the root's children,
- *   a path through an alias routes, and `invoke(['get'], { options: { help: true } })` completes
- *   with help's extended page for `get` as `output`.
+ *   their by-name sentences with exit 2, an unknown path element lists the root's children, and a
+ *   path through an alias routes. `invoke` with `help: true` completes with help's page as
+ *   `output`, as packages/plugins/tests/content-help.test.ts proves.
  * - Capture. A fixture action that writes every lane and a result proves the split between `output`
  *   and `messages`, reads `host.terminal` as not a TTY and `host.argv` as `[]`, and writes no ANSI
- *   under `FORCE_COLOR=1` and under `rendering: { color: 'always' }`. `jsonkit.invoke(['get'], {
- *   args: { path: 'name' } })` fails with a missing `file` input and exit 2 before the action.
+ *   under `FORCE_COLOR=1` and under `rendering: { color: 'always' }`.
  * - Failures. A handler maps a failure into `failed.failure` and receives the translated failure,
  *   never the foreign throw. With no handler `failed.failure` is the failure. `failed.form` and the
  *   handler's `form` are one failure form, as The failure form builds it. A defect writes the
@@ -180,6 +177,7 @@ test('each unlowerable value is an invalid problem in authoring order whose issu
 
 /** The fixture's naming report. */
 interface Names {
+  alias: Outcome;
   byName: Outcome;
   group: Outcome;
   hidden: Outcome;
@@ -188,6 +186,7 @@ interface Names {
   sourceArgv: { code: number; stderr: string };
   unknownArgument: Outcome;
   unknownOption: Outcome;
+  unknownPath: Outcome;
 }
 
 test('an argument binds by name, so a value never shifts into an earlier argument left out', async () => {
@@ -231,6 +230,16 @@ test('an unknown option name and an unknown argument name report their by-name s
     messages:
       'probe: Command "get" declares no argument "pth". Supply the name of a declared argument.\n',
   });
+});
+
+test('an unknown path element lists the root children, and a path through an alias routes', async () => {
+  const { alias, unknownPath }: Names = JSON.parse(await report('names'));
+  expect(unknownPath).toMatchObject({
+    exitCode: 2,
+    messages: 'probe: Unknown command "nope". Use one of: pair, get, cache, list.\n',
+    status: 'failed',
+  });
+  expect(alias).toEqual({ messages: '', output: 'listed\n', status: 'completed' });
 });
 
 test('the result reaches output, every other write reaches messages, all of it plain, on a host with no terminal or argv', async () => {
@@ -294,6 +303,38 @@ test('a path ending at a group holds the missing subcommand, and a hidden Comman
     messages: 'probe: Command "cache" requires a subcommand. Use one of: clear.\n',
   });
   expect(hidden).toEqual({ messages: '', output: 'purged\n', status: 'completed' });
+});
+
+/** One case of the equivalence wedge: the same call under run() and under invoke(). */
+interface Wedge {
+  argv: { code: number; stderr: string; stdout: string };
+  named: { code: number; stderr: string; stdout: string };
+}
+
+test('run() with argv and invoke() with the same path and values write the same bytes and resolve the same code', async () => {
+  const [plain, repeated, failing]: Wedge[] = JSON.parse(await report('wedge'));
+  expect(plain?.argv).toEqual({ code: 0, stderr: 'ℹ said\n', stdout: 'hi\n' });
+  expect(repeated?.argv).toEqual({ code: 0, stderr: 'ℹ said\n', stdout: 'hihi\n' });
+  expect(failing?.argv.code).toBe(65);
+  for (const entry of [plain, repeated, failing]) {
+    expect(entry?.named).toEqual(entry?.argv);
+  }
+});
+
+test("an input problem names the option by its spelling under run() and by its declared name under invoke(), and only run() prints help's hint", async () => {
+  const wedge: Wedge[] = JSON.parse(await report('wedge'));
+  expect(wedge[3]).toEqual({
+    argv: {
+      code: 2,
+      stderr: 'probe: Option "--times": Expected a whole number of at least 0.\n',
+      stdout: '',
+    },
+    named: {
+      code: 2,
+      stderr: 'probe: Option "times": Expected a whole number of at least 0.\n',
+      stdout: '',
+    },
+  });
 });
 
 /** The form of a defect in a distributed build, which names no reason. */

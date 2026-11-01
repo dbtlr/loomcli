@@ -1,4 +1,4 @@
-// Acceptance plan: see examples/jsonkit/tests/completion.test.ts.
+// Acceptance plan: see packages/plugins/tests/completion.test.ts.
 
 import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
