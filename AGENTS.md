@@ -17,7 +17,7 @@ The [glossary](docs/glossary.md) is the domain model. Use its terms in code, doc
 
 The [decision records](docs/decisions/README.md) are constraints on the work, not an archive. Check a plan against the index before building, and open the records that govern the area under change. An `accepted` record is load-bearing: a change that conflicts with it supersedes it with a new record rather than editing it.
 
-A record that rejected an approach, such as ADR-0066's rejection of a configuration file, which ADR-0130 later superseded, still leaves that approach open. When it is the best design, present it on its merits and name the record a new one would supersede, rather than steering to a weaker design the record allows.
+A record that rejected an approach, such as ADR-0066's rejection of a configuration file, which ADR-0099 carried forward and ADR-0130 supersedes, still leaves that approach open. When it is the best design, present it on its merits and name the record a new one would supersede, rather than steering to a weaker design the record allows.
 
 ## Pull requests
 
@@ -71,10 +71,11 @@ A finding is a defect only when it passes both tests, which apply principles 1 a
 2. **It plausibly happens.** The input fits how a command-line application is used. A construction
    built only to break the code, such as a default of a million shared paths, is a probe result.
 
-The first test covers the author's project layout too. The toolchain does not adapt to how an author
-lays out their own project: a solution-style `tsconfig.json` (`"files": []` with `references`)
-passes the scaffold's type pass, which stays `tsc --noEmit`, so a finding that asks for build mode
-(`tsc -b`) or other handling for one layout fails it.
+The first test covers the author's project layout too. Beyond the paths `loom.config.json` names,
+the toolchain does not adapt to how an author lays out their project. A solution-style
+`tsconfig.json` (`"files": []` with `references`) gives the `check` script's `tsc --noEmit` no files,
+so it passes without checking any. That layout is the author's, so a finding that asks for build mode
+(`tsc -b`) or other handling for one layout fails the first test.
 
 The controlling agent is the gate between a review and the board. A review seat, a fix round, or a
 bot never creates a task or a seed. The controlling agent judges each finding first, and only a
