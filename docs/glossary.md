@@ -924,7 +924,7 @@ _Avoid_: Host (the process environment), agent (for the folder), provider
 
 **Skills folder**:
 The folder an application names in the skills plugin's `folder` setting, each directory directly inside it one agent skill named for the directory. A source run and a test read it from disk, and `loom build` carries it into the bundle or binary it builds.
-_Avoid_: Skills directory, operator skills path, `paths.skills`
+_Avoid_: Skills directory, operator skills path, `paths.skills`; not the folder an agent target reads installed skills from
 
 ## Toolchain
 

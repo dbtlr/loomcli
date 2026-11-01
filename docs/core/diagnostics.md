@@ -286,7 +286,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/skills/folder
 
-**Unreadable skills folder.** The skills plugin installs each directory of its skills folder as one skill named by the directory, so the folder exists, each skill directory's name is a skill name, and each entry inside a skill is a file or a folder. A relative folder resolves against the application module, which only loom build knows, so a run loom build did not make reads the folder through a URL or an absolute path, and an artifact loom build made reads the copy it carries.
+**Unreadable skills folder.** The skills plugin installs each directory of the folder its folder setting names as one skill named by the directory, so the folder exists, holds a skill unless the application lists its skills, each skill directory's name is a skill name, and each entry inside a skill is a file or a folder. A relative folder resolves against the application module, which only loom build knows, so a run loom build did not make reads the folder through a URL or an absolute path, and an artifact loom build made reads the copy it carries.
 
 ### @loomcli/plugins/skills/files
 
@@ -294,7 +294,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/skills/settings
 
-**Invalid skills setting.** The skills plugin installs each skill as one folder named by the skill's name in an agent's skills folder, so the settings name a skills folder, a file URL or a nonempty path, or at least one skill, each name follows the Agent Skills grammar, lowercase letters and digits joined by single hyphens, 64 characters at most, and no two skills hold one name.
+**Invalid skills setting.** The skills plugin installs each skill as one folder named by the skill's name in an agent's skills folder, so the settings name a folder of skills, a file URL or a nonempty path, or list at least one skill, each name follows the Agent Skills grammar, lowercase letters and digits joined by single hyphens, 64 characters at most, and no two skills hold one name.
 
 ### @loomcli/plugins/version/postfix
 
@@ -352,4 +352,4 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/loom/application-load-failed
 
-**Application failed to load.** loom init imports the application module to learn how the entry imports its Application, and the module threw while it loaded, so the entry could not be written.
+**Application failed to load.** loom imports the application module to learn what it declares, loom init how the entry imports its Application and loom build the skills folder skills() names, and the module threw while it loaded, so the command could not finish.
