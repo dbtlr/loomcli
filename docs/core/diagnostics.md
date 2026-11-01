@@ -146,10 +146,6 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Name not portable.** An operator types the application name, each Command name, and each alias as a command at a shell prompt. A character outside the POSIX portable filename set needs quoting there, a leading "-" reads as an option, and a leading "." names a file a shell hides.
 
-### @loomcli/core/post-install-unrouted
-
-**Post-install command unrouted.** The installer script runs the installed binary with the post-install command's words once it has installed the application. Words that route to no Command with an action fail on every operator's install, so a development build reports them before a release ships them.
-
 ### @loomcli/core/provider-name-taken
 
 **Provider name taken.** An action reads each provided value under its provider's name, so two different providers with one name among the providers a uses list reaches would leave one name for two values. The types reject two such providers whose types differ; core rejects two that share one type, such as two values one generic factory returns, where the list is declared.

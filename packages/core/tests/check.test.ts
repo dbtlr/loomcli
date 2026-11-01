@@ -14,9 +14,6 @@
  *   `inspect()` throws, and no hook runs.
  * - Whatever the build. The fixture bundled by `loom build`, which reads `distributed`, returns the
  *   same three faults.
- * - The post-install command. From that bundle, `check()` returns
- *   `@loomcli/core/post-install-unrouted` for words that route to no Command, and `inspect()` runs
- *   no such check.
  * - Not the defaults. A fixture whose declared default its validator rejects returns an empty list,
  *   and `run()` reports the default.
  * - A broken hook. An `onGraphBuilt` hook that throws a `TypeError` adds the
@@ -166,25 +163,6 @@ test.each([
     }
   },
 );
-
-test('from a bundle whose baked facts read distributed, check() reports an unrouted post-install command and inspect() does not', () => {
-  const outdir = bundled('distributed', distributedFacts);
-  {
-    const runtime = suiteRuntime;
-    const bundle = join(outdir, 'check.js');
-    const checked = spawnSync(runtime, [bundle, 'post-install'], { encoding: 'utf8' });
-    expect(checked.stderr).toBe('');
-    expect(JSON.parse(checked.stdout).faults).toEqual([
-      fault(
-        '@loomcli/core/post-install-unrouted',
-        'The post-install command "setup" routes to no Command with an action.',
-        'POST-INSTALL COMMAND UNROUTED',
-      ),
-    ]);
-    const inspected = spawnSync(runtime, [bundle, 'post-install', 'inspect'], { encoding: 'utf8' });
-    expect(inspected.stdout).toBe('inspected\n');
-  }
-});
 
 test('check() leaves out a declared default its validator rejects, which run() reports, under the suite runtime', () => {
   const runtime = suiteRuntime;

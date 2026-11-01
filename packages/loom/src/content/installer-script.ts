@@ -1,4 +1,4 @@
-import type { PostInstall } from '@loomcli/core';
+import type { PostInstall } from '../helpers/loom-config.js';
 
 /** A value as one single-quoted shell word, so the script reads it back byte for byte. */
 function shellWord(value: string) {

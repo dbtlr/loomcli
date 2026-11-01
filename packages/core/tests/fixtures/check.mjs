@@ -119,12 +119,6 @@ const declarations = {
           })
           .action(({ out }) => out.print('ran')),
       ),
-  // A post-install command that routes to no Command with an action.
-  'post-install': () =>
-    new Application('probe', {
-      description: 'Probe the checks.',
-      postInstall: { command: ['setup'] },
-    }).command(new Command('get', { description: 'Get one value.' }).action(() => undefined)),
 };
 
 const app = declarations[scenario]();

@@ -129,7 +129,6 @@ export type {
   OptionNode,
   ResultNode,
 } from './inspect.js';
-export type { PostInstall } from './post-install.js';
 export type {
   Middleware,
   OptionsOf,

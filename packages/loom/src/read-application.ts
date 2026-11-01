@@ -12,8 +12,6 @@ import type { ApplicationExports } from './helpers/application-exports.js';
  * arguments name the result file, the package directory, the module, and the module as the
  * operator reads it. The result file receives one `ApplicationExports` as JSON, and the process
  * ends once it is written, whatever the module left running when it loaded, such as an interval.
- * Beside the names the module exports its Application under, the read builds the Application's
- * graph through `inspect()`, as a source run builds it, and keeps its post-install declaration.
  */
 
 /** A module that threw while it loaded, for a throw that is not a `DeclarationError`. */
@@ -22,17 +20,6 @@ const loadFailed = diagnosticRule('@loomcli/loom/application-load-failed', {
     'loom init imports the application module to learn how the entry imports its Application, and the module threw while it loaded, so the entry could not be written.',
   headline: 'Application failed to load',
 });
-
-/**
- * What the build of the graph found, with the post-install declaration as the graph holds it,
- * which `readApplicationExports` validates once the result file is read.
- */
-type GraphFound = { fault: string } | { failure: string } | { postInstall?: unknown };
-
-/** What the read writes to the result file. */
-type Found =
-  | Exclude<ApplicationExports, { graph: unknown }>
-  | { graph: GraphFound; names: string[] };
 
 /** One export of a module namespace or member of the package's core, read without trusting it. */
 function member(value: unknown, name: string): unknown {
@@ -58,9 +45,9 @@ function loadFailure(
   error: unknown,
   isDeclarationError: (value: unknown) => boolean,
   module: string,
-): Found {
+): ApplicationExports {
   if (isDeclarationError(error) && error instanceof Error) {
-    return { fault: error.message };
+    return { failure: error.message, loaded: false };
   }
   const failure = new DeclarationError(loadFailed, {
     correction:
@@ -71,40 +58,13 @@ function loadFailure(
 }
 
 /**
- * The Application's graph as `inspect()` builds it from source, which runs a development build's
- * checks: its post-install declaration, or the Developer Diagnostic of the declaration fault the
- * build raised, or why the build failed otherwise.
- */
-function readGraph(
-  application: unknown,
-  isDeclarationError: (value: unknown) => boolean,
-  module: string,
-): GraphFound {
-  const inspect = member(application, 'inspect');
-  if (typeof inspect !== 'function') {
-    return {
-      failure: `The Application ${module} exports has no inspect() to read its graph with.`,
-    };
-  }
-  try {
-    const postInstall = member(Reflect.apply(inspect, application, []), 'postInstall');
-    return postInstall === undefined ? {} : { postInstall };
-  } catch (error) {
-    if (isDeclarationError(error) && error instanceof Error) {
-      return { fault: error.message };
-    }
-    return { failure: `The graph of ${module} failed to build: ${reasonOf(error)}` };
-  }
-}
-
-/**
  * Imports the application module and reads the names its one exported Application is exported
  * under, or why it has none. The Application class comes from the `@loomcli/core` the package
  * itself resolves, which is the copy the module's own declarations are instances of. Core resolves
  * from the package's `package.json` as a path, because Bun does not decode a percent-encoded
  * `file:` URL parent, so a package directory whose path holds a space would resolve nothing.
  */
-async function read(directory: string, path: string, module: string): Promise<Found> {
+async function read(directory: string, path: string, module: string): Promise<ApplicationExports> {
   let coreAddress = '';
   try {
     coreAddress = import.meta.resolve('@loomcli/core', join(directory, 'package.json'));
@@ -144,10 +104,7 @@ async function read(directory: string, path: string, module: string): Promise<Fo
       loaded: true,
     };
   }
-  return {
-    graph: readGraph(only, (value) => value instanceof declarationError, module),
-    names: exported.filter(([, value]) => value === only).map(([name]) => name),
-  };
+  return { names: exported.filter(([, value]) => value === only).map(([name]) => name) };
 }
 
 const [resultFile, directory, path, module] = process.argv.slice(2);

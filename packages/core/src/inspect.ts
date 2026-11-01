@@ -12,7 +12,6 @@ import { distinctAliases, reportedOf, spellingsOf } from './options.js';
 import type { OptionSpelling } from './options.js';
 import { isPlainObject } from './plain.js';
 import type { BuiltSource } from './plugin.js';
-import type { PostInstall } from './post-install.js';
 import { foreignGraph, foreignGraphCorrection } from './rules.js';
 import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
@@ -177,14 +176,12 @@ interface ResultNode {
  * One built graph as plain data. The globals appear once here and in no `CommandNode`. `version`
  * and `description` are the Application's own core facts. `version` is the declared string, or
  * `0.0.0` when the Application declares none, so it is never `undefined`. `description` stays
- * `undefined` where the Application declares none. `postInstall` is the Application's post-install
- * declaration, frozen, or `undefined` where it declares neither member.
+ * `undefined` where the Application declares none.
  */
 interface CommandGraph {
   readonly name: string;
   readonly version: string;
   readonly description: string | undefined;
-  readonly postInstall: PostInstall | undefined;
   readonly globals: readonly OptionNode[];
   readonly root: CommandNode;
   /** The configuration source's published schema, or `null` when no plugin claims the slot. */
@@ -542,7 +539,6 @@ function inspectGraph(
   facts: {
     converterFault: ConverterFault;
     description: string | undefined;
-    postInstall: PostInstall | undefined;
     source: BuiltSource | undefined;
     version: string;
   },
@@ -566,7 +562,6 @@ function inspectGraph(
     description: facts.description,
     globals,
     name,
-    postInstall: facts.postInstall,
     root,
     version: facts.version,
   };
