@@ -366,10 +366,19 @@ test('two copies of core share one lane, listen once, and call each handler once
 });
 
 test.skipIf(zsh === undefined)(
-  'an app that leads its own terminal session runs its suspend and resume handlers at each Ctrl-Z and keeps running',
+  'an app in an orphaned process group runs its suspend and resume handlers at each Ctrl-Z and keeps running',
   async () => {
-    // `exec` makes the runtime the session's leader, so its process group is orphaned.
-    const terminal = drive(['sh', '-c', 'exec "$0" "$1" "$2"', runtime, fixture, 'suspend-leader']);
+    // The terminal driver's zsh leads the session; `exec` leaves the runtime as its child.
+    // No member of their process group has a parent elsewhere in the session: it is orphaned.
+    // Leading the session would lose the runtime's last line: macOS revokes a dead leader's tty.
+    const terminal = drive([
+      'sh',
+      '-c',
+      'exec "$0" "$1" "$2"',
+      runtime,
+      fixture,
+      'suspend-orphaned',
+    ]);
     try {
       await terminal.expect('ready');
       // A second Ctrl-Z calls the handlers again, because core listens for SIGTSTP once more.

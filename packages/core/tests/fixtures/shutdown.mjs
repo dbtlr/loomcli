@@ -241,9 +241,9 @@ if (scenario === 'two-copies') {
     await cancelled(signal);
   });
   process.exit(await app.run({ process: processHandle({ argv: [] }) }));
-} else if (scenario === 'suspend-leader') {
-  // The scenario leads its own terminal session, so its process group is orphaned and no Ctrl-Z
-  // Stops it: each one runs the suspend handlers, then the resume handlers, and the run goes on.
+} else if (scenario === 'suspend-orphaned') {
+  // The scenario's process group is orphaned, so no Ctrl-Z stops it.
+  // Each Ctrl-Z runs the suspend handlers, then the resume handlers, and the run goes on.
   for (const label of ['first', 'second']) {
     onSuspend(() => {
       line(`suspended:${label}`);
