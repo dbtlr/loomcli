@@ -41,11 +41,19 @@ loom changelog check
 git add .changes && git commit -m 'Add list-by-tag fragment'
 loom changelog write --dry-run
 loom changelog write --date 2026-10-07
+loom changelog notes 1.5.0                 # the 1.5.0 section's body, for a release page
+
+loom changelog write --target 2.0.0-rc.1   # sets the version and keeps the fragments pending
+loom changelog notes 2.0.0-rc.1            # prints the pending fragments
+loom changelog write                       # finalizes 2.0.0 and consumes them
 ```
 
 - **Fragments.** `breaking.<slug>.md` is a breaking change and carries one `### Migration` section with the five labels, `feature.<slug>.md` is a feature, and `<slug>.md` is a fix. A body is Markdown bullets with no frontmatter or headings. `.changes/README.md` is the guide, not a fragment.
 - **`loom changelog check`** validates every fragment and names each invalid one. It needs no git history, so CI runs it.
 - **`loom changelog write`** computes the next version from the highest kind present, renders one section with `### Breaking Changes`, `### Features`, and `### Fixes`, prepends it to `CHANGELOG.md`, sets `version` in `package.json`, and deletes the consumed fragments. From `1.0.0`, breaking advances the major, feature the minor, and fix the patch; below it, breaking advances the minor and anything else the patch. It orders fragments by the commit that added them, so it needs full git history. `--date YYYY-MM-DD` dates the release, `--narrative FILE` copies prose above the entries, and `--dry-run` prints the section and the next version and writes nothing.
+- **`loom changelog write --target <version>`** cuts the version it names, `MAJOR.MINOR.PATCH` with an optional `-` prerelease part, instead of the computed one. It must rank above the current version, and its release part must meet the version the pending fragments need, so a fragment keeps its kind whatever version ships it. A prerelease target sets the version, writes no changelog section, and keeps every fragment pending; from a prerelease, `write` without `--target` cuts the release part. A prerelease cut from a stable version other than `0.0.0` needs that version's section in the changelog.
+- **`sharedVersion`** in `loom.config.json` lists `package.json` files that carry the package's version, such as `["../hub/package.json"]`, which the same cut sets. A value that is not a list of nonempty strings, or a listed file that is missing or holds another version, fails the cut before any file changes.
+- **`loom changelog notes <version>`** prints a cut version's changelog section, or the pending fragments when the version is the package's current prerelease, and changes nothing. A version with no section fails.
 
 `write` refreshes no lockfile; run your package manager after the cut. See [The package changelog](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain/changelog.md) for the contract.
 

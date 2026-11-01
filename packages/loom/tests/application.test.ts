@@ -113,3 +113,14 @@ test('an installed pnpm resolves to its manifest path', () => {
     '/workspace/node_modules/pnpm/package.json',
   );
 });
+
+test('the changelog help pages name notes, its version argument, and the write --target option', async () => {
+  const group = await run(['changelog', '--help']);
+  expect(group.stdout).toMatch(/^ {2}notes +/mu);
+  const notes = await run(['changelog', 'notes', '--help']);
+  expect(notes.status).toBe(0);
+  expect(notes.stdout).toContain('loom changelog notes');
+  expect(notes.stdout).toContain('version');
+  const write = await run(['changelog', 'write', '--help']);
+  expect(write.stdout).toContain('--target');
+});

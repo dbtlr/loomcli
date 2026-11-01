@@ -103,6 +103,40 @@ export function highestKind(fragments: { kind: FragmentKind }[]) {
   return (['breaking', 'feature', 'fix'] satisfies FragmentKind[]).find((kind) => kinds.has(kind));
 }
 
+/** Refuses a narrative that is empty, leaves a Markdown block open, or holds a level-one or level-two heading. */
+export function requireNarrative(narrative: string) {
+  requireClosedBlocks(narrative, 'Narrative');
+  if (
+    !narrative.trim() ||
+    fromMarkdown(narrative).children.some((node) => node.type === 'heading' && node.depth <= 2)
+  ) {
+    throw new Error('Narrative must contain prose without level-one or level-two headings.');
+  }
+}
+
+/**
+ * The breaking, feature, and fix groups of a set of fragments, each omitted when empty, with each
+ * fragment's prose copied verbatim. These are the entries of a release section and the notes of a
+ * prerelease.
+ */
+export function renderGroups(fragments: { body: string; kind: FragmentKind }[]) {
+  let groups = '';
+  for (const [heading, kind] of [
+    ['Breaking Changes', 'breaking'],
+    ['Features', 'feature'],
+    ['Fixes', 'fix'],
+  ] satisfies [string, FragmentKind][]) {
+    const entries = fragments.filter((fragment) => fragment.kind === kind);
+    if (entries.length > 0) {
+      groups += `### ${heading}\n\n`;
+      for (const entry of entries) {
+        groups += entry.body + blankLine(entry.body);
+      }
+    }
+  }
+  return groups;
+}
+
 /**
  * One release section: the heading, the narrative when given, then the breaking, feature, and fix
  * groups, each omitted when empty. Fragment and narrative prose is copied verbatim.
@@ -116,29 +150,10 @@ export function renderSection(release: {
   let section = `## v${release.version} - ${release.date}\n\n`;
   const { narrative } = release;
   if (narrative !== undefined) {
-    requireClosedBlocks(narrative, 'Narrative');
-    if (
-      !narrative.trim() ||
-      fromMarkdown(narrative).children.some((node) => node.type === 'heading' && node.depth <= 2)
-    ) {
-      throw new Error('Narrative must contain prose without level-one or level-two headings.');
-    }
+    requireNarrative(narrative);
     section += narrative + blankLine(narrative);
   }
-  for (const [heading, kind] of [
-    ['Breaking Changes', 'breaking'],
-    ['Features', 'feature'],
-    ['Fixes', 'fix'],
-  ] satisfies [string, FragmentKind][]) {
-    const entries = release.fragments.filter((fragment) => fragment.kind === kind);
-    if (entries.length > 0) {
-      section += `### ${heading}\n\n`;
-      for (const entry of entries) {
-        section += entry.body + blankLine(entry.body);
-      }
-    }
-  }
-  return section;
+  return section + renderGroups(release.fragments);
 }
 
 /**

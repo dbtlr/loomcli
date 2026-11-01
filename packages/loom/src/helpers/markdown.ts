@@ -1,6 +1,8 @@
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { withoutByteOrderMark } from './byte-order-mark.js';
+import { parseVersion } from './version.js';
+import type { Version } from './version.js';
 
 type Node = ReturnType<typeof fromMarkdown>['children'][number];
 
@@ -21,6 +23,13 @@ function text(nodes: Heading['children']): string {
       return '';
     })
     .join('');
+}
+
+// A release section's version is the first word of its level-two heading, when that word is `v`
+// And a MAJOR.MINOR.PATCH version. Any other level-two heading names no release.
+function headingVersion(heading: Heading) {
+  const word = headingText(heading).trim().split(/\s/u)[0] ?? '';
+  return word.startsWith('v') ? parseVersion(word.slice(1)) : undefined;
 }
 
 export interface ReleaseLocation {
@@ -53,6 +62,26 @@ export function locateRelease(changelog: string, version: string): ReleaseLocati
     (heading) => headingText(heading).trim().split(/\s/u)[0] === `v${version}`,
   );
   return { body, frontmatter, index, nodes, releases };
+}
+
+/** The version of every release section the changelog holds, in the order they appear. */
+export function releaseVersions(changelog: string): Version[] {
+  return locateRelease(changelog, '').releases.flatMap((heading) => headingVersion(heading) ?? []);
+}
+
+/**
+ * The body of one version's release section: everything under its heading up to the next release
+ * section, without the blank lines around it. Undefined when the changelog holds no such section.
+ * A level-two heading that names no release belongs to the body.
+ */
+export function releaseBody(changelog: string, version: string): string | undefined {
+  const { body, index, releases } = locateRelease(changelog, version);
+  const start = releases[index]?.position?.end.offset;
+  if (start === undefined) {
+    return undefined;
+  }
+  const next = releases.slice(index + 1).find((heading) => headingVersion(heading) !== undefined);
+  return body.slice(start, next?.position?.start.offset ?? body.length).trim();
 }
 
 // A fragment must finish its blocks so later release headings remain structural headings.

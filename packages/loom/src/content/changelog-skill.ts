@@ -10,7 +10,7 @@ import type { ChangelogFiles } from '../helpers/changelog.js';
 export function changelogSkill({ changelog, changes }: ChangelogFiles): string {
   return `---
 name: loom-changelog
-description: Use when finishing a consumer-visible change to this package or cutting its version. Add a change fragment in ${changes}/ for every consumer-visible change, validate it with loom changelog check, and cut a version with loom changelog write.
+description: Use when finishing a consumer-visible change to this package or cutting its version. Add a change fragment in ${changes}/ for every consumer-visible change, validate it with loom changelog check, cut a version or a prerelease with loom changelog write, and print a version's release notes with loom changelog notes.
 ---
 
 
@@ -33,8 +33,19 @@ The \`loom\` bin is installed in the package, so run it through the package mana
 
 1. Make sure the clone has full git history, because the cut orders entries by the commit that added each fragment.
 2. Run \`loom changelog write --dry-run\` and read the section and the next version it prints.
-3. Run \`loom changelog write\`, with \`--date YYYY-MM-DD\` or \`--narrative FILE\` when the release needs them.
+3. Run \`loom changelog write\`, with \`--date YYYY-MM-DD\` or \`--narrative FILE\` when the release needs them. Add \`--target VERSION\` to cut a version above the computed one, such as \`--target 0.11.0\`; its release part must meet the minimum the pending fragments need, and the cut fails and names the minimum otherwise.
 4. Run the package manager's install, because the cut refreshes no lockfile.
-5. Commit \`${changelog}\`, \`package.json\`, the lockfile, and the deleted fragments together.
+5. Commit \`${changelog}\`, \`package.json\`, each file \`sharedVersion\` lists in \`loom.config.json\`, the lockfile, and the deleted fragments together.
+
+## Cut a prerelease
+
+1. Run \`loom changelog write --target VERSION-PRERELEASE\`, such as \`--target 0.11.0-rc.1\`. It sets the version, writes no changelog section, and keeps every fragment pending. A package at a stable version other than \`0.0.0\` needs that version's \`## v<version> - <date>\` section in \`${changelog}\` first.
+2. Run \`loom changelog notes VERSION-PRERELEASE\` to print the pending fragments as the candidate's release notes.
+3. Cut the next candidate with a higher prerelease, such as \`--target 0.11.0-rc.2\`, or finalize with \`loom changelog write\`, which cuts the release part, \`0.11.0\`, writes its section, and consumes the fragments. When a fragment added since raises the minimum past that release part, the cut fails and asks for \`--target\`.
+4. Commit the changed manifests, as in a version cut. A prerelease changes no fragment and no changelog.
+
+## Read a version's notes
+
+Run \`loom changelog notes VERSION\`. A cut version prints the body of its section in \`${changelog}\`, and the package's current prerelease prints its pending fragments. Any other version fails.
 `;
 }
