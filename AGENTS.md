@@ -17,7 +17,7 @@ The [glossary](docs/glossary.md) is the domain model. Use its terms in code, doc
 
 The [decision records](docs/decisions/README.md) are constraints on the work, not an archive. Check a plan against the index before building, and open the records that govern the area under change. An `accepted` record is load-bearing: a change that conflicts with it supersedes it with a new record rather than editing it.
 
-A record that rejected an approach, such as ADR-0066's rejection of a configuration file, which ADR-0099 carried forward and ADR-0130 supersedes, still leaves that approach open. When it is the best design, present it on its merits and name the record a new one would supersede, rather than steering to a weaker design the record allows.
+A record that rejected an approach, such as ADR-0066's rejection of a configuration file, which ADR-0099 carried forward and the proposed ADR-0130 supersedes, still leaves that approach open. When it is the best design, present it on its merits and name the record a new one would supersede, rather than steering to a weaker design the record allows.
 
 ## Pull requests
 
