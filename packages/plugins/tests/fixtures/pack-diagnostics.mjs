@@ -11,8 +11,9 @@ import { z } from 'zod';
 const schema = z.object({});
 
 /**
- * One faulty call per scenario, each reachable from JavaScript alone. The fixture prints the
- * Developer Diagnostic its message holds.
+ * One call per scenario, each reachable from JavaScript alone, every one faulty but
+ * `skills-empty-list`, which the pack accepts. The fixture prints the Developer Diagnostic a fault's
+ * message holds, or `returned` for a call that throws none.
  */
 const scenarios = {
   'config-glob': () => configuration({ file: '*.json', schema }),

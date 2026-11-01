@@ -128,12 +128,12 @@ const serviceRunUnrouted = diagnosticRule(`${packageName}/service/run-unrouted`,
 });
 
 /**
- * Skills settings that name no skill, a folder that is not a file URL or a nonempty path, a skill
+ * Skills settings that hold neither a folder nor a list, a folder that is not a file URL or a nonempty path, a skill
  * name outside the Agent Skills grammar, or one that two skills hold.
  */
 const skillsSettings = diagnosticRule(`${packageName}/skills/settings`, {
   explanation:
-    "The skills plugin installs each skill as one folder, named by the skill's name, where an agent reads skills, so the settings name a folder of skills, a file URL or a nonempty path, or list at least one skill, each name follows the Agent Skills grammar, lowercase letters and digits joined by single hyphens, 64 characters at most, and no two skills hold one name.",
+    "The skills plugin installs each skill as one folder, named by the skill's name, where an agent reads skills, so the settings name a folder of skills, a file URL or a nonempty path, or a list of skills, each name follows the Agent Skills grammar, lowercase letters and digits joined by single hyphens, 64 characters at most, and no two skills hold one name.",
   headline: 'Invalid skills setting',
 });
 

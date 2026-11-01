@@ -6,9 +6,6 @@ import type { Skill, SkillsSettings } from './types.js';
 
 const identity = `${packageName}/skills`;
 
-/** The count of an empty list. */
-const none = 0;
-
 /** The longest skill name, the Agent Skills grammar's limit. */
 const longestName = 64;
 
@@ -96,21 +93,21 @@ function judgeNames(settings: SkillsSettings, listed: readonly Skill[]): void {
 }
 
 /**
- * Judges the settings at the `skills()` call, throwing the first fault: settings that name no
- * folder and list no skill, a folder that is not a `file:` URL or is an empty string, then each
- * listed name outside the Agent Skills grammar or held by an earlier skill. A folder skill's name
- * is judged when the folder is read, because only the folder knows it. It answers what the
- * settings declare.
+ * Judges the settings at the `skills()` call, throwing the first fault: settings that hold neither
+ * a folder nor a list, a folder that is not a `file:` URL or is an empty string, then each listed
+ * name outside the Agent Skills grammar or held by an earlier skill. An empty list with no folder
+ * declares no skill, as it did before the folder existed. A folder skill's name is judged when the
+ * folder is read, because only the folder knows it. It answers what the settings declare.
  */
 function judgeSettings(settings: SkillsSettings): Declared {
-  const listed = settings.skills ?? [];
-  if (settings.folder === undefined && listed.length === none) {
+  if (settings.folder === undefined && settings.skills === undefined) {
     throw settingFault(settings, {
       correction:
         "Name a folder of skills, such as folder: new URL('../skills/', import.meta.url), or list a skill in skills.",
       sentence: 'settings name no skills folder and list no skill.',
     });
   }
+  const listed = settings.skills ?? [];
   judgeFolder(settings);
   judgeNames(settings, listed);
   return { folder: settings.folder, skills: listed };

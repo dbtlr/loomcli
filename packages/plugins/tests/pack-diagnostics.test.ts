@@ -109,7 +109,6 @@ const settingsCases: Record<string, Expected> = {
     correction: folderCorrection,
     sentence: 'setting "folder" is an empty string.',
   }),
-  'skills-empty-list': noSkills,
   'skills-name': skillsFault({
     correction: nameCorrection,
     sentence: 'setting "skills" holds a name that is not a skill name: Notes.',
@@ -127,6 +126,11 @@ const settingsCases: Record<string, Expected> = {
   'version-lines': postfixFault,
   'version-number': postfixFault,
 };
+
+// 0.16.0 accepted an empty list, so it stays a declaration of no skill rather than a fault.
+test('skills settings that hold an empty list and no folder are accepted', () => {
+  expect(diagnostic('skills-empty-list')).toBe('returned\n');
+});
 
 test.each(Object.entries(settingsCases))(
   'the %s fault throws its rule’s diagnostic',
