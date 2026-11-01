@@ -1289,7 +1289,7 @@ test('notes for the current prerelease prints the pending fragments as write ren
       '### Breaking Changes\n\n',
       `- Remove the old call.\n\n${migrationSection}\n`,
       '### Features\n\n- Add tags.\n\n',
-      '### Fixes\n\n- Fix output.\n\n',
+      '### Fixes\n\n- Fix output.\n',
     ].join(''),
   });
   expect(snapshot(root)).toEqual(before);
@@ -1352,7 +1352,7 @@ test('notes reads the folder and the changelog loom.config.json names', async ()
   await expect(run(notes, 'notes', '1.6.0-rc.1')).resolves.toEqual({
     status: 0,
     stderr: '',
-    stdout: '### Fixes\n\n- Fix output.\n\n',
+    stdout: '### Fixes\n\n- Fix output.\n',
   });
   await expect(run(notes, 'notes', '1.5.0')).resolves.toEqual({
     status: 0,

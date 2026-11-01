@@ -40,7 +40,8 @@ async function prereleaseNotes(checkout: Checkout, version: SemVer, files: Chang
   if (fragments.length === 0) {
     throw new Error(`No fragments are pending in ${files.changes}/ for ${version.text}.`);
   }
-  return renderGroups(fragments);
+  // The groups close with a blank line between sections; the notes end with one newline, as a stable body does.
+  return renderGroups(fragments).replace(/\n+$/u, '\n');
 }
 
 /**
