@@ -39,6 +39,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 import { z } from 'zod';
@@ -68,6 +69,9 @@ afterEach(() => {
 
 /** How long a test that checks or builds the scaffold may take. */
 const slow = 180_000;
+
+/** The Prettier the package pins, so the formatter test runs the same formatter everywhere. */
+const prettier = fileURLToPath(new URL('../node_modules/.bin/prettier', import.meta.url));
 
 /**
  * The version of the loom under test, which a scaffold pins its Loom dependencies to, and the
@@ -381,18 +385,16 @@ test('--only with a piece init does not know is an option error that names the p
 
 test(
   'managed files a Markdown formatter rewrote stay managed: init writes nothing and warns nothing',
-  async (context) => {
+  async () => {
     const directory = emptyNotes();
     await loom(directory, ['init']);
-    const formatted = spawnSync('npx', ['-y', 'prettier@3', '--write', guidePath, skillPath], {
+    const formatted = spawnSync(prettier, ['--write', guidePath, skillPath], {
       cwd: directory,
       encoding: 'utf8',
       timeout: slow,
     });
-    if (formatted.error !== undefined || formatted.status !== 0) {
-      // Prettier comes from the registry through npx, so a machine without network skips this test.
-      context.skip();
-    }
+    expect(formatted.error).toBeUndefined();
+    expect(formatted.status).toBe(0);
     await expect(loom(directory, ['init'])).resolves.toEqual({
       status: 0,
       stderr: noRepository,
