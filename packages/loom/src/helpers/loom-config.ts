@@ -54,6 +54,9 @@ const postInstall = object({
 /**
  * The schema of `loom.config.json`. Every key is optional, and valibot's `object` strips a key it
  * does not describe, so an unknown key is ignored. `skills` is read by no command yet.
+ * `sharedVersion` passes through as written, because the plugin drops a value the schema rejects
+ * and a dropped list would let a cut leave the listed manifests at the old version;
+ * `loom changelog write` checks it as one value and fails on a malformed one.
  */
 const loomConfigSchema = object({
   paths: optional(
@@ -69,6 +72,7 @@ const loomConfigSchema = object({
     }),
   ),
   postInstall: optional(postInstall),
+  sharedVersion: optional(unknown()),
 });
 
 /** Every key of `paths`. */

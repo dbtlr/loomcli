@@ -866,6 +866,18 @@ _Avoid_: Patch fragment, bugfix
 A change fragment that is not breaking: a feature fragment or a fix fragment. Either kind requires at least a patch bump in this repository's synchronized release under [ADR-0083](decisions/0083-a-synchronized-release-may-select-a-version-above-the-fragment-minimum.md), while a package from `1.0.0` under [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md) bumps them differently.
 _Avoid_: Patch fragment, minor fragment
 
+**Fragment minimum**:
+The lowest release part a cut may take: the version the bump table gives from the last release and the highest pending fragment kind. A chosen version's release part, the version without its prerelease part, may exceed it and never fall below it, so `0.12.0-rc.1` meets a `0.12.0` minimum and a fragment keeps its kind whatever version ships it. A package's last release is its version when stable, and while it is a prerelease the highest version among its changelog's release sections, under [ADR-0132](decisions/0132-a-packages-changelog-cut-may-choose-its-version-cut-a-prerelease-and-set-a-shared-version.md).
+_Avoid_: Computed version, minimum bump (for the version)
+
+**Prerelease cut**:
+A package cut to a version with a SemVer prerelease part, such as `0.11.0-rc.1`. It sets the version and writes no changelog section, and the fragments stay pending until a stable cut consumes them.
+_Avoid_: Release candidate cut (for every prerelease), preview cut
+
+**Shared version**:
+A package's version carried by other `package.json` files that its `loom.config.json` lists under `sharedVersion`, which one cut sets together, so several binaries ship from one tag.
+_Avoid_: Synchronized version (this repository's release set), workspace version
+
 **Release cut**:
 The reviewed commit that consumes pending change fragments and sets the synchronized version and changelog for one release. It may also mark accepted the proposed decisions the release ships, and change nothing else.
 _Avoid_: Version bump, release build

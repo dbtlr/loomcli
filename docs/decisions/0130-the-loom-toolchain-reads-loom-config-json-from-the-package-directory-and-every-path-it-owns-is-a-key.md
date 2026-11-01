@@ -4,7 +4,7 @@ title: ADR-0130 - The loom toolchain reads loom.config.json from the package dir
 description: The loom bin installs the configuration plugin with the file loom.config.json, the project scope alone, and package.json as its root marker, so the lookup reads the file at or below the package directory and never a file above it; --config names any file in its place. Every key is optional. paths holds source, application, entry, out, changes, changelog, installer, and skills, each defaulting to today's convention, and application and entry follow source. Every path in the file resolves against the package directory, an option beats the file, and the file beats the convention. A path another tool dictates stays fixed. init uses only conventions when it scaffolds a new application, and writes no loom.config.json. The bin still acts on one package directory. It supersedes ADR-0099's rule that the bin reads no configuration file, and the fixed locations of ADR-0067, ADR-0068, and ADR-0072.
 status: proposed
 created: 2026-10-31
-modified: 2026-10-31
+modified: 2026-11-01
 ---
 
 # ADR-0130 - The loom toolchain reads loom.config.json from the package directory, and every path it owns is a key
@@ -67,3 +67,4 @@ Proposed. It moves to accepted in the release PR of the release that ships the f
 ## Changelog
 
 - 2026-10-31: Proposed with the toolchain configuration contract (LM-434). It supersedes ADR-0099's provision, carried forward from ADR-0066, that the bin reads no configuration file; ADR-0067's clause that `.changes/` and `CHANGELOG.md` live in the package directory; ADR-0068's fixed scaffold paths and the fragment guide's fixed path; and ADR-0072's clause that init renders `install.sh` in the package directory. Each location becomes the default of its key. ADR-0067, ADR-0068, ADR-0072, and ADR-0099 carry dated entries.
+- 2026-11-01: [ADR-0132](0132-a-packages-changelog-cut-may-choose-its-version-cut-a-prerelease-and-set-a-shared-version.md), proposed, adds the top-level `sharedVersion` key, a list of `package.json` files resolved against the package directory like every path here. `write` validates it as one value and fails on a malformed one rather than dropping it, the one key whose rejected value does not fall back to its convention. It names files the package's own cut writes, so the bin still acts on one package. It binds when that record is accepted.
