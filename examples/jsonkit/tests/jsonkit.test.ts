@@ -67,6 +67,15 @@ test('each modular Command reads the document from --file or from piped text', a
   });
 });
 
+test("select's repeated --field rejects an empty value through the catalog's text()", async () => {
+  await expect(run(['select', '--field', '', '-f', 'doc.json'])).resolves.toEqual({
+    status: 2,
+    stderr:
+      'jsonkit: Option "--field" at 0: Expected a nonempty value.\nRun "jsonkit select --help" to see the usage.\n',
+    stdout: '',
+  });
+});
+
 test('an alias, a deprecated Command, and a path three levels deep all route', async () => {
   const keys = await run(['keys', '-f', 'doc.json']);
   await expect(run(['ls', '-f', 'doc.json'])).resolves.toEqual(keys);
@@ -133,6 +142,13 @@ test('help prints the details get.md carries, and version the declared version',
   const help = await run(['get', '--help']);
   expect(help.stdout).toContain('A path is a dot-separated walk from the root of the document.');
   await expect(run(['--version'])).resolves.toMatchObject({ stdout: 'jsonkit v0.0.0\n' });
+});
+
+test('the color plugin forces the theme’s colors onto a piped help page', async () => {
+  const plain = await run(['--help']);
+  expect(plain.stdout).not.toContain('\u001B[');
+  const colored = await run(['--help', '--color']);
+  expect(colored.stdout).toContain('\u001B[');
 });
 
 test('the example plugin explains the routed Command without reading a document', async () => {

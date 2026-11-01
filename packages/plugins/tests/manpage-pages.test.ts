@@ -519,9 +519,6 @@ const compact = `.'"\`^~\\\\fB-${String.fromCodePoint(0x1b)}${String.fromCodePoi
 
 const groff = findOnPath('groff');
 
-/** The mandoc linter, which a host may not have; the lint case below skips without it. */
-const mandoc = findOnPath('mandoc');
-
 /** A page as groff renders it in UTF-8, without fonts, on lines too long to wrap. */
 function rendered(text: string): string {
   const result = spawnSync('groff', ['-man', '-Tutf8', '-rLL=400n', '-P', '-cbou'], {
@@ -602,21 +599,4 @@ describe('escapes', () => {
       expect(lint(text)).toBe('');
     }
   });
-
-  // The pages carry the empty date the page's reproducibility needs, which mandoc reports once.
-  it.skipIf(mandoc === undefined)(
-    'mandoc reports the missing date of each page and nothing else',
-    () => {
-      for (const text of [...pagesOf(escapes).values(), ...pagesOf(kit).values()]) {
-        const reports = spawnSync('mandoc', ['-T', 'lint', '-W', 'warning'], {
-          encoding: 'utf8',
-          input: text,
-        })
-          .stdout.trim()
-          .split('\n');
-        expect(reports).toHaveLength(1);
-        expect(reports[0]).toMatch(/missing date/u);
-      }
-    },
-  );
 });

@@ -2,7 +2,7 @@
  * Textstat's tests show how its declaration assembles Loom's parts, one case for each capability
  * its README lists. The packages prove each rule; these cases prove the assembly and teach it.
  */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -81,6 +81,16 @@ test('the catalog validators reject a value before the action, naming the variab
   const { status, stderr } = await run(['--metric', 'pages', 'one.txt']);
   expect(status).toBe(2);
   expect(stderr).toContain('bytes, words, lines');
+});
+
+test('the logging plugin appends one record for each run to textstat.jsonl', async () => {
+  const state = join(directory, 'state');
+  await expect(run(['one.txt'], { env: { XDG_STATE_HOME: state } })).resolves.toMatchObject({
+    status: 0,
+    stderr: '',
+  });
+  const record = JSON.parse(readFileSync(join(state, 'textstat', 'textstat.jsonl'), 'utf8'));
+  expect(record).toMatchObject({ level: 'info', message: 'Counted the sources.' });
 });
 
 test('the hidden --timing writes its info line to stderr, and help does not list it', async () => {

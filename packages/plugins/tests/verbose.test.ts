@@ -2,9 +2,10 @@
  * Acceptance plan for the verbose plugin (docs/plugins/verbose.md#verbose-plugin).
  *
  * - A fixture application installs `verbose()` and declares no verbose-marked or quiet-marked
- *   option of its own. Its action writes one debug line and one result. The plugin's `--help` rows,
- *   its `control`, `verbose`, and `quiet` marks, and a fixture's unmarked counted option reading
- *   `false` for both are proven in help-page.test.ts and control-marks.test.ts.
+ *   option of its own. Its action writes one debug line and one result. The plugin's `--help` rows
+ *   are proven in help-page.test.ts and its `control` marks in control-marks.test.ts. The
+ *   `verbose` and `quiet` marks, and an unmarked counted option reading `false` for both, are
+ *   proven in packages/core/tests/verbosity-declarations.test.ts.
  * - `-v` and `-vv` write the debug line on stderr, and no flag, or `-v -q`, writes none. `-q`
  *   writes the result on stdout and nothing on stderr. Piped, the line is `› Reading doc.json.`.
  * - `--verbose=2` fails with the counted unexpected-value error.

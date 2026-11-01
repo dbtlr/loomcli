@@ -22,8 +22,9 @@
  *   three levels below the root.
  * - Options. `kit paths -<Tab>` offers long and short spellings, `--<Tab>` long spellings alone,
  *   and an option already given is not offered again, while a multiple `--field` is.
- * - Counted options. `--verbose` is offered again after `-v`, as a multiple `--field` is, while
- *   `-vv` no longer offers `--verbose` and `-q` no longer offers `--quiet`, because a further
+ * - Counted options. The fixture's own unmarked counted `--verbose` is offered again after it was
+ *   given, as a multiple `--field` is. The verbose plugin's marked `--verbose` is no longer
+ *   offered after `-vv`, and its quiet-marked `-q` no longer after `-q`, because a further
  *   occurrence of either adds nothing to the verbosity.
  * - Implied values. With `backup` implying `simple` and a closed set of values, `--backup=<Tab>`
  *   offers the values as whole words that begin `--backup=`, and `--backup <Tab>` offers what the

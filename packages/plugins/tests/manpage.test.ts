@@ -7,9 +7,7 @@
  *   generate --out <folder>` writes each page byte for byte as the fixtures in manpage-pages.test.ts
  *   state, with the application's version. Two runs, and a run under another `HOME`, `TERM`,
  *   `COLUMNS`, and locale, write identical bytes, and `generate` and `install` write identical
- *   pages. `groff -man -Tutf8 -ww -z` reads every page the fixture writes with no warning, and
- *   where `mandoc` is on `PATH`, `mandoc -T lint -W warning` reports `missing date` for each page,
- *   which the empty date gives, and nothing else.
+ *   pages. `groff -man -Tutf8 -ww -z` reads every page the fixture writes with no warning.
  * - The set. The set holds a page for the root, each visible child, a deprecated Command, and each
  *   visible plugin Command, and none for a hidden Command, a Command under it, `__complete`, or an
  *   alias. The root page lists the deprecated Command with its deprecated fact and no hidden

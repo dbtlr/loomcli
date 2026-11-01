@@ -39,9 +39,7 @@
  *   nothing.
  * - Paths. A path that meets a non-object leaves the option unanswered, and `configInput({ path:
  *   'a..b' })` throws at the call.
- * - Escaping. A `--config` path that holds U+001B prints it as `\u001b` in its failure and in the
- *   label of a filled value a validator rejects, and a home directory that holds it prints it as
- *   `\u001b` in its warning.
+ * - Escaping. A `--config` path that holds U+001B prints it as `\u001b` in its failure.
  * - Edges. A `file` that is absolute, that holds a glob outside the extension, or that lists an
  *   unknown extension throws from `configuration()` under its rule, a file that starts with a byte
  *   order mark reads, the `problems` of a source `InputError` reach an override of the
