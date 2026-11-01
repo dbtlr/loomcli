@@ -299,7 +299,7 @@ test('a registry of a format this loom does not know fails the build', async () 
     'node_modules/@loomcli/plugins/package.json': `${JSON.stringify({ exports: { './skills': './skills.js' }, name: '@loomcli/plugins', type: 'module' })}\n`,
     'node_modules/@loomcli/plugins/skills.js': `export function skills() {
   const key = Symbol.for('@loomcli/plugins/skills/registry');
-  globalThis[key] = [...(globalThis[key] ?? []), { format: 2 }];
+  globalThis[key] = [...(globalThis[key] ?? []), { format: 1 }];
 }
 `,
     'package.json': `${JSON.stringify({ name: 'notes', type: 'module' })}\n`,

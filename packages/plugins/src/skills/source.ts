@@ -63,18 +63,21 @@ const faults = {
 };
 
 /**
- * The folder an unbuilt run reads: a URL's path, a `file:` string's, or an absolute path. A
- * relative path resolves against the application module, which only `loom build` knows, so it
- * fails.
+ * The absolute folder a `folder` setting names: a URL's path, a `file:` string's, an absolute path,
+ * or a relative path resolved against the application module's directory. Only `loom build` knows
+ * that directory, so a run that passes none, an unbuilt run, fails on a relative path.
  */
-function unbuiltFolder(setting: URL | string): string {
+function folderPath(setting: URL | string, moduleDirectory?: string): string {
   if (setting instanceof URL || setting.startsWith('file:')) {
     return resolve(fileURLToPath(setting));
   }
-  if (!isAbsolute(setting)) {
+  if (isAbsolute(setting)) {
+    return resolve(setting);
+  }
+  if (moduleDirectory === undefined) {
     throw faults.relative(setting);
   }
-  return resolve(setting);
+  return resolve(moduleDirectory, setting);
 }
 
 /** One carried file as the define names it, or `undefined` when it is not one. */
@@ -158,10 +161,10 @@ function folderSkills(request: FolderRequest): readonly FolderSkill[] {
   }
   if (carried === undefined) {
     const missing = request.build === 'source' ? 'setting' : 'built';
-    return readSkillsFolder(unbuiltFolder(setting), request.listed, missing);
+    return readSkillsFolder(folderPath(setting), request.listed, missing);
   }
   return carriedFolderSkills(request, carried);
 }
 
 export type { FolderRequest };
-export { folderSkills };
+export { folderPath, folderSkills };

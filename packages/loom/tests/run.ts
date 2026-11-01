@@ -1,7 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { mockProcess } from '@loomcli/testing';
 import type { ProgramCall } from '@loomcli/testing';
@@ -11,17 +10,6 @@ import { childEnvironment } from '../../../scripts/test-process.js';
 import { loom } from '../src/application.js';
 import { pnpmManifestPath } from '../src/helpers/release-files.js';
 import { temporaryRoot } from './fixture.js';
-
-/**
- * The script `loom init` runs under Bun to read an application module's exports.
- * `src/helpers/application-exports.ts` names `read-application.js` beside itself, which exists in
- * `dist` beside the built bundle but not in `src/helpers` beside the source, so the `bun` program
- * runs `src/read-application.ts` in its place, as Bun runs TypeScript directly.
- */
-const sourceReader = {
-  built: fileURLToPath(new URL('../src/helpers/read-application.js', import.meta.url)),
-  source: fileURLToPath(new URL('../src/read-application.ts', import.meta.url)),
-};
 
 /** Runs one of the toolchain's child programs against the fixture's real files and repositories. */
 function spawnProgram(command: string, args: readonly string[], call: ProgramCall) {
@@ -44,21 +32,21 @@ function program(call: ProgramCall) {
 }
 
 /**
- * The `bun` program, which runs the source reader in place of the built one. A script Bun is asked
- * to run that does not exist throws, so the exit is `unstarted`, and the error joins `missing`, so
- * `run` fails the test too: `loom init` turns a read that could not start into a warning and still
- * exits 0, which would let a case pass while it skipped the writes that need the read.
+ * The `bun` program. From source, `loom` runs each reader's TypeScript source, because only the
+ * build writes the built reader beside the bundle. A script Bun is asked to run that does not exist
+ * throws, so the exit is `unstarted`, and the error joins `missing`, so `run` fails the test too:
+ * `loom init` turns a read that could not start into a warning and still exits 0, which would let a
+ * case pass while it skipped the writes that need the read.
  */
 function bunProgram(missing: Error[]) {
   return (call: ProgramCall) => {
-    const args = call.args.map((arg) => (arg === sourceReader.built ? sourceReader.source : arg));
-    const script = args.find((arg) => !arg.startsWith('-'));
+    const script = call.args.find((arg) => !arg.startsWith('-'));
     if (script !== undefined && isAbsolute(script) && !existsSync(script)) {
       const error = new Error(`The bun program was asked to run ${script}, which does not exist.`);
       missing.push(error);
       throw error;
     }
-    return spawnProgram(call.command, args, call);
+    return spawnProgram(call.command, call.args, call);
   };
 }
 

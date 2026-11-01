@@ -1,8 +1,14 @@
 import { writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-import { coreClass, loadFailure, member } from './application-load.js';
+import {
+  coreAddress,
+  coreClass,
+  loadFailure,
+  member,
+  readerArguments,
+} from './application-load.js';
 import type { SkillsRead } from './helpers/skills-declaration.js';
 
 /*
@@ -10,18 +16,18 @@ import type { SkillsRead } from './helpers/skills-declaration.js';
  * `loom init` reads an application module, so the module imports as source and nothing it loads
  * stays in `loom`. It imports the application module, reads the registry the skills plugin records
  * each `skills()` call in, under the global symbol `@loomcli/plugins/skills/registry`, and has the
- * plugin read and judge the one folder a call names, so the build judges it exactly as the plugin
- * does. It applies none of init's checks of the module's exports. The arguments name the result
- * file, the package directory, the module, and the module as the operator reads it. The result
- * file receives one `SkillsRead` as JSON, and the process ends once it is written, whatever the
- * module left running when it loaded.
+ * plugin resolve and judge the one folder a call names, so the build reads the setting and judges
+ * the folder exactly as the plugin does. It applies none of init's checks of the module's exports.
+ * The arguments name the result file, the package directory, the module, and the module as the
+ * operator reads it. The result file receives one `SkillsRead` as JSON, and the process ends once
+ * it is written, whatever the module left running when it loaded.
  */
 
 /** The global symbol the skills plugin records its calls under. */
 const registryKey = Symbol.for('@loomcli/plugins/skills/registry');
 
 /** The format of a registry entry this `loom` reads, which the plugin at its version records. */
-const registryFormat = 1;
+const registryFormat = 2;
 
 /** The failure of a registry whose format this `loom` does not know. */
 const versions =
@@ -32,10 +38,9 @@ const versions =
  * package resolves, so a fault the module throws while it loads prints its own diagnostic.
  */
 async function declarationErrorTest(directory: string): Promise<(value: unknown) => boolean> {
+  const address = coreAddress(directory);
   try {
-    const core: unknown = await import(
-      import.meta.resolve('@loomcli/core', join(directory, 'package.json'))
-    );
+    const core: unknown = address === undefined ? undefined : await import(address);
     const declarationError = coreClass(core, 'DeclarationError');
     return (value) => declarationError !== undefined && value instanceof declarationError;
   } catch {
@@ -44,17 +49,20 @@ async function declarationErrorTest(directory: string): Promise<(value: unknown)
 }
 
 /**
- * The absolute folder a call's setting names: a URL's path, a `file:` string's, an absolute path,
- * or a relative path resolved against the application module's directory.
+ * The absolute folder an entry's call names, which the plugin resolves against the application
+ * module's directory, `undefined` for a call that names none, or `false` for an entry this `loom`
+ * cannot read.
  */
-function folderOf(setting: unknown, path: string): string | undefined {
-  if (setting instanceof URL || (typeof setting === 'string' && setting.startsWith('file:'))) {
-    return resolve(fileURLToPath(setting));
+function folderOf(entry: unknown, path: string): string | undefined | false {
+  const folder = member(entry, 'folder');
+  if (typeof folder !== 'function') {
+    return false;
   }
-  if (typeof setting !== 'string') {
-    return undefined;
+  const named: unknown = Reflect.apply(folder, undefined, [dirname(path)]);
+  if (named === undefined || typeof named === 'string') {
+    return named;
   }
-  return isAbsolute(setting) ? resolve(setting) : resolve(dirname(path), setting);
+  return false;
 }
 
 /** The entries the registry holds once the module loaded, or none when no call recorded one. */
@@ -96,10 +104,13 @@ async function readDeclaration(
   if (entries.some((entry) => member(entry, 'format') !== registryFormat)) {
     return { failure: versions };
   }
-  const naming = entries.flatMap((entry) => {
-    const folder = folderOf(member(entry, 'folder'), path);
-    return folder === undefined ? [] : [{ entry, folder }];
-  });
+  const folders = entries.map((entry) => ({ entry, folder: folderOf(entry, path) }));
+  if (folders.some(({ folder }) => folder === false)) {
+    return { failure: versions };
+  }
+  const naming = folders.flatMap(({ entry, folder }) =>
+    typeof folder === 'string' ? [{ entry, folder }] : [],
+  );
   const [first, second] = naming;
   if (first === undefined) {
     return { kind: 'none' };
@@ -112,14 +123,9 @@ async function readDeclaration(
   return await judgedFolder(first.entry, first.folder);
 }
 
-const [resultFile, directory, path, module] = process.argv.slice(2);
-if (
-  resultFile === undefined ||
-  directory === undefined ||
-  path === undefined ||
-  module === undefined
-) {
-  throw new Error('read-skills takes a result file, a package directory, a module, and its name.');
-}
+const { directory, module, path, resultFile } = readerArguments(
+  process.argv.slice(2),
+  'read-skills',
+);
 writeFileSync(resultFile, JSON.stringify(await readDeclaration(directory, path, module)));
 process.exit(0);

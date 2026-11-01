@@ -1,12 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { array, boolean, literal, strictObject, string, union } from 'valibot';
 import type { InferOutput } from 'valibot';
 
-import { runBun } from './bun.js';
-import { parseOrThrow } from './parse-or-throw.js';
+import { runReader } from './application-reader.js';
 import type { RunHost } from './run-host.js';
 
 /** One file of a judged skill: its path relative to the skill's folder, and its executable bit. */
@@ -44,16 +42,6 @@ type SkillsCarry =
   | { readonly kind: 'read'; readonly folder: string; readonly skills: readonly JudgedSkill[] };
 
 /**
- * The script the reading process runs. The build writes it into `dist` beside the bundle's
- * modules, this one included. A run of `loom` from its source, as the toolchain's own build makes
- * under Bun, has no built script beside this module, so it runs the script's source.
- */
-function readerScript(): string {
-  const built = fileURLToPath(new URL('read-skills.js', import.meta.url));
-  return existsSync(built) ? built : fileURLToPath(new URL('../read-skills.ts', import.meta.url));
-}
-
-/**
  * Whether the package resolves `@loomcli/plugins`: a `node_modules/@loomcli/plugins` at or above
  * its directory, where a bare specifier's lookup finds it.
  */
@@ -80,41 +68,24 @@ interface SkillsModule {
  * Reads the skills folder the application module's `skills()` call names, under Bun, in a process
  * of its own in the package directory, as `loom init` reads the module's exports. A package that
  * does not resolve `@loomcli/plugins`, that has no application module, or whose application module
- * is the entry, which would run the application, is not loaded and reads `unread`. The process
- * writes its result to a file in a scratch folder under the run's temporary folder, removed once
- * read or when a shutdown ends before the run has unwound. A module that throws while it loads, a
- * registry this `loom` cannot read, two folders, and any fault the plugin's judging raises fail
- * the build with the failure's text, before anything is bundled.
+ * is the entry, which would run the application, is not loaded and reads `unread`. A module that
+ * throws while it loads, a registry this `loom` cannot read, two folders, and any fault the
+ * plugin's judging raises fail the build with the failure's text, before anything is bundled.
  */
 async function readSkillsDeclaration(run: RunHost, options: SkillsModule): Promise<SkillsCarry> {
   const { directory, entry, module } = options;
   if (module === undefined || module === entry || !resolvesPlugins(directory)) {
     return { kind: 'unread' };
   }
-  const temporary = mkdtempSync(join(run.host.tmpdir, 'loom-build-skills-'));
-  const removeTemporary = () => {
-    rmSync(temporary, { force: true, recursive: true });
-  };
-  const removeCleanup = run.onShutdown(removeTemporary);
-  try {
-    const resultFile = join(temporary, 'result.json');
-    const read = await runBun(
-      run,
-      ['--no-install', readerScript(), resultFile, directory, module, options.shown],
-      directory,
-    );
-    if (read.code !== 0 || !existsSync(resultFile)) {
-      throw new Error(`${read.output.trim()}\n\nBun could not read ${options.shown}.`.trim());
-    }
-    const result = parseOrThrow(readResult, JSON.parse(readFileSync(resultFile, 'utf8')));
-    if ('failure' in result) {
-      throw new Error(result.failure);
-    }
-    return result;
-  } finally {
-    removeCleanup();
-    removeTemporary();
+  const result = await runReader(
+    run,
+    { directory, module: options.shown, path: module, reader: 'read-skills' },
+    readResult,
+  );
+  if ('failure' in result) {
+    throw new Error(result.failure);
   }
+  return result;
 }
 
 export type { JudgedSkill, SkillsCarry, SkillsModule, SkillsRead };
