@@ -12,6 +12,8 @@ These principles rank above the [decision records](decisions/README.md) and the 
 
 Loom finishes its own part: parsing, routing, rendering, every projection, the toolchain, the installer, and every surface an operator reaches through them. A defect there is fixed, even when the contract specifies the defective outcome and even when only a hand-typed hidden spelling reaches it.
 
+Loom's part is the whole repeated work of a command-line application: defining it, building, changelogging, releasing, installing, and updating it. The toolchain is as much Loom as the runtime. Loom's first consumers are applications such as Heimdall, Mimir, and Loom itself, so a function that two of them repeat belongs in Loom, whether or not another author has asked for it. Release orchestration, the pipeline that runs those steps, stays with each repository, as [loom build](toolchain/build.md) states.
+
 The author's code is trusted. An action, validator, view, hook, translator, or declared default may be good or bad, and a mistake in it fails the run through the ordinary failure path as a [defect](glossary.md#failures) the author fixes. Loom adds no guard, limit, timer, freeze, or special recovery rule for what an author's code creates, throws, or hands back, and it ships no capability an application does not need, such as a JSON validator for arguments.
 
 Loom is general-purpose, so it does not decide how an application behaves. One action streams a response from a service, and another runs a terminal interface that an operator works in for twelve hours. Loom cannot know which, and an application that needs a timeout or a limit sets it in its own action. Node and Bun are always underneath, and an author who needs something Loom does not offer uses them directly.
@@ -31,6 +33,8 @@ Every capability is a default the author can replace, skip, or route around. Cor
 ## 5. One system per concept
 
 A concept has one mechanism and one name. A thing a plugin supplies is the ordinary thing attached from a different point. Before adding a lane, check whether the ordinary path already covers the case, and merge parallel kinds of one thing into one.
+
+The same holds for a public operation: one job is one operation, not one method per kind of input, such as `overrideView`, `overrideRowView`, and `overrideFailure`. A signature that derives its parameter types from the key, through a conditional type or overloads, is one operation. Prefer the derived signature when it gives clearer errors than a stack of overloads.
 
 ## 6. Standards before inventions
 

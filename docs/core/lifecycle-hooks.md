@@ -6,6 +6,8 @@ description: "The on<Event> lifecycle hooks: judging the built graph, failure hi
 
 A lifecycle hook is a function on the plugin definition that core calls at one named point of an Application's life. Its name is `on` followed by the event, with the subject where it carries meaning: `onCommandAttach`, [`onGraphBuilt`](#judging-the-built-graph), [`onFailure`](#failure-hints), [`onLog`](#observing-log-events), and [`onEnvironment`](plugin-contract.md#environment-preparation). A hook runs in sequence at its point; middleware wraps an invocation and keeps its name for that reason. Contributions from a middleware into an action's context are direction, not contract, and wait for a plugin that needs them. Core has no hook before or after an action, or at the start or end of a run: an `'always'` [middleware](middleware.md) already runs code around every dispatched action, and each reported failure's exit code reaches `onLog` in its [failure event](logging.md). [ADR-0028](../decisions/0028-plugins-run-code-at-lifecycle-hooks-and-middleware-reads-the-request.md) records the decision in its 2026-10-25 entry.
 
+A new hook earns its place when it reaches a point no `'always'` middleware reaches and serves a use the log events do not. That entry rejected a run-start, a run-end, and a progress hook as second ways to do one job: a failure event already carries its exit code, an invocation's caller already receives its outcome, and a progress event reaches only the caller of its run. Symmetry with an existing hook is not a reason to add one.
+
 ```ts
 interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
   onCommandAttach?: CommandAttachHook;

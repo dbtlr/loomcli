@@ -17,6 +17,8 @@ The [glossary](docs/glossary.md) is the domain model. Use its terms in code, doc
 
 The [decision records](docs/decisions/README.md) are constraints on the work, not an archive. Check a plan against the index before building, and open the records that govern the area under change. An `accepted` record is load-bearing: a change that conflicts with it supersedes it with a new record rather than editing it.
 
+A record that rejected an approach, such as ADR-0066's rejection of a configuration file, which ADR-0130 later superseded, still leaves that approach open. When it is the best design, present it on its merits and name the record a new one would supersede, rather than steering to a weaker design the record allows.
+
 ## Pull requests
 
 Before opening or updating a PR, read [.changes/README.md](.changes/README.md). It defines when to add a fragment, when to apply `skip-changelog`, and how to document breaking changes or correct an earlier unreleased entry. Apply those rules to the final diff and state the fragment path or skip reason in the PR description.
@@ -24,6 +26,19 @@ Before opening or updating a PR, read [.changes/README.md](.changes/README.md). 
 During an upgrade, read the [changelog](CHANGELOG.md) breaking sections between the installed and target versions and follow their migration instructions.
 
 ## Conventions
+
+### Running tools
+
+Run a package's tool with `pnpm exec <tool>`. `devEngines` in `package.json` pins pnpm, so `npx <tool>` fails with `EBADDEVENGINES`. A script that rebuilds before it measures, such as a mutation run, keeps the rebuild's exit status, because a failed rebuild leaves stale `dist` that every later step reads as current.
+
+`pnpm check:fix`, which the pre-commit hook also runs, rewrites source in two ways a diff can hide:
+
+- `eslint/sort-keys` sorts object literal keys, in source and in tests' expected objects alike. A module whose key order is a contract turns the rule off in a per-file override in `vite.config.ts` with a comment that says why, as the existing overrides do, and pins the order with a test the fixer cannot rewrite, such as a golden file or an `Object.keys` assertion.
+- Each `//` line gains a capital first letter, so a sentence wrapped across two `//` lines comes back with a capital mid-sentence. Write each `//` line as a whole sentence, or use a `/** */` block for longer prose, and reread wrapped comments in the diff after a fix run.
+
+### Tests stay inside their sandbox
+
+A test that walks up from a temporary directory, looking for `.git` or a configuration file, sets a ceiling at its sandbox root. Without one, a stray marker above the sandbox, such as an empty `/tmp/.git` another tool left behind, ends the walk outside it: the test fails intermittently and can write outside its sandbox. `packages/plugins/tests/fixtures/skills-run.mjs` shows the pattern. To reproduce such a failure, point `TMPDIR` at a private directory that holds a `.git`.
 
 ### Type assertions are a last resort
 
@@ -55,6 +70,11 @@ A finding is a defect only when it passes both tests, which apply principles 1 a
    guard, a limit, a timer, or a special rule fails this test.
 2. **It plausibly happens.** The input fits how a command-line application is used. A construction
    built only to break the code, such as a default of a million shared paths, is a probe result.
+
+The first test covers the author's project layout too. The toolchain does not adapt to how an author
+lays out their own project: a solution-style `tsconfig.json` (`"files": []` with `references`)
+passes the scaffold's type pass, which stays `tsc --noEmit`, so a finding that asks for build mode
+(`tsc -b`) or other handling for one layout fails it.
 
 The controlling agent is the gate between a review and the board. A review seat, a fix round, or a
 bot never creates a task or a seed. The controlling agent judges each finding first, and only a
