@@ -1026,15 +1026,16 @@ async function signalWhenWritten(
  * Runs `loom build --target node` in the package as its own process group, with a stand-in for Bun
  * first on the PATH, and sends the signal to the group, as a terminal's Ctrl-C sends it, once the
  * stand-in runs. A build runs Bun only in its staging directory, so the signal lands while the
- * build is under way, whatever the machine's speed. The stand-in records the directory loom ran it
- * in and waits to be stopped. It resolves to that directory and the signal the build ended by.
+ * build is under way, whatever the machine's speed. The stand-in writes part of a bundle there, as
+ * a Bun stopped partway leaves one, records the directory, and waits to be stopped. It resolves to
+ * that directory and the signal the build ended by.
  */
 async function signalWhileBunBuilds(root: string, signal: NodeJS.Signals) {
   const bin = temporaryRoot('loom-held-bun-');
   const ranIn = join(bin, 'ran-in');
   writeFileSync(
     join(bin, 'bun'),
-    `#!/bin/sh\npwd -P > "${ranIn}.partial" && mv "${ranIn}.partial" "${ranIn}"\nexec sleep 60\n`,
+    `#!/bin/sh\nprintf 'A partial main.js.\\n' > main.js\npwd -P > "${ranIn}.partial" && mv "${ranIn}.partial" "${ranIn}"\nexec sleep 60\n`,
   );
   chmodSync(join(bin, 'bun'), 0o755);
   // The runtime by its own path, because the stand-in answers to `bun` on the PATH loom runs with.
