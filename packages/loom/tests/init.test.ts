@@ -467,6 +467,19 @@ test('an authored application module that cannot be loaded draws the load warnin
   expect(existsSync(join(root, 'src/main.ts'))).toBe(false);
 });
 
+test('an authored application module that throws a declaration fault while it loads draws the load warning naming the fault and no entry', async () => {
+  const root = ownPackage({
+    'src/application.ts':
+      "import { Application } from '@loomcli/core';\n\nexport const notes = new Application('no tes').action(() => undefined);\n",
+  });
+  const result = await loom(root, ['init', '--only', 'entry']);
+  expect(result.status).toBe(0);
+  expect(result.stderr).toMatch(
+    /^warning: src\/main\.ts was not written because src\/application\.ts could not be loaded: .*"no tes".* Install the package and run loom init again, or write the entry by hand\.\n$/u,
+  );
+  expect(existsSync(join(root, 'src/main.ts'))).toBe(false);
+});
+
 test.each(['My Notes', 'notes cli'])(
   'an empty directory named %j is refused before anything is written',
   async (name) => {
@@ -680,16 +693,22 @@ test('a package whose configuration declares no postInstall gets install.sh with
   expect(read(root, 'install.sh')).toBe(renderManaged(installerScript('notes', 'me/notes')));
 });
 
-test('a post-install command the schema rejects is dropped, and install.sh keeps the message alone', async () => {
-  const root = installPackage({
-    'loom.config.json': configuring({ command: [], message: 'Run notes init next.' }),
-  });
-  const runResult = await loom(root, ['init', '--only', 'install']);
-  expect(runResult.status).toBe(0);
-  expect(read(root, 'install.sh')).toBe(
-    renderManaged(installerScript('notes', 'me/notes', { message: 'Run notes init next.' })),
-  );
-});
+test.each([
+  ['holds no word', []],
+  ['holds a word that is not a string', ['serve', '--port', 8080]],
+])(
+  'a post-install command that %s is dropped whole, and install.sh keeps the message alone',
+  async (_case, command) => {
+    const root = installPackage({
+      'loom.config.json': configuring({ command, message: 'Run notes init next.' }),
+    });
+    const runResult = await loom(root, ['init', '--only', 'install']);
+    expect(runResult.status).toBe(0);
+    expect(read(root, 'install.sh')).toBe(
+      renderManaged(installerScript('notes', 'me/notes', { message: 'Run notes init next.' })),
+    );
+  },
+);
 
 /** The `check` script, test import, and lint file a linter and test runner pair writes. */
 const toolingCases = [

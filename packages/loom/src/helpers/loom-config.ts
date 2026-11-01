@@ -1,7 +1,17 @@
 import { join, relative, resolve, sep } from 'node:path';
 
 import { configuration } from '@loomcli/plugins/config';
-import { minLength, object, optional, pipe, string, tupleWithRest } from 'valibot';
+import {
+  minLength,
+  object,
+  optional,
+  pipe,
+  rawTransform,
+  safeParse,
+  string,
+  tupleWithRest,
+  unknown,
+} from 'valibot';
 import type { InferOutput } from 'valibot';
 
 import { conventionalChangelog, conventionalFragments } from './conventions.js';
@@ -13,7 +23,24 @@ import { conventionalChangelog, conventionalFragments } from './conventions.js';
 const pathValue = optional(pipe(string(), minLength(1)));
 
 /** The post-install command's words, which hold at least one. */
-const postInstallWords = tupleWithRest([string()], string());
+const postInstallWordList = tupleWithRest([string()], string());
+
+/**
+ * The words, checked as one value: a rejected list is one issue at `command` rather than at an
+ * item, so the configuration plugin drops the whole command instead of running the words that
+ * remain.
+ */
+const postInstallWords = pipe(
+  unknown(),
+  rawTransform(({ addIssue, dataset, NEVER }) => {
+    const words = safeParse(postInstallWordList, dataset.value);
+    if (words.success) {
+      return words.output;
+    }
+    addIssue({ message: 'Expected a non-empty array of strings' });
+    return NEVER;
+  }),
+);
 
 /**
  * What the installer script does after it installs and records the binary, under ADR-0131:
