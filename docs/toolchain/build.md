@@ -13,7 +13,8 @@ loom build [--target <target>] [--out <path>] [--entry <module>] [--application 
            [--build development|distributed] [--watch]
            [--release [--repository <owner/name>] [--name <name>]] [--facts | --define]
 loom changelog check
-loom changelog write [--date YYYY-MM-DD] [--narrative FILE] [--dry-run]
+loom changelog write [--target VERSION] [--date YYYY-MM-DD] [--narrative FILE] [--dry-run]
+loom changelog notes <version>
 loom init [--only <piece>]... [--linter oxlint|eslint] [--test-runner bun|vitest] [--force]
 ```
 
@@ -26,12 +27,12 @@ Every `loom` command acts on one package: the package whose directory it runs in
 
 - **The package directory.** It is the directory of the nearest `package.json` at or above the working directory. A command run with no `package.json` at or above it fails with exit 1 and says to run it inside a package directory. `loom init` is the one exception: it scaffolds an empty directory, and at a terminal it offers to create a `package.json` in a directory that has none, under [loom init](init.md).
 - **An unreadable `package.json`.** Every command reads `package.json` through one reader. A file that is not valid JSON fails with exit 1 and names the file's path, the line and column where the JSON breaks, counted from 1 with the column in characters, what JSON needs there, and the fix: `/work/notes/package.json is not valid JSON: line 3, column 1 needs a property name in double quotes, so fix it there and run loom again.` A file that holds JSON other than an object fails and names its path, and a leading byte order mark is ignored.
-- **One package, never a set.** Loom never acts on a repository root as a set of packages and holds no list of the packages a repository ships. In a monorepo, the monorepo's own tool runs a command in each package, or the author runs it in each one. A command run at a monorepo root acts on the root's own `package.json`.
+- **One package, never a set.** Loom never acts on a repository root as a set of packages and holds no list of the packages a repository ships. A package's `sharedVersion` key names other `package.json` files its own cut writes, which makes none of them a package `loom` acts on. In a monorepo, the monorepo's own tool runs a command in each package, or the author runs it in each one. A command run at a monorepo root acts on the root's own `package.json`.
 - **Where values come from.** Every value is a command option, a key of the [configuration file](#the-configuration-file), a convention, or a standard `package.json` field, such as `version`, `bin`, or `repository`. An option beats the file, and the file beats the convention.
 - **Paths.** A path an option names resolves against the working directory, as any command-line path does. A path in the configuration file and a conventional path, such as `src/main.ts`, resolve against the package directory.
 - **Bun.** `loom build` does its work under Bun, whichever runtime runs `loom`, so Bun must be on the `PATH`. A missing Bun fails the command with exit 1 and names Bun.
 - **Exit codes.** 0 is success. 1 is a failed build, a failed changelog check, invalid content, or an operational failure, reported on stderr. 2 is a command or option error, as in every Loom application.
-- **Out of this contract.** Release orchestration stays with each repository: PR guards, publishing to npm or GitHub, prerelease channels, release workflows, and cuts across several packages. The [installer script](install.md) reads the [release shape](install.md#the-release-shape) those workflows publish.
+- **Out of this contract.** Release orchestration stays with each repository: PR guards, publishing to npm or GitHub, release workflows, and acting on several packages. A package's cut may cut a prerelease and set its version in the files `sharedVersion` lists, under [ADR-0132](../decisions/0132-a-packages-changelog-cut-may-choose-its-version-cut-a-prerelease-and-set-a-shared-version.md). The [installer script](install.md) reads the [release shape](install.md#the-release-shape) those workflows publish.
 
 ## The configuration file
 
@@ -58,8 +59,8 @@ A package may keep `loom.config.json` beside its `package.json` to depart from a
   | `application` | `<source>/application.ts` | `build`, `init` |
   | `entry` | `<source>/main.ts` | `build`, `init` |
   | `out` | `dist` | `build`, `init` |
-  | `changes` | `.changes` | `changelog check`, `changelog write`, `init` |
-  | `changelog` | `CHANGELOG.md` | `changelog write` |
+  | `changes` | `.changes` | `changelog check`, `changelog write`, `changelog notes`, `init` |
+  | `changelog` | `CHANGELOG.md` | `changelog write`, `changelog notes` |
   | `installer` | `install.sh` | `init` |
   | `skills` | `skills` | `build` |
 

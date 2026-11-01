@@ -867,11 +867,11 @@ A change fragment that is not breaking: a feature fragment or a fix fragment. Ei
 _Avoid_: Patch fragment, minor fragment
 
 **Fragment minimum**:
-The lowest version a cut may take: the version the bump table gives from the last release and the highest pending fragment kind. A chosen version may exceed it and never fall below it, so a fragment keeps its kind whatever version ships it. A package's last release is its version when stable, and while it is a prerelease the highest version among its changelog's release sections, under [ADR-0132](decisions/0132-a-packages-changelog-cut-may-choose-its-version-cut-a-prerelease-and-set-a-shared-version.md).
+The lowest release part a cut may take: the version the bump table gives from the last release and the highest pending fragment kind. A chosen version's release part, the version without its prerelease part, may exceed it and never fall below it, so `0.12.0-rc.1` meets a `0.12.0` minimum and a fragment keeps its kind whatever version ships it. A package's last release is its version when stable, and while it is a prerelease the highest version among its changelog's release sections, under [ADR-0132](decisions/0132-a-packages-changelog-cut-may-choose-its-version-cut-a-prerelease-and-set-a-shared-version.md).
 _Avoid_: Computed version, minimum bump (for the version)
 
 **Prerelease cut**:
-A package cut to a version with a SemVer prerelease part, such as `0.11.0-rc.1`. It sets the version and writes no changelog section, and the fragments stay pending until the cut of the release part consumes them.
+A package cut to a version with a SemVer prerelease part, such as `0.11.0-rc.1`. It sets the version and writes no changelog section, and the fragments stay pending until a stable cut consumes them.
 _Avoid_: Release candidate cut (for every prerelease), preview cut
 
 **Shared version**:
