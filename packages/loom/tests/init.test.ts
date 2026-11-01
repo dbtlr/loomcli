@@ -70,8 +70,8 @@ afterEach(() => {
 /** How long a test that checks or builds the scaffold may take. */
 const slow = 180_000;
 
-/** The Prettier the package pins, so the formatter test runs the same formatter everywhere. */
-const prettier = fileURLToPath(new URL('../node_modules/.bin/prettier', import.meta.url));
+/** The repository's own `vp`, whose `fmt` is the Markdown formatter the formatter test runs. */
+const vp = fileURLToPath(new URL('../../../node_modules/.bin/vp', import.meta.url));
 
 /**
  * The version of the loom under test, which a scaffold pins its Loom dependencies to, and the
@@ -384,17 +384,19 @@ test('--only with a piece init does not know is an option error that names the p
 });
 
 test(
-  'managed files a Markdown formatter rewrote stay managed: init writes nothing and warns nothing',
+  'a Markdown formatter leaves the managed files as init wrote them, and init then writes nothing and warns nothing',
   async () => {
     const directory = emptyNotes();
     await loom(directory, ['init']);
-    const formatted = spawnSync(prettier, ['--write', guidePath, skillPath], {
+    const written = [read(directory, guidePath), read(directory, skillPath)];
+    const formatted = spawnSync(vp, ['fmt', guidePath, skillPath], {
       cwd: directory,
       encoding: 'utf8',
       timeout: slow,
     });
     expect(formatted.error).toBeUndefined();
     expect(formatted.status).toBe(0);
+    expect([read(directory, guidePath), read(directory, skillPath)]).toEqual(written);
     await expect(loom(directory, ['init'])).resolves.toEqual({
       status: 0,
       stderr: noRepository,
