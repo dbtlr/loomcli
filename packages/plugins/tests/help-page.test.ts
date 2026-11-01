@@ -1,23 +1,23 @@
 /*
  * Acceptance plan for the first-party help and version plugins (docs/plugins/README.md).
  *
- * The first-party plugins are proven when both example applications install `help()` and
- * `version()` from `@loomcli/plugins` through `plugins`, ahead of the example plugin so that help
- * and version win a tie, and public APIs alone produce the pages the reference pins. The byte
- * comparisons run with color and modifiers disabled, and separate expectations cover themed
- * output. Each case runs under Node and Bun. The cases:
+ * The first-party plugins are proven when fixture applications install `help()` and `version()`
+ * from `@loomcli/plugins` through `plugins`, ahead of other plugins so that help and version win a
+ * tie, and public APIs alone produce the pages the reference pins. The byte comparisons run with
+ * color and modifiers disabled, and separate expectations cover themed output. Each case runs
+ * under Node and Bun. The cases:
  *
- * - Pages. `jsonkit --help`, `jsonkit select --help`, and `textstat --help` print the three pages.
- *   `jsonkit get --help` prints the `get` page with its `details` and example while `path` is
- *   missing. `jsonkit select --bogus --help` prints the `select` page.
- * - Deprecated and hidden members. `jsonkit fetch --help` prints the deprecated page and `jsonkit
- *   debug --help` the hidden one.
- * - Groups. `jsonkit cache --help` on a nested fixture prints a group page with the children form
- *   alone and a `cache <command>` row on its parent's page.
- * - Version. `jsonkit --version` and `jsonkit get --version` print `jsonkit v0.0.0` while the
- *   example manifests hold `0.0.0`, and an Application that omits `version` prints the same line
- *   (packages/plugins/tests/version.test.ts). `jsonkit --help --version` prints help and never
- *   imports the version middleware module.
+ * - Pages. A root with an action and children, a group, and a child with an action and children
+ *   each print their usage forms, options, and hints. A missing required argument does not stop help
+ *   from printing the page (help-invocation.test.ts).
+ * - Deprecated and hidden members. A deprecated Command prints its message on a second masthead
+ *   line, and a hidden Command routed to directly prints its own page.
+ * - Groups. A group prints a page with the children form alone and a `<group> <command>` row on its
+ *   parent's page.
+ * - Version. `--version` prints the application name and its declared version, an Application that
+ *   omits `version` prints the unversioned sentinel (packages/plugins/tests/version.test.ts), and
+ *   `--help --version` prints help and never imports the version middleware module
+ *   (packages/plugins/tests/help-invocation.test.ts).
  */
 
 import { expect, test } from 'vite-plus/test';

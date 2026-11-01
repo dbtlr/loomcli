@@ -4,7 +4,7 @@ textstat is an example application that counts the bytes, words, or lines of fil
 
 ## What it covers
 
-The tests under [`tests/`](tests) hold what this example alone shows, such as a behavior that only assembly reveals. [`src/application.ts`](src/application.ts) is the declaration to read first.
+[`src/application.ts`](src/application.ts) is the declaration to read first. [`tests/textstat.test.ts`](tests/textstat.test.ts) holds one case for each capability below, which shows how the declaration assembles Loom's parts. The packages prove each rule, so the example tests the assembly, not its own functionality.
 
 ### Arguments and content inputs
 

@@ -3,10 +3,6 @@
  *
  * Accepted values are proven when public APIs alone produce these results under Node and Bun:
  *
- * - Example pages. `textstat --help` prints the `--metric` and `--format` rows shown above, and
- *   `jsonkit --help` prints `--format` with `One of: records, json, jsonl.`. The quoted pages in
- *   this document and the example applications' help and manifest goldens are re-pinned for the
- *   formatter's new description.
  * - Derived shapes. Fixture applications prove each shape the Derived rule names, a string `enum`,
  *   a single string `const`, and an `anyOf` of them, at every level it can appear: at the top level
  *   and as an `anyOf` member, on a single option, a multiple option, and a variadic argument. At

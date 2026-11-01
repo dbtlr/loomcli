@@ -3,7 +3,8 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
  * Acceptance plan for verbosity (docs/core/verbosity.md#verbosity).
  *
  * The verbosity is proven when public APIs alone produce these results under Node and Bun, through
- * a fixture Application that marks its own options and through jsonkit with the verbose plugin:
+ * a fixture Application that marks its own options, with the verbose plugin's own cases in
+ * packages/plugins/tests/verbose.test.ts:
  *
  * - The lanes. A fixture action that writes every lane prints `info`, `success`, `warn`, and
  *   `error` and no debug or trace line with no spelling, adds the debug line under `-v`, adds the
@@ -28,8 +29,8 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
  * - Before the chain. A configuration source's `out.debug` line prints under `-v` and not without
  *   it, and a dotenv warning prints under `-q`. A fixture middleware's `out.debug` line prints
  *   under `-v` and not without it, and its `out.info` line prints without a spelling and not under
- *   `-q`. A declaration error from graph build prints under `-q`, and `jsonkit -q nope` prints its
- *   unknown-command failure.
+ *   `-q`. A declaration error from graph build prints under `-q`, and an unknown command's failure
+ *   prints under `-q`.
  * - By name. `invoke` with `verbose: 2` captures the debug and trace lines in `messages`, a call
  *   without it captures neither inside a parent run started with `-vv`, and `verbose: 1.5` fails
  *   with its counted-option issue and exit 2. An MCP tool call that names `verbose` is rejected,

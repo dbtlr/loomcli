@@ -2,17 +2,16 @@ import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for collecting extensions (docs/core/extensions.md#collecting-extensions).
  *
- * The collecting extension is proven when public APIs alone show, under Node and Bun: help's values
- * under `manifestCommand` on textstat's root and on jsonkit's root and `get`, read through
- * `inspect()`, and in a fixture application with no manifest plugin installed; an author's
- * `manifestCommand` value on jsonkit's `get` collected ahead of help's; `[]` from `readExtension`
- * on a Command that carries neither; two values in one layer rejected; values from two layers and
+ * The collecting extension is proven when public APIs alone show, under Node and Bun: `[]` from
+ * `readExtension` on a Command that carries neither; two values in one layer rejected; values from two layers and
  * from two hooks kept in collection order; a hook reading an author value and an earlier hook's
  * value through `readExtension`; an invalid author value reported ahead of a hook that throws; a
  * value a hook passes to `extend()` rejected at the call with the invalid-value diagnostic, and a
  * hook that catches that throw continuing without the value; each value's schema called once; an
  * ordinary extension still replaced across layers and across hooks; a collecting extension on an
- * option holding one value; and a `collect` that is not a Boolean rejected.
+ * option holding one value; and a `collect` that is not a Boolean rejected. Help's values under
+ * `manifestCommand`, collected after an author's, are proven in
+ * packages/plugins/tests/help-manifest.test.ts.
  */
 
 import { invoke as invokeFixture } from './run-fixture.ts';

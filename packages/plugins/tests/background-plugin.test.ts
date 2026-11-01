@@ -4,8 +4,7 @@
  * - A fixture application installs `loomTheme()` and `background()`. Its `--help` lists the
  *   `--background` row with its description and accepted values, its manifest marks the option
  *   `control` and `background` with the enum schema, and every other string option node reads
- *   `background: false`. No example application installs the plugin, so no example's help page or
- *   manifest changes.
+ *   `background: false`.
  * - On a scripted light terminal, `--background=dark` prints the Loom theme's dark side and writes
  *   no query, and `--background=blue` fails with exit 2 and `Supply dark or light.`
  * - An application that marks its own option and installs the plugin fails with the two-marks

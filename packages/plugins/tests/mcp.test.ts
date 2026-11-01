@@ -1,29 +1,27 @@
 /*
  * Acceptance plan for the MCP plugin (docs/plugins/mcp.md).
  *
- * The plugin is proven when jsonkit installs `mcp()` and opts in its root, `get`, `keys`, and
- * `select`, each with `annotations: { openWorld: false, readOnly: true }`, and leaves `fetch`,
- * `debug`, and `paths` out, and public APIs alone produce these results under Node and Bun:
+ * The plugin is proven when fixture applications install `mcp()` and opt Commands in, some with
+ * `annotations: { openWorld: false, readOnly: true }`, and public APIs alone produce these results
+ * under Node and Bun:
  *
- * - A real session. A process test launches the built `jsonkit mcp` under Node and under Bun and
- *   drives a session over stdio: `server/discover` names `jsonkit`, its version, and its
- *   description; `tools/list` lists `jsonkit`, `get`, `keys`, and `select` in that order with the
- *   schemas above, `file` among each tool's properties, and no `help`, `version`, `manifest`,
- *   `format`, `explain`, `color`, `verbose`, or `quiet` property; and a call of each tool against a
- *   document file answers as below. Closing stdin ends the process with exit 0.
- * - Results. `get` answers the value as text with no `structuredContent`; `jsonkit` answers the
- *   root's members as text and as `structuredContent`, the array its `json` view prints; `select`
- *   with an absent field answers the fields as text and the warning as a second text item; and a
- *   missing path answers `isError: true` with `Path not found: "missing". Run jsonkit keys to list
- *   the keys at the root.` and `structuredContent` `{ exitCode: 65, failure: { code:
- *   'path-not-found', exitCode: 65, message: 'Path not found: "missing". Run jsonkit keys to list
- *   the keys at the root.', hints: [] } }`.
+ * - A real session. A process test launches a fixture application's `mcp` Command and drives a
+ *   session over stdio: `server/discover` names the application, its version, and its description;
+ *   `tools/list` lists the opted-in Commands in graph order, the root first, with each Command's
+ *   schema, and no property for a hidden or control-marked option (the first-party control marks
+ *   are proven in control-marks.test.ts); and a call of each tool answers as below. Closing stdin
+ *   ends the process with exit 0.
+ * - Results. A call answers the output as text with no `structuredContent`; an
+ *   `application/json` view answers its text and as `structuredContent`; a Command that warns
+ *   answers the output and then the warning as a second text item; and a failure answers
+ *   `isError: true` with the failure's report as text and `structuredContent` `{ exitCode: 65,
+ *   failure: { code: 'missing', exitCode: 65, message: 'Nothing is at "x". Read another path.',
+ *   hints: [] } }`.
  * - Errors. An unknown tool and non-object arguments answer `-32602`. A key outside the schema
  *   answers the plugin's tool execution error. A value of the wrong shape and a missing required
  *   argument answer `isError: true` with the by-name sentence, no help hint, and a form whose code
- *   is `invalid-input`, and a malformed document answers 65 with the code `invalid-json`. A fixture
- *   tool whose action throws a `TypeError` answers the form `internal` with `Something went wrong.`
- *   from a bundle.
+ *   is `invalid-input`. A fixture tool whose action throws a `TypeError` answers the form
+ *   `internal` with `Something went wrong.` from a bundle.
  * - Cancellation and concurrency. A fixture tool that waits on its signal is cancelled by
  *   `notifications/cancelled` and answers nothing while a second call answers. Two overlapping
  *   calls answer by their own ids. A run cancelled through a caller signal aborts both calls in

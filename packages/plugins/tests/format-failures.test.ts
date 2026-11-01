@@ -62,3 +62,21 @@ test('a default view that is json() writes the JSON line with no --format', asyn
     stdout: '',
   });
 });
+
+test('a failure after rows under the whole view jsonl writes the fatal line alone, with no rows and no incomplete-result line', async () => {
+  await expect(run('rows', ['walk', '--format', 'jsonl'])).resolves.toEqual({
+    status: 1,
+    stderr:
+      '{"error":{"code":"fatal","exitCode":1,"message":"The key \\"b\\" is refused.","hints":[]}}\n',
+    stdout: '',
+  });
+});
+
+test('a failure after rows under the row view writes the rows, then the incomplete-result line ahead of the text', async () => {
+  await expect(run('rows', ['walk', '--format', 'table'])).resolves.toEqual({
+    status: 1,
+    stderr:
+      'Output is incomplete: Command "walk" stopped after 1 rows, 1 written.\nThe key "b" is refused.\n',
+    stdout: 'a\n',
+  });
+});

@@ -6,38 +6,40 @@ import { invoke as invokeFixture } from './run-fixture.ts';
  *
  * Option parsing is proven when public APIs alone produce these results under Node and Bun:
  *
- * - Mixed groups. `textstat -ht` renders the root's compact help page with exit code 0, and
- *   `textstat -tc .textstat.toml notes.txt` reads `-t` as the root's `total` and `-c` as the
- *   configuration plugin's `--config`.
- * - Attached values. `textstat -mwords notes.txt`, `-m=words`, and `-tmwords` set `metric` to
+ * - Mixed groups. A fixture reads `-tm words` and `-tcsm words` as the Boolean `total`, the
+ *   negative `color`, `silent`, and the value option `metric` together, and parse.test.ts reads a
+ *   short group that mixes a global letter with a letter of the routed Command. Help renders for
+ *   `-ht` (packages/plugins/tests/help-invocation.test.ts), and `-c` reads as the configuration
+ *   plugin's `--config` (packages/plugins/tests/config.test.ts).
+ * - Attached values. A fixture reads `-mwords`, `-m=words`, and `-tmwords` as setting `metric` to
  *   `words`, and `-m=` hands its validator the empty string.
  * - Plain words. A fixture reads `--depth -5` and `-d -5` as the value `-5`, `-5` and `-` as
  *   arguments, and `--pattern -x` as the missing-value error that names the attached form.
- * - A parent's own option. `jsonkit --format json paths` reads the root's own `--format`, routes to
- *   `paths`, and prints its rows as JSON with exit code 0, and a fixture proves the unknown-option
- *   and misplaced-option faults when the routed Command does not declare the spelling or declares
- *   another value class, at the root and one level down.
- * - Misplaced options. `jsonkit -F name select` fails with `jsonkit: Option "-F" belongs to command
- *   "select". Supply it after "select".`, then help's hint `Run "jsonkit --help" to see the
- *   usage.`, and exit code 2, and the same words with `--help` render the root's page.
- * - Held faults. `jsonkit --file` fails with the missing-value error, `jsonkit --file --help` and
- *   `jsonkit --help --help` render help, `store cache --verbose` reports the unknown option, and
- *   `jsonkit nope --help` still reports the unknown command.
+ * - A parent's own option. parse.test.ts proves that routing reads a parent's own option, carries
+ *   on to the child, and hands it down at every depth, and that the unknown-option and
+ *   misplaced-option faults follow when the routed Command does not declare the spelling or
+ *   declares another value class, at the root and one level down.
+ * - Misplaced options. parse.test.ts and commands.test.ts prove that an option word the routed
+ *   Command's table lacks fails with `Option "-p" belongs to command "get". Supply it after
+ *   "get".` and exit code 2, and that help takes the invocation over on the Command routing
+ *   reached.
+ * - Held faults. parse.test.ts proves that a missing value on a global option is held and routing
+ *   continues, that `--file --help` and `--help --help` render help, that a misplaced
+ *   option is held so help takes over, and that an unknown command with `--help` still reports the
+ *   unknown command.
  * - A plugin's options. A fixture plugin's validated option reaches a fixture action typed as its
  *   validator's output and every middleware's `options`, a value its validator rejects is an input
  *   problem with exit code 2 and leaves `options` `null`, and a fault on a local option leaves
  *   `options` set.
- * - Counted options. `jsonkit -v keys -f doc.json`, `jsonkit keys -f doc.json -v`, and `jsonkit -vv
- *   keys -f doc.json` each write jsonkit's `Reading doc.json.` line on stderr and `jsonkit keys -f
- *   doc.json` writes none, `jsonkit --verbose=2 keys` fails with `jsonkit: Counted option
- *   "--verbose" does not accept a value. Repeat "--verbose" to raise its count.` and exit code 2,
- *   and `jsonkit -v2 keys` reports `Unknown option "-2"`. A fixture proves that `-vvv`, `-v -v -v`,
- *   `--verbose -vv`, and occurrences on both sides of the Command name each read `3`, an omitted
- *   counted option reads `0`, `-tvv` beside a Boolean `t` reads `2`, an alias's occurrences counted
- *   with the rest, `VERBOSE=3` and a configuration answer of `3` each filling `3` when no
- *   occurrence supplied it, `VERBOSE=x` failing with `Option "--verbose" (from VERBOSE): Use a
- *   whole number of 0 or more.`, and each counted-option row of Input declaration errors and
- *   Repeated string values rejected.
+ * - Counted options. counted-options.test.ts proves that `-v` on either side of the Command name
+ *   and `-vv` each count their occurrences, that `-vv=1` fails with the unexpected-value error
+ *   naming the counted spelling, and that `-v3` reports `Unknown option "-3"`. A fixture proves
+ *   that `-vvv`, `-v -v -v`, `--verbose -vv`, and occurrences on both sides of the Command name
+ *   each read `3`, an omitted counted option reads `0`, `-tvv` beside a Boolean `t` reads `2`, an
+ *   alias's occurrences counted with the rest, `VERBOSE=3` and a configuration answer of `3` each
+ *   filling `3` when no occurrence supplied it, `VERBOSE=x` failing with `Option "--verbose" (from
+ *   VERBOSE): Use a whole number of 0 or more.`, and each counted-option row of Input declaration
+ *   errors and Repeated string values rejected.
  * - Implied values. A fixture with `backup` implying `simple` and short alias `b` reads each form
  *   of Implied values: a bare spelling at the end of the words and before an option word supplies
  *   `simple`, `--backup numbered` reads `numbered` as the next word, `-tb` and `-bt` read as the

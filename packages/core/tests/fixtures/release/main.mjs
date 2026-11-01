@@ -99,6 +99,15 @@ function nestedProgram() {
     );
 }
 
+/** An application whose `get` Command needs an argument, so a run without one is a usage error. */
+function needy() {
+  return new Application('probe', { description: 'Probe the release facts.' }).command(
+    new Command('get', { description: 'Get a value.' })
+      .argument('path', { description: 'The path.', required: true })
+      .action(({ out }) => out.print('got')),
+  );
+}
+
 /** What `inspect()` answers: the graph's name, or the class, rule, and sentence it threw. */
 function inspected(app) {
   try {
@@ -186,6 +195,8 @@ const scenarios = {
     return run;
   },
   throw: () => throwing().run({ process: processHandle(host) }),
+  // An operator's failure, which the run prints the same in every build.
+  usage: () => needy().run({ process: processHandle({ argv: ['get'] }) }),
 };
 
 process.exitCode = await scenarios[scenario]();

@@ -1,52 +1,46 @@
 /*
  * Acceptance plan for the manifest plugin (docs/plugins/manifest.md).
  *
- * The manifest is proven when both example applications install `manifest({ short: 'M' })` after
- * their formatter and ahead of the example plugin, and public APIs alone produce these results
- * under Node and Bun:
+ * The manifest is proven when fixture applications install `manifest({ short: 'M' })` after their
+ * formatter, and public APIs alone produce these results under Node and Bun:
  *
- * - Pinned documents. `textstat --manifest`, `jsonkit --manifest`, and `jsonkit get --manifest`
- *   print documents compared byte for byte. `jsonkit get`'s `details` holds the author's value
- *   ahead of help's. `jsonkit fetch --manifest` shows the deprecated Command's message. `jsonkit
- *   debug --manifest` prints the hidden Command's own slice, and the root document omits it.
+ * - Pinned documents. A fixture's `--manifest` prints the root document and a routed Command's
+ *   slice, compared byte for byte. A Command's `details` holds the author's value ahead of help's
+ *   (help-manifest.test.ts). A deprecated Command shows its message. A hidden Command's own
+ *   `--manifest` prints its slice, and the root document omits it.
  * - An agent-shaped run. A test reads the fixture's `--manifest` alone, builds an invocation from
  *   it by choosing the Command with a result and `--format json` from the option's schema enum and
  *   the result's views, runs it, and parses stdout as the `json` encoding states.
- * - Help pages. Every help page lists the `--manifest` row among its options, and the golden pages
- *   are re-pinned for it.
- * - Short spellings. `textstat -M`, `jsonkit -M`, and `jsonkit get -M` print the same documents as
- *   their long forms. A fixture proves no short spelling by default, either case of an ASCII letter
- *   accepted, and collisions with an application global, a local option, and another plugin
- *   reported under the ordinary spelling-taken rule.
- * - Takeover and precedence. `jsonkit get --manifest` without its required argument prints with
- *   exit 0, and so does `--manifest` on a group in a fixture application. An unknown Command still
- *   reports its routing error. `jsonkit --help --manifest` prints help and `jsonkit --version
- *   --manifest` prints the version. A `--manifest` token after `--` is not read as the option.
+ * - Help pages. Every help page lists the `--manifest` row among its options.
+ * - Short spellings. `-M` prints the same documents as the long form. A fixture proves no short
+ *   spelling by default, either case of an ASCII letter accepted, and collisions with an
+ *   application global, a local option, and another plugin reported under the ordinary
+ *   spelling-taken rule.
+ * - Takeover and precedence. A fixture Command's `--manifest` without its required argument prints
+ *   with exit 0, and so does `--manifest` on a group. An unknown Command still reports its routing
+ *   error. `--help --manifest` prints help and `--version --manifest` prints the version. A
+ *   `--manifest` token after `--` is not read as the option.
  * - Entries. Fixture applications cover: a hidden option and a hidden global omitted. An explicit
  *   `default: undefined` reads `null`. Two `manifestCommand` values with `details` produce two
  *   strings in collection order, and a value with neither field adds nothing. A U+009B inside a
  *   description prints as `\u009b`. A declared `bigint`, `NaN`, or function default, and a
  *   published schema holding `NaN`, fail the write. Keys follow the type block's order, `result`
  *   included, and no version field appears.
- * - Declared failures. jsonkit declares `invalid-json` on every Command that reads a document and
- *   `path-not-found` on `get`, `keys`, and the deprecated `fetch`, which runs `get`'s action, all
- *   65, and `jsonkit get --manifest` prints the document above byte for byte, with the `65` row
- *   between `2` and `130`. A malformed document given to each Command that declares `invalid-json`
- *   exits 65, the code its manifest lists. Fixture applications cover: a Command with no declared
- *   failures reading `[]`; a class that declares no exit code listing 1 with no row added; a
- *   `FatalError` subclass that declares no failure code listing `fatal`; one failure code declared
- *   on two Commands with one exit code and meaning listed on both with one row; one failure code
- *   with two exit codes, and with two meanings, reporting its `DeclarationError`; an author value
- *   and a plugin's `onCommandAttach` value concatenated in collection order, with an identical pair
- *   printed once; a hidden Command's code joining the table; a value holding a function that is not
- *   a failure class and a meaning with a line break each rejected at the call; a stale `name`
- *   dropped from the entry; and a failure class whose static `code` is `'Bad_Code'` rejected at the
- *   call.
+ * - Declared failures. The table of exit codes lists each declared code between core's rows, in
+ *   ascending order, and names its failures (manifest-failures.test.ts). Fixture applications
+ *   cover: a Command with no declared failures reading `[]`; a class that declares no exit code
+ *   listing 1 with no row added; a `FatalError` subclass that declares no failure code listing
+ *   `fatal`; one failure code declared on two Commands with one exit code and meaning listed on
+ *   both with one row; one failure code with two exit codes, and with two meanings, reporting its
+ *   `DeclarationError`; an author value and a plugin's `onCommandAttach` value concatenated in
+ *   collection order, with an identical pair printed once; a hidden Command's code joining the
+ *   table; a value holding a function that is not a failure class and a meaning with a line break
+ *   each rejected at the call; a stale `name` dropped from the entry; and a failure class whose
+ *   static `code` is `'Bad_Code'` rejected at the call.
  * - Control options and media types. Every option entry carries `control`, `true` on `--help`,
- *   `--version`, `--manifest`, and `--format` and `false` on jsonkit's own options, and every
+ *   `--version`, `--manifest`, and `--format` and `false` on a fixture's own options, and every
  *   `result` carries `mediaTypes`. A fixture whose `json` key holds a view that declares no media
- *   type, and whose `wire` key holds a mapped `json()`, reads its media types from the result, and
- *   the pinned documents are re-pinned for both fields.
+ *   type, and whose `wire` key holds a mapped `json()`, reads its media types from the result.
  * - Packed consumers. A consumer installs the packed pack, imports `@loomcli/plugins/manifest` and
  *   `@loomcli/plugins/manifest/extension`, compiles against their declarations, and runs its chosen
  *   `-M`.

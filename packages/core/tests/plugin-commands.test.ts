@@ -2,16 +2,14 @@ import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for plugin Commands (docs/core/plugin-contract.md#plugin-commands).
  *
- * The acceptance attaches the `doctor` Command of the private `@loom/doctor` plugin to jsonkit's
- * root. The plugin compiles in its own package, outside jsonkit's `Register` augmentation, as the
- * private `@loom/explain` plugin does. `jsonkit doctor` routes and runs it, `jsonkit --help` lists
- * it ahead of jsonkit's own Commands, `inspect()` and `--manifest` list it as the root's first
- * child, and `jsonkit doctor --help` prints its page. A core fixture proves the order across two
- * plugins, routing into a plugin group's children, a hook-declared option reaching a plugin Command
- * from another plugin's hook and from its own, and a declaration error when the application
- * attaches a Command with the same name, when two installed plugins attach one name, when an alias
- * repeats a sibling's name, when the application also attaches the plugin's Command value at the
- * root or under another Command, when a plugin Command's local option repeats a global option's
+ * The acceptance is a core fixture application that installs plugins attaching a `doctor` Command.
+ * It proves that `inspect()` lists the plugin Commands as the root's first children, in
+ * installation and list order, and that they route and run like any other Command. It also proves
+ * routing into a plugin group's children, a hook-declared option reaching a plugin Command from
+ * another plugin's hook and from its own, and a declaration error when the application attaches a
+ * Command with the same name, when two installed plugins attach one name, when an alias repeats a
+ * sibling's name, when the application also attaches the plugin's Command value at the root or
+ * under another Command, when a plugin Command's local option repeats a global option's
  * key, and when the root declares arguments. Each case runs under Node and Bun.
  */
 

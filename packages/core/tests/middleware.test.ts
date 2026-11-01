@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 /*
  * Acceptance plan for the plugin seam (docs/core/plugin-contract.md).
  *
- * The seam is proven when both example applications install a plugin through `plugins` and public
+ * The seam is proven when a fixture application installs a plugin through `plugins` and public
  * APIs alone. The suites cover it with in-repository fixture plugins rather than a published
  * package, each case under Node and Bun:
  *
@@ -13,7 +13,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
  * - A plugin whose loader is pending when a caller abort lands, so a test shows the run resolves
  *   130 once the loader settles and the middleware never runs
  *   (packages/core/tests/cancellation.test.ts).
- * - A plugin that defines an extension both examples attach to a Command
+ * - A plugin that defines an extension a fixture attaches to a Command
  *   (packages/core/tests/extensions.test.ts).
  */
 import { tmpdir } from 'node:os';

@@ -3,12 +3,11 @@ import { spawnSync } from 'node:child_process';
  * Acceptance plan for the color choice (docs/core/color.md#color).
  *
  * The color choice is proven when public APIs alone produce these results under Node and Bun,
- * through a fixture Application that marks its own option and through jsonkit with the color
- * plugin, with a host that reports a capable terminal where a case says so. Each case prints
- * through text that carries both a color and `bold`: a fixture lane message styled with both, or
- * the fixture's failure view override that styles its line with both. A build declaration error is
- * read from a development build, whose Developer Diagnostic resolves through core's default styles.
- * Through jsonkit, the cases read its help page:
+ * through a fixture Application that marks its own option, with a host that reports a capable
+ * terminal where a case says so. Each case prints through text that carries both a color and
+ * `bold`: a fixture lane message styled with both, or the fixture's failure view override that
+ * styles its line with both. A build declaration error is read from a development build, whose
+ * Developer Diagnostic resolves through core's default styles.
  *
  * - The pair. On a capable terminal, `--no-color` prints no color escape and keeps bold, also with
  *   `FORCE_COLOR=1`. Piped, `--color` prints color escapes and no bold. `--color --no-color` prints
@@ -35,9 +34,9 @@ import { spawnSync } from 'node:child_process';
  * - Declarations. Each rejected declaration the reference lists throws under
  *   `@loomcli/core/color-mark` from the moment the reference names, and the negative type checks
  *   reject the rules the types state.
- * - By name. `jsonkit.invoke` with the plugin installed captures plain text under `FORCE_COLOR=1`
- *   with `color` supplied as `true`, and a fixture Application's invocation by name captures plain
- *   text under `FORCE_COLOR=1` and `rendering: { color: 'always' }`.
+ * - By name. A fixture Application's invocation by name captures plain text under `FORCE_COLOR=1`
+ *   and `rendering: { color: 'always' }`. The color plugin's own option is proven in
+ *   packages/plugins/tests/color.test.ts.
  */
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

@@ -4,7 +4,8 @@
  * `check()` is proven when public APIs and process runs alone produce these results under Node and
  * Bun:
  *
- * - Clean. jsonkit and textstat each return an empty list.
+ * - Clean. A fixture declaring options with validators and a valid default returns an
+ *   empty list.
  * - Every fault. A fixture with two inputs whose converters throw and an `onGraphBuilt` hook that
  *   rejects the graph returns three faults, in that order, under
  *   `@loomcli/core/schema-converter-failed` twice and the hook's rule. `run()` from source reports
@@ -83,6 +84,10 @@ const everyFault = [
   ...converterFaults,
   fault('@fixture/judge/shared-name', 'The graph shares a name.', 'SHARED NAME'),
 ];
+
+test('check() returns an empty list for a declaration with nothing wrong in it, under the suite runtime', () => {
+  expect(report(suiteRuntime, 'clean').faults).toEqual([]);
+});
 
 test('check() returns every fault a development run meets before routing, in order, under the suite runtime', () => {
   const runtime = suiteRuntime;
