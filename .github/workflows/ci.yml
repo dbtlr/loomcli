@@ -102,13 +102,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install the completion shells
+      - name: Install the programs the tests run
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update && sudo apt-get install -y zsh fish bash-completion
+          sudo apt-get update && sudo apt-get install -y zsh fish bash-completion man-db
           pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
 
-      - name: Install the completion shells
+      - name: Install the programs the tests run
         if: runner.os == 'macOS'
         run: |
           brew install fish
@@ -157,13 +157,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install the completion shells
+      - name: Install the programs the tests run
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update && sudo apt-get install -y zsh fish bash-completion
+          sudo apt-get update && sudo apt-get install -y zsh fish bash-completion man-db
           pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
 
-      - name: Install the completion shells
+      - name: Install the programs the tests run
         if: runner.os == 'macOS'
         run: |
           brew install fish
