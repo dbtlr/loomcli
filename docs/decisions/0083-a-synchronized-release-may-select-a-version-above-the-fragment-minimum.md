@@ -4,7 +4,7 @@ title: ADR-0083 - A synchronized release may select a version above the fragment
 description: The synchronized release cut accepts an explicit stable 0.x target at or above the fragment-derived minimum. Omission preserves automatic calculation, and fragment kinds continue to describe consumer effects.
 status: accepted
 created: 2026-10-15
-modified: 2026-10-16
+modified: 2026-11-01
 ---
 
 # ADR-0083 - A synchronized release may select a version above the fragment minimum
@@ -31,3 +31,6 @@ The pinned published tool in [ADR-0075](0075-the-release-workflow-runs-a-pinned-
 ## Status
 
 Accepted in 0.13.0.
+
+## Changelog
+- 2026-11-01: [ADR-0132](0132-a-packages-changelog-cut-may-choose-its-version-cut-a-prerelease-and-set-a-shared-version.md), proposed, gives the public per-package `loom changelog write` the same floor rule through `--target`, with prereleases and any major, so this record's boundary that kept a chosen version to the synchronized cut gives way. The synchronized cut keeps its stable `0.x` forms and every other safeguard here. It binds when that record is accepted.
