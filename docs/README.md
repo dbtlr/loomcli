@@ -12,6 +12,8 @@ Loom is a toolkit for TypeScript command-line applications: the author ships the
 - [Glossary](glossary.md) defines the domain terms every page uses.
 - [Decision records](decisions/README.md) record why the contract is what it is. An accepted record constrains later work.
 
+These pages are references, not tutorials. Tutorials and learning paths for people belong on a website, which Loom does not have yet. An [example](../examples/jsonkit/README.md) is a small application that shows one technique. Teaching aimed at agents that build with Loom belongs in the repository as a skill for those agents, which Loom does not ship yet. Such a skill states the invariants an agent cannot infer from the code and the types.
+
 New to Loom? Read the [jsonkit example](../examples/jsonkit/README.md), then [Application declarations](core/application.md), [Commands and global options](core/commands.md), [Invocation](core/invocation.md), and [Output](core/output.md), and scaffold your own application with [loom init](toolchain/init.md).
 
 ## Building an application
