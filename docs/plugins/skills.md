@@ -22,7 +22,8 @@ export interface Skill {
   readonly files: () => Promise<readonly SkillFile[]> | readonly SkillFile[];
 }
 export interface SkillsSettings {
-  readonly skills: readonly Skill[];
+  readonly folder?: URL | string; // a folder whose subfolders are skills, each named for its subfolder
+  readonly skills?: readonly Skill[]; // skills whose files a loader returns
 }
 export interface RefreshContext {
   readonly path: string; // the binary that replaced this one
@@ -34,20 +35,12 @@ export declare function skills(settings: SkillsSettings): Plugin;
 export declare function refreshSkills(context: RefreshContext): Promise<void>;
 ```
 
-```ts
-// src/skill.ts: the files of skills/notes/, read only when a skills Command calls the loader
-import type { SkillFile } from '@loomcli/plugins/skills';
-
-export async function notesSkill(): Promise<readonly SkillFile[]> {
-  const [skill, commands] = await Promise.all([
-    import('../skills/notes/SKILL.md', { with: { type: 'text' } }),
-    import('../skills/notes/references/commands.md', { with: { type: 'text' } }),
-  ]);
-  return [
-    { path: 'SKILL.md', content: skill.default },
-    { path: 'references/commands.md', content: commands.default },
-  ];
-}
+```text
+skills/
+  notes/
+    SKILL.md
+    references/
+      commands.md
 ```
 
 ```ts
@@ -56,10 +49,12 @@ import { help } from '@loomcli/plugins/help';
 import { selfUpdate } from '@loomcli/plugins/self-update';
 import { refreshSkills, skills } from '@loomcli/plugins/skills';
 
-import { notesSkill } from './skill.js';
-
 export const notes = new Application('notes', {
-  plugins: [help(), skills({ skills: [{ name: 'notes', files: notesSkill }] }), selfUpdate({ afterReplace: refreshSkills })],
+  plugins: [
+    help(),
+    skills({ folder: new URL('../skills/', import.meta.url) }),
+    selfUpdate({ afterReplace: refreshSkills }),
+  ],
 });
 ```
 
@@ -77,20 +72,22 @@ Removed /home/me/.claude/skills/notes.
 Removed /home/me/.agents/skills/notes.
 ```
 
-Text imports are Bun's: a compiled binary and a Bun bundle inline each file the loader imports, and an author who builds for Node returns the files another way, such as from a module generated before the build. The loader is the author's code, so where its bytes come from is the author's choice.
+The folder's `notes/` subfolder is the skill `notes`. A source run and a test read the folder from disk, and `loom build` carries it into the bundle or the binary, under [The skills folder](#the-skills-folder). A skill whose files are generated or computed comes from a loader in `skills`, which the plugin calls only when a skills Command runs.
 
-`skills()` is the skills plugin. It installs the application's agent skills where coding agents read them, keeps them current with the binary, and removes them. Its identity is `@loomcli/plugins/skills`, and its whole contribution is one [plugin Command](../core/plugin-contract.md#plugin-commands) group. [ADR-0076](../decisions/0076-the-skills-plugin-installs-an-applications-agent-skills-for-claude-and-the-shared-agents-folder.md) records the decision.
+`skills()` is the skills plugin. It installs the application's agent skills where coding agents read them, keeps them current with the binary, and removes them. Its identity is `@loomcli/plugins/skills`, and its whole contribution is one [plugin Command](../core/plugin-contract.md#plugin-commands) group. [ADR-0076](../decisions/0076-the-skills-plugin-installs-an-applications-agent-skills-for-claude-and-the-shared-agents-folder.md) records the decision, and [ADR-0133](../decisions/0133-the-skills-plugin-reads-a-skills-folder-that-loom-build-carries-into-the-artifact.md) adds the skills folder.
 
-- **Settings.** The settings type bounds the list and each skill's `files`, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). `skills()` judges each skill's name in order at the call and throws a `DeclarationError` for the first fault, with the finding marked on `skills`:
+- **Settings.** The settings type bounds `folder`, the list, and each skill's `files`, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). `skills()` judges the settings at the call and throws a `DeclarationError` for the first fault, with the finding marked on the setting at fault:
+  - **Some setting.** The settings hold a `folder` or a `skills` list, which may be empty: [`@loomcli/plugins/skills/settings`](../core/diagnostics.md#loomclipluginsskillssettings).
+  - **A file folder.** A `folder` URL uses the `file:` scheme, and a `folder` string is not empty: [`@loomcli/plugins/skills/settings`](../core/diagnostics.md#loomclipluginsskillssettings).
   - **Skill name.** Each entry's `name` is a skill name: [`@loomcli/plugins/skills/settings`](../core/diagnostics.md#loomclipluginsskillssettings).
   - **Unique names.** No two entries repeat one name: [`@loomcli/plugins/skills/settings`](../core/diagnostics.md#loomclipluginsskillssettings).
 
   A skill name is one or more runs of lowercase ASCII letters and digits joined by single `-`, 64 characters at most, the Agent Skills grammar, so it is safe as one path segment. A name the diagnostic repeats passes through [`escapeControlCharacters`](../core/styles.md#strings-and-composition).
-- **Loading the files.** `install` and `update` call each skill's `files` once, in declaration order, after every check under Global installs or Project installs that comes before loading, and before they read the record or write anything, and await each; `uninstall` calls no loader, so a broken loader never blocks a removal. A loader that throws or rejects takes the ordinary failure path, as [When author code fails](#when-author-code-fails) states. The result is judged before anything is written, and the first fault throws a `DeclarationError`, which fails the run through the same path:
+- **Loading the files.** `install` and `update` read the skills folder, under [The skills folder](#the-skills-folder), then call each listed skill's `files` once, in declaration order, after every check under Global installs or Project installs that comes before loading, and before they read the record or write anything, and await each; `uninstall` calls no loader, so a broken loader never blocks a removal. A loader that throws or rejects takes the ordinary failure path, as [When author code fails](#when-author-code-fails) states. The result is judged before anything is written, and the first fault throws a `DeclarationError`, which fails the run through the same path:
   - **Inside the folder.** A file's path is relative and stays inside the skill's folder, so it neither starts with `/` nor has a `..` segment: [`@loomcli/plugins/skills/files`](../core/diagnostics.md#loomclipluginsskillsfiles).
   - **A SKILL.md.** The list holds an entry whose path is `SKILL.md`: [`@loomcli/plugins/skills/files`](../core/diagnostics.md#loomclipluginsskillsfiles).
 
-  A path the diagnostic repeats passes through `escapeControlCharacters`. The result's type bounds its shape, and the plugin judges no file's content.
+  A path the diagnostic repeats passes through `escapeControlCharacters`. The result's type bounds its shape, and the plugin judges no file's content. The folder's skills come first, in name order, then the listed skills, and a listed skill that holds a folder skill's name is a fault: [`@loomcli/plugins/skills/files`](../core/diagnostics.md#loomclipluginsskillsfiles).
 - **The Commands.** `skills`, visible, with the description `Install this application's agent skills.`, and three children, each visible with no arguments:
   - `install`, `Install the skills for your coding agents.`, with the string option `--agent`, `The agents to install for: claude, or agents for Codex and others. Both when left out.`, validated to `claude` or `agents`; the Boolean option `--project`, `Install into the current repository instead of your home folder.`; the string option `--directory` with the short spelling `-C`, `Find the repository from this directory instead of the current one.`; and the Boolean option `--force`, `Replace skill files that something else wrote or that you changed.`
   - `update`, `Bring installed skills up to date with this version.`, with no options.
@@ -106,7 +103,23 @@ Text imports are Bun's: a compiled binary and a Bun bundle inline each file the 
 
   `<home>` is [`host.home`](../core/host.md#the-home-and-temporary-folders) on every platform, and `CLAUDE_CONFIG_DIR` is read from `host.env`.
 - **File modes.** Each file is written with mode `755` when `executable` is true and `644` otherwise, whatever the umask, at both scopes. Folders are created with the process's default mode.
-- **Any build.** Every child acts from a `source`, `development`, or `distributed` build alike, because a skill does not depend on the binary's path.
+- **Any build.** Every child acts from a `source`, `development`, or `distributed` build alike, because a skill does not depend on the binary's path, except that a source run cannot read a `folder` given as a relative path, and an artifact `loom build` made without reading the declaration, or that found no folder in it, cannot read a `folder`, under [The skills folder](#the-skills-folder).
+
+## The skills folder
+
+The `folder` setting names a folder whose subfolders are the application's skills. The author names it once, in the declaration, and every way the application runs installs the same files. A string that starts with `file:` reads as that URL, and any other string is a path. [ADR-0133](../decisions/0133-the-skills-plugin-reads-a-skills-folder-that-loom-build-carries-into-the-artifact.md) records the decision.
+
+- **The folder's shape.** Each directory directly inside the folder is one skill, named for the directory, and so is a symbolic link there that names a directory, read through the link. A skill's files are every file below its directory, at its path relative to the skill's directory, using `/`, and a symbolic link to a file reads as that file. A file is executable when its mode has an execute bit. Directly inside the folder, a file, such as a `README.md`, or a symbolic link to one is ignored, and so is a directory whose name starts with `.`.
+- **Reading and judging.** `install` and `update` read the folder when they load files, so every other run reads nothing, and judge its skills as they judge a loader's, under Loading the files, before anything is written. A skill name is judged here, not at the call, because only the folder knows it. Each fault below throws a `DeclarationError` through the ordinary failure path with the rule [`@loomcli/plugins/skills/folder`](../core/diagnostics.md#loomclipluginsskillsfolder):
+  - **A folder.** The folder exists and is a directory: `Plugin "@loomcli/plugins/skills" setting "folder" names /work/notes/skills, which is not a folder.`, corrected by `Create the folder, or name the folder that holds the skills.`
+  - **Some skill.** The folder holds at least one skill when the `skills` list is empty or left out, so an update never removes every installed skill: `The skills folder /work/notes/skills holds no skill.`, corrected by `Add a folder for each skill, holding its SKILL.md, such as skills/notes/SKILL.md.`
+  - **Skill names.** Each skill directory's name is a skill name: `The skills folder /work/notes/skills holds a folder that is not a skill name: My Notes.`, corrected by `Name each skill's folder with lowercase letters, digits, and single hyphens, such as notes.`
+  - **Links.** A symbolic link directly inside the folder names something: `The skills folder /work/notes/skills holds shared, a link that names nothing.`, corrected by `Point the link at the skill's folder, or remove it.`
+  - **Links to folders.** Nothing inside a skill is a symbolic link that names a folder: `The skill notes holds scripts/lib64, a link to a folder, which a skill cannot hold.`, corrected by `Replace the link with the folder's files, or remove it.`
+  - **Files and folders.** Nothing inside a skill is a symbolic link that names nothing, or an entry that is neither a file nor a folder: `The skill notes holds references/old, which is not a file or a folder.`, corrected by `Replace it with the file it stands for, or remove it.`
+- **Where an unbuilt run reads.** A run with no carried folder, a source run, a test, or a build `loom build` did not make, reads the folder a URL or an absolute path names. A relative path resolves against the application module, which only `loom build` knows, so such a run fails with `Plugin "@loomcli/plugins/skills" setting "folder" is the relative path ../skills, which only loom build resolves.`, corrected by `Name the folder with new URL('../skills', import.meta.url), resolved against the module that calls skills().`, with the rule `@loomcli/plugins/skills/folder`. When the release facts say the run was built and the folder is missing, the failure says `The build carried no skills folder, and /work/notes/skills is not a folder.`, corrected by `Build with loom build at the version of @loomcli/plugins, which carries the folder skills() names.`
+- **Matching versions.** A carried folder, or a copy's index, whose format this plugin does not know fails with `This @loomcli/plugins cannot read the skills folder the installed @loomcli/loom carried.`, corrected by `Install @loomcli/plugins and @loomcli/loom at one version, and build again.`, with the rule `@loomcli/plugins/skills/folder`.
+- **What a `loom build` artifact reads.** [`loom build`](../toolchain/build.md#the-skills-folder) reads the folder from the declaration and carries it. A development build reads the source folder where it stands, and reads and judges it when it loads, as an unbuilt run does. A distributed bundle reads the copy in `loom-skills/` beside its chunks, and a distributed binary the copy embedded in it, each with the files, names, and modes the build judged, which the copy's index, `loom-skills/index.json`, names. Each is read through `node:fs`, under Node and Bun alike. When the build could not read the declaration, a run of the artifact whose setting names a folder fails with `loom build could not read the skills folder, because it could not load the application module.`, and when it read the module but found no folder there, because no `skills()` call named one or none ran while the module loaded, with `loom build found no skills folder in the application module.`; each is corrected by `Export the Application from the module paths.application names, src/application.ts by convention, call skills() as it loads, and build again.`, with the rule `@loomcli/plugins/skills/folder`.
 
 ## Global installs
 
@@ -123,7 +136,7 @@ Text imports are Bun's: a compiled binary and a Bun bundle inline each file the 
 ## Project installs
 
 - **The root.** `--project` starts at `host.cwd`, or at `--directory` resolved against it, and walks up through each parent to the first directory that holds an entry named `.git` of any kind, a directory in a clone and a file in a worktree or submodule. That directory is the root; with none up to the file system's root, the start is the root. A `--directory` that is not a directory fails with an `InputError` and exit 2: `Option "--directory" names /home/me/src/missing, which is not a directory. Name a directory that exists.` Both checks come before loading.
-- **Never the global folder.** When a skill's project folder is that target's global folder, as when the root is the home folder, the install fails with a `FatalError` and exit 1 before it loads or writes anything: `notes skills install --project would write to /home/me/.claude/skills/notes, the folder notes skills install keeps for your home folder. Run it inside a repository, name one with --directory, or leave out --project.` The global folder is computed as Agent targets states, and both folders are resolved to their real paths through the nearest ancestor that exists before they are compared, so a project folder that reaches the global folder through a linked root, a linked `.claude` or `.agents`, or a linked home refuses too.
+- **Never the global folder.** When a skill's project folder is that target's global folder, as when the root is the home folder, the install fails with a `FatalError` and exit 1 before it writes anything: `notes skills install --project would write to /home/me/.claude/skills/notes, the folder notes skills install keeps for your home folder. Run it inside a repository, name one with --directory, or leave out --project.` A listed skill's clash is checked before anything loads, and a folder skill's once the folder is read, because only the folder knows its name, still before anything is written. The global folder is computed as Agent targets states, and both folders are resolved to their real paths through the nearest ancestor that exists before they are compared, so a project folder that reaches the global folder through a linked root, a linked `.claude` or `.agents`, or a linked home refuses too.
 - **Replacing.** For each selected target and each skill, the plugin replaces whatever is at the skill's project folder, a directory with everything in it, removing each symbolic link inside it as a link and never following one, a symbolic link by removing the link alone, or any other file, with the skill's folder, written whole through a staging folder and renames as [Installed files](../core/installation-record.md#installed-files) writes an installed folder. Nothing is recorded, so a project folder has no update, uninstall, or `--force`; its repository's history shows what changed. Each skill prints `Installed <name> for <target> in <folder>.`, or `Installed <name> for <target> in <folder>, replacing the copy that was there.` when something was at the folder.
 - **A failed write.** A file system call that fails throws the runtime's error, which fails the run through the ordinary failure path, and the staging folder is removed. A failure between moving the old folder aside and renaming the new one into place can leave no folder and a leftover beside it; the next project install of that skill removes the leftovers of the skill's own name, as Installed files names them, and writes the folder whole.
 

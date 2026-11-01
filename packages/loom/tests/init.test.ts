@@ -129,8 +129,8 @@ const ownTypescriptConfig = '{ "compilerOptions": { "strict": false } }\n';
 
 /**
  * An existing package that holds its own manifest and application module, linking core. Core
- * resolves, so init reads the module's exports under Bun; from source, the `bun` program in
- * `run.ts` runs `src/read-application.ts`, because only the build writes `read-application.js`.
+ * resolves, so init reads the module's exports under Bun; from source, `loom` runs
+ * `src/read-application.ts`, because only the build writes `read-application.js`.
  */
 function ownPackage(files: Record<string, string> = {}) {
   return fixturePackage({

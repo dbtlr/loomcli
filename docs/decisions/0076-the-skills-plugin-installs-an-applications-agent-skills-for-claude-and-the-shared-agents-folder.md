@@ -4,7 +4,7 @@ title: ADR-0076 - The skills plugin installs an application's agent skills for C
 description: The skills plugin contributes skills install, update, and uninstall. The author hands it each skill as a name and a loader of its files, read only when a skills Command runs. The unit is the skill's folder, replaced whole on every install so a new version may restructure it. It installs into two agent targets, claude and agents, at global scope through the installation record, which lists the folders each target owns in one record file per target, or at project scope as an unrecorded copy at the repository root. A recorded folder is replaced or removed whatever is inside it, and an operator's --force takes over a folder the record does not list, narrowing ADR-0071's guarantees for this plugin alone. A self-update refreshes installed skills through an exported afterReplace function that runs the new binary.
 status: accepted
 created: 2026-10-13
-modified: 2026-10-26
+modified: 2026-11-01
 ---
 
 # ADR-0076 - The skills plugin installs an application's agent skills for Claude and the shared agents folder
@@ -61,3 +61,4 @@ Accepted in 0.12.0.
 
 - 2026-10-13: Proposed with the skills contract.
 - 2026-10-26: [ADR-0111](0111-the-mcp-plugin-registers-its-server-with-claude-code-and-codex-through-each-agents-cli.md), proposed, gives the MCP plugin a second operator-forced takeover: `mcp install --force` replaces a same-named registration with an agent that the installation record does not list. The narrowing of ADR-0071 under `--force` is then no longer this plugin's alone; the skills plugin's rules here are unchanged, and the MCP plugin's agents are not this record's agent targets. It binds when that record is accepted.
+- 2026-11-01: [ADR-0133](0133-the-skills-plugin-reads-a-skills-folder-that-loom-build-carries-into-the-artifact.md), proposed, gives `skills()` a `folder` setting whose subfolders are the skills, read from disk by an unbuilt run and carried into the artifact by `loom build`, which loads the application module to learn the folder. It supersedes this record's rule that `loom build` gains no embedding seam and its rejection of a `skills/` folder that `loom build` embeds, whose reason it answers with one reader over a different base folder for each build, and narrows the rules that skills arrive through a loader, that text imports are the convention, that every name is judged at the call, and that any build installs. The loader stays. It binds when that record is accepted.

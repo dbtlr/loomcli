@@ -36,8 +36,12 @@ const config: Linter.Config[] = [
   },
   {
     // These are the exceptions the repository's own process rule names (ADR-0107).
-    // They are the YAML guard and the toolchain's application reader, which is its own program.
-    files: ['packages/plugins/src/config/yaml.ts', 'packages/loom/src/read-application.ts'],
+    // They are the YAML guard and the toolchain's application readers, each its own program.
+    files: [
+      'packages/plugins/src/config/yaml.ts',
+      'packages/loom/src/read-application.ts',
+      'packages/loom/src/read-skills.ts',
+    ],
     rules: { '@loomcli/host-bypass': 'off' },
   },
 ];

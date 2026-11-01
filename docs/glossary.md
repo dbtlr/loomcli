@@ -922,6 +922,10 @@ _Avoid_: Prompt, plugin (for the folder), instructions file
 One of the folder layouts agents read skills from: `claude`, which Claude Code alone reads, and `agents`, the shared folder that Codex and other agents following the Agent Skills standard read. Each has a global folder under the user's home and a project folder at a repository's root.
 _Avoid_: Host (the process environment), agent (for the folder), provider
 
+**Skills folder**:
+The folder an application names in the skills plugin's `folder` setting, each directory directly inside it one agent skill named for the directory. A source run and a test read it from disk, and `loom build` carries it into the bundle or binary it builds.
+_Avoid_: Skills directory, operator skills path, `paths.skills`; not the folder an agent target reads installed skills from
+
 ## Toolchain
 
 **Package directory**:

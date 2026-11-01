@@ -5,8 +5,10 @@ import { oneOf } from '@loomcli/validators';
 import { installGlobal, uninstallGlobal } from './global.js';
 import type { ChildRun } from './global.js';
 import { directoryNeedsProject, installProject } from './project.js';
+import { recordCall } from './registry.js';
 import { identity, judgeSettings } from './settings.js';
-import type { Skill, SkillsSettings } from './types.js';
+import type { Declared } from './settings.js';
+import type { SkillsSettings } from './types.js';
 
 /** `claude`, or `agents` for Codex and the other agents that read the shared folder. */
 const agentInput = oneOf(['claude', 'agents']);
@@ -28,7 +30,7 @@ function childRun(context: ChildContext): ChildRun {
 }
 
 /** `install`: global folders recorded in the installation record, or `--project` copies at the repository root. */
-function installCommand(declared: readonly Skill[]) {
+function installCommand(declared: Declared) {
   return new Command('install', { description: 'Install the skills for your coding agents.' })
     .option('agent', {
       description:
@@ -64,7 +66,7 @@ function installCommand(declared: readonly Skill[]) {
 }
 
 /** `update`: the skills of each target whose record lists folders, brought up to date. */
-function updateCommand(declared: readonly Skill[]) {
+function updateCommand(declared: Declared) {
   return new Command('update', {
     description: 'Bring installed skills up to date with this version.',
   }).action(async (context) => {
@@ -91,7 +93,7 @@ function uninstallCommand() {
 }
 
 /** The `skills` group and its three children. */
-function skillsCommand(declared: readonly Skill[]) {
+function skillsCommand(declared: Declared) {
   return new Command('skills', { description: "Install this application's agent skills." })
     .command(installCommand(declared))
     .command(updateCommand(declared))
@@ -100,10 +102,13 @@ function skillsCommand(declared: readonly Skill[]) {
 
 /**
  * A plugin that installs the application's agent skills where coding agents read them, keeps them
- * current with the binary, and removes them. Its whole contribution is the `skills` group.
+ * current with the binary, and removes them. Its whole contribution is the `skills` group. Each
+ * call is recorded in the registry `loom build` reads to carry the skills folder.
  */
 function skills(settings: SkillsSettings): Plugin {
-  return plugin(identity, { commands: [skillsCommand(judgeSettings(settings))] });
+  const declared = judgeSettings(settings);
+  recordCall(declared);
+  return plugin(identity, { commands: [skillsCommand(declared)] });
 }
 
 export type { RefreshContext, Skill, SkillFile, SkillsSettings } from './types.js';

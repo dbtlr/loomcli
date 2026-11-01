@@ -160,9 +160,9 @@ export default defineConfig({
         },
       },
       {
-        // The toolchain's application reader is its own child program, so it reads its own process.
-        // It still imports no child-process module and asks node:os for none of the user's folders.
-        files: ['packages/loom/src/read-application.ts'],
+        // The toolchain's application readers are their own child programs, so each reads its process.
+        // Neither imports a child-process module or asks node:os for any of the user's folders.
+        files: ['packages/loom/src/read-application.ts', 'packages/loom/src/read-skills.ts'],
         rules: {
           'eslint/no-restricted-globals': ['error', requireGlobal],
           'eslint/no-restricted-imports': ['error', { paths: [...osImports, ...childImports] }],
@@ -256,6 +256,13 @@ export default defineConfig({
         rules: {
           // A bundler's define replaces `__LOOM_RELEASE__`, the one identifier the release facts contract names.
           'eslint/no-underscore-dangle': ['error', { allow: ['__LOOM_RELEASE__'] }],
+        },
+      },
+      {
+        files: ['packages/plugins/src/skills/carried.ts'],
+        rules: {
+          // A bundler's define replaces `__LOOM_SKILLS__`, the one identifier the skills folder contract names.
+          'eslint/no-underscore-dangle': ['error', { allow: ['__LOOM_SKILLS__'] }],
         },
       },
       {

@@ -11,8 +11,9 @@ import { z } from 'zod';
 const schema = z.object({});
 
 /**
- * One faulty call per scenario, each reachable from JavaScript alone. The fixture prints the
- * Developer Diagnostic its message holds.
+ * One call per scenario, each reachable from JavaScript alone, every one faulty but
+ * `skills-empty-list`, which the pack accepts. The fixture prints the Developer Diagnostic a fault's
+ * message holds, or `returned` for a call that throws none.
  */
 const scenarios = {
   'config-glob': () => configuration({ file: '*.json', schema }),
@@ -26,7 +27,10 @@ const scenarios = {
   'self-update-notices-env': () => selfUpdate({ notices: { env: '1X' } }),
   'self-update-notices-hyphen': () => selfUpdate({ notices: { env: 'A-B' } }),
   'service-label': () => service({ label: 'notes', run: ['serve'] }),
+  'skills-empty-folder': () => skills({ folder: '' }),
+  'skills-empty-list': () => skills({ skills: [] }),
   'skills-name': () => skills({ skills: [{ files: () => [], name: 'Notes' }] }),
+  'skills-neither': () => skills({}),
   'skills-twice': () =>
     skills({
       skills: [
@@ -34,6 +38,7 @@ const scenarios = {
         { files: () => [], name: 'notes' },
       ],
     }),
+  'skills-web-folder': () => skills({ folder: new URL('https://example.com/skills/') }),
   'version-blank': () => version({ postfix: ' ' }),
   'version-lines': () => version({ postfix: 'schema\nv1' }),
   'version-number': () => version({ postfix: 1 }),

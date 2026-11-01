@@ -21,9 +21,9 @@ import { folderHoldsExactly } from '../installation/folders.js';
 import { loadSkills } from './load.js';
 import type { LoadedSkill } from './load.js';
 import { lines, refusals } from './messages.js';
+import type { Declared } from './settings.js';
 import { globalPlaces, selectedTargets } from './targets.js';
 import type { Place, Target } from './targets.js';
-import type { Skill } from './types.js';
 
 /** What a child reads from its action: the application, the run, and the lanes it writes. */
 interface ChildRun {
@@ -158,7 +158,7 @@ function failureOf(run: ChildRun, verb: WritingVerb, refused: readonly Refusal[]
 
 /** What `install` and `update` read from the command line. */
 interface InstallRequest {
-  readonly skills: readonly Skill[];
+  readonly skills: Declared;
   readonly verb: WritingVerb;
   readonly agent: Target | undefined;
   readonly force: boolean;
@@ -225,7 +225,7 @@ async function chosenTargets(
   places: readonly Place[],
 ): Promise<readonly Wanted[]> {
   const acting = await actingPlaces(where.run, places);
-  const loaded = await loadSkills(request.skills);
+  const loaded = await loadSkills(request.skills, where.run.host.release.build);
   const entries = recordedBy(where, acting, 'install');
   const chosen =
     request.verb === 'update' ? entries.filter(({ folders }) => folders.length > none) : entries;

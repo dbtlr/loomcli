@@ -53,8 +53,8 @@ const postInstall = object({
 
 /**
  * The schema of `loom.config.json`. Every key is optional, and valibot's `object` strips a key it
- * does not describe, so an unknown key is ignored. `skills` is read by no command yet.
- * `sharedVersion` passes through as written, because the plugin drops a value the schema rejects
+ * does not describe, so an unknown key is ignored. The file names no skills folder, which the
+ * skills plugin's `folder` setting names. `sharedVersion` passes through as written, because the plugin drops a value the schema rejects
  * and a dropped list would let a cut leave the listed manifests at the old version;
  * `loom changelog write` checks it as one value and fails on a malformed one.
  */
@@ -67,7 +67,6 @@ const loomConfigSchema = object({
       entry: pathValue,
       installer: pathValue,
       out: pathValue,
-      skills: pathValue,
       source: pathValue,
     }),
   ),
@@ -83,7 +82,6 @@ const pathKeys = [
   'entry',
   'installer',
   'out',
-  'skills',
   'source',
 ] as const satisfies readonly PathKey[];
 
@@ -121,7 +119,6 @@ export interface PackagePaths {
   readonly entry: string;
   readonly installer: string;
   readonly out: string;
-  readonly skills: string;
   readonly source: string;
 }
 
@@ -144,7 +141,6 @@ export function packagePaths(directory: string, config: LoomConfig): PackagePath
     entry: paths.entry === undefined ? join(source, 'main.ts') : at(paths.entry),
     installer: at(paths.installer ?? 'install.sh'),
     out: at(paths.out ?? 'dist'),
-    skills: at(paths.skills ?? 'skills'),
     source,
   };
 }
