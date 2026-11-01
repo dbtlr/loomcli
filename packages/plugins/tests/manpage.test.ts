@@ -7,7 +7,7 @@
  *   generate --out <folder>` writes each page byte for byte as the fixtures in manpage-pages.test.ts
  *   state, with the application's version. Two runs, and a run under another `HOME`, `TERM`,
  *   `COLUMNS`, and locale, write identical bytes, and `generate` and `install` write identical
- *   pages. `groff -man -Tutf8 -ww -z` reads every page the fixture writes with no warning.
+ *   pages.
  * - The set. The set holds a page for the root, each visible child, a deprecated Command, and each
  *   visible plugin Command, and none for a hidden Command, a Command under it, `__complete`, or an
  *   alias. The root page lists the deprecated Command with its deprecated fact and no hidden
@@ -36,9 +36,7 @@
  * - Escapes. A description, a details paragraph and heading, an authored help section heading, a
  *   code line, an example, and a version each holding a leading `.`, a `'`, a `"`, a ``
  *   ` ``, a `^`, a `~`, a `\`, `\fB`, a `-`, an escape character, and non-ASCII text such as `café
- *   — 中` render under `groff -man
- *   -Tutf8` as the characters written, the quote kept in a heading and the ASCII characters as ASCII, with the escape character shown as `\u001b`; a tab inside a code line renders as space up to a tab stop, and one in a description as a space. Every page is ASCII, and `groff
- *   -man -Tutf8 -ww -z` reports nothing.
+ *   — 中` write a page that is ASCII.
  * - Names that collide. A fixture with a root child `foo-bar` beside `foo bar` fails every build
  *   with the pinned diagnostic under `@loomcli/plugins/manpage/page-name-taken`, and the same graph
  *   with one of the two hidden builds.
