@@ -46,6 +46,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -56,7 +57,7 @@ import {
   watch as watchDirectory,
   writeFileSync,
 } from 'node:fs';
-import { basename, join, relative, sep } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import { Writable } from 'node:stream';
 import { setTimeout as after } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
@@ -970,19 +971,21 @@ test.each(['SIGINT', 'SIGTERM'] as const)(
 );
 
 /**
- * Runs `loom build` with the arguments, `--target node` unless told otherwise, in the package as its
- * own process group and sends the signal the moment an entry the predicate names appears anywhere
- * under the watched directory, by its path relative to that directory, so the signal lands as soon
- * as the build has started writing, whatever the machine's speed. The signal goes to the group, as
- * a terminal's Ctrl-C sends it, or with `loomAlone` to `loom` alone, as `kill` or a task runner
- * sends it. It resolves to the signal the build ended by.
+ * Runs `loom build` with the arguments in the package as its own process group and sends the
+ * signal once the watcher reports an entry the predicate names anywhere under the watched
+ * directory, by its path relative to that directory. The signal goes to the group, as a terminal's
+ * Ctrl-C sends it, or with `loomAlone` to `loom` alone, as `kill` or a task runner sends it. It
+ * resolves to the signal the build ended by. A watcher's report can come late, as macOS's file
+ * events do under load, so a build that ends before the signal was sent fails here and says so,
+ * rather than reading the build's own exit as the signal's. Only a window as long as a binary's
+ * compile suits it; a shorter one holds Bun instead, as `signalWhileBunBuilds` does.
  */
 async function signalWhenWritten(
   root: string,
   signal: NodeJS.Signals,
   watched: string,
   written: (name: string) => boolean,
-  args: readonly string[] = ['--target', 'node'],
+  args: readonly string[],
   loomAlone = false,
 ): Promise<NodeJS.Signals | null> {
   const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
@@ -998,17 +1001,64 @@ async function signalWhenWritten(
       resolve(received);
     });
   });
+  let sent = false;
   watcher.on('change', (_event, name) => {
     if (typeof name === 'string' && written(name)) {
       watcher.close();
+      sent = true;
       process.kill(loomAlone ? (child.pid ?? 0) : -(child.pid ?? 0), signal);
     }
   });
   try {
-    return await ended;
+    const received = await ended;
+    if (!sent) {
+      throw new Error(
+        `The build ended before the watcher reported its entry, so no ${signal} was sent.`,
+      );
+    }
+    return received;
   } finally {
     watcher.close();
   }
+}
+
+/**
+ * Runs `loom build --target node` in the package as its own process group, with a stand-in for Bun
+ * first on the PATH, and sends the signal to the group, as a terminal's Ctrl-C sends it, once the
+ * stand-in runs. A build runs Bun only in its staging directory, so the signal lands while the
+ * build is under way, whatever the machine's speed. The stand-in writes part of a bundle there, as
+ * a Bun stopped partway leaves one, records the directory, and waits to be stopped. It resolves to
+ * that directory and the signal the build ended by.
+ */
+async function signalWhileBunBuilds(root: string, signal: NodeJS.Signals) {
+  const bin = temporaryRoot('loom-held-bun-');
+  const ranIn = join(bin, 'ran-in');
+  writeFileSync(
+    join(bin, 'bun'),
+    `#!/bin/sh\nprintf 'A partial main.js.\\n' > main.js\npwd -P > "${ranIn}.partial" && mv "${ranIn}.partial" "${ranIn}"\nexec sleep 60\n`,
+  );
+  chmodSync(join(bin, 'bun'), 0o755);
+  // The runtime by its own path, because the stand-in answers to `bun` on the PATH loom runs with.
+  const runtime = executableOf(process.env.LOOM_TEST_RUNTIME ?? 'node');
+  const child = spawn(runtime, [cli, 'build', '--target', 'node'], {
+    cwd: root,
+    detached: true,
+    env: childEnvironment({ PATH: `${bin}:${process.env.PATH ?? ''}` }),
+    stdio: 'ignore',
+  });
+  let closed = false;
+  const ended = new Promise<NodeJS.Signals | null>((resolve) => {
+    child.on('close', (_status, received) => {
+      closed = true;
+      resolve(received);
+    });
+  });
+  await until(() => closed || existsSync(ranIn));
+  if (!existsSync(ranIn)) {
+    throw new Error('The build ended before it ran Bun.');
+  }
+  process.kill(-(child.pid ?? 0), signal);
+  return { ranIn: readFileSync(ranIn, 'utf8').trim(), received: await ended };
 }
 
 /**
@@ -1036,57 +1086,41 @@ test('undoing a build removes only the directories it created that nothing else 
   expect(readdirSync(join(root, 'out/dist'))).toEqual(['other.js']);
 });
 
-/** Every file a complete build of the probe package writes, read from one uninterrupted build. */
-async function completeBuild(root: string) {
-  const runResult = await loom(root, ['build', '--target', 'node']);
-  expect(runResult.status).toBe(0);
-  const built = snapshot(join(root, 'dist'));
-  rmSync(join(root, 'dist'), { recursive: true });
-  return built;
+/** Checks that a held Bun ran in a staging directory in the package's `dist`. */
+function expectStaging(root: string, ranIn: string) {
+  expect(relative(root, dirname(ranIn))).toBe('dist');
+  expect(basename(ranIn)).toMatch(/^\.loom-build-/u);
 }
 
 test.each(['SIGINT', 'SIGTERM'] as const)(
-  'a %s the moment a first build creates its output removes the output, or ends once the build is complete',
+  'a %s while Bun builds a first build in its staging directory removes the dist directory the build created',
   async (signal) => {
     const root = probePackage();
-    const built = await completeBuild(root);
-    for (let round = 0; round < 3; round += 1) {
-      const received = await signalWhenWritten(root, signal, root, (name) => name === 'dist');
-      expect(received).toBe(signal);
-      const left = existsSync(join(root, 'dist')) ? snapshot(join(root, 'dist')) : undefined;
-      expect([undefined, built]).toContainEqual(left);
-      rmSync(join(root, 'dist'), { force: true, recursive: true });
-      expect(readdirSync(root).toSorted()).toEqual(['node_modules', 'package.json', 'src']);
-    }
+    const { ranIn, received } = await signalWhileBunBuilds(root, signal);
+    expectStaging(root, ranIn);
+    expect(received).toBe(signal);
+    expect(readdirSync(root).toSorted()).toEqual(['node_modules', 'package.json', 'src']);
   },
   slow,
 );
 
 test.each(['SIGINT', 'SIGTERM'] as const)(
-  'a %s the moment a rebuild creates its staging directory leaves the earlier output whole, or the new output whole',
+  'a %s while Bun builds a rebuild in its staging directory leaves the earlier output whole',
   async (signal) => {
     const root = probePackage();
-    const built = await completeBuild(root);
-    const stale = () => {
-      for (const file of built.keys()) {
-        put(root, join('dist', file), `An earlier ${file}.\n`);
-      }
-      put(root, 'dist/notes.txt', 'Not the build’s.\n');
-      return snapshot(join(root, 'dist'));
-    };
-    const before = stale();
-    const rebuilt = new Map([...built, ['notes.txt', before.get('notes.txt') ?? '']]);
-    for (let round = 0; round < 3; round += 1) {
-      const received = await signalWhenWritten(root, signal, join(root, 'dist'), (name) =>
-        name.startsWith('.loom-build-'),
-      );
-      expect(received).toBe(signal);
-      expect([before, rebuilt]).toContainEqual(snapshot(join(root, 'dist')));
-      expect(
-        readdirSync(join(root, 'dist')).filter((file) => file.startsWith('.loom-build-')),
-      ).toEqual([]);
-      stale();
-    }
+    put(root, 'dist/main.js', 'An earlier main.js.\n');
+    put(root, 'dist/application.js', 'An earlier application.js.\n');
+    put(root, 'dist/notes.txt', 'Not the build’s.\n');
+    const before = snapshot(join(root, 'dist'));
+    const { ranIn, received } = await signalWhileBunBuilds(root, signal);
+    expectStaging(root, ranIn);
+    expect(received).toBe(signal);
+    expect(snapshot(join(root, 'dist'))).toEqual(before);
+    expect(readdirSync(join(root, 'dist')).toSorted()).toEqual([
+      'application.js',
+      'main.js',
+      'notes.txt',
+    ]);
   },
   slow,
 );
