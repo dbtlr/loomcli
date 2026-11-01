@@ -1,0 +1,56 @@
+---
+type: adr
+title: ADR-0133 - The skills plugin reads a skills folder that loom build carries into the artifact
+description: skills() takes a folder setting, a file URL or a path, whose subfolders are the application's skills, one per subfolder named for it, beside or in place of the skills list. An unbuilt run reads the folder a URL or an absolute path names when a skills Command loads the files; a relative path resolves against the application module, which only loom build knows. loom build loads the application module in a process of its own, as loom init does, reads the folder skills() named, judges it, and carries it into the artifact through a second define, __LOOM_SKILLS__: a development build names the source folder, a distributed bundle copies the folder beside its chunks, and a distributed binary embeds it. One reader serves every form. paths.skills leaves ADR-0130 before it ships. It supersedes ADR-0076's rule that loom build gains no embedding seam and its rejection of a skills folder that loom build embeds.
+status: proposed
+created: 2026-11-01
+modified: 2026-11-01
+---
+
+# ADR-0133 - The skills plugin reads a skills folder that loom build carries into the artifact
+
+## Context
+
+[ADR-0076](0076-the-skills-plugin-installs-an-applications-agent-skills-for-claude-and-the-shared-agents-folder.md) hands the skills plugin each skill as a name and a loader of its files, and documents a root `skills/<name>/` folder read through text imports. Every application that ships a skill writes that loader by hand: Mimir imports ten files one by one, and a new reference file reaches the binary only when someone adds its import. Text imports are Bun's, so a Node source run and a test under a Node worker cannot read them at all. ADR-0076 rejected the alternative, a `skills/` folder that `loom build` embeds, because development runs and tests never pass through the build, so the plugin would need a second path that reads the folder from disk, and the build would gain a file-embedding seam for one plugin.
+
+The owner directed that the build read operator skills in 0.17.0 ([ADR-0130](0130-the-loom-toolchain-reads-loom-config-json-from-the-package-directory-and-every-path-it-owns-is-a-key.md) reserved `paths.skills` for it), and ruled on the shape: a source run and a test install the skills too ("Why would it not work in development for testing the skill? Why impose this limitation?"), and the author names the folder in the declaration and nothing else ("The author should just provide a relative path OR a URL path and we should do the rest").
+
+Each way an application runs knows a different place for the folder. A source run and a test, under Node or Bun, resolve `new URL('../skills/', import.meta.url)` against the module that wrote it. A bundle keeps that expression as it is, so it resolves against the bundle's chunk. A compiled binary's `import.meta.url` is inside Bun's embedded file system, which holds only what `bun build --compile --asset` embedded. Core keeps a plugin's settings to itself and the built graph names no plugin, so nothing outside the application can ask an Application which folder its skills plugin was given. `loom init` already imports the application module under Bun in a process of its own to learn its exports.
+
+## Decision
+
+- **A folder setting.** `skills()` takes `folder`, a `file:` URL or a path, beside `skills`, the list of named loaders ADR-0076 defines. Either may be left out, and a call with neither, or with an empty list and no folder, is a settings fault at the call. Each directory directly inside the folder is one skill, named for the directory, and holds the skill's files: every file below it, at its path relative to the skill's directory, executable when its mode has an execute bit. Directly inside the folder, a file is ignored, so a `README.md` beside the skills does not count, and so is a directory whose name starts with `.`. A skill directory whose name is not a skill name, a symbolic link inside a skill that names a directory or nothing, and any entry that is neither a file nor a directory are faults. A symbolic link to a file reads as that file. A folder skill's name and files meet the rules ADR-0076 sets for a loader's, and a folder skill that holds a listed skill's name is a fault.
+- **The plugin reads the folder when a skills Command loads files.** `install` and `update` read the folder at the point they call loaders, so every other run reads nothing. An unbuilt run reads the folder a URL or an absolute path names. A relative path resolves against the application module, which only `loom build` knows, so an unbuilt run whose setting is a relative path fails and says to write `new URL('<path>', import.meta.url)`. A folder that does not exist fails and names its path.
+- **The build learns the folder from the declaration.** Before it bundles, for every target, `loom build` loads the application module, the module `--application` or `paths.application` names, under Bun in a process of its own, as `loom init` reads it, and reads the folder that `skills()` was given while the module loaded. `skills()` records each call's folder and skill names in a registry keyed by a global symbol, which the build's process reads after the import; the registry is a channel between `@loomcli/plugins` and `@loomcli/loom`, which publish at one version, and no export names it. A relative path resolves against that module's directory. The build reads and judges the folder as the plugin does and fails before it bundles on any fault, naming the folder and the setting, so a bad skill fails the build rather than an operator's install. Two calls that each name a folder fail the build. When the package does not resolve `@loomcli/plugins`, or has no application module, the build reads nothing.
+- **What the artifact carries.** The build bakes a second define, `__LOOM_SKILLS__`, which the skills plugin alone reads:
+  - **A development build** names the source folder by its absolute path, with nothing copied, so a skill edited during `--watch` installs as it now stands.
+  - **A distributed bundle** copies each skill's files into `skills/` in the output directory, beside the chunks, and names each skill's files with their executable bit.
+  - **A distributed binary** embeds the same files with `--asset`, readable through the runtime's file functions inside the binary, and names them the same way.
+  - **A build that read nothing** says so, and a run of it whose setting names a folder fails and says to export the Application from the application module so `loom build` can read the folder.
+
+  A run with no `__LOOM_SKILLS__`, an unbuilt run or a custom build, reads the setting as an unbuilt run does. The plugin reads every form through `node:fs`, under Node and Bun alike, so the second path ADR-0076 feared is one reader with a different base folder. `loom build --define` and `--facts` keep printing the release facts alone, so a custom build carries no folder.
+- **`paths.skills` leaves the configuration file.** The folder is named once, in the declaration, so ADR-0130's `skills` key is removed before it ships, and `loom.config.json` names no skills folder.
+- **The managed changelog skill is not an operator skill.** `.agents/skills/loom-changelog/` teaches the author's agent, and nothing here reads it.
+
+## Considered options
+
+- **Unbuilt runs carry no folder skills, as they carry no release facts.** Rejected by the owner: a skill is tested in development, and a run that cannot install it from source imposes a limitation nothing requires.
+- **A helper the author calls to read the folder.** Rejected by the owner: the setting takes the folder and Loom does the rest.
+- **A relative path against the working directory.** Rejected. A test runner in a monorepo runs from the repository's root, so the path would read a different folder there. The owner chose the application module as the base, which reads the way the URL does.
+- **The folder in `loom.config.json` and in the declaration.** Rejected. The two can disagree in exactly the monorepo case the key existed for, and nothing short of loading the module could see it, so development would read one folder while the binary carried another.
+- **The plugin reading `loom.config.json` in an unbuilt run.** Rejected. It would make `@loomcli/plugins` parse the toolchain's file, against [ADR-0131](0131-the-post-install-declaration-moves-from-the-application-into-loom-config-json.md)'s rule that a fact only the toolchain reads lives in the toolchain's file.
+- **The folder as a graph fact.** Rejected. The graph describes the built product, under [ADR-0010](0010-one-graph-serves-runtime-and-projections.md), and a folder on the build machine is where it came from; the manifest would print an author's path.
+- **The file contents in the define.** Rejected. A define passes through one command-line argument, which Linux limits to 128 KiB, so a skill with large references would fail to build.
+- **A Bun bundler plugin that serves the files as a virtual module.** Rejected. `bun build --watch` and `--compile` run through the command line, which takes no plugin, and `node:fs` reads the copied and embedded files under both runtimes.
+
+## Consequences
+
+`loom build` loads the application module for every build of a package that resolves `@loomcli/plugins`, so every build pays for one Bun process that imports the module, and a module that throws while it loads fails the build with `loom init`'s load failure. A change to the `folder` setting during `--watch` takes a restart, and a change inside a development build's folder does not. An author who builds with Bun directly carries no folder and names the files through a loader. ADR-0076's loader stays the way to supply generated or computed files, which the generated command references planned for 0.20.0 can extend. ADR-0076 and ADR-0130 carry dated entries.
+
+## Status
+
+Proposed. It moves to accepted in the release PR of the release that ships the skills folder.
+
+## Changelog
+
+- 2026-11-01: Proposed with the skills folder (LM-438). It supersedes ADR-0076's rule that `loom build` gains no embedding seam and its rejection of a `skills/` folder that `loom build` embeds, and removes the `skills` key ADR-0130 reserved. ADR-0076 and ADR-0130 carry dated entries.

@@ -62,9 +62,8 @@ A package may keep `loom.config.json` beside its `package.json` to depart from a
   | `changes` | `.changes` | `changelog check`, `changelog write`, `changelog notes`, `init` |
   | `changelog` | `CHANGELOG.md` | `changelog write`, `changelog notes` |
   | `installer` | `install.sh` | `init` |
-  | `skills` | `skills` | `build` |
 
-  Each path is a nonempty string, relative or absolute, and a relative path may hold `..`; an empty string or a value of another type is dropped and its convention applies. `application` and `entry` follow `source` unless set themselves. `skills` is the folder of agent skills the application installs for its operator, the layout `npx skills` reads; how the build reads it is recorded separately.
+  Each path is a nonempty string, relative or absolute, and a relative path may hold `..`; an empty string or a value of another type is dropped and its convention applies. `application` and `entry` follow `source` unless set themselves. The file names no skills folder: the [skills plugin](../plugins/skills.md#the-skills-folder)'s `folder` setting names it, and the build reads it there, under [The skills folder](#the-skills-folder).
 - **One base.** Every path in the file resolves against the package directory, whichever directory the file sits in, and an absolute path stays as written. A path may leave the package directory, such as a monorepo's root `install.sh`.
 - **`sharedVersion`.** A list of `package.json` files that carry this package's version, which [`loom changelog write`](changelog.md) sets in the same replacement as the package's own, such as `["../hub/package.json"]`. Each entry resolves against the package directory. `loom changelog write` validates the value itself, and anything but a list of nonempty strings fails the cut before any file changes, rather than being dropped, because a dropped list would leave the listed files at the old version.
 - **`postInstall`.** The [post-install command and message](install.md#the-post-install-command) the installer script runs and prints: `{ "message": "…", "command": ["setup"] }`.
@@ -103,3 +102,26 @@ bun build src/main.ts src/application.ts --outdir dist --splitting --target node
 - **A compiled binary.** A compile target bakes `compiled: true`, with or without `--release`, and `node` and `bun` bake no `compiled` member, so core knows a binary is the whole program when it captures [`host.program`](../core/host.md).
 - **Composing a custom build.** `--facts` prints the facts JSON, and `--define` prints the define pair, `__LOOM_RELEASE__=<json>`. Each reads the same options a build reads, prints one line to stdout, and builds nothing, and they exclude each other. `loom build` computes its own facts with the same code, so an author who needs a bundler option `loom build` does not offer composes the same facts into that bundler's define.
 - **A failed build changes nothing.** A build writes into a temporary directory beside the output and moves each file into place only after the whole build succeeds, replacing the file of the same name. A failed build leaves any earlier output in place, and files the build does not write are left alone. An ending signal cancels the run. The run's cancellation stops Bun, which receives the signal `loom` received, and the build undoes its own work on that cancelled path, within the [shutdown](../core/signals.md#the-shutdown) budget. From before it creates anything until the build has finished or been undone, the run holds [`onShutdown`](../core/signals.md#onshutdown) handlers that kill Bun with `SIGKILL` and undo the build, which run only when the shutdown ends before the build has undone itself: the budget runs out, a second signal arrives, or `SIGQUIT` skips the budget. A signal that arrives before the files move into place cleans up as a failed build does, including each output directory the build created that nothing else has filled, and one that arrives while they move lets every file move, so output is never partly replaced. Either way `loom` then ends with the signal, so its shell reads 129, 130, 131, or 143. Bun runs in the temporary directory, so the file a compile writes into Bun's working directory lands there, and builds that run at once in one package, such as one call per target, each have their own. The build never writes into the source tree.
+
+## The skills folder
+
+```ts
+// src/application.ts
+skills({ folder: new URL('../../../skills/', import.meta.url) }) // a monorepo's root skills/
+```
+
+`loom build` carries the [skills folder](../plugins/skills.md#the-skills-folder) an application names into what it builds, so a bundle or a binary installs the skills wherever it runs. [ADR-0133](../decisions/0133-the-skills-plugin-reads-a-skills-folder-that-loom-build-carries-into-the-artifact.md) records the decision.
+
+- **Reading the declaration.** Before it bundles, for every target, the build loads the application module, the one `--application` or `paths.application` names, under Bun in a process of its own, as [`loom init`](init.md) reads it, and reads the `folder` that `skills()` was given while the module loaded. A URL names its folder, an absolute path is itself, and a relative path resolves against the application module's directory. A package that does not resolve `@loomcli/plugins`, or has no application module, is not loaded, and the build carries nothing. A module that throws while it loads fails the build with init's load failure, and two `skills()` calls that each name a folder fail the build and name both folders.
+- **Judging the folder.** The build reads the folder as the plugin does and fails before it bundles at the first fault the plugin would raise, naming the folder: a missing folder, a skill directory whose name is not a skill name, a skill with no `SKILL.md`, or an entry inside a skill that is neither a file nor a folder. A bad skill fails the build, not an operator's install.
+- **What the artifact carries.** The build bakes the define `__LOOM_SKILLS__`, which the skills plugin alone reads:
+
+  | Build | Carries |
+  | --- | --- |
+  | `development`, any target | the source folder's absolute path, so an edit during `--watch` installs as it now stands |
+  | `distributed` `node` or `bun` | a copy of each skill's files in `skills/` in the output directory, beside the chunks |
+  | `distributed` compile target | each skill's files embedded in the binary |
+
+  A distributed build also bakes each skill's file paths and executable bits, so the binary's embedded files install with their modes. `skills/` in a bundle's output directory is replaced with the rest of the output, as A failed build changes nothing states.
+- **Watching.** `--watch` reads the declaration once, when it starts, so a change to the `folder` setting takes a restart, and a change inside the folder needs none.
+- **A custom build.** `--define` and `--facts` print the release facts alone, so a bundle built with Bun directly carries no folder, and its skills plugin reads the setting as a source run does.
