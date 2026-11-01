@@ -25,7 +25,7 @@
  *   and an option already given is not offered again, while a multiple `--field` is.
  * - Counted options. The fixture's own unmarked counted `--verbose` is offered again after it was
  *   given, as a multiple `--field` is. The verbose plugin's marked `--verbose` is no longer
- *   offered after `-vv`, and its quiet-marked `-q` no longer after `-q`, because a further
+ *   offered after `-vv`, and its quiet-marked `--quiet` no longer after `-q`, because a further
  *   occurrence of either adds nothing to the verbosity.
  * - Implied values. With `backup` implying `simple` and a closed set of values, `--backup=<Tab>`
  *   offers the values as whole words that begin `--backup=`, and `--backup <Tab>` offers what the
