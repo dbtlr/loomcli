@@ -47,7 +47,7 @@ import { applicationDirectory } from '@loomcli/core';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { installationRecipeParts } from '../../../scripts/test-installation.js';
-import { findOnPath } from '../../../scripts/test-shell.js';
+import { requiredProgram } from '../../../scripts/test-shell.js';
 import { installerScript } from '../src/content/installer-script.js';
 import { renderManaged } from '../src/helpers/managed.js';
 import { removeRoots } from './fixture.js';
@@ -331,27 +331,16 @@ test('no digest tool exits 1, names sha256sum, and downloads nothing', () => {
   expect(requested(box)).toEqual([]);
 });
 
-/**
- * Whether `shasum` runs here. A machine without it skips the case that needs it, unless
- * `LOOM_REQUIRE_SHELLS` is set, when the suite fails, as it fails the shell suites.
- */
-function shasumInstalled(): boolean {
-  if (findOnPath('shasum') !== undefined) {
-    return true;
-  }
-  if (process.env.LOOM_REQUIRE_SHELLS) {
-    throw new Error('LOOM_REQUIRE_SHELLS is set, but shasum is not installed.');
-  }
-  return false;
-}
-
-test.skipIf(!shasumInstalled())('with no sha256sum, shasum -a 256 verifies the download', () => {
-  const box = sandbox({ tools: scriptTools.filter((tool) => tool !== 'sha256sum') });
-  expect(runScript(box).status).toBe(0);
-  expect(readFileSync(join(recordDirectory(box), 'install.json'), 'utf8')).toBe(
-    recordBytes(join(defaultDirectory(box), app)),
-  );
-});
+test.skipIf(requiredProgram('shasum') === undefined)(
+  'with no sha256sum, shasum -a 256 verifies the download',
+  () => {
+    const box = sandbox({ tools: scriptTools.filter((tool) => tool !== 'sha256sum') });
+    expect(runScript(box).status).toBe(0);
+    expect(readFileSync(join(recordDirectory(box), 'install.json'), 'utf8')).toBe(
+      recordBytes(join(defaultDirectory(box), app)),
+    );
+  },
+);
 
 /** A latest release whose SHA256SUMS is the supplied text and whose asset holds `test`. */
 function listing(text: string) {

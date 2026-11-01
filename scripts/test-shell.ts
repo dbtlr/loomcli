@@ -909,3 +909,16 @@ export function findOnPath(command: string): string | undefined {
       }
     });
 }
+
+/**
+ * The absolute path of an external program a test runs, or undefined, when the cases that need it
+ * skip. CI installs every program a test runs and sets `LOOM_REQUIRE_SHELLS`, so there a missing
+ * program fails the suite instead of skipping it.
+ */
+export function requiredProgram(program: string): string | undefined {
+  const path = findOnPath(program);
+  if (path === undefined && process.env.LOOM_REQUIRE_SHELLS) {
+    throw new Error(`LOOM_REQUIRE_SHELLS is set, but ${program} is not installed.`);
+  }
+  return path;
+}

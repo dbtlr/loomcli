@@ -104,7 +104,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
-import { findOnPath, sealedShellEnvironment } from '../../../scripts/test-shell.js';
+import { requiredProgram, sealedShellEnvironment } from '../../../scripts/test-shell.js';
 import { run as fixtureRun } from './fixtures/manpage-app.js';
 
 const roots: string[] = [];
@@ -412,7 +412,7 @@ describe('install', () => {
     expect(snapshot(box)).toEqual(before);
   });
 
-  it.skipIf(findOnPath('man') === undefined)(
+  it.skipIf(requiredProgram('man') === undefined)(
     'man finds an installed page with MANPATH unset and the home bin folder on PATH',
     async () => {
       const box = sandbox();
@@ -527,7 +527,7 @@ describe('advice when man will not find the pages', () => {
     expect(result.stdout).toBe(`set -gx MANPATH '${manFolder}' "$MANPATH"\n`);
   });
 
-  it.skipIf(findOnPath('fish') === undefined)(
+  it.skipIf(requiredProgram('fish') === undefined)(
     'a real Fish runs the Fish line to the same MANPATH, with MANPATH unset and set',
     async () => {
       const box = sandbox();
