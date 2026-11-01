@@ -66,7 +66,7 @@ The highest kind present decides the next version.
 | \`1.4.7\`         | Feature              | \`1.5.0\`      |
 | \`1.4.7\`         | Fix                  | \`1.4.8\`      |
 
-\`loom changelog write --target VERSION\` cuts a version above the table's, such as \`0.11.0\` or the prerelease \`0.11.0-rc.1\`. Its release part, the version without its prerelease part, must meet the version the table gives from the last release, and a fragment keeps its kind whatever version ships it. A prerelease cut sets the version and keeps every fragment pending. From a prerelease, \`loom changelog write\` cuts the release part when it meets the table's version. A current version in any other form, such as \`v1.2.0\`, cannot be cut.
+\`loom changelog write --target VERSION\` cuts a chosen version, such as \`0.11.0\` or the prerelease \`0.11.0-rc.1\`. Its release part, the version without its prerelease part, must meet or exceed the version the table gives from the last release, and a fragment keeps its kind whatever version ships it. A prerelease cut sets the version and keeps every fragment pending. From a prerelease, \`loom changelog write\` cuts the release part when it meets the table's version. A current version in any other form, such as \`v1.2.0\`, cannot be cut.
 
 ## Check and cut
 

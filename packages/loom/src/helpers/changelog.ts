@@ -181,7 +181,7 @@ export function releaseInsertion(
   version: string,
   { changelog: file, changes } = conventionalFiles,
 ) {
-  const { body, frontmatter, nodes, releases } = locateRelease(changelog, version);
+  const { body, frontmatter, index, nodes, releases } = locateRelease(changelog, version);
   requireClosedBlocks(body, file);
   const headings = nodes.filter((node) => node.type === 'heading');
   if (!headings.some((node) => node.depth === 1)) {
@@ -196,7 +196,7 @@ export function releaseInsertion(
       `${file} has an Unreleased section, so move its entries into fragments in ${changes}/ and delete the section.`,
     );
   }
-  if (titles.some((title) => title.split(/\s/u)[0] === `v${version}`)) {
+  if (index !== -1) {
     throw new Error(
       `${file} already has a v${version} section, so set the version in package.json to the latest release it records and cut again.`,
     );

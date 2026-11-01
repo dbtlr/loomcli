@@ -2,7 +2,7 @@ import { highestKind, landedFragments, renderSection } from './changelog.js';
 import { materialBaseline, unchangedLibraries } from './material.js';
 import { currentVersion, readLibraries } from './repository.js';
 import type { Checkout } from './repository.js';
-import { nextVersion, parseVersion } from './version.js';
+import { compareReleases, nextVersion, parseVersion } from './version.js';
 
 /** One prepared release: its fragments, the head, the libraries, the section, and the version. */
 export type Release = Awaited<ReturnType<typeof prepareRelease>>;
@@ -35,11 +35,7 @@ export async function prepareRelease(
       throw new Error('Release target must be a stable 0.x version.');
     }
     const required = parseVersion(minimum);
-    if (
-      required === undefined ||
-      target.minor < required.minor ||
-      (target.minor === required.minor && target.patch < required.patch)
-    ) {
+    if (required === undefined || compareReleases(target, required) < 0) {
       throw new Error(
         `Release target must be at least ${minimum}; current version is ${current.text}.`,
       );

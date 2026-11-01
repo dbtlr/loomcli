@@ -928,7 +928,7 @@ test('finalizing fails when a breaking fragment landed after the candidate, and 
   expect(versionOf(root)).toBe('2.0.0');
 });
 
-test('finalizing reads the last release from the highest release heading and ignores other level-two headings', async () => {
+test('finalizing reads the last release from the highest release heading of a newest-first changelog and ignores other level-two headings', async () => {
   const changelog = [
     '# Changelog',
     '',
@@ -936,15 +936,17 @@ test('finalizing reads the last release from the highest release heading and ign
     '',
     'Prose.',
     '',
-    '## v1.3.0 - 2026-01-01',
-    '',
-    '- Old.',
-    '',
     '## v1.4.0 - 2026-02-01',
     '',
     '- Newer.',
     '',
+    '## v1.3.0 - 2026-01-01',
+    '',
+    '- Old.',
+    '',
     '## Version 9.0.0',
+    '',
+    '## 1.9.0 - 2026-01-01',
     '',
   ].join('\n');
   const root = packageRepository('1.4.1-rc.1', {
@@ -955,7 +957,53 @@ test('finalizing reads the last release from the highest release heading and ign
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('1.5.0');
   expect(result.stderr).not.toContain('9.0.0');
+  expect(result.stderr).not.toContain('1.9.0');
 });
+
+// Each pair is [earlier, later]; the later version ranks above the earlier under SemVer precedence.
+const orderedVersions = [
+  ['1.5.0-rc.9', '1.5.0-rc.10'],
+  ['1.5.0-rc.10', '1.5.0-rc.10.1'],
+  ['1.5.0-alpha', '1.5.0-alpha.1'],
+  ['1.5.0-alpha.1', '1.5.0-beta'],
+  ['1.5.0-rc', '1.5.0-rc.1'],
+  ['1.5.0-1', '1.5.0-alpha'],
+];
+
+test('write --target with the release part cuts the stable version from its prerelease', async () => {
+  const root = packageRepository('1.4.0', {
+    '.changes/feature.tags.md': '- Add tags.\n',
+    'CHANGELOG.md': changelogOf('1.4.0'),
+  });
+  const candidate = await run(root, 'write', '--target', '1.5.0-rc.2');
+  expect(candidate.status).toBe(0);
+  const result = await run(root, 'write', '--target', '1.5.0', '--date', '2026-10-07');
+  expect(result.status).toBe(0);
+  expect(result.stdout.startsWith('## v1.5.0 - 2026-10-07\n\n')).toBe(true);
+  expect(versionOf(root)).toBe('1.5.0');
+});
+
+test.each(orderedVersions)(
+  'write --target accepts %s then %s, and refuses the reverse, by SemVer precedence',
+  async (earlier, later) => {
+    const root = packageRepository('1.4.0', {
+      '.changes/feature.tags.md': '- Add tags.\n',
+      'CHANGELOG.md': changelogOf('1.4.0'),
+    });
+    const first = await run(root, 'write', '--target', earlier);
+    expect(first.status).toBe(0);
+    expect(versionOf(root)).toBe(earlier);
+    const reverse = await run(root, 'write', '--target', earlier);
+    expect(reverse.status).toBe(1);
+    const second = await run(root, 'write', '--target', later);
+    expect(second.status).toBe(0);
+    expect(versionOf(root)).toBe(later);
+    const back = await run(root, 'write', '--target', earlier);
+    expect(back.status).toBe(1);
+    expect(back.stderr).toContain(`above the current version ${later}`);
+    expect(versionOf(root)).toBe(later);
+  },
+);
 
 test('a prerelease cut from a stable version without its release section fails and changes no file', async () => {
   const root = packageRepository('1.4.0', { '.changes/fix.md': '- Fix output.\n' });
@@ -1112,6 +1160,7 @@ test.each([
   ['a number', 3],
   ['a list with an empty string', ['../hub/package.json', '']],
   ['a list with a number', ['../hub/package.json', 3]],
+  ['null', null],
 ])(
   'a cut fails when sharedVersion is %s, naming the key, rather than dropping it',
   async (_label, value) => {
