@@ -25,14 +25,23 @@ const labelFault: Expected = {
   sentence: 'Plugin "@loomcli/plugins/service" setting "label" is not a reverse-DNS name.',
 };
 
-/** One skills settings fault, from the fault's words. */
+/** One skills settings fault, from the fault's words after the plugin's name. */
 function skillsFault(fault: { readonly sentence: string; readonly correction: string }): Expected {
   return {
     correction: fault.correction,
     rule: 'skills/settings',
-    sentence: `Plugin "@loomcli/plugins/skills" setting "skills" ${fault.sentence}`,
+    sentence: `Plugin "@loomcli/plugins/skills" ${fault.sentence}`,
   };
 }
+
+const noSkills = skillsFault({
+  correction:
+    "Name a folder of skills, such as folder: new URL('../skills/', import.meta.url), or list a skill in skills.",
+  sentence: 'settings name no skills folder and list no skill.',
+});
+
+const folderCorrection =
+  "Name the folder with a file: URL, such as new URL('../skills/', import.meta.url), or a path.";
 
 const nameCorrection =
   'Use lowercase letters, digits, and single hyphens, 64 characters at most, such as notes.';
@@ -96,13 +105,23 @@ const settingsCases: Record<string, Expected> = {
   'self-update-notices-env': noticesFault,
   'self-update-notices-hyphen': noticesFault,
   'service-label': labelFault,
+  'skills-empty-folder': skillsFault({
+    correction: folderCorrection,
+    sentence: 'setting "folder" is an empty string.',
+  }),
+  'skills-empty-list': noSkills,
   'skills-name': skillsFault({
     correction: nameCorrection,
-    sentence: 'holds a name that is not a skill name: Notes.',
+    sentence: 'setting "skills" holds a name that is not a skill name: Notes.',
   }),
+  'skills-neither': noSkills,
   'skills-twice': skillsFault({
     correction: 'Give each skill its own name.',
-    sentence: 'holds the skill name notes twice.',
+    sentence: 'setting "skills" holds the skill name notes twice.',
+  }),
+  'skills-web-folder': skillsFault({
+    correction: folderCorrection,
+    sentence: 'setting "folder" is the URL https://example.com/skills/, which is not a file URL.',
   }),
   'version-blank': postfixFault,
   'version-lines': postfixFault,
@@ -125,8 +144,8 @@ test.each(Object.entries(settingsCases))(
  * The pack's rules a build raises rather than a factory call: the configuration plugin's empty-file
  * fault and link faults, which the configuration test pins, the one `--manifest` raises, which
  * the manifest failures test pins, the MCP plugin's build faults, which the MCP test pins, the
- * service plugin's, which the service test pins, the skills plugin's file faults, which the
- * skills test pins, and the manpage plugin's page names, which the man page test pins.
+ * service plugin's, which the service test pins, the skills plugin's file and folder faults, which
+ * the skills tests pin, and the manpage plugin's page names, which the man page test pins.
  */
 const pinnedElsewhere = [
   'config/empty-file',
@@ -140,6 +159,7 @@ const pinnedElsewhere = [
   'mcp/tool-without-action',
   'service/run-unrouted',
   'skills/files',
+  'skills/folder',
 ];
 
 /** Every rule the pack's registry declares, under the pack's name and its plugin's subpath. */

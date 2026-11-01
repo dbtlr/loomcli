@@ -259,6 +259,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/plugins/src/skills/carried.ts'],
+        rules: {
+          // A bundler's define replaces `__LOOM_SKILLS__`, the one identifier the skills folder contract names.
+          'eslint/no-underscore-dangle': ['error', { allow: ['__LOOM_SKILLS__'] }],
+        },
+      },
+      {
         files: ['packages/plugins/src/mcp/**'],
         rules: {
           // A tool, its input schema, and a text item keep the member order the protocol writes them in.

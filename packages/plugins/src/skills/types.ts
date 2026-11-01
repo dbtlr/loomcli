@@ -16,10 +16,15 @@ export interface Skill {
   readonly files: () => Promise<readonly SkillFile[]> | readonly SkillFile[];
 }
 
-/** What the application tells the skills plugin. */
+/** What the application tells the skills plugin: a skills folder, listed skills, or both. */
 export interface SkillsSettings {
-  /** The skills the application installs. */
-  readonly skills: readonly Skill[];
+  /**
+   * A folder whose subfolders are skills, each named for its subfolder: a `file:` URL, or a path. A
+   * string that starts with `file:` reads as that URL.
+   */
+  readonly folder?: URL | string;
+  /** Skills whose files a loader returns. */
+  readonly skills?: readonly Skill[];
 }
 
 /** What `refreshSkills` reads from a self-update's `afterReplace` context, the declaration every refresh shares. */

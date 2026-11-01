@@ -14,9 +14,9 @@ import type { ChildRun } from './global.js';
 import { loadSkills } from './load.js';
 import type { LoadedSkill } from './load.js';
 import { lines, refusals, shown } from './messages.js';
+import type { Declared } from './settings.js';
 import { realFolder, selectedTargets, skillsDirectory } from './targets.js';
 import type { Target } from './targets.js';
-import type { Skill } from './types.js';
 
 /** An input problem on the `--directory` option, which exits 2. */
 function directoryProblem(message: string, issue: string): InputError {
@@ -88,9 +88,12 @@ function clashOf(
  * Refuses a project folder that is the target's global folder, compared by real paths so a linked
  * root, a linked `.claude` or `.agents`, or a linked home is seen.
  */
-function guardGlobal(run: ChildRun, root: string, request: ProjectRequest): void {
-  const names = request.skills.map(({ name }) => name);
-  for (const target of selectedTargets(request.agent)) {
+function guardGlobal(
+  run: ChildRun,
+  root: string,
+  { agent, names }: { readonly agent: Target | undefined; readonly names: readonly string[] },
+): void {
+  for (const target of selectedTargets(agent)) {
     const clash = clashOf(run, root, { names, target });
     if (clash !== undefined) {
       throw refusals.neverGlobal(run.name, clash);
@@ -100,7 +103,7 @@ function guardGlobal(run: ChildRun, root: string, request: ProjectRequest): void
 
 /** What `install --project` reads from the command line. */
 interface ProjectRequest {
-  readonly skills: readonly Skill[];
+  readonly skills: Declared;
   readonly agent: Target | undefined;
   readonly directory: string | undefined;
 }
@@ -119,13 +122,17 @@ async function replaceFolder(
 }
 
 /**
- * `install --project`: the root, the guard against the global folder, and the loaders, all before
- * any write, then each skill's folder replaced whole for each selected target.
+ * `install --project`: the root, the guard against the global folder, the folder and the loaders,
+ * and the guard again for the folder's skills, all before any write, then each skill's folder
+ * replaced whole for each selected target.
  */
 async function installProject(run: ChildRun, request: ProjectRequest): Promise<void> {
   const root = repositoryRoot(startOf(run, request.directory));
-  guardGlobal(run, root, request);
-  const loaded = await loadSkills(request.skills);
+  const { agent } = request;
+  guardGlobal(run, root, { agent, names: request.skills.skills.map(({ name }) => name) });
+  const loaded = await loadSkills(request.skills, run.host.release.build);
+  // Only the folder knows its skills' names, so its skills meet the guard once they are read.
+  guardGlobal(run, root, { agent, names: loaded.map(({ name }) => name) });
   run.signal.throwIfAborted();
   for (const target of selectedTargets(request.agent)) {
     for (const skill of loaded) {

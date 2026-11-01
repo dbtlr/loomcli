@@ -26,7 +26,10 @@ const scenarios = {
   'self-update-notices-env': () => selfUpdate({ notices: { env: '1X' } }),
   'self-update-notices-hyphen': () => selfUpdate({ notices: { env: 'A-B' } }),
   'service-label': () => service({ label: 'notes', run: ['serve'] }),
+  'skills-empty-folder': () => skills({ folder: '' }),
+  'skills-empty-list': () => skills({ skills: [] }),
   'skills-name': () => skills({ skills: [{ files: () => [], name: 'Notes' }] }),
+  'skills-neither': () => skills({}),
   'skills-twice': () =>
     skills({
       skills: [
@@ -34,6 +37,7 @@ const scenarios = {
         { files: () => [], name: 'notes' },
       ],
     }),
+  'skills-web-folder': () => skills({ folder: new URL('https://example.com/skills/') }),
   'version-blank': () => version({ postfix: ' ' }),
   'version-lines': () => version({ postfix: 'schema\nv1' }),
   'version-number': () => version({ postfix: 1 }),
