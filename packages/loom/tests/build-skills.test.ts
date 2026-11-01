@@ -10,11 +10,12 @@
  *   pinned modes and the linked file's bytes, after the source folder is moved away. A bundle's copy
  *   sits in `dist/loom-skills/` beside its index, and a rebuild replaces it whole, so a skill the
  *   source dropped leaves it, while a file the build does not write stays; a folder that holds no
- *   skill beside a listed one carries an index of none. A build whose declaration names no folder,
- *   and a development build, after a distributed one remove `dist/loom-skills/`. A development
- *   build names the source folder, so an edit after the build installs as it now stands. A folder
- *   of thousands of files builds and installs from a bundle. A relative `folder` resolves against
- *   the application module's directory.
+ *   skill beside a listed one carries an index of none. A copy leaves out every entry inside a
+ *   skill whose name starts with `.`, a link that names nothing included. A build whose
+ *   declaration names no folder, and a development build, after a distributed one remove
+ *   `dist/loom-skills/`. A development build names the source folder, so an edit after the build
+ *   installs as it now stands. A folder of thousands of files builds and installs from a bundle. A
+ *   relative `folder` resolves against the application module's directory.
  * - Judging. A module that throws while it loads, a missing folder, two folders, and a registry of
  *   an unknown format each fail a bundle's build before it bundles, writing no output, and a skill
  *   with no SKILL.md fails it for a bundle and for a compile target alike.
@@ -203,6 +204,38 @@ test("a distributed bundle's copy sits in dist/loom-skills and a rebuild replace
   expect(second.status).toBe(0);
   expect(readdirSync(join(root, 'dist/loom-skills')).toSorted()).toEqual(['index.json', 'notes']);
   expect(readFileSync(join(root, 'dist/notes.txt'), 'utf8')).toBe('Not the build’s.\n');
+});
+
+test("a distributed bundle's copy leaves out every entry inside a skill whose name starts with a dot", async () => {
+  const root = notesPackage({
+    'skills/notes/.DS_Store': 'Finder.\n',
+    'skills/notes/.hidden/draft.md': 'Draft.\n',
+    'skills/notes/references/.DS_Store': 'Finder.\n',
+  });
+  symlinkSync('agent@host.1234', join(root, 'skills/notes/.#SKILL.md'));
+  const built = await loom(root, ['build', '--target', 'node']);
+  expect(built.stderr).toBe('');
+  expect(built.status).toBe(0);
+  expect(Object.keys(tree(join(root, 'dist/loom-skills/notes'))).toSorted()).toEqual(
+    Object.keys(installedNotes).toSorted(),
+  );
+  const index: unknown = JSON.parse(
+    readFileSync(join(root, 'dist/loom-skills/index.json'), 'utf8'),
+  );
+  expect(index).toEqual({
+    format: 1,
+    skills: [
+      {
+        files: [
+          { executable: false, path: 'SKILL.md' },
+          { executable: false, path: 'references/commands.md' },
+          { executable: false, path: 'references/glossary.md' },
+          { executable: true, path: 'scripts/run.sh' },
+        ],
+        name: 'notes',
+      },
+    ],
+  });
 });
 
 test('a folder that holds no skill beside a listed one carries a copy whose index names none', async () => {

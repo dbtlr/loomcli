@@ -8,7 +8,9 @@
  *   skill directory as one skill named for it, every file below it at its relative path, an
  *   executable file with mode 755, a link to a skill directory read through, and a link to a file
  *   inside a skill read as that file. A `README.md`, a link to a file, and a dot directory directly
- *   inside the folder are ignored. Folder skills install in name order, before the listed skills.
+ *   inside the folder are ignored, and so is every entry whose name starts with `.`, directly
+ *   inside the folder or inside a skill at any depth, whether a file, a folder, a link to a folder,
+ *   or a link that names nothing. Folder skills install in name order, before the listed skills.
  * - Faults. A missing folder, a folder that holds no skill and no listed skill, a skill directory
  *   whose name is not a skill name, a link directly inside that names nothing, a link inside a
  *   skill to a folder, a link inside a skill to nothing, a skill with no SKILL.md, a listed skill that holds a folder
@@ -222,6 +224,22 @@ describe('an unbuilt run', () => {
         (name) => `Installed ${name} for claude in ${installed(box, name)}.`,
       ),
     );
+  });
+
+  it('skips every entry whose name starts with a dot, in the folder or a skill at any depth', async () => {
+    const box = sandbox();
+    notesSkill(box.folder);
+    put(box.folder, 'notes/.DS_Store', 'Finder.\n');
+    put(box.folder, 'notes/references/.DS_Store', 'Finder.\n');
+    put(box.folder, 'notes/.hidden/draft.md', 'Draft.\n');
+    put(box.root, 'shared/cache/entry', 'Cached.\n');
+    symlinkSync('agent@host.1234', join(box.folder, 'notes/.#SKILL.md'));
+    symlinkSync(join(box.root, 'shared/cache'), join(box.folder, 'notes/scripts/.cache'));
+    symlinkSync('agent@host.1234', join(box.folder, '.#README.md'));
+    const result = await run(box, { folder: box.folder }, ['skills', 'install']);
+    expect(result.stderr).not.toContain('--');
+    expect(result.status).toBe(0);
+    expect(tree(installed(box, 'notes', 'agents'))).toEqual(notesTree);
   });
 
   it('installs the listed skills from an empty folder', async () => {
