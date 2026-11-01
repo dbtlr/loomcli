@@ -1,15 +1,53 @@
-// Acceptance plan: see examples/jsonkit/tests/completion.test.ts.
+// Acceptance plan: see packages/plugins/tests/completion.test.ts.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import {
+  appendFileSync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vite-plus/test';
+import { afterEach, describe, expect, it } from 'vite-plus/test';
 
-import { shellSuites, useSession } from '../../../scripts/test-shell.js';
-import type { Shell } from '../../../scripts/test-shell.js';
+import {
+  homeEnvironment,
+  openSession,
+  runInHome,
+  shellSuites,
+  useSession,
+} from '../../../scripts/test-shell.js';
+import type { SessionOptions, Shell } from '../../../scripts/test-shell.js';
 import { zshInstalledScript } from '../src/completion/zsh.js';
 
 const fixture = new URL('fixtures/completion.mjs', import.meta.url);
+
+/** The Commands `kit <Tab>` lists: the visible root children. */
+const commands = ['cache', 'completion', 'keys', 'paths'];
+
+/** The lines of a `.zshrc` that starts the completion system the way Zsh's manual shows. */
+const compinit = ['autoload -Uz compinit', 'compinit'];
+
+/** Programs that answer nothing a script may offer, each with the case title it proves. */
+const failures: { callback: NonNullable<SessionOptions['callback']>; title: string }[] = [
+  { callback: 'exits nonzero', title: 'a callback that exits nonzero' },
+  { callback: 'prints a bare colon', title: 'an answer whose directive line is a bare colon' },
+];
+
+/** The temporary folders of the cases that start a shell from a home of their own. */
+const roots: string[] = [];
+
+afterEach(() => {
+  for (const root of roots.splice(0)) {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
 
 /**
  * Removes one level of POSIX or Fish quoting from an inserted word: backslash escapes and single
@@ -28,6 +66,74 @@ function unquoted(word: string): string {
  */
 function literal(shell: Shell, character: string): string {
   return shell === 'pwsh' ? `'${character}'` : `\\${character}`;
+}
+
+/** A case's temporary home, which its shells start from, and its working directory. */
+interface Sandbox {
+  home: string;
+  cwd: string;
+}
+
+function sandbox(): Sandbox {
+  const root = mkdtempSync(join(tmpdir(), 'loom-install-'));
+  roots.push(root);
+  const box = { cwd: join(root, 'work'), home: join(root, 'home') };
+  mkdirSync(box.cwd);
+  mkdirSync(box.home);
+  return box;
+}
+
+/** The lines of a `.zshrc` before and after the startup line, and the umask `install` runs under. */
+interface Layout {
+  before: readonly string[];
+  after: readonly string[];
+  umask?: string;
+}
+
+/** Runs `kit completion install <shell>` in the home, and fails the case when it fails. */
+function install(box: Sandbox, shell: Shell, umask?: string): void {
+  const args = ['completion', 'install', shell];
+  const result = runInHome({
+    ...box,
+    args,
+    main: fixture,
+    ...(umask === undefined ? {} : { umask }),
+  });
+  expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+}
+
+/**
+ * Writes the `.zshrc` lines before the startup line, installs Zsh's in the home, and appends the
+ * lines after it, so the startup line stands where the layout puts it.
+ */
+function zshrcAround(box: Sandbox, { after, before, umask }: Layout): void {
+  const zshrc = join(box.home, '.zshrc');
+  if (before.length > 0) {
+    writeFileSync(zshrc, `${before.join('\n')}\n`);
+  }
+  install(box, 'zsh', umask);
+  appendFileSync(zshrc, after.map((line) => `${line}\n`).join(''));
+  const lines = readFileSync(zshrc, 'utf8').split('\n');
+  expect(lines.slice(0, before.length)).toEqual(before);
+  expect(lines[before.length]).toMatch(/# added by kit completion install$/u);
+  expect(lines.slice(before.length + 1)).toEqual([...after, '']);
+}
+
+/** What a shell did: the words `kit <Tab>` listed, and its start's output. */
+interface Started {
+  listed: string[];
+  startup: string;
+}
+
+/** Starts the shell from the home, as an operator opens a terminal, and presses Tab after `kit `. */
+async function tabFromHome(box: Sandbox, shell: Shell): Promise<Started> {
+  const session = await openSession({ ...box, main: fixture, name: 'kit', shell });
+  try {
+    const { listed } = await session.complete('kit ');
+    return { listed, startup: session.startup };
+  } finally {
+    await session.close();
+  }
 }
 
 describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
@@ -67,7 +173,63 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
         listed: [],
       });
     });
+
+    it('kit stats depth m<Tab> inserts max, three levels below the root', async () => {
+      const { line } = await complete('kit stats depth m');
+      expect(line.trimEnd()).toBe('kit stats depth max');
+    });
+
+    it('kit stats depth max --fi<Tab> inserts the option in scope three levels down', async () => {
+      const { line } = await complete('kit stats depth max --fi');
+      expect(line.trimEnd()).toBe('kit stats depth max --file');
+    });
   });
+
+  // The directory holds alpha.json, so a file name offered by mistake shows in the line.
+  describe.skipIf(!installed)('failing closed', () => {
+    const { complete } = useSession({
+      files: ['alpha.json'],
+      main: fixture,
+      name: 'kit',
+      shell,
+      sources,
+    });
+
+    it('an unknown command earlier in the line inserts and lists nothing', async () => {
+      await expect(complete('kit nope a')).resolves.toMatchObject({
+        line: 'kit nope a',
+        listed: [],
+      });
+    });
+
+    it('an unclosed quote under the cursor inserts and lists nothing', async () => {
+      await expect(complete('kit keys "p')).resolves.toMatchObject({
+        line: 'kit keys "p',
+        listed: [],
+      });
+    });
+  });
+
+  describe.skipIf(!installed).each(failures)(
+    'a failing kit that $callback',
+    ({ callback, title }) => {
+      const { complete } = useSession({
+        callback,
+        files: ['alpha.json'],
+        main: fixture,
+        name: 'kit',
+        shell,
+        sources,
+      });
+
+      it(`${title} inserts and lists nothing, file names included`, async () => {
+        await expect(complete('kit --file a')).resolves.toMatchObject({
+          line: 'kit --file a',
+          listed: [],
+        });
+      });
+    },
+  );
 
   describe.skipIf(!installed)('typed text is never evaluated', () => {
     const { complete, cwd } = useSession({ main: fixture, name: 'kit', shell, sources });
@@ -328,6 +490,74 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
         const { line } = await complete('kit pa');
         expect(line.trimEnd()).toBe('kit paths');
       });
+    });
+  });
+
+  describe.skipIf(!installed)('after kit completion install alone', () => {
+    it(`a ${shell} started from the home completes kit <Tab> through its own startup files`, async () => {
+      const box = sandbox();
+      install(box, shell);
+      const { listed, startup } = await tabFromHome(box, shell);
+      // Zsh's startup is the one that may ask: its .zshrc never ran compinit.
+      expect(startup).not.toContain('?');
+      expect(listed.toSorted()).toEqual(commands);
+    });
+  });
+
+  describe.runIf(installed && shell === 'zsh')('a .zshrc around the startup line', () => {
+    const layouts: (Layout & { title: string })[] = [
+      {
+        after: compinit,
+        before: compinit,
+        title: 'that runs compinit before the line and again after it',
+      },
+    ];
+
+    it.each(layouts)('$title completes kit <Tab> and asks nothing', async (layout) => {
+      const box = sandbox();
+      zshrcAround(box, layout);
+      const { listed, startup } = await tabFromHome(box, 'zsh');
+      expect(startup).not.toContain('?');
+      expect(listed.toSorted()).toEqual(commands);
+    });
+
+    it('whose only compinit runs after the line completes kit <Tab> on a second start, asking nothing', async () => {
+      const box = sandbox();
+      zshrcAround(box, { after: compinit, before: [] });
+      const first = await tabFromHome(box, 'zsh');
+      expect(first.startup).not.toContain('?');
+      expect(first.listed.toSorted()).toEqual(commands);
+      expect(existsSync(join(box.home, '.zcompdump'))).toBe(true);
+      const second = await tabFromHome(box, 'zsh');
+      expect(second.startup).not.toContain('?');
+      expect(second.listed.toSorted()).toEqual(commands);
+    }, 60_000);
+
+    it('with an insecure folder on fpath completes kit <Tab> and asks nothing', async () => {
+      const box = sandbox();
+      const insecure = join(box.home, 'site-functions');
+      mkdirSync(insecure);
+      // World-writable, because compaudit excuses a group-writable folder whose group is the user's own, as on Ubuntu.
+      chmodSync(insecure, 0o777);
+      // Zsh's own audit names the folder, so the case proves the line with one it judges insecure.
+      const audit = spawnSync(
+        'zsh',
+        ['-f', '-c', 'fpath=("$1" $fpath); autoload -Uz compaudit; compaudit', 'zsh', insecure],
+        { encoding: 'utf8', env: homeEnvironment(box.home) },
+      );
+      expect(audit.stdout).toContain(insecure);
+      zshrcAround(box, { after: [], before: [`fpath=('${insecure}' $fpath)`] });
+      const { listed, startup } = await tabFromHome(box, 'zsh');
+      expect(startup).not.toContain('?');
+      expect(listed.toSorted()).toEqual(commands);
+    });
+
+    it('installed under umask 002, with a plain compinit after the line, completes kit <Tab> and asks nothing', async () => {
+      const box = sandbox();
+      zshrcAround(box, { after: compinit, before: [], umask: '002' });
+      const { listed, startup } = await tabFromHome(box, 'zsh');
+      expect(startup).not.toContain('?');
+      expect(listed.toSorted()).toEqual(commands);
     });
   });
 });

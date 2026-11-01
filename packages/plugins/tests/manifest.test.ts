@@ -9,9 +9,9 @@
  *   print documents compared byte for byte. `jsonkit get`'s `details` holds the author's value
  *   ahead of help's. `jsonkit fetch --manifest` shows the deprecated Command's message. `jsonkit
  *   debug --manifest` prints the hidden Command's own slice, and the root document omits it.
- * - An agent-shaped run. A process test reads `textstat --manifest` alone, builds an invocation
- *   from it by choosing `--metric` from its schema's enum and `--format json` from the result's
- *   views, runs it, and parses stdout as the `json` encoding states.
+ * - An agent-shaped run. A test reads the fixture's `--manifest` alone, builds an invocation from
+ *   it by choosing the Command with a result and `--format json` from the option's schema enum and
+ *   the result's views, runs it, and parses stdout as the `json` encoding states.
  * - Help pages. Every help page lists the `--manifest` row among its options, and the golden pages
  *   are re-pinned for it.
  * - Short spellings. `textstat -M`, `jsonkit -M`, and `jsonkit get -M` print the same documents as
@@ -639,4 +639,38 @@ test('a configuration schema that is not plain JSON data fails the write', async
   await expect(unencodable('configuration-nan')).resolves.toEqual(
     reportedAs('the configuration schema'),
   );
+});
+
+const agentSchema = z.object({
+  command: z.object({
+    children: z.array(
+      z.object({
+        name: z.string(),
+        options: z.array(
+          z.object({
+            long: z.string().nullable(),
+            name: z.string(),
+            schema: z.object({ enum: z.array(z.string()).optional() }).nullable(),
+          }),
+        ),
+        result: z.object({ kind: z.string(), views: z.array(z.string()) }).nullable(),
+      }),
+    ),
+  }),
+  encodings: z.object({ json: z.string() }),
+});
+
+test('an agent builds a valid invocation from the manifest alone and parses the promised encoding', async () => {
+  const document = agentSchema.parse(JSON.parse(await printed(['--manifest'])));
+  // The agent picks the Command that has a result, and the json view from the result's views.
+  const show = document.command.children.find((child) => child.result !== null);
+  const format = show?.options.find((option) => option.name === 'format');
+  expect(show?.result).toMatchObject({ kind: 'value' });
+  expect(show?.result?.views).toContain('json');
+  expect(format?.schema?.enum).toContain('json');
+  const result = await run('app', [show?.name ?? '', format?.long ?? '', 'json']);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  // A value result under json is the value as one JSON document, as `encodings.json` states.
+  expect(document.encodings.json).toContain('a value result is the value');
+  expect(JSON.parse(result.stdout)).toBe('shown');
 });

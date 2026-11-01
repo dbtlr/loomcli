@@ -2,28 +2,11 @@ import { expect, test } from 'vite-plus/test';
 /*
  * Acceptance plan for failure hints (docs/core/lifecycle-hooks.md#failure-hints).
  *
- * The private `@loom/explain` plugin, which both example applications install, proves the hook in
- * the examples. Its `onFailure` answers an `UnknownOptionError` alone and returns `Run "<command
- * line>" to explain this command.`, where the command line is `application`, then `path`, then
- * `--explain`, joined by single spaces. Neither application overrides `UnknownOptionError`, so
- * core's default text prints the hint under its sentence. Every unknown-option diagnostic the
- * examples pin therefore gains the hint line: `jsonkit get --format json user.name -f doc.json`
- * under Formatter, and `jsonkit get name -f doc.json --pretty`, which reads `Run "jsonkit get
- * --explain" to explain this command.` under core's sentence. The tests that pin them,
- * `examples/jsonkit/tests/format.test.ts` at line 53 and `examples/jsonkit/tests/jsonkit.test.ts`
- * at line 303, move with the change; a change to diagnostic text is not breaking. Every other
- * diagnostic the examples pin is unchanged, because the hook answers no other class. `jsonkit get
- * --bogus -f doc.json` exits 2 and writes:
- *
- * ```text
- * jsonkit: Unknown option "--bogus". Supply a declared option; prefix a hyphenated path with "./".
- * Run "jsonkit get --explain" to explain this command.
- * ```
- *
- * `textstat --bogus` exits 2 with the same sentence and `Run "textstat --explain" to explain this
- * command.`, because the fault is raised on the root and `path` is empty. Once help's failure hint
- * lands, `Run "jsonkit get --help" to see the usage.` and `Run "textstat --help" to see the usage.`
- * print above the explain line, because `help()` is installed first.
+ * A failure hook, such as the private `@loom/explain` plugin's, answers one failure class and returns
+ * a hint line built from `application`, `path`, and the command line, joined by single spaces. An
+ * application that does not override the failure's view prints core's default text with the hint
+ * under its sentence, and a hook that answers no other class leaves every other diagnostic
+ * unchanged. A fault raised on the root has an empty `path`.
  *
  * The acceptance tests cover, through public APIs with fixture applications and fixture plugins: an
  * override reading `application` and `path` for a structural fault on a global option before any

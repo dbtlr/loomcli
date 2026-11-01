@@ -4,12 +4,10 @@
  * Help wrapping is proven when public APIs alone produce these results under Node and Bun, through
  * fixtures whose host reports a fixed stdout width and an `env` with no `COLUMNS`:
  *
- * - Example pages. `jsonkit --help` at 60 columns prints the page above, and its COMMANDS row set
- *   at 30 columns prints the stacked block above, byte for byte with color and modifiers disabled.
- *   `jsonkit -h` and `textstat --help` each fit 40 and 60 columns. `jsonkit get --help` and
- *   `jsonkit select --help` fit 60. At 40, only `get`'s second example command and `select`'s USAGE
- *   form, which stay whole, run past it. Every example page and every help golden that runs off a
- *   terminal is unchanged.
+ * - Whole pages. A fixture page with prose, commands, options, and an example fits 40 and 60
+ *   columns, and at 40 only its example command, which stays whole, runs past it. A COMMANDS row
+ *   set stacks at the width its rows need, as the stacking case below pins, byte for byte with
+ *   color and modifiers disabled. Every help golden that runs off a terminal is unchanged.
  * - Width. A page at a width it already fits prints its rows as before. `COLUMNS=60` over a real
  *   width of 100 lays the page out at 60, `COLUMNS=150` over 100 lays it out at 100, and
  *   `COLUMNS=60` on a pipe changes nothing.
@@ -40,7 +38,7 @@
  * - Hanging indents. At 40 columns a masthead description continues after `<path> · `, a
  *   deprecation message after `Deprecated: `, an example note at its indent, and a hint at the left
  *   margin, and the version line stays one line. When a masthead description's hang cannot fit, as
- *   for `jsonkit manpage generate --help` at 30 columns, its first line stays after the path and
+ *   for a nested Command's page at 24 columns, its first line stays after the path and
  *   the rest continues at indent 2, and so does a deprecation message, while a list item whose hang
  *   cannot fit continues at its marker's column, nested too.
  * - INPUT and option groups. At 40 columns the INPUT block's description and its stdin sentence
@@ -290,6 +288,38 @@ test("a Details code span, a hint's command, and a link destination never break"
     'details.',
   ]);
 });
+
+/** A page with prose, commands, options, and an example, whose only long lines are literals. */
+const wholePage = {
+  commands: [
+    { config: { description: 'Read one value at a path in the document.' }, name: 'get' },
+    { config: { description: 'Keep the named fields of the document.' }, name: 'select' },
+  ],
+  config: { description: 'Read and reshape one document from a file or a pipe.' },
+  help: { examples: [{ command: 'get nested.deep.value --file doc.json' }] },
+  options: [
+    {
+      description: 'The document to read. Omit it to read piped text.',
+      name: 'file',
+      short: 'f',
+      type: 'string',
+    },
+    ...rows.options,
+  ],
+};
+
+test.each([40, 60])(
+  'a whole page fits %i columns, and only a literal runs past them',
+  async (columns) => {
+    const stdout = await render({ app: wholePage, columns });
+    const lines = stdout.split('\n');
+    const overflowing = lines.filter((line) => line.length > columns);
+    expect(overflowing).toEqual(
+      lines.filter((line) => line.startsWith('  $ ') && line.length > columns),
+    );
+    expect(overflowing).toHaveLength(columns === 40 ? 1 : 0);
+  },
+);
 
 /** A page whose Details is the given Markdown. */
 function details(markdown: string) {

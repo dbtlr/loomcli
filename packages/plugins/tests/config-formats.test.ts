@@ -1,6 +1,12 @@
-import { expect, test } from 'vite-plus/test';
+import { afterEach, expect, test, vi } from 'vite-plus/test';
 
 import { parseFile } from '../src/config/formats.js';
+
+afterEach(() => {
+  vi.doUnmock('smol-toml');
+  vi.doUnmock('yaml');
+  vi.resetModules();
+});
 
 /** The reading of a file that does not parse, with its position. */
 function broken(clause: string, line: number, column: number) {
@@ -119,4 +125,36 @@ test('a YAML alias that names no preceding anchor names the alias', async () => 
   await expect(parseFile('.app.yaml', 'a: 1\nb: *missing\n')).resolves.toEqual(
     broken('is not valid YAML.', 2, 4),
   );
+});
+
+/**
+ * A fresh copy of the reader whose two parser packages record when they load. A module cache hit
+ * would hide a load, so the copy and the parsers are both new.
+ */
+async function freshReader() {
+  const loaded: string[] = [];
+  vi.resetModules();
+  vi.doMock('smol-toml', async (original) => {
+    loaded.push('toml');
+    return await original();
+  });
+  vi.doMock('yaml', async (original) => {
+    loaded.push('yaml');
+    return await original();
+  });
+  const { parseFile: parse } = await import('../src/config/formats.js');
+  return { loaded, parse };
+}
+
+test('a JSON run loads neither parser, and a TOML or YAML run loads only its own', async () => {
+  const json = await freshReader();
+  await json.parse('.app.json', '{ "minBytes": 5 }');
+  await json.parse('.apprc', '{ "minBytes": 5 }');
+  expect(json.loaded).toEqual([]);
+  const toml = await freshReader();
+  await toml.parse('.app.toml', 'minBytes = 5\n');
+  expect(toml.loaded).toEqual(['toml']);
+  const yaml = await freshReader();
+  await yaml.parse('.app.yaml', 'minBytes: 5\n');
+  expect(yaml.loaded).toEqual(['yaml']);
 });

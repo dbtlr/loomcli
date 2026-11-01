@@ -113,6 +113,14 @@ function completionApplication() {
     .command(new Command('clear').action(() => {}))
     .command(new Command('list', { description: 'List entries.' }).action(() => {}));
 
+  /**
+   * A group three levels below the root, `stats depth max`, so routing and completion serve a path
+   * that deep. The group is hidden, so no root listing shows it.
+   */
+  const stats = new Command('stats', { hidden: true }).command(
+    new Command('depth').command(new Command('max').action(() => {})),
+  );
+
   const app = new Application('kit', { plugins: [help(), completion()] })
     .globalOption('file', { description: 'The document.', type: 'string' })
     .globalOption('color', { description: 'Color output.', polarity: 'both', type: 'boolean' })
@@ -125,7 +133,8 @@ function completionApplication() {
     .command(cache)
     .command(odd)
     .command(quotes)
-    .command(backups);
+    .command(backups)
+    .command(stats);
 
   return app;
 }

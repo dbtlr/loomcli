@@ -6,11 +6,14 @@ import {
   Command,
   DeclarationError,
   encodeFailure,
+  extension,
   FatalError,
+  InputError,
   override,
   plugin,
   style,
 } from '@loomcli/core';
+import { z } from 'zod';
 
 import { scenario as fixtureScenario } from './scenario.mjs';
 
@@ -21,6 +24,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
   try {
     // The first argument names a scenario; a run scenario passes the rest as the run's words.
     // FIXTURE_BUILD names the run's build, and FIXTURE_ENCODER the encoder the plugin registers.
+    // FIXTURE_SOURCE=fails installs an input source that cannot read its settings.
     // FIXTURE_STDOUT=full gives a run a stdout that refuses every write, as a full disk does.
     const [scenario, ...words] = fixtureWords;
 
@@ -163,12 +167,38 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
     /** Jsonkit's override pattern: an application's own FatalError view. */
     const branded = override(FatalError, { render: renderFixture1 });
 
-    function application(plugins = [encoding]) {
+    /** The binding the failing source answers for, carried by the application's `fed` option. */
+    const settingsKey = extension('@fixture/settings/key', {
+      schema: z.string(),
+      target: 'option',
+    });
+
+    /** A configuration source that cannot read its settings, as a missing file named on argv is not. */
+    const settings = plugin('@fixture/settings', {
+      extensions: [settingsKey],
+      source: {
+        binding: settingsKey,
+        load: async () => ({
+          default: () => {
+            throw new InputError('The settings file cannot be read.', []);
+          },
+        }),
+      },
+    });
+
+    // FIXTURE_SOURCE=fails installs the failing source, which holds a fault the run still encodes.
+    const failingSource = fixtureEnv.FIXTURE_SOURCE === 'fails';
+
+    function application(plugins = failingSource ? [encoding, settings] : [encoding]) {
       return new Application('enc', {
         description: 'The enc application.',
         plugins,
         views: [branded],
       })
+        .globalOption('fed', {
+          extensions: failingSource ? [settingsKey('fed')] : [],
+          type: 'string',
+        })
         .command(list)
         .command(wire)
         .command(flags)

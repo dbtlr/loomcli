@@ -107,6 +107,22 @@ test('a held fault under an encoded selection writes the encoded line alone, and
   );
 });
 
+test('an input-source fault under an encoded selection writes the encoded line, because core validates the selection under the held fault', async () => {
+  const env = { FIXTURE_SOURCE: 'fails' };
+  await expect(run(['list', '--pick', 'json'], { env })).resolves.toEqual({
+    status: 2,
+    stderr: line({
+      code: 'invalid-input',
+      exitCode: 2,
+      message: 'The settings file cannot be read.',
+    }),
+    stdout: 'exit:2\n',
+  });
+  await expect(run(['list'], { env }).then((fixtureResult) => fixtureResult.stderr)).resolves.toBe(
+    `enc: The settings file cannot be read.\n${hint}\n`,
+  );
+});
+
 test("a validator that throws on another input still writes the encoded line, because the selection's own option validated before it", async () => {
   await expect(run(['list', '--pick', 'json', '--depth', 'throw'])).resolves.toEqual({
     status: 1,
