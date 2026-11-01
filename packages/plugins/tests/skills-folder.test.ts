@@ -11,7 +11,7 @@
  *   inside the folder are ignored. Folder skills install in name order, before the listed skills.
  * - Faults. A missing folder, a folder that holds no skill and no listed skill, a skill directory
  *   whose name is not a skill name, a link directly inside that names nothing, a link inside a
- *   skill to a folder or to nothing, a skill with no SKILL.md, a listed skill that holds a folder
+ *   skill to a folder, a link inside a skill to nothing, a skill with no SKILL.md, a listed skill that holds a folder
  *   skill's name, and a relative path each fail `install` with the pinned sentence and correction
  *   and write nothing. A built run with nothing carried says the build carried no folder.
  * - What reads. A Command outside `skills`, and `uninstall`, read no folder.
@@ -274,12 +274,13 @@ const faults: Record<string, FolderFault> = {
   'a link inside a skill that names a folder': {
     arrange: (box) => {
       notesSkill(box.folder);
-      mkdirSync(join(box.root, 'old'));
-      symlinkSync(join(box.root, 'old'), join(box.folder, 'notes/references/old'));
+      mkdirSync(join(box.root, 'lib64'));
+      symlinkSync(join(box.root, 'lib64'), join(box.folder, 'notes/scripts/lib64'));
     },
-    correction: 'Replace it with the file it stands for, or remove it.',
+    correction: "Replace the link with the folder's files, or remove it.",
     rule: 'folder',
-    sentence: () => 'The skill notes holds references/old, which is not a file or a folder.',
+    sentence: () =>
+      'The skill notes holds scripts/lib64, a link to a folder, which a skill cannot hold.',
   },
   'a link inside a skill that names nothing': {
     arrange: (box) => {

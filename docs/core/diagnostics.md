@@ -290,7 +290,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/skills/folder
 
-**Unreadable skills folder.** The skills plugin installs each directory of the folder its folder setting names as one skill named by the directory, so the folder exists, holds a skill unless the application lists its skills, each skill directory's name is a skill name, and each entry inside a skill is a file or a folder. A relative folder resolves against the application module, which only loom build knows, so a run loom build did not make reads the folder through a URL or an absolute path, and an artifact loom build made reads the copy it carries.
+**Unreadable skills folder.** The skills plugin installs each directory of the folder its folder setting names as one skill named by the directory, so the folder exists, holds a skill unless the application lists its skills, each skill directory's name is a skill name, and each entry inside a skill is a file, a link to a file, or a folder, never a link to a folder. A relative folder resolves against the application module, which only loom build knows, so a run loom build did not make reads the folder through a URL or an absolute path, and an artifact loom build made reads the copy it carries.
 
 ### @loomcli/plugins/skills/settings
 

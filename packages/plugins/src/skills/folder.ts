@@ -53,6 +53,11 @@ const faults = {
       `The skills folder ${escapeControlCharacters(folder)} holds no skill.`,
       'Add a folder for each skill, holding its SKILL.md, such as skills/notes/SKILL.md.',
     ),
+  linkToFolder: (skill: string, path: string) =>
+    folderFault(
+      `The skill ${skill} holds ${escapeControlCharacters(path)}, a link to a folder, which a skill cannot hold.`,
+      "Replace the link with the folder's files, or remove it.",
+    ),
   missing: (folder: string) =>
     folderFault(
       `Plugin "${identity}" setting "folder" names ${escapeControlCharacters(folder)}, which is not a folder.`,
@@ -99,8 +104,8 @@ function fileOf(path: string, relative: string, named: Stats): SkillFile {
 
 /**
  * The files one entry of a skill's directory holds: a directory's files below it, or the file a
- * file or a link to a file is. A link to a folder or to nothing, or an entry that is neither a file
- * nor a folder, is a fault.
+ * file or a link to a file is. A link to a folder, a link to nothing, or an entry that is neither a
+ * file nor a folder, is a fault.
  */
 function entryFiles(skill: string, path: string, relative: string): SkillFile[] {
   const own = lstatSync(path);
@@ -108,6 +113,9 @@ function entryFiles(skill: string, path: string, relative: string): SkillFile[] 
     return skillFiles(skill, path, `${relative}/`);
   }
   const named = own.isSymbolicLink() ? followed(path) : own;
+  if (named?.isDirectory() === true) {
+    throw faults.linkToFolder(skill, relative);
+  }
   if (named?.isFile() !== true) {
     throw faults.notFile(skill, relative);
   }
