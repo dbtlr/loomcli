@@ -542,7 +542,14 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
   });
 
   describe.skipIf(!installed)('after kit completion install alone', () => {
-    it(`a ${shell} started from the home completes kit <Tab> through its own startup files`, async () => {
+    // PowerShell's session dot-sources the home's profile itself. Its case proves that the line
+    // Install writes there completes; loading the profile at startup is pwsh's own behavior.
+    const started =
+      shell === 'pwsh'
+        ? 'a pwsh that dot-sources its profile'
+        : `a ${shell} started from the home, through its own startup files,`;
+
+    it(`${started} completes kit <Tab>`, async () => {
       const box = sandbox();
       install(box, shell);
       const { listed, startup } = await tabFromHome(box, shell);
