@@ -453,6 +453,36 @@ test.each([
   );
 });
 
+test('a bundle whose application module loads without calling skills() warns and succeeds', async () => {
+  const root = notesPackage({
+    'src/application.ts': `import { Application } from '@loomcli/core';
+import { skills } from '@loomcli/plugins/skills';
+
+export function notes() {
+  return new Application('notes', {
+    description: 'Keep notes.',
+    plugins: [skills({ folder: new URL('../skills/', import.meta.url) })],
+  });
+}
+`,
+    'src/main.ts': "import { notes } from './application.js';\n\nawait notes().run();\n",
+  });
+  const result = await loom(root, ['build', '--target', 'node']);
+  expect(result.status).toBe(0);
+  expect(result.stdout).toBe('Built dist for node.\n');
+  expect(result.stderr).toContain(
+    'notes carries the skills plugin, but skills() did not run while loom build loaded the application module, so it carried no skills folder. Call skills() as the module paths.application names loads, src/application.ts by convention, if it names a folder.',
+  );
+  expect(existsSync(join(root, 'dist/loom-skills'))).toBe(false);
+});
+
+test('a bundle whose skills() call names no folder builds with no warning', async () => {
+  const root = notesPackage({ 'src/application.ts': listedOnly });
+  const result = await loom(root, ['build', '--target', 'node']);
+  expect(result.stderr).toBe('');
+  expect(result.status).toBe(0);
+});
+
 test('a package whose application installs no skills plugin builds with no warning', async () => {
   const root = fixturePackage(
     {

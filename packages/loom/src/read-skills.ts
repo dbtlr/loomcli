@@ -29,6 +29,9 @@ const registryKey = Symbol.for('@loomcli/plugins/skills/registry');
 /** The format of a registry entry this `loom` reads, which the plugin at its version records. */
 const registryFormat = 2;
 
+/** The count of an empty registry. */
+const none = 0;
+
 /** The failure of a registry whose format this `loom` does not know. */
 const versions =
   'This @loomcli/loom cannot read the skills() calls the installed @loomcli/plugins recorded, so install @loomcli/plugins and @loomcli/loom at one version, and build again.';
@@ -101,6 +104,9 @@ async function readDeclaration(
     return { failure: loadFailure(error, isDeclarationError, module) };
   }
   const entries = registryEntries();
+  if (entries.length === none) {
+    return { kind: 'uncalled' };
+  }
   if (entries.some((entry) => member(entry, 'format') !== registryFormat)) {
     return { failure: versions };
   }

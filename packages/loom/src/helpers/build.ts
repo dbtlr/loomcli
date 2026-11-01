@@ -64,10 +64,16 @@ function skillsDefine(plan: BuildPlan): string {
   return `__LOOM_SKILLS__=${JSON.stringify(carriedValue(plan))}`;
 }
 
-/** The value of `__LOOM_SKILLS__` for a plan, before it is written as JSON. */
+/**
+ * The value of `__LOOM_SKILLS__` for a plan, before it is written as JSON. A module whose load ran
+ * no `skills()` call named no folder as it loaded, so its build carries `none`.
+ */
 function carriedValue({ facts, skills }: BuildPlan) {
+  if (skills.kind === 'unread') {
+    return { format: carriedFormat, kind: 'unread' };
+  }
   if (skills.kind !== 'read') {
-    return { format: carriedFormat, kind: skills.kind };
+    return { format: carriedFormat, kind: 'none' };
   }
   if (facts.build === 'development') {
     return { folder: skills.folder, format: carriedFormat, kind: 'source' };
@@ -169,7 +175,10 @@ interface BuildPlan {
 
 /** What a finished build reports beside its output. */
 interface BuildOutcome {
-  /** The build read no declaration, and the bundle it made holds the skills plugin. */
+  /**
+   * The build read no declaration, or read one in which `skills()` did not run, and the bundle it
+   * made holds the skills plugin.
+   */
   readonly uncarriedSkillsPlugin: boolean;
 }
 
@@ -304,8 +313,9 @@ function removeCreatedDirectories(directory: string, created: string | undefined
  * compile writes into Bun's working directory lands there too, and builds that run at once in one
  * package never share one. Bun writes its output into `out/` there, and only that moves; a
  * distributed binary's copy of the skills folder is staged in Bun's working directory beside it and
- * embedded with `--asset`, and a bundle's beside its chunks. A build that read no declaration asks
- * Bun for its metafile there, to learn whether the bundle holds the skills plugin. A failed build
+ * embedded with `--asset`, and a bundle's beside its chunks. A build that read no declaration, or
+ * one in which `skills()` did not run, asks Bun for its metafile there, to learn whether the bundle
+ * holds the skills plugin. A failed build
  * removes the temporary directory and each output directory it created that nothing else has
  * filled, so earlier output, every file the build does not write, and the work of a build running
  * beside it stay as they were. A cancelled run stops Bun and undoes the build as a failure does,
@@ -333,7 +343,8 @@ async function build(plan: BuildPlan, run: RunHost): Promise<BuildOutcome> {
       extra.push(...(compiles ? ['--asset', carriedFolder] : []));
     }
     const listed = join(staging, 'metafile.json');
-    extra.push(...(plan.skills.kind === 'unread' ? [`--metafile=${listed}`] : []));
+    const unnamed = plan.skills.kind === 'unread' || plan.skills.kind === 'uncalled';
+    extra.push(...(unnamed ? [`--metafile=${listed}`] : []));
     const result = await superviseBun(
       bunArguments(plan, out, extra),
       staging,

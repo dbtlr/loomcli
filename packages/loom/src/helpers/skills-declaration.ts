@@ -14,10 +14,12 @@ const judgedFile = strictObject({ executable: boolean(), path: string() });
 const judgedSkill = strictObject({ files: array(judgedFile), name: string() });
 
 /**
- * What the reading process found: no folder named while the module loaded; the folder, absolute,
- * with the skills the plugin judged there; or the failure the build stops with.
+ * What the reading process found: no `skills()` call while the module loaded; calls that name no
+ * folder; the folder, absolute, with the skills the plugin judged there; or the failure the build
+ * stops with.
  */
 const readResult = union([
+  strictObject({ kind: literal('uncalled') }),
   strictObject({ kind: literal('none') }),
   strictObject({ folder: string(), kind: literal('read'), skills: array(judgedSkill) }),
   strictObject({ failure: string() }),
@@ -25,6 +27,7 @@ const readResult = union([
 
 /** One read as the reading process writes it, before the build checks its shape. */
 type SkillsRead =
+  | { readonly kind: 'uncalled' }
   | { readonly kind: 'none' }
   | { readonly kind: 'read'; readonly folder: string; readonly skills: unknown }
   | { readonly failure: string };
@@ -34,10 +37,12 @@ type JudgedSkill = InferOutput<typeof judgedSkill>;
 
 /**
  * What the build learned of the skills folder: nothing, because it did not load the module; that
- * the module named no folder; or the folder and its judged skills.
+ * `skills()` did not run while the module loaded, as when a function the entry calls makes the
+ * Application; that the module's calls named no folder; or the folder and its judged skills.
  */
 type SkillsCarry =
   | { readonly kind: 'unread' }
+  | { readonly kind: 'uncalled' }
   | { readonly kind: 'none' }
   | { readonly kind: 'read'; readonly folder: string; readonly skills: readonly JudgedSkill[] };
 

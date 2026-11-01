@@ -191,6 +191,16 @@ function warningName(manifest: Manifest, option: string | undefined, directory: 
   return basename(directory);
 }
 
+/**
+ * The warning of a bundle that holds the skills plugin while the build learned no folder: it could
+ * not load the application module, or `skills()` did not run while it loaded.
+ */
+function uncarriedWarning(name: string, skills: SkillsCarry): string {
+  return skills.kind === 'uncalled'
+    ? `${name} carries the skills plugin, but skills() did not run while loom build loaded the application module, so it carried no skills folder. Call skills() as the module paths.application names loads, src/application.ts by convention, if it names a folder.`
+    : `${name} carries the skills plugin, but loom build could not load the application module, so it carried no skills folder. Export the Application from the module paths.application names, src/application.ts by convention, if skills() names a folder.`;
+}
+
 /** Reads what the build carries of the skills folder, in the run's own process. */
 function skillsOf(
   run: RunHost,
@@ -279,9 +289,7 @@ export const buildApplication: ActionHandler<typeof buildCommand> = async ({
       return '';
     }
     if (outcome.uncarriedSkillsPlugin) {
-      await out.warn(
-        `${warningName(manifest, options.name, directory)} carries the skills plugin, but loom build could not load the application module, so it carried no skills folder. Export the Application from the module paths.application names, src/application.ts by convention, if skills() names a folder.`,
-      );
+      await out.warn(uncarriedWarning(warningName(manifest, options.name, directory), skills));
     }
     return `Built ${shown(cwd, output)} for ${target.name}.\n`;
   });
