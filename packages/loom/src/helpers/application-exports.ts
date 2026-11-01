@@ -2,16 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-  array,
-  boolean,
-  exactOptional,
-  object,
-  strictObject,
-  string,
-  tupleWithRest,
-  union,
-} from 'valibot';
+import { array, boolean, strictObject, string, union } from 'valibot';
 import type { InferOutput } from 'valibot';
 
 import { runBun } from './bun.js';
@@ -21,35 +12,13 @@ import type { RunHost } from './run-host.js';
 /** The names a module exports its Application under. */
 const names = array(string());
 
-/** The post-install command's words, which hold at least one. */
-const words = tupleWithRest([string()], string());
-
-/** The post-install declaration as the Application's graph carries it. */
-const postInstall = object({
-  command: exactOptional(words),
-  message: exactOptional(string()),
-});
-
-/**
- * What the build of the Application's graph found: its post-install declaration, absent where it
- * declares none; the Developer Diagnostic of the declaration fault the build raised; or why the
- * build failed otherwise.
- */
-const graphRead = union([
-  strictObject({ fault: string() }),
-  strictObject({ failure: string() }),
-  object({ postInstall: exactOptional(postInstall) }),
-]);
-
 /**
  * What the read found: each name the module exports its one Application under, `default`
- * included, and what the build of its graph found; the Developer Diagnostic of a declaration fault
- * the module threw while it loaded; or the one sentence that says why no Application could be read,
- * and whether the module loaded before the read stopped.
+ * included; or why no Application could be read, a declaration fault's Developer Diagnostic
+ * included, and whether the module loaded before the read stopped.
  */
 const exportsResult = union([
-  strictObject({ graph: graphRead, names }),
-  strictObject({ fault: string() }),
+  strictObject({ names }),
   strictObject({ failure: string(), loaded: boolean() }),
 ]);
 
@@ -61,9 +30,6 @@ const script = fileURLToPath(new URL('read-application.js', import.meta.url));
 
 /** One read of an application module, as the reading process writes it to its result file. */
 export type ApplicationExports = InferOutput<typeof exportsResult>;
-
-/** What the build of the Application's graph found, once its post-install declaration is read. */
-export type GraphRead = InferOutput<typeof graphRead>;
 
 /**
  * Reads the exports of one application module under Bun, in a process of its own in the package

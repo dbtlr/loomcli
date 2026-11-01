@@ -3,9 +3,8 @@ import type { Application } from '@loomcli/core';
 /**
  * Throws when the application does not assemble, and returns when it does. It calls
  * `application.check()` and covers what that covers: every build rule, the input-schema converter
- * check, the routing check of the post-install command, and every `onGraphBuilt` hook. A declared
- * default or implied value is not run through its validator, so a bad default surfaces on the
- * application's first run.
+ * check, and every `onGraphBuilt` hook. A declared default or implied value is not run through its
+ * validator, so a bad default surfaces on the application's first run.
  *
  * The thrown `Error` holds each fault's Developer Diagnostic in order, separated by a blank line,
  * under a one-sentence lead line, so the test runner prints the diagnostics and fails the test. Its

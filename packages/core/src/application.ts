@@ -92,8 +92,6 @@ import type { WriteState } from './output.js';
 import { parseInvocation } from './parse.js';
 import { installPlugins, pluginViews } from './plugin.js';
 import type { BuiltPlugin, InstalledOptionValues, Plugin } from './plugin.js';
-import { postInstallOf, unroutedPostInstall } from './post-install.js';
-import type { PostInstall } from './post-install.js';
 import { prepareEnvironment } from './prepare-environment.js';
 import { laneOf, processHandle } from './process-handle.js';
 import { PersistentValues, RunValues, providedBinder, readUses } from './providers.js';
@@ -200,10 +198,7 @@ const unstaged: PrepareStage = {
  * `inspect()` throw the first, which ends the build; `check()` keeps each and goes on.
  */
 interface BuildChecks {
-  /**
-   * Whether the build runs a development build's checks: it asks every validated input's
-   * converter, and routes the post-install command's words.
-   */
+  /** Whether the build runs a development build's checks: it asks every validated input's converter. */
   readonly development: boolean;
   readonly fault: (fault: DeclarationError) => void;
 }
@@ -262,8 +257,6 @@ export interface ApplicationOptions<
   extensions?: readonly ExtensionValue<'command'>[];
   description?: string;
   version?: string;
-  /** What the installer script runs and prints after it installs and records the binary. */
-  postInstall?: PostInstall;
   /** The providers whose values the root's own action reads under `provided`. */
   uses?: OptIn<Uses>;
 }
@@ -739,11 +732,6 @@ class ApplicationBuilder<
     if (checks.development) {
       // A build that checks converters asks every one at build, so its check runs on every build.
       inspected();
-      // The words route against the graph the lifecycle hooks finished, so a plugin's Commands count.
-      const unrouted = unroutedPostInstall(this.#name, graph, facts.postInstall);
-      if (unrouted !== undefined) {
-        checks.fault(unrouted);
-      }
     }
     if (judgesGraph(plugins)) {
       judgeGraph(inspected(), plugins, checks.fault);
@@ -770,9 +758,8 @@ class ApplicationBuilder<
    * implied value its validator rejects, as values in the order a run meets them. It builds the
    * graph as `inspect()` does and runs the development checks whatever the release facts read,
    * reading no host and no baked facts. A build rule's fault ends the build, so it is the one fault;
-   * past a built graph, each failing converter, a post-install command that routes to no Command
-   * with an action, and each rejecting `onGraphBuilt` hook is kept and the build goes on. Any other
-   * throw leaves it as it is. Nothing is cached.
+   * past a built graph, each failing converter and each rejecting `onGraphBuilt` hook is kept and
+   * the build goes on. Any other throw leaves it as it is. Nothing is cached.
    */
   check(): readonly DeclarationError[] {
     const faults: DeclarationError[] = [];
@@ -1627,7 +1614,6 @@ interface ApplicationConstructor {
 interface ApplicationFacts {
   description: string | undefined;
   version: string;
-  postInstall: PostInstall | undefined;
 }
 
 /** Where one Application option sits, rebuilt as `new Application(name, { key })`. */
@@ -1637,11 +1623,10 @@ function optionSite(name: string, key: string, value: unknown): FactSite {
 
 /** The facts the Application's options declare. `options` is `undefined` for none. */
 function applicationFacts(
-  options: Pick<ApplicationOptions, 'description' | 'postInstall' | 'version'> | undefined,
+  options: Pick<ApplicationOptions, 'description' | 'version'> | undefined,
 ): ApplicationFacts {
   return {
     description: options?.description,
-    postInstall: postInstallOf(options?.postInstall),
     version: options?.version ?? '0.0.0',
   };
 }

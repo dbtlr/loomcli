@@ -1,7 +1,17 @@
 import { join, relative, resolve, sep } from 'node:path';
 
 import { configuration } from '@loomcli/plugins/config';
-import { minLength, object, optional, pipe, string } from 'valibot';
+import {
+  minLength,
+  object,
+  optional,
+  pipe,
+  rawTransform,
+  safeParse,
+  string,
+  tupleWithRest,
+  unknown,
+} from 'valibot';
 import type { InferOutput } from 'valibot';
 
 import { conventionalChangelog, conventionalFragments } from './conventions.js';
@@ -11,6 +21,35 @@ import { conventionalChangelog, conventionalFragments } from './conventions.js';
  * its own key, so the plugin drops that key alone and its convention applies.
  */
 const pathValue = optional(pipe(string(), minLength(1)));
+
+/** The post-install command's words, which hold at least one. */
+const postInstallWordList = tupleWithRest([string()], string());
+
+/**
+ * The words, checked as one value: a rejected list is one issue at `command` rather than at an
+ * item, so the configuration plugin drops the whole command instead of running the words that
+ * remain.
+ */
+const postInstallWords = pipe(
+  unknown(),
+  rawTransform(({ addIssue, dataset, NEVER }) => {
+    const words = safeParse(postInstallWordList, dataset.value);
+    if (words.success) {
+      return words.output;
+    }
+    addIssue({ message: 'Expected a non-empty array of strings' });
+    return NEVER;
+  }),
+);
+
+/**
+ * What the installer script does after it installs and records the binary, under ADR-0131:
+ * `command` is the words it runs the installed binary with, and `message` the text it prints last.
+ */
+const postInstall = object({
+  command: optional(postInstallWords),
+  message: optional(string()),
+});
 
 /**
  * The schema of `loom.config.json`. Every key is optional, and valibot's `object` strips a key it
@@ -29,6 +68,7 @@ const loomConfigSchema = object({
       source: pathValue,
     }),
   ),
+  postInstall: optional(postInstall),
 });
 
 /** Every key of `paths`. */
@@ -57,6 +97,9 @@ export const { plugin: loomConfigPlugin, values: loomConfig } = configuration({
   schema: loomConfigSchema,
   scopes: ['project'],
 });
+
+/** The post-install declaration of `loom.config.json`, which `loom init` renders into `install.sh`. */
+export type PostInstall = NonNullable<LoomConfig['postInstall']>;
 
 /** A key of the configuration file's `paths`. */
 export type PathKey = keyof NonNullable<LoomConfig['paths']>;

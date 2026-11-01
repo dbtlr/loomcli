@@ -1,4 +1,4 @@
-import { Application, Command, DeclarationError, diagnosticRule, plugin } from '@loomcli/core';
+import { Application, DeclarationError, diagnosticRule, plugin } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
 
 import { assertAssembles } from '../src/index.js';
@@ -84,16 +84,4 @@ test('the first line of the message counts the faults in one sentence', () => {
     ],
   }).action(({ out }) => out.print('ran'));
   expect(thrownBy(two).message.split('\n')[0]).toBe('The application does not assemble: 2 faults.');
-});
-
-test('a post-install command that routes to no Command with an action throws its diagnostic', () => {
-  const application = new Application('probe', {
-    description,
-    postInstall: { command: ['setup'] },
-  }).command(new Command('get', { description: 'Get a value.' }).action(() => undefined));
-  const error = thrownBy(application);
-  expect(error.message).toContain(
-    'The post-install command "setup" routes to no Command with an action.',
-  );
-  expect(error.message).toContain('@loomcli/core/post-install-unrouted');
 });

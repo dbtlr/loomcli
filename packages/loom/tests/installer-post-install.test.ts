@@ -25,12 +25,12 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { PostInstall } from '@loomcli/core';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { zsh } from '../../../scripts/test-pty.js';
 import { findOnPath, sealedShellEnvironment } from '../../../scripts/test-shell.js';
 import { installerScript } from '../src/content/installer-script.js';
+import type { PostInstall } from '../src/helpers/loom-config.js';
 import { renderManaged } from '../src/helpers/managed.js';
 import { removeRoots } from './fixture.js';
 import {
