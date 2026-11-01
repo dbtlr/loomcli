@@ -1,5 +1,5 @@
-import { existsSync, statSync } from 'node:fs';
-import { join, parse, resolve } from 'node:path';
+import { existsSync, realpathSync, statSync } from 'node:fs';
+import { basename, dirname, join, parse, resolve, sep } from 'node:path';
 
 import { InputError } from '@loomcli/core';
 import type { ActionHandler } from '@loomcli/core';
@@ -9,15 +9,21 @@ import {
   buildFacts,
   definePair,
   readManifest,
+  scaffoldName,
 } from '../../helpers/build-facts.js';
+import type { Manifest } from '../../helpers/build-facts.js';
 import { hostTarget } from '../../helpers/build-target.js';
 import type { BuildTarget } from '../../helpers/build-target.js';
-import { build, watch } from '../../helpers/build.js';
+import { build, carriedFolder, watch } from '../../helpers/build.js';
+import type { BuildPlan } from '../../helpers/build.js';
 import { packagePaths } from '../../helpers/loom-config.js';
 import type { PackagePaths } from '../../helpers/loom-config.js';
 import { existingModule, shown } from '../../helpers/modules.js';
 import { packageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
+import type { RunHost } from '../../helpers/run-host.js';
+import { readSkillsDeclaration } from '../../helpers/skills-declaration.js';
+import type { SkillsCarry } from '../../helpers/skills-declaration.js';
 import type { buildCommand } from './command.js';
 
 /** The option error one option draws from another it cannot be passed with, with exit code 2. */
@@ -108,6 +114,96 @@ function defaultOutput(directory: string, target: BuildTarget, name: () => strin
   return target.kind === 'bundle' ? directory : join(directory, name());
 }
 
+/**
+ * The module whose `skills()` call names the skills folder: the bundle's application module, or for
+ * a compile target the one `paths.application` names when it exists, since a binary compiles the
+ * entry alone.
+ */
+function declaringModule(
+  paths: PackagePaths,
+  target: BuildTarget,
+  application: string | undefined,
+): string | undefined {
+  if (target.kind === 'bundle') {
+    return application;
+  }
+  return existsSync(paths.application) ? paths.application : undefined;
+}
+
+/** A path's real path, through the nearest ancestor that exists, so a link on the way is seen. */
+function realThrough(path: string): string {
+  const missing: string[] = [];
+  let current = path;
+  while (!existsSync(current) && dirname(current) !== current) {
+    missing.unshift(basename(current));
+    current = dirname(current);
+  }
+  return join(realpathSync(current), ...missing);
+}
+
+/** How one real path stands to another: the same, inside it, holding it, or apart. */
+function relationOf(path: string, other: string): 'is' | 'is inside' | 'holds' | undefined {
+  if (path === other) {
+    return 'is';
+  }
+  if (path.startsWith(`${other}${sep}`)) {
+    return 'is inside';
+  }
+  return other.startsWith(`${path}${sep}`) ? 'holds' : undefined;
+}
+
+/**
+ * Fails a distributed bundle whose `loom-skills/` would be the skills folder, sit inside it, or
+ * hold it, before it builds, because the build replaces that folder whole and never writes into
+ * the source tree. Real paths are compared, so a link on either side is seen.
+ */
+function separateCarriedFolder(cwd: string, plan: BuildPlan): void {
+  if (
+    plan.skills.kind !== 'read' ||
+    plan.facts.build !== 'distributed' ||
+    plan.target.kind !== 'bundle'
+  ) {
+    return;
+  }
+  const carried = join(plan.out, carriedFolder);
+  const real = { carried: realThrough(carried), folder: realThrough(plan.skills.folder) };
+  const relation = relationOf(real.carried, real.folder);
+  if (relation !== undefined) {
+    throw new Error(
+      `${shown(cwd, carried)}, where the bundle carries the skills, ${relation} the skills folder ${shown(cwd, plan.skills.folder)}, and loom build never writes into the source tree, so name another directory with --out.`,
+    );
+  }
+}
+
+/**
+ * The application's name for the warning a build that read no declaration gives: its `bin` name
+ * or `--name`, else the package name without its scope, else the package directory's name.
+ */
+function warningName(manifest: Manifest, option: string | undefined, directory: string): string {
+  for (const read of [() => applicationName(manifest, option), () => scaffoldName(manifest)]) {
+    try {
+      return read();
+    } catch {
+      // A package that names no application here may name it the next way.
+    }
+  }
+  return basename(directory);
+}
+
+/** Reads what the build carries of the skills folder, in the run's own process. */
+function skillsOf(
+  run: RunHost,
+  options: { cwd: string; directory: string; entry: string; module: string | undefined },
+): Promise<SkillsCarry> {
+  const { cwd, directory, entry, module } = options;
+  return readSkillsDeclaration(run, {
+    directory,
+    entry,
+    module,
+    shown: module === undefined ? '' : shown(cwd, module),
+  });
+}
+
 /** Builds the package's application for one target, or prints its facts or define pair. */
 export const buildApplication: ActionHandler<typeof buildCommand> = async ({
   host,
@@ -167,14 +263,25 @@ export const buildApplication: ActionHandler<typeof buildCommand> = async ({
       name: () => applicationName(manifest, options.name),
       out: options.out,
     });
-    const plan = { application, directory, entry, facts, out: output, target };
     const run = { host, onShutdown, signal };
+    const module = declaringModule(paths, target, application);
+    const skills = await skillsOf(run, { cwd, directory, entry, module });
+    const plan = { application, directory, entry, facts, out: output, skills, target };
+    separateCarriedFolder(cwd, plan);
     if (options.watch) {
       await watch(plan, run);
       return '';
     }
-    await build(plan, run);
+    const outcome = await build(plan, run);
     // A cancelled build undid what it wrote, so it reports nothing built.
-    return signal.aborted ? '' : `Built ${shown(cwd, output)} for ${target.name}.\n`;
+    if (signal.aborted) {
+      return '';
+    }
+    if (outcome.uncarriedSkillsPlugin) {
+      await out.warn(
+        `${warningName(manifest, options.name, directory)} carries the skills plugin, but loom build could not load the application module, so it carried no skills folder. Export the Application from the module paths.application names, src/application.ts by convention, if skills() names a folder.`,
+      );
+    }
+    return `Built ${shown(cwd, output)} for ${target.name}.\n`;
   });
 };

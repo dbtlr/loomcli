@@ -2,8 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { DeclarationError, diagnosticRule } from '@loomcli/core';
-
+import { coreClass, loadFailure } from './application-load.js';
 import type { ApplicationExports } from './helpers/application-exports.js';
 
 /*
@@ -13,49 +12,6 @@ import type { ApplicationExports } from './helpers/application-exports.js';
  * operator reads it. The result file receives one `ApplicationExports` as JSON, and the process
  * ends once it is written, whatever the module left running when it loaded, such as an interval.
  */
-
-/** A module that threw while it loaded, for a throw that is not a `DeclarationError`. */
-const loadFailed = diagnosticRule('@loomcli/loom/application-load-failed', {
-  explanation:
-    'loom init imports the application module to learn how the entry imports its Application, and the module threw while it loaded, so the entry could not be written.',
-  headline: 'Application failed to load',
-});
-
-/** One export of a module namespace or member of the package's core, read without trusting it. */
-function member(value: unknown, name: string): unknown {
-  return typeof value === 'object' && value !== null ? Reflect.get(value, name) : undefined;
-}
-
-/** A class the package's core exports, or `undefined` when the export is not a class. */
-function coreClass(core: unknown, name: string) {
-  const value = member(core, name);
-  return typeof value === 'function' ? value : undefined;
-}
-
-/** A thrown value as one reason: an `Error`'s name and message, or the value itself. */
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-}
-
-/**
- * What a throw while the module loads read as: a `DeclarationError`'s own Developer Diagnostic, or
- * the load failure any other throw is.
- */
-function loadFailure(
-  error: unknown,
-  isDeclarationError: (value: unknown) => boolean,
-  module: string,
-): ApplicationExports {
-  if (isDeclarationError(error) && error instanceof Error) {
-    return { failure: error.message, loaded: false };
-  }
-  const failure = new DeclarationError(loadFailed, {
-    correction:
-      'Fix the code that throws, or move the work into an action, which runs only when its Command runs.',
-    sentence: `${module} threw while it loaded: ${reasonOf(error)}`,
-  }).message;
-  return { failure, loaded: false };
-}
 
 /**
  * Imports the application module and reads the names its one exported Application is exported
@@ -87,7 +43,8 @@ async function read(directory: string, path: string, module: string): Promise<Ap
   try {
     namespace = await import(pathToFileURL(path).href);
   } catch (error) {
-    return loadFailure(error, (value) => value instanceof declarationError, module);
+    const failure = loadFailure(error, (value) => value instanceof declarationError, module);
+    return { failure, loaded: false };
   }
   const exported =
     typeof namespace === 'object' && namespace !== null ? Object.entries(namespace) : [];

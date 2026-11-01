@@ -284,13 +284,13 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Invalid service setting.** The service plugin names its unit by label: the systemd unit is \<label\>.service and the launchd agent's Label is the label. So label is a reverse-DNS name of two or more segments of letters, digits, and hyphens, each opening with a letter or digit, 247 characters at most, which keeps the unit name within systemd's 255 characters.
 
-### @loomcli/plugins/skills/folder
-
-**Unreadable skills folder.** The skills plugin installs each directory of the folder its folder setting names as one skill named by the directory, so the folder exists, holds a skill unless the application lists its skills, each skill directory's name is a skill name, and each entry inside a skill is a file or a folder. A relative folder resolves against the application module, which only loom build knows, so a run loom build did not make reads the folder through a URL or an absolute path, and an artifact loom build made reads the copy it carries.
-
 ### @loomcli/plugins/skills/files
 
 **Invalid skill files.** The skills plugin writes each skill as one folder in the operator's agent folders, so each file's path is relative to that folder, with no .. part that would write outside it, and the list holds the skill's SKILL.md, the file every agent reads first, and no listed skill holds a name the skills folder holds.
+
+### @loomcli/plugins/skills/folder
+
+**Unreadable skills folder.** The skills plugin installs each directory of the folder its folder setting names as one skill named by the directory, so the folder exists, holds a skill unless the application lists its skills, each skill directory's name is a skill name, and each entry inside a skill is a file or a folder. A relative folder resolves against the application module, which only loom build knows, so a run loom build did not make reads the folder through a URL or an absolute path, and an artifact loom build made reads the copy it carries.
 
 ### @loomcli/plugins/skills/settings
 

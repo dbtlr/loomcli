@@ -14,8 +14,9 @@ import { fileURLToPath } from 'node:url';
 /*
  * Builds the published `loom` bin with `loom build` itself, run from source under Bun, so the
  * toolchain ships as the distributed bundle every author's application ships as.
- * `loom build` bundles the entry and the application module. The process `loom init` starts to read
- * an application module runs one more module, which a second, plain Bun build writes beside them.
+ * `loom build` bundles the entry and the application module. The processes `loom init` and
+ * `loom build` start to read an application module each run one more module, which a plain Bun
+ * build writes beside them.
  *
  * The bundle carries other packages' code, so their license notices must travel with it. Bun writes
  * the source path of each module it bundles in a comment above the module, and the build reads
@@ -45,14 +46,9 @@ function bun(args) {
 }
 
 bun(['src/main.ts', 'build', '--target', 'node']);
-bun([
-  'build',
-  'src/read-application.ts',
-  '--target',
-  'bun',
-  '--outfile',
-  'dist/read-application.js',
-]);
+for (const reader of ['read-application', 'read-skills']) {
+  bun(['build', `src/${reader}.ts`, '--target', 'bun', '--outfile', `dist/${reader}.js`]);
+}
 
 /** Names the file of a license text that sits beside a package's manifest. */
 const licenseFilePattern = /^(?:licen[sc]e|copying)(?:\.(?:md|txt))?$/i;
