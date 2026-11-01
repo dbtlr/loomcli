@@ -17,8 +17,9 @@
  * - What reads. A Command outside `skills`, and `uninstall`, read no folder.
  * - What the artifact carried. Read through the seam that takes the carried value, a development
  *   build reads the source folder the define names, a distributed one reads the copy beside the
- *   base with the define's executable bits, and a build that read nothing, found no folder, or
- *   wrote an unknown format fails with the pinned sentence.
+ *   base with the executable bits its index names, and a build that read nothing, found no folder,
+ *   or wrote an unknown format, and a copy whose index is not one this version reads, fail with
+ *   the pinned sentence.
  */
 
 import {
@@ -426,14 +427,13 @@ describe('what the artifact carried', () => {
     ]);
   });
 
-  it('reads the copy beside the base, executable as the define names it', () => {
+  it('reads the copy beside the base, executable as its index names it', () => {
     const box = sandbox();
     const out = join(box.root, 'dist');
     put(out, 'loom-skills/notes/SKILL.md', '# Notes\n');
     put(out, 'loom-skills/notes/scripts/run me #1.sh', '#!/bin/sh\n');
-    const carried = {
+    const index = {
       format: 1,
-      kind: 'carried',
       skills: [
         {
           files: [
@@ -444,8 +444,9 @@ describe('what the artifact carried', () => {
         },
       ],
     };
+    put(out, 'loom-skills/index.json', JSON.stringify(index));
     const base = pathToFileURL(join(out, 'chunk-abc.js')).href;
-    expect(read({ base, carried })).toEqual([
+    expect(read({ base, carried: { format: 1, kind: 'carried' } })).toEqual([
       {
         files: [
           { content: '# Notes\n', executable: false, path: 'SKILL.md' },
@@ -485,12 +486,24 @@ describe('what the artifact carried', () => {
         sentence: 'loom build found no skills folder in the application module.',
       },
     ],
-    ['an unknown format', { format: 2, kind: 'carried', skills: [] }, versions],
+    ['an unknown format', { format: 2, kind: 'carried' }, versions],
     ['an unknown kind', { format: 1, kind: 'embedded' }, versions],
-    ['a malformed copy', { format: 1, kind: 'carried', skills: [{ name: 'notes' }] }, versions],
     ['a value that is not an object', 'skills', versions],
   ])('fails for %s', (_name, carried, expected) => {
     expect(read({ carried })).toEqual(expected);
+  });
+
+  it.each([
+    ['an index that is not JSON', '{ "format": 1,'],
+    ['an index of an unknown format', JSON.stringify({ format: 2, skills: [] })],
+    ['an index that names no skills', JSON.stringify({ format: 1 })],
+    ['an index of a malformed skill', JSON.stringify({ format: 1, skills: [{ name: 'notes' }] })],
+  ])('fails for a copy with %s', (_name, index) => {
+    const box = sandbox();
+    const out = join(box.root, 'dist');
+    put(out, 'loom-skills/index.json', index);
+    const base = pathToFileURL(join(out, 'chunk-abc.js')).href;
+    expect(read({ base, carried: { format: 1, kind: 'carried' } })).toEqual(versions);
   });
 
   it('reads nothing for a setting that names no folder, whatever was carried', () => {

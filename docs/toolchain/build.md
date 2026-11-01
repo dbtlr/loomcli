@@ -120,9 +120,11 @@ skills({ folder: new URL('../../../skills/', import.meta.url) }) // a monorepo's
   | Build | Carries |
   | --- | --- |
   | `development`, any target | the source folder's absolute path, read and judged when a skills Command loads files, so an edit during `--watch` installs as it now stands |
-  | `distributed` `node` or `bun` | the judged files, links followed, in `loom-skills/` in the output directory beside the chunks, with each file's executable bit |
-  | `distributed` compile target | the same files embedded in the binary, with each file's executable bit, because an embedded file keeps no mode |
+  | `distributed` `node` or `bun` | the judged files, links followed, in `loom-skills/` in the output directory beside the chunks, with `loom-skills/index.json`, which names each skill's files and their executable bits |
+  | `distributed` compile target | the same files and index embedded in the binary, the index naming each file's executable bit, because an embedded file keeps no mode |
   | a build that read nothing, or found no folder | which of the two, so a run whose setting names a folder fails and says why |
+
+  The define never names a file, so a folder of any number of files passes through Bun's command line, whose arguments Linux limits to 128 KiB each.
 
 - **The bundle's `loom-skills/`.** It is the build's own folder, so it is replaced whole with the rest of the output, and a skill the source folder dropped leaves it, unlike the other files a build does not write. A bundle whose `loom-skills/` would be the skills folder, inside it, or hold it, as `--out skills` does in a package whose folder is `skills/`, fails before it builds, because the build never writes into the source tree.
 - **Watching.** `--watch` reads the declaration once, when it starts, so a change to the `folder` setting takes a restart, and a change inside the folder needs none.

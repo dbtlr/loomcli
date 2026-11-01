@@ -8,6 +8,7 @@ import {
   renameSync,
   rmdirSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 
@@ -41,14 +42,23 @@ function configArguments(directory: string): string[] {
 /** The folder a distributed artifact carries its skills in, beside its chunks or its program. */
 const carriedFolder = 'loom-skills';
 
-/** The format of `__LOOM_SKILLS__` this `loom` bakes, which the skills plugin at its version reads. */
+/**
+ * The index a carried copy holds beside its skills, naming each skill's files and their executable
+ * bits. A skill name holds no `.`, so no skill's folder takes the name.
+ */
+const carriedIndex = 'index.json';
+
+/**
+ * The format of `__LOOM_SKILLS__` and of a carried copy's index this `loom` writes, which the skills
+ * plugin at its version reads.
+ */
 const carriedFormat = 1;
 
 /**
  * What the build bakes into `__LOOM_SKILLS__`: that it read nothing, that it found no folder, the
- * source folder for a development build, or each carried file's path and executable bit for a
- * distributed one, whose bytes sit in `loom-skills/`. A file's bytes never pass through the define,
- * whose one command-line argument a large skill would overflow.
+ * source folder for a development build, or for a distributed one that it carried a copy in
+ * `loom-skills/`, whose index names the files. Neither the files nor their names pass through the
+ * define, whose one command-line argument a large folder would overflow.
  */
 function skillsDefine(plan: BuildPlan): string {
   return `__LOOM_SKILLS__=${JSON.stringify(carriedValue(plan))}`;
@@ -62,7 +72,7 @@ function carriedValue({ facts, skills }: BuildPlan) {
   if (facts.build === 'development') {
     return { folder: skills.folder, format: carriedFormat, kind: 'source' };
   }
-  return { format: carriedFormat, kind: 'carried', skills: skills.skills };
+  return { format: carriedFormat, kind: 'carried' };
 }
 
 /** Whether a build carries a copy of the skills folder: a distributed build that read one. */
@@ -165,15 +175,21 @@ interface BuildOutcome {
 
 /**
  * Copies the judged files of the skills the plan carries into `loom-skills/` under a directory,
- * links followed, so the copy holds each file's bytes whatever the source folder links to.
+ * links followed, so the copy holds each file's bytes whatever the source folder links to, and
+ * writes the index that names each skill's files with their executable bits, because an embedded
+ * file keeps no mode.
  */
 function stageSkills(plan: BuildPlan, directory: string): void {
   if (plan.skills.kind !== 'read') {
     return;
   }
   const { folder, skills } = plan.skills;
-  // A folder that holds no skill beside listed ones carries an empty copy, which replaces the last.
+  // A folder that holds no skill beside listed ones carries an index of none, which replaces the last.
   mkdirSync(join(directory, carriedFolder), { recursive: true });
+  writeFileSync(
+    join(directory, carriedFolder, carriedIndex),
+    `${JSON.stringify({ format: carriedFormat, skills })}\n`,
+  );
   for (const { files, name } of skills) {
     for (const { path } of files) {
       const parts = path.split('/');
@@ -312,8 +328,7 @@ async function build(plan: BuildPlan, run: RunHost): Promise<BuildOutcome> {
     if (carriesCopy(plan)) {
       stageSkills(plan, compiles ? staging : written);
       // Bun embeds the folder at its path relative to its working directory, beside the program.
-      const embeds = compiles && plan.skills.kind === 'read' && plan.skills.skills.length > 0;
-      extra.push(...(embeds ? ['--asset', carriedFolder] : []));
+      extra.push(...(compiles ? ['--asset', carriedFolder] : []));
     }
     const listed = join(staging, 'metafile.json');
     extra.push(...(plan.skills.kind === 'unread' ? [`--metafile=${listed}`] : []));

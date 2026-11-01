@@ -2,7 +2,8 @@
  * Where a run's folder skills come from. An unbuilt run, or one with no carried folder, reads the
  * folder its setting names; an artifact `loom build` made reads what `__LOOM_SKILLS__` says the
  * build carried: the source folder for a development build, or the judged copy in `loom-skills/`
- * beside the bundle's chunks or inside the binary for a distributed one.
+ * beside the bundle's chunks or inside the binary for a distributed one, whose index names its
+ * files.
  */
 import { readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
@@ -22,6 +23,9 @@ const carriedFormat = 1;
 
 /** The folder a carried copy sits in, beside the bundle's chunks or the binary's program. */
 const carriedFolder = 'loom-skills';
+
+/** The index a carried copy holds beside its skills, a name no skill's folder takes. */
+const carriedIndex = 'index.json';
 
 /** What a run reads its folder skills from. */
 interface FolderRequest {
@@ -80,7 +84,7 @@ function folderPath(setting: URL | string, moduleDirectory?: string): string {
   return resolve(moduleDirectory, setting);
 }
 
-/** One carried file as the define names it, or `undefined` when it is not one. */
+/** One carried file as the index names it, or `undefined` when it is not one. */
 function carriedFile(value: unknown): { path: string; executable: boolean } | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -110,15 +114,33 @@ function carriedFiles(base: string, name: string, listed: readonly unknown[]): S
 }
 
 /**
- * The copy a distributed artifact carries: each skill the define names with its files, read from
- * `loom-skills/` beside the base, each executable as the define names it, because an embedded file
- * keeps no mode. A define of any other shape is one this plugin's version does not know.
+ * The skills a carried copy's index names, read from `loom-skills/index.json` beside the base, or
+ * the fault of an index this plugin's version does not know: one that is not JSON, holds another
+ * format, or names no list of skills.
  */
-function carriedCopy(skills: unknown, base: string): readonly FolderSkill[] {
-  if (!Array.isArray(skills)) {
+function carriedIndexSkills(base: string): unknown[] {
+  let index: unknown = undefined;
+  try {
+    index = JSON.parse(readFileSync(new URL(`${carriedFolder}/${carriedIndex}`, base), 'utf8'));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw faults.versions();
+    }
+    throw error;
+  }
+  if (!isRecord(index) || index.format !== carriedFormat || !Array.isArray(index.skills)) {
     throw faults.versions();
   }
-  return skills.map((skill: unknown) => {
+  return index.skills;
+}
+
+/**
+ * The copy a distributed artifact carries: each skill its index names with its files, read from
+ * `loom-skills/` beside the base, each executable as the index names it, because an embedded file
+ * keeps no mode. An index of any other shape is one this plugin's version does not know.
+ */
+function carriedCopy(base: string): readonly FolderSkill[] {
+  return carriedIndexSkills(base).map((skill: unknown) => {
     const name = isRecord(skill) ? skill.name : undefined;
     const listed = isRecord(skill) ? skill.files : undefined;
     if (typeof name !== 'string' || !Array.isArray(listed)) {
@@ -141,7 +163,7 @@ function carriedFolderSkills(request: FolderRequest, carried: unknown): readonly
     return readSkillsFolder(carried.folder, request.listed);
   }
   if (carried.kind === 'carried') {
-    return carriedCopy(carried.skills, request.base);
+    return carriedCopy(request.base);
   }
   if (carried.kind === 'unread') {
     throw faults.unread();

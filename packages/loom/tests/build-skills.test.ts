@@ -183,7 +183,11 @@ test("a distributed bundle's copy sits in dist/loom-skills and a rebuild replace
   const root = notesPackage({ 'skills/review/SKILL.md': '# Review\n' });
   const first = await loom(root, ['build', '--target', 'node']);
   expect(first.status).toBe(0);
-  expect(readdirSync(join(root, 'dist/loom-skills')).toSorted()).toEqual(['notes', 'review']);
+  expect(readdirSync(join(root, 'dist/loom-skills')).toSorted()).toEqual([
+    'index.json',
+    'notes',
+    'review',
+  ]);
   expect(tree(join(root, 'dist/loom-skills/notes'))['./references/glossary.md']).toMatch(
     /^file \d+ glossary\n$/u,
   );
@@ -191,11 +195,11 @@ test("a distributed bundle's copy sits in dist/loom-skills and a rebuild replace
   rmSync(join(root, 'skills/review'), { recursive: true });
   const second = await loom(root, ['build', '--target', 'node']);
   expect(second.status).toBe(0);
-  expect(readdirSync(join(root, 'dist/loom-skills'))).toEqual(['notes']);
+  expect(readdirSync(join(root, 'dist/loom-skills')).toSorted()).toEqual(['index.json', 'notes']);
   expect(readFileSync(join(root, 'dist/notes.txt'), 'utf8')).toBe('Not the build’s.\n');
 });
 
-test('a folder that holds no skill beside a listed one carries an empty copy', async () => {
+test('a folder that holds no skill beside a listed one carries a copy whose index names none', async () => {
   const listed = `import { Application } from '@loomcli/core';
 import { skills } from '@loomcli/plugins/skills';
 
@@ -215,7 +219,11 @@ export const notes = new Application('notes', {
   const built = await loom(root, ['build', '--target', 'node']);
   expect(built.stderr).toBe('');
   expect(built.status).toBe(0);
-  expect(readdirSync(join(root, 'dist/loom-skills'))).toEqual([]);
+  expect(readdirSync(join(root, 'dist/loom-skills'))).toEqual(['index.json']);
+  expect(JSON.parse(readFileSync(join(root, 'dist/loom-skills/index.json'), 'utf8'))).toEqual({
+    format: 1,
+    skills: [],
+  });
 });
 
 test('a development build names the source folder, so an edit after the build installs', async () => {
@@ -229,12 +237,35 @@ test('a development build names the source folder, so an edit after the build in
   expect(readFileSync(join(folder, 'SKILL.md'), 'utf8')).toBe('# Notes, edited\n');
 });
 
+test(
+  'a distributed bundle of a folder of thousands of files builds and installs',
+  async () => {
+    const references = Object.fromEntries(
+      Array.from({ length: 3000 }, (_unused, index) => [
+        `skills/notes/references/topic-${String(index).padStart(4, '0')}-reference.md`,
+        `topic ${index}\n`,
+      ]),
+    );
+    const root = notesPackage(references);
+    const built = await loom(root, ['build', '--target', 'node']);
+    expect(built.stderr).toBe('');
+    expect(built.status).toBe(0);
+    const { folder, result } = installFrom(join(root, 'dist/main.js'), runtime);
+    expect(result.status).toBe(0);
+    expect(readdirSync(join(folder, 'references'))).toHaveLength(3002);
+    expect(readFileSync(join(folder, 'references/topic-2999-reference.md'), 'utf8')).toBe(
+      'topic 2999\n',
+    );
+  },
+  slow,
+);
+
 test("a relative folder resolves against the application module's directory", async () => {
   const root = notesPackage({}, "'../skills'");
   const built = await loom(root, ['build', '--target', 'node']);
   expect(built.stderr).toBe('');
   expect(built.status).toBe(0);
-  expect(readdirSync(join(root, 'dist/loom-skills'))).toEqual(['notes']);
+  expect(readdirSync(join(root, 'dist/loom-skills')).toSorted()).toEqual(['index.json', 'notes']);
 });
 
 test('a paths.skills key in loom.config.json is not read', async () => {
@@ -244,7 +275,7 @@ test('a paths.skills key in loom.config.json is not read', async () => {
   });
   const built = await loom(root, ['build', '--target', 'node']);
   expect(built.status).toBe(0);
-  expect(readdirSync(join(root, 'dist/loom-skills'))).toEqual(['notes']);
+  expect(readdirSync(join(root, 'dist/loom-skills')).toSorted()).toEqual(['index.json', 'notes']);
 });
 
 test('a module that throws while it loads fails the build with the load failure', async () => {
