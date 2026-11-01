@@ -245,8 +245,10 @@ function holdsSkillsPlugin(file: string, cwd: string): boolean {
 
 /**
  * Moves the files Bun wrote under `written` into place: a binary onto its path, and a bundle's
- * files into its directory, each replacing the file of the same name, and its `loom-skills/`, the
- * build's own folder, replacing the earlier one whole, so a skill the source dropped leaves it.
+ * files into its directory, each replacing the file of the same name. A bundle's `loom-skills/` is
+ * the build's own folder, so the earlier one is removed whole, and the new copy, when the build
+ * carries one, takes its place, so a skill the source dropped, a folder the declaration stopped
+ * naming, and a development build after a distributed one leave no stale copy.
  */
 function moveIntoPlace(plan: BuildPlan, written: string): void {
   if (plan.target.kind === 'compile') {
@@ -259,8 +261,8 @@ function moveIntoPlace(plan: BuildPlan, written: string): void {
     mkdirSync(dirname(target), { recursive: true });
     renameSync(join(written, file), target);
   }
+  rmSync(join(plan.out, carriedFolder), { force: true, recursive: true });
   if (carriesCopy(plan)) {
-    rmSync(join(plan.out, carriedFolder), { force: true, recursive: true });
     renameSync(join(written, carriedFolder), join(plan.out, carriedFolder));
   }
 }

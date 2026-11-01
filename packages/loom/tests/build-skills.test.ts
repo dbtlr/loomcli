@@ -226,6 +226,42 @@ export const notes = new Application('notes', {
   });
 });
 
+/** An application module whose skills plugin names no folder and lists one skill. */
+const listedOnly = `import { Application } from '@loomcli/core';
+import { skills } from '@loomcli/plugins/skills';
+
+export const notes = new Application('notes', {
+  description: 'Keep notes.',
+  plugins: [skills({ skills: [{ files: () => [{ content: '# Listed\\n', path: 'SKILL.md' }], name: 'listed' }] })],
+});
+`;
+
+test.each([
+  {
+    later: ['--target', 'node'],
+    name: 'a build whose declaration names no folder',
+    rearrange: (root: string) => {
+      put(root, 'src/application.ts', listedOnly);
+    },
+  },
+  {
+    later: ['--target', 'node', '--build', 'development'],
+    name: 'a development build',
+    rearrange: () => undefined,
+  },
+])('$name after a distributed one removes dist/loom-skills', async ({ later, rearrange }) => {
+  const root = notesPackage();
+  const first = await loom(root, ['build', '--target', 'node']);
+  expect(first.status).toBe(0);
+  expect(existsSync(join(root, 'dist/loom-skills'))).toBe(true);
+  rearrange(root);
+  const second = await loom(root, ['build', ...later]);
+  expect(second.stderr).toBe('');
+  expect(second.status).toBe(0);
+  expect(existsSync(join(root, 'dist/loom-skills'))).toBe(false);
+  expect(existsSync(join(root, 'dist/main.js'))).toBe(true);
+});
+
 test('a development build names the source folder, so an edit after the build installs', async () => {
   const root = notesPackage();
   const built = await loom(root, ['build', '--target', 'node', '--build', 'development']);
@@ -344,12 +380,44 @@ test('a registry of a format this loom does not know fails the build', async () 
 });
 
 test.each([
-  { carried: 'skills/loom-skills', folder: 'skills', out: 'skills', relation: 'is inside' },
-  { carried: 'dist/loom-skills', folder: 'dist/loom-skills', out: 'dist', relation: 'is' },
-  { carried: 'out/loom-skills', folder: 'out/loom-skills/inner', out: 'out', relation: 'holds' },
+  {
+    build: 'distributed',
+    carried: 'skills/loom-skills',
+    folder: 'skills',
+    out: 'skills',
+    relation: 'is inside',
+  },
+  {
+    build: 'development',
+    carried: 'skills/loom-skills',
+    folder: 'skills',
+    out: 'skills',
+    relation: 'is inside',
+  },
+  {
+    build: 'distributed',
+    carried: 'dist/loom-skills',
+    folder: 'dist/loom-skills',
+    out: 'dist',
+    relation: 'is',
+  },
+  {
+    build: 'development',
+    carried: 'dist/loom-skills',
+    folder: 'dist/loom-skills',
+    out: 'dist',
+    relation: 'is',
+  },
+  {
+    build: 'distributed',
+    carried: 'out/loom-skills',
+    folder: 'out/loom-skills/inner',
+    out: 'out',
+    relation: 'holds',
+  },
 ])(
-  '--out $out, whose loom-skills/ $relation the skills folder $folder, fails before it builds',
-  async ({ carried, folder, out, relation }) => {
+  'a $build bundle with --out $out, whose loom-skills/ $relation the skills folder $folder, fails before it builds',
+  async ({ build, carried, folder, out, relation }) => {
     const root = notesPackage({}, `new URL('../${folder}/', import.meta.url)`);
     if (folder !== 'skills') {
       put(root, `${folder}/.keep`, '');
@@ -357,7 +425,7 @@ test.each([
       renameSync(join(root, 'skills'), join(root, folder));
     }
     const before = snapshot(join(root, folder));
-    const result = await loom(root, ['build', '--target', 'node', '--out', out]);
+    const result = await loom(root, ['build', '--target', 'node', '--build', build, '--out', out]);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       `${carried}, where the bundle carries the skills, ${relation} the skills folder ${folder}, and loom build never writes into the source tree, so name another directory with --out.`,

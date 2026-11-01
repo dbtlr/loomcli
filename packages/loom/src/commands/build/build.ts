@@ -130,7 +130,11 @@ function declaringModule(
   return existsSync(paths.application) ? paths.application : undefined;
 }
 
-/** A path's real path, through the nearest ancestor that exists, so a link on the way is seen. */
+/**
+ * A path's real path, through the nearest ancestor that exists, so a link on the way is seen. The
+ * native call also answers each name in the case the file system holds it, so on a file system
+ * that ignores case, such as macOS's, two spellings of one folder compare equal.
+ */
 function realThrough(path: string): string {
   const missing: string[] = [];
   let current = path;
@@ -138,7 +142,7 @@ function realThrough(path: string): string {
     missing.unshift(basename(current));
     current = dirname(current);
   }
-  return join(realpathSync(current), ...missing);
+  return join(realpathSync.native(current), ...missing);
 }
 
 /** How one real path stands to another: the same, inside it, holding it, or apart. */
@@ -153,16 +157,13 @@ function relationOf(path: string, other: string): 'is' | 'is inside' | 'holds' |
 }
 
 /**
- * Fails a distributed bundle whose `loom-skills/` would be the skills folder, sit inside it, or
- * hold it, before it builds, because the build replaces that folder whole and never writes into
- * the source tree. Real paths are compared, so a link on either side is seen.
+ * Fails a bundle whose `loom-skills/` would be the skills folder, sit inside it, or hold it, before
+ * it builds, because every bundle build removes or replaces that folder whole, a development one
+ * included, and the build never writes into the source tree. Real paths are compared, so a link on
+ * either side is seen.
  */
 function separateCarriedFolder(cwd: string, plan: BuildPlan): void {
-  if (
-    plan.skills.kind !== 'read' ||
-    plan.facts.build !== 'distributed' ||
-    plan.target.kind !== 'bundle'
-  ) {
+  if (plan.skills.kind !== 'read' || plan.target.kind !== 'bundle') {
     return;
   }
   const carried = join(plan.out, carriedFolder);
