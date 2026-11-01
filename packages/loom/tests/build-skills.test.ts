@@ -8,18 +8,24 @@
  * - Carrying. A distributed `node` bundle, `bun` bundle, and compiled binary of a fixture whose
  *   skills folder holds an executable script and a linked file each install the skill, with the
  *   pinned modes and the linked file's bytes, after the source folder is moved away. A bundle's copy
- *   sits in `dist/loom-skills/`, and a rebuild replaces it whole, so a skill the source dropped
- *   leaves it, while a file the build does not write stays. A development build names the source
- *   folder, so an edit after the build installs as it now stands, and it writes no copy. A relative
- *   `folder` resolves against the application module's directory.
- * - Judging. A module that throws while it loads, a missing folder, a skill with no SKILL.md, two
- *   folders, and a registry of an unknown format each fail the build before it bundles, writing no
- *   output, for a bundle and for a compile target.
- * - The output. `--out` that would put `loom-skills/` inside the skills folder, or make it the
- *   folder, fails before it builds and leaves the folder byte for byte.
- * - Reading nothing. A bundle whose application module is its entry, which the build does not
- *   load, warns that it carried no folder when it holds the skills plugin, and succeeds. A package
- *   whose application installs no skills plugin builds with no warning.
+ *   sits in `dist/loom-skills/` beside its index, and a rebuild replaces it whole, so a skill the
+ *   source dropped leaves it, while a file the build does not write stays; a folder that holds no
+ *   skill beside a listed one carries an index of none. A build whose declaration names no folder,
+ *   and a development build, after a distributed one remove `dist/loom-skills/`. A development
+ *   build names the source folder, so an edit after the build installs as it now stands. A folder
+ *   of thousands of files builds and installs from a bundle. A relative `folder` resolves against
+ *   the application module's directory.
+ * - Judging. A module that throws while it loads, a missing folder, two folders, and a registry of
+ *   an unknown format each fail a bundle's build before it bundles, writing no output, and a skill
+ *   with no SKILL.md fails it for a bundle and for a compile target alike.
+ * - The output. `--out` that would put `loom-skills/` inside the skills folder, make it the folder,
+ *   or make it hold the folder, fails a distributed bundle before it builds, and a development
+ *   one in the first two cases, and leaves the folder byte for byte.
+ * - Reading nothing. A bundle whose package has no application module, or whose application module
+ *   is its entry, which the build does not load, and a bundle whose module loads without running
+ *   `skills()`, each warn that it carried no folder when it holds the skills plugin, and succeed. A
+ *   `skills()` call that names no folder, and a package whose application installs no skills
+ *   plugin, build with no warning.
  * - The configuration file. A `paths.skills` key is not read.
  */
 
