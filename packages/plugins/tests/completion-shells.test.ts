@@ -28,6 +28,14 @@ import { zshInstalledScript } from '../src/completion/zsh.js';
 
 const fixture = new URL('fixtures/completion.mjs', import.meta.url);
 
+/** The program words each shell types before `ca`, a quoted one read without its quotes. */
+const quotedPrograms: Record<Shell, string[]> = {
+  bash: ['kit'],
+  fish: ['kit', "'kit'"],
+  pwsh: ['kit', "& 'kit'"],
+  zsh: ['kit', "'kit'"],
+};
+
 /** The Commands `kit <Tab>` lists: the visible root children. */
 const commands = ['cache', 'completion', 'keys', 'paths'];
 
@@ -207,6 +215,46 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
         line: 'kit keys "p',
         listed: [],
       });
+    });
+  });
+
+  // The directory holds two documents that start with `d` and one that does not.
+  describe.skipIf(!installed)('the file fallback', () => {
+    const { complete } = useSession({
+      files: ['alpha.json', 'doc-a.json', 'doc-b.json'],
+      main: fixture,
+      name: 'kit',
+      shell,
+      sources,
+    });
+
+    // PowerShell's Tab inserts no common prefix of several matches, and its own file completion
+    // Offers each name with a leading ./ on Linux and macOS.
+    it.runIf(shell !== 'pwsh')('kit --file d<Tab> falls back to file names', async () => {
+      const { line } = await complete('kit --file d');
+      expect(line).toBe('kit --file doc-');
+    });
+
+    it.runIf(shell === 'pwsh')(
+      'kit --file d<Tab> falls back to the file names PowerShell lists',
+      async () => {
+        const { listed } = await complete('kit --file d');
+        expect(listed.map((word) => word.replace(/^\.\//u, '')).toSorted()).toEqual([
+          'doc-a.json',
+          'doc-b.json',
+        ]);
+      },
+    );
+  });
+
+  // Bash finds no completion for a quoted program word, so only Zsh, Fish, and PowerShell type one.
+  // PowerShell types it after its call operator, because a quoted word alone is a string.
+  describe.skipIf(!installed).each(quotedPrograms[shell])('the program word %s', (program) => {
+    const { complete } = useSession({ main: fixture, name: 'kit', shell, sources });
+
+    it(`${program} ca<Tab> inserts cache, the program word read without its quotes`, async () => {
+      const { line } = await complete(`${program} ca`);
+      expect(line.trimEnd()).toBe(`${program} cache`);
     });
   });
 

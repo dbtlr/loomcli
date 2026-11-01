@@ -27,6 +27,7 @@
  * - a counted option and an implied-value option suggested by their long spelling alone, the
  *   implied-value option's typo bare and with an attached value;
  * - a plugin's option suggested;
+ * - under `invoke()`, an unknown option suggested by its declared name, not by its spelling;
  * - a hidden child, a deprecated child, a hidden option, a deprecated option, and an alias never
  *   suggested, each with the typo one edit from the excluded name;
  * - the plugin's hook adding no hint line, so a second plugin's hint is the only line under the
@@ -52,7 +53,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 
 import { runShared } from './fixtures/suggestions-shared.ts';
-import { runScenario } from './fixtures/suggestions.ts';
+import { invokeScenario, runScenario } from './fixtures/suggestions.ts';
 import type { Scenario } from './fixtures/suggestions.ts';
 
 /** One run of a fixture scenario. */
@@ -254,6 +255,19 @@ describe('the matcher', () => {
         '',
       ].join('\n'),
     );
+  });
+});
+
+describe('an invocation by name', () => {
+  it('an unknown option suggests the declared name, where argv suggests the spelling', async () => {
+    await expect(suggested(['opts', '--kepe'])).resolves.toBe(
+      option('--kepe', 'Did you mean "--keep"?'),
+    );
+    const invoked = await invokeScenario('plain', ['opts'], { options: { kepe: true } });
+    expect(invoked).toMatchObject({
+      messages: option('kepe', 'Did you mean "keep"?'),
+      status: 'failed',
+    });
   });
 });
 

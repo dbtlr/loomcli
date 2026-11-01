@@ -19,7 +19,8 @@
  *   options in scope at `keys`, its own and every global option, and `kit completion <Tab>` offers
  *   `bash`, `fish`, `install`, `powershell`, `uninstall`, `update`, and `zsh` and never
  *   `__complete`. `kit stats depth m<Tab>` and `kit stats depth max --fi<Tab>` complete a path
- *   three levels below the root.
+ *   three levels below the root. In Zsh, Fish, and PowerShell, a quoted program word, `'kit' ca<Tab>`
+ *   or `& 'kit' ca<Tab>`, is read without its quotes.
  * - Options. `kit paths -<Tab>` offers long and short spellings, `--<Tab>` long spellings alone,
  *   and an option already given is not offered again, while a multiple `--field` is.
  * - Counted options. The fixture's own unmarked counted `--verbose` is offered again after it was
