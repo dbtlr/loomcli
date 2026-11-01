@@ -294,7 +294,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/skills/settings
 
-**Invalid skills setting.** The skills plugin installs each skill as one folder named by the skill's name in an agent's skills folder, so the settings name a folder of skills, a file URL or a nonempty path, or list at least one skill, each name follows the Agent Skills grammar, lowercase letters and digits joined by single hyphens, 64 characters at most, and no two skills hold one name.
+**Invalid skills setting.** The skills plugin installs each skill as one folder, named by the skill's name, where an agent reads skills, so the settings name a folder of skills, a file URL or a nonempty path, or list at least one skill, each name follows the Agent Skills grammar, lowercase letters and digits joined by single hyphens, 64 characters at most, and no two skills hold one name.
 
 ### @loomcli/plugins/version/postfix
 
