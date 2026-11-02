@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0125 - Dotenv layers mode and local files in Bun's order, expands references, and ends an unquoted value at any hash
 description: 'The dotenv plugin reads .env, .env.<mode>, .env.local, and .env.<mode>.local in host.cwd, the more specific file winning, in the order Bun and Next.js load them. The mode is NODE_ENV''s value; with NODE_ENV unset or empty no mode file is read, and under the test mode .env.local is skipped. Unquoted and double-quoted values expand $NAME, ${NAME}, and ${NAME:-default} against the run''s environment and the values read before them, with a \$ escape and never $(command); single quotes stay literal. An unquoted value ends at any #. Every warning names the file it read. It supersedes ADR-0102''s one-file clause and narrows its file format.'
-status: proposed
+status: accepted
 created: 2026-10-30
-modified: 2026-10-30
+modified: 2026-11-02
 ---
 
 # ADR-0125 - Dotenv layers mode and local files in Bun's order, expands references, and ends an unquoted value at any hash
@@ -44,7 +44,7 @@ An application that installs `dotenv()` now reads its operators' `.env.local` an
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.17.0.
 
 ## Changelog
 

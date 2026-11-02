@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0120 - A JSON configuration file holds comments and trailing commas, and a file that does not parse names its line and column
 description: Every file the configuration plugin reads as JSON accepts // and /* */ comments and a comma after the last item of an object or an array, whatever its extension, and jsonc joins the extensions a brace list may name, the candidates * tries after json, and the XDG user file. A file that does not parse names the line and column where it breaks, in the broken-file warning and in the --config failure, counted the same way for JSON, TOML, and YAML. The sentence stays fixed, with no parser message. This narrows ADR-0054's JSON format and its fixed sentences, and ADR-0119's broken-file sentences and user file.
-status: proposed
+status: accepted
 created: 2026-10-29
-modified: 2026-10-29
+modified: 2026-11-02
 ---
 
 # ADR-0120 - A JSON configuration file holds comments and trailing commas, and a file that does not parse names its line and column
@@ -38,7 +38,7 @@ A file that failed to parse because of a comment or a trailing comma now reads, 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.17.0.
 
 ## Changelog
 

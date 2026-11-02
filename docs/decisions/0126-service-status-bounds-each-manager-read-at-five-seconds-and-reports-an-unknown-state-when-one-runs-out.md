@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0126 - Service status bounds each manager read at five seconds and reports an unknown state when one runs out
 description: The service plugin's status bounds each call it makes to read the unit, the state read and the session read, at a fixed 5 seconds that no setting changes. A read that runs out is ended with SIGKILL, so a manager that ignores SIGTERM still ends. A state read that runs out reads the state unknown with a note naming the call and the limit, and status still exits 0; a session read that runs out adds no note. The plugin tells the limit from its own timer, never from the exit code, and a cancelled run still resolves its cancellation code. install, uninstall, start, stop, restart, and launchd's unload wait keep ADR-0074's rule of no time limit. This narrows ADR-0074's 'No time limit' bullet to the calls that change a unit.
-status: proposed
+status: accepted
 created: 2026-10-30
-modified: 2026-10-30
+modified: 2026-11-02
 ---
 
 # ADR-0126 - Service status bounds each manager read at five seconds and reports an unknown state when one runs out
@@ -46,7 +46,7 @@ The owner ruled on scope: only the reads `status` makes are bounded, at Heimdall
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.17.0.
 
 ## Changelog
 

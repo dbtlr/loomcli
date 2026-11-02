@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0123 - In an exclusive option group, the highest input tier that supplies a member wins
 description: Within an exclusive option group, the members the highest input tier supplied stay supplied, and each member a lower tier filled is withdrawn right after the input-source stage, before validation. A withdrawn member reads as unfilled by every tier and is absent from the supplied record. A conflict is reported only between members one tier supplied, and a Boolean member supplied at its absent value neither wins the group nor conflicts. Named values of an invocation by name are the argv tier. oneRequired counts a withdrawn member, and a requiredTogether group that holds one is not checked. This narrows ADR-0085's clause that no cross-option source precedence suppresses an exclusive conflict, and its rule that every accepted spelling counts as supplied, for an exclusive group.
-status: proposed
+status: accepted
 created: 2026-10-30
-modified: 2026-10-30
+modified: 2026-11-02
 ---
 
 # ADR-0123 - In an exclusive option group, the highest input tier that supplies a member wins
@@ -45,7 +45,7 @@ Validation gains one step between the input-source stage and the first validator
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release whose implementation withdraws a lower tier's member of an exclusive group before validation.
+Accepted in 0.17.0.
 
 ## Changelog
 

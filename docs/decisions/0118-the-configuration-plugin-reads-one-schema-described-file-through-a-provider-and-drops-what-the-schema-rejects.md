@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0118 - The configuration plugin reads one schema-described file through a provider and drops what the schema rejects
 description: configuration({ schema, file, short, env, directory, notice }) replaces config() and returns { plugin, values }. The schema is one required Standard Schema for the whole file whose input accepts an empty file. The plugin drops the value at each issue's path and validates again until the file passes, names each drop at -v, and ignores unknown keys. values is a provider read as provided.config. An option links to a key with configInput beside env, takes the file's value once the file passes, and a link the schema cannot hold is a build fault where the schema publishes its shape. A linked option resolves a relative path against the file's directory, and provided.config keeps paths as written. A lint rule advises against a strict schema.
-status: proposed
+status: accepted
 created: 2026-10-28
-modified: 2026-10-29
+modified: 2026-11-02
 ---
 
 # ADR-0118 - The configuration plugin reads one schema-described file through a provider and drops what the schema rejects
@@ -57,7 +57,7 @@ The owner's rulings on LM-269 set the shape:
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships `configuration()` with the schema, the drop rule, `provided.config`, the link check, and the `strict-configuration-schema` lint rule, with textstat migrated.
+Accepted in 0.17.0.
 
 ## Changelog
 

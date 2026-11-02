@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0133 - The skills plugin reads a skills folder that loom build carries into the artifact
 description: skills() takes a folder setting, a file URL or a path, whose subfolders are the application's skills, one per subfolder named for it, beside or in place of the skills list. An unbuilt run reads the folder a URL or an absolute path names when a skills Command loads the files; a relative path resolves against the application module, which only loom build knows. loom build loads the application module in a process of its own, as loom init does, reads the folder skills() named, judges it, and carries it into the artifact through a second define, __LOOM_SKILLS__: a development build names the source folder, a distributed bundle copies the folder beside its chunks, and a distributed binary embeds it. One reader serves every form. paths.skills leaves ADR-0130 before it ships. It supersedes ADR-0076's rule that loom build gains no embedding seam and its rejection of a skills folder that loom build embeds.
-status: proposed
+status: accepted
 created: 2026-11-01
 modified: 2026-11-02
 ---
@@ -51,7 +51,7 @@ Each way an application runs knows a different place for the folder. A source ru
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships the skills folder.
+Accepted in 0.17.0.
 
 ## Changelog
 

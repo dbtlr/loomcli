@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0116 - A provider's opener receives out, style, and the graph
 description: The provider context gains out, the channel object a middleware receives, the contextual style a configuration source receives, and the frozen graph the run built, so a provider can warn the operator, write a line at -v, and read the application name. A provider still asks nothing and reads no request. This replaces ADR-0108's clause that a provider receives no out.
-status: proposed
+status: accepted
 created: 2026-10-28
-modified: 2026-10-29
+modified: 2026-11-02
 ---
 
 # ADR-0116 - A provider's opener receives out, style, and the graph
@@ -36,7 +36,7 @@ Adding a member to a context core builds is an addition, not a breaking change, 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release whose implementation gives a provider's opener `out`, `style`, `graph`, and `invokedBy`, and `@loomcli/testing`'s `providerContext` the same four members.
+Accepted in 0.17.0.
 
 ## Changelog
 

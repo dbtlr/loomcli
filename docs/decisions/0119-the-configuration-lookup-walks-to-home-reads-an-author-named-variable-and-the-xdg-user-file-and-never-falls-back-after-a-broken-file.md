@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0119 - The configuration lookup walks to home, reads an author-named variable and the XDG user file, and never falls back after a broken file
 description: Without --config, the configuration plugin reads the file an author-named variable names, or else the first file found by a walk from the start directory up to the home directory, or to the root outside home, then the home file, then the XDG user file. A discovered file that is broken warns once and the run has no configuration; no later location answers. A missing file is silent, and an author setting turns on a notice when nothing is found. An opt-in global option moves where the walk starts without changing host.cwd. This supersedes ADR-0054's lookup in the working directory and then the home directory, its fallback past a broken file, and its rejection of a per-user XDG file.
-status: proposed
+status: accepted
 created: 2026-10-28
-modified: 2026-10-31
+modified: 2026-11-02
 ---
 
 # ADR-0119 - The configuration lookup walks to home, reads an author-named variable and the XDG user file, and never falls back after a broken file
@@ -55,7 +55,7 @@ The walk reads more directories, each through one `stat` per candidate, so a run
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships the lookup: the variable, the walk, the home file, the XDG user file, no fallback after a broken file, the notice, and the directory option.
+Accepted in 0.17.0.
 
 ## Changelog
 

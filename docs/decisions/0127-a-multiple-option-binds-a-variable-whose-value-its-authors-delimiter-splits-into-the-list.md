@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0127 - A multiple option binds a variable whose value its author's delimiter splits into the list
 description: A multiple string or content option may bind env when its declaration names envDelimiter, a non-empty string the types require beside env on a multiple option and reject everywhere else. The variable that supplies the option splits at each occurrence of the delimiter into the list, untrimmed, with empty items kept, and each item passes the option's validator. The list is the environment tier's fill, so it replaces the configuration source and the default and never joins them. The graph publishes the delimiter as envDelimiter, which the manifest copies and the man page prints beside the variables. This narrows ADR-0032's binding clause and ADR-0081's prohibition on a multiple content option binding, and withdraws ADR-0032's rejection of a list grammar for multiple options in the environment.
-status: proposed
+status: accepted
 created: 2026-10-30
-modified: 2026-10-30
+modified: 2026-11-02
 ---
 
 # ADR-0127 - A multiple option binds a variable whose value its author's delimiter splits into the list
@@ -39,7 +39,7 @@ The types widen `Multiplicity` and the content option's multiple branch: a multi
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.17.0.
 
 ## Changelog
 

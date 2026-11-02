@@ -6,6 +6,351 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.17.0 - 2026-11-02
+
+This release makes configuration first-rate and gives the `loom` toolchain a configuration file of its own. `configuration()` replaces `config()`: one Standard Schema describes the whole file, a Command that opts in reads the validated file as `provided.config`, and a value the schema or an option's validator rejects is dropped and named at `-v`, so an operator's file never breaks a run. The lookup walks up from the working directory to home, reads an author-named variable and the XDG user file, stops at a root marker the author names, and never falls back after a broken file. A JSON file may hold comments, a file that does not parse names its line and column, `--no-config` runs without a file, and the manifest publishes the file's JSON Schema.
+
+Input sources gain words and bindings. A Boolean option's variable reads `yes`, `no`, `on`, and `off`; a multiple option binds a variable its author's delimiter splits; a string option may let a defined empty variable supply the empty string; in an exclusive group, the highest input tier that supplies a member wins; and both help pages print each option's variables and configuration key. The dotenv plugin reads `.env.<mode>`, `.env.local`, and `.env.<mode>.local` in Bun's order and expands references.
+
+A package keeps `loom.config.json` beside its `package.json` to depart from a convention. Its `paths` move the source, entry, build output, changelog, and installer, its `postInstall` replaces the Application's, and its `sharedVersion` lets several binaries ship from one changelog. `loom changelog write --target` cuts a chosen or prerelease version, and `loom changelog notes` prints a release's notes. `skills({ folder })` reads a skills folder that `loom build` carries into every artifact, so the build now loads the application module. `loom` itself starts in about half the time.
+
+Before upgrading, follow the seven breaking migrations: `configuration()` in place of `config()`, `postInstall` in `loom.config.json`, an application module that loads cleanly at build, Bun 1.4.4, an application's own `@types/node`, and the dotenv plugin's reading of `#` and `$`. Keep all installed `@loomcli` packages at the same exact version, `0.17.0`.
+
+### Breaking Changes
+
+- Replace `config()` from `@loomcli/plugins/config` with `configuration()`. It takes one settings object that holds the required `schema`, a Standard Schema for the whole configuration file, beside the `file`, `short`, `env`, `directory`, and `notice` settings, and returns `{ plugin, values }`. Install `plugin`; a Command that opts in with `uses: [values]` reads the validated file as `provided.config`, typed as the schema's output. The `ConfigSettings` type is now `ConfigurationSettings`.
+- Require the schema to accept an empty file. Its types reject a schema that requires a key outside an array item or a record value, and a schema that still rejects an empty file throws a `DeclarationError` under `@loomcli/plugins/config/empty-file`.
+- Change a configuration value the schema rejects to be dropped instead of failing the run. The plugin removes the value at each issue's path and validates again, names each removal at `-v`, and ignores keys the schema does not describe. Only a `--config` file that is missing, cannot be read or parsed, or does not hold an object or mapping fails a run.
+- Change a value a linked option cannot take, such as a string for a Boolean option, to fall through to the option's default with one `-v` line instead of failing the run with code 2.
+- Change a linked option to take the value the file holds once the file passes the schema, and a relative path it takes to resolve against the directory of the file. `provided.config` keeps each path as the file wrote it.
+- Add the build faults `@loomcli/plugins/config/link-path` and `@loomcli/plugins/config/link-type` for an option linked to a path that a schema publishing its shape through Standard JSON Schema does not hold, or that holds a value the option cannot take.
+
+### Migration
+
+**Affected surface.** Applications that call `config()` or import `ConfigSettings` from `@loomcli/plugins/config`, and applications that rely on a wrong-shaped configuration value failing the run with code 2.
+
+**Why.** One schema describes the whole file, so application code reads structured configuration as `provided.config`, and a value the schema rejects is dropped so an operator's configuration never breaks a run.
+
+**Before and after.**
+
+Before:
+
+```ts
+import { Application } from '@loomcli/core';
+import { config } from '@loomcli/plugins/config';
+import { configInput } from '@loomcli/plugins/config/extension';
+
+const app = new Application('textstat', {
+  plugins: [config({ file: '.textstat.{toml,json}', short: 'c' })],
+}).option('min-bytes', { extensions: [configInput({ path: 'minBytes' })], type: 'string' });
+```
+
+After:
+
+```ts
+import { Application } from '@loomcli/core';
+import { configuration } from '@loomcli/plugins/config';
+import { configInput } from '@loomcli/plugins/config/extension';
+import { z } from 'zod';
+
+const textstatFile = z.object({
+  minBytes: z.union([z.number(), z.string()]).optional(),
+  total: z.boolean().optional(),
+});
+
+const { plugin: configPlugin, values: config } = configuration({
+  file: '.textstat.{toml,json}',
+  schema: textstatFile,
+  short: 'c',
+});
+
+const app = new Application('textstat', { plugins: [configPlugin] }).option('min-bytes', {
+  extensions: [configInput({ path: 'minBytes' })],
+  type: 'string',
+});
+```
+
+A Command that reads the whole file opts in to the `values` the same call returns:
+
+```ts
+const show = new Command('show', { description: 'Show the threshold.', uses: [config] }).action(
+  ({ out, provided }) => out.print(String(provided.config.minBytes)),
+);
+```
+
+**Steps.**
+
+1. Write one Standard Schema (zod, valibot, or ArkType) for the configuration file. Make every key optional outside an array item or a record value, or use a loose type such as `z.record(z.string(), z.unknown())` to keep the file loose. Keep the keys your `configInput` links read.
+2. Replace `config(settings)` with `configuration({ ...settings, schema })`, install the returned `plugin`, and rename `ConfigSettings` to `ConfigurationSettings`.
+3. Keep every `configInput({ path })` link. Fix a path that `@loomcli/plugins/config/link-path` or `@loomcli/plugins/config/link-type` reports at build.
+4. Add the returned `values` to the `uses` list of each Command that reads the file's own values, and read them as `provided.config`.
+5. Remove code or tests that expect a wrong configuration value to fail with code 2. Such a value now falls back and is named at `-v`.
+
+**Validation.** Run `pnpm run build` and your type check, which fail where a schema requires a key outside an array item. Run the application with a configuration file that holds a wrong value and `-v` to see the `Ignored` line, then run your test suite.
+
+- Fix `@loomcli/core` installing its own copy of `@types/node` beside a consumer's. The package listed `@types/node` as a dependency, so a package manager could hoist that exact version over the Node types an application installed and break its type-checking. It is now a development dependency, and the published declarations that import `node:` modules type-check against the consumer's own Node types.
+
+### Migration
+
+**Affected surface.** An application that type-checks `@loomcli/core`'s declarations with TypeScript and has no Node types installed of its own. Core's declarations import `node:` modules, and until now core's dependency supplied the types for them.
+
+**Why.** Core no longer installs `@types/node`, so the Node types an application type-checks against are the ones it installs, and no copy of core's version can replace them.
+
+**Before and after.**
+
+Before, the application's `package.json` needed no Node types:
+
+```json
+{ "devDependencies": { "typescript": "^5.9.0" } }
+```
+
+After, it installs its own:
+
+```json
+{ "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.9.0" } }
+```
+
+**Steps.**
+
+1. Check whether the application already installs Node types: `npm ls @types/node`, `pnpm why @types/node`, or `bun pm ls | grep @types/node`.
+2. If it does not, add `@types/node` as a development dependency, at the major version of the Node.js line the application runs on.
+
+**Validation.** Run the application's type-check, such as `tsc --noEmit`, and confirm it reports no error from a `node:` import in `@loomcli/core`'s declarations.
+
+- Change the dotenv plugin to end an unquoted value at its first `#`, wherever it stands, as Node's `--env-file`, the `dotenv` package, and Bun read one. `URL=a#b` now reads `a`, and `PASSWORD=ab#cd` reads `ab`. Before, a `#` started a comment only at the start of a value or after whitespace.
+
+### Migration
+
+**Affected surface.** Applications that install `dotenv()` from `@loomcli/plugins/dotenv`, and any `.env` file whose unquoted value holds a `#` that follows another character, such as a URL fragment or a password.
+
+**Why.** Node's `--env-file`, the `dotenv` package, and Bun end an unquoted value at any `#`, so one file read two ways. The plugin now reads the value they read.
+
+**Before and after.**
+
+Before, in `.env`, the value read `https://example.test/docs#intro`:
+
+```sh
+DOCS_URL=https://example.test/docs#intro
+```
+
+After, the same line reads `https://example.test/docs`. Quote the value to keep the `#`:
+
+```sh
+DOCS_URL="https://example.test/docs#intro"
+```
+
+**Steps.**
+
+1. Find the unquoted values that hold a `#` after other text in every dotenv file the application reads: `.env`, `.env.local`, and the mode files.
+2. Wrap each such value in double quotes, or in single quotes when it also holds a `$`.
+3. Leave a value that holds no `#`, and a value that is already quoted, as it is.
+
+**Validation.** Run the application and check that each variable holds its whole value, for example by printing the option the variable feeds. A value that stops at its first `#` was not quoted.
+
+- Add variable references to a dotenv value. An unquoted or double-quoted value expands `$NAME`, `${NAME}`, and `${NAME:-default}` against the process environment and the values read before it, and `\$` reads as a literal dollar. Single quotes stay literal, and `$(command)` is never run. A value that held a `$` before now expands it, so `PASSWORD=pa$$word` reads `pa$`, and `\$` reads `$` where it read `\$`.
+
+### Migration
+
+**Affected surface.** Applications that install `dotenv()` from `@loomcli/plugins/dotenv`, and any unquoted or double-quoted value in a dotenv file the application reads that holds a `$`, such as a password or a URL.
+
+**Why.** Bun's own loader expands references in every value, so one file read two ways. The plugin now expands them as Bun does.
+
+**Before and after.**
+
+Before, in `.env`, the value read `pa$$word`:
+
+```sh
+PASSWORD=pa$$word
+```
+
+After, the same line reads `pa$`, because `$$word` holds no name after its first `$` and `$word` is a reference to an unset name. Quote the value in single quotes to keep every `$`:
+
+```sh
+PASSWORD='pa$$word'
+```
+
+**Steps.**
+
+1. Find the unquoted and double-quoted values that hold a `$` in every dotenv file the application reads: `.env`, `.env.local`, and the mode files.
+2. Wrap each value that must keep its `$` literal in single quotes, or write each such `$` as `\$`.
+3. Wrap a value that holds `\$` in single quotes, so its backslash stays.
+4. Leave a value that holds no `$`, and a single-quoted value, as it is.
+
+**Validation.** Run the application and check that each variable holds its whole value, for example by printing the option the variable feeds. A value that lost the text after a `$` was not quoted.
+
+- Require Bun 1.4.4 or later. Every published package's `engines.bun` is now `>=1.4.4`, and CI tests Bun 1.4.4.
+
+### Migration
+
+**Affected surface.** Applications that run a Loom package, or a bin built with `loom build`, on Bun 1.4.0 to 1.4.3.
+
+**Why.** Bun 1.4.0 renders an error's stack lazily, and when a garbage collection frees the code that created the error before anything reads `stack`, the stack loses its name and message and reads only `Error`. A defect's logged stack and a failure's Developer Diagnostic then lose the sentence that names the failure. Bun 1.4.4 fixes it.
+
+**Before and after.**
+
+Before, in the application's `package.json`:
+
+```json
+{ "engines": { "bun": ">=1.4.0" } }
+```
+
+After:
+
+```json
+{ "engines": { "bun": ">=1.4.4" } }
+```
+
+**Steps.**
+
+1. Upgrade development, CI, and deployment Bun runtimes to 1.4.4 or later, for example with `bun upgrade` or the `bun-version` input of `oven-sh/setup-bun`.
+2. Update the application's `engines.bun` requirement to `>=1.4.4`.
+
+**Validation.** Run `bun --version` in each environment to check its runtime. Run the application's test command under Bun before deployment.
+
+- Move the post-install declaration from the Application into `loom.config.json`. `new Application(name, options)` no longer takes `postInstall`, `inspect()` no longer reports it, and `@loomcli/core` no longer exports the `PostInstall` type. The package's `loom.config.json` now holds `postInstall`, with the same `message` and `command`, and `loom init` renders it into `install.sh` without loading the application module. See [the post-install command](docs/toolchain/install.md#the-post-install-command).
+  - A `command` that is not a non-empty array of strings is dropped, so the script has no post-install command, and `loom -v` names the dropped value. The message stays.
+  - The installer script behaves as before: it runs the command once the install is recorded, `--skip-post-install` skips it, and the message prints last.
+- Remove `@loomcli/core/post-install-unrouted`. Nothing checks that the post-install command's words route to a Command with an action: not a development build, not `check()`, not `assertAssembles`, and not `loom init`. Words that route nowhere fail on the operator's install, where the script warns that the application is installed and prints the command to run again.
+- Change `loom init`'s `install` piece, so an application module that cannot be loaded, that exports no Application, or that throws a declaration fault no longer stops `install.sh` from being written, and a declaration fault no longer makes `init` exit 1.
+
+### Migration
+
+**Affected surface.** Applications that pass `postInstall` to `new Application(name, options)`, and code that reads `postInstall` from `inspect()` or imports the `PostInstall` type from `@loomcli/core`.
+
+**Why.** Only `loom init` reads the declaration, to render it into `install.sh`, so it belongs in the toolchain's configuration file beside the installer's location rather than in the Application.
+
+**Before and after.**
+
+Before, in `src/application.ts`:
+
+```ts
+export const notes = new Application('notes', {
+  description: 'Take notes.',
+  postInstall: { command: ['setup'], message: 'Run notes init in a project.' },
+});
+```
+
+After, in `src/application.ts`:
+
+```ts
+export const notes = new Application('notes', { description: 'Take notes.' });
+```
+
+And in `loom.config.json`, beside `package.json`:
+
+```json
+{ "postInstall": { "command": ["setup"], "message": "Run notes init in a project." } }
+```
+
+**Steps.**
+
+1. Remove `postInstall` from the options of `new Application(name, options)`.
+2. Add the same value as the top-level `postInstall` key of the package's `loom.config.json`, creating the file beside `package.json` when the package has none.
+3. Remove any read of `inspect().postInstall` and any import of the `PostInstall` type from `@loomcli/core`.
+4. Run `loom init --only install` to render `install.sh` from the file.
+
+**Validation.** Run `tsc --noEmit` to confirm the application compiles without `postInstall`. Run `loom init --only install` and confirm `git diff install.sh` shows no change against the script the previous release rendered, or `loom -v init --only install` to see whether the file's `postInstall` was dropped.
+
+- Change `loom build` to import the application module before it bundles, for every target, in a Bun process of its own, so it can read the skills folder `skills()` names. A package that resolves `@loomcli/plugins` and has an application module apart from its entry now fails the build with `@loomcli/loom/application-load-failed` when that module throws while it loads, where an earlier build bundled it without running it. See [The skills folder](docs/toolchain/build.md#the-skills-folder).
+
+### Migration
+
+**Affected surface.** Packages built with `loom build` that depend on `@loomcli/plugins` and whose application module, `src/application.ts` by convention or the module `paths.application` or `--application` names, runs code at load that throws outside a real run, such as reading a file beside the installed binary or requiring an environment variable.
+
+**Why.** The build learns the skills folder from the declaration, so it imports the module that declares the Application, as `loom init` already does.
+
+**Before and after.**
+
+Before, in `src/application.ts`:
+
+```ts
+const settings = JSON.parse(readFileSync(new URL('./settings.json', import.meta.url), 'utf8'));
+export const notes = new Application('notes', { description: settings.description });
+```
+
+After, the work moves into an action or a function the action calls, so the module only declares:
+
+```ts
+export const notes = new Application('notes', { description: 'Take notes.' });
+```
+
+**Steps.**
+
+1. Run `loom build` for each target the package builds.
+2. If it fails with `@loomcli/loom/application-load-failed`, move the work the message names out of the module's top level, into an action, which runs only when its Command runs.
+
+**Validation.** Run `loom build --target node` and `pnpm test` in the package; both pass with the module loading cleanly.
+
+### Features
+
+- Add the `@loomcli/strict-configuration-schema` rule to `@loomcli/eslint-plugin`, on at `error` in `configs.recommended` and `configs.oxlint`, under [ADR-0118](docs/decisions/0118-the-configuration-plugin-reads-one-schema-described-file-through-a-provider-and-drops-what-the-schema-rejects.md). It reports a zod strict object, `strictObject(...)` or `.strict()` on a zod schema, inside the `schema` an application gives the configuration plugin's `configuration()`, a section held in a `const` of the same module included, because zod reports an unknown key on the object that holds it and the plugin then drops that whole section. valibot's and ArkType's strict objects are not reported, because they report the unknown key alone. `loom init` writes the rule into a new scaffold's lint file. See the [plugin reference](docs/libs/eslint-plugin.md#strict-configuration-schema).
+
+- Add the `env`, `directory`, and `notice` settings to `configuration()`. `env` names a variable whose value is the one configuration file a run reads, with no search; `directory: { name, short, description }` declares a global string option that starts the lookup's walk in another directory without changing `host.cwd`; `notice: true` writes one `out.info` line when the lookup finds no file. A variable name that is not a letter or underscore followed by letters, digits, or underscores throws a `DeclarationError` under `@loomcli/plugins/config/variable-name`, and the type rejects a `directory.name` of `config`.
+- Change the configuration lookup to find the first file in this order: `--config`, the `env` variable, the start directory and each ancestor up to and including the home directory (or up to the filesystem root when the start is outside home), the home directory, then `config.<ext>` in `$XDG_CONFIG_HOME/<app>` or `~/.config/<app>`. An operator who ran an application from a subdirectory now reads the project file above it, and a per-user file under the XDG folder is now read.
+- Change a broken or unreadable discovered file to end the lookup. The plugin warns once that this run reads no configuration, and no later location answers in its place, where an earlier release read the home file after a broken file in the working directory.
+
+- Change a value the configuration source filled and the option's validator rejects to fall back instead of failing the run. The option reads as unfilled: its default applies, a `required` option reports its missing-value error, and `validateOmitted` receives `undefined`. A dropped fill activates no middleware, and one rejected item drops a multiple option's whole list. A content option's path from the configuration source that core cannot read falls back the same way. Core writes one `out.debug` line for each, `Ignored option "--limit" from limits.bytes in fixture.json: Supply a whole number.`, which shows at `-v`. A value from argv or the environment that its validator rejects still fails with code 2.
+- Add an optional `directory` to `SourceAnswer`, the absolute path of the directory of the file a value came from. The option's validator receives a context whose `host.cwd` is that directory, so `path()` resolves a relative value against the file, and a content option reads a relative path against it. A `directory` that is not an absolute path is a defect of the source.
+- Add `out`, `style`, and `graph` to `ProviderContext`, and to the context `@loomcli/testing`'s `providerContext` builds. An opener can warn the operator, write a line at `-v`, and read the application name.
+- Add `invokedBy` to `ProviderContext`, and to the context `providerContext` builds. It reads `'name'` in a run `invoke()` started and `'argv'` otherwise, so an opener spells an option in a problem by its declared name in an invocation by name.
+
+- Allow `//` and `/* */` comments and a trailing comma in every configuration file the configuration plugin reads as JSON, `.<app>.json` included, so a file can carry the reason for a value beside it. A strict JSON file reads as before.
+- Allow `jsonc` in a `configuration({ file })` brace list, such as `.collector.{toml,jsonc}`. A `*` pattern tries `jsonc` after `json`, and a `jsonc` candidate looks for `config.jsonc` in the XDG user folder.
+
+- Add `--no-config` to the configuration plugin: a run that passes it reads no configuration file, not the one the author's variable names, the walk's, the home file, or the XDG user file, so CI, tests, and agents get a run an operator's dotfile cannot change. A Command that opts in to `provided.config` reads the schema's output for an empty file. Passing it beside `--config` fails the run with code 2.
+
+- Add `configuration` to the graph `inspect()` returns: the JSON Schema of the configuration the installed configuration source reads, derived at graph build through Standard JSON Schema as an input's schema is, or `null` when no plugin claims the source slot. A plugin's `source` takes an optional `schema` for it. A schema with no converter, or whose converter fails, publishes `schema: null` in every build with no fault, so a part JSON Schema cannot express, such as zod's `z.bigint()`, never fails a run. See [Input sources](docs/core/input-sources.md).
+- Add `configuration` to the manifest's envelope, after `globals`, so an agent reads the configuration file's JSON Schema with the invocation's. The fixed `tokens` statement now scopes its schema clause to an input's schema.
+- Publish the configuration file's JSON Schema from `configuration()` with no other call: the manifest carries it with a `$schema` string property added, and the plugin removes a top-level `$schema` key from the file before it validates, so a file can point an editor at a hosted copy. See [Publishing the schema](docs/plugins/config.md#publishing-the-schema).
+
+- Allow `yes`, `no`, `y`, `n`, `on`, and `off` in a variable bound to a Boolean option, beside `true`, `false`, `1`, and `0`, in any case. An empty variable still counts as unset. Any other value is still a usage failure naming the variable, and its issue now lists every accepted word: `Use true, false, yes, no, y, n, on, off, 1, or 0.` See [Input sources](docs/core/input-sources.md#input-sources).
+
+- Allow `mockProcess({ stdin })` in `@loomcli/testing` to take bytes as well as text. A `Uint8Array` is piped as one chunk, unchanged, so a test can state input that is not valid UTF-8. Under `stdin: 'inherit'`, a child program's recorded `input` stays text, decoded as UTF-8.
+
+- Add each option's bound variable names and configuration key to both help pages, `-h` and `--help`. The option's dim parenthesis gains `env: <names>`, the variables in declaration order, and `config: <path>`, the option's `configInput` path, after `implied` and before `deprecated`, so textstat's `--min-bytes` reads `(default: 0, env: TEXTSTAT_MIN_BYTES, config: minBytes)`. Help prints names alone, never a value, and keeps each name whole when it wraps. `helpInput({ hideBindings: true })` keeps an option's bindings off both pages, while the man page, the manifest, and `inspect()` still publish them. See [Help variants](docs/plugins/help.md#help-variants).
+
+- Add `booleans` to the option position `locate()` returns: the value the earlier words gave each Boolean option in scope, keyed by name, so `--no-json` holds `json` at `false`. A completion reader can tell whether a member of an exclusive option group gave its absent value and so claims nothing. See [graph inspection](docs/core/graph-inspection.md).
+
+- Add a 5-second limit to each read `service status` makes of the service manager. A state read that runs out is ended with `SIGKILL` and reads `unknown` with a note naming the call and the limit, a session read that runs out adds no note, and `status` exits 0 either way, so a caller that waits on `status` always gets a report. `install`, `uninstall`, `start`, `stop`, and `restart` keep no time limit.
+
+- Add layered files to the dotenv plugin. It reads `.env`, `.env.<mode>`, `.env.local`, and `.env.<mode>.local` in the working directory, the more specific file winning, in the order Bun and Next.js load them. The mode is the value of `NODE_ENV`; with `NODE_ENV` unset or empty the plugin reads `.env` and `.env.local`, and under `NODE_ENV=test` it skips `.env.local`. A missing file is silent, and every warning names the file it read. A variable the process has set still wins over every file.
+
+- Allow a multiple string option and a multiple content option to bind an environment variable, beside an `envDelimiter` the declaration names. The types require the delimiter whenever a multiple option binds `env`, and reject it on every option that is not multiple or binds no variable, so `{ multiple: true, env: 'FIELDS' }` still fails to compile while `{ multiple: true, env: 'FIELDS', envDelimiter: ',' }` compiles. The variable's value splits at each occurrence of the delimiter into the option's list, untrimmed and with empty items kept, and each item passes the option's validator, which names the variable and the item's position. The list replaces the configuration source and the default, and argv still outranks it. An empty `envDelimiter` is a declaration error, `@loomcli/core/env-delimiter`. `inspect()` and the manifest publish the delimiter as `envDelimiter`, and the man page and both help pages print it beside the variables, so help reads `(repeatable, env: FIELDS as a list separated by ",")`. See [Environment lists](docs/core/input-sources.md).
+
+- Allow a scalar string option that binds `env` to declare `envAllowEmpty: true`, so a defined empty variable supplies the empty string. Without the key an empty variable stays unset and falls through, as before. Under it, the first name in an ordered list that the environment defines supplies the option, its value empty or not, so `APP_PREFIX=` clears a prefix the configuration file supplies, as `--prefix=` does, and keeps the default from applying. The empty string satisfies `required`, passes the option's validator, and never fills the implied value, and a dotenv file's `FOO=` supplies it the same way. The types accept the key on no other option. `inspect()` and the manifest publish it as `envAllowEmpty` on a string option, and the man page says an empty value supplies the option. See [Empty values](docs/core/input-sources.md).
+
+- Add the `scopes` and `root` settings to `configuration()` from `@loomcli/plugins/config`. `scopes` lists the scopes the lookup reads: `'project'`, the walk up from the start directory, and `'user'`, the home file and then the XDG user file. It reads both by default, and always reads the project scope first. `root` names one or more entries, such as `package.json` or `.git`, whose presence in a directory ends the project walk after the plugin looks for the file there, so a run inside a monorepo package never reads the repository root's file. `root: false` states that the project has no marker. A `root` name that is not one path segment throws a `DeclarationError` under `@loomcli/plugins/config/root-name`, and a `root` beside a `scopes` list without `'project'` throws under `@loomcli/plugins/config/root-without-project`. An application that sets neither setting finds its file as before. See the [configuration plugin](docs/plugins/config.md).
+- Add the `unrooted-configuration` rule to `@loomcli/eslint-plugin`. The rule reports a `configuration()` call that reads the project scope and names no `root`. `configs.recommended` and `configs.oxlint` turn it on at `warn`, the one rule they do not turn on at `error`, so an existing application whose call sets no `root` now gets one lint warning. To silence it, name the entry that marks the project's root, such as `root: 'package.json'`, set `root: false` when the project has none, or list only `'user'` in `scopes`. A `.oxlintrc.json` that holds a copy of `configs.oxlint` gains the rule when the line `"@loomcli/unrooted-configuration": "warn"` is added to its `rules`. See the [ESLint plugin](docs/libs/eslint-plugin.md#unrooted-configuration).
+
+- Add `loom.config.json`, the toolchain configuration file a package keeps beside its `package.json` to depart from a convention. `loom` reads the first `loom.config.json` from the working directory up to the package directory, and never one above it, so a package in a monorepo never reads the root's file. Its `paths` key names where the package keeps `source`, `application`, `entry`, `out`, `changes`, `changelog`, and `installer`, each resolved against the package directory and free to leave it, such as `"installer": "../../install.sh"` for a monorepo's root installer. `application` and `entry` follow `source` unless set themselves. A package with no file builds, checks, and scaffolds exactly as before. See the [build reference](docs/toolchain/build.md#the-configuration-file).
+  - `loom build` takes its entry, its application module, and its output folder from the file, and `--entry`, `--application`, and `--out` still beat it. An `entry` or an `application` the file names that does not exist fails the build and names `paths.entry` or `paths.application`, while a missing conventional application module still leaves the bundle with the entry alone.
+  - `loom changelog check` and `loom changelog write` read the fragment folder and the changelog the file names.
+  - `loom init` writes the application module, the entry, the test, the fragment guide, and `install.sh` where the file places them, and what it writes names those paths: the entry and the test import the application module by its relative path, `bin` names the entry's bundle in `out`, `tsconfig.json`, the linter's file globs, and the `check` script name `source`, and the fragment guide and the changelog skill name the fragment folder and the changelog. A new application uses every convention whatever the file holds, and `init` writes no `loom.config.json`.
+  - A value the file's schema rejects, such as an empty string, is dropped and its convention applies, and a file that does not parse warns once and the run uses conventions.
+- Add `--config`, `--no-config`, `-v`, and `-q` to `loom`. `--config <path>` reads that file in place of the lookup, `--no-config` runs on conventions alone, and `-v` names each value the file's schema dropped.
+
+- Add `--target` to `loom changelog write`, which cuts a chosen version, such as a minor for a milestone with no breaking change. The target must rank above the current version, and its release part must meet the version the pending fragments call for, so a fragment keeps its kind whatever version ships it. See [the package changelog](docs/toolchain/changelog.md).
+  - A target with a prerelease part, such as `0.11.0-rc.1`, sets the version, writes no changelog section, and leaves the fragments pending. A later `loom changelog write` without `--target` finalizes to `0.11.0` and consumes them.
+- Add `loom changelog notes <version>`, which prints a stable version's changelog section body, or a prerelease's pending fragments, for its release page.
+- Add the `sharedVersion` key to `loom.config.json`, a list of `package.json` files that carry the package's version. `loom changelog write` sets each of them in the same replacement as the package's own, and fails with nothing changed when one is missing or holds another version, so several binaries can ship from one tag and one changelog.
+
+- Add the skills plugin's `folder` setting, so an application names one folder whose subfolders are its agent skills, such as `skills({ folder: new URL('../skills/', import.meta.url) })`, in place of writing a loader for each skill. An entry whose name starts with `.`, such as `.DS_Store`, is skipped. `skills` becomes optional, and settings that hold neither `folder` nor `skills` throw `@loomcli/plugins/skills/settings`. A source run and a test read the folder from disk when `skills install` or `skills update` runs, and a folder the plugin cannot read as skills fails with `@loomcli/plugins/skills/folder`. See [The skills folder](docs/plugins/skills.md#the-skills-folder).
+- Add the skills folder to `loom build`. Before it bundles, it loads the application module under Bun, judges the folder `skills()` names, and fails on a bad skill. A development build reads the source folder, a distributed bundle carries a copy in `loom-skills/` beside its chunks, and a distributed binary embeds it, so the artifact installs the skills wherever it runs. See [The skills folder](docs/toolchain/build.md#the-skills-folder).
+
+### Fixes
+
+- Change the configuration plugin's warning and `--config` failure for a file that does not parse to name the line and column where it breaks, such as `Skipped .collector.toml: the file is not valid TOML at line 3, column 7, so this run reads no configuration.` JSON, TOML, and YAML count the position the same way under Node and Bun: lines and columns from 1, and a column in characters. See the [configuration plugin](docs/plugins/config.md#missing-and-broken-files).
+
+- Fix the MCP plugin's server refusing clients that open with `initialize`, such as Codex CLI, which reported every tool unavailable. The server now serves revisions `2025-11-25` and `2025-06-18` to a client that opens with `initialize`, beside `2026-07-28` per request on the same connection, so `mcp install`'s Codex registration serves. On those revisions a tool whose JSON view prints an array or a single value answers text alone, because they hold structured content as an object. `server/discover` and the unsupported-version error list all three revisions. See the [MCP plugin](docs/plugins/mcp.md#the-protocol-package).
+
+- Fix an exclusive option group failing a run because a configuration file or an environment variable filled one member while the operator typed another. The highest input tier that claims a member now wins: a member a lower tier filled is withdrawn before validation, reads as unfilled with its declared default, and is absent from the `supplied` record. So `json = true` in a configuration file with a typed `--yaml` runs with `yaml`, an environment member wins over a configured one, and the named values of an `invoke()` call win over both. Members one tier supplied still conflict, such as `--json --yaml` or two configured keys. A bound variable outside its grammar beside a typed sibling no longer fails the run.
+- Fix a Boolean at its absent value claiming an exclusive option group. A Boolean member supplied at the value it takes when nobody supplies it, such as `--no-yaml`, `EXPORT_YAML=0`, or a configured `yaml = false` on a `positive` or `both` option, neither wins the group nor conflicts, and still reaches the action with its value. A typed `negative` member, absent as `true`, still claims its group. So `--json --no-yaml` runs, and `json = true` in a configuration file with a typed `--no-yaml` runs with `json`. Completion keeps offering `--yaml` after `--no-json`, and an MCP tool's schema accepts `{ "json": true, "yaml": false }`.
+- Fix a `requiredTogether` group failing every run once an exclusive group withdrew one of its members. With `exclusive('token', 'user')` and `requiredTogether('user', 'password')`, a configured `user` beside a typed `--token` now runs whether the file holds `password` or not. `oneRequired` counts a withdrawn member as supplied, as before.
+
+- Fix the time `loom` takes to start. The `loom` bin of `@loomcli/loom` is now one bundle, and each command loads its code only when it runs, so `loom --help` and `loom changelog check` no longer load the code of every command. Installing `@loomcli/loom` now installs no runtime dependency, and its optional peers, pnpm and TypeScript, are unchanged. The package now carries the license notices of the code its bundle holds in `dist/NOTICE` and `dist/licenses/`, and its license field reads `MIT AND ISC AND Apache-2.0 AND Unicode-3.0 AND BSD-3-Clause`.
+- Change how a defect inside `loom` itself reports: the bin is a distributed build, so it shows the generic defect message a distributed application shows in place of the Developer Diagnostic. See [development builds](docs/core/release-facts.md#development-builds).
+- Fix a distributed `loom build` shipping development code, for a bundle and a compile target alike: it now runs Bun with `NODE_ENV` set to `production`, so the artifact resolves each dependency's production export and bundled code reads `production` from `process.env.NODE_ENV`, whatever the shell holds. A development build and `--watch` keep resolving development exports. See the [build reference](docs/toolchain/build.md#loom-build).
+
 ## v0.16.0 - 2026-10-27
 
 This release makes a run read the process through one process handle, ends a signalled process within one bounded shutdown, and gives tests, actions, and plugins new seams. A run reads its arguments, streams, environment, home, and temporary folder, and starts child programs, through `host`, which core builds from the `ProcessHandle` that `run({ process })` and `app.invoke` take. `run({ host })` and `HostOverrides` are removed. The new `@loomcli/host-bypass` lint rule names the host member to use where application code reaches the global `process`, `os`, or `child_process`.
