@@ -599,13 +599,8 @@ function publishStore(store: ExtensionStore): Readonly<Record<string, unknown>> 
   return frozen;
 }
 
-/**
- * The frozen record of a declaration that carries no extension value, the record `buildExtensions`
- * answers for an empty slot without validating one.
- */
-function noExtensions(): Readonly<Record<string, unknown>> {
-  return publishStore({ entries: new Map() });
-}
+/** The one frozen record every declaration that carries no extension value publishes. */
+const noExtensions: Readonly<Record<string, unknown>> = publishStore(emptyStore);
 
 /** The frozen record of one `extensions` slot, which is one layer. */
 function buildExtensions(slot: ExtensionSlot): Readonly<Record<string, unknown>> {

@@ -143,7 +143,7 @@ export function spellingMark(site: InputSite, origin: SpellingOrigin): string {
 
 /**
  * The declared name answers the declared-name rule an argument's name answers. The site is built
- * only when the name fails, because building it quotes the whole call.
+ * only when the name fails, because nothing else reads it.
  */
 export function checkOptionName(name: string, siteOf: () => InputSite): void {
   if (!isDeclaredName(name)) {

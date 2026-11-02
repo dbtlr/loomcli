@@ -733,7 +733,7 @@ function recordInput(
   if ((input.config.extensions ?? []).length === 0) {
     return {
       descriptors: state.descriptors,
-      records: new Map([...state.records, [input, noExtensions()]]),
+      records: new Map([...state.records, [input, noExtensions]]),
     };
   }
   const descriptors = new Map(state.descriptors);
@@ -874,15 +874,24 @@ export function declareOption<
   if (claimsStdin(input)) {
     checkStdinClaims(inputs, { path, stdin: state.stdin });
   }
-  const previous = state.bind;
-  return {
-    ...state,
-    ...recorded,
-    bind: (values) => {
-      const bound = previous(values);
-      return { ...bound, options: { ...bound.options, ...values.option(input) } };
-    },
-    inputs,
+  return { ...state, ...recorded, bind: bindOption(state.bind, input), inputs };
+}
+
+/**
+ * The bind one `option()` call answers: the earlier bind's values, then the option's own. It is
+ * built outside the call, because a closure built inside it would share the call's scope and keep
+ * the receiver's state alive, and with it every earlier state of the Command.
+ */
+function bindOption<Args, Options, Name extends string, Config extends OptionConfig>(
+  previous: (values: ValidatedInputs) => { args: Args; options: Options },
+  input: OptionInput<Name, Config>,
+): (values: ValidatedInputs) => {
+  args: Args;
+  options: Options & Record<Name, OptionValue<Config>>;
+} {
+  return (values) => {
+    const bound = previous(values);
+    return { ...bound, options: { ...bound.options, ...values.option(input) } };
   };
 }
 
@@ -1805,7 +1814,7 @@ function attachedCollision(input: InputDeclaration, held: HeldNames): Collision 
  */
 interface ClaimedSpelling {
   form: string;
-  /** Built when a collision reports it, because building it quotes the whole declaring call. */
+  /** Built only when a collision reports it, because nothing else reads it. */
   finding: () => Finding | undefined;
 }
 
