@@ -599,6 +599,14 @@ function publishStore(store: ExtensionStore): Readonly<Record<string, unknown>> 
   return frozen;
 }
 
+/**
+ * The frozen record of a declaration that carries no extension value, the record `buildExtensions`
+ * answers for an empty slot without validating one.
+ */
+function noExtensions(): Readonly<Record<string, unknown>> {
+  return publishStore({ entries: new Map() });
+}
+
 /** The frozen record of one `extensions` slot, which is one layer. */
 function buildExtensions(slot: ExtensionSlot): Readonly<Record<string, unknown>> {
   return publishStore(extendStore(emptyStore, validateLayer(slot)));
@@ -643,6 +651,7 @@ export {
   carriesBinding,
   extendStore,
   extension,
+  noExtensions,
   publishStore,
   readExtension,
   registerDescriptor,

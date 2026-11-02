@@ -139,7 +139,7 @@ function spellingCollision(
  */
 interface GlobalTable {
   names: ReadonlyMap<string, TableEntry>;
-  options: ReturnType<typeof compileOptions>;
+  options: ReadonlyMap<string, OptionSpelling>;
   /** The variable each option in the table binds, with the option that binds it. */
   variables: ReadonlyMap<string, BoundOption>;
 }
@@ -216,7 +216,7 @@ function declareGlobalOption<Name extends string, Config extends OptionConfig>(
   descriptors: DescriptorRegistry,
 ): { readonly input: OptionInput<Name, Config>; readonly state: GlobalsState } {
   // The name is judged before the config, as every other declaration judges its own name first.
-  checkOptionName(declared.name, configUnread(globalSite(declared)));
+  checkOptionName(declared.name, () => configUnread(globalSite(declared)));
   const input = { ...declared, config: { ...declared.config } };
   const site = globalSite(input);
   const sentence = site.subject;
@@ -239,9 +239,35 @@ function declareGlobalOption<Name extends string, Config extends OptionConfig>(
 /**
  * The globals table: the application's global options in authoring order, then each installed
  * plugin's options in installation order. Every collision between the two scopes, by key or by
- * spelling, is reported here, so the parser meets a table with one owner per name.
+ * spelling, is reported here, so the parser meets a table with one owner per name. Both lists are
+ * never changed, so each pair compiles once, however many declaration calls read its table.
  */
 function globalTable(inputs: readonly OptionInput[], plugins: readonly BuiltPlugin[]): GlobalTable {
+  let byPlugins = globalTables.get(inputs);
+  if (byPlugins === undefined) {
+    byPlugins = new WeakMap();
+    globalTables.set(inputs, byPlugins);
+  }
+  const known = byPlugins.get(plugins);
+  if (known !== undefined) {
+    return known;
+  }
+  const table = compileGlobalTable(inputs, plugins);
+  byPlugins.set(plugins, table);
+  return table;
+}
+
+/** Each globals list's table, by the plugin list it compiled against. */
+const globalTables = new WeakMap<
+  readonly OptionInput[],
+  WeakMap<readonly BuiltPlugin[], GlobalTable>
+>();
+
+/** The globals table `globalTable` answers, compiled. */
+function compileGlobalTable(
+  inputs: readonly OptionInput[],
+  plugins: readonly BuiltPlugin[],
+): GlobalTable {
   const names = new Map<string, TableEntry>();
   const application: OptionOwner = { kind: 'application' };
   for (const input of inputs) {
@@ -336,13 +362,19 @@ function buildGlobals(node: GlobalsState, plugins: readonly BuiltPlugin[]): Buil
  * whichever scope on the other side claimed the name, the spelling, or the variable. One
  * invocation's scope is this Command's own options and the table, so a variable binds one option
  * there, while a sibling Command may bind it again. `scope` names the Command and places each of
- * its options.
+ * its options. `compile` answers the declarations' own table, which a caller holding an earlier
+ * compile of them reads rather than compiling them again. It runs after the key check, so a key
+ * collision reports before any fault the declarations' own compile finds.
  */
 function checkLocalOptions(
-  declarations: readonly OptionInput[],
+  own: {
+    declarations: readonly OptionInput[];
+    compile: () => ReadonlyMap<string, OptionSpelling>;
+  },
   table: GlobalTable,
   scope: CompileScope<OptionInput>,
-): ReturnType<typeof compileOptions> {
+): ReadonlyMap<string, OptionSpelling> {
+  const { compile, declarations } = own;
   const { siteOf, subject } = scope;
   const local: OptionOwner = { kind: 'local', subject };
   for (const declaration of declarations) {
@@ -354,11 +386,12 @@ function checkLocalOptions(
       );
     }
   }
-  const options = compileOptions(declarations, scope);
+  const options = compile();
   for (const [spelling, option] of options) {
     const global = table.options.get(spelling);
     const claimed = global && table.names.get(global.name);
-    const declaration = declarations.find((input) => input.name === option.name);
+    // Only a spelling the table also claims needs the declaration that reports it.
+    const declaration = claimed && declarations.find((input) => input.name === option.name);
     if (global && claimed && declaration) {
       throw spellingCollision(
         spelling,
@@ -383,8 +416,13 @@ function boundOptions(
   describe: (input: OptionInput) => Omit<BoundOption, 'variable'>,
 ): BoundOption[] {
   return inputs.flatMap((input) => {
+    const variables = envNames(input.config);
+    // An option that binds no variable is never described, so its site is never built.
+    if (variables.length === 0) {
+      return [];
+    }
     const described = describe(input);
-    return envNames(input.config).map((variable) => ({
+    return variables.map((variable) => ({
       phrase: described.phrase,
       site: described.site,
       variable,

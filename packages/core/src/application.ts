@@ -1053,10 +1053,15 @@ class ApplicationBuilder<
             signal: controller.signal,
           });
         }
-        const inputs = { globals: graph.globals.inputs, locals: collectInputs(graph.root) };
         const places = bound?.places ?? inputPlaces(graph);
+        // A nested run reuses its outer run's declared values, so only an outermost run collects inputs.
         const declaredValues =
-          bound?.declaredValues ?? (await prepareDeclaredValues(inputs, host, places));
+          bound?.declaredValues ??
+          (await prepareDeclaredValues(
+            { globals: graph.globals.inputs, locals: collectInputs(graph.root) },
+            host,
+            places,
+          ));
         graphBuilt = true;
         if (!controller.signal.aborted) {
           /**
