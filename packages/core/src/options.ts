@@ -141,9 +141,13 @@ export function spellingMark(site: InputSite, origin: SpellingOrigin): string {
   }
 }
 
-/** The declared name answers the declared-name rule an argument's name answers. */
-export function checkOptionName(name: string, site: InputSite): void {
+/**
+ * The declared name answers the declared-name rule an argument's name answers. The site is built
+ * only when the name fails, because nothing else reads it.
+ */
+export function checkOptionName(name: string, siteOf: () => InputSite): void {
   if (!isDeclaredName(name)) {
+    const site = siteOf();
     throw new DeclarationError(declaredName, {
       correction: declaredNameCorrection,
       findings: [siteFinding(site, site.named)],
@@ -166,9 +170,10 @@ export const declaredNameCorrection =
   'Use a nonempty name without a leading hyphen, whitespace, or "=".';
 
 /** Each alias answers the declared-name rule, because an operator types it as a long spelling. */
-function checkAliases(config: OptionConfig, site: InputSite, name: string): void {
+function checkAliases(config: OptionConfig, siteOf: () => InputSite, name: string): void {
   for (const [index, alias] of (config.aliases ?? []).entries()) {
     if (!isDeclaredName(alias)) {
+      const site = siteOf();
       throw new DeclarationError(declaredName, {
         correction: declaredNameCorrection,
         findings: [siteFinding(site, `${site.at}.aliases.${String(index)}`)],
@@ -179,8 +184,9 @@ function checkAliases(config: OptionConfig, site: InputSite, name: string): void
 }
 
 /** A multiple option's delimiter separates its variable's items, so it holds a character. */
-function checkEnvDelimiter(config: OptionConfig, site: InputSite, name: string): void {
+function checkEnvDelimiter(config: OptionConfig, siteOf: () => InputSite, name: string): void {
   if ((config.type === 'string' || config.type === 'content') && config.envDelimiter === '') {
+    const site = siteOf();
     throw new DeclarationError(envDelimiterEmpty, {
       correction: 'Name the string that separates the items, such as ",".',
       findings: [siteFinding(site, `${site.at}.envDelimiter`)],
@@ -217,20 +223,36 @@ export interface CompileScope<Declaration extends OptionDeclaration> {
   readonly siteOf: (declaration: Declaration) => InputSite;
 }
 
-/** One spelling of a table being compiled, with the site of the option that claims it. */
-interface Claim {
-  option: OptionSpelling;
-  site: InputSite;
+/**
+ * One spelling of a table being compiled, with the declaration that claims it. A fault builds the
+ * declaration's site from the scope that reports it, so a claim holds no site of its own.
+ */
+interface Claim<Declaration extends OptionDeclaration> {
+  readonly declaration: Declaration;
+  readonly option: OptionSpelling;
 }
 
-function addSpelling(claims: Map<string, Claim>, spelling: string, claim: Claim) {
+/** A compile in progress: the claims so far, and the scope whose sites a fault reports. */
+interface Compiling<Declaration extends OptionDeclaration> {
+  readonly claims: Map<string, Claim<Declaration>>;
+  readonly names: Map<string, Declaration>;
+  readonly scope: CompileScope<Declaration>;
+}
+
+function addSpelling<Declaration extends OptionDeclaration>(
+  compiling: Compiling<Declaration>,
+  spelling: string,
+  claim: Claim<Declaration>,
+) {
+  const { claims, scope } = compiling;
   const existing = claims.get(spelling);
   if (existing) {
     throw new DeclarationError(spellingTaken, {
       correction: 'Change one declaration.',
-      findings: [existing, claim].map(({ option, site }) =>
-        siteFinding(site, spellingMark(site, option)),
-      ),
+      findings: [existing, claim].map(({ declaration, option }) => {
+        const site = scope.siteOf(declaration);
+        return siteFinding(site, spellingMark(site, option));
+      }),
       sentence: `Option spelling ${quoted(spelling)} is used by both ${quoted(existing.option.name)} and ${quoted(claim.option.name)}.`,
     });
   }
@@ -241,12 +263,14 @@ function addSpelling(claims: Map<string, Claim>, spelling: string, claim: Claim)
  * The long forms one name yields for an option, the declared name or an alias: the positive form,
  * unless the polarity is negative, and the negative form for `both` and `negative` polarity.
  */
-function addLongForms(
-  claims: Map<string, Claim>,
-  option: { config: OptionConfig; positive: OptionForm; site: InputSite },
+function addLongForms<Declaration extends OptionDeclaration>(
+  compiling: Compiling<Declaration>,
+  option: { declaration: Declaration; positive: OptionForm },
   long: { name: string; positive: SpellingOrigin; negative: SpellingOrigin },
 ): void {
-  const { config, positive, site } = option;
+  const { claims } = compiling;
+  const { declaration, positive } = option;
+  const { config } = declaration;
   const forms: [string, OptionSpelling][] = [];
   if (config.type !== 'boolean' || config.polarity !== 'negative') {
     forms.push([`--${long.name}`, { ...positive, ...long.positive }]);
@@ -266,7 +290,7 @@ function addLongForms(
   for (const [spelling, form] of forms) {
     // The name's forms claim first, so an alias whose spelling the option already holds adds nothing.
     if (form.role !== 'alias' || claims.get(spelling)?.option.name !== positive.name) {
-      addSpelling(claims, spelling, { option: form, site });
+      addSpelling(compiling, spelling, { declaration, option: form });
     }
   }
 }
@@ -315,6 +339,100 @@ function positiveForm(name: string, config: OptionConfig): OptionForm {
 }
 
 /**
+ * One scope's options compiled so far: the claim on each spelling, the first declaration of each
+ * name, and the spelling table the parser reads, in claim order. A compile is never changed, so
+ * `compileNext` extends one by a declaration without recompiling the declarations before it.
+ */
+export interface CompiledOptions<Declaration extends OptionDeclaration> {
+  readonly claims: ReadonlyMap<string, Claim<Declaration>>;
+  readonly names: ReadonlyMap<string, Declaration>;
+  readonly table: ReadonlyMap<string, OptionSpelling>;
+}
+
+/**
+ * One declaration added to a compile in progress, with every rule it answers alone and every rule it
+ * answers with a declaration added before it. A fault names each declaration by its site in the
+ * compile's scope, which is built only then.
+ */
+function addOption<Declaration extends OptionDeclaration>(
+  compiling: Compiling<Declaration>,
+  declaration: Declaration,
+): void {
+  const { names, scope } = compiling;
+  const { name, config } = declaration;
+  const siteOf = () => scope.siteOf(declaration);
+  checkOptionName(name, siteOf);
+  checkAliases(config, siteOf, name);
+  checkEnvDelimiter(config, siteOf, name);
+  const first = names.get(name);
+  if (first) {
+    const earlier = scope.siteOf(first);
+    const site = siteOf();
+    throw new DeclarationError(optionDeclaredTwice, {
+      correction: 'Remove or rename the duplicate.',
+      findings: [
+        siteFinding(earlier, earlier.named, 'the first declaration'),
+        siteFinding(site, site.named, 'the second declaration'),
+      ],
+      sentence: `Option ${quoted(name)} is declared more than once on ${scope.subject}.`,
+    });
+  }
+  names.set(name, declaration);
+  const positive = positiveForm(name, config);
+  if (!config.shortOnly) {
+    const option = { declaration, positive };
+    addLongForms(compiling, option, {
+      name,
+      negative: { role: 'negative' },
+      positive: { role: 'long' },
+    });
+    for (const { alias, index } of distinctAliases(name, config)) {
+      const origin: SpellingOrigin = { index, role: 'alias' };
+      addLongForms(compiling, option, { name: alias, negative: origin, positive: origin });
+    }
+  }
+  if (config.short !== undefined) {
+    const option: OptionSpelling = { ...positive, role: 'short' };
+    addSpelling(compiling, `-${config.short}`, { declaration, option });
+  }
+}
+
+/** One scope's options compiled in declaration order. */
+export function compileAll<Declaration extends OptionDeclaration>(
+  declarations: readonly Declaration[],
+  scope: CompileScope<Declaration>,
+): CompiledOptions<Declaration> {
+  const compiling: Compiling<Declaration> = { claims: new Map(), names: new Map(), scope };
+  for (const declaration of declarations) {
+    addOption(compiling, declaration);
+  }
+  const { claims, names } = compiling;
+  return { claims, names, table: new Map([...claims].map(([key, { option }]) => [key, option])) };
+}
+
+/**
+ * One more declaration compiled after the ones `previous` holds, which stays as it was. It answers
+ * what `compileAll` answers for the longer list, without compiling the earlier declarations again.
+ */
+export function compileNext<Declaration extends OptionDeclaration>(
+  previous: CompiledOptions<Declaration>,
+  declaration: Declaration,
+  scope: CompileScope<Declaration>,
+): CompiledOptions<Declaration> {
+  const claims = new Map(previous.claims);
+  const names = new Map(previous.names);
+  addOption({ claims, names, scope }, declaration);
+  // A claim is never replaced, so the spellings this declaration added follow the earlier ones.
+  const table = new Map(previous.table);
+  for (const [spelling, { option }] of claims) {
+    if (!previous.claims.has(spelling)) {
+      table.set(spelling, option);
+    }
+  }
+  return { claims, names, table };
+}
+
+/**
  * One scope's options compiled into the spelling table the parser reads, with every rule one
  * declaration answers alone and every rule two of them answer together.
  */
@@ -322,45 +440,7 @@ export function compileOptions<Declaration extends OptionDeclaration>(
   declarations: readonly Declaration[],
   scope: CompileScope<Declaration>,
 ): Map<string, OptionSpelling> {
-  const claims = new Map<string, Claim>();
-  const names = new Map<string, Declaration>();
-  for (const declaration of declarations) {
-    const { name, config } = declaration;
-    const site = scope.siteOf(declaration);
-    checkOptionName(name, site);
-    checkAliases(config, site, name);
-    checkEnvDelimiter(config, site, name);
-    const first = names.get(name);
-    if (first) {
-      const earlier = scope.siteOf(first);
-      throw new DeclarationError(optionDeclaredTwice, {
-        correction: 'Remove or rename the duplicate.',
-        findings: [
-          siteFinding(earlier, earlier.named, 'the first declaration'),
-          siteFinding(site, site.named, 'the second declaration'),
-        ],
-        sentence: `Option ${quoted(name)} is declared more than once on ${scope.subject}.`,
-      });
-    }
-    names.set(name, declaration);
-    const positive = positiveForm(name, config);
-    if (!config.shortOnly) {
-      const option = { config, positive, site };
-      addLongForms(claims, option, {
-        name,
-        negative: { role: 'negative' },
-        positive: { role: 'long' },
-      });
-      for (const { alias, index } of distinctAliases(name, config)) {
-        const origin: SpellingOrigin = { index, role: 'alias' };
-        addLongForms(claims, option, { name: alias, negative: origin, positive: origin });
-      }
-    }
-    if (config.short !== undefined) {
-      addSpelling(claims, `-${config.short}`, { option: { ...positive, role: 'short' }, site });
-    }
-  }
-  return new Map([...claims].map(([spelling, { option }]) => [spelling, option]));
+  return new Map(compileAll(declarations, scope).table);
 }
 
 /**

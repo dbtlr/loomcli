@@ -29,6 +29,7 @@ import type { InvokedBy, LoomError } from './errors.js';
 import {
   buildExtensions,
   extendStore,
+  noExtensions,
   publishStore,
   registerDescriptor,
   storeCommandLayers,
@@ -65,6 +66,8 @@ import type { OptionGroup } from './option-groups.js';
 import {
   booleanValue,
   checkOptionName,
+  compileAll,
+  compileNext,
   compileOptions,
   copyValues,
   declaredNameCorrection,
@@ -76,7 +79,14 @@ import {
   tableEntries,
   withdrawFill,
 } from './options.js';
-import type { CompileScope, OptionValues, SpellingOrigin, SpellingTable } from './options.js';
+import type {
+  CompiledOptions,
+  CompileScope,
+  OptionSpelling,
+  OptionValues,
+  SpellingOrigin,
+  SpellingTable,
+} from './options.js';
 import { candidatesOf } from './parse.js';
 import type { ParsedInvocation } from './parse.js';
 import { snapshot } from './plain.js';
@@ -626,6 +636,45 @@ function optionsOf(inputs: readonly InputDeclaration[]): OptionInput[] {
   return inputs.filter((input): input is OptionInput => input.kind === 'option');
 }
 
+/**
+ * The options each declaration list compiled to, keyed by the list. A list is never changed, so its
+ * compile holds for as long as the list lives: each `option()` call extends the compile of the list
+ * before it, and a list no call compiled, such as one a hook extended, compiles on its first read.
+ */
+const localCompiles = new WeakMap<readonly InputDeclaration[], CompiledOptions<OptionInput>>();
+
+/**
+ * One declaration list's own options compiled, once per list. A compile names no scope, so a fault a
+ * later compile finds names its declarations by that compile's own `scope`.
+ */
+function localCompile(
+  inputs: readonly InputDeclaration[],
+  scope: CompileScope<OptionInput>,
+): CompiledOptions<OptionInput> {
+  const known = localCompiles.get(inputs);
+  if (known !== undefined) {
+    return known;
+  }
+  const compiled = compileAll(optionsOf(inputs), scope);
+  localCompiles.set(inputs, compiled);
+  return compiled;
+}
+
+/** One declaration list's own options against a globals table, reading the list's one compile. */
+function checkCompiledOptions(
+  inputs: readonly InputDeclaration[],
+  table: GlobalTable,
+  scope: CompileScope<OptionInput>,
+): ReadonlyMap<string, OptionSpelling> {
+  const compile = () => localCompile(inputs, scope).table;
+  return checkLocalOptions({ compile, declarations: optionsOf(inputs) }, table, scope);
+}
+
+/** Whether one input claims stdin, which at most one target of a Command may. */
+function claimsStdin(input: InputDeclaration): boolean {
+  return input.config.type === 'content' && input.config.stdin === true;
+}
+
 /** A stdin call's finding carries authored settings without internal ordering metadata. */
 export function stdinFinding(path: readonly string[], config: StdinConfig): Finding {
   const supplied = {
@@ -641,9 +690,7 @@ function checkStdinClaims(
   place: { path: readonly string[]; stdin: StdinConfig | undefined },
   declarers: ReadonlyMap<InputDeclaration, string> = new Map(),
 ): void {
-  const claimed = inputs.filter(
-    (input) => input.config.type === 'content' && input.config.stdin === true,
-  );
+  const claimed = inputs.filter((input) => claimsStdin(input));
   if (claimed.length + Number(place.stdin !== undefined) > 1) {
     throw new DeclarationError(stdinClaimedTwice, {
       correction: 'Keep one stdin target on the Command.',
@@ -682,6 +729,13 @@ function recordInput(
   input: InputDeclaration,
 ): Pick<Declared, 'descriptors' | 'records'> {
   const { name } = state;
+  // An input that declares no value registers no descriptor and needs no site.
+  if ((input.config.extensions ?? []).length === 0) {
+    return {
+      descriptors: state.descriptors,
+      records: new Map([...state.records, [input, noExtensions]]),
+    };
+  }
   const descriptors = new Map(state.descriptors);
   const record = buildExtensions({
     declared: input.config.extensions,
@@ -760,8 +814,17 @@ export function declareArgument<
   checkArgumentName({ name, path: pathOf(name), subject: commandSubject(name) }, [], declared);
   const input = { ...declared, config: { ...declared.config } };
   checkArgument(state, input);
-  checkStdinClaims([...state.inputs, input], { path: pathOf(state.name), stdin: state.stdin });
+  const inputs = [...state.inputs, input];
+  // The list before this input already answered the rule, so only a claiming input can break it.
+  if (claimsStdin(input)) {
+    checkStdinClaims(inputs, { path: pathOf(state.name), stdin: state.stdin });
+  }
   const recorded = recordInput(state, input);
+  // An argument adds no option, so the options compiled for the list before it still hold.
+  const compiled = localCompiles.get(state.inputs);
+  if (compiled !== undefined) {
+    localCompiles.set(inputs, compiled);
+  }
   const previous = state.bind;
   return {
     ...state,
@@ -770,7 +833,7 @@ export function declareArgument<
       const bound = previous(values);
       return { ...bound, args: { ...bound.args, ...values.argument(input) } };
     },
-    inputs: [...state.inputs, input],
+    inputs,
   };
 }
 
@@ -795,24 +858,40 @@ export function declareOption<
 ): CommandState<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
   // The call's own input is judged before the receiver's state, as alias() judges its names.
   const path = pathOf(state.name);
-  checkOptionName(declared.name, configUnread(inputSite(state.name, path, declared)));
+  checkOptionName(declared.name, () => configUnread(inputSite(state.name, path, declared)));
   const input = { ...declared, config: { ...declared.config } };
   const recorded = recordInput(state, input);
-  checkLocalOptions(
-    [...optionsOf(state.inputs), input],
-    table,
-    localScope(state.name, pathOf(state.name)),
-  );
-  checkStdinClaims([...state.inputs, input], { path: pathOf(state.name), stdin: state.stdin });
-  const previous = state.bind;
-  return {
-    ...state,
-    ...recorded,
-    bind: (values) => {
-      const bound = previous(values);
-      return { ...bound, options: { ...bound.options, ...values.option(input) } };
-    },
-    inputs: [...state.inputs, input],
+  const scope = localScope(state.name, path);
+  const inputs = [...state.inputs, input];
+  // The options before this one compiled at their own calls, so only this one compiles here.
+  const compile = () => {
+    const compiled = compileNext(localCompile(state.inputs, scope), input, scope);
+    localCompiles.set(inputs, compiled);
+    return compiled.table;
+  };
+  checkLocalOptions({ compile, declarations: [...optionsOf(state.inputs), input] }, table, scope);
+  // The list before this input already answered the rule, so only a claiming input can break it.
+  if (claimsStdin(input)) {
+    checkStdinClaims(inputs, { path, stdin: state.stdin });
+  }
+  return { ...state, ...recorded, bind: bindOption(state.bind, input), inputs };
+}
+
+/**
+ * The bind one `option()` call answers: the earlier bind's values, then the option's own. It is
+ * built outside the call, because a closure built inside it would share the call's scope and keep
+ * the receiver's state alive, and with it every earlier state of the Command.
+ */
+function bindOption<Args, Options, Name extends string, Config extends OptionConfig>(
+  previous: (values: ValidatedInputs) => { args: Args; options: Options },
+  input: OptionInput<Name, Config>,
+): (values: ValidatedInputs) => {
+  args: Args;
+  options: Options & Record<Name, OptionValue<Config>>;
+} {
+  return (values) => {
+    const bound = previous(values);
+    return { ...bound, options: { ...bound.options, ...values.option(input) } };
   };
 }
 
@@ -1158,7 +1237,7 @@ function joinSubtree(scope: JoinScope, child: AttachedChild, parent: CommandPlac
     registerDescriptor(scope.descriptors, descriptor, { identity: key });
   }
   const path = childPath(parent, name);
-  checkLocalOptions(optionsOf(node.declared.inputs), scope.table, localScope(name, path));
+  checkCompiledOptions(node.declared.inputs, scope.table, localScope(name, path));
   for (const entry of node.declared.children) {
     const rooted = { ...entry, placement: rootedPlacement({ name, path }, entry) };
     joinSubtree(scope, rooted, { name, path });
@@ -1188,7 +1267,7 @@ function checkAttachedOptions(
 ): void {
   for (const { name, node } of children) {
     const path = childPath(parent, name);
-    checkLocalOptions(optionsOf(node.declared.inputs), table, localScope(name, path));
+    checkCompiledOptions(node.declared.inputs, table, localScope(name, path));
     checkAttachedOptions(table, { name, path }, node.declared.children);
   }
 }
@@ -1199,7 +1278,7 @@ function checkAttachedOptions(
  */
 export function checkDeclaredOptions(state: Declared, table: GlobalTable): void {
   const place: CommandPlace = { name: state.name, path: pathOf(state.name) };
-  checkLocalOptions(optionsOf(state.inputs), table, localScope(place.name, place.path));
+  checkCompiledOptions(state.inputs, table, localScope(place.name, place.path));
   checkAttachedOptions(table, place, state.children);
 }
 
@@ -1458,7 +1537,7 @@ class AttachedCommandValue implements AttachedCommand {
       const { name } = declared;
       checkArgumentName({ name, path, subject: commandSubject(name) }, [], raw);
     } else {
-      checkOptionName(raw.name, configUnread(inputSite(declared.name, path, raw)));
+      checkOptionName(raw.name, () => configUnread(inputSite(declared.name, path, raw)));
     }
     // Each kind copies its own config, so the input keeps the pairing its kind declares.
     const input: InputDeclaration =
@@ -1735,7 +1814,8 @@ function attachedCollision(input: InputDeclaration, held: HeldNames): Collision 
  */
 interface ClaimedSpelling {
   form: string;
-  finding: Finding | undefined;
+  /** Built only when a collision reports it, because nothing else reads it. */
+  finding: () => Finding | undefined;
 }
 
 /** Where the option one table names declared one of its spellings, by its name and the origin. */
@@ -1743,7 +1823,7 @@ type SpellingPlace = (name: string, origin: SpellingOrigin) => Finding | undefin
 
 /** The spellings one compiled table holds, each with its form and the place that declared it. */
 function readSpellings(
-  table: ReturnType<typeof compileOptions>,
+  table: ReadonlyMap<string, OptionSpelling>,
   claimed: Map<string, ClaimedSpelling>,
   placeOf: SpellingPlace,
 ) {
@@ -1756,7 +1836,7 @@ function readSpellings(
   for (const [spelling, option] of table) {
     if (!claimed.has(spelling)) {
       const form = longs.get(option.name) ?? spelling;
-      claimed.set(spelling, { finding: placeOf(option.name, option), form });
+      claimed.set(spelling, { finding: () => placeOf(option.name, option), form });
     }
   }
 }
@@ -1783,7 +1863,7 @@ function checkAttachedSpelling(
         correction: 'Change one of the two spellings or omit the plugin.',
         findings: [
           spellingPlace(site, option, declarerNote(identity)),
-          ...(used.finding === undefined ? [] : [used.finding]),
+          ...[used.finding()].filter((finding) => finding !== undefined),
         ],
         sentence: `Plugin ${quoted(identity)} declares option ${quoted(input.name)} with spelling ${quoted(spelling)} on ${subject}, which ${quoted(used.form)} already uses.`,
       });
@@ -1832,6 +1912,10 @@ function checkAttachedInputs(
   attached: readonly AttachedInput[],
   place: { globals: BuiltGlobals; path: readonly string[] },
 ): void {
+  // With no hook-declared input there is nothing to judge, and the claims below are never read.
+  if (attached.length === 0) {
+    return;
+  }
   const { globals, path } = place;
   const scope = localScope(declared.name, path);
   const { subject } = scope;
@@ -2026,11 +2110,7 @@ export function buildCommand<Args, Options, Globals>(
   const slots = hookInputs.length > 0 ? collectArguments(hooked, place) : declaredSlots;
   checkArgumentPlacement(place, slots[0], state.children[0]);
   const result = checkFinished(hooked, hasAction, { path: context.path });
-  const options = checkLocalOptions(
-    optionsOf(hooked.inputs),
-    globals,
-    localScope(name, context.path),
-  );
+  const options = checkCompiledOptions(hooked.inputs, globals, localScope(name, context.path));
   const table: SpellingTable = new Map([...tableEntries(options, false), ...globals.table]);
   const children = new Map<string, BuiltCommand>();
   const routes = new Map<string, RoutedChild>();

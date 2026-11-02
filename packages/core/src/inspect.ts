@@ -3,6 +3,7 @@ import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/sp
 import { envNames } from './bindings.js';
 import type { ArgumentSlot, BuiltCommand, BuiltGraph } from './command.js';
 import { asSentence, DeclarationError, InternalError, reasonOf } from './errors.js';
+import { noExtensions } from './extension.js';
 import type { ExtensionRecords } from './extension.js';
 import { partOf, siteFinding } from './facts.js';
 import type { InputSite } from './facts.js';
@@ -16,9 +17,6 @@ import { foreignGraph, foreignGraphCorrection } from './rules.js';
 import type { ArgumentConfig, DeclaredResult, OptionConfig } from './types.js';
 import type { InputDeclaration, OptionInput } from './validation.js';
 import { declarationSubject, declaringSite, inputPlace, validatesOmission } from './validation.js';
-
-/** A declaration that carries no extension value publishes one shared, empty frozen record. */
-const noExtensions: Readonly<Record<string, unknown>> = Object.freeze({});
 
 /** The plain JSON Schema a validated input publishes, or `null` where the graph holds no shape. */
 type InputSchema = Readonly<Record<string, unknown>> | null;

@@ -1,0 +1,1 @@
+- Start applications faster: declaring Commands and options no longer repeats work that grew with every option an application declared. Diagnostics, the call a declaration fault throws from, hook calls, and default validation are unchanged.
