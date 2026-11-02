@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0121 - The configuration source publishes its file's JSON Schema as a core graph fact
 description: The configuration source slot takes an optional Standard Schema for the file it reads. Core derives its input-side JSON Schema at graph build through the Standard JSON Schema channel, as it derives an input's, and the graph carries it as configuration { schema }, null when no plugin claims the slot. The manifest prints it in its envelope. The configuration plugin passes its schema with a $schema string property added to the published JSON Schema, and removes a top-level $schema key from the file before validating, so a file may point at a hosted schema. Loom writes no schema file; hosting is the author's choice, and the author's own code writes the pointer into a file it creates.
-status: proposed
+status: accepted
 created: 2026-10-29
-modified: 2026-10-29
+modified: 2026-11-02
 ---
 
 # ADR-0121 - The configuration source publishes its file's JSON Schema as a core graph fact
@@ -40,7 +40,7 @@ Every run of an application that installs the configuration plugin converts its 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.17.0.
 
 ## Changelog
 

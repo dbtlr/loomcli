@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0122 - The MCP server serves the initialize handshake beside the per-request revision
 description: '@loom/mcp serves MCP 2026-07-28 per request and, for a client that opens with initialize, the initialize-era revisions 2025-11-25 and 2025-06-18 on the same connection. A request whose params._meta names a protocol version is served on 2026-07-28; any other is served on the revision initialize negotiated, in that revision''s shape. This narrows ADR-0063''s one pinned revision and withdraws its rejection of serving both eras.'
-status: proposed
+status: accepted
 created: 2026-10-30
-modified: 2026-10-30
+modified: 2026-11-02
 ---
 
 # ADR-0122 - The MCP server serves the initialize handshake beside the per-request revision
@@ -36,7 +36,7 @@ The protocol package doubles part of its surface, the trade ADR-0063 rejected, b
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.17.0.
 
 ## Changelog
 

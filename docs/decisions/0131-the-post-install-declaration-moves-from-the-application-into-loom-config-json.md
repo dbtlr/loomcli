@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0131 - The post-install declaration moves from the Application into loom.config.json
 description: postInstall leaves core's ApplicationOptions and the built graph and becomes a top-level key of loom.config.json with the same message and command. loom init's install piece reads it from the file and no longer loads the application module. No check that the words route survives, in core, in the assembly check, or in init, and @loomcli/core/post-install-unrouted retires. The installer script's behavior is unchanged. A breaking change for every author who declares postInstall. It supersedes ADR-0113's core option, its development check, and init's read of the module.
-status: proposed
+status: accepted
 created: 2026-10-31
-modified: 2026-10-31
+modified: 2026-11-02
 ---
 
 # ADR-0131 - The post-install declaration moves from the Application into loom.config.json
@@ -33,7 +33,7 @@ This is a breaking change for every author who declares `postInstall`, Mimir amo
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships the move.
+Accepted in 0.17.0.
 
 ## Changelog
 

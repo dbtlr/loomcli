@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0128 - A string option's binding may let a defined empty variable supply the empty string
 description: A scalar string option that binds env may declare envAllowEmpty true, which the types accept there alone. Under it, the first name in list order that the environment defines supplies the option, its value empty or not, so APP_PREFIX= fills an empty string that keeps the configuration source and the default from applying. Without it an empty variable stays unset, as ADR-0032 rules. A dotenv file's empty assignment supplies the empty string the same way. The graph publishes the key as envAllowEmpty on the string variant of OptionNode, the manifest copies it, and the man page says so in the variable's ENVIRONMENT entry. This narrows ADR-0032's clause that an empty variable is unset.
-status: proposed
+status: accepted
 created: 2026-10-30
-modified: 2026-10-30
+modified: 2026-11-02
 ---
 
 # ADR-0128 - A string option's binding may let a defined empty variable supply the empty string
@@ -37,7 +37,7 @@ The scalar string option's binding gains `envAllowEmpty`, an optional key, so a 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.17.0.
 
 ## Changelog
 

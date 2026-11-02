@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0117 - A configuration value its validator rejects falls back, and a configuration value validates against its file's directory
 description: A value the configuration source filled that the option's validator rejects is dropped, so the option falls back as if no tier supplied it, and core names the drop in one out.debug line at -v. An answer may carry the absolute directory of the file it came from, and the option's validator then reads that directory as host.cwd. This narrows ADR-0006's and ADR-0032's rule that a filled value its schema rejects fails the run, for the configuration tier alone.
-status: proposed
+status: accepted
 created: 2026-10-28
-modified: 2026-10-29
+modified: 2026-11-02
 ---
 
 # ADR-0117 - A configuration value its validator rejects falls back, and a configuration value validates against its file's directory
@@ -41,7 +41,7 @@ The input-source stage keeps its tiers and its precedence. Validation gains one 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release whose implementation drops a configuration fill its option's validator rejects, writes the `-v` line, and validates an answer that carries a `directory` against that directory.
+Accepted in 0.17.0.
 
 ## Changelog
 

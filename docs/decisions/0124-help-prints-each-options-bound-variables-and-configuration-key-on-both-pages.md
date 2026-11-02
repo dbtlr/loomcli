@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0124 - Help prints each option's bound variables and configuration key on both pages
 description: The compact and the extended help page print an option's environment binding as `env:` and its configuration key as `config:` in the option's fact parenthesis, names alone and never a value, after `implied` and before `deprecated`. Help reads the key from `configInput` as the man page does, and `helpInput({ hideBindings: true })` removes both from both pages. This supersedes ADR-0040's clause that help prints no environment binding and no configuration binding on either page.
-status: proposed
+status: accepted
 created: 2026-10-30
-modified: 2026-10-30
+modified: 2026-11-02
 ---
 
 # ADR-0124 - Help prints each option's bound variables and configuration key on both pages
@@ -42,7 +42,7 @@ Every help page that lists an option with a binding gains its facts, so textstat
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.17.0.
 
 ## Changelog
 

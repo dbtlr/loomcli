@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0129 - An author chooses the configuration scopes an application reads, and a root marker where the project walk stops
 description: configuration() takes scopes, a list of project and user that defaults to both, and the lookup reads only the scopes listed, in a fixed order, project first. The project scope is the walk, which never looks in the home directory; the user scope is the home file and the XDG user file. root names one or more entries whose presence marks the directory where the project walk stops, after it looks there; root false states that there is none. A root beside scopes without project is a declaration fault. The lint rule unrooted-configuration warns on a configuration() call that reads the project scope and sets no root. With neither setting the lookup is ADR-0119's. It amends ADR-0119.
-status: proposed
+status: accepted
 created: 2026-10-31
-modified: 2026-10-31
+modified: 2026-11-02
 ---
 
 # ADR-0129 - An author chooses the configuration scopes an application reads, and a root marker where the project walk stops
@@ -41,7 +41,7 @@ The configuration plugin's settings gain `scopes` and `root`, both optional, so 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships the scopes, the marker, and the lint rule.
+Accepted in 0.17.0.
 
 ## Changelog
 
