@@ -11,9 +11,9 @@ modified: 2026-11-03
 
 ## Context
 
-ADR-0134 lets launch cost be cut by work that changes no contract, including what plugins evaluate at import. Loading `node:crypto` costs a fresh process a few milliseconds on Node and on Bun. The installed-files module imports it statically for two calls: the digest of a file's content and the random part of a staging file's name. Each call is synchronous, as the module states, and its callers rely on that.
+ADR-0134 lets launch cost be cut by work that changes no contract, including what plugins evaluate at import. Loading `node:crypto` costs a fresh process a few milliseconds, measured on Node 24 and Bun 1.4.4 as the wall-clock difference between a module that imports it and one that does not. The installed-files module imports it statically for two calls: the digest of a file's content and the random part of a staging file's name. Each call is synchronous, as the module states, and its callers rely on that.
 
-The installed-files module loads at launch whenever a plugin that uses it is installed. The completion, manpage, and mcp plugins import their Commands' implementations statically, and those implementations import the installed-files module. The completion plugin's declaration also reads its shell names from a module that imports it. The self-update, service, and skills plugins import it from their plugin modules. The self-update plugin's notice middleware loads on every run, and it imports the installed-files module to write its cache when the cache is stale. The installed-files module's file replacement names its staging file with `randomBytes`. An application that installs self-update therefore loads `node:crypto` on every run, though most runs write no cache and hash no file.
+The installed-files module loads at launch whenever a plugin that uses it is installed. The completion, manpage, and mcp plugins import their Commands' implementations statically, and those implementations import the installed-files module. The completion plugin's declaration also reads its shell names from a module that imports it. The self-update plugin's module imports it directly. The service and skills plugins reach it through their Commands' implementations too. The self-update plugin's notice middleware loads on every run, and it imports the installed-files module to write its cache when the cache is stale. The installed-files module's file replacement names its staging file with `randomBytes`. An application that installs self-update therefore loads `node:crypto` on every run, though most runs write no cache and hash no file.
 
 An `import()` defers a module, but it is asynchronous, so the calls that use it would become asynchronous. `process.getBuiltinModule` returns a built-in module synchronously and loads it on the first call. Node provides it from 22.3, and Bun provides it at Loom's minimum version, 1.4.4. [ADR-0107](0107-a-run-reads-the-process-through-one-process-handle.md) bans the `process` global in `@loomcli/plugins`, and the lint rule's configuration names each exception. The same configuration bans the global `require` and `createRequire` from `node:module`, because a `require` loads `node:child_process` around the ban on importing it.
 
@@ -45,7 +45,7 @@ Deferring a plugin Command's implementation with `import()`, as a plugin's middl
 
 ## Status
 
-Accepted on merge. It binds the repository's source layout, its lint configuration, and a test, which a release cut neither changes nor ships, and an author sees no change in behavior.
+Accepted on merge. It changes no contract an author or operator reads, so it binds from the merge rather than from a release cut.
 
 ## Changelog
 
