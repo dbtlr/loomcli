@@ -247,11 +247,22 @@ function noticeFiles(packageDirectory, name, texts) {
   return [...licenses, ...notices, ...texts];
 }
 
-/** Copies a package's license and notice files into dist/licenses under names that cannot collide. */
+/**
+ * Copies a package's license and notice files into dist/licenses, each named for its package and its
+ * own file name. Two files of one package with the same name would overwrite each other, so they fail
+ * the build.
+ */
 function copyNoticeFiles(packageDirectory, name, files, licensesDirectory) {
   const prefix = name.replace('/', '__');
+  const seen = new Map();
   return files.map((file) => {
     const copied = `${prefix}-${file.split('/').pop()}`;
+    if (seen.has(copied)) {
+      throw new Error(
+        `${name} ships ${seen.get(copied)} and ${file}, which the loom bin would copy to the same name. Rename one of them.`,
+      );
+    }
+    seen.set(copied, file);
     copyFileSync(join(packageDirectory, file), join(licensesDirectory, copied));
     return `licenses/${copied}`;
   });

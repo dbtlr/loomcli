@@ -160,7 +160,9 @@ test('a material table that no longer describes a workspace package fails the bu
   ).toThrow(/ships licenses\/vendor\/LICENSE, which no entry of the material table/);
   for (const header of [
     '// SPDX-FileCopyrightText: 2025 The Elvish Authors',
+    '// (c) 2025 The Elvish Authors',
     '// Ported from Elvish',
+    '// Adapted from Elvish',
   ]) {
     expect(() =>
       writeNotices(
@@ -265,4 +267,19 @@ test('material entries that share a license text list it once', () => {
   const notice = readFileSync(join(root, 'packages/loom/dist/NOTICE'), 'utf8');
   expect(notice.match(/@loomcli__core-uucode-LICENSE\.md/g)).toHaveLength(1);
   expect(notice).not.toContain('figures-LICENSE');
+});
+
+test('two license texts of one package with the same file name fail the build', () => {
+  const store = 'node_modules/.pnpm/kit@1.0.0/node_modules/kit';
+  const root = repository({
+    bundled: [`${store}/index.js`],
+    files: {
+      [`${store}/LICENSE`]: 'MIT License',
+      [`${store}/licenses/LICENSE`]: 'Vendored license',
+      [`${store}/package.json`]: JSON.stringify({ license: 'MIT', name: 'kit', version: '1.0.0' }),
+    },
+    license: 'MIT',
+  });
+
+  expect(() => writeNotices(root)).toThrow(/kit ships LICENSE and licenses\/LICENSE/);
 });
