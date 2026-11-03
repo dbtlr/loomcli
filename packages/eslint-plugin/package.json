@@ -22,7 +22,7 @@
     "@types/estree": "^1.0.10",
     "@typescript-eslint/parser": "^8.72.1",
     "eslint": "^10.13.0",
-    "typescript": "^7.0.2"
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "@loomcli/core": "workspace:*"

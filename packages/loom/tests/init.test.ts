@@ -920,7 +920,7 @@ test('--only test writes the test alone and --only lint writes the lint file alo
 });
 
 test('a re-run never overwrites the test or the lint file', async () => {
-  const root = ownPackage({ [testPath]: 'export {};\n', '.oxlintrc.json': '{}\n' });
+  const root = ownPackage({ '.oxlintrc.json': '{}\n', [testPath]: 'export {};\n' });
   await loom(root, ['init']);
   const before = snapshot(root);
   await expect(loom(root, ['init', '--force'])).resolves.toEqual({

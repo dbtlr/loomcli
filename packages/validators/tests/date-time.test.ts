@@ -247,8 +247,7 @@ describe('the published schema', () => {
     const schema = published(dateTime());
     expect(schema).toEqual({
       $schema: dialect,
-      pattern:
-        '^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt ][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]+)?)?(?:[Zz]|[+-][0-9]{2}(?::?[0-9]{2})?)?$',
+      pattern: String.raw`^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt ][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?(?:[Zz]|[+-][0-9]{2}(?::?[0-9]{2})?)?$`,
       type: 'string',
     });
     expect(published(dateTime({ timeZone: 'Asia/Tokyo' }))).toEqual(schema);
