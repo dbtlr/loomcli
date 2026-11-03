@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
@@ -51,8 +51,9 @@ const toolchain = fileURLToPath(new URL('..', import.meta.url));
 
 /**
  * In a development build, Bun writes the path of each module it bundles in a comment above that
- * module's code, relative to the output directory. A distributed build minifies the comments away,
- * but splits its chunks the same.
+ * module's code, relative to the output file as though it were a directory, so the path resolves
+ * from the file itself. A distributed build minifies the comments away, but splits its chunks the
+ * same.
  */
 const bundledModule = /^\/\/ (?<path>\S+\.ts)$/gmu;
 
@@ -83,7 +84,7 @@ function loadedCommandModules(args: string[]) {
     const modules = files.flatMap((file) =>
       [...readFileSync(file, 'utf8').matchAll(bundledModule)].flatMap((found) => {
         const path = found.groups?.path;
-        return path === undefined ? [] : relative(toolchain, resolve(dirname(file), path));
+        return path === undefined ? [] : relative(toolchain, resolve(file, path));
       }),
     );
     return [...new Set(modules)]
