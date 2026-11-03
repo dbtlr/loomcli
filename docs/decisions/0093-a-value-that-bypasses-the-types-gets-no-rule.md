@@ -63,3 +63,4 @@ Accepted in 0.15.0.
 ## Changelog
 
 - 2026-10-20: Proposed with the 0.15.0 rescope.
+- 2026-11-03: [ADR-0136](0136-a-multiple-string-option-or-a-string-argument-may-be-required-only-when-input-is-not-interactive-and-a-question-may-link-an-argument.md), proposed, gives `optional-argument-last` a second branch: a `required: true` argument declared after one that declares `required: 'non-interactive'` is a declaration fault, because at a terminal that argument is optional and its question could never be asked. The branch this record keeps is unchanged. It binds when that record is accepted.

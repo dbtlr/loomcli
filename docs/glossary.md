@@ -716,9 +716,9 @@ _Avoid_: Bound option, backing option, bound argument
 The text a text, secret, or confirm question holds while it asks, and its cursor, a grapheme index from 0 to the line's grapheme count. The editing keys of the prompts reference move the cursor and change the line, and Enter submits it. A secret's typed line reaches no view.
 _Avoid_: Buffer, input field, answer (before it is submitted)
 
-**Hint**:
-The prefill a text question draws dimmed while its typed line is empty. Enter on the empty line accepts it, typing replaces it, and Tab copies it into the line for editing; it is never part of the line until copied. A confirm question draws its prefill in the same place as the legend `[Y/n]` or `[y/N]`, which no key copies.
-_Avoid_: Placeholder, default (for what is drawn), ghost text
+**Question hint**:
+The prefill a text question draws dimmed while its typed line is empty. Enter on the empty line accepts it, typing replaces it, and Tab, Right, or Ctrl-F copies it into the line for editing; it is never part of the line until copied. A confirm question draws its prefill in the same place as the legend `[Y/n]` or `[y/N]`, which no key copies and which is not a question hint.
+_Avoid_: Hint (alone, which is a failure line from an `onFailure` hook), placeholder, default (for what is drawn), ghost text
 
 **Progress line**:
 One line of work in flight that an action shows through `progress()` from `@loomcli/prompts`, drawn in its own live region: a spinner while the work has no total, and a bar with counts once it has one. It ends as a success line, a failure line, or a cancelled line that stays in scrollback, and when its region is not live it writes one start line and, unless it is cancelled, one end line through the semantic lanes. It reports each change as a progress event.
