@@ -8,7 +8,7 @@ This page documents the manifest plugin: the `--manifest` option, the JSON docum
 
 ```ts
 // @loomcli/plugins/manifest
-import type { BooleanOption, Plugin, PluginOptions, ResultNode } from '@loomcli/core';
+import type { BooleanOption, OptionGroup, Plugin, PluginOptions, ResultNode } from '@loomcli/core';
 
 const options = {
   manifest: { control: true, description: "Print this command's manifest as JSON.", type: 'boolean' },
@@ -32,6 +32,7 @@ interface ManifestDocument {
   readonly command: ManifestCommand;
 }
 interface ManifestCommand {
+  readonly stdin: { readonly description: string | null; readonly required: boolean } | null; // a standalone .stdin() declaration
   readonly name: string | null;
   readonly path: readonly string[];
   readonly description: string | null;
@@ -42,6 +43,7 @@ interface ManifestCommand {
   readonly result: ResultNode | null;
   readonly failures: readonly ManifestFailure[];
   readonly arguments: readonly ManifestArgument[];
+  readonly optionGroups: readonly OptionGroup[]; // see Declared option groups; a group with a hidden member is omitted
   readonly options: readonly ManifestOption[];
   readonly children: readonly ManifestCommand[];
 }
@@ -50,14 +52,27 @@ interface ManifestFailure {
   readonly exitCode: number;
   readonly meaning: string;
 }
-interface ManifestArgument {
-  readonly name: string;
-  readonly description: string | null;
-  readonly required: boolean;
-  readonly variadic: boolean;
-  readonly schema: Readonly<Record<string, unknown>> | null;
-  readonly default: { readonly value: unknown } | null;
-}
+type ManifestArgument =
+  | {
+      readonly name: string;
+      readonly description: string | null;
+      readonly required: boolean;
+      readonly variadic: boolean;
+      readonly schema: Readonly<Record<string, unknown>> | null;
+      readonly default: { readonly value: unknown } | null;
+    }
+  | {
+      readonly type: 'content'; // see Content inputs
+      readonly stdin: boolean;
+      readonly min: number | null; // a collection's declared bounds, null when it declares none
+      readonly max: number | null;
+      readonly name: string;
+      readonly description: string | null;
+      readonly required: boolean;
+      readonly variadic: boolean;
+      readonly schema: Readonly<Record<string, unknown>> | null;
+      readonly default: { readonly value: unknown } | null;
+    };
 type ManifestOption =
   | {
       readonly type: 'string';
@@ -77,6 +92,26 @@ type ManifestOption =
       readonly default: { readonly value: unknown } | null;
       readonly implied: string | null;
       readonly background: boolean; // see Background
+    }
+  | {
+      readonly type: 'content'; // see Content inputs
+      readonly stdin: boolean;
+      readonly min: number | null; // a multiple option's declared bounds, null when it declares none
+      readonly max: number | null;
+      readonly name: string;
+      readonly description: string | null;
+      readonly deprecated: string | null;
+      readonly control: boolean;
+      readonly long: string | null;
+      readonly short: string | null;
+      readonly required: boolean;
+      readonly requiredWhen: 'non-interactive' | null;
+      readonly multiple: boolean;
+      readonly schema: Readonly<Record<string, unknown>> | null;
+      readonly env: readonly string[];
+      readonly envDelimiter: string | null;
+      readonly default: { readonly value: unknown } | null;
+      readonly implied: string | null;
     }
   | {
       readonly type: 'boolean';
@@ -108,7 +143,7 @@ type ManifestOption =
     };
 ```
 
-`jsonkit get --manifest` prints the document below, abridged here to its first global; the full `globals` list continues with `--help`, `--version`, `--manifest`, `--explain`, `--color`, `--verbose`, and `--quiet`.
+`jsonkit get --manifest` prints the document below, abridged here to its first global; the full `globals` list continues with `--version`, `--manifest`, `--explain`, `--color`, `--verbose`, and `--quiet`.
 
 ```json
 {
@@ -133,25 +168,24 @@ type ManifestOption =
   },
   "globals": [
     {
-      "type": "string",
-      "name": "file",
-      "description": "The document to read. Omit it to read piped text.",
+      "type": "boolean",
+      "name": "help",
+      "description": "Show this help.",
       "deprecated": null,
-      "control": false,
-      "long": "--file",
-      "short": "-f",
-      "required": false,
-      "multiple": false,
+      "control": true,
+      "long": "--help",
+      "short": "-h",
+      "negative": null,
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
       "schema": null,
-      "env": [],
-      "envDelimiter": null,
-      "envAllowEmpty": false,
-      "default": null,
-      "implied": null
+      "env": []
     }
   ],
   "configuration": null,
   "command": {
+    "stdin": null,
     "name": "get",
     "path": [
       "get"
@@ -196,7 +230,32 @@ type ManifestOption =
         "default": null
       }
     ],
-    "options": [],
+    "optionGroups": [],
+    "options": [
+      {
+        "type": "content",
+        "stdin": true,
+        "min": null,
+        "max": null,
+        "name": "file",
+        "description": "The document to read. Omit it to read piped text.",
+        "deprecated": null,
+        "control": false,
+        "long": "--file",
+        "short": "-f",
+        "required": true,
+        "requiredWhen": null,
+        "multiple": false,
+        "schema": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "env": [],
+        "envDelimiter": null,
+        "default": null,
+        "implied": null
+      }
+    ],
     "children": []
   }
 }
@@ -210,8 +269,8 @@ The manifest plugin prints, for the routed Command, a self-contained JSON projec
 - **What a listing omits.** A hidden Command, a hidden local option, and a hidden global option are omitted, as every listing omits them. Aliases never appear, a Command's or an option's. A deprecated member appears with its migration message under `deprecated`.
 - **One line.** Every `description` and `deprecated` message the document carries, the Application's and the stdin input's included, is one line: each line break the author wrote, CRLF or a single terminator, reads as one space.
 - **The envelope.** `name`, `version`, and `description` are the graph's, and so is `configuration`, the [configuration fact](../core/graph-inspection.md): `null` when the application installs no configuration source, and otherwise `{ schema }`, the JSON Schema of the configuration file the source reads, or a `null` schema when it is unknown. A configuration schema that is not plain JSON data fails the write, as an input's schema does, naming `the configuration schema`. An agent reads it to write a configuration file the application accepts, and an author who publishes the file's schema hosts this object, under [ADR-0121](../decisions/0121-the-configuration-source-publishes-its-files-json-schema-as-a-core-graph-fact.md). `tokens` states the token rule once, so no entry repeats it: what a schema describes, that a `null` schema means unknown, and that an example omits the application name. `exitCodes` carries the eight codes core resolves itself with the Meaning column's text from the [Invocation](../core/invocation.md) table, code formatting removed, and a row for each other code a [declared failure](#manifest-failures) carries anywhere in the application, as that section states. It omits the application's range row. `encodings` states what the [media types](../core/results.md#media-types) `application/json` and `application/jsonl` promise, under the keys `json` and `jsonl`; a Command's `result.mediaTypes` names the views that declare each, so the statements apply by media type and never by view name. The three statements are fixed strings, the same in every document.
-- **A Command entry.** It mirrors `CommandNode` without `aliases`, `hidden`, and `extensions`, and adds `details`, `examples`, and `failures` from the Command's [`manifestCommand`](#manifest-extension) values: `details` holds each value's `details`, one string per value that holds one, and `examples` and `failures` concatenate each value's lists, all in collection order. At the root, `description` is the Application's, as the graph reports it.
-- **An input entry.** An argument entry mirrors `ArgumentNode` without `validated`, `validateOmitted`, and `extensions`. An option entry mirrors its `OptionNode` variant without `hidden`, `aliases`, and `extensions`, so it carries `control`, which tells an agent the option controls the invocation rather than feeding the Command's work, and on the string variant without `validated` and `validateOmitted`, so a plugin's option and an application's read alike and the document names no plugin. `validated` and `validateOmitted` describe how core runs a validator, and an agent reads `schema: null` as unknown whatever they hold. `schema` is the graph's [input schema](../core/validation.md#input-schema), copied verbatim. `default` is `{ "value": <declared value> }`, or `null` when the input declares no default or declares `undefined`. `env` is the graph's [environment binding](../core/input-sources.md), the array of variables an agent may set in place of the option, in the order core reads them, and `[]` when none; it sits before `default` on the string variant and last on the Boolean and counted variants, which carry no default. `envDelimiter` follows `env` on the string variant and on a content option entry: the delimiter that separates the items of a multiple option's variable under [Environment lists](../core/input-sources.md), so an agent that sets `FIELDS` joins the items with it, or `null` when the option declares none. `envAllowEmpty` follows `envDelimiter` on the string variant alone and is absent from a content option entry, as `background` is: `true` means an empty value of the variable supplies the option, so an agent may clear the option by setting the variable to an empty value, and `false` means an empty variable is unset. `implied` is the string variant's [implied value](../core/options.md#implied-values), or `null`, followed by `background`, the [background mark](../core/background.md), last on that variant, and the counted variant, `type: "count"`, carries no `negative`, `polarity`, `required`, `multiple`, or `default`, because a [counted option](../core/options.md#counted-options) has none; an agent reads its value as the number of times it is supplied. A hook-declared option, `--format` included, is an ordinary local option entry.
+- **A Command entry.** It mirrors `CommandNode` without `aliases`, `hidden`, and `extensions`, and adds `details`, `examples`, and `failures` from the Command's [`manifestCommand`](#manifest-extension) values: `details` holds each value's `details`, one string per value that holds one, and `examples` and `failures` concatenate each value's lists, all in collection order. At the root, `description` is the Application's, as the graph reports it. `stdin` comes first: the Command's standalone [`.stdin()`](../core/validation.md#content-inputs) declaration as `{ description, required }`, its description `null` when it has none, or `null` when the Command declares none. `optionGroups` is the graph's [declared option groups](../core/options.md#declared-option-groups), less each group that names a hidden option, so the listing never reveals a hidden member.
+- **An input entry.** An argument entry mirrors `ArgumentNode` without `validated`, `validateOmitted`, and `extensions`. A content input's entry, an argument's or an option's, opens with `type: "content"`, `stdin`, `min`, and `max`, the facts [Content inputs](../core/validation.md#content-inputs) describe, and `min` and `max` read `null` when the declaration states no bound. A plain argument's entry carries no `type`. An option entry mirrors its `OptionNode` variant without `hidden`, `aliases`, and `extensions`, so it carries `control`, which tells an agent the option controls the invocation rather than feeding the Command's work, and on the string variant without `validated` and `validateOmitted`, so a plugin's option and an application's read alike and the document names no plugin. `validated` and `validateOmitted` describe how core runs a validator, and an agent reads `schema: null` as unknown whatever they hold. `schema` is the graph's [input schema](../core/validation.md#input-schema), copied verbatim. `default` is `{ "value": <declared value> }`, or `null` when the input declares no default or declares `undefined`. `env` is the graph's [environment binding](../core/input-sources.md#environment-bindings), the array of variables an agent may set in place of the option, in the order core reads them, and `[]` when none; it sits before `default` on the string variant and last on the Boolean and counted variants, which carry no default. `envDelimiter` follows `env` on the string variant and on a content option entry: the delimiter that separates the items of a multiple option's variable under [Environment lists](../core/input-sources.md#environment-bindings), so an agent that sets `FIELDS` joins the items with it, or `null` when the option declares none. `envAllowEmpty` follows `envDelimiter` on the string variant alone and is absent from a content option entry, as `background` is: `true` means an empty value of the variable supplies the option, so an agent may clear the option by setting the variable to an empty value, and `false` means an empty variable is unset. `implied` is the string variant's [implied value](../core/options.md#implied-values), or `null`, followed by `background`, the [background mark](../core/background.md), last on that variant, and the counted variant, `type: "count"`, carries no `negative`, `polarity`, `required`, `multiple`, or `default`, because a [counted option](../core/options.md#counted-options) has none; an agent reads its value as the number of times it is supplied. A hook-declared option, `--format` included, is an ordinary local option entry.
 - **Absence.** Every field is present in every entry. An absent scalar reads `null`, an empty list reads `[]`, and a Command with no result reads `result: null`, which is how an agent learns that `--format` is absent there.
 - **Key order.** Every object the plugin builds holds its keys in the order the type block lists them. `result` holds `kind`, `views`, `default`, and `mediaTypes` in that order, and `mediaTypes` holds its keys in record order. A `schema` object and a default value keep the key order of the graph's value, as JavaScript enumerates it.
 - **Bytes.** The document is `JSON.stringify(document, null, 2)` and one newline, written to stdout with no style, so the bytes are the same under every capability. The text is escaped as the formatter's `json()` escapes it: through `style.escape`, with every character from U+007F to U+009F replaced by its `\uXXXX` escape in four lowercase hex digits. A declared default or a published schema that is not plain JSON data, meaning `null`, a Boolean, a finite number, a string, or an array or plain object holding only these, fails the write: the `out.render` call rejects as the output-view row of the [ordinary failure path](../core/failures.md#the-ordinary-failure-path) states, nothing is written, and the middleware's rejection reports `Internal error: The manifest cannot encode the default of option "--odd" as JSON. Supply a value that is null, a Boolean, a finite number, a string, or an array or plain object of these.` with code 1, as a throwing help page reports; a schema reads `the schema of option "--odd"` in the same place, and an argument reads `argument "<name>"`. A declared default is snapshotted as the author wrote it and a hand-written converter's schema keeps whatever it returned, so a `bigint`, `NaN`, a function, a `Date`, or a `Map` in either would otherwise print a value the author never declared, and a value that holds itself, which core copies with its cycle, has no JSON text at all. The middleware writes through a bare view the plugin does not declare, so no override reaches it: the document is data, as a result's `json` output is, and an application that wants another document writes its own projection.

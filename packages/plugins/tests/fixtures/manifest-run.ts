@@ -155,6 +155,7 @@ async function run(args: string[] = [], env: Record<string, string | undefined> 
       properties: { retries: { type: 'integer' } },
       type: 'object',
     })),
+    content,
     date: () => defaulted(new Date(0)),
     'deep-bigint': () => defaulted({ outer: { inner: 10n } }),
     function: () => defaulted(() => 'ten'),
@@ -187,6 +188,22 @@ async function run(args: string[] = [], env: Record<string, string | undefined> 
 }
 
 const dispatch = ({ out }: Pick<ActionContext<unknown>, 'out'>) => out.print('dispatched');
+
+/** Standalone stdin and content inputs, whose facts the manifest prints even when undeclared. */
+function content() {
+  const read = new Command('read').stdin({ description: 'The\nevents.' }).action(dispatch);
+  const piped = new Command('piped').stdin({ required: true }).action(dispatch);
+  const count = new Command('count')
+    .argument('sources', { type: 'content', variadic: true })
+    .option('file', { stdin: true, type: 'content' })
+    .option('files', { max: 3, min: 1, multiple: true, type: 'content' })
+    .action(dispatch);
+  return new Application('app', { plugins: [manifest()] })
+    .command(read)
+    .command(piped)
+    .command(count)
+    .action(dispatch);
+}
 function publishing(input: () => Record<string, unknown>): StandardSchemaV1 & StandardJSONSchemaV1 {
   return {
     '~standard': {

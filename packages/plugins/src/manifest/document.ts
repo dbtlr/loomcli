@@ -32,8 +32,8 @@ interface ManifestDocument {
 }
 
 interface ManifestCommand {
-  readonly optionGroups: CommandNode['optionGroups'];
-  readonly stdin?: CommandNode['stdin'];
+  /** A standalone `.stdin()` declaration, or `null` when the Command declares none. */
+  readonly stdin: { readonly description: string | null; readonly required: boolean } | null;
   readonly name: string | null;
   readonly path: readonly string[];
   readonly description: string | null;
@@ -44,6 +44,7 @@ interface ManifestCommand {
   readonly result: ResultNode | null;
   readonly failures: readonly ManifestFailure[];
   readonly arguments: readonly ManifestArgument[];
+  readonly optionGroups: CommandNode['optionGroups'];
   readonly options: readonly ManifestOption[];
   readonly children: readonly ManifestCommand[];
 }
@@ -55,10 +56,11 @@ interface ManifestFailure {
 }
 
 interface ManifestArgument {
+  /** The content variant's facts, first on a content argument; a plain argument carries none. */
   readonly type?: 'content';
   readonly stdin?: boolean;
-  readonly min?: number | undefined;
-  readonly max?: number | undefined;
+  readonly min?: number | null;
+  readonly max?: number | null;
   readonly name: string;
   readonly description: string | null;
   readonly required: boolean;
@@ -70,9 +72,10 @@ interface ManifestArgument {
 type ManifestOption =
   | {
       readonly type: 'string' | 'content';
+      /** The content variant's facts, after `type` on a content option; a string option carries none. */
       readonly stdin?: boolean;
-      readonly min?: number | undefined;
-      readonly max?: number | undefined;
+      readonly min?: number | null;
+      readonly max?: number | null;
       readonly name: string;
       readonly description: string | null;
       readonly deprecated: string | null;
@@ -203,7 +206,9 @@ function optionEntry(node: OptionNode): ManifestOption {
     case 'string': {
       return {
         type: node.type,
-        ...(node.type === 'content' ? { stdin: node.stdin, min: node.min, max: node.max } : {}),
+        ...(node.type === 'content'
+          ? { stdin: node.stdin, min: node.min ?? null, max: node.max ?? null }
+          : {}),
         ...common,
         required: node.required,
         requiredWhen: node.requiredWhen,
@@ -228,7 +233,12 @@ function optionEntry(node: OptionNode): ManifestOption {
 function argumentEntry(node: ArgumentNode): ManifestArgument {
   return {
     ...(node.type === 'content'
-      ? { type: 'content' as const, stdin: node.stdin ?? false, min: node.min, max: node.max }
+      ? {
+          type: 'content' as const,
+          stdin: node.stdin ?? false,
+          min: node.min ?? null,
+          max: node.max ?? null,
+        }
       : {}),
     name: node.name,
     description: lineOf(node.description),
@@ -368,14 +378,10 @@ function exitCodeTable(root: CommandNode): Readonly<Record<string, string>> {
 function commandEntry(node: CommandNode): ManifestCommand {
   const values = readExtension(node, manifestCommand);
   return {
-    ...(node.stdin !== undefined
-      ? {
-          stdin: {
-            ...node.stdin,
-            description: singleLineOf(node.stdin.description),
-          },
-        }
-      : {}),
+    stdin:
+      node.stdin === undefined
+        ? null
+        : { description: lineOf(node.stdin.description), required: node.stdin.required },
     name: node.name,
     path: node.path,
     description: lineOf(node.description),

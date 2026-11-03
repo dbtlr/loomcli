@@ -6,6 +6,8 @@ description: Commands, nesting and groups, aliases, hidden and deprecated member
 
 This page states how an author declares Commands and global options. Commands cover groups, nesting, aliases, hidden and deprecated members, and modular authoring. A global option is shared by every action, and the page states how core consumes and routes it.
 
+## Global options
+
 `Application.globalOption(name, config)` declares an option shared by every action. It accepts string, Boolean, and counted option configs, except the presence rules `required` and `validateOmitted`, and returns a new Application with the global output type added. Content options remain local. Keep the returned value; the receiver is unchanged. Declare all globals before the first `command()` or `action()` call. An Application with no global declarations has no application-owned global options.
 
 ```ts
@@ -18,7 +20,11 @@ const configured = new Application('jsonkit')
 
 Global names, aliases, kinds, polarity, implied values, defaults, and validators follow the [local-option rules](options.md). A global value reaches every action, so `options.verbose` has one type in the root action and in each Command action. A plugin declares global options too, under [Global options from plugins](plugin-contract.md#global-options-from-plugins), and they are global options in every respect: the same configuration, the same parse, the same validation, and values that reach every action typed.
 
-A global option declares no presence rule. Its validation runs on every Command, plugin Commands included, so a rule that it must be supplied would fail the Commands that never read it. `required` and `validateOmitted` are a compile error at `globalOption()`, under [ADR-0044](../decisions/0044-a-global-option-declares-no-presence-rule.md). An omitted global follows its kind's absence rule: `undefined`, a declared default, or `[]` for a string option, a Boolean's polarity, or `0` for a count. A Command that needs an ordinary global value checks for it in its action. A required content source belongs to that Command's local declaration.
+### A global option declares no presence rule
+
+A global option declares no presence rule. Its validation runs on every Command, plugin Commands included, so a rule that it must be supplied would fail the Commands that never read it. `required` and `validateOmitted` are a compile error at `globalOption()`, under [ADR-0044](../decisions/0044-a-global-option-declares-no-presence-rule.md). An omitted global follows its kind's absence rule: `undefined` or a declared default for a scalar string option, `[]` for a multiple string option, a Boolean's polarity, or `0` for a count. A Command that needs an ordinary global value checks for it in its action. A required content source belongs to that Command's local declaration.
+
+## Declaring a Command
 
 `new Command(name, options?)` declares a named Command with `argument()`, `option()`, `alias()`, `command()`, `action()`, and `extend()`. A Command name is a portable name, the rule [Application declarations](application.md) states, because an operator types it at the prompt the way the application name is typed. Names stay plain strings; no handler object is keyed by command name. `configured.command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth, as [Nested Commands and groups](#nested-commands-and-groups) states. A Command takes one options object like the Application does: `description` is the core fact every projection reads under the rule [Extensions](extensions.md) states, `hidden` and `deprecated` are the two core facts [Hidden and deprecated members](#hidden-and-deprecated-members) describes, and `extensions` carries the [extension values](extensions.md) plugins define. Globals are declared on the Application, which registers its environment as shown below.
 
