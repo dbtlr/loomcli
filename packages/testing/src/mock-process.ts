@@ -89,7 +89,9 @@ type MockFields = MockFacts &
          * No terminal when omitted. With `keys`, puts stdin on the terminal as its keyboard; each entry
          * is what the operator types while one reader holds it.
          */
-        readonly terminal?: MockTerminal & { readonly keys?: readonly string[] | undefined };
+        readonly terminal?: MockTerminal & {
+          readonly keys?: readonly (string | readonly string[])[] | undefined;
+        };
       }
   );
 
@@ -275,14 +277,14 @@ const noKeysLeft = 'mockProcess has no keys left for this read. Add an entry to 
  */
 class Keyboard extends Readable implements MockStdin {
   readonly isTTY = true;
-  readonly #entries: string[];
+  readonly #entries: (string | readonly string[])[];
   #raw = false;
   /** The current hold, which each switch to raw mode begins, so a hand-over belongs to its own. */
   #hold: object | undefined = undefined;
   /** Whether the background query was written during the current hold. */
   #asked = false;
 
-  constructor(keys: readonly string[]) {
+  constructor(keys: readonly (string | readonly string[])[]) {
     super();
     this.#entries = [...keys];
   }
@@ -330,7 +332,24 @@ class Keyboard extends Readable implements MockStdin {
       this.emit('error', new Error(noKeysLeft));
       return;
     }
-    this.push(Buffer.from(entry));
+    this.#sendChunks(hold, typeof entry === 'string' ? [entry] : [...entry]);
+  }
+
+  #sendChunks(hold: object, chunks: string[]): void {
+    const sendChunk = () => {
+      if (hold !== this.#hold || !this.#raw) {
+        return;
+      }
+      const chunk = chunks.shift();
+      if (chunk === undefined) {
+        return;
+      }
+      this.emit('data', Buffer.from(chunk));
+      if (chunks.length) {
+        setImmediate(sendChunk);
+      }
+    };
+    sendChunk();
   }
 }
 
