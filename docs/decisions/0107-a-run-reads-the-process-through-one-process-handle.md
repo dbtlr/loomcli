@@ -4,7 +4,7 @@ title: ADR-0107 - A run reads the process through one process handle
 description: Every run binds one process handle at entry and never replaces it. The handle holds every process fact core reads, the home and temporary folders included, receives every process effect core makes, and starts every child program a run starts. Core reads the global process only where it builds the real handle, and run() and app.invoke take { process } in place of host overrides. @loomcli/testing builds a sealed mock handle that scripts child programs, signals reach only the runs whose handle shares the signal source, and a lint rule holds an application's source to the handle.
 status: accepted
 created: 2026-10-24
-modified: 2026-10-27
+modified: 2026-11-03
 ---
 
 # ADR-0107 - A run reads the process through one process handle
@@ -71,3 +71,4 @@ Accepted in 0.16.0.
 - 2026-10-24: The toolchain's Bun signal forwarding has moved onto `onShutdown`, under [ADR-0106](0106-a-signal-ends-the-process-within-one-bounded-shutdown.md): the run's cancellation stops Bun, and a run-scoped `onShutdown` handler kills it and undoes the build when the shutdown ends before the build has undone itself, on the budget, a second signal, or `SIGQUIT`. It reads the `process` global nowhere, so it leaves the lint rule's exceptions, which are now that module, the configuration plugin's guard of the YAML library's debug variables, and the toolchain's application reader. Every other clause stands.
 - 2026-10-24: A child's `kill` also delivers `SIGKILL`, so the toolchain's `onShutdown` handler ends the Bun it started through `spawn` with the signal no child can handle, as the build reference states. Every other clause stands.
 - 2026-10-25: [ADR-0109](0109-a-test-scripts-keys-on-the-mocks-keyboard-and-measures-and-validates-with-cores-own-functions.md) gives `mockProcess` a keyboard, `terminal.keys`, which is the mock's signal source's own terminal, so a raw-mode reader raises a scripted interrupt key on the mock and `host.raise` answers `true` there. The raw-mode reader clause's "a mock's included" now reads as a mock's piped stdin. Every other clause stands.
+- 2026-11-03: [ADR-0135](0135-a-first-party-plugin-loads-a-costly-built-in-module-on-first-use-through-one-module.md) adds one exception to the `process` global ban: `packages/plugins/src/built-ins.ts`, which loads a built-in module on first use through `process.getBuiltinModule` and reads nothing else from the process. The bans on `require`, the `node:os` calls, and `node:child_process` still apply to it. Every other clause stands.
