@@ -21,9 +21,12 @@ import { fileURLToPath } from 'node:url';
  * The bundle carries other packages' code, so their license notices must travel with it. A
  * distributed `loom build` minifies its bundle, which drops the comment Bun writes above each
  * module, so the packages the bundle holds come from a Bun metafile instead: one more Bun build of
- * the same entries, with the arguments and `NODE_ENV` `loom build` uses for a distributed node
- * bundle, writes it, and each reader's build writes its own. A package counts when Bun put any of
- * its code in an output. The build copies each package's license, notice, and licenses/ files into
+ * the same entries writes it, with the target, splitting, minification, and `NODE_ENV` that
+ * `loom build` uses for a distributed node bundle, and each reader's build writes its own. That
+ * build leaves out the release facts and the skills folder, whose defines can only remove code,
+ * so it lists every package the bin holds. A package counts when Bun put any of its code in an
+ * output, and the build fails when the list misses @loomcli/core, which the bin always holds, so a
+ * metafile that stops naming the bundle's modules cannot empty the NOTICE. The build copies each package's license, notice, and licenses/ files into
  * dist/licenses and lists them in dist/NOTICE. It fails when a bundled package has no license file,
  * or when its license is not in the license field of the loom package.
  */
@@ -64,6 +67,7 @@ bun(
     '--splitting',
     '--minify-whitespace',
     '--minify-syntax',
+    '--keep-names',
     '--outdir',
     join(metafiles, 'bundle'),
     `--metafile=${join(metafiles, 'bundle.json')}`,
@@ -104,7 +108,12 @@ function bundledModules(metafile) {
   const { outputs } = JSON.parse(readFileSync(metafile, 'utf8'));
   return Object.values(outputs).flatMap((output) =>
     Object.entries(output.inputs)
-      .filter(([, input]) => input.bytesInOutput > 0)
+      .filter(([path, input]) => {
+        if (typeof input.bytesInOutput !== 'number') {
+          throw new TypeError(`The metafile ${metafile} gives ${path} no bytesInOutput.`);
+        }
+        return input.bytesInOutput > 0;
+      })
       .map(([path]) => relative(repositoryRoot, resolve(directory, path))),
   );
 }
@@ -119,6 +128,9 @@ function bundledPackageDirectories() {
         directories.add(found);
       }
     }
+  }
+  if (!directories.has(join(repositoryRoot, 'packages/core'))) {
+    throw new Error('The metafiles name no module of @loomcli/core, which the loom bin bundles.');
   }
   return [...directories];
 }

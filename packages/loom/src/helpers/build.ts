@@ -91,11 +91,15 @@ function carriesCopy(plan: BuildPlan): boolean {
 
 /**
  * The minification a plan's artifact takes. A distributed one drops whitespace and comments and
- * simplifies syntax, but keeps every identifier, because core reads function names from a stack's
- * frames and an author reads them in a logged defect. A development one is written as Bun writes it.
+ * simplifies syntax, but mangles no identifier and keeps the name of every function and class,
+ * named expressions included, which syntax minification drops unless told to keep them. So the
+ * stack of a defect the logging plugin writes and the name of an error's class still name the
+ * source. A development one is not minified.
  */
 function minifyArguments(plan: BuildPlan): string[] {
-  return plan.facts.build === 'distributed' ? ['--minify-whitespace', '--minify-syntax'] : [];
+  return plan.facts.build === 'distributed'
+    ? ['--minify-whitespace', '--minify-syntax', '--keep-names']
+    : [];
 }
 
 /**

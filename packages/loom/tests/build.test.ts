@@ -1352,7 +1352,8 @@ test('a development bundle reads the development code its dependencies ship', as
 
 /**
  * A package whose application logs to `~/probe.jsonl`, whose `source` prints the source text of a
- * function the syntax minifier folds, and whose `throw` breaks inside a named function.
+ * function the syntax minifier folds and the name of a named class expression, and whose `throw`
+ * breaks inside a named function expression, a name the syntax minifier drops unless told to keep it.
  */
 function minifyPackage() {
   return fixturePackage(
@@ -1361,20 +1362,22 @@ function minifyPackage() {
       'src/application.ts': `import { Application, Command } from '@loomcli/core';
 import { logging } from '@loomcli/plugins/logging';
 
-function failingStep(): never {
-  throw new TypeError('The step failed.');
-}
-
 function marker(): string {
   return 'fold-' + 'me';
 }
+
+const Named = class Kept {};
 
 export const probe = new Application('probe', {
   description: 'Probe minification.',
   plugins: [logging({ file: '~/probe.jsonl' })],
 })
-  .command(new Command('source', { description: 'Print the source of marker.' }).action(({ out }) => out.print(String(marker))))
-  .command(new Command('throw', { description: 'Throw a defect.' }).action(() => failingStep()));
+  .command(new Command('source', { description: 'Print the source of marker.' }).action(({ out }) => out.print(\`\${String(marker)}\n\${Named.name}\`)))
+  .command(
+    new Command('throw', { description: 'Throw a defect.' }).action(function failingStep() {
+      throw new TypeError('The step failed.');
+    }),
+  );
 `,
       'src/main.ts': entry,
     },
@@ -1382,11 +1385,14 @@ export const probe = new Application('probe', {
   );
 }
 
-/** The marker's source as a distributed build writes it: no whitespace, its sum folded, its name kept. */
-const minifiedMarker = 'function marker(){return"fold-me"}\n';
+/**
+ * The marker's source as a distributed build writes it, with no whitespace, its sum folded, and its
+ * name kept, then the class expression's name.
+ */
+const minifiedMarker = 'function marker(){return"fold-me"}\nKept\n';
 
-/** The marker's source as Bun writes it unminified. */
-const plainMarker = 'function marker() {\n  return "fold-" + "me";\n}\n';
+/** The marker's source as Bun writes it unminified, then the class expression's name. */
+const plainMarker = 'function marker() {\n  return "fold-" + "me";\n}\nKept\n';
 
 test('a distributed bundle minifies whitespace and syntax and keeps names, and a development bundle is not minified', async () => {
   const root = minifyPackage();
@@ -1417,7 +1423,7 @@ test(
   slow,
 );
 
-test("a defect's logged stack from a distributed bundle names the function that threw", async () => {
+test("a defect's logged stack from a distributed bundle names the function expression that threw", async () => {
   const root = minifyPackage();
   const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
   const built = await loom(root, ['build', '--target', 'node']);
