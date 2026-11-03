@@ -17,7 +17,7 @@ Run `python3 scripts/check-glyph-catalog.py --check` to compare this file with t
 Run the command without `--check` to regenerate it. Both commands need network access.
 The generator rejects an unrecognized source shape instead of silently omitting an entry.
 
-The source is MIT-licensed. Its [license notice](data/inquirer-figures-license.txt) accompanies this catalog.
+The source is MIT-licensed and derives from Sindre Sorhus's figures, which is MIT-licensed too. Both license notices, [Inquirer's](../../packages/core/licenses/inquirer-figures-LICENSE.txt) and [figures'](../../packages/core/licenses/figures-LICENSE.txt), accompany the catalog core ships.
 
 | Name | Main form | Compatibility form |
 | --- | --- | --- |
