@@ -1,10 +1,10 @@
 ---
-description: The @loomcli/prompts reference. The four question kinds an action asks, text, secret, confirm, and select, how a question links a local option, how the run's interaction decision resolves it, what each kind draws and accepts, and how a question leaves the terminal, and the progress lines an action shows around its work, their style plugin, their view, and their plain lines off a terminal.
+description: The @loomcli/prompts reference. The four question kinds an action asks, text, secret, confirm, and select, how a question links a local option or an argument, how the run's interaction decision resolves it, the keys the reader reads and how a typed line is edited, what each kind draws and accepts, and how a question leaves the terminal, and the progress lines an action shows around its work, their style plugin, their view, and their plain lines off a terminal.
 ---
 
 # Prompts reference
 
-`@loomcli/prompts` is a library an action imports to ask an operator a question at a terminal and to show [progress](#progress) around its work. Questions and progress lines need no plugin: an application installs nothing to use them, and the library registers no option. The one plugin it ships, `progressStyle()`, is optional and sets how progress lines look across the application. [ADR-0082](../decisions/0082-an-action-asks-through-the-prompts-library-and-one-interaction-decision-governs-questions-and-conditional-requiredness.md) records the questions, and [ADR-0091](../decisions/0091-live-regions-stack-at-the-bottom-of-stderr-and-progress-reaches-invoke-callers-and-mcp-clients-as-typed-events.md) the regions both draw in and the progress lines. Core supplies what a question reads, the run's [interaction decision](../core/interaction.md), the [`supplied`](../core/interaction.md) record, [`out.region`](../core/output.md#live-region), and `cancel()`, and the library owns the key reader, the frames, and the progress timer.
+`@loomcli/prompts` is a library an action imports to ask an operator a question at a terminal and to show [progress](#progress) around its work. Questions and progress lines need no plugin: an application installs nothing to use them, and the library registers no option. The one plugin it ships, `progressStyle()`, is optional and sets how progress lines look across the application. [ADR-0082](../decisions/0082-an-action-asks-through-the-prompts-library-and-one-interaction-decision-governs-questions-and-conditional-requiredness.md) records the questions, [ADR-0136](../decisions/0136-a-multiple-string-option-or-a-string-argument-may-be-required-only-when-input-is-not-interactive-and-a-question-may-link-an-argument.md) a question's link to an argument, and [ADR-0091](../decisions/0091-live-regions-stack-at-the-bottom-of-stderr-and-progress-reaches-invoke-callers-and-mcp-clients-as-typed-events.md) the regions both draw in and the progress lines. Core supplies what a question reads, the run's [interaction decision](../core/interaction.md), the [`supplied`](../core/interaction.md) record, [`out.region`](../core/output.md#live-region), and `cancel()`, and the library owns the key reader, the frames, and the progress timer.
 
 ```ts
 import { Application, Command } from '@loomcli/core';
@@ -54,80 +54,165 @@ With `--no-input`, `--backend` and `--port` are required before the action runs,
 Each kind is a function of the action context and one settings object, and returns a promise of the answer.
 
 ```ts
-type LinkKey<Options> = keyof Options & string;
-type Answer<Options, Key, Output> = [Key] extends [never]
+type LinkKey<Inputs> = keyof Inputs & string;
+type Answer<Inputs, Key, Output> = [Key] extends [never]
   ? Output
-  : Output | Options[Key & keyof Options];
+  : Output | Inputs[Key & keyof Inputs];
 
-function text<Options, const Key extends LinkKey<Options> = never, Output = string>(
-  context: ActionContext<unknown, Options, unknown>,
-  settings: TextSettings<Key, Output>, // validate?: StandardSchemaV1<string, Output>
-): Promise<Answer<Options, Key, Output>>;
-function secret<Options, const Key extends LinkKey<Options> = never, Output = string>(
-  context: ActionContext<unknown, Options, unknown>,
-  settings: SecretSettings<Key, Output>,
-): Promise<Answer<Options, Key, Output>>;
+function text<
+  Options,
+  const Key extends LinkKey<Options> = never,
+  Output = string,
+  Args = unknown,
+  const Argument extends LinkKey<Args> = never,
+>(
+  context: ActionContext<Args, Options, unknown>,
+  settings: TextSettings<Key, Output, Argument>, // validate?: StandardSchemaV1<string, Output>
+): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
+function secret<
+  Options,
+  const Key extends LinkKey<Options> = never,
+  Output = string,
+  Args = unknown,
+  const Argument extends LinkKey<Args> = never,
+>(
+  context: ActionContext<Args, Options, unknown>,
+  settings: SecretSettings<Key, Output, Argument>,
+): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
 function confirm<Options, const Key extends LinkKey<Options> = never>(
   context: ActionContext<unknown, Options, unknown>,
   settings: ConfirmSettings<Key>,
 ): Promise<Answer<Options, Key, boolean>>;
-function select<Options, const Choice extends string, const Key extends LinkKey<Options> = never>(
-  context: ActionContext<unknown, Options, unknown>,
-  settings: SelectSettings<Key, Choice>, // choices: readonly Choice[]; default?: NoInfer<Choice>
-): Promise<Answer<Options, Key, Choice>>;
+function select<
+  Options,
+  const Choice extends string,
+  const Key extends LinkKey<Options> = never,
+  Args = unknown,
+  const Argument extends LinkKey<Args> = never,
+>(
+  context: ActionContext<Args, Options, unknown>,
+  settings: SelectSettings<Key, Choice, Argument>, // choices: readonly Choice[]; default?: NoInfer<Choice>
+): Promise<Answer<Args, Argument, Answer<Options, Key, Choice>>>;
 ```
 
-The type tests prove the generic plumbing against the action context's real parameters; the results above are what it must produce.
+The type tests prove the generic plumbing against the action context's real parameters; the results above are what it must produce. `Args` and `Argument` follow every type parameter a kind already had, so a call that passes type arguments explicitly keeps compiling.
 
 | Setting          | Kinds                  | Meaning                                                                                     |
 | ---------------- | ---------------------- | ------------------------------------------------------------------------------------------- |
 | `message`        | All                    | The question's title, a marked string of one line.                                          |
 | `option`         | All                    | The key of the local option the question links.                                             |
-| `skipIfSupplied` | All                    | `true` skips the question at a terminal when the linked option was supplied. Needs `option`. |
+| `argument`       | Text, secret, select   | The name of the routed Command's argument the question links.                               |
+| `skipIfSupplied` | All                    | `true` skips the question at a terminal when the linked input was supplied. Needs `option` or `argument`. |
 | `default`        | Text, confirm, select  | The question's own default: a string for text, a Boolean for confirm, a choice for select.  |
 | `validate`       | Text, secret           | A Standard Schema value that checks a typed answer and may transform it.                    |
 | `choices`        | Select                 | A nonempty list of strings.                                                                 |
 
-Question validation receives the captured Loom run context through the Standard Schema options channel, with `phase: 'question'`. A linked question identifies its local option; an unlinked question identifies its title with `kind: 'question'`. The host, route, passthrough tail, and supplied values come from the same run, with separate copies for each validator call. Shipped validators such as `path()` and `dateTime()` use the host's working directory and time zone. A skipped question never calls its question validator.
+Question validation receives the captured Loom run context through the Standard Schema options channel, with `phase: 'question'`. A question linked to an option identifies its local option, a question linked to an argument identifies its argument with `kind: 'argument'`, and an unlinked question identifies its title with `kind: 'question'`. The host, route, passthrough tail, and supplied values come from the same run, with separate copies for each validator call. Shipped validators such as `path()` and `dateTime()` use the host's working directory and time zone. A skipped question never calls its question validator.
 
 Secret declares no `default`, and its types reject one.
 
-The return type is the question's own output: the validator's output for text and secret, or `string` without one, `boolean` for confirm, and the choice union for select. A linked question can also return the option's validated value, so `Answer` adds the option's action value, `undefined` included, because a validator may return `undefined` for a supplied value. The union collapses when the two agree, as `port()` on both the option and the question does.
+The return type is the question's own output: the validator's output for text and secret, or `string` without one, `boolean` for confirm, and the choice union for select. A linked question can also return the linked input's validated value, so `Answer` adds the option's or the argument's action value, `undefined` included, because a validator may return `undefined` for a supplied value. The union collapses when the two agree, as `port()` on both the option and the question does.
 
-## Linking an option
+## Linking an input
 
-`option` names a local option of the routed Command. Its type admits the keys of the action's `options`. At the call, the library checks the declaration through `context.command` and throws a `DeclarationError` under the rule [`@loomcli/prompts/link`](../core/diagnostics.md#loomclipromptslink) for each of these, which a run reports with exit 1:
+A question links at most one input of the routed Command: `option` names a local option, and `argument` names an argument. The types admit the keys of the action's `options` for `option` and of its `args` for `argument`, and they reject `option` and `argument` together, `argument` on confirm, and `skipIfSupplied` without either. A linked argument works as a linked option does throughout [Resolving a question](#resolving-a-question): its raw supplied value prefills the question, and its validated value answers a skipped one.
 
-- **A declared option.** The linked key is a local option the routed Command declares.
+```ts
+const clone = new Command('clone')
+  .argument('url', { required: 'non-interactive', validate: url() })
+  .action(async (context) => {
+    const source = await text(context, { message: 'Repository URL', argument: 'url', skipIfSupplied: true });
+    // ...
+  });
+```
+
+`app clone https://example.com/repo.git` skips the question, `app clone` at a terminal asks it, and `app clone --no-input` fails before the action with `Argument "url" requires a value when input is not interactive. Supply a value for "url".`
+
+At the call, the library checks the declaration through `context.command` and throws a `DeclarationError` under the rule [`@loomcli/prompts/link`](../core/diagnostics.md#loomclipromptslink) for each of these, which a run reports with exit 1:
+
+- **A declared input.** The linked key is a local option the routed Command declares, or the linked name is an argument it declares: `The question "Repository URL" links argument "url", which Command "clone" does not declare.`, corrected by `Link an argument of the routed Command.` An undeclared option keeps its sentence, `... links option "port", which Command "setup" does not declare.`, corrected by `Link a local option of the routed Command.`
 - **A local option.** The linked option is not a global option.
-- **One string value.** A text, secret, or select question links a string option that takes one value, never a multiple, content, or counted option.
+- **One string value.** A text, secret, or select question links a string option or a string argument that takes one value, never a multiple, content, or counted option and never a variadic or content argument. The sentence names the input, `The question "Tags" links option "tag", which is not a string option that takes one value.` or `The question "Files" links argument "files", which is not a string argument that takes one value.`, and both read the correction `Link a string option or argument that takes one value.`
 - **A Boolean.** A confirm question links a Boolean option and no other.
 - **Choices.** A select question has at least one choice, which a computed `choices` list may lack before the question resolves.
 
-The types reject the other malformed settings, such as `skipIfSupplied` without `option`, a `default` that is not one of `choices`, a `default` on secret, and a `validate` that is not a Standard Schema value, so they get no rule. The root Command reads as `the root Command`.
+The rule's explanation reads `A question asks in one line of prose and links at most one local option or argument of the routed Command, of the kind the question accepts, and a select question offers at least one choice.` The types reject the other malformed settings, such as `skipIfSupplied` without a link, `option` beside `argument`, a `default` that is not one of `choices`, a `default` on secret, and a `validate` that is not a Standard Schema value, so they get no rule. The root Command reads as `the root Command`.
 
 ## Resolving a question
 
-A question first reads the run's interaction decision, `context.interactive`, and the linked option's raw value, `context.supplied.options[option]`, which is `undefined` when the option was omitted or left to its declared default.
+A question first reads the run's interaction decision, `context.interactive`, and the linked input's raw value: `context.supplied.options[option]` for an option and `context.supplied.args[argument]` for an argument, each `undefined` when the input was omitted or left to its declared default.
 
-| Linked option            | Interaction on, `skipIfSupplied` | Interaction on, without it | Interaction off             |
+| Linked input             | Interaction on, `skipIfSupplied` | Interaction on, without it | Interaction off             |
 | ------------------------ | -------------------------------- | -------------------------- | --------------------------- |
 | Supplied                 | Skipped                          | Asked, prefilled           | Skipped                     |
 | Not supplied             | Asked                            | Asked                      | Missing-input error, exit 2 |
 | No link                  | Asked                            | Asked                      | `InteractionUnavailableError`, exit 1 |
 
-- **Skipped.** The question draws nothing and returns `context.options[option]`, the option's validated value. The question's own validator does not run.
-- **Asked.** The prefill is the first that applies: the raw supplied value, the question's `default`, the linked option's declared default, or none. A Boolean option's implicit absent value is never a default. A select whose prefill matches no choice starts on the first choice. Secret takes no prefill: asked, it starts empty even when its option was supplied, and only `skipIfSupplied` or interaction off answers it from the option. An accepted prefill is a submitted answer and passes through `validate` as a typed one does.
-- **Missing input.** The question throws `missingInputError(context, option)`, core's ordinary `InputError` for that option: `Option "--database-url" is required when input is not interactive. Supply a value.`, named by declared name under an invocation by name. For argv, a confirm's Boolean option reads `Supply "--install" or "--no-install".` in place of `Supply a value.`, naming the spellings its polarity accepts. Under an invocation by name, the fix remains `Supply a value.` A default never answers here. An option that declares `required: 'non-interactive'` never reaches this row, because core reports it before the action.
+- **Skipped.** The question draws nothing and returns the linked input's validated value, `context.options[option]` or `context.args[argument]`. The question's own validator does not run.
+- **Asked.** The prefill is the first that applies: the raw supplied value, the question's `default`, the linked input's declared default, or none. A Boolean option's implicit absent value is never a default. A select whose prefill matches no choice starts on the first choice. Secret takes no prefill: asked, it starts empty even when its input was supplied, and only `skipIfSupplied` or interaction off answers it from the input. An accepted prefill is a submitted answer and passes through `validate` as a typed one does.
+- **Missing input.** The question throws core's ordinary `InputError` for its input, which [`missingInputError`](../core/interaction.md) builds: `missingInputError(context, option)` for an option, `Option "--database-url" is required when input is not interactive. Supply a value.`, named by declared name under an invocation by name, and `missingInputError(context, { argument })` for an argument, `Argument "url" requires a value when input is not interactive. Supply a value for "url".` For argv, a confirm's Boolean option reads `Supply "--install" or "--no-install".` in place of `Supply a value.`, naming the spellings its polarity accepts. Under an invocation by name, the fix remains `Supply a value.` A default never answers here. An input that declares `required: 'non-interactive'` never reaches this row, because core reports it before the action.
 - **Interaction unavailable.** `InteractionUnavailableError` extends `FatalError` with the failure code `interaction-unavailable` and exit 1. Its sentence names the question and the routed Command: `The question "Install the background service?" needs an interactive terminal, and this run is not interactive. Run "mimir setup" at a terminal.`
+
+## Reading keys
+
+Each kind reads keys from stdin in raw mode, through one reader that every question of the run shares. The reader turns the bytes a terminal sends into keys, in the encodings xterm-compatible terminals send, so the keys an operator presses in a shell work in a question. In the table, CSI is `\u001b[` and SS3 is `\u001bO`.
+
+| Key                         | Bytes the reader reads as the key                                               |
+| --------------------------- | ------------------------------------------------------------------------------- |
+| Enter                       | `\r`, `\n`, or `\r\n`, which reads as one Enter                                 |
+| Backspace                   | `\u007f`, and `\b`, which is also Ctrl-H                                        |
+| Delete                      | CSI `3~`                                                                        |
+| Tab                         | `\t`, which is also Ctrl-I                                                      |
+| Escape                      | A lone ESC, `\u001b`, under the rule below, and CSI `27u`                       |
+| Up, Down, Right, Left       | CSI or SS3 followed by `A`, `B`, `C`, or `D`                                    |
+| Home                        | CSI `H`, SS3 `H`, CSI `1~`, and CSI `7~`                                        |
+| End                         | CSI `F`, SS3 `F`, CSI `4~`, and CSI `8~`                                        |
+| Ctrl-Right, Ctrl-Left       | CSI `1;5C` and CSI `1;5D`                                                       |
+| Alt-Right, Alt-Left         | CSI `1;3C` and CSI `1;3D`                                                       |
+| Alt-Backspace               | ESC followed by `\u007f` or `\b`                                                |
+| Ctrl and a letter           | The letter's code with its upper three bits cleared, `\u0001` for Ctrl-A through `\u001a` for Ctrl-Z, except the bytes a row above names |
+| Alt and a character         | ESC followed by a printable character other than `[` and `O`, as a terminal that sends Meta as ESC writes it |
+| A printable character       | Each code point from U+0020, Space, upward, other than U+007F                   |
+
+- **Interrupt keys first.** Core reads Ctrl-C, Ctrl-\\, and Ctrl-Z out of each read before the reader sees it, under [Leaving a question](#leaving-a-question), so no kind reads them as keys.
+- **Unlisted sequences.** A complete CSI sequence or SS3 sequence the table does not list, such as Shift-Left, CSI `1;2D`, or F5, is read whole and ignored, so its bytes never reach a typed line. An arrow with a modifier parameter other than 3 and 5 is such a sequence.
+- **A lone Escape.** An ESC that ends a read, alone or as the start of a sequence the read does not finish, is held. A read that arrives within 50 milliseconds continues it, so a sequence a slow link splits across two reads still reads as one key. When 50 milliseconds pass with no read, a held lone ESC is the Escape key, and a held unfinished sequence is dropped. Inside one read, ESC followed by another byte is never a lone Escape: it starts a sequence, an Alt combination, or Alt-Backspace, except that ESC followed by a control byte other than `\u007f` and `\b`, ESC included, is the Escape key and the byte after it reads on its own. The window is the reader's own timing for telling one key from another, not a limit on the operator: its timer runs only while bytes are held, is unref'd, and is cleared when the reader releases stdin.
+- **Escape cancels nothing.** Escape never cancels a question and never ends the run, so an operator who presses it out of habit from an editor loses no answer. Ctrl-C is the one key that cancels. No kind gives Escape a meaning, so every kind ignores it.
+- **A key a kind does not list is ignored.** Enter submits, and the submitted answer, typed or an accepted prefill, passes through `validate` when the question has one. A rejected answer keeps what was typed and shows the first issue's message on the line below until the next Enter, which either accepts an answer or replaces the issue. Keys that arrive after an Enter, typed ahead or pasted, stay queued for the run's next question, and keys still queued when the action ends are discarded.
+
+## Editing a typed line
+
+Text, secret, and confirm hold a typed line: the text typed so far and a cursor. The cursor is a grapheme index, from 0, before the first grapheme, to the line's grapheme count, after the last. A grapheme is an extended grapheme cluster, as `Intl.Segmenter` segments text with `granularity: 'grapheme'`, so an emoji or a letter with a combining accent moves and deletes as one.
+
+| Keys                                   | Effect on the typed line                                                     |
+| -------------------------------------- | ---------------------------------------------------------------------------- |
+| A printable character                  | Inserts the character at the cursor                                          |
+| Left, Ctrl-B                           | Moves the cursor one grapheme left                                           |
+| Right, Ctrl-F                          | Moves the cursor one grapheme right                                          |
+| Alt-B, Ctrl-Left, Alt-Left             | Moves the cursor to the start of the word before it                          |
+| Alt-F, Ctrl-Right, Alt-Right           | Moves the cursor to the end of the word after it                             |
+| Home, Ctrl-A                           | Moves the cursor to the start of the line                                    |
+| End, Ctrl-E                            | Moves the cursor to the end of the line                                      |
+| Backspace                              | Deletes the grapheme before the cursor                                       |
+| Delete                                 | Deletes the grapheme at the cursor                                           |
+| Ctrl-D                                 | On an empty line, ends input; otherwise, as Delete                           |
+| Ctrl-W, Alt-Backspace                  | Deletes from the start of the word before the cursor to the cursor           |
+| Ctrl-U                                 | Deletes from the start of the line to the cursor                             |
+| Ctrl-K                                 | Deletes from the cursor to the end of the line                               |
+| Tab                                    | In text, copies the hint into an empty line; otherwise, nothing              |
+| Enter                                  | Submits the line                                                             |
+
+- **Bounds.** A move or a deletion with nothing in its direction does nothing: Left and Backspace at 0, and Right, Delete, and Ctrl-K at the end. Right on an empty text line that shows a hint copies the hint, as Tab does.
+- **Words.** A word grapheme is one whose first code point is a letter or a number, Unicode general category `L` or `N`. Every other grapheme, whitespace, punctuation, and symbols, separates words. The start of the word before the cursor is found by moving left over separators and then over word graphemes, and stops at 0. The end of the word after the cursor is found by moving right over separators and then over word graphemes, and stops at the end. One definition serves every word key, so Ctrl-W stops at punctuation as Alt-Backspace does: with the cursor at the end of `postgres://db.local:5432/app`, Ctrl-W leaves `postgres://db.local:5432/`, and a second Ctrl-W leaves `postgres://db.local:`.
+- **Where the cursor lands.** Every edit replaces one range of the line, the cursor's position for an insertion, with new text, which is empty for a deletion. Afterward the cursor sits at the first grapheme boundary of the new line at or after the end of the new text, so a combining mark typed after a letter joins it, and the cursor stays after the combined grapheme.
+- **Pasted text.** A paste reads as the keys its bytes hold, in order, as typed text does. Its printable characters insert at the cursor, one after another, a line break in it is Enter, which submits, and the rest of the paste stays queued for the next question. A tab in it is the Tab key.
+- **Nothing else.** The line keeps no history, so Up and Down do nothing in it, and it has no kill ring, so Ctrl-Y yanks nothing. Ctrl-T, Ctrl-L, undo, and a vi mode are not keys of a typed line.
 
 ## The kinds
 
-Each kind reads keys from stdin in raw mode. A key a kind does not list is ignored. Enter submits, and the submitted answer, typed or an accepted prefill, passes through `validate` when the question has one. A rejected answer keeps what was typed and shows the first issue's message on the line below until the next Enter, which either accepts an answer or replaces the issue. Ctrl-D with nothing typed is end of input, as it is in a cooked terminal. Keys that arrive after an Enter, typed ahead or pasted, stay queued for the run's next question, and keys still queued when the action ends are discarded.
-
-- **Text.** A printable character appends, and Backspace removes the last character. With no typed text, the prefill shows as a dim hint, and Enter accepts it. Without a prefill, Enter submits the empty string, and the validator decides whether it is valid. A question with a prefill cannot submit the empty string, so an author who needs blank as an answer omits the default.
-- **Secret.** Text's keys, with nothing echoed: the frame does not change while the operator types, and no frame shows a hint, a mask, or the length. The typed value reaches no view.
-- **Confirm.** Text's keys over a typed answer. Enter accepts `y`, `yes`, `n`, and `no` in any case. Enter on empty input accepts the prefill when there is one, and otherwise shows the issue `Type y or n.`, as any other text does. The hint reads `[Y/n]` for a yes prefill, `[y/N]` for a no prefill, and `[y/n]` with none.
+- **Text.** Edits a typed line. The prefill is its hint: with an empty line, the hint draws dimmed and Enter accepts it. The first character typed replaces the hint, and a line emptied again shows it again. Tab, or Right on the empty line, copies the hint into the line with the cursor at its end, so the operator edits the default rather than retyping it, and Enter then submits the line as edited. A question with a hint cannot submit the empty string, so an author who needs blank as an answer omits the default. Without a prefill, Enter on an empty line submits the empty string, and the validator decides whether it is valid.
+- **Secret.** Edits a typed line with every key text has but Tab, and with nothing echoed: the frame does not change while the operator types or moves the cursor, and no frame shows a hint, a mask, the length, or the cursor's place. The typed value reaches no view. The editing keys still work on the hidden line, so an operator who knows a typo can Ctrl-U and type again, as at a shell's password prompt.
+- **Confirm.** Edits a typed line. Enter accepts `y`, `yes`, `n`, and `no` in any case. Enter on an empty line accepts the prefill when there is one, and otherwise shows the issue `Type y or n.`, as any other text does. The hint reads `[Y/n]` for a yes prefill, `[y/N]` for a no prefill, and `[y/n]` with none. The hint is a legend for the keys, not text the line can hold, so Tab and Right on an empty line do nothing.
 - **Select.** ↑ and ↓ move the highlight and stop at the first and last choice. Enter selects the highlighted choice. At most seven choices show at once, fewer when stderr has fewer rows, and the window scrolls with the highlight. A dim `↑ 3 more` or `↓ 5 more` line marks hidden choices in that direction. The last line is the key help `↑↓ move · Enter select`. When even one choice with the ordinary frame cannot fit, the frame clips the title and selected label at grapheme boundaries, combines hidden-count markers with the footer, and abbreviates narrow key help to `↑↓ Enter`. The clipping uses the view context’s `columns`, which is stderr’s width by the rule in [Width, padding, and multiline lanes](../core/styles.md#width-padding-and-multiline-lanes), because a question draws on stderr: the real width, narrowed by a smaller valid `COLUMNS`, or `COLUMNS` alone on a terminal that reports no width. Each frame reads `columns` and `rows` when it draws, so the select window’s visible count follows a resize at the next frame, and a question does not redraw by itself on a resize. The default view clips at 80 columns when `columns` is `undefined`. That 80-column fallback applies to clipping alone: the select window’s height estimate assumes no wrapping when `columns` is `undefined`. The returned value is always the complete choice.
 
 ## Frames and views
@@ -136,23 +221,29 @@ A question draws in an input region, which it opens with `out.region({ input: tr
 
 | View            | Data                                                                                      | Default rendering                                      |
 | --------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `questionFrame` | `kind`, `message`, and for text and confirm the `typed` text, `hint`, and `issue`; for select the visible `choices`, the `highlighted` index, and the hidden counts above and below, and stderr’s `rows` | The active question, below                             |
+| `questionFrame` | `kind`, `message`, and `issue`; for text, secret, and confirm the `typed` text, the `cursor`, and the `hint`; for select the visible `choices`, the `highlighted` index, and the hidden counts above and below, and stderr’s `rows` | The active question, below                             |
 | `answeredLine`  | `message` and `answer`, a display string, absent for secret                               | `? Service port · 8080`                               |
 | `cancelledLine` | `message`                                                                                 | `? Service port · cancelled`                          |
 
-A secret's `typed` field is always the empty string. The default views use core's style tokens and glyphs:
+`cursor` is the typed line's cursor, a grapheme index into `typed` from 0 to its grapheme count, the unit the editing keys move by. A view draws graphemes, so a grapheme index names a place it can draw, where a code unit or code point offset could fall inside an emoji or an accented letter. A secret's `typed` field is always the empty string and its `cursor` always 0, because a cursor that moved would show the secret's length. The default views use core's style tokens and glyphs:
 
 | Frame                    | Rendering                                                                                                     |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| Text, asking             | `?` in `info` and bold, the message bold, a dim `›`, then the typed text, or the hint dim, and a block cursor drawn in `inverse` |
-| Secret, asking           | `?`, the message, a dim `›`, and the cursor                                                                    |
-| Confirm, asking          | `?`, the message, the dim hint `[Y/n]`, the typed text, and the cursor                                        |
+| Text, asking             | `?` in `info` and bold, the message bold, a dim `›`, then the field: the typed text with the cursor block, or the hint, dim, with the cursor block over its first grapheme |
+| Secret, asking           | `?`, the message, a dim `›`, and the cursor block over one space, which never moves                          |
+| Confirm, asking          | `?`, the message, the dim hint `[Y/n]`, and the field: the typed text with the cursor block                  |
 | Select, asking           | `?` and the message on the first line, the highlighted choice as `❯ postgres` in `highlight`, the others indented two columns, the marker lines and key help dim |
 | An issue                 | On the line below, indented two columns, `✘` and the message in `error`                                       |
 | Answered                 | A dim `?`, the message, a dim `·`, and the answer in `highlight`; a secret ends at the message                 |
 | Cancelled                | A dim `?`, the message, and a dim `· cancelled`                                                               |
 
-`?`, `›`, and `·` are plain text, and `✘` and `❯` are the [glyphs](../core/styles.md#glyphs) `cross` and `pointer`, so a terminal that takes compat forms reads `×` and `>`. A question hides the terminal cursor while it asks and draws its own, so the view decides where the cursor sits. The library writes the sequences that hide and show the cursor through `out.draw` with a bare view of its own, which nothing overrides. Core erases and redraws the region, so an overridden view that takes more or fewer rows redraws in place, and a lane message written while the question asks lands above the frame without breaking it. An active frame has no trailing newline, so its hidden terminal cursor stays on the last drawn row. The answered or cancelled line is the region's last frame: it replaces the frame, the cursor shows again, and the line stays in the scrollback when the region closes.
+- **The cursor block.** The default view draws the cursor in `inverse` over the grapheme at the cursor, and over one space after the last grapheme when the cursor is at the end, so the block shows where the next character lands.
+- **One row.** A text, secret, or confirm frame keeps its asking line on one row of the view context's `columns`, or 80 columns when `columns` is `undefined`, so a long answer never wraps the frame. The prefix is `? `, the message, and the separator, ` › ` for text and secret and the hint with a space on each side for confirm. The field takes the columns the prefix leaves. When that is fewer than 16, the message clips at grapheme boundaries, as the select title clips, until the field has 16 columns, or every column after `? ` and the separator on a narrower screen.
+- **A field too narrow for the line.** When the typed text and the cursor's cell fit the field, the view draws them whole. Otherwise it draws a window of the line that holds the cursor's cell. Each side of the window that leaves out a grapheme draws the glyph `ellipsis`, dim, in its place, and a side that leaves out nothing draws none. The view takes graphemes leftward from the cursor while they fit, keeping one ellipsis's width on the right when any grapheme follows the cursor's, and then fills what remains rightward. So typing at the end scrolls the text left with the cursor at the field's right edge, and Home shows the line from its start.
+- **A long hint.** A hint wider than the field draws from its start and ends in the dim `ellipsis` glyph at the field's edge.
+- **Widths.** The view measures with the view context's `width`, so a wide grapheme takes its two columns, and it never splits a grapheme. Each frame reads `columns` when it draws, so the window follows a resize at the next frame.
+
+`?`, `›`, and `·` are plain text, and `✘`, `❯`, and `…` are the [glyphs](../core/styles.md#glyphs) `cross`, `pointer`, and `ellipsis`, so a terminal that takes compat forms reads `×` and `>` for the first two. A question hides the terminal cursor while it asks and draws its own, so the view decides where the cursor sits. The library writes the sequences that hide and show the cursor through `out.draw` with a bare view of its own, which nothing overrides. Core erases and redraws the region, so an overridden view that takes more or fewer rows redraws in place, and a lane message written while the question asks lands above the frame without breaking it. An active frame has no trailing newline, so its hidden terminal cursor stays on the last drawn row. The answered or cancelled line is the region's last frame: it replaces the frame, the cursor shows again, and the line stays in the scrollback when the region closes.
 
 ## Leaving a question
 
@@ -162,7 +253,7 @@ A question asks only when interaction is on, and it enters raw mode through `hos
 - **Ctrl-\\** raises `SIGQUIT`, which skips the shutdown's budget.
 - **Ctrl-Z** raises `SIGTSTP`, which [suspends](../core/signals.md#suspend-and-resume) the process: the question's frame is erased and the terminal restored, and on `fg` the frame is drawn again and the question goes on reading keys. Several Ctrl-Z keys in one read suspend once, and every key still unread when Ctrl-Z raises its signal is dropped, as it is for Ctrl-C. The suspend cancels nothing.
 - **A stdin that is not its signal source's own terminal**, such as one an embedding host gives `processHandle`, raises none of these signals, because `host.raise` answers `false`, under [Raw-mode readers](../core/signals.md#raw-mode-readers): Ctrl-C and Ctrl-\\ call `context.cancel()`, so the question draws its cancelled line and the run resolves 130 while the process goes on, and Ctrl-Z does nothing.
-- **End of input** while a question is active, stdin closing or Ctrl-D with nothing typed, calls `context.cancel()`, and the question then draws its cancelled line and throws `context.signal.reason`, and the run resolves 130. It neither accepts a default nor submits an empty answer.
+- **End of input** while a question is active, stdin closing, or Ctrl-D on an empty typed line or at a select, calls `context.cancel()`, and the question then draws its cancelled line and throws `context.signal.reason`, and the run resolves 130. It neither accepts a default nor submits an empty answer.
 - **A run signal that aborts** while a question waits, from a caller or a process signal, ends the question the same way, with the code the first cause fixed. Core closes the question's region for the cancellation, and the question draws its cancelled line in the region's abort.
 - **Core closing the question's region** for a failure, such as work the action runs beside the question with `Promise.all` that rejects, or for the return of what asked it, ends the question too. The question draws its cancelled line in the region's abort, stops reading keys, and rejects with the region signal's reason.
 - **A signal already aborted** at the call ends the question before it draws anything.
@@ -328,7 +419,13 @@ A question's `validate`, the `done` and `failed` message functions of `track`, t
 ## Not shipped
 
 - A Command that declares it needs a terminal.
-- Multiple-choice selection, autocompletion, an editor question, and cursor movement inside a typed answer.
+- Multiple-choice selection, a question that narrows its choices as the operator types, and an editor question.
+- A number question and a date question. A text question composes them: `integer()`, `number()`, `date()`, or `dateTime()` from [`@loomcli/validators`](validators.md) as its `validate` checks the typed answer and returns the value.
+- A path question. Completing a path is a source of choices for a question that searches them, not a kind of its own.
+- Multiline text. It overlaps an editor question, which edits several lines in the operator's own editor.
+- A form that asks several questions on one screen. An action asks its questions in order, and a follow-up that depends on an earlier answer stays the application's, under [ADR-0082](../decisions/0082-an-action-asks-through-the-prompts-library-and-one-interaction-decision-governs-questions-and-conditional-requiredness.md).
+- A sort question that reorders a list. It needs a mode in which the arrow keys carry a held choice, which no other kind has.
+- A typed line's history, kill ring, and vi mode.
 - A default, a prefill, or "Enter keeps the current value" for secret.
 - Redrawing when the terminal is resized while a question asks. The next frame after a resize erases the whole region, because core recounts its last frame at the current width.
 - A progress line drawn as a multi-step tree, a progress line with a rate or an estimated time left, and a progress line on stdout.

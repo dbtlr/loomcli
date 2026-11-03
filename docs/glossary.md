@@ -195,7 +195,7 @@ The raw value of every input some tier supplied in one invocation, keyed by decl
 _Avoid_: Provenance, raw options, source map
 
 **Conditional requiredness**:
-The presence rule `required: 'non-interactive'` on a local string option that takes one value: the option is required when the run's interaction decision is off and optional when it is on, so the action can ask for it.
+The presence rule `required: 'non-interactive'` on a local string option, single or multiple, or a string argument, scalar or variadic: the input is required when the run's interaction decision is off and optional when it is on, so the action can ask for it. Such an argument counts as required for the argument order.
 _Avoid_: Soft required, required unless prompted
 
 **Passthrough**:
@@ -708,9 +708,17 @@ _Avoid_: Bundle, standard library, batteries, default set
 One prompt an action asks through `@loomcli/prompts`, of the kind text, secret, confirm, or select, drawn in an input region on stderr and answered from stdin while the interaction decision is on. It is part of the action, never a run stage or an input source.
 _Avoid_: Prompt (for one question; the package is prompts), wizard step, input source
 
-**Linked option**:
-The local option a question names with `option`. Its raw supplied value prefills the question, and its validated value answers the question when the question is skipped.
-_Avoid_: Bound option, backing option
+**Linked input**:
+The input of the routed Command a question names: a linked option, the local option it names with `option`, or a linked argument, the argument it names with `argument`, never both. Its raw supplied value prefills the question, and its validated value answers the question when the question is skipped.
+_Avoid_: Bound option, backing option, bound argument
+
+**Typed line**:
+The text a text, secret, or confirm question holds while it asks, and its cursor, a grapheme index from 0 to the line's grapheme count. The editing keys of the prompts reference move the cursor and change the line, and Enter submits it. A secret's typed line reaches no view.
+_Avoid_: Buffer, input field, answer (before it is submitted)
+
+**Hint**:
+The prefill a text question draws dimmed while its typed line is empty. Enter on the empty line accepts it, typing replaces it, and Tab copies it into the line for editing; it is never part of the line until copied. A confirm question draws its prefill in the same place as the legend `[Y/n]` or `[y/N]`, which no key copies.
+_Avoid_: Placeholder, default (for what is drawn), ghost text
 
 **Progress line**:
 One line of work in flight that an action shows through `progress()` from `@loomcli/prompts`, drawn in its own live region: a spinner while the work has no total, and a bar with counts once it has one. It ends as a success line, a failure line, or a cancelled line that stays in scrollback, and when its region is not live it writes one start line and, unless it is cancelled, one end line through the semantic lanes. It reports each change as a progress event.

@@ -212,8 +212,8 @@ test('revision prints the commit git reports, with no git run', async () => {
 - **Piped stdin.** `stdin` is text or bytes the run reads as piped input: the stream yields them as one chunk, unchanged, then ends, once over the mock's life, so a second run on the mock reads an ended stdin. Piped stdin is not a terminal, so the run's [interaction decision](../core/interaction.md) is off. A mock whose terminal has `keys` has a keyboard in its place, below.
 - **The terminal.** The mock's `terminal` is a `ProcessTerminal` over its own streams, in which no stream is a terminal, no width or height is reported, and no background is stated unless `terminal` says otherwise. `terminal` puts the output streams it names, stdout and stderr when `streams` is omitted, on a terminal `columns` wide and `rows` high, so a stream it leaves out reads as piped, as `app | less` pipes stdout. The width and height are live: `resize(columns, rows)` changes what the next read returns, as a window resize does. A stated `background` settles the run's background, so no query runs. Color follows the run's own rules, so a test sets it as an operator does, through `FORCE_COLOR`, `NO_COLOR`, or a `--color` spelling.
 - **The keyboard.** `terminal.keys` puts stdin on the terminal as its keyboard: stdin is a terminal, accepts raw mode, and is the mock's signal source's own terminal, so the run's [interaction decision](../core/interaction.md) is on when stderr is on the terminal too, as `streams` omitted puts it, unless the application's intent turns it off or the mock's `env` sets `CI`. A run under CI is not interactive, so a keyboard test that passes `env: process.env` on a CI runner, which sets `CI=true`, asks nothing; it states `CI: 'false'` or leaves `CI` out. `keys: []` is a keyboard with nothing typed. The types make `keys` and piped `stdin` exclusive, because a run's stdin is one or the other. `stdin.isRaw` reads whether a reader holds the keyboard in raw mode.
-- **When keys arrive.** The keyboard hands over its next entry each time a reader other than core's background query switches stdin to raw mode: when a [question](prompts.md) opens, and when a run resumes after Ctrl-Z, because the resume enters raw mode again. One entry is what the operator types while one reader holds the keyboard, so it holds every key for one question, an answer the question rejects and the answer typed after it included: `'bad\r\u007f\u007f\u007f8080\r'` types `bad`, submits it, erases it, and submits `8080`. Two questions open at once share one hold and one entry. No key arrives on a timer or in answer to printed text, so a test's keys reach the same reads on every run.
-- **Interrupt keys.** An entry may hold Ctrl-C (`'\u0003'`), Ctrl-\ (`'\u001c'`), and Ctrl-Z (`'\u001a'`). A reader raises the signal a key stands for on the mock's signal source, as it does at a real terminal, under [Raw-mode readers](../core/signals.md#raw-mode-readers): Ctrl-C starts the run's shutdown, so `run()` resolves 130, `exitCode` reads 130, and `endedBy` reads `'SIGINT'` once the shutdown re-raises it; Ctrl-Z runs the suspend handlers, then the resume handlers, and the resume takes the next entry. A raised interrupt drops the keys of its entry that were still unread, as a cooked terminal flushes its input, so a test that answers a question and then presses Ctrl-C at the next one puts each in an entry of its own: `keys: ['8080\r', '\u0003']`.
+- **When keys arrive.** The keyboard hands over its next entry each time a reader other than core's background query switches stdin to raw mode: when a [question](prompts.md) opens, and when a run resumes after Ctrl-Z, because the resume enters raw mode again. One entry is what the operator types while one reader holds the keyboard, so it holds every key for one question, an answer the question rejects and the answer typed after it included: `'bad\r\u007f\u007f\u007f8080\r'`, or `'bad' + key.enter + key.ctrl('u') + '8080' + key.enter` with [the key table](#the-key-table), types `bad`, submits it, erases it, and submits `8080`. Two questions open at once share one hold and one entry. No key arrives on a timer or in answer to printed text, so a test's keys reach the same reads on every run.
+- **Interrupt keys.** An entry may hold Ctrl-C (`'\u0003'`, or `key.ctrl('c')`), Ctrl-\ (`'\u001c'`), and Ctrl-Z (`'\u001a'`, or `key.ctrl('z')`). A reader raises the signal a key stands for on the mock's signal source, as it does at a real terminal, under [Raw-mode readers](../core/signals.md#raw-mode-readers): Ctrl-C starts the run's shutdown, so `run()` resolves 130, `exitCode` reads 130, and `endedBy` reads `'SIGINT'` once the shutdown re-raises it; Ctrl-Z runs the suspend handlers, then the resume handlers, and the resume takes the next entry. A raised interrupt drops the keys of its entry that were still unread, as a cooked terminal flushes its input, so a test that answers a question and then presses Ctrl-C at the next one puts each in an entry of its own: `keys: ['8080\r', '\u0003']`.
 - **The background query.** A keyboard mock answers core's [background query](../core/background.md) at once with the DA1 reply alone, as a terminal that reports no background does, so the query has no answer and settlement continues at `COLORFGBG`, no entry is used, and nothing waits on the query's deadline. Core writes the query only when the test's `env` sets `TERM`. A test that wants a background states `terminal.background`, and then no query runs.
 - **Running out of keys.** A switch to raw mode with no entry left fails the keyboard with the error `mockProcess has no keys left for this read. Add an entry to terminal.keys.`: once the switch returns, stdin emits it as an `error`, so the reader's pending read rejects with it, whether the switch opens a question or resumes one after Ctrl-Z. The run fails through the ordinary failure path, with exit code 1 and the sentence in its Developer Diagnostic on stderr, as a child program with no script does. Entries left over when the run ends are never read.
 - **What it records.** `stdout.text` and `stderr.text` hold everything written to each stream, decoded as UTF-8, and `transcript` holds each write in the order the run made it, tagged by stream. `exitCode` holds the code `run()` wrote; `app.invoke` writes none. Recording reads no clock and adds no timeout, so a run that never resolves leaves the test to its runner's own timeout.
@@ -221,7 +221,59 @@ test('revision prints the commit git reports, with no git run', async () => {
 - **What it does not seal.** A mock seals the process, not the machine. Clocks, timers, randomness, the network, and the file system stay real, so a run reads the real time, and a test that compares output holding a timestamp or an elapsed time masks it before comparing.
 - **Signals.** The mock's `signals` is a source of its own, and its `terminal` is the keyboard when the mock has one, and `undefined` otherwise. `mock.signals.raise(signal)` delivers the signal to the runs that hold the mock and reaches no other run and no real process. An ending signal, `SIGHUP`, `SIGINT`, `SIGQUIT`, or `SIGTERM`, raised while nothing listens for it, as the re-raise that ends a shutdown is, ends the mock's process: `endedBy` records the signal, and the mock delivers no later signal and records no later write or exit status, as an ended process writes nothing. `run()` still resolves when its run ends, so a test of a run that ignores its signal reads `endedBy` and does not await the run. A `SIGTSTP` or `SIGCONT` raised while nothing listens does nothing, so core's re-raise of `SIGTSTP` stops nothing and returns at once, and a `SIGTSTP` a test raises runs the suspend handlers and then the resume handlers back to back. A `run()` listens on the mock's source from the moment it is called, so a signal raised right after the call reaches the run. The mock accepts `exit` listeners and never calls them, because its process never ends except by a signal no listener heard. The mock has no `publishEnv`, so environment preparation changes no environment outside the run.
 - **One run or several.** A mock records every run given it, in order, so a test that runs twice reads both runs' writes. A test that wants each run apart builds a mock per run.
-- **Names.** `mockProcess` is exported from `@loomcli/testing`, and so are the types `MockFields`, `MockTerminal`, `MockProcess`, `MockStdin`, `RecordingStream`, `Program`, `ProgramCall`, and `ProgramAnswer`.
+- **Names.** `mockProcess` and [`key`](#the-key-table) are exported from `@loomcli/testing`, and so are the types `MockFields`, `MockTerminal`, `MockProcess`, `MockStdin`, `RecordingStream`, `Program`, `ProgramCall`, `ProgramAnswer`, and `KeyLetter`.
+
+### The key table
+
+```ts
+import { key, mockProcess } from '@loomcli/testing';
+
+const mock = mockProcess({
+  argv: ['setup'],
+  terminal: { columns: 80, keys: [key.down + key.enter, 'localhost' + key.home + 'db.' + key.enter], rows: 24 },
+});
+```
+
+`key` holds the bytes a terminal sends for the keys a [question](prompts.md#reading-keys) reads, so an entry of `terminal.keys` reads as the keys it presses rather than as escape codes. Each member is a string, and the two functions return one, so members join with `+` into one entry.
+
+```ts
+type KeyLetter = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm'
+  | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z';
+declare const key: {
+  readonly up: string;
+  readonly down: string;
+  readonly left: string;
+  readonly right: string;
+  readonly home: string;
+  readonly end: string;
+  readonly space: string;
+  readonly tab: string;
+  readonly enter: string;
+  readonly backspace: string;
+  readonly delete: string;
+  readonly escape: string;
+  ctrl(letter: KeyLetter): string;
+  alt(letter: KeyLetter): string;
+};
+```
+
+| Member                     | Bytes                               | Encoding                                                     |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------------ |
+| `up`, `down`, `right`, `left` | `'\u001b[A'`, `'\u001b[B'`, `'\u001b[C'`, `'\u001b[D'` | CSI, as a terminal in normal cursor mode sends them |
+| `home`, `end`              | `'\u001b[H'`, `'\u001b[F'`          | CSI                                                          |
+| `delete`                   | `'\u001b[3~'`                       | CSI                                                          |
+| `space`                    | `' '`                               | The character                                                |
+| `tab`                      | `'\t'`                              | The control byte                                             |
+| `enter`                    | `'\r'`                              | The byte a terminal in raw mode sends for Enter              |
+| `backspace`                | `'\u007f'`                          | DEL, as xterm-compatible terminals send Backspace            |
+| `escape`                   | `'\u001b[27u'`                      | CSI `27u`, the form the kitty keyboard protocol sends        |
+| `ctrl(letter)`             | `'\u0001'` for `'a'` through `'\u001a'` for `'z'` | The letter's code with its upper three bits cleared |
+| `alt(letter)`              | `'\u001b'` followed by the letter   | ESC first, as a terminal that sends Meta as ESC writes it    |
+
+- **Escape needs no timing.** A lone ESC byte is the Escape key only once the reader's 50-millisecond window passes with no next byte, under [Reading keys](prompts.md#reading-keys), so an ESC followed by more keys in the same entry joins them, as it does when a terminal sends them in one read: `'\u001b' + 'b'` is Alt-B. `key.escape` is a form the reader reads as Escape wherever it sits, so a test that presses Escape and then types on reads the same keys on every run. A test of the lone ESC itself ends its entry with `'\u001b'`.
+- **What a member stands for.** Each member is the bytes, and the reader decides the key: `key.ctrl('h')` is Backspace, `key.ctrl('i')` is Tab, and `key.ctrl('m')` is Enter, because a terminal sends those bytes for those keys too, and `key.ctrl('c')`, `key.ctrl('z')`, and `key.ctrl('d')` are the interrupt and end-of-input keys of [The keyboard](#mockprocess). The types take a lowercase letter alone.
+- **Other keys.** A key the table does not hold is written as its bytes, such as Ctrl-Left, `'\u001b[1;5D'`, which [Reading keys](prompts.md#reading-keys) lists.
+- **A plain value.** `key` is frozen, and its functions read nothing but their argument.
 
 ## Testing one function alone
 

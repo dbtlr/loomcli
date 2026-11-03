@@ -193,8 +193,9 @@ const result = await dateTime()['~standard'].validate('2026-06-01 09:00', option
 | Bare spelling of an option with an implied value | The implied value's validated output, judged before any token is read |
 | Counted option, no occurrence and no source     | `0`; nothing validates                            |
 | `required: true` value option omitted           | Input error; no dispatch                          |
-| `required: 'non-interactive'` option omitted, [interaction](interaction.md) off | Input error; no dispatch |
-| `required: 'non-interactive'` option omitted, interaction on | `undefined`; validator is not called |
+| `required: 'non-interactive'` option or argument omitted, [interaction](interaction.md) off | Input error; no dispatch |
+| `required: 'non-interactive'` scalar option or argument omitted, interaction on | `undefined`; validator is not called |
+| `required: 'non-interactive'` multiple option or variadic argument omitted, interaction on | `[]`; validator is not called |
 
 Two declarations in this table are faults, each a `DeclarationError` with code 1:
 
@@ -236,7 +237,7 @@ const get = new Command('get').option('file', {
 });
 ```
 
-The flag belongs to an optional scalar string option or scalar argument that declares a validator and no default. Every other declaration already decides its own absence, so the flag beside `required: true`, beside a `default`, beside `multiple: true` or `variadic: true`, on a Boolean or counted option, or without `validate` is a compile error at the declaration call. The validator's input type must accept `undefined`, the way a declared default must satisfy that same input type. A global option declares the flag under no condition, because its omission is plain absence under [Commands and global options](commands.md). The flag is Boolean, the way `variadic` is, and the way `required` is everywhere except a local string option that takes one value, which also accepts `'non-interactive'` under [Interaction](interaction.md).
+The flag belongs to an optional scalar string option or scalar argument that declares a validator and no default. Every other declaration already decides its own absence, so the flag beside `required: true`, beside a `default`, beside `multiple: true` or `variadic: true`, on a Boolean or counted option, or without `validate` is a compile error at the declaration call. The validator's input type must accept `undefined`, the way a declared default must satisfy that same input type. A global option declares the flag under no condition, because its omission is plain absence under [Commands and global options](commands.md). The flag is Boolean, the way `variadic` is, and the way `required` is everywhere except a local string option and a string argument, which also accept `'non-interactive'` under [Interaction](interaction.md).
 
 Defaults use the validator's input type, not its output type. In the example, `default: '0'` is valid and `default: 0` is a type error. Without a validator, a value default must be a string.
 
