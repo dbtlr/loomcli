@@ -169,6 +169,7 @@ const getDocument = {
   globals,
   configuration: null,
   command: {
+    stdin: null,
     name: 'get',
     path: ['get'],
     description: 'Read one value.',
@@ -541,6 +542,122 @@ test('an argument entry carries its schema and default, and an absent descriptio
     },
   ]);
   expect(entryAt(await documentOf(['--manifest']), ['empty']).description).toBeNull();
+});
+
+/** The `content` fixture's root document text, after checking that it succeeded. */
+async function contentText() {
+  const result = await run('content', ['--manifest']);
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  return result.stdout;
+}
+
+/** The `content` fixture's root document, parsed at the boundary. */
+async function contentDocument() {
+  return printedSchema.parse(JSON.parse(await contentText()));
+}
+
+test('a Command entry carries stdin: null without a stdin declaration, and the declaration on one line with one', async () => {
+  const text = await contentText();
+  const document = printedSchema.parse(JSON.parse(text));
+  expect(document.command.stdin).toBeNull();
+  expect(entryAt(document, ['count']).stdin).toBeNull();
+  expect(entryAt(document, ['read']).stdin).toEqual({
+    description: 'The events.',
+    required: false,
+  });
+  expect(entryAt(document, ['piped']).stdin).toEqual({ description: null, required: true });
+  // A record keeps the printed key order, which an object schema would reorder.
+  const raw = z.object({ command: z.record(z.string(), z.unknown()) }).parse(JSON.parse(text));
+  expect(Object.keys(raw.command)).toEqual([
+    'stdin',
+    'name',
+    'path',
+    'description',
+    'details',
+    'examples',
+    'deprecated',
+    'hasAction',
+    'result',
+    'failures',
+    'arguments',
+    'optionGroups',
+    'options',
+    'children',
+  ]);
+});
+
+test('a content input entry carries min and max, null when its declaration states no bound', async () => {
+  const { arguments: entries, options } = entryAt(await contentDocument(), ['count']);
+  expect(entries).toEqual([
+    {
+      type: 'content',
+      stdin: false,
+      min: null,
+      max: null,
+      name: 'sources',
+      description: null,
+      required: false,
+      variadic: true,
+      schema: { minLength: 1, type: 'string' },
+      default: null,
+    },
+  ]);
+  const shared = {
+    description: null,
+    deprecated: null,
+    control: false,
+    short: null,
+    requiredWhen: null,
+    schema: { minLength: 1, type: 'string' },
+    env: [],
+    envDelimiter: null,
+    default: null,
+    implied: null,
+  };
+  expect(options).toEqual([
+    {
+      ...shared,
+      type: 'content',
+      stdin: true,
+      min: null,
+      max: null,
+      name: 'file',
+      long: '--file',
+      required: false,
+      multiple: false,
+    },
+    {
+      ...shared,
+      type: 'content',
+      stdin: false,
+      min: 1,
+      max: 3,
+      name: 'files',
+      long: '--files',
+      required: true,
+      multiple: true,
+    },
+  ]);
+  expect(Array.isArray(options) && Object.keys(options[0])).toEqual([
+    'type',
+    'stdin',
+    'min',
+    'max',
+    'name',
+    'description',
+    'deprecated',
+    'control',
+    'long',
+    'short',
+    'required',
+    'requiredWhen',
+    'multiple',
+    'schema',
+    'env',
+    'envDelimiter',
+    'default',
+    'implied',
+  ]);
 });
 
 test('an unknown Command still fails in routing, and an earlier takeover wins', async () => {

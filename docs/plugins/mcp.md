@@ -66,7 +66,7 @@ export const get = new Command('get', {
 export const jsonkit = new Application('jsonkit', { plugins: [mcp()] }).command(get);
 ```
 
-An MCP client launches `jsonkit mcp` and speaks one JSON-RPC message per line over its stdin and stdout. Against jsonkit itself, whose `get` declares a local native content `--file` and whose Application declares its version and description, the first line below is the client's request and the second is the server's answer:
+An MCP client launches `jsonkit mcp` and speaks one JSON-RPC message per line over its stdin and stdout. The client finds that command line in its own configuration: `jsonkit mcp install` registers it with Claude Code and Codex, and `jsonkit mcp config` prints the configuration object for any other client, as [Registering with an agent](#registering-with-an-agent) shows. Against jsonkit itself, whose `get` declares a local native content `--file` and whose Application declares its version and description, the first line below is the client's request and the second is the server's answer:
 
 ```text
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}},"name":"get","arguments":{"path":"user.name","file":"doc.json"}}}

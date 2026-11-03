@@ -4,7 +4,38 @@ description: "Standard Schema validation of inputs: content inputs, the validati
 
 # Standard Schema validation
 
-This page states Standard Schema validation of inputs: content inputs, the validation context, absence and defaults, validator failures, and the input schema fact. An author uses it to attach a validator to an argument or an option, and the validators Loom ships are in [validators](../libs/validators.md).
+This page states Standard Schema validation of inputs: declaring a validator, content inputs, the validation context, absence and defaults, validator failures, and the input schema fact. An author uses it to attach a validator to an argument or an option, and the validators Loom ships are in [validators](../libs/validators.md).
+
+## Declaring a validator
+
+Ordinary value options and arguments, scalar and variadic alike, accept a `validate` property containing a [Standard Schema v1](https://standardschema.dev/) object. Core calls the standard interface directly. A compatible library needs no adapter or plugin. Boolean options and counted options do not accept `validate`, `default`, `required`, or `validateOmitted`: a Boolean option's polarity controls its absent value, and a counted option reads `0` when nothing supplies it. A string option's [implied value](options.md#implied-values) passes through its validator as a typed value does.
+
+```ts
+import { Application } from '@loomcli/core';
+import { z } from 'zod';
+
+const app = new Application('sizes')
+  .option('minimum', {
+    type: 'string',
+    validate: z
+      .string()
+      .regex(/^[0-9]+$/)
+      .transform(Number),
+    default: '0',
+  })
+  .action(({ options, out }) => {
+    const minimum: number = options.minimum;
+    return out.print(String(minimum));
+  });
+
+await app.run();
+```
+
+`type`, and `implied` on a string option, control token consumption. The validator receives the supplied string and determines the action's output type. Core awaits synchronous or asynchronous validation before dispatch. Without a validator, supplied values remain strings.
+
+A scalar argument's validator receives its one token. A variadic argument's validator, and a multiple option's, receive one value at a time under [ADR-0036](../decisions/0036-each-value-passes-the-same-validator.md), and the action receives the array of their outputs. A rule over a plain string list belongs to the action. Native [content collections](#content-inputs) declare source-count bounds. Passthrough never enters this pipeline. The [validators reference](../libs/validators.md) describes `@loomcli/validators`, the catalog of validators for common input shapes.
+
+`ActionHandler<typeof app>` retains these output types for extracted handlers. `ArgumentConfig`, `StringOption`, and `OptionConfig` support configuration declarations with `satisfies`. A broad type annotation can erase validator details; `satisfies` preserves inference.
 
 ## Content inputs
 
@@ -54,35 +85,6 @@ The action receives the handle as `stdin`. An optional declaration permits `unde
 `invoke()` and MCP content inputs accept file paths only. Their placeholder or transport stdin is unavailable: `-` and an omitted required source fail with exit 2. A required stdin-only Command also fails a named call; an optional stdin-only handle is absent. Content inputs publish their input-side path schema as `{ type: 'string', minLength: 1 }`, and machine projections describe paths rather than handles. See [ADR-0081](../decisions/0081-content-inputs-prepare-lazy-handles-and-one-command-claims-stdin.md).
 
 Named calls also reject paths resolving to the process stdin pipe or device, including `/dev/stdin` and symlinks when they resolve to that source. Ordinary regular-file paths open independently and remain allowed, even when stdin is redirected from the same file. Other readable FIFO and device sources remain accepted. Preparation probes metadata without reading content; actions control later reads through accepted handles.
-
-Ordinary value options and arguments, scalar and variadic alike, accept a `validate` property containing a [Standard Schema v1](https://standardschema.dev/) object. Core calls the standard interface directly. A compatible library needs no adapter or plugin. Boolean options and counted options do not accept `validate`, `default`, `required`, or `validateOmitted`: a Boolean option's polarity controls its absent value, and a counted option reads `0` when nothing supplies it. A string option's [implied value](options.md#implied-values) passes through its validator as a typed value does.
-
-```ts
-import { Application } from '@loomcli/core';
-import { z } from 'zod';
-
-const app = new Application('sizes')
-  .option('minimum', {
-    type: 'string',
-    validate: z
-      .string()
-      .regex(/^[0-9]+$/)
-      .transform(Number),
-    default: '0',
-  })
-  .action(({ options, out }) => {
-    const minimum: number = options.minimum;
-    return out.print(String(minimum));
-  });
-
-await app.run();
-```
-
-`type`, and `implied` on a string option, control token consumption. The validator receives the supplied string and determines the action's output type. Core awaits synchronous or asynchronous validation before dispatch. Without a validator, supplied values remain strings.
-
-A scalar argument's validator receives its one token. A variadic argument's validator, and a multiple option's, receive one value at a time under [ADR-0036](../decisions/0036-each-value-passes-the-same-validator.md), and the action receives the array of their outputs. A rule over a plain string list belongs to the action. Native [content collections](#content-inputs) declare source-count bounds. Passthrough never enters this pipeline. The [validators reference](../libs/validators.md) describes `@loomcli/validators`, the catalog of validators for common input shapes.
-
-`ActionHandler<typeof app>` retains these output types for extracted handlers. `ArgumentConfig`, `StringOption`, and `OptionConfig` support configuration declarations with `satisfies`. A broad type annotation can erase validator details; `satisfies` preserves inference.
 
 ## Validation context
 
