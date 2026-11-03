@@ -6,6 +6,23 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.18.0 - 2026-11-03
+
+### Fixes
+
+- Start applications faster: declaring Commands and options no longer repeats work that grew with every option an application declared. Diagnostics, the call a declaration fault throws from, hook calls, and default validation are unchanged.
+
+- Start applications faster on Node: a run looks up the operator's time zone only when its code first reads `host.timeZone`, so a run that never reads it skips the lookup. The value is unchanged, including a supplied `timeZone` and the one an action's `invoke` keeps from its run.
+
+- Start applications faster on Node: a `node` bundle that `loom build` writes turns on Node's compile cache, so an operator's runs after the first skip compiling the bundle. The cache lives under the operator's temporary directory; `NODE_DISABLE_COMPILE_CACHE=1` turns it off and `NODE_COMPILE_CACHE` moves it. The entry's file keeps its name and shebang, and the application module leaves the cache off.
+
+- Start applications faster and ship smaller bundles: core's Unicode width and grapheme tables take about 58 KB in a bundle, down from about 96 KB when the bundle is minified and 287 KB when it is not, and load in less than half the time. Width and segmentation answers are unchanged.
+
+- Start applications faster: the completion, manpage, and MCP plugins load each Command's work only when that Command runs, and the first-party plugins load `node:crypto` only when a run hashes or stages an installed file. Declarations, graph hooks, help, the manifest, and every printed byte are unchanged.
+
+- Remove Apache-2.0 from the license field of `@loomcli/loom`, which now reads `MIT AND ISC AND Unicode-3.0 AND BSD-3-Clause`. The `loom` bin bundles none of the Apache-2.0 completion scripts of `@loomcli/plugins`, so it no longer carries Cobra's license or the plugins notice either.
+- Credit the glyph catalog's sources in `@loomcli/core`: its notice now names Inquirer's figures and Sindre Sorhus's figures, from which Inquirer's derives, and the package ships both license texts. The glyph module's license comment, which a bundle keeps, carries both notices.
+
 ## v0.17.0 - 2026-11-02
 
 This release makes configuration first-rate and gives the `loom` toolchain a configuration file of its own. `configuration()` replaces `config()`: one Standard Schema describes the whole file, a Command that opts in reads the validated file as `provided.config`, and a value the schema or an option's validator rejects is dropped and named at `-v`, so an operator's file never breaks a run. The lookup walks up from the working directory to home, reads an author-named variable and the XDG user file, stops at a root marker the author names, and never falls back after a broken file. A JSON file may hold comments, a file that does not parse names its line and column, `--no-config` runs without a file, and the manifest publishes the file's JSON Schema.
