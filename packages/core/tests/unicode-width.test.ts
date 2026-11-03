@@ -6,8 +6,8 @@ import { expect, test } from 'vite-plus/test';
 // The pinned uucode release's own tables, which its package exports do not name.
 import { runtimeGrapheme } from '../node_modules/@rockorager/uucode/dist/src/generated/runtime_grapheme.js';
 import { runtimeWidth } from '../node_modules/@rockorager/uucode/dist/src/generated/runtime_width.js';
-import { graphemeWidths } from '../src/style-width.js';
-import { graphemeTable, widthTable } from '../src/unicode.generated.js';
+import { graphemeTable, widthTable } from '../src/style/unicode.generated.js';
+import { graphemeWidths } from '../src/style/width.js';
 
 /** The highest Unicode code point. */
 const lastCodePoint = 0x10_ff_ff;

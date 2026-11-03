@@ -129,5 +129,5 @@ test('every rule of the family has a pinned diagnostic', () => {
   const pinned = new Set(
     [...Object.values(cases), ...Object.values(reportedCases)].map((parts) => parts.rule),
   );
-  expect(declaredRules('command-rules.ts').toSorted()).toEqual([...pinned].toSorted());
+  expect(declaredRules('commands/rules.ts').toSorted()).toEqual([...pinned].toSorted());
 });

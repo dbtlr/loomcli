@@ -10,10 +10,10 @@ import {
   queryAllowed,
   readReplies,
   settleBackground,
-} from '../src/background.js';
-import type { BackgroundSources } from '../src/background.js';
-import { captureHost } from '../src/host.js';
-import { processHandle } from '../src/process-handle.js';
+} from '../src/host/background.js';
+import type { BackgroundSources } from '../src/host/background.js';
+import { captureHost } from '../src/host/host.js';
+import { processHandle } from '../src/host/process-handle.js';
 
 const escape = String.fromCodePoint(27);
 const bell = String.fromCodePoint(7);

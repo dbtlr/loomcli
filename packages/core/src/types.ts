@@ -3,17 +3,17 @@ import type { Readable, Writable } from 'node:stream';
 
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import type { Background } from './background.js';
-import type { Content } from './content.js';
-import type { LoomError } from './errors.js';
-import type { FailureExitCode } from './exit-codes.js';
-import type { ExtensionValue } from './extension.js';
-import type { FailureForm } from './form.js';
-import type { CommandGraph, CommandNode, ResultNode } from './inspect.js';
-import type { Log } from './log.js';
-import type { RenderingPolicy } from './rendering.js';
-import type { OnResume, OnShutdown, OnSuspend } from './signal-lane.js';
-import type { ContextualStyle } from './style.js';
+import type { LoomError } from './failures/errors.js';
+import type { FailureExitCode } from './failures/exit-codes.js';
+import type { FailureForm } from './failures/form.js';
+import type { Background } from './host/background.js';
+import type { Content } from './inputs/content.js';
+import type { CommandGraph, CommandNode, ResultNode } from './inspection/inspect.js';
+import type { Log } from './output/log.js';
+import type { ExtensionValue } from './plugins/extension.js';
+import type { OnResume, OnShutdown, OnSuspend } from './signals/signal-lane.js';
+import type { RenderingPolicy } from './style/rendering.js';
+import type { ContextualStyle } from './style/style.js';
 
 type LowercaseLetter =
   | 'a'

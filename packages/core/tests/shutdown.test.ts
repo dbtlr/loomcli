@@ -26,6 +26,7 @@ import { mockProcess } from '@loomcli/testing';
 import type { MockProcess } from '@loomcli/testing';
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
+import { laneOf } from '../src/host/process-handle.js';
 import {
   Application,
   Command,
@@ -35,7 +36,6 @@ import {
   processHandle,
 } from '../src/index.js';
 import type { Middleware, Plugin, ShutdownEvent } from '../src/index.js';
-import { laneOf } from '../src/process-handle.js';
 
 afterEach(() => {
   vi.useRealTimers();

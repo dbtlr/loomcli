@@ -1,0 +1,313 @@
+import { isControl } from './ansi.js';
+import type { TextUnit, Unit } from './ansi.js';
+import type { Attributes } from './state.js';
+import { clusterColumns } from './width.js';
+import type { Padding, ParsedText } from './wire.js';
+
+/** Width at each tab-stop offset composes without rescanning nested text. */
+interface Metrics {
+  advance: readonly number[];
+  tabs: boolean;
+  text: boolean;
+}
+type Rope = (
+  | { kind: 'leaf'; unit: TextUnit; tab: boolean }
+  | { kind: 'join'; children: readonly Rope[] }
+) &
+  Metrics;
+interface Line {
+  content: Rope;
+  ending: readonly TextUnit[];
+}
+interface Block {
+  lines: readonly Line[];
+  minimum: number;
+  tabs: boolean;
+}
+const offsets = [0, 1, 2, 3, 4, 5, 6, 7];
+/** The advances of the narrow widths, shared rather than rebuilt for every leaf and every join. */
+const sharedAdvances = Array.from({ length: 16 }, (_unused, width) => offsets.map(() => width));
+/** The advances of a unit that is the same width at every offset. */
+function constantAdvance(width: number): readonly number[] {
+  return sharedAdvances[width] ?? offsets.map(() => width);
+}
+const tabAdvance = offsets.map((offset) => 8 - offset);
+const empty: Rope = {
+  advance: constantAdvance(0),
+  children: [],
+  kind: 'join',
+  tabs: false,
+  text: false,
+};
+
+function leaf(unit: TextUnit, width: number, tab = false): Rope {
+  return {
+    advance: tab ? tabAdvance : constantAdvance(width),
+    kind: 'leaf',
+    tab,
+    tabs: tab,
+    text: unit.kind === 'text' && unit.text.length > 0,
+    unit,
+  };
+}
+function join(children: readonly Rope[]): Rope {
+  children = children.filter((child) => child !== empty);
+  if (children.length === 0) {
+    return empty;
+  }
+  if (children.length === 1 && children[0]) {
+    return children[0];
+  }
+  const tabs = children.some((child) => child.tabs);
+  // Without a tab, no child's advance depends on the column, so the join's does not either.
+  const advance = tabs
+    ? offsets.map(
+        (offset) =>
+          children.reduce((column, child) => column + (child.advance[column % 8] ?? 0), offset) -
+          offset,
+      )
+    : constantAdvance(children.reduce((total, child) => total + (child.advance[0] ?? 0), 0));
+  return {
+    advance,
+    children,
+    kind: 'join',
+    tabs,
+    text: children.some((child) => child.text),
+  };
+}
+function* leaves(root: Rope): Generator<Extract<Rope, { kind: 'leaf' }>> {
+  const stack: { node: Rope; index: number }[] = [{ index: 0, node: root }];
+  while (stack.length > 0) {
+    const frame = stack.at(-1);
+    if (!frame) {
+      break;
+    }
+    if (frame.node.kind === 'leaf') {
+      yield frame.node;
+      stack.pop();
+      continue;
+    }
+    const child = frame.node.children[frame.index];
+    if (child === undefined) {
+      stack.pop();
+      continue;
+    }
+    frame.index += 1;
+    stack.push({ index: 0, node: child });
+  }
+}
+
+/** Grapheme segmentation ignores attribute boundaries and terminal-control envelopes. */
+function textBlock(units: readonly TextUnit[]): Block {
+  const visible = units
+    .filter((unit) => unit.kind === 'text')
+    .map((unit) => unit.text)
+    .join('');
+  const { before } = clusterColumns(visible);
+  const lines: Line[] = [];
+  let parts: Rope[] = [];
+  let offset = 0;
+  for (const unit of units) {
+    if (unit.kind !== 'text') {
+      parts.push(leaf(unit, 0));
+      continue;
+    }
+    if (unit.text === '\n' || unit.text === '\r\n') {
+      lines.push({ content: join(parts), ending: [unit] });
+      parts = [];
+    } else {
+      const width = (before[offset + unit.text.length] ?? 0) - (before[offset] ?? 0);
+      parts.push(leaf(unit, width, unit.text === '\t'));
+    }
+    offset += unit.text.length;
+  }
+  lines.push({ content: join(parts), ending: [] });
+  return measured(lines);
+}
+function measured(lines: readonly Line[]): Block {
+  let minimum = Infinity;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line && !(index > 0 && index === lines.length - 1 && !line.content.text)) {
+      minimum = Math.min(minimum, line.content.advance[0] ?? 0);
+    }
+  }
+  return { lines, minimum, tabs: lines.some((line) => line.content.tabs) };
+}
+function expandTabs(root: Rope): Rope {
+  if (!root.tabs) {
+    return root;
+  }
+  const parts: Rope[] = [];
+  let column = 0;
+  for (const part of leaves(root)) {
+    const width = part.advance[column % 8] ?? 0;
+    parts.push(part.tab ? leaf({ ...part.unit, text: ' '.repeat(width) }, width) : part);
+    column += width;
+  }
+  return join(parts);
+}
+function padBlock(block: Block, padding: Padding, attributes: Attributes): Block {
+  if (!block.tabs && block.minimum >= padding.width) {
+    return block;
+  }
+  const space = (count: number) =>
+    leaf({ attributes, kind: 'text', text: ' '.repeat(count) }, count);
+  const lines = block.lines.map((line, index) => {
+    // A terminal newline has no extra line to align; interior blank lines do.
+    if (index > 0 && index === block.lines.length - 1 && !line.content.text) {
+      return line;
+    }
+    const content = expandTabs(line.content);
+    const missing = Math.max(0, padding.width - (content.advance[0] ?? 0));
+    if (missing === 0) {
+      return content === line.content ? line : { ...line, content };
+    }
+    let before = 0;
+    if (padding.align === 'right') {
+      before = missing;
+    } else if (padding.align === 'center') {
+      before = Math.floor(missing / 2);
+    }
+    // Re-segment inserted spaces too: a trailing Unicode Prepend character can absorb one.
+    const spaced = join([space(before), content, space(missing - before)]);
+    const row = measured([{ content: spaced, ending: [] }]);
+    let padded = textBlock([...renderedUnits(row)]);
+    const shortfall = padding.width - padded.minimum;
+    if (shortfall > 0) {
+      padded = textBlock([
+        ...renderedUnits(padded),
+        { attributes, kind: 'text', text: ' '.repeat(shortfall) },
+      ]);
+    }
+    return { ...line, content: padded.lines[0]?.content ?? empty };
+  });
+  return measured(lines);
+}
+/** A deferred concatenation preserves shared output and caches complete Unicode analysis. */
+interface TextRope {
+  parts: readonly (TextRope | TextUnit)[];
+  tabs: boolean;
+  analysis?: Block;
+}
+function textRope(parts: readonly (TextRope | TextUnit)[]): TextRope {
+  if (parts.length === 1 && parts[0] && 'parts' in parts[0]) {
+    return parts[0];
+  }
+  return {
+    parts,
+    tabs: parts.some((part) =>
+      'parts' in part ? part.tabs : part.kind === 'text' && part.text.includes('\t'),
+    ),
+  };
+}
+function* textUnits(root: TextRope): Generator<TextUnit> {
+  const stack: { rope: TextRope; index: number }[] = [{ index: 0, rope: root }];
+  while (stack.length > 0) {
+    const frame = stack.at(-1);
+    if (!frame) {
+      break;
+    }
+    // Analysis is owned by the composed root; old subtree snapshots need not stay live.
+    if (frame.rope !== root) {
+      delete frame.rope.analysis;
+    }
+    const part = frame.rope.parts[frame.index++];
+    if (!part) {
+      stack.pop();
+    } else if ('parts' in part) {
+      stack.push({ index: 0, rope: part });
+    } else {
+      yield part;
+    }
+  }
+}
+function analyze(rope: TextRope): Block {
+  rope.analysis ??= textBlock([...textUnits(rope)]);
+  return rope.analysis;
+}
+interface Pending {
+  parts: (TextRope | TextUnit)[];
+  padding: { value: Padding; attributes: Attributes } | undefined;
+}
+
+/** Nested padding resolves inside outward; unchanged content retains its rope and analysis. */
+function layout(units: readonly Unit[]): Block {
+  let current: Pending = { padding: undefined, parts: [] };
+  const stack: Pending[] = [];
+  for (const unit of units) {
+    if (unit.kind === 'open') {
+      stack.push(current);
+      current = { padding: { attributes: unit.attributes, value: unit.padding }, parts: [] };
+    } else if (unit.kind === 'close') {
+      let rope = textRope(current.parts);
+      const padding = current.padding;
+      if (padding && (padding.value.width > 0 || rope.tabs)) {
+        const original = analyze(rope);
+        const padded = padBlock(original, padding.value, padding.attributes);
+        if (padded !== original) {
+          rope = { analysis: padded, parts: [...renderedUnits(padded)], tabs: false };
+        }
+      }
+      current = stack.pop() ?? { padding: undefined, parts: [] };
+      current.parts.push(rope);
+    } else {
+      current.parts.push(unit);
+    }
+  }
+  return analyze(textRope(current.parts));
+}
+function* renderedUnits(block: Block): Generator<TextUnit> {
+  for (const line of block.lines) {
+    for (const part of leaves(line.content)) {
+      yield part.unit;
+    }
+    yield* line.ending;
+  }
+}
+/**
+ * The columns each tab leaf advances, in text order, with each line laid out from column zero.
+ * A tab inside a padding frame is no leaf here, because the frame has already expanded it.
+ */
+function tabAdvances(block: Block): number[] {
+  const advances: number[] = [];
+  for (const line of block.lines) {
+    if (!line.content.tabs) {
+      continue;
+    }
+    let column = 0;
+    for (const part of leaves(line.content)) {
+      const width = part.advance[column % 8] ?? 0;
+      if (part.tab) {
+        advances.push(width);
+      }
+      column += width;
+    }
+  }
+  return advances;
+}
+/**
+ * Whether decoded text is flat: no padding frame lays it out, and it holds nothing but characters
+ * and line endings, LF and CRLF. It has no ANSI command, no lone CR, and no tab, so it is lines of
+ * characters, and a style frame is all it can carry. Such a text measures as the sum of its
+ * clusters, and with no color or modifier to write it resolves to its characters alone.
+ */
+function isFlat(parsed: ParsedText): boolean {
+  if (parsed.boundaries.size > 0) {
+    return false;
+  }
+  const { text } = parsed;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    const lineEnding = code === 0x0a || (code === 0x0d && text.charCodeAt(index + 1) === 0x0a);
+    if (isControl(code) && !lineEnding) {
+      return false;
+    }
+  }
+  return true;
+}
+function blockWidth(block: Block): number {
+  return block.lines.reduce((widest, line) => Math.max(widest, line.content.advance[0] ?? 0), 0);
+}
+
+export { blockWidth, isFlat, layout, renderedUnits, tabAdvances };

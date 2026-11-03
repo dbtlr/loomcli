@@ -1,5 +1,5 @@
-import { glyph } from '../src/glyphs.generated.js';
-import { nowrap, pad, style } from '../src/style.js';
+import { glyph } from '../src/style/glyphs.generated.js';
+import { nowrap, pad, style } from '../src/style/style.js';
 
 /**
  * Generated texts for the tests of how text is measured and broken: pieces that make a naive

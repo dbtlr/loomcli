@@ -330,7 +330,7 @@ test('every rule of the family has a pinned diagnostic', () => {
     [...Object.values(cases), ...Object.values(reportedCases)].map((parts) => parts.rule),
   );
   // Declared-name is the Command family's rule, which an option's name and aliases share.
-  expect([...declaredRules('input-rules.ts'), 'declared-name'].toSorted()).toEqual(
+  expect([...declaredRules('inputs/rules.ts'), 'declared-name'].toSorted()).toEqual(
     [...pinned].toSorted(),
   );
 });

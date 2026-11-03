@@ -205,8 +205,8 @@ const fromInputs = ['option-declared-twice', 'spelling-taken'];
 
 test('every rule of the family has a pinned diagnostic', () => {
   const pinned = new Set(Object.values(cases).map((parts) => parts.rule));
-  expect(declaredRules('rules.ts')).toEqual(expect.arrayContaining(fromCore));
-  expect([...declaredRules('plugin-rules.ts'), ...fromCore, ...fromInputs].toSorted()).toEqual(
+  expect(declaredRules('diagnostics/rules.ts')).toEqual(expect.arrayContaining(fromCore));
+  expect([...declaredRules('plugins/rules.ts'), ...fromCore, ...fromInputs].toSorted()).toEqual(
     [...pinned].toSorted(),
   );
 });
