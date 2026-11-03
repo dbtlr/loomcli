@@ -26,13 +26,15 @@ import { join } from 'node:path';
  * The third-party material each workspace package ships, by the files it covers, the license those
  * files stay under, and the files beside the package's manifest that hold that license's text. The
  * package's NOTICE describes each entry in prose, and its license field names each entry's license.
+ * A ported or generated file states its source's copyright, or that it is ported, in a comment the
+ * compiled file keeps, so the build can find one the table leaves out.
  */
 const workspaceMaterial = {
   '@loomcli/core': [
     {
       files: ['dist/unicode.generated.js'],
       license: 'Unicode-3.0',
-      texts: ['licenses/unicode-LICENSE.txt'],
+      texts: ['licenses/unicode-LICENSE.txt', 'licenses/uucode-LICENSE.md'],
     },
     { files: ['dist/style-width.js'], license: 'MIT', texts: ['licenses/uucode-LICENSE.md'] },
     {
@@ -55,6 +57,9 @@ const workspaceMaterial = {
 /** Names the file of a license text that sits beside a package's manifest. */
 const licenseFilePattern = /^(?:licen[sc]e|copying)(?:\.(?:md|txt))?$/i;
 const noticeFilePattern = /^notice(?:\.(?:md|txt))?$/i;
+
+/** Marks a compiled file that carries third-party material: a copyright line or a port statement. */
+const materialMarkerPattern = /\bCopyright\b|\b[Pp]orted from\b/;
 
 /** The module comments Bun writes: a source path, as many `../` as the file's depth needs. */
 const moduleCommentPattern = /^\/\/ (?:\.\.\/)+(?<path>\S+)$/gm;
@@ -135,12 +140,14 @@ function bundledPackages(repositoryRoot, distribution) {
 }
 
 /**
- * Names the license identifiers a bundled workspace package needs, and the license texts beyond its
- * own LICENSE that go with them. It first checks the material table against the package, so a field
- * or a file the table no longer matches fails the build instead of leaving a license out.
+ * Fails the build unless the material table describes a workspace package as it is: the package's
+ * license field names exactly its own license and each entry's, every file an entry names exists,
+ * every license text in its licenses/ folder belongs to an entry, and a package with a NOTICE has an
+ * entry, and every compiled file that states a copyright or a port belongs to an entry. A port added
+ * to a package without a table entry then fails the build instead of shipping without its notice.
  */
-function workspaceLicense(manifest, packageDirectory, files, ownLicense) {
-  const material = workspaceMaterial[manifest.name] ?? [];
+function assertMaterialTable(manifest, packageDirectory, material, ownLicense) {
+  const table = 'the material table in scripts/bundle-notices.mjs';
   const covered = new Set([ownLicense, ...material.map((entry) => entry.license)]);
   const declared = new Set(licenseIdentifiers(manifest.license));
   if (
@@ -148,26 +155,66 @@ function workspaceLicense(manifest, packageDirectory, files, ownLicense) {
     [...covered].some((identifier) => !declared.has(identifier))
   ) {
     throw new Error(
-      `${manifest.name} is licensed ${manifest.license}, but the material table in scripts/bundle-notices.mjs gives it ${[...covered].join(' AND ')}. Update the table.`,
+      `${manifest.name} is licensed ${manifest.license}, but ${table} gives it ${[...covered].join(' AND ')}. Update the table.`,
     );
   }
-  const identifiers = [ownLicense];
-  const texts = [];
-  for (const entry of material) {
-    const missing = [...entry.files, ...entry.texts].find(
-      (file) => !existsSync(join(packageDirectory, file)),
+  const named = material.flatMap((entry) => [...entry.files, ...entry.texts]);
+  const missing = named.find((file) => !existsSync(join(packageDirectory, file)));
+  if (missing !== undefined) {
+    throw new Error(
+      `${table} names ${manifest.name}'s ${missing}, which does not exist. Update the table.`,
     );
-    if (missing !== undefined) {
-      throw new Error(
-        `The material table in scripts/bundle-notices.mjs names ${manifest.name}'s ${missing}, which does not exist. Update the table.`,
-      );
-    }
-    if (entry.files.some((file) => files.has(file))) {
-      identifiers.push(entry.license);
-      texts.push(...entry.texts);
-    }
   }
-  return { identifiers: [...new Set(identifiers)], texts };
+  const shipped = existsSync(join(packageDirectory, 'licenses'))
+    ? matchingFiles(packageDirectory, /./, 'licenses')
+    : [];
+  const unnamed = shipped.find((file) => !named.includes(file));
+  if (unnamed !== undefined) {
+    throw new Error(
+      `${manifest.name} ships ${unnamed}, which no entry of ${table} names. Add the material it covers to the table.`,
+    );
+  }
+  const marked = compiledFiles(packageDirectory).find(
+    (file) =>
+      !named.includes(file) &&
+      materialMarkerPattern.test(readFileSync(join(packageDirectory, file), 'utf8')),
+  );
+  if (marked !== undefined) {
+    throw new Error(
+      `${manifest.name}'s ${marked} states a copyright or a port, but no entry of ${table} names it. Add the material it carries to the table.`,
+    );
+  }
+  if (material.length === 0 && matchingFiles(packageDirectory, noticeFilePattern).length > 0) {
+    throw new Error(
+      `${manifest.name} ships a NOTICE, but ${table} names no third-party material for it. Add the material to the table.`,
+    );
+  }
+}
+
+/**
+ * Names the license identifiers a bundled workspace package needs, and the license texts beyond its
+ * own LICENSE that go with them: its own license, and each material entry whose files the bundle
+ * holds.
+ */
+function workspaceLicense(manifest, packageDirectory, files, ownLicense) {
+  const material = workspaceMaterial[manifest.name] ?? [];
+  assertMaterialTable(manifest, packageDirectory, material, ownLicense);
+  const bundled = material.filter((entry) => entry.files.some((file) => files.has(file)));
+  return {
+    identifiers: [...new Set([ownLicense, ...bundled.map((entry) => entry.license)])],
+    texts: [...new Set(bundled.flatMap((entry) => entry.texts))],
+  };
+}
+
+/** Lists the JavaScript files of a package's dist folder, as paths from the package directory. */
+function compiledFiles(packageDirectory) {
+  const distribution = join(packageDirectory, 'dist');
+  if (!existsSync(distribution)) {
+    return [];
+  }
+  return readdirSync(distribution, { recursive: true })
+    .filter((file) => file.endsWith('.js'))
+    .map((file) => join('dist', file));
 }
 
 /** Lists the files of a package directory whose names match, as paths from that directory. */
@@ -233,6 +280,7 @@ function renderNotice(entries) {
   const header = [
     'The loom bin bundles the packages listed below. Each package stays under its own license,',
     'and the files named under it hold the license text and notices it asks to keep with its code.',
+    'For a Loom workspace package, the license line names the licenses of the files the bin holds.',
   ];
   const blocks = entries.map(({ name, version, license, files }) =>
     [`${name} ${version}`, `License: ${license}`, ...files.map((file) => `  ${file}`)].join('\n'),
