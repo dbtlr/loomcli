@@ -144,6 +144,7 @@ test('a material table that no longer describes a workspace package fails the bu
   const narrowed = { files: { 'packages/plugins/package.json': pluginsManifest } };
   const renamed = { omit: ['packages/plugins/dist/src/completion/fish.js'] };
   const ported = { files: { 'packages/plugins/licenses/port-LICENSE.txt': 'MIT License' } };
+  const nested = { files: { 'packages/plugins/licenses/vendor/LICENSE': 'MIT License' } };
   const unlisted = {
     files: { 'packages/plugins/dist/src/completion/elvish.js': '// Copyright The Cobra Authors' },
   };
@@ -157,6 +158,9 @@ test('a material table that no longer describes a workspace package fails the bu
   expect(() =>
     writeNotices(repository({ bundled: [helpPage], license: 'MIT', ...ported })),
   ).toThrow(/ships licenses\/port-LICENSE\.txt, which no entry of the material table/);
+  expect(() =>
+    writeNotices(repository({ bundled: [helpPage], license: 'MIT', ...nested })),
+  ).toThrow(/ships licenses\/vendor\/LICENSE, which no entry of the material table/);
   expect(() =>
     writeNotices(repository({ bundled: [helpPage], license: 'MIT', ...unlisted })),
   ).toThrow(
@@ -219,4 +223,38 @@ test('a scoped third-party package carries its notice and license texts, and sta
     '@scope__kit-NOTICE',
     '@scope__kit-vendored-LICENSE.txt',
   ]);
+});
+
+test('material entries that share a license text list it once', () => {
+  const core: Record<string, string> = {
+    'packages/core/LICENSE': 'MIT License',
+    'packages/core/NOTICE': 'Core notice',
+    'packages/core/package.json': JSON.stringify({
+      license: 'MIT AND Unicode-3.0',
+      name: '@loomcli/core',
+      version: '1.0.0',
+    }),
+  };
+  for (const file of [
+    'dist/glyphs.generated.js',
+    'dist/style-width.js',
+    'dist/unicode.generated.js',
+    'licenses/figures-LICENSE.txt',
+    'licenses/inquirer-figures-LICENSE.txt',
+    'licenses/unicode-LICENSE.txt',
+    'licenses/uucode-LICENSE.md',
+  ]) {
+    core[`packages/core/${file}`] = '';
+  }
+  const root = repository({
+    bundled: ['core/dist/style-width.js', 'core/dist/unicode.generated.js'],
+    files: core,
+    license: 'MIT AND Unicode-3.0',
+  });
+
+  writeNotices(root);
+
+  const notice = readFileSync(join(root, 'packages/loom/dist/NOTICE'), 'utf8');
+  expect(notice.match(/@loomcli__core-uucode-LICENSE\.md/g)).toHaveLength(1);
+  expect(notice).not.toContain('figures-LICENSE');
 });

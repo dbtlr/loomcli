@@ -7,7 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 /*
  * The loom bin's bundle carries other packages' code, so their license notices must travel with it.
@@ -165,17 +165,16 @@ function assertMaterialTable(manifest, packageDirectory, material, ownLicense) {
       `${table} names ${manifest.name}'s ${missing}, which does not exist. Update the table.`,
     );
   }
-  const shipped = existsSync(join(packageDirectory, 'licenses'))
-    ? matchingFiles(packageDirectory, /./, 'licenses')
-    : [];
+  const shipped = filesUnder(packageDirectory, 'licenses');
   const unnamed = shipped.find((file) => !named.includes(file));
   if (unnamed !== undefined) {
     throw new Error(
       `${manifest.name} ships ${unnamed}, which no entry of ${table} names. Add the material it covers to the table.`,
     );
   }
-  const marked = compiledFiles(packageDirectory).find(
+  const marked = filesUnder(packageDirectory, 'dist').find(
     (file) =>
+      file.endsWith('.js') &&
       !named.includes(file) &&
       materialMarkerPattern.test(readFileSync(join(packageDirectory, file), 'utf8')),
   );
@@ -206,15 +205,15 @@ function workspaceLicense(manifest, packageDirectory, files, ownLicense) {
   };
 }
 
-/** Lists the JavaScript files of a package's dist folder, as paths from the package directory. */
-function compiledFiles(packageDirectory) {
-  const distribution = join(packageDirectory, 'dist');
-  if (!existsSync(distribution)) {
+/** Lists every file under a folder of a package, at any depth, as paths from the package directory. */
+function filesUnder(packageDirectory, folder) {
+  const root = join(packageDirectory, folder);
+  if (!existsSync(root)) {
     return [];
   }
-  return readdirSync(distribution, { recursive: true })
-    .filter((file) => file.endsWith('.js'))
-    .map((file) => join('dist', file));
+  return readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(packageDirectory, join(entry.parentPath, entry.name)));
 }
 
 /** Lists the files of a package directory whose names match, as paths from that directory. */
