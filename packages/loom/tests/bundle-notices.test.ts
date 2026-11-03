@@ -66,7 +66,7 @@ function repository(options: {
     }),
   };
   for (const script of completionScripts) {
-    files[script] = '';
+    files[script] = '// Copyright 2013-2023 The Cobra Authors';
   }
   Object.assign(files, options.files);
   for (const path of options.omit ?? []) {
@@ -145,9 +145,6 @@ test('a material table that no longer describes a workspace package fails the bu
   const renamed = { omit: ['packages/plugins/dist/src/completion/fish.js'] };
   const ported = { files: { 'packages/plugins/licenses/port-LICENSE.txt': 'MIT License' } };
   const nested = { files: { 'packages/plugins/licenses/vendor/LICENSE': 'MIT License' } };
-  const unlisted = {
-    files: { 'packages/plugins/dist/src/completion/elvish.js': '// Copyright The Cobra Authors' },
-  };
 
   expect(() =>
     writeNotices(repository({ bundled: [helpPage], license: 'MIT', ...narrowed })),
@@ -161,11 +158,22 @@ test('a material table that no longer describes a workspace package fails the bu
   expect(() =>
     writeNotices(repository({ bundled: [helpPage], license: 'MIT', ...nested })),
   ).toThrow(/ships licenses\/vendor\/LICENSE, which no entry of the material table/);
-  expect(() =>
-    writeNotices(repository({ bundled: [helpPage], license: 'MIT', ...unlisted })),
-  ).toThrow(
-    /completion\/elvish\.js states a copyright or a port, but no entry of the material table/,
-  );
+  for (const header of [
+    '// SPDX-FileCopyrightText: 2025 The Elvish Authors',
+    '// Ported from Elvish',
+  ]) {
+    expect(() =>
+      writeNotices(
+        repository({
+          bundled: [helpPage],
+          files: { 'packages/plugins/dist/src/completion/elvish.js': header },
+          license: 'MIT',
+        }),
+      ),
+    ).toThrow(
+      /completion\/elvish\.js states a copyright or a port, but no entry of the material table/,
+    );
+  }
 });
 
 test('a workspace package with a NOTICE and no material entry fails the build', () => {

@@ -58,8 +58,11 @@ const workspaceMaterial = {
 const licenseFilePattern = /^(?:licen[sc]e|copying)(?:\.(?:md|txt))?$/i;
 const noticeFilePattern = /^notice(?:\.(?:md|txt))?$/i;
 
-/** Marks a compiled file that carries third-party material: a copyright line or a port statement. */
-const materialMarkerPattern = /\bCopyright\b|\b[Pp]orted from\b/;
+/**
+ * Marks a compiled file that carries third-party material: a copyright line in any common form,
+ * SPDX's included, or a statement that the file is ported or adapted from another source.
+ */
+const materialMarkerPattern = /copyright|\(c\) \d|\b(?:ported|adapted) from\b/i;
 
 /** The module comments Bun writes: a source path, as many `../` as the file's depth needs. */
 const moduleCommentPattern = /^\/\/ (?:\.\.\/)+(?<path>\S+)$/gm;
