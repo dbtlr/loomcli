@@ -64,6 +64,7 @@ interface ManifestArgument {
   readonly name: string;
   readonly description: string | null;
   readonly required: boolean;
+  readonly requiredWhen: 'non-interactive' | null;
   readonly variadic: boolean;
   readonly schema: Readonly<Record<string, unknown>> | null;
   readonly default: { readonly value: unknown } | null;
@@ -243,6 +244,7 @@ function argumentEntry(node: ArgumentNode): ManifestArgument {
     name: node.name,
     description: lineOf(node.description),
     required: node.required,
+    requiredWhen: node.requiredWhen,
     variadic: node.variadic,
     schema: node.schema,
     default: defaultOf(node),

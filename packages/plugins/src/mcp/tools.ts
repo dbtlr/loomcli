@@ -192,7 +192,7 @@ function propertySchema(property: Property): Schema {
 /** Whether the tool requires the input: a required argument or a required local option. */
 function isRequired(property: Property): boolean {
   if (property.kind === 'argument') {
-    return property.node.required;
+    return property.node.required || property.node.requiredWhen === 'non-interactive';
   }
   return !property.global && requiredInCall(property.node);
 }

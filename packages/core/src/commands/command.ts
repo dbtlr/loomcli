@@ -1302,7 +1302,19 @@ function checkSlotOrder(
       sentence: `Argument "${slot.input.name}" is variadic and precedes argument "${next.input.name}" on ${subject}.`,
     });
   }
-  if (!slot.required && next.required) {
+  if (slot.input.config.required === 'non-interactive' && next.required) {
+    throw new DeclarationError(optionalArgumentLast, {
+      correction:
+        'Declare arguments required only when input is not interactive after required ones.',
+      findings: [inputFinding(path, slot.input, 'the conditionally required argument'), after],
+      sentence: `Argument "${slot.input.name}" is required only when input is not interactive and precedes required argument "${next.input.name}" on ${subject}.`,
+    });
+  }
+  if (
+    !slot.required &&
+    slot.input.config.required !== 'non-interactive' &&
+    (next.required || next.input.config.required === 'non-interactive')
+  ) {
     throw new DeclarationError(optionalArgumentLast, {
       correction: 'Declare optional arguments after required ones.',
       findings: [inputFinding(path, slot.input, 'the optional argument'), after],

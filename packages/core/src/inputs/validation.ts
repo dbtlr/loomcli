@@ -343,7 +343,7 @@ function missingMessage(
 ) {
   const { collected, origin } = facts;
   return input.kind === 'argument'
-    ? `Argument "${spelling}" requires ${collected ? 'at least one value' : 'a value'}. Supply a value for "${spelling}".`
+    ? `Argument "${spelling}" requires ${collected ? 'at least one value' : 'a value'}${input.config.required === 'non-interactive' ? ' when input is not interactive' : ''}. Supply a value for "${spelling}".`
     : `${suppliedName(input, spelling, origin)} is required${input.config.required === 'non-interactive' ? ' when input is not interactive' : ''}. Supply ${collected ? 'at least one value' : 'a value'}.`;
 }
 

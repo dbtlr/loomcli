@@ -6,32 +6,35 @@ import type { ActionContext } from '../invocation/types.js';
 
 /** Hosts belong to one invocation, so naming stays private while the action context is copied. */
 const missingInput = registerRule('@loomcli/core/missing-input-name', {
-  explanation: 'A missing input names a local option of the routed Command.',
+  explanation: 'A missing input names a local option or an argument of the routed Command.',
   headline: 'Unknown missing input',
 });
 
 const named = new WeakSet<Host>();
 
-export function rememberInputNames(host: Host, invokedBy: 'argv' | 'name'): void {
+function rememberInputNames(host: Host, invokedBy: 'argv' | 'name'): void {
   if (invokedBy === 'name') {
     named.add(host);
   }
 }
 
 /** Builds the ordinary missing-option failure for an action-owned question. */
-export function missingInputError(
+function missingInputError(
   context: Pick<ActionContext<unknown>, 'command' | 'host' | 'interactive'>,
-  name: string,
+  input: string | { argument: string },
 ): InputError {
-  const option = context.command.options.find((input) => input.name === name);
+  if (typeof input !== 'string') {
+    return missingArgument(context, input.argument);
+  }
+  const option = context.command.options.find((entry) => entry.name === input);
   if (option === undefined) {
     throw new DeclarationError(missingInput, {
       correction: 'Supply the name of a local option of the routed Command.',
       findings: [],
-      sentence: `missingInputError() received option ${quoted(name)}, which ${context.command.name === null ? 'the root Command' : `Command ${quoted(context.command.name)}`} does not declare.`,
+      sentence: `missingInputError() received option ${quoted(input)}, which ${context.command.name === null ? 'the root Command' : `Command ${quoted(context.command.name)}`} does not declare.`,
     });
   }
-  const spelling = named.has(context.host) ? name : reportedSpelling(option);
+  const spelling = named.has(context.host) ? input : reportedSpelling(option);
   const forms =
     option.type === 'boolean'
       ? [
@@ -40,18 +43,40 @@ export function missingInputError(
           ...(option.long === null && option.negative === null ? [option.short] : []),
         ].filter((form) => form !== null)
       : [];
+  const valueFix =
+    option.type === 'string' && option.multiple ? 'Supply at least one value.' : 'Supply a value.';
   const fix =
     !named.has(context.host) && forms.length > 0
       ? `Supply ${forms.map((form) => quoted(form)).join(' or ')}.`
-      : 'Supply a value.';
+      : valueFix;
   return new InputError(
     `Option ${quoted(spelling)} is required${context.interactive ? '' : ' when input is not interactive'}. ${fix}`,
     [
       {
-        input: { global: false, kind: 'option', name },
+        input: { global: false, kind: 'option', name: input },
         reason: 'missing',
         spelling,
       },
     ],
   );
 }
+
+function missingArgument(
+  context: Pick<ActionContext<unknown>, 'command' | 'host' | 'interactive'>,
+  name: string,
+): InputError {
+  const argument = context.command.arguments.find((entry) => entry.name === name);
+  if (argument === undefined) {
+    throw new DeclarationError(missingInput, {
+      correction: 'Supply the name of an argument of the routed Command.',
+      findings: [],
+      sentence: `missingInputError() received argument ${quoted(name)}, which ${context.command.name === null ? 'the root Command' : `Command ${quoted(context.command.name)}`} does not declare.`,
+    });
+  }
+  return new InputError(
+    `Argument ${quoted(name)} requires ${argument.variadic ? 'at least one value' : 'a value'}${context.interactive ? '' : ' when input is not interactive'}. Supply a value for ${quoted(name)}.`,
+    [{ input: { global: false, kind: 'argument', name }, reason: 'missing', spelling: name }],
+  );
+}
+
+export { missingInputError, rememberInputNames };

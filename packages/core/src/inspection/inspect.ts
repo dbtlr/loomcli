@@ -39,6 +39,7 @@ interface ArgumentNode {
   readonly name: string;
   readonly description: string | undefined;
   readonly required: boolean;
+  readonly requiredWhen: 'non-interactive' | null;
   readonly variadic: boolean;
   readonly validated: boolean;
   readonly validateOmitted: boolean;
@@ -453,6 +454,7 @@ function argumentNode(
     extensions: extensionsOf(records, slot.input),
     name,
     required: slot.required || (config.type === 'content' && (config.min ?? 0) > 0),
+    requiredWhen: config.required === 'non-interactive' ? 'non-interactive' : null,
     schema: inputSchema(slot.input, check),
     validateOmitted: validatesOmission(slot.input),
     validated: config.type === 'content' || config.validate !== undefined,

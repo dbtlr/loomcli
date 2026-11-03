@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, missingInputError } from '@loomcli/core';
 /*
  * Acceptance plan for interaction (docs/core/interaction.md#interaction).
  *
@@ -194,4 +194,74 @@ test('view plain text strips styles and controls while retaining destination gly
 
 test('draw resets its column at a standalone carriage return', async () => {
   await expect(draw('carriage')).resolves.toMatchObject({ code: 0, rows: 0 });
+});
+
+test('conditional arguments and collected options require input only off a terminal', async () => {
+  const seen: unknown[] = [];
+  const app = new Application('clone')
+    .argument('url', { required: 'non-interactive' })
+    .option('tag', { multiple: true, required: 'non-interactive', type: 'string' })
+    .action(({ args, options, supplied }) => {
+      seen.push({ args, options, supplied });
+    });
+  const terminal = mockProcess({ terminal: { columns: 80, keys: [], rows: 24 } });
+  await expect(app.run({ process: terminal })).resolves.toBe(0);
+  expect(seen).toEqual([
+    {
+      args: { url: undefined },
+      options: { tag: [] },
+      supplied: { args: { url: undefined }, options: { tag: [] } },
+    },
+  ]);
+  const batch = mockProcess();
+  await expect(app.run({ process: batch })).resolves.toBe(2);
+  expect(batch.stderr.text).toContain(
+    'Argument "url" requires a value when input is not interactive. Supply a value for "url".',
+  );
+  expect(batch.stderr.text).toContain(
+    'Option "--tag" is required when input is not interactive. Supply at least one value.',
+  );
+  expect(app.inspect().root.arguments[0]).toMatchObject({
+    required: false,
+    requiredWhen: 'non-interactive',
+  });
+});
+
+test('an unconditional argument cannot follow a conditional argument', () => {
+  expect(() =>
+    new Application('clone')
+      .argument('url', { required: 'non-interactive' })
+      .argument('dir', { required: true }),
+  ).toThrow(
+    'Argument "url" is required only when input is not interactive and precedes required argument "dir" on the root Command.',
+  );
+});
+
+test('a conditional variadic argument is an empty list at a terminal and missing by name', async () => {
+  const seen: unknown[] = [];
+  const app = new Application('copy')
+    .argument('files', { required: 'non-interactive', variadic: true })
+    .action(({ args, supplied }) => {
+      seen.push({ args, supplied });
+    });
+  await expect(
+    app.run({ process: mockProcess({ terminal: { columns: 80, keys: [], rows: 24 } }) }),
+  ).resolves.toBe(0);
+  expect(seen).toEqual([{ args: { files: [] }, supplied: { args: { files: [] }, options: {} } }]);
+  const result = await app.invoke([], {}, { process: mockProcess() });
+  expect(result).toMatchObject({ exitCode: 2, status: 'failed' });
+});
+
+test('missingInputError identifies an argument even beside an option with the same name', async () => {
+  const app = new Application('clone')
+    .argument('url', {})
+    .option('url', { type: 'string' })
+    .action((context) => {
+      throw missingInputError(context, { argument: 'url' });
+    });
+  const mock = mockProcess();
+  await expect(app.run({ process: mock })).resolves.toBe(2);
+  expect(mock.stderr.text).toContain(
+    'Argument "url" requires a value when input is not interactive. Supply a value for "url".',
+  );
 });

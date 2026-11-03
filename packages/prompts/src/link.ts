@@ -11,7 +11,7 @@ import type { LinkKey, PromptContext } from './types.js';
 
 const linkRule = diagnosticRule('@loomcli/prompts/link', {
   explanation:
-    'A question asks in one line of prose and links one local option of the routed Command, of the kind the question accepts, and a select question offers at least one choice.',
+    'A question asks in one line of prose and links at most one local option or argument of the routed Command, of the kind the question accepts, and a select question offers at least one choice.',
   headline: 'Invalid question',
 });
 
@@ -32,14 +32,38 @@ class InteractionUnavailableError extends FatalError {
 }
 
 /** Resolves only skipped questions; an asked question keeps its raw prefill separate from output. */
-function resolveLink<Options, Key extends LinkKey<Options>>(
-  context: PromptContext<Options>,
-  settings: { message: string; option?: Key; skipIfSupplied?: boolean },
+function resolveLink<Options, Key extends LinkKey<Options>, Args, Argument extends LinkKey<Args>>(
+  context: PromptContext<Options, Args>,
+  settings: { message: string; option?: Key; argument?: Argument; skipIfSupplied?: boolean },
   kind: 'text' | 'secret' | 'confirm' | 'select',
-): { kind: 'answered'; value: Options[Key] } | { kind: 'ask'; prefill: unknown } {
+): { kind: 'answered'; value: Options[Key] | Args[Argument] } | { kind: 'ask'; prefill: unknown } {
   const { message, option: key } = settings;
   if (!isProseLine(message)) {
     invalid('A question message must be one nonempty line.', 'Supply a one-line message.');
+  }
+  if (settings.argument !== undefined) {
+    const name = settings.argument;
+    const argument = context.command.arguments.find((input) => input.name === name);
+    if (argument === undefined) {
+      invalid(
+        `The question "${message}" links argument "${name}", which ${context.command.name === null ? 'the root Command' : `Command "${context.command.name}"`} does not declare.`,
+        'Link an argument of the routed Command.',
+      );
+    }
+    if (argument.type === 'content' || argument.variadic || kind === 'confirm') {
+      invalid(
+        `The question "${message}" links argument "${name}", which is not a string argument that takes one value.`,
+        'Link a string option or argument that takes one value.',
+      );
+    }
+    const raw = context.supplied.args[name];
+    if (raw !== undefined && (!context.interactive || settings.skipIfSupplied === true)) {
+      return { kind: 'answered', value: context.args[name] };
+    }
+    if (!context.interactive) {
+      throw missingInputError(context, { argument: name });
+    }
+    return { kind: 'ask', prefill: raw ?? argument.default?.value };
   }
   if (key === undefined) {
     if (!context.interactive) {
@@ -87,7 +111,7 @@ function checkKind(option: OptionNode, kind: string, message: string): void {
   } else if (option.type !== 'string' || option.multiple) {
     invalid(
       `The question "${message}" links option "${option.name}", which is not a string option that takes one value.`,
-      'Link a string option that takes one value.',
+      'Link a string option or argument that takes one value.',
     );
   }
 }

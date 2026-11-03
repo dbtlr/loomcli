@@ -1,6 +1,7 @@
 import { questionValidationOptions } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 
+import { TypedLine, graphemes } from './line.js';
 import { openReader } from './reader.js';
 import type { PromptContext } from './types.js';
 import { answeredLine, cancelledLine, questionFrame } from './views.js';
@@ -21,15 +22,6 @@ function displayAnswer(kind: string, raw: string, value: unknown): string | unde
   }
   return raw;
 }
-function backspace(text: string): string {
-  const segments = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text);
-  let end = 0;
-  for (const segment of segments) {
-    end = segment.index;
-  }
-  return text.slice(0, end);
-}
-
 /** The bare view the cursor sequences draw through, which nothing overrides. */
 const controls = { render: (text: string) => text };
 const hideCursor = '\u001b[?25l';
@@ -104,33 +96,33 @@ async function askText<Options, Output>(
     kind: 'text' | 'secret' | 'confirm';
     hint: string | undefined;
     validate?: StandardSchemaV1<string, Output>;
-    option?: string;
-  },
+  } & ({ option?: string; argument?: never } | { argument: string; option?: never }) & {},
 ): Promise<string | Output> {
   // Raw mode holds from here, and the first frame resolves once this question's turn has come.
   const reader = openReader(context);
   const draw = asking(context, settings.message, reader);
-  let typed = '';
+  const line = new TypedLine();
   let issue: string | undefined = undefined;
   let answered: { value: string | undefined } | undefined = undefined;
   const frame = () =>
     draw.frame({
+      cursor: settings.kind === 'secret' ? 0 : line.cursor,
       hint: settings.kind === 'confirm' ? confirmHint(settings.hint) : settings.hint,
       issue,
       kind: settings.kind,
       message: settings.message,
-      typed: settings.kind === 'secret' ? '' : typed,
+      typed: settings.kind === 'secret' ? '' : line.value,
     });
   try {
     await frame();
     while (true) {
       const key = await reader.read();
-      if (key.kind === 'eof' && typed === '') {
+      if (key.kind === 'eof' && line.value === '') {
         context.cancel();
         context.signal.throwIfAborted();
       }
       if (key.kind === 'enter') {
-        const raw = typed === '' ? (settings.hint ?? '') : typed;
+        const raw = line.value === '' ? (settings.hint ?? '') : line.value;
         const result =
           settings.validate === undefined
             ? { issues: undefined, value: raw }
@@ -140,6 +132,9 @@ async function askText<Options, Output>(
               );
         context.signal.throwIfAborted();
         if (result.issues === undefined) {
+          if (settings.kind === 'secret') {
+            reader.discard();
+          }
           answered = {
             value: displayAnswer(settings.kind, raw, result.value),
           };
@@ -147,8 +142,18 @@ async function askText<Options, Output>(
         }
         issue = result.issues[0]?.message ?? 'The answer is invalid.';
         await frame();
-      } else if (key.kind === 'text' || key.kind === 'backspace') {
-        typed = key.kind === 'text' ? typed + key.value : backspace(typed);
+      } else {
+        if (
+          settings.kind === 'text' &&
+          line.value === '' &&
+          (key.kind === 'tab' || key.kind === 'right') &&
+          settings.hint !== undefined
+        ) {
+          line.value = settings.hint;
+          line.cursor = graphemes(line.value).length;
+        } else {
+          line.edit(key.kind, key.kind === 'text' || key.kind === 'paste' ? key.value : '');
+        }
         if (settings.kind !== 'secret') {
           await frame();
         }

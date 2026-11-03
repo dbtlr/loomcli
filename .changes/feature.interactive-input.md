@@ -1,0 +1,4 @@
+- Allow local multiple string options and scalar or variadic string arguments to require input only outside interactive runs with `required: 'non-interactive'`. Publish argument conditional requiredness through inspection, manifests, help, and MCP schemas.
+- Allow text, secret, and select questions to link a scalar string argument for prefilling and skipping with its validated value.
+- Add grapheme-aware cursor movement, word editing, hint acceptance, bracketed paste, and one-row fitting to typed questions. Restore bracketed paste mode on every exit and discard secret typeahead after acceptance.
+- Add the `key` table to `@loomcli/testing` and support separate reads within a scripted keyboard entry.
