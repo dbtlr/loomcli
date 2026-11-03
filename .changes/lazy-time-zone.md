@@ -1,1 +1,0 @@
-- Start applications faster on Node: a run looks up the operator's time zone only when its code first reads `host.timeZone`, so a run that never reads it skips the lookup. The value is unchanged, including a supplied `timeZone` and the one an action's `invoke` keeps from its run.
