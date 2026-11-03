@@ -1350,6 +1350,95 @@ test('a development bundle reads the development code its dependencies ship', as
   expect(run.stdout).toBe('development development\n');
 });
 
+/**
+ * A package whose application logs to `~/probe.jsonl`, whose `source` prints the source text of a
+ * function the syntax minifier folds, and whose `throw` breaks inside a named function.
+ */
+function minifyPackage() {
+  return fixturePackage(
+    {
+      'package.json': '{"name":"minify-probe","type":"module","version":"1.0.0"}\n',
+      'src/application.ts': `import { Application, Command } from '@loomcli/core';
+import { logging } from '@loomcli/plugins/logging';
+
+function failingStep(): never {
+  throw new TypeError('The step failed.');
+}
+
+function marker(): string {
+  return 'fold-' + 'me';
+}
+
+export const probe = new Application('probe', {
+  description: 'Probe minification.',
+  plugins: [logging({ file: '~/probe.jsonl' })],
+})
+  .command(new Command('source', { description: 'Print the source of marker.' }).action(({ out }) => out.print(String(marker))))
+  .command(new Command('throw', { description: 'Throw a defect.' }).action(() => failingStep()));
+`,
+      'src/main.ts': entry,
+    },
+    ['core', 'plugins'],
+  );
+}
+
+/** The marker's source as a distributed build writes it: no whitespace, its sum folded, its name kept. */
+const minifiedMarker = 'function marker(){return"fold-me"}\n';
+
+/** The marker's source as Bun writes it unminified. */
+const plainMarker = 'function marker() {\n  return "fold-" + "me";\n}\n';
+
+test('a distributed bundle minifies whitespace and syntax and keeps names, and a development bundle is not minified', async () => {
+  const root = minifyPackage();
+  // Node returns a function's source as the file holds it, and Bun reprints a file it loads.
+  const runtime = 'node';
+  const main = join(root, 'dist/main.js');
+  const distributed = await loom(root, ['build', '--target', 'node']);
+  expect(distributed.status).toBe(0);
+  expect(execute(main, ['source'], { runtime }).stdout).toBe(minifiedMarker);
+  const development = await loom(root, ['build', '--target', 'node', '--build', 'development']);
+  expect(development.status).toBe(0);
+  expect(execute(main, ['source'], { runtime }).stdout).toBe(plainMarker);
+});
+
+test(
+  'a distributed compile target minifies whitespace and syntax and keeps names, and a development one is not minified',
+  async () => {
+    const root = minifyPackage();
+    const binary = join(root, 'dist/probe');
+    const args = ['build', '--target', hostTarget(), '--name', 'probe'];
+    const distributed = await loom(root, args);
+    expect(distributed.status).toBe(0);
+    expect(execute(binary, ['source']).stdout).toBe(minifiedMarker);
+    const development = await loom(root, [...args, '--build', 'development']);
+    expect(development.status).toBe(0);
+    expect(execute(binary, ['source']).stdout).toBe(plainMarker);
+  },
+  slow,
+);
+
+test("a defect's logged stack from a distributed bundle names the function that threw", async () => {
+  const root = minifyPackage();
+  const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
+  const built = await loom(root, ['build', '--target', 'node']);
+  expect(built.status).toBe(0);
+  const run = execute(join(root, 'dist/main.js'), ['throw'], {
+    env: childEnvironment({ HOME: root }),
+    runtime,
+  });
+  expect(run).toEqual(generic);
+  const records = readFileSync(join(root, 'probe.jsonl'), 'utf8')
+    .trim()
+    .split('\n')
+    .map((line): unknown => JSON.parse(line));
+  expect(records).toContainEqual(
+    expect.objectContaining({
+      defect: expect.objectContaining({ stack: expect.stringMatching(/^\s+at failingStep \(/mu) }),
+      level: 'fatal',
+    }),
+  );
+});
+
 test(
   'a compiled binary reads production code from its dependencies in a distributed build and development code in a development one',
   async () => {

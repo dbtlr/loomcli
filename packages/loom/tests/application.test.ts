@@ -1,6 +1,8 @@
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 import { z } from 'zod';
@@ -41,24 +43,48 @@ test('--help prints the help page of the routed release Command', async () => {
   expect(result.stderr).toBe('');
 });
 
-/** The built bin, started behind the hook that records each file of the bundle it loads. */
+/** A bin, started behind the hook that records each file of the bundle it loads. */
 const loads = new URL('fixtures/loads.mjs', import.meta.url);
 
-/** Bun writes the source path of each module it bundles in a comment above that module's code. */
-const bundledModule = /^\/\/ (?:\.\.\/)*(?<path>src\/\S+\.ts)$/gmu;
+/** The toolchain's package directory, which a build of the bin runs in. */
+const toolchain = fileURLToPath(new URL('..', import.meta.url));
 
-/** The toolchain's own command modules one invocation of the built bin loads, by source path. */
+/**
+ * In a development build, Bun writes the path of each module it bundles in a comment above that
+ * module's code, relative to the output directory. A distributed build minifies the comments away,
+ * but splits its chunks the same.
+ */
+const bundledModule = /^\/\/ (?<path>\S+\.ts)$/gmu;
+
+/** Builds a development copy of the bin from source into `directory`, and returns its entry. */
+function developmentBin(directory: string): string {
+  const out = join(directory, 'dist');
+  const built = spawnSync(
+    'bun',
+    ['src/main.ts', 'build', '--target', 'node', '--build', 'development', '--out', out],
+    { cwd: toolchain, encoding: 'utf8' },
+  );
+  expect(built.stderr).toBe('');
+  expect(built.status).toBe(0);
+  return join(out, 'main.js');
+}
+
+/** The toolchain's own command modules one invocation of a development bin loads, by source path. */
 function loadedCommandModules(args: string[]) {
   const directory = mkdtempSync(join(tmpdir(), 'loom-loads-'));
   const marks = join(directory, 'marks.txt');
   try {
-    const result = invoke(loads, args, { env: { LOOM_FIXTURE_MARKS: marks } });
+    const bin = developmentBin(directory);
+    const result = invoke(loads, args, {
+      env: { LOOM_FIXTURE_BIN: bin, LOOM_FIXTURE_MARKS: marks },
+    });
     expect(result.status).toBe(0);
     const files = readFileSync(marks, 'utf8').split('\n').filter(Boolean);
     const modules = files.flatMap((file) =>
-      [...readFileSync(file, 'utf8').matchAll(bundledModule)].flatMap(
-        (found) => found.groups?.path ?? [],
-      ),
+      [...readFileSync(file, 'utf8').matchAll(bundledModule)].flatMap((found) => {
+        const path = found.groups?.path;
+        return path === undefined ? [] : relative(toolchain, resolve(dirname(file), path));
+      }),
     );
     return [...new Set(modules)]
       .filter((path) => path.startsWith('src/commands/'))

@@ -90,15 +90,26 @@ function carriesCopy(plan: BuildPlan): boolean {
 }
 
 /**
+ * The minification a plan's artifact takes. A distributed one drops whitespace and comments and
+ * simplifies syntax, but keeps every identifier, because core reads function names from a stack's
+ * frames and an author reads them in a logged defect. A development one is written as Bun writes it.
+ */
+function minifyArguments(plan: BuildPlan): string[] {
+  return plan.facts.build === 'distributed' ? ['--minify-whitespace', '--minify-syntax'] : [];
+}
+
+/**
  * The `bun build` arguments that write the plan's artifact to `out`, every path among them
  * absolute, since Bun runs outside the package, then `extra`. A bundle splits, so each plugin's
  * lazily loaded middleware stays in a chunk of its own, and its chunks are named as `Bun.build`
  * names them. Each bundle entry point is named for its module alone, whatever directory it lives
  * in, so the entry writes `main.js` beside `application.js`. A binary compiles the entry alone. The
- * release facts and the skills folder each pass through a define of their own.
+ * release facts and the skills folder each pass through a define of their own, and a distributed
+ * artifact is minified as {@link minifyArguments} states.
  */
 function bunArguments(plan: BuildPlan, out: string, extra: readonly string[] = []): string[] {
   const define = ['--define', definePair(plan.facts), '--define', skillsDefine(plan)];
+  const minify = minifyArguments(plan);
   const config = configArguments(plan.directory);
   if (plan.target.kind === 'compile') {
     return [
@@ -111,6 +122,7 @@ function bunArguments(plan: BuildPlan, out: string, extra: readonly string[] = [
       '--outfile',
       out,
       ...define,
+      ...minify,
       ...extra,
     ];
   }
@@ -129,6 +141,7 @@ function bunArguments(plan: BuildPlan, out: string, extra: readonly string[] = [
     '--chunk-naming',
     'chunk-[hash].[ext]',
     ...define,
+    ...minify,
     ...extra,
   ];
 }

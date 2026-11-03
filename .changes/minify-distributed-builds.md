@@ -1,0 +1,1 @@
+- Ship smaller applications that start faster: a distributed `loom build`, bundle or compile target, minifies whitespace and syntax. It keeps every identifier, so the function names in a defect's stack, such as the one the logging plugin writes, still name the source. A development build and `--watch` are not minified.

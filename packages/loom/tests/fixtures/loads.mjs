@@ -1,10 +1,11 @@
 import { appendFileSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /*
- * Starts the built bin behind a hook that records each file of the bundle the run loads, by path,
- * one per line in the file `LOOM_FIXTURE_MARKS` names. A test reads the source modules each loaded
- * file holds from the path Bun writes above each module's code.
+ * Starts the bin `LOOM_FIXTURE_BIN` names behind a hook that records each file of the bundle the run
+ * loads, by path, one per line in the file `LOOM_FIXTURE_MARKS` names. A test reads the source
+ * modules each loaded file holds from the path Bun writes above each module's code, which a
+ * development build keeps.
  */
 
 const marks = process.env.LOOM_FIXTURE_MARKS;
@@ -46,4 +47,4 @@ if (bun) {
   });
 }
 
-await import('../../dist/main.js');
+await import(pathToFileURL(process.env.LOOM_FIXTURE_BIN).href);
