@@ -231,7 +231,7 @@ test('@loomcli/core declared under devDependencies gains no dependencies.@loomcl
 test.each(['peerDependencies', 'optionalDependencies'])(
   'a dependency declared under %s counts as present',
   (group) => {
-    const source = JSON.stringify({ name: 'notes', [group]: { '@loomcli/loom': '1.0.0' } });
+    const source = JSON.stringify({ [group]: { '@loomcli/loom': '1.0.0' }, name: 'notes' });
     expect(addMissingKeys(source, keys).added).not.toContain('devDependencies.@loomcli/loom');
   },
 );

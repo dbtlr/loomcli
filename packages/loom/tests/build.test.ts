@@ -291,13 +291,13 @@ test.each([
   'an entry, %s, that builds to the same file as the application module fails naming both',
   async (entryPath, applicationPath, options, file) => {
     const root = fixturePackage({
-      'package.json': '{"name":"twins","type":"module","version":"1.0.0"}\n',
       [applicationPath]: application,
       [entryPath]: `#!/usr/bin/env node
 import { probe } from '../${applicationPath.slice('src/'.length).replace('.ts', '.js')}';
 
 await probe.run();
 `,
+      'package.json': '{"name":"twins","type":"module","version":"1.0.0"}\n',
     });
     const result = await loom(root, [
       'build',

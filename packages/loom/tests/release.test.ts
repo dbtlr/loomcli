@@ -861,8 +861,8 @@ test('two libraries published from different commits fail before any write', asy
   ]);
   const endpoints = await startServices({
     packages: {
-      [library]: { provenanceCommit: base, published: true, tarball },
       [extraLibrary]: { provenanceCommit: elsewhere, published: true, tarball: 'extra bytes' },
+      [library]: { provenanceCommit: base, published: true, tarball },
     },
     repository: owner,
     version: '0.2.0',

@@ -79,7 +79,7 @@ function completionApplication() {
         })
         .action(() => {}),
     )
-    .command(new Command('colon', { description: 'One: two \\ three.' }).action(() => {}));
+    .command(new Command('colon', { description: String.raw`One: two \ three.` }).action(() => {}));
 
   /**
    * A counted option, a string option with an implied value and a closed set, and an argument with a

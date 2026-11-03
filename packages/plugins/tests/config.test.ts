@@ -1369,7 +1369,7 @@ test.each([
   [{ short: 'c' }],
   [{ file: '.textstat.json' }],
   [{ file: '.norn/config.toml' }],
-  [{ file: 'dir\\.textstat.*' }],
+  [{ file: String.raw`dir\.textstat.*` }],
   [{ file: '.textstat.{toml,yaml,yml,json}' }],
   [{ file: '.textstat.{json,json}' }],
   [{ file: '.textstat.conf' }],
