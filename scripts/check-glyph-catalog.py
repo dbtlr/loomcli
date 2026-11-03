@@ -12,7 +12,7 @@ REVISION = "a446ea9e273864a3653a26943f59b4fbe8003796"
 SOURCE = f"https://raw.githubusercontent.com/SBoudrias/Inquirer.js/{REVISION}/packages/figures/src/index.ts"
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "docs" / "maintaining" / "glyphs.md"
-GENERATED = ROOT / "packages" / "core" / "src" / "glyphs.generated.ts"
+GENERATED = ROOT / "packages" / "core" / "src" / "style" / "glyphs.generated.ts"
 LICENSES = ROOT / "packages" / "core" / "licenses"
 SOCKET_TIMEOUT_SECONDS = 30
 

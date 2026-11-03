@@ -1,0 +1,1827 @@
+import type { Writable } from 'node:stream';
+
+import {
+  declareStdin,
+  requiredStdinContext,
+  attachToRoot,
+  childNode,
+  buildGraph,
+  checkDeclaredOptions,
+  collectInputs,
+  commandPlacement,
+  inputPlaces,
+  declareAction,
+  declareExtensions,
+  declareArgument,
+  declareOption,
+  declareOptionGroup,
+  declareResult,
+  declareResultViews,
+  freshState,
+  isPortableName,
+  layerOf,
+  portableNameCorrection,
+} from '../commands/command.js';
+import type {
+  AfterAction,
+  AttachmentConstraint,
+  AfterArgument,
+  AfterCommand,
+  AfterResult,
+  BuiltGraph,
+  ChildOwner,
+  Command,
+  CommandMethod,
+  CommandNodeHandle,
+  CommandState,
+  ResultMethod,
+} from '../commands/command.js';
+import {
+  declareGlobalOption,
+  emptyGlobals,
+  globalSite,
+  globalTable,
+  markedSpellings,
+  pluginSites,
+} from '../commands/globals.js';
+import type { GlobalsState, GlobalTable } from '../commands/globals.js';
+import { portableName } from '../commands/rules.js';
+import type { GlobalNameConstraint, NameConstraint } from '../commands/types.js';
+import { slotSite } from '../diagnostics/facts.js';
+import type { FactSite } from '../diagnostics/facts.js';
+import { encoderRegistry } from '../failures/encoders.js';
+import type { EncoderRegistry } from '../failures/encoders.js';
+import {
+  DeclarationError,
+  exitCodeOf,
+  foreignFailure,
+  quoted,
+  toFailure,
+} from '../failures/errors.js';
+import type { InvokedBy, LoomError } from '../failures/errors.js';
+import type { FailureExitCode } from '../failures/exit-codes.js';
+import { failureForm } from '../failures/form.js';
+import type { FailureForm } from '../failures/form.js';
+import { readTranslations, translateThrow } from '../failures/translators.js';
+import type { Translation, TranslatorRegistry } from '../failures/translators.js';
+import { askTerminal } from '../host/background-query.js';
+import { settleBackground } from '../host/background.js';
+import type { Background } from '../host/background.js';
+import { captureHost, handleFacts, settleTerminal, statedBackground } from '../host/host.js';
+import type { HandleFacts, HostCapture, ReportHost } from '../host/host.js';
+import { laneOf, processHandle } from '../host/process-handle.js';
+import type { Host, ProcessHandle } from '../host/types.js';
+import type { Content } from '../inputs/content.js';
+import type { OptionSpelling } from '../inputs/options.js';
+import { installedSource } from '../inputs/sources.js';
+import type {
+  StdinConfig,
+  ArgumentConfig,
+  ArgumentValue,
+  DefaultConstraint,
+  ImpliedConstraint,
+  GlobalOmissionConstraint,
+  PerValueConstraint,
+  OptionConfig,
+  OptionValue,
+  ValidateOmittedConstraint,
+  ArgumentKeyConstraint,
+  Unmarked,
+} from '../inputs/types.js';
+import type {
+  ArgumentInput,
+  DeclaredValues,
+  InputPlaces,
+  OptionInput,
+} from '../inputs/validation.js';
+import { prepareDeclaredValues } from '../inputs/validation.js';
+import { inspectGraph } from '../inspection/inspect.js';
+import type { CommandGraph } from '../inspection/inspect.js';
+import { noSelection, runInvocation } from '../invocation/chain.js';
+import type { FailureSelection, Invocation, StartingView } from '../invocation/chain.js';
+import {
+  captureSink,
+  fieldsOf,
+  guardedObserver,
+  invocationHost,
+  mappedFailure,
+  readCall,
+} from '../invocation/invoke.js';
+import type { InvokeCall } from '../invocation/invoke.js';
+import { lowerInvocation } from '../invocation/lower.js';
+import { parseInvocation } from '../invocation/parse.js';
+import type {
+  StdinContext,
+  Action,
+  declaredTypes,
+  DeclaredTypes,
+  InvocationOutcome,
+  InvocationValues,
+  InvokeOptions,
+} from '../invocation/types.js';
+import { background, backgroundChoice, checkBackgroundBinding } from '../marks/background-mark.js';
+import {
+  checkColorBinding,
+  chosenPolicy,
+  color,
+  colorChoice,
+  uncapturedPolicy,
+} from '../marks/color.js';
+import { argvVerbosity, checkVerbosityBinding, namedVerbosity } from '../marks/verbosity.js';
+import { coreViews } from '../output/lanes.js';
+import { RunLog } from '../output/log.js';
+import type { LogDestination } from '../output/log.js';
+import { Output, reportPlainly } from '../output/output.js';
+import type { WriteState } from '../output/output.js';
+import type { ProgressEvent, ResultViews, ResultViewsOf, RowViews } from '../output/types.js';
+import { buildViews, viewIdentities } from '../output/view.js';
+import type { ViewContributions, ViewOverride, ViewRegistry } from '../output/view.js';
+import { carriesBinding, storeCommandLayers } from '../plugins/extension.js';
+import type { ExtensionValue } from '../plugins/extension.js';
+import { judgeGraph, judgesGraph } from '../plugins/graph-hooks.js';
+import { destinationDefect, destinationReport, reportFailure } from '../plugins/hints.js';
+import type { BuildReports, BuiltRun, FailureScene } from '../plugins/hints.js';
+import { installPlugins, pluginViews } from '../plugins/plugin.js';
+import type { BuiltPlugin, InstalledOptionValues, Plugin } from '../plugins/plugin.js';
+import { prepareEnvironment } from '../plugins/prepare-environment.js';
+import { PersistentValues, RunValues, providedBinder, readUses } from '../plugins/providers.js';
+import type {
+  AnyProvider,
+  OptIn,
+  BuiltValues,
+  ProvidedValues,
+  ProviderGlobals,
+} from '../plugins/providers.js';
+import { bakedFacts, isDevelopment } from '../shipping/release.js';
+import { shutdownTimeout } from '../signals/shutdown.js';
+import type { LaneHandlers, OnShutdown, SharedLane } from '../signals/signal-lane.js';
+import {
+  bracketRun,
+  cancellationCode,
+  echoesCancellation,
+  isCancellationEcho,
+  placeHandlers,
+} from '../signals/signals.js';
+import type { CancellationCode, LaneEntry, ParentRun, SignalBracket } from '../signals/signals.js';
+import { capabilities, plainPolicy, renderingPolicy } from '../style/rendering.js';
+import type { RenderingPolicy } from '../style/rendering.js';
+import { themeAdapts, themePalette } from '../style/theme.js';
+import type { BuiltTheme } from '../style/theme.js';
+import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
+import type { ExitCode, RunOptions } from './types.js';
+
+/**
+ * Every authoring call an Application can publish, beside `inspect()`, `check()`, `run()`,
+ * `invoke()`, and `name`, which always remain.
+ * An Application's type state is a subset of these, and each call removes the names it invalidates.
+ * The unnamed root declares what a named Command declares, except for `alias()`: the root answers
+ * to no bare token, so it has no name to alias.
+ */
+export type ApplicationMethod = Exclude<CommandMethod, 'alias'> | 'globalOption';
+
+/** The registry a failure is reported through when the application's own could not be built. */
+const noViews: ViewRegistry = [];
+
+/** Drops what a handler of core's own threw, which nothing an operator does could change. */
+const dropped = (): void => undefined;
+
+/**
+ * What one preparation hands back as each stage of the build passes, in the order it passes them.
+ * `inspect()` ignores every stage; `run()` uses them to configure the invocation's output before
+ * the graph builds, so a build fault reports through the application's own overrides.
+ */
+interface PrepareStage {
+  /** Each registry as it is published: the application's alone, then the merged one. */
+  views: (registry: ViewRegistry) => void;
+  /** The declared rendering policy the constructor validated. */
+  rendering: (policy: RenderingPolicy) => void;
+  /** The built plugins, which carry the theme the view context resolves styles through. */
+  plugins: (plugins: readonly BuiltPlugin[]) => void;
+}
+
+/** The stages `inspect()` and `check()` ignore, because they configure no output. */
+const unstaged: PrepareStage = {
+  plugins: () => undefined,
+  rendering: () => undefined,
+  views: () => undefined,
+};
+
+/**
+ * Which checks one build runs past the built graph, and what each fault they find does. A run and
+ * `inspect()` throw the first, which ends the build; `check()` keeps each and goes on.
+ */
+interface BuildChecks {
+  /** Whether the build runs a development build's checks: it asks every validated input's converter. */
+  readonly development: boolean;
+  readonly fault: (fault: DeclarationError) => void;
+}
+
+/** The fault handler of a run and of `inspect()`: the first fault ends the build. */
+function raise(fault: DeclarationError): never {
+  throw fault;
+}
+
+/**
+ * Whether one failure is the cancellation the run already reports, which core does not report a
+ * second time. Any other failure after cancellation is rendered as usual.
+ */
+function silenced(
+  thrown: unknown,
+  signal: AbortSignal,
+  cancelled: CancellationCode | undefined,
+): boolean {
+  return cancelled !== undefined && isCancellationEcho(thrown, signal.reason);
+}
+
+/** The selection of a run whose chain never ran, which reaches no Command's result. */
+function unselected(): FailureSelection {
+  return noSelection;
+}
+
+/**
+ * The write state a run reports by. A destination whose write failure the action let propagate,
+ * and a translator answered, is reported as that translated failure, so its failure is no longer
+ * the destination fault that forces 1.
+ */
+function answeredWrite(writes: WriteState, answered: unknown): WriteState {
+  return writes.kind === 'failed' && answered !== undefined && writes.error === answered
+    ? { kind: 'ok' }
+    : writes;
+}
+
+/**
+ * Nothing when the Application's globals hold what its root's opt-ins read, and otherwise a member
+ * no handler carries, so the `action()` call is rejected.
+ */
+type RootRequirement<Globals, Requires> = [Globals] extends [Requires]
+  ? unknown
+  : { readonly 'The Application declares no global option its root providers read': Requires };
+
+export interface ApplicationOptions<
+  Plugins extends readonly Plugin[] = readonly Plugin[],
+  Uses extends readonly AnyProvider[] = [],
+> {
+  rendering?: RenderingPolicy;
+  /** How a signal ends the process: `timeout` is the shutdown budget, 500 milliseconds by default. */
+  shutdown?: { readonly timeout?: number };
+  views?: readonly ViewOverride[];
+  translators?: readonly Translation[];
+  plugins?: Plugins;
+  extensions?: readonly ExtensionValue<'command'>[];
+  description?: string;
+  version?: string;
+  /** The providers whose values the root's own action reads under `provided`. */
+  uses?: OptIn<Uses>;
+}
+
+/**
+ * Everything an Application holds beside its root declaration and its globals, each part checked by
+ * the constructor or the call that set it.
+ */
+interface ApplicationConfig {
+  /** Whether the application's own `command()` or `action()` has run, which closes `globalOption()`. */
+  composed: boolean;
+  /** Each installed plugin's view contributions, in installation order. */
+  contributors: readonly ViewContributions[];
+  facts: ApplicationFacts;
+  /** The parent that claimed each node the graph holds, so one value attaches at one point. */
+  owners: ReadonlyMap<CommandNodeHandle, ChildOwner>;
+  plugins: readonly BuiltPlugin[];
+  rendering: RenderingPolicy;
+  /** The milliseconds a run gets to unwind after an ending signal, which the constructor checked. */
+  shutdown: number;
+  /** The application's translations, then each installed plugin's, in resolution order. */
+  translators: TranslatorRegistry;
+  /** The application's own view overrides. */
+  views: ViewContributions;
+}
+
+/**
+ * The Application holds the unnamed root's declaration state and applies the same transitions a
+ * Command does, so each declaration call has one typed implementation and no builder to recover.
+ */
+class ApplicationBuilder<
+  Args,
+  Options,
+  Globals,
+  State extends ApplicationMethod = ApplicationMethod,
+  Plugins extends readonly Plugin[] = readonly [],
+  Result = unknown,
+  Stdin extends StdinContext = StdinContext,
+  Provided = {},
+  Requires = {},
+> {
+  declare readonly [applicationEnvironment]: ApplicationEnvironment<Globals, Plugins>;
+  declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
+
+  readonly #stdinBind: (source: Content | undefined) => Stdin;
+  /** Reads the values core built for the root's opt-ins as the type the Application's `uses` names. */
+  readonly #providedBind: (values: BuiltValues) => Provided;
+  readonly #name: string;
+  readonly #root: CommandState<Args, Options, Globals>;
+  readonly #globals: GlobalsState;
+  readonly #config: ApplicationConfig;
+  /**
+   * The spellings of the options that carry the marks a run reads from argv before graph build,
+   * the color mark and the background mark, read from the declarations the first time a run needs
+   * them. The holder keeps an Application with neither mark from reading them again.
+   */
+  #markedSpellings:
+    | {
+        readonly color: ReadonlyMap<string, OptionSpelling> | undefined;
+        readonly background: ReadonlyMap<string, OptionSpelling> | undefined;
+      }
+    | undefined = undefined;
+
+  constructor(
+    name: string,
+    declared: {
+      config: ApplicationConfig;
+      globals: GlobalsState;
+      root: CommandState<Args, Options, Globals>;
+    },
+    binds: {
+      stdin: (source: Content | undefined) => Stdin;
+      provided: (values: BuiltValues) => Provided;
+    },
+  ) {
+    this.#stdinBind = binds.stdin;
+    this.#providedBind = binds.provided;
+    this.#name = name;
+    this.#config = declared.config;
+    this.#globals = declared.globals;
+    this.#root = declared.root;
+  }
+
+  get name(): string {
+    return this.#name;
+  }
+
+  stdin(
+    config: StdinConfig & { required: true },
+  ): Application<
+    Args,
+    Options,
+    Globals,
+    State,
+    Plugins,
+    Result,
+    { readonly stdin: Content },
+    Provided,
+    Requires
+  >;
+  stdin(
+    config: StdinConfig,
+  ): Application<Args, Options, Globals, State, Plugins, Result, StdinContext, Provided, Requires>;
+  stdin(
+    config: StdinConfig,
+  ): Application<Args, Options, Globals, State, Plugins, Result, StdinContext, Provided, Requires> {
+    const root = declareStdin(this.#root, config);
+    return new ApplicationBuilder<
+      Args,
+      Options,
+      Globals,
+      State,
+      Plugins,
+      Result,
+      StdinContext,
+      Provided,
+      Requires
+    >(
+      this.#name,
+      { config: this.#config, globals: this.#globals, root },
+      {
+        provided: this.#providedBind,
+        stdin: root.stdin?.required ? requiredStdinContext : (source) => ({ stdin: source }),
+      },
+    );
+  }
+
+  argument<const Name extends string, const Config extends ArgumentConfig>(
+    name: Name,
+    config: Config &
+      NameConstraint<Name> &
+      NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ArgumentKeyConstraint<Config>> &
+      NoInfer<PerValueConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>>,
+  ): Application<
+    Args & Record<Name, ArgumentValue<Config>>,
+    Options,
+    Globals,
+    AfterArgument<State>,
+    Plugins,
+    Result,
+    Stdin,
+    Provided,
+    Requires
+  > {
+    const input: ArgumentInput<Name, Config> = {
+      config,
+      kind: 'argument',
+      name,
+    };
+    return this.derive(declareArgument(this.#root, input));
+  }
+
+  option<const Name extends string, const Config extends OptionConfig>(
+    name: Name,
+    config: Config &
+      Unmarked &
+      NameConstraint<Name> &
+      GlobalNameConstraint<Name, Globals> &
+      NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ImpliedConstraint<Config>> &
+      NoInfer<PerValueConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>>,
+  ): Application<
+    Args,
+    Options & Record<Name, OptionValue<Config>>,
+    Globals,
+    State,
+    Plugins,
+    Result,
+    Stdin,
+    Provided,
+    Requires
+  > {
+    const input: OptionInput<Name, Config> = {
+      config,
+      kind: 'option',
+      name,
+    };
+    return this.derive(declareOption(this.#root, input, this.table()));
+  }
+
+  exclusive(
+    ...names: [
+      Extract<keyof Options, string>,
+      Extract<keyof Options, string>,
+      ...Extract<keyof Options, string>[],
+    ]
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
+    return this.derive(declareOptionGroup(this.#root, 'exclusive', names));
+  }
+
+  oneRequired(
+    ...names: [
+      Extract<keyof Options, string>,
+      Extract<keyof Options, string>,
+      ...Extract<keyof Options, string>[],
+    ]
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
+    return this.derive(declareOptionGroup(this.#root, 'oneRequired', names));
+  }
+
+  requiredTogether(
+    ...names: [
+      Extract<keyof Options, string>,
+      Extract<keyof Options, string>,
+      ...Extract<keyof Options, string>[],
+    ]
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
+    return this.derive(declareOptionGroup(this.#root, 'requiredTogether', names));
+  }
+
+  globalOption<const Name extends string, const Config extends OptionConfig>(
+    name: Name,
+    config: Config &
+      NameConstraint<Name> &
+      (Name extends keyof Options
+        ? { 'This option name is already declared as a local option': Name }
+        : unknown) &
+      NoInfer<DefaultConstraint<Config>> &
+      NoInfer<ImpliedConstraint<Config>> &
+      NoInfer<PerValueConstraint<Config>> &
+      NoInfer<ValidateOmittedConstraint<Config>> &
+      NoInfer<GlobalOmissionConstraint<Config>>,
+  ): Application<
+    Args,
+    Options,
+    Globals & Record<Name, OptionValue<Config>>,
+    State,
+    Plugins,
+    Result,
+    Stdin,
+    Provided,
+    Requires
+  > {
+    const input: OptionInput<Name, Config> = {
+      config,
+      kind: 'option',
+      name,
+    };
+    const descriptors = new Map(this.#root.descriptors);
+    const { input: captured, state: globals } = declareGlobalOption(
+      this.#globals,
+      input,
+      descriptors,
+    );
+    const root = { ...this.#root, descriptors };
+    checkDeclaredOptions(root, globalTable(globals.inputs, this.#config.plugins));
+    checkMarkBindings(
+      captured.config,
+      globalSite(captured),
+      carriedBinding(globals.records.get(captured), this.#config.plugins),
+    );
+    return new ApplicationBuilder<
+      Args,
+      Options,
+      Globals & Record<Name, OptionValue<Config>>,
+      State,
+      Plugins,
+      Result,
+      Stdin,
+      Provided,
+      Requires
+    >(
+      this.#name,
+      { config: this.#config, globals, root },
+      {
+        provided: this.#providedBind,
+        stdin: this.#stdinBind,
+      },
+    );
+  }
+
+  /**
+   * Registering the action closes input authoring; extension configuration remains available. The
+   * globals the root's own opt-ins read are checked here, once `globalOption()` has closed.
+   */
+  action(
+    handler: Action<Args, Globals & Options, Result, Stdin, Provided> &
+      RootRequirement<Globals, Requires>,
+  ): Application<Args, Options, Globals, AfterAction, Plugins, Result, Stdin, Provided, Requires> {
+    return this.derive(
+      declareAction(this.#root, handler, { provided: this.#providedBind, stdin: this.#stdinBind }),
+      { composed: true },
+    );
+  }
+
+  /** A child arrives in any type state, because its own action is the call that finished it. */
+  command<const Child extends Command<unknown, unknown, Globals>>(
+    child: Child & NoInfer<AttachmentConstraint<Globals, Child>>,
+  ): Application<
+    Args,
+    Options,
+    Globals,
+    AfterCommand<Exclude<State, 'globalOption'>>,
+    Plugins,
+    Result,
+    Stdin,
+    Provided,
+    Requires
+  > {
+    const scope = {
+      descriptors: new Map(this.#root.descriptors),
+      owners: new Map(this.#config.owners),
+      table: this.table(),
+    };
+    const node = childNode(child);
+    const root = attachToRoot(
+      this.#root,
+      { node, placement: commandPlacement([], node.name) },
+      scope,
+    );
+    return this.derive(root, { composed: true, owners: scope.owners });
+  }
+
+  /**
+   * The value the root action produces for its consumer. The type argument is stated by the
+   * author, as it is on a Command.
+   */
+  result<Value>(declaration: {
+    views: ResultViews<NoInfer<Value>>;
+  }): Application<
+    Args,
+    Options,
+    Globals,
+    AfterResult<State>,
+    Plugins,
+    { kind: 'value'; value: Value },
+    Stdin,
+    Provided,
+    Requires
+  > {
+    return this.derive<Args, Options, AfterResult<State>, { kind: 'value'; value: Value }>(
+      declareResult(this.#root, 'value', declaration),
+    );
+  }
+
+  /** The same declaration over a sequence, whose type argument is one row. */
+  rows<Row>(declaration: {
+    views: RowViews<NoInfer<Row>>;
+  }): Application<
+    Args,
+    Options,
+    Globals,
+    AfterResult<State>,
+    Plugins,
+    { kind: 'rows'; row: Row },
+    Stdin,
+    Provided,
+    Requires
+  > {
+    return this.derive<Args, Options, AfterResult<State>, { kind: 'rows'; row: Row }>(
+      declareResult(this.#root, 'rows', declaration),
+    );
+  }
+
+  /** Views after the fact, merged by key, as it is on a Command. */
+  views<const Replacements extends ResultViewsOf<Result>>(
+    replacements: Replacements,
+    options?: { default?: keyof Replacements & string },
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
+    return this.derive(declareResultViews(this.#root, replacements, options));
+  }
+
+  extend(
+    ...values: readonly ExtensionValue<'command'>[]
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
+    return this.derive(declareExtensions(this.#root, values));
+  }
+
+  /** The globals table the root's options and every joining subtree meet. */
+  private table(): GlobalTable {
+    return globalTable(this.#globals.inputs, this.#config.plugins);
+  }
+
+  /**
+   * Root declaration calls preserve the Application configuration, with the parts a call changed.
+   * The next state travels through this call: each method names its transition in its return type,
+   * and the wrapper publishes the same runtime value in exactly that state.
+   */
+  private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod, Declared = Result>(
+    root: CommandState<DerivedArgs, DerivedOptions, Globals>,
+    changed: Partial<Pick<ApplicationConfig, 'composed' | 'owners'>> = {},
+  ): Application<
+    DerivedArgs,
+    DerivedOptions,
+    Globals,
+    Next,
+    Plugins,
+    Declared,
+    Stdin,
+    Provided,
+    Requires
+  > {
+    return new ApplicationBuilder<
+      DerivedArgs,
+      DerivedOptions,
+      Globals,
+      Next,
+      Plugins,
+      Declared,
+      Stdin,
+      Provided,
+      Requires
+    >(
+      this.#name,
+      { config: { ...this.#config, ...changed }, globals: this.#globals, root },
+      { provided: this.#providedBind, stdin: this.#stdinBind },
+    );
+  }
+
+  /**
+   * The graph build, which applies the rules no earlier moment could know: the root's
+   * finished-Command rules, every lifecycle hook's contribution, the checks `checks` names, and
+   * every `onGraphBuilt` judgment of the frozen graph. The application's own overrides are
+   * published first, so a build fault reports through them. The merged registry is published once
+   * the build has succeeded, so a build fault never resolves through a plugin's overrides.
+   * `inspected` is the frozen graph `inspect()` returns, built at most once, whoever reads it
+   * first. `reuse` is the graph an action's run built, which its call reuses.
+   */
+  private prepare(
+    stage: PrepareStage,
+    checks: BuildChecks,
+    reuse?: Pick<BoundGraph, 'graph' | 'inspected'>,
+  ): {
+    facts: ApplicationFacts;
+    graph: BuiltGraph;
+    inspected: () => CommandGraph;
+    plugins: readonly BuiltPlugin[];
+  } {
+    this.stage(stage);
+    return this.build(stage, checks, reuse);
+  }
+
+  /**
+   * The stages that pass before the graph builds: the application's own overrides, the declared
+   * rendering policy, and the built plugins, each published to `stage`.
+   */
+  private stage(stage: PrepareStage): void {
+    const { plugins, rendering, views } = this.#config;
+    stage.views([views]);
+    stage.rendering(rendering);
+    stage.plugins(plugins);
+  }
+
+  /** The graph build after the stages `stage()` published, as `prepare()` states it. */
+  private build(
+    stage: PrepareStage,
+    checks: BuildChecks,
+    reuse?: Pick<BoundGraph, 'graph' | 'inspected'>,
+  ): {
+    facts: ApplicationFacts;
+    graph: BuiltGraph;
+    inspected: () => CommandGraph;
+    plugins: readonly BuiltPlugin[];
+  } {
+    const { contributors, facts, plugins, views } = this.#config;
+    // An action's call reuses the graph its run built and judged, so no lifecycle hook runs again.
+    if (reuse) {
+      stage.views([views, ...contributors]);
+      return { facts, graph: reuse.graph, inspected: reuse.inspected, plugins };
+    }
+    const graph = buildGraph(this.#root, this.#globals, plugins);
+    let frozen: CommandGraph | undefined = undefined;
+    const converterFault = checks.development ? checks.fault : undefined;
+    const inspected = () =>
+      (frozen ??= inspectGraph(this.#name, graph, {
+        ...facts,
+        converterFault,
+        source: installedSource(plugins)?.source,
+      }));
+    if (checks.development) {
+      // A build that checks converters asks every one at build, so its check runs on every build.
+      inspected();
+    }
+    if (judgesGraph(plugins)) {
+      judgeGraph(inspected(), plugins, checks.fault);
+    }
+    stage.views([views, ...contributors]);
+    return { facts, graph, inspected, plugins };
+  }
+
+  /**
+   * The built graph as plain, frozen data. It builds the graph as `run()` does and throws
+   * `DeclarationError` for the same build faults. Validating a declared default through its schema
+   * can be asynchronous, so that one rule stays in `run()`. It takes no host, so it learns its build
+   * from the release facts the build baked in, and malformed ones throw their `InternalError`.
+   * Nothing is cached: each call builds the graph anew.
+   */
+  inspect(): CommandGraph {
+    const development = isDevelopment(bakedFacts());
+    const built = this.prepare(unstaged, { development, fault: raise });
+    return built.inspected();
+  }
+
+  /**
+   * Every declaration fault a development run reports before routing, except a declared default or
+   * implied value its validator rejects, as values in the order a run meets them. It builds the
+   * graph as `inspect()` does and runs the development checks whatever the release facts read,
+   * reading no host and no baked facts. A build rule's fault ends the build, so it is the one fault;
+   * past a built graph, each failing converter and each rejecting `onGraphBuilt` hook is kept and
+   * the build goes on. Any other throw leaves it as it is. Nothing is cached.
+   */
+  check(): readonly DeclarationError[] {
+    const faults: DeclarationError[] = [];
+    try {
+      this.prepare(unstaged, {
+        development: true,
+        fault: (fault) => {
+          faults.push(fault);
+        },
+      });
+    } catch (error) {
+      // A thrown fault is a build rule's, which ends the build, so it is returned alone.
+      if (error instanceof DeclarationError) {
+        return [error];
+      }
+      throw error;
+    }
+    return faults;
+  }
+
+  async run(options?: RunOptions): Promise<ExitCode> {
+    const end = await this.#execute(argvDoor(this.#name, options));
+    return end.exitCode;
+  }
+
+  /**
+   * Runs one Command of a graph built for this call by its path, with named values in place of
+   * argv, captures what the run writes, and resolves a structured outcome. It touches no process.
+   */
+  invoke<Mapped = LoomError>(
+    path: readonly string[],
+    values: InvocationValues,
+    options?: InvokeOptions<Mapped> & {
+      /** The process the call reads its facts from: `processHandle()` when omitted. */
+      readonly process?: ProcessHandle;
+    },
+  ): Promise<InvocationOutcome<Mapped>> {
+    return this.#invoke({ options, path, values }, undefined);
+  }
+
+  /**
+   * One invocation by name: the call read where it entered, the run on capture sinks, and the
+   * outcome, whose failure the caller's handler maps once the run has ended. An action's call
+   * reuses the graph its run built and reads its run's host fields and signal.
+   */
+  async #invoke<Mapped>(
+    call: {
+      path: readonly string[];
+      values: InvocationValues;
+      options: (InvokeOptions<Mapped> & { readonly process?: ProcessHandle }) | undefined;
+    },
+    action: ActionCall | undefined,
+  ): Promise<InvocationOutcome<Mapped>> {
+    const read = readCall(call);
+    const sinks = { stderr: captureSink(), stdout: captureSink() };
+    const streams = { stderr: sinks.stderr.stream, stdout: sinks.stdout.stream };
+    const progress = guardedObserver(read.onProgress);
+    // An action's call reads no handle, because its facts and its lane are its run's.
+    const handle = call.options?.process ?? processHandle();
+    const end = await this.#execute(
+      nameDoor(read, {
+        action,
+        declared: this.#config.rendering,
+        fields: () => action?.fields ?? handleFacts(this.#name, handle),
+        lane: action?.lane ?? laneOf(handle.signals),
+        observe: progress.observe,
+        streams,
+      }),
+    );
+    // An observer that threw makes the call reject once its run has settled, discarding its text.
+    progress.settle();
+    if (end.kind === 'cancelled') {
+      return { exitCode: end.exitCode, status: 'cancelled' };
+    }
+    const output = sinks.stdout.text();
+    const messages = sinks.stderr.text();
+    if (end.kind === 'completed') {
+      return { messages, output, status: 'completed' };
+    }
+    const { exitCode, form, path } = end;
+    const failure = mappedFailure(end.failure, read.failure, {
+      application: this.#name,
+      exitCode,
+      form,
+      path,
+    });
+    return { exitCode, failure, form, messages, output, status: 'failed' };
+  }
+
+  /**
+   * The one run body `run()` and `invoke()` share. The door decides what differs: where the run
+   * reads its inputs and host, where it writes, which signals cancel it, whether it builds its own
+   * graph or reuses an action's run's, and whether it touches the process.
+   */
+  async #execute(door: RunDoor): Promise<RunEnd> {
+    // The marked options' spellings, known from the declarations before any graph builds.
+    const globalInputs = this.#globals.inputs;
+    const { plugins: installed } = this.#config;
+    this.#markedSpellings ??= {
+      background: markedSpellings(globalInputs, installed, background),
+      color: markedSpellings(globalInputs, installed, color),
+    };
+    const spellings = this.#markedSpellings.color;
+    const backgroundSpellings = this.#markedSpellings.background;
+    const { stderr } = door;
+    let output: Output | undefined = undefined;
+    let code: 0 | FailureExitCode = 0;
+    let reportingFailed = false;
+    // A registry that could not be built reports through core's defaults, not through itself.
+    let registry: ViewRegistry | undefined = undefined;
+    // The thrown value this run reports as its primary outcome, whose translation decides its writes.
+    let primary: { value: unknown } | undefined = undefined;
+    // The failure that set this run's failure code, which an invocation by name hands its caller.
+    let decisive: LoomError | undefined = undefined;
+    // The form of each failure this run reported, which holds the hints its hooks returned.
+    const forms = new Map<LoomError, FailureForm>();
+    // Each failure a translator answered, keyed to the foreign throw it replaced.
+    const translatedFrom = new Map<unknown, unknown>();
+    // Where a failure happened: the path routing walked, and what the hooks read once the graph built.
+    let walked: readonly string[] = Object.freeze([]);
+    let reached: BuiltRun | undefined = undefined;
+    // The run's selection when it failed, published once the chain is about to run.
+    let selected: () => FailureSelection = unselected;
+    // The failure encoders a `run()` writes through, once the plugins are installed for the build.
+    let encoders: EncoderRegistry | undefined = undefined;
+    /**
+     * The host a failure's report reads: what the run's capture read, even when its working
+     * directory could not be read, or the door's fallback when the run failed before capturing.
+     * Nothing captures the host a second time.
+     */
+    let reportHost: ReportHost | undefined = undefined;
+    /**
+     * What this run's build decides about its reports, shared by every report the run writes. Its
+     * build reads the release facts of the recorded report host each time, so no reader sees a
+     * value from before the capture. Until a host is recorded, or when its facts were malformed,
+     * the build is unknown, so the run is a development build and the author reads their defect.
+     */
+    const build: BuildReports = {
+      get development() {
+        return isDevelopment(reportHost?.release);
+      },
+      generic: false,
+      reported: false,
+    };
+    const useReportHost = (host: ReportHost): ReportHost => {
+      reportHost = host;
+      return host;
+    };
+    const reportingHost = (): ReportHost => reportHost ?? useReportHost(door.fallback(stderr));
+    /**
+     * This run's log events, created when the first context asks. The destination is the
+     * outermost run's, which the door decides, and the path is the one routing published.
+     */
+    const logged: { current: RunLog | undefined } = { current: undefined };
+    // A hook's stderr follows the run's stderr order once the run's output exists.
+    const logDestination = (): LogDestination => {
+      const destination = door.destination(reportingHost());
+      return output?.logDestination(destination) ?? destination;
+    };
+    const logs = (): RunLog => {
+      logged.current ??= new RunLog(
+        {
+          application: Object.freeze({
+            name: this.#name,
+            version: this.#config.facts.version,
+          }),
+          destination: logDestination(),
+          path: () => walked,
+        },
+        this.#config.plugins.flatMap(({ onLog }) => (onLog === undefined ? [] : [onLog])),
+      );
+      return logged.current;
+    };
+    const scene = (): FailureScene & { host: ReportHost } => ({
+      application: this.#name,
+      built: reached,
+      host: reportingHost(),
+      invokedBy: door.invokedBy,
+      path: walked,
+      selection: selected(),
+    });
+    // What broke the run's reporting: a destination's write error, or a throw while reporting.
+    let reportingCause: unknown = undefined;
+    // One private controller per run, subscribed to the caller's signal at run entry.
+    const controller = new AbortController();
+    // The bracket this run holds, once the run has entered and subscribed to the caller's signal.
+    let signals: SignalBracket | undefined = undefined;
+    // A cancelled run resolves its cancellation code whenever it ends after graph build.
+    // A declaration or internal failure raised before that ends the run with its own code instead.
+    let graphBuilt = false;
+    const cancellation = (): CancellationCode | undefined => {
+      const reason = graphBuilt ? signals?.reason() : undefined;
+      return reason ? cancellationCode(reason) : undefined;
+    };
+    /**
+     * Offers one throw from the application's work to the translators, a view's included, because
+     * a throw from a library a view calls is the author's to translate like any other. A
+     * cancellation echo is never offered, because it already names what it is.
+     */
+    const offer = (thrown: unknown): LoomError | undefined => {
+      if (echoesCancellation(thrown, controller.signal)) {
+        return undefined;
+      }
+      const failure = translateThrow(this.#config.translators, thrown);
+      if (failure !== undefined) {
+        translatedFrom.set(failure, thrown);
+      }
+      return failure;
+    };
+    /**
+     * Every exit path of the run leaves through the removal below, the one place it is written,
+     * so no listener this run installed outlives it however the run ends.
+     */
+    try {
+      try {
+        // The run takes its place in its lane before its first await, so a signal from now reaches it.
+        const bracket = door.bracket(controller, {
+          flush: () => {
+            output?.flushTerminal();
+          },
+          timeout: this.#config.shutdown,
+        });
+        signals = bracket;
+        const entered = door.enter();
+        const capture = entered.host(stderr);
+        useReportHost(capture.report);
+        if ('failure' in capture) {
+          throw capture.failure;
+        }
+        const { host } = capture;
+        // The operator's color choice, read from argv before anything else prints.
+        const choice = spellings && colorChoice(host.argv, spellings);
+        const invocationOutput = door.output(host, controller.signal, chosenPolicy({}, choice));
+        output = invocationOutput;
+        // A closed reader on stdout ends the run as a cancellation does, with its own reason.
+        invocationOutput.useClosedPipe((cause) => signals?.closePipe(cause));
+        // Core's own handlers on the run's place: the live regions and the background query.
+        const ownHandlers = placeHandlers(bracket.place, {
+          resume: dropped,
+          shutdown: dropped,
+          suspend: dropped,
+        });
+        invocationOutput.useSuspension(ownHandlers);
+        // The constructor validated the declared policy, which the build hands over after the overrides.
+        let policy: RenderingPolicy = {};
+        // The installed theme, which the run's background resolves to a palette once it settles.
+        let theme: BuiltTheme = new Map();
+        const { bound } = door;
+        const stage: PrepareStage = {
+          plugins: (plugins) => {
+            theme = plugins.find((entry) => entry.theme !== undefined)?.theme ?? new Map();
+            invocationOutput.configure(policy, themePalette(theme, undefined));
+          },
+          rendering: (declared) => {
+            policy = chosenPolicy(door.rendering(declared), choice);
+            invocationOutput.configure(policy, new Map());
+          },
+          views: (value) => {
+            registry = value;
+            invocationOutput.useViews(value);
+          },
+        };
+        this.stage(stage);
+        // The run's background settles once, before graph build, so the first themed byte knows it.
+        const settled = await entered.background({
+          cancel: bracket.cancel,
+          choice: backgroundSpellings && backgroundChoice(host.argv, backgroundSpellings),
+          detects: backgroundSpellings !== undefined || themeAdapts(theme),
+          host,
+          onShutdown: ownHandlers.onShutdown,
+          policy,
+          signal: controller.signal,
+        });
+        settleTerminal(host.terminal, settled);
+        invocationOutput.configure(policy, themePalette(theme, settled));
+        const built = this.build(stage, { development: build.development, fault: raise }, bound);
+        const { graph, inspected } = built;
+        // Nothing has written a lane yet: graph build's hooks receive no out.
+        invocationOutput.useVerbosity(entered.verbosity(graph, host));
+        reached = { inspected, plugins: built.plugins };
+        if (door.encodes) {
+          encoders = encoderRegistry(built.plugins);
+        }
+        if (bound === undefined) {
+          await prepareEnvironment({
+            host,
+            log: (identity) => logs().bind(identity),
+            out: { warn: (message) => invocationOutput.out.warn(message) },
+            plugins: built.plugins,
+            publish: entered.publishEnvironment,
+            signal: controller.signal,
+          });
+        }
+        const places = bound?.places ?? inputPlaces(graph);
+        // A nested run reuses its outer run's declared values, so only an outermost run collects inputs.
+        const declaredValues =
+          bound?.declaredValues ??
+          (await prepareDeclaredValues(
+            { globals: graph.globals.inputs, locals: collectInputs(graph.root) },
+            host,
+            places,
+          ));
+        graphBuilt = true;
+        if (!controller.signal.aborted) {
+          /**
+           * The persistent values every run nested in this one shares: its outermost run's, or, on
+           * the outermost run, the ones its own dispatch boundary opens with its opener scope.
+           */
+          let persistent = door.persistent;
+          // An action's own call reuses this run's graph, host fields, signal, and lane.
+          const action: ActionCall = {
+            bound: { declaredValues, graph, inspected, places },
+            destination: logs().destination,
+            fields: fieldsOf(host),
+            lane: door.lane,
+            listens: door.listens,
+            parent: { reason: () => bracket.reason(), signal: controller.signal },
+            persistent: () => persistent,
+          };
+          /**
+           * A context's `onShutdown`, `onSuspend`, and `onResume` register through the run's place,
+           * and a handler's throw is an `error` log event naming the plugin whose middleware
+           * registered it, or none.
+           */
+          const laneHandlers = (plugin: string | null): LaneHandlers => {
+            const failed = (sentence: string) => (thrown: unknown) => {
+              logs().bind(plugin).error(sentence, { error: thrown });
+            };
+            return placeHandlers(bracket.place, {
+              resume: failed('A resume handler failed.'),
+              shutdown: failed('A shutdown handler failed.'),
+              suspend: failed('A suspend handler failed.'),
+            });
+          };
+          await runInvocation({
+            cancel: bracket.cancel,
+            channel: (binding) => invocationOutput.channel(binding),
+            declaredValues,
+            graph,
+            handFailure: (fault) => invocationOutput.handFailure(fault),
+            host,
+            inspected,
+            invoke: (path, values, options) => this.#invoke({ options, path, values }, action),
+            invokedBy: door.invokedBy,
+            laneHandlers,
+            logFor: (plugin) => logs().bind(plugin),
+            offer,
+            out: output.out,
+            places,
+            plugins: built.plugins,
+            providers: (scope) => {
+              persistent ??= new PersistentValues(scope);
+              return new RunValues(scope, persistent, door.persistent === undefined);
+            },
+            read: entered.read(host),
+            route: (path) => {
+              walked = path;
+              invocationOutput.useRoute(path);
+            },
+            select: (read) => {
+              selected = read;
+            },
+            signal: controller.signal,
+            start: entered.start,
+            style: output.style,
+          });
+          // The chain has unwound, so every region a middleware or a source left open closes.
+          invocationOutput.closeRegions('completion');
+        }
+      } catch (error) {
+        primary = { value: error };
+        // Each open region writes its last frame before the failure report, which comes last.
+        output?.closeRegions('failure');
+        try {
+          const failure = toFailure(error);
+          code = exitCodeOf(failure);
+          decisive = failure;
+          // Output is unbuilt only when host capture failed, before the choice could be read.
+          output ??= door.output(
+            reportingHost(),
+            controller.signal,
+            uncapturedPolicy(spellings !== undefined),
+          );
+          const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
+          if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
+            // A broken failure view or a throwing onFailure hook forces 1 over the failure's code.
+            const sink = {
+              build,
+              encoders,
+              logging: logs(),
+              output,
+              registry: registry ?? noViews,
+              stderr,
+            };
+            const reported = await reportFailure(sink, failure, scene());
+            forms.set(failure, reported.form);
+            if (reported.broken) {
+              code = 1;
+            }
+          }
+        } catch (reportError) {
+          code = 1;
+          reportingFailed = true;
+          reportingCause = reportError;
+        }
+      }
+      /**
+       * A failure a handed call raised that no code observed has no catcher: a render whose view
+       * threw, a row source that threw, or a `next()` misuse, in a call the code that made it never
+       * awaited. Each is
+       * reported after the chain settles through the ordinary failure path, offered to the
+       * translators as a foreign throw is, and a failure that code observed is that code's own.
+       */
+      await output?.settle();
+      const faults = (output?.uncaught() ?? []).map((cause) => offer(cause) ?? toFailure(cause));
+      // A fault is reported after the primary outcome, which keeps its code.
+      // After a primary outcome that succeeded, the first fault's own code decides the run.
+      // It is reported the way the primary failure is, so an override answers its class.
+      const reportFault = async (fault: LoomError): Promise<void> => {
+        if (!silenced(fault, controller.signal, cancellation())) {
+          output?.closeRegions('failure');
+          decisive = code === 0 ? fault : decisive;
+          code = code === 0 ? exitCodeOf(fault) : code;
+          try {
+            const sink = output && {
+              build,
+              encoders,
+              logging: logs(),
+              output,
+              registry: registry ?? noViews,
+              stderr,
+            };
+            const reported = sink && (await reportFailure(sink, fault, scene()));
+            if (reported) {
+              forms.set(fault, reported.form);
+            }
+            if (reported?.broken === true) {
+              code = 1;
+            }
+          } catch (reportError) {
+            reportingFailed = true;
+            reportingCause ??= reportError;
+          }
+        }
+      };
+      for (const fault of faults) {
+        await reportFault(fault);
+      }
+      /**
+       * A report writes the held incomplete-result lines ahead of its failure, or drops them when an
+       * encoder wrote the failure. A run no report reached, such as a cancelled one or one whose
+       * stdout failed, writes them now, and a line whose view broke is then the run's view fault.
+       */
+      const lineFault = await output?.writeIncomplete();
+      if (lineFault !== undefined && decisive === undefined) {
+        await reportFault(toFailure(lineFault.cause));
+      }
+      /**
+       * The first throw of an `onLog` hook is reported once, after every other report, through the
+       * ordinary failure path, and the run returns 1 whatever code it would have returned. Its later
+       * throws, such as one on the event that report logs, are not reported.
+       */
+      const hookThrow = logged.current?.thrown;
+      if (hookThrow !== undefined) {
+        await reportFault(foreignFailure(hookThrow.value));
+        code = 1;
+      }
+      if (output) {
+        // A region nothing closed yet, such as one a run whose stdout broke left open, closes here.
+        output.closeRegions(code === 0 ? 'completion' : 'failure');
+        const writes = answeredWrite(
+          await output.settle(),
+          primary && translatedFrom.get(primary.value),
+        );
+        if (writes.kind === 'failed') {
+          code = 1;
+          reportingFailed = true;
+          reportingCause ??= writes.error;
+        }
+        output.dispose();
+      }
+      /**
+       * A failure no report reached, such as one whose stderr had failed, ran no hook, so its form
+       * holds no hint.
+       */
+      const unhintedForm = (failure: LoomError): FailureForm =>
+        failureForm(failure, {
+          development: build.development,
+          hints: [],
+          plain: (text) => output?.plain(text) ?? text,
+        });
+      /**
+       * A destination that failed a write, or a report that threw, is a defect the run reports on
+       * the plain fallback path, so it logs like any reported failure once the graph has built.
+       */
+      const destinationFault = reportingFailed ? destinationDefect(reportingCause) : undefined;
+      if (destinationFault) {
+        const { application, host } = scene();
+        const text = destinationReport(build, destinationFault, { application, host });
+        if (text !== '') {
+          await reportPlainly(stderr, text);
+        }
+        const form = unhintedForm(destinationFault);
+        forms.set(destinationFault, form);
+        if (reached !== undefined) {
+          logs().failure(destinationFault, form);
+        }
+      }
+      /**
+       * One rule orders every code: a cancelled run resolves its signal's code, and a broken
+       * failure view, onFailure hook, onLog hook, or destination in that run is reported without
+       * changing it. The signal decides the code whatever the action did afterward, so this
+       * reading comes last.
+       */
+      const cancelled = cancellation();
+      const exitCode: ExitCode = cancelled ?? code;
+      // The run's reasons for core to listen end before its status is set.
+      signals?.finish();
+      door.settle(exitCode);
+      if (cancelled !== undefined) {
+        return { exitCode: cancelled, kind: 'cancelled' };
+      }
+      if (code === 0) {
+        return { exitCode: code, kind: 'completed' };
+      }
+      // A run whose destination alone failed reports that defect, which is its failure.
+      const failure = decisive ?? destinationFault ?? destinationDefect(reportingCause);
+      const form = forms.get(failure) ?? unhintedForm(failure);
+      return { exitCode: code, failure, form, kind: 'failed', path: walked };
+    } finally {
+      signals?.finish();
+    }
+  }
+}
+
+/** How one run ended, which `run()` reads the code of and `invoke()` builds its outcome from. */
+type RunEnd =
+  | { kind: 'cancelled'; exitCode: CancellationCode }
+  | { kind: 'completed'; exitCode: 0 }
+  | {
+      kind: 'failed';
+      exitCode: FailureExitCode;
+      failure: LoomError;
+      form: FailureForm;
+      path: readonly string[];
+    };
+
+/**
+ * The graph an action's run built and validated, which a call the action makes reuses: no lifecycle
+ * hook runs again, and each declared default and implied value is that run's validated output.
+ */
+interface BoundGraph {
+  declaredValues: DeclaredValues;
+  graph: BuiltGraph;
+  inspected: () => CommandGraph;
+  places: InputPlaces;
+}
+
+/**
+ * What a call an action makes reads from its run: the graph, the five host fields, the signal, and
+ * the destination its log events reach.
+ */
+interface ActionCall {
+  bound: BoundGraph;
+  /** Where the run's log events are delivered, which its nested runs deliver to as well. */
+  destination: LogDestination;
+  fields: HandleFacts;
+  /** The lane of the run's signal source, which the call takes its own place in. */
+  lane: SharedLane;
+  /** Whether the run keeps its lane listening, which the call then does too. */
+  listens: boolean;
+  parent: ParentRun;
+  /**
+   * The persistent values of the outermost run, which every run nested in it shares. The outermost
+   * run opens them at its dispatch boundary, before its action can call.
+   */
+  persistent: () => PersistentValues | undefined;
+}
+
+/** What one run reads at its entry, before the graph is built. */
+interface RunEntry {
+  /** Where an argv run copies its environment additions out: its handle's `publishEnv`, if any. */
+  publishEnvironment: ((name: string, value: string) => void) | undefined;
+  /**
+   * The run's host, captured around the stderr the run writes to, or the failure a working
+   * directory that cannot be read raised beside the facts its report writes through.
+   */
+  host: (stderr: Writable) => HostCapture;
+  /** Reads the run's inputs against the built graph. */
+  read: (host: Host) => Invocation['read'];
+  /** The run's verbosity, settled against the built graph from what the run reads its inputs from. */
+  verbosity: (graph: BuiltGraph, host: Host) => number;
+  /** The run's background, settled once before graph build from what the run reads. */
+  background: (read: BackgroundRead) => Promise<Background | undefined>;
+  /** The view the run starts from, which an invocation by name's caller may select. */
+  start: StartingView | undefined;
+}
+
+/**
+ * What a run settles its background from: the operator's choice, whether anything reads the
+ * background, the host, the policy the color choice left, and the run's signal, which ends a
+ * query's wait.
+ */
+interface BackgroundRead {
+  /** Cancels the run, as the action's `cancel()` does, for an interrupt key nothing raised. */
+  cancel: () => void;
+  /** Registers a handler on the run's place, which restores the terminal if a signal ends the wait. */
+  onShutdown: OnShutdown;
+  choice: Background | undefined;
+  detects: boolean;
+  host: Host;
+  policy: RenderingPolicy;
+  signal: AbortSignal;
+}
+
+/**
+ * What differs between `run()` and an invocation by name, so one run body serves both. A run reads
+ * argv and makes its process handle's effects: it captures the handle's streams, keeps its signal
+ * source's lane listening while it is live, and writes its `exitCode`. An invocation by name reads
+ * named values, writes to capture sinks, resolves its output plain, and makes no effect.
+ */
+interface RunDoor {
+  readonly invokedBy: InvokedBy;
+  /** The lane of the run's signal source. */
+  readonly lane: SharedLane;
+  /** Whether the run keeps its lane listening: `run()`, or an action's call under it. */
+  readonly listens: boolean;
+  /**
+   * Subscribes the run's controller to whatever cancels it and takes the run's place in its lane,
+   * at the run's entry, before its first await.
+   */
+  bracket: (controller: AbortController, entry: Omit<LaneEntry, 'listens'>) => SignalBracket;
+  /** Whether a failure the run reports passes through the failure-encoding stage: `run()` alone. */
+  readonly encodes: boolean;
+  /** The stream a report reaches until the run's host names its own. */
+  readonly stderr: Writable;
+  /** Reads what the caller passed, at run entry. */
+  enter: () => RunEntry;
+  /** The host a report reads when the run failed before its own was captured. */
+  fallback: (stderr: Writable) => ReportHost;
+  /**
+   * The run's output, before the build hands it the declared policy. `early` is the policy the
+   * output follows until then: the operator's color choice, or color off in a marked Application
+   * whose host capture failed before the choice could be read.
+   */
+  output: (host: ReportHost, signal: AbortSignal, early: RenderingPolicy) => Output;
+  /**
+   * Where the run's log events are delivered: the outermost run's destination, which this run's
+   * host names under `run()` and an action's call takes from its parent.
+   */
+  destination: (host: ReportHost) => LogDestination;
+  /** The policy the run resolves its output by, from the Application's declared one. */
+  rendering: (declared: RenderingPolicy) => RenderingPolicy;
+  /** The graph an action's run built, which this run reuses, or none for a run that builds. */
+  bound: BoundGraph | undefined;
+  /**
+   * The persistent values of the outermost run when this run is nested in an action's run, or none
+   * for the outermost run, which holds its own.
+   */
+  persistent: PersistentValues | undefined;
+  /** The process effect the run ends with, once its code is final. */
+  settle: (code: ExitCode) => void;
+}
+
+/**
+ * The door `run()` enters by: argv and its process handle's facts, signals, and exit status. The
+ * run binds the handle once, and the real process's when it was given none.
+ */
+function argvDoor(application: string, options: RunOptions | undefined): RunDoor {
+  const handle = options?.process ?? processHandle();
+  const lane = laneOf(handle.signals);
+  return {
+    bound: undefined,
+    bracket: (controller, entry) =>
+      bracketRun(controller, { caller: options?.signal, entry: { ...entry, listens: true }, lane }),
+    destination: ({ env, home, platform, stderr }) =>
+      Object.freeze({ env, home, platform, stderr }),
+    encodes: true,
+    enter: () => {
+      const { publishEnv } = handle;
+      return {
+        background: ({ cancel, choice, detects, host, onShutdown, policy, signal }) =>
+          settleBackground(
+            {
+              choice,
+              colored: (['stdout', 'stderr'] as const).some(
+                (destination) => capabilities(host, destination, policy).color,
+              ),
+              detects,
+              env: host.env,
+              policy: policy.background,
+              stated: statedBackground(host.terminal),
+              terminals: (['stdin', 'stdout', 'stderr'] as const).every(
+                (stream) => host.terminal[stream].isTTY,
+              ),
+            },
+            () => askTerminal(host, { cancel, onShutdown, signal }),
+          ),
+        host: (reached) => captureHost(application, handle, reached),
+        publishEnvironment: publishEnv,
+        read: (host) => (graph, walked) => parseInvocation(graph, host.argv, walked),
+        start: undefined,
+        verbosity: (graph, host) => argvVerbosity(graph, host.argv),
+      };
+    },
+    fallback: (reached) => captureHost(application, handle, reached).report,
+    invokedBy: 'argv',
+    lane,
+    listens: true,
+    output: (host, signal, early) => {
+      const output = new Output(host, signal);
+      output.configure(early, new Map());
+      return output;
+    },
+    persistent: undefined,
+    rendering: (declared) => {
+      const rendering = options?.rendering;
+      return { ...declared, ...renderingPolicy(rendering) };
+    },
+    settle: (code) => {
+      handle.exitCode = code;
+    },
+    stderr: handle.stderr,
+  };
+}
+
+/**
+ * The door an invocation by name enters by: the call read where it entered, a host of capture
+ * sinks around five fields, a signal derived from the call's own and an action's run, and no
+ * process effect.
+ */
+function nameDoor<Mapped>(
+  call: InvokeCall<Mapped>,
+  setup: {
+    action: ActionCall | undefined;
+    declared: RenderingPolicy;
+    fields: () => HandleFacts;
+    /** The lane of the call's signal source: its handle's, or its action's run's. */
+    lane: SharedLane;
+    /** The caller's progress observer, which the run's output hands each event to. */
+    observe: ((event: ProgressEvent) => void) | undefined;
+    streams: { stderr: Writable; stdout: Writable };
+  },
+): RunDoor {
+  const { action, declared, lane, streams } = setup;
+  const host = () => invocationHost(setup.fields(), streams);
+  const listens = action?.listens ?? false;
+  return {
+    bound: action?.bound,
+    bracket: (controller, entry) =>
+      bracketRun(controller, {
+        caller: call.signal,
+        entry: { ...entry, listens },
+        lane,
+        parent: action?.parent,
+      }),
+    // An invocation by name writes to no process stream, so a call of the application has no stderr.
+    destination: ({ env, home, platform }) =>
+      action?.destination ?? Object.freeze({ env, home, platform, stderr: null }),
+    encodes: false,
+    enter: () => ({
+      // An invocation by name settles no background and writes no query.
+      background: async () => undefined,
+      host,
+      publishEnvironment: undefined,
+      read: () => (graph, walked) => lowerInvocation(graph, call.named, walked),
+      start: call.view,
+      // A call settles its own verbosity from the values it lowers, and inherits none.
+      verbosity: (graph) => namedVerbosity(graph, call.named),
+    }),
+    fallback: () => host().report,
+    invokedBy: 'name',
+    lane,
+    listens,
+    // A call's host.argv is empty, so it reads no choice, and its plain policy holds color off.
+    output: (captured, signal) => {
+      const output = new Output(captured, signal);
+      // A fault raised before the build must already render plain, so the policy applies at entry.
+      output.configure(plainPolicy(declared), new Map());
+      if (setup.observe !== undefined) {
+        output.observeProgress(setup.observe);
+      }
+      return output;
+    },
+    persistent: action?.persistent(),
+    rendering: plainPolicy,
+    settle: () => undefined,
+    stderr: streams.stderr,
+  };
+}
+
+/**
+ * The authoring surface of an Application in one type state: the root Command's calls, `command()`,
+ * `inspect()`, `check()`, `run()`, `invoke()`, and `name`. Every authoring call returns a new
+ * declaration value, leaves its receiver unchanged, and publishes only the calls that are still
+ * valid after it. `inspect()`, `check()`, `run()`, `invoke()`, and `name` survive every call. `State` lists the authoring calls a value still offers.
+ * It defaults to the state after `action()`, which publishes the fewest calls, so
+ * `Application<A, O, G>` accepts an application in any state, a finished one included.
+ */
+export type Application<
+  Args = {},
+  Options = {},
+  Globals = {},
+  State extends ApplicationMethod = AfterAction,
+  Plugins extends readonly Plugin[] = readonly Plugin[],
+  Result = unknown,
+  Stdin extends StdinContext = StdinContext,
+  Provided = {},
+  Requires = {},
+> = Pick<
+  ApplicationBuilder<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>,
+  | typeof applicationEnvironment
+  | typeof declaredTypes
+  | 'check'
+  | 'extend'
+  | 'inspect'
+  | 'invoke'
+  | 'name'
+  | 'run'
+  | State
+  | ResultMethod<Result>
+>;
+
+/**
+ * An Application starts with the option values its installed plugins contribute as its globals,
+ * computed once from the constructor's `plugins`, so every action reads them typed and each
+ * `globalOption()` call adds its own to them.
+ */
+interface ApplicationConstructor {
+  new (name: string): Application<{}, {}, {}, ApplicationMethod, readonly []>;
+  new <
+    const Plugins extends readonly Plugin[] = readonly [],
+    const Uses extends readonly AnyProvider[] = [],
+  >(
+    name: string,
+    options: ApplicationOptions<Plugins, Uses>,
+  ): Application<
+    {},
+    {},
+    InstalledOptionValues<Plugins>,
+    ApplicationMethod,
+    Plugins,
+    unknown,
+    StdinContext,
+    ProvidedValues<Uses>,
+    ProviderGlobals<Uses>
+  >;
+  /**
+   * Holds for an Application in every authoring state, and narrows to the default `Application`,
+   * which publishes `check()`, `inspect()`, `run()`, `invoke()`, `extend()`, and `name` and no
+   * authoring call, since a recognized value may be past any of them.
+   */
+  [Symbol.hasInstance](value: unknown): value is Application;
+}
+
+/** The core facts one Application declares, validated at construction and reported by `inspect()`. */
+interface ApplicationFacts {
+  description: string | undefined;
+  version: string;
+}
+
+/** Where one Application option sits, rebuilt as `new Application(name, { key })`. */
+function optionSite(name: string, key: string, value: unknown): FactSite {
+  return slotSite({ call: 'new Application', named: name, subject: 'The Application' }, key, value);
+}
+
+/** The facts the Application's options declare. `options` is `undefined` for none. */
+function applicationFacts(
+  options: Pick<ApplicationOptions, 'description' | 'version'> | undefined,
+): ApplicationFacts {
+  return {
+    description: options?.description,
+    version: options?.version ?? '0.0.0',
+  };
+}
+
+/** The installed configuration source's binding, when one option's extension record carries it. */
+function carriedBinding(
+  record: Readonly<Record<string, unknown>> | undefined,
+  plugins: readonly BuiltPlugin[],
+): string | undefined {
+  const binding = installedSource(plugins)?.source.binding;
+  return binding !== undefined && carriesBinding(record, binding) ? binding : undefined;
+}
+
+/**
+ * An option that carries a mark read before configuration, the color mark, a verbosity mark, or
+ * the background mark, carries no value of the installed source's binding. `binding` is that
+ * binding when it does.
+ */
+function checkMarkBindings(
+  config: OptionConfig,
+  site: FactSite,
+  binding: string | undefined,
+): void {
+  checkColorBinding(config, site, binding);
+  checkVerbosityBinding(config, site, binding);
+  checkBackgroundBinding(config, site, binding);
+}
+
+/**
+ * No plugin's option that carries a mark read before configuration carries the installed source's
+ * binding. Only the constructor holds every plugin, so it judges each plugin's options against the
+ * source another one installs.
+ */
+function checkPluginMarkBindings(plugins: readonly BuiltPlugin[]): void {
+  for (const installed of plugins) {
+    const siteOf = pluginSites(installed.identity, installed.inputs);
+    for (const input of installed.inputs) {
+      const bound = carriedBinding(installed.records.get(input), plugins);
+      checkMarkBindings(input.config, siteOf(input), bound);
+    }
+  }
+}
+
+/**
+ * Every rule `new Application(name, options)` applies, in the order it reads the slot: the
+ * application's own view overrides, its translations, the installed list and every rule between
+ * two plugins, the root's extension values,
+ * and then each plugin's Commands, which attach to the root first, in installation order and list
+ * order. The root's globals are the option values the declared `plugins` tuple contributes.
+ */
+function declareApplication<Plugins extends readonly Plugin[]>(
+  name: string,
+  declared:
+    | (Omit<ApplicationOptions<Plugins>, 'uses'> & { uses?: readonly AnyProvider[] })
+    | undefined,
+): {
+  config: ApplicationConfig;
+  globals: GlobalsState;
+  root: CommandState<{}, {}, InstalledOptionValues<Plugins>>;
+} {
+  const slot = declared;
+  const identities = viewIdentities(coreViews);
+  const views = buildViews(
+    {
+      owner: { call: 'new Application', named: name },
+      sentence: 'The Application',
+    },
+    slot?.views,
+    identities,
+  );
+  const translations = readTranslations(
+    optionSite(name, 'translators', slot?.translators),
+    slot?.translators,
+  );
+  const rendering = renderingPolicy(slot?.rendering);
+  const shutdown = shutdownTimeout(name, slot?.shutdown);
+  const facts = applicationFacts(slot);
+  const installed = installPlugins(name, slot?.plugins ?? []);
+  const { plugins } = installed;
+  const contributors = plugins.map((entry) =>
+    buildViews(pluginViews(entry.identity), entry.views, identities),
+  );
+  const table = globalTable([], plugins);
+  checkPluginMarkBindings(plugins);
+  const descriptors = installed.descriptors;
+  const extensions = storeCommandLayers({
+    descriptors,
+    layers: [slot?.extensions],
+    site: optionSite(name, 'extensions', slot?.extensions),
+    subject: layerOf(null),
+  });
+  // The Application checks its own facts, so the root carries none.
+  // Its diagnostics name the Application rather than the root Command.
+  let root = freshState<InstalledOptionValues<Plugins>>({
+    descriptors,
+    extensions,
+    facts: { deprecated: undefined, description: undefined, hidden: false },
+    name: null,
+    uses: readUses(optionSite(name, 'uses', slot?.uses), slot?.uses),
+  });
+  const owners = new Map<CommandNodeHandle, ChildOwner>();
+  for (const command of plugins.flatMap((entry) => entry.commands)) {
+    root = attachToRoot(root, command, {
+      descriptors: new Map(root.descriptors),
+      owners,
+      table,
+    });
+  }
+  return {
+    config: {
+      composed: false,
+      contributors,
+      facts,
+      owners,
+      plugins,
+      rendering,
+      shutdown,
+      translators: [translations, ...plugins.map((entry) => entry.translators)],
+      views,
+    },
+    globals: emptyGlobals(),
+    root,
+  };
+}
+
+/** The application name is typed as a command at the prompt, so it answers to the portable rule. */
+function checkApplicationName(name: string): string {
+  if (!isPortableName(name)) {
+    throw new DeclarationError(portableName, {
+      correction: portableNameCorrection,
+      findings: [{ arguments: [name], call: 'new Application', mark: '0' }],
+      sentence: `Application name ${quoted(name)} is invalid.`,
+    });
+  }
+  return name;
+}
+
+/**
+ * Constructor inference preserves the installed plugin tuple, and the globals start as the option
+ * values the installed plugins contribute.
+ */
+class ApplicationDeclaration<
+  const Plugins extends readonly Plugin[] = readonly [],
+  const Uses extends readonly AnyProvider[] = [],
+> extends ApplicationBuilder<
+  {},
+  {},
+  InstalledOptionValues<Plugins>,
+  ApplicationMethod,
+  Plugins,
+  unknown,
+  StdinContext,
+  ProvidedValues<Uses>,
+  ProviderGlobals<Uses>
+> {
+  /**
+   * Each declaring call returns a new builder rather than an instance of this class, so
+   * `instanceof Application` reads the builder's prototype chain, and holds for an Application in
+   * every authoring state. It narrows to the default `Application`, which publishes only what every
+   * state keeps. An author's subclass inherits this method, and `instanceof` that subclass reads
+   * the subclass's own prototype chain, as `instanceof` reads any class.
+   */
+  static [Symbol.hasInstance](value: unknown): value is Application {
+    if (this !== ApplicationDeclaration) {
+      return Function.prototype[Symbol.hasInstance].call(this, value);
+    }
+    return value instanceof ApplicationBuilder;
+  }
+
+  constructor(name: string, options?: ApplicationOptions<Plugins, Uses>) {
+    // The arguments evaluate in order, so the name is checked before any option is read.
+    const checked = checkApplicationName(name);
+    super(checked, declareApplication(checked, options), {
+      provided: providedBinder<Uses>(options?.uses),
+      stdin: (source) => ({ stdin: source }),
+    });
+  }
+}
+
+export const Application: ApplicationConstructor = ApplicationDeclaration;

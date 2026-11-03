@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
  */
 
 const core = new URL('../packages/core/', import.meta.url);
-const target = fileURLToPath(new URL('src/unicode.generated.ts', core));
+const target = fileURLToPath(new URL('src/style/unicode.generated.ts', core));
 const manifestPath = findPackageJSON('@rockorager/uucode', new URL('package.json', core));
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 const generated = join(dirname(manifestPath), 'dist/src/generated');
@@ -153,7 +153,7 @@ const module = [header, decoders, ...tables.map((table) => declaration(table))].
 if (process.argv.includes('--check')) {
   if (readFileSync(target, 'utf8') !== module) {
     throw new Error(
-      'packages/core/src/unicode.generated.ts is stale; run node scripts/generate-unicode-tables.mjs.',
+      'packages/core/src/style/unicode.generated.ts is stale; run node scripts/generate-unicode-tables.mjs.',
     );
   }
 } else {

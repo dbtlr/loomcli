@@ -144,7 +144,7 @@ export default defineConfig({
       {
         // Core's one module that builds the real process's handle.
         // It reads the process, asks node:os for the user's folders, and starts real children.
-        files: ['packages/core/src/process-handle.ts'],
+        files: ['packages/core/src/host/process-handle.ts'],
         rules: {
           'eslint/no-restricted-globals': 'off',
           'eslint/no-restricted-imports': 'off',
@@ -199,19 +199,19 @@ export default defineConfig({
       },
       {
         files: [
-          'packages/core/src/application.ts',
-          'packages/core/src/output.ts',
-          'packages/core/src/progress-events.ts',
-          'packages/core/src/region.ts',
-          'packages/core/src/chain.ts',
-          'packages/core/src/command.ts',
-          'packages/core/src/extension.ts',
-          'packages/core/src/globals.ts',
-          'packages/core/src/inspect.ts',
-          'packages/core/src/options.ts',
-          'packages/core/src/plugin.ts',
-          'packages/core/src/sources.ts',
-          'packages/core/src/validation.ts',
+          'packages/core/src/application/application.ts',
+          'packages/core/src/output/output.ts',
+          'packages/core/src/output/progress-events.ts',
+          'packages/core/src/output/region.ts',
+          'packages/core/src/invocation/chain.ts',
+          'packages/core/src/commands/command.ts',
+          'packages/core/src/plugins/extension.ts',
+          'packages/core/src/commands/globals.ts',
+          'packages/core/src/inspection/inspect.ts',
+          'packages/core/src/inputs/options.ts',
+          'packages/core/src/plugins/plugin.ts',
+          'packages/core/src/inputs/sources.ts',
+          'packages/core/src/inputs/validation.ts',
         ],
         rules: {
           // Keep each ordered lifecycle and write-completion boundary in one method.
@@ -225,7 +225,7 @@ export default defineConfig({
         },
       },
       {
-        files: ['packages/core/src/errors.ts'],
+        files: ['packages/core/src/failures/errors.ts'],
         rules: {
           // Core captures its own failure classes' codes once every class is declared.
           // That capture runs below the exported classes, before any application code can run.
@@ -261,7 +261,7 @@ export default defineConfig({
         },
       },
       {
-        files: ['packages/core/src/release.ts'],
+        files: ['packages/core/src/shipping/release.ts'],
         rules: {
           // A bundler's define replaces `__LOOM_RELEASE__`, the one identifier the release facts contract names.
           'eslint/no-underscore-dangle': ['error', { allow: ['__LOOM_RELEASE__'] }],
@@ -282,7 +282,7 @@ export default defineConfig({
         },
       },
       {
-        files: ['packages/core/src/log.ts'],
+        files: ['packages/core/src/output/log.ts'],
         rules: {
           // The log contract spells a missing plugin and a missing stderr `null`, and JSON data holds `null`.
           'unicorn/no-null': 'off',
@@ -296,7 +296,7 @@ export default defineConfig({
         },
       },
       {
-        files: ['packages/core/src/form.ts'],
+        files: ['packages/core/src/failures/form.ts'],
         rules: {
           // The failure form's key order is part of its contract: code, exitCode, message, hints.
           'eslint/sort-keys': 'off',
@@ -419,11 +419,7 @@ export default defineConfig({
         },
       },
       {
-        files: [
-          'packages/core/src/style*.ts',
-          'packages/core/src/rendering.ts',
-          'packages/core/src/theme.ts',
-        ],
+        files: ['packages/core/src/style/**'],
         // ANSI codes, palette indices, framing, and tab stops are protocol constants.
         // Keep scanners and their ordered state transitions together.
         rules: {

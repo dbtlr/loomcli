@@ -34,6 +34,7 @@ New to Loom? Read the [jsonkit example](../examples/jsonkit/README.md), then [Ap
 
 The [maintaining router](maintaining/README.md) lists the pages for maintainers of this repository. Application authors do not need them.
 
+- [Core source modules](maintaining/core-modules.md): where each concept lives in `@loomcli/core`'s source.
 - [Release workflow](maintaining/release-workflow.md): how a merged release PR publishes the packages.
 - [PR guards](maintaining/pr-guards.md): the checks a release PR passes before it merges.
 - [Changelog compiler](maintaining/changelog-compiler.md): the synchronized release cut and its dry run.

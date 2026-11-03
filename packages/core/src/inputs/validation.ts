@@ -1,0 +1,1109 @@
+import type { StandardSchemaV1 } from '@standard-schema/spec';
+
+import { elided, spelled } from '../diagnostics/diagnostic-text.js';
+import type { Finding } from '../diagnostics/diagnostic-text.js';
+import { callSite, partOf, siteFinding } from '../diagnostics/facts.js';
+import type { InputSite } from '../diagnostics/facts.js';
+import { validatorFailed } from '../diagnostics/rules.js';
+import { asSentence, DeclarationError, InputError, quoted, reasonOf } from '../failures/errors.js';
+import type { InputProblem } from '../failures/errors.js';
+import type { Host } from '../host/types.js';
+import { escapeControlCharacters } from '../support/controls.js';
+import { defineEntry } from '../support/plain.js';
+import type { Content } from './content.js';
+import { prepareContent } from './content.js';
+import { schemaOptions } from './context.js';
+import { absentBooleans, groupReports } from './option-groups.js';
+import type { OptionGroup } from './option-groups.js';
+import { booleanValue, copyValues, reportedOf, spellingsOf, withdrawFill } from './options.js';
+import type { OptionValues, SpellingTable } from './options.js';
+import { invalidDefault, invalidImplied } from './rules.js';
+import type {
+  ArgumentConfig,
+  ArgumentValue,
+  InputIdentity,
+  OptionConfig,
+  OptionValue,
+  SuppliedInputs,
+  StdinConfig,
+  ValidationContext,
+} from './types.js';
+
+/**
+ * One declared input, typed by its literal name and its own config. The value type is derived from
+ * the config, never claimed apart from it, so a declaration cannot be written under a value type
+ * that its config does not produce. Untyped readers use the defaults.
+ */
+export interface ArgumentInput<
+  Name extends string = string,
+  Config extends ArgumentConfig = ArgumentConfig,
+> {
+  readonly kind: 'argument';
+  readonly name: Name;
+  readonly config: Config;
+}
+export interface OptionInput<
+  Name extends string = string,
+  Config extends OptionConfig = OptionConfig,
+> {
+  readonly kind: 'option';
+  readonly name: Name;
+  readonly config: Config;
+}
+export type InputDeclaration<Name extends string = string> =
+  | ArgumentInput<Name>
+  | OptionInput<Name>;
+
+/**
+ * The declared values validated before any token is parsed: each default, and each implied value a
+ * bare spelling supplies. Values stay `unknown` here.
+ */
+export interface DeclaredValues {
+  readonly defaults: ReadonlyMap<InputDeclaration, unknown>;
+  readonly implied: ReadonlyMap<InputDeclaration, unknown>;
+}
+
+/** The declarations one pass reads, by the scope that holds them: the graph's, then a Command's. */
+export interface ScopedInputs {
+  globals: readonly InputDeclaration[];
+  locals: readonly InputDeclaration[];
+}
+
+/** One declaration under its scope, which the context reports as part of its identity. */
+interface ScopedInput {
+  global: boolean;
+  input: InputDeclaration;
+}
+
+/**
+ * What the input-source stage leaves for validation's messages, by option name: the label of each
+ * value it filled, and the variable of each Boolean or counted option whose value is outside its
+ * grammar. `unanswered` holds each option a configuration source would have filled had one of its own
+ * options not been rejected; such an option reports no missing value and no absence rule judges it,
+ * because the operator's configuration may hold it.
+ */
+export interface Provenance {
+  /**
+   * The options the configuration source filled, by option name, with the directory of the file
+   * each answer came from. A rejected one is dropped, and its validator reads that directory as
+   * `host.cwd`.
+   */
+  fills?: ReadonlyMap<string, { directory: string | undefined }>;
+  labels: ReadonlyMap<string, string>;
+  rejected: ReadonlyMap<string, string>;
+  unanswered?: ReadonlySet<InputDeclaration>;
+  /**
+   * The names of the options the stage withdrew as the losing members of an exclusive option group.
+   * Each reads as unfilled; `oneRequired` counts it, and a `requiredTogether` group that holds it is
+   * not checked.
+   */
+  withdrawn?: ReadonlySet<string>;
+}
+
+/** The raw tokens one invocation collected, keyed by declaration and by option name. */
+interface SuppliedValues {
+  args: ReadonlyMap<InputDeclaration, string | string[]>;
+  options: OptionValues;
+}
+
+/** Everything one invocation validates: its declarations, its tokens, and where they were read. */
+export interface Invocation {
+  optionGroups: readonly OptionGroup[];
+  interactive: boolean;
+  stdin?: (StdinConfig & { readonly position: number }) | undefined;
+  command: readonly string[];
+  /** Every declared default and implied value, validated before any token was read. */
+  declaredValues: DeclaredValues;
+  host: Host;
+  inputs: ScopedInputs;
+  /**
+   * Present for an invocation by name, which types no spelling, so every problem names an option by
+   * its declared name. `unlowered` holds each input whose value no token spells, with the issue
+   * that says what the input takes; each reports as a rejected value in authoring order.
+   */
+  named?: { unlowered: ReadonlyMap<InputDeclaration, string> } | undefined;
+  passthrough: readonly string[];
+  /**
+   * The declarations this pass validates, when it validates only some of `inputs`, such as a
+   * configuration source's own options ahead of its call. Every declaration of `inputs` still
+   * appears in the validation context's `supplied` record.
+   */
+  only?: ReadonlySet<InputDeclaration>;
+  /** Where each declaration was declared, which a broken validator's finding rebuilds. */
+  places: InputPlaces;
+  /**
+   * What the run's earlier passes settled, such as the one over a configuration source's own
+   * options, which this pass reads and adds to. This pass reads each value an earlier pass accepted
+   * and each problem it reported, in this pass's own order, and calls no validator a second time.
+   */
+  ledger: ValidationLedger;
+  /** The run's cancellation signal, which stops this phase between two validator calls. */
+  signal: AbortSignal;
+  sources: Provenance;
+  supplied: SuppliedValues;
+  /** The routed Command's spelling table, which names each option the way a problem reports it. */
+  table: SpellingTable;
+}
+
+/** Every declaration in validation order: the globals first, then the reading Command's own. */
+function scoped(inputs: ScopedInputs): ScopedInput[] {
+  return [
+    ...inputs.globals.map((input) => ({ global: true, input })),
+    ...inputs.locals.map((input) => ({ global: false, input })),
+  ];
+}
+
+function identityOf({ global, input }: ScopedInput): InputIdentity {
+  return { global, kind: input.kind, name: input.name };
+}
+
+/**
+ * The validated values of one invocation, keyed by declaration. Only `validateValues` and the
+ * validation ledger construct one, and its two readers are the only places where a validated value
+ * takes its declared type, so every binder reads through them and none asserts on its own.
+ */
+class ValidatedInputs {
+  readonly #values: ReadonlyMap<InputDeclaration, unknown>;
+
+  constructor(values: ReadonlyMap<InputDeclaration, unknown>) {
+    this.#values = values;
+  }
+
+  /** The one-key record this argument contributes to `args`, typed by its own config. */
+  argument<Name extends string, Config extends ArgumentConfig>(
+    input: ArgumentInput<Name, Config>,
+  ): Record<Name, ArgumentValue<Config>> {
+    return this.#field(input);
+  }
+
+  /** The one-key record this option contributes to `options`, typed by its own config. */
+  option<Name extends string, Config extends OptionConfig>(
+    input: OptionInput<Name, Config>,
+  ): Record<Name, OptionValue<Config>> {
+    return this.#field(input);
+  }
+
+  /**
+   * One validated value read without its declared type, which is what an untyped reader such as a
+   * middleware's request receives. The declared types stay with the two readers above.
+   */
+  read(input: InputDeclaration): unknown {
+    return this.#values.get(input);
+  }
+
+  /** Whether this pass validated the declaration's value. */
+  has(input: InputDeclaration): boolean {
+    return this.#values.has(input);
+  }
+
+  #field<Name extends string, Value>(input: InputDeclaration<Name>): Record<Name, Value> {
+    // Last resort: no typed path exists. The map stores every validated value as `unknown`.
+    // An object literal with a generic computed key does not type as `Record<Name, _>` either.
+    // So neither the value nor the key can reach `Record<Name, Value>` without this assertion.
+    // It holds because validation stores the output the config declares under this declaration.
+    // The two callers above derive `Value` from that same config.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return { [input.name]: this.#values.get(input) } as Record<Name, Value>;
+  }
+}
+export type { ValidatedInputs };
+
+/**
+ * Every outcome one run's validation passes settled, which each later pass of the run reads, so a
+ * validator runs at most once per run: each value a pass accepted, each input's report, and each
+ * input whose validator threw. A pass records its outcomes even when a validator throws, so every
+ * value it accepted before the throw stays readable and the input that threw is never validated
+ * again.
+ */
+export class ValidationLedger {
+  readonly #reports = new Map<InputDeclaration, Report>();
+  readonly #threw = new Set<InputDeclaration>();
+  readonly #values = new Map<InputDeclaration, unknown>();
+
+  /** Every value a pass of the run accepted, read as one pass's are. */
+  get values(): ValidatedInputs {
+    return new ValidatedInputs(this.#values);
+  }
+
+  /** Whether a pass of the run reached the declaration: accepted it, reported it, or threw on it. */
+  reached(input: InputDeclaration): boolean {
+    return this.#values.has(input) || this.#reports.has(input) || this.#threw.has(input);
+  }
+
+  /** The report a pass of the run made for the declaration, or `undefined`. */
+  report(input: InputDeclaration): Report | undefined {
+    return this.#reports.get(input);
+  }
+
+  /** Whether the declaration's validator threw in a pass of the run. */
+  threw(input: InputDeclaration): boolean {
+    return this.#threw.has(input);
+  }
+
+  /** One pass's outcomes, and the declaration whose validator threw when the pass stopped on one. */
+  record(
+    pass: {
+      reports: ReadonlyMap<InputDeclaration, Report>;
+      values: ReadonlyMap<InputDeclaration, unknown>;
+    },
+    threw: InputDeclaration | undefined,
+  ): void {
+    for (const [input, value] of pass.values) {
+      this.#values.set(input, value);
+    }
+    for (const [input, report] of pass.reports) {
+      this.#reports.set(input, report);
+    }
+    if (threw !== undefined) {
+      this.#threw.add(threw);
+    }
+  }
+}
+
+/**
+ * A declaration error names the declaration, because the author reads the declaration to fix it.
+ * An argument declares and reads under one name, so the two namings differ for options alone.
+ */
+export function declarationSubject(input: InputDeclaration): string {
+  return input.kind === 'argument'
+    ? `Argument ${quoted(input.name)}`
+    : `Option ${quoted(input.name)}`;
+}
+
+/** Where the call that declared one input sits: the call's name and the Command it is on. */
+export type InputPlace = Pick<Finding, 'call' | 'path'>;
+
+/**
+ * Where one Command's own input was declared: its `argument()` or `option()` call on the Command at
+ * `path`. A global option's site is the built table's, under `BuiltGlobals.sites`.
+ */
+export function inputPlace(input: InputDeclaration, path: readonly string[]): InputPlace {
+  return { call: input.kind, path };
+}
+
+/**
+ * The site of the call that declared one input at `place`, rebuilt as `call(name, config)`. Every
+ * finding for an input's own call starts from it, so each marks the call the same way. `subject`
+ * is the sentence's name for the input.
+ */
+export function declaringSite(
+  input: InputDeclaration,
+  place: InputPlace,
+  subject: string = declarationSubject(input),
+): InputSite {
+  return callSite(subject, { arguments: [input.name, input.config], ...place });
+}
+
+/**
+ * One input's site with its config printed elided, for a fault judged before the config is read,
+ * such as an invalid name, so the fault reads none of the config.
+ */
+export function configUnread(site: InputSite): InputSite {
+  const [name, config] = site.declaration.arguments;
+  const shown = config === undefined ? [name] : [name, spelled(elided)];
+  return { ...site, declaration: { ...site.declaration, arguments: shown } };
+}
+
+/**
+ * The token an operator would type for one declaration: an option's reported spelling, read from
+ * the routed Command's table, and the declared name for an argument. Every input diagnostic and
+ * every reported problem names the declaration this way, so an omission and a rejected value read
+ * alike and a `shortOnly` option is never named by a long form it does not accept. An invocation by
+ * name types no spelling, so there an option is named by its declared name, the key the caller wrote.
+ */
+function spellingOf(
+  input: InputDeclaration,
+  invocation: Pick<Invocation, 'named' | 'table'>,
+): string {
+  return input.kind === 'argument' || invocation.named !== undefined
+    ? input.name
+    : reportedOf(spellingsOf(invocation.table, input.name), input.name);
+}
+
+/**
+ * An input diagnostic names the declaration by kind and by the spelling that reaches it. A value an
+ * input source filled adds its source in parentheses, so the operator learns where it came from.
+ */
+function suppliedName(input: InputDeclaration, spelling: string, origin?: string) {
+  if (input.kind === 'argument') {
+    return `Argument "${spelling}"`;
+  }
+  return origin === undefined ? `Option "${spelling}"` : `Option "${spelling}" (from ${origin})`;
+}
+
+/**
+ * The default sentence for an omitted required input. An argument and an option keep the wording
+ * each phase used before omission became one problem, and a collected input asks for one value
+ * more than a scalar does.
+ */
+function missingMessage(
+  input: InputDeclaration,
+  spelling: string,
+  facts: { collected: boolean; origin?: string | undefined },
+) {
+  const { collected, origin } = facts;
+  return input.kind === 'argument'
+    ? `Argument "${spelling}" requires ${collected ? 'at least one value' : 'a value'}. Supply a value for "${spelling}".`
+    : `${suppliedName(input, spelling, origin)} is required${input.config.required === 'non-interactive' ? ' when input is not interactive' : ''}. Supply ${collected ? 'at least one value' : 'a value'}.`;
+}
+
+/**
+ * A multiple option collects its occurrences and a variadic argument collects the remaining
+ * tokens, so either one carries a `string[]` as its raw value and validates each value alone.
+ */
+function collects(input: InputDeclaration) {
+  return input.kind === 'option' ? input.config.multiple === true : input.config.variadic === true;
+}
+
+/**
+ * The declaration flag that sends an omitted value to its own validator. Every declaration reads it
+ * here, and the types allow it only where no other rule already decides absence.
+ */
+export function validatesOmission(input: InputDeclaration) {
+  const { config } = input;
+  return 'validateOmitted' in config && config.validateOmitted;
+}
+
+/** One accessor for a supplied option value, so the collected and single shapes read alike. */
+function suppliedOption(options: OptionValues, name: string, collected: boolean) {
+  return collected ? options.lists.get(name) : options.strings.get(name);
+}
+
+/** The copy a collected value is handed out as, because the parser's array is the action's. */
+function copied(value: string | string[] | undefined) {
+  return Array.isArray(value) ? [...value] : value;
+}
+
+/**
+ * One issue a validator returned, checked where it enters. Core keeps every own enumerable field
+ * the issue carries and rewrites only `path`, reducing each segment to its key, so a field core
+ * never reads, such as a validator's issue code, reaches a failure view unchanged.
+ */
+function readIssue(issue: unknown): StandardSchemaV1.Issue {
+  if (issue === null || typeof issue !== 'object' || !('message' in issue)) {
+    throw new Error('The validator returned an invalid Standard Schema issue.');
+  }
+  const message = issue.message;
+  if (typeof message !== 'string') {
+    throw new Error('The validator returned an invalid Standard Schema issue message.');
+  }
+  const suppliedPath = 'path' in issue ? issue.path : undefined;
+  if (suppliedPath === undefined) {
+    return { ...issue, message };
+  }
+  if (!Array.isArray(suppliedPath)) {
+    throw new Error('The validator returned an invalid Standard Schema issue path.');
+  }
+  const path = Array.from(suppliedPath, (segment: unknown) => {
+    const key =
+      segment !== null && typeof segment === 'object' && 'key' in segment ? segment.key : segment;
+    if (typeof key !== 'string' && typeof key !== 'number' && typeof key !== 'symbol') {
+      throw new Error('The validator returned an invalid Standard Schema path key.');
+    }
+    return key;
+  });
+  return { ...issue, message, path };
+}
+
+/**
+ * A broken validator is a fault in the declaration, whichever value reached it, so its diagnostic
+ * names the declaration and its finding marks the validator on the call at `place`. Returned issues
+ * belong to the value, so the caller names those.
+ */
+async function validate(
+  input: InputDeclaration,
+  raw: unknown,
+  call: { context: ValidationContext; site: InputSite | undefined },
+): Promise<StandardSchemaV1.Result<unknown>> {
+  const { context, site } = call;
+  const validator = input.config.validate;
+  if (validator === undefined) {
+    return { value: raw };
+  }
+  try {
+    const result: unknown = await validator['~standard'].validate(raw, schemaOptions(context));
+    if (result === null || typeof result !== 'object') {
+      throw new Error('The validator returned an invalid Standard Schema result.');
+    }
+    const issues = 'issues' in result ? result.issues : undefined;
+    if (issues === undefined && 'value' in result) {
+      return { value: result.value };
+    }
+    if (!Array.isArray(issues)) {
+      throw new Error('The validator returned an invalid Standard Schema result.');
+    }
+    return { issues: Array.from(issues, readIssue) };
+  } catch (error) {
+    // The reason is the author's detail: a distributed build shows the generic defect message.
+    throw new DeclarationError(
+      validatorFailed,
+      {
+        correction: 'Fix the validator.',
+        findings: site === undefined ? [] : [siteFinding(site, partOf(site, 'validate'))],
+        sentence: `${declarationSubject(input)} validator failed unexpectedly: ${asSentence(reasonOf(error))}`,
+      },
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Where a bare spelling supplied a string option's implied value among the values it collected,
+ * and the output its validator gave that value before any token was read.
+ */
+interface ImpliedPositions {
+  readonly output: unknown;
+  readonly positions: readonly number[];
+}
+
+/**
+ * Where a bare spelling supplied one option's implied value, with that value's prepared output, or
+ * `undefined` when no bare spelling supplied it.
+ */
+function impliedPositions(
+  input: InputDeclaration,
+  read: { declaredValues: DeclaredValues; options: OptionValues },
+): ImpliedPositions | undefined {
+  const positions = input.kind === 'option' ? read.options.implied.get(input.name) : undefined;
+  return positions === undefined
+    ? undefined
+    : { output: read.declaredValues.implied.get(input), positions };
+}
+
+/**
+ * One validation of a declared value. A multiple option or a variadic argument passes each of its
+ * values through the validator in order, and each issue reads at its value's position before its
+ * own path, so the action receives the array of outputs. Every other input passes its value once.
+ * A bare spelling's implied value never meets the validator here: its output was prepared before
+ * any token, so a scalar that a bare spelling supplied, and each bare occurrence in a multiple
+ * option's list, reuse a copy of that output in place. Each call reads a fresh context whose
+ * arrays are copies, so a write to them never reaches the next call. The host is the one captured
+ * object that every call and the action share.
+ */
+async function validateDeclared(
+  input: InputDeclaration,
+  raw: unknown,
+  call: {
+    context: () => ValidationContext;
+    site: InputSite | undefined;
+    signal?: AbortSignal;
+    implied?: ImpliedPositions | undefined;
+  },
+): Promise<StandardSchemaV1.Result<unknown>> {
+  const { context, implied, signal, site } = call;
+  if (!collects(input) && implied?.positions.includes(0) === true) {
+    // A bare spelling supplied the implied value, whose output was prepared before any token.
+    return { value: freshDeclaredValue(implied.output) };
+  }
+  if (!collects(input) || input.config.validate === undefined) {
+    return validate(input, raw, { context: context(), site });
+  }
+  if (!Array.isArray(raw)) {
+    // The parser, the input sources, and a default the types shape only ever supply an array here.
+    throw new TypeError(
+      `${declarationSubject(input)} reached validation without an array of values.`,
+    );
+  }
+  const outputs: unknown[] = [];
+  const issues: StandardSchemaV1.Issue[] = [];
+  for (const [position, value] of raw.entries()) {
+    if (signal?.aborted) {
+      // A cancelled run starts no further call; the run resolves its cancellation code instead.
+      break;
+    }
+    // A bare occurrence holds the implied value, whose output was prepared before any token.
+    const result =
+      implied?.positions.includes(position) === true
+        ? { value: freshDeclaredValue(implied.output) }
+        : await validate(input, value, { context: context(), site });
+    if (result.issues === undefined) {
+      outputs.push(result.value);
+    } else {
+      // The issue keeps its own fields, and only its path gains the value's position.
+      for (const issue of reported(result.issues)) {
+        issues.push({ ...issue, path: [position, ...(issue.path ?? [])] });
+      }
+    }
+  }
+  return issues.length === 0 ? { value: outputs } : { issues };
+}
+
+/**
+ * The dotted path an issue names inside a value, or `undefined` when the issue names the value
+ * itself. Core's default text and an application's own view read a position through this one
+ * helper, so a rejected item reads alike wherever its diagnostic is written.
+ */
+export function issuePath(issue: StandardSchemaV1.Issue): string | undefined {
+  const path = issue.path
+    ?.map((segment) => String(typeof segment === 'object' ? segment.key : segment))
+    .join('.');
+  return path === undefined || path === '' ? undefined : path;
+}
+
+/**
+ * The issues one rejection reports. A validator that returned none still rejected the value, so the
+ * placeholder stands in for its silence. Reporting takes this list once: the reported problem
+ * carries it and the default text is derived from it, so a view and core read the same issues.
+ */
+function reported(issues: readonly StandardSchemaV1.Issue[]): readonly StandardSchemaV1.Issue[] {
+  return issues.length === 0
+    ? [
+        {
+          message:
+            'The validator rejected this value without an explanation. Supply a different value.',
+        },
+      ]
+    : issues;
+}
+
+/**
+ * One line per issue under the input's subject. A path segment can hold text the operator typed,
+ * such as a key of a record, so the line escapes the path; `issuePath` keeps it raw for a view.
+ */
+function messages(subject: string, issues: readonly StandardSchemaV1.Issue[]) {
+  return issues.map((issue) => {
+    const path = issuePath(issue);
+    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
+    return `${subject}${position}: ${issue.message}`;
+  });
+}
+
+/** A declared `default: undefined` is a default, so presence is the key, never the value. */
+function hasDefault(input: InputDeclaration) {
+  return Object.hasOwn(input.config, 'default');
+}
+
+/**
+ * The site of the call that declared each input, which a fault about its default or its validator
+ * rebuilds: `globalOption()` or a plugin's `options` record for a global option, and the input's
+ * own call on its Command for every other input.
+ */
+export type InputPlaces = ReadonlyMap<InputDeclaration, InputSite>;
+
+/**
+ * Every declared default and implied value, validated before any token is read, in declaration
+ * order, a declaration's default before its implied value. The host is captured by then, so each
+ * validator reads the same Host its action will, under the `default` phase. `places` says where each
+ * declaration sits, which a rejected value's finding rebuilds. An implied value is judged whether or
+ * not an invocation holds a bare spelling, because the author declared it.
+ */
+export async function prepareDeclaredValues(
+  inputs: ScopedInputs,
+  host: Host,
+  places: InputPlaces,
+): Promise<DeclaredValues> {
+  const defaults = new Map<InputDeclaration, unknown>();
+  const implied = new Map<InputDeclaration, unknown>();
+  for (const entry of scoped(inputs)) {
+    const { input } = entry;
+    const call = {
+      context: (): ValidationContext => ({ host, input: identityOf(entry), phase: 'default' }),
+      site: places.get(input),
+    };
+    if (hasDefault(input)) {
+      const result = await validateDeclared(input, input.config.default, call);
+      defaults.set(input, declaredOutput(input, result, { fault: 'default', site: call.site }));
+    }
+    const value = impliedOf(input);
+    if (value !== undefined) {
+      // A bare spelling supplies one value, so even a multiple option's validator reads it alone.
+      const result = await validate(input, value, { context: call.context(), site: call.site });
+      implied.set(input, declaredOutput(input, result, { fault: 'implied', site: call.site }));
+    }
+  }
+  return { defaults, implied };
+}
+
+/** How each declared value names itself when its validator rejects it, and the fix. */
+const declaredFaults = {
+  default: {
+    correction: 'Fix the default or its validator.',
+    noun: 'default',
+    rule: invalidDefault,
+  },
+  implied: {
+    correction: 'Fix the implied value or its validator.',
+    noun: 'implied value',
+    rule: invalidImplied,
+  },
+} as const;
+
+/**
+ * The output of a declared value its validator accepted, or the declaration fault it is when the
+ * validator rejected it, one line per issue under the sentence, marking the key that declares it.
+ */
+function declaredOutput(
+  input: InputDeclaration,
+  result: StandardSchemaV1.Result<unknown>,
+  declared: { fault: keyof typeof declaredFaults; site: InputSite | undefined },
+): unknown {
+  if (result.issues === undefined) {
+    return result.value;
+  }
+  const { fault, site } = declared;
+  const { correction, noun, rule } = declaredFaults[fault];
+  const subject = declarationSubject(input);
+  throw new DeclarationError(rule, {
+    correction,
+    findings: site === undefined ? [] : [siteFinding(site, partOf(site, fault))],
+    sentence: [
+      `${subject} has an invalid ${noun}.`,
+      ...messages(subject, reported(result.issues)),
+    ].join('\n'),
+  });
+}
+
+/** The implied value a string option declares, which a bare spelling supplies, or `undefined`. */
+function impliedOf(input: InputDeclaration): string | undefined {
+  return input.kind === 'option' && input.config.type === 'string'
+    ? input.config.implied
+    : undefined;
+}
+
+/**
+ * An array default or implied output reaches the action as its own mutable copy, so an action that
+ * mutates its array rewrites neither the declaration nor the next invocation. One prepared declared
+ * value serves every invocation of a run, and an unvalidated default is the value the author
+ * declared, so each read copies it. The copy keeps a hole where the value has one, as the graph's
+ * does. Every other output passes through unchanged.
+ */
+function freshDeclaredValue(value: unknown) {
+  // A spread reads a hole as `undefined`, and `slice` keeps it.
+  // oxlint-disable-next-line unicorn/prefer-spread
+  return Array.isArray(value) ? value.slice() : value;
+}
+
+/**
+ * The raw tokens of one invocation, keyed by declared name. Every declared input of the routed
+ * Command and every global appears, so absence reads as the shape its declaration collects. Each
+ * collected value is copied, because the parser's own array is what the action reads.
+ */
+export function suppliedInputs(
+  declarations: readonly InputDeclaration[],
+  supplied: SuppliedValues,
+  freeze = false,
+): SuppliedInputs {
+  const args: Record<string, string | readonly string[] | undefined> = {};
+  const options: Record<string, string | readonly string[] | boolean | number | undefined> = {};
+  for (const input of declarations) {
+    const collected = collects(input);
+    if (input.kind === 'argument') {
+      defineEntry(
+        args,
+        input.name,
+        copied(supplied.args.get(input)) ?? (collected ? [] : undefined),
+      );
+    } else if (input.config.type === 'boolean') {
+      defineEntry(options, input.name, supplied.options.booleans.get(input.name));
+    } else if (input.config.type === 'count') {
+      defineEntry(options, input.name, supplied.options.counts.get(input.name));
+    } else {
+      defineEntry(
+        options,
+        input.name,
+        copied(suppliedOption(supplied.options, input.name, collected)) ??
+          (collected ? [] : undefined),
+      );
+    }
+  }
+  if (freeze) {
+    for (const value of [...Object.values(args), ...Object.values(options)]) {
+      if (Array.isArray(value)) {
+        Object.freeze(value);
+      }
+    }
+    return Object.freeze({ args: Object.freeze(args), options: Object.freeze(options) });
+  }
+  return { args, options };
+}
+
+/**
+ * The one issue a variable outside its option's grammar reports: the Boolean grammar, or the count
+ * grammar of ASCII decimal digits.
+ */
+function grammarIssues(input: OptionInput): readonly StandardSchemaV1.Issue[] {
+  return input.config.type === 'count'
+    ? [{ message: 'Use a whole number of 0 or more.' }]
+    : [{ message: 'Use true, false, yes, no, y, n, on, off, 1, or 0.' }];
+}
+
+/** One validation problem and the lines core's default text holds. */
+interface Report {
+  readonly lines: readonly string[];
+  readonly problem: InputProblem;
+}
+
+/** A stdin declaration is not a token slot, but its problems retain its authoring position. */
+function orderedReports(
+  inputs: ScopedInputs,
+  reports: ReadonlyMap<InputDeclaration, Report>,
+  standalone: { position: number | undefined; report: Report | undefined },
+): Report[] {
+  if (standalone.report === undefined) {
+    return [...reports.values()];
+  }
+  const preceding = new Set([
+    ...inputs.globals,
+    ...inputs.locals.filter(
+      (_input, index) => index < (standalone.position ?? inputs.locals.length),
+    ),
+  ]);
+  const before: Report[] = [];
+  const after: Report[] = [];
+  for (const [input, report] of reports) {
+    (preceding.has(input) ? before : after).push(report);
+  }
+  return [...before, standalone.report, ...after];
+}
+
+/**
+ * What one validation pass produced: every value its validator accepted, each input's report in
+ * reporting order, and those reports aggregated into one failure, or `undefined` when there were
+ * none. A pass that found problems still answers with the values it accepted, so a reader of the
+ * global options keeps them when only a local input was rejected.
+ */
+export interface Validation {
+  /**
+   * The configuration fills the option's validator rejected. Each reads as unfilled in this pass,
+   * and the caller withdraws it and names it.
+   */
+  readonly dropped: ReadonlyMap<InputDeclaration, string>;
+  readonly stdin: Content | undefined;
+  readonly failure: InputError | undefined;
+  readonly reports: ReadonlyMap<InputDeclaration, Report>;
+  readonly values: ValidatedInputs;
+}
+
+/**
+ * Whether a pass rejected a global option, which leaves no global value a middleware may read. A
+ * global option declares no presence rule, so every problem it reports is a rejected value.
+ */
+export function rejectsGlobal(validation: Validation): boolean {
+  return (
+    validation.failure?.problems.some((problem) => 'input' in problem && problem.input.global) ??
+    false
+  );
+}
+
+/**
+ * Validates one invocation in reporting order: the global options, the application's and then each
+ * plugin's, and then the routed Command's own declarations, each in authoring order.
+ */
+export async function validateValues(invocation: Invocation): Promise<Validation> {
+  const { declaredValues, ledger, sources, supplied } = invocation;
+  const { defaults } = declaredValues;
+  const declarations = scoped(invocation.inputs);
+  /** Where a filled option's value came from, which its diagnostic names; argv names none. */
+  const originOf = (input: InputDeclaration) =>
+    input.kind === 'option' ? sources.labels.get(input.name) : undefined;
+  /**
+   * One reading of the tokens and the route, built anew for each validator call. The route, the
+   * tail, and every collected value are copies, so a validator that writes to them reaches neither
+   * the parser's collections, nor the tail the action receives, nor the next validator call of
+   * this invocation. Each copy is made on its first read and kept for the call, so a validator
+   * that never reads one never pays for it, however many values a list holds. The host is the
+   * captured object itself, the one the action receives.
+   */
+  const hostFor = ({ input }: ScopedInput): Host => {
+    const directory =
+      input.kind === 'option' ? sources.fills?.get(input.name)?.directory : undefined;
+    // A dropped fill reads as unfilled, so its omission reads the run's own working directory.
+    // The derived host reads every other member, getters included, from the run's own.
+    return directory === undefined || dropped.has(input)
+      ? invocation.host
+      : Object.create(invocation.host, { cwd: { enumerable: true, value: directory } });
+  };
+  const contextOf = (entry: ScopedInput): ValidationContext => {
+    const copies: {
+      command?: readonly string[];
+      passthrough?: readonly string[];
+      supplied?: SuppliedInputs;
+    } = {};
+    return {
+      get command() {
+        copies.command ??= [...invocation.command];
+        return copies.command;
+      },
+      host: hostFor(entry),
+      input: identityOf(entry),
+      get passthrough() {
+        copies.passthrough ??= [...invocation.passthrough];
+        return copies.passthrough;
+      },
+      phase: 'invocation',
+      get supplied() {
+        copies.supplied ??= suppliedInputs(
+          declarations.map((declared) => declared.input),
+          supplied,
+        );
+        return copies.supplied;
+      },
+    };
+  };
+  const values = new Map<InputDeclaration, unknown>();
+  /** Each dropped configuration fill with the `out.debug` line that names it. */
+  const dropped = new Map<InputDeclaration, string>();
+  // Each input reports at most once, so insertion order is the order this phase reaches them.
+  const reports = new Map<InputDeclaration, Report>();
+  /**
+   * One missing input, in the order this phase reaches it, unless a skipped configuration source
+   * would have been asked to fill it.
+   */
+  const omit = (entry: ScopedInput, spelling: string, line: string) => {
+    if (sources.unanswered?.has(entry.input) === true) {
+      return;
+    }
+    reports.set(entry.input, {
+      lines: [line],
+      problem: { input: identityOf(entry), reason: 'missing', spelling },
+    });
+  };
+  /** One rejected input, whatever rejected it, in the order this phase reaches it. */
+  const reject = (
+    entry: ScopedInput,
+    issues: readonly StandardSchemaV1.Issue[],
+    subject: string,
+  ) => {
+    reports.set(entry.input, {
+      lines: messages(subject, issues),
+      problem: {
+        input: identityOf(entry),
+        issues,
+        reason: 'invalid',
+        spelling: spellingOf(entry.input, invocation),
+      },
+    });
+  };
+  /** One path for every value a validator reads, so a raw shape and its issues meet it once. */
+  const accept = async (
+    entry: ScopedInput,
+    raw: unknown,
+    named: { origin: string | undefined; spelling: string },
+  ) => {
+    const { origin, spelling } = named;
+    const result = await validateDeclared(entry.input, raw, {
+      context: () => contextOf(entry),
+      implied: impliedPositions(entry.input, { declaredValues, options: supplied.options }),
+      signal: invocation.signal,
+      site: invocation.places.get(entry.input),
+    });
+    if (result.issues === undefined) {
+      values.set(entry.input, result.value);
+      return;
+    }
+    const issues = reported(result.issues);
+    if (dropsFill(entry, issues, { origin, spelling })) {
+      // A configuration fill its validator rejects falls back, as if no tier had supplied it.
+      await absent(entry, spelling, true);
+      return;
+    }
+    reject(entry, issues, suppliedName(entry.input, spelling, origin));
+  };
+  /**
+   * Drops a value the configuration source filled, recording the `out.debug` line that names its
+   * first issue, and says whether it did. A value from any other tier is never dropped.
+   */
+  const dropsFill = (
+    entry: ScopedInput,
+    issues: readonly StandardSchemaV1.Issue[],
+    named: { origin: string | undefined; spelling: string },
+  ): boolean => {
+    const { input } = entry;
+    if (
+      named.origin === undefined ||
+      input.kind !== 'option' ||
+      sources.fills?.has(input.name) !== true
+    ) {
+      return false;
+    }
+    const [first] = issues;
+    const path = first === undefined ? undefined : issuePath(first);
+    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
+    dropped.set(
+      entry.input,
+      `Ignored option "${named.spelling}"${position} from ${named.origin}: ${first?.message}`,
+    );
+    return true;
+  };
+  /** One input no tier supplied, or whose configuration fill was dropped: its default, or its absence rule. */
+  const absent = async (entry: ScopedInput, spelling: string, fellBack: boolean) => {
+    const { input } = entry;
+    const collected = collects(input);
+    if (
+      input.config.required === true ||
+      (input.config.required === 'non-interactive' && !invocation.interactive)
+    ) {
+      // An omitted required argument arrives here too, so omission has one class.
+      // One aggregated diagnostic covers an omitted argument and an omitted option alike.
+      omit(entry, spelling, missingMessage(input, spelling, { collected }));
+    } else if (collected && !defaults.has(input)) {
+      // No occurrence has no value to validate, so the action receives an empty array.
+      values.set(input, []);
+    } else if (validatesOmission(input) && (fellBack || sources.unanswered?.has(input) !== true)) {
+      // The flag sends the omission itself to the validator.
+      // An option a skipped configuration source would have filled is not judged absent.
+      // An absence rule reads the context a supplied value reads, and reports input issues.
+      await accept(entry, undefined, { origin: undefined, spelling });
+    } else {
+      values.set(input, freshDeclaredValue(defaults.get(input)));
+    }
+  };
+  /** One declaration's outcome: what an earlier pass settled, or this pass's own. */
+  const settle = async (entry: ScopedInput) => {
+    const { input } = entry;
+    const variable = sources.rejected.get(input.name);
+    const earlier = ledger.report(input);
+    const unlowered = invocation.named?.unlowered.get(input);
+    if (ledger.values.has(input)) {
+      // An earlier pass validated this value once, and one value meets its validator once.
+      values.set(input, ledger.values.read(input));
+    } else if (earlier !== undefined) {
+      // The earlier pass's problem reports here, in this pass's order.
+      reports.set(input, earlier);
+    } else if (ledger.threw(input)) {
+      // Its validator threw in an earlier pass, so it settles nothing and is never called again.
+    } else if (unlowered !== undefined) {
+      // A value no token spells supplied nothing, and the caller's value is the input's problem.
+      reject(entry, [{ message: unlowered }], suppliedName(input, input.name));
+    } else if (input.kind === 'option' && variable !== undefined) {
+      // A variable outside its option's grammar filled nothing, so it is the option's problem.
+      reject(
+        entry,
+        grammarIssues(input),
+        suppliedName(input, spellingOf(input, invocation), variable),
+      );
+    } else if (input.kind === 'option' && input.config.type === 'boolean') {
+      values.set(input, booleanValue(supplied.options, input.name, input.config));
+    } else if (input.kind === 'option' && input.config.type === 'count') {
+      // A count passes no validator, and no occurrence and no source reads 0.
+      values.set(input, supplied.options.counts.get(input.name) ?? 0);
+    } else {
+      const collected = collects(input);
+      const spelling = spellingOf(input, invocation);
+      const raw =
+        input.kind === 'argument'
+          ? supplied.args.get(input)
+          : suppliedOption(supplied.options, input.name, collected);
+      if (input.config.type === 'content') {
+        const { config } = input;
+        // A relative path a configuration file holds reads against that file's directory.
+        const prepare = async (from: typeof raw) =>
+          prepareContent(from, config, {
+            collected,
+            host: hostFor(entry),
+            named: invocation.named !== undefined,
+            signal: invocation.signal,
+          });
+        const prepared = await prepare(raw);
+        // A configuration path its content option cannot read falls back, as if no tier had supplied it.
+        const result =
+          prepared.issues !== undefined &&
+          prepared.missing !== true &&
+          dropsFill(entry, prepared.issues, { origin: originOf(input), spelling })
+            ? await prepare(undefined)
+            : prepared;
+        if (result.issues === undefined) {
+          values.set(input, result.value);
+        } else if (result.missing) {
+          omit(entry, spelling, messages(suppliedName(input, spelling), result.issues).join('\n'));
+        } else {
+          const origin = dropped.has(input) ? undefined : originOf(input);
+          reject(entry, result.issues, suppliedName(input, spelling, origin));
+        }
+      } else if (raw === undefined) {
+        await absent(entry, spelling, false);
+      } else if (input.config.required && Array.isArray(raw) && raw.length === 0) {
+        // A filled list satisfies the at-least-one rule by its length, so an empty one is missing.
+        omit(
+          entry,
+          spelling,
+          missingMessage(input, spelling, { collected, origin: originOf(input) }),
+        );
+      } else {
+        await accept(entry, raw, { origin: originOf(input), spelling });
+      }
+    }
+  };
+  const { only } = invocation;
+  const validated = only ? declarations.filter(({ input }) => only.has(input)) : declarations;
+  for (const entry of validated) {
+    if (invocation.signal.aborted) {
+      /**
+       * A cancelled run starts no further validator call. The one already in flight was awaited
+       * above, and whatever this phase collected is never raised, because the run resolves its
+       * cancellation code instead.
+       */
+      break;
+    }
+    try {
+      await settle(entry);
+    } catch (error) {
+      // What this pass settled before the throw stays the run's.
+      // The input whose validator threw is never validated again.
+      ledger.record({ reports, values }, entry.input);
+      throw error;
+    }
+  }
+  ledger.record({ reports, values }, undefined);
+  let stdinReport: Report | undefined = undefined;
+  let stdin: Content | undefined = undefined;
+  if (invocation.stdin !== undefined && invocation.only === undefined) {
+    const result = await prepareContent(
+      undefined,
+      { ...invocation.stdin, stdin: true },
+      {
+        collected: false,
+        host: invocation.host,
+        named: invocation.named !== undefined,
+        signal: invocation.signal,
+      },
+    );
+    if (result.issues !== undefined) {
+      stdinReport = {
+        lines: result.issues.map((issue) => `Stdin: ${issue.message}`),
+        problem: {
+          input: { global: false, kind: 'stdin', name: 'stdin' },
+          reason: 'missing',
+          spelling: 'stdin',
+        },
+      };
+    } else if (result.value !== undefined && !Array.isArray(result.value)) {
+      stdin = result.value;
+    }
+  }
+  const found = orderedReports(invocation.inputs, reports, {
+    position: invocation.stdin?.position,
+    report: stdinReport,
+  });
+  const unanswered = new Set([...(sources.unanswered ?? [])].map((input) => input.name));
+  // A dropped fill is no value of the option, so no option group counts it.
+  const groupValues = copyValues(supplied.options);
+  for (const input of dropped.keys()) {
+    withdrawFill(groupValues, input.name);
+  }
+  found.push(
+    ...groupReports({
+      absent: absentBooleans(invocation.inputs.locals),
+      groups: invocation.optionGroups,
+      labels: sources.labels,
+      named: invocation.named !== undefined,
+      table: invocation.table,
+      unanswered,
+      values: groupValues,
+      withdrawn: sources.withdrawn ?? new Set(),
+    }),
+  );
+  return {
+    dropped,
+    failure:
+      found.length > 0
+        ? new InputError(
+            found.flatMap((report) => report.lines).join('\n'),
+            found.map((report) => report.problem),
+          )
+        : undefined,
+    reports,
+    stdin,
+    values: new ValidatedInputs(values),
+  };
+}

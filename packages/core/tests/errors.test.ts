@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
-import { undeclaredArgument, unknownOptionName } from '../src/errors.js';
+import { undeclaredArgument, unknownOptionName } from '../src/failures/errors.js';
 import { invoke as invokeFixture } from './run-fixture.ts';
 
 test.each([

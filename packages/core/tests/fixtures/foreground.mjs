@@ -1,7 +1,7 @@
 import { PassThrough } from 'node:stream';
 import { ReadStream } from 'node:tty';
 
-import { inBackgroundJob } from '../../dist/process-handle.js';
+import { inBackgroundJob } from '../../dist/host/process-handle.js';
 
 /**
  * Whether the background query's foreground check counts each stdin as a background job. The test

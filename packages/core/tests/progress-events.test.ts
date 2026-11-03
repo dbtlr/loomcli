@@ -16,8 +16,8 @@ import { expect, test } from 'vite-plus/test';
  * - Not logging. A fixture `onLog` hook receives no event for any report.
  */
 
-import { ProgressLedger } from '../src/progress-events.js';
-import type { ProgressEvent } from '../src/types.js';
+import { ProgressLedger } from '../src/output/progress-events.js';
+import type { ProgressEvent } from '../src/output/types.js';
 import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** A ledger whose events land in the returned list, with markup stripped by a stand-in. */

@@ -2,7 +2,7 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { chosenPolicy, uncapturedPolicy } from '../src/color.js';
+import { chosenPolicy, uncapturedPolicy } from '../src/marks/color.js';
 
 test('a marked Application whose host capture failed prints with color off and nothing else set', () => {
   expect(uncapturedPolicy(true)).toEqual({ color: 'never' });

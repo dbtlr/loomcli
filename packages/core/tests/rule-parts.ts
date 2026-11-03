@@ -46,9 +46,10 @@ function declaredRules(file: string): string[] {
 
 /** Every rule core's source declares, across all of its files. */
 function coreRules(): RegisteredRule[] {
-  const files = readdirSync(new URL('../src/', import.meta.url)).filter((file) =>
-    file.endsWith('.ts'),
-  );
+  const files = readdirSync(new URL('../src/', import.meta.url), {
+    encoding: 'utf8',
+    recursive: true,
+  }).filter((file) => file.endsWith('.ts'));
   return files.toSorted().flatMap((file) => rulesIn(file));
 }
 

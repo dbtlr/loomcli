@@ -246,9 +246,9 @@ test('material entries that share a license text list it once', () => {
     }),
   };
   for (const file of [
-    'dist/glyphs.generated.js',
-    'dist/style-width.js',
-    'dist/unicode.generated.js',
+    'dist/style/glyphs.generated.js',
+    'dist/style/width.js',
+    'dist/style/unicode.generated.js',
     'licenses/figures-LICENSE.txt',
     'licenses/inquirer-figures-LICENSE.txt',
     'licenses/unicode-LICENSE.txt',
@@ -257,7 +257,7 @@ test('material entries that share a license text list it once', () => {
     core[`packages/core/${file}`] = '';
   }
   const root = repository({
-    bundled: ['core/dist/style-width.js', 'core/dist/unicode.generated.js'],
+    bundled: ['core/dist/style/width.js', 'core/dist/style/unicode.generated.js'],
     files: core,
     license: 'MIT AND Unicode-3.0',
   });

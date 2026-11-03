@@ -2,10 +2,11 @@
 
 import { expect, test } from 'vite-plus/test';
 
-import { glyph } from '../src/glyphs.generated.js';
-import type { Capabilities } from '../src/rendering.js';
-import { isControl, scanAnsi } from '../src/style-ansi.js';
-import { blockWidth, layout } from '../src/style-layout.js';
+import { isControl, scanAnsi } from '../src/style/ansi.js';
+import { glyph } from '../src/style/glyphs.generated.js';
+import { blockWidth, layout } from '../src/style/layout.js';
+import type { Capabilities } from '../src/style/rendering.js';
+import { nowrap, pad, style } from '../src/style/style.js';
 import {
   breakableMarked,
   breakablePlain,
@@ -18,9 +19,8 @@ import {
   visibleOf,
   wrapMarked,
   wrapPlain,
-} from '../src/style-wrap.js';
-import type { Breakable } from '../src/style-wrap.js';
-import { nowrap, pad, style } from '../src/style.js';
+} from '../src/style/wrap.js';
+import type { Breakable } from '../src/style/wrap.js';
 import {
   chars,
   escape,

@@ -32,13 +32,13 @@ import { join, relative } from 'node:path';
 const workspaceMaterial = {
   '@loomcli/core': [
     {
-      files: ['dist/unicode.generated.js'],
+      files: ['dist/style/unicode.generated.js'],
       license: 'Unicode-3.0',
       texts: ['licenses/unicode-LICENSE.txt', 'licenses/uucode-LICENSE.md'],
     },
-    { files: ['dist/style-width.js'], license: 'MIT', texts: ['licenses/uucode-LICENSE.md'] },
+    { files: ['dist/style/width.js'], license: 'MIT', texts: ['licenses/uucode-LICENSE.md'] },
     {
-      files: ['dist/glyphs.generated.js'],
+      files: ['dist/style/glyphs.generated.js'],
       license: 'MIT',
       texts: ['licenses/inquirer-figures-LICENSE.txt', 'licenses/figures-LICENSE.txt'],
     },

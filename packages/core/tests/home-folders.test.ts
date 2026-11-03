@@ -17,9 +17,9 @@ import { Writable } from 'node:stream';
 
 import { expect, test } from 'vite-plus/test';
 
+import { userDatabaseHome } from '../src/host/process-handle.js';
 import { Application, Command, plugin, processHandle } from '../src/index.js';
 import type { LogDestination } from '../src/index.js';
-import { userDatabaseHome } from '../src/process-handle.js';
 
 /** A stream that keeps what a run writes to it. */
 function sink(): { stream: Writable; text: () => string } {

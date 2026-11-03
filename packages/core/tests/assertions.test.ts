@@ -21,14 +21,14 @@ const packages = new URL('../../', import.meta.url);
  * unstated style is as core's `ContextualStyle`, whose brand core does not export.
  */
 const allowed = {
-  'core/src/command.ts': 1,
-  'core/src/extension.ts': 1,
-  'core/src/invoke.ts': 1,
-  'core/src/output.ts': 1,
-  'core/src/providers.ts': 2,
-  'core/src/style.ts': 1,
-  'core/src/validation.ts': 1,
-  'core/src/view.ts': 1,
+  'core/src/commands/command.ts': 1,
+  'core/src/inputs/validation.ts': 1,
+  'core/src/invocation/invoke.ts': 1,
+  'core/src/output/output.ts': 1,
+  'core/src/output/view.ts': 1,
+  'core/src/plugins/extension.ts': 1,
+  'core/src/plugins/providers.ts': 2,
+  'core/src/style/style.ts': 1,
   'plugins/src/config/plugin.ts': 1,
   'plugins/src/mcp/serve.ts': 1,
   'testing/src/unstated-style.ts': 1,
