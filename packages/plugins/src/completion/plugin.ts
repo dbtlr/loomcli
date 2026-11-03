@@ -90,28 +90,16 @@ const completionCommand = new Command('completion', {
   description: 'Print or install a shell completion script.',
 })
   .command(
-    shellCommand('bash', 'Bash', async () => {
-      const { bashScript } = await import('./bash.js');
-      return bashScript;
-    }),
+    shellCommand('bash', 'Bash', () => import('./bash.js').then(({ bashScript }) => bashScript)),
+  )
+  .command(shellCommand('zsh', 'Zsh', () => import('./zsh.js').then(({ zshScript }) => zshScript)))
+  .command(
+    shellCommand('fish', 'Fish', () => import('./fish.js').then(({ fishScript }) => fishScript)),
   )
   .command(
-    shellCommand('zsh', 'Zsh', async () => {
-      const { zshScript } = await import('./zsh.js');
-      return zshScript;
-    }),
-  )
-  .command(
-    shellCommand('fish', 'Fish', async () => {
-      const { fishScript } = await import('./fish.js');
-      return fishScript;
-    }),
-  )
-  .command(
-    shellCommand('powershell', 'PowerShell', async () => {
-      const { powershellScript } = await import('./powershell.js');
-      return powershellScript;
-    }),
+    shellCommand('powershell', 'PowerShell', () =>
+      import('./powershell.js').then(({ powershellScript }) => powershellScript),
+    ),
   )
   .command(installCommand)
   .command(updateCommand)
