@@ -1,0 +1,1 @@
+- Start applications faster and ship smaller bundles: core's Unicode width and grapheme tables are carried compactly and decoded once at import, instead of being built from tens of thousands of number literals. A bundled application is about 230 KB smaller, and width and segmentation answers are unchanged.
