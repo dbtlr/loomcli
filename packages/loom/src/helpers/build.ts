@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   copyFileSync,
   existsSync,
@@ -10,7 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, parse, relative, resolve, sep } from 'node:path';
 
 import { object, record, string, unknown } from 'valibot';
 
@@ -209,6 +210,28 @@ function stageSkills(plan: BuildPlan, directory: string): void {
   }
 }
 
+/**
+ * Has a node bundle's entry turn on Node's compile cache before the rest of the bundle loads, so an
+ * operator's later runs skip compiling it. The cache applies only to modules loaded after it is
+ * turned on, and an entry's static imports load before its body runs, so the entry Bun wrote moves,
+ * unchanged, to a chunk named for its content, and the entry's file becomes a module that turns on
+ * the cache and then imports that chunk. Bun's own output stays as Bun wrote it, so the entry still
+ * reads as the main module. A shebang on the first line stays on the entry's file. Node keeps the
+ * cache where it documents, and an operator turns it off or moves it through Node's own variables.
+ * A Node without the call, or Bun running the bundle, skips it.
+ */
+function cacheEntry(plan: BuildPlan, written: string): void {
+  const entry = join(written, `${parse(plan.entry).name}.js`);
+  const code = readFileSync(entry, 'utf8');
+  const chunk = `chunk-${createHash('sha256').update(code).digest('hex').slice(0, 8)}.js`;
+  renameSync(entry, join(written, chunk));
+  const shebang = /^#!.*\n/u.exec(code)?.[0] ?? '';
+  writeFileSync(
+    entry,
+    `${shebang}import module from 'node:module';\n\nmodule.enableCompileCache?.();\nawait import('./${chunk}');\n`,
+  );
+}
+
 /** The modules Bun's metafile lists, which is all the build reads of it. */
 const metafile = object({ inputs: record(string(), unknown()) });
 
@@ -315,7 +338,7 @@ function removeCreatedDirectories(directory: string, created: string | undefined
  * distributed binary's copy of the skills folder is staged in Bun's working directory beside it and
  * embedded with `--asset`, and a bundle's beside its chunks. A build that read no declaration, or
  * one in which `skills()` did not run, asks Bun for its metafile there, to learn whether the bundle
- * holds the skills plugin. A failed build
+ * holds the skills plugin. A node bundle's entry then turns on Node's compile cache. A failed build
  * removes the temporary directory and each output directory it created that nothing else has
  * filled, so earlier output, every file the build does not write, and the work of a build running
  * beside it stay as they were. A cancelled run stops Bun and undoes the build as a failure does,
@@ -362,6 +385,9 @@ async function build(plan: BuildPlan, run: RunHost): Promise<BuildOutcome> {
       );
     }
     const uncarriedSkillsPlugin = existsSync(listed) && holdsSkillsPlugin(listed, staging);
+    if (plan.target.kind === 'bundle' && plan.target.name === 'node') {
+      cacheEntry(plan, written);
+    }
     moveIntoPlace(plan, written);
     return { uncarriedSkillsPlugin };
   } catch (error) {
