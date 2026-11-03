@@ -194,6 +194,73 @@ test('--target node writes a bundle of the entry and the application module that
   ]);
 });
 
+test("a node bundle's entry turns on Node's compile cache in the temporary directory, unless the operator turns it off", async () => {
+  const root = probePackage();
+  const built = await loom(root, ['build', '--target', 'node']);
+  expect(built.status).toBe(0);
+  const main = join(root, 'dist/main.js');
+  const cached = temporaryRoot('loom-cache-');
+  const run = execute(main, ['facts'], {
+    env: childEnvironment({ TMPDIR: cached }),
+    runtime: 'node',
+  });
+  expect(run.stderr).toBe('');
+  expect(JSON.parse(run.stdout)).toEqual({ build: 'distributed' });
+  expect(readdirSync(join(cached, 'node-compile-cache')).length).toBeGreaterThan(0);
+  const disabled = temporaryRoot('loom-cache-');
+  const env = childEnvironment({ NODE_DISABLE_COMPILE_CACHE: '1', TMPDIR: disabled });
+  expect(execute(main, ['facts'], { env, runtime: 'node' }).status).toBe(0);
+  expect(readdirSync(disabled)).toEqual([]);
+});
+
+test('a node bundle whose entry has a shebang runs as a program of its own', async () => {
+  const root = probePackage();
+  const built = await loom(root, ['build', '--target', 'node']);
+  expect(built.status).toBe(0);
+  expect(factsOf(join(root, 'dist/main.js'))).toEqual({ build: 'distributed' });
+});
+
+test('importing a node bundle’s application module leaves the compile cache off', async () => {
+  const root = probePackage();
+  const built = await loom(root, ['build', '--target', 'node']);
+  expect(built.status).toBe(0);
+  const caller = join(root, 'caller.mjs');
+  writeFileSync(
+    caller,
+    `import { getCompileCacheDir } from 'node:module';
+await import(${JSON.stringify(pathToFileURL(join(root, 'dist/application.js')).href)});
+process.stdout.write(String(getCompileCacheDir()));
+`,
+  );
+  const cached = temporaryRoot('loom-cache-');
+  const result = execute(caller, [], {
+    env: childEnvironment({ TMPDIR: cached }),
+    runtime: 'node',
+  });
+  expect(result.stderr).toBe('');
+  expect(result.stdout).toBe('undefined');
+  expect(readdirSync(cached)).toEqual([]);
+});
+
+test('a node bundle whose entry runs only as the main module still runs', async () => {
+  const root = probePackage(
+    {},
+    {
+      'src/main.ts': `#!/usr/bin/env node
+import { probe } from './application.js';
+
+if (import.meta.main) {
+  await probe.run();
+}
+`,
+    },
+  );
+  const built = await loom(root, ['build', '--target', 'node']);
+  expect(built.status).toBe(0);
+  const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
+  expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({ build: 'distributed' });
+});
+
 test('the built application module runs on a caller host with the facts the build baked', async () => {
   const root = probePackage();
   const runResult = await loom(root, ['build', '--target', 'node']);
@@ -340,7 +407,10 @@ test('a package without src/application.ts bundles its entry alone', async () =>
   const result = await loom(root, ['build', '--target', 'node']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
-  expect(readdirSync(join(root, 'dist'))).toEqual(['main.js']);
+  expect(readdirSync(join(root, 'dist')).toSorted()).toEqual([
+    expect.stringMatching(/^chunk-[\da-z]+\.js$/u),
+    'main.js',
+  ]);
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({ build: 'distributed' });
 });
 
@@ -380,7 +450,10 @@ test('with only paths.source set, a missing conventional application module leav
   const result = await loom(root, ['build', '--target', 'node']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
-  expect(readdirSync(join(root, 'dist'))).toEqual(['main.js']);
+  expect(readdirSync(join(root, 'dist')).toSorted()).toEqual([
+    expect.stringMatching(/^chunk-[\da-z]+\.js$/u),
+    'main.js',
+  ]);
 });
 
 test('an application module paths.application names that does not exist fails the build and names the key', async () => {
