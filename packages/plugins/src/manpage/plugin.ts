@@ -3,7 +3,6 @@ import type { ActionContext, Plugin } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
 import { helpInput } from '../help/extension.js';
-import { generatePages, installPages, uninstallPages, updatePages } from './children.js';
 import type { ChildRun } from './children.js';
 import { judgePageNames } from './pages.js';
 
@@ -33,24 +32,28 @@ const generateCommand = new Command('generate', {
     type: 'string',
   })
   .action(async (context) => {
+    const { generatePages } = await import('./children.js');
     await generatePages(childRun(context), context.options.out);
   });
 
 const installCommand = new Command('install', {
   description: 'Install the man pages in your home folder.',
 }).action(async (context) => {
+  const { installPages } = await import('./children.js');
   await installPages(childRun(context));
 });
 
 const updateCommand = new Command('update', {
   description: 'Bring installed man pages up to date with this version.',
 }).action(async (context) => {
+  const { updatePages } = await import('./children.js');
   await updatePages(childRun(context));
 });
 
 const uninstallCommand = new Command('uninstall', {
   description: 'Remove the installed man pages.',
 }).action(async (context) => {
+  const { uninstallPages } = await import('./children.js');
   await uninstallPages(childRun(context));
 });
 
@@ -65,7 +68,7 @@ const manpageCommand = new Command('manpage', { description: 'Write or install t
  * A plugin that writes one man page for each Command an operator can find, and installs,
  * refreshes, and removes the set in the operator's home folder. It contributes the `manpage` group
  * and a graph hook that rejects two page names one file would hold on a file system that ignores
- * case.
+ * case. Each child loads its work when it runs.
  */
 function manpage(): Plugin {
   return plugin(`${packageName}/manpage`, {

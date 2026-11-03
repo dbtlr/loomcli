@@ -16,7 +16,7 @@ import type {
 } from '../installation/files.js';
 import { pluginFilePath } from '../installation/record.js';
 import { lines, refusals } from './messages.js';
-import type { Shell } from './shells.js';
+import type { Shell } from './shell-names.js';
 
 /** What a child reads from its action: the application, the run, and the lanes it writes. */
 interface ChildRun {

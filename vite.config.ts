@@ -160,6 +160,15 @@ export default defineConfig({
         },
       },
       {
+        // The plugins' built-in loader reads process.getBuiltinModule and nothing else (ADR-0135).
+        // Its test pins the specifiers it names, and every other ban stays on it.
+        files: ['packages/plugins/src/built-ins.ts'],
+        rules: {
+          'eslint/no-restricted-globals': ['error', requireGlobal],
+          'eslint/no-restricted-properties': ['error', ...osProperties],
+        },
+      },
+      {
         // The toolchain's application readers are their own child programs, so each reads its process.
         // Neither imports a child-process module or asks node:os for any of the user's folders.
         files: ['packages/loom/src/read-application.ts', 'packages/loom/src/read-skills.ts'],
