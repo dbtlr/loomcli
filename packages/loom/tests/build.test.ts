@@ -213,6 +213,13 @@ test("a node bundle's entry turns on Node's compile cache in the temporary direc
   expect(readdirSync(disabled)).toEqual([]);
 });
 
+test('a node bundle whose entry has a shebang runs as a program of its own', async () => {
+  const root = probePackage();
+  const built = await loom(root, ['build', '--target', 'node']);
+  expect(built.status).toBe(0);
+  expect(factsOf(join(root, 'dist/main.js'))).toEqual({ build: 'distributed' });
+});
+
 test('importing a node bundle’s application module leaves the compile cache off', async () => {
   const root = probePackage();
   const built = await loom(root, ['build', '--target', 'node']);

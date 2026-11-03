@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -9,6 +10,7 @@ import {
   renameSync,
   rmdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join, parse, relative, resolve, sep } from 'node:path';
@@ -216,9 +218,10 @@ function stageSkills(plan: BuildPlan, directory: string): void {
  * turned on, and an entry's static imports load before its body runs, so the entry Bun wrote moves,
  * unchanged, to a chunk named for its content, and the entry's file becomes a module that turns on
  * the cache and then imports that chunk. Bun's own output stays as Bun wrote it, so the entry still
- * reads as the main module. A shebang on the first line stays on the entry's file. Node keeps the
- * cache where it documents, and an operator turns it off or moves it through Node's own variables.
- * A Node without the call, or Bun running the bundle, skips it.
+ * reads as the main module. A shebang on the first line and the file's mode stay on the entry's
+ * file. Node keeps the cache where it documents, and an operator turns it off or moves it through
+ * Node's own variables. Bun running the bundle answers the call with a cache of its own in the same
+ * place under the same variables, and a Node without the call skips it.
  */
 function cacheEntry(plan: BuildPlan, written: string): void {
   const entry = join(written, `${parse(plan.entry).name}.js`);
@@ -230,6 +233,8 @@ function cacheEntry(plan: BuildPlan, written: string): void {
     entry,
     `${shebang}import module from 'node:module';\n\nmodule.enableCompileCache?.();\nawait import('./${chunk}');\n`,
   );
+  // The entry keeps the mode Bun gave it, so an entry with a shebang still runs as a program.
+  chmodSync(entry, statSync(join(written, chunk)).mode);
 }
 
 /** The modules Bun's metafile lists, which is all the build reads of it. */
