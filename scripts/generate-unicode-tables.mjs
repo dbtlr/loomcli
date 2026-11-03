@@ -8,13 +8,12 @@ import { fileURLToPath } from 'node:url';
  * Generates core's Unicode tables as a JavaScript module from the data files of the pinned
  * `@rockorager/uucode` release, which reads them beside its own modules at run time. As a module,
  * the tables travel inside any bundle, whatever bundler builds it. Each array is written as base64
- * of its little-endian bytes, which the module decodes once at import: a launch then copies bytes
- * instead of parsing tens of thousands of number literals, and the bundle carries a third of the
- * bytes. With `--check`, the script
- * writes nothing and fails when the committed module differs from what it would write; `pnpm check`
- * runs it that way. Run it without `--check` after changing the pinned release in core's development
- * dependencies. The module's license header is a legal comment, opened with `/*!`, so bundlers
- * keep the notices in the bundle.
+ * of its little-endian bytes, which the module decodes once at import, so a launch copies bytes
+ * instead of building arrays from number literals, and a bundle carries far fewer bytes. With
+ * `--check`, the script writes nothing and fails when the committed module differs from what it
+ * would write; `pnpm check` runs it that way. Run it without `--check` after changing the pinned
+ * release in core's development dependencies. The module's license header is a legal comment,
+ * opened with `/*!`, so bundlers keep the notices in the bundle.
  */
 
 const core = new URL('../packages/core/', import.meta.url);
