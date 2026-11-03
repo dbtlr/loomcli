@@ -407,7 +407,7 @@ test('a package without src/application.ts bundles its entry alone', async () =>
   const result = await loom(root, ['build', '--target', 'node']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
-  expect(readdirSync(join(root, 'dist'))).toEqual([
+  expect(readdirSync(join(root, 'dist')).toSorted()).toEqual([
     expect.stringMatching(/^chunk-[\da-z]+\.js$/u),
     'main.js',
   ]);
@@ -450,7 +450,7 @@ test('with only paths.source set, a missing conventional application module leav
   const result = await loom(root, ['build', '--target', 'node']);
   expect(result.stderr).toBe('');
   expect(result.status).toBe(0);
-  expect(readdirSync(join(root, 'dist'))).toEqual([
+  expect(readdirSync(join(root, 'dist')).toSorted()).toEqual([
     expect.stringMatching(/^chunk-[\da-z]+\.js$/u),
     'main.js',
   ]);
