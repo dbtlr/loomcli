@@ -12,15 +12,16 @@
  * - Effects. `run()` writes its code to its handle's `exitCode` and never to `process.exitCode`
  *   for a hand-built handle, and `app.invoke` writes none. Core's lane listens and re-raises on
  *   the handle's signal source.
- * - Host facts. `arch`, `libc`, and `uid` copy from the handle, and `app.invoke` reads `env`,
- *   `cwd`, `platform`, and `release` from it. `host.raise` raises on the source and answers true only
- *   when stdin is the source's own terminal.
+ * - Host facts. `arch`, `libc`, and `uid` copy from the handle, `libc` and `timeZone` only when a
+ *   run's code first reads them, and `app.invoke` reads `env`, `cwd`, `platform`, and `release`
+ *   from it. `host.raise` raises on the source and answers true only when stdin is the source's own
+ *   terminal.
  */
 import { Readable, Writable } from 'node:stream';
 
 import { afterEach, expect, test, vi } from 'vite-plus/test';
 
-import { Application, processHandle, WorkingDirectoryError } from '../src/index.js';
+import { Application, Command, processHandle, WorkingDirectoryError } from '../src/index.js';
 import type { ExitCode, Host, ProcessHandle, ProcessSignal, SignalSource } from '../src/index.js';
 
 /** A stream that keeps what a run writes to it. */
@@ -261,6 +262,49 @@ test('a run reads the handle libc only when its code reads host.libc, and then o
   await reading.invoke([], {}, { process: counting() });
   expect(reads).toBe(2);
   expect(seen).toEqual(['glibc', 'glibc', 'glibc', 'glibc']);
+});
+
+test('a run reads the handle time zone only when its code reads host.timeZone, and then once', async () => {
+  let reads = 0;
+  const counting = (tokens: string[] = []) =>
+    Object.create(handBuilt({ argv: tokens }).handle, {
+      timeZone: {
+        get: () => {
+          reads += 1;
+          return 'Europe/Paris';
+        },
+      },
+    });
+  const quiet = new Application('notes')
+    .command(new Command('inner', { description: 'Print.' }).action(({ out }) => out.print('done')))
+    .command(
+      new Command('outer', { description: 'Invoke inner.' }).action(async ({ invoke }) => {
+        await invoke(['inner'], {});
+      }),
+    );
+  await quiet.run({ process: counting(['outer']) });
+  await quiet.invoke(['inner'], {}, { process: counting() });
+  await quiet.invoke(['outer'], {}, { process: counting() });
+  expect(reads).toBe(0);
+  const seen: string[] = [];
+  const reading = new Application('notes')
+    .command(
+      new Command('inner', { description: 'Read.' }).action(({ host }) => {
+        seen.push(host.timeZone, host.timeZone);
+      }),
+    )
+    .command(
+      new Command('outer', { description: 'Invoke inner.' }).action(async ({ invoke }) => {
+        await invoke(['inner'], {});
+      }),
+    );
+  await reading.run({ process: counting(['inner']) });
+  expect(reads).toBe(1);
+  await reading.invoke(['inner'], {}, { process: counting() });
+  expect(reads).toBe(2);
+  await reading.invoke(['outer'], {}, { process: counting() });
+  expect(reads).toBe(3);
+  expect(seen).toEqual(Array.from({ length: 6 }, () => 'Europe/Paris'));
 });
 
 test('the host copies arch, libc, and uid from the handle, in run() and app.invoke alike', async () => {

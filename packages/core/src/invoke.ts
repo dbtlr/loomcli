@@ -92,7 +92,7 @@ function guardedObserver(onProgress: InvokeOptions['onProgress']): GuardedObserv
  * another call copies from its handle.
  */
 function fieldsOf(host: Host): HandleFacts {
-  const { arch, cwd, env, home, platform, program, readSource, timeZone, tmpdir, uid } = host;
+  const { arch, cwd, env, home, platform, program, readSource, tmpdir, uid } = host;
   const captured = {
     arch,
     directory: { cwd },
@@ -105,7 +105,8 @@ function fieldsOf(host: Host): HandleFacts {
     release: { facts: host.release },
     // The call's children start through its run's host, which fills nothing the call filled.
     spawn: host.spawn,
-    timeZone,
+    // The call reads its run's time zone only when its own code reads it.
+    timeZone: () => host.timeZone,
     tmpdir,
     uid,
   };

@@ -502,9 +502,10 @@ export interface Host {
   /**
    * The operator's IANA time zone, such as `America/New_York`, which a validator reads to place a
    * local time. The real process's handle reads the zone `Intl` resolves, which honours `TZ`; a
-   * supplied `timeZone` replaces it, and an action's `invoke` keeps its run's.
+   * supplied `timeZone` replaces it, and an action's `invoke` keeps its run's. Core copies it from
+   * the handle on the run's first read, because resolving the zone through `Intl` is costly.
    */
-  timeZone: string;
+  readonly timeZone: string;
   env: Record<string, string | undefined>;
   terminal: HostTerminal;
   stdin: Readable;

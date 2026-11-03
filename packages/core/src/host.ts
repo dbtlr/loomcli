@@ -91,16 +91,17 @@ function once<Value>(read: () => Value): () => Value {
 }
 
 /**
- * One host or report: its facts, working directory, and release facts, with `libc` a getter, so
- * no spread reads the C library before the run's own code does.
+ * One host or report: its facts, working directory, and release facts, with `libc` and `timeZone`
+ * getters, so no spread reads the C library or resolves the time zone before the run's own code does.
  */
 function assembled<Facts extends object, Cwd, Release>(parts: {
   readonly cwd: Cwd;
   readonly facts: Facts;
   readonly libc: () => Host['libc'];
   readonly release: Release;
+  readonly timeZone: () => string;
 }) {
-  const { cwd, facts, libc, release } = parts;
+  const { cwd, facts, libc, release, timeZone } = parts;
   return {
     ...facts,
     cwd,
@@ -108,6 +109,9 @@ function assembled<Facts extends object, Cwd, Release>(parts: {
       return libc();
     },
     release,
+    get timeZone() {
+      return timeZone();
+    },
   };
 }
 
@@ -189,7 +193,8 @@ export interface HandleFacts {
   readonly release: CapturedRelease;
   /** Starts a child through the run's handle, once core filled its place and mapped its streams. */
   readonly spawn: ProcessHandle['spawn'];
-  readonly timeZone: string;
+  /** Reads the time zone once, on the run's first read of `host.timeZone`, which can be costly. */
+  readonly timeZone: () => string;
   /** The folder for temporary files, copied at entry as the home is. */
   readonly tmpdir: string;
   readonly uid: number | undefined;
@@ -212,7 +217,7 @@ export function handleFacts(application: string, handle: ProcessHandle): HandleF
     program: Object.freeze([...handle.program]),
     release: handleRelease(handle, { application, env, home, platform }),
     spawn: handle.spawn.bind(handle),
-    timeZone: handle.timeZone,
+    timeZone: once(() => handle.timeZone),
     tmpdir: handle.tmpdir,
     uid: handle.uid,
   };
@@ -233,23 +238,29 @@ export function capturedHost(
   shared: HandleFacts,
   own: OwnStreams = {},
 ): HostCapture {
-  const { directory, libc, release, spawn: handleSpawn, ...copied } = shared;
+  const { directory, libc, release, spawn: handleSpawn, timeZone, ...copied } = shared;
   const cwd = 'cwd' in directory ? directory.cwd : undefined;
   const scene = { ...run, cwd, env: copied.env, own, spawn: handleSpawn };
   const facts = { ...run, ...copied, spawn: hostSpawn(scene) };
   if ('failure' in release) {
     return {
       failure: release.failure,
-      report: assembled({ cwd, facts, libc, release: undefined }),
+      report: assembled({ cwd, facts, libc, release: undefined, timeZone }),
     };
   }
   if ('failure' in directory) {
     return {
       failure: directory.failure,
-      report: assembled({ cwd, facts, libc, release: release.facts }),
+      report: assembled({ cwd, facts, libc, release: release.facts, timeZone }),
     };
   }
-  const host: Host = assembled({ cwd: directory.cwd, facts, libc, release: release.facts });
+  const host: Host = assembled({
+    cwd: directory.cwd,
+    facts,
+    libc,
+    release: release.facts,
+    timeZone,
+  });
   return { host, report: host };
 }
 
