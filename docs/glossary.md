@@ -195,7 +195,7 @@ The raw value of every input some tier supplied in one invocation, keyed by decl
 _Avoid_: Provenance, raw options, source map
 
 **Conditional requiredness**:
-The presence rule `required: 'non-interactive'` on a local string option, single or multiple, or a string argument, scalar or variadic: the input is required when the run's interaction decision is off and optional when it is on, so the action can ask for it. Such an argument counts as required for the argument order.
+The presence rule `required: 'non-interactive'` on a local string option, single or multiple, or a string argument, scalar or variadic: the input is required when the run's interaction decision is off and optional when it is on, so the action can ask for it. Such an argument sits after every `required: true` argument and before every optional one in the argument order.
 _Avoid_: Soft required, required unless prompted
 
 **Passthrough**:
