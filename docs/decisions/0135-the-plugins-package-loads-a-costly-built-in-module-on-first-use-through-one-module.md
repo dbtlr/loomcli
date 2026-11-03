@@ -41,7 +41,7 @@ Deferring a plugin Command's implementation with `import()`, as a plugin's middl
 
 - An application that installs self-update loads `node:crypto` only on a run that hashes or stages a file, such as one that writes the stale notice cache or runs `self-update`.
 - A new built-in deferred this way is a new function in `built-ins.ts` and a change to the test that pins its specifiers, reviewed against the default above.
-- The lint override for `built-ins.ts` sits beside ADR-0107's other exceptions in `vite.config.ts`.
+- `built-ins.ts` is named beside ADR-0107's other exceptions in `vite.config.ts`, and in the test that runs `@loomcli/eslint-plugin`'s `host-bypass` over Loom's own sources.
 
 ## Status
 
