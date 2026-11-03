@@ -22,7 +22,7 @@ Global names, aliases, kinds, polarity, implied values, defaults, and validators
 
 ### A global option declares no presence rule
 
-A global option declares no presence rule. Its validation runs on every Command, plugin Commands included, so a rule that it must be supplied would fail the Commands that never read it. `required` and `validateOmitted` are a compile error at `globalOption()`, under [ADR-0044](../decisions/0044-a-global-option-declares-no-presence-rule.md). An omitted global follows its kind's absence rule: `undefined`, a declared default, or `[]` for a string option, a Boolean's polarity, or `0` for a count. A Command that needs an ordinary global value checks for it in its action. A required content source belongs to that Command's local declaration.
+A global option declares no presence rule. Its validation runs on every Command, plugin Commands included, so a rule that it must be supplied would fail the Commands that never read it. `required` and `validateOmitted` are a compile error at `globalOption()`, under [ADR-0044](../decisions/0044-a-global-option-declares-no-presence-rule.md). An omitted global follows its kind's absence rule: `undefined` or a declared default for a scalar string option, `[]` for a multiple string option, a Boolean's polarity, or `0` for a count. A Command that needs an ordinary global value checks for it in its action. A required content source belongs to that Command's local declaration.
 
 ## Declaring a Command
 
