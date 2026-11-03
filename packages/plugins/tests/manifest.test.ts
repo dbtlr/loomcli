@@ -602,6 +602,18 @@ test('a content input entry carries min and max, null when its declaration state
       default: null,
     },
   ]);
+  expect(Array.isArray(entries) && Object.keys(entries[0])).toEqual([
+    'type',
+    'stdin',
+    'min',
+    'max',
+    'name',
+    'description',
+    'required',
+    'variadic',
+    'schema',
+    'default',
+  ]);
   const shared = {
     description: null,
     deprecated: null,

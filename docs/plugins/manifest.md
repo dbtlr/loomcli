@@ -8,7 +8,7 @@ This page documents the manifest plugin: the `--manifest` option, the JSON docum
 
 ```ts
 // @loomcli/plugins/manifest
-import type { BooleanOption, Plugin, PluginOptions, ResultNode } from '@loomcli/core';
+import type { BooleanOption, OptionGroup, Plugin, PluginOptions, ResultNode } from '@loomcli/core';
 
 const options = {
   manifest: { control: true, description: "Print this command's manifest as JSON.", type: 'boolean' },
