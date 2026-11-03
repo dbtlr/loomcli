@@ -1,0 +1,2 @@
+- Remove Apache-2.0 from the license field of `@loomcli/loom`, which now reads `MIT AND ISC AND Unicode-3.0 AND BSD-3-Clause`. The `loom` bin bundles none of the Apache-2.0 completion scripts of `@loomcli/plugins`, so it no longer carries Cobra's license or the plugins notice either.
+- Credit the glyph catalog's sources in `@loomcli/core`: its notice now names Inquirer's figures and Sindre Sorhus's figures, from which Inquirer's derives, and the package ships both license texts. The glyph module's license comment, which a bundle keeps, carries both notices.
