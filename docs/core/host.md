@@ -108,7 +108,7 @@ A process handle holds every process fact a run reads and receives every process
 
 ## Host facts
 
-`run({ signal })` supplies a caller-owned `AbortSignal` that cancels the run, as [Signals, cancellation, and shutdown](signals.md) describes; it is the path for an embedding host or a test, and a [shutdown](signals.md#the-shutdown) aborts the run as well. The run's host holds these facts, copied from its process handle at invocation entry, before graph build, except that terminal width and height are read live.
+`run({ signal })` supplies a caller-owned `AbortSignal` that cancels the run, as [Signals, cancellation, and shutdown](signals.md) describes; it is the path for an embedding host or a test, and a [shutdown](signals.md#the-shutdown) aborts the run as well. The run's host holds these facts, copied from its process handle at invocation entry, before graph build, except that terminal width and height are read live, and `libc` and `timeZone` are copied on the run's first read of each.
 
 | Field              | Value                                                         |
 | ------------------ | ------------------------------------------------------------- |
