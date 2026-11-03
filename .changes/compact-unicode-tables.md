@@ -1,0 +1,1 @@
+- Start applications faster and ship smaller bundles: core's Unicode width and grapheme tables take about 58 KB in a bundle, down from about 96 KB when the bundle is minified and 287 KB when it is not, and load in less than half the time. Width and segmentation answers are unchanged.

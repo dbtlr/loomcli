@@ -3,8 +3,11 @@
 import { graphemeWidths as upstreamWidths } from '@rockorager/uucode/width';
 import { expect, test } from 'vite-plus/test';
 
+// The pinned uucode release's own tables, which its package exports do not name.
+import { runtimeGrapheme } from '../node_modules/@rockorager/uucode/dist/src/generated/runtime_grapheme.js';
+import { runtimeWidth } from '../node_modules/@rockorager/uucode/dist/src/generated/runtime_width.js';
 import { graphemeWidths } from '../src/style-width.js';
-import { graphemeTable } from '../src/unicode.generated.js';
+import { graphemeTable, widthTable } from '../src/unicode.generated.js';
 
 /** The highest Unicode code point. */
 const lastCodePoint = 0x10_ff_ff;
@@ -61,6 +64,11 @@ test.each([
   ['an empty string', ''],
 ])('core measures %s as the pinned uucode release does', (_name, text) => {
   expect(segments(graphemeWidths(text))).toEqual(segments(upstreamWidths(text)));
+});
+
+test('core decodes the same tables, member by member, that the pinned uucode release builds', () => {
+  expect(graphemeTable).toEqual(runtimeGrapheme);
+  expect(widthTable).toEqual(runtimeWidth);
 });
 
 /** The grapheme break property of a space, and of every other character with no special rule. */

@@ -7,11 +7,13 @@ import { fileURLToPath } from 'node:url';
 /**
  * Generates core's Unicode tables as a JavaScript module from the data files of the pinned
  * `@rockorager/uucode` release, which reads them beside its own modules at run time. As a module,
- * the tables travel inside any bundle, whatever bundler builds it. With `--check`, the script
- * writes nothing and fails when the committed module differs from what it would write; `pnpm check`
- * runs it that way. Run it without `--check` after changing the pinned release in core's development
- * dependencies. The module's license header is a legal comment, opened with `/*!`, so bundlers
- * keep the notices in the bundle.
+ * the tables travel inside any bundle, whatever bundler builds it. Each array is written as base64
+ * of its little-endian bytes, which the module decodes once at import, so a launch copies bytes
+ * instead of building arrays from number literals, and a bundle carries far fewer bytes. With
+ * `--check`, the script writes nothing and fails when the committed module differs from what it
+ * would write; `pnpm check` runs it that way. Run it without `--check` after changing the pinned
+ * release in core's development dependencies. The module's license header is a legal comment,
+ * opened with `/*!`, so bundlers keep the notices in the bundle.
  */
 
 const core = new URL('../packages/core/', import.meta.url);
@@ -85,23 +87,17 @@ function read({ arrays, file, scalars }) {
   return data;
 }
 
-/** A list of numbers as lines no wider than 100 columns at the given indent. */
-function wrapped(values, indent) {
-  const lines = [];
-  let line = '';
-  for (const value of values) {
-    const next = `${line}${String(value)},`;
-    if (line !== '' && indent.length + next.length > 100) {
-      lines.push(line);
-      line = `${String(value)},`;
-    } else {
-      line = next;
-    }
+/** The bytes of each value in a typed array kind, little-endian. */
+const widths = { Uint16Array: 2, Uint8Array: 1 };
+
+/** A list of values as base64 of each value's little-endian bytes. */
+function encoded(values, kind) {
+  const width = widths[kind];
+  const bytes = Buffer.alloc(values.length * width);
+  for (const [index, value] of values.entries()) {
+    bytes.writeUIntLE(value, index * width, width);
   }
-  if (line !== '') {
-    lines.push(line);
-  }
-  return lines.map((text) => `${indent}${text}`).join('\n');
+  return bytes.toString('base64');
 }
 
 /** One table as an exported constant, its members in key order. */
@@ -112,7 +108,7 @@ function declaration(table) {
     if (kind === undefined) {
       return `  ${key}: ${String(data[key])},`;
     }
-    return `  ${key}: ${kind}.from([\n${wrapped(data[key], '    ')}\n  ]),`;
+    return `  ${key}: decode${kind}(\n    '${encoded(data[key], kind)}',\n  ),`;
   });
   return `/** ${table.summary} */\nexport const ${table.name} = {\n${members.join('\n')}\n};\n`;
 }
@@ -131,7 +127,28 @@ in licenses/uucode-LICENSE.md of @loomcli/core.
 */
 `;
 
-const module = [header, ...tables.map((table) => declaration(table))].join('\n');
+/**
+ * The decoders the tables call, one per typed array kind. Each copies the decoded bytes into an
+ * array of its own, since a small Buffer may share its memory with others. `Buffer` is in both
+ * Node and Bun, and `Uint8Array.fromBase64` is not in every Node release core supports.
+ */
+const decoders = `/** The bytes a base64 string holds, in an array of their own. */
+function decodeUint8Array(base64: string): Uint8Array {
+  return new Uint8Array(Buffer.from(base64, 'base64'));
+}
+
+/** The 16-bit values a base64 string holds, each written little-endian. */
+function decodeUint16Array(base64: string): Uint16Array {
+  const bytes = Buffer.from(base64, 'base64');
+  const values = new Uint16Array(bytes.length / 2);
+  for (let index = 0; index < values.length; index += 1) {
+    values[index] = bytes.readUInt16LE(index * 2);
+  }
+  return values;
+}
+`;
+
+const module = [header, decoders, ...tables.map((table) => declaration(table))].join('\n');
 
 if (process.argv.includes('--check')) {
   if (readFileSync(target, 'utf8') !== module) {
