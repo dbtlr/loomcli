@@ -13,15 +13,9 @@ import { fishScript } from './fish.js';
 import { refusals } from './messages.js';
 import { identifier, posixQuoted, powershellQuoted } from './name.js';
 import { powershellScript } from './powershell.js';
+import { shells } from './shell-names.js';
+import type { Shell } from './shell-names.js';
 import { zshInstalledScript } from './zsh.js';
-
-/**
- * The shells completion installs for on Linux and macOS, in the order `uninstall` with no shell
- * follows. `pwsh` is PowerShell 7, which runs the script `completion powershell` prints.
- */
-const shells = ['bash', 'zsh', 'fish', 'pwsh'] as const;
-
-type Shell = (typeof shells)[number];
 
 /** A shell whose startup file loads the script through a line: every one but Fish. */
 type LineShell = Exclude<Shell, 'fish'>;
@@ -156,5 +150,5 @@ function startupLine({ name, script, shell }: LineRequest): string {
   }
 }
 
-export type { LineShell, Shell };
-export { scriptContent, scriptPath, selectedShell, shells, startupLine, startupPath };
+export type { LineShell };
+export { scriptContent, scriptPath, selectedShell, startupLine, startupPath };

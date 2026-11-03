@@ -24,8 +24,8 @@ import {
   writeNotices,
 } from './run.js';
 import type { ChildRun, ShellRecord } from './run.js';
+import type { Shell } from './shell-names.js';
 import { scriptContent, scriptPath, selectedShell, startupLine, startupPath } from './shells.js';
-import type { Shell } from './shells.js';
 import { judgeStartup, mustRelease, placeLine } from './startup.js';
 import type { LinePlacement, StartupJudgement } from './startup.js';
 

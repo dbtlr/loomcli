@@ -1,0 +1,1 @@
+- Start applications faster: the completion, manpage, and MCP plugins load each Command's work only when that Command runs, and the first-party plugins load `node:crypto` only when a run hashes or stages an installed file. Declarations, graph hooks, help, the manifest, and every printed byte are unchanged.

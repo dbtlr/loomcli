@@ -20,8 +20,9 @@ import {
   scriptState,
 } from './run.js';
 import type { ChildRun, ShellRecord } from './run.js';
-import { scriptContent, shells, startupLine } from './shells.js';
-import type { Shell } from './shells.js';
+import { shells } from './shell-names.js';
+import type { Shell } from './shell-names.js';
+import { scriptContent, startupLine } from './shells.js';
 import { judgeStartup, placeLine } from './startup.js';
 import type { LinePlacement } from './startup.js';
 

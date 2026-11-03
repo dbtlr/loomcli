@@ -205,7 +205,7 @@ export function doctor(): Plugin {
 - **No rename or removal.** The application cannot rename or remove a plugin Command. An application that does not want it does not install the plugin.
 - **Collisions.** A plugin Command whose name or alias repeats another root child's, from the application or from another plugin, is a declaration error under [`@loomcli/core/sibling-name-taken`](diagnostics.md#loomclicoresibling-name-taken). The constructor throws it when two installed plugins attach one name, and the application's own `command()` call throws it otherwise. An application that also attaches the plugin's Command value to the root fails the same way, and one that attaches it under another Command fails under [`@loomcli/core/command-attached-twice`](diagnostics.md#loomclicorecommand-attached-twice).
 - **A root with arguments.** A root that declares arguments cannot also hold children, so an application whose root declares arguments cannot install a plugin that brings Commands. The root's `argument()` call throws [`@loomcli/core/arguments-beside-children`](diagnostics.md#loomclicorearguments-beside-children).
-- **Cost.** A plugin's Commands are declarations its entry module imports, so they load with that module like any Command, and each action is lazy as every action is.
+- **Cost.** A plugin's Commands are declarations its entry module imports, so they load with that module like any Command, and each action is lazy as every action is. An action can load the module that holds its work with `import()` when it runs, so an invocation that routes elsewhere never evaluates that module or a module only it imports. The first-party completion, manpage, and MCP plugins load each Command's work this way.
 
 ## Activation
 

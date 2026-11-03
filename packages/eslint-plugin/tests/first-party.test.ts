@@ -35,9 +35,11 @@ const config: Linter.Config[] = [
     ...plugin.configs.recommended,
   },
   {
-    // These are the exceptions the repository's own process rule names (ADR-0107).
-    // They are the YAML guard and the toolchain's application readers, each its own program.
+    // These are the exceptions the repository's own process rule names (ADR-0107, ADR-0135).
+    // They are the YAML guard and the plugins' built-in loader.
+    // They are also the toolchain's application readers, each its own program.
     files: [
+      'packages/plugins/src/built-ins.ts',
       'packages/plugins/src/config/yaml.ts',
       'packages/loom/src/read-application.ts',
       'packages/loom/src/read-skills.ts',

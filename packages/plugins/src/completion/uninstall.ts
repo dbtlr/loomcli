@@ -25,8 +25,8 @@ import {
   writeNotices,
 } from './run.js';
 import type { ChildRun, ShellRecord } from './run.js';
-import { shells } from './shells.js';
-import type { Shell } from './shells.js';
+import { shells } from './shell-names.js';
+import type { Shell } from './shell-names.js';
 import { judgeStartup, mustRelease } from './startup.js';
 
 /** A shell an uninstall removes, with the recorded lines it releases. */

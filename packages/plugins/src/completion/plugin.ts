@@ -4,21 +4,22 @@ import { oneOf } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
 import { exactText } from '../exact-text.js';
-import { answer } from './answer.js';
-import { bashScript } from './bash.js';
-import { fishScript } from './fish.js';
-import { installShell } from './install.js';
-import { powershellScript } from './powershell.js';
 import type { ChildRun } from './run.js';
-import { shells } from './shells.js';
-import { uninstallShells } from './uninstall.js';
-import { updateShells } from './update.js';
-import { zshScript } from './zsh.js';
+import { shells } from './shell-names.js';
 
-/** One child that prints the script its shell sources, for the application it is installed in. */
-function shellCommand(name: string, shell: string, script: (application: string) => string) {
+/** What makes a shell's script for the application it is installed in. */
+type ShellScript = (application: string) => string;
+
+/**
+ * One child that prints the script its shell sources, for the application it is installed in. The
+ * script's module loads when the child runs.
+ */
+function shellCommand(name: string, shell: string, script: () => Promise<ShellScript>) {
   return new Command(name, { description: `Print the ${shell} completion script.` }).action(
-    ({ graph, out }) => out.render(script(graph.name), exactText),
+    async ({ graph, out }) => {
+      const write = await script();
+      return out.render(write(graph.name), exactText);
+    },
   );
 }
 
@@ -26,9 +27,10 @@ function shellCommand(name: string, shell: string, script: (application: string)
 const answerCommand = new Command('__complete', {
   description: 'Answer a completion script.',
   hidden: true,
-}).action(({ graph, out, passthrough }) =>
-  out.render(answer(graph, locate(graph, passthrough)), exactText),
-);
+}).action(async ({ graph, out, passthrough }) => {
+  const { answer } = await import('./answer.js');
+  return out.render(answer(graph, locate(graph, passthrough)), exactText);
+});
 
 /** The four shell names `install` and `uninstall` accept. */
 const shellInput = oneOf(shells);
@@ -57,12 +59,18 @@ const installCommand = new Command('install', {
     description: 'The shell: bash, zsh, fish, or pwsh. Your login shell when left out.',
     validate: shellInput,
   })
-  .action((context) => installShell(childRun(context), context.args.shell));
+  .action(async (context) => {
+    const { installShell } = await import('./install.js');
+    return installShell(childRun(context), context.args.shell);
+  });
 
 /** `update`: every recorded shell's script and line brought up to this version. */
 const updateCommand = new Command('update', {
   description: 'Bring installed completion up to date with this version.',
-}).action((context) => updateShells(childRun(context)));
+}).action(async (context) => {
+  const { updateShells } = await import('./update.js');
+  return updateShells(childRun(context));
+});
 
 /** `uninstall`: the script and line of the shell its argument names, or of every installed shell. */
 const uninstallCommand = new Command('uninstall', {
@@ -72,16 +80,27 @@ const uninstallCommand = new Command('uninstall', {
     description: 'The shell: bash, zsh, fish, or pwsh. Every installed shell when left out.',
     validate: shellInput,
   })
-  .action((context) => uninstallShells(childRun(context), context.args.shell));
+  .action(async (context) => {
+    const { uninstallShells } = await import('./uninstall.js');
+    return uninstallShells(childRun(context), context.args.shell);
+  });
 
 // This package compiles outside any Application's registration, so the Command requires no globals.
 const completionCommand = new Command('completion', {
   description: 'Print or install a shell completion script.',
 })
-  .command(shellCommand('bash', 'Bash', bashScript))
-  .command(shellCommand('zsh', 'Zsh', zshScript))
-  .command(shellCommand('fish', 'Fish', fishScript))
-  .command(shellCommand('powershell', 'PowerShell', powershellScript))
+  .command(
+    shellCommand('bash', 'Bash', () => import('./bash.js').then(({ bashScript }) => bashScript)),
+  )
+  .command(shellCommand('zsh', 'Zsh', () => import('./zsh.js').then(({ zshScript }) => zshScript)))
+  .command(
+    shellCommand('fish', 'Fish', () => import('./fish.js').then(({ fishScript }) => fishScript)),
+  )
+  .command(
+    shellCommand('powershell', 'PowerShell', () =>
+      import('./powershell.js').then(({ powershellScript }) => powershellScript),
+    ),
+  )
   .command(installCommand)
   .command(updateCommand)
   .command(uninstallCommand)
@@ -90,7 +109,7 @@ const completionCommand = new Command('completion', {
 /**
  * A plugin that prints Bash, Zsh, Fish, and PowerShell completion scripts, installs them into the
  * operator's shell on Linux and macOS, and answers them. Its whole contribution is the `completion`
- * Command; it declares no option, middleware, or extension.
+ * Command; it declares no option, middleware, or extension. Each child loads its work when it runs.
  */
 export function completion(): Plugin {
   return plugin(`${packageName}/completion`, { commands: [completionCommand] });

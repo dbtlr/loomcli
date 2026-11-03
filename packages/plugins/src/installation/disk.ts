@@ -1,8 +1,8 @@
 /**
  * What the installed-files module observes on disk and the writes it makes there, each through a
- * synchronous call whose failure throws the runtime's error.
+ * synchronous call whose failure throws the runtime's error. It reads `node:crypto` on first use,
+ * so a run that hashes and stages no file never loads it (ADR-0135).
  */
-import { createHash, randomBytes } from 'node:crypto';
 import {
   chmodSync,
   closeSync,
@@ -20,6 +20,8 @@ import {
   writeSync,
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+
+import { nodeCrypto } from '../built-ins.js';
 
 /** The permission bits of a file mode, without its file type. */
 const permissionBits = 0o7777;
@@ -42,7 +44,7 @@ function errorCode(error: unknown): unknown {
 
 /** The digest of some bytes, as the record spells it. */
 function digestOf(content: string | Uint8Array): string {
-  return `sha256:${createHash('sha256').update(content).digest('hex')}`;
+  return `sha256:${nodeCrypto().createHash('sha256').update(content).digest('hex')}`;
 }
 
 /** What `path` holds, read without following a symbolic link. */
@@ -81,7 +83,7 @@ const retiredSuffix = '.loom-retired';
 function markedPath(path: string, suffix: string): string {
   return join(
     dirname(path),
-    `.${basename(path)}.${randomBytes(stagingBytes).toString('hex')}${suffix}`,
+    `.${basename(path)}.${nodeCrypto().randomBytes(stagingBytes).toString('hex')}${suffix}`,
   );
 }
 

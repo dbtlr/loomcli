@@ -13,7 +13,7 @@ const packages = new URL('../../', import.meta.url);
  * view function back under the key `override()` typed it against. `output.ts` hands one result to
  * the view its own declaration named, out of the record that erased the data type on the way in.
  * `invoke.ts` hands a call with no failure handler the failure itself as the outcome's `Mapped`,
- * which such a call infers as its default, `LoomError`. The MCP plugin's `plugin.ts` hands
+ * which such a call infers as its default, `LoomError`. The MCP plugin's `serve.ts` hands
  * `invoke` a client's named values, which `invoke` judges at run time as it judges any caller's.
  * `providers.ts` returns the provider value as the type its declaration's annotation states, and
  * reads the values core built for a `uses` list, which reach it from openers as unknown, as the
@@ -30,7 +30,7 @@ const allowed = {
   'core/src/validation.ts': 1,
   'core/src/view.ts': 1,
   'plugins/src/config/plugin.ts': 1,
-  'plugins/src/mcp/plugin.ts': 1,
+  'plugins/src/mcp/serve.ts': 1,
   'testing/src/unstated-style.ts': 1,
 };
 
