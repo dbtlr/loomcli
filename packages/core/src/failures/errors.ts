@@ -9,8 +9,8 @@ import {
   foreignThrowCorrection,
   resultContract,
 } from '../diagnostics/rules.js';
+import type { InputIdentity } from '../inputs/types.js';
 import { escapeControlCharacters } from '../support/controls.js';
-import type { InputIdentity } from '../types.js';
 import type { FailureExitCode } from './exit-codes.js';
 
 /** The same subject at the start of a sentence, where a token fault names its Command. */

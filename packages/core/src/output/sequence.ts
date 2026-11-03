@@ -1,7 +1,7 @@
 import { routedSubject } from '../failures/errors.js';
 import { handled } from '../support/thenable.js';
-import type { ViewContext } from '../types.js';
 import type { IncompleteResult } from './lanes.js';
+import type { ViewContext } from './types.js';
 import type { ResolvedRowView } from './view.js';
 
 /**

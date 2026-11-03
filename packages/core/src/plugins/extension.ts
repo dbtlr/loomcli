@@ -8,7 +8,6 @@ import type { ArgumentNode, CommandNode, OptionNode } from '../inspection/inspec
 import { escapeControlCharacters } from '../support/controls.js';
 import { isPlainObject } from '../support/plain.js';
 import { isThenable } from '../support/thenable.js';
-import type { AttachedCommand } from '../types.js';
 import {
   extensionOutput,
   foreignValue,
@@ -16,6 +15,7 @@ import {
   invalidExtensionValue,
   twoPackageCopies,
 } from './rules.js';
+import type { AttachedCommand } from './types.js';
 
 /** The three declaration kinds an extension can name, each with its own node in the graph. */
 type ExtensionTarget = 'argument' | 'command' | 'option';

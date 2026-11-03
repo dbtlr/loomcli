@@ -1,13 +1,9 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { captureHost, settleTerminal, statedBackground } from '../host/host.js';
-import type {
-  ActionContext,
-  InputIdentity,
-  ProcessHandle,
-  SuppliedInputs,
-  ValidationContext,
-} from '../types.js';
+import type { ProcessHandle } from '../host/types.js';
+import type { ActionContext } from '../invocation/types.js';
+import type { InputIdentity, SuppliedInputs, ValidationContext } from './types.js';
 
 /** The `libraryOptions` key core writes its context under. It names the package that owns it. */
 const validationContextKey = '@loomcli/core';

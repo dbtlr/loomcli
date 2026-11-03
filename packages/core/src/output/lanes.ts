@@ -1,6 +1,6 @@
 import { routedSubject } from '../failures/errors.js';
 import { glyph } from '../style/glyphs.generated.js';
-import type { ViewContext } from '../types.js';
+import type { ViewContext } from './types.js';
 import { view } from './view.js';
 import type { AnyDeclaredView, DeclaredView } from './view.js';
 

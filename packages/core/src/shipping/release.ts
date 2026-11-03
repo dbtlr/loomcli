@@ -1,9 +1,9 @@
 import { invalidReleaseFacts } from '../diagnostics/rules.js';
 import { InternalError, quoted } from '../failures/errors.js';
 import { isPlainObject } from '../support/plain.js';
-import type { ReleaseFacts } from '../types.js';
 import { readInstallation } from './installation.js';
 import type { InstallationLookup } from './installation.js';
+import type { ReleaseFacts } from './types.js';
 
 /**
  * The identifier the build replaces with the release facts through a bundler `define`. Nothing

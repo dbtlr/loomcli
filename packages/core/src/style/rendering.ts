@@ -1,6 +1,6 @@
 import type { Background } from '../host/background.js';
 import { underCI } from '../host/host.js';
-import type { Host } from '../types.js';
+import type { Host } from '../host/types.js';
 
 type SwitchPolicy = 'auto' | 'always' | 'never';
 interface RenderingPolicy {

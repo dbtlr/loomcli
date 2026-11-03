@@ -6,7 +6,7 @@ import { DeclarationError, defaultText, quoted, reasonOf } from '../failures/err
 import type { LoomError } from '../failures/errors.js';
 import { markedSentence } from '../failures/form.js';
 import { foreignValue, foreignValueCorrection, twoPackageCopies } from '../plugins/rules.js';
-import type { RowView, View, ViewContext } from '../types.js';
+import type { RowView, View, ViewContext } from './types.js';
 
 /** Phantom key. It brands a declared view and holds no runtime value. */
 declare const declaredView: unique symbol;

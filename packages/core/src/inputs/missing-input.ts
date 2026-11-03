@@ -1,7 +1,8 @@
 import { registerRule } from '../diagnostics/diagnostic-text.js';
 import { DeclarationError, InputError, quoted } from '../failures/errors.js';
+import type { Host } from '../host/types.js';
 import { reportedSpelling } from '../inspection/inspect.js';
-import type { ActionContext, Host } from '../types.js';
+import type { ActionContext } from '../invocation/types.js';
 
 /** Hosts belong to one invocation, so naming stays private while the action context is copied. */
 const missingInput = registerRule('@loomcli/core/missing-input-name', {

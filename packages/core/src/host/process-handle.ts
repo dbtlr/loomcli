@@ -13,6 +13,7 @@ import { isAbsolute, relative, resolve as resolvePath, sep } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import { isatty, ReadStream } from 'node:tty';
 
+import type { ExitCode } from '../application/types.js';
 import { absoluteVariable } from '../shipping/directory.js';
 import type { InstallationLookup } from '../shipping/installation.js';
 import { bakedFacts, captureRelease, isCompiled } from '../shipping/release.js';
@@ -21,11 +22,11 @@ import { absentLane, isSharedLane, isSignalSource, SignalLane } from '../signals
 import type { SharedLane } from '../signals/signal-lane.js';
 import { readSmallFile } from '../support/files.js';
 import { isPlainObject } from '../support/plain.js';
+import { unstartedChild } from './spawn.js';
 import type {
   Child,
   ChildExit,
   ChildOutput,
-  ExitCode,
   OutputTerminal,
   ProcessFields,
   ProcessHandle,
@@ -33,8 +34,7 @@ import type {
   ProcessTerminal,
   SignalListener,
   SignalSource,
-} from '../types.js';
-import { unstartedChild } from './spawn.js';
+} from './types.js';
 
 /** Process stream declarations assume a terminal, but pipes omit isTTY at runtime. */
 function isTerminal(stream: { isTTY?: boolean }): boolean {

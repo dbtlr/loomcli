@@ -1,6 +1,6 @@
 import { handled } from '../support/thenable.js';
-import type { ProgressReport, Region, RegionCloser, RegionOptions, View } from '../types.js';
 import type { ProgressLedger, RegionReports } from './progress-events.js';
+import type { ProgressReport, Region, RegionCloser, RegionOptions, View } from './types.js';
 
 /*
  * The live regions of one run: the handles `out.region()` returns, and the screen model that keeps

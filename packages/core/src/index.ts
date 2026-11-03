@@ -83,7 +83,7 @@ export { translate } from './failures/translators.js';
 export { encodeFailure } from './failures/encoders.js';
 export { glyph } from './style/glyphs.generated.js';
 export type { RenderingPolicy } from './style/rendering.js';
-export type { ViewContext } from './types.js';
+export type { ViewContext } from './output/types.js';
 export type { Background } from './host/background.js';
 export { nowrap, pad, style } from './style/style.js';
 export { splitLines } from './style/lines.js';
@@ -147,65 +147,68 @@ export type {
   SourceContext,
   SourceResolver,
 } from './plugins/plugin.js';
+export type { ExitCode, RunOptions } from './application/types.js';
+export type {
+  Child,
+  ChildExit,
+  ChildOutput,
+  Host,
+  HostTerminal,
+  InputTerminal,
+  OutputTerminal,
+  ProcessFields,
+  ProcessHandle,
+  ProcessSignal,
+  ProcessTerminal,
+  SignalListener,
+  SignalSource,
+  SpawnOptions,
+} from './host/types.js';
+export type {
+  ArgumentConfig,
+  BooleanOption,
+  CountOption,
+  ContentArgument,
+  ContentOption,
+  StdinConfig,
+  InputIdentity,
+  OptionConfig,
+  ScalarArgument,
+  StringOption,
+  SuppliedInputs,
+  ValidationContext,
+  VariadicArgument,
+} from './inputs/types.js';
 export type {
   Action,
   ActionArgs,
   ActionContext,
   ActionHandler,
   ActionOptions,
-  ArgumentConfig,
-  AttachedCommand,
-  BooleanOption,
-  CommandAttachHook,
-  CountOption,
-  ContentArgument,
-  ContentOption,
-  StdinConfig,
   StdinContext,
-  Child,
-  ChildExit,
-  ChildOutput,
-  ExitCode,
-  GraphBuiltHook,
-  Host,
-  HostTerminal,
-  InputIdentity,
-  InputTerminal,
   InvocationOutcome,
   InvocationValues,
   InvokeOptions,
+  Request,
+} from './invocation/types.js';
+export type {
   Out,
-  OptionConfig,
-  OutputTerminal,
-  ProcessFields,
-  ProcessHandle,
-  ProcessSignal,
-  ProcessTerminal,
   ProgressEvent,
   ProgressReport,
   Region,
   RegionCloser,
   RegionOptions,
-  ReleaseFacts,
   RenderedData,
-  Request,
   ResultInput,
   ResultView,
   ResultViews,
   RowViewOver,
-  RunOptions,
-  ScalarArgument,
-  SignalListener,
-  SignalSource,
-  SpawnOptions,
-  StringOption,
-  SuppliedInputs,
   RowView,
   RowViews,
-  ValidationContext,
-  VariadicArgument,
   View,
-} from './types.js';
+} from './output/types.js';
+export type { AttachedCommand, CommandAttachHook, GraphBuiltHook } from './plugins/types.js';
+export type { ReleaseFacts } from './shipping/types.js';
 
 export type {
   ApplicationEnvironment,

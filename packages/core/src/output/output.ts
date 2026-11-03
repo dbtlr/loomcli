@@ -4,6 +4,7 @@ import { setImmediate } from 'node:timers/promises';
 import { FatalError, ResultError } from '../failures/errors.js';
 import type { ReportHost } from '../host/host.js';
 import { underCI } from '../host/host.js';
+import type { ActionChannel } from '../invocation/types.js';
 import type { LaneHandlers } from '../signals/signal-lane.js';
 import { capabilities, columns, plainPolicy } from '../style/rendering.js';
 import type { RenderingPolicy } from '../style/rendering.js';
@@ -13,8 +14,15 @@ import { createStyle, tokens } from '../style/style.js';
 import { expandTabsMarked, wrapMarked } from '../style/wrap.js';
 import { Handed } from '../support/handed.js';
 import { handled } from '../support/thenable.js';
+import { incompleteResult, lanes } from './lanes.js';
+import type { IncompleteResult, Lane } from './lanes.js';
+import type { LogDestination } from './log.js';
+import { ProgressLedger } from './progress-events.js';
+import { Regions, Screen } from './region.js';
+import type { Frame, LiveRegion } from './region.js';
+import { writeSequence } from './sequence.js';
+import type { SequenceView } from './sequence.js';
 import type {
-  ActionChannel,
   OpenResult,
   Out,
   ProgressEvent,
@@ -24,15 +32,7 @@ import type {
   RowView,
   View,
   ViewContext,
-} from '../types.js';
-import { incompleteResult, lanes } from './lanes.js';
-import type { IncompleteResult, Lane } from './lanes.js';
-import type { LogDestination } from './log.js';
-import { ProgressLedger } from './progress-events.js';
-import { Regions, Screen } from './region.js';
-import type { Frame, LiveRegion } from './region.js';
-import { writeSequence } from './sequence.js';
-import type { SequenceView } from './sequence.js';
+} from './types.js';
 import { resolveRowView, resolveView } from './view.js';
 import type { ViewRegistry } from './view.js';
 

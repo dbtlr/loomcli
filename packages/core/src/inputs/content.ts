@@ -8,7 +8,7 @@ import { text } from 'node:stream/consumers';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { aliasesProcessStdin } from '../host/process-handle.js';
-import type { Host } from '../types.js';
+import type { Host } from '../host/types.js';
 
 /** A prepared source whose contents are read only when the action asks for them. */
 type Content =

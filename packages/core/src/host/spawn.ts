@@ -7,7 +7,7 @@
 import { isAbsolute, resolve } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 
-import type { Child, ChildExit, Host, ProcessHandle, SpawnOptions } from '../types.js';
+import type { Child, ChildExit, Host, ProcessHandle, SpawnOptions } from './types.js';
 
 /** The handle's own streams a run's streams may be: an argv run's, and none for a call by name. */
 interface OwnStreams {

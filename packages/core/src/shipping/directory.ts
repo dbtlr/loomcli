@@ -1,6 +1,6 @@
 import { isAbsolute, join } from 'node:path';
 
-import type { Host } from '../types.js';
+import type { Host } from '../host/types.js';
 
 /**
  * The directories of an application core resolves: its installation record, its logs, and its

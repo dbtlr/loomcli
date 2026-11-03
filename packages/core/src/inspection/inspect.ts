@@ -10,6 +10,7 @@ import type { OptionGroup } from '../inputs/option-groups.js';
 import { distinctAliases, reportedOf, spellingsOf } from '../inputs/options.js';
 import type { OptionSpelling } from '../inputs/options.js';
 import { schemaConverterFailed } from '../inputs/rules.js';
+import type { ArgumentConfig, OptionConfig } from '../inputs/types.js';
 import type { InputDeclaration, OptionInput } from '../inputs/validation.js';
 import {
   declarationSubject,
@@ -17,11 +18,11 @@ import {
   inputPlace,
   validatesOmission,
 } from '../inputs/validation.js';
+import type { DeclaredResult } from '../output/types.js';
 import { noExtensions } from '../plugins/extension.js';
 import type { ExtensionRecords } from '../plugins/extension.js';
 import type { BuiltSource } from '../plugins/plugin.js';
 import { isPlainObject } from '../support/plain.js';
-import type { ArgumentConfig, DeclaredResult, OptionConfig } from '../types.js';
 
 /** The plain JSON Schema a validated input publishes, or `null` where the graph holds no shape. */
 type InputSchema = Readonly<Record<string, unknown>> | null;

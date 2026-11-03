@@ -46,6 +46,7 @@ import {
 } from '../commands/globals.js';
 import type { GlobalsState, GlobalTable } from '../commands/globals.js';
 import { portableName } from '../commands/rules.js';
+import type { GlobalNameConstraint, NameConstraint } from '../commands/types.js';
 import { slotSite } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';
 import { encoderRegistry } from '../failures/encoders.js';
@@ -69,9 +70,24 @@ import type { Background } from '../host/background.js';
 import { captureHost, handleFacts, settleTerminal, statedBackground } from '../host/host.js';
 import type { HandleFacts, HostCapture, ReportHost } from '../host/host.js';
 import { laneOf, processHandle } from '../host/process-handle.js';
+import type { Host, ProcessHandle } from '../host/types.js';
 import type { Content } from '../inputs/content.js';
 import type { OptionSpelling } from '../inputs/options.js';
 import { installedSource } from '../inputs/sources.js';
+import type {
+  StdinConfig,
+  ArgumentConfig,
+  ArgumentValue,
+  DefaultConstraint,
+  ImpliedConstraint,
+  GlobalOmissionConstraint,
+  PerValueConstraint,
+  OptionConfig,
+  OptionValue,
+  ValidateOmittedConstraint,
+  ArgumentKeyConstraint,
+  Unmarked,
+} from '../inputs/types.js';
 import type {
   ArgumentInput,
   DeclaredValues,
@@ -94,6 +110,15 @@ import {
 import type { InvokeCall } from '../invocation/invoke.js';
 import { lowerInvocation } from '../invocation/lower.js';
 import { parseInvocation } from '../invocation/parse.js';
+import type {
+  StdinContext,
+  Action,
+  declaredTypes,
+  DeclaredTypes,
+  InvocationOutcome,
+  InvocationValues,
+  InvokeOptions,
+} from '../invocation/types.js';
 import { background, backgroundChoice, checkBackgroundBinding } from '../marks/background-mark.js';
 import {
   checkColorBinding,
@@ -108,6 +133,7 @@ import { RunLog } from '../output/log.js';
 import type { LogDestination } from '../output/log.js';
 import { Output, reportPlainly } from '../output/output.js';
 import type { WriteState } from '../output/output.js';
+import type { ProgressEvent, ResultViews, ResultViewsOf, RowViews } from '../output/types.js';
 import { buildViews, viewIdentities } from '../output/view.js';
 import type { ViewContributions, ViewOverride, ViewRegistry } from '../output/view.js';
 import { carriesBinding, storeCommandLayers } from '../plugins/extension.js';
@@ -141,38 +167,8 @@ import { capabilities, plainPolicy, renderingPolicy } from '../style/rendering.j
 import type { RenderingPolicy } from '../style/rendering.js';
 import { themeAdapts, themePalette } from '../style/theme.js';
 import type { BuiltTheme } from '../style/theme.js';
-import type {
-  StdinConfig,
-  StdinContext,
-  Action,
-  ArgumentConfig,
-  ArgumentValue,
-  declaredTypes,
-  DeclaredTypes,
-  DefaultConstraint,
-  ImpliedConstraint,
-  GlobalNameConstraint,
-  GlobalOmissionConstraint,
-  PerValueConstraint,
-  NameConstraint,
-  ExitCode,
-  Host,
-  InvocationOutcome,
-  InvocationValues,
-  InvokeOptions,
-  OptionConfig,
-  OptionValue,
-  ProgressEvent,
-  ResultViews,
-  ResultViewsOf,
-  RowViews,
-  ProcessHandle,
-  RunOptions,
-  ValidateOmittedConstraint,
-  ArgumentKeyConstraint,
-  Unmarked,
-} from '../types.js';
 import type { ApplicationEnvironment, applicationEnvironment } from './environment.js';
+import type { ExitCode, RunOptions } from './types.js';
 
 /**
  * Every authoring call an Application can publish, beside `inspect()`, `check()`, `run()`,

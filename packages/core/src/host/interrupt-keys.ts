@@ -1,4 +1,4 @@
-import type { Host } from '../types.js';
+import type { Host } from './types.js';
 
 /** What `raiseInterruptKeys` did with one read's text. */
 interface InterruptKeys {

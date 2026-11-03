@@ -4,18 +4,12 @@ import type { Readable, Writable } from 'node:stream';
 import { WorkingDirectoryError } from '../failures/errors.js';
 import type { InternalError } from '../failures/errors.js';
 import type { CapturedRelease } from '../shipping/release.js';
-import type {
-  Host,
-  HostTerminal,
-  OutputTerminal,
-  ProcessHandle,
-  ReleaseFacts,
-  SignalSource,
-} from '../types.js';
+import type { ReleaseFacts } from '../shipping/types.js';
 import type { Background } from './background.js';
 import { handleRelease } from './process-handle.js';
 import { hostSpawn } from './spawn.js';
 import type { OwnStreams } from './spawn.js';
+import type { Host, HostTerminal, OutputTerminal, ProcessHandle, SignalSource } from './types.js';
 
 /**
  * Each run's background, by the terminal facts it belongs to: the background its process handle's

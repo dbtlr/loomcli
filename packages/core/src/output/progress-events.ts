@@ -1,4 +1,4 @@
-import type { ProgressEvent, ProgressReport, RegionCloser } from '../types.js';
+import type { ProgressEvent, ProgressReport, RegionCloser } from './types.js';
 
 /** How a run's ledger reads a label and hands an event on. */
 interface LedgerSinks {

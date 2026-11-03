@@ -4,8 +4,8 @@ import type { FactSite } from '../diagnostics/facts.js';
 import { quoted } from '../failures/errors.js';
 import type { Background } from '../host/background.js';
 import type { OptionSpelling } from '../inputs/options.js';
+import type { OptionConfig } from '../inputs/types.js';
 import { refusesValue } from '../invocation/parse.js';
-import type { OptionConfig } from '../types.js';
 import { isMarked } from './marks.js';
 import type { Mark } from './marks.js';
 

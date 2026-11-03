@@ -1,11 +1,12 @@
 import { partFinding } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';
 import { DeclarationError, quoted } from '../failures/errors.js';
+import type { Host } from '../host/types.js';
 import type { CommandGraph } from '../inspection/inspect.js';
 import type { Log } from '../output/log.js';
+import type { Out } from '../output/types.js';
 import type { OnShutdown } from '../signals/signal-lane.js';
 import type { ContextualStyle } from '../style/style.js';
-import type { Host, Out } from '../types.js';
 import { foreignValue, foreignValueCorrection, providerNameTaken } from './rules.js';
 
 /** Phantom key. It carries a provider's value and globals types and holds no runtime value. */

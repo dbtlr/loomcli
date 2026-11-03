@@ -3,7 +3,7 @@
  * registered on it, and the one shutdown an ending signal starts, under docs/core/signals.md. This
  * module never reads the process: a lane listens and re-raises on the source it was built over.
  */
-import type { SignalSource } from '../types.js';
+import type { SignalSource } from '../host/types.js';
 
 /** The signals whose default effect ends a process, which start a shutdown while a lane listens. */
 type EndingSignal = 'SIGHUP' | 'SIGINT' | 'SIGQUIT' | 'SIGTERM';

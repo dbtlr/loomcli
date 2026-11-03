@@ -16,6 +16,7 @@ import {
 } from '../failures/errors.js';
 import type { InvokedBy, LoomError } from '../failures/errors.js';
 import { underCI } from '../host/host.js';
+import type { Host } from '../host/types.js';
 import { stdinClaimedTwice } from '../inputs/content-rules.js';
 import type { Content } from '../inputs/content.js';
 import { rememberInputNames } from '../inputs/missing-input.js';
@@ -48,6 +49,19 @@ import type {
 import { nameSharedAcrossKinds, optionDeclaredTwice, spellingTaken } from '../inputs/rules.js';
 import { fillInputs } from '../inputs/sources.js';
 import type { SourceOutcome } from '../inputs/sources.js';
+import type {
+  ArgumentConfig,
+  ArgumentValue,
+  DefaultConstraint,
+  ImpliedConstraint,
+  PerValueConstraint,
+  OptionConfig,
+  OptionValue,
+  ValidateOmittedConstraint,
+  StdinConfig,
+  ArgumentKeyConstraint,
+  Unmarked,
+} from '../inputs/types.js';
 import {
   suppliedInputs,
   configUnread,
@@ -71,9 +85,28 @@ import { graphMismatch, nodeAt, resultNode } from '../inspection/inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from '../inspection/inspect.js';
 import { candidatesOf } from '../invocation/parse.js';
 import type { ParsedInvocation } from '../invocation/parse.js';
+import type {
+  Action,
+  ActionChannel,
+  ActionContext,
+  declaredTypes,
+  DeclaredTypes,
+  Request,
+  StdinContext,
+} from '../invocation/types.js';
 import { interaction } from '../marks/interaction.js';
 import { isMarked } from '../marks/marks.js';
 import type { Log, LogBinder } from '../output/log.js';
+import type {
+  DeclaredResult,
+  OpenResult,
+  Out,
+  ResultBinding,
+  ResultView,
+  ResultViews,
+  ResultViewsOf,
+  RowViews,
+} from '../output/types.js';
 import {
   buildExtensions,
   extendStore,
@@ -105,44 +138,11 @@ import type {
   WithProviderGlobals,
 } from '../plugins/providers.js';
 import { brokenAttachHook } from '../plugins/rules.js';
+import type { AttachedCommand, attachedCommand, CommandAttachHook } from '../plugins/types.js';
 import type { LaneHandlers } from '../signals/signal-lane.js';
 import { echoesCancellation } from '../signals/signals.js';
 import type { ContextualStyle } from '../style/style.js';
 import { snapshot } from '../support/plain.js';
-import type {
-  Action,
-  ActionChannel,
-  ActionContext,
-  ArgumentConfig,
-  ArgumentValue,
-  AttachedCommand,
-  attachedCommand,
-  CommandAttachHook,
-  declaredTypes,
-  DeclaredResult,
-  DeclaredTypes,
-  DefaultConstraint,
-  ImpliedConstraint,
-  GlobalNameConstraint,
-  Host,
-  PerValueConstraint,
-  NameConstraint,
-  OpenResult,
-  OptionConfig,
-  OptionValue,
-  Out,
-  Request,
-  ResultBinding,
-  ResultView,
-  ResultViews,
-  ResultViewsOf,
-  RowViews,
-  ValidateOmittedConstraint,
-  StdinConfig,
-  StdinContext,
-  ArgumentKeyConstraint,
-  Unmarked,
-} from '../types.js';
 import type {
   BuiltGlobals,
   GlobalsState,
@@ -162,6 +162,7 @@ import {
   siblingNameTaken,
   variadicArgumentLast,
 } from './rules.js';
+import type { GlobalNameConstraint, NameConstraint } from './types.js';
 
 /** One positional slot: the declaration it fills and whether it takes the remaining tokens. */
 export interface ArgumentSlot {

@@ -2,7 +2,7 @@ import type { DiagnosticRule } from '../diagnostics/diagnostic-text.js';
 import { siteFinding } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';
 import { DeclarationError, midSentence } from '../failures/errors.js';
-import type { OptionConfig } from '../types.js';
+import type { OptionConfig } from '../inputs/types.js';
 
 /**
  * A run-wide mark: the key one global option carries, the option type that carries it, and the

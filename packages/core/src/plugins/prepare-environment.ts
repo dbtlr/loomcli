@@ -1,5 +1,6 @@
+import type { Host } from '../host/types.js';
 import type { Log, LogBinder } from '../output/log.js';
-import type { Host, Out } from '../types.js';
+import type { Out } from '../output/types.js';
 import type { BuiltPlugin } from './plugin.js';
 
 /** Environment preparation precedes input validation and exposes no parsed invocation. */

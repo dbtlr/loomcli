@@ -17,7 +17,7 @@ import { expect, test } from 'vite-plus/test';
  */
 
 import { ProgressLedger } from '../src/output/progress-events.js';
-import type { ProgressEvent } from '../src/types.js';
+import type { ProgressEvent } from '../src/output/types.js';
 import { invoke as invokeFixture } from './run-fixture.ts';
 
 /** A ledger whose events land in the returned list, with markup stripped by a stand-in. */

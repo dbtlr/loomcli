@@ -2,11 +2,11 @@ import type { Readable, Writable } from 'node:stream';
 import { setImmediate as nextTurn } from 'node:timers/promises';
 
 import type { OnShutdown } from '../signals/signal-lane.js';
-import type { Host } from '../types.js';
 import { backgroundQuery, queryAllowed, readReplies } from './background.js';
 import type { Background } from './background.js';
 import { hasInterruptKey, raiseInterruptKeys } from './interrupt-keys.js';
 import { inBackgroundJob } from './process-handle.js';
+import type { Host } from './types.js';
 
 /**
  * How long core waits for the DA1 reply, in milliseconds: a backstop for a pseudo-terminal with no

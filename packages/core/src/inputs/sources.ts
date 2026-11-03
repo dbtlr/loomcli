@@ -17,15 +17,16 @@ import {
   reasonOf,
 } from '../failures/errors.js';
 import type { InvokedBy } from '../failures/errors.js';
+import type { Host } from '../host/types.js';
 import type { CommandGraph, OptionNode } from '../inspection/inspect.js';
 import type { LogBinder } from '../output/log.js';
+import type { Out } from '../output/types.js';
 import { carriesBinding } from '../plugins/extension.js';
 import type { ExtensionRecords } from '../plugins/extension.js';
 import { loadDefault, pluginSentence } from '../plugins/plugin.js';
 import type { BuiltPlugin, BuiltSource, SourceContext } from '../plugins/plugin.js';
 import type { ContextualStyle } from '../style/style.js';
 import { isPlainObject } from '../support/plain.js';
-import type { Host, Out } from '../types.js';
 import { envNames } from './bindings.js';
 import { absentBooleans, claims, losingMembers } from './option-groups.js';
 import type { OptionGroup, Tier } from './option-groups.js';

@@ -3,9 +3,11 @@ import { Readable, Writable } from 'node:stream';
 import type { LoomError } from '../failures/errors.js';
 import { capturedHost, settlingTerminal } from '../host/host.js';
 import type { HandleFacts, HostCapture } from '../host/host.js';
-import type { Host, InvocationValues, InvokeOptions, ProgressEvent } from '../types.js';
+import type { Host } from '../host/types.js';
+import type { ProgressEvent } from '../output/types.js';
 import type { StartingView } from './chain.js';
 import type { NamedCall } from './lower.js';
+import type { InvocationValues, InvokeOptions } from './types.js';
 
 /** The entries of one `args` or `options` record, a key whose value is `undefined` left out. */
 function definedEntries(record: InvocationValues['args']): (readonly [string, unknown])[] {

@@ -1,9 +1,9 @@
 import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { asSentence, DeclarationError, quoted, reasonOf } from '../failures/errors.js';
 import type { CommandGraph } from '../inspection/inspect.js';
-import type { GraphBuiltHook } from '../types.js';
 import type { BuiltPlugin } from './plugin.js';
 import { brokenGraphHook } from './rules.js';
+import type { GraphBuiltHook } from './types.js';
 
 /** The finding for the hook one plugin declared, as `plugin(identity, { onGraphBuilt })`. */
 function hookFinding(identity: string, hook: GraphBuiltHook): Finding {

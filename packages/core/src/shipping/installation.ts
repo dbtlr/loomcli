@@ -1,10 +1,11 @@
 import { realpathSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 
+import type { Host } from '../host/types.js';
 import { readSmallFile } from '../support/files.js';
 import { isPlainObject } from '../support/plain.js';
-import type { Host, ReleaseFacts } from '../types.js';
 import { applicationDirectory } from './directory.js';
+import type { ReleaseFacts } from './types.js';
 
 /** How the running application was installed, as its installation record holds it. */
 type Installation = NonNullable<ReleaseFacts['installation']>;

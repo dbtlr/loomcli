@@ -20,27 +20,22 @@ import {
 } from '../failures/errors.js';
 import { readTranslations } from '../failures/translators.js';
 import type { Translation, TranslationContributor } from '../failures/translators.js';
+import type { Host } from '../host/types.js';
 import { claimVariables } from '../inputs/bindings.js';
 import { compileOptions } from '../inputs/options.js';
 import type { OptionValues } from '../inputs/options.js';
+import type { GlobalOptionConfig, OptionValue } from '../inputs/types.js';
 import type { InputDeclaration, OptionInput } from '../inputs/validation.js';
 import type { CommandGraph, OptionNode } from '../inspection/inspect.js';
 import type { MiddlewareContext } from '../invocation/chain.js';
 import { coreViews } from '../output/lanes.js';
 import type { Log, LogHook } from '../output/log.js';
+import type { Out } from '../output/types.js';
 import { buildViews, viewIdentities } from '../output/view.js';
 import type { ViewContribution, ViewSubject } from '../output/view.js';
 import type { ContextualStyle, ThemeConstraint, ThemeMapping } from '../style/style.js';
 import { buildTheme } from '../style/theme.js';
 import type { BuiltTheme } from '../style/theme.js';
-import type {
-  CommandAttachHook,
-  GlobalOptionConfig,
-  GraphBuiltHook,
-  Host,
-  OptionValue,
-  Out,
-} from '../types.js';
 import { buildExtensions, registerDescriptor } from './extension.js';
 import type { AdmittedDescriptor, AnyExtension, DescriptorRegistry } from './extension.js';
 import type { FailureHook } from './hints.js';
@@ -52,6 +47,7 @@ import {
   pluginInstalledTwice,
   slotTaken,
 } from './rules.js';
+import type { CommandAttachHook, GraphBuiltHook } from './types.js';
 
 /**
  * The declaration record a plugin contributes its global options under, keyed by option name. Each

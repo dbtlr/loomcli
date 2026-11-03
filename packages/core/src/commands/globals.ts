@@ -11,6 +11,7 @@ import type {
   SpellingTable,
 } from '../inputs/options.js';
 import { optionDeclaredTwice, spellingTaken } from '../inputs/rules.js';
+import type { OptionConfig } from '../inputs/types.js';
 import { configUnread } from '../inputs/validation.js';
 import type { InputDeclaration, OptionInput, ValidatedInputs } from '../inputs/validation.js';
 import { background } from '../marks/background-mark.js';
@@ -23,7 +24,6 @@ import { buildExtensions } from '../plugins/extension.js';
 import type { DescriptorRegistry } from '../plugins/extension.js';
 import type { BuiltPlugin } from '../plugins/plugin.js';
 import { snapshot } from '../support/plain.js';
-import type { OptionConfig } from '../types.js';
 
 const globalSubject = 'the global options';
 

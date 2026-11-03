@@ -2,8 +2,8 @@ import { declaredName } from '../commands/rules.js';
 import { siteFinding } from '../diagnostics/facts.js';
 import type { InputSite } from '../diagnostics/facts.js';
 import { DeclarationError, quoted } from '../failures/errors.js';
-import type { OptionConfig } from '../types.js';
 import { envDelimiterEmpty, optionDeclaredTwice, spellingTaken } from './rules.js';
+import type { OptionConfig } from './types.js';
 
 export interface OptionDeclaration {
   name: string;

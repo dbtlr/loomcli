@@ -7,19 +7,9 @@ import type { InputSite } from '../diagnostics/facts.js';
 import { validatorFailed } from '../diagnostics/rules.js';
 import { asSentence, DeclarationError, InputError, quoted, reasonOf } from '../failures/errors.js';
 import type { InputProblem } from '../failures/errors.js';
+import type { Host } from '../host/types.js';
 import { escapeControlCharacters } from '../support/controls.js';
 import { defineEntry } from '../support/plain.js';
-import type {
-  ArgumentConfig,
-  ArgumentValue,
-  Host,
-  InputIdentity,
-  OptionConfig,
-  OptionValue,
-  SuppliedInputs,
-  StdinConfig,
-  ValidationContext,
-} from '../types.js';
 import type { Content } from './content.js';
 import { prepareContent } from './content.js';
 import { schemaOptions } from './context.js';
@@ -28,6 +18,16 @@ import type { OptionGroup } from './option-groups.js';
 import { booleanValue, copyValues, reportedOf, spellingsOf, withdrawFill } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
 import { invalidDefault, invalidImplied } from './rules.js';
+import type {
+  ArgumentConfig,
+  ArgumentValue,
+  InputIdentity,
+  OptionConfig,
+  OptionValue,
+  SuppliedInputs,
+  StdinConfig,
+  ValidationContext,
+} from './types.js';
 
 /**
  * One declared input, typed by its literal name and its own config. The value type is derived from

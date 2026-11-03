@@ -8,12 +8,14 @@ import {
 } from '../diagnostics/rules.js';
 import { InternalError, routedSubject } from '../failures/errors.js';
 import type { InvokedBy, LoomError } from '../failures/errors.js';
+import type { Host } from '../host/types.js';
 import { isSupplied } from '../inputs/options.js';
 import type { OptionValues } from '../inputs/options.js';
 import type { InputPlaces, DeclaredValues } from '../inputs/validation.js';
 import { nodeAt } from '../inspection/inspect.js';
 import type { CommandGraph, CommandNode } from '../inspection/inspect.js';
 import type { Log, LogBinder } from '../output/log.js';
+import type { DeclaredResult, OpenResult, Out, ResultBinding } from '../output/types.js';
 import { loadDefault, pluginSentence, pluginSpellings } from '../plugins/plugin.js';
 import type {
   BuiltPlugin,
@@ -26,16 +28,8 @@ import type { LaneHandlers, OnResume, OnShutdown, OnSuspend } from '../signals/s
 import type { ContextualStyle } from '../style/style.js';
 import { Handed } from '../support/handed.js';
 import { handled } from '../support/thenable.js';
-import type {
-  ActionChannel,
-  DeclaredResult,
-  Host,
-  OpenResult,
-  Out,
-  Request,
-  ResultBinding,
-} from '../types.js';
 import type { ParsedInvocation } from './parse.js';
+import type { ActionChannel, Request } from './types.js';
 
 /**
  * What the rest of one chain did: the action ran, a later middleware took over by returning without
