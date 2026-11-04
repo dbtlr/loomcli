@@ -13,6 +13,7 @@ const TITLE_ROOM = 2;
 /** The columns a title takes from the top border besides its own: a line, a space, and a space. */
 const TITLE_FRAME = 3;
 
+/** @public */
 type BoxConfig<Data> = { readonly title?: string } & ([Data] extends [string]
   ? { readonly content?: View<Data> }
   : { readonly content: View<Data> });
@@ -91,6 +92,8 @@ function framed(
  * frame, so a framed table shrinks to fit inside it. Text, or content, that resolves to no
  * character prints nothing. The returned value is a bare pack view and installs no plugin
  * behavior.
+ *
+ * @public
  */
 function box<Data = string>(
   ...config: [Data] extends [string] ? [config?: BoxConfig<Data>] : [config: BoxConfig<Data>]

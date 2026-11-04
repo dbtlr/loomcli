@@ -281,41 +281,46 @@ The manifest plugin prints, for the routed Command, a self-contained JSON projec
 
 ## Manifest extension
 
+`manifestCommand`'s published schema is a [Standard Schema](https://standardschema.dev) whose input is `ManifestCommandInput` and whose output is `ManifestCommandFacts`, so an author's type check loads no validation library's declarations. The pack validates with valibot inside the module, under the pack's shared line and Markdown rules, which help's schema also uses. A declared failure's input holds the class, and its output holds the class's failure code and declared exit code, read by the schema.
+
 ```ts
-// src/manifest/extension.ts, the declarations module of the @loomcli/plugins/manifest subpath
-import { extension } from '@loomcli/core';
-import { array, object, optional, pipe, rawTransform, unknown } from 'valibot';
+// @loomcli/plugins/manifest/extension
+import type { Extension, StandardSchemaV1 } from '@loomcli/core';
 
-import { packageName } from '../constants.js';
-// The pack's shared line and Markdown rules, which help's schema also uses.
-import { line, markdown } from '../lines.js';
-// readFailure reads a value as a class that extends LoomError and answers its failure code and
-// declared exit code, or the sentence that rejects it.
-import { readFailure } from './failures.js';
+export interface CommandExample {
+  readonly command: string;
+  readonly note?: string | undefined;
+}
 
-// declaredFailure accepts { failure, meaning }, where failure is a class that extends LoomError,
-// and outputs { code, exitCode, meaning } from the class's failure code and declared exit code.
-const declaredFailure = pipe(
-  object({ failure: optional(unknown()), meaning: line }),
-  rawTransform(({ addIssue, dataset, NEVER }) => {
-    const read = readFailure(dataset.value.failure);
-    if ('issue' in read) {
-      addIssue({ message: read.issue });
-      return NEVER;
-    }
-    return { code: read.code, exitCode: read.exitCode, meaning: dataset.value.meaning };
-  }),
-);
+// failure is a class that extends LoomError; the schema rejects any other value.
+export interface DeclaredFailureInput {
+  readonly failure?: unknown;
+  readonly meaning: string;
+}
 
-export const manifestCommand = extension(`${packageName}/manifest/command`, {
-  collect: true,
-  schema: object({
-    details: optional(markdown),
-    examples: optional(array(object({ command: line, note: optional(line) }))),
-    failures: optional(array(declaredFailure)),
-  }),
-  target: 'command',
-});
+export interface DeclaredFailure {
+  readonly code: string; // the class's failure code
+  readonly exitCode: number; // the class's declared exit code
+  readonly meaning: string;
+}
+
+export interface ManifestCommandInput {
+  readonly details?: string | undefined;
+  readonly examples?: readonly CommandExample[] | undefined;
+  readonly failures?: readonly DeclaredFailureInput[] | undefined;
+}
+
+export interface ManifestCommandFacts {
+  readonly details?: string | undefined;
+  readonly examples?: readonly CommandExample[] | undefined;
+  readonly failures?: readonly DeclaredFailure[] | undefined;
+}
+
+export declare const manifestCommand: Extension<
+  'command',
+  StandardSchemaV1<ManifestCommandInput, ManifestCommandFacts>,
+  true
+>;
 ```
 
 ```ts

@@ -8,7 +8,7 @@ This page documents the configuration plugin, which reads the one configuration 
 
 ```ts
 // @loomcli/plugins/config
-import type { Plugin, PluginOptionValues, Provider, StandardSchemaV1, StringOption } from '@loomcli/core';
+import type { Extension, Plugin, PluginOptionValues, Provider, StandardSchemaV1, StringOption } from '@loomcli/core';
 
 type Short = NonNullable<StringOption['short']>; // one ASCII letter, as every option's short spelling is
 
@@ -63,12 +63,12 @@ export declare function configuration<const Schema extends StandardSchemaV1, con
   settings: ConfigurationSettings<Schema, Directory>,
 ): Configuration<Schema, Directory>;
 
-// src/config/extension.ts, the declarations module of the @loomcli/plugins/config subpath.
-// configPath is the dotted-path schema the rules below state.
-export const configInput = extension(`${packageName}/config/input`, {
-  schema: object({ path: configPath }),
-  target: 'option',
-});
+// @loomcli/plugins/config/extension, the declarations module. path is the dotted path the rules
+// below state.
+export interface ConfigInputFacts {
+  readonly path: string;
+}
+export declare const configInput: Extension<'option', StandardSchemaV1<ConfigInputFacts, ConfigInputFacts>>;
 ```
 
 ```ts

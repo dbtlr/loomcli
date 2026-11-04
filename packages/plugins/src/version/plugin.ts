@@ -27,9 +27,14 @@ function postfixOf(settings: VersionSettings | undefined): string | undefined {
   });
 }
 
+/** @public @sealed */
 export type VersionOptions = typeof options;
 
-/** What an application tells the version plugin: the text it prints after the standard line. */
+/**
+ * What an application tells the version plugin: the text it prints after the standard line.
+ *
+ * @public
+ */
 export interface VersionSettings {
   /** One line printed after the name and version, such as `(Report schema v1)`. None by default. */
   readonly postfix?: string;
@@ -39,6 +44,8 @@ export interface VersionSettings {
  * A plugin that prints the Application's version, then the settings' postfix when there is one, and
  * ends the invocation. It judges the postfix at the call. The annotated return type is the boundary
  * that breaks the cycle between this module and the middleware module `load` names.
+ *
+ * @public
  */
 export function version(settings?: VersionSettings): Plugin<VersionOptions> {
   const postfix = postfixOf(settings);

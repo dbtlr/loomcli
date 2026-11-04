@@ -7,12 +7,15 @@ interface FieldDefinition<Row, Key extends keyof Row & string> {
   readonly format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
 }
 
+/** @public */
 type FieldEntry<Row> = {
   [Key in keyof Row & string]: FieldDefinition<Row, Key>;
 }[keyof Row & string];
 
+/** @public */
 type Field<Row> = (keyof Row & string) | FieldEntry<Row>;
 
+/** @public */
 interface RecordsConfig<Row> {
   readonly identifier: keyof Row & string;
   readonly fields?: readonly Field<Row>[];
@@ -100,6 +103,8 @@ function renderRecord<Row>({
 /**
  * A row view over records, with one key-value lane per field and a counted closing summary. The
  * returned value is a bare pack view and installs no plugin behavior.
+ *
+ * @public
  */
 function records<Row>(config: RecordsConfig<Row>): RowView<Row> {
   const configured = config.fields?.map((field) => prepareField(field, config.identifier));

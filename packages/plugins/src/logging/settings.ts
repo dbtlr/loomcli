@@ -5,7 +5,11 @@ import type { WrittenLevel } from './record.js';
 const defaultMaxBytes = 10_000_000;
 const defaultKeep = 5;
 
-/** What the application tells the logging plugin. */
+/**
+ * What the application tells the logging plugin.
+ *
+ * @public
+ */
 type LoggingSettings =
   | {
       readonly to?: 'file';

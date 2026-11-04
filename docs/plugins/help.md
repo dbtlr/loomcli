@@ -41,70 +41,41 @@ const app = new Application('example', {
 });
 ```
 
-```ts
-// src/lines.ts, the pack's line, prose, and Markdown rules, which belong to no subpath
-import { check, pipe, string } from 'valibot';
-
-const terminator = /[\n\v\f\r\u0085\u2028\u2029]/u;
-export const line = pipe(
-  string(),
-  check(
-    (value) => /\S/u.test(value) && !terminator.test(value),
-    'Supply one line that holds a character other than whitespace.',
-  ),
-);
-export const prose = pipe(
-  string(),
-  check(
-    (value) => value.split(/\r\n|[\n\v\f\r\u0085\u2028\u2029]/u).every((each) => /\S/u.test(each)),
-    'Supply prose whose every line holds a character other than whitespace.',
-  ),
-);
-export const markdown = pipe(
-  string(),
-  check(
-    (value) => /\S/u.test(value),
-    'Supply Markdown that holds a character other than whitespace.',
-  ),
-);
-```
+Each descriptor's published schema is a [Standard Schema](https://standardschema.dev) over an exported facts interface, so an author's type check loads no validation library's declarations. The pack validates with valibot inside the module, under the rules the paragraphs below state. The line and Markdown rules live in one pack module, `src/lines.ts`, that belongs to no subpath, so help and the manifest apply the same rules.
 
 ```ts
-// src/help/extension.ts, the declarations module of the @loomcli/plugins/help subpath
-import { extension } from '@loomcli/core';
-import { array, literal, object, optional, pipe, regex, strictTuple, string, union } from 'valibot';
+// @loomcli/plugins/help/extension
+import type { Extension, StandardSchemaV1 } from '@loomcli/core';
 
-import { packageName } from '../constants.js';
-import { line, markdown } from '../lines.js';
+export type HelpSectionPath = readonly [string] | readonly [string, string];
 
-const example = object({ command: line, note: optional(line) });
-const sectionPath = union([strictTuple([line]), strictTuple([line, line])]);
-const sectionPaths = array(sectionPath);
-const word = pipe(string(), regex(/^[^\s\u0085]+$/u, 'Supply one word with no whitespace.'));
+export interface CommandExample {
+  readonly command: string;
+  readonly note?: string | undefined;
+}
 
-export const helpCommand = extension(`${packageName}/help/command`, {
-  schema: object({
-    commandSections: optional(sectionPaths),
-    details: optional(markdown),
-    examples: optional(array(example)),
-    optionSections: optional(sectionPaths),
-    section: optional(sectionPath),
-  }),
-  target: 'command',
-});
-export const helpInput = extension(`${packageName}/help/input`, {
-  schema: object({
-    accepts: optional(line),
-    hideBindings: optional(literal(true)),
-    placeholder: optional(word),
-    section: optional(sectionPath),
-  }),
-  target: 'option',
-});
-export const helpArgument = extension(`${packageName}/help/argument`, {
-  schema: object({ accepts: optional(line) }),
-  target: 'argument',
-});
+export interface HelpCommandFacts {
+  readonly commandSections?: readonly HelpSectionPath[] | undefined;
+  readonly details?: string | undefined;
+  readonly examples?: readonly CommandExample[] | undefined;
+  readonly optionSections?: readonly HelpSectionPath[] | undefined;
+  readonly section?: HelpSectionPath | undefined;
+}
+
+export interface HelpInputFacts {
+  readonly accepts?: string | undefined;
+  readonly hideBindings?: true | undefined;
+  readonly placeholder?: string | undefined;
+  readonly section?: HelpSectionPath | undefined;
+}
+
+export interface HelpArgumentFacts {
+  readonly accepts?: string | undefined;
+}
+
+export declare const helpCommand: Extension<'command', StandardSchemaV1<HelpCommandFacts, HelpCommandFacts>>;
+export declare const helpInput: Extension<'option', StandardSchemaV1<HelpInputFacts, HelpInputFacts>>;
+export declare const helpArgument: Extension<'argument', StandardSchemaV1<HelpArgumentFacts, HelpArgumentFacts>>;
 ```
 
 `helpCommand` targets Commands, so a Command or the Application carries it. `details` is [Markdown](help-page.md#markdown-details) the extended page renders after the masthead, a string that holds a character other than whitespace, with blank lines allowed, written inline or brought in with a text import. `examples` lists invocations the page prints under EXAMPLES: `command` holds the tokens after the application name as one line, and `note` is one line printed under it. `helpInput` targets options, so a local option and a global option carry it, whoever declares it. `placeholder` is the word the page shows for a string option's value, `<path>` for a `--file` declared with `placeholder: 'path'`; it holds no whitespace, and without it the page shows the option's declared name. A `placeholder` on a Boolean or counted option is accepted and never shown, because neither takes a value. `accepts` is one line the page prints as the input's [accepted values](#accepted-values), in place of any list help would derive from the schema; an `accepts` on a Boolean or counted option is accepted and never shown, for the same reason. `hideBindings`, which holds `true` alone, keeps the option's [bindings](#help-variants) off both pages. `helpArgument` targets arguments and carries `accepts` alone: an argument's placeholder is its declared name, which the author already chose, and its description is a core fact. The value a projection reads back through `readExtension` is the schema's output, deeply read-only, with an omitted field absent and an explicit `undefined` dropped, as every stored extension value drops it.

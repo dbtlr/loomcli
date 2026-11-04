@@ -48,10 +48,14 @@ function hookOf(plan: LoggingPlan): LogHook {
 /**
  * A plugin that writes each log event as one JSON record, appended to a size-rotated file in the
  * platform's state or log directory, or written to stderr. It is an `onLog` hook and nothing else.
+ *
+ * @public
  */
 export function logging(settings?: LoggingSettings): Plugin {
   return plugin(identity, { onLog: hookOf(planOf(settings)) });
 }
 
 export { LoggingError } from './error.js';
+export type { LoggingErrorKind } from './error.js';
+export type { WrittenLevel } from './record.js';
 export type { LoggingSettings } from './settings.js';

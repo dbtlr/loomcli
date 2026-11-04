@@ -12,8 +12,11 @@ interface FormatSettings {
   readonly short?: NonNullable<StringOption['short']>; // one ASCII letter, as every option's short spelling is
 }
 function format(settings?: FormatSettings): Plugin<{}>;
-function json<Data>(config?: { map?: (data: Readonly<Data>) => unknown }): View<Data>; // mediaType 'application/json'
-function jsonl<Data>(config?: { map?: (data: Readonly<Data>) => unknown }): View<Data>; // mediaType 'application/jsonl'
+interface EncodingConfig<Data> {
+  readonly map?: (data: Readonly<Data>) => unknown;
+}
+function json<Data>(config?: EncodingConfig<Data>): View<Data>; // mediaType 'application/json'
+function jsonl<Data>(config?: EncodingConfig<Data>): View<Data>; // mediaType 'application/jsonl'
 ```
 
 ```ts

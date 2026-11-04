@@ -7,12 +7,18 @@ import { renderPage } from './page.js';
 /**
  * Which page an invocation asked for: `compact` orients a reader who needs the syntax, and
  * `extended` teaches with the details and examples as well.
+ *
+ * @public
+ * @sealed
  */
 export type HelpVariant = 'compact' | 'extended';
 
 /**
  * The data the help page presents: the whole graph, the Command the invocation routed to, and the
  * variant the operator's spelling selected.
+ *
+ * @public
+ * @sealed
  */
 export interface HelpPage {
   readonly graph: CommandGraph;
@@ -24,6 +30,8 @@ export interface HelpPage {
  * The declared view of the help page. Its default derives the page from the graph, the routed
  * node, and the variant alone. It escapes each raw fragment before styling and measuring it, and
  * ends the page with exactly one newline. A replacement owns both obligations.
+ *
+ * @public
  */
 export const helpPage = view<HelpPage>(`${packageName}/help/page`, {
   render: (page, context) => `${renderPage(page, context)}\n`,

@@ -11,9 +11,14 @@ const options = {
   help: { control: true, description: 'Show this help.', short: 'h', type: 'boolean' },
 } satisfies PluginOptions;
 
+/** @public @sealed */
 export type HelpOptions = typeof options;
 
-/** What an application tells the help plugin. */
+/**
+ * What an application tells the help plugin.
+ *
+ * @public
+ */
 export interface HelpSettings {
   /** Page a help page that outgrows the terminal through the operator's pager. Off by default. */
   readonly paging?: boolean;
@@ -25,6 +30,8 @@ export interface HelpSettings {
  * hook points every usage error at the page. With `paging`, a long page goes to the operator's
  * pager. The annotated return type is the boundary that breaks the cycle between this module and the
  * middleware module `load` names.
+ *
+ * @public
  */
 export function help(settings?: HelpSettings): Plugin<HelpOptions> {
   const paging = settings?.paging ?? false;

@@ -1,6 +1,10 @@
 import type { ActionContext, Host, Log } from '@loomcli/core';
 
-/** One row status adds under the unit, from the author's probe. */
+/**
+ * One row status adds under the unit, from the author's probe.
+ *
+ * @public
+ */
 export interface ServiceDetail {
   /** The row's name, such as health. */
   readonly name: string;
@@ -8,7 +12,12 @@ export interface ServiceDetail {
   readonly value: string;
 }
 
-/** What status read from the service manager and the file system. */
+/**
+ * What status read from the service manager and the file system.
+ *
+ * @public
+ * @sealed
+ */
 export interface ServiceState {
   /** The settings' label. */
   readonly label: string;
@@ -26,13 +35,23 @@ export interface ServiceState {
   readonly notes: readonly string[];
 }
 
-/** The result status sends: the state, then the probe's rows. */
+/**
+ * The result status sends: the state, then the probe's rows.
+ *
+ * @public
+ * @sealed
+ */
 export interface ServiceStatus extends ServiceState {
   /** The probe's rows, or none. */
   readonly details: readonly ServiceDetail[];
 }
 
-/** What the probe receives from status. */
+/**
+ * What the probe receives from status.
+ *
+ * @public
+ * @sealed
+ */
 export interface ProbeContext {
   /** What status read from the manager. */
   readonly state: ServiceState;
@@ -46,7 +65,11 @@ export interface ProbeContext {
   readonly log: Log;
 }
 
-/** What the application tells the service plugin. */
+/**
+ * What the application tells the service plugin.
+ *
+ * @public
+ */
 export interface ServiceSettings {
   /** The unit's reverse-DNS name, such as com.acme.notes. */
   readonly label: string;

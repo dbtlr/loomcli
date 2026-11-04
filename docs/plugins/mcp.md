@@ -17,25 +17,28 @@ export declare function mcp(): Plugin;
 // @loomcli/plugins/mcp/extension, declarations alone
 import type { Extension, StandardSchemaV1 } from '@loomcli/core';
 
-// The value an author gives mcpCommand.
-// The package exports no name for this shape.
-interface McpCommandInput {
-  readonly description?: string; // the tool's description, in place of the Command's
-  readonly annotations?: {
-    readonly readOnly?: boolean; // projected as readOnlyHint
-    readonly destructive?: boolean; // projected as destructiveHint
-    readonly idempotent?: boolean; // projected as idempotentHint
-    readonly openWorld?: boolean; // projected as openWorldHint
-  };
+// The hints a tool carries about its effects.
+export interface McpAnnotations {
+  readonly destructive?: boolean | undefined; // projected as destructiveHint
+  readonly idempotent?: boolean | undefined; // projected as idempotentHint
+  readonly openWorld?: boolean | undefined; // projected as openWorldHint
+  readonly readOnly?: boolean | undefined; // projected as readOnlyHint
 }
-export declare const mcpCommand: Extension<'command', StandardSchemaV1<McpCommandInput>>;
+// The value an author gives mcpCommand.
+export interface McpCommandFacts {
+  readonly annotations?: McpAnnotations | undefined;
+  readonly description?: string | undefined; // the tool's description, in place of the Command's
+}
+export declare const mcpCommand: Extension<'command', StandardSchemaV1<McpCommandFacts, McpCommandFacts>>;
 // The value an author gives mcpInput: the option's description for an agent, or its exclusion from every tool.
-// The package exports no name for this shape.
-type McpInputInput =
-  | { readonly description: string; readonly exclude?: never }
-  | { readonly exclude: true; readonly description?: never };
-export declare const mcpInput: Extension<'option', StandardSchemaV1<McpInputInput>>;
-export declare const mcpArgument: Extension<'argument', StandardSchemaV1<{ readonly description: string }>>;
+export type McpInputFacts =
+  | { readonly description: string; readonly exclude?: undefined }
+  | { readonly description?: undefined; readonly exclude: true };
+export declare const mcpInput: Extension<'option', StandardSchemaV1<McpInputFacts, McpInputFacts>>;
+export interface McpArgumentFacts {
+  readonly description: string;
+}
+export declare const mcpArgument: Extension<'argument', StandardSchemaV1<McpArgumentFacts, McpArgumentFacts>>;
 ```
 
 ```ts

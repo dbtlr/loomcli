@@ -1,4 +1,9 @@
-/** The step of writing a record that failed. */
+/**
+ * The step of writing a record that failed.
+ *
+ * @public
+ * @sealed
+ */
 type LoggingErrorKind = 'unresolved-directory' | 'create-directory' | 'append' | 'rotate';
 
 /** What a failure of one step knows beside its kind. */
@@ -32,6 +37,9 @@ function messageOf(kind: LoggingErrorKind, { path, variable }: LoggingErrorDetai
 /**
  * One failure to resolve, create, append to, or rotate the log file, which the plugin hands to the
  * author's `onError`. `variable` and `cause` are absent unless the step has one to report.
+ *
+ * @public
+ * @sealed
  */
 class LoggingError extends Error {
   readonly kind: LoggingErrorKind;

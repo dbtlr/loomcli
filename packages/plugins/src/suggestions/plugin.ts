@@ -143,6 +143,8 @@ const unknownOption: FailureView<UnknownOptionError> = { render };
  * A plugin that offers the declared name nearest a mistyped Command or option as the fix inside
  * the failure's sentence. Its hook reads the graph and adds no hint; its two views write the
  * sentence, and write core's text when no name is near.
+ *
+ * @public
  */
 export function suggestions(): Plugin {
   return plugin(`${packageName}/suggestions`, {

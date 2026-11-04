@@ -22,12 +22,15 @@ interface ColumnDefinition<Row, Key extends keyof Row & string> {
   readonly format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
 }
 
+/** @public */
 type ColumnEntry<Row> = {
   [Key in keyof Row & string]: ColumnDefinition<Row, Key>;
 }[keyof Row & string];
 
+/** @public */
 type Column<Row> = (keyof Row & string) | ColumnEntry<Row>;
 
+/** @public */
 interface TableConfig<Row> {
   readonly columns?: readonly Column<Row>[];
 }
@@ -252,6 +255,8 @@ function fallbackBlocks<Row>({ cells, columns, context, headers }: Grid<Row>): s
 /**
  * A whole view over rows, with columns measured before the first line is returned. The returned
  * value is a bare pack view and installs no plugin behavior.
+ *
+ * @public
  */
 function table<Row>(config: TableConfig<Row> = {}): View<readonly Row[]> {
   const configured = config.columns?.map(prepareColumn<Row>);

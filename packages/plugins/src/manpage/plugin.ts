@@ -69,6 +69,8 @@ const manpageCommand = new Command('manpage', { description: 'Write or install t
  * refreshes, and removes the set in the operator's home folder. It contributes the `manpage` group
  * and a graph hook that rejects two page names one file would hold on a file system that ignores
  * case. Each child loads its work when it runs.
+ *
+ * @public
  */
 function manpage(): Plugin {
   return plugin(`${packageName}/manpage`, {

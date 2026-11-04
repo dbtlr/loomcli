@@ -34,7 +34,11 @@ function stringify(value: unknown, indent?: number): string {
   return encoded;
 }
 
-/** Configuration both views share: how to reshape the received data before encoding it. */
+/**
+ * Configuration both views share: how to reshape the received data before encoding it.
+ *
+ * @public
+ */
 export interface EncodingConfig<Data> {
   readonly map?: (data: Readonly<Data>) => unknown;
 }
@@ -43,6 +47,8 @@ export interface EncodingConfig<Data> {
  * A whole view over one JSON document: the mapped data, indented two spaces, with one trailing
  * newline, declared `application/json` under every `map`. A bare pack view, so two calls with one
  * configuration are two distinct views.
+ *
+ * @public
  */
 export function json<Data>(config: EncodingConfig<Data> = {}): View<Data> {
   const map = config.map ?? identity<Data>;
@@ -57,6 +63,8 @@ export function json<Data>(config: EncodingConfig<Data> = {}): View<Data> {
  * is an array, and one such line otherwise. An empty array prints nothing. It is declared
  * `application/jsonl` under every `map`. A bare pack view, so two calls with one configuration are
  * two distinct views.
+ *
+ * @public
  */
 export function jsonl<Data>(config: EncodingConfig<Data> = {}): View<Data> {
   const map = config.map ?? identity<Data>;
