@@ -926,13 +926,14 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     return true;
   };
   /** One input no tier supplied, or whose configuration fill was dropped: its default, or its absence rule. */
+  /** Whether this run requires a value for the input: always, or only when it is not interactive. */
+  const requires = (input: ScopedInput['input']) =>
+    input.config.required === true ||
+    (input.config.required === 'non-interactive' && !invocation.interactive);
   const absent = async (entry: ScopedInput, spelling: string, fellBack: boolean) => {
     const { input } = entry;
     const collected = collects(input);
-    if (
-      input.config.required === true ||
-      (input.config.required === 'non-interactive' && !invocation.interactive)
-    ) {
+    if (requires(input)) {
       // An omitted required argument arrives here too, so omission has one class.
       // One aggregated diagnostic covers an omitted argument and an omitted option alike.
       omit(entry, spelling, missingMessage(input, spelling, { collected }));
@@ -1012,7 +1013,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
         }
       } else if (raw === undefined) {
         await absent(entry, spelling, false);
-      } else if (input.config.required && Array.isArray(raw) && raw.length === 0) {
+      } else if (requires(input) && Array.isArray(raw) && raw.length === 0) {
         // A filled list satisfies the at-least-one rule by its length, so an empty one is missing.
         omit(
           entry,
