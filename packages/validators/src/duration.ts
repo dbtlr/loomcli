@@ -13,7 +13,11 @@ import { fault } from './faults.js';
 import { reject } from './issues.js';
 import { boundsOrder, boundValue } from './rules.js';
 
-/** Inclusive bounds, each a duration spelled in the operator's grammar, such as `30`, `24h`, or `1 day`. */
+/**
+ * Inclusive bounds, each a duration spelled in the operator's grammar, such as `30`, `24h`, or `1 day`.
+ *
+ * @public
+ */
 interface DurationOptions {
   min?: string;
   max?: string;
@@ -65,6 +69,8 @@ function readDurationBounds(options: DurationOptions | undefined): Bounds {
  * A length of time in the operator's grammar, output as a number of milliseconds within `min` and
  * `max`, both inclusive. A bare number counts seconds, and a unit is a systemd.time(7) spelling
  * such as `ms`, `sec`, `min`, `hr`, `day`, or `weeks`. Whitespace may separate the parts.
+ *
+ * @public
  */
 function duration(options?: DurationOptions): Validator<number> {
   const bounds = readDurationBounds(options);

@@ -8,6 +8,7 @@ function literal(text: string): string {
   return textStyle.escape(escapeControlCharacters(text));
 }
 
+/** @public */
 interface TypedFrame {
   readonly kind: 'text' | 'secret' | 'confirm';
   readonly message: string;
@@ -16,6 +17,7 @@ interface TypedFrame {
   readonly cursor?: number | undefined; // Absent, the end of typed
   readonly hint: string | undefined;
 }
+/** @public */
 interface ChoiceRow {
   readonly kind: 'choice';
   readonly label: string;
@@ -24,10 +26,12 @@ interface ChoiceRow {
   readonly reason: string | undefined; // A disabled choice's reason, when it has one
   readonly selected: boolean; // In a multiselect's selection; false at a select
 }
+/** @public */
 interface SeparatorRow {
   readonly kind: 'separator';
   readonly label: string;
 }
+/** @public */
 interface ListFrame {
   readonly message: string;
   readonly issue: string | undefined;
@@ -40,6 +44,7 @@ interface ListFrame {
   readonly cursor?: number | undefined; // The term's cursor; absent, the end of term
   readonly loading?: boolean | undefined; // A source call has not settled; absent, false
 }
+/** @public */
 type QuestionFrame =
   | TypedFrame
   | (ListFrame & { readonly kind: 'select' })
@@ -49,11 +54,13 @@ type QuestionFrame =
       readonly min: number;
       readonly max: number | undefined;
     });
+/** @public @sealed */
 interface AnsweredLine {
   message: string;
   answer: string | undefined;
   readonly kind?: QuestionFrame['kind'] | undefined; // The question's kind; absent, a typed answer
 }
+/** @public @sealed */
 interface CancelledLine {
   message: string;
 }
@@ -503,6 +510,7 @@ function typedFrame(data: TypedFrame, context: ViewContext): string {
   );
 }
 
+/** @public */
 const questionFrame = view<QuestionFrame>('@loomcli/prompts/question-frame', {
   render: (data, context) => {
     const { style } = context;
@@ -515,6 +523,7 @@ const questionFrame = view<QuestionFrame>('@loomcli/prompts/question-frame', {
     return typedFrame(data, context) + issue;
   },
 });
+/** @public */
 const answeredLine = view<AnsweredLine>('@loomcli/prompts/answered-line', {
   render: ({ message, answer, kind }, { style }) => {
     if (answer === undefined) {
@@ -528,11 +537,17 @@ const answeredLine = view<AnsweredLine>('@loomcli/prompts/answered-line', {
     return `${style.dim('?')} ${message} ${style.dim('·')} ${drawn}\n`;
   },
 });
+/** @public */
 const cancelledLine = view<CancelledLine>('@loomcli/prompts/cancelled-line', {
   render: ({ message }, { style }) => `${style.dim(`? ${message} · cancelled`)}\n`,
 });
 
-/** What one progress line's view draws: its state, its counts, its spinner frame, and its time. */
+/**
+ * What one progress line's view draws: its state, its counts, its spinner frame, and its time.
+ *
+ * @public
+ * @sealed
+ */
 interface ProgressLine {
   readonly state: 'running' | 'ended' | 'failed' | 'cancelled';
   /** The label while the line runs, and the end message once it has ended or failed. */
@@ -582,6 +597,7 @@ function elapsedTime(elapsed: number): string {
   return `${String(Math.floor(whole / HOUR))}h ${String(minutes).padStart(2, '0')}m`;
 }
 
+/** @public */
 const progressLine = view<ProgressLine>('@loomcli/prompts/progress', {
   render: (data, { style }) => {
     const time = `${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`;

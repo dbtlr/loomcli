@@ -7,12 +7,19 @@ import { reject } from './issues.js';
 import { readable, writable } from './probe.js';
 import type { PathKind } from './probe.js';
 
+/**
+ * The access `path()` probes for: reading an existing entry, or writing one.
+ *
+ * @public
+ */
 type PathAccess = 'read' | 'write';
 
 /**
  * What `path()` checks on the filesystem: an access, read or write, which `kind` narrows to a
  * file, a directory, or any entry. `kind` has no meaning without an access, so the type takes it
  * only beside one.
+ *
+ * @public
  */
 type PathOptions =
   | { access: PathAccess; kind?: PathKind }
@@ -21,6 +28,8 @@ type PathOptions =
 /**
  * A path resolved against the host's cwd under the running process's path rules, and normalized.
  * With `access`, the filesystem is probed; the probe is advisory, since the filesystem can change.
+ *
+ * @public
  */
 function path(options?: PathOptions): Validator<string> {
   const access = options?.access;
@@ -47,4 +56,4 @@ function path(options?: PathOptions): Validator<string> {
 }
 
 export { path };
-export type { PathOptions };
+export type { PathAccess, PathOptions };

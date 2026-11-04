@@ -1,4 +1,8 @@
-/** The lowercase letter names accepted by the terminal's modifier keys. */
+/**
+ * The lowercase letter names accepted by the terminal's modifier keys.
+ *
+ * @public
+ */
 type KeyLetter =
   | 'a'
   | 'b'
@@ -30,7 +34,11 @@ type KeyLetter =
 const controlMask = 31;
 const letterOffset = 0;
 
-/** Terminal bytes for a scripted keyboard read. */
+/**
+ * Terminal bytes for a scripted keyboard read.
+ *
+ * @public
+ */
 const key = Object.freeze({
   alt: (letter: KeyLetter): string => `\u001b${letter}`,
   backspace: '\u007f',

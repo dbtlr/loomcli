@@ -376,7 +376,7 @@ A `parse` function, or a schema that `issueCode` takes, is author code. Author c
 
 ## Package
 
-- The root export holds the eleven factories, `createValidator`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the `Validator`, `ParseResult`, and `IssueCode` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
+- The root export holds the eleven factories, `createValidator`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the types an author names: `Validator`, `ParseResult`, `ParseReturn`, `ValidatorDefinition`, `IssueCode`, and `IssueCodeConfig`, and each factory's options, `TextOptions`, `IntegerOptions`, `NumberOptions`, `UrlOptions`, `DateTimeOptions`, `DurationOptions`, and `PathOptions` with its `PathAccess` and `PathKind`. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
 - `@loomcli/core` is a peer dependency, as it is for `@loomcli/plugins`. The package imports the Standard Schema types, `ValidationContext`, `validationContext`, and `DeclarationError` from core, and adds no runtime dependency of its own.
 
 ## Not shipped

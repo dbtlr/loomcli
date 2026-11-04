@@ -18,6 +18,8 @@ import { boundsOrder, boundValue, textPattern } from './rules.js';
 /**
  * The bounds on a token's length, and a pattern with the author's sentence for what it accepts.
  * Only the author can say what a pattern accepts, so `message` comes with `pattern` or not at all.
+ *
+ * @public
  */
 type TextOptions = { minLength?: number; maxLength?: number } & (
   | { pattern?: undefined; message?: undefined }
@@ -127,7 +129,11 @@ function codePoints(raw: string): number {
   return raw.replaceAll(/./gsu, '.').length;
 }
 
-/** A string whose code-point length is within bounds and which the pattern matches, if any. */
+/**
+ * A string whose code-point length is within bounds and which the pattern matches, if any.
+ *
+ * @public
+ */
 function text(options?: TextOptions): Validator<string> {
   const call = { arguments: [options], factory: 'text' };
   const minLength = lengthOf(call, 'minLength', options?.minLength) ?? defaultMinLength;

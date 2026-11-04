@@ -220,6 +220,13 @@ function checkApi(root, packages, { update = false } = {}) {
         if (messageId === 'ae-internal-missing-underscore' || messageId === 'ae-undocumented') {
           return;
         }
+        // A dependency's own typings may import a source file, as ESLint's do; Loom cannot change them.
+        if (
+          messageId === 'ae-wrong-input-file-type' &&
+          message.sourceFilePath?.split(/[\\/]/u).includes('node_modules')
+        ) {
+          return;
+        }
         if (messageId === 'ae-forgotten-export') {
           seenForgotten.add(name);
           if (policy.forgottenExports?.[name]) {

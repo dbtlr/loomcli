@@ -51,7 +51,7 @@ With `--no-input`, `--backend` and `--port` are required before the action runs,
 
 ## Calling a question
 
-Each kind is a function of the action context and one settings object, and returns a promise of the answer.
+Each kind is a function of the action context and one settings object, and returns a promise of the answer. The context parameter's type is the exported `PromptContext<Options, Args>`, the members of `ActionContext` a question reads, so a helper that asks a question on an action's behalf can name it.
 
 ```ts
 type LinkKey<Inputs> = keyof Inputs & string;
@@ -730,7 +730,7 @@ A question's `validate`, the linked input's validator a select or multiselect ru
 
 ## Package
 
-- The root export holds `text`, `secret`, `confirm`, `select`, `multiselect`, `InteractionUnavailableError`, `progress`, `progressStyle`, and the settings and choice types, `MultiselectSettings`, `Choice`, `ChoiceEntry`, `ChoiceObject`, `Separator`, `ChoiceSource`, `ChoiceValue`, `ChoiceAnswer`, `ProgressSettings`, `ProgressUpdate`, `TrackMessages`, `Progress`, `ProgressContext`, `Spinner`, and `ProgressStyleSettings` included. `@loomcli/prompts/views` exports `questionFrame`, `answeredLine`, `cancelledLine`, and `progressLine` and their data types, `TypedFrame`, `ListFrame`, `ChoiceRow`, and `SeparatorRow` included. Its one plugin is `progressStyle()`, whose identity is `@loomcli/prompts`.
+- The root export holds `text`, `secret`, `confirm`, `select`, `multiselect`, `InteractionUnavailableError`, `progress`, `progressStyle`, `PromptContext`, the context a question takes, and the settings and choice types, `MultiselectSettings`, `Choice`, `ChoiceEntry`, `ChoiceObject`, `Separator`, `ChoiceSource`, `ChoiceValue`, `ChoiceAnswer`, `ProgressSettings`, `ProgressUpdate`, `TrackMessages`, `Progress`, `ProgressContext`, `Spinner`, and `ProgressStyleSettings` included. `@loomcli/prompts/views` exports `questionFrame`, `answeredLine`, `cancelledLine`, and `progressLine` and their data types, `TypedFrame`, `ListFrame`, `ChoiceRow`, and `SeparatorRow` included. Its one plugin is `progressStyle()`, whose identity is `@loomcli/prompts`.
 - `@loomcli/core` is a peer dependency. The package reads the action context, `DeclarationError`, `FatalError`, `missingInputError`, `questionValidationOptions`, `validateLinkedValue`, `escapeControlCharacters`, `extension`, `plugin`, `readExtension`, the Standard Schema types, `glyph`, and `view` from core, and adds no runtime dependency of its own. Its style schema is a hand-written Standard Schema value.
 
 ## Not shipped

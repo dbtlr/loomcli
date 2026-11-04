@@ -25,6 +25,7 @@ function linkedIdentity(settings: {
   return settings.option === undefined ? {} : { option: settings.option };
 }
 
+/** @public */
 function text<
   Options,
   const Key extends LinkKey<Options> = never,
@@ -67,6 +68,7 @@ async function text<
   });
 }
 
+/** @public */
 function secret<
   Options,
   const Key extends LinkKey<Options> = never,
@@ -101,6 +103,7 @@ async function secret<
   });
 }
 
+/** @public */
 function confirm<Options, const Key extends LinkKey<Options> = never>(
   context: PromptContext<Options>,
   settings: ConfirmSettings<Key>,
@@ -140,6 +143,7 @@ async function confirm<Options, Key extends LinkKey<Options>>(
   });
 }
 
+/** @public */
 function select<
   Options,
   const Entry extends ChoiceEntry = ChoiceEntry,
@@ -209,6 +213,7 @@ export type {
   Answer,
   ConfirmSettings,
   LinkKey,
+  PromptContext,
   SecretSettings,
   SelectSettings,
   TextSettings,

@@ -11,6 +11,8 @@ import { unstatedStyle } from './unstated-style.js';
 /**
  * What a test states to build a failure hook context: the facts the failure view reads, each
  * whole, and any other member it means the hook to read.
+ *
+ * @public
  */
 type FailureHookValues = Pick<
   FailureHookContext,
@@ -31,6 +33,8 @@ type FailureHookValues = Pick<
  * });
  * hints(new UnknownCommandError('lsit', ['list']), context);
  * ```
+ *
+ * @public
  */
 function failureHookContext(hook: FailureHook, values: FailureHookValues): FailureHookContext {
   return {

@@ -11,13 +11,18 @@ import type {
 import { progressLine } from './views.js';
 import type { ProgressLine } from './views.js';
 
-/** A spinner in the shape of a cli-spinners entry: frames drawn in turn, one each interval. */
+/**
+ * A spinner in the shape of a cli-spinners entry: frames drawn in turn, one each interval.
+ *
+ * @public
+ */
 interface Spinner {
   readonly frames: readonly string[];
   /** Milliseconds between frames. */
   readonly interval: number;
 }
 
+/** @public */
 interface ProgressSettings {
   readonly label: string;
   /** A bar with counts; without it, a spinner. */
@@ -26,18 +31,25 @@ interface ProgressSettings {
   readonly spinner?: Spinner;
 }
 
+/** @public */
 interface ProgressUpdate {
   readonly completed?: number;
   readonly total?: number;
   readonly label?: string;
 }
 
+/** @public */
 interface TrackMessages<Value> {
   readonly done?: string | ((value: Value) => string);
   readonly failed?: string | ((error: unknown) => string);
 }
 
-/** The handle `progress()` returns for one line. */
+/**
+ * The handle `progress()` returns for one line.
+ *
+ * @public
+ * @sealed
+ */
 interface Progress {
   update(update: ProgressUpdate): void;
   end(message?: string): Promise<void>;
@@ -45,11 +57,17 @@ interface Progress {
   track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value>;
 }
 
-/** What `progress()` reads: an action's, a middleware's, or a configuration source's context. */
+/**
+ * What `progress()` reads: an action's, a middleware's, or a configuration source's context.
+ *
+ * @public
+ * @sealed
+ */
 type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
   readonly out: Pick<Out, 'region' | 'info' | 'success' | 'error'>;
 };
 
+/** @public */
 interface ProgressStyleSettings {
   readonly spinner?: Spinner;
   readonly bar?: { readonly complete: string; readonly incomplete: string };
@@ -122,6 +140,8 @@ const progressStyleExtension = extension('@loomcli/prompts/progress-style', {
 /**
  * The optional plugin that sets how every progress line of an application looks: a spinner in the
  * cli-spinners shape and the bar's cells. Each setting it omits keeps the library's default.
+ *
+ * @public
  */
 function progressStyle(settings?: ProgressStyleSettings): Plugin {
   const style: StoredStyle = {
@@ -178,6 +198,8 @@ interface LineState {
  * line as the region's last frame. A line whose region closed as it opened draws nothing, writes
  * nothing, and runs no timer. Off a terminal it writes one start line through `info` and one
  * end line through `success` or `error`. It reports at its start, at each update, and at its close.
+ *
+ * @public
  */
 function progress(context: ProgressContext, settings: ProgressSettings): Progress {
   const { label, total } = settings;

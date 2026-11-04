@@ -51,7 +51,11 @@ const recommended = { plugins: { [namespace]: { meta, rules } }, rules: enabledR
  */
 const oxlint = { jsPlugins: [packageName], rules: enabledRules };
 
-/** The plugin: its name and version, its rules, and the configurations that turn them on. */
+/**
+ * The plugin: its name and version, its rules, and the configurations that turn them on.
+ *
+ * @public
+ */
 const loomPlugin = { configs: { oxlint, recommended }, meta, rules };
 
 export default loomPlugin;
