@@ -17,7 +17,8 @@ type QuestionFrame = BaseFrame &
     | {
         kind: 'text' | 'secret' | 'confirm';
         typed: string;
-        cursor: number;
+        /** The cursor's grapheme index into `typed`; absent, the cursor is at the end of `typed`. */
+        cursor?: number | undefined;
         hint: string | undefined;
       }
     | {
@@ -259,7 +260,7 @@ function typedFrame(
     field(
       {
         columns: budget,
-        cursor: hint ? 0 : data.cursor,
+        cursor: hint ? 0 : (data.cursor ?? graphemes(data.typed).length),
         hint,
         text: hint ? (data.hint ?? '') : data.typed,
       },

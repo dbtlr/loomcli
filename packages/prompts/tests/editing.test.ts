@@ -100,6 +100,30 @@ test.each([
   expect(stripVTControlCharacters(mock.stderr.text)).toBe(expected);
 });
 
+test('a frame without a cursor draws the cursor at the end of the typed line', async () => {
+  const drawn: string[] = [];
+  for (const cursor of [undefined, 3]) {
+    const app = new Application('draw').action(async ({ out }) => {
+      await out.draw(
+        {
+          hint: undefined,
+          issue: undefined,
+          kind: 'text',
+          message: 'Name',
+          typed: 'abc',
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+        questionFrame,
+      );
+    });
+    const mock = mockProcess({ terminal: { columns: 40, rows: 24, streams: ['stderr'] } });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    drawn.push(mock.stderr.text);
+  }
+  expect(drawn[0]).toBe(drawn[1]);
+  expect(stripVTControlCharacters(drawn[0] ?? '')).toBe('? Name › abc ');
+});
+
 test.each([1, 2, 3, 4, 7, 8, 12, 21, 22, 40, 80])(
   'a typed frame stays on one row at %s columns',
   async (columns) => {

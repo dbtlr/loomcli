@@ -60,7 +60,7 @@ new Command('setup')
     await context.out.draw({ answer: bare, message: 'Name' }, answeredLine);
     await context.out.draw({ message: 'Name' }, cancelledLine);
     await context.out.draw(
-      { cursor: 0, hint: undefined, issue: undefined, kind: 'secret', message: 'PIN', typed: '' },
+      { hint: undefined, issue: undefined, kind: 'secret', message: 'PIN', typed: '' },
       questionFrame,
     );
     // @ts-expect-error TS2322: A linked answer retains the option output's undefined.
@@ -80,8 +80,9 @@ new Command('setup')
 const marked = { interaction: true, type: 'boolean' } satisfies OptionConfig;
 // @ts-expect-error TS2345: A local option cannot decide run interaction.
 new Command('bad').option('input', marked);
-new Command('bad').option('tags', { multiple: true, required: 'non-interactive', type: 'string' });
-new Command('bad').argument('name', { required: 'non-interactive' });
+// A multiple string option and an argument may require input only outside interactive runs.
+new Command('tag').option('tags', { multiple: true, required: 'non-interactive', type: 'string' });
+new Command('greet').argument('name', { required: 'non-interactive' });
 
 new Command('clone')
   .argument('url', { required: 'non-interactive', validate: z.string().transform(Number) })
