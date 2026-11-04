@@ -560,13 +560,16 @@ function editorAnswer(
 ): string {
   const { style, width } = context;
   const columns = Math.max(1, context.columns ?? 80);
+  // An answer with no visible line reads as a dim `empty`, which stays dim however it clips.
+  const paint = data.answer === '' ? style.dim : style.highlight;
   let message = data.message;
-  let answer = data.answer === '' ? style.dim('empty') : style.highlight(literal(data.answer));
+  let answer = paint(data.answer === '' ? 'empty' : literal(data.answer));
   let count =
     data.answer !== '' && data.lines > 1
       ? ` ${style.dim(`(+${data.lines - 1} ${data.lines === 2 ? 'line' : 'lines'})`)}`
       : '';
   const row = () => `${style.dim('?')} ${message} ${style.dim('·')} ${answer}${count}`;
+  /** The longest run of the text's leading graphemes that fits in `budget`, unescaped. */
   const leading = (text: string, budget: number) => {
     let result = '';
     for (const part of graphemes(text)) {
@@ -575,14 +578,15 @@ function editorAnswer(
       }
       result += part;
     }
-    return literal(result);
+    return result;
   };
   if (width(row()) > columns) {
     const budget = Math.max(width(glyph.ellipsis), columns - width(row()) + width(answer));
-    answer = style.highlight(
-      leading(data.answer === '' ? 'empty' : data.answer, budget - width(glyph.ellipsis)) +
-        glyph.ellipsis,
+    const kept = leading(
+      data.answer === '' ? 'empty' : data.answer,
+      budget - width(glyph.ellipsis),
     );
+    answer = paint(literal(kept) + glyph.ellipsis);
   }
   if (width(row()) > columns) {
     const budget = columns - width(row()) + width(message);
@@ -591,7 +595,32 @@ function editorAnswer(
   if (width(row()) > columns) {
     count = '';
   }
-  return `${width(row()) > columns ? leading(context.plain(row()), columns) : row()}\n`;
+  if (width(row()) <= columns) {
+    return `${row()}\n`;
+  }
+  // The row clips to its leading graphemes, each part keeping its own style.
+  const parts: [string, (text: string) => string][] = [
+    ['?', style.dim],
+    [' ', (text) => text],
+    [context.plain(message), literal],
+    [' ', (text) => text],
+    ['·', style.dim],
+    [' ', (text) => text],
+    [context.plain(answer), (text) => paint(literal(text))],
+  ];
+  let room = columns;
+  let fitted = '';
+  for (const [text, draw] of parts) {
+    const kept = leading(text, room);
+    if (kept !== '') {
+      fitted += draw(kept);
+    }
+    if (kept !== text) {
+      break;
+    }
+    room -= width(literal(kept));
+  }
+  return `${fitted}\n`;
 }
 
 const answeredLine = view<AnsweredLine>('@loomcli/prompts/answered-line', {

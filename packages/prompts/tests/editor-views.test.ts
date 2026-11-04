@@ -1,6 +1,7 @@
 import { stripVTControlCharacters } from 'node:util';
 
-import { Application } from '@loomcli/core';
+import { Application, style } from '@loomcli/core';
+import { theme } from '@loomcli/plugins/theme';
 import { answeredLine, questionFrame } from '@loomcli/prompts/views';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
@@ -45,5 +46,36 @@ test.each([
     });
     await expect(app.run({ process: mock })).resolves.toBe(0);
     expect(stripVTControlCharacters(mock.stderr.text)).toBe(expected);
+  },
+);
+
+/** The editor's answered line on a terminal of `columns`, with dim drawn faint and highlight underlined. */
+async function styledAnswer(columns: number, answer: string, lines: number): Promise<string> {
+  const app = new Application('draw', {
+    plugins: [theme({ dim: style.faint, highlight: style.underline })],
+  }).action(async ({ out }) => {
+    await out.draw({ answer, kind: 'editor', lines, message: 'Notes' }, answeredLine);
+  });
+  const mock = mockProcess({ terminal: { columns, rows: 24, streams: ['stderr'] } });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  return mock.stderr.text;
+}
+
+test.each([
+  // The first line clips with its highlight kept, and an empty answer stays dim as it clips.
+  [
+    80,
+    'abcdefghijklmnop',
+    '\u001b[2m?\u001b[22m Notes \u001b[2m·\u001b[22m \u001b[4mabcdefghijklmnop\u001b[24m \u001b[2m(+1 line)\u001b[22m\n',
+  ],
+  [14, '', '\u001b[2m?\u001b[22m Notes \u001b[2m·\u001b[22m \u001b[2memp…\u001b[22m\n'],
+  // Below seven columns the row clips, and the dim mark and separator stay dim.
+  [5, 'abcdefghijklmnop', '\u001b[2m?\u001b[22m … \u001b[2m·\u001b[22m\n'],
+  [6, '', '\u001b[2m?\u001b[22m … \u001b[2m·\u001b[22m \n'],
+  [3, 'abcdefghijklmnop', '\u001b[2m?\u001b[22m …\n'],
+] satisfies [number, string, string][])(
+  'the editor answered line keeps its styles at %s columns for %j',
+  async (columns, answer, expected) => {
+    await expect(styledAnswer(columns, answer, 2)).resolves.toBe(expected);
   },
 );
