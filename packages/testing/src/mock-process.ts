@@ -264,6 +264,9 @@ const attributesAlone = '\u001b[?1;2c';
 /** The milliseconds between an array entry's reads, twice the prompts reader's lone-Escape window. */
 const laterRead = 100;
 
+/** The milliseconds between checks on whether a consumer has taken a buffered read. */
+const bufferedCheck = 10;
+
 /** The sentence a raw-mode switch with no entry left fails the keyboard with. */
 const noKeysLeft = 'mockProcess has no keys left for this read. Add an entry to terminal.keys.';
 
@@ -353,7 +356,7 @@ class Keyboard extends Readable implements MockStdin {
   /**
    * Pushes an entry's first read, and each later one once stdin has emitted the read before it and
    * `laterRead` milliseconds have passed, so an ESC that ends a read is past the reader's lone-Escape
-   * window when the next read arrives. The timer is unref'd, and a raw-mode switch clears it.
+   * window when the next read arrives. The timers are unref'd, and a raw-mode switch clears them.
    */
   #send(hold: object, reads: string[]): void {
     const read = reads.shift();
@@ -361,20 +364,26 @@ class Keyboard extends Readable implements MockStdin {
       return;
     }
     this.push(Buffer.from(read));
-    if (!reads.length) {
-      return;
+    if (reads.length) {
+      this.#sendAfter(laterRead, hold, reads);
     }
+  }
+
+  /**
+   * Sends the next read `delay` milliseconds from now, or, while the read before is still
+   * buffered, once a consumer has taken it. It checks `readableLength` on a short timer rather than
+   * waiting for `data`, because a `data` listener would resume a stream no consumer reads yet and
+   * take the buffered reads from the consumer that attaches later.
+   */
+  #sendAfter(delay: number, hold: object, reads: string[]): void {
     this.#later = setTimeout(() => {
       this.#later = undefined;
       if (this.readableLength) {
-        // The read before is still buffered, so the next waits until a consumer has taken it.
-        this.once('data', () => {
-          this.#send(hold, reads);
-        });
+        this.#sendAfter(bufferedCheck, hold, reads);
       } else {
         this.#send(hold, reads);
       }
-    }, laterRead);
+    }, delay);
     this.#later.unref();
   }
 }

@@ -908,6 +908,27 @@ describe('the keyboard', () => {
     expect(reads[1]?.at ?? 0).toBeGreaterThanOrEqual(99);
   });
 
+  it('an array entry holds each later read for a consumer that attaches late', async () => {
+    const { stdin } = mockProcess({
+      terminal: { columns: 80, keys: [['ab', 'cd', 'ef']], rows: 24 },
+    });
+    rawMode(stdin, true);
+    // The consumer attaches after the second read was due, while the first is still buffered.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const reads: string[] = [];
+    await new Promise<void>((resolve) => {
+      const done = setTimeout(resolve, 2000);
+      stdin.on('data', (chunk) => {
+        reads.push(String(chunk));
+        if (reads.length === 3) {
+          clearTimeout(done);
+          resolve();
+        }
+      });
+    });
+    expect(reads).toEqual(['ab', 'cd', 'ef']);
+  });
+
   it('a switch out of raw mode ends an array entry, so its later reads are never handed over', async () => {
     const { stdin } = mockProcess({ terminal: { columns: 80, keys: [['ab', 'cd']], rows: 24 } });
     const reads: string[] = [];
