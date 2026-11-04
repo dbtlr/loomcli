@@ -31,49 +31,53 @@ class InteractionUnavailableError extends FatalError {
   }
 }
 
-/** Resolves only skipped questions; an asked question keeps its raw prefill separate from output. */
-function resolveLink<Options, Key extends LinkKey<Options>, Args, Argument extends LinkKey<Args>>(
+/** The question that links an input: its message and its kind. */
+interface Question {
+  readonly message: string;
+  readonly kind: 'text' | 'secret' | 'confirm' | 'select';
+}
+
+/** A linked input as a question resolves it: its raw value, its validated value, and its fallback. */
+interface Linked<Value> {
+  readonly raw: unknown;
+  readonly value: () => Value;
+  readonly missing: () => Error;
+  readonly fallback: unknown;
+}
+
+/** The argument a question links, once its declaration is checked. */
+function linkedArgument<Options, Args, Argument extends LinkKey<Args>>(
   context: PromptContext<Options, Args>,
-  settings: { message: string; option?: Key; argument?: Argument; skipIfSupplied?: boolean },
-  kind: 'text' | 'secret' | 'confirm' | 'select',
-): { kind: 'answered'; value: Options[Key] | Args[Argument] } | { kind: 'ask'; prefill: unknown } {
-  const { message, option: key } = settings;
-  if (!isProseLine(message)) {
-    invalid('A question message must be one nonempty line.', 'Supply a one-line message.');
+  name: Argument,
+  { message, kind }: Question,
+): Linked<Args[Argument]> {
+  const argument = context.command.arguments.find((input) => input.name === name);
+  if (argument === undefined) {
+    invalid(
+      `The question "${message}" links argument "${name}", which ${context.command.name === null ? 'the root Command' : `Command "${context.command.name}"`} does not declare.`,
+      'Link an argument of the routed Command.',
+    );
   }
-  if (settings.argument !== undefined) {
-    const name = settings.argument;
-    const argument = context.command.arguments.find((input) => input.name === name);
-    if (argument === undefined) {
-      invalid(
-        `The question "${message}" links argument "${name}", which ${context.command.name === null ? 'the root Command' : `Command "${context.command.name}"`} does not declare.`,
-        'Link an argument of the routed Command.',
-      );
-    }
-    if (argument.type === 'content' || argument.variadic || kind === 'confirm') {
-      invalid(
-        `The question "${message}" links argument "${name}", which is not a string argument that takes one value.`,
-        'Link a string option or argument that takes one value.',
-      );
-    }
-    const raw = context.supplied.args[name];
-    if (raw !== undefined && (!context.interactive || settings.skipIfSupplied === true)) {
-      return { kind: 'answered', value: context.args[name] };
-    }
-    if (!context.interactive) {
-      throw missingInputError(context, { argument: name });
-    }
-    return { kind: 'ask', prefill: raw ?? argument.default?.value };
+  if (argument.type === 'content' || argument.variadic || kind === 'confirm') {
+    invalid(
+      `The question "${message}" links argument "${name}", which is not a string argument that takes one value.`,
+      'Link a string option or argument that takes one value.',
+    );
   }
-  if (key === undefined) {
-    if (!context.interactive) {
-      throw new InteractionUnavailableError(
-        message,
-        [context.graph.name, ...context.command.path].join(' '),
-      );
-    }
-    return { kind: 'ask', prefill: undefined };
-  }
+  return {
+    fallback: argument.default?.value,
+    missing: () => missingInputError(context, { argument: name }),
+    raw: context.supplied.args[name],
+    value: () => context.args[name],
+  };
+}
+
+/** The option a question links, once its declaration is checked. */
+function linkedOption<Options, Key extends LinkKey<Options>, Args>(
+  context: PromptContext<Options, Args>,
+  key: Key,
+  { message, kind }: Question,
+): Linked<Options[Key]> {
   if (context.graph.globals.some((input) => input.name === key)) {
     invalid(
       `The question "${message}" links global option "${key}".`,
@@ -90,14 +94,46 @@ function resolveLink<Options, Key extends LinkKey<Options>, Args, Argument exten
     );
   }
   checkKind(option, kind, message);
-  const raw = context.supplied.options[key];
-  if (raw !== undefined && (!context.interactive || settings.skipIfSupplied === true)) {
-    return { kind: 'answered', value: context.options[key] };
+  return {
+    fallback: 'default' in option ? option.default?.value : undefined,
+    missing: () => missingInputError(context, key),
+    raw: context.supplied.options[key],
+    value: () => context.options[key],
+  };
+}
+
+/** Resolves only skipped questions; an asked question keeps its raw prefill separate from output. */
+function resolveLink<Options, Key extends LinkKey<Options>, Args, Argument extends LinkKey<Args>>(
+  context: PromptContext<Options, Args>,
+  settings: { message: string; option?: Key; argument?: Argument; skipIfSupplied?: boolean },
+  kind: 'text' | 'secret' | 'confirm' | 'select',
+): { kind: 'answered'; value: Options[Key] | Args[Argument] } | { kind: 'ask'; prefill: unknown } {
+  const { message, option: key, argument } = settings;
+  if (!isProseLine(message)) {
+    invalid('A question message must be one nonempty line.', 'Supply a one-line message.');
+  }
+  let linked: Linked<Options[Key] | Args[Argument]> | undefined = undefined;
+  if (argument !== undefined) {
+    linked = linkedArgument(context, argument, { kind, message });
+  } else if (key !== undefined) {
+    linked = linkedOption(context, key, { kind, message });
+  }
+  if (linked === undefined) {
+    if (!context.interactive) {
+      throw new InteractionUnavailableError(
+        message,
+        [context.graph.name, ...context.command.path].join(' '),
+      );
+    }
+    return { kind: 'ask', prefill: undefined };
+  }
+  if (linked.raw !== undefined && (!context.interactive || settings.skipIfSupplied === true)) {
+    return { kind: 'answered', value: linked.value() };
   }
   if (!context.interactive) {
-    throw missingInputError(context, key);
+    throw linked.missing();
   }
-  return { kind: 'ask', prefill: raw ?? ('default' in option ? option.default?.value : undefined) };
+  return { kind: 'ask', prefill: linked.raw ?? linked.fallback };
 }
 
 function checkKind(option: OptionNode, kind: string, message: string): void {
