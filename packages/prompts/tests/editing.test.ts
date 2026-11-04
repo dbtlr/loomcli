@@ -1,6 +1,7 @@
 import { stripVTControlCharacters } from 'node:util';
 
 import { Application, validationContext, width } from '@loomcli/core';
+import type { StandardSchemaV1 } from '@loomcli/core';
 import { key, mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
@@ -221,7 +222,7 @@ test('an accepted secret discards a paste started in its Enter read and complete
         validate: {
           '~standard': {
             validate: async (value) => {
-              await new Promise((resolve) => setTimeout(resolve, 20));
+              await new Promise((resolve) => setTimeout(resolve, 250));
               return { value };
             },
             vendor: 'test',
@@ -241,4 +242,112 @@ test('an accepted secret discards a paste started in its Enter read and complete
   });
   await expect(app.run({ process: mock })).resolves.toBe(0);
   expect(answers).toEqual(['hidden', 'safe']);
+});
+
+/** A validator that accepts its value after `delay` milliseconds. */
+function slow(delay: number): StandardSchemaV1<string, string> {
+  return {
+    '~standard': {
+      validate: async (value) => {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return { value: String(value) };
+      },
+      vendor: 'test',
+      version: 1,
+    },
+  };
+}
+
+test.each([
+  ['typed ahead in the Enter read', ['x\r\u001b', 'b\r'], undefined],
+  ['during an async validator', [['x\r', '\u001b'], 'b\r'], 130],
+])(
+  'a held ESC older than the window reads as Escape at the next question: %s',
+  async (_case, keys, delay) => {
+    const answers: unknown[] = [];
+    const app = new Application('ask').action(async (context) => {
+      answers.push(
+        await text(context, {
+          message: 'First',
+          ...(delay === undefined ? {} : { validate: slow(delay) }),
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      answers.push(await text(context, { message: 'Second' }));
+    });
+    const mock = mockProcess({ terminal: { columns: 40, keys, rows: 24 } });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(answers).toEqual(['x', 'b']);
+  },
+);
+
+test('a held ESC the next question reads within the window continues its sequence', async () => {
+  const answers: unknown[] = [];
+  const app = new Application('ask').action(async (context) => {
+    answers.push(await text(context, { message: 'First' }));
+    answers.push(await text(context, { message: 'Second' }));
+  });
+  const mock = mockProcess({ terminal: { columns: 40, keys: ['x\r\u001b', '[Db\r'], rows: 24 } });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(answers).toEqual(['x', 'b']);
+});
+
+test.each([
+  ['a paste the Enter read opened', ['hidden\r\u001b[200~leak', 'more\u001b[201~safe\r']],
+  ['a sequence unfinished at the Enter', ['hidden\r\u001b[1', ';5Dsafe\r']],
+  ['a lone ESC held at the Enter', ['hidden\r\u001b', 'bsafe\r']],
+])('an accepted secret discards %s until it ends', async (_case, keys) => {
+  const answers: unknown[] = [];
+  const app = new Application('ask').action(async (context) => {
+    answers.push(await secret(context, { message: 'Password' }));
+    answers.push(await text(context, { message: 'Name' }));
+  });
+  const mock = mockProcess({ terminal: { columns: 40, keys, rows: 24 } });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(answers).toEqual(['hidden', 'safe']);
+  expect(mock.stderr.text).not.toContain('more');
+  expect(mock.stderr.text).not.toContain('5D');
+});
+
+test('an accepted secret discards a paste that ends in a later read of the same entry', async () => {
+  const app = new Application('ask').action(async (context) => {
+    const answers = await Promise.all([
+      secret(context, { message: 'Password' }),
+      text(context, { message: 'Name' }),
+    ]);
+    await context.out.print(JSON.stringify(answers));
+  });
+  const mock = mockProcess({
+    terminal: {
+      columns: 40,
+      keys: [['hidden\r\u001b[200~leak', 'more\u001b[201~safe\r']],
+      rows: 24,
+    },
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(mock.stdout.text).toBe('["hidden","safe"]\n');
+});
+
+test('the last question writes CSI ?2004l with the cursor shown after its answered line', async () => {
+  const app = new Application('ask').action(async (context) => {
+    await text(context, { message: 'Name' });
+  });
+  const mock = mockProcess({ terminal: { columns: 40, keys: ['a\r'], rows: 24 } });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(mock.stderr.text.startsWith('\u001b[?25l\u001b[?2004h')).toBe(true);
+  expect(mock.stderr.text.endsWith('? Name · a\n\u001b[?25h\u001b[?2004l')).toBe(true);
+});
+
+test('Ctrl-Z turns bracketed paste off before the suspend and on again at the resume', async () => {
+  const app = new Application('ask').action(async (context) => {
+    await text(context, { message: 'Name' });
+  });
+  const mock = mockProcess({ terminal: { columns: 40, keys: [key.ctrl('z'), 'a\r'], rows: 24 } });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  // The letter after each CSI ?2004 says whether it turned bracketed paste on or off.
+  const modes = mock.stderr.text
+    .split('\u001b[?2004')
+    .slice(1)
+    .map((after) => after[0]);
+  expect(modes).toEqual(['h', 'l', 'h', 'l']);
 });

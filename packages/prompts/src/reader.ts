@@ -2,6 +2,7 @@ import { StringDecoder } from 'node:string_decoder';
 
 import { raiseInterruptKeys } from '@loomcli/core';
 
+import { controls, hideCursor, pasteOff, pasteOn, showCursor } from './controls.js';
 import type { PromptContext } from './types.js';
 
 type Key =
@@ -27,9 +28,9 @@ type Key =
         | 'tab';
     };
 
-const showCursor = '\u001b[?25h';
-const pasteOn = '\u001b[?25l\u001b[?2004h';
-const pasteOff = '\u001b[?2004l';
+/** The milliseconds within which a read continues an ESC that ended the read before it. */
+const escapeWindow = 50;
+
 interface InputQueue {
   keys: Key[];
   decoder: StringDecoder;
@@ -38,6 +39,10 @@ interface InputQueue {
   paste: string | undefined;
   read: number;
   pendingRead: number;
+  /** When the ESC that ends `pending` was held, on the `performance.now()` clock. */
+  held: number | undefined;
+  /** The read an accepted secret discarded, whose open sequence or paste yields no key when it ends. */
+  discarded: number | undefined;
 }
 /** Typeahead belongs to the run, not a question. */
 const readOf = new WeakMap<Key, number>();
@@ -65,7 +70,7 @@ const sequences: Record<string, Key['kind']> = {
   d: 'wordLeft',
 };
 /* oxlint-enable eslint/id-length */
-const controls: Record<string, Key['kind']> = {
+const controlKeys: Record<string, Key['kind']> = {
   '\u0001': 'home',
   '\u0002': 'left',
   '\u0004': 'eof',
@@ -88,6 +93,9 @@ function feed(queue: InputQueue, text: string): void {
   }
   queue.pending += text;
   const enqueue = (key: Key, origin = queue.read) => {
+    if (origin === queue.discarded) {
+      return;
+    }
     readOf.set(key, origin);
     queue.keys.push(key);
   };
@@ -257,7 +265,7 @@ function feed(queue: InputQueue, text: string): void {
       continue;
     }
     queue.carriage = character === '\r';
-    const kind = controls[character];
+    const kind = controlKeys[character];
     if (kind !== undefined) {
       emit(kind);
     } else if (point >= 32 && (point < 127 || point > 159)) {
@@ -282,8 +290,10 @@ const sessions = new WeakMap<AbortSignal, Session>();
 
 /**
  * Registers the run's handlers that restore the terminal while raw mode holds: a shutdown leaves
- * raw mode and shows the cursor, a suspend leaves raw mode before the process stops, and the resume
- * enters it again. Answers the call that removes them.
+ * raw mode, turns bracketed paste off, and shows the cursor, a suspend leaves raw mode and turns
+ * bracketed paste off before the process stops, and the resume turns both on again. The shutdown
+ * and the suspend write straight to stderr, because each runs inside its signal's handler and a
+ * queued draw would land after the process ends or stops. Answers the call that removes them.
  */
 function restoring<Options>(
   context: PromptContext<Options>,
@@ -303,7 +313,7 @@ function restoring<Options>(
     }),
     context.onResume(() => {
       raw(true);
-      context.host.stderr.write(pasteOn);
+      void context.out.draw(pasteOn, controls);
     }),
   ];
   return () => {
@@ -336,7 +346,6 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
       unregister?.();
       sessions.delete(context.signal);
       raw(false);
-      context.host.stderr.write(pasteOff);
       input.pause();
       input.off('data', data).off('end', end).off('close', end).off('error', inputError);
       context.signal.removeEventListener('abort', abort);
@@ -372,19 +381,27 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
       queue.pending = '';
       queue.carriage = false;
       queue.paste = undefined;
+      queue.held = undefined;
       queue.decoder = new StringDecoder('utf8');
       return;
     }
     clearTimeout(escapeTimer);
+    // An ESC held past the window is the Escape key, even when a release stopped its timer.
+    if (queue.held !== undefined && performance.now() - queue.held >= escapeWindow) {
+      queue.pending = '';
+    }
+    queue.held = undefined;
     feed(queue, rest);
     settle();
     if (
       queue.paste === undefined &&
       (queue.pending === '\u001b' || queue.pending === '\u001b\u001b')
     ) {
+      queue.held = performance.now();
       escapeTimer = setTimeout(() => {
         queue.pending = '';
-      }, 50);
+        queue.held = undefined;
+      }, escapeWindow);
       escapeTimer.unref();
     }
   };
@@ -408,7 +425,7 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
   context.signal.addEventListener('abort', abort, { once: true });
   try {
     raw(true);
-    context.host.stderr.write(pasteOn);
+    void context.out.draw(hideCursor + pasteOn, controls);
     unregister = restoring(context, raw);
     input.on('data', data).once('end', end).once('close', end).once('error', inputError);
     input.resume();
@@ -417,6 +434,7 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
     }
   } catch (error) {
     session.release();
+    void context.out.draw(pasteOff, controls);
     throw error;
   }
   sessions.set(context.signal, session);
@@ -433,6 +451,8 @@ export function openReader<Options>(context: PromptContext<Options>) {
   const queue = queues.get(context.signal) ?? {
     carriage: false,
     decoder: new StringDecoder('utf8'),
+    discarded: undefined,
+    held: undefined,
     keys: [],
     paste: undefined,
     pending: '',
@@ -461,23 +481,28 @@ export function openReader<Options>(context: PromptContext<Options>) {
         mine.reject(reason);
       }
     },
-    close() {
-      if (closed) {
-        return;
+    /**
+     * Ends this question's reading. Answers whether the run holds stdin no longer, so the question
+     * writes the controls that turn bracketed paste off with its last line.
+     */
+    close(): boolean {
+      if (!closed) {
+        closed = true;
+        session.readers -= 1;
+        if (session.readers === 0) {
+          session.release();
+        }
       }
-      closed = true;
-      session.readers -= 1;
-      if (session.readers === 0) {
-        session.release();
-      }
+      return sessions.get(context.signal) !== session;
     },
+    /**
+     * Discards every key queued from the read that held the last key read. A sequence or paste
+     * that read started keeps its place, so its trailing bytes never become text, and yields no
+     * key when it ends.
+     */
     discard() {
       queue.keys = queue.keys.filter((key) => readOf.get(key) !== lastRead);
-      if (queue.pendingRead === lastRead) {
-        queue.pending = '';
-        queue.paste = undefined;
-        queue.decoder = new StringDecoder('utf8');
-      }
+      queue.discarded = lastRead;
     },
     async read(): Promise<Key> {
       context.signal.throwIfAborted();

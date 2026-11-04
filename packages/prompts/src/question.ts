@@ -1,6 +1,7 @@
 import { questionValidationOptions } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 
+import { controls, hideCursor, pasteOff, showCursor } from './controls.js';
 import { TypedLine, graphemes } from './line.js';
 import { openReader } from './reader.js';
 import type { PromptContext } from './types.js';
@@ -22,10 +23,6 @@ function displayAnswer(kind: string, raw: string, value: unknown): string | unde
   }
   return raw;
 }
-/** The bare view the cursor sequences draw through, which nothing overrides. */
-const controls = { render: (text: string) => text };
-const hideCursor = '\u001b[?25l';
-const showCursor = '\u001b[?25h';
 
 /** Most choices a select shows at once, and the rows its title, key help, and markers need. */
 const MAX_VISIBLE = 7;
@@ -61,8 +58,11 @@ function asking<Options>(
   // A suspend shows the cursor before the process stops, so the resume hides it again.
   let unhide: (() => void) | undefined = undefined;
   return {
-    /** The answered or cancelled line, then the region's close and the cursor shown again. */
-    async finish(answer: { value: string | undefined } | undefined) {
+    /**
+     * The answered or cancelled line, then the region's close and the cursor shown again, with
+     * bracketed paste turned off when the run's last open question has `released` stdin.
+     */
+    async finish(answer: { value: string | undefined } | undefined, released: boolean) {
       unhide?.();
       try {
         if (region.closedBy === undefined) {
@@ -72,7 +72,7 @@ function asking<Options>(
           await region.end();
         }
       } finally {
-        await context.out.draw(showCursor, controls);
+        await context.out.draw(showCursor + (released ? pasteOff : ''), controls);
       }
     },
     async frame(data: QuestionFrame) {
@@ -96,7 +96,7 @@ async function askText<Options, Output>(
     kind: 'text' | 'secret' | 'confirm';
     hint: string | undefined;
     validate?: StandardSchemaV1<string, Output>;
-  } & ({ option?: string; argument?: never } | { argument: string; option?: never }) & {},
+  } & ({ option?: string; argument?: never } | { argument: string; option?: never }),
 ): Promise<string | Output> {
   // Raw mode holds from here, and the first frame resolves once this question's turn has come.
   const reader = openReader(context);
@@ -160,8 +160,7 @@ async function askText<Options, Output>(
       }
     }
   } finally {
-    reader.close();
-    await draw.finish(answered);
+    await draw.finish(answered, reader.close());
   }
 }
 
@@ -224,8 +223,7 @@ async function askSelect<Options, Choice extends string>(
       }
     }
   } finally {
-    reader.close();
-    await draw.finish(answered);
+    await draw.finish(answered, reader.close());
   }
 }
 

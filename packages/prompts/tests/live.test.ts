@@ -188,7 +188,11 @@ test('each kind draws in an input region and writes no frame through out.draw', 
     { input: true },
     { input: true },
   ]);
-  expect(run.notes.drawn).toEqual([JSON.stringify('\u001b[?25l'), JSON.stringify('\u001b[?25h')]);
+  expect(run.notes.drawn).toEqual([
+    JSON.stringify('\u001b[?25l\u001b[?2004h'),
+    JSON.stringify('\u001b[?25l'),
+    JSON.stringify('\u001b[?25h\u001b[?2004l'),
+  ]);
 });
 
 test('a lane message a timer writes while a question asks lands above the whole frame', async () => {
