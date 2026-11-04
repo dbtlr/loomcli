@@ -40,6 +40,11 @@ const app = new Application('setup', {
     if (process.env.PROMPT_EXIT_AFTER !== undefined) {
       setTimeout(() => process.exit(3), Number(process.env.PROMPT_EXIT_AFTER));
     }
+    if (scenario === 'editing') {
+      const answer = await text(context, { message: 'Edit value' });
+      process.stdout.write(`ANSWER:${JSON.stringify(answer)}\n`);
+      return;
+    }
     if (scenario === 'select') {
       const answer = await select(context, {
         choices: Array.from({ length: 10 }, (_value, index) => `choice-${index}`),

@@ -163,27 +163,33 @@ function propertyDefault(property: Property): { readonly default: unknown } | un
 }
 
 /**
+ * The item counts a list property declares: a content list's own minimum and maximum, and at least
+ * one item for any other list a call must supply, because core reads an empty one as missing.
+ */
+function listBounds(property: Property): {
+  readonly minItems?: number;
+  readonly maxItems?: number;
+} {
+  const { node } = property;
+  if (node.type === 'content') {
+    return {
+      minItems: Math.max(Number(node.required), node.min ?? Number(node.required)),
+      ...(node.max === undefined ? {} : { maxItems: node.max }),
+    };
+  }
+  return isRequired(property) ? { minItems: 1 } : {};
+}
+
+/**
  * One property of a tool's input schema: the value's schema, wrapped as an array for several
- * values, with the description and default the plugin sets in place of any the converter wrote.
+ * values, at least one when the tool requires the input, with the description and default the
+ * plugin sets in place of any the converter wrote.
  */
 function propertySchema(property: Property): Schema {
   const value = valueSchema(property);
   const description = propertyDescription(property);
   return {
-    ...(takesSeveral(property)
-      ? {
-          ...listOf(value),
-          ...(property.node.type === 'content'
-            ? {
-                minItems: Math.max(
-                  Number(property.node.required),
-                  property.node.min ?? Number(property.node.required),
-                ),
-                ...(property.node.max === undefined ? {} : { maxItems: property.node.max }),
-              }
-            : {}),
-        }
-      : value),
+    ...(takesSeveral(property) ? { ...listOf(value), ...listBounds(property) } : value),
     ...(description === undefined ? {} : { description }),
     ...propertyDefault(property),
   };
@@ -192,7 +198,7 @@ function propertySchema(property: Property): Schema {
 /** Whether the tool requires the input: a required argument or a required local option. */
 function isRequired(property: Property): boolean {
   if (property.kind === 'argument') {
-    return property.node.required;
+    return property.node.required || property.node.requiredWhen === 'non-interactive';
   }
   return !property.global && requiredInCall(property.node);
 }

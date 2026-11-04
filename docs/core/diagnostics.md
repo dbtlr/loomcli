@@ -112,7 +112,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/missing-input-name
 
-**Unknown missing input.** A missing input names a local option of the routed Command.
+**Unknown missing input.** A missing input names a local option or an argument of the routed Command.
 
 ### @loomcli/core/name-shared-across-kinds
 
@@ -132,7 +132,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/optional-argument-last
 
-**Required argument after optional.** Bare words fill the arguments in order, and an operator leaves out optional arguments from the end of the line. A required argument after an optional one would leave the parser unable to tell which of the two a lone bare word fills.
+**Required argument after optional.** Bare words fill the arguments in order, and an operator leaves out optional arguments from the end of the line. A required argument after an optional one would leave the parser unable to tell which of the two a lone bare word fills, and one after an argument required only when input is not interactive would keep that argument's question from ever being asked at a terminal.
 
 ### @loomcli/core/plugin-installed-twice
 
@@ -346,7 +346,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/prompts/link
 
-**Invalid question.** A question asks in one line of prose and links one local option of the routed Command, of the kind the question accepts, and a select question offers at least one choice.
+**Invalid question.** A question asks in one line of prose and links at most one local option or argument of the routed Command, of the kind the question accepts, and a select question offers at least one choice.
 
 ## @loomcli/loom
 

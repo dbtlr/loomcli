@@ -42,6 +42,11 @@ type OptionSpelling =
   | { short?: ShortAlias; shortOnly?: false; aliases?: readonly string[] }
   | { short: ShortAlias; shortOnly: true; aliases?: never };
 
+interface ConditionalPresence {
+  required: 'non-interactive';
+  default?: never;
+  validateOmitted?: never;
+}
 type Presence = { required: true; default?: never } | { required?: false; default?: unknown };
 
 /**
@@ -310,15 +315,7 @@ export type StringOption = UnmarkedStringOption | BackgroundOption;
 
 /** A string option that carries no run-wide mark. */
 export type UnmarkedStringOption = OptionSpelling &
-  (
-    | (Presence & Multiplicity & Omission)
-    | ({
-        required: 'non-interactive';
-        default?: never;
-        multiple?: false;
-        validateOmitted?: never;
-      } & StringBinding)
-  ) &
+  ((Presence & Multiplicity & Omission) | (ConditionalPresence & Multiplicity)) &
   Described &
   Listed &
   Controlled &
@@ -362,12 +359,11 @@ export type BackgroundOption = Described &
   };
 
 /** A variadic argument collects the remaining tokens, so it follows the multiple option rules. */
-export type VariadicArgument = Presence &
+export type VariadicArgument = (Presence | ConditionalPresence) &
   Described &
   ArgumentExtensions & { type?: 'string'; variadic: true; validate?: StandardSchemaV1 };
 
-export type ScalarArgument = Presence &
-  Omission &
+export type ScalarArgument = ((Presence & Omission) | ConditionalPresence) &
   Described &
   ArgumentExtensions & { type?: 'string'; variadic?: false; validate?: StandardSchemaV1 };
 

@@ -54,7 +54,7 @@ import { terminal } from './terminal.js';
 test('text replaces its default hint and leaves one answered line in a real terminal', async () => {
   const tty = terminal('text', { NO_COLOR: '1' });
   try {
-    await expect(tty.expect('Service port*4317')).resolves.toContain('4317');
+    await expect(tty.expect('Service port*4*317')).resolves.toContain('317');
     tty.send(String.raw`8080\r`);
     const result = await tty.expect('EXIT:0 cooked:true');
     expect(result).toContain('Service port · 8080');
@@ -181,7 +181,7 @@ test.each([
   async (env, hint, answer) => {
     const tty = terminal('linked', { NO_COLOR: '1', ...env });
     try {
-      await tty.expect(`Service port*${hint}`);
+      await tty.expect(`Service port*${hint[0]}*${hint.slice(1)}`);
       tty.send(String.raw`\r`);
       await expect(tty.expect('EXIT:0 cooked:true')).resolves.toContain(`ANSWER:${answer}`);
     } finally {
@@ -231,7 +231,7 @@ test('a configuration file supplies the raw prefill before the option transforma
     PROMPT_ARGV: JSON.stringify(['--config', path]),
   });
   try {
-    await tty.expect('Service port*006050');
+    await tty.expect('Service port*0*06050');
     tty.send(String.raw`\r`);
     await expect(tty.expect('EXIT:0 cooked:true')).resolves.toContain('ANSWER:6050');
   } finally {
@@ -245,7 +245,7 @@ test('piping stdout still asks while the pipe contains only action output', asyn
   const path = join(directory, 'stdout.txt');
   const tty = terminal('text', { NO_COLOR: '1', PROMPT_STDOUT: path }, { pipeStdout: true });
   try {
-    await tty.expect('Service port*4317');
+    await tty.expect('Service port*4*317');
     tty.send(String.raw`\r`);
     await tty.expect('EXIT:0 cooked:true');
   } finally {
@@ -261,10 +261,10 @@ test('piping stdout still asks while the pipe contains only action output', asyn
 
 test.each([
   [String.raw`ab\x1b\x1b[A\r`, 'ab'],
-  [String.raw`\x1bx\r`, 'x'],
+  [String.raw`\x1bx\r`, ''],
   [String.raw`ab\x1b\r`, 'ab'],
-  [String.raw`ab\x1b[\r`, 'ab['],
-])('Escape ignores itself without consuming the following key: %s', async (keys, answer) => {
+  [String.raw`ab\x1b[\r`, 'ab'],
+])('Escape reads Alt keys and malformed sequences: %s', async (keys, answer) => {
   const tty = terminal('blank', { NO_COLOR: '1' });
   try {
     await tty.expect('Service port');

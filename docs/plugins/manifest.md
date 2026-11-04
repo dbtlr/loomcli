@@ -57,6 +57,7 @@ type ManifestArgument =
       readonly name: string;
       readonly description: string | null;
       readonly required: boolean;
+      readonly requiredWhen: 'non-interactive' | null; // see Interaction
       readonly variadic: boolean;
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly default: { readonly value: unknown } | null;
@@ -69,6 +70,7 @@ type ManifestArgument =
       readonly name: string;
       readonly description: string | null;
       readonly required: boolean;
+      readonly requiredWhen: 'non-interactive' | null; // see Interaction
       readonly variadic: boolean;
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly default: { readonly value: unknown } | null;
@@ -225,6 +227,7 @@ type ManifestOption =
         "name": "path",
         "description": "Dot path to read.",
         "required": true,
+        "requiredWhen": null,
         "variadic": false,
         "schema": null,
         "default": null

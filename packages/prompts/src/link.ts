@@ -11,7 +11,7 @@ import type { LinkKey, PromptContext } from './types.js';
 
 const linkRule = diagnosticRule('@loomcli/prompts/link', {
   explanation:
-    'A question asks in one line of prose and links one local option of the routed Command, of the kind the question accepts, and a select question offers at least one choice.',
+    'A question asks in one line of prose and links at most one local option or argument of the routed Command, of the kind the question accepts, and a select question offers at least one choice.',
   headline: 'Invalid question',
 });
 
@@ -31,25 +31,53 @@ class InteractionUnavailableError extends FatalError {
   }
 }
 
-/** Resolves only skipped questions; an asked question keeps its raw prefill separate from output. */
-function resolveLink<Options, Key extends LinkKey<Options>>(
-  context: PromptContext<Options>,
-  settings: { message: string; option?: Key; skipIfSupplied?: boolean },
-  kind: 'text' | 'secret' | 'confirm' | 'select',
-): { kind: 'answered'; value: Options[Key] } | { kind: 'ask'; prefill: unknown } {
-  const { message, option: key } = settings;
-  if (!isProseLine(message)) {
-    invalid('A question message must be one nonempty line.', 'Supply a one-line message.');
+/** The question that links an input: its message and its kind. */
+interface Question {
+  readonly message: string;
+  readonly kind: 'text' | 'secret' | 'confirm' | 'select';
+}
+
+/** A linked input as a question resolves it: its raw value, its validated value, and its fallback. */
+interface Linked<Value> {
+  readonly raw: unknown;
+  readonly value: () => Value;
+  readonly missing: () => Error;
+  readonly fallback: unknown;
+}
+
+/** The argument a question links, once its declaration is checked. */
+function linkedArgument<Options, Args, Argument extends LinkKey<Args>>(
+  context: PromptContext<Options, Args>,
+  name: Argument,
+  { message, kind }: Question,
+): Linked<Args[Argument]> {
+  const argument = context.command.arguments.find((input) => input.name === name);
+  if (argument === undefined) {
+    invalid(
+      `The question "${message}" links argument "${name}", which ${context.command.name === null ? 'the root Command' : `Command "${context.command.name}"`} does not declare.`,
+      'Link an argument of the routed Command.',
+    );
   }
-  if (key === undefined) {
-    if (!context.interactive) {
-      throw new InteractionUnavailableError(
-        message,
-        [context.graph.name, ...context.command.path].join(' '),
-      );
-    }
-    return { kind: 'ask', prefill: undefined };
+  if (argument.type === 'content' || argument.variadic || kind === 'confirm') {
+    invalid(
+      `The question "${message}" links argument "${name}", which is not a string argument that takes one value.`,
+      'Link a string option or argument that takes one value.',
+    );
   }
+  return {
+    fallback: argument.default?.value,
+    missing: () => missingInputError(context, { argument: name }),
+    raw: context.supplied.args[name],
+    value: () => context.args[name],
+  };
+}
+
+/** The option a question links, once its declaration is checked. */
+function linkedOption<Options, Key extends LinkKey<Options>, Args>(
+  context: PromptContext<Options, Args>,
+  key: Key,
+  { message, kind }: Question,
+): Linked<Options[Key]> {
   if (context.graph.globals.some((input) => input.name === key)) {
     invalid(
       `The question "${message}" links global option "${key}".`,
@@ -66,14 +94,46 @@ function resolveLink<Options, Key extends LinkKey<Options>>(
     );
   }
   checkKind(option, kind, message);
-  const raw = context.supplied.options[key];
-  if (raw !== undefined && (!context.interactive || settings.skipIfSupplied === true)) {
-    return { kind: 'answered', value: context.options[key] };
+  return {
+    fallback: 'default' in option ? option.default?.value : undefined,
+    missing: () => missingInputError(context, key),
+    raw: context.supplied.options[key],
+    value: () => context.options[key],
+  };
+}
+
+/** Resolves only skipped questions; an asked question keeps its raw prefill separate from output. */
+function resolveLink<Options, Key extends LinkKey<Options>, Args, Argument extends LinkKey<Args>>(
+  context: PromptContext<Options, Args>,
+  settings: { message: string; option?: Key; argument?: Argument; skipIfSupplied?: boolean },
+  kind: 'text' | 'secret' | 'confirm' | 'select',
+): { kind: 'answered'; value: Options[Key] | Args[Argument] } | { kind: 'ask'; prefill: unknown } {
+  const { message, option: key, argument } = settings;
+  if (!isProseLine(message)) {
+    invalid('A question message must be one nonempty line.', 'Supply a one-line message.');
+  }
+  let linked: Linked<Options[Key] | Args[Argument]> | undefined = undefined;
+  if (argument !== undefined) {
+    linked = linkedArgument(context, argument, { kind, message });
+  } else if (key !== undefined) {
+    linked = linkedOption(context, key, { kind, message });
+  }
+  if (linked === undefined) {
+    if (!context.interactive) {
+      throw new InteractionUnavailableError(
+        message,
+        [context.graph.name, ...context.command.path].join(' '),
+      );
+    }
+    return { kind: 'ask', prefill: undefined };
+  }
+  if (linked.raw !== undefined && (!context.interactive || settings.skipIfSupplied === true)) {
+    return { kind: 'answered', value: linked.value() };
   }
   if (!context.interactive) {
-    throw missingInputError(context, key);
+    throw linked.missing();
   }
-  return { kind: 'ask', prefill: raw ?? ('default' in option ? option.default?.value : undefined) };
+  return { kind: 'ask', prefill: linked.raw ?? linked.fallback };
 }
 
 function checkKind(option: OptionNode, kind: string, message: string): void {
@@ -87,7 +147,7 @@ function checkKind(option: OptionNode, kind: string, message: string): void {
   } else if (option.type !== 'string' || option.multiple) {
     invalid(
       `The question "${message}" links option "${option.name}", which is not a string option that takes one value.`,
-      'Link a string option that takes one value.',
+      'Link a string option or argument that takes one value.',
     );
   }
 }

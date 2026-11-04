@@ -44,7 +44,7 @@ const variadicArgumentLast = registerRule('@loomcli/core/variadic-argument-last'
 /** A required argument that an optional argument precedes. */
 const optionalArgumentLast = registerRule('@loomcli/core/optional-argument-last', {
   explanation:
-    'Bare words fill the arguments in order, and an operator leaves out optional arguments from the end of the line. A required argument after an optional one would leave the parser unable to tell which of the two a lone bare word fills.',
+    "Bare words fill the arguments in order, and an operator leaves out optional arguments from the end of the line. A required argument after an optional one would leave the parser unable to tell which of the two a lone bare word fills, and one after an argument required only when input is not interactive would keep that argument's question from ever being asked at a terminal.",
   headline: 'Required argument after optional',
 });
 

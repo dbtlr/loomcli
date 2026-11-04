@@ -20,6 +20,22 @@ test('MCP lists conditional requiredness and resolves supplied questions without
         }),
       ]),
     });
+    expect(listing.result).toMatchObject({
+      tools: expect.arrayContaining([
+        expect.objectContaining({
+          inputSchema: expect.objectContaining({ required: ['url'] }),
+          name: 'operand',
+        }),
+      ]),
+    });
+    session.send(
+      request(5, 'tools/call', { arguments: { url: 'https://example.com' }, name: 'operand' }),
+    );
+    const operandResponse = await session.next();
+    expect(operandResponse.result).toMatchObject({
+      content: [{ text: 'https://example.com\n', type: 'text' }],
+      isError: false,
+    });
     session.send(request(2, 'tools/call', { arguments: { port: '8080' }, name: 'port' }));
     const response1 = await session.next();
     expect(response1.result).toMatchObject({

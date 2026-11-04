@@ -37,18 +37,32 @@ function copiedSupplied(supplied: SuppliedInputs): SuppliedInputs {
   return { args, options };
 }
 
+function questionIdentity(question: {
+  message: string;
+  option?: string;
+  argument?: string;
+}): InputIdentity | { kind: 'question'; name: string; global: false } {
+  if (question.option !== undefined) {
+    return { global: false, kind: 'option', name: question.option };
+  }
+  if (question.argument !== undefined) {
+    return { global: false, kind: 'argument', name: question.argument };
+  }
+  return { global: false, kind: 'question', name: question.message };
+}
+
 /** The prompts library uses the same authenticated Standard Schema channel as input validation. */
 function questionValidationOptions(
   context: Pick<ActionContext<unknown>, 'host' | 'command' | 'passthrough' | 'supplied'>,
-  question: { message: string; option?: string },
+  question: { message: string } & (
+    | { option?: string; argument?: never }
+    | { argument: string; option?: never }
+  ),
 ): StandardSchemaV1.Options {
   return schemaOptions({
     command: [...context.command.path],
     host: context.host,
-    input:
-      question.option === undefined
-        ? { global: false, kind: 'question', name: question.message }
-        : { global: false, kind: 'option', name: question.option },
+    input: questionIdentity(question),
     passthrough: [...context.passthrough],
     phase: 'question',
     supplied: copiedSupplied(context.supplied),

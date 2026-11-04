@@ -20,3 +20,5 @@ export { providerContext } from './provider-context.js';
 export type { ProviderValues } from './provider-context.js';
 export { viewContext } from './view-context.js';
 export type { ViewValues } from './view-context.js';
+export { key } from './key.js';
+export type { KeyLetter } from './key.js';

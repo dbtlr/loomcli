@@ -10,6 +10,7 @@ import type { Recorded } from '../../../scripts/test-screen.js';
 import { confirm, secret, select, text } from '../src/index.js';
 import { questionFrame } from '../src/views.js';
 import { observing, recording } from './support.js';
+import { terminal as realTerminal } from './terminal.js';
 
 interface Run {
   answers: unknown[];
@@ -187,7 +188,11 @@ test('each kind draws in an input region and writes no frame through out.draw', 
     { input: true },
     { input: true },
   ]);
-  expect(run.notes.drawn).toEqual([JSON.stringify('\u001b[?25l'), JSON.stringify('\u001b[?25h')]);
+  expect(run.notes.drawn).toEqual([
+    JSON.stringify('\u001b[?25l\u001b[?2004h'),
+    JSON.stringify('\u001b[?25l'),
+    JSON.stringify('\u001b[?25h\u001b[?2004l'),
+  ]);
 });
 
 test('a lane message a timer writes while a question asks lands above the whole frame', async () => {
@@ -220,10 +225,12 @@ const edges = [
 
 test.each(edges)(
   'after %s, a key redraws the frame whole below the earlier output',
-  async (_case, scenario, message, width) => {
+  async (_case, scenario, message, _width) => {
     await expect(lines(await live(scenario), 'key')).resolves.toEqual([
       'ℹ earlier output',
-      ...rows(`? ${message} › x`, width),
+      ...(_case === 'narrowing'
+        ? ['? › x']
+        : [`? ${message[0]?.repeat(9)}…${message[0]?.repeat(9)} › x`]),
     ]);
   },
 );
@@ -258,8 +265,7 @@ const wideMessage = `${'g'.repeat(37)}界`;
 test('a wide glyph at the edge wraps whole, and a key redraws the frame with no stray row', async () => {
   await expect(lines(await live('wide'), 'key')).resolves.toEqual([
     'ℹ earlier output',
-    `? ${'g'.repeat(37)}`,
-    '界 › x',
+    `? ${'g'.repeat(9)}…${'g'.repeat(7)}界 › x`,
   ]);
 });
 
@@ -278,3 +284,58 @@ test.each([
     ]);
   },
 );
+
+// These scenarios exercise the real kernel terminal through the shared zpty driver.
+test('a real terminal edits a line, recognizes split keys, and survives a lone Escape', async () => {
+  const tty = realTerminal('editing', { NO_COLOR: '1' });
+  try {
+    const first = await tty.expect('Edit value');
+    tty.send(String.raw`abcd\e[D\x7fX`);
+    await tty.expect('abX*d');
+    tty.send(String.raw`\e`);
+    // The pause leaves the application time to read the ESC alone even on a loaded machine.
+    // A shorter one lets the terminal deliver ESC and Z in one read, which is Alt-Z.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    tty.send(String.raw`Z\e[`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    tty.send(String.raw`HZ\r`);
+    const result = await tty.expect('EXIT:0 cooked:true');
+    expect(result).toContain('ANSWER:"ZabXZd"');
+    expect(first).toContain('\u001b[?2004h');
+    expect(result).toContain('\u001b[?2004l');
+  } finally {
+    await tty.close();
+  }
+});
+
+test('a real terminal brackets a multiline paste without submitting it', async () => {
+  const tty = realTerminal('editing', { NO_COLOR: '1' });
+  try {
+    await tty.expect('Edit value');
+    tty.send(String.raw`\e[200~first\nsecond\e`);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    tty.send('[201~');
+    await tty.expect('first');
+    tty.send(String.raw`\r`);
+    const result = await tty.expect('EXIT:0 cooked:true');
+    expect(result).toContain('ANSWER:"first"');
+    expect(result).toContain('\u001b[?2004l');
+  } finally {
+    await tty.close();
+  }
+});
+
+test('a real terminal restores paste mode and cursor after Ctrl-C on a long line', async () => {
+  const tty = realTerminal('editing', { COLUMNS: '24', NO_COLOR: '1' });
+  try {
+    await tty.expect('E…e');
+    tty.send('x'.repeat(100));
+    await tty.expect('…');
+    tty.send(String.raw`\x03`);
+    const result = await tty.expect('EXIT:130 cooked:true');
+    expect(result).toContain('\u001b[?2004l');
+    expect(result).toContain('\u001b[?25h');
+  } finally {
+    await tty.close();
+  }
+});

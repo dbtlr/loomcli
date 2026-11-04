@@ -11,6 +11,11 @@ const port = new Command('port', { description: 'Configure a port.', extensions:
       String(await text(context, { message: 'Service port', option: 'port' })),
     );
   });
+const argument = new Command('operand', { extensions: [mcpCommand({})] })
+  .argument('url', { required: 'non-interactive' })
+  .action(async (context) => {
+    await context.out.print(await text(context, { argument: 'url', message: 'URL' }));
+  });
 const question = new Command('question', {
   description: 'Ask a question.',
   extensions: [mcpCommand({})],
@@ -18,6 +23,7 @@ const question = new Command('question', {
   await text(context, { message: 'Name' });
 });
 const app = new Application('setup', { description: 'Configure a service.', plugins: [mcp()] })
+  .command(argument)
   .command(port)
   .command(question);
 process.exitCode = await app.run();

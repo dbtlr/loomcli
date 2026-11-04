@@ -6,7 +6,7 @@ import { invoke as invokeFixture } from './run-fixture.ts';
 const none = '#undefined';
 
 /** A declaration that carries no extension value reports the empty record, never a missing key. */
-const bare = { extensions: {}, schema: null };
+const bare = { extensions: {}, requiredWhen: null, schema: null };
 
 /** The facts an option reports when its declaration states none of them, global or local. */
 const owned = {

@@ -10,20 +10,45 @@ import type {
   TextSettings,
 } from './types.js';
 
-function text<Options, const Key extends LinkKey<Options> = never, Output = string>(
-  context: PromptContext<Options>,
-  settings: TextSettings<Key, Output>,
-): Promise<Answer<Options, Key, Output>>;
-async function text<Options, Key extends LinkKey<Options>, Output>(
-  context: PromptContext<Options>,
-  settings: TextSettings<Key, Output>,
-): Promise<Options[Key] | Output | string> {
+function linkedIdentity(settings: {
+  argument?: string;
+  option?: string;
+}): { argument: string } | { option: string } | {} {
+  if (settings.argument !== undefined) {
+    return { argument: settings.argument };
+  }
+  return settings.option === undefined ? {} : { option: settings.option };
+}
+
+function text<
+  Options,
+  const Key extends LinkKey<Options> = never,
+  Output = string,
+  Args = unknown,
+  const Argument extends LinkKey<Args> = never,
+>(
+  context: PromptContext<Options, Args>,
+  settings: TextSettings<Key, Output, Argument>,
+): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
+async function text<
+  Options,
+  Key extends LinkKey<Options>,
+  Output,
+  Args,
+  Argument extends LinkKey<Args>,
+>(
+  context: PromptContext<Options, Args>,
+  settings: TextSettings<Key, Output, Argument>,
+): Promise<Args[Argument] | Options[Key] | Output | string> {
   context.signal.throwIfAborted();
   const resolved = resolveLink(context, settings, 'text');
   if (resolved.kind === 'answered') {
     return resolved.value;
   }
-  const raw = context.supplied.options[settings.option ?? ''];
+  const raw =
+    settings.argument === undefined
+      ? context.supplied.options[settings.option ?? '']
+      : context.supplied.args[settings.argument];
   const hint =
     typeof raw === 'string'
       ? raw
@@ -32,19 +57,31 @@ async function text<Options, Key extends LinkKey<Options>, Output>(
     hint,
     kind: 'text',
     message: settings.message,
-    ...(settings.option === undefined ? {} : { option: settings.option }),
+    ...linkedIdentity(settings),
     ...(settings.validate ? { validate: settings.validate } : {}),
   });
 }
 
-function secret<Options, const Key extends LinkKey<Options> = never, Output = string>(
-  context: PromptContext<Options>,
-  settings: SecretSettings<Key, Output>,
-): Promise<Answer<Options, Key, Output>>;
-async function secret<Options, Key extends LinkKey<Options>, Output>(
-  context: PromptContext<Options>,
-  settings: SecretSettings<Key, Output>,
-): Promise<Options[Key] | Output | string> {
+function secret<
+  Options,
+  const Key extends LinkKey<Options> = never,
+  Output = string,
+  Args = unknown,
+  const Argument extends LinkKey<Args> = never,
+>(
+  context: PromptContext<Options, Args>,
+  settings: SecretSettings<Key, Output, Argument>,
+): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
+async function secret<
+  Options,
+  Key extends LinkKey<Options>,
+  Output,
+  Args,
+  Argument extends LinkKey<Args>,
+>(
+  context: PromptContext<Options, Args>,
+  settings: SecretSettings<Key, Output, Argument>,
+): Promise<Args[Argument] | Options[Key] | Output | string> {
   context.signal.throwIfAborted();
   const resolved = resolveLink(context, settings, 'secret');
   if (resolved.kind === 'answered') {
@@ -54,7 +91,7 @@ async function secret<Options, Key extends LinkKey<Options>, Output>(
     hint: undefined,
     kind: 'secret',
     message: settings.message,
-    ...(settings.option === undefined ? {} : { option: settings.option }),
+    ...linkedIdentity(settings),
     ...(settings.validate ? { validate: settings.validate } : {}),
   });
 }
@@ -98,14 +135,26 @@ async function confirm<Options, Key extends LinkKey<Options>>(
   });
 }
 
-function select<Options, const Choice extends string, const Key extends LinkKey<Options> = never>(
-  context: PromptContext<Options>,
-  settings: SelectSettings<Key, Choice>,
-): Promise<Answer<Options, Key, Choice>>;
-async function select<Options, Choice extends string, Key extends LinkKey<Options>>(
-  context: PromptContext<Options>,
-  settings: SelectSettings<Key, Choice>,
-): Promise<Options[Key] | Choice> {
+function select<
+  Options,
+  const Choice extends string,
+  const Key extends LinkKey<Options> = never,
+  Args = unknown,
+  const Argument extends LinkKey<Args> = never,
+>(
+  context: PromptContext<Options, Args>,
+  settings: SelectSettings<Key, Choice, Argument>,
+): Promise<Answer<Args, Argument, Answer<Options, Key, Choice>>>;
+async function select<
+  Options,
+  Choice extends string,
+  Key extends LinkKey<Options>,
+  Args,
+  Argument extends LinkKey<Args>,
+>(
+  context: PromptContext<Options, Args>,
+  settings: SelectSettings<Key, Choice, Argument>,
+): Promise<Args[Argument] | Options[Key] | Choice> {
   context.signal.throwIfAborted();
   // Choices are often computed, so an empty list fails here, before the question resolves.
   const [first, ...rest] = settings.choices;
@@ -119,7 +168,10 @@ async function select<Options, Choice extends string, Key extends LinkKey<Option
   if (resolved.kind === 'answered') {
     return resolved.value;
   }
-  const raw = context.supplied.options[settings.option ?? ''];
+  const raw =
+    settings.argument === undefined
+      ? context.supplied.options[settings.option ?? '']
+      : context.supplied.args[settings.argument];
   const prefill = raw ?? settings.default ?? resolved.prefill;
   return askSelect(context, { choices: [first, ...rest], message: settings.message, prefill });
 }

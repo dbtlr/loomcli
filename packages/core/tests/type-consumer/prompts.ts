@@ -80,7 +80,37 @@ new Command('setup')
 const marked = { interaction: true, type: 'boolean' } satisfies OptionConfig;
 // @ts-expect-error TS2345: A local option cannot decide run interaction.
 new Command('bad').option('input', marked);
-// @ts-expect-error TS2322: Conditional requiredness is scalar only.
-new Command('bad').option('tags', { multiple: true, required: 'non-interactive', type: 'string' });
-// @ts-expect-error TS2322: Arguments keep Boolean requiredness.
-new Command('bad').argument('name', { required: 'non-interactive' });
+// A multiple string option and an argument may require input only outside interactive runs.
+new Command('tag').option('tags', { multiple: true, required: 'non-interactive', type: 'string' });
+new Command('greet').argument('name', { required: 'non-interactive' });
+
+new Command('clone')
+  .argument('url', { required: 'non-interactive', validate: z.string().transform(Number) })
+  .argument('files', { required: 'non-interactive', variadic: true })
+  .action(async (context) => {
+    const url: number | undefined = context.args.url;
+    const files: string[] = context.args.files;
+    const mixed: string | number | undefined = await text(context, {
+      argument: 'url',
+      message: 'URL',
+    });
+    const numeric: number | undefined = await secret(context, {
+      argument: 'url',
+      message: 'URL',
+      validate: z.string().transform(Number),
+    });
+    const selected: number | undefined | 'a' | 'b' = await select(context, {
+      argument: 'url',
+      choices: ['a', 'b'],
+      message: 'URL',
+    });
+    // @ts-expect-error TS2322: An argument link names an argument in this action context.
+    await text(context, { argument: 'missing', message: 'URL' });
+    // @ts-expect-error TS2322: A question cannot link both kinds of input.
+    await text(context, { argument: 'url', message: 'URL', option: 'x' });
+    // @ts-expect-error TS2322: No argument is Boolean.
+    await confirm(context, { argument: 'url', message: 'URL' });
+    // @ts-expect-error TS2345: Skipping requires a linked input.
+    await text(context, { message: 'URL', skipIfSupplied: true });
+    return { files, mixed, numeric, selected, url };
+  });

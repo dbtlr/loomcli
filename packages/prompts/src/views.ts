@@ -1,6 +1,8 @@
 import type { ViewContext } from '@loomcli/core';
 import { escapeControlCharacters, glyph, style as textStyle, view } from '@loomcli/core';
 
+import { graphemes } from './line.js';
+
 /** Operator values stay literal even though drawing preserves the library's terminal controls. */
 function literal(text: string): string {
   return textStyle.escape(escapeControlCharacters(text));
@@ -12,7 +14,13 @@ interface BaseFrame {
 }
 type QuestionFrame = BaseFrame &
   (
-    | { kind: 'text' | 'secret' | 'confirm'; typed: string; hint: string | undefined }
+    | {
+        kind: 'text' | 'secret' | 'confirm';
+        typed: string;
+        /** The cursor's grapheme index into `typed`; absent, the cursor is at the end of `typed`. */
+        cursor?: number | undefined;
+        hint: string | undefined;
+      }
     | {
         kind: 'select';
         choices: readonly string[];
@@ -145,6 +153,124 @@ function selectText(
   return frame;
 }
 
+/** Fits one editable field with a stateless window around its cursor cell. */
+function field(
+  data: { text: string; cursor: number; hint: boolean; columns: number },
+  context: ViewContext,
+): string {
+  const { text, cursor, hint, columns } = data;
+  const { style, width } = context;
+  const ellipsis = style.dim(glyph.ellipsis);
+  const cells = graphemes(text).map((part) => {
+    const drawn = literal(part);
+    return { drawn: width(drawn) === 0 ? `${drawn} ` : drawn, width: Math.max(1, width(drawn)) };
+  });
+  if ((!hint && cursor === cells.length) || cells.length === 0) {
+    cells.push({ drawn: ' ', width: 1 });
+  }
+  let position = 0;
+  const placed = cells.map((cell, index) => {
+    const start = position;
+    position += cell.width;
+    return { cursor: index === cursor, drawn: cell.drawn, start, width: cell.width };
+  });
+  const active = placed.find((cell) => cell.cursor) ?? { drawn: ' ', start: 0, width: 1 };
+  const paint = (drawn: string, selected: boolean) => {
+    const value = hint ? style.dim(drawn) : drawn;
+    return selected ? style.inverse(value) : value;
+  };
+  if (hint && position > columns) {
+    let result = '';
+    let used = 0;
+    for (const cell of placed) {
+      if (used + cell.width > columns - 1) {
+        break;
+      }
+      result += paint(cell.drawn, cell.cursor);
+      used += cell.width;
+    }
+    return used === 0 ? style.inverse(' ') : result + ' '.repeat(columns - 1 - used) + ellipsis;
+  }
+  if (position <= columns) {
+    return placed.map((cell) => paint(cell.drawn, cell.cursor)).join('');
+  }
+  if (columns < active.width + 2) {
+    return style.inverse(active.width > columns ? glyph.ellipsis : active.drawn);
+  }
+  const start = active.start - Math.floor((columns - active.width) / 2);
+  const head = start <= 0;
+  const tail = !head && start + columns >= position;
+  let from = start + 1;
+  if (head) {
+    from = 0;
+  } else if (tail) {
+    from = position - (columns - 1);
+  }
+  let to = start + columns - 1;
+  if (head) {
+    to = columns - 1;
+  } else if (tail) {
+    to = position;
+  }
+  let result = head ? '' : ellipsis;
+  let offset = from;
+  for (const cell of placed) {
+    if (cell.start < from || cell.start + cell.width > to) {
+      continue;
+    }
+    result += ' '.repeat(cell.start - offset) + paint(cell.drawn, cell.cursor);
+    offset = cell.start + cell.width;
+  }
+  result += ' '.repeat(to - offset);
+  return result + (tail ? '' : ellipsis);
+}
+
+/** Gives message and separator space to the input field as the destination narrows. */
+function typedFrame(
+  data: Exclude<QuestionFrame, { kind: 'select' }>,
+  context: ViewContext,
+): string {
+  const { style, width } = context;
+  const columns = Math.max(1, context.columns ?? 80);
+  // Only the glyph or the legend is dim, and the spaces around it are plain.
+  const label = data.kind === 'confirm' ? (data.hint ?? '[y/n]') : '›';
+  const separator = ` ${style.dim(label)} `;
+  const separatorWidth = width(label) + 2;
+  let prefix = '';
+  if (columns >= 2 + 1 + separatorWidth + 16) {
+    const messageColumns = columns - 2 - separatorWidth - 16;
+    const message =
+      width(data.message) <= messageColumns
+        ? data.message
+        : clipped(data.message, messageColumns, context);
+    prefix = `${style.info.bold('?')} ${style.bold(message)}${separator}`;
+  } else if (columns >= 1 + separatorWidth + 4) {
+    prefix = style.info.bold('?') + separator;
+  } else if (columns >= 3) {
+    prefix = `${style.info.bold('?')} `;
+  } else {
+    prefix = columns === 2 ? style.info.bold('?') : '';
+  }
+  const budget = columns - width(prefix);
+  if (data.kind === 'secret') {
+    return prefix + style.inverse(' ');
+  }
+  const hint =
+    data.kind === 'text' && data.typed === '' && data.hint !== undefined && data.hint !== '';
+  return (
+    prefix +
+    field(
+      {
+        columns: budget,
+        cursor: hint ? 0 : (data.cursor ?? graphemes(data.typed).length),
+        hint,
+        text: hint ? (data.hint ?? '') : data.typed,
+      },
+      context,
+    )
+  );
+}
+
 const questionFrame = view<QuestionFrame>('@loomcli/prompts/question-frame', {
   render: (data, context) => {
     const { style } = context;
@@ -154,16 +280,7 @@ const questionFrame = view<QuestionFrame>('@loomcli/prompts/question-frame', {
     if (data.kind === 'select') {
       return selectText(data, context, title) + issue;
     }
-    const cursor = style.inverse(' ');
-    let content = '';
-    if (data.kind !== 'secret') {
-      content = data.typed === '' ? style.dim(literal(data.hint ?? '')) : literal(data.typed);
-    }
-    const line =
-      data.kind === 'confirm'
-        ? `${title} ${style.dim(data.hint ?? '[y/n]')} ${literal(data.typed)}${cursor}`
-        : `${title} ${style.dim('›')} ${content}${cursor}`;
-    return `${line}${issue}`;
+    return typedFrame(data, context) + issue;
   },
 });
 const answeredLine = view<AnsweredLine>('@loomcli/prompts/answered-line', {

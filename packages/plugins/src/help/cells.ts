@@ -159,7 +159,11 @@ function optionForm(option: StringOption, writer: UsageWriter): string {
 /** How the action form names one argument: required or optional, and variadic or scalar. */
 function argumentForm(argument: ArgumentNode, writer: UsageWriter): string {
   const name = argument.variadic ? `${argument.name}...` : argument.name;
-  return writer.word(argument.required && !argument.stdin ? `<${name}>` : `[${name}]`);
+  return writer.word(
+    (argument.required || argument.requiredWhen === 'non-interactive') && !argument.stdin
+      ? `<${name}>`
+      : `[${name}]`,
+  );
 }
 
 /** The JSON escape each line terminator prints as, in code point order. */
@@ -456,7 +460,13 @@ function kindFacts(option: OptionNode): Fact[] {
 
 /** An argument's one possible fact. Its presence and arity are read from the usage line instead. */
 function argumentFacts(argument: ArgumentNode): Fact[] {
-  return [...contentFacts(argument, argument.variadic), ...defaultFacts(argument.default)];
+  return [
+    ...contentFacts(argument, argument.variadic),
+    ...(argument.requiredWhen === 'non-interactive'
+      ? [dimFact('required when not interactive')]
+      : []),
+    ...defaultFacts(argument.default),
+  ];
 }
 
 /** One row set as a terminal lays it out: its indent, its rows, and its left column's width. */

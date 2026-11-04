@@ -217,11 +217,12 @@ describe('the listing', () => {
           items: { enum: ['s', 'm'], type: 'string' },
           type: 'array',
         },
-        tag: { description: 'A tag.', items: { type: 'string' }, type: 'array' },
+        tag: { description: 'A tag.', items: { type: 'string' }, minItems: 1, type: 'array' },
+        topic: { description: 'A topic.', items: { type: 'string' }, minItems: 1, type: 'array' },
         unset: { description: 'No default to publish.', type: 'string' },
         verbose: { description: 'Say more.', minimum: 0, type: 'integer' },
       },
-      required: ['first', 'tag'],
+      required: ['first', 'tag', 'topic'],
       type: 'object',
     });
   });
