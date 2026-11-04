@@ -1,3 +1,7 @@
+- Export the types an author needs to name the input of a `@loomcli/plugins` function or the value it returns. `@loomcli/plugins/format` and `@loomcli/plugins/format/views` each export `EncodingConfig`, the configuration `json()` and `jsonl()` take. `@loomcli/plugins/logging` exports `WrittenLevel`, the levels its `level` setting takes, and `LoggingErrorKind`, the step a `LoggingError`'s `kind` names.
+- Export a facts interface for each pack extension, the value its descriptor takes and the value `readExtension` reads back. `@loomcli/plugins/help/extension` exports `HelpCommandFacts`, `HelpInputFacts`, `HelpArgumentFacts`, `HelpSectionPath`, and `CommandExample`. `@loomcli/plugins/manifest/extension` exports `ManifestCommandInput` and `DeclaredFailureInput`, which an author supplies, `ManifestCommandFacts` and `DeclaredFailure`, which the schema outputs, and `CommandExample`. `@loomcli/plugins/mcp/extension` exports `McpCommandFacts`, `McpAnnotations`, `McpInputFacts`, and `McpArgumentFacts`. `@loomcli/plugins/config/extension` exports `ConfigInputFacts`.
+- Allow read-only arrays in the values `helpCommand`, `helpInput`, and `manifestCommand` take, so a list declared `as const` or typed `readonly` passes as it is.
+- Mark every `@loomcli/plugins` export with the TSDoc tag `@public`, and mark with `@sealed` every type the pack builds and every class an author must not subclass, as the [public exports](docs/core/public-exports.md) page describes. An editor shows the tags on hover.
 - Change the published `schema` of the pack's extension descriptors from valibot's schema types to `StandardSchemaV1` over the exported facts interfaces: `helpCommand`, `helpInput`, and `helpArgument`; `manifestCommand`; `mcpCommand`, `mcpInput`, and `mcpArgument`; and `configInput`. No published declaration of `@loomcli/plugins` names valibot any longer, so an application's type check with `skipLibCheck: false` loads no valibot declarations through the pack. Validation is unchanged: every value the descriptors accepted before they accept now, with the same messages.
 
 ### Migration
@@ -29,6 +33,29 @@ const result = await helpCommand.schema['~standard'].validate(value);
 if (result.issues === undefined) {
   const facts: HelpCommandFacts = result.value;
 }
+```
+
+Code that built a facts value field by field builds it as one literal, and extends a list with a spread:
+
+Before:
+
+```ts
+const facts: Parameters<typeof helpCommand>[0] = {};
+facts.details = details;
+facts.examples = [];
+facts.examples.push({ command: 'notes add' });
+```
+
+After:
+
+```ts
+import { helpCommand, type HelpCommandFacts } from '@loomcli/plugins/help/extension';
+
+const base: HelpCommandFacts = { details, examples: [] };
+const facts: HelpCommandFacts = {
+  ...base,
+  examples: [...(base.examples ?? []), { command: 'notes add' }],
+};
 ```
 
 **Steps.**
