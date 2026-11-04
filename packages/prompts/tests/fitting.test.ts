@@ -74,6 +74,7 @@ test.each([
   ['the tail, End', 16, typed(url), '? › …l:5432/app[ ]'],
   ['wide graphemes in the middle', 13, typed(wide, 3), '? › …語[の]テ …'],
   ['a wide grapheme the head cuts', 12, typed(wide, 0), '? › [日]本語 …'],
+  ['a wide grapheme the leading ellipsis cuts', 8, typed(`a${wide}`, 8), '? › … [ト]'],
   ['a zero-width grapheme under the cursor', 40, typed('a​b', 1), '? Name › a[​ ]b'],
   ['a zero-width grapheme before the cursor', 40, typed('a​b'), '? Name › a​ b[ ]'],
 ])('a typed line draws %s', async (_case, columns, frame, expected) => {
