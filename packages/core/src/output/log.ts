@@ -6,13 +6,22 @@ import { isAuthorFault } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
 import type { FailureForm } from '../failures/form.js';
 
-/** The levels a log event carries. `fatal` is core's alone: `Log` has no method for it. */
+/**
+ * The levels a log event carries. `fatal` is core's alone: `Log` has no method for it.
+ *
+ * @public
+ * @sealed
+ */
 type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
 /** The levels an author's `log` call can name. */
 type CallLevel = Exclude<LogLevel, 'fatal'>;
 
-/** Plain JSON data, which a log event's fields are copied into. */
+/**
+ * Plain JSON data, which a log event's fields are copied into.
+ *
+ * @public
+ */
 type JsonValue =
   | null
   | boolean
@@ -21,10 +30,19 @@ type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue };
 
-/** The fields of a `log` call: any values, which the copy turns into JSON. */
+/**
+ * The fields of a `log` call: any values, which the copy turns into JSON.
+ *
+ * @public
+ */
 type LogFields = Readonly<Record<string, unknown>>;
 
-/** One log event as an `onLog` hook receives it, frozen with everything it holds. */
+/**
+ * One log event as an `onLog` hook receives it, frozen with everything it holds.
+ *
+ * @public
+ * @sealed
+ */
 interface LogEvent {
   /** ISO 8601 UTC with milliseconds, read at the call. */
   readonly time: string;
@@ -44,7 +62,12 @@ interface LogEvent {
   readonly defect?: LogDefect;
 }
 
-/** What a `log` call on a context of the run does: one method for each author-callable level. */
+/**
+ * What a `log` call on a context of the run does: one method for each author-callable level.
+ *
+ * @public
+ * @sealed
+ */
 interface Log {
   trace(message: string, fields?: LogFields): void;
   debug(message: string, fields?: LogFields): void;
@@ -56,6 +79,9 @@ interface Log {
 /**
  * Where a hook writes: the outermost run's environment, home, platform, and stderr, which is
  * `null` under an invocation by name, because that writes to no process stream.
+ *
+ * @public
+ * @sealed
  */
 interface LogDestination {
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -65,7 +91,11 @@ interface LogDestination {
   readonly stderr: Writable | null;
 }
 
-/** A plugin's `onLog` hook: it observes one event and returns nothing. */
+/**
+ * A plugin's `onLog` hook: it observes one event and returns nothing.
+ *
+ * @public
+ */
 type LogHook = (event: LogEvent, destination: LogDestination) => undefined;
 
 /** Gives one context its `log`, bound to the plugin core is calling, or to none. */

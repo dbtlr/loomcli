@@ -53,12 +53,17 @@ import type { CommandAttachHook, GraphBuiltHook } from './types.js';
  * The declaration record a plugin contributes its global options under, keyed by option name. Each
  * entry takes the configuration `globalOption()` takes, so the config type publishes no presence
  * rule.
+ *
+ * @public
  */
 type PluginOptions = Readonly<Record<string, GlobalOptionConfig>>;
 
 /**
  * The values one plugin's options take, read through the same `OptionValue` an action's options
  * are, so a validated option reads as its validator's output.
+ *
+ * @public
+ * @sealed
  */
 type PluginOptionValues<Options extends PluginOptions> = {
   readonly [Name in keyof Options & string]: OptionValue<Options[Name]>;
@@ -68,6 +73,8 @@ type PluginOptionValues<Options extends PluginOptions> = {
  * The spelling that supplied each of one plugin's own options given as a token, such as `-h`,
  * `--help`, or `--no-total`. An option filled by an input source, defaulted, or not supplied has
  * no entry.
+ *
+ * @public
  */
 type PluginOptionSpellings<Options extends PluginOptions> = Readonly<
   Partial<Record<keyof Options & string, string>>
@@ -122,13 +129,20 @@ class PluginDeclaration<Options extends PluginOptions, Theme extends ThemeMappin
 /**
  * One plugin, as the opaque value `plugin()` returns. The declarations behind it stay private to
  * this package, so no consumer can read or replace them.
+ *
+ * @public
+ * @sealed
  */
 type Plugin<Options extends PluginOptions = PluginOptions, Theme extends ThemeMapping = {}> = Pick<
   PluginDeclaration<Options, Theme>,
   typeof pluginOptions | typeof pluginTheme
 >;
 
-/** The declared options of a plugin, or of the factory that returns one. */
+/**
+ * The declared options of a plugin, or of the factory that returns one.
+ *
+ * @public
+ */
 type OptionsOf<Contributor> =
   Contributor extends Plugin<infer Options>
     ? Options
@@ -150,7 +164,11 @@ type InstalledOptionValues<Plugins extends readonly Plugin[]> = Plugins extends 
       InstalledOptionValues<Rest>
   : {};
 
-/** A middleware reads its own plugin's options and either takes over or continues the chain. */
+/**
+ * A middleware reads its own plugin's options and either takes over or continues the chain.
+ *
+ * @public
+ */
 type Middleware<Contributor extends Plugin | ((...args: never[]) => Plugin)> = (
   context: MiddlewareContext<OptionsOf<Contributor>>,
 ) => Promise<void> | void;
@@ -163,6 +181,9 @@ type Middleware<Contributor extends Plugin | ((...args: never[]) => Plugin)> = (
  * and `style` the contextual style an action receives, so a source warns and escapes as they do.
  * `invokedBy` reads `'name'` in a run `invoke()` started, where a problem names an option by its
  * declared name, as core's own problems do there.
+ *
+ * @public
+ * @sealed
  */
 interface SourceContext<Options extends PluginOptions = PluginOptions> {
   readonly host: Host;
@@ -180,6 +201,8 @@ interface SourceContext<Options extends PluginOptions = PluginOptions> {
  * One answer: a value of the option's raw type, a string, a Boolean, a whole number of 0 or more
  * for a counted option, or a list of strings for a multiple option, and the one-line label core
  * prints in a diagnostic about the value.
+ *
+ * @public
  */
 interface SourceAnswer {
   readonly value: string | boolean | number | readonly string[];
@@ -194,6 +217,8 @@ interface SourceAnswer {
 /**
  * A configuration source answers the requested options by declared name. A requested option with
  * no key in the record has no answer and falls through to its default.
+ *
+ * @public
  */
 type SourceResolver<Contributor extends Plugin | ((...args: never[]) => Plugin)> = (
   context: SourceContext<OptionsOf<Contributor>>,
@@ -206,6 +231,8 @@ type SourceResolver<Contributor extends Plugin | ((...args: never[]) => Plugin)>
  * failure, `onLog` runs when a run logs an event, `onEnvironment` prepares additions before input validation, the middleware runs inside an invocation, the configuration source runs in the
  * input-source stage when an unfilled option carries its binding, and a translator runs when a
  * foreign throw its key matches leaves the application's work.
+ *
+ * @public
  */
 interface PluginDefinition<
   Options extends PluginOptions = PluginOptions,
@@ -250,6 +277,8 @@ interface PluginDefinition<
  * an invocation never reaches costs that invocation its hooks alone. The definition is read once,
  * after the identity, and every rule that one definition carries on its own throws here, before
  * the value exists.
+ *
+ * @public
  */
 function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMapping = {}>(
   identity: string,
@@ -694,6 +723,7 @@ export type {
   Middleware,
   OptionsOf,
   Plugin,
+  PluginDeclaration,
   PluginDefinition,
   PluginOptions,
   PluginOptionSpellings,

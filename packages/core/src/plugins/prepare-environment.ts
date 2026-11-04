@@ -3,7 +3,12 @@ import type { Log, LogBinder } from '../output/log.js';
 import type { Out } from '../output/types.js';
 import type { BuiltPlugin } from './plugin.js';
 
-/** Environment preparation precedes input validation and exposes no parsed invocation. */
+/**
+ * Environment preparation precedes input validation and exposes no parsed invocation.
+ *
+ * @public
+ * @sealed
+ */
 interface EnvironmentContext {
   readonly host: {
     readonly cwd: Host['cwd'];
@@ -13,6 +18,7 @@ interface EnvironmentContext {
   readonly log: Log;
 }
 
+/** @public */
 type EnvironmentHook = (
   context: EnvironmentContext,
 ) => Readonly<Record<string, string>> | void | Promise<Readonly<Record<string, string>> | void>;

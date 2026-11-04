@@ -7,6 +7,9 @@ import type { EndingSignal, LaneHandlers, LanePlace, LaneRun, SharedLane } from 
  * and never infers a signal name; `cause` carries the caller's own `signal.reason` when a caller
  * aborted, and the failed write when the reader of the run's stdout closed the pipe. The first
  * cause to abort fixes the reason and the code, and a later cause changes neither.
+ *
+ * @public
+ * @sealed
  */
 interface CancellationReason {
   readonly source: EndingSignal | 'caller' | 'action' | 'closed-pipe';

@@ -1,7 +1,12 @@
 import type { Background } from '../host/background.js';
 import type { ContextualStyle } from '../style/style.js';
 
-/** Immutable authoring and measurement context for one view destination. */
+/**
+ * Immutable authoring and measurement context for one view destination.
+ *
+ * @public
+ * @sealed
+ */
 export interface ViewContext {
   /**
    * The run's background, `'dark'` or `'light'`, or `undefined` when no source settled it. It holds
@@ -31,7 +36,11 @@ export interface ViewContext {
   readonly wrap: (text: string, columns: number | undefined) => string;
 }
 
-/** A pure synchronous view turns one typed value into the marked text core resolves. */
+/**
+ * A pure synchronous view turns one typed value into the marked text core resolves.
+ *
+ * @public
+ */
 export interface View<Data> {
   render: (data: Readonly<Data>, context: ViewContext) => string;
   /** The media type of the text the view writes, such as `application/json`; omitted for none. */
@@ -44,6 +53,8 @@ export interface View<Data> {
  * A row view renders a sequence one row at a time.
  * `head` and `tail` open and close the sequence, and each defaults to the empty string.
  * Every function is pure and synchronous and owns the newlines in the text it returns.
+ *
+ * @public
  */
 export interface RowView<Row> {
   row: (row: Readonly<Row>, index: number, context: ViewContext) => string;
@@ -55,18 +66,26 @@ export interface RowView<Row> {
   render?: undefined;
 }
 
-/** The views record of a value result: every entry renders the whole value. */
+/**
+ * The views record of a value result: every entry renders the whole value.
+ *
+ * @public
+ */
 export type ResultViews<Value> = Readonly<Record<string, View<Value>>>;
 
 /**
  * The views record of a rows result: a whole view over the collected rows, which core buffers the
  * sequence for, or a row view, which core feeds as the rows arrive.
+ *
+ * @public
  */
 export type RowViews<Row> = Readonly<Record<string, View<readonly Row[]> | RowView<Row>>>;
 
 /**
  * One view a result names, with its data type erased, as the view registry erases a declared
  * view's. The write site reads each function back through the key that resolved it.
+ *
+ * @public
  */
 export type ResultView = View<never> | RowView<never>;
 
@@ -86,6 +105,8 @@ export interface DeclaredResult {
  * What `out.results` accepts for one declared result. The declaration rides in the declared types
  * as a closed discriminant, so a Command that declares none carries the neutral `unknown` and its
  * `out.results` takes `never`. The parameter is never a union, so distribution reaches one member.
+ *
+ * @public
  */
 export type ResultInput<Result> = Result extends { kind: 'value'; value: infer Value }
   ? Value
@@ -114,6 +135,8 @@ export type ResultViewsOf<Result> = Result extends { kind: 'value'; value: infer
  * The data `out.render` accepts: any value under a whole view, and under a row view a sequence of
  * that view's rows. A stated row view's row type is read from the view, so a generic sequence
  * reaches it, and data that is not a sequence, one row or rows that may be `undefined`, does not.
+ *
+ * @public
  */
 export type RenderedData<Data, Row> = Data &
   ([Row] extends [never] ? unknown : Iterable<NoInfer<Row>> | AsyncIterable<NoInfer<Row>>);
@@ -121,11 +144,14 @@ export type RenderedData<Data, Row> = Data &
 /**
  * The row view over the rows `Data` yields, which types a pack view's factory from the data. The
  * check is not distributive, so data that may be `undefined` or a single row has no such view.
+ *
+ * @public
  */
 export type RowViewOver<Data> = [Data] extends [Iterable<infer Row> | AsyncIterable<infer Row>]
   ? RowView<Row>
   : never;
 
+/** @public @sealed */
 export interface Out<Result = unknown> {
   print(message: string): Promise<void>;
   info(message: string): Promise<void>;
@@ -167,23 +193,41 @@ export interface Out<Result = unknown> {
   fatal(message: string): never;
 }
 
-/** How `out.region()` opens a region. */
+/**
+ * How `out.region()` opens a region.
+ *
+ * @public
+ */
 export interface RegionOptions {
   /** The region reads the operator's keys, as a question does. */
   readonly input?: boolean;
 }
 
-/** What closed a region: its own `end()`, its opener finishing, a failure, or cancellation. */
+/**
+ * What closed a region: its own `end()`, its opener finishing, a failure, or cancellation.
+ *
+ * @public
+ * @sealed
+ */
 export type RegionCloser = 'end' | 'completion' | 'failure' | 'cancellation';
 
-/** One report of a region's progress; an omitted field keeps its last reported value. */
+/**
+ * One report of a region's progress; an omitted field keeps its last reported value.
+ *
+ * @public
+ */
 export interface ProgressReport {
   readonly completed?: number;
   readonly total?: number;
   readonly label?: string;
 }
 
-/** The handle `out.region()` returns. */
+/**
+ * The handle `out.region()` returns.
+ *
+ * @public
+ * @sealed
+ */
 export interface Region {
   /** Whether core draws this region's frames: stderr is a terminal, and the region takes input or the run is not quiet. */
   readonly live: boolean;
@@ -202,7 +246,12 @@ export interface Region {
   report(progress: ProgressReport): void;
 }
 
-/** The typed value a region's report builds, which a program reads without reading a frame. */
+/**
+ * The typed value a region's report builds, which a program reads without reading a frame.
+ *
+ * @public
+ * @sealed
+ */
 export interface ProgressEvent {
   readonly id: number;
   readonly label: string;

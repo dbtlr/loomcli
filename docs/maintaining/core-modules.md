@@ -28,7 +28,7 @@ description: The map of @loomcli/core's source modules. Which folder under packa
 
 ## Conventions
 
-- `index.ts` is the only barrel and the whole public surface. A module folder has no index file, and an internal import names the file it reads.
+- `index.ts` is the only barrel and holds every public export. A module folder has no index file, and an internal import names the file it reads.
 - A module's `types.ts` holds the shared public types of its concept: the types that no single file's code owns. A type that belongs with one file's code, such as the registration types in `application/environment.ts`, stays in that file. A type lives in the module of the concept it describes, even when other modules import it.
 - A rule family sits in its module's `rules.ts`, apart from the code that raises it, so a rule can be imported without loading that code: the Command family in `commands/rules.ts`, the input family in `inputs/rules.ts`, and the plugin family in `plugins/rules.ts`. `diagnostics/rules.ts` holds core's run-time defects and the faults of failure codes and rule identities. `inputs/content-rules.ts` keeps the content rule apart from the input family, whose test pins `inputs/rules.ts` to exactly that family. A rule that one file alone raises, such as a mark's rule or a shutdown budget's, is declared beside the code that raises it.
 - `host/process-handle.ts` is the one file that reads the global `process`, asks `node:os` for the user's folders, and starts real children. Lint allows those calls only there.

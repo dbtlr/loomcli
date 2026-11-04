@@ -12,13 +12,20 @@ import { foreignValue, foreignValueCorrection, providerNameTaken } from './rules
 /** Phantom key. It carries a provider's value and globals types and holds no runtime value. */
 declare const providerTypes: unique symbol;
 
-/** How long a provided value lasts: one run, or the outermost run and every run nested in it. */
+/**
+ * How long a provided value lasts: one run, or the outermost run and every run nested in it.
+ *
+ * @public
+ */
 type Lifetime = 'ephemeral' | 'persistent';
 
 /**
  * A value that hands an action a typed value under `provided`. Its declaration annotates this type,
  * which names the key, the value, the global options it reads, its lifetime, and the providers it
  * uses, and `provider()` checks the definition against it.
+ *
+ * @public
+ * @sealed
  */
 interface Provider<
   Name extends string = string,
@@ -34,7 +41,12 @@ interface Provider<
   readonly [providerTypes]: { value: Value; globals: (value: Globals) => void };
 }
 
-/** Any provider, whatever it provides and reads. */
+/**
+ * Any provider, whatever it provides and reads.
+ *
+ * @public
+ * @sealed
+ */
 type AnyProvider = Provider<string, unknown, never, Lifetime, readonly AnyProvider[]>;
 
 /** Any provider whose value lasts the outermost run. */
@@ -50,7 +62,12 @@ type GlobalsOf<Declared extends AnyProvider> = Declared[typeof providerTypes]['g
   ? Globals
   : never;
 
-/** Each provider in a list mapped to its value under its name. */
+/**
+ * Each provider in a list mapped to its value under its name.
+ *
+ * @public
+ * @sealed
+ */
 type ProvidedValues<Uses extends readonly AnyProvider[]> = {
   readonly [Listed in Uses[number] as Listed['name']]: ValueOf<Listed>;
 };
@@ -106,7 +123,12 @@ type WithProviderGlobals<Globals, Uses extends readonly AnyProvider[]> = Uses ex
   ? Globals
   : Globals & ProviderGlobals<Uses>;
 
-/** What an opener receives: the validated globals it reads, its providers' values, and the run's tools. */
+/**
+ * What an opener receives: the validated globals it reads, its providers' values, and the run's tools.
+ *
+ * @public
+ * @sealed
+ */
 interface ProviderContext<Globals = {}, Provided = {}> {
   /** The validated global option values, frozen to every depth. */
   readonly options: Globals;
@@ -132,12 +154,18 @@ interface ProviderContext<Globals = {}, Provided = {}> {
 /**
  * The function a provider's module exports by default, typed from the provider's declaration. It
  * reads the declaration's members, so a provider whose name is a type parameter types it too.
+ *
+ * @public
  */
 type Opener<Declared extends AnyProvider> = (
   context: ProviderContext<GlobalsOf<Declared>, ProvidedValues<Declared['uses']>>,
 ) => ValueOf<Declared> | Promise<ValueOf<Declared>>;
 
-/** `lifetime` is required unless it is ephemeral, and `uses` unless the list is empty. */
+/**
+ * `lifetime` is required unless it is ephemeral, and `uses` unless the list is empty.
+ *
+ * @public
+ */
 type ProviderDefinition<Declared extends AnyProvider> = ('ephemeral' extends Declared['lifetime']
   ? { lifetime?: 'ephemeral' }
   : { lifetime: Declared['lifetime'] }) &
@@ -225,6 +253,8 @@ function readUses(
 /**
  * The frozen value a provider declaration holds. The declaration's annotation states its types, so
  * the call checks the definition against them.
+ *
+ * @public
  */
 function provider<const Declared extends AnyProvider>(
   name: Declared['name'],

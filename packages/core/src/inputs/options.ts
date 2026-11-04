@@ -160,6 +160,8 @@ export function checkOptionName(name: string, siteOf: () => InputSite): void {
  * The one name rule for an argument, option, alias of an option, or view name: a bare token the
  * parser can read, nonempty, with no leading hyphen, whitespace, or `=`, which it reads apart.
  * Core exports it so the lint plugin judges a literal name by this same rule.
+ *
+ * @public
  */
 export function isDeclaredName(name: string): boolean {
   return name !== '' && !name.startsWith('-') && !/[\s=]/u.test(name);

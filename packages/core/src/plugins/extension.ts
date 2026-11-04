@@ -17,7 +17,11 @@ import {
 } from './rules.js';
 import type { AttachedCommand } from './types.js';
 
-/** The three declaration kinds an extension can name, each with its own node in the graph. */
+/**
+ * The three declaration kinds an extension can name, each with its own node in the graph.
+ *
+ * @public
+ */
 type ExtensionTarget = 'argument' | 'command' | 'option';
 
 /**
@@ -26,6 +30,9 @@ type ExtensionTarget = 'argument' | 'command' | 'option';
  * signature, because a schema-typed call signature relates only by schema identity and a list
  * cannot name one schema per element. A descriptor is assignable to it; an extension value, which
  * publishes its brand alone, is not.
+ *
+ * @public
+ * @sealed
  */
 interface AnyExtension {
   readonly identity: string;
@@ -69,7 +76,12 @@ class ExtensionCarrier<Target extends ExtensionTarget> {
   }
 }
 
-/** A branded extension value, keyed by its extension's identity and typed by its target. */
+/**
+ * A branded extension value, keyed by its extension's identity and typed by its target.
+ *
+ * @public
+ * @sealed
+ */
 type ExtensionValue<Target extends ExtensionTarget> = Pick<
   ExtensionCarrier<Target>,
   typeof extensionTarget
@@ -79,6 +91,9 @@ type ExtensionValue<Target extends ExtensionTarget> = Pick<
  * A descriptor that is also a factory: calling it with the schema's input returns the branded value
  * a declaration carries. The schema is public so a typed read recovers the output type, and
  * `collect` says whether the values a declaration carries accumulate or replace each other.
+ *
+ * @public
+ * @sealed
  */
 interface Extension<
   Target extends ExtensionTarget = ExtensionTarget,
@@ -95,11 +110,14 @@ interface Extension<
  * One typed fact a plugin defines for one target. The descriptor is compared by reference wherever
  * it appears, so one identity means one descriptor and a duplicated package copy is visible. With
  * `collect: true` it is a collecting extension, whose values accumulate on a declaration in order.
+ *
+ * @public
  */
 function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
   identity: string,
   config: { schema: Schema; target: Target; collect?: false | undefined },
 ): Extension<Target, Schema>;
+/** @public */
 function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
   identity: string,
   config: { schema: Schema; target: Target; collect: true },
@@ -157,6 +175,8 @@ const noValues: readonly never[] = Object.freeze([]);
  * stored output or `undefined`, compares the descriptor by reference with the one that produced the
  * value, and runs no schema. Through a collecting descriptor it returns every collected output in
  * collection order, and an empty list where the node carries none.
+ *
+ * @public
  */
 function readExtension<
   Target extends ExtensionTarget,

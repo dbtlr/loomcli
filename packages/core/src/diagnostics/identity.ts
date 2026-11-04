@@ -23,7 +23,11 @@ const kebabSegment = String.raw`\/[a-z0-9]+(?:-[a-z0-9]+)*`;
  */
 const ruleGrammar = new RegExp(`^${packageName}(?:${kebabSegment})+$`, 'u');
 
-/** Whether a value is a diagnostic rule identity: an identity and a kebab-case rule name. */
+/**
+ * Whether a value is a diagnostic rule identity: an identity and a kebab-case rule name.
+ *
+ * @public
+ */
 function isRuleIdentity(value: unknown): value is string {
   if (typeof value !== 'string') {
     return false;
@@ -38,7 +42,11 @@ function isRuleIdentity(value: unknown): value is string {
  */
 const failureCodeGrammar = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
-/** Whether a value is a failure code: a string in the grammar, such as `path-not-found`. */
+/**
+ * Whether a value is a failure code: a string in the grammar, such as `path-not-found`.
+ *
+ * @public
+ */
 function isFailureCode(value: unknown): value is string {
   return typeof value === 'string' && failureCodeGrammar.test(value);
 }

@@ -39,14 +39,36 @@ Write links relative to the repository root, where the compiled entry will live.
 
 ## Explain a breaking change
 
-A change is breaking when code an application author already wrote must change or now fails, when the application's requirements rise, or when a new rule rejects a value that an earlier release accepted. Judge it by how the author's code meets the changed surface: does the author call it, read it from an object core built, or build it and pass it to core? Mark it with the filename prefix even when the change fixes a bug.
+A change is breaking when code an application author already wrote must change or now fails, when the application's requirements rise, or when a new rule rejects a value that an earlier release accepted. Mark it with the filename prefix even when the change fixes a bug.
 
-- A removed or renamed export and a raised minimum runtime version are breaking.
-- A function or method the author calls, such as `out.info`, breaks when a call that worked before no longer satisfies its parameters, or when code that uses its result no longer compiles or runs. A new optional parameter is not breaking.
-- An object core constructs and passes to the author's code, such as `Out`, a view context, the action, middleware, and hook contexts, or the host, breaks when a member the author reads is removed or changes so that code reading it no longer compiles or runs. Adding a member is not breaking, because core owns construction and an application that builds one of these objects itself is outside the supported surface. The same holds for a node core produces: a required readonly field such as `schema` on `OptionNode` is not breaking.
-- Something the author builds and passes to core, such as a declaration, a view, a plugin, a validator, or a translator, breaks when it gains a required member.
+Judge a change to an export by its tag on the changed name's line in the API report diff, and by the position of the changed member, as the [public exports](../docs/core/public-exports.md) page states. A library whose exports carry no tags yet has no report line to read, so judge a change to it by the position of the changed member alone. An interface or a type alias takes the type rows below; a class takes the class rows, and its constructor takes the function row.
+
+- `@public @sealed` on a type marks a sealed type: a Loom library builds every value, `@loomcli/testing`'s builders included, and the author reads it, such as `Out`, the host, every context, `Command`, `Plugin`, or `OptionNode`.
+- `@public` on a type without `@sealed` marks an author-built type: the author builds the value and hands it to a library, such as `CommandOptions`, `PluginDefinition`, a view, a validator, a translator, `ProcessHandle`, or a testing builder's input.
+- `@sealed` on a class means the author must not subclass it. A class without it, such as `LoomError` or `FatalError`, is one the author may extend.
+- A member the author reads, such as a field of a sealed type or a parameter core passes to an author's callback, is in read position. A member the author builds, such as a field of an author-built type or a callback's return value, is in build position. Position flips at each function parameter, so a parameter of a function the author calls is in build position. A member in both positions, such as a context member a testing builder's input copies, follows both rows, so any change but a new optional member breaks.
+- A type narrows when its new type is a subtype of the old one, and widens when it is a supertype, judged over the whole member type, a function type included.
+
+| Changed export | Breaking | Not breaking |
+| --- | --- | --- |
+| Any export | It is removed or renamed. | It is added. |
+| A function, a constant, a method, or a class constructor | A call that worked before no longer satisfies its parameters, or code that uses its result no longer compiles or runs. | A new optional parameter. |
+| A member in read position | It is removed, it widens other than by a string-literal union gaining a member, a member of its string-literal union is removed, or an object union gains a variant. | Its type narrows other than by losing a string-literal member, or its string-literal union gains a member. |
+| A sealed type | A member is removed, or a member changes as the read-position row states. | A new member, such as a required readonly field like `schema` on `OptionNode` or an opt-in authoring method. |
+| A member in build position | It is removed, it becomes required, or its type narrows. | Its type widens. |
+| An author-built type | A new required member, or a member that changes as the build-position row states. | A new optional member. |
+| A class with `@sealed` | A member changes as the sealed-type row states. | A new member. |
+| A class without `@sealed` | A new or changed instance or static member, because it can collide with a subclass's own. | A new subclass of it. |
+| A type parameter | It is removed or reordered, one without a default is added, or its constraint narrows. | One with a default is added, or its constraint widens. |
+| A type or class that loses `@sealed` | | Always not breaking: the author may now build or subclass it. |
+| A type or class that gains `@sealed` | Always breaking: code that builds or subclasses it is no longer supported. | |
+
+A string-literal union core produces, such as `CancellationReason`'s `source`, may gain a member in any release, so author code that reads one handles a value it does not know. A union of object variants, such as `ChildExit`, may not, because a new variant changes how the existing ones match. A computed type, such as `OptionsOf` or `ActionHandler`, takes the category of the type it computes, and a change to its result for an input that already worked is a change to that type. A re-exported external type, such as `StandardSchemaV1`, follows its package's version range: raising that range past a major version is breaking.
+
+Three rules hold whatever the tag:
+
+- A raised minimum runtime version is breaking.
 - A declaration rule that rejects a default an earlier release accepted is breaking, even though the application compiles unchanged.
-- Expanding a produced type union or adding an opt-in authoring method is not breaking.
 - A change to a template's text is never breaking. When the help page's bytes or a description's wording change, no application has to change its code, so the fragment is a fix or a feature.
 
 After the change bullets, add one `### Migration` section with all five labels shown below. Give exact affected surfaces, a reason, before-and-after examples, ordered steps, and validation commands.

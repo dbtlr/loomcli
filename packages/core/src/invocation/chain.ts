@@ -34,6 +34,9 @@ import type { ActionChannel, Request } from './types.js';
 /**
  * What the rest of one chain did: the action ran, a later middleware took over by returning without
  * calling its own `next()`, or the run was cancelled before the action ran.
+ *
+ * @public
+ * @sealed
  */
 type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
 
@@ -56,6 +59,9 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
  * through: it reads as the declaration's default, or the view an invocation by name started from,
  * until a middleware assigns one, and as `null` on a Command that declares none. The last assignment before the dispatch boundary wins, and one
  * made after it changes nothing.
+ *
+ * @public
+ * @sealed
  */
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly options: (PluginOptionValues<Options> & Readonly<Record<string, unknown>>) | null;

@@ -12,7 +12,11 @@ type WholeNumbersBelow<
   ? Counted[number]
   : WholeNumbersBelow<Bound, [...Counted, Counted['length']]>;
 
-/** The codes a failure class may declare, 1 through 125. 0 is success, and the rest are reserved. */
+/**
+ * The codes a failure class may declare, 1 through 125. 0 is success, and the rest are reserved.
+ *
+ * @public
+ */
 export type FailureExitCode = Exclude<WholeNumbersBelow<typeof firstReserved>, 0>;
 
 // The failure codes BSD's `sysexits.h` names, as flat constants with literal types.
@@ -20,33 +24,93 @@ export type FailureExitCode = Exclude<WholeNumbersBelow<typeof firstReserved>, 0
 // `EX_OK` is not here, because no failure declares 0.
 // Core raises invalid input as 2 and never raises `EX_USAGE`.
 
-/** The command was used incorrectly. */
+/**
+ * The command was used incorrectly.
+ *
+ * @public
+ */
 export const EX_USAGE = 64;
-/** The input data was incorrect. */
+/**
+ * The input data was incorrect.
+ *
+ * @public
+ */
 export const EX_DATAERR = 65;
-/** An input file did not exist or could not be read. */
+/**
+ * An input file did not exist or could not be read.
+ *
+ * @public
+ */
 export const EX_NOINPUT = 66;
-/** An addressee is unknown. */
+/**
+ * An addressee is unknown.
+ *
+ * @public
+ */
 export const EX_NOUSER = 67;
-/** A host name is unknown. */
+/**
+ * A host name is unknown.
+ *
+ * @public
+ */
 export const EX_NOHOST = 68;
-/** A service is unavailable. */
+/**
+ * A service is unavailable.
+ *
+ * @public
+ */
 export const EX_UNAVAILABLE = 69;
-/** An internal software error. */
+/**
+ * An internal software error.
+ *
+ * @public
+ */
 export const EX_SOFTWARE = 70;
-/** An operating system error. */
+/**
+ * An operating system error.
+ *
+ * @public
+ */
 export const EX_OSERR = 71;
-/** A system file is missing or malformed. */
+/**
+ * A system file is missing or malformed.
+ *
+ * @public
+ */
 export const EX_OSFILE = 72;
-/** An output file cannot be created. */
+/**
+ * An output file cannot be created.
+ *
+ * @public
+ */
 export const EX_CANTCREAT = 73;
-/** An input or output error. */
+/**
+ * An input or output error.
+ *
+ * @public
+ */
 export const EX_IOERR = 74;
-/** A temporary failure; a retry may succeed. */
+/**
+ * A temporary failure; a retry may succeed.
+ *
+ * @public
+ */
 export const EX_TEMPFAIL = 75;
-/** A remote system broke the protocol. */
+/**
+ * A remote system broke the protocol.
+ *
+ * @public
+ */
 export const EX_PROTOCOL = 76;
-/** Permission is insufficient. */
+/**
+ * Permission is insufficient.
+ *
+ * @public
+ */
 export const EX_NOPERM = 77;
-/** The configuration is wrong. */
+/**
+ * The configuration is wrong.
+ *
+ * @public
+ */
 export const EX_CONFIG = 78;

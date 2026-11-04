@@ -2,9 +2,15 @@ import type { FailureExitCode } from '../failures/exit-codes.js';
 import type { ProcessHandle } from '../host/types.js';
 import type { RenderingPolicy } from '../style/rendering.js';
 
-/** The status `run()` resolves: success, a failure class's code, or a cancellation code. */
+/**
+ * The status `run()` resolves: success, a failure class's code, or a cancellation code.
+ *
+ * @public
+ * @sealed
+ */
 export type ExitCode = 0 | FailureExitCode | 129 | 130 | 131 | 141 | 143;
 
+/** @public */
 export interface RunOptions {
   rendering?: RenderingPolicy;
   /** The process the run reads its facts from and makes its effects on: `processHandle()` when omitted. */

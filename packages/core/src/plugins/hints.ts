@@ -33,6 +33,9 @@ import type { BuiltPlugin } from './plugin.js';
  * operator typed. `graph` is the frozen graph `inspect()` returns for the run, and `command` is the
  * node at `path` inside it; reading either builds the run's graph once. `log` records a log event
  * under the identity of the plugin whose hook is running.
+ *
+ * @public
+ * @sealed
  */
 interface FailureHookContext {
   readonly application: string;
@@ -53,6 +56,8 @@ interface FailureHookContext {
  * nothing for a failure `run()` renders after graph build. It receives the failure typed read-only,
  * as a failure view does. Core does not freeze the failure, and it reads the exit code before any
  * hook runs, so a working hook cannot change the code.
+ *
+ * @public
  */
 type FailureHook = (
   failure: Readonly<LoomError>,

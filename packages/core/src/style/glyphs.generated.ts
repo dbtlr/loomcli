@@ -269,6 +269,7 @@ export const glyphForms = {
   error: ["✘", "×"],
 } as const;
 
+/** @public */
 export const glyph = Object.freeze({
   circleQuestionMark: frame(['glyph', 'circleQuestionMark'], ''),
   questionMarkPrefix: frame(['glyph', 'questionMarkPrefix'], ''),

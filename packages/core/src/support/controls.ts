@@ -20,6 +20,8 @@ const escaped = /[\p{Cc}\p{Zl}\p{Zp}\u{202a}-\u{202e}\u{2066}-\u{2069}\u{200e}\u
  * reaches a terminal, and no bidirectional control reorders the rest of the line. Raw text a
  * diagnostic quotes, such as a file path, a typed token, or a reason a plugin threw, is escaped
  * with this before it is written.
+ *
+ * @public
  */
 export function escapeControlCharacters(text: string): string {
   return text.replaceAll(

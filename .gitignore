@@ -13,3 +13,6 @@ build
 !packages/loom/src/commands/build/
 
 dist
+
+# Scratch output that tools and agents write inside the checkout.
+.scratch/

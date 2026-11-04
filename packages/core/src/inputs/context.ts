@@ -5,7 +5,11 @@ import type { ProcessHandle } from '../host/types.js';
 import type { ActionContext } from '../invocation/types.js';
 import type { InputIdentity, SuppliedInputs, ValidationContext } from './types.js';
 
-/** The `libraryOptions` key core writes its context under. It names the package that owns it. */
+/**
+ * The `libraryOptions` key core writes its context under. It names the package that owns it.
+ *
+ * @public
+ */
 const validationContextKey = '@loomcli/core';
 
 /**
@@ -51,7 +55,11 @@ function questionIdentity(question: {
   return { global: false, kind: 'question', name: question.message };
 }
 
-/** The prompts library uses the same authenticated Standard Schema channel as input validation. */
+/**
+ * The prompts library uses the same authenticated Standard Schema channel as input validation.
+ *
+ * @public
+ */
 function questionValidationOptions(
   context: Pick<ActionContext<unknown>, 'host' | 'command' | 'passthrough' | 'supplied'>,
   question: { message: string } & (
@@ -69,7 +77,11 @@ function questionValidationOptions(
   });
 }
 
-/** A context a test builds outside a run: the default or the invocation phase, with its fields. */
+/**
+ * A context a test builds outside a run: the default or the invocation phase, with its fields.
+ *
+ * @public
+ */
 type ValidationOptionsContext =
   | { readonly phase: 'default'; readonly input: InputIdentity }
   | {
@@ -97,6 +109,8 @@ const noApplication = '';
  * captured as `run()` captures it at entry, and nothing a run adds later applies: no environment
  * preparation, and no background query, so the background is the one the handle's terminal states.
  * A handle a run would fail to capture throws the failure the run would report.
+ *
+ * @public
  */
 function validationOptions(
   handle: ProcessHandle,
@@ -122,7 +136,11 @@ function validationOptions(
   });
 }
 
-/** Reads the context core attached to a schema call, or undefined when another caller ran it. */
+/**
+ * Reads the context core attached to a schema call, or undefined when another caller ran it.
+ *
+ * @public
+ */
 function validationContext(
   options: StandardSchemaV1.Options | undefined,
 ): ValidationContext | undefined {

@@ -264,7 +264,11 @@ interface ContentInput {
   validateOmitted?: never;
 }
 
-/** The declaration one schema call validates, under the name and the scope it was declared in. */
+/**
+ * The declaration one schema call validates, under the name and the scope it was declared in.
+ *
+ * @public
+ */
 export interface InputIdentity {
   kind: 'argument' | 'option' | 'stdin';
   name: string;
@@ -275,6 +279,8 @@ export interface InputIdentity {
  * The raw tokens of one invocation, keyed by declared name, before any schema or default runs.
  * Each schema call reads its own snapshot, so a collected value is read-only and writing to one
  * changes nothing the parser, a later schema, or the action reads.
+ *
+ * @public
  */
 export interface SuppliedInputs {
   /** Raw positional values of the routed Command: one string, or the tokens of a variadic. */
@@ -291,6 +297,9 @@ export interface SuppliedInputs {
  * phase carries the host and the declaration alone. An invocation call adds the routed path, the
  * passthrough tail, and the tokens every declared input received. A question carries the same run
  * facts and identifies its link, or its own title when unlinked.
+ *
+ * @public
+ * @sealed
  */
 export type ValidationContext =
   | { phase: 'default'; host: Host; input: InputIdentity }
@@ -311,6 +320,7 @@ export type ValidationContext =
       supplied: SuppliedInputs;
     };
 
+/** @public */
 export type StringOption = UnmarkedStringOption | BackgroundOption;
 
 /** A string option that carries no run-wide mark. */
@@ -358,20 +368,27 @@ export type BackgroundOption = Described &
     quiet?: never;
   };
 
-/** A variadic argument collects the remaining tokens, so it follows the multiple option rules. */
+/**
+ * A variadic argument collects the remaining tokens, so it follows the multiple option rules.
+ *
+ * @public
+ */
 export type VariadicArgument = (Presence | ConditionalPresence) &
   Described &
   ArgumentExtensions & { type?: 'string'; variadic: true; validate?: StandardSchemaV1 };
 
+/** @public */
 export type ScalarArgument = ((Presence & Omission) | ConditionalPresence) &
   Described &
   ArgumentExtensions & { type?: 'string'; variadic?: false; validate?: StandardSchemaV1 };
 
+/** @public */
 export type ContentArgument = ContentInput &
   Described &
   ArgumentExtensions &
   ({ variadic: true; min?: number; max?: number } | { variadic?: false; min?: never; max?: never });
 
+/** @public */
 export type ContentOption = ContentInput &
   OptionSpelling &
   Described &
@@ -386,11 +403,13 @@ export type ContentOption = ContentInput &
     | ({ multiple?: false; min?: never; max?: never } & EnvBinding)
   );
 
+/** @public */
 export interface StdinConfig {
   description?: string;
   required?: boolean;
 }
 
+/** @public */
 export type ArgumentConfig = VariadicArgument | ScalarArgument | ContentArgument;
 
 export type ValidatedValue<Config, Raw> = Config extends { type: 'content' }
@@ -513,6 +532,8 @@ export type ArgumentValue<Config extends ArgumentConfig> = Config extends { vari
  * A Boolean option: one polarity with any spelling, both polarities with long forms, or the color
  * mark, which the run reads from argv before short groups and binds no variable, so it declares
  * no short alias and no `env`.
+ *
+ * @public
  */
 export type BooleanOption =
   | (OptionSpelling &
@@ -544,6 +565,8 @@ export type BooleanOption =
  * so it declares no validator, default, presence rule, collection, polarity, or implied value. It
  * may carry the verbose mark or the quiet mark, never both, and a marked option binds no variable,
  * because the run settles its verbosity before it reads the environment.
+ *
+ * @public
  */
 export type CountOption = OptionSpelling &
   Described &
@@ -567,6 +590,7 @@ export type CountOption = OptionSpelling &
     | { quiet: true; verbose?: never; env?: never; envAllowEmpty?: never }
   );
 
+/** @public */
 export type OptionConfig = StringOption | BooleanOption | CountOption | ContentOption;
 
 /**
@@ -574,6 +598,8 @@ export type OptionConfig = StringOption | BooleanOption | CountOption | ContentO
  * presence rules, which a global option never declares, because its validation runs on every
  * Command. `globalOption()` states the same rule through `GlobalOmissionConstraint`, which also
  * accepts a config typed as the wide `OptionConfig`.
+ *
+ * @public
  */
 export type GlobalOptionConfig = Exclude<OptionConfig, ContentOption> &
   Readonly<Partial<Record<PresenceRuleKey, never>>>;

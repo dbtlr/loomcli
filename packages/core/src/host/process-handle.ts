@@ -588,6 +588,8 @@ function publishToProcess(name: string, value: string): void {
  * database's home, and its absolute `TMPDIR`, else `/tmp`. Every handle shares the real process's
  * signal source, writes `exitCode` to `process.exitCode`, starts real children, and has
  * `publishEnv` only when it was given neither `env` nor `cwd`.
+ *
+ * @public
  */
 function processHandle(fields: ProcessFields = {}): ProcessHandle {
   const {

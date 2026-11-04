@@ -13,7 +13,7 @@
   ],
   "type": "module",
   "scripts": {
-    "check": "pnpm run build && pnpm run build:examples && vp check && node scripts/check-links.mjs && pnpm run check:types && node scripts/generate-unicode-tables.mjs --check && node scripts/generate-diagnostics.mjs --check && pnpm run loom changelog check",
+    "check": "pnpm run build && pnpm run build:examples && vp check && node scripts/check-links.mjs && pnpm run check:types && pnpm run check:api && node scripts/generate-unicode-tables.mjs --check && node scripts/generate-diagnostics.mjs --check && pnpm run loom changelog check",
     "check:fix": "vp check --fix",
     "prepare": "vp config",
     "test": "pnpm run build && pnpm run build:examples && vp test --run",
@@ -23,7 +23,8 @@
     "build:examples": "cd examples/textstat && node ../../packages/loom/dist/main.js build --target node && cd ../jsonkit && node ../../packages/loom/dist/main.js build --target node",
     "check:packed": "node packages/core/tests/check-packed.mjs",
     "check:types": "node packages/core/tests/check-types.mjs && node scripts/check-theme-contract.mjs",
-    "loom": "node packages/loom/dist/main.js"
+    "loom": "node packages/loom/dist/main.js",
+    "check:api": "node scripts/check-api.mjs"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
@@ -32,6 +33,7 @@
     "@loomcli/prompts": "workspace:*",
     "@loomcli/testing": "workspace:*",
     "@loomcli/validators": "workspace:*",
+    "@microsoft/api-extractor": "7.60.1",
     "@types/node": "22.20.5",
     "@xterm/headless": "6.0.0",
     "publint": "0.3.25",

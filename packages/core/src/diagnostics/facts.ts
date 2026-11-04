@@ -126,6 +126,8 @@ export function pluginOptionSite(
  * One line of prose: a string that holds a character other than whitespace and no line terminator.
  * The label a configuration source answers with reads this rule, and a plugin whose setting prints
  * inside one line may read it too.
+ *
+ * @public
  */
 export function isProseLine(value: unknown): value is string {
   return typeof value === 'string' && prose.test(value) && !lineTerminator.test(value);

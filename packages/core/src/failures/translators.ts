@@ -9,12 +9,16 @@ declare const translation: unique symbol;
 /**
  * A class a translation is keyed on, such as `SyntaxError`. Its instance type is the type the
  * translator receives, so the function needs no narrowing of its own.
+ *
+ * @public
  */
 type ErrorClass<Thrown extends object> = abstract new (...args: never[]) => Thrown;
 
 /**
  * A function that turns one foreign throw into one of the author's failures, or answers
  * `undefined` to pass the throw on to the next translator.
+ *
+ * @public
  */
 type Translator<Thrown extends object> = (error: Thrown) => LoomError | undefined;
 
@@ -42,13 +46,20 @@ class TranslationDeclaration {
   }
 }
 
-/** An opaque translation pairing one error class with the translator that answers it. */
+/**
+ * An opaque translation pairing one error class with the translator that answers it.
+ *
+ * @public
+ * @sealed
+ */
 type Translation = Pick<TranslationDeclaration, typeof translation>;
 
 /**
  * Pairs an error class with the translator that turns its instances into a failure. The
  * translator receives the thrown instance typed from the class, and a `translators` list on the
  * Application or a plugin registers the pair.
+ *
+ * @public
  */
 function translate<Thrown extends object>(
   key: ErrorClass<Thrown>,

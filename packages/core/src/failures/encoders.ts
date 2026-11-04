@@ -13,6 +13,8 @@ declare const failureEncoding: unique symbol;
 /**
  * A function that writes one failure's form in one media type. It runs synchronously, receives the
  * form alone, and returns the text core writes to stderr as it is, its trailing newline included.
+ *
+ * @public
  */
 type FailureEncoder = (form: FailureForm) => string;
 
@@ -35,7 +37,12 @@ class FailureEncodingDeclaration {
   }
 }
 
-/** An opaque encoding pairing one media type with the encoder that writes it. */
+/**
+ * An opaque encoding pairing one media type with the encoder that writes it.
+ *
+ * @public
+ * @sealed
+ */
 type FailureEncoding = Pick<FailureEncodingDeclaration, typeof failureEncoding>;
 
 /**
@@ -43,6 +50,8 @@ type FailureEncoding = Pick<FailureEncodingDeclaration, typeof failureEncoding>;
  * pair under its `failureEncoders`, and a failed `run()` whose selected view declares the media type
  * writes the encoder's text to stderr in place of the failure view. Media types compare as the
  * exact strings core stores, so core judges no grammar.
+ *
+ * @public
  */
 function encodeFailure(mediaType: string, encoder: FailureEncoder): FailureEncoding {
   return new FailureEncodingDeclaration({ encoder, mediaType });

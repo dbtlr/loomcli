@@ -7,7 +7,12 @@ import { absentBoolean, isSupplied, reportedOf, spellingsOf } from './options.js
 import type { OptionValues, SpellingTable } from './options.js';
 import type { InputDeclaration } from './validation.js';
 
-/** A relationship over supplied local options, in declaration order. */
+/**
+ * A relationship over supplied local options, in declaration order.
+ *
+ * @public
+ * @sealed
+ */
 interface OptionGroup {
   readonly kind: 'exclusive' | 'oneRequired' | 'requiredTogether';
   readonly options: readonly string[];

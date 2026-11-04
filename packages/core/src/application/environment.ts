@@ -1,6 +1,11 @@
 import type { Plugin } from '../plugins/plugin.js';
 
-/** The shallow type information an Application supplies before its Command graph is composed. */
+/**
+ * The shallow type information an Application supplies before its Command graph is composed.
+ *
+ * @public
+ * @sealed
+ */
 interface ApplicationEnvironment<Globals = {}, Plugins extends readonly Plugin[] = readonly []> {
   readonly globals: Globals;
   readonly plugins: Plugins;
@@ -10,11 +15,16 @@ interface RegistrationShape {
   environment?: ApplicationEnvironment<unknown, readonly Plugin[]>;
 }
 
-/** The Application augments this interface once in its own TypeScript compilation context. */
+/**
+ * The Application augments this interface once in its own TypeScript compilation context.
+ *
+ * @public
+ */
 // Module augmentation requires an interface; a type alias cannot be augmented.
 // oxlint-disable-next-line typescript/no-empty-interface
 interface Register extends RegistrationShape {}
 
+/** @public @sealed */
 type RegisteredEnvironment = Register extends { environment: infer Environment }
   ? Environment extends ApplicationEnvironment<unknown, readonly Plugin[]>
     ? Environment
@@ -29,6 +39,7 @@ type RegistrationVisible = Register extends { environment: unknown } ? true : fa
 /** A private type marker avoids pretending parsed global values exist before an invocation. */
 declare const applicationEnvironment: unique symbol;
 
+/** @public @sealed */
 type EnvironmentOf<
   Value extends {
     readonly [applicationEnvironment]: ApplicationEnvironment<unknown, readonly Plugin[]>;

@@ -3,6 +3,8 @@ import { underCI } from './host.js';
 /**
  * The run's background: the terminal's background color read as dark or light. Core settles it
  * once per run, and an adaptive theme entry resolves to the side that matches it.
+ *
+ * @public
  */
 type Background = 'dark' | 'light';
 

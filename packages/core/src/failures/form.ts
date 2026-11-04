@@ -10,6 +10,9 @@ import type { FailureExitCode } from './exit-codes.js';
  * which the code a run resolves can differ from. `message` is the sentence as plain text, without
  * the application-name prefix, and `hints` are the `onFailure` lines as plain text, in the order
  * the failure view receives them.
+ *
+ * @public
+ * @sealed
  */
 interface FailureForm {
   readonly code: string;
