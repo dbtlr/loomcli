@@ -1,4 +1,4 @@
-import { Application, missingInputError } from '@loomcli/core';
+import { Application, DeclarationError, missingInputError } from '@loomcli/core';
 /*
  * Acceptance plan for interaction (docs/core/interaction.md#interaction).
  *
@@ -263,5 +263,44 @@ test('missingInputError identifies an argument even beside an option with the sa
   await expect(app.run({ process: mock })).resolves.toBe(2);
   expect(mock.stderr.text).toContain(
     'Argument "url" requires a value when input is not interactive. Supply a value for "url".',
+  );
+});
+
+test('an optional argument cannot precede an argument required only off a terminal', () => {
+  let thrown: unknown = undefined;
+  try {
+    new Application('clone').argument('a', {}).argument('b', { required: 'non-interactive' });
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toBeInstanceOf(DeclarationError);
+  expect(thrown).toMatchObject({
+    correction: 'Declare optional arguments after required ones.',
+    sentence: 'Argument "a" is optional and precedes required argument "b" on the root Command.',
+  });
+});
+
+test.each([
+  [{ multiple: true, type: 'string' } as const, 'Supply at least one value.'],
+  [{ multiple: true, type: 'content' } as const, 'Supply a value.'],
+])('missingInputError for a %j option reads %j', async (config, fix) => {
+  const app = new Application('clone').option('tag', config).action((context) => {
+    throw missingInputError(context, 'tag');
+  });
+  const mock = mockProcess();
+  await expect(app.run({ process: mock })).resolves.toBe(2);
+  expect(mock.stderr.text).toBe(
+    `clone: Option "--tag" is required when input is not interactive. ${fix}\n`,
+  );
+});
+
+test('missingInputError for a variadic argument asks for at least one value', async () => {
+  const app = new Application('copy').argument('files', { variadic: true }).action((context) => {
+    throw missingInputError(context, { argument: 'files' });
+  });
+  const mock = mockProcess();
+  await expect(app.run({ process: mock })).resolves.toBe(2);
+  expect(mock.stderr.text).toBe(
+    'copy: Argument "files" requires at least one value when input is not interactive. Supply a value for "files".\n',
   );
 });
