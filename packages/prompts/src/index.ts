@@ -167,6 +167,8 @@ async function select<
   context.signal.throwIfAborted();
   return askList(context, settings, false);
 }
+
+/** @public */
 function multiselect<
   Options,
   const Entry extends ChoiceEntry = ChoiceEntry,

@@ -14,6 +14,34 @@ import type { StandardSchemaV1 } from '@loomcli/core';
 export type Answer<Options, Key, Output> = [Key] extends [never] ? Output : Output | Options[Key & keyof Options];
 
 // @public (undocumented)
+export type Choice<Value = unknown> = StringValue<Value> | ChoiceObject<Value>;
+
+// @public @sealed (undocumented)
+export type ChoiceAnswer<Options, Key, Args, Argument, Output> = [Argument] extends [never] ? [Key] extends [never] ? Output : Options[Key & keyof Options] : Args[Argument & keyof Args];
+
+// @public (undocumented)
+export type ChoiceEntry<Value = unknown> = Choice<Value> | Separator;
+
+// @public (undocumented)
+export type ChoiceObject<Value = unknown> = (ChoiceDetails & {
+    readonly value: StringValue<Value>;
+    readonly label?: string;
+}) | (ChoiceDetails & {
+    readonly value: Value;
+    readonly label: string;
+});
+
+// @public (undocumented)
+export type ChoiceSource<Value = unknown> = (term: string, options: {
+    readonly signal: AbortSignal;
+}) => readonly ChoiceEntry<Value>[] | PromiseLike<readonly ChoiceEntry<Value>[]>;
+
+// @public (undocumented)
+export type ChoiceValue<Entry> = Entry extends Separator ? never : Entry extends string ? Entry : Entry extends {
+    readonly value: infer Value;
+} ? Value : never;
+
+// @public (undocumented)
 function confirm_2<Options, const Key extends LinkKey<Options> = never>(context: PromptContext<Options>, settings: ConfirmSettings<Key>): Promise<Answer<Options, Key, boolean>>;
 export { confirm_2 as confirm }
 
@@ -32,6 +60,17 @@ export class InteractionUnavailableError extends FatalError {
 
 // @public (undocumented)
 export type LinkKey<Options> = keyof Options & string;
+
+// @public (undocumented)
+export function multiselect<Options, const Entry extends ChoiceEntry = ChoiceEntry, const Key extends LinkKey<Options> = never, Args = unknown, const Argument extends LinkKey<Args> = never>(context: PromptContext<Options, Args>, settings: MultiselectSettings<Key, Entry, Argument>): Promise<ChoiceAnswer<Options, Key, Args, Argument, ChoiceValue<Entry>[]>>;
+
+// @public (undocumented)
+export type MultiselectSettings<Key = never, Entry extends ChoiceEntry = ChoiceEntry, Argument = never> = Link<Key, Argument> & ChoiceList<Entry> & LinkedChoices<Key, Argument> & {
+    readonly message: string;
+    readonly default?: readonly NoInfer<ChoiceValue<Entry>>[];
+    readonly min?: number;
+    readonly max?: number;
+};
 
 // @public @sealed
 export interface Progress {
@@ -101,14 +140,19 @@ export type SecretSettings<Key = never, Output = string, Argument = never> = Lin
 };
 
 // @public (undocumented)
-export function select<Options, const Choice extends string, const Key extends LinkKey<Options> = never, Args = unknown, const Argument extends LinkKey<Args> = never>(context: PromptContext<Options, Args>, settings: SelectSettings<Key, Choice, Argument>): Promise<Answer<Args, Argument, Answer<Options, Key, Choice>>>;
+export function select<Options, const Entry extends ChoiceEntry = ChoiceEntry, const Key extends LinkKey<Options> = never, Args = unknown, const Argument extends LinkKey<Args> = never>(context: PromptContext<Options, Args>, settings: SelectSettings<Key, Entry, Argument>): Promise<ChoiceAnswer<Options, Key, Args, Argument, ChoiceValue<Entry>>>;
 
 // @public (undocumented)
-export type SelectSettings<Key = never, Choice extends string = string, Argument = never> = Link<Key, Argument> & {
-    message: string;
-    choices: readonly Choice[];
-    default?: NoInfer<Choice>;
+export type SelectSettings<Key = never, Entry extends ChoiceEntry = ChoiceEntry, Argument = never> = Link<Key, Argument> & ChoiceList<Entry> & LinkedChoices<Key, Argument> & {
+    readonly message: string;
+    readonly default?: NoInfer<ChoiceValue<Entry>>;
 };
+
+// @public (undocumented)
+export interface Separator {
+    // (undocumented)
+    readonly separator: string;
+}
 
 // @public
 export interface Spinner {
