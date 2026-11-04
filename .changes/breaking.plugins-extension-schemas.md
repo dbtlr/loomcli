@@ -4,6 +4,8 @@
 
 **Affected surface.** Application code that reads a pack descriptor's `schema` as a valibot schema: it passes the schema to a valibot function such as `v.parse` or `v.InferOutput`, or reads a valibot member such as `entries`. A call of the descriptor, such as `helpCommand({ details })`, and a read through `readExtension` are not affected.
 
+The second affected surface is code that assigns to or mutates a value typed from a descriptor's input or output, such as `Parameters<typeof helpCommand>[0]` or `StandardSchemaV1.InferOutput<typeof helpCommand.schema>`. The facts are readonly at every depth now, so an assignment to one of their fields, a `push` on one of their lists, or a mutable array assigned to a field that took a tuple no longer compiles. Type such a value with the exported facts interface, and build it as a fresh object literal or a spread.
+
 **Why.** A published type that named valibot loaded all of valibot's declarations into every author's type check. The descriptors now publish the [Standard Schema](https://standardschema.dev) contract, which every schema already implemented, over interfaces the pack exports, as the [public exports](docs/core/public-exports.md) page states.
 
 **Before and after.**

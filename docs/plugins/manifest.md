@@ -281,7 +281,7 @@ The manifest plugin prints, for the routed Command, a self-contained JSON projec
 
 ## Manifest extension
 
-`manifestCommand`'s published schema is a [Standard Schema](https://standardschema.dev) whose input is `ManifestCommandInput` and whose output is `ManifestCommandFacts`, so an author's type check loads no validation library's declarations. The pack validates with valibot inside the module, under the pack's shared line and Markdown rules, which help's schema also uses. A declared failure's input holds the class, and its output holds the class's failure code and declared exit code, read by the schema.
+`manifestCommand`'s published schema is a [Standard Schema](https://standardschema.dev) whose input is `ManifestCommandInput` and whose output is `ManifestCommandFacts`, so an author's type check loads no validation library's declarations. The pack validates with valibot inside the module, under the pack's shared line and Markdown rules, which [help's text rules](help.md#help-extensions) state and help's schema also uses. A declared failure's input holds the class, and its output holds the class's failure code and declared exit code, read by the schema.
 
 ```ts
 // @loomcli/plugins/manifest/extension
@@ -335,7 +335,7 @@ const get = new Command('get', {
 
 The declarations module, `@loomcli/plugins/manifest/extension`, holds the collecting extension through which the author and any plugin give a Command's entry its `details`, `examples`, and `failures`. It is declarations alone, apart from the plugin's entry, so help supplies values through it whether or not the manifest is installed.
 
-- **The extension.** `manifestCommand` is a [collecting extension](../core/extensions.md#collecting-extensions) on Commands with the identity `@loomcli/plugins/manifest/command`. `details` is Markdown under the rule help's `details` follows: a string that holds a character other than whitespace, with blank lines allowed, carried as written. `examples` lists invocations: `command` holds the tokens after the application name as one line, and `note` is one line.
+- **The extension.** `manifestCommand` is a [collecting extension](../core/extensions.md#collecting-extensions) on Commands with the identity `@loomcli/plugins/manifest/command`. `details` is Markdown under the [Markdown rule](help.md#help-extensions) help's `details` follows: a string that holds a character other than whitespace, with blank lines allowed, carried as written. `examples` lists invocations: `command` holds the tokens after the application name as one [line](help.md#help-extensions), and `note` is one line.
 - **Who supplies values.** A value is meant for an agent because it lands in the manifest. The author's own value is where an instruction goes that an agent needs beyond the help page. A plugin's value holds the facts that plugin chooses to project into the manifest, as help's hook does under [Help in the manifest](help.md#help-in-the-manifest).
 - **An empty value.** A value that holds none of the fields is accepted and stored, and the manifest prints nothing for it.
 

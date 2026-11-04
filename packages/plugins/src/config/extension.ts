@@ -1,8 +1,8 @@
 import { extension } from '@loomcli/core';
 import type { Extension, StandardSchemaV1 } from '@loomcli/core';
-import { object, pipe, regex, string } from 'valibot';
 
 import { packageName } from '../constants.js';
+import { inputFactsSchema } from './facts-schemas.js';
 
 /**
  * The configuration plugin's binding on an option: the dotted path of object keys it reads in the
@@ -15,18 +15,7 @@ interface ConfigInputFacts {
   readonly path: string;
 }
 
-/**
- * A dotted path of object keys, each segment nonempty. There is no escaping and no array indexing,
- * so a key that holds a dot is not reachable.
- */
-const configPath = pipe(
-  string(),
-  regex(/^[^.]+(?:\.[^.]+)*$/u, 'Supply a dotted path of nonempty keys.'),
-);
-
-const inputFacts: StandardSchemaV1<ConfigInputFacts, ConfigInputFacts> = object({
-  path: configPath,
-});
+const inputFacts: StandardSchemaV1<ConfigInputFacts, ConfigInputFacts> = inputFactsSchema;
 
 /**
  * The configuration plugin's binding: the dotted path an option reads in each configuration file.
