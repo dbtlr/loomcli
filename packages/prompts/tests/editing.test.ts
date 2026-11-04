@@ -6,7 +6,7 @@ import { theme } from '@loomcli/plugins/theme';
 import { key, mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
-import { secret, text } from '../src/index.js';
+import { confirm, secret, text } from '../src/index.js';
 import { questionFrame } from '../src/views.js';
 import type { QuestionFrame } from '../src/views.js';
 
@@ -33,6 +33,26 @@ test.each([
   [`one two\u001b\u001b[DX`, 'one Xtwo'],
   [`é👨‍👩‍👧‍👦${key.left}${key.backspace}X`, 'X👨‍👩‍👧‍👦'],
   [`a${key.left}é${key.right}X`, 'éaX'],
+  [`${key.right}X`, 'localhostX'],
+  [`${key.ctrl('f')}X`, 'localhostX'],
+  [`abc${key.ctrl('h')}`, 'ab'],
+  ['ab\u001b[1éc', 'abéc'],
+  ['ab\u001b]x\u007fc', 'ac'],
+  ['ab\u001b[[Ac', 'abc'],
+  ['ab\u001bOPc\u001bO2Pd', 'abcd'],
+  [`ab${key.left}\u001bO3~`, 'ab'],
+  ['one two\u001bOdX', 'one Xtwo'],
+  ['ab\u001b[dX', 'abX'],
+  ['ab\u001b\u001bbX', 'Xab'],
+  ['ab\u001b\u001bxc', 'abc'],
+  ['ab\u001b[27uc', 'abc'],
+  ['\u001b[200~a\tb\u001b[201~', 'a b'],
+  ['\u001b[200~first\rsecond\u001b[201~', 'first'],
+  ['\u001b[200~a\u001bb\u001b[201~', 'ab'],
+  ['bc\u001b[1~a\u001b[4~d', 'abcd'],
+  ['bc\u001b[7~a\u001b[8~d', 'abcd'],
+  ['bc\u001bOHa\u001bOFd', 'abcd'],
+  ['bc\u001b[Ha\u001b[Fd', 'abcd'],
 ])('typed line edits %j into %j', async (keys, expected) => {
   let answer: unknown = undefined;
   const app = new Application('ask').action(async (context) => {
@@ -394,3 +414,58 @@ test.each([
     expect(mock.stderr.text).toBe(expected);
   },
 );
+
+test('a carriage return and a line feed together are one Enter, so the next question reads its own keys', async () => {
+  const answers: unknown[] = [];
+  const app = new Application('ask').action(async (context) => {
+    answers.push(await text(context, { message: 'First' }));
+    answers.push(await text(context, { message: 'Second' }));
+  });
+  const mock = mockProcess({ terminal: { columns: 40, keys: ['a\r\nb\r'], rows: 24 } });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(answers).toEqual(['a', 'b']);
+});
+
+test('a secret draws no frame per keystroke, so its output never depends on its length', async () => {
+  const written: string[] = [];
+  for (const typed of ['a', 'abcdefghijklmnopqrstu']) {
+    const app = new Application('ask').action(async (context) => {
+      await secret(context, { message: 'Password' });
+    });
+    const mock = mockProcess({
+      terminal: { columns: 40, keys: [`${typed}${key.left}${key.enter}`], rows: 24 },
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    written.push(mock.stderr.text);
+  }
+  expect(written[0]).toBe(written[1]);
+});
+
+test('Tab, Right, and Ctrl-F copy nothing into a confirm, whose legend is not text', async () => {
+  let answer: unknown = undefined;
+  const app = new Application('ask').action(async (context) => {
+    answer = await confirm(context, { default: true, message: 'Install' });
+  });
+  const mock = mockProcess({
+    terminal: {
+      columns: 40,
+      keys: [`${key.tab}${key.right}${key.ctrl('f')}${key.enter}`],
+      rows: 24,
+    },
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(answer).toBe(true);
+  expect(mock.stderr.text).not.toContain('Type y or n.');
+});
+
+test('Tab and Right insert nothing into a secret', async () => {
+  let answer: unknown = undefined;
+  const app = new Application('ask').action(async (context) => {
+    answer = await secret(context, { message: 'Password' });
+  });
+  const mock = mockProcess({
+    terminal: { columns: 40, keys: [`${key.tab}pw${key.right}${key.enter}`], rows: 24 },
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(answer).toBe('pw');
+});
