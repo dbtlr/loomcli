@@ -72,7 +72,7 @@ function text<
   Args = unknown,
   const Argument extends LinkKey<Args> = never,
 >(
-  context: ActionContext<Args, Options, unknown>,
+  context: PromptContext<Options, Args>,
   settings: TextSettings<Key, Output, Argument>, // validate?: StandardSchemaV1<string, Output>
 ): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
 function secret<
@@ -82,11 +82,11 @@ function secret<
   Args = unknown,
   const Argument extends LinkKey<Args> = never,
 >(
-  context: ActionContext<Args, Options, unknown>,
+  context: PromptContext<Options, Args>,
   settings: SecretSettings<Key, Output, Argument>,
 ): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
 function confirm<Options, const Key extends LinkKey<Options> = never>(
-  context: ActionContext<unknown, Options, unknown>,
+  context: PromptContext<Options>,
   settings: ConfirmSettings<Key>,
 ): Promise<Answer<Options, Key, boolean>>;
 function select<
@@ -96,7 +96,7 @@ function select<
   Args = unknown,
   const Argument extends LinkKey<Args> = never,
 >(
-  context: ActionContext<Args, Options, unknown>,
+  context: PromptContext<Options, Args>,
   settings: SelectSettings<Key, Entry, Argument>,
 ): Promise<ChoiceAnswer<Options, Key, Args, Argument, ChoiceValue<Entry>>>;
 function multiselect<
@@ -106,7 +106,7 @@ function multiselect<
   Args = unknown,
   const Argument extends LinkKey<Args> = never,
 >(
-  context: ActionContext<Args, Options, unknown>,
+  context: PromptContext<Options, Args>,
   settings: MultiselectSettings<Key, Entry, Argument>,
 ): Promise<ChoiceAnswer<Options, Key, Args, Argument, ChoiceValue<Entry>[]>>;
 ```
@@ -730,7 +730,7 @@ A question's `validate`, the linked input's validator a select or multiselect ru
 
 ## Package
 
-- The root export holds `text`, `secret`, `confirm`, `select`, `multiselect`, `InteractionUnavailableError`, `progress`, `progressStyle`, `PromptContext`, the context a question takes, and the settings and choice types, `MultiselectSettings`, `Choice`, `ChoiceEntry`, `ChoiceObject`, `Separator`, `ChoiceSource`, `ChoiceValue`, `ChoiceAnswer`, `ProgressSettings`, `ProgressUpdate`, `TrackMessages`, `Progress`, `ProgressContext`, `Spinner`, and `ProgressStyleSettings` included. `@loomcli/prompts/views` exports `questionFrame`, `answeredLine`, `cancelledLine`, and `progressLine` and their data types, `TypedFrame`, `ListFrame`, `ChoiceRow`, and `SeparatorRow` included. Its one plugin is `progressStyle()`, whose identity is `@loomcli/prompts`.
+- The root export holds `text`, `secret`, `confirm`, `select`, `multiselect`, `InteractionUnavailableError`, `progress`, `progressStyle`, `PromptContext`, the context a question takes, `Answer`, the value a question resolves to, `LinkKey`, the option or argument names a question may link, and the settings and choice types, `MultiselectSettings`, `Choice`, `ChoiceEntry`, `ChoiceObject`, `Separator`, `ChoiceSource`, `ChoiceValue`, `ChoiceAnswer`, `ProgressSettings`, `ProgressUpdate`, `TrackMessages`, `Progress`, `ProgressContext`, `Spinner`, and `ProgressStyleSettings` included. `@loomcli/prompts/views` exports `questionFrame`, `answeredLine`, `cancelledLine`, and `progressLine` and their data types, `TypedFrame`, `ListFrame`, `ChoiceRow`, and `SeparatorRow` included. Its one plugin is `progressStyle()`, whose identity is `@loomcli/prompts`.
 - `@loomcli/core` is a peer dependency. The package reads the action context, `DeclarationError`, `FatalError`, `missingInputError`, `questionValidationOptions`, `validateLinkedValue`, `escapeControlCharacters`, `extension`, `plugin`, `readExtension`, the Standard Schema types, `glyph`, and `view` from core, and adds no runtime dependency of its own. Its style schema is a hand-written Standard Schema value.
 
 ## Not shipped

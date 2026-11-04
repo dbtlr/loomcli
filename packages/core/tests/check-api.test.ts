@@ -158,6 +158,16 @@ test("a dependency's typings that import a source file do not fail the check", (
   expect(result.filter((line) => line.includes('ae-wrong-input-file-type'))).toEqual([]);
 });
 
+test("a package's own declaration that imports a source file still fails", () => {
+  const { config, root } = fixture(
+    "import type { Local } from './types.cts';\n/** A value. @public */\nexport declare const value: Local;\n",
+    { 'dist/types.cts': '/** A local. @public */\nexport interface Local { value: string }' },
+  );
+  expect(checkApi(root, [config], { update: true })).toContainEqual(
+    expect.stringContaining('ae-wrong-input-file-type'),
+  );
+});
+
 test('an external re-export entry the surface no longer needs fails', () => {
   const { config, root } = fixture(tagged);
   const stale = {
