@@ -1,4 +1,4 @@
-import { Application, FatalError } from '@loomcli/core';
+import { Application, Command, FatalError } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
@@ -189,4 +189,33 @@ test('a lend after a frame that ended its row writes no line break of its own', 
     await region.end();
   });
   await expect(app.run({ process: mock })).resolves.toBe(0);
+});
+
+test('a run that reports no failure writes its incomplete-result line once every lend has settled', async () => {
+  const mock = mockProcess({ argv: ['count'], terminal: { columns: 80, rows: 24 } });
+  const view = { render: (text: string) => text };
+  const count = new Command('count')
+    .rows<string>({ views: { list: { row: (row) => `${row}\n` } } })
+    .action(async ({ cancel, out }) => {
+      // The lend outlasts the action. It ends once the line has landed or the turns run out.
+      // Only a run that writes the line during the lend lands it first.
+      void out.lendTerminal(async () => {
+        for (let turn = 0; turn < 100 && !mock.stderr.text.includes('incomplete'); turn += 1) {
+          await new Promise((resolve) => {
+            setImmediate(resolve);
+          });
+        }
+        await out.draw('child\n', view);
+      });
+      async function* rows() {
+        yield 'one';
+        cancel();
+      }
+      await out.results(rows()).catch(() => undefined);
+    });
+  const app = new Application('lend').command(count);
+  await expect(app.run({ process: mock })).resolves.toBe(130);
+  const text = mock.stderr.text;
+  expect(text).toContain('Output is incomplete');
+  expect(text.indexOf('child')).toBeLessThan(text.indexOf('Output is incomplete'));
 });
