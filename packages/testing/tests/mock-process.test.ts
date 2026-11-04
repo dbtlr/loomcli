@@ -929,6 +929,29 @@ describe('the keyboard', () => {
     expect(reads).toEqual(['ab', 'cd', 'ef']);
   });
 
+  it('an array entry hands over a later read only after a late reader takes the one before it', async () => {
+    const { stdin } = mockProcess({ terminal: { columns: 80, keys: [['ab', 'cd']], rows: 24 } });
+    rawMode(stdin, true);
+    // Both reads are due before the reader attaches, so only the wait for the buffer keeps them apart.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const reads: string[] = [];
+    await new Promise<void>((resolve) => {
+      const done = setTimeout(resolve, 2000);
+      const take = (): void => {
+        for (let chunk = stdin.read(); chunk !== null; chunk = stdin.read()) {
+          reads.push(String(chunk));
+        }
+        if (reads.length === 2) {
+          clearTimeout(done);
+          resolve();
+        }
+      };
+      stdin.on('readable', take);
+      take();
+    });
+    expect(reads).toEqual(['ab', 'cd']);
+  });
+
   it('a switch out of raw mode ends an array entry, so its later reads are never handed over', async () => {
     const { stdin } = mockProcess({ terminal: { columns: 80, keys: [['ab', 'cd']], rows: 24 } });
     const reads: string[] = [];

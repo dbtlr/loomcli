@@ -378,6 +378,10 @@ class Keyboard extends Readable implements MockStdin {
   #sendAfter(delay: number, hold: object, reads: string[]): void {
     this.#later = setTimeout(() => {
       this.#later = undefined;
+      // A destroyed or ended stdin hands over nothing more, so its entry's remaining reads stop.
+      if (this.destroyed || this.readableEnded) {
+        return;
+      }
       if (this.readableLength) {
         this.#sendAfter(bufferedCheck, hold, reads);
       } else {
