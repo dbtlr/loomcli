@@ -15,7 +15,7 @@ type PromptContext<Options, Args = unknown> = Pick<
   | 'onShutdown'
   | 'onSuspend'
   | 'onResume'
-> & { readonly out: Pick<Out, 'draw' | 'region'> };
+> & { readonly out: Pick<Out, 'draw' | 'region' | 'lendTerminal'> };
 
 type LinkKey<Options> = keyof Options & string;
 type Answer<Options, Key, Output> = [Key] extends [never]
@@ -30,6 +30,9 @@ type TextSettings<Key = never, Output = string, Argument = never> = Link<Key, Ar
   default?: string;
   validate?: StandardSchemaV1<string, Output>;
 };
+type EditorSettings<Key = never, Output = string, Argument = never> = Readonly<
+  TextSettings<Key, Output, Argument>
+> & { readonly extension?: string };
 type SecretSettings<Key = never, Output = string, Argument = never> = Link<Key, Argument> & {
   message: string;
   default?: never;
@@ -115,4 +118,5 @@ export type {
   SelectSettings,
   MultiselectSettings,
   TextSettings,
+  EditorSettings,
 };

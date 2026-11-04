@@ -4,7 +4,7 @@ title: ADR-0115 - Help pages a long page through the operator's pager on opt-in
 description: Core adds out.text(data, view), which returns the text out.render would write and writes nothing. With help's paging setting on, and only on a stdout terminal whose TERM is set, not empty, and not dumb, outside CI, help hands a page that holds at least the terminal's rows of lines to PAGER, less by default, run through /bin/sh -c exec with LESS=FRX when LESS is unset, through host.spawn. An empty PAGER or cat turns it off, a pager that cannot start leaves the page unpaged, and the run exits 0 whatever the pager does. Ctrl-C cancels the run as it does anywhere else and ends the pager with it.
 status: accepted
 created: 2026-10-27
-modified: 2026-10-27
+modified: 2026-11-04
 ---
 
 # ADR-0115 - Help pages a long page through the operator's pager on opt-in
@@ -70,3 +70,4 @@ Accepted in 0.16.0.
 
 - 2026-10-19: Drafted as ADR-0093 with the text call and help paging contract in PR 228.
 - 2026-10-27: Proposed as ADR-0115 on the process handle and the bounded shutdown: the pager starts through `host.spawn` with `/bin/sh` as its program, so the spawner gains nothing, and the run's signal and `onShutdown` end it, so help listens for no signal. The owner ruled that help never pages under CI. The contract review found that dash keeps itself as a lone command's parent and that less survives `SIGINT`, so the shell runs the pager through `exec` and ending it sends `SIGTERM`.
+- 2026-11-04: [ADR-0139](0139-an-editor-question-opens-the-operators-editor-on-a-private-temporary-file-and-core-lends-it-the-terminal.md), proposed, narrows the rule that Loom's other children keep no shell: the editor question runs the operator's `VISUAL` or `EDITOR` through `/bin/sh -c`, behind `exec`, for the reason the pager does, so the two are the children Loom ships that run through a shell. It binds when that record is accepted.

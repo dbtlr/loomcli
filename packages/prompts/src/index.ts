@@ -1,3 +1,4 @@
+import { askEditor } from './editor.js';
 import { resolveLink } from './link.js';
 import { askList } from './list.js';
 import { askText } from './question.js';
@@ -13,6 +14,7 @@ import type {
   SecretSettings,
   SelectSettings,
   TextSettings,
+  EditorSettings,
 } from './types.js';
 
 function linkedIdentity(settings: {
@@ -23,6 +25,25 @@ function linkedIdentity(settings: {
     return { argument: settings.argument };
   }
   return settings.option === undefined ? {} : { option: settings.option };
+}
+
+/**
+ * The prefill a typed question starts with: the raw supplied value of its linked input, then the
+ * question's own default, then the input's declared default. Text and editor questions share it.
+ */
+function typedPrefill<Options, Args>(
+  context: PromptContext<Options, Args>,
+  settings: { argument?: string; option?: string; default?: string },
+  declared: unknown,
+): string | undefined {
+  const raw =
+    settings.argument === undefined
+      ? context.supplied.options[settings.option ?? '']
+      : context.supplied.args[settings.argument];
+  if (typeof raw === 'string') {
+    return raw;
+  }
+  return settings.default ?? (typeof declared === 'string' ? declared : undefined);
 }
 
 function text<
@@ -50,17 +71,45 @@ async function text<
   if (resolved.kind === 'answered') {
     return resolved.value;
   }
-  const raw =
-    settings.argument === undefined
-      ? context.supplied.options[settings.option ?? '']
-      : context.supplied.args[settings.argument];
-  const hint =
-    typeof raw === 'string'
-      ? raw
-      : (settings.default ?? (typeof resolved.prefill === 'string' ? resolved.prefill : undefined));
+  const hint = typedPrefill(context, settings, resolved.prefill);
   return askText(context, {
     hint,
     kind: 'text',
+    message: settings.message,
+    ...linkedIdentity(settings),
+    ...(settings.validate ? { validate: settings.validate } : {}),
+  });
+}
+
+function editor<
+  Options,
+  const Key extends LinkKey<Options> = never,
+  Output = string,
+  Args = unknown,
+  const Argument extends LinkKey<Args> = never,
+>(
+  context: PromptContext<Options, Args>,
+  settings: EditorSettings<Key, Output, Argument>,
+): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
+async function editor<
+  Options,
+  Key extends LinkKey<Options>,
+  Output,
+  Args,
+  Argument extends LinkKey<Args>,
+>(
+  context: PromptContext<Options, Args>,
+  settings: EditorSettings<Key, Output, Argument>,
+): Promise<Args[Argument] | Options[Key] | Output | string> {
+  context.signal.throwIfAborted();
+  const resolved = resolveLink(context, settings, 'text');
+  if (resolved.kind === 'answered') {
+    return resolved.value;
+  }
+  const hint = typedPrefill(context, settings, resolved.prefill);
+  return askEditor(context, {
+    hint,
+    ...(settings.extension === undefined ? {} : { extension: settings.extension }),
     message: settings.message,
     ...linkedIdentity(settings),
     ...(settings.validate ? { validate: settings.validate } : {}),
@@ -212,6 +261,7 @@ export type {
   SecretSettings,
   SelectSettings,
   TextSettings,
+  EditorSettings,
 } from './types.js';
 
 export type {
@@ -224,4 +274,5 @@ export type {
   Separator,
   MultiselectSettings,
 } from './types.js';
-export { confirm, secret, select, multiselect, text };
+export { EditorError } from './editor.js';
+export { editor, confirm, secret, select, multiselect, text };

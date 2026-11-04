@@ -125,6 +125,7 @@ function outWith<Result>(
       throw new FatalError(message);
     },
     info: resolved,
+    lendTerminal: async (work) => work(),
     print: resolved,
     region: inertRegion,
     render: resolved,

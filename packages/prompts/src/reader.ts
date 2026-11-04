@@ -46,6 +46,8 @@ interface InputQueue {
   held: number | undefined;
   /** The read an accepted secret discarded, whose open sequence or paste yields no key when it ends. */
   discarded: number | undefined;
+  /** The latest read a question has taken a key from, 0 before any has. */
+  taken: number;
 }
 /** Typeahead belongs to the run, not a question. */
 const readOf = new WeakMap<Key, number>();
@@ -308,6 +310,8 @@ interface Session {
   waiting: { resolve: (key: Key) => void; reject: (error: unknown) => void } | undefined;
   failure: { error: unknown } | undefined;
   release: () => void;
+  pause: () => void;
+  resume: () => void;
 }
 const sessions = new WeakMap<AbortSignal, Session>();
 
@@ -321,9 +325,13 @@ const sessions = new WeakMap<AbortSignal, Session>();
 function restoring<Options>(
   context: PromptContext<Options>,
   raw: (mode: boolean) => unknown,
+  paused: () => boolean,
 ): () => void {
   const removers = [
     context.onShutdown(() => {
+      if (paused()) {
+        return;
+      }
       raw(false);
       context.host.stderr.write(pasteOff);
       if (context.host.terminal.stderr.isTTY) {
@@ -331,10 +339,16 @@ function restoring<Options>(
       }
     }),
     context.onSuspend(() => {
+      if (paused()) {
+        return;
+      }
       raw(false);
       context.host.stderr.write(pasteOff);
     }),
     context.onResume(() => {
+      if (paused()) {
+        return;
+      }
       raw(true);
       void context.out.draw(pasteOn, controls);
     }),
@@ -354,10 +368,18 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
   }
   const raw = input.setRawMode.bind(input);
   let released = false;
+  let paused = false;
   let escapeTimer: ReturnType<typeof setTimeout> | undefined = undefined;
   let unregister: (() => void) | undefined = undefined;
   const session: Session = {
     failure: undefined,
+    pause: () => {
+      paused = true;
+      clearTimeout(escapeTimer);
+      raw(false);
+      input.pause();
+      input.off('data', data);
+    },
     queue,
     readers: 0,
     release: () => {
@@ -372,6 +394,16 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
       input.pause();
       input.off('data', data).off('end', end).off('close', end).off('error', inputError);
       context.signal.removeEventListener('abort', abort);
+    },
+    resume: () => {
+      if (released || !paused) {
+        return;
+      }
+      paused = false;
+      raw(true);
+      void context.out.draw(hideCursor + pasteOn, controls);
+      input.on('data', data);
+      input.resume();
     },
     waiting: undefined,
   };
@@ -450,7 +482,7 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
   try {
     raw(true);
     void context.out.draw(hideCursor + pasteOn, controls);
-    unregister = restoring(context, raw);
+    unregister = restoring(context, raw, () => paused);
     input.on('data', data).once('end', end).once('close', end).once('error', inputError);
     input.resume();
     if (input.readableEnded || input.destroyed) {
@@ -482,6 +514,7 @@ export function openReader<Options>(context: PromptContext<Options>) {
     pending: '',
     pendingRead: 0,
     read: 0,
+    taken: 0,
   };
   queues.set(context.signal, queue);
   const session = sessions.get(context.signal) ?? holdInput(context, queue);
@@ -490,6 +523,11 @@ export function openReader<Options>(context: PromptContext<Options>) {
   let abandoned: { reason: unknown } | undefined = undefined;
   let mine: Session['waiting'] = undefined;
   let lastRead: number | undefined = undefined;
+  /** Notes the read a key this question takes came from. */
+  const took = (key: Key) => {
+    lastRead = readOf.get(key);
+    queue.taken = Math.max(queue.taken, lastRead ?? 0);
+  };
   return {
     /**
      * Ends this question's reading with `reason`: its pending read rejects, and so does every later
@@ -528,6 +566,24 @@ export function openReader<Options>(context: PromptContext<Options>) {
       queue.keys = queue.keys.filter((key) => readOf.get(key) !== lastRead);
       queue.discarded = lastRead;
     },
+    /**
+     * Discards every queued key from a read a question has already taken a key from, so the rest of
+     * the read that answered an earlier question never answers this one. A read no question has
+     * taken from stays, as keys typed for this question.
+     */
+    discardTaken() {
+      queue.keys = queue.keys.filter((key) => (readOf.get(key) ?? 0) > queue.taken);
+    },
+    /** Discards queued input and releases the keyboard while a child owns the terminal. */
+    pause() {
+      queue.keys.length = 0;
+      queue.pending = '';
+      queue.paste = undefined;
+      queue.carriage = false;
+      queue.held = undefined;
+      queue.decoder = new StringDecoder('utf8');
+      session.pause();
+    },
     async read(): Promise<Key> {
       context.signal.throwIfAborted();
       if (abandoned !== undefined) {
@@ -538,19 +594,22 @@ export function openReader<Options>(context: PromptContext<Options>) {
       }
       const key = queue.keys.shift();
       if (key) {
-        lastRead = readOf.get(key);
+        took(key);
         return key;
       }
       return new Promise<Key>((resolve, reject) => {
         mine = {
           reject,
           resolve: (next) => {
-            lastRead = readOf.get(next);
+            took(next);
             resolve(next);
           },
         };
         session.waiting = mine;
       });
+    },
+    resume() {
+      session.resume();
     },
   };
 }

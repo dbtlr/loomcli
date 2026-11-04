@@ -1,6 +1,6 @@
 import { Command, FatalError, plugin, provider } from '@loomcli/core';
 import type { ActionHandler, FailureHook, Middleware, Opener, Provider, View } from '@loomcli/core';
-import { describe, expect, it, vi } from 'vite-plus/test';
+import { describe, expect, it, test, vi } from 'vite-plus/test';
 
 import {
   actionContext,
@@ -234,4 +234,11 @@ describe('an unstated member', () => {
     expect(print).toHaveBeenCalledWith('printed');
     expect(warn).toHaveBeenCalledWith('warned');
   });
+});
+
+test('the inert out lends the terminal by calling work and returning its answer', async () => {
+  const context = bare();
+  const work = vi.fn(() => 42);
+  await expect(context.out.lendTerminal(work)).resolves.toBe(42);
+  expect(work).toHaveBeenCalledExactlyOnceWith();
 });
