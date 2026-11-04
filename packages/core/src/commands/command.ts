@@ -1284,9 +1284,11 @@ export function checkDeclaredOptions(state: Declared, table: GlobalTable): void 
 }
 
 /**
- * A variadic slot ends the positional list, so nothing may follow it, and a required slot never
- * follows an optional one. Optional slots may follow each other, and bare words fill them left to
- * right.
+ * A variadic slot ends the positional list, so nothing may follow it. The other slots order in
+ * three tiers: required, then required only when input is not interactive, then optional. A slot
+ * never follows one of a later tier, so a required slot never follows a conditional or optional
+ * one, and a conditional slot never follows an optional one. Slots of one tier may follow each
+ * other, and bare words fill them left to right.
  */
 function checkSlotOrder(
   slot: ArgumentSlot,
