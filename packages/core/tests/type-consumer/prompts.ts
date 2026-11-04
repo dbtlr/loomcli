@@ -1,9 +1,21 @@
 import type { OptionConfig, StandardSchemaV1 } from '@loomcli/core';
 import { Application, Command, validateLinkedValue } from '@loomcli/core';
 import { interaction } from '@loomcli/plugins/interaction';
+import type { ChoiceSource } from '@loomcli/prompts';
 import { confirm, multiselect, secret, select, text } from '@loomcli/prompts';
 import { answeredLine, cancelledLine, questionFrame } from '@loomcli/prompts/views';
 import { z } from 'zod';
+
+/**
+ * `true` exactly when the two types are the same type. An annotation alone would also accept an
+ * inferred `never` or `any`, so the answer checks below compare with this instead.
+ */
+type Equal<Left, Right> =
+  (<Probe>(probe: Probe) => Probe extends Left ? 1 : 2) extends <Probe>(
+    probe: Probe,
+  ) => Probe extends Right ? 1 : 2
+    ? true
+    : false;
 
 const callableSchema = Object.assign((value: string) => value, {
   '~standard': {
@@ -115,6 +127,14 @@ new Command('clone')
     return { files, mixed, numeric, selected, url };
   });
 
+interface Repository {
+  readonly name: string;
+  readonly stars: number;
+}
+const repositories: ChoiceSource<Repository> = () => [
+  { label: 'loomcli', value: { name: 'loomcli', stars: 1 } },
+];
+
 new Command('choices')
   .option('port', { type: 'string', validate: z.string().transform(Number) })
   .action(async (context) => {
@@ -155,7 +175,22 @@ new Command('choices')
     await select(context, { choices: ['a'], message: 'Mode', source: () => ['b'] });
     // @ts-expect-error TS2353: Select has no min setting.
     await select(context, { choices: ['a'], message: 'Mode', min: 1 });
-    return { explicit, linked, mixed, values };
+    // @ts-expect-error TS2345: A source searches always, so it takes no search setting.
+    await select(context, { message: 'Mode', search: true, source: () => ['a'] });
+    await select(context, {
+      message: 'Port',
+      option: 'port',
+      // @ts-expect-error TS2322: A linked source returns string values.
+      source: () => [{ label: 'One', value: 1 }],
+    });
+    const repository = await select(context, { message: 'Repository', source: repositories });
+    const exact: [
+      Equal<typeof mixed, 'sqlite' | 'postgres' | 'neon'>,
+      Equal<typeof values, 1 | { readonly id: 2 }>,
+      Equal<typeof repository, Repository>,
+      Equal<typeof linked, number | undefined>,
+    ] = [true, true, true, true];
+    return { exact, explicit, linked, mixed, repository, values };
   });
 
 new Command('linked-elements')
@@ -177,6 +212,11 @@ new Command('linked-elements')
       message: 'Ports',
       option: 'ports',
     });
+    const values = await multiselect(context, {
+      argument: 'values',
+      message: 'Values',
+      source: () => ['1'],
+    });
     // @ts-expect-error TS2322: Link names a declared key.
     await validateLinkedValue(context, { message: 'Port', option: 'missing' }, '80');
     await validateLinkedValue(
@@ -185,5 +225,23 @@ new Command('linked-elements')
       { argument: 'values', message: 'Port', option: 'ports' },
       '80',
     );
-    return { argument, list, option };
+    const exact: [
+      Equal<typeof option, StandardSchemaV1.Result<number>>,
+      Equal<typeof list, number[]>,
+      Equal<typeof values, number[]>,
+    ] = [true, true, true];
+    return { argument, exact, list, option, values };
+  });
+
+new Command('split')
+  .option('tags', {
+    required: true,
+    type: 'string',
+    validate: z.string().transform((value) => value.split(',')),
+  })
+  .action(async (context) => {
+    // A single-value input whose validated value is an array reads as a collected input's element.
+    const tags = await validateLinkedValue(context, { message: 'Tags', option: 'tags' }, 'a,b');
+    const exact: Equal<typeof tags, StandardSchemaV1.Result<string>> = true;
+    return { exact, tags };
   });

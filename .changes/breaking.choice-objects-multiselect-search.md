@@ -2,10 +2,10 @@
 - Add choice objects to `select` and `multiselect`: a `value` of any type on an unlinked question, a `label`, a `description`, and a `disabled` state with its reason, beside `{ separator }` entries.
 - Add `search: true`, which filters a question's static choices as the operator types, and `source`, a function that returns the choices for a search term and whose previous call each keystroke aborts.
 - Add Ctrl-P, Ctrl-N, Home, and End to a select's navigation, and draw a supplied value a question cannot select in its issue instead of dropping it.
-- Add `validateLinkedValue` to `@loomcli/core`, which runs a linked input's validator on one value with the question's validation options.
+- Add `validateLinkedValue` to `@loomcli/core`, which runs a linked input's validator on one value with the question's validation options, and its types `LinkedValue`, `LinkedValueContext`, `ValueLink`, and `LinkedOutput`.
 - Change a linked `select` that asks to pass the chosen value through the linked input's validator and return its output, typed as the input's value, as a skipped `select` already returns. A choice the validator rejects now keeps the question asking with the validator's issue, where it used to return the choice's string, and a test that asks one through `actionContext` states a `graph` that `inspect()` returned.
 - Change `SelectSettings` to a union of a `choices` list and a `source`, so its `choices` is optional.
-- Change the `select` member of `questionFrame`'s data to choice rows and separator rows, which the new `multiselect` member shares, with a `highlighted` that may be `undefined`, and export `TypedFrame`, `ListFrame`, `ChoiceRow`, and `SeparatorRow` from `@loomcli/prompts/views`.
+- Change the `select` member of `questionFrame`'s data to choice rows and separator rows, which the new `multiselect` member shares, with a `highlighted` that may be `undefined`, export `TypedFrame`, `ListFrame`, `ChoiceRow`, and `SeparatorRow` from `@loomcli/prompts/views`, and add the question's `kind` to `answeredLine`'s data, so the default view draws an empty multiselect answer as `none`.
 
 ### Migration
 
@@ -47,4 +47,4 @@ if (data.kind === 'select' || data.kind === 'multiselect') {
 7. Where code reads `choices` from a `SelectSettings` value, check that it is present first, such as `settings.choices?.length ?? 0`, because a question with a `source` has none.
 8. In a unit test that calls an action asking a linked `select` through `actionContext`, state `graph: application.inspect()` and `command` as that graph's node for the routed Command, because the chosen value now passes the input's validator, which core reads from that graph's build.
 
-**Validation.** Run `tsc --noEmit` to type-check every `questionFrame` override, hand-built frame, reader of `SelectSettings.choices`, and comparison with a linked `select`'s answer. Then run the application's test command, such as `vitest run` or `bun test`, with a test that draws each overridden frame through `viewContext` and answers each linked `select` on `mockProcess` by choosing each of its choices.
+**Validation.** Run `tsc --noEmit` to type-check every hand-built frame, reader of `SelectSettings.choices`, and comparison with a linked `select`'s answer. `tsc` does not catch an override like the one before: a row object interpolated into a template string compiles and draws `[object Object]`. So run the application's test command, such as `vitest run` or `bun test`, with a test that draws each overridden `select` and `multiselect` frame through `viewContext` and asserts the text it draws, and that answers each linked `select` on `mockProcess` by choosing each of its choices.

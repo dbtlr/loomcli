@@ -8,6 +8,8 @@ import { questionValidationOptions } from './context.js';
 
 /**
  * One element of an input's value: the element of a collected input's list, or a single input's value.
+ * The type reads the value, not the declaration, so a single-value input whose validated value is an
+ * array reads as a collected input, and its element is the output's type.
  *
  * @public
  * @sealed
