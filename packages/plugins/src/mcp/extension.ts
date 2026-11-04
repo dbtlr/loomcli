@@ -1,8 +1,10 @@
 import { extension } from '@loomcli/core';
 import type { Extension, StandardSchemaV1 } from '@loomcli/core';
+import { boolean, check, literal, never, object, optional, pipe, string, union } from 'valibot';
 
 import { packageName } from '../constants.js';
-import { argumentFactsSchema, commandFactsSchema, inputFactsSchema } from './facts-schemas.js';
+import { exactFacts } from '../exact-facts.js';
+import { proseRule } from '../lines.js';
 
 /**
  * The MCP plugin's facts, as declarations alone. A Command opts in as a tool by carrying an
@@ -56,9 +58,34 @@ interface McpArgumentFacts {
   readonly description: string;
 }
 
-const commandFacts: StandardSchemaV1<McpCommandFacts, McpCommandFacts> = commandFactsSchema;
-const inputFacts: StandardSchemaV1<McpInputFacts, McpInputFacts> = inputFactsSchema;
-const argumentFacts: StandardSchemaV1<McpArgumentFacts, McpArgumentFacts> = argumentFactsSchema;
+const annotations = object({
+  destructive: optional(boolean()),
+  idempotent: optional(boolean()),
+  openWorld: optional(boolean()),
+  readOnly: optional(boolean()),
+});
+
+const prose = pipe(string(), check(proseRule.test, proseRule.message));
+
+/** The value that describes an option, which never also excludes it. */
+const described = object({ description: string(), exclude: optional(never()) });
+
+/** The value that excludes an option, which never also describes it. */
+const excluding = object({ description: optional(never()), exclude: literal(true) });
+
+const commandFactsSchema = object({
+  annotations: optional(annotations),
+  description: optional(prose),
+});
+const commandFacts = exactFacts<McpCommandFacts>()(commandFactsSchema);
+
+const inputFactsSchema = union([described, excluding]);
+const inputFacts = exactFacts<McpInputFacts>()(inputFactsSchema);
+
+const argumentFactsSchema = object({
+  description: string(),
+});
+const argumentFacts = exactFacts<McpArgumentFacts>()(argumentFactsSchema);
 
 /**
  * Opts a Command in as a tool, with its description for an agent and its effect hints.
