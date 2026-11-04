@@ -9,6 +9,9 @@ type Key =
   | { kind: 'text' | 'paste'; value: string }
   | {
       kind:
+        | 'escape'
+        | 'previous'
+        | 'next'
         | 'enter'
         | 'backspace'
         | 'up'
@@ -56,6 +59,7 @@ const sequences: Record<string, Key['kind']> = {
   '1;5C': 'wordRight',
   '1;5D': 'wordLeft',
   '1~': 'home',
+  '27u': 'escape',
   '3~': 'delete',
   '4~': 'end',
   '7~': 'home',
@@ -81,10 +85,25 @@ const controlKeys: Record<string, Key['kind']> = {
   '\n': 'enter',
   '\u000b': 'killEnd',
   '\r': 'enter',
+  '\u000e': 'next',
+  '\u0010': 'previous',
   '\u0015': 'killStart',
   '\u0017': 'killWhitespace',
   '\u007f': 'backspace',
 };
+/** Releases held Escape keys with the same read ownership and secret discard as parsed keys. */
+function releaseEscapes(queue: InputQueue): void {
+  if (queue.pendingRead !== queue.discarded) {
+    for (const character of queue.pending) {
+      if (character === '\u001b') {
+        const key: Key = { kind: 'escape' };
+        readOf.set(key, queue.pendingRead);
+        queue.keys.push(key);
+      }
+    }
+  }
+  queue.pending = '';
+}
 /** Reads complete protocol sequences before interpreting a key, retaining partial reads. */
 function feed(queue: InputQueue, text: string): void {
   queue.read += 1;
@@ -232,10 +251,14 @@ function feed(queue: InputQueue, text: string): void {
       }
       queue.pending = queue.pending.slice(1);
       if (queue.pending.startsWith('\u001b')) {
+        emit('escape', queue.pendingRead);
         queue.carriage = false;
         continue;
       }
       const next = queue.pending[0];
+      if (next !== undefined && next < ' ' && next !== '\b') {
+        emit('escape', queue.pendingRead);
+      }
       if (next === '\u007f' || next === '\b') {
         emit('killWord', queue.pendingRead);
         queue.pending = queue.pending.slice(1);
@@ -388,7 +411,7 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
     clearTimeout(escapeTimer);
     // An ESC held past the window is the Escape key, even when a release stopped its timer.
     if (queue.held !== undefined && performance.now() - queue.held >= escapeWindow) {
-      queue.pending = '';
+      releaseEscapes(queue);
     }
     queue.held = undefined;
     feed(queue, rest);
@@ -399,8 +422,9 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
     ) {
       queue.held = performance.now();
       escapeTimer = setTimeout(() => {
-        queue.pending = '';
+        releaseEscapes(queue);
         queue.held = undefined;
+        settle();
       }, escapeWindow);
       escapeTimer.unref();
     }

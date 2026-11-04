@@ -616,12 +616,12 @@ const links = new WeakMap<CommandGraph, GraphLink>();
  * The link of one rendered graph. A graph core did not render has none, which is a caller's
  * programming error rather than an invocation fault.
  */
-function linkOf(graph: CommandGraph): GraphLink {
+function linkOf(graph: CommandGraph, correction = 'Pass the graph inspect() returned.'): GraphLink {
   const link = links.get(graph);
   if (!link) {
     throw new InternalError(foreignGraph, {
       cause: undefined,
-      correction: 'Pass the graph inspect() returned.',
+      correction,
       sentence: 'The graph was not produced by inspect().',
     });
   }

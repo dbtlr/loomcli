@@ -152,10 +152,10 @@ test.each(['empty', 'unknown', 'global', 'multiple', 'count', 'content', 'confir
 
 test('a select question with no choices states its fault and its correction', async () => {
   await expect(fault('empty')).resolves.toEqual({
-    correction: 'Supply at least one choice.',
+    correction: 'Supply at least one choice that is not disabled.',
     name: 'DeclarationError',
     rule: '@loomcli/prompts/link',
-    sentence: 'The select question "Mode" has no choices.',
+    sentence: 'The select question "Mode" has no choice that is not disabled.',
   });
 });
 

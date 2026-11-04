@@ -6,7 +6,7 @@ import { configInput } from '@loomcli/plugins/config/extension';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { z } from 'zod';
 
-import { confirm, secret, select, text } from '../../dist/index.js';
+import { confirm, multiselect, secret, select, text } from '../../dist/index.js';
 
 const scenario = process.argv[2];
 spawnSync('stty', ['rows', process.env.PROMPT_ROWS ?? '24', 'cols', '80'], {
@@ -42,6 +42,24 @@ const app = new Application('setup', {
     }
     if (scenario === 'editing') {
       const answer = await text(context, { message: 'Edit value' });
+      process.stdout.write(`ANSWER:${JSON.stringify(answer)}\n`);
+      return;
+    }
+    if (scenario === 'list-search' || scenario === 'list-multi') {
+      const settings = {
+        choices: [
+          'Alpha',
+          { separator: 'Group' },
+          { disabled: 'unavailable', value: 'blocked' },
+          { label: 'Beta', value: 'beta' },
+        ],
+        message: 'Features',
+        search: true,
+      };
+      const answer =
+        scenario === 'list-multi'
+          ? await multiselect(context, settings)
+          : await select(context, settings);
       process.stdout.write(`ANSWER:${JSON.stringify(answer)}\n`);
       return;
     }

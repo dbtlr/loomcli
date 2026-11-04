@@ -346,7 +346,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/prompts/link
 
-**Invalid question.** A question asks in one line of prose and links at most one local option or argument of the routed Command, of the kind the question accepts, and a select question offers at least one choice.
+**Invalid question.** A question asks in one line of prose and links at most one local option or argument of the routed Command, of the kind the question accepts, and a select or multiselect question offers enough choices that are not disabled to be answered.
 
 ## @loomcli/loom
 

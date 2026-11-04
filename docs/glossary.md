@@ -705,15 +705,35 @@ The one first-party package that ships every first-party plugin as its own separ
 _Avoid_: Bundle, standard library, batteries, default set
 
 **Question**:
-One prompt an action asks through `@loomcli/prompts`, of the kind text, secret, confirm, or select, drawn in an input region on stderr and answered from stdin while the interaction decision is on. It is part of the action, never a run stage or an input source.
+One prompt an action asks through `@loomcli/prompts`, of the kind text, secret, confirm, select, or multiselect, drawn in an input region on stderr and answered from stdin while the interaction decision is on. It is part of the action, never a run stage or an input source.
 _Avoid_: Prompt (for one question; the package is prompts), wizard step, input source
 
+**Choice**:
+One answer a select or multiselect question offers: a string, which is its own value and label, or an object with a `value` the question returns, a `label` the frame draws, an optional `description`, and an optional `disabled` state with its reason. A linked question's choice values are strings. Select and multiselect take the same choices, and a separator in the list is not a choice.
+_Avoid_: Option (which is an input), item, entry, candidate
+
+**Separator**:
+A `{ separator: text }` entry in a list of choices that draws a dimmed row between them and is never highlighted, selected, or returned. A static search drops it while the term is not empty. A choice or a separator is an entry of the list, the type `ChoiceEntry`, and only a choice is a `Choice`.
+_Avoid_: Group, divider, header (for the entry)
+
+**Search term**:
+The text an operator types into a select or multiselect that searches, held as a typed line on the question's first line. With `search: true` it filters the choices by label; with a `source`, each change to it calls the source for the choices it names. It is never the answer.
+_Avoid_: Query, filter (for the text), input
+
+**Choice source**:
+The author's function, `source(term, { signal })`, that returns the choices of a select or multiselect for a search term, as an array or a promise of one. Each new call aborts the previous call's signal, and a stale call's result is discarded. It is author code, so Loom adds no debounce, timeout, or retry to it.
+_Avoid_: Loader, provider (which is a core term), fetcher, autocomplete
+
+**Selection**:
+The choices a multiselect question holds selected while it asks, in the order the operator toggled them on, from static choices or a source alike, which Enter submits as the answer's values. It survives a change of the search term, never holds more than the question's `max`, and Enter submits it only when it holds at least `min`.
+_Avoid_: Checked items, picks, values (before submission)
+
 **Linked input**:
-The input of the routed Command a question names: a linked option, the local option it names with `option`, or a linked argument, the argument it names with `argument`, never both. Its raw supplied value prefills the question, and its validated value answers the question when the question is skipped.
+The input of the routed Command a question names: a linked option, the local option it names with `option`, or a linked argument, the argument it names with `argument`, never both. Its raw supplied value prefills the question, and its validated value answers the question when the question is skipped. A select or multiselect that asks passes each chosen value through the linked input's validator, so its answer is the input's validated value either way.
 _Avoid_: Bound option, backing option, bound argument
 
 **Typed line**:
-The text a text, secret, or confirm question holds while it asks, and its cursor, a grapheme index from 0 to the line's grapheme count. The editing keys of the prompts reference move the cursor and change the line, and Enter submits it. A secret's typed line reaches no view.
+The text a text, secret, or confirm question holds while it asks, or the search term of a select or multiselect that searches, and its cursor, a grapheme index from 0 to the line's grapheme count. The editing keys of the prompts reference move the cursor and change the line. At a text, secret, or confirm question Enter submits it, and a search term is never submitted: Enter there acts on the list. A secret's typed line reaches no view.
 _Avoid_: Buffer, input field, answer (before it is submitted)
 
 **Question hint**:

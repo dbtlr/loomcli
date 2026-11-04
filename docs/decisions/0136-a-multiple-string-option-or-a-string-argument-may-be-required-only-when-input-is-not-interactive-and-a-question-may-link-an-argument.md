@@ -4,7 +4,7 @@ title: ADR-0136 - A multiple string option or a string argument may be required 
 description: Conditional requiredness, required non-interactive, widens from a local string option that takes one value to every local string option, multiple included, and to a string argument, scalar or variadic. With interaction off the input is required exactly as required true is; with interaction on an omission is absence, undefined for a scalar and an empty list for a collected input. Such an argument never follows an optional one and a required argument never follows it, it prints as required in help usage, and inspect() publishes requiredWhen on the argument node. A text, secret, or select question may link a scalar string argument with argument, never beside option, under the same resolution as a linked option, and missingInputError names an argument as { argument }. This narrows ADR-0082's conditional requiredness and link clauses, ADR-0036's structural at-least-one rule, and ADR-0093's single branch of optional-argument-last.
 status: proposed
 created: 2026-11-03
-modified: 2026-11-03
+modified: 2026-11-04
 ---
 
 # ADR-0136 - A multiple string option or a string argument may be required only when input is not interactive, and a question may link an argument
@@ -62,3 +62,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-03: Proposed with the contract for line editing, the key table, and linking arguments (LM-349). It narrows ADR-0082's conditional requiredness and link clauses, ADR-0036's structural at-least-one rule, and ADR-0093's single branch of `optional-argument-last`. ADR-0082, ADR-0036, and ADR-0093 carry dated entries.
+- 2026-11-04: [ADR-0138](0138-select-and-multiselect-questions-offer-choice-objects-may-search-them-or-read-them-from-a-source-and-draw-choice-rows.md), proposed, decides the link this record left to a kind that answers several values: a multiselect links a multiple string option or a variadic string argument, and a collected input is supplied when its raw list is not empty. Text, secret, and select still link one value. It also replaces the `@loomcli/prompts/link` explanation this record's consequences state, which becomes `A question asks in one line of prose and links at most one local option or argument of the routed Command, of the kind the question accepts, and a select or multiselect question offers enough choices that are not disabled to be answered.` It binds when that record is accepted.

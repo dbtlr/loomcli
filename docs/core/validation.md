@@ -120,6 +120,38 @@ Core re-exports the `StandardSchemaV1` type, so a custom validator depends on `@
 
 A [question](../libs/prompts.md) validates its submitted answer with `phase: 'question'`. It carries the captured host, the routed path, the passthrough tail, and a separate copy of the run's supplied inputs. A question linked to an option identifies its local option, `{ kind: 'option', name, global: false }`, a question linked to an argument identifies its argument, `{ kind: 'argument', name, global: false }`, and an unlinked question's identity is `{ kind: 'question', name: message, global: false }`. Core's `questionValidationOptions(context, { message, option?, argument? })` builds these authenticated Standard Schema options for the prompts library, from at most one of `option` and `argument`: the types reject the two together. Context-dependent validators such as `path()` and `dateTime()` therefore use the same working directory and time zone as option validation.
 
+A linked select or multiselect question has no validator of its own, so the value it answers passes the linked input's, through core's `validateLinkedValue`.
+
+```ts
+/** One element of a collected input's list, or the whole value of an input that takes one value. */
+type LinkedValue<Value> = [Value] extends [readonly (infer Element)[]] ? Element : Value;
+type LinkedValueContext<Args, Options> = Pick<
+  ActionContext<Args, Options, unknown>,
+  'args' | 'options' | 'graph' | 'command' | 'host' | 'passthrough' | 'supplied'
+>;
+type ValueLink<Args, Options> =
+  | { readonly message: string; readonly option: keyof Options & string; readonly argument?: never }
+  | { readonly message: string; readonly argument: keyof Args & string; readonly option?: never };
+type LinkedOutput<Args, Options, Link> = Link extends { readonly argument: infer Name extends keyof Args }
+  ? LinkedValue<Args[Name]>
+  : Link extends { readonly option: infer Key extends keyof Options }
+    ? LinkedValue<Options[Key]>
+    : never;
+
+function validateLinkedValue<Args, Options, const Link extends ValueLink<Args, Options>>(
+  context: LinkedValueContext<Args, Options>,
+  link: Link,
+  value: string,
+): Promise<StandardSchemaV1.Result<LinkedOutput<Args, Options, Link>>>;
+```
+
+- **The call.** `validateLinkedValue` runs the declared validator of the local option or the argument `link` names on `value`, one raw string, with the options `questionValidationOptions(context, link)` builds, and resolves the Standard Schema result. A multiple option's or a variadic argument's validator checks one value per call, as it does for the run's tokens under [ADR-0036](../decisions/0036-each-value-passes-the-same-validator.md), and an input that declares no validator resolves `{ value }`, the value unchanged.
+- **Its types.** `Args` and `Options` come from the context, and `link` names one of their keys, never both, so an undeclared key and `option` beside `argument` fail to compile. The output is one element of the input's value: `LinkedValue` reads the element of a list, so a multiple option or a variadic argument resolves the output of its validator for one value, and an input that takes one value resolves its whole value type, `undefined` included where the action's value includes it. The prompts library builds a select's answer from one output and a multiselect's from a list of outputs, with no type assertion.
+- **The validator it finds.** A graph node publishes its input's schema, never the validator, so core reads the validator from the declaration. It looks up `context.graph` among the graphs `inspect()` rendered, the registry [`locate`](graph-inspection.md#locating-a-word) reads, takes the built Command at `context.command.path` in that graph's build, and reads the named input's declared validator. A run's action context always passes, because its `graph` and `command` are the run's own.
+- **A context core did not build.** When `context.graph` is not a graph `inspect()` returned, or `context.command` is not that graph's node at its own path, the call throws an `InternalError` under [`@loomcli/core/foreign-graph`](diagnostics.md#loomclicoreforeign-graph), with the correction `Pass the graph inspect() returned, unchanged.` It never passes the value through unvalidated, because the result's type claims the validator's output, and a raw string under that type would let a test pass on a value the run never answers. So a unit test of an action that asks a linked select or multiselect states `graph: application.inspect()` and `command` as that graph's node for the routed Command in [`actionContext`](../libs/testing.md#actioncontext)'s values, or runs the Application on `mockProcess` with a keyboard, and either way the input's real validator runs. A test that states no `graph` reads the builder's `actionContext has no graph. Add graph to its values.` before core looks.
+- **What the validator reads.** The options carry `phase: 'question'` and the linked input's identity, as every linked question's do. Their `supplied` is a copy of the run's supplied inputs, the raw tokens and filled values above, so for the linked input it holds what the operator supplied before the question asked, the raw value that prefilled it, or `undefined` or `[]` when it was omitted. It never holds the question's selection: a multiselect's validator sees neither the value under validation nor the other chosen values there, unlike ADR-0036's invocation phase, where `supplied` holds the whole raw list.
+- **Failures.** The prompts library checks the link before it calls, under its `@loomcli/prompts/link` rule, so core reads a declared input of the right kind. A validator that throws takes the ordinary failure path, as a question's own validator does.
+
 A default and an [implied value](options.md#implied-values) validate before any token is parsed, so their phase, `default`, reports the host and the declaration alone. A configuration source's own options validate before the source is called, so `supplied` holds no value the source fills, and `passthrough` is `[]` while a local fault is held. Every input validator call of one invocation, the globals and the routed Command's own declarations alike, reports the same route, passthrough, and supplied inputs. The route, the passthrough tail, and every collected value are copies made for each call, so a validator that writes to them changes nothing that a later validator or the action reads. `host` is the captured object itself, shared with the action, as the table states, except for an option a configuration answer with a `directory` filled, whose `host` replaces `cwd` with that directory. Once core drops that fill, the option's omission call reads the captured object.
 
 `supplied` holds the tokens as the parser read them, and the raw values the [input sources](input-sources.md) filled, before any validator runs and before any default applies, except a member of an [exclusive option group](options.md#declared-option-groups) that a lower tier filled beside a sibling a higher tier supplied, which core withdraws before validation and leaves out; a bare spelling with an [implied value](options.md#implied-values) reads as the raw implied string. Every declared name of the routed Command, and every global name, is a key.
@@ -178,7 +210,7 @@ const result = await dateTime()['~standard'].validate('2026-06-01 09:00', option
 - **Capture failures.** A handle a run would fail to capture throws the error the run would report, such as a `WorkingDirectoryError` for a working directory `cwd()` cannot read.
 - **Omitted fields.** An `invocation` context's omitted `command` is `[]`, the root, its omitted `passthrough` is `[]`, and its omitted `supplied` holds no supplied value, `{ args: {}, options: {} }`. A supplied `supplied` is copied, as each call of a run is given its own copy.
 - **One call's options.** Each call builds a fresh context, and its `host` belongs to that call alone.
-- **Questions.** The `question` phase has its own builder, `questionValidationOptions`, above.
+- **Questions.** The `question` phase has its own builder, `questionValidationOptions`, above, and a linked select or multiselect runs its input's validator through `validateLinkedValue`.
 
 ## Absence and defaults
 

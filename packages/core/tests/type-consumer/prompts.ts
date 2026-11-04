@@ -1,7 +1,7 @@
 import type { OptionConfig, StandardSchemaV1 } from '@loomcli/core';
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, validateLinkedValue } from '@loomcli/core';
 import { interaction } from '@loomcli/plugins/interaction';
-import { confirm, secret, select, text } from '@loomcli/prompts';
+import { confirm, multiselect, secret, select, text } from '@loomcli/prompts';
 import { answeredLine, cancelledLine, questionFrame } from '@loomcli/prompts/views';
 import { z } from 'zod';
 
@@ -113,4 +113,77 @@ new Command('clone')
     // @ts-expect-error TS2345: Skipping requires a linked input.
     await text(context, { message: 'URL', skipIfSupplied: true });
     return { files, mixed, numeric, selected, url };
+  });
+
+new Command('choices')
+  .option('port', { type: 'string', validate: z.string().transform(Number) })
+  .action(async (context) => {
+    const mixed: 'sqlite' | 'postgres' | 'neon' = await select(context, {
+      choices: [
+        'sqlite',
+        { label: 'Postgres', value: 'postgres' },
+        { separator: 'Hosted' },
+        { disabled: true, value: 'neon' },
+      ],
+      message: 'Engine',
+    });
+    const values: 1 | { readonly id: 2 } = await select(context, {
+      choices: [
+        { label: 'One', value: 1 },
+        { label: 'Two', value: { id: 2 } },
+      ],
+      message: 'Value',
+    });
+    const explicit: 'a' | 'b' = await select<typeof context.options, 'a' | 'b'>(context, {
+      choices: ['a', 'b'],
+      message: 'Mode',
+    });
+    const linked: number | undefined = await select(context, {
+      choices: ['80', '443'],
+      message: 'Port',
+      option: 'port',
+    });
+    await select(context, {
+      // @ts-expect-error TS2322: A linked question takes string values.
+      choices: [{ label: 'One', value: 1 }],
+      message: 'Port',
+      option: 'port',
+    });
+    // @ts-expect-error TS2322: A numeric value needs a label.
+    await select(context, { choices: [{ value: 1 }], message: 'Number' });
+    // @ts-expect-error TS2345: Choices and source are mutually exclusive.
+    await select(context, { choices: ['a'], message: 'Mode', source: () => ['b'] });
+    // @ts-expect-error TS2353: Select has no min setting.
+    await select(context, { choices: ['a'], message: 'Mode', min: 1 });
+    return { explicit, linked, mixed, values };
+  });
+
+new Command('linked-elements')
+  .option('ports', { multiple: true, type: 'string', validate: z.string().transform(Number) })
+  .argument('values', { validate: z.string().transform(Number), variadic: true })
+  .action(async (context) => {
+    const option: StandardSchemaV1.Result<number> = await validateLinkedValue(
+      context,
+      { message: 'Port', option: 'ports' },
+      '80',
+    );
+    const argument: StandardSchemaV1.Result<number> = await validateLinkedValue(
+      context,
+      { argument: 'values', message: 'Value' },
+      '1',
+    );
+    const list: number[] = await multiselect(context, {
+      choices: ['80'],
+      message: 'Ports',
+      option: 'ports',
+    });
+    // @ts-expect-error TS2322: Link names a declared key.
+    await validateLinkedValue(context, { message: 'Port', option: 'missing' }, '80');
+    await validateLinkedValue(
+      context,
+      // @ts-expect-error TS2322: One link names exactly one input.
+      { argument: 'values', message: 'Port', option: 'ports' },
+      '80',
+    );
+    return { argument, list, option };
   });

@@ -6,6 +6,7 @@ import { expect, test } from 'vite-plus/test';
 
 import { select } from '../src/index.js';
 import { questionFrame } from '../src/views.js';
+import type { ChoiceRow } from '../src/views.js';
 import { observing } from './support.js';
 
 /**
@@ -86,7 +87,17 @@ async function titleWidth(columns: number | 'unreported', variable?: string): Pr
         {
           above: 3,
           below: 2,
-          choices: ['choice-3', 'choice-4', 'choice-5', 'choice-6', 'choice-7'],
+          choices: ['choice-3', 'choice-4', 'choice-5', 'choice-6', 'choice-7'].map(
+            (label) =>
+              ({
+                description: undefined,
+                disabled: false,
+                kind: 'choice',
+                label,
+                reason: undefined,
+                selected: false,
+              }) satisfies ChoiceRow,
+          ),
           highlighted: 0,
           issue: undefined,
           kind: 'select',

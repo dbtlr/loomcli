@@ -11,7 +11,7 @@ import type { LinkKey, PromptContext } from './types.js';
 
 const linkRule = diagnosticRule('@loomcli/prompts/link', {
   explanation:
-    'A question asks in one line of prose and links at most one local option or argument of the routed Command, of the kind the question accepts, and a select question offers at least one choice.',
+    'A question asks in one line of prose and links at most one local option or argument of the routed Command, of the kind the question accepts, and a select or multiselect question offers enough choices that are not disabled to be answered.',
   headline: 'Invalid question',
 });
 
@@ -34,7 +34,7 @@ class InteractionUnavailableError extends FatalError {
 /** The question that links an input: its message and its kind. */
 interface Question {
   readonly message: string;
-  readonly kind: 'text' | 'secret' | 'confirm' | 'select';
+  readonly kind: 'text' | 'secret' | 'confirm' | 'select' | 'multiselect';
 }
 
 /** A linked input as a question resolves it: its raw value, its validated value, and its fallback. */
@@ -58,7 +58,16 @@ function linkedArgument<Options, Args, Argument extends LinkKey<Args>>(
       'Link an argument of the routed Command.',
     );
   }
-  if (argument.type === 'content' || argument.variadic || kind === 'confirm') {
+  if (kind === 'multiselect' && (argument.type === 'content' || !argument.variadic)) {
+    invalid(
+      `The question "${message}" links argument "${name}", which is not a variadic string argument.`,
+      'Link a multiple string option or a variadic string argument.',
+    );
+  }
+  if (
+    kind !== 'multiselect' &&
+    (argument.type === 'content' || argument.variadic || kind === 'confirm')
+  ) {
     invalid(
       `The question "${message}" links argument "${name}", which is not a string argument that takes one value.`,
       'Link a string option or argument that takes one value.',
@@ -106,7 +115,7 @@ function linkedOption<Options, Key extends LinkKey<Options>, Args>(
 function resolveLink<Options, Key extends LinkKey<Options>, Args, Argument extends LinkKey<Args>>(
   context: PromptContext<Options, Args>,
   settings: { message: string; option?: Key; argument?: Argument; skipIfSupplied?: boolean },
-  kind: 'text' | 'secret' | 'confirm' | 'select',
+  kind: 'text' | 'secret' | 'confirm' | 'select' | 'multiselect',
 ): { kind: 'answered'; value: Options[Key] | Args[Argument] } | { kind: 'ask'; prefill: unknown } {
   const { message, option: key, argument } = settings;
   if (!isProseLine(message)) {
@@ -127,17 +136,26 @@ function resolveLink<Options, Key extends LinkKey<Options>, Args, Argument exten
     }
     return { kind: 'ask', prefill: undefined };
   }
-  if (linked.raw !== undefined && (!context.interactive || settings.skipIfSupplied === true)) {
+  const supplied =
+    linked.raw !== undefined && (!Array.isArray(linked.raw) || linked.raw.length > 0);
+  if (supplied && (!context.interactive || settings.skipIfSupplied === true)) {
     return { kind: 'answered', value: linked.value() };
   }
   if (!context.interactive) {
     throw linked.missing();
   }
-  return { kind: 'ask', prefill: linked.raw ?? linked.fallback };
+  return { kind: 'ask', prefill: supplied ? linked.raw : linked.fallback };
 }
 
 function checkKind(option: OptionNode, kind: string, message: string): void {
-  if (kind === 'confirm') {
+  if (kind === 'multiselect') {
+    if (option.type !== 'string' || !option.multiple) {
+      invalid(
+        `The question "${message}" links option "${option.name}", which is not a multiple string option.`,
+        'Link a multiple string option or a variadic string argument.',
+      );
+    }
+  } else if (kind === 'confirm') {
     if (option.type !== 'boolean') {
       invalid(
         `The question "${message}" links option "${option.name}", which is not a Boolean option.`,
