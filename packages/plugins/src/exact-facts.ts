@@ -7,12 +7,19 @@ type DeepMutable<Type> = Type extends (...args: never[]) => unknown
     ? { -readonly [Key in keyof Type]: DeepMutable<Type[Key]> }
     : Type;
 
-/** Whether each type is assignable to the other, which with optional keys and unions pins both. */
-type Identical<Left, Right> = [Left] extends [Right]
-  ? [Right] extends [Left]
+/**
+ * Whether two types are the same type, keys and optional members included. Mutual assignability
+ * would accept an interface with an extra optional key its schema lacks, so this compares the types
+ * the way the checker compares two deferred conditional types: only identical operands match.
+ */
+type Identical<Left, Right> =
+  // Each probe's type parameter is the comparison itself, so it appears once by design.
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters
+  (<Probe>() => Probe extends Left ? true : false) extends <Probe>() => Probe extends Right
     ? true
     : false
-  : false;
+    ? true
+    : false;
 
 /**
  * The parameter's second half: it accepts a schema only when the schema's input and output are the
