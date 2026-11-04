@@ -4,7 +4,7 @@ import { Application, style, validationContext, width } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 import { theme } from '@loomcli/plugins/theme';
 import { key, mockProcess } from '@loomcli/testing';
-import { expect, test } from 'vite-plus/test';
+import { expect, test, vi } from 'vite-plus/test';
 
 import { confirm, secret, text } from '../src/index.js';
 import { questionFrame } from '../src/views.js';
@@ -303,15 +303,36 @@ test.each([
   },
 );
 
-test('a held ESC the next question reads within the window continues its sequence', async () => {
-  const answers: unknown[] = [];
-  const app = new Application('ask').action(async (context) => {
-    answers.push(await text(context, { message: 'First' }));
-    answers.push(await text(context, { message: 'Second' }));
+/**
+ * Fakes only the clock that dates a held ESC, so the time between two questions is what a test
+ * advances and not how long a loaded machine takes to open the next one. Every timer stays real.
+ */
+async function onHeldClock(run: () => Promise<void>): Promise<void> {
+  vi.useFakeTimers({ toFake: ['performance'] });
+  try {
+    await run();
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+test.each([
+  ['within the window continues its sequence', 49, 'b'],
+  ['once the window has passed reads as Escape', 50, '[Db'],
+])('a held ESC the next question reads %s', async (_case, elapsed, second) => {
+  await onHeldClock(async () => {
+    const answers: unknown[] = [];
+    const app = new Application('ask').action(async (context) => {
+      answers.push(await text(context, { message: 'First' }));
+      vi.advanceTimersByTime(elapsed);
+      answers.push(await text(context, { message: 'Second' }));
+    });
+    const mock = mockProcess({
+      terminal: { columns: 40, keys: ['x\r\u001b', '[Db\r'], rows: 24 },
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(answers).toEqual(['x', second]);
   });
-  const mock = mockProcess({ terminal: { columns: 40, keys: ['x\r\u001b', '[Db\r'], rows: 24 } });
-  await expect(app.run({ process: mock })).resolves.toBe(0);
-  expect(answers).toEqual(['x', 'b']);
 });
 
 test.each([
@@ -319,16 +340,20 @@ test.each([
   ['a sequence unfinished at the Enter', ['hidden\r\u001b[1', ';5Dsafe\r']],
   ['a lone ESC held at the Enter', ['hidden\r\u001b', 'bsafe\r']],
 ])('an accepted secret discards %s until it ends', async (_case, keys) => {
-  const answers: unknown[] = [];
-  const app = new Application('ask').action(async (context) => {
-    answers.push(await secret(context, { message: 'Password' }));
-    answers.push(await text(context, { message: 'Name' }));
+  // A held lone ESC reaches the next question within the window, however loaded the machine.
+  await onHeldClock(async () => {
+    const answers: unknown[] = [];
+    const app = new Application('ask').action(async (context) => {
+      answers.push(await secret(context, { message: 'Password' }));
+      vi.advanceTimersByTime(49);
+      answers.push(await text(context, { message: 'Name' }));
+    });
+    const mock = mockProcess({ terminal: { columns: 40, keys, rows: 24 } });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(answers).toEqual(['hidden', 'safe']);
+    expect(mock.stderr.text).not.toContain('more');
+    expect(mock.stderr.text).not.toContain('5D');
   });
-  const mock = mockProcess({ terminal: { columns: 40, keys, rows: 24 } });
-  await expect(app.run({ process: mock })).resolves.toBe(0);
-  expect(answers).toEqual(['hidden', 'safe']);
-  expect(mock.stderr.text).not.toContain('more');
-  expect(mock.stderr.text).not.toContain('5D');
 });
 
 test('an accepted secret discards a paste that ends in a later read of the same entry', async () => {
