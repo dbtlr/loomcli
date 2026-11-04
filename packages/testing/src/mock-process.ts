@@ -261,6 +261,9 @@ const backgroundQuery = '\u001b]11;?';
 /** A Primary Device Attributes reply with no background before it, as a terminal that reports none sends. */
 const attributesAlone = '\u001b[?1;2c';
 
+/** The milliseconds between an array entry's reads, twice the prompts reader's lone-Escape window. */
+const laterRead = 100;
+
 /** The sentence a raw-mode switch with no entry left fails the keyboard with. */
 const noKeysLeft = 'mockProcess has no keys left for this read. Add an entry to terminal.keys.';
 
@@ -283,6 +286,8 @@ class Keyboard extends Readable implements MockStdin {
   #hold: object | undefined = undefined;
   /** Whether the background query was written during the current hold. */
   #asked = false;
+  /** The timer that hands over an array entry's next read. */
+  #later: ReturnType<typeof setTimeout> | undefined = undefined;
 
   constructor(keys: readonly (string | readonly string[])[]) {
     super();
@@ -300,15 +305,25 @@ class Keyboard extends Readable implements MockStdin {
   setRawMode(mode: boolean): this {
     const switched = mode && !this.#raw;
     this.#raw = mode;
+    if (!mode || switched) {
+      // A switch ends the entry in hand, so its reads not yet handed over are never read.
+      clearTimeout(this.#later);
+      this.#later = undefined;
+    }
     if (switched) {
-      const hold = {};
-      this.#hold = hold;
-      this.#asked = false;
-      setImmediate(() => {
-        this.#handOver(hold);
-      });
+      this.#begin();
     }
     return this;
+  }
+
+  /** Begins a hold, whose entry is handed over once the switch has returned. */
+  #begin(): void {
+    const hold = {};
+    this.#hold = hold;
+    this.#asked = false;
+    setImmediate(() => {
+      this.#handOver(hold);
+    });
   }
 
   /** Hears text the run wrote to the terminal, and notes the background query. */
@@ -332,24 +347,35 @@ class Keyboard extends Readable implements MockStdin {
       this.emit('error', new Error(noKeysLeft));
       return;
     }
-    this.#sendChunks(hold, typeof entry === 'string' ? [entry] : [...entry]);
+    this.#send(hold, typeof entry === 'string' ? [entry] : [...entry]);
   }
 
-  #sendChunks(hold: object, chunks: string[]): void {
-    const sendChunk = () => {
-      if (hold !== this.#hold || !this.#raw) {
-        return;
+  /**
+   * Pushes an entry's first read, and each later one once stdin has emitted the read before it and
+   * `laterRead` milliseconds have passed, so an ESC that ends a read is past the reader's lone-Escape
+   * window when the next read arrives. The timer is unref'd, and a raw-mode switch clears it.
+   */
+  #send(hold: object, reads: string[]): void {
+    const read = reads.shift();
+    if (read === undefined || hold !== this.#hold || !this.#raw) {
+      return;
+    }
+    this.push(Buffer.from(read));
+    if (!reads.length) {
+      return;
+    }
+    this.#later = setTimeout(() => {
+      this.#later = undefined;
+      if (this.readableLength) {
+        // The read before is still buffered, so the next waits until a consumer has taken it.
+        this.once('data', () => {
+          this.#send(hold, reads);
+        });
+      } else {
+        this.#send(hold, reads);
       }
-      const chunk = chunks.shift();
-      if (chunk === undefined) {
-        return;
-      }
-      this.emit('data', Buffer.from(chunk));
-      if (chunks.length) {
-        setImmediate(sendChunk);
-      }
-    };
-    sendChunk();
+    }, laterRead);
+    this.#later.unref();
   }
 }
 

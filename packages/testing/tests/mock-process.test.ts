@@ -8,7 +8,13 @@ import { text as ask } from '@loomcli/prompts';
 import { describe, expect, it, vi } from 'vite-plus/test';
 
 import { mockProcess } from '../src/index.js';
-import type { MockProcess, MockTerminal, ProgramAnswer, ProgramCall } from '../src/index.js';
+import type {
+  MockProcess,
+  MockStdin,
+  MockTerminal,
+  ProgramAnswer,
+  ProgramCall,
+} from '../src/index.js';
 
 /** The text a Readable yields before it ends. */
 async function drained(stream: NodeJS.ReadableStream): Promise<string> {
@@ -753,6 +759,14 @@ function withKeys(argv: string[], keys?: string[]) {
   return mockProcess({ argv, terminal: { columns: 80, keys, rows: 24 } });
 }
 
+/** Switches a keyboard's raw mode, as a reader does through the terminal stream's method. */
+function rawMode(stdin: MockStdin, mode: boolean): void {
+  if (!('setRawMode' in stdin) || typeof stdin.setRawMode !== 'function') {
+    throw new TypeError('The keyboard has no setRawMode method.');
+  }
+  stdin.setRawMode(mode);
+}
+
 /** The sentence a raw-mode switch with no entry left fails the keyboard with. */
 const noKeysLeft = 'mockProcess has no keys left for this read. Add an entry to terminal.keys.';
 
@@ -861,6 +875,49 @@ describe('the keyboard', () => {
     const code = await setup().run({ process: mock });
     expect([code, mock.exitCode, mock.stdout.text]).toEqual([1, 1, '']);
     expect(mock.stderr.text).toContain(noKeysLeft);
+  });
+
+  it.each([
+    [['abc\u001b', 'def\r'], 'abcdef'],
+    [['ab\u001b', 'b\r'], 'abb'],
+  ])(
+    'an array entry %j hands each later read over once the ESC ending a read is Escape',
+    async (entry, expected) => {
+      const mock = mockProcess({ terminal: { columns: 80, keys: [entry], rows: 24 } });
+      let answer: unknown = undefined;
+      const app = new Application('app').action(async (context) => {
+        answer = await ask(context, { message: 'Name' });
+      });
+      await expect(app.run({ process: mock })).resolves.toBe(0);
+      expect(answer).toBe(expected);
+    },
+  );
+
+  it('an array entry pushes each read through the stream, 100 ms after the one before', async () => {
+    const { stdin } = mockProcess({ terminal: { columns: 80, keys: [['ab', 'cd']], rows: 24 } });
+    const reads: { text: string; at: number }[] = [];
+    const started = performance.now();
+    rawMode(stdin, true);
+    for await (const chunk of stdin) {
+      reads.push({ at: performance.now() - started, text: String(chunk) });
+      if (reads.length === 2) {
+        break;
+      }
+    }
+    expect(reads.map((read) => read.text)).toEqual(['ab', 'cd']);
+    expect(reads[1]?.at ?? 0).toBeGreaterThanOrEqual(99);
+  });
+
+  it('a switch out of raw mode ends an array entry, so its later reads are never handed over', async () => {
+    const { stdin } = mockProcess({ terminal: { columns: 80, keys: [['ab', 'cd']], rows: 24 } });
+    const reads: string[] = [];
+    stdin.on('data', (chunk) => {
+      reads.push(String(chunk));
+      rawMode(stdin, false);
+    });
+    rawMode(stdin, true);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(reads).toEqual(['ab']);
   });
 
   it('the types make keys and piped stdin exclusive, and a MockTerminal still passes', () => {
