@@ -14,6 +14,9 @@ import { graphMismatch, linkOf } from './inspect.js';
 /**
  * Where the last word of an unfinished invocation sits. Every node is the given graph's own, so a
  * reader compares by identity. `prefix` is the part of the word being completed.
+ *
+ * @public
+ * @sealed
  */
 type WordPosition =
   | { readonly kind: 'command'; readonly command: CommandNode; readonly prefix: string }
@@ -165,6 +168,8 @@ function lastWord(scope: Scope, last: string): WordPosition {
  * word sits. `words` holds the tokens after the application name; an empty list reads as one empty
  * word. It runs no validator, input source, or middleware, and a structural fault among the earlier
  * words reads as `none`.
+ *
+ * @public
  */
 function locate(graph: CommandGraph, words: readonly string[]): WordPosition {
   const link = linkOf(graph);

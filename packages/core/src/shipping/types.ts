@@ -3,6 +3,8 @@
  * release facts into the artifact, core reads the installation from the installation record, and
  * core fills `host.release` from them for every run; a run of the source, with nothing baked in,
  * reads `{ build: 'source' }`.
+ *
+ * @public
  */
 export interface ReleaseFacts {
   /** `source` and `development` are development builds, and `distributed` is a distributed one. */

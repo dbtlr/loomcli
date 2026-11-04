@@ -47,13 +47,23 @@ function shutdownTimeout(application: string, shutdown: { readonly timeout?: num
 /**
  * Registers a synchronous handler scoped to the process, which runs once, at the end of a shutdown
  * or at the process's own end, and answers the call that removes it. A throw is dropped.
+ *
+ * @public
  */
 const onShutdown: OnShutdown = (handler) => processLane().onShutdown({ handler });
 
-/** Registers a synchronous handler scoped to the process that runs when Ctrl-Z suspends it, newest first. */
+/**
+ * Registers a synchronous handler scoped to the process that runs when Ctrl-Z suspends it, newest first.
+ *
+ * @public
+ */
 const onSuspend: OnSuspend = (handler) => processLane().onSuspend({ handler });
 
-/** Registers a synchronous handler scoped to the process that runs when it resumes, in registration order. */
+/**
+ * Registers a synchronous handler scoped to the process that runs when it resumes, in registration order.
+ *
+ * @public
+ */
 const onResume: OnResume = (handler) => processLane().onResume({ handler });
 
 export { onResume, onShutdown, onSuspend, shutdownTimeout };

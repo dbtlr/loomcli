@@ -18,7 +18,11 @@ function rememberInputNames(host: Host, invokedBy: 'argv' | 'name'): void {
   }
 }
 
-/** Builds the ordinary missing-option failure for an action-owned question. */
+/**
+ * Builds the ordinary missing-option failure for an action-owned question.
+ *
+ * @public
+ */
 function missingInputError(
   context: Pick<ActionContext<unknown>, 'command' | 'host' | 'interactive'>,
   input: string | { argument: string },

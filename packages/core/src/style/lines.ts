@@ -77,6 +77,8 @@ function lastLineHasText(parsed: ReturnType<typeof parseText>): boolean {
  * opens again at the start of the next line, so a caller can place lines side by side and nothing
  * leaks from one onto another. A trailing line break ends the last line and adds no empty one, as
  * `pad` adds no padded line after it, and text without a break comes back as one line.
+ *
+ * @public
  */
 function splitLines(text: string): string[] {
   textOnly(text);

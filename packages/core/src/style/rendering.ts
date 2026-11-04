@@ -2,7 +2,9 @@ import type { Background } from '../host/background.js';
 import { underCI } from '../host/host.js';
 import type { Host } from '../host/types.js';
 
+/** @public */
 type SwitchPolicy = 'auto' | 'always' | 'never';
+/** @public */
 interface RenderingPolicy {
   color?: SwitchPolicy | undefined;
   modifiers?: SwitchPolicy | undefined;
@@ -150,5 +152,5 @@ function plainPolicy(declared: RenderingPolicy): RenderingPolicy {
     : { ...plain, terminalControls: declared.terminalControls };
 }
 
-export type { Capabilities, RenderingPolicy };
+export type { Capabilities, RenderingPolicy, SwitchPolicy };
 export { capabilities, columns, plainPolicy, renderingPolicy };

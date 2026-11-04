@@ -24,12 +24,20 @@ import type { ExtensionRecords } from '../plugins/extension.js';
 import type { BuiltSource } from '../plugins/plugin.js';
 import { isPlainObject } from '../support/plain.js';
 
-/** The plain JSON Schema a validated input publishes, or `null` where the graph holds no shape. */
+/**
+ * The plain JSON Schema a validated input publishes, or `null` where the graph holds no shape.
+ *
+ * @public
+ * @sealed
+ */
 type InputSchema = Readonly<Record<string, unknown>> | null;
 
 /**
  * One declared argument. `default` wraps the declared value, so an explicit `undefined` shows, and
  * `schema` is the input schema its validator publishes through the Standard JSON Schema converter.
+ *
+ * @public
+ * @sealed
  */
 interface ArgumentNode {
   readonly type?: 'content';
@@ -98,6 +106,7 @@ interface StringOptionNode {
   readonly background: boolean;
   readonly extensions: Readonly<Record<string, unknown>>;
 }
+/** @public @sealed */
 type OptionNode =
   | StringOptionNode
   | (Omit<StringOptionNode, 'type' | 'background' | 'envAllowEmpty'> & {
@@ -147,6 +156,9 @@ type OptionNode =
  * name, and `path` never holds an alias. The root reports the Application's description, so a
  * projection that walks nodes never special-cases it, and it reads `hidden: false` and
  * `deprecated: undefined`, the two core facts a listing reads on every other node.
+ *
+ * @public
+ * @sealed
  */
 interface CommandNode {
   readonly optionGroups: readonly OptionGroup[];
@@ -169,6 +181,9 @@ interface CommandNode {
  * The result one Command declares: the unit its action emits, the view names in record order, the
  * name of the view core renders when nothing selects another, and the media type each view
  * declares, by view name, `null` where a view declares none.
+ *
+ * @public
+ * @sealed
  */
 interface ResultNode {
   readonly kind: 'value' | 'rows';
@@ -182,6 +197,9 @@ interface ResultNode {
  * and `description` are the Application's own core facts. `version` is the declared string, or
  * `0.0.0` when the Application declares none, so it is never `undefined`. `description` stays
  * `undefined` where the Application declares none.
+ *
+ * @public
+ * @sealed
  */
 interface CommandGraph {
   readonly name: string;
@@ -196,6 +214,9 @@ interface CommandGraph {
 /**
  * The configuration the installed configuration source reads: the input-side JSON Schema its
  * `schema` publishes, or `null` when it declares none or its schema publishes none.
+ *
+ * @public
+ * @sealed
  */
 interface ConfigurationNode {
   readonly schema: InputSchema;
@@ -205,6 +226,8 @@ interface ConfigurationNode {
  * The spelling every reported problem names one option by, the one core's own validation reports:
  * its long form, a negative-only Boolean option's negative form, and otherwise its short form. A
  * plugin that reports a problem for an option, such as an input source, names it this way too.
+ *
+ * @public
  */
 export function reportedSpelling(option: OptionNode): string {
   const negative = option.type === 'boolean' ? option.negative : null;
@@ -640,6 +663,7 @@ export type {
   CommandNode,
   ConfigurationNode,
   ConverterFault,
+  InputSchema,
   OptionNode,
   ResultNode,
 };

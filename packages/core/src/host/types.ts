@@ -5,10 +5,12 @@ import type { ExitCode } from '../application/types.js';
 import type { ReleaseFacts } from '../shipping/types.js';
 import type { Background } from './background.js';
 
+/** @public */
 export interface InputTerminal {
   isTTY: boolean;
 }
 
+/** @public */
 export interface OutputTerminal extends InputTerminal {
   columns: number | undefined;
   rows: number | undefined;
@@ -18,6 +20,9 @@ export interface OutputTerminal extends InputTerminal {
  * The run's terminal facts: each stream's kind, the output streams' live width and height, and the
  * run's background, the one fact core settles rather than captures. It reads `undefined` until it
  * settles, when no source settled it, and in an invocation by name.
+ *
+ * @public
+ * @sealed
  */
 export interface HostTerminal {
   stdin: InputTerminal;
@@ -26,10 +31,18 @@ export interface HostTerminal {
   readonly background: Background | undefined;
 }
 
-/** A signal a signal source delivers and raises. */
+/**
+ * A signal a signal source delivers and raises.
+ *
+ * @public
+ */
 export type ProcessSignal = 'SIGHUP' | 'SIGINT' | 'SIGQUIT' | 'SIGTERM' | 'SIGTSTP' | 'SIGCONT';
 
-/** A listener for one signal source event: the `exit` event passes the exit code, a signal nothing. */
+/**
+ * A listener for one signal source event: the `exit` event passes the exit code, a signal nothing.
+ *
+ * @public
+ */
 export type SignalListener<Event extends ProcessSignal | 'exit'> = Event extends 'exit'
   ? (code: number) => void
   : () => void;
@@ -37,6 +50,8 @@ export type SignalListener<Event extends ProcessSignal | 'exit'> = Event extends
 /**
  * Where a run's signals come from and where core raises them: the real process's own, which every
  * handle `processHandle` builds shares, or a source a handle holds of its own.
+ *
+ * @public
  */
 export interface SignalSource {
   /** The stdin of the terminal this source's process is attached to, or `undefined` for none. */
@@ -50,6 +65,8 @@ export interface SignalSource {
 /**
  * The terminal facts of a process handle's streams. Output `columns` and `rows` may be getters,
  * which core reads live. A stated `background` settles the run's background, with no query.
+ *
+ * @public
  */
 export interface ProcessTerminal {
   readonly stdin: InputTerminal;
@@ -64,6 +81,8 @@ export interface ProcessTerminal {
  * environment. An attached child takes `input`, its whole stdin, or `stdin: 'inherit'`, the run's
  * own, never both; each of `stdout` and `stderr` is captured when omitted. A detached child starts
  * in a process group of its own with every stream ignored, and nothing in the run ends it.
+ *
+ * @public
  */
 export type SpawnOptions = {
   /** The run's `cwd` when omitted; a relative path resolves against it. */
@@ -94,7 +113,11 @@ export type SpawnOptions = {
   | { readonly detached: true }
 );
 
-/** What a child wrote to one captured stream: empty for a stream that was not captured. */
+/**
+ * What a child wrote to one captured stream: empty for a stream that was not captured.
+ *
+ * @public
+ */
 export interface ChildOutput {
   readonly bytes: Uint8Array;
   /** The bytes decoded as UTF-8. */
@@ -105,6 +128,8 @@ export interface ChildOutput {
  * How a child ended: its exit code, 128 plus the signal's number for a child a signal ended, and
  * its captured output; or that it never started, because no program answered to the command or
  * the runtime refused it, with the runtime's error.
+ *
+ * @public
  */
 export type ChildExit =
   | {
@@ -115,7 +140,11 @@ export type ChildExit =
     }
   | { readonly kind: 'unstarted'; readonly error: Error };
 
-/** A child program a run started. */
+/**
+ * A child program a run started.
+ *
+ * @public
+ */
 export interface Child {
   /** Resolves once the child has ended and its streams have closed; it never rejects. */
   readonly exited: Promise<ChildExit>;
@@ -129,6 +158,8 @@ export interface Child {
 /**
  * Every process fact a run reads and every process effect it makes. A run binds one at entry and
  * never replaces it, and core copies its facts into the run's host.
+ *
+ * @public
  */
 export interface ProcessHandle {
   readonly argv: readonly string[];
@@ -174,6 +205,8 @@ export interface ProcessHandle {
  * The fields `processHandle` takes, each replacing its whole field. An absolute `cwd` string never
  * throws; a relative one resolves against the process's working directory at each read, so it
  * throws when that directory cannot be read; and a `cwd` function throws as it chooses.
+ *
+ * @public
  */
 export type ProcessFields = Partial<
   Omit<ProcessHandle, 'cwd' | 'exitCode' | 'publishEnv' | 'signals' | 'spawn'>
@@ -181,6 +214,7 @@ export type ProcessFields = Partial<
   readonly cwd?: string | (() => string);
 };
 
+/** @public @sealed */
 export interface Host {
   platform: string;
   /** The process's CPU architecture, such as `x64` or `arm64`. */

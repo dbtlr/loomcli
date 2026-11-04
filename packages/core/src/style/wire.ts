@@ -14,6 +14,7 @@ import {
 } from './style.js';
 import type { Color, Operation } from './style.js';
 
+/** @public */
 type Alignment = 'left' | 'right' | 'center';
 interface Padding {
   width: number;

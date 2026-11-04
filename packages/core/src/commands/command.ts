@@ -263,6 +263,9 @@ export declare const commandValue: unique symbol;
  * The input, alias, child, and action calls a Command can publish. Its type state is a subset,
  * and each call removes the names it invalidates. `command()` belongs to every Command and to the
  * unnamed root alike, at any depth.
+ *
+ * @public
+ * @sealed
  */
 export type CommandMethod =
   | 'action'
@@ -390,6 +393,8 @@ function constructorFinding(name: unknown, options: unknown, mark: string): Find
  * application name, every Command name, and every alias. The characters are the POSIX portable
  * filename set, and a name starts with neither `-`, which reads as an option, nor `.`, which a
  * shell hides. Core exports it so the lint plugin judges a literal name by this same rule.
+ *
+ * @public
  */
 export function isPortableName(name: string): boolean {
   return /^[A-Za-z0-9_][A-Za-z0-9._-]*$/u.test(name);
@@ -2495,6 +2500,9 @@ export class CommandBuilder<
  * declarations themselves stay private, so no consumer can reach them. `State` lists the authoring
  * calls a value still offers. It defaults to the state after `action()`, which publishes the fewest
  * calls, so `Command<A, O, G>` accepts a Command in any state, a finished one included.
+ *
+ * @public
+ * @sealed
  */
 export type Command<
   Args = {},
@@ -2518,6 +2526,8 @@ export type ResultMethod<Result> = unknown extends Result ? never : 'views';
 
 /**
  * The core facts and initial extension values a named Command carries.
+ *
+ * @public
  */
 export interface CommandOptions<Uses extends readonly AnyProvider[] = []> {
   description?: string;
@@ -2604,7 +2614,11 @@ class CommandDeclaration<const Uses extends readonly AnyProvider[] = []> extends
   }
 }
 
-/** The public constructor takes a name and one options object, as the Application does. */
+/**
+ * The public constructor takes a name and one options object, as the Application does.
+ *
+ * @public
+ */
 export const Command: CommandConstructor = CommandDeclaration;
 
 /** Every declaration in the graph, so defaults are validated before any token is read. */

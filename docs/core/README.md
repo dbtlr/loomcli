@@ -54,3 +54,4 @@ Every `Invalid declaration: ` and `Internal error: ` line a page shows quotes th
 
 - [Release facts](release-facts.md): open it when a run reads how it was built: its version, its channel, or whether it is a development build.
 - [Installation record](installation-record.md): open it when you read or write the record of an installed application and the files its install wrote.
+- [Public exports](public-exports.md): open it when you want to know which exports you may rely on, whether you read or build a type, and what an upgrade can break.

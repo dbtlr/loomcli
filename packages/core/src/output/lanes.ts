@@ -10,7 +10,12 @@ import type { AnyDeclaredView, DeclaredView } from './view.js';
  */
 const core = '@loomcli/core';
 
-/** The seven semantic methods, each naming the lane view it renders through. */
+/**
+ * The seven semantic methods, each naming the lane view it renders through.
+ *
+ * @public
+ * @sealed
+ */
 type Lane = 'debug' | 'error' | 'info' | 'print' | 'success' | 'trace' | 'warn';
 
 /** The glyph and style name one lane marks its first line with; `warn` marks it `warning`. */
@@ -73,6 +78,8 @@ function lane(name: Lane, render: (message: string, context: ViewContext) => str
  * The seven lane views core declares, one per semantic method. An application replaces the
  * function of any of them through `views`, and the replacement owns the gutter the default
  * supplies. A trace line nests one step under a debug line and fades past it, `faint` over `dim`.
+ *
+ * @public
  */
 const lanes: Readonly<Record<Lane, DeclaredView<string>>> = {
   debug: lane('debug', guttered({ fade: (style) => style.dim, glyph: 'pointerSmall', indent: 0 })),
@@ -90,6 +97,9 @@ const lanes: Readonly<Record<Lane, DeclaredView<string>>> = {
 /**
  * What one sequence that stopped early reports: the Command it belongs to, the rows its source
  * produced before the stop, and the rows core wrote. `head` is no row, so it is not counted.
+ *
+ * @public
+ * @sealed
  */
 interface IncompleteResult {
   path: readonly string[];
@@ -100,6 +110,8 @@ interface IncompleteResult {
 /**
  * The line a sequence writes on stderr when it stopped before its end, so an empty result and a
  * truncated one never read alike. An override that returns the empty string silences it.
+ *
+ * @public
  */
 const incompleteResult: DeclaredView<IncompleteResult> = view<IncompleteResult>(
   `${core}/results/incomplete`,

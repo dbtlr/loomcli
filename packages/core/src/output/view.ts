@@ -17,7 +17,12 @@ declare const invariant: unique symbol;
 /** Phantom key. It brands a view override and holds no runtime value. */
 declare const viewOverride: unique symbol;
 
-/** The brand one declared view carries, as an extension value carries its own. */
+/**
+ * The brand one declared view carries, as an extension value carries its own.
+ *
+ * @public
+ * @sealed
+ */
 interface DeclaredViewBrand {
   readonly [declaredView]: true;
 }
@@ -27,6 +32,9 @@ interface DeclaredViewBrand {
  * override replaces. The witness makes `Data` invariant, so a declared view is never reassigned as
  * a declared view of another data type and a replacement that requires data the key does not carry
  * is a compile error.
+ *
+ * @public
+ * @sealed
  */
 interface DeclaredView<Data> extends View<Data>, DeclaredViewBrand {
   readonly identity: string;
@@ -36,6 +44,9 @@ interface DeclaredView<Data> extends View<Data>, DeclaredViewBrand {
 /**
  * One declared row view: the same brand and witness a declared view carries, over the row type.
  * `override` keyed by it takes a row view, under the rules a declared view follows unchanged.
+ *
+ * @public
+ * @sealed
  */
 interface DeclaredRowView<Row> extends RowView<Row>, DeclaredViewBrand {
   readonly identity: string;
@@ -46,11 +57,18 @@ interface DeclaredRowView<Row> extends RowView<Row>, DeclaredViewBrand {
  * The supertype a contribution list uses. It keeps the identity, the brand, and a view function of
  * either shape over `never`, and drops the invariance witness, because a list cannot carry one type
  * parameter per element and an invariant type has no common supertype across data types.
+ *
+ * @public
+ * @sealed
  */
 type AnyDeclaredView = (View<never> | RowView<never>) &
   DeclaredViewBrand & { readonly identity: string };
 
-/** A failure class as an override key, so `UsageError` and an application's subclass both fit. */
+/**
+ * A failure class as an override key, so `UsageError` and an application's subclass both fit.
+ *
+ * @public
+ */
 type FailureClass<Failure extends LoomError> = abstract new (...args: never[]) => Failure;
 
 /**
@@ -62,6 +80,9 @@ type FailureClass<Failure extends LoomError> = abstract new (...args: never[]) =
  * `view` and `mediaType` are the run's selection when it failed: a middleware's assignment, else the
  * view `invoke()` started with, else the routed Command's default view, and the media type that
  * view declares. Neither is the graph.
+ *
+ * @public
+ * @sealed
  */
 interface FailureViewContext extends ViewContext {
   readonly application: string;
@@ -77,6 +98,8 @@ interface FailureViewContext extends ViewContext {
 /**
  * A failure class's view. A `View<Failure>` written against `ViewContext` is assignable to it,
  * because its function reads less of the context.
+ *
+ * @public
  */
 interface FailureView<Failure extends LoomError> {
   render: (failure: Readonly<Failure>, context: FailureViewContext) => string;
@@ -165,8 +188,11 @@ class RowViewDeclaration<Row> implements DeclaredRowView<Row> {
  * `Readonly<Data>`. A definition whose `row` is a function is a row view, and any other is a whole
  * view. The media type is read once, so a later write to the definition changes nothing the
  * declaration holds.
+ *
+ * @public
  */
 function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data>;
+/** @public */
 function view<Row>(identity: string, definition: RowView<Row>): DeclaredRowView<Row>;
 function view(identity: string, definition: View<never> | RowView<never>): AnyDeclaredView {
   const { mediaType } = definition;
@@ -204,19 +230,35 @@ class OverrideDeclaration {
   }
 }
 
-/** An opaque override pairing one key with the view function that replaces its default. */
+/**
+ * An opaque override pairing one key with the view function that replaces its default.
+ *
+ * @public
+ * @sealed
+ */
 type ViewOverride = Pick<OverrideDeclaration, typeof viewOverride>;
 
-/** What a plugin's own list holds: the views it declares and the overrides it makes. */
+/**
+ * What a plugin's own list holds: the views it declares and the overrides it makes.
+ *
+ * @public
+ * @sealed
+ */
 type ViewContribution = AnyDeclaredView | ViewOverride;
 
-/** Every value an override can key on: a declared view of either shape or a failure class. */
+/**
+ * Every value an override can key on: a declared view of either shape or a failure class.
+ *
+ * @public
+ */
 type AnyOverrideKey = AnyDeclaredView | FailureClass<LoomError>;
 
 /**
  * The replacement view one key takes, derived from the key alone. The declared-view branches come
  * first, so a declared view is never read as a failure class. Each check is wrapped in a tuple so a
  * union key is not split into a union of replacements that each answer only one of its members.
+ *
+ * @public
  */
 type ReplacementView<Key> = [Key] extends [DeclaredView<infer Data>]
   ? View<Data>
@@ -232,6 +274,8 @@ type ReplacementView<Key> = [Key] extends [DeclaredView<infer Data>]
  * class's instances, which is the typed path for a class-keyed list, because an array literal cannot
  * carry a different type parameter per element. One signature serves every key, so a mismatch
  * names the replacement's type against the one the key expects.
+ *
+ * @public
  */
 function override<Key extends AnyOverrideKey>(
   key: Key,

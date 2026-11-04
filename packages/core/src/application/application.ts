@@ -176,6 +176,9 @@ import type { ExitCode, RunOptions } from './types.js';
  * An Application's type state is a subset of these, and each call removes the names it invalidates.
  * The unnamed root declares what a named Command declares, except for `alias()`: the root answers
  * to no bare token, so it has no name to alias.
+ *
+ * @public
+ * @sealed
  */
 export type ApplicationMethod = Exclude<CommandMethod, 'alias'> | 'globalOption';
 
@@ -257,6 +260,7 @@ type RootRequirement<Globals, Requires> = [Globals] extends [Requires]
   ? unknown
   : { readonly 'The Application declares no global option its root providers read': Requires };
 
+/** @public */
 export interface ApplicationOptions<
   Plugins extends readonly Plugin[] = readonly Plugin[],
   Uses extends readonly AnyProvider[] = [],
@@ -1571,6 +1575,9 @@ function nameDoor<Mapped>(
  * valid after it. `inspect()`, `check()`, `run()`, `invoke()`, and `name` survive every call. `State` lists the authoring calls a value still offers.
  * It defaults to the state after `action()`, which publishes the fewest calls, so
  * `Application<A, O, G>` accepts an application in any state, a finished one included.
+ *
+ * @public
+ * @sealed
  */
 export type Application<
   Args = {},
@@ -1824,4 +1831,5 @@ class ApplicationDeclaration<
   }
 }
 
+/** @public */
 export const Application: ApplicationConstructor = ApplicationDeclaration;

@@ -532,6 +532,8 @@ async function validateDeclared(
  * The dotted path an issue names inside a value, or `undefined` when the issue names the value
  * itself. Core's default text and an application's own view read a position through this one
  * helper, so a rejected item reads alike wherever its diagnostic is written.
+ *
+ * @public
  */
 export function issuePath(issue: StandardSchemaV1.Issue): string | undefined {
   const path = issue.path

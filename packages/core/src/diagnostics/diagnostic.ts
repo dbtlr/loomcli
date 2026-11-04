@@ -13,6 +13,8 @@ function callFinding(identity: unknown, definition: unknown) {
  * Declares one Developer Diagnostic rule: its identity, the headline its banner prints, the
  * explanation that says why the rule exists, and an optional docs link. It returns a frozen
  * descriptor that every site raising the rule shares, as `extension()` and `issueCode()` do.
+ *
+ * @public
  */
 export function diagnosticRule(
   identity: string,

@@ -5,6 +5,9 @@ import { isPlainObject } from '../support/plain.js';
 /**
  * One reason a declaration can be wrong, or one kind of defect: the parts that hold at every site
  * that raises it. `diagnosticRule()` builds and freezes it.
+ *
+ * @public
+ * @sealed
  */
 interface DiagnosticRule {
   readonly identity: string;
@@ -17,6 +20,8 @@ interface DiagnosticRule {
  * One declaration a fault points at, rebuilt from the facts core holds: the Command it sits on, the
  * authoring call, and the arguments that call received. `mark` is a dotted path into `arguments`
  * that the diagnostic underlines, and `note` prints beside the marks.
+ *
+ * @public
  */
 interface Finding {
   readonly path?: readonly string[];
@@ -26,7 +31,11 @@ interface Finding {
   readonly note?: string;
 }
 
-/** The parts of one fault that differ at each site that raises its rule. */
+/**
+ * The parts of one fault that differ at each site that raises its rule.
+ *
+ * @public
+ */
 interface DiagnosticParts {
   readonly sentence: string;
   readonly findings?: readonly Finding[];

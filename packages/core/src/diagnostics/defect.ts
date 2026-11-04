@@ -280,7 +280,12 @@ function defectEvidence(cause: unknown, access: SourceAccess): string[] {
   return [...(source === undefined ? [] : [source]), causeChain(cause)];
 }
 
-/** The name, message, and stack a fatal log event carries for the defect the run caught. */
+/**
+ * The name, message, and stack a fatal log event carries for the defect the run caught.
+ *
+ * @public
+ * @sealed
+ */
 interface LogDefect {
   readonly name: string;
   readonly message: string;

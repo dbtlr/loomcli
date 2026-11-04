@@ -176,7 +176,7 @@ A hint is a line a plugin adds under a failure message. Plugins add hints to a f
 - **Order.** Hints keep installation order, and each hook's strings keep their own. Each hook receives the failure and its context alone and never another hook's hints, so no plugin removes or rewords another's, and two plugins that return the same line print it twice.
 - **Candidates.** A hook that suggests a name reads its candidates from the graph: `graph.globals` and `command.options` for an option spelling, and `command.children` for a Command name. It leaves out what [completion](../plugins/completion.md) leaves out, by the node facts: a hidden or deprecated member, and every alias, since a child's `name` is its canonical name. `UnknownOptionError` carries no accepted spellings, and `candidates` on the routing errors leaves out hidden and deprecated children, the same rule. A hint adds a line; a plugin that wants the near match inside the sentence itself overrides the failure's view, as the [suggestions](../plugins/suggestions.md) plugin does.
 - **Plugins alone.** The hook is on the plugin definition alone, as `onCommandAttach` is. An application that wants a hint of its own writes an override that prints it, or installs a small local plugin.
-- **Names.** `FailureHook` and `FailureHookContext` are exported.
+- **Names.** `FailureHook`, `FailureHookContext`, and `InvokedBy` are exported.
 
 ## Observing log events
 

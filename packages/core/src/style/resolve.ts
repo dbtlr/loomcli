@@ -66,6 +66,8 @@ function markedWidth(text: string, palette: Palette, caps: Capabilities): number
  * The columns of text a stream received, as the view context's `width` counts them, with no
  * marked-string frame read: every terminal control sequence is skipped and none is emulated, so a
  * cursor movement or a carriage return moves nothing back.
+ *
+ * @public
  */
 function width(text: string): number {
   return parsedWidth(plainParsed(text), plainCaps);

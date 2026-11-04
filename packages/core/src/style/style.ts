@@ -22,12 +22,14 @@ const colors = {
   yellow: 3,
 };
 
+/** @public */
 type Ansi16Color = keyof typeof colors;
-type ColorName = Ansi16Color;
+/** @public */
 interface ColorFallbacks {
   readonly ansi256?: number | undefined;
   readonly ansi16?: Ansi16Color | undefined;
 }
+/** @public */
 type Ansi256Fallbacks = Pick<ColorFallbacks, 'ansi16'>;
 type RgbArguments = [
   red: number,
@@ -36,7 +38,7 @@ type RgbArguments = [
   fallbacks?: ColorFallbacks | undefined,
 ];
 type Color =
-  | ColorName
+  | Ansi16Color
   | readonly ['rgb', number, number, number, ColorFallbacks?]
   | readonly ['ansi256', number, Ansi256Fallbacks?];
 const modifiers = [
@@ -49,8 +51,10 @@ const modifiers = [
   'strikethrough',
   'overline',
 ] as const;
+/** @public @sealed */
 type Modifier = (typeof modifiers)[number];
 const tokens = ['dim', 'primary', 'highlight', 'success', 'warning', 'error', 'info'] as const;
+/** @public @sealed */
 type CoreToken = (typeof tokens)[number];
 type Reset = 'reset' | 'resetForeground' | 'resetBackground';
 type Operation =
@@ -60,6 +64,7 @@ type Operation =
   | readonly ['token', string];
 
 declare const semanticStyle: unique symbol;
+/** @public @sealed */
 type Style<Names extends string = CoreToken, Semantic extends boolean = false> = {
   (text: string): string;
   readonly [semanticStyle]: Semantic;
@@ -71,7 +76,7 @@ type Style<Names extends string = CoreToken, Semantic extends boolean = false> =
   readonly ansi256: (index: number, fallbacks?: Ansi256Fallbacks) => Style<Names, Semantic>;
   readonly bgAnsi256: (index: number, fallbacks?: Ansi256Fallbacks) => Style<Names, Semantic>;
 } & {
-  readonly [Name in ColorName | `bg${Capitalize<ColorName>}` | Modifier | Reset]: Style<
+  readonly [Name in Ansi16Color | `bg${Capitalize<Ansi16Color>}` | Modifier | Reset]: Style<
     Names,
     Semantic
   >;
@@ -82,7 +87,9 @@ type ThemeNames<Contributor> = Contributor extends Plugin
   : never;
 type EnvironmentStyle<Environment extends ApplicationEnvironment<unknown, readonly Plugin[]>> =
   Style<CoreToken | ThemeNames<Environment['plugins'][number]>>;
+/** @public @sealed */
 type ContextualStyle = EnvironmentStyle<RegisteredEnvironment>;
+/** @public @sealed */
 type ConcreteStyle = Style;
 
 /** The brand an adaptive style carries, which no export names, so only `style.adaptive` makes one. */
@@ -92,6 +99,9 @@ const adaptiveStyle: unique symbol = Symbol('adaptiveStyle');
  * A theme entry that holds one concrete style for each background. Core resolves it to the side
  * that matches the run's background when it emits the token. It styles no text and chains no
  * further, so it belongs in a theme mapping alone.
+ *
+ * @public
+ * @sealed
  */
 interface AdaptiveStyle {
   readonly [adaptiveStyle]: true;
@@ -108,7 +118,9 @@ type RootStyle = Style & {
   readonly adaptive: (sides: AdaptiveSides) => AdaptiveStyle;
 };
 
+/** @public */
 type ThemeMapping = Readonly<Record<string, ConcreteStyle | AdaptiveStyle | undefined>>;
+/** @public */
 type ThemeConstraint<Mapping> = {
   readonly [Key in keyof Mapping]: Key extends
     | Exclude<keyof Style, CoreToken>
@@ -347,10 +359,11 @@ function createStyle(names: ReadonlySet<string> = new Set(tokens)): ContextualSt
   return styleRoot(names, {});
 }
 
-function isColorName(value: unknown): value is ColorName {
+function isColorName(value: unknown): value is Ansi16Color {
   return typeof value === 'string' && Object.hasOwn(colors, value);
 }
 
+/** @public */
 function pad(text: string, minimumWidth: number, options?: { align?: Alignment }): string {
   textOnly(text);
   if (!Number.isSafeInteger(minimumWidth) || minimumWidth < 0) {
@@ -366,12 +379,18 @@ function pad(text: string, minimumWidth: number, options?: { align?: Alignment }
 /**
  * Text that line breaking keeps whole, such as a path that holds spaces. The frame resolves to its
  * body exactly and measures as its body; only the view context's `wrap` and `splitLines` read it.
+ *
+ * @public
  */
 function nowrap(text: string): string {
   return frame(['nowrap'], textOnly(text));
 }
 
-/** The exported style, whose root alone carries `adaptive`, so a theme may name a token `adaptive`. */
+/**
+ * The exported style, whose root alone carries `adaptive`, so a theme may name a token `adaptive`.
+ *
+ * @public
+ */
 const style: RootStyle = styleRoot(new Set(tokens), { adaptive });
 
 export type {
@@ -382,7 +401,6 @@ export type {
   ColorFallbacks,
   ContextualStyle,
   Color,
-  ColorName,
   ConcreteStyle,
   CoreToken,
   Modifier,

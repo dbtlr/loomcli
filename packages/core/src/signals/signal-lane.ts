@@ -5,7 +5,12 @@
  */
 import type { SignalSource } from '../host/types.js';
 
-/** The signals whose default effect ends a process, which start a shutdown while a lane listens. */
+/**
+ * The signals whose default effect ends a process, which start a shutdown while a lane listens.
+ *
+ * @public
+ * @sealed
+ */
 type EndingSignal = 'SIGHUP' | 'SIGINT' | 'SIGQUIT' | 'SIGTERM';
 
 const endingSignals: readonly EndingSignal[] = ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'];
@@ -13,7 +18,12 @@ const endingSignals: readonly EndingSignal[] = ['SIGINT', 'SIGTERM', 'SIGHUP', '
 /** 128 plus each signal's number: the status a shell reports for a process the signal ended. */
 const signalCodes = { SIGHUP: 129, SIGINT: 130, SIGQUIT: 131, SIGTERM: 143 } as const;
 
-/** What a shutdown handler receives: what ended the process, and the status the shell sees. */
+/**
+ * What a shutdown handler receives: what ended the process, and the status the shell sees.
+ *
+ * @public
+ * @sealed
+ */
 interface ShutdownEvent {
   /** The signal that ended the process, or `'exit'` when it ended on its own. */
   readonly cause: EndingSignal | 'exit';
@@ -21,10 +31,19 @@ interface ShutdownEvent {
   readonly code: number;
 }
 
-/** A handler's own return type, which a handler that returns a promise does not satisfy. */
+/**
+ * A handler's own return type, which a handler that returns a promise does not satisfy.
+ *
+ * @public
+ */
 type Synchronous<Returned> = Returned extends PromiseLike<unknown> ? never : Returned;
 
-/** Registers a synchronous handler that runs once when the process ends, and answers its remover. */
+/**
+ * Registers a synchronous handler that runs once when the process ends, and answers its remover.
+ *
+ * @public
+ * @sealed
+ */
 type OnShutdown = <Returned>(
   handler: (event: ShutdownEvent) => Synchronous<Returned>,
 ) => () => void;
@@ -50,10 +69,20 @@ interface HandlerRegistration {
   readonly failed?: ((thrown: unknown) => void) | undefined;
 }
 
-/** Registers a synchronous handler that runs when Ctrl-Z suspends the process, and answers its remover. */
+/**
+ * Registers a synchronous handler that runs when Ctrl-Z suspends the process, and answers its remover.
+ *
+ * @public
+ * @sealed
+ */
 type OnSuspend = <Returned>(handler: () => Synchronous<Returned>) => () => void;
 
-/** Registers a synchronous handler that runs when the process resumes, and answers its remover. */
+/**
+ * Registers a synchronous handler that runs when the process resumes, and answers its remover.
+ *
+ * @public
+ * @sealed
+ */
 type OnResume = <Returned>(handler: () => Synchronous<Returned>) => () => void;
 
 /**

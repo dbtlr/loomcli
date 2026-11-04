@@ -5,10 +5,17 @@ import type { Host } from '../host/types.js';
 /**
  * The directories of an application core resolves: its installation record, its logs, and its
  * cache, which holds data the application can lose.
+ *
+ * @public
  */
 type ApplicationDirectory = 'installation' | 'logs' | 'cache';
 
-/** The absolute directory, or the variable it needs that is unset, empty, or not absolute. */
+/**
+ * The absolute directory, or the variable it needs that is unset, empty, or not absolute.
+ *
+ * @public
+ * @sealed
+ */
 type DirectoryLookup = { readonly path: string } | { readonly variable: string };
 
 /** A variable's value when it is an absolute path by the running process's rules. */
@@ -52,6 +59,8 @@ function xdgBase(kind: ApplicationDirectory): {
  * the home. The home is `from.home`, the run's `host.home`, never `HOME` in `env`. The running
  * process's path rules judge an absolute path and join the segments. It reads no file and creates
  * nothing.
+ *
+ * @public
  */
 function applicationDirectory(
   kind: ApplicationDirectory,

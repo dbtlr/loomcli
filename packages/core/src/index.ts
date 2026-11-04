@@ -82,7 +82,7 @@ export type {
 export { translate } from './failures/translators.js';
 export { encodeFailure } from './failures/encoders.js';
 export { glyph } from './style/glyphs.generated.js';
-export type { RenderingPolicy } from './style/rendering.js';
+export type { RenderingPolicy, SwitchPolicy } from './style/rendering.js';
 export type { ViewContext } from './output/types.js';
 export type { Background } from './host/background.js';
 export { nowrap, pad, style } from './style/style.js';
@@ -93,8 +93,13 @@ export { issuePath } from './inputs/validation.js';
 export type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec';
 export type { ApplicationMethod, ApplicationOptions } from './application/application.js';
 export type { ChainOutcome, MiddlewareContext } from './invocation/chain.js';
-export type { InputProblem, ResultFault } from './failures/errors.js';
-export type { AnyExtension, Extension, ExtensionValue } from './plugins/extension.js';
+export type { InputProblem, InvokedBy, ResultFault } from './failures/errors.js';
+export type {
+  AnyExtension,
+  Extension,
+  ExtensionTarget,
+  ExtensionValue,
+} from './plugins/extension.js';
 export type { FailureEncoder, FailureEncoding } from './failures/encoders.js';
 export type { FailureForm } from './failures/form.js';
 export type { FailureHook, FailureHookContext } from './plugins/hints.js';
@@ -111,8 +116,9 @@ export type {
 } from './output/log.js';
 export type { CommandMethod, CommandOptions } from './commands/command.js';
 export type { CancellationReason } from './signals/signals.js';
+export type { EndingSignal } from './signals/signal-lane.js';
 export type { ErrorClass, Translation, Translator } from './failures/translators.js';
-export type { IncompleteResult } from './output/lanes.js';
+export type { IncompleteResult, Lane } from './output/lanes.js';
 export type { WordPosition } from './inspection/locate.js';
 export type {
   AnyDeclaredView,
@@ -132,6 +138,7 @@ export type {
   CommandGraph,
   CommandNode,
   ConfigurationNode,
+  InputSchema,
   OptionNode,
   ResultNode,
 } from './inspection/inspect.js';
@@ -170,6 +177,7 @@ export type {
   CountOption,
   ContentArgument,
   ContentOption,
+  GlobalOptionConfig,
   StdinConfig,
   InputIdentity,
   OptionConfig,
@@ -224,9 +232,12 @@ export type {
   ColorFallbacks,
   ConcreteStyle,
   ContextualStyle,
+  CoreToken,
+  Modifier,
   Style,
   ThemeMapping,
   ThemeConstraint,
 } from './style/style.js';
 
 export type { OptionGroup } from './inputs/option-groups.js';
+export type { Alignment } from './style/wire.js';

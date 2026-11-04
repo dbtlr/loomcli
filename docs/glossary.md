@@ -331,7 +331,7 @@ The facts of the process an invocation runs in, copied from the run's process ha
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Process handle**:
-The one object a run reads every process fact from and sends every process effect to, such as its exit status, the signals core listens for and re-raises, and the child programs the run starts, bound when the run enters and never replaced during it. It owns no clock, timer, randomness, network, or file system. `processHandle()` builds the real process's handle, and `@loomcli/testing`'s `mockProcess()` builds a sealed one that reads nothing from the process a test runs in and scripts each child program instead of running it.
+The one object a run reads every process fact from and sends every process effect to, such as its exit status, the signals core listens for and re-raises, and the child programs the run starts, bound when the run enters and never replaced during it. It owns no clock, timer, randomness, network, or file system. `processHandle()` builds the real process's handle, and `@loomcli/testing`'s `mockProcess()` builds an isolated one that reads nothing from the process a test runs in and scripts each child program instead of running it.
 _Avoid_: Host (for the handle), process object, host overrides
 
 **Mock keyboard**:
@@ -853,6 +853,18 @@ _Avoid_: Framework (for the package), runtime, engine
 **Participating library**:
 A publishable first-party package under `packages/`, a library or the `@loomcli/loom` toolchain, included in the synchronized release version and package set.
 _Avoid_: Release target, public workspace
+
+**Public export**:
+A name a published library's entry points export. Every public export is judged as a function or constant, a sealed type, an author-built type, or a class the author may or must not subclass, and a change to it is classified by that judgment.
+_Avoid_: Public surface (for exported names alone), internal export, private export
+
+**Sealed type**:
+A public type every value of which a Loom library builds, its testing builders included, and which the author only reads, such as `Out` or a context. A new member on it is not breaking.
+_Avoid_: Core-built type, read-only type
+
+**Author-built type**:
+A public type whose values the author builds and hands to a library, such as `CommandOptions`, `PluginDefinition`, a view, a validator, `ProcessHandle`, or a testing builder's input. A new required member on it is breaking.
+_Avoid_: Construction type, input type
 
 **Change fragment**:
 A pending record of one pull request's consumer-visible changes and any required migration, kept in a package's fragment folder, `.changes/` unless the toolchain configuration file names another, until a cut consumes it. Its kind is breaking, feature, or fix.

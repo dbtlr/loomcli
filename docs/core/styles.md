@@ -80,14 +80,14 @@ An explicit fallback keeps a themed color's hue at a lower color depth. [ADR-002
 ```ts
 import type { Style } from '@loomcli/core';
 
-export type ColorName =
+export type Ansi16Color =
 	| 'black' | 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white'
 	| 'brightBlack' | 'brightRed' | 'brightGreen' | 'brightYellow'
 	| 'brightBlue' | 'brightMagenta' | 'brightCyan' | 'brightWhite';
 
 export interface ColorFallbacks {
 	readonly ansi256?: number | undefined;
-	readonly ansi16?: ColorName | undefined;
+	readonly ansi16?: Ansi16Color | undefined;
 }
 
 export type Ansi256Fallbacks = Pick<ColorFallbacks, 'ansi16'>;

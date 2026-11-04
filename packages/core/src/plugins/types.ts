@@ -11,6 +11,9 @@ export declare const attachedCommand: unique symbol;
  * erased, and the authoring calls a hook may make. Each call returns a new value whose facts hold
  * what the call added, so a hook reads its own earlier calls back. The calls a hook cannot make are
  * absent, because each of them changes what the action was compiled against or the graph's shape.
+ *
+ * @public
+ * @sealed
  */
 export interface AttachedCommand {
   readonly [attachedCommand]: true;
@@ -43,6 +46,8 @@ export interface AttachedCommand {
 /**
  * The lifecycle hook core calls once per Command at graph build, in installation order, each
  * receiving what the previous plugin's hook returned.
+ *
+ * @public
  */
 export type CommandAttachHook = (command: AttachedCommand) => AttachedCommand;
 
@@ -50,5 +55,7 @@ export type CommandAttachHook = (command: AttachedCommand) => AttachedCommand;
  * The lifecycle hook core calls once per graph build, after every `onCommandAttach` hook, with the
  * frozen graph. It judges the graph and never contributes: it returns nothing, and it rejects the
  * graph by throwing a `DeclarationError`.
+ *
+ * @public
  */
 export type GraphBuiltHook = (graph: CommandGraph) => undefined;

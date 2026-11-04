@@ -13,7 +13,12 @@ import type { ContextualStyle } from '../style/style.js';
 type ActionArgument<Declaration> =
   ActionHandler<Declaration> extends (context: infer Context) => unknown ? Context : never;
 
-/** The context fragment a stdin declaration contributes to its action. */
+/**
+ * The context fragment a stdin declaration contributes to its action.
+ *
+ * @public
+ * @sealed
+ */
 interface StdinContext {
   readonly stdin?: Content | undefined;
 }
@@ -24,6 +29,8 @@ interface StdinContext {
  * own arguments and local options; global option values are not here. The records are
  * untyped and frozen, because a middleware runs ahead of every action and the graph carries no
  * type for a value.
+ *
+ * @public
  */
 export interface Request {
   readonly stdin?: Content | undefined;
@@ -54,6 +61,8 @@ export interface ActionChannel {
  * value lowers to the tokens argv would give: a string or a number is one token, a Boolean a
  * spelling or its absence, a number on a counted option that many occurrences, and an array one
  * occurrence per element.
+ *
+ * @public
  */
 export interface InvocationValues {
   readonly args?: Readonly<
@@ -68,6 +77,8 @@ export interface InvocationValues {
 /**
  * How one invocation by name runs: the starting view selection, the handler that maps a failure
  * into the outcome, a signal that cancels the call, and the observer of its progress events.
+ *
+ * @public
  */
 export interface InvokeOptions<Mapped = LoomError> {
   /** The starting view selection, as a middleware's `view` assignment. */
@@ -100,6 +111,9 @@ export interface InvokeOptions<Mapped = LoomError> {
 /**
  * What one invocation by name resolved: a run that would resolve 0, one that would resolve a failure
  * code, with what the run wrote, or a cancelled one, whose captured text is discarded.
+ *
+ * @public
+ * @sealed
  */
 export type InvocationOutcome<Mapped = LoomError> =
   | { readonly status: 'completed'; readonly output: string; readonly messages: string }
@@ -118,6 +132,9 @@ export type InvocationOutcome<Mapped = LoomError> =
  * What an action receives. `graph` is the frozen graph `inspect()` returns for this run, and
  * `command` is the routed node inside it: the same two values the run's middleware receive.
  * `invoke` runs another Command of that graph by name.
+ *
+ * @public
+ * @sealed
  */
 export interface ActionContext<Args, Options = {}, Result = unknown, Provided = {}> {
   readonly interactive: boolean;
@@ -155,6 +172,7 @@ export interface ActionContext<Args, Options = {}, Result = unknown, Provided = 
   ) => Promise<InvocationOutcome<Mapped>>;
 }
 
+/** @public */
 export type Action<
   Args,
   Options = {},
@@ -194,6 +212,8 @@ export interface DeclaredTypes<
 /**
  * The handler one declaration accepts. It reads the phantom types, not the `action()` call, so it
  * holds on a fresh declaration, on a partly declared one, and on one that registered its action.
+ *
+ * @public
  */
 export type ActionHandler<Declaration> = Declaration extends {
   [declaredTypes]: DeclaredTypes<
@@ -208,11 +228,21 @@ export type ActionHandler<Declaration> = Declaration extends {
   ? Action<Args, Globals & Options, Result, Stdin, Provided>
   : never;
 
-/** The args object an extracted handler receives for this declaration. */
+/**
+ * The args object an extracted handler receives for this declaration.
+ *
+ * @public
+ * @sealed
+ */
 export type ActionArgs<Declaration> =
   ActionArgument<Declaration> extends { args: infer Args } ? Args : never;
 
-/** The options object an extracted handler receives, global values included. */
+/**
+ * The options object an extracted handler receives, global values included.
+ *
+ * @public
+ * @sealed
+ */
 export type ActionOptions<Declaration> =
   ActionArgument<Declaration> extends { options: infer Options } ? Options : never;
 

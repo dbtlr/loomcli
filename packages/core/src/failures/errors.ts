@@ -187,6 +187,8 @@ export function failureCodeOf(failure: LoomError): string {
  * through a read-only accessor. The failure code is a static read the same way, a kebab-case word a
  * machine reader branches on, and it stays on the class: an instance carries no `code` of core's.
  * `message` never carries a category prefix; the default views add it.
+ *
+ * @public
  */
 export abstract class LoomError extends Error {
   static readonly code: string = 'failure';
@@ -220,7 +222,11 @@ export abstract class LoomError extends Error {
   }
 }
 
-/** Exit 2: the invocation, not the application, is wrong. */
+/**
+ * Exit 2: the invocation, not the application, is wrong.
+ *
+ * @public
+ */
 export abstract class UsageError extends LoomError {
   static override readonly code: string = 'usage';
   static override readonly exitCode: FailureExitCode = 2;
@@ -231,7 +237,11 @@ export abstract class UsageError extends LoomError {
   }
 }
 
-/** One validation problem: an omitted input, a rejected value, or a broken option group. */
+/**
+ * One validation problem: an omitted input, a rejected value, or a broken option group.
+ *
+ * @public
+ */
 export type InputProblem =
   | {
       inputs: readonly InputIdentity[];
@@ -247,7 +257,12 @@ export type InputProblem =
       issues: readonly StandardSchemaV1.Issue[];
     };
 
-/** Individual problems in authoring order, followed by broken groups in declaration order. */
+/**
+ * Individual problems in authoring order, followed by broken groups in declaration order.
+ *
+ * @public
+ * @sealed
+ */
 export class InputError extends UsageError {
   static override readonly code: string = 'invalid-input';
 
@@ -260,6 +275,7 @@ export class InputError extends UsageError {
   }
 }
 
+/** @public @sealed */
 export class UnknownCommandError extends UsageError {
   static override readonly code: string = 'unknown-command';
 
@@ -274,7 +290,12 @@ export class UnknownCommandError extends UsageError {
   }
 }
 
-/** A group answers no invocation of its own, so the routed path names no callable Command. */
+/**
+ * A group answers no invocation of its own, so the routed path names no callable Command.
+ *
+ * @public
+ * @sealed
+ */
 export class NonCallableCommandError extends UsageError {
   static override readonly code: string = 'missing-subcommand';
 
@@ -292,9 +313,13 @@ export class NonCallableCommandError extends UsageError {
 /**
  * How a run received its inputs: as argv words, or by name through `invoke()`. A sentence about an
  * input a caller named reads the name the caller wrote, because no spelling was typed.
+ *
+ * @public
+ * @sealed
  */
 export type InvokedBy = 'argv' | 'name';
 
+/** @public @sealed */
 export class UnexpectedArgumentError extends UsageError {
   static override readonly code: string = 'unexpected-argument';
 
@@ -315,6 +340,7 @@ export class UnexpectedArgumentError extends UsageError {
   }
 }
 
+/** @public @sealed */
 export class UnknownOptionError extends UsageError {
   static override readonly code: string = 'unknown-option';
 
@@ -359,6 +385,7 @@ export function undeclaredArgument(
  */
 type MissingValueForm = 'attached' | 'separate';
 
+/** @public @sealed */
 export class MissingValueError extends UsageError {
   static override readonly code: string = 'missing-value';
 
@@ -379,6 +406,9 @@ export class MissingValueError extends UsageError {
  * A Boolean or counted spelling takes no value, so the token carried one the declaration cannot
  * accept. A counted option's sentence tells the operator to repeat the spelling instead, and `kind`
  * chooses the sentence alone.
+ *
+ * @public
+ * @sealed
  */
 export class UnexpectedValueError extends UsageError {
   static override readonly code: string = 'unexpected-value';
@@ -398,6 +428,7 @@ export class UnexpectedValueError extends UsageError {
   }
 }
 
+/** @public @sealed */
 export class RepeatedOptionError extends UsageError {
   static override readonly code: string = 'repeated-option';
 
@@ -415,6 +446,9 @@ export class RepeatedOptionError extends UsageError {
  * does, such as a Command's own option typed before its name, or a parent's own option the routed
  * Command declares with another value class. `commands` holds each such Command's path from the
  * root, in authoring order.
+ *
+ * @public
+ * @sealed
  */
 export class MisplacedOptionError extends UsageError {
   static override readonly code: string = 'misplaced-option';
@@ -503,6 +537,9 @@ function faultParts(first: unknown, second: unknown, third: unknown): FaultParts
  * fault's own parts build it, or a sentence alone does for a fault with no rule. `message` holds
  * the whole diagnostic as plain text at 80 columns, so a fault thrown at an authoring call prints
  * it through the runtime's own uncaught-error output, and `sentence` holds the sentence alone.
+ *
+ * @public
+ * @sealed
  */
 export class DeclarationError extends LoomError {
   static override readonly code: string = 'internal';
@@ -535,6 +572,8 @@ export class DeclarationError extends LoomError {
 /**
  * Exit 1: the application ended the invocation itself. An application may subclass it, and the
  * subclass may declare its own exit code.
+ *
+ * @public
  */
 export class FatalError extends LoomError {
   static override readonly code: string = 'fatal';
@@ -549,6 +588,9 @@ export class FatalError extends LoomError {
  * Exit 1: the process's working directory cannot be read, as when another process removed it.
  * Core raises it when it captures the host, before the graph builds, and its `cause` is the value
  * the capture threw. It is an operator failure, so both builds print the same line.
+ *
+ * @public
+ * @sealed
  */
 export class WorkingDirectoryError extends LoomError {
   static override readonly code: string = 'working-directory-unreadable';
@@ -567,6 +609,9 @@ export class WorkingDirectoryError extends LoomError {
  * answer. A rule and the defect's own parts build it, or a sentence and the thrown value do for a
  * defect with no rule. `message` stays the sentence, because only `run()` reports a defect, and a
  * development build renders its Developer Diagnostic from the parts.
+ *
+ * @public
+ * @sealed
  */
 export class InternalError extends LoomError {
   static override readonly code: string = 'internal';
@@ -596,7 +641,12 @@ export class InternalError extends LoomError {
   }
 }
 
-/** The two ways an action breaks the results lane, each named where core meets it. */
+/**
+ * The two ways an action breaks the results lane, each named where core meets it.
+ *
+ * @public
+ * @sealed
+ */
 export type ResultFault = 'missing' | 'repeated';
 
 /**
@@ -604,6 +654,9 @@ export type ResultFault = 'missing' | 'repeated';
  * `cause` is `undefined`, and it extends `InternalError`, so an override of that class brands it
  * and its default text carries the same prefix, while an override keyed by this class reaches it
  * alone.
+ *
+ * @public
+ * @sealed
  */
 export class ResultError extends InternalError {
   readonly path: readonly string[];
