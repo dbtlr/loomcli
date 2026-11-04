@@ -10,7 +10,7 @@ This page states which names Loom's published libraries promise, and how to tell
 
 The published libraries are `@loomcli/core`, `@loomcli/plugins` with each of its subpaths, `@loomcli/validators`, `@loomcli/prompts` with `@loomcli/prompts/views`, `@loomcli/testing`, and `@loomcli/eslint-plugin`. Every name their entry points export is public, and you may rely on it. A name that only Loom's tests use is not exported, and a name another Loom package imports is public.
 
-Each covered library's surface is complete. A type you plausibly use to build the input of an exported function, or to check the value it returns, is exported, so a helper you write can name it:
+Each library's surface is complete. A type you plausibly use to build the input of an exported function, or to check the value it returns, is exported, so a helper you write can name it:
 
 ```ts
 import { style, type Ansi16Color } from '@loomcli/core';
@@ -20,11 +20,11 @@ function badge(text: string, color: Ansi16Color): string {
 }
 ```
 
-In a covered library, a schema in a published type is a [Standard Schema](https://standardschema.dev) over an exported interface, never a validation library's own type.
+A schema in a published type is a [Standard Schema](https://standardschema.dev) over an exported interface, never a validation library's own type.
 
 ## Which libraries carry the tags
 
-`check:api` covers `@loomcli/core` and every subpath of `@loomcli/plugins`, whose every export carries the tags below and whose API reports are committed under each package's `api/` folder. The other published libraries' exports carry no tags yet and have no report, so a change to one is judged by the position of the changed member alone.
+Every published library carries the tags below on every export. `check:api` covers the entry points of `@loomcli/core`, every subpath of `@loomcli/plugins`, `@loomcli/validators`, both entries of `@loomcli/prompts`, `@loomcli/testing`, and `@loomcli/eslint-plugin`, whose API reports are committed under each package's `api/` folder.
 
 ## Each export's tag says whether you read it or build it
 
@@ -42,7 +42,7 @@ Every export carries the TSDoc tag `@public`. A type you only read, and a class 
 
 TSDoc defines `@sealed` for classes and their members. Loom also puts it on interfaces and type aliases, a named deviation, because the API report writes it beside each name, where a reviewer reads it.
 
-Your editor shows the tags on hover. Each covered entry point's API report, committed beside its package as `api/<entry>.api.md`, lists every export with its tags.
+Your editor shows the tags on hover. Each entry point's API report, committed beside its package as `api/<entry>.api.md`, lists every export with its tags.
 
 ## What a change to each kind breaks
 

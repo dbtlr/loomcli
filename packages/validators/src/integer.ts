@@ -10,6 +10,11 @@ import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { reject } from './issues.js';
 
+/**
+ * What `integer()` takes: the inclusive bounds of the whole number it accepts.
+ *
+ * @public
+ */
 interface IntegerOptions {
   min?: number;
   max?: number;
@@ -26,7 +31,11 @@ function readInteger(raw: string): number | undefined {
   return Number.isSafeInteger(value) ? withoutNegativeZero(value) : undefined;
 }
 
-/** A decimal whole number that is a safe integer within `min` and `max`, both inclusive. */
+/**
+ * A decimal whole number that is a safe integer within `min` and `max`, both inclusive.
+ *
+ * @public
+ */
 function integer(options?: IntegerOptions): Validator<number> {
   const bounds = readBounds('integer', options);
   const issue = boundsIssue(integerCodes, bounds);

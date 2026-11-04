@@ -51,7 +51,7 @@ With `--no-input`, `--backend` and `--port` are required before the action runs,
 
 ## Calling a question
 
-Each kind is a function of the action context and one settings object, and returns a promise of the answer.
+Each kind is a function of the action context and one settings object, and returns a promise of the answer. The context parameter's type is the exported `PromptContext<Options, Args>`, the members of `ActionContext` a question reads, so a helper that asks a question on an action's behalf can name it.
 
 ```ts
 type LinkKey<Inputs> = keyof Inputs & string;
@@ -497,7 +497,7 @@ A question's `validate`, the `done` and `failed` message functions of `track`, t
 
 ## Package
 
-- The root export holds `text`, `secret`, `confirm`, `select`, `InteractionUnavailableError`, `progress`, `progressStyle`, and the settings types, `ProgressSettings`, `ProgressUpdate`, `TrackMessages`, `Progress`, `ProgressContext`, `Spinner`, and `ProgressStyleSettings` included. `@loomcli/prompts/views` exports `questionFrame`, `answeredLine`, `cancelledLine`, and `progressLine` and their data types. Its one plugin is `progressStyle()`, whose identity is `@loomcli/prompts`.
+- The root export holds `text`, `secret`, `confirm`, `select`, `InteractionUnavailableError`, `progress`, `progressStyle`, `PromptContext`, the context a question takes, and the settings types, `ProgressSettings`, `ProgressUpdate`, `TrackMessages`, `Progress`, `ProgressContext`, `Spinner`, and `ProgressStyleSettings` included. `@loomcli/prompts/views` exports `questionFrame`, `answeredLine`, `cancelledLine`, and `progressLine` and their data types. Its one plugin is `progressStyle()`, whose identity is `@loomcli/prompts`.
 - `@loomcli/core` is a peer dependency. The package reads the action context, `DeclarationError`, `FatalError`, `missingInputError`, `extension`, `plugin`, `readExtension`, the Standard Schema types, `glyph`, and `view` from core, and adds no runtime dependency of its own. Its style schema is a hand-written Standard Schema value.
 
 ## Not shipped

@@ -8,6 +8,11 @@ import { timeZone as timeZoneRule } from './rules.js';
 import { hour, minute } from './time-units.js';
 import { instantOfLocal, isKnownZone } from './zone.js';
 
+/**
+ * What `dateTime()` takes: the IANA zone a token with no offset is read in.
+ *
+ * @public
+ */
 interface DateTimeOptions {
   timeZone?: string;
 }
@@ -110,6 +115,8 @@ function readZone(options: DateTimeOptions | undefined): string | undefined {
  * that instant. A token with neither is read in `timeZone` when given, else in the host's time
  * zone; a time a clock change skips moves forward, and one it repeats takes the earlier instant.
  * Fractions beyond milliseconds are dropped.
+ *
+ * @public
  */
 function dateTime(options?: DateTimeOptions): Validator<Date> {
   const pinned = readZone(options);

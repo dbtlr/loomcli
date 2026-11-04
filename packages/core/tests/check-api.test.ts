@@ -142,6 +142,22 @@ test('external re-exports require a named reason even though Extractor reports n
   expect(checkApi(root, [allowed], { update: true })).toEqual([]);
 });
 
+test("a dependency's typings that import a source file do not fail the check", () => {
+  const { config, root } = fixture(
+    "import type { External } from 'external';\n/** A value. @public */\nexport declare const value: External;\n",
+    {
+      'node_modules/external/index.d.cts': "export type { External } from './types.cts';",
+      'node_modules/external/package.json': JSON.stringify({
+        name: 'external',
+        types: 'index.d.cts',
+      }),
+      'node_modules/external/types.cts': 'export interface External { value: string }',
+    },
+  );
+  const result = checkApi(root, [{ ...config, modules: ['external'] }], { update: true });
+  expect(result.filter((line) => line.includes('ae-wrong-input-file-type'))).toEqual([]);
+});
+
 test('an external re-export entry the surface no longer needs fails', () => {
   const { config, root } = fixture(tagged);
   const stale = {

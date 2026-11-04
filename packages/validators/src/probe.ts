@@ -2,6 +2,11 @@ import { constants } from 'node:fs';
 import type { Stats } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 
+/**
+ * The kind of entry a `path()` probe requires: a file, a directory, or any entry.
+ *
+ * @public
+ */
 type PathKind = 'file' | 'directory' | 'any';
 
 /** The probe failures that are a verdict about the operator's path rather than a broken host. */

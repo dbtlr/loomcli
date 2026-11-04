@@ -22,7 +22,11 @@ function isRealDay(year: number, month: number, day: number): boolean {
   return probe.getUTCMonth() === monthIndex && probe.getUTCDate() === day;
 }
 
-/** A calendar date as `YYYY-MM-DD`, kept as the token because a date has no time or zone. */
+/**
+ * A calendar date as `YYYY-MM-DD`, kept as the token because a date has no time or zone.
+ *
+ * @public
+ */
 function date(): Validator<string> {
   const issue = dateIssue.issue({});
   return createValidator({

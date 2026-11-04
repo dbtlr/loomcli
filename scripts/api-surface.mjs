@@ -190,4 +190,54 @@ export const surfacePackages = [
     },
     modules: ['node:*', '@loomcli/core', '@loomcli/validators'],
   },
+  {
+    directory: 'packages/validators',
+    entries: {
+      '.': {
+        forgottenExports: {
+          AcceptedOutput:
+            "Type machinery that computes `createValidator`'s output from what `parse` returns; the author names the output type.",
+        },
+      },
+    },
+    modules: ['@loomcli/core'],
+  },
+  {
+    directory: 'packages/prompts',
+    entries: {
+      '.': {
+        forgottenExports: {
+          Link: 'Fragment of each exported question settings type; the author names the whole settings.',
+        },
+      },
+      './views': {
+        forgottenExports: {
+          BaseFrame:
+            'Members every `QuestionFrame` variant shares; the author names `QuestionFrame`.',
+        },
+      },
+    },
+    modules: ['@loomcli/core'],
+  },
+  {
+    directory: 'packages/testing',
+    entries: {
+      '.': {
+        forgottenExports: {
+          MiddlewareInputs:
+            'Key list behind the exported `MiddlewareValues`; the author names `MiddlewareValues`.',
+          MockFacts: 'Members every `MockFields` variant shares; the author names `MockFields`.',
+          OptionalMembers:
+            'Type machinery that makes the context members a builder does not require optional; the author names each builder input.',
+        },
+      },
+    },
+    modules: ['node:*', '@loomcli/core'],
+  },
+  {
+    directory: 'packages/eslint-plugin',
+    entries: {},
+    // ESLint's and ESTree's types are what a lint plugin's rules plug into.
+    modules: ['@loomcli/core', 'eslint', 'estree'],
+  },
 ];

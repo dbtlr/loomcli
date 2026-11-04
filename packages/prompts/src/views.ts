@@ -12,6 +12,7 @@ interface BaseFrame {
   message: string;
   issue: string | undefined;
 }
+/** @public @sealed */
 type QuestionFrame = BaseFrame &
   (
     | {
@@ -30,10 +31,12 @@ type QuestionFrame = BaseFrame &
         rows: number | undefined;
       }
   );
+/** @public @sealed */
 interface AnsweredLine {
   message: string;
   answer: string | undefined;
 }
+/** @public @sealed */
 interface CancelledLine {
   message: string;
 }
@@ -271,6 +274,7 @@ function typedFrame(
   );
 }
 
+/** @public */
 const questionFrame = view<QuestionFrame>('@loomcli/prompts/question-frame', {
   render: (data, context) => {
     const { style } = context;
@@ -283,15 +287,22 @@ const questionFrame = view<QuestionFrame>('@loomcli/prompts/question-frame', {
     return typedFrame(data, context) + issue;
   },
 });
+/** @public */
 const answeredLine = view<AnsweredLine>('@loomcli/prompts/answered-line', {
   render: ({ message, answer }, { style }) =>
     `${style.dim('?')} ${message}${answer === undefined ? '' : ` ${style.dim('·')} ${style.highlight(literal(answer))}`}\n`,
 });
+/** @public */
 const cancelledLine = view<CancelledLine>('@loomcli/prompts/cancelled-line', {
   render: ({ message }, { style }) => `${style.dim(`? ${message} · cancelled`)}\n`,
 });
 
-/** What one progress line's view draws: its state, its counts, its spinner frame, and its time. */
+/**
+ * What one progress line's view draws: its state, its counts, its spinner frame, and its time.
+ *
+ * @public
+ * @sealed
+ */
 interface ProgressLine {
   readonly state: 'running' | 'ended' | 'failed' | 'cancelled';
   /** The label while the line runs, and the end message once it has ended or failed. */
@@ -341,6 +352,7 @@ function elapsedTime(elapsed: number): string {
   return `${String(Math.floor(whole / HOUR))}h ${String(minutes).padStart(2, '0')}m`;
 }
 
+/** @public */
 const progressLine = view<ProgressLine>('@loomcli/prompts/progress', {
   render: (data, { style }) => {
     const time = `${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`;

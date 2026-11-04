@@ -5,7 +5,11 @@ import { reject } from './issues.js';
 
 const grouped = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/u;
 
-/** A UUID of any version in any letter case, read as lowercase so two spellings compare equal. */
+/**
+ * A UUID of any version in any letter case, read as lowercase so two spellings compare equal.
+ *
+ * @public
+ */
 function uuid(): Validator<string> {
   const issue = uuidIssue.issue({});
   return createValidator({

@@ -24,7 +24,11 @@ import type {
   SpawnOptions,
 } from '@loomcli/core';
 
-/** A terminal the mock's streams sit on. */
+/**
+ * A terminal the mock's streams sit on.
+ *
+ * @public
+ */
 interface MockTerminal {
   readonly columns: number;
   readonly rows: number;
@@ -34,7 +38,12 @@ interface MockTerminal {
   readonly streams?: readonly ('stdout' | 'stderr')[];
 }
 
-/** One child program a run started, as the script for its command receives it. */
+/**
+ * One child program a run started, as the script for its command receives it.
+ *
+ * @public
+ * @sealed
+ */
 interface ProgramCall {
   /** As the run's spawn named it. */
   readonly command: string;
@@ -51,7 +60,11 @@ interface ProgramCall {
   readonly signal: AbortSignal;
 }
 
-/** What a script answers for the child it stands for. */
+/**
+ * What a script answers for the child it stands for.
+ *
+ * @public
+ */
 interface ProgramAnswer {
   /** 0 when omitted. */
   readonly code?: number;
@@ -61,7 +74,11 @@ interface ProgramAnswer {
   readonly stderr?: string | Uint8Array;
 }
 
-/** The script of one child program; a throw stands for a program that could not start. */
+/**
+ * The script of one child program; a throw stands for a program that could not start.
+ *
+ * @public
+ */
 type Program = (call: ProgramCall) => ProgramAnswer | Promise<ProgramAnswer>;
 
 /** The facts a test supplies beside its stdin and terminal; each replaces its default whole. */
@@ -73,6 +90,8 @@ interface MockFacts extends Omit<ProcessFields, 'stdin' | 'stdout' | 'stderr' | 
 /**
  * The facts a test supplies; each replaces its default whole. A run's stdin is piped text or bytes, or the
  * terminal's keyboard, never both.
+ *
+ * @public
  */
 type MockFields = MockFacts &
   (
@@ -95,13 +114,23 @@ type MockFields = MockFacts &
       }
   );
 
-/** A writable stream that keeps what it was given. */
+/**
+ * A writable stream that keeps what it was given.
+ *
+ * @public
+ * @sealed
+ */
 interface RecordingStream extends Writable {
   /** Everything written to the stream, decoded as UTF-8. */
   readonly text: string;
 }
 
-/** The mock's stdin: piped text, or the terminal's keyboard. */
+/**
+ * The mock's stdin: piped text, or the terminal's keyboard.
+ *
+ * @public
+ * @sealed
+ */
 interface MockStdin extends Readable {
   /** True for a keyboard. */
   readonly isTTY: boolean;
@@ -109,13 +138,23 @@ interface MockStdin extends Readable {
   readonly isRaw: boolean;
 }
 
-/** One write a run made, tagged by the stream it went to. */
+/**
+ * One write a run made, tagged by the stream it went to.
+ *
+ * @public
+ * @sealed
+ */
 interface Write {
   readonly stream: 'stdout' | 'stderr';
   readonly text: string;
 }
 
-/** The mock handle and what a test reads from it. */
+/**
+ * The mock handle and what a test reads from it.
+ *
+ * @public
+ * @sealed
+ */
 interface MockProcess extends ProcessHandle {
   readonly stdin: MockStdin;
   readonly stdout: RecordingStream;
@@ -684,6 +723,8 @@ function defaultLibc(platform: string): 'glibc' | undefined {
  * is the mock's own, and each child program a run starts is answered by its script in `programs`,
  * with no program run. A terminal with `keys` puts stdin on it as its keyboard, which is also the
  * signal source's terminal. The handle has no `publishEnv`.
+ *
+ * @public
  */
 function mockProcess(fields: MockFields = {}): MockProcess {
   const { cwd = '/loom-test', env = {}, platform = 'linux', programs = {}, terminal } = fields;
@@ -754,4 +795,5 @@ export type {
   ProgramAnswer,
   ProgramCall,
   RecordingStream,
+  Write,
 };

@@ -7,6 +7,9 @@ import { issueCodeName, issueParameters } from './rules.js';
 /**
  * One issue code a validator package declares: the code string, the schema its parameters pass,
  * a builder for the issue a `parse` function returns, and a typed read of that issue.
+ *
+ * @public
+ * @sealed
  */
 interface IssueCode<Params> {
   readonly code: string;
@@ -15,7 +18,11 @@ interface IssueCode<Params> {
   read(this: void, issue: StandardSchemaV1.Issue): Params | undefined;
 }
 
-/** What `issueCode` declares beside the code: the parameter schema and the one sentence. */
+/**
+ * What `issueCode` declares beside the code: the parameter schema and the one sentence.
+ *
+ * @public
+ */
 interface IssueCodeConfig<Params> {
   schema: StandardSchemaV1<Params>;
   message: (params: Params) => string;
@@ -43,6 +50,8 @@ function accepted<Params>(
  * Declares one issue code with its parameter schema and its one sentence, and returns its
  * descriptor. The code follows the rule-identity grammar. `issue` builds the rejection a `parse`
  * function returns, and `read` recovers the typed parameters from an issue carrying the code.
+ *
+ * @public
  */
 function issueCode<Params>(code: string, config: IssueCodeConfig<Params>): IssueCode<Params> {
   if (!isRuleIdentity(code)) {

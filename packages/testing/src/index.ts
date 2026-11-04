@@ -15,6 +15,7 @@ export type {
   ProgramAnswer,
   ProgramCall,
   RecordingStream,
+  Write,
 } from './mock-process.js';
 export { providerContext } from './provider-context.js';
 export type { ProviderValues } from './provider-context.js';

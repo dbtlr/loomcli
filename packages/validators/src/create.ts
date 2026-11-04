@@ -4,13 +4,25 @@ import type { StandardJSONSchemaV1, StandardSchemaV1, ValidationContext } from '
 import { fault } from './faults.js';
 import { contextOutsideRun, inputSchema } from './rules.js';
 
-/** What `parse` returns: `{ value }` for an accepted token or `{ issues }` for a rejected one. */
+/**
+ * What `parse` returns: `{ value }` for an accepted token or `{ issues }` for a rejected one.
+ *
+ * @public
+ */
 type ParseResult<Output> = StandardSchemaV1.Result<Output>;
 
-/** A validator that publishes its input schema, as every catalog factory returns. */
+/**
+ * A validator that publishes its input schema, as every catalog factory returns.
+ *
+ * @public
+ */
 type Validator<Output> = StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>;
 
-/** What `parse` may return: a result, directly or as a promise. */
+/**
+ * What `parse` may return: a result, directly or as a promise.
+ *
+ * @public
+ */
 type ParseReturn<Output> = ParseResult<Output> | Promise<ParseResult<Output>>;
 
 /**
@@ -28,6 +40,8 @@ type AcceptedOutput<Result> = Result extends StandardSchemaV1.FailureResult
  * The author's definition of one validator. `Return` is what `parse` returns, read whole so a
  * branch that answers directly and one that answers through a promise both count, and the output is
  * read from its accepted branches rather than from every branch.
+ *
+ * @public
  */
 interface ValidatorDefinition<Output, Return extends ParseReturn<Output> = ParseReturn<Output>> {
   parse: (raw: string, context: ValidationContext) => Return;
@@ -112,12 +126,15 @@ function checkSchema(definition: ValidatorDefinition<unknown>): void {
 /**
  * Builds a Standard Schema value from the author's parse function.
  * With an input schema it also publishes that schema through Standard JSON Schema.
+ *
+ * @public
  */
 function createValidator<Output, Return extends ParseReturn<Output> = ParseReturn<Output>>(
   definition: ValidatorDefinition<Output, Return> & {
     inputSchema: Readonly<Record<string, unknown>>;
   },
 ): Validator<AcceptedOutput<Awaited<Return>>>;
+/** @public */
 function createValidator<Output, Return extends ParseReturn<Output> = ParseReturn<Output>>(
   definition: ValidatorDefinition<Output, Return>,
 ): StandardSchemaV1<string, AcceptedOutput<Awaited<Return>>>;
@@ -141,4 +158,4 @@ function createValidator<Output>(
 }
 
 export { createValidator, vendor };
-export type { ParseResult, Validator, ValidatorDefinition };
+export type { ParseResult, ParseReturn, Validator, ValidatorDefinition };
