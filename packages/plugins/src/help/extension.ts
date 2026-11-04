@@ -1,21 +1,9 @@
 import { extension } from '@loomcli/core';
 import type { Extension, StandardSchemaV1 } from '@loomcli/core';
-import {
-  array,
-  check,
-  literal,
-  object,
-  optional,
-  pipe,
-  regex,
-  strictTuple,
-  string,
-  union,
-} from 'valibot';
 
 import type { CommandExample } from '../command-example.js';
 import { packageName } from '../constants.js';
-import { lineRule, markdownRule } from '../lines.js';
+import { argumentFactsSchema, commandFactsSchema, inputFactsSchema } from './facts-schemas.js';
 
 /**
  * The facts a declaration carries for the help page, as declarations alone. A projection that
@@ -69,31 +57,9 @@ interface HelpArgumentFacts {
   readonly accepts?: string | undefined;
 }
 
-const line = pipe(string(), check(lineRule.test, lineRule.message));
-const markdown = pipe(string(), check(markdownRule.test, markdownRule.message));
-const example = object({ command: line, note: optional(line) });
-const sectionPath = union([strictTuple([line]), strictTuple([line, line])]);
-const sectionPaths = array(sectionPath);
-const word = pipe(string(), regex(/^[^\s\u0085]+$/u, 'Supply one word with no whitespace.'));
-
-const commandFacts: StandardSchemaV1<HelpCommandFacts, HelpCommandFacts> = object({
-  commandSections: optional(sectionPaths),
-  details: optional(markdown),
-  examples: optional(array(example)),
-  optionSections: optional(sectionPaths),
-  section: optional(sectionPath),
-});
-
-const inputFacts: StandardSchemaV1<HelpInputFacts, HelpInputFacts> = object({
-  accepts: optional(line),
-  hideBindings: optional(literal(true)),
-  placeholder: optional(word),
-  section: optional(sectionPath),
-});
-
-const argumentFacts: StandardSchemaV1<HelpArgumentFacts, HelpArgumentFacts> = object({
-  accepts: optional(line),
-});
+const commandFacts: StandardSchemaV1<HelpCommandFacts, HelpCommandFacts> = commandFactsSchema;
+const inputFacts: StandardSchemaV1<HelpInputFacts, HelpInputFacts> = inputFactsSchema;
+const argumentFacts: StandardSchemaV1<HelpArgumentFacts, HelpArgumentFacts> = argumentFactsSchema;
 
 /**
  * Help's facts on a Command or the Application: details, examples, its section, and the order of

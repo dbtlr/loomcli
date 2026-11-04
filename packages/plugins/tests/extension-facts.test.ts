@@ -19,8 +19,25 @@ import type {
   ManifestCommandInput,
 } from '@loomcli/plugins/manifest/extension';
 import { mcpArgument, mcpCommand, mcpInput } from '@loomcli/plugins/mcp/extension';
-import type { McpArgumentFacts, McpCommandFacts } from '@loomcli/plugins/mcp/extension';
-import { expect, test } from 'vite-plus/test';
+import type {
+  McpArgumentFacts,
+  McpCommandFacts,
+  McpInputFacts,
+} from '@loomcli/plugins/mcp/extension';
+import { expect, expectTypeOf, test } from 'vite-plus/test';
+
+import type { inputFactsSchema as configInputSchema } from '../src/config/facts-schemas.js';
+import type {
+  argumentFactsSchema as helpArgumentSchema,
+  commandFactsSchema as helpCommandSchema,
+  inputFactsSchema as helpInputSchema,
+} from '../src/help/facts-schemas.js';
+import type { commandFactsSchema as manifestCommandSchema } from '../src/manifest/facts-schemas.js';
+import type {
+  argumentFactsSchema as mcpArgumentSchema,
+  commandFactsSchema as mcpCommandSchema,
+  inputFactsSchema as mcpInputSchema,
+} from '../src/mcp/facts-schemas.js';
 
 /** The schema's output for a value, or the thrown sentences of its issues. */
 async function validated<Input, Output>(
@@ -106,4 +123,42 @@ test('the configuration binding keeps its path', async () => {
 
   expect(() => configInput(binding)).not.toThrow();
   await expect(validated(configInput.schema, binding)).resolves.toEqual(binding);
+});
+
+/** A type with `readonly` removed at every depth, so a facts interface compares to a valibot type. */
+type Mutable<Type> = Type extends (...args: never[]) => unknown
+  ? Type
+  : Type extends object
+    ? { -readonly [Key in keyof Type]: Mutable<Type[Key]> }
+    : Type;
+
+/**
+ * Each facts interface is the valibot input and output of the schema behind it, in both directions,
+ * ignoring only `readonly`. The descriptors' annotations alone prove the schema fits the interface,
+ * so a widened interface would pass them.
+ */
+test('each facts interface equals its schema in both directions', () => {
+  type Input<Schema extends StandardSchemaV1> = Mutable<StandardSchemaV1.InferInput<Schema>>;
+  type Output<Schema extends StandardSchemaV1> = Mutable<StandardSchemaV1.InferOutput<Schema>>;
+
+  expectTypeOf<Input<typeof helpCommandSchema>>().toEqualTypeOf<Mutable<HelpCommandFacts>>();
+  expectTypeOf<Output<typeof helpCommandSchema>>().toEqualTypeOf<Mutable<HelpCommandFacts>>();
+  expectTypeOf<Input<typeof helpInputSchema>>().toEqualTypeOf<Mutable<HelpInputFacts>>();
+  expectTypeOf<Output<typeof helpInputSchema>>().toEqualTypeOf<Mutable<HelpInputFacts>>();
+  expectTypeOf<Input<typeof helpArgumentSchema>>().toEqualTypeOf<Mutable<HelpArgumentFacts>>();
+  expectTypeOf<Output<typeof helpArgumentSchema>>().toEqualTypeOf<Mutable<HelpArgumentFacts>>();
+  expectTypeOf<Input<typeof manifestCommandSchema>>().toEqualTypeOf<
+    Mutable<ManifestCommandInput>
+  >();
+  expectTypeOf<Output<typeof manifestCommandSchema>>().toEqualTypeOf<
+    Mutable<ManifestCommandFacts>
+  >();
+  expectTypeOf<Input<typeof mcpCommandSchema>>().toEqualTypeOf<Mutable<McpCommandFacts>>();
+  expectTypeOf<Output<typeof mcpCommandSchema>>().toEqualTypeOf<Mutable<McpCommandFacts>>();
+  expectTypeOf<Input<typeof mcpInputSchema>>().toEqualTypeOf<Mutable<McpInputFacts>>();
+  expectTypeOf<Output<typeof mcpInputSchema>>().toEqualTypeOf<Mutable<McpInputFacts>>();
+  expectTypeOf<Input<typeof mcpArgumentSchema>>().toEqualTypeOf<Mutable<McpArgumentFacts>>();
+  expectTypeOf<Output<typeof mcpArgumentSchema>>().toEqualTypeOf<Mutable<McpArgumentFacts>>();
+  expectTypeOf<Input<typeof configInputSchema>>().toEqualTypeOf<Mutable<ConfigInputFacts>>();
+  expectTypeOf<Output<typeof configInputSchema>>().toEqualTypeOf<Mutable<ConfigInputFacts>>();
 });

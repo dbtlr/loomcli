@@ -73,7 +73,7 @@ The logging plugin writes each [log event](../core/logging.md) as one JSON recor
 - **The console.** With `to: 'console'`, the plugin writes each record to `destination.stderr`, and writes nothing when it is `null`. It never writes to stdout, which carries the run's output and, under MCP, the protocol.
 - **A failed write.** When the default directory cannot be resolved because a variable it needs is unset, or creating the directory, an append, or a rename fails, the plugin calls `onError` with a `LoggingError`: `kind` names the step, `path` the file or directory, `variable` the unset variable, and `cause` the runtime's error. It calls `onError` synchronously, once for each failure, every record included, ignores what it returns, and the next record tries the file again. With no `onError`, the failure is ignored: the record is lost and the run continues. The plugin writes nothing to stderr of its own. An `onError` that ends the process ends it. One that throws is an author's defect, as [When author code fails](#when-author-code-fails) states.
 - **Invocation by name.** Events of an action's `invoke`, MCP tool calls included, reach the outermost run's file or stderr. An `app.invoke` writes the file from the `env` the call captured or its `host` replaced, and nothing to stderr.
-- **Names.** `logging`, `LoggingSettings`, and `LoggingError` are exported from `@loomcli/plugins/logging`.
+- **Names.** `logging`, `LoggingSettings`, `LoggingError`, `WrittenLevel`, and `LoggingErrorKind` are exported from `@loomcli/plugins/logging`.
 
 ## When author code fails
 
