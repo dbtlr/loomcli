@@ -24,10 +24,6 @@ function displayAnswer(kind: string, raw: string, value: unknown): string | unde
   return raw;
 }
 
-/** Most choices a select shows at once, and the rows its title, key help, and markers need. */
-const MAX_VISIBLE = 7;
-const FRAME_CHROME = 4;
-
 /**
  * The input region one question draws in. Core erases and redraws it around every other write and
  * opens one input region at a time, so the first frame resolves once this question's turn has
@@ -37,9 +33,10 @@ const FRAME_CHROME = 4;
  */
 function asking<Options>(
   context: PromptContext<Options>,
-  message: string,
+  question: { readonly message: string; readonly kind: QuestionFrame['kind'] },
   reader: { abandon: (reason: unknown) => void },
 ) {
+  const { message, kind } = question;
   const region = context.out.region({ input: true });
   region.signal.addEventListener(
     'abort',
@@ -67,7 +64,7 @@ function asking<Options>(
       try {
         if (region.closedBy === undefined) {
           await (answer
-            ? region.draw({ answer: answer.value, message }, answeredLine)
+            ? region.draw({ answer: answer.value, kind, message }, answeredLine)
             : region.draw({ message }, cancelledLine));
           await region.end();
         }
@@ -85,6 +82,7 @@ function asking<Options>(
         await context.out.draw(hideCursor, controls);
       }
     },
+    signal: region.signal,
   };
 }
 
@@ -100,7 +98,7 @@ async function askText<Options, Output>(
 ): Promise<string | Output> {
   // Raw mode holds from here, and the first frame resolves once this question's turn has come.
   const reader = openReader(context);
-  const draw = asking(context, settings.message, reader);
+  const draw = asking(context, settings, reader);
   const line = new TypedLine();
   let issue: string | undefined = undefined;
   let answered: { value: string | undefined } | undefined = undefined;
@@ -164,67 +162,4 @@ async function askText<Options, Output>(
   }
 }
 
-/** A bounded viewport follows the selected entry; arrows stop at either end. */
-async function askSelect<Options, Choice extends string>(
-  context: PromptContext<Options>,
-  settings: { message: string; choices: readonly [Choice, ...Choice[]]; prefill: unknown },
-): Promise<Choice> {
-  const entries = [...settings.choices.entries()];
-  let selected = entries.find(([, value]) => value === settings.prefill) ?? [
-    0,
-    settings.choices[0],
-  ];
-  // Raw mode holds from here, and the first frame resolves once this question's turn has come.
-  const reader = openReader(context);
-  const draw = asking(context, settings.message, reader);
-  let answered: { value: string } | undefined = undefined;
-  let start = Math.max(0, selected[0] - MAX_VISIBLE + 1);
-  const frame = () => {
-    // The window reads the rows when it draws, so a resize reaches the next frame.
-    const { rows } = context.host.terminal.stderr;
-    const count = Math.min(
-      MAX_VISIBLE,
-      rows && rows > 0 ? Math.max(1, rows - FRAME_CHROME) : MAX_VISIBLE,
-    );
-    start = Math.max(0, Math.min(start, selected[0], settings.choices.length - count));
-    if (selected[0] >= start + count) {
-      start = selected[0] - count + 1;
-    }
-    const choices = settings.choices.slice(start, start + count);
-    return draw.frame({
-      above: start,
-      below: settings.choices.length - start - choices.length,
-      choices,
-      highlighted: selected[0] - start,
-      issue: undefined,
-      kind: 'select',
-      message: settings.message,
-      rows,
-    });
-  };
-  try {
-    await frame();
-    while (true) {
-      const key = await reader.read();
-      if (key.kind === 'eof') {
-        context.cancel();
-        context.signal.throwIfAborted();
-      }
-      if (key.kind === 'enter') {
-        answered = { value: selected[1] };
-        return selected[1];
-      }
-      if (key.kind === 'up' || key.kind === 'down') {
-        const next = entries[selected[0] + (key.kind === 'up' ? -1 : 1)];
-        if (next !== undefined) {
-          selected = next;
-          await frame();
-        }
-      }
-    }
-  } finally {
-    await draw.finish(answered, reader.close());
-  }
-}
-
-export { askSelect, askText };
+export { asking, askText };

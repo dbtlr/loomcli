@@ -147,3 +147,93 @@ test('a secret field is the cursor block over one space at every width', async (
   await expect(row(8, secret)).resolves.toBe('? › [ ]');
   await expect(row(40, secret)).resolves.toBe('? Password › [ ]');
 });
+
+test('list frames render labels, separators, descriptions, search, and compact issues exactly', async () => {
+  const frame: QuestionFrame = {
+    above: 0,
+    below: 0,
+    choices: [
+      {
+        description: 'Details',
+        disabled: false,
+        kind: 'choice',
+        label: 'Alpha',
+        reason: undefined,
+        selected: true,
+      },
+      { kind: 'separator', label: 'Group' },
+      {
+        description: undefined,
+        disabled: true,
+        kind: 'choice',
+        label: 'Beta',
+        reason: 'Unavailable',
+        selected: false,
+      },
+    ],
+    count: 1,
+    highlighted: 0,
+    issue: undefined,
+    kind: 'multiselect',
+    max: 2,
+    message: 'Features',
+    min: 0,
+    rows: 24,
+  };
+  await expect(row(80, frame)).resolves.toBe(
+    '? Features\n❯ ◉ Alpha\n  Group\n  ◯ Beta (Unavailable)\n  Details\n↑↓ move · Space toggle · Enter submit · 1/2 selected',
+  );
+  await expect(row(40, { ...frame, issue: 'Choose again.', rows: 1, term: 'a' })).resolves.toBe(
+    '  ✘ Choose again.',
+  );
+  await expect(row(40, { ...frame, rows: 1, term: 'a' })).resolves.toBe('? Features › a[ ]');
+});
+
+test('a compact three-row list retains its issue within the terminal height', async () => {
+  await expect(
+    row(30, {
+      above: 0,
+      below: 0,
+      choices: [
+        {
+          description: undefined,
+          disabled: false,
+          kind: 'choice',
+          label: 'Alpha',
+          reason: undefined,
+          selected: false,
+        },
+      ],
+      highlighted: 0,
+      issue: 'Choose again.',
+      kind: 'select',
+      message: 'Pick',
+      rows: 3,
+    }),
+  ).resolves.toBe('? Pick\n❯ Alpha\n  ✘ Choose again.');
+});
+
+test('a searching select advertises typing in its full key help', async () => {
+  await expect(
+    row(80, {
+      above: 0,
+      below: 0,
+      choices: [
+        {
+          description: undefined,
+          disabled: false,
+          kind: 'choice',
+          label: 'Alpha',
+          reason: undefined,
+          selected: false,
+        },
+      ],
+      highlighted: 0,
+      issue: undefined,
+      kind: 'select',
+      message: 'Pick',
+      rows: 24,
+      term: '',
+    }),
+  ).resolves.toBe('? Pick › [ ]\n❯ Alpha\n↑↓ move · type to search · Enter select');
+});

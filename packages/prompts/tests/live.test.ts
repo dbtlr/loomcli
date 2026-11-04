@@ -339,3 +339,29 @@ test('a real terminal restores paste mode and cursor after Ctrl-C on a long line
     await tty.close();
   }
 });
+
+test('a real terminal searches a list and Escape clears its term', async () => {
+  const tty = realTerminal('list-search', { NO_COLOR: '1' });
+  try {
+    await tty.expect('Features');
+    tty.send('bet');
+    await tty.expect('bet');
+    tty.send(String.raw`\e`);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    tty.send(String.raw`\r`);
+    await expect(tty.expect('EXIT:0 cooked:true')).resolves.toContain('ANSWER:"Alpha"');
+  } finally {
+    await tty.close();
+  }
+});
+
+test('a real terminal toggles hidden selections with Tab and submits in order', async () => {
+  const tty = realTerminal('list-multi', { NO_COLOR: '1' });
+  try {
+    await tty.expect('Features');
+    tty.send(String.raw`\e[B\tAlpha\t\r`);
+    await expect(tty.expect('EXIT:0 cooked:true')).resolves.toContain('ANSWER:["beta","Alpha"]');
+  } finally {
+    await tty.close();
+  }
+});

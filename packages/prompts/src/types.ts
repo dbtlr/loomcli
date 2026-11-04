@@ -36,21 +36,83 @@ type SecretSettings<Key = never, Output = string, Argument = never> = Link<Key, 
   validate?: StandardSchemaV1<string, Output>;
 };
 type ConfirmSettings<Key = never> = Link<Key> & { message: string; default?: boolean };
-type SelectSettings<Key = never, Choice extends string = string, Argument = never> = Link<
+type ChoiceAnswer<Options, Key, Args, Argument, Output> = [Argument] extends [never]
+  ? [Key] extends [never]
+    ? Output
+    : Options[Key & keyof Options]
+  : Args[Argument & keyof Args];
+interface ChoiceDetails {
+  readonly description?: string;
+  readonly disabled?: boolean | string;
+}
+type StringValue<Value> = unknown extends Value ? string : Extract<Value, string>;
+type ChoiceObject<Value = unknown> =
+  | (ChoiceDetails & { readonly value: StringValue<Value>; readonly label?: string })
+  | (ChoiceDetails & { readonly value: Value; readonly label: string });
+interface Separator {
+  readonly separator: string;
+}
+type Choice<Value = unknown> = StringValue<Value> | ChoiceObject<Value>;
+type ChoiceEntry<Value = unknown> = Choice<Value> | Separator;
+type ChoiceValue<Entry> = Entry extends Separator
+  ? never
+  : Entry extends string
+    ? Entry
+    : Entry extends { readonly value: infer Value }
+      ? Value
+      : never;
+type ChoiceSource<Value = unknown> = (
+  term: string,
+  options: { readonly signal: AbortSignal },
+) => readonly ChoiceEntry<Value>[] | PromiseLike<readonly ChoiceEntry<Value>[]>;
+type ChoiceList<Entry> =
+  | { readonly choices: readonly Entry[]; readonly search?: boolean; readonly source?: never }
+  | {
+      readonly source: (
+        term: string,
+        options: { readonly signal: AbortSignal },
+      ) => readonly Entry[] | PromiseLike<readonly Entry[]>;
+      readonly choices?: never;
+      readonly search?: never;
+    };
+type LinkedChoices<Key, Argument> = [Key | Argument] extends [never]
+  ? unknown
+  : { readonly choices?: readonly ChoiceEntry<string>[]; readonly source?: ChoiceSource<string> };
+type SelectSettings<Key = never, Entry extends ChoiceEntry = ChoiceEntry, Argument = never> = Link<
   Key,
   Argument
-> & {
-  message: string;
-  choices: readonly Choice[];
-  default?: NoInfer<Choice>;
-};
-
+> &
+  ChoiceList<Entry> &
+  LinkedChoices<Key, Argument> & {
+    readonly message: string;
+    readonly default?: NoInfer<ChoiceValue<Entry>>;
+  };
+type MultiselectSettings<
+  Key = never,
+  Entry extends ChoiceEntry = ChoiceEntry,
+  Argument = never,
+> = Link<Key, Argument> &
+  ChoiceList<Entry> &
+  LinkedChoices<Key, Argument> & {
+    readonly message: string;
+    readonly default?: readonly NoInfer<ChoiceValue<Entry>>[];
+    readonly min?: number;
+    readonly max?: number;
+  };
 export type {
   Answer,
+  ChoiceAnswer,
+  Choice,
+  ChoiceObject,
+  ChoiceEntry,
+  ChoiceSource,
+  ChoiceValue,
+  Separator,
   ConfirmSettings,
   LinkKey,
   PromptContext,
   SecretSettings,
   SelectSettings,
+  MultiselectSettings,
   TextSettings,
 };

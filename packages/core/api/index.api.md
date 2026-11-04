@@ -1153,6 +1153,19 @@ export const lanes: Readonly<Record<Lane, DeclaredView<string>>>;
 // @public
 export type Lifetime = 'ephemeral' | 'persistent';
 
+// @public @sealed
+export type LinkedOutput<Args, Options, Link> = Link extends {
+    readonly argument: infer Name extends keyof Args;
+} ? LinkedValue<Args[Name]> : Link extends {
+    readonly option: infer Key extends keyof Options;
+} ? LinkedValue<Options[Key]> : never;
+
+// @public @sealed
+export type LinkedValue<Value> = [Value] extends [readonly (infer Element)[]] ? Element : Value;
+
+// @public @sealed
+export type LinkedValueContext<Args, Options> = Pick<ActionContext<Args, Options>, 'args' | 'options' | 'graph' | 'command' | 'host' | 'passthrough' | 'supplied'>;
+
 // @public
 export function locate(graph: CommandGraph, words: readonly string[]): WordPosition;
 
@@ -2005,6 +2018,9 @@ export abstract class UsageError extends LoomError {
     static readonly exitCode: FailureExitCode;
 }
 
+// @public
+export function validateLinkedValue<Args, Options, const Link extends ValueLink<Args, Options>>(context: LinkedValueContext<Args, Options>, link: Link, value: string): Promise<StandardSchemaV1.Result<LinkedOutput<Args, Options, Link>>>;
+
 // @public @sealed
 export type ValidationContext = {
     phase: 'default';
@@ -2049,6 +2065,17 @@ export type ValidationOptionsContext = {
     readonly command?: readonly string[];
     readonly passthrough?: readonly string[];
     readonly supplied?: SuppliedInputs;
+};
+
+// @public
+export type ValueLink<Args, Options> = {
+    readonly message: string;
+    readonly option: keyof Options & string;
+    readonly argument?: never;
+} | {
+    readonly message: string;
+    readonly argument: keyof Args & string;
+    readonly option?: never;
 };
 
 // @public

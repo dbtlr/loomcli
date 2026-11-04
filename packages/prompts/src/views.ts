@@ -8,31 +8,51 @@ function literal(text: string): string {
   return textStyle.escape(escapeControlCharacters(text));
 }
 
-interface BaseFrame {
-  message: string;
-  issue: string | undefined;
+interface TypedFrame {
+  readonly kind: 'text' | 'secret' | 'confirm';
+  readonly message: string;
+  readonly issue: string | undefined;
+  readonly typed: string;
+  readonly cursor?: number | undefined; // Absent, the end of typed
+  readonly hint: string | undefined;
 }
-type QuestionFrame = BaseFrame &
-  (
-    | {
-        kind: 'text' | 'secret' | 'confirm';
-        typed: string;
-        /** The cursor's grapheme index into `typed`; absent, the cursor is at the end of `typed`. */
-        cursor?: number | undefined;
-        hint: string | undefined;
-      }
-    | {
-        kind: 'select';
-        choices: readonly string[];
-        highlighted: number;
-        above: number;
-        below: number;
-        rows: number | undefined;
-      }
-  );
+interface ChoiceRow {
+  readonly kind: 'choice';
+  readonly label: string;
+  readonly description: string | undefined;
+  readonly disabled: boolean; // The choice's own disabled state; false for a choice max keeps out
+  readonly reason: string | undefined; // A disabled choice's reason, when it has one
+  readonly selected: boolean; // In a multiselect's selection; false at a select
+}
+interface SeparatorRow {
+  readonly kind: 'separator';
+  readonly label: string;
+}
+interface ListFrame {
+  readonly message: string;
+  readonly issue: string | undefined;
+  readonly choices: readonly (ChoiceRow | SeparatorRow)[]; // The visible rows
+  readonly highlighted: number | undefined; // An index into choices; undefined when no row is highlighted
+  readonly above: number; // Rows hidden above the window
+  readonly below: number; // Rows hidden below the window
+  readonly rows: number | undefined; // Stderr's rows
+  readonly term?: string | undefined; // The search term; absent when the question does not search
+  readonly cursor?: number | undefined; // The term's cursor; absent, the end of term
+  readonly loading?: boolean | undefined; // A source call has not settled; absent, false
+}
+type QuestionFrame =
+  | TypedFrame
+  | (ListFrame & { readonly kind: 'select' })
+  | (ListFrame & {
+      readonly kind: 'multiselect';
+      readonly count: number; // Choices in the selection, shown or not
+      readonly min: number;
+      readonly max: number | undefined;
+    });
 interface AnsweredLine {
   message: string;
   answer: string | undefined;
+  readonly kind?: QuestionFrame['kind'] | undefined; // The question's kind; absent, a typed answer
 }
 interface CancelledLine {
   message: string;
@@ -71,86 +91,301 @@ function clipped(text: string, columns: number, context: ViewContext): string {
   return literal(prefix + ellipsis + suffix);
 }
 
-/** Minimal frames keep the selected value and key help readable when ordinary rows cannot fit. */
-function compactSelect(
-  data: Extract<QuestionFrame, { kind: 'select' }>,
+type ListData = Exclude<QuestionFrame, TypedFrame>;
+function listHelp(data: ListData, short = false): string {
+  if (data.loading) {
+    return `Searching${glyph.ellipsis}`;
+  }
+  if (data.kind === 'select') {
+    if (short) {
+      return '↑↓ Enter';
+    }
+    return data.term === undefined
+      ? '↑↓ move · Enter select'
+      : '↑↓ move · type to search · Enter select';
+  }
+  const key = data.term === undefined ? 'Space' : 'Tab';
+  const count = data.max === undefined ? `${data.count}` : `${data.count}/${data.max}`;
+  return `${short ? `↑↓ ${key} Enter` : `↑↓ move · ${key} toggle · Enter submit`} · ${count} selected`;
+}
+function listRow(
+  data: ListData,
+  entry: { row: ChoiceRow | SeparatorRow; highlighted: boolean },
   context: ViewContext,
 ): string {
   const { style } = context;
-  const columns = context.columns ?? 80;
-  const rows = Math.max(1, data.rows ?? 24);
-  const selected = data.choices[data.highlighted] ?? '';
-  const above = data.above + data.highlighted;
-  const below = data.below + data.choices.length - data.highlighted - 1;
-  let title =
-    columns > 2
-      ? `${style.info.bold('?')} ${style.bold(clipped(data.message, columns - 2, context))}`
-      : style.info.bold('?');
-  const choice = style.highlight(
-    clipped(`${glyph.pointer} ${literal(selected)}`, columns, context),
-  );
-  const markers = [...(above ? [`↑ ${above} more`] : []), ...(below ? [`↓ ${below} more`] : [])];
-  const help =
-    columns < context.width('↑↓ move · Enter select') ? '↑↓ Enter' : '↑↓ move · Enter select';
-  let footer = help;
-  while (markers.length > 0 && markers.length + 3 > rows) {
-    footer += ` · ${markers.pop() ?? ''}`;
+  const { row, highlighted } = entry;
+  if (row.kind === 'separator') {
+    return row.label === '' ? '' : style.dim(`  ${literal(row.label)}`);
   }
-  const hints = markers.map((marker) => style.dim(clipped(marker, columns, context)));
-  footer = style.dim(clipped(footer, columns, context));
-  if (rows < 3) {
-    title = style.highlight(clipped(`${choice} · ${title}`, columns, context));
-    return rows === 1 ? clipped(`${title} · ${footer}`, columns, context) : `${title}\n${footer}`;
+  const pointer = highlighted ? `${glyph.pointer} ` : '  ';
+  const mark =
+    data.kind === 'select'
+      ? ''
+      : `${row.selected ? style.highlight(glyph.circleFilled) : style.dim(glyph.circle)} `;
+  const label =
+    literal(row.label) + (row.disabled ? ` (${literal(row.reason ?? 'disabled')})` : '');
+  if (row.disabled) {
+    return style.dim(pointer + mark + label);
   }
-  return [title, choice, ...hints, footer].join('\n');
+  if (
+    data.kind === 'multiselect' &&
+    data.max !== undefined &&
+    data.count >= data.max &&
+    !row.selected
+  ) {
+    return (highlighted ? style.highlight(pointer) : pointer) + style.dim(mark + label);
+  }
+  return highlighted ? style.highlight(pointer + mark + label) : pointer + mark + label;
+}
+/** Restores row styles after clipping has measured its plain escaped text. */
+function compactChoice(
+  data: ListData,
+  { selected, columns }: { readonly selected: string; readonly columns: number },
+  context: ViewContext,
+): string {
+  const { style } = context;
+  const drawn = clipped(selected, columns, context);
+  const active = data.highlighted === undefined ? undefined : data.choices[data.highlighted];
+  if (active?.kind !== 'choice') {
+    return style.dim(drawn);
+  }
+  if (data.kind === 'multiselect' && !active.selected) {
+    if (data.max !== undefined && data.count >= data.max) {
+      const pointer = context.plain(glyph.pointer);
+      return drawn.startsWith(pointer)
+        ? style.highlight(pointer) + style.dim(drawn.slice(pointer.length))
+        : style.highlight(drawn);
+    }
+    return style.highlight(drawn.replace(context.plain(glyph.circle), style.dim(glyph.circle)));
+  }
+  return style.highlight(drawn);
 }
 
-/** A select shrinks its visible window before any frame can scroll its own redraw region. */
-function selectText(
-  data: Extract<QuestionFrame, { kind: 'select' }>,
+/**
+ * The compact frame's key help with the markers that joined it. It abbreviates when `columns` is
+ * narrower than the whole key help, the markers included, and a multiselect keeps its count.
+ */
+function keyHelp(
+  data: ListData,
+  { joined, columns }: { readonly joined: readonly string[]; readonly columns: number },
   context: ViewContext,
-  title: string,
 ): string {
+  const whole = [listHelp(data), ...joined].join(' · ');
+  return context.width(whole) <= columns ? whole : [listHelp(data, true), ...joined].join(' · ');
+}
+
+/**
+ * One part of a shared row: its whole width, its width once abbreviated, how it draws in a budget,
+ * and when it drops.
+ */
+interface RowPart {
+  readonly width: number;
+  readonly short?: number;
+  readonly draw: (columns: number) => string;
+  /** Parts drop highest first while the separators leave fewer columns than parts; 0 never drops. */
+  readonly drop: number;
+}
+
+/**
+ * The columns each part gets from `budget`: a part narrower than an even share keeps its width
+ * and leaves the rest to the others, and the wider parts split what is left evenly, the earlier
+ * ones taking the remainder.
+ */
+function shares(widths: readonly number[], budget: number): number[] {
+  const result = widths.map(() => 0);
+  let open = widths.map((_width, index) => index);
+  let remaining = budget;
+  while (open.length > 0) {
+    const even = Math.floor(remaining / open.length);
+    const narrow = open.filter((index) => (widths[index] ?? 0) <= even);
+    if (narrow.length === 0) {
+      let extra = remaining - even * open.length;
+      for (const index of open) {
+        result[index] = even + (extra > 0 ? 1 : 0);
+        extra -= 1;
+      }
+      break;
+    }
+    for (const index of narrow) {
+      result[index] = widths[index] ?? 0;
+      remaining -= widths[index] ?? 0;
+    }
+    open = open.filter((index) => !narrow.includes(index));
+  }
+  return result;
+}
+
+/** Parts that share one row, joined by ` · `, each whole when they fit and each clipped when not. */
+function shared(
+  parts: readonly (RowPart | undefined)[],
+  columns: number,
+  context: ViewContext,
+): string {
+  let present = parts.filter((part) => part !== undefined);
+  while (present.length > 1 && columns - 3 * (present.length - 1) < present.length) {
+    const highest = Math.max(...present.map((part) => part.drop));
+    present = present.filter((part) => part.drop !== highest);
+  }
+  const budget = columns - 3 * (present.length - 1);
+  const whole = present.reduce((total, part) => total + part.width, 0) <= budget;
+  const given = shares(
+    present.map((part) => (whole ? part.width : (part.short ?? part.width))),
+    budget,
+  );
+  return present
+    .map((part, index) => part.draw(Math.max(1, given[index] ?? 0)))
+    .join(` ${context.style.dim('·')} `);
+}
+
+/** Fits list rows first, then compacts the surviving frame without losing an issue. */
+function selectText(data: ListData, context: ViewContext, title: string): string {
   const { style, width } = context;
+  const columns = Math.max(1, context.columns ?? 80);
+  const rows = Math.max(1, data.rows ?? Infinity);
+  const searching = data.term !== undefined;
+  const firstLine = searching
+    ? typedFrame(
+        {
+          cursor: data.cursor,
+          hint: undefined,
+          issue: undefined,
+          kind: 'text',
+          message: data.message,
+          typed: data.term ?? '',
+        },
+        context,
+      )
+    : title;
+  const issue =
+    data.issue === undefined ? undefined : style.error(`  ${glyph.cross} ${literal(data.issue)}`);
   let start = 0;
   let end = data.choices.length;
+  const active = data.highlighted === undefined ? undefined : data.choices[data.highlighted];
   const render = () => {
-    const choices = data.choices
-      .slice(start, end)
-      .map((choice, index) =>
-        index + start === data.highlighted
-          ? style.highlight(`${glyph.pointer} ${literal(choice)}`)
-          : `  ${literal(choice)}`,
-      );
-    const above = data.above + start;
-    const below = data.below + data.choices.length - end;
+    const description = active?.kind === 'choice' ? active.description : undefined;
     return [
-      title,
-      ...(above ? [style.dim(`↑ ${above} more`)] : []),
-      ...choices,
-      ...(below ? [style.dim(`↓ ${below} more`)] : []),
-      style.dim('↑↓ move · Enter select'),
+      firstLine,
+      ...(data.above + start ? [style.dim(`↑ ${data.above + start} more`)] : []),
+      ...data.choices
+        .slice(start, end)
+        .map((row, index) =>
+          listRow(data, { highlighted: index + start === data.highlighted, row }, context),
+        ),
+      ...(data.choices.length === 0 && !data.loading ? [style.dim('  No matches')] : []),
+      ...(data.below + data.choices.length - end
+        ? [style.dim(`↓ ${data.below + data.choices.length - end} more`)]
+        : []),
+      ...(description !== undefined && columns > 2
+        ? [style.dim(`  ${clipped(literal(description), columns - 2, context)}`)]
+        : []),
+      style.dim(listHelp(data)),
+      ...(issue === undefined ? [] : [issue]),
     ].join('\n');
   };
   const height = (text: string) =>
-    text.split('\n').reduce((total, line) => {
-      // A wide grapheme can leave one cell unused at a wrap, so the estimate stays conservative.
-      const cells = context.columns === undefined ? Infinity : Math.max(1, context.columns - 1);
-      return total + Math.max(1, Math.ceil(width(line) / cells));
-    }, 0);
+    text
+      .split('\n')
+      .reduce(
+        (total, line) =>
+          total +
+          Math.max(
+            1,
+            Math.ceil(
+              width(line) / (context.columns === undefined ? Infinity : Math.max(1, columns - 1)),
+            ),
+          ),
+        0,
+      );
   let frame = render();
-  while (end - start > 1 && data.rows !== undefined && data.rows > 0 && height(frame) > data.rows) {
-    if (data.highlighted - start > end - 1 - data.highlighted) {
+  while (end - start > 1 && height(frame) > rows) {
+    if (data.highlighted !== undefined && data.highlighted - start > end - 1 - data.highlighted) {
       start += 1;
     } else {
       end -= 1;
     }
     frame = render();
   }
-  if (data.rows !== undefined && data.rows > 0 && height(frame) > data.rows) {
-    return compactSelect(data, context);
+  if (height(frame) <= rows) {
+    return frame;
   }
-  return frame;
+  const titleAt = (budget: number) =>
+    `${style.info.bold('?')}${budget > 2 ? ` ${style.bold(clipped(data.message, budget - 2, context))}` : ''}`;
+  const compactTitle = searching ? firstLine : titleAt(columns);
+  let selected: string | undefined = undefined;
+  if (active !== undefined) {
+    selected = listRow(data, { highlighted: true, row: active }, context);
+  } else if (data.choices.length > 0) {
+    selected = 'No choice can be selected';
+  } else if (!data.loading) {
+    selected = 'No matches';
+  }
+  const above = data.above + (data.highlighted ?? 0);
+  const below =
+    data.below +
+    data.choices.length -
+    (data.highlighted === undefined ? data.choices.length : data.highlighted + 1);
+  const markers = [...(above ? [`↑ ${above} more`] : []), ...(below ? [`↓ ${below} more`] : [])];
+  // The markers that would not fit on lines of their own join the key help, in their own order.
+  const joined: string[] = [];
+  while (
+    markers.length &&
+    2 + (selected === undefined ? 0 : 1) + markers.length + (issue === undefined ? 0 : 1) > rows
+  ) {
+    joined.unshift(markers.pop() ?? '');
+  }
+  const help = (budget: number) => keyHelp(data, { columns: budget, joined }, context);
+  const choicePart =
+    selected === undefined
+      ? undefined
+      : {
+          draw: (budget: number) => compactChoice(data, { columns: budget, selected }, context),
+          drop: 1,
+          width: width(literal(context.plain(selected))),
+        };
+  const issueText = `${glyph.cross} ${literal(data.issue ?? '')}`;
+  const footerPart =
+    data.issue === undefined
+      ? {
+          draw: (budget: number) => style.dim(clipped(help(budget), budget, context)),
+          drop: 0,
+          short: width(help(0)),
+          width: width(help(Infinity)),
+        }
+      : {
+          draw: (budget: number) => style.error(clipped(issueText, budget, context)),
+          drop: 0,
+          width: width(issueText),
+        };
+  if (rows <= 2) {
+    if (searching) {
+      if (rows === 1) {
+        return issue === undefined ? compactTitle : style.error(clipped(issue, columns, context));
+      }
+      return `${compactTitle}\n${shared([choicePart, footerPart], columns, context)}`;
+    }
+    const titlePart = {
+      draw: titleAt,
+      drop: 2,
+      width: 2 + width(literal(context.plain(data.message))),
+    };
+    return rows === 1
+      ? shared([choicePart, titlePart, footerPart], columns, context)
+      : `${shared([choicePart, titlePart], columns, context)}\n${
+          issue === undefined
+            ? footerPart.draw(columns)
+            : style.error(clipped(issue, columns, context))
+        }`;
+  }
+  return [
+    compactTitle,
+    ...(choicePart === undefined ? [] : [choicePart.draw(columns)]),
+    ...markers.map((marker) => style.dim(clipped(marker, columns, context))),
+    ...(rows === 3 && issue !== undefined
+      ? []
+      : [style.dim(clipped(help(columns), columns, context))]),
+    ...(issue === undefined ? [] : [style.error(clipped(issue, columns, context))]),
+  ].join('\n');
 }
 
 /** Fits one editable field with a stateless window around its cursor cell. */
@@ -226,10 +461,7 @@ function field(
 }
 
 /** Gives message and separator space to the input field as the destination narrows. */
-function typedFrame(
-  data: Exclude<QuestionFrame, { kind: 'select' }>,
-  context: ViewContext,
-): string {
+function typedFrame(data: TypedFrame, context: ViewContext): string {
   const { style, width } = context;
   const columns = Math.max(1, context.columns ?? 80);
   // Only the glyph or the legend is dim, and the spaces around it are plain.
@@ -277,15 +509,24 @@ const questionFrame = view<QuestionFrame>('@loomcli/prompts/question-frame', {
     const title = `${style.info.bold('?')} ${style.bold(data.message)}`;
     const issue =
       data.issue === undefined ? '' : `\n  ${style.error(`${glyph.cross} ${literal(data.issue)}`)}`;
-    if (data.kind === 'select') {
-      return selectText(data, context, title) + issue;
+    if (data.kind === 'select' || data.kind === 'multiselect') {
+      return selectText(data, context, title);
     }
     return typedFrame(data, context) + issue;
   },
 });
 const answeredLine = view<AnsweredLine>('@loomcli/prompts/answered-line', {
-  render: ({ message, answer }, { style }) =>
-    `${style.dim('?')} ${message}${answer === undefined ? '' : ` ${style.dim('·')} ${style.highlight(literal(answer))}`}\n`,
+  render: ({ message, answer, kind }, { style }) => {
+    if (answer === undefined) {
+      return `${style.dim('?')} ${message}\n`;
+    }
+    // Only an empty selection reads as none: a typed empty answer is the empty string itself.
+    const drawn =
+      answer === '' && kind === 'multiselect'
+        ? style.dim('none')
+        : style.highlight(literal(answer));
+    return `${style.dim('?')} ${message} ${style.dim('·')} ${drawn}\n`;
+  },
 });
 const cancelledLine = view<CancelledLine>('@loomcli/prompts/cancelled-line', {
   render: ({ message }, { style }) => `${style.dim(`? ${message} · cancelled`)}\n`,
@@ -369,4 +610,13 @@ const progressLine = view<ProgressLine>('@loomcli/prompts/progress', {
 });
 
 export { answeredLine, cancelledLine, progressLine, questionFrame };
-export type { AnsweredLine, CancelledLine, ProgressLine, QuestionFrame };
+export type {
+  AnsweredLine,
+  CancelledLine,
+  ProgressLine,
+  QuestionFrame,
+  TypedFrame,
+  ListFrame,
+  ChoiceRow,
+  SeparatorRow,
+};

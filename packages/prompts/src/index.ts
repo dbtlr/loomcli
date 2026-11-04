@@ -1,7 +1,12 @@
-import { invalid, resolveLink } from './link.js';
-import { askSelect, askText } from './question.js';
+import { resolveLink } from './link.js';
+import { askList } from './list.js';
+import { askText } from './question.js';
 import type {
   Answer,
+  ChoiceEntry,
+  ChoiceValue,
+  ChoiceAnswer,
+  MultiselectSettings,
   ConfirmSettings,
   LinkKey,
   PromptContext,
@@ -137,43 +142,49 @@ async function confirm<Options, Key extends LinkKey<Options>>(
 
 function select<
   Options,
-  const Choice extends string,
+  const Entry extends ChoiceEntry = ChoiceEntry,
   const Key extends LinkKey<Options> = never,
   Args = unknown,
   const Argument extends LinkKey<Args> = never,
 >(
   context: PromptContext<Options, Args>,
-  settings: SelectSettings<Key, Choice, Argument>,
-): Promise<Answer<Args, Argument, Answer<Options, Key, Choice>>>;
+  settings: SelectSettings<Key, Entry, Argument>,
+): Promise<ChoiceAnswer<Options, Key, Args, Argument, ChoiceValue<Entry>>>;
 async function select<
   Options,
-  Choice extends string,
+  Entry extends ChoiceEntry,
   Key extends LinkKey<Options>,
   Args,
   Argument extends LinkKey<Args>,
 >(
   context: PromptContext<Options, Args>,
-  settings: SelectSettings<Key, Choice, Argument>,
-): Promise<Args[Argument] | Options[Key] | Choice> {
+  settings: SelectSettings<Key, Entry, Argument>,
+): Promise<unknown> {
   context.signal.throwIfAborted();
-  // Choices are often computed, so an empty list fails here, before the question resolves.
-  const [first, ...rest] = settings.choices;
-  if (first === undefined) {
-    invalid(
-      `The select question "${settings.message}" has no choices.`,
-      'Supply at least one choice.',
-    );
-  }
-  const resolved = resolveLink(context, settings, 'select');
-  if (resolved.kind === 'answered') {
-    return resolved.value;
-  }
-  const raw =
-    settings.argument === undefined
-      ? context.supplied.options[settings.option ?? '']
-      : context.supplied.args[settings.argument];
-  const prefill = raw ?? settings.default ?? resolved.prefill;
-  return askSelect(context, { choices: [first, ...rest], message: settings.message, prefill });
+  return askList(context, settings, false);
+}
+function multiselect<
+  Options,
+  const Entry extends ChoiceEntry = ChoiceEntry,
+  const Key extends LinkKey<Options> = never,
+  Args = unknown,
+  const Argument extends LinkKey<Args> = never,
+>(
+  context: PromptContext<Options, Args>,
+  settings: MultiselectSettings<Key, Entry, Argument>,
+): Promise<ChoiceAnswer<Options, Key, Args, Argument, ChoiceValue<Entry>[]>>;
+async function multiselect<
+  Options,
+  Entry extends ChoiceEntry,
+  Key extends LinkKey<Options>,
+  Args,
+  Argument extends LinkKey<Args>,
+>(
+  context: PromptContext<Options, Args>,
+  settings: MultiselectSettings<Key, Entry, Argument>,
+): Promise<unknown> {
+  context.signal.throwIfAborted();
+  return askList(context, settings, true);
 }
 
 function confirmDefault(value: boolean | undefined): string | undefined {
@@ -203,4 +214,14 @@ export type {
   TextSettings,
 } from './types.js';
 
-export { confirm, secret, select, text };
+export type {
+  Choice,
+  ChoiceObject,
+  ChoiceEntry,
+  ChoiceValue,
+  ChoiceSource,
+  ChoiceAnswer,
+  Separator,
+  MultiselectSettings,
+} from './types.js';
+export { confirm, secret, select, multiselect, text };

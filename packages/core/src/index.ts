@@ -241,3 +241,6 @@ export type {
 
 export type { OptionGroup } from './inputs/option-groups.js';
 export type { Alignment } from './style/wire.js';
+
+export { validateLinkedValue } from './inputs/linked.js';
+export type { LinkedValue, LinkedValueContext, ValueLink, LinkedOutput } from './inputs/linked.js';
