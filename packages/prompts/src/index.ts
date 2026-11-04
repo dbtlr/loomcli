@@ -27,6 +27,25 @@ function linkedIdentity(settings: {
   return settings.option === undefined ? {} : { option: settings.option };
 }
 
+/**
+ * The prefill a typed question starts with: the raw supplied value of its linked input, then the
+ * question's own default, then the input's declared default. Text and editor questions share it.
+ */
+function typedPrefill<Options, Args>(
+  context: PromptContext<Options, Args>,
+  settings: { argument?: string; option?: string; default?: string },
+  declared: unknown,
+): string | undefined {
+  const raw =
+    settings.argument === undefined
+      ? context.supplied.options[settings.option ?? '']
+      : context.supplied.args[settings.argument];
+  if (typeof raw === 'string') {
+    return raw;
+  }
+  return settings.default ?? (typeof declared === 'string' ? declared : undefined);
+}
+
 function text<
   Options,
   const Key extends LinkKey<Options> = never,
@@ -52,14 +71,7 @@ async function text<
   if (resolved.kind === 'answered') {
     return resolved.value;
   }
-  const raw =
-    settings.argument === undefined
-      ? context.supplied.options[settings.option ?? '']
-      : context.supplied.args[settings.argument];
-  const hint =
-    typeof raw === 'string'
-      ? raw
-      : (settings.default ?? (typeof resolved.prefill === 'string' ? resolved.prefill : undefined));
+  const hint = typedPrefill(context, settings, resolved.prefill);
   return askText(context, {
     hint,
     kind: 'text',
@@ -94,14 +106,7 @@ async function editor<
   if (resolved.kind === 'answered') {
     return resolved.value;
   }
-  const raw =
-    settings.argument === undefined
-      ? context.supplied.options[settings.option ?? '']
-      : context.supplied.args[settings.argument];
-  const hint =
-    typeof raw === 'string'
-      ? raw
-      : (settings.default ?? (typeof resolved.prefill === 'string' ? resolved.prefill : undefined));
+  const hint = typedPrefill(context, settings, resolved.prefill);
   return askEditor(context, {
     hint,
     ...(settings.extension === undefined ? {} : { extension: settings.extension }),
