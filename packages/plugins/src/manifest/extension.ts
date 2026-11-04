@@ -1,9 +1,12 @@
 import { extension } from '@loomcli/core';
 import type { Extension, StandardSchemaV1 } from '@loomcli/core';
+import { array, check, object, optional, pipe, rawTransform, string, unknown } from 'valibot';
 
 import type { CommandExample } from '../command-example.js';
 import { packageName } from '../constants.js';
-import { commandFactsSchema } from './facts-schemas.js';
+import { exactFacts } from '../exact-facts.js';
+import { lineRule, markdownRule } from '../lines.js';
+import { readFailure } from './failures.js';
 
 /**
  * One failure a Command can raise, as the author declares it: the failure class, a class that
@@ -54,8 +57,38 @@ interface ManifestCommandFacts {
   readonly failures?: readonly DeclaredFailure[] | undefined;
 }
 
-const commandFacts: StandardSchemaV1<ManifestCommandInput, ManifestCommandFacts> =
-  commandFactsSchema;
+const line = pipe(string(), check(lineRule.test, lineRule.message));
+const markdown = pipe(string(), check(markdownRule.test, markdownRule.message));
+
+/** One example invocation: the tokens after the application name, and an optional note. */
+const example = object({ command: line, note: optional(line) });
+
+const failureEntry = object({ failure: optional(unknown()), meaning: line });
+
+/**
+ * One failure a Command can raise: its class and one line of meaning. It outputs the failure code
+ * and the exit code the class declares, and the meaning, as plain data. A key the schema does not
+ * name, such as the retired hand-written `name`, is dropped. The class is read after the entry, and
+ * an entry with no `failure` key reads as a value that is not a failure class.
+ */
+const declaredFailure = pipe(
+  failureEntry,
+  rawTransform(({ addIssue, dataset, NEVER }) => {
+    const read = readFailure(dataset.value.failure);
+    if ('issue' in read) {
+      addIssue({ message: read.issue });
+      return NEVER;
+    }
+    return { code: read.code, exitCode: read.exitCode, meaning: dataset.value.meaning };
+  }),
+);
+
+const commandFactsSchema = object({
+  details: optional(markdown),
+  examples: optional(array(example)),
+  failures: optional(array(declaredFailure)),
+});
+const commandFacts = exactFacts<ManifestCommandInput, ManifestCommandFacts>()(commandFactsSchema);
 
 /**
  * The manifest's collecting extension on Commands, as declarations alone. The author and any
