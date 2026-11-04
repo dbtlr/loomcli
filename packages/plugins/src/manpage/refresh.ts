@@ -6,6 +6,8 @@ import type { RefreshContext } from '../refresh.js';
  * process holds the old version's graph, so it runs the new binary with `manpage update` and passes
  * the child's output through. A child that fails or cannot start adds a `warn` log event and
  * resolves, because the binary update succeeded.
+ *
+ * @public
  */
 async function refreshManpages(context: RefreshContext): Promise<void> {
   await refreshByRunning(context, {

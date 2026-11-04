@@ -110,4 +110,84 @@ export const surfacePackages = [
     // `node` is the reference to Node's own typings, which a declaration that names a stream needs.
     modules: ['node', 'node:*', '@standard-schema/spec'],
   },
+  {
+    directory: 'packages/plugins',
+    entries: {
+      './background': {
+        forgottenExports: {
+          options:
+            'Constant behind the exported `BackgroundOptions`; the author names `BackgroundOptions`.',
+        },
+      },
+      './color': {
+        forgottenExports: {
+          options: 'Constant behind the exported `ColorOptions`; the author names `ColorOptions`.',
+        },
+      },
+      './config': {
+        forgottenExports: {
+          EveryKeyOptional:
+            'Type machinery that computes `EmptyFileGuard` from a schema; the author names `EmptyFileGuard`.',
+          Short:
+            "Alias of core's `StringOption['short']`; the author writes the one-letter spelling.",
+          options:
+            'Constant behind the exported `ConfigOptions`; the author names `ConfigOptions`.',
+        },
+      },
+      './help': {
+        forgottenExports: {
+          options: 'Constant behind the exported `HelpOptions`; the author names `HelpOptions`.',
+        },
+      },
+      './interaction': {
+        forgottenExports: {
+          options:
+            'Constant behind the exported `InteractionOptions`; the author names `InteractionOptions`.',
+        },
+      },
+      './logging': {
+        forgottenExports: {
+          LoggingErrorDetail:
+            'Constructor parameter of a failure class only the plugin constructs.',
+        },
+      },
+      './manifest': {
+        forgottenExports: {
+          options:
+            'Constant behind the exported `ManifestOptions`; the author names `ManifestOptions`.',
+        },
+      },
+      './records': {
+        forgottenExports: {
+          FieldDefinition:
+            "One key's member of the exported `FieldEntry`; the author names `FieldEntry`.",
+        },
+      },
+      './table': {
+        forgottenExports: {
+          ColumnDefinition:
+            "One key's member of the exported `ColumnEntry`; the author names `ColumnEntry`.",
+        },
+      },
+      './theme': {
+        forgottenExports: {
+          LoomThemeDefaults:
+            "Type of the palette's private defaults; the author reads its tokens through the plugin `loomTheme` returns.",
+        },
+      },
+      './verbose': {
+        forgottenExports: {
+          options:
+            'Constant behind the exported `VerboseOptions`; the author names `VerboseOptions`.',
+        },
+      },
+      './version': {
+        forgottenExports: {
+          options:
+            'Constant behind the exported `VersionOptions`; the author names `VersionOptions`.',
+        },
+      },
+    },
+    modules: ['node:*', '@loomcli/core', '@loomcli/validators'],
+  },
 ];

@@ -2,7 +2,8 @@ import type { StandardSchemaV1 } from '@loomcli/core';
 
 /**
  * The types that decide which schemas `configuration()` takes: one whose input accepts an empty
- * file. They read the schema's input type alone, so they hold alike for zod, valibot, and ArkType.
+ * file. They read the schema's input type alone, so they hold alike for every Standard Schema
+ * library.
  */
 
 type Input<Schema extends StandardSchemaV1> = StandardSchemaV1.InferInput<Schema>;
@@ -38,12 +39,20 @@ type KeysOptional<Value> = Value extends readonly unknown[]
 type EveryKeyOptional<Schema extends StandardSchemaV1> =
   {} extends Input<Schema> ? KeysOptional<Input<Schema>> : false;
 
-/** The type error's own words: tsc names this interface and its one key. */
+/**
+ * The type error's own words: tsc names this interface and its one key.
+ *
+ * @public
+ */
 interface ConfigurationSchemaMustAcceptAnEmptyFile {
   readonly 'Make every key optional outside an array item or a record value': never;
 }
 
-/** `unknown` when the schema's input accepts an empty file, and `ConfigurationSchemaMustAcceptAnEmptyFile` otherwise. */
+/**
+ * `unknown` when the schema's input accepts an empty file, and `ConfigurationSchemaMustAcceptAnEmptyFile` otherwise.
+ *
+ * @public
+ */
 type EmptyFileGuard<Schema extends StandardSchemaV1> =
   EveryKeyOptional<Schema> extends true ? unknown : ConfigurationSchemaMustAcceptAnEmptyFile;
 

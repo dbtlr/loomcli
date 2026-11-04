@@ -10,7 +10,7 @@ This page documents the logging plugin, which writes core's log events as JSONL 
 // @loomcli/plugins/logging
 import type { LogLevel, Plugin } from '@loomcli/core';
 
-type WrittenLevel = Exclude<LogLevel, 'fatal'>;
+export type WrittenLevel = Exclude<LogLevel, 'fatal'>;
 export type LoggingSettings =
   | {
       readonly to?: 'file';
@@ -29,8 +29,9 @@ export type LoggingSettings =
       readonly to: 'console';
       readonly level?: WrittenLevel;
     };
+export type LoggingErrorKind = 'unresolved-directory' | 'create-directory' | 'append' | 'rotate';
 export declare class LoggingError extends Error {
-  readonly kind: 'unresolved-directory' | 'create-directory' | 'append' | 'rotate';
+  readonly kind: LoggingErrorKind;
   readonly path: string | null; // the file or directory; null for unresolved-directory
   readonly variable?: string; // unresolved-directory: the unset variable, such as HOME
   readonly cause?: unknown; // the runtime's error for create-directory, append, and rotate; absent for unresolved-directory

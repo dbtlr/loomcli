@@ -88,6 +88,8 @@ const mcpCommandTree = new Command('mcp', {
  * its three children, `install` and `uninstall`, which register the server with Claude Code and
  * Codex and record each registration, and `config`, the three extensions, and a hook that rejects a
  * graph whose tools cannot be served. Each Command loads its work when it runs.
+ *
+ * @public
  */
 export function mcp(): Plugin {
   return plugin(`${packageName}/mcp`, {

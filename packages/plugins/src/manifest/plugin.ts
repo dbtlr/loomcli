@@ -14,9 +14,14 @@ const options = {
   },
 } satisfies PluginOptions;
 
+/** @public @sealed */
 export type ManifestOptions = typeof options;
 
-/** The short spelling an application gives `--manifest`, none by default. */
+/**
+ * The short spelling an application gives `--manifest`, none by default.
+ *
+ * @public
+ */
 export interface ManifestSettings {
   readonly short?: NonNullable<BooleanOption['short']>;
 }
@@ -27,6 +32,8 @@ export interface ManifestSettings {
  * gives prose, examples, and failures through, and it declares no view and claims no slot. The
  * annotated return type is the boundary that breaks the cycle between this module and the
  * middleware module `load` names.
+ *
+ * @public
  */
 export function manifest(settings?: ManifestSettings): Plugin<ManifestOptions> {
   const short = settings?.short;

@@ -7,7 +7,11 @@ import type {
   ThemeMapping,
 } from '@loomcli/core';
 
-/** The bare palette introduces its literal token names and supplies no defaults or middleware. */
+/**
+ * The bare palette introduces its literal token names and supplies no defaults or middleware.
+ *
+ * @public
+ */
 function theme<const Mapping extends ThemeMapping>(
   mapping: Mapping & ThemeConstraint<Mapping>,
 ): Plugin<{}, NoInfer<Mapping>> {
@@ -47,11 +51,16 @@ const defaults = {
   }),
 };
 type LoomThemeDefaults = Readonly<typeof defaults>;
+/** @public */
 type LoomThemeOverrides = {
   readonly [Name in keyof LoomThemeDefaults]?: ConcreteStyle | AdaptiveStyle | undefined;
 } & ThemeMapping;
 
-/** The Loom palette, which adapts to the run's background and preserves authored modifiers. */
+/**
+ * The Loom palette, which adapts to the run's background and preserves authored modifiers.
+ *
+ * @public
+ */
 function loomTheme<const Mapping extends ThemeMapping = {}>(
   overrides?: LoomThemeOverrides & Mapping & ThemeConstraint<Mapping>,
 ): Plugin<{}, LoomThemeDefaults & Omit<NoInfer<Mapping>, keyof LoomThemeDefaults>>;

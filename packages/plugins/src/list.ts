@@ -6,6 +6,7 @@ const EMPTY = 0;
 const FIRST_POSITION = 1;
 const TOP_LEVEL = 0;
 
+/** @public */
 interface ListConfig<Item> {
   readonly ordered?: boolean;
   readonly format?: (item: Item, index: number, context: ViewContext) => string;
@@ -53,6 +54,8 @@ function levelLines<Item>(
  * A whole view over items, bulleted or numbered, with nested items under their parent's text and
  * every item's text wrapped under itself on a terminal. The returned value is a bare pack view and
  * installs no plugin behavior.
+ *
+ * @public
  */
 function list<Item>(config: ListConfig<Item> = {}): View<readonly Item[]> {
   return {

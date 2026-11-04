@@ -17,6 +17,8 @@ const TAIL_GAP = ' ';
  * line glyphs. On a terminal the label wraps, its later lines start under it, a blank one among
  * them stays empty, and only its last line carries the line after it. The returned value is a bare
  * pack view and installs no plugin behavior.
+ *
+ * @public
  */
 function rule(): View<string> {
   return {
