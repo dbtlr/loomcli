@@ -891,7 +891,7 @@ A public type whose values an author may hand to a Loom function, so the author 
 _Avoid_: Author-built type, construction type, supplied type
 
 **Output type**:
-A public type whose values Loom hands to the author's code as a parameter, a context member, or a result, which the author reads and may pass to their own functions, such as `Out`, the host, or a context. A new member on it is not breaking.
+A public type whose values Loom hands to the author's code as a parameter, a context member, or a result, and which no author hands back unless only Loom can create its values, such as `Command` or `Plugin`. The author reads it and may pass it to their own functions, and a new member on it is not breaking.
 _Avoid_: Sealed type, core-built type, received type
 
 **Change fragment**:

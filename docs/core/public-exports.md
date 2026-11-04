@@ -32,14 +32,14 @@ Every type you meet is one of two kinds, named after GraphQL's input and output 
 
 - An **input type** is one you may hand to a Loom function: a parameter, a declaration's options, a definition, a view, a validator, a value your callback returns to Loom, or the input a testing builder takes. You may have created any value you hand to Loom, so a new required member on an input type breaks your code.
 - An **output type** is one Loom hands to your code: a parameter of a callback you write, a context member, or a function's result. You read it, and you may pass it to your own functions, such as a helper that takes the `Host` an action receives. A new member on an output type breaks nothing.
-- A type that goes both ways is an input type.
+- A type that goes both ways is an input type, unless only a Loom function can create its values. A `Plugin`, which only `plugin()` makes, or a `Command` stays an output type when you hand it back, because you cannot have created it. Plain data you could write by hand, such as a graph node, is an input type wherever a Loom function takes it.
 
 Every export carries the TSDoc tag `@public`. An output type, and a class you must not subclass, also carries `@sealed`. A type Loom re-exports from another package, such as `StandardSchemaV1` from `@standard-schema/spec`, carries that package's own declarations instead of Loom's tags, and follows that package's versions.
 
 | Tag | What it means | Examples |
 | --- | --- | --- |
 | `@public` on a function or constant | You call it or read it. | `plugin`, `style`, `width`, `glyph` |
-| `@public @sealed` on a type | An output type: Loom hands it to your code. | `Out`, `Host`, `ViewContext`, `Command`, `Plugin`, `OptionNode` |
+| `@public @sealed` on a type | An output type: Loom hands it to your code. | `Command`, `Plugin` |
 | `@public` on a type without `@sealed` | An input type: you may hand it to Loom. | `CommandOptions`, `PluginDefinition`, `View`, `Translator`, `ProcessHandle` |
 | `@public @sealed` on a class | You must not subclass it. | `UnknownOptionError`, which core throws for you to catch |
 | `@public` on a class without `@sealed` | You may subclass it. | `LoomError`, `FatalError` |
@@ -57,7 +57,7 @@ The tag and the position of the changed member decide.
 - Removing or renaming any export breaks.
 - A new member on an output type does not break, because you only read it.
 - A new required member on an input type breaks, because code that creates one must change.
-- A member you read, such as a callback's parameter, breaks when it widens or its string-literal union loses a member. A string-literal union core produces may gain a member, so handle a value you do not know; a union of object variants gaining a variant breaks. A member you build, such as a callback's return value, breaks when it narrows.
+- A member you read, such as a callback's parameter, breaks when it widens or its string-literal union loses a member. A string-literal union core produces may gain a member, so handle a value you do not know; a union of object variants gaining a variant breaks. A member you supply, such as a callback's return value, breaks when it narrows.
 - A new or changed member on a class you may subclass breaks, because it can collide with your subclass's own.
 
 The [changelog guide](../../.changes/README.md#explain-a-breaking-change) holds the full table that each release's breaking changes follow.
