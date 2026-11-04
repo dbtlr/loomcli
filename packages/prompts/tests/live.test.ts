@@ -293,7 +293,9 @@ test('a real terminal edits a line, recognizes split keys, and survives a lone E
     tty.send(String.raw`abcd\e[D\x7fX`);
     await tty.expect('abX*d');
     tty.send(String.raw`\e`);
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    // The pause leaves the application time to read the ESC alone even on a loaded machine.
+    // A shorter one lets the terminal deliver ESC and Z in one read, which is Alt-Z.
+    await new Promise((resolve) => setTimeout(resolve, 400));
     tty.send(String.raw`Z\e[`);
     await new Promise((resolve) => setTimeout(resolve, 10));
     tty.send(String.raw`HZ\r`);
