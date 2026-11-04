@@ -73,6 +73,30 @@ test.each([
   ).resolves.toBe(expected);
 });
 
+test.each([
+  [8, '❯…L · …e'],
+  [4, '↑…re'],
+])(
+  'a one-row frame at %s columns drops the title, then the choice, before it clips to nothing',
+  async (columns, expected) => {
+    await expect(
+      drawn(columns, selecting(['PostgreSQL', 'SQLite'], 0, 1, 'Storage backend')),
+    ).resolves.toBe(expected);
+  },
+);
+
+test('a one-row frame shares the columns the abbreviated key help leaves', async () => {
+  await expect(
+    drawn(40, selecting(['A PostgreSQL server you run'], 0, 1, 'Storage backend')),
+  ).resolves.toBe('❯ A Po…ou run · ? Stora…ckend · ↑↓ Enter');
+});
+
+test('a compact frame draws nothing in the choice row while its first call is loading', async () => {
+  await expect(drawn(5, { ...selecting([], undefined, 2), loading: true, term: '' })).resolves.toBe(
+    '? [ ]\nSe…g…',
+  );
+});
+
 test('a two-row frame shares its first row between the choice and the title, each clipped', async () => {
   await expect(
     drawn(30, selecting(['A PostgreSQL server you run', 'SQLite'], 0, 2, 'Storage backend')),

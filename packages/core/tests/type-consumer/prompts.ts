@@ -138,7 +138,7 @@ const repositories: ChoiceSource<Repository> = () => [
 new Command('choices')
   .option('port', { type: 'string', validate: z.string().transform(Number) })
   .action(async (context) => {
-    const mixed: 'sqlite' | 'postgres' | 'neon' = await select(context, {
+    const mixed = await select(context, {
       choices: [
         'sqlite',
         { label: 'Postgres', value: 'postgres' },
@@ -147,7 +147,7 @@ new Command('choices')
       ],
       message: 'Engine',
     });
-    const values: 1 | { readonly id: 2 } = await select(context, {
+    const values = await select(context, {
       choices: [
         { label: 'One', value: 1 },
         { label: 'Two', value: { id: 2 } },
@@ -158,7 +158,7 @@ new Command('choices')
       choices: ['a', 'b'],
       message: 'Mode',
     });
-    const linked: number | undefined = await select(context, {
+    const linked = await select(context, {
       choices: ['80', '443'],
       message: 'Port',
       option: 'port',
