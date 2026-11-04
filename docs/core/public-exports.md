@@ -67,6 +67,6 @@ The [changelog guide](../../.changes/README.md#explain-a-breaking-change) holds 
 - a type a public signature uses that the entry point does not export, unless the check lists it with its reason;
 - a declaration that imports a module outside its package's list, such as a library the package uses only in its implementation;
 - an entry in the check's lists that the surface no longer needs;
-- any other API Extractor message, except a missing doc comment, which a later check covers.
+- any other API Extractor message, except a missing doc comment, which a later check covers, and a dependency's typings importing a source file, which Loom cannot change.
 
 After a surface change, `pnpm check:api --update` rewrites the reports, and the pull request carries their diff.

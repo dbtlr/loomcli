@@ -12,7 +12,7 @@ interface BaseFrame {
   message: string;
   issue: string | undefined;
 }
-/** @public @sealed */
+/** @public */
 type QuestionFrame = BaseFrame &
   (
     | {

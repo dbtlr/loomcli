@@ -47,7 +47,7 @@ export interface ProgressLine {
 // @public (undocumented)
 export const progressLine: DeclaredView<ProgressLine>;
 
-// @public @sealed (undocumented)
+// @public (undocumented)
 export type QuestionFrame = BaseFrame & ({
     kind: 'text' | 'secret' | 'confirm';
     typed: string;
