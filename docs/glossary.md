@@ -887,7 +887,7 @@ A name a published library's entry points export. Every public export is judged 
 _Avoid_: Public surface (for exported names alone), internal export, private export
 
 **Input type**:
-A public type whose values an author may hand to a Loom function, so the author may have created them, such as `CommandOptions`, `PluginDefinition`, a view, a validator, or a testing builder's input. A type that goes both ways is an input type, and a new required member on one is breaking.
+A public type whose values an author may hand to a Loom function, so the author may have created them, such as `CommandOptions`, `PluginDefinition`, a view, a validator, or a testing builder's input. A type that goes both ways is an input type unless only Loom can create its values, and a new required member on one is breaking.
 _Avoid_: Author-built type, construction type, supplied type
 
 **Output type**:
