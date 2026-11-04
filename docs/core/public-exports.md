@@ -42,7 +42,7 @@ Every export carries the TSDoc tag `@public`. A type you only read, and a class 
 
 TSDoc defines `@sealed` for classes and their members. Loom also puts it on interfaces and type aliases, a named deviation, because the API report writes it beside each name, where a reviewer reads it.
 
-Your editor shows the tags on hover. Each entry point's API report, committed beside its package as `api/<entry>.api.md`, lists every export with its tags.
+Your editor shows the tags on hover. Each entry point's API report, committed beside its package as `api/<entry>.api.md`, lists every export with its tags. A public type written over an unexported declaration, such as `Command`, which is `Pick<CommandBuilder, ...>`, shows only its outer text in the report, so an entry that lists such declarations also commits `api/<entry>.listed.md`, which holds each one's emitted shape. A change to one of them reaches the published surface, and that file's diff shows it.
 
 ## What a change to each kind breaks
 
@@ -64,9 +64,10 @@ The [changelog guide](../../.changes/README.md#explain-a-breaking-change) holds 
 - a re-exported external type the check does not list;
 - an undefined tag, or `@internal`, `@beta`, or `@alpha`;
 - an emitted surface that differs from its committed report;
+- a listed declaration whose emitted shape differs from its entry's committed `api/<entry>.listed.md`, or that file left behind for an entry that lists nothing, as `api-listed-changed`;
 - a type a public signature uses that the entry point does not export, unless the check lists it with its reason;
 - a declaration that imports a module outside its package's list, such as a library the package uses only in its implementation;
 - an entry in the check's lists that the surface no longer needs;
 - any other API Extractor message, except a missing doc comment, which a later check covers, and a dependency's typings importing a source file, which Loom cannot change.
 
-After a surface change, `pnpm check:api --update` rewrites the reports, and the pull request carries their diff.
+After a surface change, `pnpm check:api --update` rewrites the reports and the companion files, removes a companion file its entry no longer needs, and the pull request carries their diff.

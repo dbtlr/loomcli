@@ -29,11 +29,12 @@ The repository builds with TypeScript 7, whose compiler API differs from the Typ
   - A function or constant the author calls or reads carries `@public` alone.
   - No other release tag is used. Loom has no `@internal`, `@beta`, or `@alpha` export, and no Loom-only tag.
 - **Loom extends `@sealed` beyond classes.** TSDoc defines `@sealed` only for classes and their members. Loom also puts it on interfaces and type aliases, meaning that the author does not build their values. This is a named deviation: a Loom-only tag would say the same, but API Extractor writes `@sealed` into each report line's header, where a reviewer reads it in the diff, and drops a custom tag.
-- **API Extractor checks the surface.** `pnpm check` runs `check:api`, which runs API Extractor over every published entry point against its emitted declarations, sharing one compiler state. Each entry point's API report is committed beside its package. A `tsdoc.json` turns off `@internal`, `@beta`, and `@alpha`, and the check raises the forgotten-export message to an error, so it fails on:
+- **API Extractor checks the surface.** `pnpm check` runs `check:api`, which runs API Extractor over every published entry point against its emitted declarations, sharing one compiler state. Each entry point's API report is committed beside its package. A public type written over an unexported declaration the check lists, such as `Command`, which is `Pick<CommandBuilder, ...>`, shows only its outer text in the report, so a change to that declaration would change the published surface with no report diff. Each entry that lists any such declaration therefore also commits a companion file, `api/<entry>.listed.md`, which holds each listed declaration's emitted shape without its comments, sorted by name. A `tsdoc.json` turns off `@internal`, `@beta`, and `@alpha`, and the check raises the forgotten-export message to an error, so it fails on:
   - an export without a release tag;
   - a re-exported external type the check does not list;
   - a tag TSDoc and the configuration do not define, or one the configuration turns off;
   - an emitted surface that differs from its committed report;
+  - a listed declaration whose emitted shape differs from its entry's committed companion file, or a companion file for an entry that lists no declaration (`api-listed-changed`);
   - a type that a public signature uses and the entry point does not export, unless `check:api`'s own list names it with its reason;
   - a declaration that imports a module outside its package's list. That list holds Loom's own packages, Node built-ins, `@standard-schema/spec`, and the tool a package plugs into, such as ESLint or a test runner, and never a library a package uses only in its implementation.
   - an entry in the check's lists of unexported types and external re-exports that the surface no longer needs;
@@ -57,7 +58,7 @@ The repository builds with TypeScript 7, whose compiler API differs from the Typ
 
 ## Consequences
 
-- A change that adds, removes, or reshapes an export changes a committed API report in the same pull request, and the reviewer reads its classification from the report.
+- A change that adds, removes, or reshapes an export, or reshapes a listed declaration an export is written over, changes a committed API report or companion file in the same pull request, and the reviewer reads its classification from the report.
 - Removing an export nobody uses publicly is a breaking change with its own fragment; exporting a type the surface was missing is a feature.
 - The help, manifest, mcp, and configuration plugins' extension schemas change type to `StandardSchemaV1` over exported interfaces, and valibot leaves every published declaration.
 - A doc comment on every export, with an example, extends the same check later.

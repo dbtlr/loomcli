@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -224,4 +224,57 @@ test('nested exports conditions derive subpath reports and share reachable decla
     '@public @sealed',
   );
   expect(checkApi(root, [config])).toEqual([]);
+});
+
+/** A function whose public signature names an unexported type the policy lists. */
+function listedFixture() {
+  const { config, root } = fixture(
+    "import type { Hidden } from './hidden.js';\n/** A function. @public */\nexport declare function get(): Hidden;",
+    {
+      'dist/hidden.d.ts':
+        '/** A hidden shape. @public */\nexport interface Hidden {\n/** A value. */\nvalue: string;\n}',
+    },
+  );
+  const listed = {
+    ...config,
+    entries: { '.': { forgottenExports: { Hidden: 'The author names the function.' } } },
+  };
+  return { listed, root };
+}
+
+const listedFile = (root: string) => join(root, 'api/index.listed.md');
+
+test("a listed declaration's shape lands in the entry's companion file, without its doc comment", () => {
+  const { listed, root } = listedFixture();
+  expect(checkApi(root, [listed], { update: true })).toEqual([]);
+  const text = readFileSync(listedFile(root), 'utf8');
+  expect(text).toContain('export interface Hidden {\n    value: string;\n}');
+  expect(text).not.toContain('hidden shape');
+  expect(text).not.toContain('\r');
+  expect(checkApi(root, [listed])).toEqual([]);
+});
+
+test('a changed listed declaration fails as api-listed-changed while the report stays the same', () => {
+  const { listed, root } = listedFixture();
+  expect(checkApi(root, [listed], { update: true })).toEqual([]);
+  const hidden = join(root, 'dist/hidden.d.ts');
+  writeFileSync(hidden, readFileSync(hidden, 'utf8').replace('string', 'number'));
+  expect(checkApi(root, [listed])).toEqual([
+    expect.stringMatching(
+      /api\/index.listed.md:1: api-listed-changed: \.: .*pnpm check:api --update/u,
+    ),
+  ]);
+  expect(checkApi(root, [listed], { update: true })).toEqual([]);
+  expect(readFileSync(listedFile(root), 'utf8')).toContain('value: number;');
+  expect(checkApi(root, [listed])).toEqual([]);
+});
+
+test('an entry that lists nothing writes no companion file, and a stale one fails until --update removes it', () => {
+  const { config, root } = fixture(tagged);
+  expect(checkApi(root, [config], { update: true })).toEqual([]);
+  expect(existsSync(listedFile(root))).toBe(false);
+  writeFileSync(listedFile(root), 'stale');
+  expect(checkApi(root, [config])).toEqual([expect.stringContaining('api-listed-changed: .:')]);
+  expect(checkApi(root, [config], { update: true })).toEqual([]);
+  expect(existsSync(listedFile(root))).toBe(false);
 });
