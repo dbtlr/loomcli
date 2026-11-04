@@ -1,12 +1,14 @@
 import { stripVTControlCharacters } from 'node:util';
 
-import { Application, validationContext, width } from '@loomcli/core';
+import { Application, style, validationContext, width } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
+import { theme } from '@loomcli/plugins/theme';
 import { key, mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
 import { secret, text } from '../src/index.js';
 import { questionFrame } from '../src/views.js';
+import type { QuestionFrame } from '../src/views.js';
 
 test.each([
   [`abcd${key.left}${key.backspace}X`, 'abXd'],
@@ -351,3 +353,44 @@ test('Ctrl-Z turns bracketed paste off before the suspend and on again at the re
     .map((after) => after[0]);
   expect(modes).toEqual(['h', 'l', 'h', 'l']);
 });
+
+/** The frame data a text or confirm question draws, with nothing typed beyond `typed`. */
+function typedFrameData(kind: 'text' | 'confirm', message: string, typed: string): QuestionFrame {
+  return {
+    hint: kind === 'confirm' ? '[Y/n]' : undefined,
+    issue: undefined,
+    kind,
+    message,
+    typed,
+  };
+}
+
+test.each([
+  [
+    40,
+    typedFrameData('text', 'Name', 'abc'),
+    '\u001b[1m?\u001b[22m \u001b[1mName\u001b[22m \u001b[2m›\u001b[22m abc\u001b[7m \u001b[27m',
+  ],
+  [
+    10,
+    typedFrameData('text', 'Name', 'abc'),
+    '\u001b[1m?\u001b[22m \u001b[2m›\u001b[22m abc\u001b[7m \u001b[27m',
+  ],
+  [
+    40,
+    typedFrameData('confirm', 'Ok', ''),
+    '\u001b[1m?\u001b[22m \u001b[1mOk\u001b[22m \u001b[2m[Y/n]\u001b[22m \u001b[7m \u001b[27m',
+  ],
+])(
+  'a frame at %s columns dims only the separator glyph or the legend',
+  async (columns, frame, expected) => {
+    const app = new Application('draw', { plugins: [theme({ dim: style.faint })] }).action(
+      async ({ out }) => {
+        await out.draw(frame, questionFrame);
+      },
+    );
+    const mock = mockProcess({ terminal: { columns, rows: 24, streams: ['stderr'] } });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(mock.stderr.text).toBe(expected);
+  },
+);

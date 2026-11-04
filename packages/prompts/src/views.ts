@@ -232,8 +232,10 @@ function typedFrame(
 ): string {
   const { style, width } = context;
   const columns = Math.max(1, context.columns ?? 80);
-  const separator = data.kind === 'confirm' ? ` ${data.hint ?? '[y/n]'} ` : ' › ';
-  const separatorWidth = width(separator);
+  // Only the glyph or the legend is dim, and the spaces around it are plain.
+  const label = data.kind === 'confirm' ? (data.hint ?? '[y/n]') : '›';
+  const separator = ` ${style.dim(label)} `;
+  const separatorWidth = width(label) + 2;
   let prefix = '';
   if (columns >= 2 + 1 + separatorWidth + 16) {
     const messageColumns = columns - 2 - separatorWidth - 16;
@@ -241,9 +243,9 @@ function typedFrame(
       width(data.message) <= messageColumns
         ? data.message
         : clipped(data.message, messageColumns, context);
-    prefix = `${style.info.bold('?')} ${style.bold(message)}${style.dim(separator)}`;
+    prefix = `${style.info.bold('?')} ${style.bold(message)}${separator}`;
   } else if (columns >= 1 + separatorWidth + 4) {
-    prefix = style.info.bold('?') + style.dim(separator);
+    prefix = style.info.bold('?') + separator;
   } else if (columns >= 3) {
     prefix = `${style.info.bold('?')} `;
   } else {
