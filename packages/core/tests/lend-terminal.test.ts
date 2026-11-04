@@ -127,3 +127,66 @@ test('nested lends add no rows and closed frames follow child output in close or
   });
   await expect(app.run({ process: mock })).resolves.toBe(0);
 });
+
+test('a region first drawn during a lend that started with nothing drawn is held until it ends', async () => {
+  const mock = mockProcess({ terminal: { columns: 80, rows: 24 } });
+  const view = { render: (text: string) => text };
+  const app = new Application('lend').action(async ({ out }) => {
+    const region = out.region();
+    await out.lendTerminal(async () => {
+      await region.draw('LIVE', view);
+      expect(mock.stderr.text).toBe('');
+    });
+    expect(mock.stderr.text).toBe('\nLIVE');
+    await region.end();
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+});
+
+test('a region opened during a lend draws below the child output once the lend ends', async () => {
+  const mock = mockProcess({ terminal: { columns: 80, rows: 24 } });
+  const view = { render: (text: string) => text };
+  const app = new Application('lend').action(async ({ out }) => {
+    await out.lendTerminal(async () => {
+      const region = out.region();
+      await region.draw('LIVE', view);
+      await out.draw('child-write', view);
+      expect(mock.stderr.text).toBe('child-write');
+    });
+    expect(mock.stderr.text).toBe('child-write\nLIVE');
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+});
+
+test('suspend and resume during a lend that started with nothing drawn write nothing', async () => {
+  const mock = mockProcess({ terminal: { columns: 80, rows: 24 } });
+  const view = { render: (text: string) => text };
+  const app = new Application('lend').action(async ({ out }) => {
+    const region = out.region();
+    await out.lendTerminal(async () => {
+      await region.draw('LIVE', view);
+      mock.signals.raise('SIGTSTP');
+      await out.draw('', view);
+      expect(mock.stderr.text).toBe('');
+    });
+    expect(mock.stderr.text).toBe('\nLIVE');
+    await region.end();
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+});
+
+test('a lend after a frame that ended its row writes no line break of its own', async () => {
+  const mock = mockProcess({ terminal: { columns: 80, rows: 24 } });
+  const view = { render: (text: string) => text };
+  const app = new Application('lend').action(async ({ out }) => {
+    const region = out.region();
+    await region.draw('A\n', view);
+    const start = mock.stderr.text.length;
+    await out.lendTerminal(async () => {
+      await out.draw('child', view);
+    });
+    expect(mock.stderr.text.slice(start)).toBe('child\nA\n');
+    await region.end();
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+});

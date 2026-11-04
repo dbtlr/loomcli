@@ -75,10 +75,12 @@ class Screen {
   #opened: number | undefined = undefined;
   /** Whether a suspend erased the stack, which shows nothing until the resume draws it again. */
   #suspended = false;
+  /** How many lends are open; while any is, no frame draws and a suspend writes nothing. */
   #depth = 0;
   get lending(): number {
-    return this.#lentDrawn ? this.#depth : 0;
+    return this.#depth;
   }
+  /** Whether the outermost lend started with a stack drawn, which its end moves below the child. */
   #lentDrawn = false;
 
   constructor(private readonly measure: Measure) {}
@@ -86,37 +88,43 @@ class Screen {
   /** Starts a lend without erasing the stack that the child may write below. */
   lend(): string {
     const stack = this.#stack();
-    if (this.#depth === 0) {
-      this.#lentDrawn = stack !== undefined;
-    }
     this.#depth += 1;
-    return this.#depth === 1 && stack !== undefined && !stack.text.endsWith('\n') ? '\n' : '';
+    if (this.#depth > 1) {
+      return '';
+    }
+    this.#lentDrawn = stack !== undefined;
+    return stack !== undefined && !endsLine(stack) ? '\n' : '';
   }
 
-  /** A fresh stack starts below the child's output; none of its rows are ours to erase. */
+  /**
+   * A fresh stack starts below the child's output; none of its rows are ours to erase. When the
+   * outermost lend started with nothing drawn and holds nothing, it writes nothing, so the row the
+   * next stack starts on is the one the writes during the lend left. Otherwise the line break comes
+   * first whatever was drawn at the start, because the child may have left the cursor partway along
+   * a row.
+   */
   reclaim(): string {
     if (this.#depth === 0) {
       return '';
     }
     this.#depth -= 1;
-    if (this.#depth > 0 || !this.#lentDrawn) {
+    if (this.#depth > 0) {
+      return '';
+    }
+    const closed = this.#closedMeanwhile.splice(0);
+    for (const slot of closed) {
+      this.#slots.splice(this.#slots.indexOf(slot), 1);
+    }
+    for (const slot of this.#slots) {
+      slot.shown = slot.latest;
+    }
+    const held = closed.map(({ latest }) => scrollback(latest)).join('');
+    if (!this.#lentDrawn && held === '' && this.#stack() === undefined) {
       return '';
     }
     this.#opened = undefined;
     this.#column = 0;
-    const closed = [...this.#closedMeanwhile];
-    for (const slot of closed) {
-      this.#slots.splice(this.#slots.indexOf(slot), 1);
-    }
-    this.#closedMeanwhile.length = 0;
-    for (const slot of this.#slots) {
-      slot.shown = slot.latest;
-    }
-    return (
-      (this.#lentDrawn ? '\n' : '') +
-      closed.map(({ latest }) => scrollback(latest)).join('') +
-      this.#draw()
-    );
+    return `\n${held}${this.#draw()}`;
   }
 
   /** Shutdown cannot wait for author work; it writes the held last frames synchronously. */
@@ -234,6 +242,7 @@ class Screen {
   /** Text written to the terminal above the stack: what to write before it and after it. */
   around(text: string): { before: string; after: string } {
     if (this.lending > 0) {
+      this.note(text);
       return { after: '', before: '' };
     }
     const before = this.#uncover();
