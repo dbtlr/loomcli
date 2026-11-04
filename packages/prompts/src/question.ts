@@ -33,9 +33,10 @@ function displayAnswer(kind: string, raw: string, value: unknown): string | unde
  */
 function asking<Options>(
   context: PromptContext<Options>,
-  message: string,
+  question: { readonly message: string; readonly kind: QuestionFrame['kind'] },
   reader: { abandon: (reason: unknown) => void },
 ) {
+  const { message, kind } = question;
   const region = context.out.region({ input: true });
   region.signal.addEventListener(
     'abort',
@@ -63,7 +64,7 @@ function asking<Options>(
       try {
         if (region.closedBy === undefined) {
           await (answer
-            ? region.draw({ answer: answer.value, message }, answeredLine)
+            ? region.draw({ answer: answer.value, kind, message }, answeredLine)
             : region.draw({ message }, cancelledLine));
           await region.end();
         }
@@ -97,7 +98,7 @@ async function askText<Options, Output>(
 ): Promise<string | Output> {
   // Raw mode holds from here, and the first frame resolves once this question's turn has come.
   const reader = openReader(context);
-  const draw = asking(context, settings.message, reader);
+  const draw = asking(context, settings, reader);
   const line = new TypedLine();
   let issue: string | undefined = undefined;
   let answered: { value: string | undefined } | undefined = undefined;

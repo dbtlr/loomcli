@@ -52,6 +52,7 @@ type QuestionFrame =
 interface AnsweredLine {
   message: string;
   answer: string | undefined;
+  readonly kind?: QuestionFrame['kind'] | undefined; // The question's kind; absent, a typed answer
 }
 interface CancelledLine {
   message: string;
@@ -138,9 +139,13 @@ function listRow(
   return highlighted ? style.highlight(pointer + mark + label) : pointer + mark + label;
 }
 /** Restores row styles after clipping has measured its plain escaped text. */
-function compactChoice(data: ListData, selected: string, context: ViewContext): string {
+function compactChoice(
+  data: ListData,
+  { selected, columns }: { readonly selected: string; readonly columns: number },
+  context: ViewContext,
+): string {
   const { style } = context;
-  const drawn = clipped(selected, Math.max(1, context.columns ?? 80), context);
+  const drawn = clipped(selected, columns, context);
   const active = data.highlighted === undefined ? undefined : data.choices[data.highlighted];
   if (active?.kind !== 'choice') {
     return style.dim(drawn);
@@ -155,6 +160,82 @@ function compactChoice(data: ListData, selected: string, context: ViewContext): 
     return style.highlight(drawn.replace(context.plain(glyph.circle), style.dim(glyph.circle)));
   }
   return style.highlight(drawn);
+}
+
+/**
+ * The compact frame's key help with the markers that joined it. It abbreviates when `columns` is
+ * narrower than the whole key help, the markers included, and a multiselect keeps its count.
+ */
+function keyHelp(
+  data: ListData,
+  { joined, columns }: { readonly joined: readonly string[]; readonly columns: number },
+  context: ViewContext,
+): string {
+  const whole = [listHelp(data), ...joined].join(' · ');
+  return context.width(whole) <= columns ? whole : [listHelp(data, true), ...joined].join(' · ');
+}
+
+/**
+ * One part of a shared row: its whole width, its width once abbreviated, how it draws in a budget,
+ * and when it drops.
+ */
+interface RowPart {
+  readonly width: number;
+  readonly short?: number;
+  readonly draw: (columns: number) => string;
+  /** Parts drop highest first while the separators leave fewer columns than parts; 0 never drops. */
+  readonly drop: number;
+}
+
+/**
+ * The columns each part gets from `budget`: a part narrower than an even share keeps its width
+ * and leaves the rest to the others, and the wider parts split what is left evenly, the earlier
+ * ones taking the remainder.
+ */
+function shares(widths: readonly number[], budget: number): number[] {
+  const result = widths.map(() => 0);
+  let open = widths.map((_width, index) => index);
+  let remaining = budget;
+  while (open.length > 0) {
+    const even = Math.floor(remaining / open.length);
+    const narrow = open.filter((index) => (widths[index] ?? 0) <= even);
+    if (narrow.length === 0) {
+      let extra = remaining - even * open.length;
+      for (const index of open) {
+        result[index] = even + (extra > 0 ? 1 : 0);
+        extra -= 1;
+      }
+      break;
+    }
+    for (const index of narrow) {
+      result[index] = widths[index] ?? 0;
+      remaining -= widths[index] ?? 0;
+    }
+    open = open.filter((index) => !narrow.includes(index));
+  }
+  return result;
+}
+
+/** Parts that share one row, joined by ` · `, each whole when they fit and each clipped when not. */
+function shared(
+  parts: readonly (RowPart | undefined)[],
+  columns: number,
+  context: ViewContext,
+): string {
+  let present = parts.filter((part) => part !== undefined);
+  while (present.length > 1 && columns - 3 * (present.length - 1) < present.length) {
+    const highest = Math.max(...present.map((part) => part.drop));
+    present = present.filter((part) => part.drop !== highest);
+  }
+  const budget = columns - 3 * (present.length - 1);
+  const whole = present.reduce((total, part) => total + part.width, 0) <= budget;
+  const given = shares(
+    present.map((part) => (whole ? part.width : (part.short ?? part.width))),
+    budget,
+  );
+  return present
+    .map((part, index) => part.draw(Math.max(1, given[index] ?? 0)))
+    .join(` ${context.style.dim('·')} `);
 }
 
 /** Fits list rows first, then compacts the surviving frame without losing an issue. */
@@ -228,9 +309,9 @@ function selectText(data: ListData, context: ViewContext, title: string): string
   if (height(frame) <= rows) {
     return frame;
   }
-  const compactTitle = searching
-    ? firstLine
-    : `${style.info.bold('?')}${columns > 2 ? ` ${style.bold(clipped(data.message, columns - 2, context))}` : ''}`;
+  const titleAt = (budget: number) =>
+    `${style.info.bold('?')}${budget > 2 ? ` ${style.bold(clipped(data.message, budget - 2, context))}` : ''}`;
+  const compactTitle = searching ? firstLine : titleAt(columns);
   let selected: string | undefined = undefined;
   if (active !== undefined) {
     selected = listRow(data, { highlighted: true, row: active }, context);
@@ -239,38 +320,70 @@ function selectText(data: ListData, context: ViewContext, title: string): string
   } else if (!data.loading) {
     selected = 'No matches';
   }
-  const choice = selected === undefined ? undefined : compactChoice(data, selected, context);
   const above = data.above + (data.highlighted ?? 0);
   const below =
     data.below +
     data.choices.length -
     (data.highlighted === undefined ? data.choices.length : data.highlighted + 1);
   const markers = [...(above ? [`↑ ${above} more`] : []), ...(below ? [`↓ ${below} more`] : [])];
-  let help = listHelp(data, width(listHelp(data)) > columns);
+  // The markers that would not fit on lines of their own join the key help, in their own order.
+  const joined: string[] = [];
   while (
     markers.length &&
-    2 + (choice === undefined ? 0 : 1) + markers.length + (issue === undefined ? 0 : 1) > rows
+    2 + (selected === undefined ? 0 : 1) + markers.length + (issue === undefined ? 0 : 1) > rows
   ) {
-    help += ` · ${markers.pop() ?? ''}`;
+    joined.unshift(markers.pop() ?? '');
   }
-  const footer = issue ?? style.dim(help);
+  const help = (budget: number) => keyHelp(data, { columns: budget, joined }, context);
+  const choicePart =
+    selected === undefined
+      ? undefined
+      : {
+          draw: (budget: number) => compactChoice(data, { columns: budget, selected }, context),
+          drop: 1,
+          width: width(literal(context.plain(selected))),
+        };
+  const issueText = `${glyph.cross} ${literal(data.issue ?? '')}`;
+  const footerPart =
+    data.issue === undefined
+      ? {
+          draw: (budget: number) => style.dim(clipped(help(budget), budget, context)),
+          drop: 0,
+          short: width(help(0)),
+          width: width(help(Infinity)),
+        }
+      : {
+          draw: (budget: number) => style.error(clipped(issueText, budget, context)),
+          drop: 0,
+          width: width(issueText),
+        };
   if (rows <= 2) {
     if (searching) {
       if (rows === 1) {
         return issue === undefined ? compactTitle : style.error(clipped(issue, columns, context));
       }
-      return `${compactTitle}\n${clipped(issue ?? `${choice ?? ''} · ${footer}`, columns, context)}`;
+      return `${compactTitle}\n${shared([choicePart, footerPart], columns, context)}`;
     }
-    const heading = clipped(`${choice ?? ''} · ${compactTitle}`, columns, context);
+    const titlePart = {
+      draw: titleAt,
+      drop: 2,
+      width: 2 + width(literal(context.plain(data.message))),
+    };
     return rows === 1
-      ? clipped(`${heading} · ${footer}`, columns, context)
-      : `${heading}\n${clipped(footer, columns, context)}`;
+      ? shared([choicePart, titlePart, footerPart], columns, context)
+      : `${shared([choicePart, titlePart], columns, context)}\n${
+          issue === undefined
+            ? footerPart.draw(columns)
+            : style.error(clipped(issue, columns, context))
+        }`;
   }
   return [
     compactTitle,
-    ...(choice === undefined ? [] : [choice]),
+    ...(choicePart === undefined ? [] : [choicePart.draw(columns)]),
     ...markers.map((marker) => style.dim(clipped(marker, columns, context))),
-    ...(rows === 3 && issue !== undefined ? [] : [style.dim(clipped(help, columns, context))]),
+    ...(rows === 3 && issue !== undefined
+      ? []
+      : [style.dim(clipped(help(columns), columns, context))]),
     ...(issue === undefined ? [] : [style.error(clipped(issue, columns, context))]),
   ].join('\n');
 }
@@ -403,8 +516,17 @@ const questionFrame = view<QuestionFrame>('@loomcli/prompts/question-frame', {
   },
 });
 const answeredLine = view<AnsweredLine>('@loomcli/prompts/answered-line', {
-  render: ({ message, answer }, { style }) =>
-    `${style.dim('?')} ${message}${answer === undefined ? '' : ` ${style.dim('·')} ${answer === '' ? style.dim('none') : style.highlight(literal(answer))}`}\n`,
+  render: ({ message, answer, kind }, { style }) => {
+    if (answer === undefined) {
+      return `${style.dim('?')} ${message}\n`;
+    }
+    // Only an empty selection reads as none: a typed empty answer is the empty string itself.
+    const drawn =
+      answer === '' && kind === 'multiselect'
+        ? style.dim('none')
+        : style.highlight(literal(answer));
+    return `${style.dim('?')} ${message} ${style.dim('·')} ${drawn}\n`;
+  },
 });
 const cancelledLine = view<CancelledLine>('@loomcli/prompts/cancelled-line', {
   render: ({ message }, { style }) => `${style.dim(`? ${message} · cancelled`)}\n`,

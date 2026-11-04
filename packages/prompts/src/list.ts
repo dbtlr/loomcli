@@ -41,6 +41,20 @@ function row(entry: ChoiceEntry): ChoiceRow | SeparatorRow {
     }
   );
 }
+/**
+ * The values a prefill matches: the first of `candidates` that is present, where `undefined` is
+ * absence and `null` is a value. A multiselect's prefill is a list, and a select's is one value.
+ */
+function prefillValues(candidates: readonly unknown[], multiple: boolean): readonly unknown[] {
+  const prefill = candidates.find((candidate) => candidate !== undefined);
+  if (prefill === undefined) {
+    return [];
+  }
+  if (multiple) {
+    return Array.isArray(prefill) ? prefill : [];
+  }
+  return [prefill];
+}
 interface ListSettings<Options, Args> {
   message: string;
   option?: keyof Options & string;
@@ -97,13 +111,14 @@ async function askList<Options, Args>(
       ? context.supplied.options[settings.option ?? '']
       : context.supplied.args[settings.argument];
   const supplied = raw !== undefined && (!Array.isArray(raw) || raw.length > 0);
-  const prefill = supplied ? raw : (settings.default ?? resolved.prefill);
-  const listPrefill: readonly unknown[] = Array.isArray(prefill) ? prefill : [];
-  const values: readonly unknown[] = multiple ? listPrefill : [prefill];
+  const values = prefillValues(
+    [supplied ? raw : undefined, settings.default, resolved.prefill],
+    multiple,
+  );
   const search = settings.search === true || settings.source !== undefined;
   const line = new TypedLine();
   const reader = openReader(context);
-  const draw = asking(context, settings.message, reader);
+  const draw = asking(context, { kind, message: settings.message }, reader);
   let entries: readonly ChoiceEntry[] = settings.choices ?? [];
   let highlighted: number | undefined = undefined;
   let start = 0;
@@ -196,14 +211,22 @@ async function askList<Options, Args>(
       if (match === undefined && supplied && typeof value === 'string' && settings.source) {
         const lookup = new AbortController();
         controllers.push(lookup);
-        const found = await Promise.race([
-          Promise.resolve(settings.source(value, { signal: lookup.signal })),
-          stopped,
-        ]);
+        const called = settings.source(value, { signal: lookup.signal });
+        let found: readonly ChoiceEntry[] = [];
+        if (Array.isArray(called)) {
+          found = called;
+        } else {
+          // A lookup is a call of the source, so the frame shows it loading until it settles.
+          if (!loading) {
+            loading = true;
+            await frame();
+          }
+          found = await Promise.race([Promise.resolve(called), stopped]);
+        }
         match = found
           .map(item)
           .find((choice) => choice !== undefined && Object.is(choice.value, value));
-        if (!multiple && match !== undefined) {
+        if (!multiple && match !== undefined && !match.row.disabled) {
           entries = found;
           line.value = value;
           line.cursor = graphemes(value).length;
@@ -284,14 +307,18 @@ async function askList<Options, Args>(
   try {
     if (settings.source) {
       load();
+      // The loading frame draws first; only keys wait for the prefill, and settling draws the list.
+      if (loading) {
+        await frame();
+      }
       if (supplied || !loading) {
         await wait();
       }
     } else {
       reset();
       await applyPrefill();
+      await frame();
     }
-    await frame();
     while (true) {
       checkFailure();
       const key = await reader.read();
@@ -304,13 +331,15 @@ async function askList<Options, Args>(
         await wait();
         checkFailure();
       }
-      if (key.kind === 'eof' && (!search || line.value === '')) {
+      // A list that does not search never edits its line, so Ctrl-D always ends input there.
+      if (key.kind === 'eof' && line.value === '') {
         context.cancel();
         context.signal.throwIfAborted();
       }
       if (key.kind === 'enter') {
-        const current =
+        const highlightedItem =
           highlighted === undefined ? undefined : item(entries[highlighted] ?? { separator: '' });
+        const current = highlightedItem?.row.disabled === false ? highlightedItem : undefined;
         if (!multiple && !current) {
           issue = 'No choice can be selected. Change the search.';
           await frame();
