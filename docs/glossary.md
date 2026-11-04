@@ -323,7 +323,7 @@ Handing the validated invocation to the selected Command's action.
 _Avoid_: Routing (for the handoff), execution
 
 **Child program**:
-A program a run starts through `host.spawn`, with no shell, in the run's working directory and environment unless the call names others. The real process's handle starts it for real, and a mock answers it from the script the test gives for its command.
+A program a run starts through `host.spawn`, with no shell unless the call names one as the program, as help's pager and an editor question name `/bin/sh` for the operator's own command line, in the run's working directory and environment unless the call names others. The real process's handle starts it for real, and a mock answers it from the script the test gives for its command.
 _Avoid_: Child process (for what a run starts), subprocess
 
 **Host**:
@@ -705,7 +705,7 @@ The one first-party package that ships every first-party plugin as its own separ
 _Avoid_: Bundle, standard library, batteries, default set
 
 **Question**:
-One prompt an action asks through `@loomcli/prompts`, of the kind text, secret, confirm, select, or multiselect, drawn in an input region on stderr and answered from stdin while the interaction decision is on. It is part of the action, never a run stage or an input source.
+One prompt an action asks through `@loomcli/prompts`, of the kind text, secret, confirm, select, multiselect, or editor, drawn in an input region on stderr while the interaction decision is on, and answered from the operator's keys on stdin, or, for an editor question, from the file the operator's editor saves. It is part of the action, never a run stage or an input source.
 _Avoid_: Prompt (for one question; the package is prompts), wizard step, input source
 
 **Choice**:
@@ -739,6 +739,14 @@ _Avoid_: Buffer, input field, answer (before it is submitted)
 **Question hint**:
 The prefill a text question draws dimmed while its typed line is empty. Enter on the empty line accepts it, typing replaces it, and Tab, Right, or Ctrl-F copies it into the line for editing; it is never part of the line until copied. A confirm question draws its prefill in the same place as the legend `[Y/n]` or `[y/N]`, which no key copies and which is not a question hint.
 _Avoid_: Hint (alone, which is a failure line from an `onFailure` hook), placeholder, default (for what is drawn), ghost text
+
+**Editor question**:
+A question that waits for Enter and then opens the operator's editor, the command line `VISUAL`, `EDITOR`, or `vi` names, in that order, on a private temporary file holding its prefill, and answers the text the file holds when the editor exits. It lends the terminal to the editor while the editor runs.
+_Avoid_: Editor prompt, multiline text, external editor
+
+**Terminal lend**:
+The span in which a run hands the terminal to a child program that draws on it, through `out.lendTerminal`. Core ends the bottom frame's row before the child starts, draws no live region's frame while the child's work runs, and then, when the child's work settles, writes one line break and draws a fresh stack at the start of the row it opens. Core does not erase or overwrite anything the child wrote, so the frame drawn before the lend stays in scrollback.
+_Avoid_: Handoff, pause, suspend (which stops the process)
 
 **Progress line**:
 One line of work in flight that an action shows through `progress()` from `@loomcli/prompts`, drawn in its own live region: a spinner while the work has no total, and a bar with counts once it has one. It ends as a success line, a failure line, or a cancelled line that stays in scrollback, and when its region is not live it writes one start line and, unless it is cancelled, one end line through the semantic lanes. It reports each change as a progress event.

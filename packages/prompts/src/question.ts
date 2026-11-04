@@ -52,6 +52,7 @@ function asking<Options>(
     { once: true },
   );
   let hidden = false;
+  let lent = false;
   // A suspend shows the cursor before the process stops, so the resume hides it again.
   let unhide: (() => void) | undefined = undefined;
   return {
@@ -59,12 +60,23 @@ function asking<Options>(
      * The answered or cancelled line, then the region's close and the cursor shown again, with
      * bracketed paste turned off when the run's last open question has `released` stdin.
      */
-    async finish(answer: { value: string | undefined } | undefined, released: boolean) {
+    async finish(
+      answer: { value: string | undefined; lines?: number } | undefined,
+      released: boolean,
+    ) {
       unhide?.();
       try {
         if (region.closedBy === undefined) {
           await (answer
-            ? region.draw({ answer: answer.value, kind, message }, answeredLine)
+            ? region.draw(
+                {
+                  answer: answer.value,
+                  kind,
+                  message,
+                  ...(answer.lines === undefined ? {} : { lines: answer.lines }),
+                },
+                answeredLine,
+              )
             : region.draw({ message }, cancelledLine));
           await region.end();
         }
@@ -77,13 +89,35 @@ function asking<Options>(
       if (!hidden) {
         hidden = true;
         unhide = context.onResume(() => {
-          void context.out.draw(hideCursor, controls);
+          if (!lent) {
+            void context.out.draw(hideCursor, controls);
+          }
         });
         await context.out.draw(hideCursor, controls);
       }
     },
+    lend(value: boolean) {
+      lent = value;
+    },
     signal: region.signal,
   };
+}
+
+/** Text and editor submissions share the same validation context and unchanged fallback answer. */
+async function validateAnswer<Options, Output>(
+  context: PromptContext<Options>,
+  settings: { message: string; validate?: StandardSchemaV1<string, Output> } & (
+    | { option?: string; argument?: never }
+    | { argument: string; option?: never }
+  ),
+  raw: string,
+) {
+  return settings.validate === undefined
+    ? { issues: undefined, value: raw }
+    : await settings.validate['~standard'].validate(
+        raw,
+        questionValidationOptions(context, settings),
+      );
 }
 
 /** One text reader serves text and secret; only the submitted value reaches validation. */
@@ -121,13 +155,7 @@ async function askText<Options, Output>(
       }
       if (key.kind === 'enter') {
         const raw = line.value === '' ? (settings.hint ?? '') : line.value;
-        const result =
-          settings.validate === undefined
-            ? { issues: undefined, value: raw }
-            : await settings.validate['~standard'].validate(
-                raw,
-                questionValidationOptions(context, settings),
-              );
+        const result = await validateAnswer(context, settings, raw);
         context.signal.throwIfAborted();
         if (result.issues === undefined) {
           if (settings.kind === 'secret') {
@@ -162,4 +190,4 @@ async function askText<Options, Output>(
   }
 }
 
-export { asking, askText };
+export { asking, askText, validateAnswer };

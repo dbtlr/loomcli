@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 // Acceptance plan: see packages/prompts/tests/interactive.test.ts.
 
 import { Application, FatalError } from '@loomcli/core';
@@ -363,5 +366,56 @@ test('a real terminal toggles hidden selections with Tab and submits in order', 
     await expect(tty.expect('EXIT:0 cooked:true')).resolves.toContain('ANSWER:["beta","Alpha"]');
   } finally {
     await tty.close();
+  }
+});
+
+test('editor hands a real cooked terminal to the child and restores raw mode on rejection', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'editor-live-'));
+  const script = join(folder, 'edit.sh');
+  writeFileSync(
+    script,
+    'stty -a >&2\nprintf "CHILD-OUTPUT\\n" >&2\nif [ -f "$1.once" ]; then printf good > "$1"; else touch "$1.once"; printf bad > "$1"; fi\n',
+  );
+  const tty = realTerminal('editor', {
+    EDITOR: `sh '${script}'`,
+    NO_COLOR: '1',
+    TMPDIR: folder,
+    VISUAL: '',
+  });
+  try {
+    await tty.expect('Press Enter to open your editor');
+    tty.send(String.raw`\r`);
+    const rejected = await tty.expect('Try again.');
+    expect(rejected).toContain('icanon');
+    expect(rejected).not.toContain('-icanon');
+    expect(rejected).toContain('CHILD-OUTPUT');
+    expect(rejected).toContain('\u001b[?2004l');
+    expect(rejected).toContain('\u001b[?25h');
+    expect(rejected).toContain('\u001b[?2004h');
+    tty.send(String.raw`\r`);
+    await tty.expect('ANSWER:"good" RAW:false');
+  } finally {
+    await tty.close();
+    rmSync(folder, { force: true, recursive: true });
+  }
+});
+
+test('missing editor keeps the shell diagnostic above the failure in a real terminal', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'editor-live-'));
+  const tty = realTerminal('editor', {
+    EDITOR: 'loom-missing-editor-462',
+    NO_COLOR: '1',
+    TMPDIR: folder,
+    VISUAL: '',
+  });
+  try {
+    await tty.expect('Press Enter to open your editor');
+    tty.send(String.raw`\r`);
+    const output = await tty.expect('could not start');
+    expect(output).toContain('exec: loom-missing-editor-462: not found');
+    expect(output.indexOf('not found')).toBeLessThan(output.indexOf('could not start'));
+  } finally {
+    await tty.close();
+    rmSync(folder, { force: true, recursive: true });
   }
 });

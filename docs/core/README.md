@@ -31,7 +31,7 @@ Every `Invalid declaration: ` and `Internal error: ` line a page shows quotes th
 
 ## Output
 
-- [Output](output.md): open it when you write to the lanes, draw on stderr, or open a live region with progress events.
+- [Output](output.md): open it when you write to the lanes, draw on stderr, open a live region with progress events, or lend the terminal to a child program that draws on it.
 - [Views](views.md): open it when you declare a view, override one, or read the view context.
 - [Results](results.md): open it when a Command declares a result, emits rows, or names media types.
 - [Styles and rendering policy](styles.md): open it when you style marked strings, pick colors and glyphs, or measure, pad, and wrap text.

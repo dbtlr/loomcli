@@ -529,6 +529,7 @@ export class Output {
         throw new FatalError(message);
       },
       info: (message) => this.hand(this.emit('info', message, 'stderr')),
+      lendTerminal: (work) => this.lendTerminal(work),
       print: (message) => this.hand(this.emit('print', message, 'stdout')),
       // A region a middleware or a source opens closes once the chain has unwound.
       region: (options) => this.regions.open(options),
@@ -543,6 +544,37 @@ export class Output {
       trace: (message) => this.hand(this.emit('trace', message, 'stderr')),
       warn: (message) => this.hand(this.emit('warn', message, 'stderr')),
     };
+  }
+
+  private readonly lends = new Set<Promise<void>>();
+
+  /** Waits outside destination queues so work can await ordinary writes. */
+  async waitForLends(): Promise<void> {
+    while (this.lends.size > 0) {
+      await Promise.all(this.lends);
+    }
+  }
+
+  private async lendTerminal<Value>(work: () => Value | PromiseLike<Value>): Promise<Value> {
+    const completion: { resolve?: () => void } = {};
+    const settled = new Promise<void>((resolve) => {
+      completion.resolve = resolve;
+    });
+    this.lends.add(settled);
+    const destination = this.destination(this.host.stderr);
+    try {
+      await destination.compose(() => (this.host.terminal.stderr.isTTY ? this.screen.lend() : ''));
+      return await work();
+    } finally {
+      try {
+        await destination.compose(() =>
+          this.host.terminal.stderr.isTTY ? this.screen.reclaim() : '',
+        );
+      } finally {
+        this.lends.delete(settled);
+        completion.resolve?.();
+      }
+    }
   }
 
   /**
@@ -701,7 +733,9 @@ export class Output {
     const destination = this.destination(this.host.stderr);
     const removers = [
       suspension.onSuspend(() => {
-        destination.flushComposed(() => this.screen.suspend() + this.cursorShown());
+        destination.flushComposed(() =>
+          this.screen.lending > 0 ? '' : this.screen.suspend() + this.cursorShown(),
+        );
       }),
       suspension.onResume(() => {
         void handled(destination.compose(() => this.screen.resume()));
@@ -740,7 +774,9 @@ export class Output {
    */
   flushTerminal(): void {
     if (this.host.terminal.stderr.isTTY) {
-      this.destination(this.host.stderr).flushComposed(() => this.cursorShown());
+      this.destination(this.host.stderr).flushComposed(
+        () => this.screen.finishLends() + this.cursorShown(),
+      );
     }
   }
 
@@ -946,6 +982,7 @@ export class Output {
    * answers what the first line whose view threw raised, which no code can catch.
    */
   async writeIncomplete(): Promise<{ cause: unknown } | undefined> {
+    await this.waitForLends();
     // A reader that closed stdout stopped reading on purpose, so no line reports the truncation.
     if (this.pipeClosed) {
       this.dropIncomplete();

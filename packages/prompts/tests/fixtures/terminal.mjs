@@ -6,7 +6,7 @@ import { configInput } from '@loomcli/plugins/config/extension';
 import { loomTheme } from '@loomcli/plugins/theme';
 import { z } from 'zod';
 
-import { confirm, multiselect, secret, select, text } from '../../dist/index.js';
+import { editor, confirm, multiselect, secret, select, text } from '../../dist/index.js';
 
 const scenario = process.argv[2];
 spawnSync('stty', ['rows', process.env.PROMPT_ROWS ?? '24', 'cols', '80'], {
@@ -39,6 +39,21 @@ const app = new Application('setup', {
     }
     if (process.env.PROMPT_EXIT_AFTER !== undefined) {
       setTimeout(() => process.exit(3), Number(process.env.PROMPT_EXIT_AFTER));
+    }
+    if (scenario === 'editor') {
+      const answer = await editor(context, {
+        message: 'Notes',
+        validate: {
+          '~standard': {
+            validate: (value) =>
+              value === 'bad' ? { issues: [{ message: 'Try again.' }] } : { value },
+            vendor: 'fixture',
+            version: 1,
+          },
+        },
+      });
+      process.stdout.write(`ANSWER:${JSON.stringify(answer)} RAW:${process.stdin.isRaw}\n`);
+      return;
     }
     if (scenario === 'editing') {
       const answer = await text(context, { message: 'Edit value' });

@@ -185,6 +185,8 @@ export interface Out<Result = unknown> {
    * it finishes.
    */
   region(options?: RegionOptions): Region;
+  /** Lends the terminal to work, holding region frames until it settles. */
+  lendTerminal<Value>(work: () => Value | PromiseLike<Value>): Promise<Value>;
   /**
    * The Command's own result, emitted once. Property syntax keeps the parameter contravariant, so
    * a neutral `Out` never stands in for one that carries a declaration.

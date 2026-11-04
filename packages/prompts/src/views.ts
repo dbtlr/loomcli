@@ -40,7 +40,14 @@ interface ListFrame {
   readonly cursor?: number | undefined; // The term's cursor; absent, the end of term
   readonly loading?: boolean | undefined; // A source call has not settled; absent, false
 }
+interface EditorFrame {
+  readonly kind: 'editor';
+  readonly message: string;
+  readonly issue: string | undefined;
+  readonly editing: boolean;
+}
 type QuestionFrame =
+  | EditorFrame
   | TypedFrame
   | (ListFrame & { readonly kind: 'select' })
   | (ListFrame & {
@@ -50,6 +57,7 @@ type QuestionFrame =
       readonly max: number | undefined;
     });
 interface AnsweredLine {
+  readonly lines?: number;
   message: string;
   answer: string | undefined;
   readonly kind?: QuestionFrame['kind'] | undefined; // The question's kind; absent, a typed answer
@@ -91,7 +99,7 @@ function clipped(text: string, columns: number, context: ViewContext): string {
   return literal(prefix + ellipsis + suffix);
 }
 
-type ListData = Exclude<QuestionFrame, TypedFrame>;
+type ListData = Exclude<QuestionFrame, TypedFrame | EditorFrame>;
 function listHelp(data: ListData, short = false): string {
   if (data.loading) {
     return `Searching${glyph.ellipsis}`;
@@ -390,7 +398,13 @@ function selectText(data: ListData, context: ViewContext, title: string): string
 
 /** Fits one editable field with a stateless window around its cursor cell. */
 function field(
-  data: { text: string; cursor: number; hint: boolean; columns: number },
+  data: {
+    text: string;
+    cursor: number;
+    hint: boolean;
+    columns: number;
+    editor?: boolean | undefined;
+  },
   context: ViewContext,
 ): string {
   const { text, cursor, hint, columns } = data;
@@ -412,7 +426,7 @@ function field(
   const active = placed.find((cell) => cell.cursor) ?? { drawn: ' ', start: 0, width: 1 };
   const paint = (drawn: string, selected: boolean) => {
     const value = hint ? style.dim(drawn) : drawn;
-    return selected ? style.inverse(value) : value;
+    return selected && !data.editor ? style.inverse(value) : value;
   };
   if (hint && position > columns) {
     let result = '';
@@ -424,7 +438,10 @@ function field(
       result += paint(cell.drawn, cell.cursor);
       used += cell.width;
     }
-    return used === 0 ? style.inverse(' ') : result + ' '.repeat(columns - 1 - used) + ellipsis;
+    if (used === 0) {
+      return data.editor ? '' : style.inverse(' ');
+    }
+    return result + ' '.repeat(columns - 1 - used) + ellipsis;
   }
   if (position <= columns) {
     return placed.map((cell) => paint(cell.drawn, cell.cursor)).join('');
@@ -461,7 +478,10 @@ function field(
 }
 
 /** Gives message and separator space to the input field as the destination narrows. */
-function typedFrame(data: TypedFrame, context: ViewContext): string {
+function typedFrame(
+  data: TypedFrame & { editor?: boolean | undefined },
+  context: ViewContext,
+): string {
   const { style, width } = context;
   const columns = Math.max(1, context.columns ?? 80);
   // Only the glyph or the legend is dim, and the spaces around it are plain.
@@ -495,6 +515,7 @@ function typedFrame(data: TypedFrame, context: ViewContext): string {
       {
         columns: budget,
         cursor: hint ? 0 : (data.cursor ?? graphemes(data.typed).length),
+        editor: data.editor,
         hint,
         text: hint ? (data.hint ?? '') : data.typed,
       },
@@ -512,11 +533,73 @@ const questionFrame = view<QuestionFrame>('@loomcli/prompts/question-frame', {
     if (data.kind === 'select' || data.kind === 'multiselect') {
       return selectText(data, context, title);
     }
+    if (data.kind === 'editor') {
+      return (
+        typedFrame(
+          {
+            editor: true,
+            hint: data.editing
+              ? `Waiting for your editor to close the file${context.plain(glyph.ellipsis)}`
+              : 'Press Enter to open your editor',
+            issue: undefined,
+            kind: 'text',
+            message: data.message,
+            typed: '',
+          },
+          context,
+        ) + issue
+      );
+    }
     return typedFrame(data, context) + issue;
   },
 });
+/** Clips the answer before the message, then gives up the count as the row narrows. */
+function editorAnswer(
+  data: { message: string; answer: string; lines: number },
+  context: ViewContext,
+): string {
+  const { style, width } = context;
+  const columns = Math.max(1, context.columns ?? 80);
+  let message = data.message;
+  let answer = data.answer === '' ? style.dim('empty') : style.highlight(literal(data.answer));
+  let count =
+    data.answer !== '' && data.lines > 1
+      ? ` ${style.dim(`(+${data.lines - 1} ${data.lines === 2 ? 'line' : 'lines'})`)}`
+      : '';
+  const row = () => `${style.dim('?')} ${message} ${style.dim('·')} ${answer}${count}`;
+  const leading = (text: string, budget: number) => {
+    let result = '';
+    for (const part of graphemes(text)) {
+      if (width(literal(result + part)) > budget) {
+        break;
+      }
+      result += part;
+    }
+    return literal(result);
+  };
+  if (width(row()) > columns) {
+    const budget = Math.max(width(glyph.ellipsis), columns - width(row()) + width(answer));
+    answer = style.highlight(
+      leading(data.answer === '' ? 'empty' : data.answer, budget - width(glyph.ellipsis)) +
+        glyph.ellipsis,
+    );
+  }
+  if (width(row()) > columns) {
+    const budget = columns - width(row()) + width(message);
+    message = clipped(message, Math.max(width(glyph.ellipsis), budget), context);
+  }
+  if (width(row()) > columns) {
+    count = '';
+  }
+  return `${width(row()) > columns ? leading(context.plain(row()), columns) : row()}\n`;
+}
+
 const answeredLine = view<AnsweredLine>('@loomcli/prompts/answered-line', {
-  render: ({ message, answer, kind }, { style }) => {
+  render: ({ message, answer, kind, lines }, context) => {
+    const { style } = context;
+    if (kind === 'editor') {
+      return editorAnswer({ answer: answer ?? '', lines: lines ?? 0, message }, context);
+    }
     if (answer === undefined) {
       return `${style.dim('?')} ${message}\n`;
     }
@@ -616,6 +699,7 @@ export type {
   ProgressLine,
   QuestionFrame,
   TypedFrame,
+  EditorFrame,
   ListFrame,
   ChoiceRow,
   SeparatorRow,

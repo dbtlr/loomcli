@@ -1405,6 +1405,7 @@ export interface Out<Result = unknown> {
     fatal(message: string): never;
     // (undocumented)
     info(message: string): Promise<void>;
+    lendTerminal<Value>(work: () => Value | PromiseLike<Value>): Promise<Value>;
     // (undocumented)
     print(message: string): Promise<void>;
     region(options?: RegionOptions): Region;

@@ -128,3 +128,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-04: Proposed with the contract for choice objects, multiselect, and search (LM-461). It narrows ADR-0082's exports, link, validation, and four-kind clauses, and decides the several-value link ADR-0136 left open. ADR-0082 and ADR-0136 carry dated entries.
+- 2026-11-04: [ADR-0139](0139-an-editor-question-opens-the-operators-editor-on-a-private-temporary-file-and-core-lends-it-the-terminal.md), proposed, adds a sixth kind, `editor`, beside this record's fifth, and a fourth object variant, `EditorFrame`, to `questionFrame`'s data, beside the typed frame and the select and multiselect list frames, which keeps one view as this record has it. It binds when that record is accepted.

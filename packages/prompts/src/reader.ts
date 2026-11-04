@@ -308,6 +308,8 @@ interface Session {
   waiting: { resolve: (key: Key) => void; reject: (error: unknown) => void } | undefined;
   failure: { error: unknown } | undefined;
   release: () => void;
+  pause: () => void;
+  resume: () => void;
 }
 const sessions = new WeakMap<AbortSignal, Session>();
 
@@ -321,9 +323,13 @@ const sessions = new WeakMap<AbortSignal, Session>();
 function restoring<Options>(
   context: PromptContext<Options>,
   raw: (mode: boolean) => unknown,
+  paused: () => boolean,
 ): () => void {
   const removers = [
     context.onShutdown(() => {
+      if (paused()) {
+        return;
+      }
       raw(false);
       context.host.stderr.write(pasteOff);
       if (context.host.terminal.stderr.isTTY) {
@@ -331,10 +337,16 @@ function restoring<Options>(
       }
     }),
     context.onSuspend(() => {
+      if (paused()) {
+        return;
+      }
       raw(false);
       context.host.stderr.write(pasteOff);
     }),
     context.onResume(() => {
+      if (paused()) {
+        return;
+      }
       raw(true);
       void context.out.draw(pasteOn, controls);
     }),
@@ -354,10 +366,18 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
   }
   const raw = input.setRawMode.bind(input);
   let released = false;
+  let paused = false;
   let escapeTimer: ReturnType<typeof setTimeout> | undefined = undefined;
   let unregister: (() => void) | undefined = undefined;
   const session: Session = {
     failure: undefined,
+    pause: () => {
+      paused = true;
+      clearTimeout(escapeTimer);
+      raw(false);
+      input.pause();
+      input.off('data', data);
+    },
     queue,
     readers: 0,
     release: () => {
@@ -372,6 +392,16 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
       input.pause();
       input.off('data', data).off('end', end).off('close', end).off('error', inputError);
       context.signal.removeEventListener('abort', abort);
+    },
+    resume: () => {
+      if (released || !paused) {
+        return;
+      }
+      paused = false;
+      raw(true);
+      void context.out.draw(hideCursor + pasteOn, controls);
+      input.on('data', data);
+      input.resume();
     },
     waiting: undefined,
   };
@@ -450,7 +480,7 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
   try {
     raw(true);
     void context.out.draw(hideCursor + pasteOn, controls);
-    unregister = restoring(context, raw);
+    unregister = restoring(context, raw, () => paused);
     input.on('data', data).once('end', end).once('close', end).once('error', inputError);
     input.resume();
     if (input.readableEnded || input.destroyed) {
@@ -528,6 +558,19 @@ export function openReader<Options>(context: PromptContext<Options>) {
       queue.keys = queue.keys.filter((key) => readOf.get(key) !== lastRead);
       queue.discarded = lastRead;
     },
+    discardAll() {
+      queue.keys.length = 0;
+    },
+    /** Discards queued input and releases the keyboard while a child owns the terminal. */
+    pause() {
+      queue.keys.length = 0;
+      queue.pending = '';
+      queue.paste = undefined;
+      queue.carriage = false;
+      queue.held = undefined;
+      queue.decoder = new StringDecoder('utf8');
+      session.pause();
+    },
     async read(): Promise<Key> {
       context.signal.throwIfAborted();
       if (abandoned !== undefined) {
@@ -551,6 +594,9 @@ export function openReader<Options>(context: PromptContext<Options>) {
         };
         session.waiting = mine;
       });
+    },
+    resume() {
+      session.resume();
     },
   };
 }

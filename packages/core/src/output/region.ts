@@ -75,8 +75,58 @@ class Screen {
   #opened: number | undefined = undefined;
   /** Whether a suspend erased the stack, which shows nothing until the resume draws it again. */
   #suspended = false;
+  #depth = 0;
+  get lending(): number {
+    return this.#lentDrawn ? this.#depth : 0;
+  }
+  #lentDrawn = false;
 
   constructor(private readonly measure: Measure) {}
+
+  /** Starts a lend without erasing the stack that the child may write below. */
+  lend(): string {
+    const stack = this.#stack();
+    if (this.#depth === 0) {
+      this.#lentDrawn = stack !== undefined;
+    }
+    this.#depth += 1;
+    return this.#depth === 1 && stack !== undefined && !stack.text.endsWith('\n') ? '\n' : '';
+  }
+
+  /** A fresh stack starts below the child's output; none of its rows are ours to erase. */
+  reclaim(): string {
+    if (this.#depth === 0) {
+      return '';
+    }
+    this.#depth -= 1;
+    if (this.#depth > 0 || !this.#lentDrawn) {
+      return '';
+    }
+    this.#opened = undefined;
+    this.#column = 0;
+    const closed = [...this.#closedMeanwhile];
+    for (const slot of closed) {
+      this.#slots.splice(this.#slots.indexOf(slot), 1);
+    }
+    this.#closedMeanwhile.length = 0;
+    for (const slot of this.#slots) {
+      slot.shown = slot.latest;
+    }
+    return (
+      (this.#lentDrawn ? '\n' : '') +
+      closed.map(({ latest }) => scrollback(latest)).join('') +
+      this.#draw()
+    );
+  }
+
+  /** Shutdown cannot wait for author work; it writes the held last frames synchronously. */
+  finishLends(): string {
+    if (this.lending === 0) {
+      return '';
+    }
+    this.#depth = 1;
+    return this.reclaim();
+  }
 
   /** Whether any region is open on the screen. */
   get holding(): boolean {
@@ -90,7 +140,7 @@ class Screen {
 
   /** The frames the terminal shows, top to bottom, each starting on a row of its own. */
   #stack(): { marked: string; text: string } | undefined {
-    if (this.#suspended) {
+    if (this.lending > 0 || this.#suspended) {
       return undefined;
     }
     const frames = this.#slots.flatMap(({ shown }) =>
@@ -159,7 +209,7 @@ class Screen {
    * starts a row of its own.
    */
   suspend(): string {
-    if (this.#suspended) {
+    if (this.lending > 0 || this.#suspended) {
       return '';
     }
     const erase = this.#erase();
@@ -174,7 +224,7 @@ class Screen {
    * The shell leaves the cursor at the start of a row after it writes, as the erase did.
    */
   resume(): string {
-    if (!this.#suspended) {
+    if (this.lending > 0 || !this.#suspended) {
       return '';
     }
     this.#suspended = false;
@@ -183,6 +233,9 @@ class Screen {
 
   /** Text written to the terminal above the stack: what to write before it and after it. */
   around(text: string): { before: string; after: string } {
+    if (this.lending > 0) {
+      return { after: '', before: '' };
+    }
     const before = this.#uncover();
     this.note(text);
     return { after: this.#draw(), before };
@@ -220,7 +273,7 @@ class Screen {
       return '';
     }
     slot.latest = frame;
-    if (this.#frozen && !slot.input) {
+    if (this.lending > 0 || (this.#frozen && !slot.input)) {
       return '';
     }
     const before = this.#erase();
@@ -238,7 +291,7 @@ class Screen {
     if (!this.#slots.includes(slot)) {
       return '';
     }
-    if (this.#frozen && !slot.input) {
+    if (this.lending > 0 || (this.#frozen && !slot.input)) {
       slot.closed = true;
       this.#closedMeanwhile.push(slot);
       return '';

@@ -444,6 +444,7 @@ async function reportFailure(
   failure: LoomError,
   scene: FailureScene & { host: DeveloperScene['host'] },
 ): Promise<FailureReported> {
+  await sink.output.waitForLends();
   const collected = collectHints(scene, failure, {
     logging: sink.logging,
     style: sink.output.context('stderr').style,
