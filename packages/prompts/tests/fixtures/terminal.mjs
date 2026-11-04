@@ -41,6 +41,10 @@ const app = new Application('setup', {
       setTimeout(() => process.exit(3), Number(process.env.PROMPT_EXIT_AFTER));
     }
     if (scenario === 'editor') {
+      // An editor script that signals its parent ends the process mid-edit through its own exit.
+      if (process.env.PROMPT_EXIT_ON_USR2 === '1') {
+        process.once('SIGUSR2', () => process.exit(3));
+      }
       const answer = await editor(context, {
         message: 'Notes',
         validate: {

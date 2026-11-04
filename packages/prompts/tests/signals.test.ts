@@ -13,8 +13,14 @@
  *   after `fg`.
  * - A process that ends mid-question, by `kill -TERM` or by `process.exit()`, leaves the terminal
  *   cooked with the cursor shown.
+ * - A process that ends by `process.exit()` while an editor question's editor runs ends the editor
+ *   and removes its folder, and the question writes no terminal control over the editor.
  */
-import { expect, test } from 'vite-plus/test';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+
+import { expect, test, vi } from 'vite-plus/test';
 
 import { zsh } from '../../../scripts/test-pty.js';
 import { drive } from '../../../scripts/test-terminal.js';
@@ -60,6 +66,19 @@ function underSh(scenario: string, env: Record<string, string> = {}) {
     ],
     { NO_COLOR: '1', ...env },
   );
+}
+
+/** Whether the process `pid` names is still running; an unnamed one is not. */
+function alive(pid: number | undefined): boolean {
+  if (pid === undefined) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** The raw-mode flags one line of a transcript names after `label=`. */
@@ -265,6 +284,53 @@ test.skipIf(zsh === undefined).each([
       expect(modesOf(ended, 'modes-after')).toBe(modesOf(ended, 'modes-before'));
     } finally {
       await terminal.close();
+    }
+  },
+);
+
+test.skipIf(zsh === undefined)(
+  'a process that exits while the editor runs ends it, removes its folder, and writes no control over it',
+  async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'editor-exit-'));
+    const script = join(folder, 'edit.sh');
+    // The editor names its process and file, asks its parent to exit, and runs until it is ended.
+    // It ignores the hangup the terminal's session sends as it closes, so only SIGTERM ends it.
+    writeFileSync(
+      script,
+      'trap "" HUP\nprintf "EDITOR-RUNNING:%s:%s:\\n" "$$" "$1" >&2\nkill -USR2 $PPID\nwhile :; do sleep 0.1; done\n',
+    );
+    const terminal = underSh('editor', {
+      EDITOR: `sh '${script}'`,
+      PROMPT_EXIT_ON_USR2: '1',
+      TMPDIR: folder,
+      VISUAL: '',
+    });
+    let editorPid: number | undefined = undefined;
+    try {
+      await terminal.expect('Press Enter to open your editor');
+      terminal.send(String.raw`\r`);
+      const ended = await terminal.expect('@@DONE@@');
+      expect(ended).toContain('status=3');
+      const running = /EDITOR-RUNNING:(?<pid>\d+):(?<file>[^:]+):/u.exec(ended)?.groups;
+      expect(running).toBeDefined();
+      editorPid = Number(running?.pid);
+      expect(existsSync(dirname(running?.file ?? folder))).toBe(false);
+      // The question's shutdown handler sent the editor SIGTERM, so it ends without a later signal.
+      await vi.waitFor(
+        () => {
+          expect(alive(editorPid)).toBe(false);
+        },
+        { timeout: 5000 },
+      );
+      expect(ended.slice(ended.indexOf('EDITOR-RUNNING'))).not.toContain('\u001B[?2004l');
+      expect(modesOf(ended, 'modes-after')).toBe(modesOf(ended, 'modes-before'));
+    } finally {
+      // An editor a broken shutdown left running is ended here, by the PID it printed.
+      if (editorPid !== undefined && alive(editorPid)) {
+        process.kill(editorPid, 'SIGKILL');
+      }
+      await terminal.close();
+      rmSync(folder, { force: true, recursive: true });
     }
   },
 );
