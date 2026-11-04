@@ -41,13 +41,15 @@ async function askEditor<Options, Output>(
     [context.host.env.VISUAL, context.host.env.EDITOR].find((value) => value?.trim()) ?? 'vi';
   const quoted = escapeControlCharacters(command);
   const reader = openReader(context);
-  reader.discardAll();
   const draw = asking(context, { kind: 'editor', message: settings.message }, reader);
   const signal = AbortSignal.any([context.signal, draw.signal]);
   let folder: string | undefined = undefined;
   let file = '';
-  let saved = settings.hint ?? '';
-  let missing = false;
+  /** The bytes the file held when the editor last opened it, which a lost file is written back with. */
+  let held: Uint8Array = new TextEncoder().encode(settings.hint ?? '');
+  let saved = '';
+  /** Whether the editor left no readable file in the answer's place, which Enter writes again. */
+  let lost = false;
   let issue: string | undefined = undefined;
   let answered: { value: string; lines: number } | undefined = undefined;
   const cleanup = () => {
@@ -64,6 +66,8 @@ async function askEditor<Options, Output>(
     draw.frame({ editing, issue, kind: 'editor', message: settings.message });
   try {
     await frame(false);
+    // The question shows now, so keys left from the reads an earlier question took are not its own.
+    reader.discardTaken();
     while (true) {
       const key = await reader.read();
       if (key.kind === 'eof') {
@@ -82,10 +86,11 @@ async function askEditor<Options, Output>(
             folder,
             `answer${extension === '' || extension.startsWith('.') ? extension : `.${extension}`}`,
           );
-          writeFileSync(file, saved, { flag: 'wx', mode: 0o600 });
-        } else if (missing) {
-          writeFileSync(file, saved, { flag: 'wx', mode: 0o600 });
-          missing = false;
+          writeFileSync(file, held, { flag: 'wx', mode: 0o600 });
+        } else if (lost) {
+          rmSync(file, { force: true, recursive: true });
+          writeFileSync(file, held, { flag: 'wx', mode: 0o600 });
+          lost = false;
         }
       } catch (error) {
         throw new EditorError(
@@ -140,14 +145,15 @@ async function askEditor<Options, Output>(
         try {
           bytes = readFileSync(file);
         } catch (error) {
-          if (systemCode(error) !== 'ENOENT') {
-            throw error;
-          }
-          missing = true;
+          lost = true;
+          const code = systemCode(error);
           issue =
-            "The editor removed the answer's file. Save the answer before you close the editor.";
+            code === 'ENOENT'
+              ? "The editor removed the answer's file. Save the answer before you close the editor."
+              : `The question cannot read the answer's file (${code}). Save the answer as a file before you close the editor.`;
         }
         if (bytes !== undefined) {
+          held = bytes;
           try {
             saved = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
           } catch {

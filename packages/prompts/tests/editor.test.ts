@@ -1,12 +1,20 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 
 import { Application, FatalError } from '@loomcli/core';
-import { editor, EditorError } from '@loomcli/prompts';
+import { editor, EditorError, text } from '@loomcli/prompts';
 import { mockProcess } from '@loomcli/testing';
-import { expect, test } from 'vite-plus/test';
+import { expect, test, vi } from 'vite-plus/test';
 
 test('editor lends cooked stdin, seeds a private file and returns saved UTF-8 exactly', async () => {
   const folder = mkdtempSync(join(tmpdir(), 'editor-test-'));
@@ -395,5 +403,272 @@ test.each([false, true])(
     await expect(app.run({ process: mock })).resolves.toBe(linked ? 2 : 1);
     const invoked = await app.invoke([], {}, { process: mockProcess() });
     expect(invoked).toMatchObject({ exitCode: linked ? 2 : 1, status: 'failed' });
+  },
+);
+
+/** Runs `body` with a private folder for TMPDIR, removed when it settles. */
+async function inFolder(body: (folder: string) => Promise<void>): Promise<void> {
+  const folder = mkdtempSync(join(tmpdir(), 'editor-test-'));
+  try {
+    await body(folder);
+  } finally {
+    rmSync(folder, { force: true, recursive: true });
+  }
+}
+
+test('an editor asked at once with a text question discards the rest of the read its Enter ended', async () => {
+  await inFolder(async (folder) => {
+    let spawned = 0;
+    let typed: unknown = undefined;
+    const mock = mockProcess({
+      env: { TMPDIR: folder },
+      programs: {
+        '/bin/sh': () => {
+          spawned += 1;
+          return {};
+        },
+      },
+      // The later read is Ctrl-D, typed once the editor question shows.
+      terminal: { columns: 80, keys: [['42\r\r', '\u0004']], rows: 24 },
+    });
+    const app = new Application('edit').action(async (context) => {
+      const asked = text(context, { message: 'Port' });
+      await Promise.all([
+        (async () => {
+          typed = await asked;
+        })(),
+        editor(context, { message: 'Notes' }),
+      ]);
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(130);
+    expect(typed).toBe('42');
+    expect(spawned).toBe(0);
+  });
+});
+
+test('an editor asked after a text question discards the keys left in the read that answered it', async () => {
+  await inFolder(async (folder) => {
+    let spawned = 0;
+    const mock = mockProcess({
+      env: { TMPDIR: folder },
+      programs: {
+        '/bin/sh': () => {
+          spawned += 1;
+          return {};
+        },
+      },
+      terminal: { columns: 80, keys: ['42\r\r', '\u0004'], rows: 24 },
+    });
+    const app = new Application('edit').action(async (context) => {
+      await expect(text(context, { message: 'Port' })).resolves.toBe('42');
+      await editor(context, { message: 'Notes' });
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(130);
+    expect(spawned).toBe(0);
+  });
+});
+
+test('a removed file comes back with the bytes it held when that editor opened', async () => {
+  await inFolder(async (folder) => {
+    let calls = 0;
+    let reopened = Buffer.alloc(0);
+    const mock = mockProcess({
+      env: { TMPDIR: folder },
+      programs: {
+        '/bin/sh': ({ args }) => {
+          const file = args[3] ?? '';
+          calls += 1;
+          if (calls === 1) {
+            writeFileSync(file, Buffer.from([255]));
+          } else if (calls === 2) {
+            rmSync(file);
+          } else {
+            reopened = readFileSync(file);
+            writeFileSync(file, 'good\n');
+          }
+          return {};
+        },
+      },
+      terminal: { columns: 80, keys: ['\r', '\r', '\r'], rows: 24 },
+    });
+    const app = new Application('edit').action(async (context) => {
+      await expect(editor(context, { default: 'seed', message: 'Notes' })).resolves.toBe('good\n');
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(calls).toBe(3);
+    expect(reopened).toEqual(Buffer.from([255]));
+  });
+});
+
+test('a file the question cannot read after the editor exits is an issue, and Enter reopens what it last held', async () => {
+  await inFolder(async (folder) => {
+    let calls = 0;
+    let reopened = '';
+    let mode = 0;
+    const mock = mockProcess({
+      env: { NO_COLOR: '1', TMPDIR: folder },
+      programs: {
+        '/bin/sh': ({ args }) => {
+          const file = args[3] ?? '';
+          calls += 1;
+          if (calls === 1) {
+            rmSync(file);
+            mkdirSync(file);
+          } else {
+            reopened = readFileSync(file, 'utf8');
+            mode = statSync(file).mode & 0o777;
+            writeFileSync(file, 'good\n');
+          }
+          return {};
+        },
+      },
+      terminal: { columns: 120, keys: ['\r', '\r'], rows: 24 },
+    });
+    const app = new Application('edit').action(async (context) => {
+      await expect(editor(context, { default: 'seed', message: 'Notes' })).resolves.toBe('good\n');
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(calls).toBe(2);
+    expect(reopened).toBe('seed');
+    expect(mode).toBe(0o600);
+    expect(stripVTControlCharacters(mock.stderr.text)).toContain(
+      "The question cannot read the answer's file (EISDIR). Save the answer as a file before you close the editor.",
+    );
+  });
+});
+
+test('a suspend and resume while the editor runs enter no raw mode, hide no cursor, and take no entry', async () => {
+  await inFolder(async (folder) => {
+    let start = 0;
+    const mock = mockProcess({
+      env: { TMPDIR: folder },
+      programs: {
+        '/bin/sh': ({ args }) => {
+          start = mock.stderr.text.length;
+          mock.signals.raise('SIGTSTP');
+          expect(mock.stdin.isRaw).toBe(false);
+          writeFileSync(args[3] ?? '', 'good\n');
+          return {};
+        },
+      },
+      // A resume that entered raw mode would take an entry, and none is left for it.
+      terminal: { columns: 80, keys: ['\r'], rows: 24 },
+    });
+    const app = new Application('edit').action(async (context) => {
+      await expect(editor(context, { message: 'Notes' })).resolves.toBe('good\n');
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(mock.stdin.isRaw).toBe(false);
+    expect(mock.stderr.text.slice(start)).not.toContain('\u001b[?25l');
+  });
+});
+
+test('a shutdown that cuts the run off while the editor runs ends it and removes its folder', async () => {
+  await inFolder(async (folder) => {
+    let file = '';
+    const child: { signal?: AbortSignal } = {};
+    const facts: { removed?: boolean } = {};
+    const mock = mockProcess({
+      env: { TMPDIR: folder },
+      programs: {
+        '/bin/sh': ({ args, signal }) => {
+          file = args[3] ?? '';
+          child.signal = signal;
+          // The first SIGTERM starts the shutdown, and the second ends it at once.
+          // Its onShutdown handlers run inside that raise, before the question's own cleanup.
+          mock.signals.raise('SIGTERM');
+          mock.signals.raise('SIGTERM');
+          facts.removed = !existsSync(dirname(file));
+          return new Promise(() => {});
+        },
+      },
+      terminal: { columns: 80, keys: ['\r'], rows: 24 },
+    });
+    const app = new Application('edit').action(async (context) => {
+      await editor(context, { message: 'Notes' });
+    });
+    void app.run({ process: mock });
+    await vi.waitFor(() => {
+      expect(mock.endedBy).toBe('SIGTERM');
+    });
+    expect(child.signal?.aborted).toBe(true);
+    expect(facts.removed).toBe(true);
+  });
+});
+
+test('the cancelled line waits for the lend and lands below what the editor wrote', async () => {
+  await inFolder(async (folder) => {
+    const mock = mockProcess({
+      env: { NO_COLOR: '1', TMPDIR: folder },
+      programs: {
+        '/bin/sh': () => {
+          mock.stderr.write('EDITOR-SCREEN');
+          mock.signals.raise('SIGINT');
+          return new Promise(() => {});
+        },
+      },
+      terminal: { columns: 80, keys: ['\r'], rows: 24 },
+    });
+    const app = new Application('edit').action(async (context) => {
+      await editor(context, { message: 'Notes' });
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(130);
+    const after = mock.stderr.text.slice(mock.stderr.text.indexOf('EDITOR-SCREEN'));
+    expect(after).not.toContain('\u001b[J');
+    expect(after).not.toContain('\u001b[1A');
+    expect(stripVTControlCharacters(after)).toBe('EDITOR-SCREEN\n? Notes · cancelled\n');
+  });
+});
+
+test('the folder is named for the application and six characters, inside TMPDIR', async () => {
+  await inFolder(async (folder) => {
+    let file = '';
+    const mock = mockProcess({
+      env: { TMPDIR: folder },
+      programs: {
+        '/bin/sh': ({ args }) => {
+          file = args[3] ?? '';
+          return {};
+        },
+      },
+      terminal: { columns: 80, keys: ['\r'], rows: 24 },
+    });
+    const app = new Application('notes-app').action(async (context) => {
+      await editor(context, { message: 'Notes' });
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    expect(dirname(dirname(file))).toBe(folder);
+    expect(basename(dirname(file))).toMatch(/^notes-app-[\w]{6}$/u);
+  });
+});
+
+test.each([
+  ['.md', 'answer.md'],
+  ['', 'answer'],
+  [undefined, 'answer'],
+] satisfies [string | undefined, string][])(
+  'the extension %j names the file %s',
+  async (extension, name) => {
+    await inFolder(async (folder) => {
+      let file = '';
+      const mock = mockProcess({
+        env: { TMPDIR: folder },
+        programs: {
+          '/bin/sh': ({ args }) => {
+            file = args[3] ?? '';
+            return {};
+          },
+        },
+        terminal: { columns: 80, keys: ['\r'], rows: 24 },
+      });
+      const app = new Application('edit').action(async (context) => {
+        await editor(
+          context,
+          extension === undefined ? { message: 'Notes' } : { extension, message: 'Notes' },
+        );
+      });
+      await expect(app.run({ process: mock })).resolves.toBe(0);
+      expect(basename(file)).toBe(name);
+    });
   },
 );

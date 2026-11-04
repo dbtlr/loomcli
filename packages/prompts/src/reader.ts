@@ -46,6 +46,8 @@ interface InputQueue {
   held: number | undefined;
   /** The read an accepted secret discarded, whose open sequence or paste yields no key when it ends. */
   discarded: number | undefined;
+  /** The latest read a question has taken a key from, 0 before any has. */
+  taken: number;
 }
 /** Typeahead belongs to the run, not a question. */
 const readOf = new WeakMap<Key, number>();
@@ -512,6 +514,7 @@ export function openReader<Options>(context: PromptContext<Options>) {
     pending: '',
     pendingRead: 0,
     read: 0,
+    taken: 0,
   };
   queues.set(context.signal, queue);
   const session = sessions.get(context.signal) ?? holdInput(context, queue);
@@ -520,6 +523,11 @@ export function openReader<Options>(context: PromptContext<Options>) {
   let abandoned: { reason: unknown } | undefined = undefined;
   let mine: Session['waiting'] = undefined;
   let lastRead: number | undefined = undefined;
+  /** Notes the read a key this question takes came from. */
+  const took = (key: Key) => {
+    lastRead = readOf.get(key);
+    queue.taken = Math.max(queue.taken, lastRead ?? 0);
+  };
   return {
     /**
      * Ends this question's reading with `reason`: its pending read rejects, and so does every later
@@ -558,8 +566,13 @@ export function openReader<Options>(context: PromptContext<Options>) {
       queue.keys = queue.keys.filter((key) => readOf.get(key) !== lastRead);
       queue.discarded = lastRead;
     },
-    discardAll() {
-      queue.keys.length = 0;
+    /**
+     * Discards every queued key from a read a question has already taken a key from, so the rest of
+     * the read that answered an earlier question never answers this one. A read no question has
+     * taken from stays, as keys typed for this question.
+     */
+    discardTaken() {
+      queue.keys = queue.keys.filter((key) => (readOf.get(key) ?? 0) > queue.taken);
     },
     /** Discards queued input and releases the keyboard while a child owns the terminal. */
     pause() {
@@ -581,14 +594,14 @@ export function openReader<Options>(context: PromptContext<Options>) {
       }
       const key = queue.keys.shift();
       if (key) {
-        lastRead = readOf.get(key);
+        took(key);
         return key;
       }
       return new Promise<Key>((resolve, reject) => {
         mine = {
           reject,
           resolve: (next) => {
-            lastRead = readOf.get(next);
+            took(next);
             resolve(next);
           },
         };
