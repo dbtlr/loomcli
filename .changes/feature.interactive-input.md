@@ -2,3 +2,4 @@
 - Allow text, secret, and select questions to link a scalar string argument for prefilling and skipping with its validated value.
 - Add grapheme-aware cursor movement, word editing, hint acceptance, bracketed paste, and one-row fitting to typed questions. Question frame data gains an optional `cursor`, and frame data without one draws the cursor at the end of the typed line. Restore bracketed paste mode on every exit and discard secret typeahead after acceptance.
 - Add the `key` table to `@loomcli/testing` and support separate reads, handed over 100 milliseconds apart, within a scripted keyboard entry.
+- Fix MCP tool input schemas so a required multiple option or variadic argument declares `minItems: 1`, because an empty list reads as missing.

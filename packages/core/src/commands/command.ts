@@ -1304,7 +1304,7 @@ function checkSlotOrder(
       sentence: `Argument "${slot.input.name}" is variadic and precedes argument "${next.input.name}" on ${subject}.`,
     });
   }
-  if (slot.input.config.required === 'non-interactive' && next.required) {
+  if (slot.input.config.required === 'non-interactive' && needsValue(next)) {
     throw new DeclarationError(optionalArgumentLast, {
       correction:
         'Declare arguments required only when input is not interactive after required ones.',
@@ -1323,6 +1323,15 @@ function checkSlotOrder(
       sentence: `Argument "${slot.input.name}" is optional and precedes required argument "${next.input.name}" on ${subject}.`,
     });
   }
+}
+
+/**
+ * Whether a slot must receive a value at a terminal: a required argument, or a content argument
+ * whose minimum asks for at least one source.
+ */
+function needsValue(slot: ArgumentSlot): boolean {
+  const { config } = slot.input;
+  return slot.required || (config.type === 'content' && (config.min ?? 0) > 0);
 }
 
 /**

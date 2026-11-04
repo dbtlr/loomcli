@@ -112,6 +112,12 @@ function listing() {
     .option('flag', { description: 'A flag.', type: 'boolean' })
     .option('level', { description: 'A count.', type: 'count' })
     .option('tag', { description: 'A tag.', multiple: true, required: true, type: 'string' })
+    .option('topic', {
+      description: 'A topic.',
+      multiple: true,
+      required: 'non-interactive',
+      type: 'string',
+    })
     .option('label', {
       default: ['a', 'b'],
       description: 'A label.',

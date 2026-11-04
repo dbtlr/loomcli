@@ -237,6 +237,21 @@ test('an unconditional argument cannot follow a conditional argument', () => {
   );
 });
 
+test('a content argument that needs a source cannot follow a conditional argument', () => {
+  expect(() =>
+    new Application('lint')
+      .argument('profile', { required: 'non-interactive' })
+      .argument('files', { min: 1, type: 'content', variadic: true }),
+  ).toThrow(
+    'Argument "profile" is required only when input is not interactive and precedes required argument "files" on the root Command.',
+  );
+  expect(() =>
+    new Application('lint')
+      .argument('profile', { required: 'non-interactive' })
+      .argument('files', { type: 'content', variadic: true }),
+  ).not.toThrow();
+});
+
 test('a conditional variadic argument is an empty list at a terminal and missing by name', async () => {
   const seen: unknown[] = [];
   const app = new Application('copy')
