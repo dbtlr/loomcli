@@ -368,7 +368,7 @@ export interface ConfigurationNode {
     readonly schema: InputSchema;
 }
 
-// @public @sealed
+// @public
 export type Content = (ContentReader & {
     readonly kind: 'file';
     readonly path: string;
@@ -514,6 +514,14 @@ export function encodeFailure(mediaType: string, encoder: FailureEncoder): Failu
 
 // @public @sealed
 export type EndingSignal = 'SIGHUP' | 'SIGINT' | 'SIGQUIT' | 'SIGTERM';
+
+// @public
+export interface EnvBinding {
+    // (undocumented)
+    env?: string | readonly [string, ...string[]];
+    envAllowEmpty?: never;
+    envDelimiter?: never;
+}
 
 // @public @sealed
 export interface EnvironmentContext {
@@ -1163,8 +1171,21 @@ export type LinkedOutput<Args, Options, Link> = Link extends {
 // @public @sealed
 export type LinkedValue<Value> = [Value] extends [readonly (infer Element)[]] ? Element : Value;
 
-// @public @sealed
+// @public
 export type LinkedValueContext<Args, Options> = Pick<ActionContext<Args, Options>, 'args' | 'options' | 'graph' | 'command' | 'host' | 'passthrough' | 'supplied'>;
+
+// @public
+export type ListBinding = {
+    multiple: true;
+    env?: never;
+    envDelimiter?: never;
+    envAllowEmpty?: never;
+} | {
+    multiple: true;
+    env: string | readonly [string, ...string[]];
+    envDelimiter: string;
+    envAllowEmpty?: never;
+};
 
 // @public
 export function locate(graph: CommandGraph, words: readonly string[]): WordPosition;
@@ -1913,6 +1934,13 @@ export interface StdinContext {
     // (undocumented)
     readonly stdin?: Content | undefined;
 }
+
+// @public
+export type StringBinding = EnvBinding | {
+    env: string | readonly [string, ...string[]];
+    envDelimiter?: never;
+    envAllowEmpty?: boolean;
+};
 
 // @public (undocumented)
 export type StringOption = UnmarkedStringOption | BackgroundOption;

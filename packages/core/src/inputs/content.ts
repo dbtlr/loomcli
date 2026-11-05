@@ -14,7 +14,6 @@ import type { Host } from '../host/types.js';
  * A prepared source whose contents are read only when the action asks for them.
  *
  * @public
- * @sealed
  */
 type Content =
   | (ContentReader & { readonly kind: 'file'; readonly path: string })

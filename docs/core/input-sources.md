@@ -10,7 +10,7 @@ This page states where an input reads a value besides argv: environment bindings
 // `StringOption`, `ContentOption`, `BooleanOption`, `CountOption`, and `GlobalOptionConfig` accept `env`, except an option that carries the color, verbose, or quiet mark, so `{ type: 'count', verbose: true, env: 'V' }` fails to compile.
 // A multiple option binds `env` only beside `envDelimiter`, so `{ multiple: true, env: 'FIELDS' }` fails to compile and `{ multiple: true, env: 'FIELDS', envDelimiter: ',' }` compiles. `envDelimiter` on an option that is not multiple, or on one that binds no variable, fails to compile.
 // Only a scalar string option that binds `env` declares `envAllowEmpty`, so `{ type: 'string', env: 'APP_PREFIX', envAllowEmpty: true }` compiles, and the key on an option that binds no variable, on a multiple option, or on a Boolean, counted, or content option fails to compile.
-// Core exports `SourceResolver`, `SourceContext`, `SourceAnswer`, and `ContextualStyle`, the type of an action's `style`.
+// Core exports `EnvBinding`, `StringBinding`, and `ListBinding`, so a helper that builds one binding for several options can name it, and `SourceResolver`, `SourceContext`, `SourceAnswer`, and `ContextualStyle`, the type of an action's `style`.
 interface EnvBinding {
   env?: string | readonly [string, ...string[]]; // one name, or a non-empty list: AWS_REGION first, then AWS_DEFAULT_REGION
   envDelimiter?: never; // only a multiple option declares a delimiter

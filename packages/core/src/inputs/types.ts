@@ -58,7 +58,11 @@ type Presence = { required: true; default?: never } | { required?: false; defaul
  */
 type Multiplicity = ListBinding | ({ multiple?: false } & StringBinding);
 
-/** A multiple option's binding: no variable, or a variable and the delimiter that splits it. */
+/**
+ * A multiple option's binding: no variable, or a variable and the delimiter that splits it.
+ *
+ * @public
+ */
 type ListBinding =
   | { multiple: true; env?: never; envDelimiter?: never; envAllowEmpty?: never }
   | {
@@ -73,6 +77,8 @@ type ListBinding =
  * A scalar string option's binding: the plain binding, or a variable an empty value may supply.
  * Only the member that requires `env` declares `envAllowEmpty`, so the types reject the key on an
  * option that binds no variable, while a binding whose `env` may be absent still fits the plain one.
+ *
+ * @public
  */
 type StringBinding =
   | EnvBinding
@@ -87,6 +93,8 @@ type StringBinding =
  * The environment binding: the variable, or the non-empty list of variables, the input-source
  * stage fills the option from when argv supplies none. The first name holding a value supplies it.
  * The declaration names each explicitly, and core derives no name.
+ *
+ * @public
  */
 interface EnvBinding {
   env?: string | readonly [string, ...string[]];
@@ -616,4 +624,4 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
     ? number
     : boolean;
 
-export type { Unmarked };
+export type { EnvBinding, ListBinding, StringBinding, Unmarked };
