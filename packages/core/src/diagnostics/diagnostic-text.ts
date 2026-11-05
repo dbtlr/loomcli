@@ -7,7 +7,6 @@ import { isPlainObject } from '../support/plain.js';
  * that raises it. `diagnosticRule()` builds and freezes it.
  *
  * @public
- * @sealed
  */
 interface DiagnosticRule {
   readonly identity: string;

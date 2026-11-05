@@ -1,0 +1,1 @@
+- Let an application subclass `InternalError`, as it already may `LoomError`, `UsageError`, and `FatalError`, and mark `DiagnosticRule` and `InvokedBy` as types an author may write and hand to Loom, as the [public exports](docs/core/public-exports.md) page describes. A release adds any new member to them as optional.

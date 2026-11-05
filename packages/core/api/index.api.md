@@ -483,7 +483,7 @@ export interface DiagnosticParts {
     readonly sentence: string;
 }
 
-// @public @sealed
+// @public
 export interface DiagnosticRule {
     // (undocumented)
     readonly docs: string | undefined;
@@ -1060,7 +1060,7 @@ export interface InputTerminal {
     isTTY: boolean;
 }
 
-// @public @sealed
+// @public
 export class InternalError extends LoomError {
     constructor(rule: DiagnosticRule, parts: Omit<DiagnosticParts, 'findings'> & {
         readonly cause: unknown;
@@ -1111,7 +1111,7 @@ export interface InvocationValues {
     readonly passthrough?: readonly string[];
 }
 
-// @public @sealed
+// @public
 export type InvokedBy = 'argv' | 'name';
 
 // @public
