@@ -883,16 +883,16 @@ A publishable first-party package under `packages/`, a library or the `@loomcli/
 _Avoid_: Release target, public workspace
 
 **Public export**:
-A name a published library's entry points export. Every public export is judged as a function or constant, a sealed type, an author-built type, or a class the author may or must not subclass, and a change to it is classified by that judgment.
+A name a published library's entry points export. Every public export is judged as a function or constant, an input type, an output type, or a class the author may or must not subclass, and a change to it is classified by that judgment.
 _Avoid_: Public surface (for exported names alone), internal export, private export
 
-**Sealed type**:
-A public type every value of which a Loom library builds, its testing builders included, and which the author only reads, such as `Out` or a context. A new member on it is not breaking.
-_Avoid_: Core-built type, read-only type
+**Input type**:
+A public type whose values an author may hand to a Loom function, so the author may have created them, such as `CommandOptions`, `PluginDefinition`, a view, a validator, or a testing builder's input. A type that goes both ways is an input type unless only Loom can create its values, and a new required member on one is breaking.
+_Avoid_: Author-built type, construction type, supplied type
 
-**Author-built type**:
-A public type whose values the author builds and hands to a library, such as `CommandOptions`, `PluginDefinition`, a view, a validator, `ProcessHandle`, or a testing builder's input. A new required member on it is breaking.
-_Avoid_: Construction type, input type
+**Output type**:
+A public type whose values Loom hands to the author's code as a parameter, a context member, or a result, and which no author hands back unless only Loom can create its values, such as `Command` or `Plugin`. The author reads it and may pass it to their own functions, and a new member on it is not breaking.
+_Avoid_: Sealed type, core-built type, received type
 
 **Change fragment**:
 A pending record of one pull request's consumer-visible changes and any required migration, kept in a package's fragment folder, `.changes/` unless the toolchain configuration file names another, until a cut consumes it. Its kind is breaking, feature, or fix.
