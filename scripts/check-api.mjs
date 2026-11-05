@@ -192,13 +192,10 @@ function listedDeclarations(program, entryFile, projectFolder, names) {
   const pending = [];
   const visitFrom = (root, accepts, followsClassState) => {
     const visit = (node) => {
-      // An unexported class's constructor and properties are not what a public type picks from it.
-      // `Command` picks `CommandBuilder`'s methods, never its state, so only methods lead on.
-      if (
-        !followsClassState &&
-        ts.isClassDeclaration(node.parent ?? node) &&
-        (ts.isConstructorDeclaration(node) || ts.isPropertyDeclaration(node))
-      ) {
+      // A public type picks members from an unexported class, as `Command` does from `CommandBuilder`.
+      // No public type picks a constructor, and only the constructor takes a builder's internal state.
+      // A constructor therefore leads to no further declaration.
+      if (!followsClassState && ts.isConstructorDeclaration(node)) {
         return;
       }
       if (ts.isIdentifier(node) && accepts(node.text)) {

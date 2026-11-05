@@ -309,9 +309,9 @@ test('listed declarations are printed in name order, whatever order the source h
   expect(text.indexOf('interface Alpha')).toBeLessThan(text.indexOf('interface Zeta'));
 });
 
-test("an unexported class's constructor and properties lead to no further declaration", () => {
+test("an unexported class's constructor leads to no further declaration, but its members do", () => {
   const { config, root } = fixture(
-    "import type { Builder } from './hidden.js';\n/** A function. @public */\nexport declare function get(): Pick<Builder, 'run'>;",
+    "import type { Builder } from './hidden.js';\n/** A function. @public */\nexport declare function get(): Pick<Builder, 'run' | 'store'>;",
     {
       'dist/hidden.d.ts': [
         'interface State {\n  internal: string;\n}',
@@ -332,8 +332,8 @@ test("an unexported class's constructor and properties lead to no further declar
   expect(checkApi(root, [listed], { update: true })).toEqual([]);
   const text = readFileSync(listedFile(root), 'utf8');
   expect(text).toContain('interface Outcome');
+  expect(text).toContain('interface Store');
   expect(text).not.toContain('interface State');
-  expect(text).not.toContain('interface Store');
 });
 
 test('an entry that lists nothing writes no companion file, and a stale one fails until --update removes it', () => {

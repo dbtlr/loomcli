@@ -688,6 +688,8 @@ type WholeNumbersBelow<Bound extends number, Counted extends number[] = [
 type WithProviderGlobals<Globals, Uses extends readonly AnyProvider[]> = Uses extends readonly [
 ] ? Globals : Globals & ProviderGlobals<Uses>;
 
+declare const applicationEnvironment: unique symbol;
+
 declare const colors: {
     black: number;
     blue: number;
@@ -707,7 +709,13 @@ declare const colors: {
     yellow: number;
 };
 
+export declare const commandValue: unique symbol;
+
 export declare const declaredTypes: unique symbol;
+
+declare const extensionTarget: unique symbol;
+
+declare const failureEncoding: unique symbol;
 
 declare const firstReserved = 126;
 
@@ -721,6 +729,10 @@ declare const modifiers: readonly [
     'strikethrough',
     'overline'
 ];
+
+declare const pluginOptions: unique symbol;
+
+declare const pluginTheme: unique symbol;
 
 declare const providerTypes: unique symbol;
 
@@ -757,4 +769,8 @@ declare const tokens: readonly [
     'error',
     'info'
 ];
+
+declare const translation: unique symbol;
+
+declare const viewOverride: unique symbol;
 ```
