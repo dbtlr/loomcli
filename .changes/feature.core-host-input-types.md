@@ -1,0 +1,1 @@
+- Mark `Host`, `HostTerminal`, `OnShutdown`, `OnSuspend`, and `OnResume` as input types, which an author may write and hand to Loom, such as a host a test states for a testing builder, as the [public exports](docs/core/public-exports.md) page describes, rather than output types only Loom builds. Core adds any new member to them as optional, with a default when it is missing.
