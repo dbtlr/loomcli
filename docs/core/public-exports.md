@@ -48,7 +48,7 @@ Every export carries the TSDoc tag `@public`. An output type, and a class you mu
 
 TSDoc defines `@sealed` for classes and their members. Loom also puts it on interfaces and type aliases to mark an output type, a named deviation, because the API report writes it beside each name, where a reviewer reads it. The promise it carries, that Loom may add members, is the one Rust's `#[non_exhaustive]` attribute states.
 
-Your editor shows the tags on hover. Each covered entry point's API report, committed beside its package as `api/<entry>.api.md`, lists every export with its tags.
+Your editor shows the tags on hover. Each covered entry point's API report, committed beside its package as `api/<entry>.api.md`, lists every export with its tags. A public type written over an unexported declaration, such as `Command`, which is `Pick<CommandBuilder, ...>`, shows only that outer text there, so a companion file, `api/<entry>.listed.md`, records the shape of each such declaration and of the unexported types it uses, and a change to a method you call shows in the diff.
 
 ## What a change to each kind breaks
 
@@ -70,9 +70,10 @@ The [changelog guide](../../.changes/README.md#explain-a-breaking-change) holds 
 - a re-exported external type the check does not list;
 - an undefined tag, or `@internal`, `@beta`, or `@alpha`;
 - an emitted surface that differs from its committed report;
+- a listed declaration, or a type it uses, whose shape differs from its committed companion file, or a companion file for an entry that lists nothing;
 - a type a public signature uses that the entry point does not export, unless the check lists it with its reason;
 - a declaration that imports a module outside its package's list, such as a library the package uses only in its implementation;
 - an entry in the check's lists that the surface no longer needs;
-- any other API Extractor message, except a missing doc comment, which a later check covers.
+- any other API Extractor message, except a missing doc comment, which a later check covers, and a dependency's typings importing a source file, which Loom cannot change.
 
-After a surface change, `pnpm check:api --update` rewrites the reports, and the pull request carries their diff.
+After a surface change, `pnpm check:api --update` rewrites the reports and their companion files, and the pull request carries their diff.

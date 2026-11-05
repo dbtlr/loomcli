@@ -1,7 +1,15 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -108,6 +116,8 @@ function entryConfigs(root, policy) {
           tsdocConfigFile: TSDocConfigFile.loadFile(join(repositoryRoot, 'tsdoc.json')),
         }),
         entry,
+        listedFile: join(directory, 'api', reportFileName.replace(/\.api\.md$/u, '.listed.md')),
+        packageName: manifest.name,
         policy: policy.entries[entry] ?? {},
       };
     }),
@@ -148,6 +158,142 @@ function declarationName(program, message) {
   return name;
 }
 
+/** Whether a declaration file belongs to another package, a dependency's included. */
+function outsidePackage(projectFolder, path) {
+  const fromPackage = relative(projectFolder, path);
+  return (
+    fromPackage.startsWith('..') ||
+    isAbsolute(fromPackage) ||
+    fromPackage.split(/[\\/]/u).includes('node_modules')
+  );
+}
+
+/** The statement that declares a symbol at a file's top level, such as a variable's statement. */
+function topLevelStatement(declaration) {
+  const statement = ts.isVariableDeclaration(declaration) ? declaration.parent.parent : declaration;
+  return statement.parent && ts.isSourceFile(statement.parent) ? statement : undefined;
+}
+
+/**
+ * Finds the declarations of the listed names that the entry's exports reference, then every
+ * unexported declaration in the package that those declarations reference in turn, until no new
+ * one turns up. API Extractor reports a forgotten export only at an exported declaration, so a type
+ * that only a listed declaration uses, such as the type state that decides which of `Command`'s
+ * methods remain, is found here by resolving each identifier through the program.
+ */
+function listedDeclarations(program, entryFile, projectFolder, names) {
+  const checker = program.getTypeChecker();
+  const source = program.getSourceFile(entryFile);
+  const moduleSymbol = source && checker.getSymbolAtLocation(source);
+  const aliasTarget = (symbol) =>
+    symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+  const exported = (moduleSymbol ? checker.getExportsOfModule(moduleSymbol) : []).map(aliasTarget);
+  const found = new Map();
+  const pending = [];
+  const visitFrom = (root, accepts, followsClassState) => {
+    const visit = (node) => {
+      // A public type picks members from an unexported class, as `Command` does from `CommandBuilder`.
+      // No public type picks a constructor, and only the constructor takes a builder's internal state.
+      // A constructor therefore leads to no further declaration.
+      if (!followsClassState && ts.isConstructorDeclaration(node)) {
+        return;
+      }
+      if (ts.isIdentifier(node) && accepts(node.text)) {
+        const symbol = checker.getSymbolAtLocation(node);
+        const target = symbol && aliasTarget(symbol);
+        if (target && accepts(target.name) && !exported.includes(target)) {
+          for (const declaration of target.declarations ?? []) {
+            const statement = topLevelStatement(declaration);
+            if (
+              statement &&
+              !found.has(statement) &&
+              !outsidePackage(projectFolder, statement.getSourceFile().fileName)
+            ) {
+              found.set(statement, target.name);
+              pending.push(statement);
+            }
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(root);
+  };
+  for (const symbol of exported) {
+    for (const declaration of symbol.declarations ?? []) {
+      if (!outsidePackage(projectFolder, declaration.getSourceFile().fileName)) {
+        visitFrom(declaration, (name) => names.has(name), true);
+      }
+    }
+  }
+  while (pending.length > 0) {
+    visitFrom(pending.pop(), () => true, false);
+  }
+  return found;
+}
+
+/** Orders two strings by code unit, the same on every machine and locale. */
+function codeUnitOrder(left, right) {
+  return Number(left > right) - Number(left < right);
+}
+
+// The printer drops every comment, so a doc comment's wording never reads as a shape change.
+const shapePrinter = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed, removeComments: true });
+
+/**
+ * A class without its constructor, which no public type picks, so a change to how a builder is
+ * built inside its package never reads as a change to the published surface.
+ */
+function withoutConstructor(statement) {
+  if (!ts.isClassDeclaration(statement)) {
+    return statement;
+  }
+  return ts.factory.updateClassDeclaration(
+    statement,
+    statement.modifiers,
+    statement.name,
+    statement.typeParameters,
+    statement.heritageClauses,
+    statement.members.filter((member) => !ts.isConstructorDeclaration(member)),
+  );
+}
+
+/**
+ * Writes the companion file's text: each listed declaration's emitted shape, sorted by name.
+ * A public type written over a listed declaration, such as `Pick<CommandBuilder, ...>`, shows
+ * only its outer text in the API report, so this file records the shape the type reads.
+ */
+function listedText(packageName, entry, found) {
+  const blocks = [...found]
+    .map(([statement, name]) => ({
+      file: statement.getSourceFile().fileName,
+      name,
+      position: statement.getStart(),
+      text: shapePrinter.printNode(
+        ts.EmitHint.Unspecified,
+        withoutConstructor(statement),
+        statement.getSourceFile(),
+      ),
+    }))
+    .toSorted(
+      (left, right) =>
+        codeUnitOrder(left.name, right.name) ||
+        codeUnitOrder(left.file, right.file) ||
+        left.position - right.position,
+    )
+    .map(({ text }) => text);
+  return [
+    `# Listed declarations of ${entry === '.' ? packageName : `${packageName}/${entry.slice(2)}`}`,
+    '',
+    "> Generated by `pnpm check:api --update`. No declaration below is exported from this entry point, but a public type in this entry's API report is written over it, directly or through another declaration here, so its shape is part of the published surface.",
+    '',
+    '```ts',
+    blocks.join('\n\n'),
+    '```',
+    '',
+  ].join('\n');
+}
+
 /** Checks emitted API surfaces; update writes reports but never suppresses declaration failures. */
 function checkApi(root, packages, { update = false } = {}) {
   const failures = [];
@@ -163,7 +309,7 @@ function checkApi(root, packages, { update = false } = {}) {
   const compilerState = CompilerState.create(entries[0].config, {
     additionalEntryPoints: entries.map(({ config }) => config.mainEntryPointFilePath),
   });
-  for (const { config, entry, policy } of entries) {
+  for (const { config, entry, listedFile, packageName, policy } of entries) {
     const seenForgotten = new Set();
     const seenExternal = new Set();
     // Extractor silently preserves external re-exports, so inspect its resolved export symbols.
@@ -174,15 +320,9 @@ function checkApi(root, packages, { update = false } = {}) {
     for (const symbol of moduleSymbol ? checker.getExportsOfModule(moduleSymbol) : []) {
       const target =
         symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
-      const external = target.declarations?.some((declaration) => {
-        const path = declaration.getSourceFile().fileName;
-        const fromPackage = relative(config.projectFolder, path);
-        return (
-          fromPackage.startsWith('..') ||
-          isAbsolute(fromPackage) ||
-          fromPackage.split(/[\\/]/u).includes('node_modules')
-        );
-      });
+      const external = target.declarations?.some((declaration) =>
+        outsidePackage(config.projectFolder, declaration.getSourceFile().fileName),
+      );
       if (external) {
         seenExternal.add(symbol.name);
       }
@@ -220,6 +360,13 @@ function checkApi(root, packages, { update = false } = {}) {
         if (messageId === 'ae-internal-missing-underscore' || messageId === 'ae-undocumented') {
           return;
         }
+        // A dependency's own typings may import a source file, as ESLint's do; Loom cannot change them.
+        if (
+          messageId === 'ae-wrong-input-file-type' &&
+          message.sourceFilePath?.split(/[\\/]/u).includes('node_modules')
+        ) {
+          return;
+        }
         if (messageId === 'ae-forgotten-export') {
           seenForgotten.add(name);
           if (policy.forgottenExports?.[name]) {
@@ -246,6 +393,43 @@ function checkApi(root, packages, { update = false } = {}) {
         entry,
         'Run pnpm check:api --update and commit the report.',
       );
+    }
+    const listed = new Set(
+      Object.keys(policy.forgottenExports ?? {}).filter((name) => seenForgotten.has(name)),
+    );
+    const found = listedDeclarations(
+      program,
+      config.mainEntryPointFilePath,
+      config.projectFolder,
+      listed,
+    );
+    // A name API Extractor reports as forgotten is always reachable from an exported declaration.
+    // An unresolved one therefore means this resolution is wrong, so the run stops.
+    const unresolved = [...listed].filter((name) => ![...found.values()].includes(name));
+    if (unresolved.length > 0) {
+      throw new Error(
+        `check:api found no declaration for ${unresolved.join(', ')} in entry ${entry} of ${packageName}.`,
+      );
+    }
+    const expected = found.size > 0 ? listedText(packageName, entry, found) : undefined;
+    const committed = existsSync(listedFile) ? readFileSync(listedFile, 'utf8') : undefined;
+    if (expected !== committed) {
+      if (update && expected === undefined) {
+        rmSync(listedFile);
+      } else if (update) {
+        mkdirSync(dirname(listedFile), { recursive: true });
+        writeFileSync(listedFile, expected);
+      } else {
+        fail(
+          listedFile,
+          1,
+          'api-listed-changed',
+          entry,
+          expected === undefined
+            ? 'The entry lists no declaration; run pnpm check:api --update to remove the companion file.'
+            : 'Run pnpm check:api --update and commit the companion file.',
+        );
+      }
     }
     for (const name of Object.keys(policy.externalExports ?? {})) {
       if (!seenExternal.has(name)) {
