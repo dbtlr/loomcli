@@ -269,6 +269,73 @@ test('a changed listed declaration fails as api-listed-changed while the report 
   expect(checkApi(root, [listed])).toEqual([]);
 });
 
+test('a type that only a listed declaration uses is in the companion file, so changing it fails', () => {
+  const { config, root } = fixture(
+    "import type { Hidden } from './hidden.js';\n/** A function. @public */\nexport declare function get(): Hidden;",
+    {
+      'dist/hidden.d.ts':
+        'interface Inner {\n  value: string;\n}\n/** A hidden shape. @public */\nexport interface Hidden {\n  inner: Inner;\n}',
+    },
+  );
+  const listed = {
+    ...config,
+    entries: { '.': { forgottenExports: { Hidden: 'The author names the function.' } } },
+  };
+  expect(checkApi(root, [listed], { update: true })).toEqual([]);
+  expect(readFileSync(listedFile(root), 'utf8')).toContain(
+    'interface Inner {\n    value: string;\n}',
+  );
+  const hidden = join(root, 'dist/hidden.d.ts');
+  writeFileSync(hidden, readFileSync(hidden, 'utf8').replace('value: string', 'value: number'));
+  expect(checkApi(root, [listed])).toEqual([expect.stringContaining('api-listed-changed: .:')]);
+});
+
+test('listed declarations are printed in name order, whatever order the source holds them in', () => {
+  const { config, root } = fixture(
+    "import type { Zeta, Alpha } from './hidden.js';\n/** A function. @public */\nexport declare function get(zeta: Zeta): Alpha;",
+    {
+      'dist/hidden.d.ts':
+        'export interface Zeta {\n  z: string;\n}\nexport interface Alpha {\n  a: string;\n}',
+    },
+  );
+  const listed = {
+    ...config,
+    entries: {
+      '.': { forgottenExports: { Alpha: 'A result.', Zeta: 'A parameter.' } },
+    },
+  };
+  expect(checkApi(root, [listed], { update: true })).toEqual([]);
+  const text = readFileSync(listedFile(root), 'utf8');
+  expect(text.indexOf('interface Alpha')).toBeLessThan(text.indexOf('interface Zeta'));
+});
+
+test("an unexported class's constructor and properties lead to no further declaration", () => {
+  const { config, root } = fixture(
+    "import type { Builder } from './hidden.js';\n/** A function. @public */\nexport declare function get(): Pick<Builder, 'run'>;",
+    {
+      'dist/hidden.d.ts': [
+        'interface State {\n  internal: string;\n}',
+        'interface Store {\n  cache: string;\n}',
+        'interface Outcome {\n  done: boolean;\n}',
+        'export declare class Builder {',
+        '  constructor(state: State);',
+        '  readonly store: Store;',
+        '  run(): Outcome;',
+        '}',
+      ].join('\n'),
+    },
+  );
+  const listed = {
+    ...config,
+    entries: { '.': { forgottenExports: { Builder: 'The author names the picked type.' } } },
+  };
+  expect(checkApi(root, [listed], { update: true })).toEqual([]);
+  const text = readFileSync(listedFile(root), 'utf8');
+  expect(text).toContain('interface Outcome');
+  expect(text).not.toContain('interface State');
+  expect(text).not.toContain('interface Store');
+});
+
 test('an entry that lists nothing writes no companion file, and a stale one fails until --update removes it', () => {
   const { config, root } = fixture(tagged);
   expect(checkApi(root, [config], { update: true })).toEqual([]);
