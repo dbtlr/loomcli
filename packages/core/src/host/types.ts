@@ -22,7 +22,6 @@ export interface OutputTerminal extends InputTerminal {
  * settles, when no source settled it, and in an invocation by name.
  *
  * @public
- * @sealed
  */
 export interface HostTerminal {
   stdin: InputTerminal;
@@ -214,7 +213,7 @@ export type ProcessFields = Partial<
   readonly cwd?: string | (() => string);
 };
 
-/** @public @sealed */
+/** @public */
 export interface Host {
   platform: string;
   /** The process's CPU architecture, such as `x64` or `arm64`. */

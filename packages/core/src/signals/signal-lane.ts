@@ -42,7 +42,6 @@ type Synchronous<Returned> = Returned extends PromiseLike<unknown> ? never : Ret
  * Registers a synchronous handler that runs once when the process ends, and answers its remover.
  *
  * @public
- * @sealed
  */
 type OnShutdown = <Returned>(
   handler: (event: ShutdownEvent) => Synchronous<Returned>,
@@ -73,7 +72,6 @@ interface HandlerRegistration {
  * Registers a synchronous handler that runs when Ctrl-Z suspends the process, and answers its remover.
  *
  * @public
- * @sealed
  */
 type OnSuspend = <Returned>(handler: () => Synchronous<Returned>) => () => void;
 
@@ -81,7 +79,6 @@ type OnSuspend = <Returned>(handler: () => Synchronous<Returned>) => () => void;
  * Registers a synchronous handler that runs when the process resumes, and answers its remover.
  *
  * @public
- * @sealed
  */
 type OnResume = <Returned>(handler: () => Synchronous<Returned>) => () => void;
 

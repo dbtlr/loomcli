@@ -959,7 +959,7 @@ export const glyph: Readonly<{
 // @public
 export type GraphBuiltHook = (graph: CommandGraph) => undefined;
 
-// @public @sealed (undocumented)
+// @public (undocumented)
 export interface Host {
     arch: string;
     // (undocumented)
@@ -990,7 +990,7 @@ export interface Host {
     uid: number | undefined;
 }
 
-// @public @sealed
+// @public
 export interface HostTerminal {
     // (undocumented)
     readonly background: Background | undefined;
@@ -1341,19 +1341,19 @@ export class NonCallableCommandError extends UsageError {
 // @public
 export function nowrap(text: string): string;
 
-// @public @sealed
+// @public
 export type OnResume = <Returned>(handler: () => Synchronous<Returned>) => () => void;
 
 // @public
 export const onResume: OnResume;
 
-// @public @sealed
+// @public
 export type OnShutdown = <Returned>(handler: (event: ShutdownEvent) => Synchronous<Returned>) => () => void;
 
 // @public
 export const onShutdown: OnShutdown;
 
-// @public @sealed
+// @public
 export type OnSuspend = <Returned>(handler: () => Synchronous<Returned>) => () => void;
 
 // @public

@@ -31,7 +31,7 @@ In a covered library, a schema in a published type is a [Standard Schema](https:
 Every type you meet is one of two kinds, named after GraphQL's input and output types:
 
 - An **input type** is one you may hand to a Loom function: a parameter, a declaration's options, a definition, a view, a validator, a value your callback returns to Loom, or the input a testing builder takes. You may have created any value you hand to Loom, so a new required member on an input type breaks your code.
-- An **output type** is one Loom hands to your code: a parameter of a callback you write, a context member, or a function's result. You read it, and you may pass it to your own functions, such as a helper that takes the `Host` an action receives. A new member on an output type breaks nothing.
+- An **output type** is one Loom hands to your code: a parameter of a callback you write, a context member, or a function's result. You read it, and you may pass it to your own functions, such as a helper that reads the `CancellationReason` a cancelled run's signal carries. A new member on an output type breaks nothing.
 - A type that goes both ways is an input type, unless only a Loom function can create its values. A `Plugin`, which only `plugin()` makes, or a `Command` stays an output type when you hand it back, because you cannot have created it. Plain data you could write by hand, such as a graph node, is an input type wherever a Loom function takes it.
 
 Every export carries the TSDoc tag `@public`. An output type, and a class you must not subclass, also carries `@sealed`. A type Loom re-exports from another package, such as `StandardSchemaV1` from `@standard-schema/spec`, carries that package's own declarations instead of Loom's tags, and follows that package's versions.
