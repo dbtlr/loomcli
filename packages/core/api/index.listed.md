@@ -274,15 +274,6 @@ interface Described {
     description?: string;
 }
 
-interface EnvBinding {
-    env?: string | readonly [
-        string,
-        ...string[]
-    ];
-    envDelimiter?: never;
-    envAllowEmpty?: never;
-}
-
 type EnvironmentStyle<Environment extends ApplicationEnvironment<unknown, readonly Plugin[]>> = Style<CoreToken | ThemeNames<Environment['plugins'][number]>>;
 
 declare class ExtensionCarrier<Target extends ExtensionTarget> {
@@ -339,21 +330,6 @@ type IsUnion<Member, Whole = Member> = Member extends unknown ? [
 ] ? false : true : never;
 
 type KeysOf<Type> = Type extends unknown ? keyof Type : never;
-
-type ListBinding = {
-    multiple: true;
-    env?: never;
-    envDelimiter?: never;
-    envAllowEmpty?: never;
-} | {
-    multiple: true;
-    env: string | readonly [
-        string,
-        ...string[]
-    ];
-    envDelimiter: string;
-    envAllowEmpty?: never;
-};
 
 interface Listed {
     hidden?: boolean;
@@ -566,15 +542,6 @@ type SharedNames<Closure extends AnyProvider> = {
 }[Closure['name']];
 
 type ShortAlias = LowercaseLetter | Uppercase<LowercaseLetter>;
-
-type StringBinding = EnvBinding | {
-    env: string | readonly [
-        string,
-        ...string[]
-    ];
-    envDelimiter?: never;
-    envAllowEmpty?: boolean;
-};
 
 interface StringOptionNode {
     readonly type: 'string';

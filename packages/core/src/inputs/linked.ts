@@ -19,7 +19,6 @@ type LinkedValue<Value> = [Value] extends [readonly (infer Element)[]] ? Element
  * The run facts `validateLinkedValue` reads from an action context core built.
  *
  * @public
- * @sealed
  */
 type LinkedValueContext<Args, Options> = Pick<
   ActionContext<Args, Options>,

@@ -36,8 +36,6 @@ export const surfacePackages = [
             'Type machinery that computes a signature from type arguments; the author names the computed export.',
           Described:
             'Fragment of an exported option or argument configuration; the author names the whole configuration.',
-          EnvBinding:
-            'Fragment of an exported option or argument configuration; the author names the whole configuration.',
           EnvironmentStyle:
             'Type machinery that computes a signature from type arguments; the author names the computed export.',
           ExtensionCarrier:
@@ -48,8 +46,6 @@ export const surfacePackages = [
             'Declaration class behind the exported `FailureEncoding`; the author names `FailureEncoding`.',
           GlobalsOf:
             'Type machinery that computes a signature from type arguments; the author names the computed export.',
-          ListBinding:
-            'Fragment of an exported option or argument configuration; the author names the whole configuration.',
           Listed:
             'Fragment of an exported option or argument configuration; the author names the whole configuration.',
           MetByRegistration:
