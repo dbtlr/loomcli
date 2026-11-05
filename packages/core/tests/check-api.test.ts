@@ -334,6 +334,7 @@ test("an unexported class's constructor leads to no further declaration, but its
   expect(text).toContain('interface Outcome');
   expect(text).toContain('interface Store');
   expect(text).not.toContain('interface State');
+  expect(text).not.toContain('constructor(');
 });
 
 test('an entry that lists nothing writes no companion file, and a stale one fails until --update removes it', () => {

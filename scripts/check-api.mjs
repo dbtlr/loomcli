@@ -241,6 +241,24 @@ function codeUnitOrder(left, right) {
 const shapePrinter = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed, removeComments: true });
 
 /**
+ * A class without its constructor, which no public type picks, so a change to how a builder is
+ * built inside its package never reads as a change to the published surface.
+ */
+function withoutConstructor(statement) {
+  if (!ts.isClassDeclaration(statement)) {
+    return statement;
+  }
+  return ts.factory.updateClassDeclaration(
+    statement,
+    statement.modifiers,
+    statement.name,
+    statement.typeParameters,
+    statement.heritageClauses,
+    statement.members.filter((member) => !ts.isConstructorDeclaration(member)),
+  );
+}
+
+/**
  * Writes the companion file's text: each listed declaration's emitted shape, sorted by name.
  * A public type written over a listed declaration, such as `Pick<CommandBuilder, ...>`, shows
  * only its outer text in the API report, so this file records the shape the type reads.
@@ -251,7 +269,11 @@ function listedText(packageName, entry, found) {
       file: statement.getSourceFile().fileName,
       name,
       position: statement.getStart(),
-      text: shapePrinter.printNode(ts.EmitHint.Unspecified, statement, statement.getSourceFile()),
+      text: shapePrinter.printNode(
+        ts.EmitHint.Unspecified,
+        withoutConstructor(statement),
+        statement.getSourceFile(),
+      ),
     }))
     .toSorted(
       (left, right) =>

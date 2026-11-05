@@ -25,14 +25,6 @@ declare class ApplicationBuilder<Args, Options, Globals, State extends Applicati
     #private;
     readonly [applicationEnvironment]: ApplicationEnvironment<Globals, Plugins>;
     readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
-    constructor(name: string, declared: {
-        config: ApplicationConfig;
-        globals: GlobalsState;
-        root: CommandState<Args, Options, Globals>;
-    }, binds: {
-        stdin: (source: Content | undefined) => Stdin;
-        provided: (values: BuiltValues) => Provided;
-    });
     get name(): string;
     stdin(config: StdinConfig & {
         required: true;
@@ -164,10 +156,6 @@ export declare class CommandBuilder<Args, Options, Globals, State extends Comman
     #private;
     readonly [commandValue]: true;
     readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
-    constructor(name: string, state: CommandState<Args, Options, Globals>, binds: {
-        stdin: (source: Content | undefined) => Stdin;
-        provided: (values: BuiltValues) => Provided;
-    });
     stdin(config: StdinConfig & {
         required: true;
     }): Command<Args, Options, Globals, State, Result, {
@@ -299,14 +287,12 @@ type EnvironmentStyle<Environment extends ApplicationEnvironment<unknown, readon
 
 declare class ExtensionCarrier<Target extends ExtensionTarget> {
     readonly [extensionTarget]: (target: Target) => Target;
-    constructor(record: CarriedValue);
 }
 
 type ExtensionRead<Schema extends StandardSchemaV1, Collect extends boolean> = Collect extends true ? readonly DeepReadonly<StandardSchemaV1.InferOutput<Schema>>[] : DeepReadonly<StandardSchemaV1.InferOutput<Schema>> | undefined;
 
 declare class FailureEncodingDeclaration {
     readonly [failureEncoding]: true;
-    constructor(record: EncodingRecord);
 }
 
 export type GlobalNameConstraint<Name extends string, Globals> = Name extends keyof Globals ? {
@@ -448,7 +434,6 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
 
 declare class OverrideDeclaration {
     readonly [viewOverride]: true;
-    constructor(record: OverrideRecord);
 }
 
 type PairedDefault<Config> = Config extends unknown ? Config & {
@@ -484,7 +469,6 @@ type PersistentProvider = Provider<string, unknown, never, 'persistent', readonl
 declare class PluginDeclaration<Options extends PluginOptions, Theme extends ThemeMapping> {
     readonly [pluginTheme]: Theme;
     readonly [pluginOptions]: () => Options;
-    constructor(node: BuiltPlugin);
 }
 
 type Presence = {
@@ -629,7 +613,6 @@ type ThemeOf<Contributor> = [
 
 declare class TranslationDeclaration {
     readonly [translation]: true;
-    constructor(record: TranslationRecord);
 }
 
 interface Unmarked {
