@@ -315,7 +315,6 @@ export class NonCallableCommandError extends UsageError {
  * input a caller named reads the name the caller wrote, because no spelling was typed.
  *
  * @public
- * @sealed
  */
 export type InvokedBy = 'argv' | 'name';
 
@@ -611,7 +610,6 @@ export class WorkingDirectoryError extends LoomError {
  * development build renders its Developer Diagnostic from the parts.
  *
  * @public
- * @sealed
  */
 export class InternalError extends LoomError {
   static override readonly code: string = 'internal';
