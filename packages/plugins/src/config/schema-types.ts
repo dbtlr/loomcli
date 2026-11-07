@@ -2,7 +2,8 @@ import type { StandardSchemaV1 } from '@loomcli/core';
 
 /**
  * The types that decide which schemas `configuration()` takes: one whose input accepts an empty
- * file. They read the schema's input type alone, so they hold alike for zod, valibot, and ArkType.
+ * file. They read the schema's input type alone, so they hold alike for every Standard Schema
+ * library.
  */
 
 type Input<Schema extends StandardSchemaV1> = StandardSchemaV1.InferInput<Schema>;
