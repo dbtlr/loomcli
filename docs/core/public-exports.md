@@ -24,7 +24,7 @@ In a covered library, a schema in a published type is a [Standard Schema](https:
 
 ## Which libraries carry the tags
 
-`check:api` covers `@loomcli/core`, whose every export carries the tags below and whose API report is committed at `packages/core/api/index.api.md`. The other published libraries' exports carry no tags yet and have no report, so a change to one is judged by the position of the changed member alone, and `@loomcli/plugins`' extension schemas still name valibot's types.
+`check:api` covers `@loomcli/core`, whose every export carries the tags below and whose API report is committed at `packages/core/api/index.api.md`. The other published libraries' exports carry no tags yet and have no report, so a change to one is judged by the position of the changed member alone.
 
 ## Each type is an input type or an output type
 

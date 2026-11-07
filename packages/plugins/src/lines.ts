@@ -1,5 +1,3 @@
-import { check, pipe, string } from 'valibot';
-
 /**
  * The line terminators the pack recognizes, spelled once, and the text rules built on them.
  * Help's schema, help's page, the manifest, MCP, man pages, completion, and the service unit have to
@@ -33,31 +31,42 @@ function singleLineOf(text: string | undefined): string | undefined {
   return text === undefined ? undefined : singleLine(text);
 }
 
+/**
+ * One rule a fact's text obeys: the test it passes and the sentence a text that fails it reads.
+ * The extension schemas build their string schemas from these, so this module's declarations name
+ * no validation library.
+ */
+interface TextRule {
+  readonly test: (value: string) => boolean;
+  readonly message: string;
+}
+
 /** One line that holds a character other than whitespace, such as an example's command. */
-const line = pipe(
-  string(),
-  check(
-    (value) => /\S/u.test(value) && !terminator.test(value),
-    'Supply one line that holds a character other than whitespace.',
-  ),
-);
+const lineRule: TextRule = {
+  message: 'Supply one line that holds a character other than whitespace.',
+  test: (value) => /\S/u.test(value) && !terminator.test(value),
+};
 
 /** Prose whose every line holds a character other than whitespace, with its line breaks kept. */
-const prose = pipe(
-  string(),
-  check(
-    (value) => value.split(breaks).every((each) => /\S/u.test(each)),
-    'Supply prose whose every line holds a character other than whitespace.',
-  ),
-);
+const proseRule: TextRule = {
+  message: 'Supply prose whose every line holds a character other than whitespace.',
+  test: (value) => value.split(breaks).every((each) => /\S/u.test(each)),
+};
 
 /** Markdown may hold blank lines and a final terminator, but is never whitespace alone. */
-const markdown = pipe(
-  string(),
-  check(
-    (value) => /\S/u.test(value),
-    'Supply Markdown that holds a character other than whitespace.',
-  ),
-);
+const markdownRule: TextRule = {
+  message: 'Supply Markdown that holds a character other than whitespace.',
+  test: (value) => /\S/u.test(value),
+};
 
-export { breaks, line, markdown, prose, singleLine, singleLineOf, terminator, terminators };
+export type { TextRule };
+export {
+  breaks,
+  lineRule,
+  markdownRule,
+  proseRule,
+  singleLine,
+  singleLineOf,
+  terminator,
+  terminators,
+};

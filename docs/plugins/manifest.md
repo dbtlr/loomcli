@@ -281,41 +281,46 @@ The manifest plugin prints, for the routed Command, a self-contained JSON projec
 
 ## Manifest extension
 
+`manifestCommand`'s published schema is a [Standard Schema](https://standardschema.dev) whose input is `ManifestCommandInput` and whose output is `ManifestCommandFacts`, so an author's type check loads no validation library's declarations. The pack validates with valibot inside the module, under the pack's shared line and Markdown rules, which [help's text rules](help.md#help-extensions) state and help's schema also uses. A declared failure's input holds the class, and its output holds the class's failure code and declared exit code, read by the schema.
+
 ```ts
-// src/manifest/extension.ts, the declarations module of the @loomcli/plugins/manifest subpath
-import { extension } from '@loomcli/core';
-import { array, object, optional, pipe, rawTransform, unknown } from 'valibot';
+// @loomcli/plugins/manifest/extension
+import type { Extension, StandardSchemaV1 } from '@loomcli/core';
 
-import { packageName } from '../constants.js';
-// The pack's shared line and Markdown rules, which help's schema also uses.
-import { line, markdown } from '../lines.js';
-// readFailure reads a value as a class that extends LoomError and answers its failure code and
-// declared exit code, or the sentence that rejects it.
-import { readFailure } from './failures.js';
+export interface CommandExample {
+  readonly command: string;
+  readonly note?: string | undefined;
+}
 
-// declaredFailure accepts { failure, meaning }, where failure is a class that extends LoomError,
-// and outputs { code, exitCode, meaning } from the class's failure code and declared exit code.
-const declaredFailure = pipe(
-  object({ failure: optional(unknown()), meaning: line }),
-  rawTransform(({ addIssue, dataset, NEVER }) => {
-    const read = readFailure(dataset.value.failure);
-    if ('issue' in read) {
-      addIssue({ message: read.issue });
-      return NEVER;
-    }
-    return { code: read.code, exitCode: read.exitCode, meaning: dataset.value.meaning };
-  }),
-);
+// failure is a class that extends LoomError; the schema rejects any other value.
+export interface DeclaredFailureInput {
+  readonly failure?: unknown;
+  readonly meaning: string;
+}
 
-export const manifestCommand = extension(`${packageName}/manifest/command`, {
-  collect: true,
-  schema: object({
-    details: optional(markdown),
-    examples: optional(array(object({ command: line, note: optional(line) }))),
-    failures: optional(array(declaredFailure)),
-  }),
-  target: 'command',
-});
+export interface DeclaredFailure {
+  readonly code: string; // the class's failure code
+  readonly exitCode: number; // the class's declared exit code
+  readonly meaning: string;
+}
+
+export interface ManifestCommandInput {
+  readonly details?: string | undefined;
+  readonly examples?: readonly CommandExample[] | undefined;
+  readonly failures?: readonly DeclaredFailureInput[] | undefined;
+}
+
+export interface ManifestCommandFacts {
+  readonly details?: string | undefined;
+  readonly examples?: readonly CommandExample[] | undefined;
+  readonly failures?: readonly DeclaredFailure[] | undefined;
+}
+
+export declare const manifestCommand: Extension<
+  'command',
+  StandardSchemaV1<ManifestCommandInput, ManifestCommandFacts>,
+  true
+>;
 ```
 
 ```ts
@@ -330,7 +335,7 @@ const get = new Command('get', {
 
 The declarations module, `@loomcli/plugins/manifest/extension`, holds the collecting extension through which the author and any plugin give a Command's entry its `details`, `examples`, and `failures`. It is declarations alone, apart from the plugin's entry, so help supplies values through it whether or not the manifest is installed.
 
-- **The extension.** `manifestCommand` is a [collecting extension](../core/extensions.md#collecting-extensions) on Commands with the identity `@loomcli/plugins/manifest/command`. `details` is Markdown under the rule help's `details` follows: a string that holds a character other than whitespace, with blank lines allowed, carried as written. `examples` lists invocations: `command` holds the tokens after the application name as one line, and `note` is one line.
+- **The extension.** `manifestCommand` is a [collecting extension](../core/extensions.md#collecting-extensions) on Commands with the identity `@loomcli/plugins/manifest/command`. `details` is Markdown under the [Markdown rule](help.md#help-extensions) help's `details` follows: a string that holds a character other than whitespace, with blank lines allowed, carried as written. `examples` lists invocations: `command` holds the tokens after the application name as one [line](help.md#help-extensions), and `note` is one line.
 - **Who supplies values.** A value is meant for an agent because it lands in the manifest. The author's own value is where an instruction goes that an agent needs beyond the help page. A plugin's value holds the facts that plugin chooses to project into the manifest, as help's hook does under [Help in the manifest](help.md#help-in-the-manifest).
 - **An empty value.** A value that holds none of the fields is accepted and stored, and the manifest prints nothing for it.
 

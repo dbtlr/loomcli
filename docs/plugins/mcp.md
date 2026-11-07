@@ -17,25 +17,28 @@ export declare function mcp(): Plugin;
 // @loomcli/plugins/mcp/extension, declarations alone
 import type { Extension, StandardSchemaV1 } from '@loomcli/core';
 
-// The value an author gives mcpCommand.
-// The package exports no name for this shape.
-interface McpCommandInput {
-  readonly description?: string; // the tool's description, in place of the Command's
-  readonly annotations?: {
-    readonly readOnly?: boolean; // projected as readOnlyHint
-    readonly destructive?: boolean; // projected as destructiveHint
-    readonly idempotent?: boolean; // projected as idempotentHint
-    readonly openWorld?: boolean; // projected as openWorldHint
-  };
+// The hints a tool carries about its effects.
+export interface McpAnnotations {
+  readonly destructive?: boolean | undefined; // projected as destructiveHint
+  readonly idempotent?: boolean | undefined; // projected as idempotentHint
+  readonly openWorld?: boolean | undefined; // projected as openWorldHint
+  readonly readOnly?: boolean | undefined; // projected as readOnlyHint
 }
-export declare const mcpCommand: Extension<'command', StandardSchemaV1<McpCommandInput>>;
+// The value an author gives mcpCommand.
+export interface McpCommandFacts {
+  readonly annotations?: McpAnnotations | undefined;
+  readonly description?: string | undefined; // the tool's description, in place of the Command's
+}
+export declare const mcpCommand: Extension<'command', StandardSchemaV1<McpCommandFacts, McpCommandFacts>>;
 // The value an author gives mcpInput: the option's description for an agent, or its exclusion from every tool.
-// The package exports no name for this shape.
-type McpInputInput =
-  | { readonly description: string; readonly exclude?: never }
-  | { readonly exclude: true; readonly description?: never };
-export declare const mcpInput: Extension<'option', StandardSchemaV1<McpInputInput>>;
-export declare const mcpArgument: Extension<'argument', StandardSchemaV1<{ readonly description: string }>>;
+export type McpInputFacts =
+  | { readonly description: string; readonly exclude?: undefined }
+  | { readonly description?: undefined; readonly exclude: true };
+export declare const mcpInput: Extension<'option', StandardSchemaV1<McpInputFacts, McpInputFacts>>;
+export interface McpArgumentFacts {
+  readonly description: string;
+}
+export declare const mcpArgument: Extension<'argument', StandardSchemaV1<McpArgumentFacts, McpArgumentFacts>>;
 ```
 
 ```ts
@@ -82,7 +85,7 @@ An MCP client launches `jsonkit mcp` and speaks one JSON-RPC message per line ov
 - **The plugin.** Its identity is `@loomcli/plugins/mcp`. `mcp()` takes no settings and declares no option, no middleware, and no view, and it claims no slot. It contributes one [plugin Command](../core/plugin-contract.md#plugin-commands), the three extensions above, and an [`onGraphBuilt`](../core/lifecycle-hooks.md#judging-the-built-graph) hook. The Command is `mcp`, visible, with the description `Serve this application's tools to an MCP client over stdin and stdout.`, no arguments, no options, and no result, and its action serves when routing selects none of its three children, which [Registering with an agent](#registering-with-an-agent) states. A root that declares arguments cannot hold children, so such an application cannot install the plugin, the limit [completion](completion.md) has under [ADR-0033](../decisions/0033-a-plugin-attaches-ordinary-commands-to-the-root.md).
 - **Opt-in.** A Command is a tool when it carries an `mcpCommand` value, and only then. The root opts in through the Application's `extensions`. An explicit opt-in wins over `hidden`, so a hidden Command that carries the value is a tool, and the listing in help, the manifest, and completion still omits it. A deprecated Command that opts in is a tool whose description opens with its migration message. An alias is never a tool and never a second name. A Command with no action cannot serve a call, so `mcpCommand` on a group is a build fault.
 - **Tool names.** A tool's name is the Command's path joined by `_`, with each `-` written as `_`, so `scratch create` is `scratch_create` and `cache clear-all` is `cache_clear_all`. The root's tool is the application name written the same way, so `git-lfs` serves `git_lfs`. A [portable name](../glossary.md#names-and-routing) holds nothing else the protocol's tool-name characters exclude, and `.` stays. There is no name override. Two opted-in Commands that give one name, such as the root and a child named like the application, are a build fault that names both.
-- **The description.** A tool's description is the `mcpCommand` value's `description`, or else the Command's core `description`, the Application's at the root. With neither, the tool carries no description. A deprecated Command's description opens with `Deprecated: ` and its migration message, then a line break and the rest. The `mcpCommand` value's `description` is prose under the pack's prose rule: every line holds a character other than whitespace, and line breaks are kept. A core description and a migration message are one line each, so each line break the author wrote in one, CRLF or a single terminator, reads as one space; an input's core description and the server identity's description read the same way.
+- **The description.** A tool's description is the `mcpCommand` value's `description`, or else the Command's core `description`, the Application's at the root. With neither, the tool carries no description. A deprecated Command's description opens with `Deprecated: ` and its migration message, then a line break and the rest. The `mcpCommand` value's `description` is prose under the pack's [prose rule](help.md#help-extensions): every line holds a character other than whitespace, and line breaks are kept. A core description and a migration message are one line each, so each line break the author wrote in one, CRLF or a single terminator, reads as one space; an input's core description and the server identity's description read the same way.
 - **Annotations.** `annotations` projects onto the protocol's tool annotations, `readOnly` as `readOnlyHint`, `destructive` as `destructiveHint`, `idempotent` as `idempotentHint`, and `openWorld` as `openWorldHint`. An unset hint is omitted, so the protocol's own defaults apply, and a tool with none set carries no `annotations`. They are hints the author owns and Loom never verifies: Loom infers none from the graph, and nothing but this plugin reads them, neither core nor help nor the manifest. A false claim is a defect in the author's application, and the protocol tells a client to treat annotations from a server it does not trust as untrusted.
 - **The input schema.** A tool's `inputSchema` is `{ type: 'object', properties, required, additionalProperties: false }`, with `required` left out when it is empty. `properties` holds every argument of the routed Command in declaration order, then its local options in authoring order, then every global option in graph order, keyed by declared name, minus a [hidden](../core/commands.md#hidden-and-deprecated-members) option, a [control option](../core/commands.md#control-options), and an excluded option, which **Excluded options** below states. Passthrough is never exposed.
   - Each property is the input's [input schema](../core/validation.md#input-schema) without its top-level `$schema` key, because the property lives inside a schema whose dialect is the protocol's default on `2026-07-28` and `2025-11-25`, JSON Schema 2020-12, the target the converter answers. `2025-06-18` names no default dialect, and its listing is the same. Where the graph holds `null`, the property is derived from the node: `{ type: 'string' }` for a string option or an argument, `{ type: 'boolean' }` for a Boolean option, and `{ type: 'integer', minimum: 0 }` for a counted option. A multiple option or a variadic argument wraps its value's schema as `{ type: 'array', items: <schema> }`, with `minItems: 1` when `required` lists it, because core reads an empty list as missing.
@@ -108,7 +111,7 @@ An MCP client launches `jsonkit mcp` and speaks one JSON-RPC message per line ov
 - **The listing.** `tools/list` answers every tool in one page, in graph order: the root first, then each Command depth first in authoring order. It carries no `nextCursor`. On `2026-07-28`, `server/discover` and `tools/list` each carry `ttlMs: 0` and `cacheScope: 'private'`, so a client caches neither: a client may outlive the server process, and the next process may serve a newer application whose tools differ.
 - **Concurrency.** Calls may overlap. Each runs through its own `invoke`, and the server writes each response when its call settles. Loom adds no queue, limit, or timer, so an application whose actions cannot overlap serializes its own work.
 - **The server's life.** The `mcp` action reads `host.stdin` and writes `host.stdout`, and stdout carries protocol messages alone, each written whole. The server writes no log of its own, and stderr carries dotenv warnings when that plugin is installed, a fault the `mcp` run itself reports and what an installed [`onLog`](../core/lifecycle-hooks.md#observing-log-events) hook writes to its destination's stderr, such as the [logging plugin](logging.md)'s console records. When stdin ends, the server aborts every call in flight and answers none of them, waits for each to settle, ends each open subscription with its closing response, and returns, so the run exits 0. When the run's signal aborts, through a caller or a process signal, every call's signal aborts with it and the server answers nothing more. The run resolves its cancellation code, and an ending process signal then ends the process after the [shutdown](../core/signals.md#the-shutdown), within its budget. A plugin that writes to stdout on a run it does not own breaks the stream, as it breaks [completion](completion.md)'s answer.
-- **Names.** `mcp` is exported from `@loomcli/plugins/mcp`, and `mcpCommand`, `mcpInput`, and `mcpArgument` from `@loomcli/plugins/mcp/extension`, whose identities are `@loomcli/plugins/mcp/command`, `@loomcli/plugins/mcp/input`, and `@loomcli/plugins/mcp/argument`. `mcpCommand` is an ordinary extension, so a later value replaces an earlier one. The pack's public declarations name no protocol type.
+- **Names.** `mcp` is exported from `@loomcli/plugins/mcp`, and `mcpCommand`, `mcpInput`, and `mcpArgument` from `@loomcli/plugins/mcp/extension`, which also exports their facts types `McpCommandFacts`, `McpAnnotations`, `McpInputFacts`, and `McpArgumentFacts`. Their identities are `@loomcli/plugins/mcp/command`, `@loomcli/plugins/mcp/input`, and `@loomcli/plugins/mcp/argument`. `mcpCommand` is an ordinary extension, so a later value replaces an earlier one. The pack's public declarations name no protocol type.
 
 ## MCP build faults
 
