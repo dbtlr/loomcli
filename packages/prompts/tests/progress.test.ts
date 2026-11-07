@@ -39,7 +39,7 @@ import { Application, FatalError, override, plugin } from '@loomcli/core';
 import type { ActionContext, MiddlewareContext, Plugin, ProgressEvent } from '@loomcli/core';
 import { verbose } from '@loomcli/plugins/verbose';
 import { mockProcess } from '@loomcli/testing';
-import { expect, test } from 'vite-plus/test';
+import { expect, test, vi } from 'vite-plus/test';
 
 import { start } from '../../../scripts/test-process.js';
 import { replay, until } from '../../../scripts/test-screen.js';
@@ -114,12 +114,20 @@ const scenarios: Record<string, (scene: Scene) => Scenario> = {
   /** A spinner whose frames the view records as it advances. */
   advance: (scene) => ({
     action: async (context) => {
-      const line = progress(context, {
-        label: 'Spinning',
-        spinner: { frames: ['a', 'b', 'c'], interval: 15 },
-      });
-      await after(120);
-      await line.end();
+      // Scope the fake clock to the action so run setup and teardown keep real timers.
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      try {
+        const line = progress(context, {
+          label: 'Spinning',
+          spinner: { frames: ['a', 'b', 'c'], interval: 15 },
+        });
+        for (let step = 0; step < 4; step += 1) {
+          vi.advanceTimersByTime(15);
+        }
+        await line.end();
+      } finally {
+        vi.useRealTimers();
+      }
     },
     views: [
       override(progressLine, {
@@ -486,8 +494,7 @@ test('the spinner advances one frame each interval, in order', async () => {
   const { notes } = await lines('advance');
   const { frames } = notes;
   const running = (Array.isArray(frames) ? frames : []).slice(0, -1);
-  expect(running.length).toBeGreaterThanOrEqual(3);
-  expect(running.slice(0, 4)).toEqual(['a', 'b', 'c', 'a'].slice(0, Math.min(4, running.length)));
+  expect(running).toEqual(['a', 'b', 'c', 'a', 'b']);
 });
 
 test("the style's spinner draws, and a call's own spinner wins for its line", async () => {
