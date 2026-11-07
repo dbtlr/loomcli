@@ -1320,7 +1320,7 @@ function checkSlotOrder(
   if (
     !slot.required &&
     slot.input.config.required !== 'non-interactive' &&
-    (next.required || next.input.config.required === 'non-interactive')
+    (needsValue(next) || next.input.config.required === 'non-interactive')
   ) {
     throw new DeclarationError(optionalArgumentLast, {
       correction: 'Declare optional arguments after required ones.',

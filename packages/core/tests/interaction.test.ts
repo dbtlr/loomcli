@@ -252,6 +252,27 @@ test('a content argument that needs a source cannot follow a conditional argumen
   ).not.toThrow();
 });
 
+test('an optional argument cannot precede a content argument that needs a source', () => {
+  expect(() =>
+    new Application('lint')
+      .argument('profile', {})
+      .argument('files', { min: 1, type: 'content', variadic: true }),
+  ).toThrow(
+    'Argument "profile" is optional and precedes required argument "files" on the root Command.',
+  );
+});
+
+test.each([{}, { min: 0 }])(
+  'an optional argument may precede a content argument that needs no source (%j)',
+  (min) => {
+    expect(() =>
+      new Application('lint')
+        .argument('profile', {})
+        .argument('files', { ...min, type: 'content', variadic: true }),
+    ).not.toThrow();
+  },
+);
+
 test('a conditional variadic argument is an empty list at a terminal and missing by name', async () => {
   const seen: unknown[] = [];
   const app = new Application('copy')
