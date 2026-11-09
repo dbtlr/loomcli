@@ -336,9 +336,9 @@ Everything else prints as written, such as an HTML tag, an entity like `&amp;`, 
 
 ### Markdown layout
 
-The details block keeps its place after the masthead on the extended page alone. Every line of it that is not blank is indented two spaces, and a blank line is empty.
+The details block keeps its place after the masthead on the extended page alone, and each [epilog](#epilogs) block its place after the hints on both pages. The rules below apply to a details block and an epilog block alike. Every line of either that is not blank is indented two spaces, and a blank line is empty.
 
-- **Blank lines are the author's.** One blank line separates two blocks, anywhere in the details, exactly where the author separated them with one or more blank lines, and nowhere else. A block that starts right after another, such as a list under the paragraph that introduces it or code inside a list item, prints right after it. The details block has no blank line at its start or end. Details that renders no line, such as an empty fence, is omitted, as a block with nothing to show is.
+- **Blank lines are the author's.** One blank line separates two blocks, anywhere in the details, exactly where the author separated them with one or more blank lines, and nowhere else. A block that starts right after another, such as a list under the paragraph that introduces it or code inside a list item, prints right after it. A details or epilog block has no blank line at its start or end. Details or an epilog that renders no line, such as an empty fence, is omitted, as a block with nothing to show is.
 - **A paragraph** prints each of its lines as one page line off a terminal. On a terminal its lines join and wrap to the width, under [Help wraps to the destination's columns](#help-wraps-to-the-destinations-columns).
 - **Table rows** print each line as one page line, on a terminal and off one, and never reflow or wrap.
 - **A heading** prints in the form of the [Heading view](pack-views.md#heading), its text `dim`. A level 1 heading, `#`, adds a `dim` underline of `glyph.line` as wide as its widest line, measured with `context.width`, on the line after the text at the text's indent. A heading at levels 2 to 6 prints as the Heading view's level 2, its text alone with no underline. The text is one line off a terminal. On a terminal it wraps under [Help wraps to the destination's columns](#help-wraps-to-the-destinations-columns), and the underline matches the widest wrapped line.
@@ -360,7 +360,7 @@ Under the [help and version restyle](help.md#help-and-version-restyle), each blo
 The page escapes each authored fragment with `style.escape` before styling or measuring it, so style-wire markup inside Markdown prints literally, as it does in every help string. Help drops the emphasis and heading markers because styles carry stress and a level 1 heading's underline carries its level, and it keeps a code span's backticks and a link's destination because a literal token and an address are meaning, so the page reads the same with styling off.
 
 - **The manifest.** Help supplies `details` to `manifestCommand` as written, so the manifest carries the Markdown source, which an agent reads as it is.
-- **Replacement.** `HelpPage` is unchanged. A replacement of `helpPage` reads `details` through `readExtension` as the Markdown source and renders it as it chooses, and the pack exports no parser.
+- **Replacement.** `HelpPage` is unchanged. A replacement of `helpPage` reads `details` through `readExtension` as the Markdown source and renders it as it chooses, and the pack exports no parser. It reads `epilog` the same way on each Command of the routed path, which it reaches from `graph.root` through `command.path`, and the pack exports no function that walks the path, so a replacement that reads no `epilog` prints none.
 
 ## Help wraps to the destination's columns
 
