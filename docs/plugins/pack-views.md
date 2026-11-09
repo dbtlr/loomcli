@@ -19,13 +19,14 @@ interface TableConfig<Row> {
 }
 type Column<Row> = (keyof Row & string) | ColumnEntry<Row>;
 type ColumnEntry<Row> = {
-  [Key in keyof Row & string]: {
-    key: Key;
-    header?: string;
-    align?: 'left' | 'right' | 'center';
-    format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
-  };
+  [Key in keyof Row & string]: ColumnDefinition<Row, Key>;
 }[keyof Row & string];
+interface ColumnDefinition<Row, Key extends keyof Row & string> {
+  key: Key;
+  header?: string;
+  align?: Alignment; // 'left' | 'right' | 'center', from @loomcli/core
+  format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
+}
 ```
 
 ```ts
@@ -98,11 +99,12 @@ interface RecordsConfig<Row> {
 }
 type Field<Row> = (keyof Row & string) | FieldEntry<Row>;
 type FieldEntry<Row> = {
-  [Key in keyof Row & string]: {
-    key: Key;
-    format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
-  };
+  [Key in keyof Row & string]: FieldDefinition<Row, Key>;
 }[keyof Row & string];
+interface FieldDefinition<Row, Key extends keyof Row & string> {
+  key: Key;
+  format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
+}
 ```
 
 ```ts

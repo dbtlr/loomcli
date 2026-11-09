@@ -1,11 +1,9 @@
 import { pad, splitLines } from '@loomcli/core';
-import type { View, ViewContext } from '@loomcli/core';
+import type { Alignment, View, ViewContext } from '@loomcli/core';
 
 import { recordBlock } from './record-block.js';
 import { levelWidths, total } from './table-fit.js';
 import { dataText, terminalWrap, unitWidth } from './text-lines.js';
-
-type TableAlignment = 'center' | 'left' | 'right';
 
 const CENTER_SIDES = 2;
 const EMPTY = 0;
@@ -15,26 +13,30 @@ const LAST_OFFSET = 1;
 const NEXT = 1;
 const NOT_FOUND = -1;
 
+/** @public */
 interface ColumnDefinition<Row, Key extends keyof Row & string> {
   readonly key: Key;
   readonly header?: string;
-  readonly align?: TableAlignment;
+  readonly align?: Alignment;
   readonly format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
 }
 
+/** @public */
 type ColumnEntry<Row> = {
   [Key in keyof Row & string]: ColumnDefinition<Row, Key>;
 }[keyof Row & string];
 
+/** @public */
 type Column<Row> = (keyof Row & string) | ColumnEntry<Row>;
 
+/** @public */
 interface TableConfig<Row> {
   readonly columns?: readonly Column<Row>[];
 }
 
 /** One normalized column, including the typed path from a row to its rendered cell. */
 interface PreparedColumn<Row> {
-  readonly align: TableAlignment;
+  readonly align: Alignment;
   readonly cell: (row: Readonly<Row>, context: ViewContext) => string;
   readonly header: (context: ViewContext) => string;
 }
@@ -252,6 +254,8 @@ function fallbackBlocks<Row>({ cells, columns, context, headers }: Grid<Row>): s
 /**
  * A whole view over rows, with columns measured before the first line is returned. The returned
  * value is a bare pack view and installs no plugin behavior.
+ *
+ * @public
  */
 function table<Row>(config: TableConfig<Row> = {}): View<readonly Row[]> {
   const configured = config.columns?.map(prepareColumn<Row>);
@@ -278,4 +282,4 @@ function table<Row>(config: TableConfig<Row> = {}): View<readonly Row[]> {
 }
 
 export { table };
-export type { Column, ColumnEntry, TableConfig };
+export type { Column, ColumnDefinition, ColumnEntry, TableConfig };
