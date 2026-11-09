@@ -326,6 +326,21 @@ function checkApi(root, packages, { update = false } = {}) {
         );
       }
     }
+    // An entry's lists are read only while the check runs that entry, so others would sit unread.
+    for (const entry of Object.keys(policy.entries)) {
+      const checked =
+        Object.hasOwn(exportsMap, entry) &&
+        (policy.coveredEntries === undefined || policy.coveredEntries.includes(entry));
+      if (!checked) {
+        fail(
+          packageJsonFullPath,
+          1,
+          'api-unchecked-entry',
+          entry,
+          'The check does not run this entry, so its lists are never read; cover the entry or remove them.',
+        );
+      }
+    }
   }
   const entries = packages.flatMap((policy) => entryConfigs(root, policy));
   if (entries.length === 0) {

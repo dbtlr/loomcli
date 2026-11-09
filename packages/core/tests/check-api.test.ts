@@ -259,6 +259,21 @@ test('a covered entry that the exports map does not name fails', () => {
   ]);
 });
 
+test.each([
+  ['an entry outside coveredEntries', { coveredEntries: ['.'] }, './later'],
+  ['an entry the exports map does not name', {}, './missing'],
+])('policy lists for %s fail, since the check never reads them', (_label, coverage, entry) => {
+  const { config, root } = partlyTaggedFixture();
+  const policy = {
+    ...config,
+    ...coverage,
+    entries: { [entry]: { forgottenExports: { Hidden: 'Internal computation.' } } },
+  };
+  expect(checkApi(root, [policy], { update: true })).toContainEqual(
+    expect.stringContaining(`api-unchecked-entry: ${entry}:`),
+  );
+});
+
 /** A function whose public signature names an unexported type the policy lists. */
 function listedFixture() {
   const { config, root } = fixture(

@@ -108,6 +108,7 @@ export const surfacePackages = [
   },
   {
     // The plugins are tagged one group of subpaths at a time; each pass adds its entries here.
+    // The declaration-import scan already reads every subpath, so `modules` covers them all.
     coveredEntries: ['./box', './heading', './list', './prose', './records', './rule', './table'],
     directory: 'packages/plugins',
     entries: {},
