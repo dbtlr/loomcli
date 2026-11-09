@@ -15,8 +15,13 @@ const identity = `${packageName}/format`;
 const errorLine: FailureEncoder = (form) => `${escapeControls(JSON.stringify({ error: form }))}\n`;
 
 export { json, jsonl } from './views.js';
+export type { EncodingConfig } from './views.js';
 
-/** What an application tells the formatter: the short spelling of `--format`, none by default. */
+/**
+ * What an application tells the formatter: the short spelling of `--format`, none by default.
+ *
+ * @public
+ */
 export interface FormatSettings {
   readonly short?: NonNullable<StringOption['short']>;
 }
@@ -26,6 +31,8 @@ export interface FormatSettings {
  * into `view`, and writes a failed run's form as one JSON line when the run selected a `json()` or
  * `jsonl()` view. It reads the settings once, at the call. The annotated return type is the
  * boundary that breaks the cycle between this module and the middleware module `load` names.
+ *
+ * @public
  */
 export function format(settings?: FormatSettings): Plugin<{}> {
   return plugin(identity, {

@@ -24,7 +24,7 @@ In a covered library, a schema in a published type is a [Standard Schema](https:
 
 ## Which libraries carry the tags
 
-`check:api` covers `@loomcli/core`, whose every export carries the tags below and whose API report is committed at `packages/core/api/index.api.md`. `@loomcli/plugins` is being tagged a group of subpaths at a time, and its pack views (`box`, `heading`, `list`, `prose`, `records`, `rule`, and `table`) are covered, with reports under `packages/plugins/api/`. The other plugins subpaths and the other published libraries carry no tags yet and have no report, so a change to one is judged by the position of the changed member alone. The rule on which modules a declaration may import already holds for every plugins subpath.
+`check:api` covers `@loomcli/core`, whose every export carries the tags below and whose API report is committed at `packages/core/api/index.api.md`. `@loomcli/plugins` is being tagged a group of subpaths at a time, and its pack views (`box`, `heading`, `list`, `prose`, `records`, `rule`, and `table`) and output plugins (`format`, `format/views`, `theme`, `color`, `verbose`, and `background`) are covered, with reports under `packages/plugins/api/`. The other plugins subpaths and the other published libraries carry no tags yet and have no report, so a change to one is judged by the position of the changed member alone. The rule on which modules a declaration may import already holds for every plugins subpath.
 
 ## Each type is an input type or an output type
 
