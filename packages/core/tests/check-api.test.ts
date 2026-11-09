@@ -257,6 +257,20 @@ test('a covered entry that the exports map does not name fails', () => {
   expect(checkApi(root, [covered], { update: true })).toEqual([
     expect.stringContaining('api-unknown-entry: ./missing:'),
   ]);
+  expect(checkApi(root, [covered])).toEqual([
+    expect.stringContaining('api-unknown-entry: ./missing:'),
+  ]);
+});
+
+test('a bare conditions exports object is the entry "." for coveredEntries', () => {
+  const { config, root } = fixture(tagged, {
+    'package.json': JSON.stringify({ exports: { types: './dist/index.d.ts' }, name: 'fixture' }),
+  });
+  expect(checkApi(root, [{ ...config, coveredEntries: ['.'] }], { update: true })).toEqual([]);
+  expect(readFileSync(join(root, 'api/index.api.md'), 'utf8')).toContain('const value: string');
+  expect(checkApi(root, [{ ...config, coveredEntries: ['./x'] }])).toContainEqual(
+    expect.stringContaining('api-unknown-entry: ./x:'),
+  );
 });
 
 test.each([
