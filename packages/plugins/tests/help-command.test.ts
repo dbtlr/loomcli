@@ -9,7 +9,8 @@
  * - Unknown words. A word that names no child, and a word after a leaf, fail with exit 2 and core's
  *   unknown-command sentence, followed by help's hint at the help Command's page.
  * - Collisions. An application's own `help` child or alias fails at its `command()` call.
- * - Paging. With `paging: true`, a long page goes to the pager as a `--help` page does.
+ * - Paging. With `paging: true`, a long page goes to the pager as a `--help` page does, and a run
+ *   cancelled while the pager is open ends it and resolves 130.
  * - By name. `invoke(['help'], ...)` captures the same page.
  */
 
@@ -170,6 +171,31 @@ test('with paging on, a long page from the help Command goes to the pager', asyn
   expect(calls.map(({ args, input }) => ({ args, input }))).toEqual([
     { args: ['-c', 'exec less'], input: page.stdout },
   ]);
+  expect(mock.stdout.text).toBe('');
+});
+
+test('a run cancelled while the pager is open ends the pager and resolves 130', async () => {
+  let ended: Promise<void> | undefined = undefined;
+  const controller = new AbortController();
+  const mock = mockProcess({
+    argv: ['help'],
+    env: { TERM: 'xterm-256color' },
+    programs: {
+      '/bin/sh': ({ signal }) => {
+        ended = new Promise((resolve) => {
+          signal.addEventListener('abort', () => {
+            resolve();
+          });
+        });
+        controller.abort();
+        return new Promise(() => undefined);
+      },
+    },
+    terminal: { columns: 80, rows: 5 },
+  });
+  const app = notes({ command: true, paging: true });
+  await expect(app.run({ process: mock, signal: controller.signal })).resolves.toBe(130);
+  await expect(ended).resolves.toBeUndefined();
   expect(mock.stdout.text).toBe('');
 });
 
