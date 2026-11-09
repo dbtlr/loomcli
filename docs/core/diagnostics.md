@@ -304,7 +304,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/validators/bound-value
 
-**Invalid bound.** A bound limits the values or the length a validator accepts, and the published schema carries it, so it is a value the schema can hold: a finite number for integer() and number(), a whole number of 0 or more for text()'s lengths, and a duration in the operator's grammar for duration().
+**Invalid bound.** A bound limits the values or the length a validator accepts, so it is a value of the kind the validator reads: a finite number for integer() and number(), a whole number of 0 or more for text()'s lengths, a duration in the operator's grammar for duration(), and a size in the operator's grammar for bytes().
 
 ### @loomcli/validators/bounds-order
 
@@ -329,6 +329,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 ### @loomcli/validators/issue-parameters
 
 **Issue parameters rejected.** An issue carries parameters its code's schema accepts, so every view that reads them through read() gets the shape the code declares.
+
+### @loomcli/validators/key-value-separator
+
+**Invalid keyValue separator.** keyValue() splits a token at the first occurrence of its separator, so the separator holds one character or more, because an empty one leaves every key empty, and it holds no whitespace, because a shell splits an unquoted word at a space, a tab, or a newline, and whitespace an operator cannot see is a separator no one can type.
 
 ### @loomcli/validators/one-of-values
 

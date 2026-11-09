@@ -77,7 +77,7 @@ import { configuration } from '@loomcli/plugins/config';
 import { z } from 'zod';
 
 const collectorConfig = z.object({
-  minBytes: z.number().int().nonnegative().optional(),
+  minBytes: z.union([z.string(), z.number().int().nonnegative()]).optional(),
   sessions: z
     .object({
       sources: z.array(z.object({ harness: z.string(), dir: z.string().optional(), name: z.string().optional() })).optional(),
@@ -99,6 +99,7 @@ export const { plugin: configPlugin, values: config } = configuration({
 // src/main.ts
 import { Application, Command } from '@loomcli/core';
 import { configInput } from '@loomcli/plugins/config/extension';
+import { bytes } from '@loomcli/validators';
 
 import { config, configPlugin } from './configuration.js';
 
@@ -115,7 +116,7 @@ const app = new Application('collector', { plugins: [configPlugin] })
     env: 'COLLECTOR_MIN_BYTES',
     extensions: [configInput({ path: 'minBytes' })],
     type: 'string',
-    validate: byteThreshold,
+    validate: bytes(),
   })
   .command(sources);
 ```
@@ -196,7 +197,7 @@ type EmptyFileGuard<Schema extends StandardSchemaV1> = EveryKeyOptional<Schema> 
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "properties": {
-      "minBytes": { "type": "integer", "minimum": 0 },
+      "minBytes": { "anyOf": [{ "type": "string" }, { "type": "integer", "minimum": 0 }] },
       "sessions": { "type": "object", "properties": { "sources": { "type": "array" /* … */ } } },
       "$schema": { "type": "string" }
     }

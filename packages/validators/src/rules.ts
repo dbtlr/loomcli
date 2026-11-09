@@ -25,7 +25,7 @@ const oneOfValues = catalogRule('one-of-values', {
 /** A bound that is not a value of the kind its validator reads. */
 const boundValue = catalogRule('bound-value', {
   explanation:
-    "A bound limits the values or the length a validator accepts, and the published schema carries it, so it is a value the schema can hold: a finite number for integer() and number(), a whole number of 0 or more for text()'s lengths, and a duration in the operator's grammar for duration().",
+    "A bound limits the values or the length a validator accepts, so it is a value of the kind the validator reads: a finite number for integer() and number(), a whole number of 0 or more for text()'s lengths, a duration in the operator's grammar for duration(), and a size in the operator's grammar for bytes().",
   headline: 'Invalid bound',
 });
 
@@ -48,6 +48,13 @@ const urlProtocols = catalogRule('url-protocols', {
   explanation:
     'url() accepts a URL whose scheme the list names and publishes the list as a pattern, so it holds at least one scheme name: a letter followed by letters, digits, +, -, or ., with no trailing colon.',
   headline: 'Invalid url protocols',
+});
+
+/** A `keyValue()` separator that is empty or holds whitespace. */
+const keyValueSeparator = catalogRule('key-value-separator', {
+  explanation:
+    'keyValue() splits a token at the first occurrence of its separator, so the separator holds one character or more, because an empty one leaves every key empty, and it holds no whitespace, because a shell splits an unquoted word at a space, a tab, or a newline, and whitespace an operator cannot see is a separator no one can type.',
+  headline: 'Invalid keyValue separator',
 });
 
 /** A `text()` pattern that JSON Schema cannot read as it is. */
@@ -92,6 +99,7 @@ export {
   inputSchema,
   issueCodeName,
   issueParameters,
+  keyValueSeparator,
   oneOfValues,
   textPattern,
   timeZone,

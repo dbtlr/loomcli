@@ -45,6 +45,7 @@ const printedUnits: readonly (readonly [string, number])[] = [
   ['ms', millisecond],
 ];
 
+/** One decimal number, digits with an optional fraction, which `bytes` reads as well. */
 const decimal = String.raw`(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)`;
 
 const space = String.raw`\s*`;
@@ -138,4 +139,4 @@ function spelledIn(milliseconds: number): string {
   return printed;
 }
 
-export { durationPattern, formatDuration, readDuration, spellsMinutesAsCapitalM };
+export { decimal, durationPattern, formatDuration, readDuration, spellsMinutesAsCapitalM };

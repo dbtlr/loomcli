@@ -78,6 +78,66 @@ function boundsIssue(codes: BoundCodes, { max, min }: Bounds): StandardSchemaV1.
   return codes.unbounded.issue({});
 }
 
+/** Bounds a factory declares as spellings in its own grammar, such as `'30s'` or `'10GiB'`. */
+interface SpelledBoundOptions {
+  min?: string;
+  max?: string;
+}
+
+/** How a factory whose bounds are spelled in its own grammar reads them, prints them, and names one. */
+interface SpelledGrammar {
+  /** The value a spelling stands for, or `undefined` for one the factory itself would reject. */
+  readonly read: (spelling: string) => number | undefined;
+  /** The spelling a value prints as in a fault's sentence. */
+  readonly format: (value: number) => string;
+  /** The value's kind with its article, such as `a duration`. */
+  readonly noun: string;
+  /** Two quoted examples for the correction, such as `"30s" or "2h30m"`. */
+  readonly examples: string;
+}
+
+/**
+ * Reads the `min` and `max` of a factory whose bounds are spelled in its own grammar, and faults on
+ * a bound the factory would reject or a `min` above `max`.
+ */
+function readSpelledBounds(
+  factory: string,
+  options: SpelledBoundOptions | undefined,
+  grammar: SpelledGrammar,
+): Bounds {
+  const call = { arguments: [options], factory };
+  const spelled = (name: 'min' | 'max', spelling: string | undefined) => {
+    if (spelling === undefined) {
+      return undefined;
+    }
+    const value = grammar.read(spelling);
+    if (value === undefined) {
+      throw fault(
+        boundValue,
+        { ...call, mark: `0.${name}` },
+        {
+          correction: `Supply ${grammar.noun} such as ${grammar.examples}.`,
+          sentence: `${factory}() ${name} is not ${grammar.noun}.`,
+        },
+      );
+    }
+    return value;
+  };
+  const min = spelled('min', options?.min);
+  const max = spelled('max', options?.max);
+  if (min !== undefined && max !== undefined && min > max) {
+    throw fault(
+      boundsOrder,
+      { ...call, mark: '0.min' },
+      {
+        correction: 'Supply a min at or below max.',
+        sentence: `${factory}() min ${grammar.format(min)} is above max ${grammar.format(max)}.`,
+      },
+    );
+  }
+  return { max, min };
+}
+
 /** The published schema for a numeric type, with each declared bound. */
 function boundsSchema(type: 'integer' | 'number', { max, min }: Bounds) {
   return {
@@ -87,5 +147,12 @@ function boundsSchema(type: 'integer' | 'number', { max, min }: Bounds) {
   };
 }
 
-export { boundsIssue, boundsSchema, readBounds, withinBounds, withoutNegativeZero };
-export type { BoundOptions, Bounds };
+export {
+  boundsIssue,
+  boundsSchema,
+  readBounds,
+  readSpelledBounds,
+  withinBounds,
+  withoutNegativeZero,
+};
+export type { BoundOptions, Bounds, SpelledBoundOptions };

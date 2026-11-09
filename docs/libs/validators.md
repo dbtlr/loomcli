@@ -48,17 +48,18 @@ An author climbs these rungs, and each pays only for itself:
 
 **Soundness.** A published input schema is sound, not complete. Every token the validator accepts satisfies it, so it may be looser than the validator and never stricter. A constraint the validator applies but cannot state soundly is left out: `path` publishes no existence. The rule binds every factory and every author of a `createValidator` value that declares `inputSchema`.
 
-**Messages.** A rejection returns one issue with no path, carrying its code and parameters under [Issue codes](#issue-codes). Its message states the expectation in one plain sentence, beginning `Expected`, and never repeats the caller's token, because a rejected value may be a secret. Each factory configuration has one message for every way a token can fail, so `integer({ min: 1, max: 10 })` answers `Expected a whole number from 1 through 10.` for `abc` and for `11` alike. `text` with a `pattern` is the one exception: its length rule and its pattern each keep their own sentence. Core prefixes the message with the input's subject under [Issues and validator failures](../core/validation.md#issues-and-validator-failures). Every message follows the rules in [Failure messages](../core/failures.md).
+**Messages.** A rejection returns one issue with no path, carrying its code and parameters under [Issue codes](#issue-codes). Its message states the expectation in one plain sentence, beginning `Expected`, and never repeats the caller's token, because a rejected value may be a secret. Each factory configuration has one message for every way a token can fail, so `integer({ min: 1, max: 10 })` answers `Expected a whole number from 1 through 10.` for `abc` and for `11` alike. Three rejections keep a second sentence, because the token's shape is right and one fact about it is wrong: `text` with a `pattern`, whose length rule and pattern each keep their own sentence, `duration`'s capital `M`, and `cidr`'s host bits. Core prefixes the message with the input's subject under [Issues and validator failures](../core/validation.md#issues-and-validator-failures). Every message follows the rules in [Failure messages](../core/failures.md).
 
 **Faults at the call.** A factory argument that can never work throws a `DeclarationError` from the factory call, under [ADR-0034](../decisions/0034-a-declaration-fault-throws-at-the-earliest-point-that-knows-it.md). Each factory lists its faults. A fault's sentence names the factory and the argument and states the problem, and its correction states the fix. TypeScript rejects what its types can express, and a factory checks only what a type cannot, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). A value that bypasses the types meets the platform's own error.
 
 Each fault carries a [diagnostic rule](../core/declaration-faults.md#developer-diagnostics) the package declares through `diagnosticRule()`, as a third-party validator package does, and its Developer Diagnostic rebuilds the call, such as `integer({ max: 1, min: 5 })`, and marks the argument or the key at fault. A value listed twice marks both entries. The package declares these rules:
 
 - **`oneOf` values.** Every `oneOf` fault: [`@loomcli/validators/one-of-values`](../core/diagnostics.md#loomclivalidatorsone-of-values).
-- **Bound values.** A `min` or `max` of `integer`, `number`, or `duration`, or a `minLength` or `maxLength` of `text`, is a value of its kind: [`@loomcli/validators/bound-value`](../core/diagnostics.md#loomclivalidatorsbound-value).
+- **Bound values.** A `min` or `max` of `integer`, `number`, `duration`, or `bytes`, or a `minLength` or `maxLength` of `text`, is a value of its kind: [`@loomcli/validators/bound-value`](../core/diagnostics.md#loomclivalidatorsbound-value).
 - **Bounds order.** `min` is not above `max`, and `minLength` is not above `maxLength`: [`@loomcli/validators/bounds-order`](../core/diagnostics.md#loomclivalidatorsbounds-order).
 - **Time zone.** A `dateTime` `timeZone` is an IANA time zone name the runtime knows: [`@loomcli/validators/time-zone`](../core/diagnostics.md#loomclivalidatorstime-zone).
 - **`url` protocols.** Every `url` fault: [`@loomcli/validators/url-protocols`](../core/diagnostics.md#loomclivalidatorsurl-protocols).
+- **`keyValue` separator.** A `keyValue` separator is nonempty and holds no whitespace: [`@loomcli/validators/key-value-separator`](../core/diagnostics.md#loomclivalidatorskey-value-separator).
 - **Pattern.** A `text` pattern carries no flag other than `u` and compiles under `u`: [`@loomcli/validators/invalid-pattern`](../core/diagnostics.md#loomclivalidatorsinvalid-pattern).
 - **Input schema.** An `inputSchema` declares no `$schema` of its own: [`@loomcli/validators/input-schema`](../core/diagnostics.md#loomclivalidatorsinput-schema).
 - **Context.** A validator reads the validation context only inside a run, or under the options [`validationOptions`](../core/validation.md#validation-options-outside-a-run) builds: [`@loomcli/validators/context-outside-run`](../core/diagnostics.md#loomclivalidatorscontext-outside-run).
@@ -231,6 +232,76 @@ path(
 - **Publishes** `{ type: 'string', minLength: 1 }`. Existence, kind, and access are runtime state, not a shape of the token, so none is published.
 - **Message.** One sentence per configuration: `Expected a nonempty path with no NUL character.`, `Expected a readable file that exists.`, `Expected a readable directory that exists.`, `Expected a readable file or directory that exists.`, `Expected a writable file, or a new file in a writable directory.`, `Expected a writable directory, or a new directory in a writable directory.`, and `Expected a writable path, or a new path in a writable directory.`
 - **Faults.** None: the type rejects `kind` without `access`, and an `access` or `kind` outside its set.
+
+### bytes
+
+```ts
+bytes(options?: { min?: string; max?: string }): Validator<number>
+```
+
+- **Accepts** a number, written as `duration` writes one, digits with an optional fraction, so `1.` passes, followed by an optional unit, with whitespace allowed between them and around the token, whitespace being what `String.prototype.trim` removes, so `512`, `10MB`, `1.5 GB`, and `.5KiB` pass. `B` is a byte; `kB`, `MB`, `GB`, `TB`, and `PB` are powers of 1000; and `KiB`, `MiB`, `GiB`, `TiB`, and `PiB` are powers of 1024, under IEC 80000-13. Units are case-sensitive, except that the decimal kilo prefix may be written `k` or `K`, so `kB` and `KB` are 1000 bytes, while `kiB` and `mb` are rejected. A bare number counts bytes. A binary prefix may stand without `B`, as Kubernetes writes it, so `512Mi` is 536,870,912 bytes. A decimal prefix without `B`, such as `10M`, is rejected, because it reads two ways. One number and one unit make a size, so `1GB 500MB` is rejected, and so is a sign.
+- **Output** is the number of bytes, computed in exact decimal arithmetic rather than by multiplying a float, so `2.01kB` is 2,010. A fraction is accepted only when the bytes come out whole, so `1.5GB` is 1,500,000,000, `0.5KiB` is 512, and `1.5B` is rejected. A size beyond the safe integers is rejected, so `8PiB`, which is exactly 2⁵³, is rejected and `7PiB` passes.
+- **Bounds.** `min` and `max` are sizes in the same grammar, such as `'1MB'` or `'10GiB'`, both inclusive.
+- **Publishes** `{ type: 'string', pattern }`, the grammar whole. The bounds are not stated, because a pattern cannot carry them.
+- **Message.** `Expected a size, such as 512KiB, 10MB, or 1.5GB.`, `Expected a size from 1MB through 10GiB.`, `Expected a size of at least 1MB.`, or `Expected a size of at most 10GiB.` A bound prints as the whole-number spelling with the fewest digits, the decimal prefix on a tie, no prefix for 0, and a binary prefix always with `B`, so 1,048,576 prints as `1MiB`, 1,000,000 as `1MB`, 1,000 as `1kB`, 1,500 as `1500B`, and 0 as `0B`; the decimal kilo prefix prints as `k`.
+- **Faults.** A `min` or `max` that `bytes()` itself would reject, such as `'10M'`, `'1.5B'`, or `'9PiB'`, under `@loomcli/validators/bound-value`, and `min` above `max`.
+
+### host
+
+```ts
+host(options?: { ip?: boolean }): Validator<string>
+```
+
+- **Accepts** a host name under RFC 1123: labels joined by `.`, each of ASCII letters, digits, and hyphens, from 1 through 63 characters, neither starting nor ending with a hyphen, at most 253 characters in all, the longest text form RFC 1035's 255-octet name allows, with no trailing dot, so `example.com.` is rejected. A name whose last label is a number under the WHATWG URL standard's ends-in-a-number rule is rejected: a last label of ASCII digits alone, or of `0x` or `0X` followed by zero or more hexadecimal digits, so `1.2.3.4`, `0x7f000001`, and `127.0.0.0x1` are never host names, because a resolver reads each as an IPv4 address, and neither is `foo.0x`, which a URL parser rejects as a malformed one. A name outside ASCII is rejected; the operator writes its Punycode form, such as `xn--bcher-kva.example` for `bücher.example`, because the published `hostname` format admits ASCII alone. An underscore is rejected.
+- **With `ip: true`** it also accepts an IPv4 address as [ip](#ip) reads it, and an IPv6 address in brackets, as a URL writes one, such as `[2001:db8::1]`. A bare IPv6 address and a bracketed IPv4 address are rejected, so a host never reads as an address with a port, and brackets hold IPv6 alone, as in a URL.
+- **Output** is the name in lowercase, because DNS names compare without regard to case, or, under `ip: true`, the address in the canonical form `ip()` writes, without brackets.
+- **Publishes** `{ type: 'string', format: 'hostname' }`, or, with `ip: true`, `{ type: 'string', anyOf: [{ format: 'hostname' }, { format: 'ipv4' }, { pattern }] }`, whose pattern admits `[`, then hexadecimal digits in either case, `:`, and `.`, then `]`.
+- **Message.** `Expected a host name, such as example.com.`, or, with `ip: true`, `Expected a host name or an IP address, such as example.com, 192.0.2.1, or [2001:db8::1].`
+
+### ip
+
+```ts
+ip(options?: { version?: 4 | 6 }): Validator<string>
+```
+
+- **Accepts** an IPv4 address as four decimal parts joined by `.`, each from 0 through 255 and written with no leading zero, because some tools read a leading zero as octal, so `192.0.2.1` passes and `192.0.2.01` is rejected. It accepts an IPv6 address in the text forms of RFC 4291: eight groups of one to four hexadecimal digits in any letter case, one run of groups compressed to `::`, and a last 32 bits that may be written as an IPv4 address under the same rule, leading zeros rejected, so `2001:DB8::1` and `::ffff:192.0.2.1` pass. A zone identifier, such as `fe80::1%eth0`, and brackets are rejected. `version` accepts one family alone.
+- **Output** is the canonical address. IPv4 is the token as written. IPv6 is the form RFC 5952 recommends, with mixed notation for IPv4-mapped addresses alone: lowercase, each group without leading zeros, and the longest run of two or more zero groups compressed to `::`, the first on a tie, so `2001:DB8:0:0:0:0:0:1` becomes `2001:db8::1`, and an address in `::ffff:0:0/96`, IPv4-mapped, is written with its last 32 bits dotted however it was written, so `::ffff:c000:201` and `::ffff:192.0.2.1` both give `::ffff:192.0.2.1`. Every other address prints as hexadecimal groups, so `::192.0.2.1` becomes `::c000:201` and `64:ff9b::192.0.2.33` becomes `64:ff9b::c000:221`. Two spellings of one address give one output.
+- **Publishes** `{ type: 'string', format: 'ipv4' }` with `version: 4`, `{ type: 'string', format: 'ipv6' }` with `version: 6`, and otherwise `{ type: 'string', anyOf: [{ format: 'ipv4' }, { format: 'ipv6' }] }`.
+- **Message.** `Expected an IP address, such as 192.0.2.1 or 2001:db8::1.`, `Expected an IPv4 address, such as 192.0.2.1.`, or `Expected an IPv6 address, such as 2001:db8::1.`
+
+### cidr
+
+```ts
+cidr(options?: { version?: 4 | 6 }): Validator<{ address: string; prefix: number }>
+```
+
+- **Accepts** an address as [ip](#ip) reads it, a `/`, and a decimal prefix with no leading zero, from 0 through 32 for IPv4 and through 128 for IPv6, so `10.0.0.0/8` and `2001:db8::/32` pass. The address is the network itself: a bit set below the prefix, as in `10.0.0.1/8`, is rejected with its own sentence. `version` accepts one family alone.
+- **Output** is `{ address, prefix }`: the address in the canonical form `ip()` writes, and the prefix as a number.
+- **Publishes** `{ type: 'string', pattern }`, a pattern that admits an address of hexadecimal digits, `:`, and `.`, then a prefix from 0 through 128. It does not state the family or the host bits, because a pattern cannot carry them soundly.
+- **Message.** `Expected a CIDR block, such as 192.0.2.0/24 or 2001:db8::/32.`, `Expected an IPv4 CIDR block, such as 192.0.2.0/24.`, or `Expected an IPv6 CIDR block, such as 2001:db8::/32.` A block of the accepted family with host bits set earns `Expected a network address with no bits set below the prefix.`; a block of the wrong family earns the family's sentence, whatever its bits.
+
+### keyValue
+
+```ts
+keyValue(options?: { separator?: string }): Validator<{ key: string; value: string }>
+```
+
+- **Accepts** a token holding its separator, `=` unless `separator` names another, after at least one character. The token splits at the first separator, so `a=b=c` has the key `a` and the value `b=c`, and an empty value, as in `a=`, is accepted. A token with no separator, or one that starts with it, is rejected.
+- **Output** is `{ key, value }`, both strings, as written. On a multiple option the action receives the pairs in the order given, repeated keys kept, so `--label a=1 --label a=2` gives two pairs. Folding pairs into a record, and choosing whether a later key wins, is the author's, in a [pipe](#pipe) step or the action. A rule for the key or the value, such as a key pattern, is a `pipe` step too.
+- **Publishes** `{ type: 'string', pattern }`, a pattern that requires one character or more, line terminators included, before the separator, with each ECMAScript syntax character in the separator, ``^ $ \ . * + ? ( ) [ ] { } |``, escaped by a backslash. Every other character stays bare, `-` and `/` included: neither is a syntax character, and `\-` outside a class is a syntax error under the `u` flag, as `url` notes.
+- **Message.** `Expected a key and a value as key=value.`, with the separator in place of `=`.
+- **Faults.** A `separator` that is empty or holds whitespace, whitespace being what `String.prototype.trim` removes, under `@loomcli/validators/key-value-separator`.
+
+### email
+
+```ts
+email(): Validator<string>
+```
+
+- **Accepts** what the WHATWG HTML standard's valid email address production accepts, the rule browsers apply to `<input type="email">`: one or more of the letters, digits, and ``.!#$%&'*+/=?^_`{|}~-`` before an `@`, and after it one or more labels of letters, digits, and hyphens joined by `.`, each from 1 through 63 characters and neither starting nor ending with a hyphen. So `name@example.com` and `ops@localhost` pass. It is a deliberate departure from RFC 5322, simpler before the `@` and stricter after it: it accepts `a..b@example.com`, which RFC 5322 rejects, and it rejects a quoted local part, such as `"john doe"@example.com`, a comment, an address literal, and a name outside ASCII. An author who needs them passes a schema library's value.
+- **Output** is the token as written.
+- **Publishes** `{ type: 'string', pattern }`, the WHATWG production. It does not publish `format: 'email'`, because RFC 5321's local part rejects `a..b` and a leading dot, which the WHATWG rule accepts, and the format as validators check it requires a dot in the domain, which the WHATWG rule does not, so the format would be stricter than the validator.
+- **Message.** `Expected an email address, such as name@example.com.`
 
 ## createValidator
 
@@ -405,8 +476,23 @@ The catalog declares these codes. Each is exported under the name in the second 
 | `path`              | `pathIssue`             | none                                        | `Expected a nonempty path with no NUL character.`      |
 | `path-readable`     | `pathReadableIssue`     | `{ kind: 'file' \| 'directory' \| 'any' }`  | `Expected a readable {kind} that exists.`              |
 | `path-writable`     | `pathWritableIssue`     | `{ kind: 'file' \| 'directory' \| 'any' }`  | `Expected a writable {kind}, or a new {kind} in a writable directory.` |
+| `bytes`             | `bytesIssue`            | none                                        | `Expected a size, such as 512KiB, 10MB, or 1.5GB.`     |
+| `bytes-range`       | `bytesRangeIssue`       | `{ min: number; max: number }`              | `Expected a size from {min} through {max}.`            |
+| `bytes-min`         | `bytesMinIssue`         | `{ min: number }`                           | `Expected a size of at least {min}.`                   |
+| `bytes-max`         | `bytesMaxIssue`         | `{ max: number }`                           | `Expected a size of at most {max}.`                    |
+| `host`              | `hostIssue`             | none                                        | `Expected a host name, such as example.com.`           |
+| `host-or-ip`        | `hostOrIpIssue`         | none                                        | `Expected a host name or an IP address, such as example.com, 192.0.2.1, or [2001:db8::1].` |
+| `ip`                | `ipIssue`               | none                                        | `Expected an IP address, such as 192.0.2.1 or 2001:db8::1.` |
+| `ip-v4`             | `ipV4Issue`             | none                                        | `Expected an IPv4 address, such as 192.0.2.1.`         |
+| `ip-v6`             | `ipV6Issue`             | none                                        | `Expected an IPv6 address, such as 2001:db8::1.`       |
+| `cidr`              | `cidrIssue`             | none                                        | `Expected a CIDR block, such as 192.0.2.0/24 or 2001:db8::/32.` |
+| `cidr-v4`           | `cidrV4Issue`           | none                                        | `Expected an IPv4 CIDR block, such as 192.0.2.0/24.`   |
+| `cidr-v6`           | `cidrV6Issue`           | none                                        | `Expected an IPv6 CIDR block, such as 2001:db8::/32.`  |
+| `cidr-host-bits`    | `cidrHostBitsIssue`     | none                                        | `Expected a network address with no bits set below the prefix.` |
+| `key-value`         | `keyValueIssue`         | `{ separator: string }`                     | `Expected a key and a value as key{separator}value.`   |
+| `email`             | `emailIssue`            | none                                        | `Expected an email address, such as name@example.com.` |
 
-The duration codes carry milliseconds, and their sentences print each count in the grammar's units. A code with no parameters has the parameters `{}`. A count of 1 reads `character` rather than `characters`. Under `path-readable`, `{kind}` reads `file`, `directory`, or `file or directory`, and under `path-writable` it reads `file`, `directory`, or `path`. `text-pattern`'s one parameter is the author's `message`, the sentence's one blank.
+The duration codes carry milliseconds, and their sentences print each count in the grammar's units. The bytes codes carry byte counts, and their sentences print each count as the `bytes` message bullet states. A code with no parameters has the parameters `{}`. A count of 1 reads `character` rather than `characters`. Under `path-readable`, `{kind}` reads `file`, `directory`, or `file or directory`, and under `path-writable` it reads `file`, `directory`, or `path`. `text-pattern`'s one parameter is the author's `message`, the sentence's one blank.
 
 ## When author code fails
 
@@ -414,11 +500,11 @@ A `parse` function, a pipe step or a pipe's `first` that the author wrote, or a 
 
 ## Package
 
-- The root export holds the eleven factories, `createValidator`, `pipe`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the `Validator`, `ParseResult`, and `IssueCode` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
+- The root export holds the seventeen factories, `createValidator`, `pipe`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the `Validator`, `ParseResult`, and `IssueCode` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
 - `@loomcli/core` is a peer dependency, as it is for `@loomcli/plugins`. The package imports the Standard Schema types, `ValidationContext`, `validationContext`, and `DeclarationError` from core, and adds no runtime dependency of its own.
 
 ## Not shipped
 
-- `email` and a JSON validator. Every simple email rule rejects a real address somewhere, and a JSON value on a command line is better served by a file.
+- A JSON validator. A JSON value on a command line is better served by a file.
 - Reading a file or piped stdin as one stream of content, which is its own feature rather than a check.
-- Case-insensitive `oneOf`, a `uuid` version filter, custom date layouts, and bounds on anything other than numbers, durations, and length.
+- Case-insensitive `oneOf`, a `uuid` version filter, custom date layouts, and bounds on anything other than numbers, durations, sizes, and length.

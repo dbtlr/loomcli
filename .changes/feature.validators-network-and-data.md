@@ -1,0 +1,6 @@
+- Add six validators to `@loomcli/validators`. See the [validators reference](docs/libs/validators.md#catalog).
+  - `bytes()` reads a size such as `10MB` or `512KiB` into a byte count, with decimal prefixes as powers of 1000 and binary prefixes as powers of 1024.
+  - `host()` reads a host name, and with `ip: true` an IP address too. `ip()` reads an IPv4 or IPv6 address. Both hand the action one canonical form, so two spellings of one address compare equal.
+  - `cidr()` reads a network such as `10.0.0.0/8` into `{ address, prefix }`.
+  - `keyValue()` reads a pair such as `env=prod` into `{ key, value }`.
+  - `email()` reads an email address under the rule browsers apply to `<input type="email">`.

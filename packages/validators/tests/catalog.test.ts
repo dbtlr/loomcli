@@ -10,7 +10,16 @@
  *   including `0000-02-29` accepted and `0100-02-29` rejected, since a `Date.UTC` check maps years
  *   below 100 to the 1900s, mixed case for `uuid` and a `protocols` scheme, a `protocols` scheme
  *   containing `+`, `-`, or `.`, and for `url` the tokens RFC 3986 rejects and the WHATWG parser
- *   repairs.
+ *   repairs. For `bytes` the table holds a fraction that a float multiply gets wrong (`2.01kB`),
+ *   every unit and the bare binary prefixes, the whitespace `String.prototype.trim` removes, and
+ *   `7PiB` beside the rejected `8PiB`. For `ip` and `host` it holds mixed case, every compressed
+ *   position, an embedded IPv4 address in and outside `::ffff:0:0/96`, and a 253-character name;
+ *   for `cidr` each family's widest and narrowest prefix; for `keyValue` a key holding a line
+ *   terminator and a separator of each regular-expression syntax character; and for `email` the
+ *   forms WHATWG accepts and RFC 5322 rejects, such as `a..b@example.com`.
+ * - Output. Each accepted token's output is pinned to an independent literal: `512Mi` is
+ *   536870912, `2001:DB8:0:0:0:0:0:1` is `2001:db8::1`, `::ffff:c000:201` is `::ffff:192.0.2.1`,
+ *   `64:ff9b::192.0.2.33` is `64:ff9b::c000:221`, and a host name reads in lowercase.
  * - Rejection. For each factory, a table of rejected tokens pins the one message and shows the
  *   token is absent from it.
  * - Issue codes. Each rejected token's issue carries the code and parameters the table under Issue
@@ -30,14 +39,28 @@
  *   and input-sources.test.ts prove this bullet.
  * - Help. A `oneOf` input of at most eight values prints `One of: ...` with no authored `accepts`,
  *   under help's limit of eight. The plugins' help-accepted.test.ts proves this bullet.
+ * - Application run. The manifest and the inspected graph of an Application run read a catalog
+ *   factory's published schema, a default passes the validator, the action receives the output,
+ *   and a rejection reads its catalog sentence. catalog-run.test.ts proves this for `bytes`, `ip`,
+ *   and `keyValue`.
  */
 
 import { expect, test } from 'vite-plus/test';
 
 const catalog = await import('../src/index.js');
 
-test('the root export holds the eleven factories, createValidator, pipe, issueCode, and the catalog codes', () => {
+test('the root export holds the seventeen factories, createValidator, pipe, issueCode, and the catalog codes', () => {
   expect(Object.keys(catalog).toSorted()).toEqual([
+    'bytes',
+    'bytesIssue',
+    'bytesMaxIssue',
+    'bytesMinIssue',
+    'bytesRangeIssue',
+    'cidr',
+    'cidrHostBitsIssue',
+    'cidrIssue',
+    'cidrV4Issue',
+    'cidrV6Issue',
     'createValidator',
     'date',
     'dateIssue',
@@ -49,12 +72,23 @@ test('the root export holds the eleven factories, createValidator, pipe, issueCo
     'durationMaxIssue',
     'durationMinIssue',
     'durationRangeIssue',
+    'email',
+    'emailIssue',
+    'host',
+    'hostIssue',
+    'hostOrIpIssue',
     'integer',
     'integerIssue',
     'integerMaxIssue',
     'integerMinIssue',
     'integerRangeIssue',
+    'ip',
+    'ipIssue',
+    'ipV4Issue',
+    'ipV6Issue',
     'issueCode',
+    'keyValue',
+    'keyValueIssue',
     'number',
     'numberIssue',
     'numberMaxIssue',
@@ -96,6 +130,12 @@ test.each([
   ['dateTime', catalog.dateTime()],
   ['duration', catalog.duration()],
   ['path', catalog.path()],
+  ['bytes', catalog.bytes()],
+  ['host', catalog.host()],
+  ['ip', catalog.ip()],
+  ['cidr', catalog.cidr()],
+  ['keyValue', catalog.keyValue()],
+  ['email', catalog.email()],
 ])('%s() returns a value from the package that publishes an input schema', (_name, value) => {
   expect(value['~standard'].vendor).toBe('@loomcli/validators');
   expect(value['~standard'].jsonSchema.input).toBeTypeOf('function');
@@ -157,6 +197,46 @@ test.each([
     'port',
     catalog.port(),
     '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"integer","minimum":1,"maximum":65535}',
+  ],
+  [
+    'bytes',
+    catalog.bytes({ max: '10GiB' }),
+    String.raw`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","pattern":"^\\s*(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)\\s*(?:KiB|MiB|GiB|TiB|PiB|Ki|Mi|Gi|Ti|Pi|[kK]B|MB|GB|TB|PB|B)?\\s*$"}`,
+  ],
+  [
+    'host',
+    catalog.host(),
+    '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","format":"hostname"}',
+  ],
+  [
+    'host with ip',
+    catalog.host({ ip: true }),
+    String.raw`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","anyOf":[{"format":"hostname"},{"format":"ipv4"},{"pattern":"^\\[[0-9A-Fa-f:.]+\\]$"}]}`,
+  ],
+  [
+    'ip',
+    catalog.ip(),
+    '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","anyOf":[{"format":"ipv4"},{"format":"ipv6"}]}',
+  ],
+  [
+    'ip version 6',
+    catalog.ip({ version: 6 }),
+    '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","format":"ipv6"}',
+  ],
+  [
+    'cidr',
+    catalog.cidr(),
+    '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","pattern":"^[0-9A-Fa-f:.]+/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9])$"}',
+  ],
+  [
+    'keyValue',
+    catalog.keyValue(),
+    String.raw`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","pattern":"^[\\s\\S]+="}`,
+  ],
+  [
+    'email',
+    catalog.email(),
+    String.raw`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","pattern":"^[a-zA-Z0-9.!#$%&'*+/=?^_${'`'}{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"}`,
   ],
 ])(
   '%s() publishes $schema, then type, then its keywords in the documented order',
