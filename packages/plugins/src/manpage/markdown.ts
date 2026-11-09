@@ -292,11 +292,26 @@ function writeBlock(container: Container, block: Block): void {
  * deprecation, already opens the section, so the first block writes its `.PP`.
  */
 function detailsLines(source: string, { preceded }: { readonly preceded: boolean }): string[] {
+  return topLevelLines([source], preceded);
+}
+
+/**
+ * The roff lines of the epilogs under NOTES. Each is parsed on its own and its blocks follow the
+ * blocks of the one before, so the paragraph-break rule decides each request between two epilogs.
+ */
+function notesLines(sources: readonly string[]): string[] {
+  return topLevelLines(sources, false);
+}
+
+/** Markdown sources written in order into one top-level container. */
+function topLevelLines(sources: readonly string[], preceded: boolean): string[] {
   const container: Container = { lines: [], preceded, topLevel: true };
-  for (const block of filled(parseMarkdown(source))) {
-    writeBlock(container, block);
+  for (const source of sources) {
+    for (const block of filled(parseMarkdown(source))) {
+      writeBlock(container, block);
+    }
   }
   return container.lines;
 }
 
-export { detailsLines };
+export { detailsLines, notesLines };

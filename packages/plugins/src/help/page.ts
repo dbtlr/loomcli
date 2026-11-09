@@ -18,6 +18,7 @@ import {
 } from './cells.js';
 import type { Row, StringOption, UsageWriter } from './cells.js';
 import { renderDetails } from './details.js';
+import { epilogsOf } from './epilogs.js';
 import { helpCommand, helpInput } from './extension.js';
 import { hangLines, onTerminal, prose } from './layout.js';
 import { sectionBlocks } from './sections.js';
@@ -360,12 +361,6 @@ function hints(
   return lines;
 }
 
-/**
- * The help page of one routed Command, derived from the graph and the variant and nothing else. It
- * separates blocks by one blank line; Details also keeps authored blank lines inside it. A block
- * with nothing to show is omitted, and the page carries no line terminator of its own at either
- * end. The compact page omits Details and EXAMPLES.
- */
 function stdinInput(command: CommandNode, graph: CommandGraph, context: ViewContext): string[] {
   const { style } = context;
   const input = command.stdin;
@@ -422,6 +417,12 @@ function groupSentences(command: CommandNode, context: ViewContext): string[] {
   });
 }
 
+/**
+ * The help page of one routed Command, derived from the graph and the variant and nothing else. It
+ * separates blocks by one blank line; Details and each epilog also keep authored blank lines inside
+ * them. A block with nothing to show is omitted, and the page carries no line terminator of its own
+ * at either end. The compact page omits Details and EXAMPLES, and both pages end with the epilogs.
+ */
 function renderPage({ command, graph, variant }: HelpPage, context: ViewContext): string {
   const path = pathOf(graph, command);
   // One reading of the visible children answers three questions.
@@ -442,6 +443,7 @@ function renderPage({ command, graph, variant }: HelpPage, context: ViewContext)
     groupSentences(command, context),
     extended ? listed : [],
     hints({ children, omitted, path, variant }, context),
+    ...epilogsOf(graph, command).map((source) => renderDetails(source, context)),
   ]
     .filter((block) => !isEmpty(block))
     .map((block) => block.join('\n'))

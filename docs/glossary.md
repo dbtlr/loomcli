@@ -649,7 +649,7 @@ A public surface derived from the Command graph, such as help, a manifest, compl
 _Avoid_: Export, output format, adapter
 
 **Help page**:
-The projection of one routed Command that the help plugin prints: its masthead, usage, visible members with the values each input accepts and the names of the variables and the configuration key bound to each option, never their values, and examples, with meaning independent of styling. It has two variants, compact help and extended help, and the spelling the operator typed selects one.
+The projection of one routed Command that the help plugin prints: its masthead, usage, visible members with the values each input accepts and the names of the variables and the configuration key bound to each option, never their values, examples, and epilogs, with meaning independent of styling. It has two variants, compact help and extended help, and the spelling the operator typed selects one.
 _Avoid_: Usage text, man page, help screen
 
 **Help section**:
@@ -661,7 +661,7 @@ The help page rows that share one left column: an outer heading's direct rows, o
 _Avoid_: Column group, Group (for help rows)
 
 **Compact help**:
-The help page `-h` prints, for a reader who needs the syntax: the extended page without the details and the examples, ending with a pointer to `--help` when the extended page holds more.
+The help page `-h` prints, for a reader who needs the syntax: the extended page without the details and the examples, its last hint a pointer to `--help` when the extended page holds more, then the epilogs.
 _Avoid_: Short help, summary, brief help
 
 **Extended help**:
@@ -671,6 +671,10 @@ _Avoid_: Long help, full help, man page
 **Details**:
 A Command's teaching prose, written in Markdown inline or brought in from a file with a text import, which extended help renders as a stated subset after the masthead, keeping the author's lines off a terminal and reflowing its paragraphs to `columns` on one, and the manifest carries as written.
 _Avoid_: Long description, body, help text, Markdown asset
+
+**Epilog**:
+Text in Markdown that ends a help page, such as where to report a bug or where the documentation lives. A page prints the epilog of the routed Command and of each ancestor, the routed Command's first and the Application's last, on compact and extended help alike, and the man page prints the same under NOTES.
+_Avoid_: Footer, after-help, trailer
 
 **Help paging**:
 The help plugin's opt-in rule, `help({ paging: true })`, under which a help page that holds at least as many lines as the terminal has rows goes to the pager instead of straight to stdout, when stdout is a terminal, `TERM` is set, not empty, and not `dumb`, and the run is not under CI. Compact help and extended help page alike, a paged page holds the bytes help prints unpaged, and nothing else the application prints pages.
