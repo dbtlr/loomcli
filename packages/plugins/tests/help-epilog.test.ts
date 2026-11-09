@@ -10,7 +10,8 @@
  * - Variants. `-h` and `--help` print the same epilogs, and a compact page whose node has no
  *   Details and no EXAMPLES prints no pointer to `--help` because of an epilog.
  * - Markdown. An epilog keeps its authored blank line between two blocks, off a terminal keeps each
- *   authored line, and on a 40-column terminal reflows its paragraph at its two-space indent.
+ *   authored line, and on a 40-column terminal reflows its paragraph at its two-space indent. Each
+ *   epilog is parsed on its own, so a code fence one leaves open ends with it on both pages.
  * - The help Command. `kit help stats depth max` prints the page `kit stats depth max --help` does,
  *   epilogs included.
  * - The value. A whitespace-only epilog faults at the call that receives it with the Markdown
@@ -182,6 +183,21 @@ describe('Markdown', () => {
       ),
     ).toBe(true);
   });
+});
+
+test('each epilog is parsed on its own, so a fence one leaves open ends with it on both pages', async () => {
+  const app = new Application('kit', {
+    extensions: [helpCommand({ epilog: 'Report a bug at the tracker.' })],
+    plugins: [help()],
+  }).command(
+    new Command('leaf', { extensions: [helpCommand({ epilog: '```\nkit leaf' })] }).action(noop),
+  );
+  const text = await pageOf(app, ['leaf', '-h']);
+  expect(text.endsWith(page('', '    kit leaf', '', '  Report a bug at the tracker.'))).toBe(true);
+  const [, leafPage] = manPages(app.inspect());
+  expect(leafPage?.text).toContain(
+    '.SH "NOTES"\n.RS 4\n.nf\nkit leaf\n.fi\n.RE\n.PP\nReport a bug at the tracker.\n.SH "SEE ALSO"',
+  );
 });
 
 test('the help Command prints the epilogs --help prints', async () => {
