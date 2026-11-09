@@ -190,6 +190,10 @@ _Avoid_: Built-in validators, core validators
 The validator `pipe(first, ...steps)` returns: it runs `first`, any validator, on what core hands the input, then each step, a validator or a parse function, on the value the stage before it accepted, and the first rejection ends the pipe with that stage's issues; `first` and the steps are its stages. Its input type is `first`'s, its output type is the last step's, and it publishes exactly the input schema `first` publishes.
 _Avoid_: Pipe (alone, which names stdin and stdout), chain, composed validator
 
+**Validator layout**:
+One POSIX strftime layout a `date`, `dateTime`, or `time` validator reads beside its default grammar, such as `'%d/%m/%Y'`, built of directives that read numbers, an offset, or `AM` and `PM`, never a month or day name. A validator tries its default grammar, then each layout in the declared order, and the first that reads a token wins. Its written form, such as `DD/MM/YYYY`, is how a message names it. It is not a help layout, the arrangement of a help page, nor a skills folder's layout.
+_Avoid_: Format (for the layout), pattern, date format
+
 **Validation context**:
 The facts core attaches to every validator call it makes: the phase, the input's identity, the routed path, the passthrough tail, the raw supplied values, tokens and the values input sources filled alike, and the host. A validator reads it to decide rules that depend on the invocation.
 _Avoid_: Schema options, environment
