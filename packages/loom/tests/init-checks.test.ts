@@ -10,18 +10,28 @@
  *   through the same reader and fail with the same sentence.
  * - A package that names no application fails before anything is written when a piece it asks
  *   for needs the name, and a piece that does not need it is still written.
+ * - A `package.json` above the sandbox's ceiling leaves a loose directory outside any package, so
+ *   a temporary directory inside a checkout never draws a scaffold into the checkout.
  */
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { mockProcess } from '@loomcli/testing';
-import { afterEach, expect, test } from 'vite-plus/test';
+import { afterEach, expect, test, vi } from 'vite-plus/test';
 
 import { loom } from '../src/application.js';
+import { ceilAt, restoreCeiling } from './ceiling.js';
 import { put, removeRoots, temporaryRoot } from './fixture.js';
 import { snapshot } from './package.js';
 
+// Ceil the toolchain's walks up from a fixture at the sandbox (see ./ceiling.ts).
+vi.mock(import('node:fs'), async (importOriginal) => {
+  const { ceiled } = await import('./ceiling.js');
+  return ceiled(await importOriginal());
+});
+
 afterEach(() => {
+  restoreCeiling();
   removeRoots();
 });
 
@@ -56,6 +66,22 @@ function missingManifest(directory: string) {
 }
 
 const question = 'No package.json is here or above it. Create one in this directory?';
+
+test('a package.json above the ceiling leaves a loose directory outside any package, and init writes nothing there', async () => {
+  const above = temporaryRoot('loom-init-');
+  put(above, 'package.json', '{ "name": "checkout" }\n');
+  const ceiling = join(above, 'sandbox');
+  mkdirSync(ceiling);
+  ceilAt(ceiling);
+  const directory = join(ceiling, 'notes');
+  mkdirSync(directory);
+  put(directory, 'notes.txt', 'hello\n');
+  const before = snapshot(above);
+  const result = await runLoom(directory, ['init']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(missingManifest(directory));
+  expect(snapshot(above)).toEqual(before);
+});
 
 test('off a terminal init creates no package.json and names the command that creates one', async () => {
   const directory = looseDirectory();
