@@ -506,3 +506,15 @@ test("a rejection a promise answers comes back as the rejecting stage's object",
   };
   await expect(pipe(text(), rejectsLater)['~standard'].validate('y')).resolves.toBe(rejection);
 });
+
+test('a result carrying a then field that is not callable is a synchronous answer', () => {
+  // A result with a `then` field that is not callable is the case under test, so the rule yields here.
+  // oxlint-disable-next-line unicorn/no-thenable
+  const tagged = { then: 'metadata', value: 'x' };
+  const piped = pipe(
+    text(),
+    () => tagged,
+    (raw: string) => ({ value: raw.toUpperCase() }),
+  );
+  expect(piped['~standard'].validate('y')).toEqual({ value: 'X' });
+});

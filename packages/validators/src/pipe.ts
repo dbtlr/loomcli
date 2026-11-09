@@ -2,7 +2,7 @@ import { validationContext } from '@loomcli/core';
 import type { StandardJSONSchemaV1, StandardSchemaV1, ValidationContext } from '@loomcli/core';
 
 import { noOutputSchema, outsideRun, vendor } from './create.js';
-import type { AcceptedOutput, ParseReturn } from './create.js';
+import type { AcceptedOutput, ParseResult, ParseReturn } from './create.js';
 
 /** What a stage answers: a result, directly or as a promise, as `createValidator`'s `parse` does. */
 type StageAnswer<Output> = ParseReturn<Output>;
@@ -47,6 +47,14 @@ type FirstOutput<First extends StandardSchemaV1> = StandardSchemaV1.InferOutput<
 /** Whether a stage is a Standard Schema value. A schema library's value may itself be callable. */
 function isSchema(stage: StandardSchemaV1 | StepFunction<unknown>): stage is StandardSchemaV1 {
   return '~standard' in stage;
+}
+
+/**
+ * Whether a stage answered with a promise: any value whose `then` is callable, as `await` reads it,
+ * so a promise from another realm or library counts and a result with a `then` field does not.
+ */
+function answersLater(answer: StageAnswer<unknown>): answer is Promise<ParseResult<unknown>> {
+  return 'then' in answer && typeof answer.then === 'function';
 }
 
 /**
@@ -220,8 +228,7 @@ function pipe(
       const answer = isSchema(stage)
         ? stage['~standard'].validate(current, options)
         : stage(current, validationContext(options) ?? outsideRun);
-      // A promise from another realm or library is a promise too, as core's own await reads it.
-      if ('then' in answer) {
+      if (answersLater(answer)) {
         return answer.then((result) =>
           result.issues === undefined ? run(remaining, result.value, options) : result,
         );
