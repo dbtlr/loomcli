@@ -1,3 +1,4 @@
+import { formatBytes } from './bytes-grammar.js';
 import { formatDuration } from './duration-grammar.js';
 import { issueCode } from './issue-code.js';
 import type { IssueCode } from './issue-code.js';
@@ -13,6 +14,7 @@ import {
   noParams,
   protocolsParams,
   rangeParams,
+  separatorParams,
   valuesParams,
 } from './params.js';
 import type { NoParams } from './params.js';
@@ -197,6 +199,83 @@ const pathWritableIssue = issueCode(catalogCode('path-writable'), {
   schema: kindParams,
 });
 
+const bytesIssue = issueCode(catalogCode('bytes'), {
+  message: () => 'Expected a size, such as 512KiB, 10MB, or 1.5GB.',
+  schema: noParams,
+});
+
+const bytesRangeIssue = issueCode(catalogCode('bytes-range'), {
+  message: ({ max, min }) =>
+    `Expected a size from ${formatBytes(min)} through ${formatBytes(max)}.`,
+  schema: rangeParams(isCount),
+});
+
+const bytesMinIssue = issueCode(catalogCode('bytes-min'), {
+  message: ({ min }) => `Expected a size of at least ${formatBytes(min)}.`,
+  schema: minParams(isCount),
+});
+
+const bytesMaxIssue = issueCode(catalogCode('bytes-max'), {
+  message: ({ max }) => `Expected a size of at most ${formatBytes(max)}.`,
+  schema: maxParams(isCount),
+});
+
+const hostIssue = issueCode(catalogCode('host'), {
+  message: () => 'Expected a host name, such as example.com.',
+  schema: noParams,
+});
+
+const hostOrIpIssue = issueCode(catalogCode('host-or-ip'), {
+  message: () =>
+    'Expected a host name or an IP address, such as example.com, 192.0.2.1, or [2001:db8::1].',
+  schema: noParams,
+});
+
+const ipIssue = issueCode(catalogCode('ip'), {
+  message: () => 'Expected an IP address, such as 192.0.2.1 or 2001:db8::1.',
+  schema: noParams,
+});
+
+const ipV4Issue = issueCode(catalogCode('ip-v4'), {
+  message: () => 'Expected an IPv4 address, such as 192.0.2.1.',
+  schema: noParams,
+});
+
+const ipV6Issue = issueCode(catalogCode('ip-v6'), {
+  message: () => 'Expected an IPv6 address, such as 2001:db8::1.',
+  schema: noParams,
+});
+
+const cidrIssue = issueCode(catalogCode('cidr'), {
+  message: () => 'Expected a CIDR block, such as 192.0.2.0/24 or 2001:db8::/32.',
+  schema: noParams,
+});
+
+const cidrV4Issue = issueCode(catalogCode('cidr-v4'), {
+  message: () => 'Expected an IPv4 CIDR block, such as 192.0.2.0/24.',
+  schema: noParams,
+});
+
+const cidrV6Issue = issueCode(catalogCode('cidr-v6'), {
+  message: () => 'Expected an IPv6 CIDR block, such as 2001:db8::/32.',
+  schema: noParams,
+});
+
+const cidrHostBitsIssue = issueCode(catalogCode('cidr-host-bits'), {
+  message: () => 'Expected a network address with no bits set below the prefix.',
+  schema: noParams,
+});
+
+const keyValueIssue = issueCode(catalogCode('key-value'), {
+  message: ({ separator }) => `Expected a key and a value as key${separator}value.`,
+  schema: separatorParams,
+});
+
+const emailIssue = issueCode(catalogCode('email'), {
+  message: () => 'Expected an email address, such as name@example.com.',
+  schema: noParams,
+});
+
 /** The four codes a numeric factory rejects with, one for each way its bounds are declared. */
 interface BoundCodes {
   unbounded: IssueCode<NoParams>;
@@ -226,7 +305,23 @@ const durationCodes: BoundCodes = {
   unbounded: durationIssue,
 };
 
+const bytesCodes: BoundCodes = {
+  max: bytesMaxIssue,
+  min: bytesMinIssue,
+  range: bytesRangeIssue,
+  unbounded: bytesIssue,
+};
+
 export {
+  bytesCodes,
+  bytesIssue,
+  bytesMaxIssue,
+  bytesMinIssue,
+  bytesRangeIssue,
+  cidrHostBitsIssue,
+  cidrIssue,
+  cidrV4Issue,
+  cidrV6Issue,
   dateIssue,
   dateTimeIssue,
   durationCapitalMIssue,
@@ -235,11 +330,18 @@ export {
   durationMaxIssue,
   durationMinIssue,
   durationRangeIssue,
+  emailIssue,
+  hostIssue,
+  hostOrIpIssue,
   integerCodes,
   integerIssue,
   integerMaxIssue,
   integerMinIssue,
   integerRangeIssue,
+  ipIssue,
+  ipV4Issue,
+  ipV6Issue,
+  keyValueIssue,
   numberCodes,
   numberIssue,
   numberMaxIssue,

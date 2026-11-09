@@ -104,6 +104,10 @@ const protocolsParams = paramsSchema(
   },
 );
 
+const separatorParams = paramsSchema('{ separator: string }', ['separator'], ({ separator }) =>
+  typeof separator === 'string' && separator !== '' ? { separator } : undefined,
+);
+
 const kindParams = paramsSchema("{ kind: 'file' | 'directory' | 'any' }", ['kind'], ({ kind }) =>
   isKind(kind) ? { kind } : undefined,
 );
@@ -119,6 +123,7 @@ export {
   noParams,
   protocolsParams,
   rangeParams,
+  separatorParams,
   valuesParams,
 };
 export type { NoParams };

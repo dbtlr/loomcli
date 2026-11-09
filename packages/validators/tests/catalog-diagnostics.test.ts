@@ -4,13 +4,20 @@ import { DeclarationError } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
 
-import { registeredRules, ruleContract, ruleParts } from '../../../scripts/test-rules.js';
 import {
+  findingsOf,
+  registeredRules,
+  ruleContract,
+  ruleParts,
+} from '../../../scripts/test-rules.js';
+import {
+  bytes,
   createValidator,
   dateTime,
   duration,
   integer,
   issueCode,
+  keyValue,
   oneOf,
   text,
   url,
@@ -36,6 +43,9 @@ const message = ({ word }: Shout) => `Expected ${String(word)} in capitals.`;
 const scenarios: Record<string, () => unknown> = {
   'bound-value': () => integer({ min: Number.POSITIVE_INFINITY }),
   'bounds-order': () => integer({ max: 1, min: 5 }),
+  'bytes-bound-value': () => bytes({ max: '10M' }),
+  'bytes-bounds-order': () => bytes({ max: '1MB', min: '10GiB' }),
+  'bytes-min-bound-value': () => bytes({ min: '1.5B' }),
   'context-outside-run': () =>
     createValidator({ parse: (_raw, context) => ({ value: context.host }) })['~standard'].validate(
       'x',
@@ -50,6 +60,8 @@ const scenarios: Record<string, () => unknown> = {
       message,
       schema: schema(() => ({ issues: [{ message: 'Expected a string.' }] })),
     }).issue({ word: 7 }),
+  'key-value-separator': () => keyValue({ separator: ' ' }),
+  'key-value-separator-empty': () => keyValue({ separator: '' }),
   'one-of-twice': () => oneOf(['dev', 'prod', 'dev']),
   'text-bounds-order': () => text({ maxLength: 0 }),
   'text-pattern': () => text({ message: 'Expected letters.', pattern: /[a-z]+/g }),
@@ -88,6 +100,21 @@ const cases: Record<string, Expected> = {
     rule: 'bounds-order',
     sentence: 'integer() min 5 is above max 1.',
   },
+  'bytes-bound-value': {
+    correction: 'Supply a size such as "1MB" or "10GiB".',
+    rule: 'bound-value',
+    sentence: 'bytes() max is not a size.',
+  },
+  'bytes-bounds-order': {
+    correction: 'Supply a min at or below max.',
+    rule: 'bounds-order',
+    sentence: 'bytes() min 10GiB is above max 1MB.',
+  },
+  'bytes-min-bound-value': {
+    correction: 'Supply a size such as "1MB" or "10GiB".',
+    rule: 'bound-value',
+    sentence: 'bytes() min is not a size.',
+  },
   'context-outside-run': {
     correction:
       'Call the validator through an Application run or with the options validationOptions builds, or leave the context unread.',
@@ -120,6 +147,16 @@ const cases: Record<string, Expected> = {
     correction: 'Supply parameters its schema accepts.',
     rule: 'issue-parameters',
     sentence: 'Issue code "@acme/checks/shout" rejects the parameters passed to issue().',
+  },
+  'key-value-separator': {
+    correction: 'Supply one character or more with no whitespace, such as "=" or ":".',
+    rule: 'key-value-separator',
+    sentence: 'keyValue() separator holds whitespace.',
+  },
+  'key-value-separator-empty': {
+    correction: 'Supply one character or more with no whitespace, such as "=" or ":".',
+    rule: 'key-value-separator',
+    sentence: 'keyValue() separator is empty.',
   },
   'one-of-twice': {
     correction: 'List each value once.',
@@ -158,6 +195,18 @@ test.each(Object.entries(cases))(
     });
   },
 );
+
+test.each([
+  ['bytes-bound-value', "    bytes({ max: '10M' })\n            ^^^^^^^^^^"],
+  ['bytes-min-bound-value', "    bytes({ min: '1.5B' })\n            ^^^^^^^^^^^"],
+  [
+    'bytes-bounds-order',
+    "    bytes({ max: '1MB', min: '10GiB' })\n                        ^^^^^^^^^^^^",
+  ],
+  ['key-value-separator', "    keyValue({ separator: ' ' })\n               ^^^^^^^^^^^^^^"],
+])('the %s fault rebuilds the call and marks the argument at fault', (scenario, finding) => {
+  expect(findingsOf(diagnosticOf(scenario))).toEqual([finding]);
+});
 
 /** Every rule the catalog's registry declares, under the catalog's name. */
 const declared = registeredRules(

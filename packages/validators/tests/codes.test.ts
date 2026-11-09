@@ -286,6 +286,126 @@ const rows: Row[] = [
     { kind: 'any' },
     'Expected a writable path, or a new path in a writable directory.',
   ],
+  [
+    'bytes',
+    catalog.bytesIssue,
+    catalog.bytes(),
+    'abc',
+    {},
+    'Expected a size, such as 512KiB, 10MB, or 1.5GB.',
+  ],
+  [
+    'bytes-range',
+    catalog.bytesRangeIssue,
+    catalog.bytes({ max: '10GiB', min: '1MB' }),
+    '1kB',
+    { max: 10_737_418_240, min: 1_000_000 },
+    'Expected a size from 1MB through 10GiB.',
+  ],
+  [
+    'bytes-min',
+    catalog.bytesMinIssue,
+    catalog.bytes({ min: '1MB' }),
+    '1kB',
+    { min: 1_000_000 },
+    'Expected a size of at least 1MB.',
+  ],
+  [
+    'bytes-max',
+    catalog.bytesMaxIssue,
+    catalog.bytes({ max: '10GiB' }),
+    '11GiB',
+    { max: 10_737_418_240 },
+    'Expected a size of at most 10GiB.',
+  ],
+  [
+    'host',
+    catalog.hostIssue,
+    catalog.host(),
+    'exa_mple.org',
+    {},
+    'Expected a host name, such as example.com.',
+  ],
+  [
+    'host-or-ip',
+    catalog.hostOrIpIssue,
+    catalog.host({ ip: true }),
+    '2001:db8::2',
+    {},
+    'Expected a host name or an IP address, such as example.com, 192.0.2.1, or [2001:db8::1].',
+  ],
+  [
+    'ip',
+    catalog.ipIssue,
+    catalog.ip(),
+    '192.0.2.01',
+    {},
+    'Expected an IP address, such as 192.0.2.1 or 2001:db8::1.',
+  ],
+  [
+    'ip-v4',
+    catalog.ipV4Issue,
+    catalog.ip({ version: 4 }),
+    '2001:db8::2',
+    {},
+    'Expected an IPv4 address, such as 192.0.2.1.',
+  ],
+  [
+    'ip-v6',
+    catalog.ipV6Issue,
+    catalog.ip({ version: 6 }),
+    '192.0.2.10',
+    {},
+    'Expected an IPv6 address, such as 2001:db8::1.',
+  ],
+  [
+    'cidr',
+    catalog.cidrIssue,
+    catalog.cidr(),
+    '10.0.0.0/33',
+    {},
+    'Expected a CIDR block, such as 192.0.2.0/24 or 2001:db8::/32.',
+  ],
+  [
+    'cidr-v4',
+    catalog.cidrV4Issue,
+    catalog.cidr({ version: 4 }),
+    '2001:db8::/48',
+    {},
+    'Expected an IPv4 CIDR block, such as 192.0.2.0/24.',
+  ],
+  [
+    'cidr-v6',
+    catalog.cidrV6Issue,
+    catalog.cidr({ version: 6 }),
+    '10.0.0.0/8',
+    {},
+    'Expected an IPv6 CIDR block, such as 2001:db8::/32.',
+  ],
+  [
+    'cidr-host-bits',
+    catalog.cidrHostBitsIssue,
+    catalog.cidr(),
+    '10.0.0.1/8',
+    {},
+    'Expected a network address with no bits set below the prefix.',
+  ],
+  [
+    'key-value',
+    catalog.keyValueIssue,
+    catalog.keyValue(),
+    'env',
+    { separator: '=' },
+    'Expected a key and a value as key=value.',
+  ],
+  [
+    'email',
+    catalog.emailIssue,
+    catalog.email(),
+    'ops',
+    {},
+    'Expected an email address, such as name@example.com.',
+  ],
 ];
 
 const descriptors = rows.map(([, descriptor]) => descriptor);
@@ -301,9 +421,9 @@ async function issueOf(validator: StandardSchemaV1<string, unknown>, token: stri
   return issue;
 }
 
-test('the catalog declares 29 codes, each a descriptor under its export', () => {
-  expect(rows).toHaveLength(29);
-  expect(new Set(descriptors).size).toBe(29);
+test('the catalog declares 44 codes, each a descriptor under its export', () => {
+  expect(rows).toHaveLength(44);
+  expect(new Set(descriptors).size).toBe(44);
   for (const [code, descriptor] of rows) {
     expect(descriptor.code).toBe(`${prefix}${code}`);
   }
@@ -367,6 +487,53 @@ describe('a count of 1 reads character', () => {
   });
 });
 
+describe('a bytes code prints each count as the bytes message states', () => {
+  it.each([
+    [catalog.bytesMinIssue.issue({ min: 1_048_576 }), 'Expected a size of at least 1MiB.'],
+    [catalog.bytesMaxIssue.issue({ max: 1500 }), 'Expected a size of at most 1500B.'],
+    [catalog.bytesRangeIssue.issue({ max: 1000, min: 0 }), 'Expected a size from 0B through 1kB.'],
+  ])('%#', (issue, message) => {
+    expect(issue.message).toBe(message);
+  });
+
+  it.each([
+    ['min', catalog.bytesMinIssue, { min: -1 }],
+    ['min', catalog.bytesMinIssue, { min: 2 ** 53 }],
+    ['max', catalog.bytesMaxIssue, { max: -1 }],
+    ['max', catalog.bytesMaxIssue, { max: 2 ** 53 }],
+    ['range', catalog.bytesRangeIssue, { max: -1, min: 0 }],
+    ['range', catalog.bytesRangeIssue, { max: 2 ** 53, min: 0 }],
+  ])('a bytes %s code reads no negative or unsafe count', (_name, code, params) => {
+    expect(code.read(foreignIssue({ code: code.code, message: 'x', params }))).toBe(undefined);
+  });
+
+  it('rejects a count that is not a whole number of bytes', () => {
+    expect(
+      catalog.bytesMinIssue.read(
+        foreignIssue({ code: catalog.bytesMinIssue.code, message: 'x', params: { min: 1.5 } }),
+      ),
+    ).toBe(undefined);
+  });
+});
+
+describe('a key-value code names its separator', () => {
+  it('in the sentence and the parameters', () => {
+    expect(catalog.keyValueIssue.issue({ separator: '=>' })).toEqual({
+      code: `${prefix}key-value`,
+      message: 'Expected a key and a value as key=>value.',
+      params: { separator: '=>' },
+    });
+  });
+
+  it('and rejects an empty one', () => {
+    expect(
+      catalog.keyValueIssue.read(
+        foreignIssue({ code: catalog.keyValueIssue.code, message: 'x', params: { separator: '' } }),
+      ),
+    ).toBe(undefined);
+  });
+});
+
 describe('each path kind reads its own words', () => {
   it.each([
     ['file', 'Expected a readable file that exists.'],
@@ -405,6 +572,12 @@ test('read types the parameters an InputError view receives', () => {
   >();
   expectTypeOf(catalog.pathReadableIssue.read).returns.toEqualTypeOf<
     { kind: 'file' | 'directory' | 'any' } | undefined
+  >();
+  expectTypeOf(catalog.bytesRangeIssue.read).returns.toEqualTypeOf<
+    { max: number; min: number } | undefined
+  >();
+  expectTypeOf(catalog.keyValueIssue.read).returns.toEqualTypeOf<
+    { separator: string } | undefined
   >();
   const problem: InputProblem = {
     input: { global: false, kind: 'option', name: 'workers' },
