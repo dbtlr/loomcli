@@ -31,6 +31,8 @@ During an upgrade, read the [changelog](CHANGELOG.md) breaking sections between 
 
 Run a package's tool with `pnpm exec <tool>`. `devEngines` in `package.json` pins pnpm, so `npx <tool>` fails with `EBADDEVENGINES`. A script that rebuilds before it measures, such as a mutation run, keeps the rebuild's exit status, because a failed rebuild leaves stale `dist` that every later step reads as current.
 
+Tests read built `dist`. `pnpm test` and `pnpm verify` build first, but a single file run with `pnpm exec vp test` after a source change needs `pnpm run build` before it, and an example's launch tests need `pnpm run build:examples` as well. A `tsc` run that fails on `rootDir` still emits `.js` and `.d.ts` files into `src`; delete them before lint.
+
 `pnpm check:fix`, which the pre-commit hook also runs, rewrites source in two ways a diff can hide:
 
 - `eslint/sort-keys` sorts object literal keys, in source and in tests' expected objects alike. A module whose key order is a contract turns the rule off in a per-file override in `vite.config.ts` with a comment that says why, as the existing overrides do, and pins the order with a test the fixer cannot rewrite, such as a golden file or an `Object.keys` assertion.
@@ -38,7 +40,7 @@ Run a package's tool with `pnpm exec <tool>`. `devEngines` in `package.json` pin
 
 ### Tests stay inside their sandbox
 
-A test that walks up from a temporary directory, looking for `.git` or a configuration file, sets a ceiling at its sandbox root. Without one, a stray marker above the sandbox, such as an empty `/tmp/.git` another tool left behind, ends the walk outside it: the test fails intermittently and can write outside its sandbox. `packages/plugins/tests/fixtures/skills-run.mjs` shows the pattern for a child process, and `packages/loom/tests/ceiling.ts` for an in-process run. `childEnvironment` in `scripts/test-process.ts` sets `GIT_CEILING_DIRECTORIES` at the temporary directory, so git's own search stays inside. To reproduce such a failure, point `TMPDIR` at a private directory that holds a `.git`.
+A test that walks up from a temporary directory, looking for `.git` or a configuration file, sets a ceiling at its sandbox root. Without one, a stray marker above the sandbox, such as an empty `/tmp/.git` another tool left behind, ends the walk outside it: the test fails intermittently and can write outside its sandbox. `packages/plugins/tests/fixtures/skills-run.mjs` shows the pattern for a child process, and `packages/loom/tests/ceiling.ts` for an in-process run. `childEnvironment` in `scripts/test-process.ts` sets `GIT_CEILING_DIRECTORIES` at the temporary directory, so git's own search stays inside. To reproduce such a failure, point `TMPDIR` at a private directory that holds a `.git`. A fake `package.json` above it needs `"type": "module"`, or core's bundle tests read `.js` files as CommonJS.
 
 ### Type assertions are a last resort
 

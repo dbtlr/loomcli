@@ -59,7 +59,7 @@ The title, manifests, changelog, and regenerated lockfile must all carry the sel
 
 ## GitHub Actions
 
-`.github/workflows/pr.yml` provides `PR / fragment and version guards`. It checks the event's base and head commits with full history and tags. It reruns on PR creation, reopening, new commits, title or base edits, and label additions or removals. A newer run cancels an older run for the same PR.
+`.github/workflows/pr.yml` provides `PR / fragment and version guards`. It checks the event's base and head commits with full history and tags. It reruns on PR creation, reopening, new commits, title or base edits, and label additions or removals. A newer run cancels an older run for the same PR. So a label added as the PR opens cancels the opening run, and that cancelled run blocks the merge until it is re-run. Re-run it only after the other run finishes, because a re-run joins the same concurrency group and cancels a run in progress.
 
 The job uses read-only repository permissions and passes PR metadata from environment variables directly into a process argument array. Label names retain their exact case. Builds and consumer tests remain in the existing CI workflow.
 
