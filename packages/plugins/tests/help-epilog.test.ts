@@ -5,7 +5,8 @@
  *
  * - Stacking. A leaf page under two groups that carry epilogs ends with the leaf's own, then each
  *   ancestor's, then the Application's, each its own block after the hints, and the root page ends
- *   with the Application's alone. A hidden group on the path contributes its epilog.
+ *   with the Application's alone. A hidden group on the path contributes its epilog, and two equal
+ *   epilogs on one path both print.
  * - Variants. `-h` and `--help` print the same epilogs, and a compact page whose node has no
  *   Details and no EXAMPLES prints no pointer to `--help` because of an epilog.
  * - Markdown. An epilog keeps its authored blank line between two blocks, off a terminal keeps each
@@ -14,7 +15,7 @@
  *   epilogs included.
  * - The value. A whitespace-only epilog faults at the call that receives it with the Markdown
  *   rule's sentence.
- * - The man page. The page of a nested Command holds NOTES after EXAMPLES and before SEE ALSO, with
+ * - The man page. The page of a nested Command holds NOTES after ENVIRONMENT and before SEE ALSO, with
  *   the same epilogs in the same order, a `.PP` between two paragraphs and none before an epilog
  *   that opens with a list item, and a page with no epilog on its path has no NOTES.
  * - The manifest. Help supplies no `manifestCommand` value for a Command whose help value holds an
@@ -136,6 +137,16 @@ describe('stacking', () => {
     expect(text).not.toContain('Run kit --help for details and examples.');
   });
 
+  it('two equal epilogs on one path both print', async () => {
+    const same = 'Report a bug at https://example.com/kit/issues.';
+    const app = new Application('kit', {
+      extensions: [helpCommand({ epilog: same })],
+      plugins: [help()],
+    }).command(new Command('leaf', { extensions: [helpCommand({ epilog: same })] }).action(noop));
+    const text = await pageOf(app, ['leaf', '-h']);
+    expect(text.endsWith(page('', `  ${same}`, '', `  ${same}`))).toBe(true);
+  });
+
   it('a hidden group on the path still contributes its epilog', async () => {
     const text = await pageOf(kit({ hiddenDepth: true }), ['stats', 'depth', 'max', '-h']);
     expect(text.endsWith(page(...leafEnd))).toBe(true);
@@ -190,13 +201,15 @@ test.each(['', ' \n\t'])(
 );
 
 describe('the man page', () => {
-  it('a nested page prints its epilogs under NOTES, after EXAMPLES and before SEE ALSO', () => {
+  it('a nested page prints its epilogs under NOTES, after ENVIRONMENT and before SEE ALSO', () => {
     const max = new Command('max', {
       description: 'Print the deepest level.',
       extensions: [
         helpCommand({ epilog: '- Levels count from one.', examples: [{ command: 'stats max' }] }),
       ],
-    }).action(noop);
+    })
+      .option('limit', { description: 'Stop at this level.', env: 'KIT_LIMIT', type: 'string' })
+      .action(noop);
     const stats = new Command('stats', {
       description: 'Report facts.',
       extensions: [helpCommand({ epilog: 'Each statistic is described online.' })],
@@ -210,6 +223,10 @@ describe('the man page', () => {
         '.nf',
         String.raw`\fB$ kit stats max\fR`,
         '.fi',
+        '.SH "ENVIRONMENT"',
+        '.TP',
+        String.raw`\fBKIT_LIMIT\fR`,
+        String.raw`Supplies \fB\-\-limit\fR.`,
         '.SH "NOTES"',
         String.raw`.IP \(bu 2`,
         'Levels count from one.',

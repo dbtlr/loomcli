@@ -10,6 +10,7 @@ function ancestorsOf(graph: CommandGraph, command: CommandNode): CommandNode[] {
   for (const name of command.path) {
     ancestors.unshift(reached);
     const child = reached.children.find((each) => each.name === name);
+    // The page's own graph names every segment of its path, so this stop is never reached.
     if (child === undefined) {
       break;
     }
