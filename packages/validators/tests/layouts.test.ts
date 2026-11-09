@@ -77,6 +77,7 @@ describe('date layouts', () => {
     [['%Y%m%d'], '202634'],
     [['%Y%m%d'], '202613011'],
     [['%Y%%%m%%%d'], '2026%%09%25'],
+    [['%d%m%Y'], '1032026'],
   ] as const)('%j rejects %j', async (layouts, token) => {
     const result = await verdict(date({ layouts }), token);
     expect(result.issues).toHaveLength(1);
@@ -155,6 +156,14 @@ function readIn(zone: string, layouts: readonly [string, ...string[]], tokens: s
 describe('dateTime layouts', () => {
   const stamp = '%Y%m%dT%H%M%S%z';
 
+  it('reads exactly two digits for a day before an hour', async () => {
+    const result = await verdict(
+      dateTime({ layouts: ['%Y%m%d%H%M'], timeZone: 'UTC' }),
+      '2026092143',
+    );
+    expect(result.issues).toHaveLength(1);
+  });
+
   it('falls through to the next layout when an offset is out of range', async () => {
     const validator = dateTime({
       layouts: ['%d/%m/%Y %H:%M%z', '%d/%m/%Y %H:%M-%S'],
@@ -220,6 +229,7 @@ describe('dateTime layouts', () => {
 
   it.each([
     '20260925T143000',
+    '20260925t143000Z',
     '20260925T143000+24',
     '20260925T143000+05:60',
     '20260925T143000+5',
@@ -363,6 +373,26 @@ describe('a layout the factory cannot read throws at the call', () => {
     [
       () => time({ layouts: ['%I:%M%p%p'] }),
       'time() layout "%I:%M%p%p" holds %p twice. Write each field once.',
+    ],
+    [
+      () => date({ layouts: ['%Y/%m/%d/%Y'] }),
+      'date() layout "%Y/%m/%d/%Y" holds the year twice. Write each field once.',
+    ],
+    [
+      () => date({ layouts: ['%m/%d/%Y/%m'] }),
+      'date() layout "%m/%d/%Y/%m" holds the month twice. Write each field once.',
+    ],
+    [
+      () => time({ layouts: ['%H:%M:%M'] }),
+      'time() layout "%H:%M:%M" holds the minute twice. Write each field once.',
+    ],
+    [
+      () => time({ layouts: ['%H:%M:%S:%S'] }),
+      'time() layout "%H:%M:%S:%S" holds the second twice. Write each field once.',
+    ],
+    [
+      () => dateTime({ layouts: ['%Y-%m-%dT%H:%M:%S.000Z'] }),
+      'dateTime() layout "%Y-%m-%dT%H:%M:%S.000Z" holds a literal Z, which would read a UTC time as local time. Write %z, which reads Z as UTC and every other offset as that offset.',
     ],
     [
       () => time({ layouts: ['%I:%M'] }),

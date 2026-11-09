@@ -52,6 +52,7 @@ describe('a time of day in the default grammar', () => {
     '09:30 ',
     '9:30pm',
     '09:30:5',
+    '09:3045',
     '١٢:30',
     'noon',
   ])('rejects %j with one sentence', async (token) => {
@@ -68,6 +69,12 @@ describe('a time of day in the default grammar', () => {
 });
 
 describe('bounds in the default grammar', () => {
+  it('answers the bounds sentence alone with a max bound and layouts', async () => {
+    await expect(
+      messagesOf(time({ layouts: ['%I:%M%p'], max: '17:00' }), '6:00pm'),
+    ).resolves.toEqual(['Expected a time of at most 17:00.']);
+  });
+
   it.each([
     [{ max: '17:00', min: '09:00' }, '09:00', 32_400_000],
     [{ max: '17:00', min: '09:00' }, '17:00', 61_200_000],

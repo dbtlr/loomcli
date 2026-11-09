@@ -108,7 +108,6 @@ function wallTime(groups: Groups): number | undefined {
   const midnight = new Date(none);
   // `Date.UTC` maps a year below 100 to the 1900s, so the year is set on its own.
   midnight.setUTCFullYear(year, month - january, day);
-  midnight.setUTCHours(none, none, none, none);
   return midnight.getTime() + sinceMidnight;
 }
 
