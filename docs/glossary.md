@@ -676,6 +676,10 @@ _Avoid_: Pagination, paged output, more mode
 The program the operator's `PAGER` names, `less` when it is unset, which help runs through `/bin/sh -c` and `exec` with the page on its standard input and the run's stdout and stderr as its own, ignoring every exit code but the shell's could-not-start codes, 126 and 127, which print the page unpaged, as a shell that cannot start does. Ctrl-C cancels the run and ends the pager with it. A `PAGER` that is empty, holds only whitespace, or holds `cat` with surrounding whitespace alone turns help paging off.
 _Avoid_: Viewer, scroller, less (for the pager in general)
 
+**Help Command**:
+The help plugin's opt-in plugin Command, `help`, attached by `help({ command: true })`, whose words name a Command path from the root, aliases and hidden Commands included, and which prints that Command's extended help, the page `--help` after the path prints. A word that names no child is the ordinary unknown-command failure.
+_Avoid_: Help subcommand, help topic, `helpCommand` (the extension that carries a Command's help values)
+
 **Completion**:
 The projection a shell reads while the operator types: a script, printed or installed, that calls back into the application on each Tab and inserts the offered words, the canonical Command names, option spellings, and closed-set values that fit the word under the cursor. It never offers an alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
 _Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin

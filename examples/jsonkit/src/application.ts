@@ -56,7 +56,7 @@ const configured = new Application('jsonkit', {
     mcpCommand({ annotations: { openWorld: false, readOnly: true } }),
   ],
   plugins: [
-    help({ paging: true }),
+    help({ command: true, paging: true }),
     suggestions(),
     version(),
     format({ short: 'o' }),

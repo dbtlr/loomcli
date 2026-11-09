@@ -92,7 +92,7 @@ test('an unknown Command lists the visible ones, leaving out hidden and deprecat
   const { status, stderr } = await run(['typo', '-f', 'doc.json']);
   expect(status).toBe(2);
   expect(stderr).toContain(
-    'Use one of: doctor, completion, mcp, manpage, get, keys, select, stats.',
+    'Use one of: help, doctor, completion, mcp, manpage, get, keys, select, stats.',
   );
 });
 

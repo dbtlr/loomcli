@@ -26,7 +26,7 @@ The right-cell rule: the description when the member has one, on one line, then,
 
 Within a section the rows are two columns: the left cell is padded to the longest left cell in that section plus two spaces, and a row with no right cell has no trailing padding. The view measures terminal columns with `context.width` and pads to the widest cell with core's `pad` from [Width, padding, and multiline lanes](../core/styles.md#width-padding-and-multiline-lanes). Markup contributes no width, and Unicode follows core's existing measurement rules. Off a terminal nothing wraps, so a long row is one line however long it is. On a terminal a right cell wraps under its column, and a row set that cannot fit stacks, under [Help wraps to the destination's columns](#help-wraps-to-the-destinations-columns).
 
-The root of jsonkit has an action and ten children: the `doctor` Command the private `@loom/doctor` plugin attaches, the `completion` group the [completion](completion.md) plugin attaches, the `mcp` Command the [MCP](mcp.md) plugin attaches, and the `manpage` group the [manpage](manpage.md) plugin attaches, ahead of jsonkit's own in installation order, then six of its own, of which `fetch` is deprecated and `debug` and `paths` are hidden. It declares two local options: `--file`, the [content input](../core/validation.md#content-inputs) every jsonkit Command that reads the document declares, and `--format`, which the [formatter](format.md) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
+The root of jsonkit has an action and twelve children: the [help Command](help.md#the-help-command) the help plugin attaches, the `doctor` Command the private `@loom/doctor` plugin attaches, the `completion` group the [completion](completion.md) plugin attaches, the `mcp` Command the [MCP](mcp.md) plugin attaches, and the `manpage` group the [manpage](manpage.md) plugin attaches, ahead of jsonkit's own in installation order, then seven of its own, of which `fetch` is deprecated and `debug` and `paths` are hidden. It declares two local options: `--file`, the [content input](../core/validation.md#content-inputs) every jsonkit Command that reads the document declares, and `--format`, which the [formatter](format.md) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
 
 ```text
 jsonkit · Read and reshape one JSON document.
@@ -39,16 +39,18 @@ USAGE
 
 DOCUMENT COMMANDS
   READ
-    get    Read one value at a path.
-    keys   List the keys at a path.
-    fetch  Read one value at a path.  (deprecated: Use get instead.)
+    get              Read one value at a path.
+    keys             List the keys at a path.
+    stats <command>  Report facts about the document's shape.
+    fetch            Read one value at a path.  (deprecated: Use get instead.)
   RESHAPE
     select  Keep the named fields of the document.
 
 COMMANDS
+  help                  Show help for a command.
   doctor                Check the host this application runs on.
   completion <command>  Print or install a shell completion script.
-  mcp                   Serve this application's tools to an MCP client over stdin and stdout.
+  mcp [command]         Serve this application's tools to an MCP client over stdin and stdout.
   manpage <command>     Write or install the man pages.
 
 OPTIONS
@@ -170,16 +172,18 @@ USAGE
 
 DOCUMENT COMMANDS
   READ
-    get    Read one value at a path.
-    keys   List the keys at a path.
-    fetch  Read one value at a path.  (deprecated: Use get instead.)
+    get              Read one value at a path.
+    keys             List the keys at a path.
+    stats <command>  Report facts about the document's shape.
+    fetch            Read one value at a path.  (deprecated: Use get instead.)
   RESHAPE
     select  Keep the named fields of the document.
 
 COMMANDS
+  help                  Show help for a command.
   doctor                Check the host this application runs on.
   completion <command>  Print or install a shell completion script.
-  mcp                   Serve this application's tools to an MCP client over stdin and stdout.
+  mcp [command]         Serve this application's tools to an MCP client over stdin and stdout.
   manpage <command>     Write or install the man pages.
 
 OPTIONS
