@@ -75,7 +75,7 @@ const specs: Readonly<Record<Directive, DirectiveSpec>> = {
   },
 };
 
-/** The directives that read digits, after which a one-or-two-digit directive reads exactly two. */
+/** The directives that read digits, before which a one-or-two-digit directive reads exactly two. */
 const digitDirectives: ReadonlySet<string> = new Set(['%H', '%I', '%M', '%S', '%Y', '%d', '%m']);
 
 /** How a sentence names a field held twice. */

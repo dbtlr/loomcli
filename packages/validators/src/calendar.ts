@@ -132,5 +132,15 @@ function offsetOf(groups: Groups): number | undefined | 'invalid' {
   return groups.sign === '-' ? -magnitude : magnitude;
 }
 
-export { calendarDate, isRealDay, offsetGroups, offsetOf, offsetPattern, timeOfDay, wallTime };
+export {
+  calendarDate,
+  isRealDay,
+  millisecondDigits,
+  offsetGroups,
+  offsetOf,
+  offsetPattern,
+  timeOfDay,
+  twoDigits,
+  wallTime,
+};
 export type { Groups };

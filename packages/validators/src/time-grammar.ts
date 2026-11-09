@@ -1,4 +1,4 @@
-import { timeOfDay } from './calendar.js';
+import { millisecondDigits, timeOfDay, twoDigits } from './calendar.js';
 import { hour, minute, second } from './time-units.js';
 
 /**
@@ -13,8 +13,6 @@ const timeGrammar =
 const timePattern = String.raw`^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\.[0-9]+)?)?$`;
 
 /** The width each printed field takes. */
-const twoDigits = 2;
-const millisecondDigits = 3;
 
 const none = 0;
 

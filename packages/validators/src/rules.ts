@@ -46,7 +46,7 @@ const timeZone = catalogRule('time-zone', {
 /** A `date()`, `dateTime()`, or `time()` layout the factory cannot read. */
 const layout = catalogRule('layout', {
   explanation:
-    'date(), dateTime(), and time() read each layout as a POSIX strftime layout, so it is nonempty, holds only the directives its factory reads, holds each field its factory needs exactly once, pairs %I with %p, and, in dateTime(), holds no literal Z, because only %z reads Z as UTC.',
+    'date(), dateTime(), and time() read each layout as a POSIX strftime layout, so it is nonempty, holds only the directives its factory reads and no % that ends it, holds each field at most once and every field its factory needs, pairs %I with %p, and, in dateTime(), holds no literal Z or z, because only %z reads Z as UTC.',
   headline: 'Invalid layout',
 });
 

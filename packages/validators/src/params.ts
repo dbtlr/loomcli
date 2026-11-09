@@ -3,6 +3,7 @@ import type { StandardSchemaV1 } from '@loomcli/core';
 import { vendor } from './create.js';
 import { isPlainObject } from './data.js';
 import type { PathKind } from './probe.js';
+import { day } from './time-units.js';
 
 /** A check on one parameter that also tells the compiler its type. */
 type Guard<Value> = (value: unknown) => value is Value;
@@ -49,7 +50,6 @@ const isFiniteNumber: Guard<number> = (value): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
 /** The milliseconds in a day, which a time of day stays below. */
-const day = 86_400_000;
 
 const isTimeOfDay: Guard<number> = (value): value is number => isCount(value) && value < day;
 

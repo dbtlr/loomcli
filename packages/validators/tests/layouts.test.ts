@@ -32,6 +32,8 @@ describe('date layouts', () => {
     [['%d/%m/%Y', '%m/%d/%Y'], '03/25/2026', '2026-03-25'],
     [['%m/%d/%Y', '%d/%m/%Y'], '03/04/2026', '2026-03-04'],
     [['%d-%m-%Y'], '25-09-2026', '2026-09-25'],
+    [['%Y-%d-%m'], '2026-03-04', '2026-03-04'],
+    [['%Y-%d-%m'], '2026-25-09', '2026-09-25'],
     [['%Y%%%m%%%d'], '2026%09%25', '2026-09-25'],
     [['%d.%m.%Y'], '25.09.2026', '2026-09-25'],
     [['(%Y) [%m] {%d}'], '(2026) [09] {25}', '2026-09-25'],
@@ -152,6 +154,16 @@ function readIn(zone: string, layouts: readonly [string, ...string[]], tokens: s
 
 describe('dateTime layouts', () => {
   const stamp = '%Y%m%dT%H%M%S%z';
+
+  it('falls through to the next layout when an offset is out of range', async () => {
+    const validator = dateTime({
+      layouts: ['%d/%m/%Y %H:%M%z', '%d/%m/%Y %H:%M-%S'],
+      timeZone: 'UTC',
+    });
+    await expect(instantOf(validator, '25/09/2026 14:30-59')).resolves.toBe(
+      '2026-09-25T14:30:59.000Z',
+    );
+  });
 
   it.each([
     [[stamp], '20260925T143000Z', '2026-09-25T14:30:00.000Z'],

@@ -336,7 +336,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/validators/layout
 
-**Invalid layout.** date(), dateTime(), and time() read each layout as a POSIX strftime layout, so it is nonempty, holds only the directives its factory reads, holds each field its factory needs exactly once, pairs %I with %p, and, in dateTime(), holds no literal Z, because only %z reads Z as UTC.
+**Invalid layout.** date(), dateTime(), and time() read each layout as a POSIX strftime layout, so it is nonempty, holds only the directives its factory reads and no % that ends it, holds each field at most once and every field its factory needs, pairs %I with %p, and, in dateTime(), holds no literal Z or z, because only %z reads Z as UTC.
 
 ### @loomcli/validators/one-of-values
 
