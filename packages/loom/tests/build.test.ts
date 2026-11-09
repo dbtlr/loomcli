@@ -63,12 +63,18 @@ import { setTimeout as after } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
 import { processHandle } from '@loomcli/core';
-import { afterEach, expect, test } from 'vite-plus/test';
+import { afterEach, expect, test, vi } from 'vite-plus/test';
 
 import { childEnvironment, start } from '../../../scripts/test-process.js';
 import { removeCreatedDirectories } from '../src/helpers/build.js';
 import { put, removeRoots, temporaryRoot } from './fixture.js';
 import { cli, execute, fixturePackage, loom, snapshot } from './package.js';
+
+// Ceil the toolchain's walks up from a fixture at the sandbox (see ./ceiling.ts).
+vi.mock(import('node:fs'), async (importOriginal) => {
+  const { ceiled } = await import('./ceiling.js');
+  return ceiled(await importOriginal());
+});
 
 afterEach(() => {
   removeRoots();
@@ -1098,17 +1104,19 @@ async function signalWhenWritten(
 /**
  * Runs `loom build --target node` in the package as its own process group, with a stand-in for Bun
  * first on the PATH, and sends the signal to the group, as a terminal's Ctrl-C sends it, once the
- * stand-in runs. A build runs Bun only in its staging directory, so the signal lands while the
- * build is under way, whatever the machine's speed. The stand-in writes part of a bundle there, as
- * a Bun stopped partway leaves one, records the directory, and waits to be stopped. It resolves to
- * that directory and the signal the build ended by.
+ * stand-in runs. A build runs `bun build` only in its staging directory, so the signal lands while
+ * the build is under way, whatever the machine's speed. The stand-in writes part of a bundle there,
+ * as a Bun stopped partway leaves one, records the directory, and waits to be stopped. It resolves
+ * to that directory and the signal the build ended by. Any other Bun run goes to the real Bun, such
+ * as the read of the skills declaration a build makes when a `node_modules` above the sandbox
+ * resolves `@loomcli/plugins`.
  */
 async function signalWhileBunBuilds(root: string, signal: NodeJS.Signals) {
   const bin = temporaryRoot('loom-held-bun-');
   const ranIn = join(bin, 'ran-in');
   writeFileSync(
     join(bin, 'bun'),
-    `#!/bin/sh\nprintf 'A partial main.js.\\n' > main.js\npwd -P > "${ranIn}.partial" && mv "${ranIn}.partial" "${ranIn}"\nexec sleep 60\n`,
+    `#!/bin/sh\n[ "$1" = build ] || PATH='${process.env.PATH ?? ''}' exec bun "$@"\nprintf 'A partial main.js.\\n' > main.js\npwd -P > "${ranIn}.partial" && mv "${ranIn}.partial" "${ranIn}"\nexec sleep 60\n`,
   );
   chmodSync(join(bin, 'bun'), 0o755);
   // The runtime by its own path, because the stand-in answers to `bun` on the PATH loom runs with.

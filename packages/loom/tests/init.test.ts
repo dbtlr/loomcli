@@ -35,10 +35,10 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { afterEach, expect, test } from 'vite-plus/test';
+import { afterEach, expect, test, vi } from 'vite-plus/test';
 import { z } from 'zod';
 
 import { drive } from '../../../scripts/test-terminal.js';
@@ -59,6 +59,12 @@ import {
   loom,
   snapshot,
 } from './package.js';
+
+// Ceil the toolchain's walks up from a fixture at the sandbox (see ./ceiling.ts).
+vi.mock(import('node:fs'), async (importOriginal) => {
+  const { ceiled } = await import('./ceiling.js');
+  return ceiled(await importOriginal());
+});
 
 afterEach(() => {
   removeRoots();
@@ -386,7 +392,11 @@ test(
     const directory = emptyNotes();
     await loom(directory, ['init']);
     const written = [read(directory, guidePath), read(directory, skillPath)];
-    const formatted = spawnSync(vp, ['fmt', guidePath, skillPath], {
+    // The formatter runs on its defaults, from a configuration in the sandbox.
+    // Its own search would reach one above the temporary directory, such as the repository's.
+    const defaults = join(dirname(directory), 'formatter.json');
+    writeFileSync(defaults, '{}\n');
+    const formatted = spawnSync(vp, ['fmt', '-c', defaults, guidePath, skillPath], {
       cwd: directory,
       encoding: 'utf8',
       timeout: slow,

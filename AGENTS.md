@@ -38,7 +38,7 @@ Run a package's tool with `pnpm exec <tool>`. `devEngines` in `package.json` pin
 
 ### Tests stay inside their sandbox
 
-A test that walks up from a temporary directory, looking for `.git` or a configuration file, sets a ceiling at its sandbox root. Without one, a stray marker above the sandbox, such as an empty `/tmp/.git` another tool left behind, ends the walk outside it: the test fails intermittently and can write outside its sandbox. `packages/plugins/tests/fixtures/skills-run.mjs` shows the pattern. To reproduce such a failure, point `TMPDIR` at a private directory that holds a `.git`.
+A test that walks up from a temporary directory, looking for `.git` or a configuration file, sets a ceiling at its sandbox root. Without one, a stray marker above the sandbox, such as an empty `/tmp/.git` another tool left behind, ends the walk outside it: the test fails intermittently and can write outside its sandbox. `packages/plugins/tests/fixtures/skills-run.mjs` shows the pattern for a child process, and `packages/loom/tests/ceiling.ts` for an in-process run. `childEnvironment` in `scripts/test-process.ts` sets `GIT_CEILING_DIRECTORIES` at the temporary directory, so git's own search stays inside. To reproduce such a failure, point `TMPDIR` at a private directory that holds a `.git`.
 
 ### Type assertions are a last resort
 

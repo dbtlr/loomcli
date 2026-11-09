@@ -45,8 +45,10 @@ import { commit, git, migration, put, removeRoots, repository, temporaryRoot } f
 import { run as runLoom } from './run.js';
 
 // Mock the named exports through the test runner; Bun does not synchronize builtin ESM exports.
+// The toolchain's walks up from a fixture stop at the sandbox (see ./ceiling.ts).
 vi.mock(import('node:fs'), async (importOriginal) => {
-  const actual = await importOriginal();
+  const { ceiled } = await import('./ceiling.js');
+  const actual = ceiled(await importOriginal());
   return {
     ...actual,
     renameSync: vi.fn(actual.renameSync),
