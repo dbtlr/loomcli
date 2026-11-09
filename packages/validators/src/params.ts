@@ -49,8 +49,7 @@ const isCount: Guard<number> = (value): value is number =>
 const isFiniteNumber: Guard<number> = (value): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
-/** The milliseconds in a day, which a time of day stays below. */
-
+/** A time of day as milliseconds since midnight: a whole count below one day. */
 const isTimeOfDay: Guard<number> = (value): value is number => isCount(value) && value < day;
 
 const isKind: Guard<PathKind> = (value): value is PathKind =>

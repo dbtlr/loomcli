@@ -12,8 +12,6 @@ const timeGrammar =
 /** The published pattern, the grammar whole with each field's range. */
 const timePattern = String.raw`^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\.[0-9]+)?)?$`;
 
-/** The width each printed field takes. */
-
 const none = 0;
 
 /** The milliseconds since midnight a token in the default grammar names, or undefined for any other token. */
