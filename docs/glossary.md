@@ -649,7 +649,7 @@ A public surface derived from the Command graph, such as help, a manifest, compl
 _Avoid_: Export, output format, adapter
 
 **Help page**:
-The projection of one routed Command that the help plugin prints: its masthead, usage, visible members with the values each input accepts and the names of the variables and the configuration key bound to each option, never their values, and examples, with meaning independent of styling. It has two variants, compact help and extended help, and the spelling the operator typed selects one.
+The projection of one routed Command that the help plugin prints: its masthead, usage, visible members with the values each input accepts and the names of the variables and the configuration key bound to each option, never their values, examples, and epilogs, with meaning independent of styling. It has two variants, compact help and extended help, and the spelling the operator typed selects one.
 _Avoid_: Usage text, man page, help screen
 
 **Help section**:
@@ -661,7 +661,7 @@ The help page rows that share one left column: an outer heading's direct rows, o
 _Avoid_: Column group, Group (for help rows)
 
 **Compact help**:
-The help page `-h` prints, for a reader who needs the syntax: the extended page without the details and the examples, ending with a pointer to `--help` when the extended page holds more.
+The help page `-h` prints, for a reader who needs the syntax: the extended page without the details and the examples, its last hint a pointer to `--help` when the extended page holds more, then the epilogs.
 _Avoid_: Short help, summary, brief help
 
 **Extended help**:
