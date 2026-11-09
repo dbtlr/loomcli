@@ -38,6 +38,7 @@ test('help keeps every field its facts interfaces name', async () => {
   const command: Required<HelpCommandFacts> = {
     commandSections: [['Work'], ['Work', 'Read']],
     details: 'Read **one** value.',
+    epilog: 'Report a bug at the tracker.',
     examples: [{ command: 'get name', note: 'A top-level key.' }],
     optionSections: [['Output']],
     section: ['Work', 'Read'],

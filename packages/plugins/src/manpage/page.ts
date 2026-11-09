@@ -18,6 +18,7 @@ import {
   rightCellWith,
 } from '../help/cells.js';
 import type { CellText, CellWriter, Fact } from '../help/cells.js';
+import { epilogsOf } from '../help/epilogs.js';
 import {
   childSuffix,
   commandHelp,
@@ -31,7 +32,7 @@ import type { Example } from '../help/page.js';
 import { orderedSections } from '../help/sections.js';
 import type { OrderedSection, SectionMember } from '../help/sections.js';
 import { singleLine, singleLineOf } from '../lines.js';
-import { detailsLines } from './markdown.js';
+import { detailsLines, notesLines } from './markdown.js';
 import { findable, pageFile, pageName } from './pages.js';
 import { escapeText, escapeUnbroken, inFont, request, textLine } from './roff.js';
 
@@ -307,6 +308,11 @@ function examples({ command, graph }: Subject): string[] {
   return headed('EXAMPLES', lines);
 }
 
+/** The epilogs the help page ends with, in its order, or no section when the path holds none. */
+function notes({ command, graph }: Subject): string[] {
+  return headed('NOTES', notesLines(epilogsOf(graph, command)));
+}
+
 /** The root page, the parent's page when it is not the root, then each visible child's page. */
 function seeAlso({ commandSections, graph, parent }: Subject): string[] {
   const named = [
@@ -362,6 +368,7 @@ function renderManPage(
     ...sectionLines(subject.optionSections, optionEntry),
     ...examples(subject),
     ...environment(subject),
+    ...notes(subject),
     ...seeAlso(subject),
   ];
   return `${lines.map((line) => line.trimEnd()).join('\n')}\n`;

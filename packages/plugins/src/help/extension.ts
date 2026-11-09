@@ -33,12 +33,14 @@ import { lineRule, markdownRule } from '../lines.js';
 type HelpSectionPath = readonly [string] | readonly [string, string];
 
 /**
- * Help's facts on a Command: its Markdown details, its examples, the section it sits in on its
- * parent's page, and the order of the sections on its own page.
+ * Help's facts on a Command: its Markdown details, its Markdown epilog, its examples, the section it
+ * sits in on its parent's page, and the order of the sections on its own page. Every page on or under
+ * the Command ends with its epilog.
  */
 interface HelpCommandFacts {
   readonly commandSections?: readonly HelpSectionPath[] | undefined;
   readonly details?: string | undefined;
+  readonly epilog?: string | undefined;
   readonly examples?: readonly CommandExample[] | undefined;
   readonly optionSections?: readonly HelpSectionPath[] | undefined;
   readonly section?: HelpSectionPath | undefined;
@@ -72,6 +74,7 @@ const word = pipe(string(), regex(/^[^\s\u0085]+$/u, 'Supply one word with no wh
 const commandFactsSchema = object({
   commandSections: optional(sectionPaths),
   details: optional(markdown),
+  epilog: optional(markdown),
   examples: optional(array(example)),
   optionSections: optional(sectionPaths),
   section: optional(sectionPath),
@@ -92,8 +95,8 @@ const argumentFactsSchema = object({
 const argumentFacts = exactFacts<HelpArgumentFacts>()(argumentFactsSchema);
 
 /**
- * Help's facts on a Command or the Application: details, examples, its section, and the order of
- * the sections on its own page.
+ * Help's facts on a Command or the Application: details, an epilog, examples, its section, and the
+ * order of the sections on its own page.
  */
 export const helpCommand: Extension<
   'command',
