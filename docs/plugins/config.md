@@ -34,7 +34,7 @@ interface ScopeSettings {
   readonly root?: string | readonly [string, ...string[]] | false;
 }
 
-interface ConfigurationSettings<Schema extends StandardSchemaV1, Directory extends string> extends ScopeSettings {
+interface ConfigurationSettings<Schema extends StandardSchemaV1, Directory extends string = never> extends ScopeSettings {
   /** One Standard Schema for the whole file. Every key is optional outside an array item or a record value. */
   readonly schema: Schema & EmptyFileGuard<Schema>;
   /** The configuration file's name or relative path, a file pattern. Defaults to `.<app>.json`. */
