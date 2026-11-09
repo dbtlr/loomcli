@@ -9,6 +9,8 @@ import { exactFacts } from '../exact-facts.js';
  * The configuration plugin's binding on an option: the dotted path of object keys it reads in the
  * configuration file. Each segment is nonempty, with no escaping and no array indexing, so a key
  * that holds a dot is not reachable.
+ *
+ * @public
  */
 interface ConfigInputFacts {
   readonly path: string;
@@ -34,6 +36,8 @@ const inputFacts = exactFacts<ConfigInputFacts>()(inputFactsSchema);
  * carries it is configuration-bound, so core asks the plugin about it when argv and the
  * environment leave it unfilled. Its published schema is a Standard Schema over
  * `ConfigInputFacts`, so an author's type check loads no validation library's declarations.
+ *
+ * @public
  */
 export const configInput: Extension<
   'option',

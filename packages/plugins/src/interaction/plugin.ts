@@ -14,12 +14,18 @@ const options = {
     type: 'boolean',
   },
 } satisfies PluginOptions;
+/** @public */
 export interface InteractionSettings {
   readonly env?: string | readonly [string, ...string[]];
 }
+/** @public @sealed */
 export type InteractionOptions = typeof options;
 
-/** Lets the operator lower the run interaction decision with --no-input or a named variable. */
+/**
+ * Lets the operator lower the run interaction decision with --no-input or a named variable.
+ *
+ * @public
+ */
 export function interaction(settings?: InteractionSettings): Plugin<InteractionOptions> {
   return plugin(identity, {
     options: {
