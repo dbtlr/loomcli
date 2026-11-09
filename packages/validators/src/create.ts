@@ -89,10 +89,13 @@ function converter(schema: Readonly<Record<string, unknown>>): StandardJSONSchem
       }
       return { $schema: dialect, ...schema };
     },
-    output: () => {
-      throw new Error('This validator publishes no output schema.');
-    },
+    output: noOutputSchema,
   };
+}
+
+/** The output side of every converter this package builds: the output is the action's business. */
+function noOutputSchema(): never {
+  throw new Error('This validator publishes no output schema.');
 }
 
 /** Faults on an input schema that declares its own dialect, which the converter publishes itself. */
@@ -140,5 +143,5 @@ function createValidator<Output>(
   return { '~standard': published };
 }
 
-export { createValidator, vendor };
-export type { ParseResult, Validator, ValidatorDefinition };
+export { createValidator, noOutputSchema, outsideRun, vendor };
+export type { AcceptedOutput, ParseResult, ParseReturn, Validator, ValidatorDefinition };

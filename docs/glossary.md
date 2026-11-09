@@ -179,12 +179,16 @@ The variable, or the ordered list of variables, an option names with `env` on it
 _Avoid_: Env var option, env fallback, auto env
 
 **Validator**:
-The Standard Schema object an ordinary value input declares through `validate`: a catalog validator, one built with `createValidator`, or a schema library's value such as a Zod schema, which core cannot tell apart. It receives one value of its input type, a supplied string, a default, or `undefined` under `validateOmitted`, and on a multiple option or a variadic argument each value in turn; it decides acceptance, and determines the action's value type. Native content inputs declare no validator. "Validate" names the action and "validator" the object; "schema" names a description of validation, such as an input schema.
+The Standard Schema object an ordinary value input declares through `validate`: a catalog validator, one built with `createValidator`, a validator pipe, or a schema library's value such as a Zod schema, which core cannot tell apart. It receives one value of its input type, a supplied string, a default, or `undefined` under `validateOmitted`, and on a multiple option or a variadic argument each value in turn; it decides acceptance, and determines the action's value type. Native content inputs declare no validator. "Validate" names the action and "validator" the object; "schema" names a description of validation, such as an input schema.
 _Avoid_: Schema (for the object), parser, type guard
 
 **Validator catalog**:
 The validators `@loomcli/validators` ships as factories, each built with `createValidator`, so an author covers a common input shape without a schema library. A factory earns its slot by covering a shape a command-line author would otherwise need a schema library for.
 _Avoid_: Built-in validators, core validators
+
+**Validator pipe**:
+The validator `pipe(first, ...steps)` returns: it runs `first`, any validator, on what core hands the input, then each step, a validator or a parse function, on the value the stage before it accepted, and the first rejection ends the pipe with that stage's issues; `first` and the steps are its stages. Its input type is `first`'s, its output type is the last step's, and it publishes exactly the input schema `first` publishes.
+_Avoid_: Pipe (alone, which names stdin and stdout), chain, composed validator
 
 **Validation context**:
 The facts core attaches to every validator call it makes: the phase, the input's identity, the routed path, the passthrough tail, the raw supplied values, tokens and the values input sources filled alike, and the host. A validator reads it to decide rules that depend on the invocation.
