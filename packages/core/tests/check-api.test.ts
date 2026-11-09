@@ -286,6 +286,9 @@ test.each([
   expect(checkApi(root, [policy], { update: true })).toContainEqual(
     expect.stringContaining(`api-unchecked-entry: ${entry}:`),
   );
+  expect(checkApi(root, [policy])).toContainEqual(
+    expect.stringContaining(`api-unchecked-entry: ${entry}:`),
+  );
 });
 
 /** A function whose public signature names an unexported type the policy lists. */
