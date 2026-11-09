@@ -9,7 +9,7 @@ This page documents `loomTheme()`, the first-party theme: a named palette of sev
 ```ts
 import type { AdaptiveStyle, ConcreteStyle, Plugin, ThemeConstraint, ThemeMapping } from '@loomcli/core';
 
-type LoomThemeDefaults = Readonly<
+export type LoomThemeDefaults = Readonly<
 	{ primary: ConcreteStyle } & Record<
 		'dim' | 'highlight' | 'success' | 'warning' | 'error' | 'info',
 		AdaptiveStyle // the six colored tokens adapt to the run's background
@@ -37,7 +37,7 @@ const app = new Application('example', {
 });
 ```
 
-- **Exports.** `@loomcli/plugins/theme` adds `loomTheme` and the type `LoomThemeOverrides` beside the existing `theme(mapping)`. Both factories use identity `@loomcli/plugins/theme` and contribute through the same single theme slot. They install no middleware, options, hooks, or views. Importing either factory installs nothing.
+- **Exports.** `@loomcli/plugins/theme` adds `loomTheme`, the type `LoomThemeOverrides` an author's overrides meet, and the type `LoomThemeDefaults` of the seven tokens the returned plugin supplies, beside the existing `theme(mapping)`. Both factories use identity `@loomcli/plugins/theme` and contribute through the same single theme slot. They install no middleware, options, hooks, or views. Importing either factory installs nothing.
 - **Defaults.** `loomTheme()` supplies the seven mappings below. `primary` is a plain entry, and the six colored tokens are [adaptive](../core/background.md), with a dark side and a light side, so core resolves each to the side that matches the run's background, under [ADR-0092](../decisions/0092-core-settles-each-runs-background-once-and-a-theme-entry-may-adapt-to-it.md). The reduced-depth colors follow [ADR-0029](../decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md). `theme(mapping)` remains the bare factory and supplies only its declared mappings. The named defaults change foregrounds only, preserving backgrounds and modifiers. The factory takes no mode argument and reads no environment variable: core settles the background under [Background](../core/background.md), and the operator's spelling comes from the [background plugin](background.md).
 - **Overrides.** A supplied concrete chain replaces the complete mapping for its key, both sides and every fallback color, so a plain override is one value on both backgrounds. An adaptive override supplies both sides. An omitted or `undefined` built-in override retains the default. `style` contributes no operations and inherits its surroundings. `style.resetForeground` selects the terminal's foreground default while preserving other attributes. `null` and applied strings are invalid values. The existing concrete-chain and reserved-name rules apply.
 - **Custom names.** Extra keys add tokens to the Application vocabulary, including keys whose value is `undefined`. Core-key completion suggests the seven names without requiring an annotation. A reusable mapping can use `satisfies LoomThemeOverrides` while retaining its custom keys. Literal custom names survive the returned plugin and [Application environment registration](../core/styles.md#theme-plugins-and-typed-names) into action and view contexts. The imported `style` remains independent of Application registration. A mapping cannot reference another token.

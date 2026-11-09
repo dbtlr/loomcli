@@ -109,9 +109,47 @@ export const surfacePackages = [
   {
     // The plugins are tagged one group of subpaths at a time; each pass adds its entries here.
     // The declaration-import scan already reads every subpath, so `modules` covers them all.
-    coveredEntries: ['./box', './heading', './list', './prose', './records', './rule', './table'],
+    coveredEntries: [
+      './background',
+      './box',
+      './color',
+      './format',
+      './format/views',
+      './heading',
+      './list',
+      './prose',
+      './records',
+      './rule',
+      './table',
+      './theme',
+      './verbose',
+    ],
     directory: 'packages/plugins',
-    entries: {},
+    entries: {
+      './background': {
+        forgottenExports: {
+          options:
+            'Constant behind the exported `BackgroundOptions`; the author names `BackgroundOptions`.',
+        },
+      },
+      './color': {
+        forgottenExports: {
+          options: 'Constant behind the exported `ColorOptions`; the author names `ColorOptions`.',
+        },
+      },
+      './theme': {
+        forgottenExports: {
+          defaults:
+            'Constant behind the exported `LoomThemeDefaults`; the author names `LoomThemeDefaults`.',
+        },
+      },
+      './verbose': {
+        forgottenExports: {
+          options:
+            'Constant behind the exported `VerboseOptions`; the author names `VerboseOptions`.',
+        },
+      },
+    },
     modules: ['node:*', '@loomcli/core', '@loomcli/validators', '@standard-schema/spec'],
   },
 ];

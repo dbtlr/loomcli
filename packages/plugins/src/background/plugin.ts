@@ -28,12 +28,15 @@ const options = {
     validate: backgroundInput,
   },
 } satisfies PluginOptions;
+/** @public @sealed */
 export type BackgroundOptions = typeof options;
 
 /**
  * Gives the operator --background=dark|light, which core reads as the run's background choice
  * right after host capture. Its mark also makes core detect the background when no theme entry
  * adapts, so an application whose own code reads the background installs it. It takes no settings.
+ *
+ * @public
  */
 export function background(): Plugin<BackgroundOptions> {
   return plugin(identity, { options });

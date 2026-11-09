@@ -7,7 +7,11 @@ import type {
   ThemeMapping,
 } from '@loomcli/core';
 
-/** The bare palette introduces its literal token names and supplies no defaults or middleware. */
+/**
+ * The bare palette introduces its literal token names and supplies no defaults or middleware.
+ *
+ * @public
+ */
 function theme<const Mapping extends ThemeMapping>(
   mapping: Mapping & ThemeConstraint<Mapping>,
 ): Plugin<{}, NoInfer<Mapping>> {
@@ -46,12 +50,26 @@ const defaults = {
     light: style.hex('#8A6D0E', { ansi16: 'brightYellow', ansi256: 94 }),
   }),
 };
+/**
+ * The seven tokens `loomTheme()` supplies: what an author reads from the returned plugin's palette.
+ *
+ * @public @sealed
+ */
 type LoomThemeDefaults = Readonly<typeof defaults>;
+/**
+ * What an author hands `loomTheme()`: a replacement for any built-in token, plus custom tokens.
+ *
+ * @public
+ */
 type LoomThemeOverrides = {
   readonly [Name in keyof LoomThemeDefaults]?: ConcreteStyle | AdaptiveStyle | undefined;
 } & ThemeMapping;
 
-/** The Loom palette, which adapts to the run's background and preserves authored modifiers. */
+/**
+ * The Loom palette, which adapts to the run's background and preserves authored modifiers.
+ *
+ * @public
+ */
 function loomTheme<const Mapping extends ThemeMapping = {}>(
   overrides?: LoomThemeOverrides & Mapping & ThemeConstraint<Mapping>,
 ): Plugin<{}, LoomThemeDefaults & Omit<NoInfer<Mapping>, keyof LoomThemeDefaults>>;
@@ -71,4 +89,4 @@ function loomTheme(overrides?: LoomThemeOverrides): Plugin<{}, ThemeMapping> {
 }
 
 export { theme, loomTheme };
-export type { LoomThemeOverrides };
+export type { LoomThemeDefaults, LoomThemeOverrides };

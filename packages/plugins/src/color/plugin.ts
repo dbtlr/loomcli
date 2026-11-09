@@ -14,11 +14,14 @@ const options = {
     type: 'boolean',
   },
 } satisfies PluginOptions;
+/** @public @sealed */
 export type ColorOptions = typeof options;
 
 /**
  * Gives the operator the standard --color and --no-color pair, which core reads as the run's color
  * choice right after host capture. The pair's spelling is the standard's, so it takes no settings.
+ *
+ * @public
  */
 export function color(): Plugin<ColorOptions> {
   return plugin(identity, { options });
