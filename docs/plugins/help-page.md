@@ -6,9 +6,9 @@ description: "The help page: its blocks and layout, the Markdown subset details 
 
 This page documents the page `--help` prints: its default layout, its Markdown details, and how it wraps to the destination's columns.
 
-The page rules below define the default content and layout. [Ordered help sections](help.md#ordered-help-sections) replace the Command and option blocks when section fields are declared. The [help and version restyle](help.md#help-and-version-restyle) adds semantic styles without changing that structure. Output is UTF-8, and no meaning depends on styling. The page reads the routed `CommandNode`, `graph.globals`, `graph.name`, and `graph.description`, plus the help extension values those nodes carry and the configuration plugin's `configInput` value on an option. It reads no host facts. On a terminal it lays the page out against its view context's `columns`, under [Help wraps to the destination's columns](#help-wraps-to-the-destinations-columns). Each rule applies to both [variants](help.md#help-variants) unless it names one: Details and EXAMPLES print on the extended page alone, and the hints differ.
+The page rules below define the default content and layout. [Ordered help sections](help.md#ordered-help-sections) replace the Command and option blocks when section fields are declared. The [help and version restyle](help.md#help-and-version-restyle) adds semantic styles without changing that structure. Output is UTF-8, and no meaning depends on styling. The page reads the routed `CommandNode`, `graph.globals`, `graph.name`, and `graph.description`, plus the help extension values those nodes carry and the configuration plugin's `configInput` value on an option. It reads no host facts. On a terminal it lays the page out against its view context's `columns`, under [Help wraps to the destination's columns](#help-wraps-to-the-destinations-columns). Each rule applies to both [variants](help.md#help-variants) unless it names one: Details and EXAMPLES print on the extended page alone, the hints differ, and the epilogs print on both.
 
-The page is a sequence of blocks separated by one blank line, and no block holds a blank line of its own except Details, which keeps one blank line wherever the author separated two Markdown blocks, and the empty lines inside its code. A block that has nothing to show is omitted. Outer section titles are uppercase at the left margin. The default layout indents every other line two spaces, except hints. [Ordered help sections](help.md#ordered-help-sections) add inner headings indented two spaces and inner rows indented four spaces. A line at the left margin is the masthead, an outer section title, or a hint and nothing else. `<name>` below is the application name, and `<path>` is the name followed by the routed path, space-separated: `jsonkit`, `jsonkit get`, or `store cache clear`. A member is visible when it is not hidden.
+The page is a sequence of blocks separated by one blank line, and no block holds a blank line of its own except Details and each epilog, which keep one blank line wherever the author separated two Markdown blocks, and the empty lines inside their code. A block that has nothing to show is omitted. Outer section titles are uppercase at the left margin. The default layout indents every other line two spaces, except hints. [Ordered help sections](help.md#ordered-help-sections) add inner headings indented two spaces and inner rows indented four spaces. A line at the left margin is the masthead, an outer section title, or a hint and nothing else. `<name>` below is the application name, and `<path>` is the name followed by the routed path, space-separated: `jsonkit`, `jsonkit get`, or `store cache clear`. A member is visible when it is not hidden.
 
 1. **Masthead.** `<path> · <description>`, with a space, U+00B7, and a space as the separator, or `<path>` alone when the node has no description. When the routed Command is deprecated, a second line `  Deprecated: <message>` follows in the same block. A description and a migration message each print as one line, wherever the page shows them: each line break the author wrote, CRLF or a single terminator, reads as one space.
 2. **Details.** Extended alone. The routed node's `details`, rendered under [Markdown details](#markdown-details), each line indented two spaces. Help reads the same line terminators the schema recognizes, CRLF and each single terminator, as line breaks and joins with LF, so an authored CR or NEL never reaches the page.
@@ -21,6 +21,7 @@ The page is a sequence of blocks separated by one blank line, and no block holds
 9. **Option-group sentences.** After the option sections, one sentence per option group in declaration order, each indented two spaces, none under a title of its own. A group names each member by its [reported spelling](../core/failures.md), joined `a and b` for two and `a, b, and c` for more. An `exclusive` group reads `Use at most one of <members>.`, a `oneRequired` group `Supply at least one of <members>.`, and a `requiredTogether` group `Use <members> together.`. A group with a content input that accepts stdin adds ` (piped stdin does not count)` before the period. A group with a hidden member prints no sentence, because the sentence would reveal that member.
 10. **EXAMPLES.** Extended alone. For a node that carries `examples`, one entry each: `$ <name> <command>`, then the note on the next line indented two more spaces.
 11. **Hints.** One block of up to two lines, each at the left margin. When the page printed any child Command row, the first line is `Run <path> <command> --help for command details.` on the extended page and `Run <path> <command> -h for command details.` on the compact page. On the compact page alone, when the extended page of the same node would print Details or EXAMPLES, the last line is `Run <path> --help for details and examples.`
+12. **Epilogs.** One block for each Command on the routed node's path that carries an [`epilog`](#epilogs): the routed node's own first, then its parent's, and so on out to the Application's, last. Each renders under [Markdown details](#markdown-details), each line indented two spaces, as Details does.
 
 The right-cell rule: the description when the member has one, on one line, then, for an option or an argument that has them, its [accepted values](help.md#accepted-values) as one sentence, then, when any fact applies, one parenthesis holding the facts that apply, comma-separated, in this order: for a [content input](../core/validation.md#content-inputs), its source routing, `file or piped stdin; - selects stdin` for one source that accepts stdin, `files and piped stdin; - places stdin` for a multiple option or a variadic argument that accepts it, and `file path` for one that does not, then `min: <n> sources` and `max: <n> sources` when declared, with `source` for a count of 1; `required`, or `required when not interactive` for an option or an argument that declares `required: 'non-interactive'`, `repeatable` for a multiple option, `default: <value>`, `implied: <value>` for an option with an [implied value](../core/options.md#implied-values), `env: <names>` for an option with an [environment binding](../core/input-sources.md), its variables in declaration order separated by a space, followed, for a multiple option whose binding declares an `envDelimiter`, by ` as a list separated by <delimiter>`, the delimiter written as a JSON string literal as the [man page](manpage.md) writes it, so `","`, `" "`, or `"\t"`, `config: <path>` for an option that carries a [`configInput`](config.md#linking-an-option) value, its dotted path as declared, and `deprecated: <message>`. An option whose `helpInput` holds `hideBindings: true` has neither `env` nor `config`, and help prints a name alone, never the value a variable or a configuration file holds. One space separates the description from the accepted-values sentence, and help prints both as written, adding no punctuation between them; two spaces separate the text before the parenthesis from it; a member with neither description nor accepted values has the parenthesis as its whole right cell, with no leading spaces; and a member with none of the three has no right cell. The parenthesis begins at the first `  (` that is followed by `file path`, `file or piped stdin`, `files and piped stdin`, `min: `, `max: `, `required`, `repeatable`, `default: `, `implied: `, `env: `, `config: `, or `deprecated: `, and it ends at the closing `)` that ends the row's unwrapped text, and `deprecated` is always the last fact, so a reader splits the earlier facts on the comma and reads the text between `deprecated: ` and that closing parenthesis as the message. The page is a rendering for a reader; a consumer that needs a fact exactly, whatever a description, an accepted-values sentence, or a default holds, reads it from `inspect()`, which is the machine surface, and that includes a deprecated message, which may itself hold a comma or a parenthesis. An implied value prints, and is escaped, exactly as a default that is a string does. A default value prints as it is when it is a string, as its elements separated by a space when it is an array of strings, as `JSON.stringify` renders it for any other value JSON can represent, and as `String(value)` renders it otherwise, or as Object's own spelling, such as `[object Array]`, where `String` throws; an explicit `undefined` default prints no default fact, and a line terminator inside a rendered default prints as its JSON escape, so a rendered default adds no line break of its own.
 
@@ -206,6 +207,43 @@ Run jsonkit --help for details and examples.
 `jsonkit select -h` prints the `jsonkit select --help` page above unchanged, because `select` carries no details or examples, so the compact page has nothing to point to.
 
 The deprecated child `fetch` carries its message as the last fact of its row, and its own page opens with `jsonkit fetch · Read one value at a path.` followed by `  Deprecated: Use get instead.`. The hidden child `debug` appears on no page above, and `jsonkit debug --help` prints its own page like any other. A group child `cache` with the description `Manage the cache.` would add the row `cache <command>  Manage the cache.`.
+
+## Epilogs
+
+```ts
+// The Application ends every page with its support link, and the stats group adds its own.
+new Application('jsonkit', {
+  extensions: [helpCommand({ epilog: 'Report a bug at https://github.com/acme/jsonkit/issues.' })],
+  // ...
+});
+
+new Command('stats', {
+  extensions: [
+    helpCommand({
+      epilog: 'Each statistic is described at https://acme.dev/jsonkit/stats.',
+      section: ['Document commands', 'Read'],
+    }),
+  ],
+  // ...
+});
+```
+
+An `epilog` on `helpCommand` is text that ends the help page, such as where to report a bug or where the full documentation lives. [ADR-0143](../decisions/0143-a-help-page-ends-with-the-epilogs-of-the-routed-command-and-its-ancestors.md) records the decision. With the values above, `jsonkit stats depth max -h` ends with these lines, color and modifiers disabled:
+
+```text
+  -q, --quiet       Hide info and success messages.
+
+Run jsonkit stats depth max --help for details and examples.
+
+  Each statistic is described at https://acme.dev/jsonkit/stats.
+
+  Report a bug at https://github.com/acme/jsonkit/issues.
+```
+
+- **Which epilogs print.** A page prints the epilog of each Command on the routed node's path that carries one, the routed node's own first and the Application's last, so an epilog set once on the Application ends every page, and a group's epilog prints on the group's page and on every page under it, above the Application's. A hidden Command on the path contributes its epilog as any other does. Two equal epilogs on one path both print.
+- **Both variants.** The compact and the extended page print the same epilogs. An epilog never causes the compact page's pointer to `--help`, which names Details and EXAMPLES alone.
+- **The value.** An epilog is Markdown under the rule `details` follows, a string that holds a character other than whitespace, inline or from a text import, and it renders with the subset, the line handling, and the styles under [Markdown details](#markdown-details). Off a terminal each authored line stays one page line, and on a terminal its paragraphs reflow as Details' paragraphs do, under [Help wraps to the destination's columns](#help-wraps-to-the-destinations-columns). Each epilog is its own block, after the hints.
+- **Other projections.** The [man page](manpage.md#the-page) prints the same epilogs under NOTES. Help supplies no epilog to the [manifest](help.md#help-in-the-manifest).
 
 ## Markdown details
 
