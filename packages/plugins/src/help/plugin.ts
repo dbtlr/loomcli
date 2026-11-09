@@ -3,6 +3,7 @@ import type { Plugin, PluginOptions } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
 import { attachHelp } from './attach.js';
+import { helpCommandFor } from './command.js';
 import { helpArgument, helpCommand, helpInput } from './extension.js';
 import { helpHint } from './hint.js';
 import { helpPage } from './views.js';
@@ -17,18 +18,22 @@ export type HelpOptions = typeof options;
 export interface HelpSettings {
   /** Page a help page that outgrows the terminal through the operator's pager. Off by default. */
   readonly paging?: boolean;
+  /** Attach the help Command, so `app help <command>` prints the page `--help` prints. Off by default. */
+  readonly command?: boolean;
 }
 
 /**
  * A plugin that renders the help page of the routed Command and ends the invocation, whose attach
  * hook supplies each Command's help prose to the manifest's collecting extension, and whose failure
  * hook points every usage error at the page. With `paging`, a long page goes to the operator's
- * pager. The annotated return type is the boundary that breaks the cycle between this module and the
- * middleware module `load` names.
+ * pager. With `command`, the plugin attaches the help Command, which prints the same page for the
+ * Command its words name. The annotated return type is the boundary that breaks the cycle between
+ * this module and the middleware module `load` names.
  */
 export function help(settings?: HelpSettings): Plugin<HelpOptions> {
   const paging = settings?.paging ?? false;
   return plugin(`${packageName}/help`, {
+    commands: settings?.command === true ? [helpCommandFor(paging)] : [],
     extensions: [helpArgument, helpCommand, helpInput],
     middleware: {
       activate: ['help'],

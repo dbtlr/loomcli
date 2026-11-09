@@ -1,8 +1,7 @@
 import type { Middleware } from '@loomcli/core';
 
-import { outgrowsScreen, pagerOf, showInPager } from './pager.js';
 import type { help } from './plugin.js';
-import { helpPage } from './views.js';
+import { showPage } from './show.js';
 import type { HelpVariant } from './views.js';
 
 /**
@@ -15,16 +14,8 @@ import type { HelpVariant } from './views.js';
  */
 export function helpMiddleware(paging: boolean): Middleware<typeof help> {
   return async (context) => {
-    const { command, graph, host, out, spellings } = context;
+    const { command, graph, spellings } = context;
     const variant: HelpVariant = spellings.help === '-h' ? 'compact' : 'extended';
-    const page = { command, graph, variant };
-    const pager = paging ? pagerOf(host) : undefined;
-    if (pager !== undefined) {
-      const text = out.text(page, helpPage);
-      if (outgrowsScreen(host, text) && (await showInPager(context, pager, text))) {
-        return;
-      }
-    }
-    await out.render(page, helpPage);
+    await showPage(context, { command, graph, variant }, paging);
   };
 }

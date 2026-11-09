@@ -385,7 +385,7 @@ const jsonkit = new Application('jsonkit', { plugins: [help({ command: true })] 
 
 ```text
 $ jsonkit help gte
-jsonkit: Unknown command "gte". Use one of: help, get, set, select, cache.
+jsonkit: Unknown command "gte". Use one of: help, doctor, completion, mcp, manpage, get, keys, select, stats.
 Run "jsonkit help --help" to see the usage.
 ```
 
