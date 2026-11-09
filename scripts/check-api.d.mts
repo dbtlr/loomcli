@@ -1,6 +1,8 @@
 export interface SurfacePackage {
   readonly directory: string;
   readonly modules: readonly string[];
+  /** While a package is being tagged, the exports-map entries checked so far; omitted, every entry. */
+  readonly coveredEntries?: readonly string[];
   readonly entries: Readonly<
     Record<
       string,

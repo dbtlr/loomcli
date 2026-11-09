@@ -5,6 +5,7 @@ import { blank, headingLines, wrappedLines } from './text-lines.js';
 const NO_INSET = 0;
 const DEFAULT_LEVEL = 1;
 
+/** @public */
 interface HeadingConfig {
   // The two levels are the contract's own literal type, which names no constant.
   // oxlint-disable-next-line eslint/no-magic-numbers
@@ -17,6 +18,8 @@ interface HeadingConfig {
  * terminal the text wraps at `columns` and the underline matches the widest wrapped line. A text
  * that resolves to no character prints nothing. The returned value is a bare pack view and
  * installs no plugin behavior.
+ *
+ * @public
  */
 function heading(config: HeadingConfig = {}): View<string> {
   const level = config.level ?? DEFAULT_LEVEL;

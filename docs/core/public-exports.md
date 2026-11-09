@@ -24,7 +24,7 @@ In a covered library, a schema in a published type is a [Standard Schema](https:
 
 ## Which libraries carry the tags
 
-`check:api` covers `@loomcli/core`, whose every export carries the tags below and whose API report is committed at `packages/core/api/index.api.md`. The other published libraries' exports carry no tags yet and have no report, so a change to one is judged by the position of the changed member alone.
+`check:api` covers `@loomcli/core`, whose every export carries the tags below and whose API report is committed at `packages/core/api/index.api.md`. `@loomcli/plugins` is being tagged a group of subpaths at a time, and its pack views (`box`, `heading`, `list`, `prose`, `records`, `rule`, and `table`) are covered, with reports under `packages/plugins/api/`. The other plugins subpaths and the other published libraries carry no tags yet and have no report, so a change to one is judged by the position of the changed member alone.
 
 ## Each type is an input type or an output type
 
@@ -73,7 +73,7 @@ The [changelog guide](../../.changes/README.md#explain-a-breaking-change) holds 
 - a listed declaration, or a type it uses, whose shape differs from its committed companion file, or a companion file for an entry that lists nothing;
 - a type a public signature uses that the entry point does not export, unless the check lists it with its reason;
 - a declaration that imports a module outside its package's list, such as a library the package uses only in its implementation;
-- an entry in the check's lists that the surface no longer needs;
+- an entry in the check's lists that the surface no longer needs, or a covered entry that the package's exports map does not name;
 - any other API Extractor message, except a missing doc comment, which a later check covers, and a dependency's typings importing a source file, which Loom cannot change.
 
 After a surface change, `pnpm check:api --update` rewrites the reports and their companion files, and the pull request carries their diff.

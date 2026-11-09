@@ -226,6 +226,39 @@ test('nested exports conditions derive subpath reports and share reachable decla
   expect(checkApi(root, [config])).toEqual([]);
 });
 
+/** A package whose root entry is tagged and whose `./later` entry is not tagged yet. */
+function partlyTaggedFixture() {
+  return fixture(tagged, {
+    'dist/later.d.ts': '/** A later value. */\nexport declare const later: string;\n',
+    'package.json': JSON.stringify({
+      exports: {
+        '.': { types: './dist/index.d.ts' },
+        './later': { types: './dist/later.d.ts' },
+      },
+      name: 'fixture',
+    }),
+  });
+}
+
+test('a package under tagging checks only its covered entries', () => {
+  const { config, root } = partlyTaggedFixture();
+  expect(checkApi(root, [config])).toContainEqual(
+    expect.stringMatching(/dist\/later.d.ts:2: ae-missing-release-tag: later:/u),
+  );
+  const covered = { ...config, coveredEntries: ['.'] };
+  expect(checkApi(root, [covered], { update: true })).toEqual([]);
+  expect(existsSync(join(root, 'api/later.api.md'))).toBe(false);
+  expect(checkApi(root, [covered])).toEqual([]);
+});
+
+test('a covered entry that the exports map does not name fails', () => {
+  const { config, root } = partlyTaggedFixture();
+  const covered = { ...config, coveredEntries: ['.', './missing'] };
+  expect(checkApi(root, [covered], { update: true })).toEqual([
+    expect.stringContaining('api-unknown-entry: ./missing:'),
+  ]);
+});
+
 /** A function whose public signature names an unexported type the policy lists. */
 function listedFixture() {
   const { config, root } = fixture(

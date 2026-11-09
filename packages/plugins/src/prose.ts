@@ -10,6 +10,8 @@ const NO_INSET = 0;
  * column 0. Off a terminal it prints as written, with a newline added when it does not end in a
  * line break. A text that resolves to no character prints nothing. The returned value is a bare
  * pack view and installs no plugin behavior.
+ *
+ * @public
  */
 function prose(): View<string> {
   return {

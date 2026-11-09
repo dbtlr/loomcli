@@ -49,15 +49,26 @@ function typesPaths(value) {
   );
 }
 
-/** Builds one Extractor configuration per exported declaration entry point. */
-function entryConfigs(root, policy) {
-  const directory = resolve(root, policy.directory);
+/** Reads a package's manifest and its exports map, with a bare conditions object as `.`. */
+function packageExports(directory) {
   const packageJsonFullPath = join(directory, 'package.json');
   const manifest = JSON.parse(readFileSync(packageJsonFullPath, 'utf8'));
   const exportsMap = Object.keys(manifest.exports).some((key) => key.startsWith('.'))
     ? manifest.exports
     : { '.': manifest.exports };
-  return Object.entries(exportsMap).flatMap(([entry, conditions]) =>
+  return { exportsMap, manifest, packageJsonFullPath };
+}
+
+/** Builds one Extractor configuration per exported declaration entry point. */
+function entryConfigs(root, policy) {
+  const directory = resolve(root, policy.directory);
+  const { exportsMap, manifest, packageJsonFullPath } = packageExports(directory);
+  // A package being tagged one group of subpaths at a time names the entries it covers so far.
+  const covered = policy.coveredEntries;
+  const checked = Object.entries(exportsMap).filter(
+    ([entry]) => covered === undefined || covered.includes(entry),
+  );
+  return checked.flatMap(([entry, conditions]) =>
     [...new Set(typesPaths(conditions))].map((path) => {
       const reportFileName =
         entry === '.' ? 'index.api.md' : `${entry.slice(2).replaceAll('/', '.')}.api.md`;
@@ -302,6 +313,20 @@ function checkApi(root, packages, { update = false } = {}) {
       `${relative(root, file)}:${line}: ${id}: ${name}: ${text.replaceAll(/\s+/gu, ' ')}`,
     );
   };
+  for (const policy of packages) {
+    const { exportsMap, packageJsonFullPath } = packageExports(resolve(root, policy.directory));
+    for (const entry of policy.coveredEntries ?? []) {
+      if (!Object.hasOwn(exportsMap, entry)) {
+        fail(
+          packageJsonFullPath,
+          1,
+          'api-unknown-entry',
+          entry,
+          'The exports map names no such entry.',
+        );
+      }
+    }
+  }
   const entries = packages.flatMap((policy) => entryConfigs(root, policy));
   if (entries.length === 0) {
     return failures;

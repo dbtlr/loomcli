@@ -106,4 +106,11 @@ export const surfacePackages = [
     // `node` is the reference to Node's own typings, which a declaration that names a stream needs.
     modules: ['node', 'node:*', '@standard-schema/spec'],
   },
+  {
+    // The plugins are tagged one group of subpaths at a time; each pass adds its entries here.
+    coveredEntries: ['./box', './heading', './list', './prose', './records', './rule', './table'],
+    directory: 'packages/plugins',
+    entries: {},
+    modules: ['node:*', '@loomcli/core', '@loomcli/validators', '@standard-schema/spec'],
+  },
 ];
