@@ -8,7 +8,9 @@ export {
   cidrV4Issue,
   cidrV6Issue,
   dateIssue,
+  dateLayoutsIssue,
   dateTimeIssue,
+  dateTimeLayoutsIssue,
   durationCapitalMIssue,
   durationIssue,
   durationMaxIssue,
@@ -40,6 +42,11 @@ export {
   textMinLengthIssue,
   textNonemptyIssue,
   textPatternIssue,
+  timeIssue,
+  timeLayoutsIssue,
+  timeMaxIssue,
+  timeMinIssue,
+  timeRangeIssue,
   urlIssue,
   urlSchemeIssue,
   uuidIssue,
@@ -62,6 +69,7 @@ export { path } from './path.js';
 export { pipe } from './pipe.js';
 export { port } from './port.js';
 export { text } from './text.js';
+export { time } from './time.js';
 export { url } from './url.js';
 export { uuid } from './uuid.js';
 export type { ParseResult, Validator } from './create.js';

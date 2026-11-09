@@ -223,6 +223,62 @@ const rows: Row[] = [
     'Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.',
   ],
   [
+    'date-layouts',
+    catalog.dateLayoutsIssue,
+    catalog.date({ layouts: ['%d/%m/%Y'] }),
+    '31/04/2026',
+    { forms: ['YYYY-MM-DD', 'DD/MM/YYYY'] },
+    'Expected a date as YYYY-MM-DD or DD/MM/YYYY, such as 2026-09-25.',
+  ],
+  [
+    'date-time-layouts',
+    catalog.dateTimeLayoutsIssue,
+    catalog.dateTime({ layouts: ['%d/%m/%Y %H:%M'], timeZone: 'UTC' }),
+    '25/09/2026 24:00',
+    { forms: ['YYYY-MM-DDThh:mm', 'DD/MM/YYYY hh:mm'] },
+    'Expected a date and time as YYYY-MM-DDThh:mm or DD/MM/YYYY hh:mm, such as 2026-09-25T14:30:00Z.',
+  ],
+  [
+    'time',
+    catalog.timeIssue,
+    catalog.time(),
+    '24:00',
+    {},
+    'Expected a time of day, such as 09:30 or 17:45:30.',
+  ],
+  [
+    'time-layouts',
+    catalog.timeLayoutsIssue,
+    catalog.time({ layouts: ['%I:%M%p'] }),
+    '13:00pm',
+    { forms: ['hh:mm', 'hh:mmAM'] },
+    'Expected a time of day as hh:mm or hh:mmAM, such as 09:30.',
+  ],
+  [
+    'time-range',
+    catalog.timeRangeIssue,
+    catalog.time({ layouts: ['%I:%M%p'], max: '17:00', min: '09:00' }),
+    '8:00am',
+    { max: 61_200_000, min: 32_400_000 },
+    'Expected a time from 09:00 through 17:00.',
+  ],
+  [
+    'time-min',
+    catalog.timeMinIssue,
+    catalog.time({ min: '09:00:00.50' }),
+    '08:00',
+    { min: 32_400_500 },
+    'Expected a time of at least 09:00:00.5.',
+  ],
+  [
+    'time-max',
+    catalog.timeMaxIssue,
+    catalog.time({ max: '17:00:30' }),
+    '18:00',
+    { max: 61_230_000 },
+    'Expected a time of at most 17:00:30.',
+  ],
+  [
     'duration',
     catalog.durationIssue,
     catalog.duration(),
@@ -421,9 +477,9 @@ async function issueOf(validator: StandardSchemaV1<string, unknown>, token: stri
   return issue;
 }
 
-test('the catalog declares 44 codes, each a descriptor under its export', () => {
-  expect(rows).toHaveLength(44);
-  expect(new Set(descriptors).size).toBe(44);
+test('the catalog declares 51 codes, each a descriptor under its export', () => {
+  expect(rows).toHaveLength(51);
+  expect(new Set(descriptors).size).toBe(51);
   for (const [code, descriptor] of rows) {
     expect(descriptor.code).toBe(`${prefix}${code}`);
   }
@@ -513,6 +569,47 @@ describe('a bytes code prints each count as the bytes message states', () => {
         foreignIssue({ code: catalog.bytesMinIssue.code, message: 'x', params: { min: 1.5 } }),
       ),
     ).toBe(undefined);
+  });
+});
+
+describe('a time code prints each time of day as the time message states', () => {
+  it.each([
+    [catalog.timeMinIssue.issue({ min: 0 }), 'Expected a time of at least 00:00.'],
+    [catalog.timeMaxIssue.issue({ max: 86_399_999 }), 'Expected a time of at most 23:59:59.999.'],
+    [catalog.timeMaxIssue.issue({ max: 34_200_010 }), 'Expected a time of at most 09:30:00.01.'],
+    [
+      catalog.timeRangeIssue.issue({ max: 61_200_000, min: 32_401_000 }),
+      'Expected a time from 09:00:01 through 17:00.',
+    ],
+  ])('%#', (issue, message) => {
+    expect(issue.message).toBe(message);
+  });
+
+  it.each([
+    ['min', catalog.timeMinIssue, { min: -1 }],
+    ['min', catalog.timeMinIssue, { min: 86_400_000 }],
+    ['max', catalog.timeMaxIssue, { max: 0.5 }],
+    ['range', catalog.timeRangeIssue, { max: 86_400_000, min: 0 }],
+  ])('a time %s code reads no value outside a day', (_name, code, params) => {
+    expect(code.read(foreignIssue({ code: code.code, message: 'x', params }))).toBe(undefined);
+  });
+
+  it('a layouts code reads no empty list of forms', () => {
+    for (const code of [
+      catalog.dateLayoutsIssue,
+      catalog.dateTimeLayoutsIssue,
+      catalog.timeLayoutsIssue,
+    ]) {
+      expect(
+        code.read(foreignIssue({ code: code.code, message: 'x', params: { forms: [] } })),
+      ).toBe(undefined);
+    }
+  });
+
+  it('a layouts code joins three forms or more with commas', () => {
+    expect(catalog.timeLayoutsIssue.issue({ forms: ['hh:mm', 'hh.mm', 'hhmm'] }).message).toBe(
+      'Expected a time of day as hh:mm, hh.mm, or hhmm, such as 09:30.',
+    );
   });
 });
 

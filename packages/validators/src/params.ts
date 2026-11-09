@@ -3,6 +3,7 @@ import type { StandardSchemaV1 } from '@loomcli/core';
 import { vendor } from './create.js';
 import { isPlainObject } from './data.js';
 import type { PathKind } from './probe.js';
+import { day } from './time-units.js';
 
 /** A check on one parameter that also tells the compiler its type. */
 type Guard<Value> = (value: unknown) => value is Value;
@@ -47,6 +48,9 @@ const isCount: Guard<number> = (value): value is number =>
 
 const isFiniteNumber: Guard<number> = (value): value is number =>
   typeof value === 'number' && Number.isFinite(value);
+
+/** A time of day as milliseconds since midnight: a whole count below one day. */
+const isTimeOfDay: Guard<number> = (value): value is number => isCount(value) && value < day;
 
 const isKind: Guard<PathKind> = (value): value is PathKind =>
   value === 'file' || value === 'directory' || value === 'any';
@@ -104,6 +108,11 @@ const protocolsParams = paramsSchema(
   },
 );
 
+const formsParams = paramsSchema('{ forms: readonly string[] }', ['forms'], (record) => {
+  const forms = stringList(record.forms);
+  return forms === undefined ? undefined : { forms };
+});
+
 const separatorParams = paramsSchema('{ separator: string }', ['separator'], ({ separator }) =>
   typeof separator === 'string' && separator !== '' ? { separator } : undefined,
 );
@@ -113,8 +122,10 @@ const kindParams = paramsSchema("{ kind: 'file' | 'directory' | 'any' }", ['kind
 );
 
 export {
+  formsParams,
   isCount,
   isFiniteNumber,
+  isTimeOfDay,
   kindParams,
   lengthParams,
   maxParams,

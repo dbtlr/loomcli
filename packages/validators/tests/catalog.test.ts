@@ -16,12 +16,23 @@
  *   position, an embedded IPv4 address in and outside `::ffff:0:0/96`, and a 253-character name;
  *   for `cidr` each family's widest and narrowest prefix; for `keyValue` a key holding a line
  *   terminator and a separator of each regular-expression syntax character; and for `email` the
- *   forms WHATWG accepts and RFC 5322 rejects, such as `a..b@example.com`.
+ *   forms WHATWG accepts and RFC 5322 rejects, such as `a..b@example.com`. For `time` it holds
+ *   midnight, `23:59:59` with a fraction, and each bound's edge. For `date`, `dateTime`, and `time`
+ *   with layouts, it holds each directive, a one-digit field, the fixed width after an adjacent
+ *   digit directive (`%Y%m%d`), `-` and `%%` literals, a literal of each regular-expression syntax
+ *   character, each `%z` spelling, and `%p` in mixed case.
  * - Output. Each accepted token's output is pinned to an independent literal: `512Mi` is
  *   536870912, `2001:DB8:0:0:0:0:0:1` is `2001:db8::1`, `::ffff:c000:201` is `::ffff:192.0.2.1`,
- *   `64:ff9b::192.0.2.33` is `64:ff9b::c000:221`, and a host name reads in lowercase.
+ *   `64:ff9b::192.0.2.33` is `64:ff9b::c000:221`, a host name reads in lowercase, `09:30` is
+ *   34200000 and `23:59:59.9999` is 86399999, `25/9/2026` under `%d/%m/%Y` is `2026-09-25`,
+ *   `20260304` under `%Y%m%d` is `2026-03-04`, `03/04/2026` and `03/25/2026` under
+ *   `['%d/%m/%Y', '%m/%d/%Y']` are `2026-04-03` and `2026-03-25`, `9:30pm` under `%I:%M%p` is
+ *   77400000 with `12:00AM` 0 and `12:00PM` 43200000, `20260925T143000Z` under
+ *   `%Y%m%dT%H%M%S%z` is `2026-09-25T14:30:00.000Z`, and a layout without `%z` reads a time a
+ *   clock change skips or repeats as the default grammar does.
  * - Rejection. For each factory, a table of rejected tokens pins the one message and shows the
- *   token is absent from it.
+ *   token is absent from it, unless the sentence's own example holds it. With layouts, the message
+ *   lists each distinct written form once, and `time` with bounds answers its bounds sentence.
  * - Issue codes. Each rejected token's issue carries the code and parameters the table under Issue
  *   codes names, and the code's `read` returns those parameters for it and `undefined` for every
  *   other code's issue, a Zod issue, and an issue whose parameters fail the schema. An `InputError`
@@ -29,7 +40,9 @@
  *   other issue's sentence as the catalog wrote it. Each listed `issueCode` fault throws a
  *   `DeclarationError`, and `text({ pattern })` without `message` is a type error.
  * - Faults. Each listed fault throws `DeclarationError` from the factory call, under the rule
- *   Shared rules names, and each rule pins its rendered Developer Diagnostic.
+ *   Shared rules names, and each rule pins its rendered Developer Diagnostic. Each layout fault,
+ *   the literal `Z` included, pins its sentence and correction, and a layout fault marks the entry
+ *   of `layouts` at fault.
  * - Context. A context-free factory validates when called directly; `path` called directly throws
  *   the context sentence; `path` inside a run resolves against a handle's `cwd`, using
  *   temporary directories for the `read` and `write` checks.
@@ -42,14 +55,14 @@
  * - Application run. The manifest and the inspected graph of an Application run read a catalog
  *   factory's published schema, a default passes the validator, the action receives the output,
  *   and a rejection reads its catalog sentence. catalog-run.test.ts proves this for `bytes`, `ip`,
- *   and `keyValue`.
+ *   `keyValue`, and `date` and `time` with layouts.
  */
 
 import { expect, test } from 'vite-plus/test';
 
 const catalog = await import('../src/index.js');
 
-test('the root export holds the seventeen factories, createValidator, pipe, issueCode, and the catalog codes', () => {
+test('the root export holds the eighteen factories, createValidator, pipe, issueCode, and the catalog codes', () => {
   expect(Object.keys(catalog).toSorted()).toEqual([
     'bytes',
     'bytesIssue',
@@ -64,8 +77,10 @@ test('the root export holds the seventeen factories, createValidator, pipe, issu
     'createValidator',
     'date',
     'dateIssue',
+    'dateLayoutsIssue',
     'dateTime',
     'dateTimeIssue',
+    'dateTimeLayoutsIssue',
     'duration',
     'durationCapitalMIssue',
     'durationIssue',
@@ -110,6 +125,12 @@ test('the root export holds the seventeen factories, createValidator, pipe, issu
     'textMinLengthIssue',
     'textNonemptyIssue',
     'textPatternIssue',
+    'time',
+    'timeIssue',
+    'timeLayoutsIssue',
+    'timeMaxIssue',
+    'timeMinIssue',
+    'timeRangeIssue',
     'url',
     'urlIssue',
     'urlSchemeIssue',
@@ -128,6 +149,7 @@ test.each([
   ['uuid', catalog.uuid()],
   ['date', catalog.date()],
   ['dateTime', catalog.dateTime()],
+  ['time', catalog.time()],
   ['duration', catalog.duration()],
   ['path', catalog.path()],
   ['bytes', catalog.bytes()],
@@ -177,6 +199,26 @@ test.each([
     'dateTime',
     catalog.dateTime(),
     String.raw`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt ][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]+)?)?(?:[Zz]|[+-][0-9]{2}(?::?[0-9]{2})?)?$"}`,
+  ],
+  [
+    'date with layouts',
+    catalog.date({ layouts: ['%d/%m/%Y'] }),
+    '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","anyOf":[{"format":"date"},{"pattern":"^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}$"}]}',
+  ],
+  [
+    'dateTime with layouts',
+    catalog.dateTime({ layouts: ['%d.%m.%Y %H:%M'] }),
+    String.raw`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","anyOf":[{"pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt ][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]+)?)?(?:[Zz]|[+-][0-9]{2}(?::?[0-9]{2})?)?$"},{"pattern":"^[0-9]{1,2}\\.[0-9]{1,2}\\.[0-9]{4} [0-9]{1,2}:[0-9]{1,2}$"}]}`,
+  ],
+  [
+    'time',
+    catalog.time({ min: '09:00' }),
+    String.raw`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","pattern":"^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\\.[0-9]+)?)?$"}`,
+  ],
+  [
+    'time with layouts',
+    catalog.time({ layouts: ['%I:%M%p'] }),
+    String.raw`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","anyOf":[{"pattern":"^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\\.[0-9]+)?)?$"},{"pattern":"^[0-9]{1,2}:[0-9]{1,2}[AaPp][Mm]$"}]}`,
   ],
   [
     'duration',

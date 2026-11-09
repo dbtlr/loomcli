@@ -13,6 +13,7 @@ import {
 import {
   bytes,
   createValidator,
+  date,
   dateTime,
   duration,
   integer,
@@ -20,6 +21,7 @@ import {
   keyValue,
   oneOf,
   text,
+  time,
   url,
 } from '../src/index.js';
 
@@ -62,9 +64,20 @@ const scenarios: Record<string, () => unknown> = {
     }).issue({ word: 7 }),
   'key-value-separator': () => keyValue({ separator: ' ' }),
   'key-value-separator-empty': () => keyValue({ separator: '' }),
+  'layout-empty': () => date({ layouts: [''] }),
+  'layout-literal-zone': () => dateTime({ layouts: ['%d/%m/%Y %H:%M', '%Y%m%dT%H%M%SZ'] }),
+  'layout-lone-percent': () => time({ layouts: ['%H:%M%'] }),
+  'layout-meridiem-alone': () => time({ layouts: ['%H:%M%p'] }),
+  'layout-missing-field': () => date({ layouts: ['%d/%m'] }),
+  'layout-twelve-hour-alone': () => time({ layouts: ['%I:%M'] }),
+  'layout-twice': () => date({ layouts: ['%d/%m/%Y/%d'] }),
+  'layout-unknown-directive': () => date({ layouts: ['%d/%m/%Y', '%d %b %Y'] }),
+  'layout-unread-directive': () => time({ layouts: ['%d %H:%M'] }),
   'one-of-twice': () => oneOf(['dev', 'prod', 'dev']),
   'text-bounds-order': () => text({ maxLength: 0 }),
   'text-pattern': () => text({ message: 'Expected letters.', pattern: /[a-z]+/g }),
+  'time-bound-value': () => time({ max: '24:00' }),
+  'time-bounds-order': () => time({ max: '09:00', min: '17:00' }),
   'time-zone': () => dateTime({ timeZone: 'Mars/Olympus' }),
   'url-protocols': () => url({ protocols: ['https', 'https:'] }),
 };
@@ -158,6 +171,52 @@ const cases: Record<string, Expected> = {
     rule: 'key-value-separator',
     sentence: 'keyValue() separator is empty.',
   },
+  'layout-empty': {
+    correction: 'Supply a layout such as "%d/%m/%Y".',
+    rule: 'layout',
+    sentence: 'date() layouts lists an empty layout.',
+  },
+  'layout-literal-zone': {
+    correction: 'Write %z, which reads Z as UTC and every other offset as that offset.',
+    rule: 'layout',
+    sentence:
+      'dateTime() layout "%Y%m%dT%H%M%SZ" holds a literal Z, which would read a UTC time as local time.',
+  },
+  'layout-lone-percent': {
+    correction: 'Write %% for a percent sign.',
+    rule: 'layout',
+    sentence: 'time() layout "%H:%M%" ends with a lone %.',
+  },
+  'layout-meridiem-alone': {
+    correction: 'Write %I for an hour from 1 through 12, or leave out %p.',
+    rule: 'layout',
+    sentence: 'time() layout "%H:%M%p" holds %p without %I.',
+  },
+  'layout-missing-field': {
+    correction: 'Add %Y.',
+    rule: 'layout',
+    sentence: 'date() layout "%d/%m" holds no year.',
+  },
+  'layout-twelve-hour-alone': {
+    correction: 'Add %p, or write %H for an hour from 0 through 23.',
+    rule: 'layout',
+    sentence: 'time() layout "%I:%M" holds %I without %p.',
+  },
+  'layout-twice': {
+    correction: 'Write each field once.',
+    rule: 'layout',
+    sentence: 'date() layout "%d/%m/%Y/%d" holds the day twice.',
+  },
+  'layout-unknown-directive': {
+    correction: 'Use only %Y, %m, and %d, with %% for a percent sign.',
+    rule: 'layout',
+    sentence: 'date() layout "%d %b %Y" holds %b, which no layout reads.',
+  },
+  'layout-unread-directive': {
+    correction: 'Use only %H, %I, %M, %S, and %p, with %% for a percent sign.',
+    rule: 'layout',
+    sentence: 'time() layout "%d %H:%M" holds %d, which time() does not read.',
+  },
   'one-of-twice': {
     correction: 'List each value once.',
     rule: 'one-of-values',
@@ -172,6 +231,16 @@ const cases: Record<string, Expected> = {
     correction: 'Supply a pattern with no flag other than u.',
     rule: 'invalid-pattern',
     sentence: 'text() pattern carries the flag g.',
+  },
+  'time-bound-value': {
+    correction: 'Supply a time of day such as "09:00" or "17:30".',
+    rule: 'bound-value',
+    sentence: 'time() max is not a time of day.',
+  },
+  'time-bounds-order': {
+    correction: 'Supply a min at or below max.',
+    rule: 'bounds-order',
+    sentence: 'time() min 17:00 is above max 09:00.',
   },
   'time-zone': {
     correction: 'Supply a name such as America/New_York.',
@@ -204,6 +273,16 @@ test.each([
     "    bytes({ max: '1MB', min: '10GiB' })\n                        ^^^^^^^^^^^^",
   ],
   ['key-value-separator', "    keyValue({ separator: ' ' })\n               ^^^^^^^^^^^^^^"],
+  ['layout-empty', "    date({ layouts: [''] })\n                     ^^"],
+  [
+    'layout-literal-zone',
+    "    dateTime({ layouts: ['%d/%m/%Y %H:%M', '%Y%m%dT%H%M%SZ'] })\n                                           ^^^^^^^^^^^^^^^^",
+  ],
+  [
+    'layout-unknown-directive',
+    "    date({ layouts: ['%d/%m/%Y', '%d %b %Y'] })\n                                 ^^^^^^^^^^",
+  ],
+  ['time-bound-value', "    time({ max: '24:00' })\n           ^^^^^^^^^^^^"],
 ])('the %s fault rebuilds the call and marks the argument at fault', (scenario, finding) => {
   expect(findingsOf(diagnosticOf(scenario))).toEqual([finding]);
 });

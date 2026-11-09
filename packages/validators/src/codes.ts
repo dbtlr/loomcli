@@ -4,8 +4,10 @@ import { issueCode } from './issue-code.js';
 import type { IssueCode } from './issue-code.js';
 import { listing } from './issues.js';
 import {
+  formsParams,
   isCount,
   isFiniteNumber,
+  isTimeOfDay,
   kindParams,
   lengthParams,
   maxParams,
@@ -19,6 +21,7 @@ import {
 } from './params.js';
 import type { NoParams } from './params.js';
 import type { PathKind } from './probe.js';
+import { formatTimeOfDay } from './time-grammar.js';
 
 /**
  * The catalog's issue codes, one for each sentence a catalog validator prints. Each code's
@@ -141,6 +144,43 @@ const dateIssue = issueCode(catalogCode('date'), {
 const dateTimeIssue = issueCode(catalogCode('date-time'), {
   message: () => 'Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.',
   schema: noParams,
+});
+
+const dateLayoutsIssue = issueCode(catalogCode('date-layouts'), {
+  message: ({ forms }) => `Expected a date as ${listing(forms)}, such as 2026-09-25.`,
+  schema: formsParams,
+});
+
+const dateTimeLayoutsIssue = issueCode(catalogCode('date-time-layouts'), {
+  message: ({ forms }) =>
+    `Expected a date and time as ${listing(forms)}, such as 2026-09-25T14:30:00Z.`,
+  schema: formsParams,
+});
+
+const timeIssue = issueCode(catalogCode('time'), {
+  message: () => 'Expected a time of day, such as 09:30 or 17:45:30.',
+  schema: noParams,
+});
+
+const timeLayoutsIssue = issueCode(catalogCode('time-layouts'), {
+  message: ({ forms }) => `Expected a time of day as ${listing(forms)}, such as 09:30.`,
+  schema: formsParams,
+});
+
+const timeRangeIssue = issueCode(catalogCode('time-range'), {
+  message: ({ max, min }) =>
+    `Expected a time from ${formatTimeOfDay(min)} through ${formatTimeOfDay(max)}.`,
+  schema: rangeParams(isTimeOfDay),
+});
+
+const timeMinIssue = issueCode(catalogCode('time-min'), {
+  message: ({ min }) => `Expected a time of at least ${formatTimeOfDay(min)}.`,
+  schema: minParams(isTimeOfDay),
+});
+
+const timeMaxIssue = issueCode(catalogCode('time-max'), {
+  message: ({ max }) => `Expected a time of at most ${formatTimeOfDay(max)}.`,
+  schema: maxParams(isTimeOfDay),
 });
 
 const durationIssue = issueCode(catalogCode('duration'), {
@@ -312,6 +352,13 @@ const bytesCodes: BoundCodes = {
   unbounded: bytesIssue,
 };
 
+const timeCodes: BoundCodes = {
+  max: timeMaxIssue,
+  min: timeMinIssue,
+  range: timeRangeIssue,
+  unbounded: timeIssue,
+};
+
 export {
   bytesCodes,
   bytesIssue,
@@ -323,7 +370,9 @@ export {
   cidrV4Issue,
   cidrV6Issue,
   dateIssue,
+  dateLayoutsIssue,
   dateTimeIssue,
+  dateTimeLayoutsIssue,
   durationCapitalMIssue,
   durationCodes,
   durationIssue,
@@ -358,6 +407,12 @@ export {
   textMinLengthIssue,
   textNonemptyIssue,
   textPatternIssue,
+  timeCodes,
+  timeIssue,
+  timeLayoutsIssue,
+  timeMaxIssue,
+  timeMinIssue,
+  timeRangeIssue,
   urlIssue,
   urlSchemeIssue,
   uuidIssue,

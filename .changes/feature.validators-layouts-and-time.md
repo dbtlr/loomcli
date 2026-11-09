@@ -1,0 +1,2 @@
+- Let `date()` and `dateTime()` read the forms operators type, such as `25/09/2026` or `25/09/2026 14:30`, through POSIX strftime `layouts` tried in order. A date read through a layout reaches the action as `YYYY-MM-DD`. See [Layouts](docs/libs/validators.md#layouts).
+- Add `time()` to `@loomcli/validators`. It reads a time of day such as `09:30`, or `9:30pm` through a layout, into milliseconds since midnight, with `min` and `max` bounds. See the [validators reference](docs/libs/validators.md#time).

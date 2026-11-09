@@ -1,40 +1,36 @@
-import { dateIssue } from './codes.js';
+import { calendarDate } from './calendar.js';
+import { dateIssue, dateLayoutsIssue } from './codes.js';
 import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { reject } from './issues.js';
+import { dateRules, firstReading, readingOf } from './layout.js';
 
-const layout = /^(?<year>[0-9]{4})-(?<month>[0-9]{2})-(?<day>[0-9]{2})$/u;
-
-/**
- * Five 400-year Gregorian cycles.
- * The calendar repeats every cycle, so a shifted year keeps its leap days, and the shift moves
- * years below 100 out of the range `Date.UTC` maps to the 1900s.
- */
-const cycleShift = 2000;
-
-/** The number of the first month, which `Date.UTC` counts from zero. */
-const january = 1;
-
-/** Whether the parts name a real day of the proleptic Gregorian calendar. */
-function isRealDay(year: number, month: number, day: number): boolean {
-  const monthIndex = month - january;
-  const probe = new Date(Date.UTC(year + cycleShift, monthIndex, day));
-  return probe.getUTCMonth() === monthIndex && probe.getUTCDate() === day;
+interface DateOptions {
+  layouts?: readonly [string, ...string[]];
 }
 
-/** A calendar date as `YYYY-MM-DD`, kept as the token because a date has no time or zone. */
-function date(): Validator<string> {
-  const issue = dateIssue.issue({});
+/** The default grammar: `YYYY-MM-DD`, published as the date format. */
+const grammar = {
+  expression: /^(?<year>[0-9]{4})-(?<month>[0-9]{2})-(?<day>[0-9]{2})$/u,
+  form: 'YYYY-MM-DD',
+  schema: { format: 'date' },
+};
+
+/**
+ * A calendar date, output as `YYYY-MM-DD` whichever form the token took, because a date has no
+ * time or zone. The default grammar reads first, then each layout in order.
+ */
+function date(options?: DateOptions): Validator<string> {
+  const { expressions, forms, inputSchema } = readingOf(dateRules, options, grammar);
+  const issue = forms === undefined ? dateIssue.issue({}) : dateLayoutsIssue.issue({ forms });
   return createValidator({
-    inputSchema: { type: 'string', format: 'date' },
+    inputSchema,
     parse: (raw): ParseResult<string> => {
-      const parts = layout.exec(raw)?.groups;
-      const real =
-        parts !== undefined &&
-        isRealDay(Number(parts.year), Number(parts.month), Number(parts.day));
-      return real ? { value: raw } : reject(issue);
+      const value = firstReading(raw, expressions, calendarDate);
+      return value === undefined ? reject(issue) : { value };
     },
   });
 }
 
-export { date, isRealDay };
+export { date };
+export type { DateOptions };

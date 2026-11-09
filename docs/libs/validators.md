@@ -55,10 +55,11 @@ An author climbs these rungs, and each pays only for itself:
 Each fault carries a [diagnostic rule](../core/declaration-faults.md#developer-diagnostics) the package declares through `diagnosticRule()`, as a third-party validator package does, and its Developer Diagnostic rebuilds the call, such as `integer({ max: 1, min: 5 })`, and marks the argument or the key at fault. A value listed twice marks both entries. The package declares these rules:
 
 - **`oneOf` values.** Every `oneOf` fault: [`@loomcli/validators/one-of-values`](../core/diagnostics.md#loomclivalidatorsone-of-values).
-- **Bound values.** A `min` or `max` of `integer`, `number`, `duration`, or `bytes`, or a `minLength` or `maxLength` of `text`, is a value of its kind: [`@loomcli/validators/bound-value`](../core/diagnostics.md#loomclivalidatorsbound-value).
+- **Bound values.** A `min` or `max` of `integer`, `number`, `duration`, `bytes`, or `time`, or a `minLength` or `maxLength` of `text`, is a value of its kind: [`@loomcli/validators/bound-value`](../core/diagnostics.md#loomclivalidatorsbound-value).
 - **Bounds order.** `min` is not above `max`, and `minLength` is not above `maxLength`: [`@loomcli/validators/bounds-order`](../core/diagnostics.md#loomclivalidatorsbounds-order).
 - **Time zone.** A `dateTime` `timeZone` is an IANA time zone name the runtime knows: [`@loomcli/validators/time-zone`](../core/diagnostics.md#loomclivalidatorstime-zone).
 - **`url` protocols.** Every `url` fault: [`@loomcli/validators/url-protocols`](../core/diagnostics.md#loomclivalidatorsurl-protocols).
+- **Layouts.** Every fault of a `date`, `dateTime`, or `time` layout: [`@loomcli/validators/layout`](../core/diagnostics.md#loomclivalidatorslayout).
 - **`keyValue` separator.** A `keyValue` separator is nonempty and holds no whitespace: [`@loomcli/validators/key-value-separator`](../core/diagnostics.md#loomclivalidatorskey-value-separator).
 - **Pattern.** A `text` pattern carries no flag other than `u` and compiles under `u`: [`@loomcli/validators/invalid-pattern`](../core/diagnostics.md#loomclivalidatorsinvalid-pattern).
 - **Input schema.** An `inputSchema` declares no `$schema` of its own: [`@loomcli/validators/input-schema`](../core/diagnostics.md#loomclivalidatorsinput-schema).
@@ -171,26 +172,40 @@ uuid(): Validator<string>
 ### date
 
 ```ts
-date(): Validator<string>
+date(options?: { layouts?: readonly [string, ...string[]] }): Validator<string>
 ```
 
-- **Accepts** `YYYY-MM-DD` naming a real day of the proleptic Gregorian calendar, years 0000 through 9999, so `2024-02-29` passes and `2026-02-29` and `2026-13-01` fail.
-- **Output** is the token unchanged. A calendar date has no time and no zone, and any `Date` would fix a midnight in some zone, so the action builds the type it needs.
-- **Publishes** `{ type: 'string', format: 'date' }`.
-- **Message.** `Expected a date as YYYY-MM-DD, such as 2026-09-25.`
+- **Accepts** `YYYY-MM-DD` naming a real day of the proleptic Gregorian calendar, years 0000 through 9999, so `2024-02-29` passes and `2026-02-29` and `2026-13-01` fail. With `layouts`, it also accepts each layout under [Layouts](#layouts).
+- **Output** is the date as `YYYY-MM-DD`, whichever form the token took, so `25/09/2026` under `'%d/%m/%Y'` gives `2026-09-25`. A calendar date has no time and no zone, and any `Date` would fix a midnight in some zone, so the action builds the type it needs.
+- **Publishes** `{ type: 'string', format: 'date' }`, or, with `layouts`, the `anyOf` [Layouts](#layouts) states, its first member `{ format: 'date' }`.
+- **Message.** `Expected a date as YYYY-MM-DD, such as 2026-09-25.`, or, with `layouts`, `Expected a date as YYYY-MM-DD or DD/MM/YYYY, such as 2026-09-25.`, listing every form.
+- **Faults.** A layout under [Layouts](#layouts).
 
 ### dateTime
 
 ```ts
-dateTime(options?: { timeZone?: string }): Validator<Date>
+dateTime(options?: { timeZone?: string; layouts?: readonly [string, ...string[]] }): Validator<Date>
 ```
 
-- **Accepts** an ISO 8601 or RFC 3339 date and time: `YYYY-MM-DD`, then `T`, `t`, or one space, then `hh:mm` with optional `:ss` and, after seconds, an optional fraction of one or more digits, then an optional `Z`, `z`, or an offset of `+` or `-` and `hh:mm`, `hhmm`, or the hour-only `hh` that PostgreSQL prints for `timestamptz`, such as `+05`, each naming the same instant as its `hh:mm` form. The date names a real day under `date()`'s rule, the hour runs 0 through 23, the minute and second 0 through 59, and an offset's hour and minute stay within the same bounds. A date alone is `date()`'s job, and relative forms such as `now+2h` are rejected.
+- **Accepts** an ISO 8601 or RFC 3339 date and time: `YYYY-MM-DD`, then `T`, `t`, or one space, then `hh:mm` with optional `:ss` and, after seconds, an optional fraction of one or more digits, then an optional `Z`, `z`, or an offset of `+` or `-` and `hh:mm`, `hhmm`, or the hour-only `hh` that PostgreSQL prints for `timestamptz`, such as `+05`, each naming the same instant as its `hh:mm` form. The date names a real day under `date()`'s rule, the hour runs 0 through 23, the minute and second 0 through 59, and an offset's hour and minute stay within the same bounds. A date alone is `date()`'s job, and relative forms such as `now+2h` are rejected. With `layouts`, it also accepts each layout under [Layouts](#layouts); a layout with `%z` names that instant, and one without reads as a token with no offset does.
 - **Reads** a token with an offset or `Z` as that instant. A token with neither is a local time, read in `timeZone` when the option names one and otherwise in `host.timeZone`, so only a zone-less token under an unpinned validator reads the [validation context](../core/validation.md#validation-context), so it runs inside a Loom run or under the options [`validationOptions`](../core/validation.md#validation-options-outside-a-run) builds. A local time that a clock change skips moves forward by the length of the gap, and one it repeats takes the earlier instant, as Temporal's `compatible` disambiguation does. The offsets come from `Intl.DateTimeFormat`, because `Temporal` is not on every supported runtime.
 - **Output** is a `Date`. A fraction beyond milliseconds is truncated, not rounded.
-- **Publishes** `{ type: 'string', pattern }`, where the pattern admits the zone-less form and every offset spelling and states no range. `format: 'date-time'` requires an offset, so it would be stricter than the validator.
-- **Message.** `Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.`
-- **Faults.** A `timeZone` that the runtime does not know as an IANA time zone name, under `@loomcli/validators/time-zone`.
+- **Publishes** `{ type: 'string', pattern }`, where the pattern admits the zone-less form and every offset spelling and states no range. `format: 'date-time'` requires an offset, so it would be stricter than the validator. With `layouts`, it publishes the `anyOf` [Layouts](#layouts) states, its first member that pattern.
+- **Message.** `Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.`, or, with `layouts`, `Expected a date and time as YYYY-MM-DDThh:mm or DD/MM/YYYY hh:mm, such as 2026-09-25T14:30:00Z.`, listing every form.
+- **Faults.** A `timeZone` that the runtime does not know as an IANA time zone name, under `@loomcli/validators/time-zone`, and a layout under [Layouts](#layouts).
+
+### time
+
+```ts
+time(options?: { min?: string; max?: string; layouts?: readonly [string, ...string[]] }): Validator<number>
+```
+
+- **Accepts** a time of day as RFC 3339's partial time writes it, with seconds optional as ISO 8601 writes a local time: two-digit hours from 00 through 23, `:`, two-digit minutes, then optional `:` and two-digit seconds and, after seconds, an optional `.` and one or more digits, so `09:30`, `17:45:30`, and `23:59:59.5` pass. `9:30`, `24:00`, a leap second such as `23:59:60`, and an offset such as `09:30Z` are rejected; a zoned time is `dateTime()`'s. With `layouts`, it also accepts each layout under [Layouts](#layouts), such as `'%I:%M%p'` for `9:30pm`.
+- **Output** is the number of milliseconds since midnight, the unit `duration()` uses, so `09:30` is 34,200,000 and a time and a duration add. A fraction beyond milliseconds is truncated, not rounded.
+- **Bounds.** `min` and `max` are times in the default grammar, such as `'09:00'`, both inclusive. A range that wraps past midnight, such as 22:00 to 06:00, is a [pipe](#pipe) step.
+- **Publishes** `{ type: 'string', pattern }`, the default grammar whole, or, with `layouts`, the `anyOf` [Layouts](#layouts) states, its first member that pattern. It does not publish `format: 'time'`, which requires an offset the validator rejects. The bounds are not stated, because a pattern cannot carry them.
+- **Message.** `Expected a time of day, such as 09:30 or 17:45:30.`, or, with `layouts`, `Expected a time of day as hh:mm or hh:mmAM, such as 09:30.` for `'%I:%M%p'`, listing every form. With bounds, `Expected a time from 09:00 through 17:00.`, `Expected a time of at least 09:00.`, or `Expected a time of at most 17:00.`, whatever the layouts. A bound prints as `hh:mm`, with `:ss` when its seconds or milliseconds are not zero, and a fraction of its milliseconds with trailing zeros dropped when they are not zero, so `'09:00:00.50'` prints as `09:00:00.5`.
+- **Faults.** A `min` or `max` that the default grammar rejects, under `@loomcli/validators/bound-value`, `min` above `max`, and a layout under [Layouts](#layouts).
 
 ### duration
 
@@ -302,6 +317,24 @@ email(): Validator<string>
 - **Output** is the token as written.
 - **Publishes** `{ type: 'string', pattern }`, the WHATWG production. It does not publish `format: 'email'`, because RFC 5321's local part rejects `a..b` and a leading dot, which the WHATWG rule accepts, and the format as validators check it requires a dot in the domain, which the WHATWG rule does not, so the format would be stricter than the validator.
 - **Message.** `Expected an email address, such as name@example.com.`
+
+### Layouts
+
+`date`, `dateTime`, and `time` take `layouts`, a nonempty list of POSIX strftime layouts the factory reads beside its default grammar, under [ADR-0144](../decisions/0144-date-and-time-validators-read-strftime-layouts-and-time-reads-a-time-of-day-as-milliseconds-since-midnight.md).
+
+```ts
+date({ layouts: ['%d/%m/%Y', '%Y%m%d'] }); // 2026-09-25, 25/09/2026, 25/9/2026, and 20260925
+dateTime({ layouts: ['%d/%m/%Y %H:%M'] }); // the ISO forms and 25/09/2026 14:30
+time({ layouts: ['%I:%M%p'] }); // 09:30 and 9:30pm
+```
+
+- **Order.** The factory tries its default grammar, then each layout in the declared order, and the first that reads the token wins. A layout reads a token only when the token matches it and every field it reads is in range under **Reading**; otherwise the next layout is tried, as Click's do. So `['%d/%m/%Y', '%m/%d/%Y']` reads `03/04/2026` day-first, as the 3rd of April, and `03/25/2026` month-first, as the 25th of March, because no 25th month exists; list day-first and month-first layouts together only when that mixed reading is the intent.
+- **Directives.** The digit-reading directives are `%Y`, `%m`, `%d`, `%H`, `%I`, `%M`, and `%S`. `%Y` reads four digits. `%m`, `%d`, `%H`, `%M`, `%S`, and `%I` read one or two digits, leading zeros permitted but not required, as POSIX `strptime` reads them, except that a directive followed directly by another digit-reading directive reads exactly two, so `%Y%m%d` reads `20260304` as the 4th of March. `%z` reads `Z`, `z`, or `+` or `-` followed by `hh`, `hhmm`, or `hh:mm`. `%p` reads `AM` or `PM` in any letter case, as the C locale writes them, and `%I` reads 1 through 12, so `12AM` is midnight and `12PM` is noon. `%%` reads `%`. Every other character matches itself exactly, except that a `dateTime` layout holds no literal `Z` or `z`, because a token's `Z` names UTC and only `%z` reads it as an offset. No directive reads a month or day name, so no layout depends on a locale.
+- **Fields.** The hour is one field, whether `%H` or `%I` reads it. A `date` layout holds `%Y`, `%m`, and `%d` once each and no other directive. A `dateTime` layout holds `%Y`, `%m`, `%d`, `%H`, and `%M` once each, and may hold `%S` and `%z` once each. A `time` layout holds `%M` once and either `%H`, or `%I` with `%p`, once each, and may hold `%S` once.
+- **Reading.** A date a layout reads names a real day under `date`'s rule. `%I` reads 1 through 12 before `%p` applies, and the hour then runs 0 through 23; the minute and second run 0 through 59; and an offset's hour and minute stay within the bounds `dateTime`'s default grammar sets. The fields then give the factory's output as its default grammar's would: `date` the `YYYY-MM-DD` string, `dateTime` the instant under its zone rule, and `time` the milliseconds since midnight.
+- **Publishes** `{ type: 'string', anyOf: [default, ...layouts] }`: the factory's default schema, then a pattern for each layout that admits every token the layout reads and states no range. A layout's literal characters appear in its pattern with each ECMAScript syntax character, ``^ $ \ . * + ? ( ) [ ] { } |``, escaped by a backslash, and every other character bare, `-` and `%` included, as `keyValue` escapes its separator.
+- **Written forms.** A message writes each layout as its directives read: `%Y` as `YYYY`, `%m` as `MM`, `%d` as `DD`, `%H` and `%I` as `hh`, `%M` as `mm`, `%S` as `ss`, `%p` as `AM`, `%z` as `±hh:mm`, and `%%` as `%`, so `'%d/%m/%Y'` writes `DD/MM/YYYY`. The default grammar writes first: `YYYY-MM-DD` for `date`, `YYYY-MM-DDThh:mm` for `dateTime`, and `hh:mm` for `time`. A form that repeats prints once, at its first place, so `time({ layouts: ['%H:%M'] })` writes `hh:mm` alone. A list of forms joins as `A or B`, or `A, B, or C` for three or more.
+- **Faults.** An empty layout, a `%` that ends the layout, an unknown directive, a directive the factory does not read, a required field missing, any field held twice, `%I` without `%p` or `%p` without `%I`, or a literal `Z` or `z` in a `dateTime` layout, whose correction says to write `%z`, under `@loomcli/validators/layout`.
 
 ## createValidator
 
@@ -468,6 +501,13 @@ The catalog declares these codes. Each is exported under the name in the second 
 | `uuid`              | `uuidIssue`             | none                                        | `Expected a UUID, such as 123e4567-e89b-12d3-a456-426614174000.` |
 | `date`              | `dateIssue`             | none                                        | `Expected a date as YYYY-MM-DD, such as 2026-09-25.`   |
 | `date-time`         | `dateTimeIssue`         | none                                        | `Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.` |
+| `date-layouts`      | `dateLayoutsIssue`      | `{ forms: readonly string[] }`              | `Expected a date as {forms}, such as 2026-09-25.`      |
+| `date-time-layouts` | `dateTimeLayoutsIssue`  | `{ forms: readonly string[] }`              | `Expected a date and time as {forms}, such as 2026-09-25T14:30:00Z.` |
+| `time`              | `timeIssue`             | none                                        | `Expected a time of day, such as 09:30 or 17:45:30.`   |
+| `time-layouts`      | `timeLayoutsIssue`      | `{ forms: readonly string[] }`              | `Expected a time of day as {forms}, such as 09:30.`    |
+| `time-range`        | `timeRangeIssue`        | `{ min: number; max: number }`              | `Expected a time from {min} through {max}.`            |
+| `time-min`          | `timeMinIssue`          | `{ min: number }`                           | `Expected a time of at least {min}.`                   |
+| `time-max`          | `timeMaxIssue`          | `{ max: number }`                           | `Expected a time of at most {max}.`                    |
 | `duration`          | `durationIssue`         | none                                        | `Expected a duration, such as 90s, 2h30m, or 1.5h.`    |
 | `duration-capital-m` | `durationCapitalMIssue` | none                                        | `Expected a duration; write minutes as m or min, because M is ambiguous.` |
 | `duration-range`    | `durationRangeIssue`    | `{ min: number; max: number }`              | `Expected a duration from {min} through {max}.`        |
@@ -492,7 +532,7 @@ The catalog declares these codes. Each is exported under the name in the second 
 | `key-value`         | `keyValueIssue`         | `{ separator: string }`                     | `Expected a key and a value as key{separator}value.`   |
 | `email`             | `emailIssue`            | none                                        | `Expected an email address, such as name@example.com.` |
 
-The duration codes carry milliseconds, and their sentences print each count in the grammar's units. The bytes codes carry byte counts, and their sentences print each count as the `bytes` message bullet states. A code with no parameters has the parameters `{}`. A count of 1 reads `character` rather than `characters`. Under `path-readable`, `{kind}` reads `file`, `directory`, or `file or directory`, and under `path-writable` it reads `file`, `directory`, or `path`. `text-pattern`'s one parameter is the author's `message`, the sentence's one blank.
+The duration codes carry milliseconds, and their sentences print each count in the grammar's units. The bytes codes carry byte counts, and their sentences print each count as the `bytes` message bullet states. The time codes carry milliseconds since midnight, and their sentences print each as the `time` message bullet states. A `forms` parameter holds each distinct written form, the default grammar's first, and joins as [Layouts](#layouts) states. A code with no parameters has the parameters `{}`. A count of 1 reads `character` rather than `characters`. Under `path-readable`, `{kind}` reads `file`, `directory`, or `file or directory`, and under `path-writable` it reads `file`, `directory`, or `path`. `text-pattern`'s one parameter is the author's `message`, the sentence's one blank.
 
 ## When author code fails
 
@@ -500,11 +540,11 @@ A `parse` function, a pipe step or a pipe's `first` that the author wrote, or a 
 
 ## Package
 
-- The root export holds the seventeen factories, `createValidator`, `pipe`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the `Validator`, `ParseResult`, and `IssueCode` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
+- The root export holds the eighteen factories, `createValidator`, `pipe`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the `Validator`, `ParseResult`, and `IssueCode` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
 - `@loomcli/core` is a peer dependency, as it is for `@loomcli/plugins`. The package imports the Standard Schema types, `ValidationContext`, `validationContext`, and `DeclarationError` from core, and adds no runtime dependency of its own.
 
 ## Not shipped
 
 - A JSON validator. A JSON value on a command line is better served by a file.
 - Reading a file or piped stdin as one stream of content, which is its own feature rather than a check.
-- Case-insensitive `oneOf`, a `uuid` version filter, custom date layouts, and bounds on anything other than numbers, durations, sizes, and length.
+- Case-insensitive `oneOf`, a `uuid` version filter, month and day names in a layout, and bounds on anything other than numbers, durations, sizes, times, and length.
