@@ -1,5 +1,5 @@
 ---
-description: The @loomcli/validators reference. The catalog of Standard Schema validators for common input shapes, createValidator, and the issue codes each rejection carries.
+description: The @loomcli/validators reference. The catalog of Standard Schema validators for common input shapes, createValidator, pipe, and the issue codes each rejection carries.
 ---
 
 # Validators reference
@@ -30,8 +30,9 @@ An author climbs these rungs, and each pays only for itself:
 
 1. **No `validate`.** The action receives the raw string, and the input schema is unknown.
 2. **A catalog factory.** The action receives a typed value, a rejected token reads as a plain message, and help and the manifest read the published input schema.
-3. **`createValidator`.** The author's own parse function, built the same way as every catalog factory.
-4. **A schema library.** Any Standard Schema value, in the same slot.
+3. **`pipe`.** A validator followed by steps that check or transform its value, such as a catalog factory and one more rule. Help and the manifest read the first validator's published input schema.
+4. **`createValidator`.** The author's own parse function, built the same way as every catalog factory. It is also how a pipe's first validator states a richer published input schema.
+5. **A schema library.** Any Standard Schema value, in the same slot.
 
 ## Shared rules
 
@@ -267,6 +268,43 @@ const branch = createValidator({
 
 The catalog factories are built with `createValidator`, so a catalog validator and an author's own share every rule above.
 
+## pipe
+
+```ts
+pipe(first, ...steps): StandardSchemaV1<Input, Output> // & StandardJSONSchemaV1<Input, Output> when first publishes
+
+// Shown to explain a step, not exported. `Previous` is the output of the validator or step before it.
+type Step<Previous> =
+  | StandardSchemaV1 // whose input type accepts Previous
+  | ((value: Previous, context: ValidationContext) => ParseResult<unknown> | Promise<ParseResult<unknown>>);
+```
+
+```ts
+import { integer, pipe, text } from '@loomcli/validators';
+import { z } from 'zod';
+
+const pairs = pipe(integer({ min: 2 }), (count) =>
+  count % 2 === 0 ? { value: count } : { issues: [{ message: 'Expected an even number.' }] },
+);
+
+const tags = pipe(text({ maxLength: 200 }), (raw) => ({ value: raw.split(',') }));
+
+const lanes = pipe(
+  integer({ min: 1 }),
+  z.number().refine((count) => count % 4 === 0, 'Expected a multiple of 4.'),
+);
+```
+
+`pipe` runs one validator and then each step on the value the stage before it accepted, so an author adds a rule or a transform to a catalog validator without rewriting its parse. `first` and each step are the pipe's stages. The value it returns is a validator pipe: an ordinary Standard Schema value with `vendor` `'@loomcli/validators'` and `version` 1 that, like a catalog validator, carries no `types` and holds no state between calls. When `first` is a `Validator`, as every catalog factory returns, the pipe is a `Validator` of its own output. [ADR-0141](../decisions/0141-a-validator-pipe-runs-a-first-validator-then-steps-that-read-its-output-and-publishes-the-first-validators-input-schema.md) records the decision.
+
+- **`first`** is any Standard Schema value: a catalog validator, a `createValidator` value, a schema library's value, or another pipe. It receives what core hands the input, and the pipe's input type is `first`'s. A `first` whose input type accepts `undefined` may sit beside `validateOmitted: true`.
+- **Steps.** A pipe takes one to eight steps. A step is either a Standard Schema value whose input type accepts the previous stage's output, or a parse function with `createValidator`'s `parse` shape whose `value` is that output. TypeScript checks that the previous output is assignable to a schema step's input type, so `pipe(text(), z.enum(['a', 'b']))` is a type error, as is a catalog step after a `first` whose output may be `undefined`. After an output of type `unknown`, such as a bare `StandardSchemaV1` first, a schema step's fit is not checked, because TypeScript reads a step before it infers a function step's output. It types a function step's `value` with no annotation, so `count` above is a `number`. A step may check or transform, and the pipe's output type is the last step's: `pairs` gives the action a `number` and `tags` a `string[]`. A chain longer than eight steps nests a pipe as one step or as `first`.
+- **Running.** The first stage that answers `{ issues }` ends the pipe, and the pipe answers that result unchanged, with its messages, codes, and paths; a later stage never runs. A stage that throws, or answers with a promise that rejects, throws or rejects from the pipe unchanged, under [When author code fails](#when-author-code-fails). A schema stage receives the Standard Schema options the pipe received, so core's validation context reaches it, and a parse function receives that context, or the context outside a run that [createValidator](#createvalidator) describes. The pipe answers synchronously when every stage that ran answered synchronously, and with a promise once any stage answers with one, so a pipe whose `first` is `path({ access: 'read' })` answers with a promise for every token it probes, and synchronously for the empty string and a token containing NUL, which `path` rejects before any probe.
+- **Multiple options and variadic arguments.** The pipe checks each value, as every validator does under [Shared rules](#shared-rules).
+- **Publishing.** When `first` implements Standard JSON Schema, the pipe publishes exactly what `first` publishes: `'~standard'.jsonSchema.input(options)` returns `first`'s answer for the same options, or throws what it throws, so `pairs` publishes `integer({ min: 2 })`'s schema. The schema is as sound as `first`'s, because every token the pipe accepts passed `first`, and it may be looser than the pipe, as `pairs` accepts no odd number its schema admits. `'~standard'.jsonSchema.output` throws for every target. When `first` publishes nothing, neither does the pipe, and the input schema reads `null`. A pipe takes no schema of its own; to publish a richer schema, state it on `first` with `createValidator({ parse, inputSchema })`.
+- **Messages and codes.** The pipe adds no message and no issue code. Each catalog stage keeps its own sentence and code, and an author's stage owns its sentence, which follows the rules in [Failure messages](../core/failures.md). One factory configuration answers with one sentence, but a pipe answers with its rejecting stage's sentence, so `pairs` answers `Expected a whole number of at least 2.` for `abc` and `Expected an even number.` for `3`.
+- **Faults.** None. A missing step, a step that is neither a schema nor a function, and a schema step whose input type the previous output is not assignable to are type errors.
+
 ## Issue codes
 
 ```ts
@@ -372,15 +410,15 @@ The duration codes carry milliseconds, and their sentences print each count in t
 
 ## When author code fails
 
-A `parse` function, or a schema that `issueCode` takes, is author code. Author code that throws or rejects takes the [ordinary failure path](../core/failures.md#the-ordinary-failure-path), and an author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). A `parse` that throws or rejects is not a verdict: core reports it as a validator failure under [Issues and validator failures](../core/validation.md#issues-and-validator-failures). A schema that throws, which `issue` and `read` run synchronously, throws from them as the author's code.
+A `parse` function, a pipe step or a pipe's `first` that the author wrote, or a schema that `issueCode` takes, is author code. Author code that throws or rejects takes the [ordinary failure path](../core/failures.md#the-ordinary-failure-path), and an author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). A `parse` that throws or rejects is not a verdict: core reports it as a validator failure under [Issues and validator failures](../core/validation.md#issues-and-validator-failures). A schema that throws, which `issue` and `read` run synchronously, throws from them as the author's code.
 
 ## Package
 
-- The root export holds the eleven factories, `createValidator`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the `Validator`, `ParseResult`, and `IssueCode` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
+- The root export holds the eleven factories, `createValidator`, `pipe`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the `Validator`, `ParseResult`, and `IssueCode` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
 - `@loomcli/core` is a peer dependency, as it is for `@loomcli/plugins`. The package imports the Standard Schema types, `ValidationContext`, `validationContext`, and `DeclarationError` from core, and adds no runtime dependency of its own.
 
 ## Not shipped
 
 - `email` and a JSON validator. Every simple email rule rejects a real address somewhere, and a JSON value on a command line is better served by a file.
 - Reading a file or piped stdin as one stream of content, which is its own feature rather than a check.
-- Case-insensitive `oneOf`, a `uuid` version filter, custom date layouts, bounds on anything other than numbers, durations, and length, and a composition utility.
+- Case-insensitive `oneOf`, a `uuid` version filter, custom date layouts, and bounds on anything other than numbers, durations, and length.

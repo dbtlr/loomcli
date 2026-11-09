@@ -38,6 +38,7 @@ export { issueCode } from './issue-code.js';
 export { number } from './number.js';
 export { oneOf } from './one-of.js';
 export { path } from './path.js';
+export { pipe } from './pipe.js';
 export { port } from './port.js';
 export { text } from './text.js';
 export { url } from './url.js';

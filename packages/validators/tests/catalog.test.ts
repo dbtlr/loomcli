@@ -36,7 +36,7 @@ import { expect, test } from 'vite-plus/test';
 
 const catalog = await import('../src/index.js');
 
-test('the root export holds the eleven factories, createValidator, issueCode, and the catalog codes', () => {
+test('the root export holds the eleven factories, createValidator, pipe, issueCode, and the catalog codes', () => {
   expect(Object.keys(catalog).toSorted()).toEqual([
     'createValidator',
     'date',
@@ -66,6 +66,7 @@ test('the root export holds the eleven factories, createValidator, issueCode, an
     'pathIssue',
     'pathReadableIssue',
     'pathWritableIssue',
+    'pipe',
     'port',
     'portIssue',
     'text',

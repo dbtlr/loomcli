@@ -92,6 +92,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/validators/src/pipe.ts'],
+        rules: {
+          // Each pipe step is a positional parameter with its own overload, so the type of one step reads the output of the one before it.
+          'eslint/max-params': 'off',
+        },
+      },
+      {
         files: [
           'packages/*/src/**',
           'examples/*/src/**',
