@@ -3,6 +3,7 @@ import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { fault } from './faults.js';
 import { reject } from './issues.js';
+import { escapeSyntax } from './pattern-syntax.js';
 import { keyValueSeparator } from './rules.js';
 
 interface KeyValueOptions {
@@ -49,14 +50,6 @@ function separatorOf(options: KeyValueOptions | undefined): string {
 }
 
 /**
- * The separator as a pattern under the `u` flag: each regular-expression syntax character escaped
- * with a backslash. A hyphen is not one, and stays bare, because `u` refuses `\-` outside a class.
- */
-function escaped(separator: string): string {
-  return separator.replaceAll(/[\\^$.*+?()[\]{}|]/gu, String.raw`\$&`);
-}
-
-/**
  * A key and a value joined by the separator, `=` unless the author names another, split at its
  * first occurrence. The key holds one character or more, and the value may be empty.
  */
@@ -65,7 +58,7 @@ function keyValue(options?: KeyValueOptions): Validator<KeyValuePair> {
   const issue = keyValueIssue.issue({ separator });
   return createValidator({
     // One character or more, line terminators included, then the separator.
-    inputSchema: { type: 'string', pattern: String.raw`^[\s\S]+${escaped(separator)}` },
+    inputSchema: { type: 'string', pattern: String.raw`^[\s\S]+${escapeSyntax(separator)}` },
     parse: (raw): ParseResult<KeyValuePair> => {
       const at = raw.indexOf(separator);
       return at < firstKeyCharacter

@@ -25,7 +25,7 @@ const oneOfValues = catalogRule('one-of-values', {
 /** A bound that is not a value of the kind its validator reads. */
 const boundValue = catalogRule('bound-value', {
   explanation:
-    "A bound limits the values or the length a validator accepts, so it is a value of the kind the validator reads: a finite number for integer() and number(), a whole number of 0 or more for text()'s lengths, a duration in the operator's grammar for duration(), and a size in the operator's grammar for bytes().",
+    "A bound limits the values or the length a validator accepts, so it is a value of the kind the validator reads: a finite number for integer() and number(), a whole number of 0 or more for text()'s lengths, a duration in the operator's grammar for duration(), a size in the operator's grammar for bytes(), and a time of day in its default grammar, such as 09:00, for time().",
   headline: 'Invalid bound',
 });
 
@@ -41,6 +41,13 @@ const timeZone = catalogRule('time-zone', {
   explanation:
     'dateTime() reads a token with no offset in the time zone it names, so the name is an IANA time zone the runtime knows, such as America/New_York.',
   headline: 'Invalid time zone',
+});
+
+/** A `date()`, `dateTime()`, or `time()` layout the factory cannot read. */
+const layout = catalogRule('layout', {
+  explanation:
+    'date(), dateTime(), and time() read each layout as a POSIX strftime layout, so it is nonempty, holds only the directives its factory reads, holds each field its factory needs exactly once, pairs %I with %p, and, in dateTime(), holds no literal Z, because only %z reads Z as UTC.',
+  headline: 'Invalid layout',
 });
 
 /** A `url()` protocols list that is not a list of scheme names. */
@@ -100,6 +107,7 @@ export {
   issueCodeName,
   issueParameters,
   keyValueSeparator,
+  layout,
   oneOfValues,
   textPattern,
   timeZone,

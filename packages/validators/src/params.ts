@@ -48,6 +48,11 @@ const isCount: Guard<number> = (value): value is number =>
 const isFiniteNumber: Guard<number> = (value): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
+/** The milliseconds in a day, which a time of day stays below. */
+const day = 86_400_000;
+
+const isTimeOfDay: Guard<number> = (value): value is number => isCount(value) && value < day;
+
 const isKind: Guard<PathKind> = (value): value is PathKind =>
   value === 'file' || value === 'directory' || value === 'any';
 
@@ -104,6 +109,11 @@ const protocolsParams = paramsSchema(
   },
 );
 
+const formsParams = paramsSchema('{ forms: readonly string[] }', ['forms'], (record) => {
+  const forms = stringList(record.forms);
+  return forms === undefined ? undefined : { forms };
+});
+
 const separatorParams = paramsSchema('{ separator: string }', ['separator'], ({ separator }) =>
   typeof separator === 'string' && separator !== '' ? { separator } : undefined,
 );
@@ -113,8 +123,10 @@ const kindParams = paramsSchema("{ kind: 'file' | 'directory' | 'any' }", ['kind
 );
 
 export {
+  formsParams,
   isCount,
   isFiniteNumber,
+  isTimeOfDay,
   kindParams,
   lengthParams,
   maxParams,
