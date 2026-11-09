@@ -113,13 +113,18 @@ export const surfacePackages = [
       './background',
       './box',
       './color',
+      './config',
+      './config/extension',
+      './dotenv',
       './format',
       './format/views',
       './heading',
+      './interaction',
       './list',
       './prose',
       './records',
       './rule',
+      './suggestions',
       './table',
       './theme',
       './verbose',
@@ -135,6 +140,22 @@ export const surfacePackages = [
       './color': {
         forgottenExports: {
           options: 'Constant behind the exported `ColorOptions`; the author names `ColorOptions`.',
+        },
+      },
+      './config': {
+        forgottenExports: {
+          EveryKeyOptional:
+            'Type machinery behind the exported `EmptyFileGuard`; the author names `EmptyFileGuard`.',
+          Short:
+            'Fragment of an exported option or argument configuration; the author names the whole configuration.',
+          options:
+            'Constant behind the exported `ConfigOptions`; the author names `ConfigOptions`.',
+        },
+      },
+      './interaction': {
+        forgottenExports: {
+          options:
+            'Constant behind the exported `InteractionOptions`; the author names `InteractionOptions`.',
         },
       },
       './theme': {

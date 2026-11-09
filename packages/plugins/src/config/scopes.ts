@@ -6,10 +6,16 @@ import { configIdentity as identity } from './names.js';
 /**
  * A scope the lookup may read: `project`, the walk up from the start directory, or `user`, the
  * home file and then the XDG user file.
+ *
+ * @public
  */
 type Scope = 'project' | 'user';
 
-/** The settings that choose the scopes and bound the project walk. */
+/**
+ * The settings that choose the scopes and bound the project walk.
+ *
+ * @public
+ */
 interface ScopeSettings {
   /** The scopes the lookup reads, project before user whatever the order. Defaults to both. */
   readonly scopes?: readonly [Scope, ...Scope[]];

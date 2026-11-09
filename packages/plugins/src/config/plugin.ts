@@ -36,7 +36,11 @@ const directoryDescription = 'Look for the configuration file from this director
 
 type Short = NonNullable<StringOption['short']>;
 
-/** A global option whose value is where the lookup's walk starts. */
+/**
+ * A global option whose value is where the lookup's walk starts.
+ *
+ * @public
+ */
 interface DirectorySetting<Name extends string> {
   /** The global option's name: `'project'` declares `--project`. */
   readonly name: Name;
@@ -49,6 +53,8 @@ interface DirectorySetting<Name extends string> {
 /**
  * The options the plugin declares: `--config`, `--no-config`, and the directory option when
  * `directory` names one.
+ *
+ * @public @sealed
  */
 type ConfigOptions<Directory extends string = never> = typeof options &
   Readonly<Record<Directory, { readonly description: string; readonly type: 'string' }>>;
@@ -56,6 +62,8 @@ type ConfigOptions<Directory extends string = never> = typeof options &
 /**
  * What an application tells the configuration plugin: the schema of its file, the file it looks
  * for, the scopes it looks in, and how an operator points the lookup elsewhere.
+ *
+ * @public
  */
 interface ConfigurationSettings<
   Schema extends StandardSchemaV1,
@@ -109,14 +117,23 @@ function declaredOptions<const Directory extends string>(settings: {
   return { ...options, config: configOption, ...declared } as ConfigOptions<Directory>;
 }
 
-/** The provider of the validated configuration, read as `provided.config`. */
+/**
+ * The provider of the validated configuration, read as `provided.config`.
+ *
+ * @public @sealed
+ */
 type ConfigProvider<Schema extends StandardSchemaV1, Directory extends string> = Provider<
   'config',
   StandardSchemaV1.InferOutput<Schema>,
   PluginOptionValues<ConfigOptions<Directory>>
 >;
 
-/** What `configuration()` returns: the plugin the Application installs, and the provider a Command opts in to. */
+/**
+ * What `configuration()` returns: the plugin the Application installs, and the provider a Command
+ * opts in to.
+ *
+ * @public @sealed
+ */
 interface Configuration<Schema extends StandardSchemaV1, Directory extends string> {
   /** The plugin the Application installs. */
   readonly plugin: Plugin<ConfigOptions<Directory>>;
@@ -135,6 +152,8 @@ interface Configuration<Schema extends StandardSchemaV1, Directory extends strin
  * call judges the settings' `file`, `env`, `root`, and `scopes`, which it reads once. The resolver
  * and the opener load only when core calls them, and they share one read per run, keyed by the
  * run's host.
+ *
+ * @public
  */
 function configuration<
   const Schema extends StandardSchemaV1,

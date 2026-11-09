@@ -27,7 +27,14 @@ interface DirectorySetting<Name extends string> {
 /** Where the lookup looks: project is the walk, user the home file and the XDG user file. */
 type Scope = 'project' | 'user';
 
-interface ConfigurationSettings<Schema extends StandardSchemaV1, Directory extends string> {
+interface ScopeSettings {
+  /** The scopes the lookup reads, project before user whatever the order. Defaults to both. */
+  readonly scopes?: readonly [Scope, ...Scope[]];
+  /** The names whose presence stops the project walk after it looks in that directory, or false for none. */
+  readonly root?: string | readonly [string, ...string[]] | false;
+}
+
+interface ConfigurationSettings<Schema extends StandardSchemaV1, Directory extends string = never> extends ScopeSettings {
   /** One Standard Schema for the whole file. Every key is optional outside an array item or a record value. */
   readonly schema: Schema & EmptyFileGuard<Schema>;
   /** The configuration file's name or relative path, a file pattern. Defaults to `.<app>.json`. */
@@ -41,10 +48,6 @@ interface ConfigurationSettings<Schema extends StandardSchemaV1, Directory exten
   readonly directory?: DirectorySetting<Directory> & ([Extract<'config' | 'no-config', Directory>] extends [never] ? unknown : { readonly name: never });
   /** Write one line when the lookup finds no file. Off by default. */
   readonly notice?: boolean;
-  /** The scopes the lookup reads, project before user whatever the order. Defaults to both. */
-  readonly scopes?: readonly [Scope, ...Scope[]];
-  /** The names whose presence stops the project walk after it looks in that directory, or false for none. */
-  readonly root?: string | readonly [string, ...string[]] | false;
 }
 
 type ConfigOptions<Directory extends string = never> = {
@@ -52,11 +55,14 @@ type ConfigOptions<Directory extends string = never> = {
   'no-config': { control: true; description: string; type: 'boolean' };
 } & { [Name in Directory]: { description: string; type: 'string' } };
 
+/** The provider of the validated configuration, read as provided.config. */
+type ConfigProvider<Schema extends StandardSchemaV1, Directory extends string> = Provider<'config', StandardSchemaV1.InferOutput<Schema>, PluginOptionValues<ConfigOptions<Directory>>>;
+
 interface Configuration<Schema extends StandardSchemaV1, Directory extends string> {
   /** The plugin the Application installs. */
   readonly plugin: Plugin<ConfigOptions<Directory>>;
   /** The validated configuration, read as provided.config. */
-  readonly values: Provider<'config', StandardSchemaV1.InferOutput<Schema>, PluginOptionValues<ConfigOptions<Directory>>>;
+  readonly values: ConfigProvider<Schema, Directory>;
 }
 
 export declare function configuration<const Schema extends StandardSchemaV1, const Directory extends string = never>(
