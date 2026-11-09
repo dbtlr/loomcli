@@ -1,6 +1,9 @@
 version: 2
 
 updates:
+  # No ignore rules: each group update is applied by hand with its holds. @loomcli/eslint-plugin
+  # stays on TypeScript ^6 while typescript-eslint 8 rejects TypeScript 7, and @types/node stays on
+  # the 22.x line that core's engines floor names.
   - package-ecosystem: npm
     directory: /
     schedule:
