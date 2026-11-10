@@ -29,6 +29,8 @@ import { lineRule, markdownRule } from '../lines.js';
 
 /**
  * A help section's place: one heading, or a heading and its subsection's. Each heading is one line.
+ *
+ * @public
  */
 type HelpSectionPath = readonly [string] | readonly [string, string];
 
@@ -36,6 +38,8 @@ type HelpSectionPath = readonly [string] | readonly [string, string];
  * Help's facts on a Command: its Markdown details, its Markdown epilog, its examples, the section it
  * sits in on its parent's page, and the order of the sections on its own page. Every page on or under
  * the Command ends with its epilog.
+ *
+ * @public
  */
 interface HelpCommandFacts {
   readonly commandSections?: readonly HelpSectionPath[] | undefined;
@@ -49,6 +53,8 @@ interface HelpCommandFacts {
 /**
  * Help's facts on an option: the line it prints as the accepted values, whether it hides the
  * option's bindings, the word for its value, and the section it sits in.
+ *
+ * @public
  */
 interface HelpInputFacts {
   readonly accepts?: string | undefined;
@@ -59,6 +65,8 @@ interface HelpInputFacts {
 
 /**
  * Help's one fact on an argument: the line it prints as the accepted values.
+ *
+ * @public
  */
 interface HelpArgumentFacts {
   readonly accepts?: string | undefined;
@@ -97,6 +105,8 @@ const argumentFacts = exactFacts<HelpArgumentFacts>()(argumentFactsSchema);
 /**
  * Help's facts on a Command or the Application: details, an epilog, examples, its section, and the
  * order of the sections on its own page.
+ *
+ * @public
  */
 export const helpCommand: Extension<
   'command',
@@ -109,6 +119,8 @@ export const helpCommand: Extension<
 /**
  * Help's facts on an option: its accepted values, its placeholder, its section, and whether its
  * bindings are hidden.
+ *
+ * @public
  */
 export const helpInput: Extension<
   'option',
@@ -121,6 +133,8 @@ export const helpInput: Extension<
 /**
  * Help's one fact on an argument: the sentence its row prints as the values it accepts, in place of
  * any list help would derive from the schema. An argument's placeholder is its declared name.
+ *
+ * @public
  */
 export const helpArgument: Extension<
   'argument',

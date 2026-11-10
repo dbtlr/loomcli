@@ -3,7 +3,11 @@ import type { CommandGraph } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
 
-/** What the version line reads: the graph, and the postfix the application gave `version()`. */
+/**
+ * What the version line reads: the graph, and the postfix the application gave `version()`.
+ *
+ * @public @sealed
+ */
 export interface VersionLine {
   readonly graph: CommandGraph;
   readonly postfix: string | undefined;
@@ -14,6 +18,8 @@ export interface VersionLine {
  * `v` carries that `v` once; every other first character is printed after the added one. The rule
  * is rendering alone, and `graph.version` keeps the declared string. A postfix follows after one
  * unstyled space, escaped and dim.
+ *
+ * @public
  */
 export const versionLine = view<VersionLine>(`${packageName}/version/line`, {
   render: ({ graph: { name, version }, postfix }, { style }) => {
