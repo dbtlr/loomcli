@@ -119,6 +119,9 @@ export const surfacePackages = [
       './format',
       './format/views',
       './heading',
+      './help',
+      './help/extension',
+      './help/views',
       './interaction',
       './list',
       './prose',
@@ -128,6 +131,8 @@ export const surfacePackages = [
       './table',
       './theme',
       './verbose',
+      './version',
+      './version/views',
     ],
     directory: 'packages/plugins',
     entries: {
@@ -152,6 +157,11 @@ export const surfacePackages = [
             'Constant behind the exported `ConfigOptions`; the author names `ConfigOptions`.',
         },
       },
+      './help': {
+        forgottenExports: {
+          options: 'Constant behind the exported `HelpOptions`; the author names `HelpOptions`.',
+        },
+      },
       './interaction': {
         forgottenExports: {
           options:
@@ -168,6 +178,12 @@ export const surfacePackages = [
         forgottenExports: {
           options:
             'Constant behind the exported `VerboseOptions`; the author names `VerboseOptions`.',
+        },
+      },
+      './version': {
+        forgottenExports: {
+          options:
+            'Constant behind the exported `VersionOptions`; the author names `VersionOptions`.',
         },
       },
     },
