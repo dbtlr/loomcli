@@ -22,8 +22,8 @@ loom changelog write --target 0.5.0
 
 **Steps.**
 
-1. Run `loom changelog write --dry-run` and read the next version it prints.
+1. Run `loom changelog write --dry-run` and read the next version it prints. From a prerelease, it fails and names the minimum instead.
 2. Change any `--target` in release scripts or workflows to that version or higher.
 3. For a prerelease such as `0.4.8-rc.1` with a feature fragment pending, cut a new prerelease with `loom changelog write --target 0.5.0-rc.1`, or finalize with `--target 0.5.0`.
 
-**Validation.** Run `loom changelog write --dry-run` and check that it prints the expected version and exits 0, then run the release command with its `--target`, if any, under `--dry-run`.
+**Validation.** From a stable version, run `loom changelog write --dry-run` and check that it prints the expected version and exits 0. From a prerelease, or with a pinned target, run `loom changelog write --dry-run --target` with the new version, such as `0.5.0-rc.1` or `0.5.0`, and check that it exits 0.
