@@ -4,7 +4,7 @@ title: ADR-0132 - A package's changelog cut may choose its version, cut a prerel
 description: loom changelog write takes --target, a chosen version above the current one whose release part meets the fragment minimum, so fragments keep their kinds. A prerelease target sets the version, writes no changelog section, and leaves the fragments pending, and a plain write from a prerelease finalizes to its release part. The sharedVersion key of loom.config.json lists package.json files that carry the package's version, and write sets each in the same replacement. loom changelog notes prints one version's notes. It supersedes ADR-0067's rejection of a version override and its failure on a prerelease, and narrows the cuts across several packages that ADR-0099 leaves out.
 status: accepted
 created: 2026-11-01
-modified: 2026-11-02
+modified: 2026-11-11
 ---
 
 # ADR-0132 - A package's changelog cut may choose its version, cut a prerelease, and set a version other manifests share
@@ -53,3 +53,4 @@ Accepted in 0.17.0.
 ## Changelog
 
 - 2026-11-01: Proposed with the package changelog's chosen, prerelease, and shared version contract (LM-345).
+- 2026-11-11: [ADR-0145](0145-below-1-0-0-a-feature-fragment-advances-the-minor.md), proposed, has a feature fragment advance the minor below `1.0.0`, which raises the fragment minimum this record floors a target at: with a feature pending, `0.4.7 --target 0.4.9` and finalizing `0.4.8-rc.1` now fail and name `0.5.0`. The floor rule, prerelease cuts, and `sharedVersion` stand. It binds when that record is accepted.

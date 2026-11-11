@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0145 - Below 1.0.0, a feature fragment advances the minor
-description: Below 1.0.0, a feature fragment advances the minor, as a breaking fragment does, and only a fix fragment advances the patch. From 1.0.0 the bump is unchanged. The rule governs loom changelog write and this repository's loom release cut alike. It supersedes ADR-0067's bump clause below 1.0.0 and ADR-0012's rule that anything not breaking advances the patch.
+description: Below 1.0.0, a feature fragment advances the minor, as a breaking fragment does, and only a fix fragment advances the patch. From 1.0.0 the bump is unchanged. The rule governs loom changelog write and this repository's loom release cut alike. It supersedes ADR-0067's bump clause below 1.0.0 and ADR-0012's rule that anything not breaking advances the patch, and raises the fragment minimum ADR-0083 and ADR-0132 floor a chosen target at.
 status: proposed
 created: 2026-11-11
 modified: 2026-11-11
@@ -37,12 +37,12 @@ The result is that a feature cut on `0.x` ships as a patch. A `0.4.7` package th
 
 ## Consequences
 
-A feature-only cut from `0.4.7` takes `0.5.0`, and a fix-only cut takes `0.4.8`. A `--target` between the two, such as `0.4.9` with a feature pending, now fails and names `0.5.0`. An application on `0.x` changes no code; its next cut with a feature fragment takes a minor. The [package changelog](../toolchain/changelog.md), the fragment guide `loom init` writes, this repository's [fragment guide](../../.changes/README.md), and the [changelog compiler](../maintaining/changelog-compiler.md) state the table.
+A feature-only cut from `0.4.7` takes `0.5.0`, and a fix-only cut takes `0.4.8`. A `--target` between the two, such as `0.4.9` with a feature pending, now fails and names `0.5.0`, and so does finalizing a `0.4.8-rc.1` prerelease with a feature pending. The change is breaking for that reason: a target or a prerelease an earlier release accepted is refused, and its fragment carries the migration. An application on `0.x` changes no code; its next cut with a feature fragment takes a minor. The [package changelog](../toolchain/changelog.md), the fragment guide `loom init` writes, this repository's [fragment guide](../../.changes/README.md), and the [changelog compiler](../maintaining/changelog-compiler.md) state the table.
 
 ## Status
 
-Proposed.
+Proposed. It moves to accepted in the release PR of the release that ships it.
 
 ## Changelog
 
-- 2026-11-11: Proposed with the version computation change (LM-492).
+- 2026-11-11: Proposed with the version computation change (LM-492). It supersedes ADR-0067's bump clause below `1.0.0` and ADR-0012's rule that anything not breaking advances the patch, and raises the fragment minimum of ADR-0083 and ADR-0132; ADR-0012, ADR-0067, ADR-0083, and ADR-0132 carry dated entries.
