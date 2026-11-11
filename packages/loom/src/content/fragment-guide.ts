@@ -60,8 +60,8 @@ The highest kind present decides the next version.
 | Current version | Highest kind present | Next version |
 | --------------- | -------------------- | ------------ |
 | \`0.0.0\`         | Any                  | \`0.1.0\`      |
-| \`0.4.7\`         | Breaking             | \`0.5.0\`      |
-| \`0.4.7\`         | Feature or fix       | \`0.4.8\`      |
+| \`0.4.7\`         | Breaking or feature  | \`0.5.0\`      |
+| \`0.4.7\`         | Fix                  | \`0.4.8\`      |
 | \`1.4.7\`         | Breaking             | \`2.0.0\`      |
 | \`1.4.7\`         | Feature              | \`1.5.0\`      |
 | \`1.4.7\`         | Fix                  | \`1.4.8\`      |

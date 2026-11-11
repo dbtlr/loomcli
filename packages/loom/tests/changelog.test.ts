@@ -268,7 +268,7 @@ test.each([
   ['0.0.0', ['breaking.call.md'], '0.1.0'],
   ['0.0.0', ['fix.md'], '0.1.0'],
   ['0.4.7', ['breaking.call.md', 'feature.tags.md', 'fix.md'], '0.5.0'],
-  ['0.4.7', ['feature.tags.md', 'fix.md'], '0.4.8'],
+  ['0.4.7', ['feature.tags.md', 'fix.md'], '0.5.0'],
   ['0.4.7', ['fix.md'], '0.4.8'],
   ['1.4.7', ['breaking.call.md', 'feature.tags.md', 'fix.md'], '2.0.0'],
   ['1.4.7', ['feature.tags.md', 'fix.md'], '1.5.0'],
@@ -785,6 +785,7 @@ test.each([
   ['1.4.0', 'feature.tags.md', '1.4.9', '1.5.0'],
   ['1.4.0', 'breaking.call.md', '1.9.0', '2.0.0'],
   ['0.9.4', 'breaking.call.md', '0.9.5', '0.10.0'],
+  ['0.9.4', 'feature.tags.md', '0.9.5', '0.10.0'],
   ['0.9.4', 'fix.md', '0.9.4-rc.1', '0.9.5'],
 ])(
   'write --target refuses %s with %s and target %s below the minimum and names %s',

@@ -919,7 +919,7 @@ A change fragment, named `breaking.<slug>.md`, for a change that forces a consum
 _Avoid_: Major fragment, breaking changeset
 
 **Feature fragment**:
-A change fragment, named `feature.<slug>.md`, for a compatible addition. Its minimum bump is the minor version from `1.0.0` and the patch below it.
+A change fragment, named `feature.<slug>.md`, for a compatible addition. Its minimum bump is the minor version.
 _Avoid_: Minor fragment, enhancement
 
 **Fix fragment**:
@@ -927,7 +927,7 @@ A change fragment, named `<slug>.md` with no kind prefix, for a compatible corre
 _Avoid_: Patch fragment, bugfix
 
 **Ordinary fragment**:
-A change fragment that is not breaking: a feature fragment or a fix fragment. Either kind requires at least a patch bump in this repository's synchronized release under [ADR-0083](decisions/0083-a-synchronized-release-may-select-a-version-above-the-fragment-minimum.md), while a package from `1.0.0` under [ADR-0067](decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md) bumps them differently.
+A change fragment that is not breaking: a feature fragment or a fix fragment. A feature fragment requires at least a minor bump and a fix fragment a patch, under [ADR-0145](decisions/0145-below-1-0-0-a-feature-fragment-advances-the-minor.md).
 _Avoid_: Patch fragment, minor fragment
 
 **Fragment minimum**:
