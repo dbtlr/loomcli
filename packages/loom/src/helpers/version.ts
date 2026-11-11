@@ -107,17 +107,18 @@ export function compareSemVer(left: SemVer, right: SemVer) {
 }
 
 /**
- * The next version. `0.0.0` cuts `0.1.0`. Below `1.0.0`, breaking advances the minor and anything
- * else the patch; from `1.0.0`, breaking advances the major, feature the minor, and fix the patch.
+ * The next version under ADR-0145. `0.0.0` cuts `0.1.0`. From `1.0.0`, breaking advances the major,
+ * feature the minor, and fix the patch. Below `1.0.0`, breaking and feature advance the minor and
+ * fix the patch.
  */
 export function nextVersion(current: Version, highest: FragmentKind | undefined) {
   if (current.text === '0.0.0') {
     return '0.1.0';
   }
-  if (highest === 'breaking') {
-    return current.major === 0 ? `0.${current.minor + 1}.0` : `${current.major + 1}.0.0`;
+  if (highest === 'breaking' && current.major > 0) {
+    return `${current.major + 1}.0.0`;
   }
-  if (highest === 'feature' && current.major > 0) {
+  if (highest === 'breaking' || highest === 'feature') {
     return `${current.major}.${current.minor + 1}.0`;
   }
   return `${current.major}.${current.minor}.${current.patch + 1}`;

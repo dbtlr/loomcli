@@ -102,7 +102,7 @@ test('a dry run derives the first version from manifests and preserves fragment 
 
 test.each([
   ['0.4.7', 'plain.md', '- Fix output.\n', '0.4.8'],
-  ['0.4.7', 'feature.input.md', '- Add input.\n', '0.4.8'],
+  ['0.4.7', 'feature.input.md', '- Add input.\n', '0.5.0'],
   ['0.4.7', 'breaking.call.md', migration, '0.5.0'],
 ])('a dry run increments manifest %s for %s', async (current, name, body, expected) => {
   const root = repository(current);
@@ -129,26 +129,26 @@ test('a dry run sorts by the commit that added each fragment, then filename', as
   );
 });
 
-test('an explicit target cuts a feature-only minor release with the same preview and written section', async () => {
+test('an explicit target above the feature minimum cuts that release with the same preview and written section', async () => {
   const root = repository('0.12.0');
   put(root, 'packages/core/source.ts', 'export const typed = true;\n');
   put(root, '.changes/feature.input.md', '- Add typed input.\n');
   commit(root);
-  const args = ['--target', '0.13.0', '--date', '2026-10-15'];
+  const args = ['--target', '0.14.0', '--date', '2026-10-15'];
   const preview = await dryRun(root, ...args);
   expect(preview).toEqual({
     status: 0,
     stderr: '',
-    stdout: '## v0.13.0 - 2026-10-15\n\n### Features\n\n- Add typed input.\n\n',
+    stdout: '## v0.14.0 - 2026-10-15\n\n### Features\n\n- Add typed input.\n\n',
   });
   expect(git(root, ['status', '--porcelain'])).toBe('');
   await expect(cut(root, ...args)).resolves.toEqual(preview);
-  expect(readFileSync(join(root, 'packages/core/package.json'), 'utf8')).toContain('0.13.0');
+  expect(readFileSync(join(root, 'packages/core/package.json'), 'utf8')).toContain('0.14.0');
   expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toContain(preview.stdout.trimEnd());
   expect(readdirSync(join(root, '.changes'))).toEqual(['README.md']);
 });
 
-test.each(['0.12.1', '0.12.10', '0.13.1', '0.20.0'])(
+test.each(['0.13.0', '0.13.1', '0.13.10', '0.20.0'])(
   'an explicit target %s may equal or exceed the feature minimum',
   async (target) => {
     const root = repository('0.12.0');
@@ -163,8 +163,9 @@ test.each(['0.12.1', '0.12.10', '0.13.1', '0.20.0'])(
 );
 
 test.each([
-  ['0.11.9', 'at least 0.12.1'],
-  ['0.12.0', 'at least 0.12.1'],
+  ['0.11.9', 'at least 0.13.0'],
+  ['0.12.0', 'at least 0.13.0'],
+  ['0.12.1', 'at least 0.13.0'],
   ['', 'stable 0.x'],
   ['v0.13.0', 'stable 0.x'],
   ['0.013.0', 'stable 0.x'],
@@ -668,7 +669,7 @@ test.each([[['--dry-run']], [[]]])(
   },
 );
 
-test('a feature fragment advances the synchronized patch and renders under Features', async () => {
+test('a feature fragment advances the synchronized minor and renders under Features', async () => {
   const root = repository('0.4.7');
   put(root, '.changes/feature.typed.md', '- Add typed input.\n');
   put(root, '.changes/output.md', '- Fix output.\n');
@@ -677,7 +678,7 @@ test('a feature fragment advances the synchronized patch and renders under Featu
     status: 0,
     stderr: '',
     stdout:
-      '## v0.4.8 - 2026-09-07\n\n### Features\n\n- Add typed input.\n\n### Fixes\n\n- Fix output.\n\nNo material changes: @sample/core.\n\n',
+      '## v0.5.0 - 2026-09-07\n\n### Features\n\n- Add typed input.\n\n### Fixes\n\n- Fix output.\n\nNo material changes: @sample/core.\n\n',
   });
 });
 

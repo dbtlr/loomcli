@@ -24,7 +24,7 @@ loom changelog notes 2.0.0-rc.1            # prints the pending fragments
 loom changelog write                       # finalizes 2.0.0 and consumes them
 ```
 
-A package's changelog cuts its version from its pending fragments. `.changes/` and `CHANGELOG.md` live in the package directory unless the [configuration file](build.md#the-configuration-file)'s `paths.changes` and `paths.changelog` name other places, the version is the package's `package.json` `version`, and git tags never enter. Every mention of `.changes/` and `CHANGELOG.md` on this page means the configured folder and file. [ADR-0067](../decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md) and [ADR-0132](../decisions/0132-a-packages-changelog-cut-may-choose-its-version-cut-a-prerelease-and-set-a-shared-version.md) record the decisions.
+A package's changelog cuts its version from its pending fragments. `.changes/` and `CHANGELOG.md` live in the package directory unless the [configuration file](build.md#the-configuration-file)'s `paths.changes` and `paths.changelog` name other places, the version is the package's `package.json` `version`, and git tags never enter. Every mention of `.changes/` and `CHANGELOG.md` on this page means the configured folder and file. [ADR-0067](../decisions/0067-a-packages-changelog-cuts-its-version-from-three-fragment-kinds.md), [ADR-0145](../decisions/0145-below-1-0-0-a-feature-fragment-advances-the-minor.md), and [ADR-0132](../decisions/0132-a-packages-changelog-cut-may-choose-its-version-cut-a-prerelease-and-set-a-shared-version.md) record the decisions.
 
 - **Three kinds.** A fragment named `breaking.<slug>.md` is a breaking change, `feature.<slug>.md` a feature, and `<slug>.md` a fix. A bare `breaking.md` or `feature.md` is invalid. A fragment's body follows the grammar of the fragment guide `loom init` writes: Markdown bullets with no frontmatter or headings, and for a breaking fragment one `### Migration` section with the five labels. A subdirectory or a non-Markdown file in `.changes/` is invalid. A hidden entry, one whose name starts with `.`, is not a fragment and is ignored. `.changes/README.md` is the guide, not a fragment.
 - **The bump.** The highest kind present decides the next version.
@@ -32,8 +32,8 @@ A package's changelog cuts its version from its pending fragments. `.changes/` a
   | Current version | Highest kind present | Next version |
   | --------------- | -------------------- | ------------ |
   | `0.0.0`         | Any                  | `0.1.0`      |
-  | `0.4.7`         | Breaking             | `0.5.0`      |
-  | `0.4.7`         | Feature or fix       | `0.4.8`      |
+  | `0.4.7`         | Breaking or feature  | `0.5.0`      |
+  | `0.4.7`         | Fix                  | `0.4.8`      |
   | `1.4.7`         | Breaking             | `2.0.0`      |
   | `1.4.7`         | Feature              | `1.5.0`      |
   | `1.4.7`         | Fix                  | `1.4.8`      |
@@ -44,7 +44,7 @@ A package's changelog cuts its version from its pending fragments. `.changes/` a
   | Current version | Highest kind present | Target `0.11.0` | Target `0.9.5` |
   | --------------- | -------------------- | --------------- | -------------- |
   | `0.9.4`         | Fix                  | Cuts `0.11.0`   | Cuts `0.9.5`   |
-  | `0.9.4`         | Breaking             | Cuts `0.11.0`   | Fails: at least `0.10.0` |
+  | `0.9.4`         | Breaking or feature  | Cuts `0.11.0`   | Fails: at least `0.10.0` |
   | `0.11.0`        | Any                  | Fails: not above `0.11.0` | Fails |
 - **A prerelease cut.** A target with a prerelease part sets the version and writes no section, and every fragment stays pending until a stable cut consumes it. It neither creates nor writes `CHANGELOG.md`; the checks below that the file has a title, no `Unreleased` section, and no section for the version apply at the stable cut. A prerelease cut from a stable version other than `0.0.0` fails, before any file changes, unless `CHANGELOG.md` holds that version's release section, because once the version is a prerelease that section is how the cut finds its last release; cut a stable release first, or add the section. A package whose version is already a prerelease when it adopts `loom changelog`, with no release section `loom` can read, adds its last release's `## v<version> - <date>` section first; otherwise the last release reads as `0.0.0`. `--date` and `--narrative` are still validated, and they shape no section. A later prerelease must rank above the one before it, so `0.11.0-rc.1` can be followed by `0.11.0-rc.2` but not by `0.11.0-beta.1`.
 - **Finalizing.** From a prerelease, `write` without `--target` cuts the release part, `0.11.0-rc.2` to `0.11.0`, writing its section and consuming the fragments as any stable cut does. When a fragment that landed after the prerelease raises the fragment minimum past the release part, the cut fails, names the minimum, and asks for `--target`.

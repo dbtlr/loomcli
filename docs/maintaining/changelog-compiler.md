@@ -49,10 +49,10 @@ Participating `package.json` versions must be identical stable `0.x` versions. P
 | Current version | Fragment set                   | Next version |
 | --------------- | ------------------------------ | ------------ |
 | `0.0.0`         | Any permitted initial release  | `0.1.0`      |
-| `0.4.7`         | At least one breaking fragment | `0.5.0`      |
-| `0.4.7`         | Feature and fix fragments only | `0.4.8`      |
+| `0.4.7`         | A breaking or feature fragment | `0.5.0`      |
+| `0.4.7`         | Fix fragments only             | `0.4.8`      |
 
-The table gives the automatic version and the minimum explicit target. For example, `pnpm loom release cut --target 0.13.0` can cut compatible features from `0.12.0` without a breaking fragment. Pass the same `--target` to the dry run and written cut. The target must exceed the current version and meet the minimum. It accepts the same stable `0.x` syntax as synchronized manifests: no leading zeroes, `v` prefix, prereleases, build metadata, or `1.0.0`. The initial minimum remains `0.1.0`, including with `--initial`. An explicit target does not permit an empty fragment set outside that initial cut.
+The table gives the automatic version and the minimum explicit target. For example, `pnpm loom release cut --target 0.14.0` can cut from `0.12.0` when the pending fragments need only `0.13.0`. Pass the same `--target` to the dry run and written cut. The target must exceed the current version and meet the minimum. It accepts the same stable `0.x` syntax as synchronized manifests: no leading zeroes, `v` prefix, prereleases, build metadata, or `1.0.0`. The initial minimum remains `0.1.0`, including with `--initial`. An explicit target does not permit an empty fragment set outside that initial cut.
 
 Fragment kinds and migration requirements describe consumer effects independently of the chosen version. The public `loom changelog write` follows the same floor rule through its own `--target`, which also takes prereleases and any major, under [ADR-0132](../decisions/0132-a-packages-changelog-cut-may-choose-its-version-cut-a-prerelease-and-set-a-shared-version.md).
 
