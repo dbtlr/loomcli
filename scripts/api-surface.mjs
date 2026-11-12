@@ -195,4 +195,24 @@ export const surfacePackages = [
     },
     modules: ['@loomcli/core', '@standard-schema/spec', 'node:*'],
   },
+  {
+    directory: 'packages/prompts',
+    entries: {
+      '.': {
+        forgottenExports: {
+          ChoiceDetails:
+            'Fragment of an exported settings or choice type; the author names the whole type.',
+          ChoiceList:
+            'Fragment of an exported settings or choice type; the author names the whole type.',
+          Link: 'Fragment of an exported settings or choice type; the author names the whole type.',
+          LinkedChoices:
+            'Fragment of an exported settings or choice type; the author names the whole type.',
+          StringValue:
+            'Type machinery that computes a signature from type arguments; the author names the computed export.',
+        },
+      },
+      './views': {},
+    },
+    modules: ['@loomcli/core', '@standard-schema/spec', 'node:*'],
+  },
 ];

@@ -20,6 +20,7 @@ function invalid(message: string, correction: string): never {
   throw new DeclarationError(linkRule, { correction, sentence: message });
 }
 
+/** @public @sealed */
 class InteractionUnavailableError extends FatalError {
   static override readonly code = 'interaction-unavailable';
 

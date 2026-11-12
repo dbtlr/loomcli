@@ -121,6 +121,18 @@ function editor<
 ): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
 ```
 
+Each signature above takes the whole action context, and any action context fits. The parameter the package declares is `PromptContext<Options, Args>`, the slice of the action context a question reads, which the root export holds so a helper that asks several questions can name the context it passes on:
+
+```ts
+import { select, text, type PromptContext } from '@loomcli/prompts';
+
+async function askTarget(context: PromptContext<DeployOptions>) {
+  const region = await select(context, { message: 'Region', option: 'region', choices: regions });
+  const name = await text(context, { message: 'Service name', option: 'name' });
+  return { name, region };
+}
+```
+
 The type tests prove the generic plumbing against the action context's real parameters; the results above are what it must produce. `Args` and `Argument` follow every type parameter a kind already had, so a call that passes type arguments explicitly keeps compiling. Select's second type parameter is the type of one entry of its list, a [choice or a separator](#choices), and `ChoiceValue` reads the answer's values from it. A string is its own entry and value, so `select<Options, 'sqlite' | 'postgres'>` keeps compiling and answers that union, and `select<Options, 'sqlite' | 'postgres', 'backend'>` keeps compiling and answers the option's value type, under [Resolving a question](#resolving-a-question).
 
 | Setting          | Kinds                  | Meaning                                                                                     |
@@ -897,7 +909,7 @@ A question's `validate`, the linked input's validator a select or multiselect ru
 
 ## Package
 
-- The root export holds `text`, `secret`, `confirm`, `select`, `multiselect`, `editor`, `InteractionUnavailableError`, `EditorError`, `progress`, `progressStyle`, and the settings and choice types, `MultiselectSettings`, `EditorSettings`, `Choice`, `ChoiceEntry`, `ChoiceObject`, `Separator`, `ChoiceSource`, `ChoiceValue`, `ChoiceAnswer`, `ProgressSettings`, `ProgressUpdate`, `TrackMessages`, `Progress`, `ProgressContext`, `Spinner`, and `ProgressStyleSettings` included. `@loomcli/prompts/views` exports `questionFrame`, `answeredLine`, `cancelledLine`, and `progressLine` and their data types, `TypedFrame`, `EditorFrame`, `ListFrame`, `ChoiceRow`, and `SeparatorRow` included. Its one plugin is `progressStyle()`, whose identity is `@loomcli/prompts`.
+- The root export holds `text`, `secret`, `confirm`, `select`, `multiselect`, `editor`, `InteractionUnavailableError`, `EditorError`, `progress`, `progressStyle`, and the settings and choice types, `MultiselectSettings`, `EditorSettings`, `Choice`, `ChoiceEntry`, `ChoiceObject`, `Separator`, `ChoiceSource`, `ChoiceValue`, `ChoiceAnswer`, `ProgressSettings`, `ProgressUpdate`, `TrackMessages`, `Progress`, `ProgressContext`, `PromptContext`, `Spinner`, and `ProgressStyleSettings` included. `@loomcli/prompts/views` exports `questionFrame`, `answeredLine`, `cancelledLine`, and `progressLine` and their data types, `TypedFrame`, `EditorFrame`, `ListFrame`, `ChoiceRow`, and `SeparatorRow` included. Its one plugin is `progressStyle()`, whose identity is `@loomcli/prompts`.
 - `@loomcli/core` is a peer dependency. The package reads the action context, `DeclarationError`, `FatalError`, `missingInputError`, `questionValidationOptions`, `validateLinkedValue`, `escapeControlCharacters`, `extension`, `plugin`, `readExtension`, the Standard Schema types, `glyph`, and `view` from core, and adds no runtime dependency of its own. The editor question reads and writes its file through `node:fs`, which [ADR-0107](../decisions/0107-a-run-reads-the-process-through-one-process-handle.md) leaves outside the process handle, and reads the temporary folder from `host.tmpdir`. Its style schema is a hand-written Standard Schema value.
 
 ## Not shipped
