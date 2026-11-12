@@ -69,7 +69,7 @@ interface Separator {
 type Choice<Value = unknown> = StringValue<Value> | ChoiceObject<Value>;
 /** @public */
 type ChoiceEntry<Value = unknown> = Choice<Value> | Separator;
-/** @public @sealed */
+/** @public */
 type ChoiceValue<Entry> = Entry extends Separator
   ? never
   : Entry extends string

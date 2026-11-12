@@ -36,7 +36,7 @@ export type ChoiceSource<Value = unknown> = (term: string, options: {
     readonly signal: AbortSignal;
 }) => readonly ChoiceEntry<Value>[] | PromiseLike<readonly ChoiceEntry<Value>[]>;
 
-// @public @sealed (undocumented)
+// @public (undocumented)
 export type ChoiceValue<Entry> = Entry extends Separator ? never : Entry extends string ? Entry : Entry extends {
     readonly value: infer Value;
 } ? Value : never;
