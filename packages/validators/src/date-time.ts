@@ -9,7 +9,7 @@ import { timeZone as timeZoneRule } from './rules.js';
 import { instantOfLocal, isKnownZone } from './zone.js';
 
 /**
- * The options of `dateTime()`: inclusive bounds, layouts, and the time zone it reads in.
+ * The options of `dateTime()`: the layouts it accepts and the time zone it reads a zone-less token in.
  *
  * @public
  */

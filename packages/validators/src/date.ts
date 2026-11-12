@@ -6,7 +6,7 @@ import { reject } from './issues.js';
 import { dateRules, firstReading, readingOf } from './layout.js';
 
 /**
- * The options of `date()`: inclusive bounds and the layouts it reads.
+ * The options of `date()`: the layouts it accepts beside `YYYY-MM-DD`.
  *
  * @public
  */
