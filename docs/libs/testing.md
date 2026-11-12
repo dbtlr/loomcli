@@ -613,7 +613,7 @@ test('an error event writes one line to stderr', () => {
 });
 ```
 
-An `onLog` hook takes a log event and a log destination, and a progress observer, the `onProgress` function a caller hands to [`invoke`](../core/invocation.md), takes a progress event. Each is plain data, which a hook often reads whole, such as writing an event as one JSON record. `logEvent`, `logDestination`, and `progressEvent` build them from the members a test states, so a test states only what it checks, and a member a later release adds to one of these types breaks no test. A member the test states is written whole, as core types it: a test that states a log event's `application`, `failure`, or `defect` breaks when a release adds a member inside it.
+An `onLog` hook takes a log event and a log destination, and a progress observer, the `onProgress` function a caller hands to [`invoke`](../core/invocation.md), takes a progress event. Each is plain data, which a hook often reads whole, such as writing an event as one JSON record. `logEvent`, `logDestination`, and `progressEvent` build them from the members a test states, so a test states only what it checks, and a top-level member a later release adds to one of these types leaves the test compiling. A test that compares a whole value with a fixed one, such as a serialized event, sees the new member's default. A member the test states is written whole, as core types it: a test that states a log event's `application`, `failure`, or `defect` stops compiling when a release adds a required member inside it.
 
 - **Fixed defaults.** Each member the test does not state takes the default below. A stated member replaces it whole. A test that checks a member, such as the time a hook writes, states it rather than reading the default.
 
