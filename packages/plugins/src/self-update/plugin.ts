@@ -25,7 +25,12 @@ const identity = `${packageName}/self-update`;
 /** The mode of the installation record, as the installer script's `mktemp` leaves it. */
 const recordMode = 0o600;
 
-/** What `afterReplace` reads once the binary is replaced and the record rewritten. */
+/**
+ * What `afterReplace` reads once the binary is replaced and the record rewritten.
+ *
+ * @public
+ * @sealed
+ */
 interface AfterReplaceContext {
   /** The version that was replaced. */
   readonly previous: string;
@@ -41,13 +46,21 @@ interface AfterReplaceContext {
   readonly log: Log;
 }
 
-/** How the author tunes update notices beside turning them on or off. */
+/**
+ * How the author tunes update notices beside turning them on or off.
+ *
+ * @public
+ */
 interface NoticeSettings {
   /** A variable that turns notices off when it is set and not empty, beside NO_UPDATE_NOTIFIER. */
   readonly env?: string;
 }
 
-/** What the application tells the self-update plugin. */
+/**
+ * What the application tells the self-update plugin.
+ *
+ * @public
+ */
 interface SelfUpdateSettings {
   /** Called once after the binary is replaced and the record rewritten. */
   readonly afterReplace?: (context: AfterReplaceContext) => Promise<void> | void;
@@ -535,6 +548,8 @@ function noticeOptOut(notices: boolean | NoticeSettings): string | undefined {
  * contributes the `self-update` Command and, unless `notices` is `false`, the update notices'
  * middleware, whose module loads only when a run reaches it. The annotated return type is the
  * boundary that breaks the cycle between this module and the middleware module `load` names.
+ *
+ * @public
  */
 function selfUpdate(settings?: SelfUpdateSettings): Plugin {
   judgeNoticeVariable(settings);
