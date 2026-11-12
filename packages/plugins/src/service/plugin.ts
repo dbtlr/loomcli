@@ -90,6 +90,8 @@ function serviceCommand(settings: ServiceSettings) {
  * supervises, a systemd user unit on Linux and a launchd user agent on macOS, and starts, stops,
  * restarts, reports, and removes it. Its whole contribution is the `service` group and the graph
  * check that the run words route to a Command with an action.
+ *
+ * @public
  */
 function service(settings: ServiceSettings): Plugin {
   const judged = judgeSettings(settings);

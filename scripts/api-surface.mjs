@@ -107,40 +107,6 @@ export const surfacePackages = [
     modules: ['node', 'node:*', '@standard-schema/spec'],
   },
   {
-    // The plugins are tagged one group of subpaths at a time; each pass adds its entries here.
-    // The declaration-import scan already reads every subpath, so `modules` covers them all.
-    coveredEntries: [
-      './background',
-      './box',
-      './color',
-      './completion',
-      './config',
-      './config/extension',
-      './dotenv',
-      './format',
-      './format/views',
-      './heading',
-      './help',
-      './help/extension',
-      './help/views',
-      './interaction',
-      './list',
-      './manifest',
-      './manifest/extension',
-      './manpage',
-      './mcp',
-      './mcp/extension',
-      './prose',
-      './records',
-      './rule',
-      './skills',
-      './suggestions',
-      './table',
-      './theme',
-      './verbose',
-      './version',
-      './version/views',
-    ],
     directory: 'packages/plugins',
     entries: {
       './background': {
@@ -173,6 +139,12 @@ export const surfacePackages = [
         forgottenExports: {
           options:
             'Constant behind the exported `InteractionOptions`; the author names `InteractionOptions`.',
+        },
+      },
+      './logging': {
+        forgottenExports: {
+          LoggingErrorDetail:
+            'Parameter of the exported `LoggingError` constructor; the author passes an object literal.',
         },
       },
       './manifest': {

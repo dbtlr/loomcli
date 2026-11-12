@@ -1,6 +1,10 @@
 import type { LogEvent, LogLevel } from '@loomcli/core';
 
-/** The levels an author can ask for, lowest first. `fatal` is core's alone and is never filtered. */
+/**
+ * The levels an author can ask for, lowest first. `fatal` is core's alone and is never filtered.
+ *
+ * @public
+ */
 type WrittenLevel = Exclude<LogLevel, 'fatal'>;
 
 const writtenLevels: readonly WrittenLevel[] = ['trace', 'debug', 'info', 'warn', 'error'];
