@@ -229,4 +229,10 @@ export const surfacePackages = [
     },
     modules: ['@loomcli/core', '@standard-schema/spec', 'node:*'],
   },
+  {
+    directory: 'packages/eslint-plugin',
+    entries: { '.': {} },
+    // ESLint's and ESTree's types are what a lint plugin's rules plug into.
+    modules: ['eslint', 'estree'],
+  },
 ];
