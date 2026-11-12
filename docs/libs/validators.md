@@ -542,7 +542,12 @@ A `parse` function, a pipe step or a pipe's `first` that the author wrote, or a 
 
 ## Package
 
-- The root export holds the eighteen factories, `createValidator`, `pipe`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the types of the factories' options, results, and definitions, among them `Validator`, `ParseResult`, `IssueCode`, `Step`, `CidrBlock`, and `KeyValuePair`. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
+- The root export holds the eighteen factories, `createValidator`, `pipe`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and these types:
+  - The options each factory takes: `BytesOptions`, `CidrOptions`, `DateOptions`, `DateTimeOptions`, `DurationOptions`, `HostOptions`, `IntegerOptions`, `IpOptions`, `KeyValueOptions`, `NumberOptions`, `PathOptions`, `TextOptions`, `TimeOptions`, and `UrlOptions`, and the types they use: `IpVersion`, `PathKind`, `PathAccess`, and `SpelledBoundOptions`, the `min` and `max` spellings `bytes`, `duration`, and `time` share.
+  - What `createValidator`, `issueCode`, and `pipe` take: `ValidatorDefinition`, `ParseResult`, `ParseReturn`, `IssueCodeConfig`, and `Step`.
+  - What the package hands back: `Validator`, `IssueCode`, and `CidrBlock` and `KeyValuePair`, the outputs of `cidr` and `keyValue`.
+
+  `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
 - `@loomcli/core` is a peer dependency, as it is for `@loomcli/plugins`. The package imports the Standard Schema types, `ValidationContext`, `validationContext`, and `DeclarationError` from core, and adds no runtime dependency of its own.
 
 ## Not shipped
