@@ -43,7 +43,8 @@ const eventDefaults = {
 } satisfies LogEvent;
 
 /**
- * The members of a log destination a test does not state, as under an invocation by name. Each
+ * The members of a log destination a test does not state: `mockProcess`'s home and platform, and
+ * the `null` stderr of an invocation by name. Each
  * call answers its own `env`, because the destination freezes only its top level.
  */
 function destinationDefaults(): LogDestination {

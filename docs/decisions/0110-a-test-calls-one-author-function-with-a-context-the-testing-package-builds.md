@@ -4,7 +4,7 @@ title: ADR-0110 - A test calls one author function with a context the testing pa
 description: '@loomcli/testing exports actionContext, middlewareContext, failureHookContext, providerContext, and viewContext. Each is typed from the function''s context parameter and returns its concrete core context; the unstated style is the one type assertion the package keeps. The test states the function''s input records whole, typed as the context types them. Every other member is optional: a function that returns nothing does nothing, out.draw, out.region, and signal give inert answers, out.fatal throws FatalError, and next, invoke, a view''s measures, and every other member throw or reject with a sentence telling the test to state them. A built context carries nothing from core.'
 status: accepted
 created: 2026-10-26
-modified: 2026-10-27
+modified: 2026-11-12
 ---
 
 # ADR-0110 - A test calls one author function with a context the testing package builds
