@@ -16,6 +16,7 @@ type OptionalMembers<Context> = {
 /** The builders, as each sentence opens with the one that built the context. */
 type Builder =
   | 'actionContext'
+  | 'environmentContext'
   | 'middlewareContext'
   | 'failureHookContext'
   | 'providerContext'
@@ -156,6 +157,7 @@ export {
   nothing,
   outWith,
   registersNothing,
+  resolved,
   unstated,
   unstatedInvoke,
   unstatedMeasure,

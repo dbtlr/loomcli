@@ -4,7 +4,7 @@ title: ADR-0110 - A test calls one author function with a context the testing pa
 description: '@loomcli/testing exports actionContext, middlewareContext, failureHookContext, providerContext, and viewContext. Each is typed from the function''s context parameter and returns its concrete core context; the unstated style is the one type assertion the package keeps. The test states the function''s input records whole, typed as the context types them. Every other member is optional: a function that returns nothing does nothing, out.draw, out.region, and signal give inert answers, out.fatal throws FatalError, and next, invoke, a view''s measures, and every other member throw or reject with a sentence telling the test to state them. A built context carries nothing from core.'
 status: accepted
 created: 2026-10-26
-modified: 2026-10-27
+modified: 2026-11-12
 ---
 
 # ADR-0110 - A test calls one author function with a context the testing package builds
@@ -61,3 +61,4 @@ Accepted in 0.16.0.
 ## Changelog
 
 - 2026-10-26: Proposed.
+- 2026-11-12: [ADR-0146](0146-the-testing-package-builds-the-environment-hooks-context-and-the-log-and-progress-values-a-hook-reads.md), proposed, supersedes the sentence of "Functions with no builder" that a test writes the arguments of `onLog` and `onEnvironment` by hand: `environmentContext` builds the hook's context under this record's rules, except that its `host` is stated member by member and an unstated `host` member throws its sentence, and `logEvent`, `logDestination`, and `progressEvent` build the plain values with fixed defaults. It binds when that record is accepted.

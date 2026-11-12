@@ -3,11 +3,16 @@ import { Readable } from 'node:stream';
 import { Command, plugin, provider } from '@loomcli/core';
 import type {
   ActionHandler,
+  EnvironmentContext,
+  EnvironmentHook,
   FailureHook,
   FailureHookContext,
+  LogDestination,
+  LogEvent,
   Middleware,
   Opener,
   OptionsOf,
+  ProgressEvent,
   Provider,
   View,
   ViewContext,
@@ -16,15 +21,23 @@ import { describe, expectTypeOf, it } from 'vite-plus/test';
 
 import {
   actionContext,
+  environmentContext,
   failureHookContext,
+  logDestination,
+  logEvent,
   middlewareContext,
+  progressEvent,
   providerContext,
   viewContext,
 } from '../src/index.js';
 import type {
   ActionValues,
+  EnvironmentValues,
   FailureHookValues,
+  LogDestinationValues,
+  LogEventValues,
   MiddlewareValues,
+  ProgressEventValues,
   ProviderValues,
   ViewValues,
 } from '../src/index.js';
@@ -182,5 +195,38 @@ describe('the builders infer from the function alone', () => {
     expectTypeOf(
       viewContext({ render: (value: number) => String(value) }, {}),
     ).toEqualTypeOf<ViewContext>();
+  });
+});
+
+/** Records whether HOME is set. */
+const prepare: EnvironmentHook = ({ host }) => ({
+  HOME_SET: String(host.env.HOME !== undefined),
+});
+
+describe('the environment hook builder and the value builders', () => {
+  it('environmentContext returns the context an onEnvironment hook takes', () => {
+    expectTypeOf(environmentContext(prepare, {})).toEqualTypeOf<EnvironmentContext>();
+    expectTypeOf<EnvironmentValues>().toEqualTypeOf<{
+      readonly host?: Partial<EnvironmentContext['host']>;
+      readonly log?: Partial<EnvironmentContext['log']>;
+      readonly out?: Partial<EnvironmentContext['out']>;
+    }>();
+    // @ts-expect-error A member the environment context does not have is an excess key.
+    environmentContext(prepare, { signal: new AbortController().signal });
+    // @ts-expect-error The host has no home.
+    environmentContext(prepare, { host: { home: '/home/ada' } });
+  });
+
+  it("logEvent, logDestination, and progressEvent return core's own values", () => {
+    expectTypeOf(logEvent()).toEqualTypeOf<LogEvent>();
+    expectTypeOf(logDestination()).toEqualTypeOf<LogDestination>();
+    expectTypeOf(progressEvent()).toEqualTypeOf<ProgressEvent>();
+    expectTypeOf<LogEventValues>().toEqualTypeOf<Partial<LogEvent>>();
+    expectTypeOf<LogDestinationValues>().toEqualTypeOf<Partial<LogDestination>>();
+    expectTypeOf<ProgressEventValues>().toEqualTypeOf<Partial<ProgressEvent>>();
+    // @ts-expect-error A level core's events do not carry.
+    logEvent({ level: 'notice' });
+    // @ts-expect-error A state a progress event does not take.
+    progressEvent({ state: 'paused' });
   });
 });

@@ -44,7 +44,7 @@ Every export carries the TSDoc tag `@public`. An output type, and a class you mu
 | `@public @sealed` on a class | You must not subclass it. | `UnknownOptionError`, which core throws for you to catch |
 | `@public` on a class without `@sealed` | You may subclass it. | `LoomError`, `FatalError` |
 
-`@loomcli/testing` builds the contexts a test passes to your function, so the contexts stay output types: you write the testing builder's input, never the context itself. Building an output type by hand is outside the supported surface, because a release may add a required member to it in a feature.
+`@loomcli/testing` builds the contexts a test passes to your function, and the log events, log destinations, and progress events a test passes to a hook, so they stay output types: you write the testing builder's input, never the context or the event itself. Building an output type by hand is outside the supported surface, because a release may add a required member to it in a feature.
 
 TSDoc defines `@sealed` for classes and their members. Loom also puts it on interfaces and type aliases to mark an output type, a named deviation, because the API report writes it beside each name, where a reviewer reads it. The promise it carries, that Loom may add members, is the one Rust's `#[non_exhaustive]` attribute states.
 
