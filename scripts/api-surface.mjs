@@ -113,6 +113,7 @@ export const surfacePackages = [
       './background',
       './box',
       './color',
+      './completion',
       './config',
       './config/extension',
       './dotenv',
@@ -124,9 +125,15 @@ export const surfacePackages = [
       './help/views',
       './interaction',
       './list',
+      './manifest',
+      './manifest/extension',
+      './manpage',
+      './mcp',
+      './mcp/extension',
       './prose',
       './records',
       './rule',
+      './skills',
       './suggestions',
       './table',
       './theme',
@@ -166,6 +173,12 @@ export const surfacePackages = [
         forgottenExports: {
           options:
             'Constant behind the exported `InteractionOptions`; the author names `InteractionOptions`.',
+        },
+      },
+      './manifest': {
+        forgottenExports: {
+          options:
+            'Constant behind the exported `ManifestOptions`; the author names `ManifestOptions`.',
         },
       },
       './theme': {

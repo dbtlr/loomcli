@@ -104,6 +104,8 @@ function skillsCommand(declared: Declared) {
  * A plugin that installs the application's agent skills where coding agents read them, keeps them
  * current with the binary, and removes them. Its whole contribution is the `skills` group. Each
  * call is recorded in the registry `loom build` reads to carry the skills folder.
+ *
+ * @public
  */
 function skills(settings: SkillsSettings): Plugin {
   const declared = judgeSettings(settings);

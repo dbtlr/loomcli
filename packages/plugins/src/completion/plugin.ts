@@ -110,6 +110,8 @@ const completionCommand = new Command('completion', {
  * A plugin that prints Bash, Zsh, Fish, and PowerShell completion scripts, installs them into the
  * operator's shell on Linux and macOS, and answers them. Its whole contribution is the `completion`
  * Command; it declares no option, middleware, or extension. Each child loads its work when it runs.
+ *
+ * @public
  */
 export function completion(): Plugin {
   return plugin(`${packageName}/completion`, { commands: [completionCommand] });
