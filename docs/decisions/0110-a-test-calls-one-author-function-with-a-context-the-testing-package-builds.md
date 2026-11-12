@@ -61,3 +61,4 @@ Accepted in 0.16.0.
 ## Changelog
 
 - 2026-10-26: Proposed.
+- 2026-11-12: [ADR-0146](0146-the-testing-package-builds-the-environment-hooks-context-and-the-log-and-progress-values-a-hook-reads.md) supersedes the sentence of "Functions with no builder" that a test writes the arguments of `onLog` and `onEnvironment` by hand: `environmentContext` builds the hook's context under this record's rules, and `logEvent`, `logDestination`, and `progressEvent` build the plain values with fixed defaults.

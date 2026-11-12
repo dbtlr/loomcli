@@ -1,10 +1,10 @@
 ---
-description: The @loomcli/testing reference. The assembly check, assertAssembles, which a bun test or vitest test calls with the Application, mockProcess, the sealed process handle a test runs an Application on in its own process and reads the run's output and exit code from, with a keyboard that answers questions from scripted keys, and the five builders, actionContext, middlewareContext, failureHookContext, providerContext, and viewContext, that build the context one author function reads so a test calls that function with no Application. Recipes for cancelling at a named point, typed calls through invoke, checking that output fits the screen, testing a validator alone, and substituting a provider.
+description: The @loomcli/testing reference. The assembly check, assertAssembles, which a bun test or vitest test calls with the Application, mockProcess, the sealed process handle a test runs an Application on in its own process and reads the run's output and exit code from, with a keyboard that answers questions from scripted keys, the six builders, actionContext, middlewareContext, failureHookContext, providerContext, viewContext, and environmentContext, that build the context one author function reads so a test calls that function with no Application, and logEvent, logDestination, and progressEvent, which build the values an onLog hook and a progress observer read. Recipes for cancelling at a named point, typed calls through invoke, checking that output fits the screen, testing a validator alone, and substituting a provider.
 ---
 
 # Testing reference
 
-`@loomcli/testing` ships the test helpers for a Loom application. [ADR-0099](../decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md) records the decision: the assembly check is a test, so the author's own test runner runs it while the author works and in CI. [ADR-0107](../decisions/0107-a-run-reads-the-process-through-one-process-handle.md) adds `mockProcess`, the process handle a test runs the Application on, and [ADR-0109](../decisions/0109-a-test-scripts-keys-on-the-mocks-keyboard-and-measures-and-validates-with-cores-own-functions.md) its keyboard and the core functions the recipes use. [ADR-0110](../decisions/0110-a-test-calls-one-author-function-with-a-context-the-testing-package-builds.md) adds the builders a test calls one author function with. The package imports no test runner. Its functions only return, record, or throw, so they run under `bun test`, vitest, and `node:test` alike.
+`@loomcli/testing` ships the test helpers for a Loom application. [ADR-0099](../decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md) records the decision: the assembly check is a test, so the author's own test runner runs it while the author works and in CI. [ADR-0107](../decisions/0107-a-run-reads-the-process-through-one-process-handle.md) adds `mockProcess`, the process handle a test runs the Application on, and [ADR-0109](../decisions/0109-a-test-scripts-keys-on-the-mocks-keyboard-and-measures-and-validates-with-cores-own-functions.md) its keyboard and the core functions the recipes use. [ADR-0110](../decisions/0110-a-test-calls-one-author-function-with-a-context-the-testing-package-builds.md) adds the builders a test calls one author function with, and [ADR-0146](../decisions/0146-the-testing-package-builds-the-environment-hooks-context-and-the-log-and-progress-values-a-hook-reads.md) the environment hook's builder and the builders of the values a hook reads. The package imports no test runner. Its functions only return, record, or throw, so they run under `bun test`, vitest, and `node:test` alike.
 
 ## Install
 
@@ -310,7 +310,7 @@ test('get prints the path it reads', async () => {
 });
 ```
 
-A unit test calls one author function with a context that `@loomcli/testing` builds for it, and no Application is assembled or run. An action is a function, and the test calls it with an input. The package has five builders, one for each kind of function: [`actionContext`](#actioncontext) for an extracted action handler, [`middlewareContext`](#middlewarecontext) for a middleware, [`failureHookContext`](#failurehookcontext) for an `onFailure` hook, [`providerContext`](#providercontext) for a provider's opener, and [`viewContext`](#viewcontext) for a view. `getValue` above is the extracted handler of [Modular authoring](../core/commands.md#modular-authoring). A built context carries nothing from core: the test states what the function reads, and every member it does not state is inert or asks to be stated.
+A unit test calls one author function with a context that `@loomcli/testing` builds for it, and no Application is assembled or run. An action is a function, and the test calls it with an input. The package has six builders, one for each kind of function: [`actionContext`](#actioncontext) for an extracted action handler, [`middlewareContext`](#middlewarecontext) for a middleware, [`failureHookContext`](#failurehookcontext) for an `onFailure` hook, [`providerContext`](#providercontext) for a provider's opener, [`viewContext`](#viewcontext) for a view, and [`environmentContext`](#environmentcontext) for an `onEnvironment` hook. An `onLog` hook and a progress observer take plain values, which [Building the values a hook reads](#building-the-values-a-hook-reads) covers. `getValue` above is the extracted handler of [Modular authoring](../core/commands.md#modular-authoring). A built context carries nothing from core: the test states what the function reads, and every member it does not state is inert or asks to be stated.
 
 - **Typed from the function.** A builder takes the function under test and infers its type parameters from the function's context parameter, so `actionContext(getValue, values)` for a handler typed `ActionHandler<typeof get>` checks the values against the context `getValue` takes and returns that context. Each builder returns its concrete core context type, built with no type assertion apart from the one an unstated `style` needs, under [ADR-0110](../decisions/0110-a-test-calls-one-author-function-with-a-context-the-testing-package-builds.md). The builder never calls the function; the test does.
 - **The inputs are stated whole.** The test states each of the function's input records whole, typed exactly as the context types it, such as an action's `args`, `options`, and `provided`. The builder fills no record and no key: a key the context types with `undefined` is written out, as `token: undefined`, and an empty record is written `{}`. Because `options` is stated as the context types it, an action's options include every registered global option. No default, validator, input source, or environment preparation runs, and the builder copies, checks, and freezes nothing, so each input holds the value the test stated.
@@ -319,10 +319,10 @@ A unit test calls one author function with a context that `@loomcli/testing` bui
 - **Inert answers.** `out.draw` resolves `0`. `out.region()` returns a region whose `draw`, `end`, and `report` do nothing, whose `live` is `false`, whose `closedBy` stays `undefined`, and whose `signal` never aborts. `out.lendTerminal(work)` calls `work` and returns what it returns, as a run with no live region does. The context's `signal` never aborts, so a test that wants `cancel` to abort it states both from one `AbortController`: `signal: controller.signal, cancel: () => controller.abort()`.
 - **`out.fatal`.** `out.fatal(message)` throws core's `FatalError` with the message, because its type is `never`, so the test expects the rejection: `await expect(Promise.resolve().then(() => handler(context))).rejects.toThrow(FatalError)`, which holds for a sync or async handler under `bun test` and vitest.
 - **A function whose answer the unit reads asks to be stated.** `next`, `invoke`, `out.text`, and a view context's `width`, `plain`, `wrap`, and `expandTabs` return information the function goes on to read, so the builder invents none. Called unstated, each throws, or for `next` and `invoke` rejects with, a sentence that tells the test to state its own, below.
-- **Any other member asks to be stated.** A read of any other member the test did not state throws a sentence that tells the test to state it: `host`, `graph`, `command`, `interactive`, `supplied`, `passthrough`, `columns`, and `background`, wherever the context has them. `host` is stated whole; the builder has no default for any of its fields. A test that spreads a built context or compares it whole reads every member, so it reads the members it means instead.
+- **Any other member asks to be stated.** A read of any other member the test did not state throws a sentence that tells the test to state it: `host`, `graph`, `command`, `interactive`, `supplied`, `passthrough`, `columns`, and `background`, wherever the context has them. `host` is stated whole, except in `environmentContext`, which takes it member by member; the builder has no default for any of its fields. A test that spreads a built context or compares it whole reads every member, so it reads the members it means instead.
 - **An unstated `style` answers every name.** A built context's `style` asks for style names and does nothing with them. `@loomcli/testing` builds it as a proxy that answers any name: every color, modifier, reset, and theme token, `escape`, and each chained name, such as `style.bold.accent`, answers a style that returns its text unchanged, so `style.bold.accent('3 files')` is `'3 files'`. `hex`, `rgb`, `ansi256`, `bgHex`, `bgRgb`, and `bgAnsi256` take a color, as core's do, and answer such a style whatever the color. Each path answers the same function on every read, so a test spies on the names its function asks for: after `vi.spyOn(context.style, 'accent')`, the function's `style.accent('3 files')` reaches the spy, and `expect(context.style.accent).toHaveBeenCalledWith('3 files')` holds. A chained path is its own function, stable on every read, so `context.style.bold.accent` is spied on through `vi.spyOn(context.style.bold, 'accent')`, apart from `context.style.accent`. A color helper's answer is one path whatever the color, so `context.style.hex('#c97b36')` and `context.style.hex('#123')` are the same function. A name a test assigns or spies on keeps what was put there. A function's own members, such as `call`, `apply`, `bind`, `name`, and `length`, stay the function's, and `then` and `_isMockFunction` stay unanswered, so the style is neither a thenable nor read as a test runner's mock. A spy replaces the function at its path, so the names chained below that path are gone: spy on the leaf the function calls, `vi.spyOn(context.style.bold, 'accent')`, not on `bold` when the function calls `style.bold.accent`. Under `bun test`, `spyOn` installs nothing on a proxy, so a test there assigns its own mock to a style name: `Object.assign(context.style, { accent: mock((text: string) => text) })`; vitest's `vi.spyOn` works under Node and under vitest on Bun. A test that wants a style of its own states it, which replaces the proxy whole, and an application with no theme tokens may state core's exported `style`, because core's `style` does not satisfy the context's style type in an application that registers a theme.
 - **Nothing from core.** No Application, Command, or plugin is the subject, and nothing comes from core's run machinery or its defaults: no host, style, measure, view registry, theme, settle step, dispatch boundary, activation, or close.
-- **Names.** `actionContext`, `middlewareContext`, `failureHookContext`, `providerContext`, and `viewContext` are exported from `@loomcli/testing`, and so are the types `ActionValues`, `MiddlewareValues`, `FailureHookValues`, `ProviderValues`, and `ViewValues`.
+- **Names.** `actionContext`, `middlewareContext`, `failureHookContext`, `providerContext`, `viewContext`, and `environmentContext` are exported from `@loomcli/testing`, and so are the types `ActionValues`, `MiddlewareValues`, `FailureHookValues`, `ProviderValues`, `ViewValues`, and `EnvironmentValues`.
 
 Each sentence is the message of an `Error`, and it opens with the builder that built the context and names the member:
 
@@ -332,7 +332,7 @@ Each sentence is the message of an `Error`, and it opens with the builder that b
 | `invoke(path, …)` | `actionContext has no invoke for "sync". Add invoke to its values, such as invoke: async () => ({ status: 'completed', output: '', messages: '' }).`, naming the path's words joined by spaces |
 | `out.text(data, view)` | `middlewareContext has no out.text for this middleware to read. Add text to its out values, such as out: { text: () => 'page\n' }.`, naming the builder and the function |
 | `width`, `plain`, `wrap`, or `expandTabs`, called | `viewContext has no width for this view to call. Add width to its values.`, naming the member called |
-| any other member, read | `actionContext has no host. Add host to its values.`, naming the member read |
+| any other member, read | `actionContext has no host. Add host to its values.`, naming the member read, and for an `environmentContext`'s host member, `environmentContext has no host.cwd. Add host.cwd to its values.` |
 
 ### actionContext
 
@@ -539,18 +539,61 @@ test('the heading rule fills a 20-column terminal', () => {
 - **Either shape.** A view over any data type, and a whole view and a row view alike, because the builder never reads the data: the test calls `render`, or `head`, `row`, and `tail`, with the context. A declared view's own function runs, because no view registry is read.
 - **What the view reads.** The test states every member its view reads: `columns`, `background`, and the measures `width`, `plain`, `wrap`, and `expandTabs`. The builder has no measure of its own, so an unstated `columns` or `background` throws its sentence when read, and an unstated measure throws when called. An unstated `style` answers every name with its text unchanged, so a view's styled text reads as its plain text, and a test spies on the names the view asks for. A stated `columns: undefined` is a destination that is not a terminal.
 
+### environmentContext
+
+```ts
+import type { EnvironmentContext, EnvironmentHook } from '@loomcli/core';
+
+type EnvironmentValues = OptionalMembers<Pick<EnvironmentContext, 'log' | 'out'>> & {
+  readonly host?: Partial<EnvironmentContext['host']>;
+};
+
+function environmentContext(hook: EnvironmentHook, values: EnvironmentValues): EnvironmentContext;
+```
+
+```ts
+import { environmentContext } from '@loomcli/testing';
+import { expect, test, vi } from 'vitest';
+
+import { regionDefault } from '../src/on-environment.js';
+
+test('an unset region defaults to us-east-1', async () => {
+  const warn = vi.fn(async (_message: string) => {});
+  const context = environmentContext(regionDefault, { host: { env: {} }, out: { warn } });
+  expect(await regionDefault(context)).toEqual({ REGION: 'us-east-1' });
+  expect(warn).not.toHaveBeenCalled();
+});
+```
+
+- **The hook.** An `onEnvironment` hook takes its context alone, and the test calls `hook(context)` and reads the additions it returns.
+- **The host.** `host` is stated member by member, so `host: { env: {} }` states the environment and leaves `cwd` unstated. An unstated `host.cwd` or `host.env` throws its sentence when the hook reads it. A run hands the hook a frozen copy of the environment; the builder holds the `env` the test stated.
+- **The rest.** `log`'s levels do nothing and `out.warn` resolves and writes nothing, unless stated, under the rules above.
+
 ### Functions with no builder
 
 - **An inline `.action()` handler.** It has no public way to reach it, so no builder takes it. To unit-test a handler, extract it, as [Modular authoring](../core/commands.md#modular-authoring) does, and call it with `actionContext`.
 - **A failure view.** It reads a `FailureViewContext`, which `viewContext` does not build.
 - **A configuration source.** Its resolver reads a `SourceContext`, which no builder builds.
 - **`onCommandAttach` and `onGraphBuilt`.** They read the graph an Application builds, so a test installs the plugin on a small Application and reads `application.inspect()`, or checks that it assembles with [`assertAssembles`](#assertassembles).
-- **`onLog` and `onEnvironment`.** Their arguments are plain values and functions, so a test writes them by hand:
+
+## Building the values a hook reads
+
+```ts
+import type { LogDestination, LogEvent, ProgressEvent } from '@loomcli/core';
+
+type LogEventValues = Partial<LogEvent>;
+type LogDestinationValues = Partial<LogDestination>;
+type ProgressEventValues = Partial<ProgressEvent>;
+
+function logEvent(values?: LogEventValues): LogEvent;
+function logDestination(values?: LogDestinationValues): LogDestination;
+function progressEvent(values?: ProgressEventValues): ProgressEvent;
+```
 
 ```ts
 import { Writable } from 'node:stream';
 
-import type { LogEvent } from '@loomcli/core';
+import { logDestination, logEvent } from '@loomcli/testing';
 import { expect, test } from 'vitest';
 
 import { writeEvent } from '../src/on-log.js';
@@ -563,41 +606,38 @@ test('an error event writes one line to stderr', () => {
       done();
     },
   });
-  const event: LogEvent = {
-    application: { name: 'notes', version: '1.0.0' },
-    fields: {},
-    level: 'error',
-    message: 'Sync failed.',
-    path: ['sync'],
-    plugin: null,
-    run: '0'.repeat(32),
-    time: '2026-10-26T12:00:00.000Z',
-  };
-  writeEvent(event, { env: {}, home: '/loom-test/home', platform: 'linux', stderr });
+  writeEvent(logEvent({ level: 'error', message: 'Sync failed.' }), logDestination({ stderr }));
   expect(written).toBe('error: Sync failed.\n');
 });
 ```
 
-```ts
-import { expect, test } from 'vitest';
+An `onLog` hook takes a log event and a log destination, and a progress observer, the `onProgress` function a caller hands to [`invoke`](../core/invocation.md), takes a progress event. Each is plain data, which a hook often reads whole, such as writing an event as one JSON record. `logEvent`, `logDestination`, and `progressEvent` build them from the members a test states, so a test states only what it checks, and a member a later release adds to one of these types breaks no test.
 
-import { regionDefault } from '../src/on-environment.js';
+- **Fixed defaults.** Each member the test does not state takes the default below. A stated member replaces it whole. A test that checks a member, such as the time a hook writes, states it rather than reading the default.
 
-test('an unset region defaults to us-east-1', async () => {
-  const warnings: string[] = [];
-  const additions = await regionDefault({
-    host: { cwd: '/loom-test', env: {} },
-    log: { debug() {}, error() {}, info() {}, trace() {}, warn() {} },
-    out: {
-      warn: async (message) => {
-        warnings.push(message);
-      },
-    },
-  });
-  expect(additions).toEqual({ REGION: 'us-east-1' });
-  expect(warnings).toEqual([]);
-});
-```
+  | Builder | Member | Default |
+  | --- | --- | --- |
+  | `logEvent` | `time` | `'2026-01-01T00:00:00.000Z'` |
+  | | `level` | `'info'` |
+  | | `message` | `''` |
+  | | `fields` | `{}` |
+  | | `application` | `{ name: 'app', version: '0.0.0' }` |
+  | | `run` | `'0'.repeat(32)` |
+  | | `path` | `[]` |
+  | | `plugin` | `null` |
+  | | `failure`, `defect` | absent |
+  | `logDestination` | `env` | `{}` |
+  | | `home` | `'/loom-test/home'` |
+  | | `platform` | `'linux'` |
+  | | `stderr` | `null`, as under an invocation by name |
+  | `progressEvent` | `id` | `1` |
+  | | `label` | `''` |
+  | | `state` | `'updated'` |
+  | | `completed`, `total` | absent |
+
+- **Frozen as core freezes them.** Each builder returns a frozen copy: a log event with everything it holds, and a destination and a progress event at their top level, as a run hands them to a hook. The values the test stated stay as they were.
+- **Nothing is checked.** The builder takes the values as their types allow and checks nothing, so a `run` of any length or a `time` in any form is the test's own.
+- **Names.** `logEvent`, `logDestination`, and `progressEvent` are exported from `@loomcli/testing`, and so are the types `LogEventValues`, `LogDestinationValues`, and `ProgressEventValues`.
 
 ## Recipes
 
