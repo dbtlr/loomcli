@@ -9,6 +9,7 @@ import { asking, validateAnswer } from './question.js';
 import { openReader } from './reader.js';
 import type { PromptContext } from './types.js';
 
+/** @public @sealed */
 class EditorError extends FatalError {
   static override readonly code = 'editor-failed';
 

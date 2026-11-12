@@ -46,6 +46,7 @@ function typedPrefill<Options, Args>(
   return settings.default ?? (typeof declared === 'string' ? declared : undefined);
 }
 
+/** @public */
 function text<
   Options,
   const Key extends LinkKey<Options> = never,
@@ -81,6 +82,7 @@ async function text<
   });
 }
 
+/** @public */
 function editor<
   Options,
   const Key extends LinkKey<Options> = never,
@@ -116,6 +118,7 @@ async function editor<
   });
 }
 
+/** @public */
 function secret<
   Options,
   const Key extends LinkKey<Options> = never,
@@ -150,6 +153,7 @@ async function secret<
   });
 }
 
+/** @public */
 function confirm<Options, const Key extends LinkKey<Options> = never>(
   context: PromptContext<Options>,
   settings: ConfirmSettings<Key>,
@@ -189,6 +193,7 @@ async function confirm<Options, Key extends LinkKey<Options>>(
   });
 }
 
+/** @public */
 function select<
   Options,
   const Entry extends ChoiceEntry = ChoiceEntry,
@@ -212,6 +217,7 @@ async function select<
   context.signal.throwIfAborted();
   return askList(context, settings, false);
 }
+/** @public */
 function multiselect<
   Options,
   const Entry extends ChoiceEntry = ChoiceEntry,
@@ -258,6 +264,7 @@ export type {
   Answer,
   ConfirmSettings,
   LinkKey,
+  PromptContext,
   SecretSettings,
   SelectSettings,
   TextSettings,
