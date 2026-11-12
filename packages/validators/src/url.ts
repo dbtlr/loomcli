@@ -6,6 +6,11 @@ import { reject } from './issues.js';
 import { urlProtocols } from './rules.js';
 import { schemePattern, uriPattern } from './uri-grammar.js';
 
+/**
+ * The options of `url()`: the schemes it accepts.
+ *
+ * @public
+ */
 interface UrlOptions {
   protocols?: readonly [string, ...string[]];
 }
@@ -45,7 +50,11 @@ function schemesPattern(protocols: readonly string[]): string {
   return `^(?:${protocols.map((protocol) => spellScheme(protocol)).join('|')}):`;
 }
 
-/** An absolute RFC 3986 URI that the WHATWG parser also reads, optionally with a listed scheme. */
+/**
+ * An absolute RFC 3986 URI that the WHATWG parser also reads, optionally with a listed scheme.
+ *
+ * @public
+ */
 function url(options?: UrlOptions): Validator<URL> {
   const protocols = protocolsOf(options);
   // The WHATWG parser lowercases the scheme and ends `protocol` with a colon.

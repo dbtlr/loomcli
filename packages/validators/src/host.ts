@@ -4,6 +4,11 @@ import type { ParseResult, Validator } from './create.js';
 import { ipv4Version, ipv6Version, readIpAddress } from './ip-address.js';
 import { reject } from './issues.js';
 
+/**
+ * The options of `host()`: whether it also accepts an IP address.
+ *
+ * @public
+ */
 interface HostOptions {
   ip?: boolean;
 }
@@ -53,6 +58,8 @@ function addressOf(raw: string): string | undefined {
 /**
  * An RFC 1123 host name with no trailing dot, output in lowercase. With `ip: true` it also accepts
  * an IPv4 address and an IPv6 address in brackets, output in the canonical form `ip()` writes.
+ *
+ * @public
  */
 function host(options?: HostOptions): Validator<string> {
   const withIp = options?.ip === true;

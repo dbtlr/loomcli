@@ -78,7 +78,11 @@ function boundsIssue(codes: BoundCodes, { max, min }: Bounds): StandardSchemaV1.
   return codes.unbounded.issue({});
 }
 
-/** Bounds a factory declares as spellings in its own grammar, such as `'30s'` or `'10GiB'`. */
+/**
+ * Bounds a factory declares as spellings in its own grammar, such as `'30s'` or `'10GiB'`.
+ *
+ * @public
+ */
 interface SpelledBoundOptions {
   min?: string;
   max?: string;

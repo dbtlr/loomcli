@@ -5,6 +5,11 @@ import type { ParseResult, Validator } from './create.js';
 import { reject } from './issues.js';
 import { dateRules, firstReading, readingOf } from './layout.js';
 
+/**
+ * The options of `date()`: the layouts it accepts beside `YYYY-MM-DD`.
+ *
+ * @public
+ */
 interface DateOptions {
   layouts?: readonly [string, ...string[]];
 }
@@ -19,6 +24,8 @@ const grammar = {
 /**
  * A calendar date, output as `YYYY-MM-DD` whichever form the token took, because a date has no
  * time or zone. The default grammar reads first, then each layout in order.
+ *
+ * @public
  */
 function date(options?: DateOptions): Validator<string> {
   const { expressions, forms, inputSchema } = readingOf(dateRules, options, grammar);
