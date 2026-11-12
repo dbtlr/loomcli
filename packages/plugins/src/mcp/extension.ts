@@ -18,6 +18,8 @@ import { proseRule } from '../lines.js';
 /**
  * The hints a tool carries about its effects. The author owns them and Loom never verifies or
  * infers one, so an unset hint stays unset and the protocol's own default applies.
+ *
+ * @public
  */
 interface McpAnnotations {
   readonly destructive?: boolean | undefined;
@@ -29,6 +31,8 @@ interface McpAnnotations {
 /**
  * The MCP plugin's facts on a Command that opts in as a tool: its description for an agent, prose
  * whose every line holds a character other than whitespace, and its effect hints.
+ *
+ * @public
  */
 interface McpCommandFacts {
   readonly annotations?: McpAnnotations | undefined;
@@ -38,6 +42,8 @@ interface McpCommandFacts {
 /**
  * An option's facts for an agent: a description in place of its core description, or its
  * exclusion from every tool, never both.
+ *
+ * @public
  */
 type McpInputFacts =
   | { readonly description: string; readonly exclude?: undefined }
@@ -45,6 +51,8 @@ type McpInputFacts =
 
 /**
  * An argument's facts for an agent: a description in place of its core description.
+ *
+ * @public
  */
 interface McpArgumentFacts {
   readonly description: string;
@@ -81,6 +89,8 @@ const argumentFacts = exactFacts<McpArgumentFacts>()(argumentFactsSchema);
 
 /**
  * Opts a Command in as a tool, with its description for an agent and its effect hints.
+ *
+ * @public
  */
 export const mcpCommand: Extension<
   'command',
@@ -93,6 +103,8 @@ export const mcpCommand: Extension<
 /**
  * An option's description for an agent, in place of its core description, or its exclusion from
  * every tool. A value holds one of the two, because an excluded option has no property to describe.
+ *
+ * @public
  */
 export const mcpInput: Extension<
   'option',
@@ -104,6 +116,8 @@ export const mcpInput: Extension<
 
 /**
  * An argument's description for an agent, in place of its core description.
+ *
+ * @public
  */
 export const mcpArgument: Extension<
   'argument',

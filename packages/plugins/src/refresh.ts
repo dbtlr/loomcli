@@ -10,7 +10,11 @@ import { basename } from 'node:path';
 import { escapeControlCharacters } from '@loomcli/core';
 import type { Host, Log } from '@loomcli/core';
 
-/** What a refresh reads from a self-update's `afterReplace` context. */
+/**
+ * What a refresh reads from a self-update's `afterReplace` context.
+ *
+ * @public
+ */
 interface RefreshContext {
   /** The binary that replaced this one. */
   readonly path: string;

@@ -1,4 +1,8 @@
-/** One file of a skill's folder. */
+/**
+ * One file of a skill's folder.
+ *
+ * @public
+ */
 export interface SkillFile {
   /** The path relative to the skill's folder, such as references/commands.md. */
   readonly path: string;
@@ -8,7 +12,11 @@ export interface SkillFile {
   readonly executable?: boolean;
 }
 
-/** One skill the application installs for coding agents. */
+/**
+ * One skill the application installs for coding agents.
+ *
+ * @public
+ */
 export interface Skill {
   /** The skill's folder name, such as notes. */
   readonly name: string;
@@ -16,7 +24,11 @@ export interface Skill {
   readonly files: () => Promise<readonly SkillFile[]> | readonly SkillFile[];
 }
 
-/** What the application tells the skills plugin: a skills folder, listed skills, or both. */
+/**
+ * What the application tells the skills plugin: a skills folder, listed skills, or both.
+ *
+ * @public
+ */
 export interface SkillsSettings {
   /**
    * A folder whose subfolders are skills, each named for its subfolder: a `file:` URL, or a path. A

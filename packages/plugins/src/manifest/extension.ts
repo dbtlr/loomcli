@@ -12,6 +12,8 @@ import { readFailure } from './failures.js';
  * One failure a Command can raise, as the author declares it: the failure class, a class that
  * extends `LoomError`, and one line of meaning. `failure` is `unknown` because no type names a
  * failure class, so the schema rejects a value that is not one when the descriptor is called.
+ *
+ * @public
  */
 interface DeclaredFailureInput {
   readonly failure?: unknown;
@@ -21,6 +23,9 @@ interface DeclaredFailureInput {
 /**
  * One declared failure as the manifest reads it: the class's failure code and declared exit code,
  * and the meaning.
+ *
+ * @public
+ * @sealed
  */
 interface DeclaredFailure {
   readonly code: string;
@@ -31,6 +36,8 @@ interface DeclaredFailure {
 /**
  * The manifest's facts on a Command as the author or a plugin supplies them: Markdown details,
  * example invocations, and the failures it can raise.
+ *
+ * @public
  */
 interface ManifestCommandInput {
   readonly details?: string | undefined;
@@ -40,6 +47,9 @@ interface ManifestCommandInput {
 
 /**
  * The manifest's facts on a Command as the schema outputs them, each failure read from its class.
+ *
+ * @public
+ * @sealed
  */
 interface ManifestCommandFacts {
   readonly details?: string | undefined;
@@ -88,6 +98,8 @@ const commandFacts = exactFacts<ManifestCommandInput, ManifestCommandFacts>()(co
  * applies the pack's shared line and Markdown rules, which help's schema also uses, so every value
  * help supplies validates. Its published schema is a Standard Schema over `ManifestCommandInput`
  * and `ManifestCommandFacts`, so an author's type check loads no validation library's declarations.
+ *
+ * @public
  */
 export const manifestCommand: Extension<
   'command',
