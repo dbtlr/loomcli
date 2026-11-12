@@ -131,11 +131,15 @@ interface MockStdin extends Readable {
   readonly isTTY: boolean; // true for a keyboard
   readonly isRaw: boolean; // whether a reader holds the keyboard in raw mode; false for piped text
 }
+interface Write {
+  readonly stream: 'stdout' | 'stderr';
+  readonly text: string;
+}
 interface MockProcess extends ProcessHandle {
   readonly stdin: MockStdin;
   readonly stdout: RecordingStream;
   readonly stderr: RecordingStream;
-  readonly transcript: readonly { readonly stream: 'stdout' | 'stderr'; readonly text: string }[];
+  readonly transcript: readonly Write[];
   readonly endedBy: ProcessSignal | undefined; // the signal that ended the mock's process, if one did
   resize(columns: number, rows: number): void;
 }
@@ -222,7 +226,7 @@ test('revision prints the commit git reports, with no git run', async () => {
 - **What it does not seal.** A mock seals the process, not the machine. Clocks, timers, randomness, the network, and the file system stay real, so a run reads the real time, and a test that compares output holding a timestamp or an elapsed time masks it before comparing.
 - **Signals.** The mock's `signals` is a source of its own, and its `terminal` is the keyboard when the mock has one, and `undefined` otherwise. `mock.signals.raise(signal)` delivers the signal to the runs that hold the mock and reaches no other run and no real process. An ending signal, `SIGHUP`, `SIGINT`, `SIGQUIT`, or `SIGTERM`, raised while nothing listens for it, as the re-raise that ends a shutdown is, ends the mock's process: `endedBy` records the signal, and the mock delivers no later signal and records no later write or exit status, as an ended process writes nothing. `run()` still resolves when its run ends, so a test of a run that ignores its signal reads `endedBy` and does not await the run. A `SIGTSTP` or `SIGCONT` raised while nothing listens does nothing, so core's re-raise of `SIGTSTP` stops nothing and returns at once, and a `SIGTSTP` a test raises runs the suspend handlers and then the resume handlers back to back. A `run()` listens on the mock's source from the moment it is called, so a signal raised right after the call reaches the run. The mock accepts `exit` listeners and never calls them, because its process never ends except by a signal no listener heard. The mock has no `publishEnv`, so environment preparation changes no environment outside the run.
 - **One run or several.** A mock records every run given it, in order, so a test that runs twice reads both runs' writes. A test that wants each run apart builds a mock per run.
-- **Names.** `mockProcess` and [`key`](#the-key-table) are exported from `@loomcli/testing`, and so are the types `MockFields`, `MockTerminal`, `MockProcess`, `MockStdin`, `RecordingStream`, `Program`, `ProgramCall`, `ProgramAnswer`, and `KeyLetter`.
+- **Names.** `mockProcess` and [`key`](#the-key-table) are exported from `@loomcli/testing`, and so are the types `MockFields`, `MockFacts`, `MockTerminal`, `MockProcess`, `MockStdin`, `RecordingStream`, `Write`, `Program`, `ProgramCall`, `ProgramAnswer`, and `KeyLetter`. `MockFacts` names the facts beside stdin and the terminal, so a test file can share a base, such as `const base: MockFacts = { cwd: '/repo' }`, and spread it into each `mockProcess({ ...base, stdin: 'x' })`. `Write` names one entry of `transcript`.
 
 ### The key table
 

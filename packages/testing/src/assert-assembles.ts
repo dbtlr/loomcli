@@ -24,6 +24,8 @@ import type { Application } from '@loomcli/core';
  *   assertAssembles(application);
  * });
  * ```
+ *
+ * @public
  */
 export function assertAssembles(application: Pick<Application, 'check'>): void {
   const faults = application.check();

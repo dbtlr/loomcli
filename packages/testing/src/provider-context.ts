@@ -11,6 +11,8 @@ import { unstatedStyle } from './unstated-style.js';
 /**
  * What a test states to build a provider context: `options` and `provided` whole, and any other
  * member it means the opener to read.
+ *
+ * @public
  */
 type ProviderValues<Globals, Provided> = Pick<
   ProviderContext<Globals, Provided>,
@@ -29,6 +31,8 @@ type ProviderValues<Globals, Provided> = Pick<
  * });
  * const session = await open(context);
  * ```
+ *
+ * @public
  */
 function providerContext<Globals, Provided>(
   opener: (context: ProviderContext<Globals, Provided>) => unknown,

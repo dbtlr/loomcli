@@ -7,6 +7,7 @@ export { middlewareContext } from './middleware-context.js';
 export type { MiddlewareValues } from './middleware-context.js';
 export { mockProcess } from './mock-process.js';
 export type {
+  MockFacts,
   MockFields,
   MockProcess,
   MockStdin,
@@ -15,6 +16,7 @@ export type {
   ProgramAnswer,
   ProgramCall,
   RecordingStream,
+  Write,
 } from './mock-process.js';
 export { providerContext } from './provider-context.js';
 export type { ProviderValues } from './provider-context.js';

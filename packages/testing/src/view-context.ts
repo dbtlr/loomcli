@@ -9,7 +9,11 @@ import { unstated, unstatedMeasure } from './unstated-members.js';
 import type { OptionalMembers } from './unstated-members.js';
 import { unstatedStyle } from './unstated-style.js';
 
-/** What a test states to build a view context: each member its view reads. */
+/**
+ * What a test states to build a view context: each member its view reads.
+ *
+ * @public
+ */
 type ViewValues = OptionalMembers<ViewContext>;
 
 /**
@@ -21,6 +25,8 @@ type ViewValues = OptionalMembers<ViewContext>;
  * const context = viewContext(heading, { columns: 20, width: (text) => text.length });
  * heading.render('Notes', context);
  * ```
+ *
+ * @public
  */
 function viewContext(view: View<never> | RowView<never>, values: ViewValues): ViewContext {
   return {
