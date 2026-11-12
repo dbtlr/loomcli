@@ -30,7 +30,7 @@ A log event, a log destination, and a progress event are plain data, and a hook 
   | | `message` | `''` |
   | | `fields` | `{}` |
   | | `application` | `{ name: 'app', version: '0.0.0' }` |
-  | | `run` | 32 zeros |
+  | | `run` | `'0'.repeat(32)` |
   | | `path` | `[]` |
   | | `plugin` | `null` |
   | | `failure`, `defect` | absent |
@@ -46,7 +46,7 @@ A log event, a log destination, and a progress event are plain data, and a hook 
   Each builder returns a frozen copy, frozen as core freezes the value it hands a hook: a log event with everything it holds, and a destination and a progress event at their top level. The values the test stated stay as they were. A member a later release adds to one of these types takes a fixed default in the same change.
 - **Types.** Each builder's values type is an input type, because the test writes it, and each returns core's own output type. The values types are exported as `EnvironmentValues`, `LogEventValues`, `LogDestinationValues`, and `ProgressEventValues`.
 
-The supersession: the sentence of ADR-0110's "Functions with no builder" that the arguments of `onLog` and `onEnvironment` are plain values and functions a test writes by hand no longer holds. ADR-0110's rules for a context, its unstated members included, bind `environmentContext` unchanged. The fixed defaults apply to the three plain-data values alone, which ADR-0110 did not cover.
+The supersession: the sentence of ADR-0110's "Functions with no builder" that the arguments of `onLog` and `onEnvironment` are plain values and functions a test writes by hand no longer holds. ADR-0110's rules for a context bind `environmentContext`, with one exception: `host` is stated member by member, not whole, and its unstated member, not `host` itself, throws its sentence when read. The fixed defaults apply to the three plain-data values alone, which ADR-0110 left to the test to write and gave no rule for unstated members.
 
 ## Considered options
 
@@ -58,7 +58,7 @@ The supersession: the sentence of ADR-0110's "Functions with no builder" that th
 
 ## Consequences
 
-A test of an `onLog` hook, an `onEnvironment` hook, or a progress observer states only what it checks, and a release that adds a member to `Log`, `LogEvent`, `LogDestination`, `EnvironmentContext`, or `ProgressEvent` breaks none of these tests. `@loomcli/testing`'s own build fails in the same change that adds a required member to one of these types, so that change gives the member its default or its sentence. A value builder's default is a value the hook may read without the test stating it, so the testing reference lists every default, and a test that checks a member states it. The [testing reference](../libs/testing.md) documents the four builders, and [Public exports](../core/public-exports.md) names them beside the contexts.
+A test of an `onLog` hook, an `onEnvironment` hook, or a progress observer states only what it checks, and a release that adds a member to `Log`, `LogEvent`, `LogDestination`, `EnvironmentContext`, or `ProgressEvent` breaks none of these tests. `@loomcli/testing`'s own build fails in the same change that adds a required member to one of these types, so that change gives the member its default or its sentence. A value builder's default is a value the hook may read without the test stating it, so the testing reference lists every default, and a test that checks a member states it. The [testing reference](../libs/testing.md) documents the four builders, and [Public exports](../core/public-exports.md) names the values they build beside the contexts.
 
 ## Status
 
@@ -66,4 +66,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 
 ## Changelog
 
-- 2026-11-12: Proposed with the builders (LM-477). It supersedes ADR-0110's sentence that a test writes the arguments of `onLog` and `onEnvironment` by hand; ADR-0110 carries a dated entry.
+- 2026-11-12: Proposed with the builders (LM-477). It supersedes ADR-0110's sentence that a test writes the arguments of `onLog` and `onEnvironment` by hand, and makes `environmentContext`'s `host` an exception to ADR-0110's rule that `host` is stated whole; ADR-0110 carries a dated entry.

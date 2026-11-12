@@ -544,9 +544,11 @@ test('the heading rule fills a 20-column terminal', () => {
 ```ts
 import type { EnvironmentContext, EnvironmentHook } from '@loomcli/core';
 
-type EnvironmentValues = OptionalMembers<Pick<EnvironmentContext, 'log' | 'out'>> & {
+interface EnvironmentValues {
   readonly host?: Partial<EnvironmentContext['host']>;
-};
+  readonly log?: Partial<EnvironmentContext['log']>;
+  readonly out?: Partial<EnvironmentContext['out']>;
+}
 
 function environmentContext(hook: EnvironmentHook, values: EnvironmentValues): EnvironmentContext;
 ```

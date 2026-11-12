@@ -44,7 +44,8 @@ const drawn = new Application('drawn').action(async ({ out }) => {
 });
 
 /** A progress event's fields, as an observer reads them. */
-const event: ProgressEvent = { id: 1, label: 'Fetching', state: 'updated' };
+const event = ({ completed, id, label, state, total }: ProgressEvent): string =>
+  `${id} ${label} ${state} ${completed ?? '-'}/${total ?? '-'}`;
 
 /** A middleware's context opens a progress line, as an action's does. */
 const around = plugin('@fixture/around', {

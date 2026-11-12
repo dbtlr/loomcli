@@ -8,13 +8,18 @@ import type { Action } from '@loomcli/core';
 import type { ActionContext } from '@loomcli/core';
 import type { Application } from '@loomcli/core';
 import type { Background } from '@loomcli/core';
+import type { EnvironmentContext } from '@loomcli/core';
+import type { EnvironmentHook } from '@loomcli/core';
 import type { FailureHook } from '@loomcli/core';
 import type { FailureHookContext } from '@loomcli/core';
+import type { LogDestination } from '@loomcli/core';
+import type { LogEvent } from '@loomcli/core';
 import type { MiddlewareContext } from '@loomcli/core';
 import type { PluginOptions } from '@loomcli/core';
 import type { ProcessFields } from '@loomcli/core';
 import type { ProcessHandle } from '@loomcli/core';
 import type { ProcessSignal } from '@loomcli/core';
+import type { ProgressEvent as ProgressEvent_2 } from '@loomcli/core';
 import type { ProviderContext } from '@loomcli/core';
 import { Readable } from 'node:stream';
 import type { RowView } from '@loomcli/core';
@@ -31,6 +36,16 @@ export type ActionValues<Args, Options, Result, Stdin extends StdinContext, Prov
 
 // @public
 export function assertAssembles(application: Pick<Application, 'check'>): void;
+
+// @public
+export function environmentContext(hook: EnvironmentHook, values: EnvironmentValues): EnvironmentContext;
+
+// @public
+export interface EnvironmentValues {
+    readonly host?: Partial<EnvironmentContext['host']>;
+    readonly log?: Partial<EnvironmentContext['log']>;
+    readonly out?: Partial<EnvironmentContext['out']>;
+}
 
 // @public
 export function failureHookContext(hook: FailureHook, values: FailureHookValues): FailureHookContext;
@@ -58,6 +73,18 @@ export const key: Readonly<{
 
 // @public
 export type KeyLetter = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z';
+
+// @public
+export function logDestination(values?: LogDestinationValues): LogDestination;
+
+// @public
+export type LogDestinationValues = Partial<LogDestination>;
+
+// @public
+export function logEvent(values?: LogEventValues): LogEvent;
+
+// @public
+export type LogEventValues = Partial<LogEvent>;
 
 // @public
 export function middlewareContext<Options extends PluginOptions>(middleware: (context: MiddlewareContext<Options>) => Promise<void> | void, values: MiddlewareValues<Options>): MiddlewareContext<Options>;
@@ -140,6 +167,12 @@ export interface ProgramCall {
     readonly input: string;
     readonly signal: AbortSignal;
 }
+
+// @public
+export function progressEvent(values?: ProgressEventValues): ProgressEvent_2;
+
+// @public
+export type ProgressEventValues = Partial<ProgressEvent_2>;
 
 // @public
 export function providerContext<Globals, Provided>(opener: (context: ProviderContext<Globals, Provided>) => unknown, values: NoInfer<ProviderValues<Globals, Provided>>): ProviderContext<Globals, Provided>;

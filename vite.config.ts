@@ -289,6 +289,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/testing/src/hook-values.ts'],
+        rules: {
+          // The log contract spells a missing plugin and a missing stderr `null`, as core's log does.
+          'unicorn/no-null': 'off',
+        },
+      },
+      {
         files: ['packages/core/src/output/log.ts'],
         rules: {
           // The log contract spells a missing plugin and a missing stderr `null`, and JSON data holds `null`.

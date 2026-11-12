@@ -635,7 +635,7 @@ The severity of a log event: `trace`, `debug`, `info`, `warn`, `error`, or `fata
 _Avoid_: Severity class, verbosity (for the level)
 
 **Log destination**:
-The outermost run's `env`, `platform`, and `stderr` that core passes an `onLog` hook beside each event: the parent run's under an action's `invoke`, and a `null` stderr under `app.invoke`. A log record never enters an invocation's captured output.
+The outermost run's `env`, `home`, `platform`, and `stderr` that core passes an `onLog` hook beside each event: the parent run's under an action's `invoke`, and a `null` stderr under `app.invoke`. A log record never enters an invocation's captured output.
 _Avoid_: Sink, transport, target
 
 **Log record**:
