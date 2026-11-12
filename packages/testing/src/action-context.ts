@@ -19,6 +19,8 @@ import { unstatedStyle } from './unstated-style.js';
 /**
  * What a test states to build an action context: `args`, `options`, and `provided` whole, `stdin`
  * as the handler's context types it, and any other member it means the handler to read.
+ *
+ * @public
  */
 type ActionValues<Args, Options, Result, Stdin extends StdinContext, Provided> = Pick<
   ActionContext<Args, Options, Result, Provided>,
@@ -42,6 +44,8 @@ type ActionValues<Args, Options, Result, Stdin extends StdinContext, Provided> =
  * });
  * await getValue(context);
  * ```
+ *
+ * @public
  */
 function actionContext<Args, Options, Result, Stdin extends StdinContext, Provided>(
   handler: Action<Args, Options, Result, Stdin, Provided>,

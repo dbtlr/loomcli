@@ -215,4 +215,18 @@ export const surfacePackages = [
     },
     modules: ['@loomcli/core', '@standard-schema/spec', 'node:*'],
   },
+  {
+    directory: 'packages/testing',
+    entries: {
+      '.': {
+        forgottenExports: {
+          MiddlewareInputs:
+            'Fragment of the exported `MiddlewareValues`; the author names `MiddlewareValues`.',
+          OptionalMembers:
+            'Type machinery that computes a signature from type arguments; the author names the computed export.',
+        },
+      },
+    },
+    modules: ['@loomcli/core', '@standard-schema/spec', 'node:*'],
+  },
 ];

@@ -20,6 +20,8 @@ type MiddlewareInputs = 'options' | 'ownOptions' | 'spellings' | 'request' | 'vi
 /**
  * What a test states to build a middleware context: `options`, `ownOptions`, `spellings`, `request`,
  * and `view` whole, and any other member it means the middleware to read.
+ *
+ * @public
  */
 type MiddlewareValues<Options extends PluginOptions> = Pick<
   MiddlewareContext<Options>,
@@ -43,6 +45,8 @@ type MiddlewareValues<Options extends PluginOptions> = Pick<
  * });
  * await middleware(context);
  * ```
+ *
+ * @public
  */
 function middlewareContext<Options extends PluginOptions>(
   middleware: (context: MiddlewareContext<Options>) => Promise<void> | void,
