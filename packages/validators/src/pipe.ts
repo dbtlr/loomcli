@@ -10,7 +10,11 @@ type StageAnswer<Output> = ParseReturn<Output>;
 /** A parse function step: the previous stage's output and the validation context in, a result out. */
 type StepFunction<Previous> = (value: Previous, context: ValidationContext) => StageAnswer<unknown>;
 
-/** What a step may be before its fit is checked: any Standard Schema value or a parse function. */
+/**
+ * What a step may be before its fit is checked: any Standard Schema value or a parse function.
+ *
+ * @public
+ */
 type Step<Previous> = StandardSchemaV1 | StepFunction<Previous>;
 
 /** The output a stage hands the next one: a schema's output type, or a function's accepted value. */
@@ -103,6 +107,11 @@ function pipe<First extends StandardSchemaV1, S1 extends Step<FirstOutput<First>
   first: First,
   s1: Fitted<S1, FirstOutput<First>>,
 ): Piped<First, StageOutput<S1>>;
+/**
+ * The overload for 2 steps after the first schema.
+ *
+ * @public
+ */
 function pipe<
   First extends StandardSchemaV1,
   S1 extends Step<FirstOutput<First>>,
@@ -112,6 +121,11 @@ function pipe<
   s1: Fitted<S1, FirstOutput<First>>,
   s2: Fitted<S2, StageOutput<S1>>,
 ): Piped<First, StageOutput<S2>>;
+/**
+ * The overload for 3 steps after the first schema.
+ *
+ * @public
+ */
 function pipe<
   First extends StandardSchemaV1,
   S1 extends Step<FirstOutput<First>>,
@@ -123,6 +137,11 @@ function pipe<
   s2: Fitted<S2, StageOutput<S1>>,
   s3: Fitted<S3, StageOutput<S2>>,
 ): Piped<First, StageOutput<S3>>;
+/**
+ * The overload for 4 steps after the first schema.
+ *
+ * @public
+ */
 function pipe<
   First extends StandardSchemaV1,
   S1 extends Step<FirstOutput<First>>,
@@ -136,6 +155,11 @@ function pipe<
   s3: Fitted<S3, StageOutput<S2>>,
   s4: Fitted<S4, StageOutput<S3>>,
 ): Piped<First, StageOutput<S4>>;
+/**
+ * The overload for 5 steps after the first schema.
+ *
+ * @public
+ */
 function pipe<
   First extends StandardSchemaV1,
   S1 extends Step<FirstOutput<First>>,
@@ -151,6 +175,11 @@ function pipe<
   s4: Fitted<S4, StageOutput<S3>>,
   s5: Fitted<S5, StageOutput<S4>>,
 ): Piped<First, StageOutput<S5>>;
+/**
+ * The overload for 6 steps after the first schema.
+ *
+ * @public
+ */
 function pipe<
   First extends StandardSchemaV1,
   S1 extends Step<FirstOutput<First>>,
@@ -168,6 +197,11 @@ function pipe<
   s5: Fitted<S5, StageOutput<S4>>,
   s6: Fitted<S6, StageOutput<S5>>,
 ): Piped<First, StageOutput<S6>>;
+/**
+ * The overload for 7 steps after the first schema.
+ *
+ * @public
+ */
 function pipe<
   First extends StandardSchemaV1,
   S1 extends Step<FirstOutput<First>>,
@@ -187,6 +221,11 @@ function pipe<
   s6: Fitted<S6, StageOutput<S5>>,
   s7: Fitted<S7, StageOutput<S6>>,
 ): Piped<First, StageOutput<S7>>;
+/**
+ * The overload for 8 steps after the first schema.
+ *
+ * @public
+ */
 function pipe<
   First extends StandardSchemaV1,
   S1 extends Step<FirstOutput<First>>,
@@ -255,3 +294,4 @@ function pipe(
 }
 
 export { pipe };
+export type { Step };

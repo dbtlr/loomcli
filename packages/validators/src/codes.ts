@@ -40,175 +40,344 @@ function catalogCode(rule: string): string {
   return `@loomcli/validators/${rule}`;
 }
 
+/**
+ * The issue code for the `text-nonempty` rejection.
+ *
+ * @public
+ */
 const textNonemptyIssue = issueCode(catalogCode('text-nonempty'), {
   message: () => 'Expected a nonempty value.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `text-min-length` rejection.
+ *
+ * @public
+ */
 const textMinLengthIssue = issueCode(catalogCode('text-min-length'), {
   message: ({ min }) => `Expected at least ${characters(min)}.`,
   schema: minParams(isCount),
 });
 
+/**
+ * The issue code for the `text-max-length` rejection.
+ *
+ * @public
+ */
 const textMaxLengthIssue = issueCode(catalogCode('text-max-length'), {
   message: ({ max }) => `Expected at most ${characters(max)}.`,
   schema: maxParams(isCount),
 });
 
+/**
+ * The issue code for the `text-exact-length` rejection.
+ *
+ * @public
+ */
 const textExactLengthIssue = issueCode(catalogCode('text-exact-length'), {
   message: ({ length }) => `Expected exactly ${characters(length)}.`,
   schema: lengthParams,
 });
 
+/**
+ * The issue code for the `text-length-range` rejection.
+ *
+ * @public
+ */
 const textLengthRangeIssue = issueCode(catalogCode('text-length-range'), {
   message: ({ max, min }) => `Expected from ${String(min)} through ${characters(max)}.`,
   schema: rangeParams(isCount),
 });
 
-/** The author's own sentence for a `text()` pattern, which is the code's one blank. */
+/**
+ * The author's own sentence for a `text()` pattern, which is the code's one blank.
+ *
+ * @public
+ */
 const textPatternIssue = issueCode(catalogCode('text-pattern'), {
   message: ({ message }) => message,
   schema: messageParams,
 });
 
+/**
+ * The issue code for the `integer` rejection.
+ *
+ * @public
+ */
 const integerIssue = issueCode(catalogCode('integer'), {
   message: () => 'Expected a whole number.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `integer-range` rejection.
+ *
+ * @public
+ */
 const integerRangeIssue = issueCode(catalogCode('integer-range'), {
   message: ({ max, min }) => `Expected a whole number from ${String(min)} through ${String(max)}.`,
   schema: rangeParams(isFiniteNumber),
 });
 
+/**
+ * The issue code for the `integer-min` rejection.
+ *
+ * @public
+ */
 const integerMinIssue = issueCode(catalogCode('integer-min'), {
   message: ({ min }) => `Expected a whole number of at least ${String(min)}.`,
   schema: minParams(isFiniteNumber),
 });
 
+/**
+ * The issue code for the `integer-max` rejection.
+ *
+ * @public
+ */
 const integerMaxIssue = issueCode(catalogCode('integer-max'), {
   message: ({ max }) => `Expected a whole number of at most ${String(max)}.`,
   schema: maxParams(isFiniteNumber),
 });
 
+/**
+ * The issue code for the `number` rejection.
+ *
+ * @public
+ */
 const numberIssue = issueCode(catalogCode('number'), {
   message: () => 'Expected a number.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `number-range` rejection.
+ *
+ * @public
+ */
 const numberRangeIssue = issueCode(catalogCode('number-range'), {
   message: ({ max, min }) => `Expected a number from ${String(min)} through ${String(max)}.`,
   schema: rangeParams(isFiniteNumber),
 });
 
+/**
+ * The issue code for the `number-min` rejection.
+ *
+ * @public
+ */
 const numberMinIssue = issueCode(catalogCode('number-min'), {
   message: ({ min }) => `Expected a number of at least ${String(min)}.`,
   schema: minParams(isFiniteNumber),
 });
 
+/**
+ * The issue code for the `number-max` rejection.
+ *
+ * @public
+ */
 const numberMaxIssue = issueCode(catalogCode('number-max'), {
   message: ({ max }) => `Expected a number of at most ${String(max)}.`,
   schema: maxParams(isFiniteNumber),
 });
 
+/**
+ * The issue code for the `port` rejection.
+ *
+ * @public
+ */
 const portIssue = issueCode(catalogCode('port'), {
   message: () => 'Expected a port number from 1 through 65535.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `one-of` rejection.
+ *
+ * @public
+ */
 const oneOfIssue = issueCode(catalogCode('one-of'), {
   message: ({ values }) => `Expected one of: ${values.join(', ')}.`,
   schema: valuesParams,
 });
 
+/**
+ * The issue code for the `url` rejection.
+ *
+ * @public
+ */
 const urlIssue = issueCode(catalogCode('url'), {
   message: () => 'Expected an absolute URL, such as https://example.com.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `url-scheme` rejection.
+ *
+ * @public
+ */
 const urlSchemeIssue = issueCode(catalogCode('url-scheme'), {
   message: ({ protocols }) => `Expected an absolute URL with the scheme ${listing(protocols)}.`,
   schema: protocolsParams,
 });
 
+/**
+ * The issue code for the `uuid` rejection.
+ *
+ * @public
+ */
 const uuidIssue = issueCode(catalogCode('uuid'), {
   message: () => 'Expected a UUID, such as 123e4567-e89b-12d3-a456-426614174000.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `date` rejection.
+ *
+ * @public
+ */
 const dateIssue = issueCode(catalogCode('date'), {
   message: () => 'Expected a date as YYYY-MM-DD, such as 2026-09-25.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `date-time` rejection.
+ *
+ * @public
+ */
 const dateTimeIssue = issueCode(catalogCode('date-time'), {
   message: () => 'Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `date-layouts` rejection.
+ *
+ * @public
+ */
 const dateLayoutsIssue = issueCode(catalogCode('date-layouts'), {
   message: ({ forms }) => `Expected a date as ${listing(forms)}, such as 2026-09-25.`,
   schema: formsParams,
 });
 
+/**
+ * The issue code for the `date-time-layouts` rejection.
+ *
+ * @public
+ */
 const dateTimeLayoutsIssue = issueCode(catalogCode('date-time-layouts'), {
   message: ({ forms }) =>
     `Expected a date and time as ${listing(forms)}, such as 2026-09-25T14:30:00Z.`,
   schema: formsParams,
 });
 
+/**
+ * The issue code for the `time` rejection.
+ *
+ * @public
+ */
 const timeIssue = issueCode(catalogCode('time'), {
   message: () => 'Expected a time of day, such as 09:30 or 17:45:30.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `time-layouts` rejection.
+ *
+ * @public
+ */
 const timeLayoutsIssue = issueCode(catalogCode('time-layouts'), {
   message: ({ forms }) => `Expected a time of day as ${listing(forms)}, such as 09:30.`,
   schema: formsParams,
 });
 
+/**
+ * The issue code for the `time-range` rejection.
+ *
+ * @public
+ */
 const timeRangeIssue = issueCode(catalogCode('time-range'), {
   message: ({ max, min }) =>
     `Expected a time from ${formatTimeOfDay(min)} through ${formatTimeOfDay(max)}.`,
   schema: rangeParams(isTimeOfDay),
 });
 
+/**
+ * The issue code for the `time-min` rejection.
+ *
+ * @public
+ */
 const timeMinIssue = issueCode(catalogCode('time-min'), {
   message: ({ min }) => `Expected a time of at least ${formatTimeOfDay(min)}.`,
   schema: minParams(isTimeOfDay),
 });
 
+/**
+ * The issue code for the `time-max` rejection.
+ *
+ * @public
+ */
 const timeMaxIssue = issueCode(catalogCode('time-max'), {
   message: ({ max }) => `Expected a time of at most ${formatTimeOfDay(max)}.`,
   schema: maxParams(isTimeOfDay),
 });
 
+/**
+ * The issue code for the `duration` rejection.
+ *
+ * @public
+ */
 const durationIssue = issueCode(catalogCode('duration'), {
   message: () => 'Expected a duration, such as 90s, 2h30m, or 1.5h.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `duration-capital-m` rejection.
+ *
+ * @public
+ */
 const durationCapitalMIssue = issueCode(catalogCode('duration-capital-m'), {
   message: () => 'Expected a duration; write minutes as m or min, because M is ambiguous.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `duration-range` rejection.
+ *
+ * @public
+ */
 const durationRangeIssue = issueCode(catalogCode('duration-range'), {
   message: ({ max, min }) =>
     `Expected a duration from ${formatDuration(min)} through ${formatDuration(max)}.`,
   schema: rangeParams(isFiniteNumber),
 });
 
+/**
+ * The issue code for the `duration-min` rejection.
+ *
+ * @public
+ */
 const durationMinIssue = issueCode(catalogCode('duration-min'), {
   message: ({ min }) => `Expected a duration of at least ${formatDuration(min)}.`,
   schema: minParams(isFiniteNumber),
 });
 
+/**
+ * The issue code for the `duration-max` rejection.
+ *
+ * @public
+ */
 const durationMaxIssue = issueCode(catalogCode('duration-max'), {
   message: ({ max }) => `Expected a duration of at most ${formatDuration(max)}.`,
   schema: maxParams(isFiniteNumber),
 });
 
+/**
+ * The issue code for the `path` rejection.
+ *
+ * @public
+ */
 const pathIssue = issueCode(catalogCode('path'), {
   message: () => 'Expected a nonempty path with no NUL character.',
   schema: noParams,
@@ -228,89 +397,174 @@ const writableKinds: Readonly<Record<PathKind, string>> = {
   file: 'file',
 };
 
+/**
+ * The issue code for the `path-readable` rejection.
+ *
+ * @public
+ */
 const pathReadableIssue = issueCode(catalogCode('path-readable'), {
   message: ({ kind }) => `Expected a readable ${readableKinds[kind]} that exists.`,
   schema: kindParams,
 });
 
+/**
+ * The issue code for the `path-writable` rejection.
+ *
+ * @public
+ */
 const pathWritableIssue = issueCode(catalogCode('path-writable'), {
   message: ({ kind }) =>
     `Expected a writable ${writableKinds[kind]}, or a new ${writableKinds[kind]} in a writable directory.`,
   schema: kindParams,
 });
 
+/**
+ * The issue code for the `bytes` rejection.
+ *
+ * @public
+ */
 const bytesIssue = issueCode(catalogCode('bytes'), {
   message: () => 'Expected a size, such as 512KiB, 10MB, or 1.5GB.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `bytes-range` rejection.
+ *
+ * @public
+ */
 const bytesRangeIssue = issueCode(catalogCode('bytes-range'), {
   message: ({ max, min }) =>
     `Expected a size from ${formatBytes(min)} through ${formatBytes(max)}.`,
   schema: rangeParams(isCount),
 });
 
+/**
+ * The issue code for the `bytes-min` rejection.
+ *
+ * @public
+ */
 const bytesMinIssue = issueCode(catalogCode('bytes-min'), {
   message: ({ min }) => `Expected a size of at least ${formatBytes(min)}.`,
   schema: minParams(isCount),
 });
 
+/**
+ * The issue code for the `bytes-max` rejection.
+ *
+ * @public
+ */
 const bytesMaxIssue = issueCode(catalogCode('bytes-max'), {
   message: ({ max }) => `Expected a size of at most ${formatBytes(max)}.`,
   schema: maxParams(isCount),
 });
 
+/**
+ * The issue code for the `host` rejection.
+ *
+ * @public
+ */
 const hostIssue = issueCode(catalogCode('host'), {
   message: () => 'Expected a host name, such as example.com.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `host-or-ip` rejection.
+ *
+ * @public
+ */
 const hostOrIpIssue = issueCode(catalogCode('host-or-ip'), {
   message: () =>
     'Expected a host name or an IP address, such as example.com, 192.0.2.1, or [2001:db8::1].',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `ip` rejection.
+ *
+ * @public
+ */
 const ipIssue = issueCode(catalogCode('ip'), {
   message: () => 'Expected an IP address, such as 192.0.2.1 or 2001:db8::1.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `ip-v4` rejection.
+ *
+ * @public
+ */
 const ipV4Issue = issueCode(catalogCode('ip-v4'), {
   message: () => 'Expected an IPv4 address, such as 192.0.2.1.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `ip-v6` rejection.
+ *
+ * @public
+ */
 const ipV6Issue = issueCode(catalogCode('ip-v6'), {
   message: () => 'Expected an IPv6 address, such as 2001:db8::1.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `cidr` rejection.
+ *
+ * @public
+ */
 const cidrIssue = issueCode(catalogCode('cidr'), {
   message: () => 'Expected a CIDR block, such as 192.0.2.0/24 or 2001:db8::/32.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `cidr-v4` rejection.
+ *
+ * @public
+ */
 const cidrV4Issue = issueCode(catalogCode('cidr-v4'), {
   message: () => 'Expected an IPv4 CIDR block, such as 192.0.2.0/24.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `cidr-v6` rejection.
+ *
+ * @public
+ */
 const cidrV6Issue = issueCode(catalogCode('cidr-v6'), {
   message: () => 'Expected an IPv6 CIDR block, such as 2001:db8::/32.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `cidr-host-bits` rejection.
+ *
+ * @public
+ */
 const cidrHostBitsIssue = issueCode(catalogCode('cidr-host-bits'), {
   message: () => 'Expected a network address with no bits set below the prefix.',
   schema: noParams,
 });
 
+/**
+ * The issue code for the `key-value` rejection.
+ *
+ * @public
+ */
 const keyValueIssue = issueCode(catalogCode('key-value'), {
   message: ({ separator }) => `Expected a key and a value as key${separator}value.`,
   schema: separatorParams,
 });
 
+/**
+ * The issue code for the `email` rejection.
+ *
+ * @public
+ */
 const emailIssue = issueCode(catalogCode('email'), {
   message: () => 'Expected an email address, such as name@example.com.',
   schema: noParams,

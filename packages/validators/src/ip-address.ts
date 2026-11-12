@@ -4,7 +4,11 @@
  * parts, and the canonical text is the form RFC 5952 recommends.
  */
 
-/** One IP address family. */
+/**
+ * One IP address family.
+ *
+ * @public
+ */
 // The two families are the contract's own literal type, which names no constant.
 // oxlint-disable-next-line eslint/no-magic-numbers
 type IpVersion = 4 | 6;

@@ -7,7 +7,11 @@ import { reject } from './issues.js';
 
 const range = { max: 65_535, min: 1 };
 
-/** A TCP or UDP port the operator names, 1 through 65535; port 0 is left to `integer()`. */
+/**
+ * A TCP or UDP port the operator names, 1 through 65535; port 0 is left to `integer()`.
+ *
+ * @public
+ */
 function port(): Validator<number> {
   const issue = portIssue.issue({});
   return createValidator({

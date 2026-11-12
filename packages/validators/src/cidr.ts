@@ -5,11 +5,21 @@ import { hasNoHostBits, ipv4Version, readIpAddress } from './ip-address.js';
 import type { IpAddress, IpVersion } from './ip-address.js';
 import { reject } from './issues.js';
 
+/**
+ * The options of `cidr()`: which IP family a block may belong to.
+ *
+ * @public
+ */
 interface CidrOptions {
   version?: IpVersion;
 }
 
-/** A CIDR block: the network's canonical address and its prefix length. */
+/**
+ * A CIDR block: the network's canonical address and its prefix length.
+ *
+ * @public
+ * @sealed
+ */
 interface CidrBlock {
   address: string;
   prefix: number;
@@ -44,6 +54,8 @@ function readBlock(raw: string): { address: IpAddress; prefix: number } | undefi
  * An IP network as an address, `/`, and a prefix length, output as the canonical address and the
  * prefix. The address is the network itself, so a bit set below the prefix is rejected with its
  * own sentence. `version` accepts one family alone.
+ *
+ * @public
  */
 function cidr(options?: CidrOptions): Validator<CidrBlock> {
   const version = options?.version;

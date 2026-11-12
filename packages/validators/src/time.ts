@@ -8,7 +8,11 @@ import { reject } from './issues.js';
 import { firstReading, readingOf, timeRules } from './layout.js';
 import { formatTimeOfDay, readTimeOfDay, timeGrammar, timePattern } from './time-grammar.js';
 
-/** Inclusive bounds, each a time of day in the default grammar, such as `'09:00'`, and layouts. */
+/**
+ * Inclusive bounds, each a time of day in the default grammar, such as `'09:00'`, and layouts.
+ *
+ * @public
+ */
 interface TimeOptions extends SpelledBoundOptions {
   layouts?: readonly [string, ...string[]];
 }
@@ -22,6 +26,8 @@ const grammar = { expression: timeGrammar, form: 'hh:mm', schema: { pattern: tim
  * A time of day, output as the number of milliseconds since midnight, the unit `duration()` uses,
  * within `min` and `max`, both inclusive. The default grammar reads first, then each layout in
  * order. A fraction beyond milliseconds is dropped.
+ *
+ * @public
  */
 function time(options?: TimeOptions): Validator<number> {
   const bounds = readSpelledBounds(factory, options, {

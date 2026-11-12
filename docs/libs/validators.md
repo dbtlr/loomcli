@@ -69,6 +69,8 @@ Each fault carries a [diagnostic rule](../core/declaration-faults.md#developer-d
 
 ## Catalog
 
+Each factory's options type is exported under its name, such as `IntegerOptions` for `integer`, though the signatures below write the options inline. The output of `cidr` is exported as `CidrBlock`, and the output of `keyValue` as `KeyValuePair`.
+
 ### text
 
 ```ts
@@ -377,7 +379,7 @@ The catalog factories are built with `createValidator`, so a catalog validator a
 ```ts
 pipe(first, ...steps): StandardSchemaV1<Input, Output> // & StandardJSONSchemaV1<Input, Output> when first publishes
 
-// Shown to explain a step, not exported. `Previous` is the output of the validator or step before it.
+// Exported as `Step`. `Previous` is the output of the validator or step before it.
 type Step<Previous> =
   | StandardSchemaV1 // whose input type accepts Previous
   | ((value: Previous, context: ValidationContext) => ParseResult<unknown> | Promise<ParseResult<unknown>>);
@@ -540,7 +542,7 @@ A `parse` function, a pipe step or a pipe's `first` that the author wrote, or a 
 
 ## Package
 
-- The root export holds the eighteen factories, `createValidator`, `pipe`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the `Validator`, `ParseResult`, and `IssueCode` types. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
+- The root export holds the eighteen factories, `createValidator`, `pipe`, `issueCode`, the catalog's code descriptors under [Issue codes](#issue-codes), and the types of the factories' options, results, and definitions, among them `Validator`, `ParseResult`, `IssueCode`, `Step`, `CidrBlock`, and `KeyValuePair`. `Validator<Output>` is `StandardSchemaV1<string, Output> & StandardJSONSchemaV1<string, Output>`, what every catalog factory returns; `createValidator` returns it when `inputSchema` is given and a plain `StandardSchemaV1<string, Output>` when it is not. The package has no subpath and no plugin.
 - `@loomcli/core` is a peer dependency, as it is for `@loomcli/plugins`. The package imports the Standard Schema types, `ValidationContext`, `validationContext`, and `DeclarationError` from core, and adds no runtime dependency of its own.
 
 ## Not shipped

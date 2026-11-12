@@ -26,7 +26,11 @@ function checkDistinct(values: readonly string[]): void {
   }
 }
 
-/** A token exactly equal to one of the declared values, typed as their union. */
+/**
+ * A token exactly equal to one of the declared values, typed as their union.
+ *
+ * @public
+ */
 function oneOf<const Values extends readonly [string, ...string[]]>(
   values: Values,
 ): Validator<Values[number]> {

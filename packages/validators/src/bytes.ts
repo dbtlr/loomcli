@@ -6,7 +6,11 @@ import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { reject } from './issues.js';
 
-/** Inclusive bounds, each a size spelled in the operator's grammar, such as `1MB` or `10GiB`. */
+/**
+ * Inclusive bounds, each a size spelled in the operator's grammar, such as `1MB` or `10GiB`.
+ *
+ * @public
+ */
 type BytesOptions = SpelledBoundOptions;
 
 const factory = 'bytes';
@@ -15,6 +19,8 @@ const factory = 'bytes';
  * A size in the operator's grammar, output as a whole number of bytes within `min` and `max`, both
  * inclusive. A bare number counts bytes; `kB` through `PB` are powers of 1000 and `KiB` through
  * `PiB`, or `Ki` through `Pi`, are powers of 1024, under IEC 80000-13.
+ *
+ * @public
  */
 function bytes(options?: BytesOptions): Validator<number> {
   const bounds = readSpelledBounds(factory, options, {

@@ -17,7 +17,11 @@ const emailPattern = String.raw`^${localPart}@${label}(?:\.${label})*$`;
 
 const grammar = new RegExp(emailPattern, 'u');
 
-/** An email address under the WHATWG rule, output as written. */
+/**
+ * An email address under the WHATWG rule, output as written.
+ *
+ * @public
+ */
 function email(): Validator<string> {
   const issue = emailIssue.issue({});
   return createValidator({

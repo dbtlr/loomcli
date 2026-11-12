@@ -10,6 +10,11 @@ import { createValidator } from './create.js';
 import type { ParseResult, Validator } from './create.js';
 import { reject } from './issues.js';
 
+/**
+ * The options of `number()`: inclusive bounds.
+ *
+ * @public
+ */
 interface NumberOptions {
   min?: number;
   max?: number;
@@ -17,7 +22,11 @@ interface NumberOptions {
 
 const decimal = /^-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/u;
 
-/** A finite decimal number, with an optional fraction and exponent, within `min` and `max`. */
+/**
+ * A finite decimal number, with an optional fraction and exponent, within `min` and `max`.
+ *
+ * @public
+ */
 function number(options?: NumberOptions): Validator<number> {
   const bounds = readBounds('number', options);
   const issue = boundsIssue(numberCodes, bounds);

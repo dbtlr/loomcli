@@ -174,4 +174,25 @@ export const surfacePackages = [
     },
     modules: ['node:*', '@loomcli/core', '@loomcli/validators', '@standard-schema/spec'],
   },
+  {
+    directory: 'packages/validators',
+    entries: {
+      '.': {
+        forgottenExports: {
+          AcceptedOutput:
+            'Type machinery that computes a signature from type arguments; the author names the computed export.',
+          FirstOutput:
+            'Type machinery that computes a signature from type arguments; the author names the computed export.',
+          Fitted:
+            'Type machinery that computes a signature from type arguments; the author names the computed export.',
+          Piped:
+            'Type machinery that computes a signature from type arguments; the author names the computed export.',
+          StageOutput:
+            'Type machinery that computes a signature from type arguments; the author names the computed export.',
+          StepFunction: 'One variant of `Step`; the author names `Step`.',
+        },
+      },
+    },
+    modules: ['@loomcli/core', '@standard-schema/spec', 'node:*'],
+  },
 ];

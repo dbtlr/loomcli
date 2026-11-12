@@ -6,11 +6,21 @@ import { reject } from './issues.js';
 import { escapeSyntax } from './pattern-syntax.js';
 import { keyValueSeparator } from './rules.js';
 
+/**
+ * The options of `keyValue()`: the separator it splits at.
+ *
+ * @public
+ */
 interface KeyValueOptions {
   separator?: string;
 }
 
-/** A pair split at the first separator, both sides as written. */
+/**
+ * A pair split at the first separator, both sides as written.
+ *
+ * @public
+ * @sealed
+ */
 interface KeyValuePair {
   key: string;
   value: string;
@@ -52,6 +62,8 @@ function separatorOf(options: KeyValueOptions | undefined): string {
 /**
  * A key and a value joined by the separator, `=` unless the author names another, split at its
  * first occurrence. The key holds one character or more, and the value may be empty.
+ *
+ * @public
  */
 function keyValue(options?: KeyValueOptions): Validator<KeyValuePair> {
   const separator = separatorOf(options);

@@ -5,6 +5,11 @@ import { ipv4Version, readIpAddress } from './ip-address.js';
 import type { IpVersion } from './ip-address.js';
 import { reject } from './issues.js';
 
+/**
+ * The options of `ip()`: which IP family it accepts.
+ *
+ * @public
+ */
 interface IpOptions {
   version?: IpVersion;
 }
@@ -29,6 +34,8 @@ function codeOf(version: IpVersion | undefined) {
  * An IPv4 address in dotted decimal with no leading zero, or an IPv6 address in a text form of
  * RFC 4291 with no zone, output in its canonical form so two spellings of one address compare
  * equal. `version` accepts one family alone.
+ *
+ * @public
  */
 function ip(options?: IpOptions): Validator<string> {
   const version = options?.version;
