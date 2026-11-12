@@ -1,0 +1,1 @@
+- Mark the default export of `@loomcli/eslint-plugin` with the TSDoc tag `@public`, as the [public exports](docs/core/public-exports.md) page describes, so `check:api` covers the package and every published Loom library now carries tags. The plugin's API report records each rule it ships, so a removed or renamed rule shows in review.

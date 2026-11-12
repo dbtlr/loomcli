@@ -24,7 +24,7 @@ In a covered library, a schema in a published type is a [Standard Schema](https:
 
 ## Which libraries carry the tags
 
-`check:api` covers `@loomcli/core`, `@loomcli/plugins`, `@loomcli/validators`, `@loomcli/prompts`, and `@loomcli/testing`, whose every export carries the tags below. Core's API report is committed at `packages/core/api/index.api.md`, each plugins subpath's report is under `packages/plugins/api/`, the validators report is at `packages/validators/api/index.api.md`, the prompts reports, one for the root export and one for `@loomcli/prompts/views`, are under `packages/prompts/api/`, and the testing report is at `packages/testing/api/index.api.md`. The other published libraries carry no tags yet and have no report, so a change to one is judged by the position of the changed member alone.
+`check:api` covers every published library: `@loomcli/core`, `@loomcli/plugins`, `@loomcli/validators`, `@loomcli/prompts`, `@loomcli/testing`, and `@loomcli/eslint-plugin`, whose every export carries the tags below. Core's API report is committed at `packages/core/api/index.api.md`, each plugins subpath's report is under `packages/plugins/api/`, the validators report is at `packages/validators/api/index.api.md`, the prompts reports, one for the root export and one for `@loomcli/prompts/views`, are under `packages/prompts/api/`, the testing report is at `packages/testing/api/index.api.md`, and the lint plugin's report is at `packages/eslint-plugin/api/index.api.md`.
 
 ## Each type is an input type or an output type
 
