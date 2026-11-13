@@ -43,7 +43,11 @@ export interface HostTerminal {
   stdout: OutputTerminal;
   /** The terminal facts of the run's stderr, with its live width and height. */
   stderr: OutputTerminal;
-  /** The terminal's background, light or dark, once it settles; `undefined` until then. */
+  /**
+   * The run's settled terminal background, light or dark, or `undefined` when no source knew it.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/background.md
+   */
   readonly background: Background | undefined;
 }
 

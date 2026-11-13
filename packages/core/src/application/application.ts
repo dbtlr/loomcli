@@ -271,15 +271,26 @@ export interface ApplicationOptions<
   Plugins extends readonly Plugin[] = readonly Plugin[],
   Uses extends readonly AnyProvider[] = [],
 > {
-  /** The rendering policy of every run, which a run's own `rendering` option replaces. */
+  /**
+   * The rendering policy of every run; a run's own `rendering` overrides the fields it supplies.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md#rendering-policies
+   */
   rendering?: RenderingPolicy;
   /** How a signal ends the process: `timeout` is the shutdown budget, 500 milliseconds by default. */
   shutdown?: { readonly timeout?: number };
   /**
-   * The Application's own view overrides, which replace a plugin's or core's view of the same name.
+   * The Application's view overrides, each pairing a declared view or a failure class with a
+   * replacement, which resolve ahead of every plugin's.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/views.md
    */
   views?: readonly ViewOverride[];
-  /** The Application's failure translations, which resolve ahead of each plugin's. */
+  /**
+   * The Application's failure translations, which resolve ahead of each plugin's.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md#translators
+   */
   translators?: readonly Translation[];
   /** The plugins the Application installs. Their global options join the Application's own. */
   plugins?: Plugins;
@@ -1920,7 +1931,7 @@ class ApplicationDeclaration<
 }
 
 /**
- * The Application: the declaration of one program, which holds an unnamed root Command and the
+ * The Application: the root of one command application, which holds an unnamed root Command and the
  * global options, plugins, and views every Command shares. Every authoring call returns a new
  * value, and `run()` runs it as the process.
  *
@@ -1934,7 +1945,7 @@ class ApplicationDeclaration<
  *
  * const app = new Application('hello', { description: 'A greeting tool.', version: '1.0.0' }).command(greet);
  *
- * process.exitCode = await app.run();
+ * await app.run();
  * ```
  *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/application.md

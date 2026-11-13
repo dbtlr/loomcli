@@ -31,6 +31,7 @@ interface Register extends RegistrationShape {}
  * The environment of the Application that registered itself in this compilation, or the default
  * environment when none did.
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#modular-authoring
  * @public
  * @sealed
  */
@@ -49,8 +50,10 @@ type RegistrationVisible = Register extends { environment: unknown } ? true : fa
 declare const applicationEnvironment: unique symbol;
 
 /**
- * The environment an Application or a Command's phantom marker carries.
+ * The Application environment, its global option types and installed plugins, which a configured
+ * Application's type-only marker carries, for `Register.environment`.
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#modular-authoring
  * @public
  * @sealed
  */

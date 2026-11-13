@@ -65,18 +65,31 @@ function splitInterruptKeys(text: string): { signals: InterruptSignal[]; rest: s
  * which reaches the run a moment later, and the text without its interrupt keys, or `''` once a
  * signal was raised, as a cooked terminal discards the input still unread.
  *
- *
  * @example
  * ```ts
  * import { Command, raiseInterruptKeys } from '@loomcli/core';
+ * import { ReadStream } from 'node:tty';
  *
- * export const reader = new Command('reader').action((context) => {
- *   context.host.stdin.on('data', (chunk: Buffer) => {
- *     const { rest } = raiseInterruptKeys(context, chunk.toString('utf8'));
- *     if (rest !== '') {
+ * // Reads keys in raw mode, where Ctrl-C arrives as a byte, and still lets it end the run.
+ * export const reader = new Command('reader').action(async (context) => {
+ *   const { stdin } = context.host;
+ *   const raw = stdin instanceof ReadStream;
+ *   if (raw) {
+ *     stdin.setRawMode(true);
+ *   }
+ *   try {
+ *     for await (const chunk of stdin) {
+ *       const { raised, rest } = raiseInterruptKeys(context, String(chunk));
+ *       if (raised === 'ending' || context.signal.aborted) {
+ *         break;
+ *       }
  *       context.out.print(rest);
  *     }
- *   });
+ *   } finally {
+ *     if (raw) {
+ *       stdin.setRawMode(false);
+ *     }
+ *   }
  * });
  * ```
  *

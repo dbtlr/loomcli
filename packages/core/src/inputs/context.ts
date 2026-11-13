@@ -8,7 +8,6 @@ import type { InputIdentity, SuppliedInputs, ValidationContext } from './types.j
 /**
  * The `libraryOptions` key core writes its context under. It names the package that owns it.
  *
- *
  * @example
  * ```ts
  * import { validationContextKey } from '@loomcli/core';
@@ -69,7 +68,6 @@ function questionIdentity(question: {
 
 /**
  * The prompts library uses the same authenticated Standard Schema channel as input validation.
- *
  *
  * @example
  * ```ts
@@ -142,7 +140,6 @@ const noApplication = '';
  * preparation, and no background query, so the background is the one the handle's terminal states.
  * A handle a run would fail to capture throws the failure the run would report.
  *
- *
  * @example
  * ```ts
  * import { processHandle, validationOptions } from '@loomcli/core';
@@ -185,7 +182,6 @@ function validationOptions(
 
 /**
  * Reads the context core attached to a schema call, or undefined when another caller ran it.
- *
  *
  * @example
  * ```ts

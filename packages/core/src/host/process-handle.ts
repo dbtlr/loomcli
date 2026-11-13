@@ -589,7 +589,6 @@ function publishToProcess(name: string, value: string): void {
  * signal source, writes `exitCode` to `process.exitCode`, starts real children, and has
  * `publishEnv` only when it was given neither `env` nor `cwd`.
  *
- *
  * @example
  * ```ts
  * import { processHandle } from '@loomcli/core';

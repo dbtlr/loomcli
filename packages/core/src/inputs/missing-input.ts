@@ -21,7 +21,6 @@ function rememberInputNames(host: Host, invokedBy: 'argv' | 'name'): void {
 /**
  * Builds the ordinary missing-option failure for an action-owned question.
  *
- *
  * @example
  * ```ts
  * import { Command, missingInputError } from '@loomcli/core';

@@ -394,7 +394,6 @@ function constructorFinding(name: unknown, options: unknown, mark: string): Find
  * filename set, and a name starts with neither `-`, which reads as an option, nor `.`, which a
  * shell hides. Core exports it so the lint plugin judges a literal name by this same rule.
  *
- *
  * @example
  * ```ts
  * import { isPortableName } from '@loomcli/core';
@@ -2686,7 +2685,6 @@ class CommandDeclaration<const Uses extends readonly AnyProvider[] = []> extends
 
 /**
  * The public constructor takes a name and one options object, as the Application does.
- *
  *
  * @example
  * ```ts

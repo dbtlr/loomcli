@@ -533,7 +533,6 @@ async function validateDeclared(
  * itself. Core's default text and an application's own view read a position through this one
  * helper, so a rejected item reads alike wherever its diagnostic is written.
  *
- *
  * @example
  * ```ts
  * import { issuePath } from '@loomcli/core';

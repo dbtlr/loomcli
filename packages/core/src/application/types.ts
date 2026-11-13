@@ -18,7 +18,11 @@ export type ExitCode = 0 | FailureExitCode | 129 | 130 | 131 | 141 | 143;
  * @public
  */
 export interface RunOptions {
-  /** The rendering policy for this run, in place of the Application's own. */
+  /**
+   * The rendering settings for this run, each overriding the Application's same field.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md#rendering-policies
+   */
   rendering?: RenderingPolicy;
   /** The process the run reads its facts from and makes its effects on: `processHandle()` when omitted. */
   process?: ProcessHandle;

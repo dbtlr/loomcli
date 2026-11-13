@@ -161,7 +161,6 @@ export function checkOptionName(name: string, siteOf: () => InputSite): void {
  * parser can read, nonempty, with no leading hyphen, whitespace, or `=`, which it reads apart.
  * Core exports it so the lint plugin judges a literal name by this same rule.
  *
- *
  * @example
  * ```ts
  * import { isDeclaredName } from '@loomcli/core';

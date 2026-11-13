@@ -307,7 +307,7 @@ interface ContentInput {
    * demand.
    */
   type: 'content';
-  /** Whether the operand `-` names the run's stdin as a source. */
+  /** Makes the input the Command's stdin target: it claims piped or redirected stdin, which the operand `-` also names. */
   stdin?: boolean;
   /** Whether at least one source must be supplied. */
   required?: boolean;

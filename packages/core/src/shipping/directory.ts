@@ -60,7 +60,6 @@ function xdgBase(kind: ApplicationDirectory): {
  * process's path rules judge an absolute path and join the segments. It reads no file and creates
  * nothing.
  *
- *
  * @example
  * ```ts
  * import { applicationDirectory } from '@loomcli/core';
@@ -78,7 +77,7 @@ function xdgBase(kind: ApplicationDirectory): {
  * }
  * ```
  *
- * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/host.md#the-home-and-temporary-folders
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/installation-record.md
  * @public
  */
 function applicationDirectory(

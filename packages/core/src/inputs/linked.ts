@@ -69,7 +69,6 @@ function linkedCommand(graph: CommandGraph, node: CommandNode) {
  * validation context, and resolves the validator's result. A context whose graph core did not
  * build throws under `@loomcli/core/foreign-graph`.
  *
- *
  * @example
  * ```ts
  * import { Command, validateLinkedValue } from '@loomcli/core';

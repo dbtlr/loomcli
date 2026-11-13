@@ -22,9 +22,9 @@ type Content =
 interface ContentReader {
   /** The name the source was supplied under: the operand that named the file, or `stdin`. */
   readonly name: string;
-  /** Opens the source as a stream the action reads. */
+  /** A readable stream of the source: a fresh one for a file, the shared stdin stream for stdin. */
   stream(): Readable;
-  /** Reads the whole source as text. */
+  /** Reads the rest of the source as UTF-8 text; a stdin handle shares one stream, so a second read is empty. */
   text(): Promise<string>;
 }
 
