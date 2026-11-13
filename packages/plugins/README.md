@@ -22,7 +22,7 @@ export const jsonkit = new Application('jsonkit', {
 });
 ```
 
-With `completion()` installed, `jsonkit completion install` sets up tab completion in the operator's shell, and `jsonkit completion zsh` prints the script for an operator who loads it another way.
+With `completion()` installed, `jsonkit completion install` sets up tab completion in the operator's shell on Linux and macOS, and `jsonkit completion zsh` prints the script for an operator who loads it another way.
 
 ## Plugins
 

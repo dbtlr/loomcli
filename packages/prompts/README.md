@@ -39,6 +39,8 @@ const setup = new Command('setup')
 export const app = new Application('mimir', { plugins: [interaction()] }).command(setup);
 ```
 
+The example also imports `@loomcli/plugins` and `@loomcli/validators`, so install them beside it.
+
 ## Documentation
 
 The [prompts reference](https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md) documents each question kind and progress, and the [documentation map](https://github.com/dbtlr/loomcli/blob/main/docs/README.md) covers the rest of Loom.
