@@ -26,6 +26,8 @@ const POINTER_GAP = 1;
  * });
  * ```
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/pack-views.md
+ *
  * @public
  */
 function step(): View<string> {
