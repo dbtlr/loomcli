@@ -611,6 +611,15 @@ test("an undocumented constant's failure names the constant once", () => {
   expect(failures.join('\n')).not.toMatch(/value\.value|one\.one/u);
 });
 
+test('each declaration of an undocumented multi-declaration statement is named by its own name', () => {
+  const { config, root } = fixture(
+    `${exampled('A value.', valueFence)}export declare const value: string;\nexport declare const one: string, two: string;\n`,
+  );
+  const failures = checkApi(root, [config], { update: true });
+  expect(failures).toContainEqual(expect.stringMatching(/ae-undocumented: one: .*"one"/u));
+  expect(failures).toContainEqual(expect.stringMatching(/ae-undocumented: two: .*"two"/u));
+});
+
 test("a listed class's setter shares its getter's comment, as API Extractor's property does", () => {
   const { listed, root } = pickedFixture([
     'export declare class Builder {',
