@@ -333,18 +333,15 @@ const valueKinds = new Set([
 ]);
 
 /**
- * Finds the entry's exported values whose first declaration carries no `@example` with a fenced
- * `ts` block. An overloaded function carries it on its first overload; an external re-export
- * carries its own package's comments, so it is skipped.
+ * Finds the entry's exported values whose first value declaration carries no `@example` with a
+ * fenced `ts` block. A type of the same name may come first, as `type Command` does before
+ * `const Command`; an overloaded function carries it on its first overload; an external
+ * re-export carries its own package's comments, so it is skipped.
  */
 function missingExamples(exported, projectFolder, parser) {
   return exported.flatMap(({ name, target }) => {
-    const [first] = target.declarations ?? [];
-    if (
-      !first ||
-      !valueKinds.has(first.kind) ||
-      outsidePackage(projectFolder, first.getSourceFile().fileName)
-    ) {
+    const first = target.declarations?.find((declaration) => valueKinds.has(declaration.kind));
+    if (!first || outsidePackage(projectFolder, first.getSourceFile().fileName)) {
       return [];
     }
     const statement = ts.isVariableDeclaration(first) ? first.parent.parent : first;
@@ -425,12 +422,12 @@ function listedText(packageName, entry, found) {
 }
 
 /**
- * The `pendingDocumentation` path that covers a declaration file, or undefined when none does. A
- * path names a file, or with a trailing slash a directory, relative to the package directory.
+ * The `pendingDocumentation` paths that cover a declaration file, none when no path does. A path
+ * names a file, or with a trailing slash a directory, relative to the package directory.
  */
-function pendingPath(policy, directory, file) {
+function pendingPaths(policy, directory, file) {
   const path = relative(directory, file).replaceAll('\\', '/');
-  return (policy.pendingDocumentation ?? []).find((pending) =>
+  return (policy.pendingDocumentation ?? []).filter((pending) =>
     pending.endsWith('/') ? path.startsWith(pending) : path === pending,
   );
 }
@@ -485,11 +482,12 @@ function checkApi(root, packages, { update = false } = {}) {
   for (const { config, entry, listedFile, packageName, packagePolicy, policy } of entries) {
     // A missing comment or example under a pendingDocumentation path waits for its pass.
     const failDocumentation = (file, line, id, name, text) => {
-      const pending = pendingPath(packagePolicy, config.projectFolder, file);
-      if (pending === undefined) {
+      const pending = pendingPaths(packagePolicy, config.projectFolder, file);
+      if (pending.length === 0) {
         fail(file, line, id, name, text);
-      } else {
-        pendingUsed.get(packagePolicy).add(pending);
+      }
+      for (const path of pending) {
+        pendingUsed.get(packagePolicy).add(path);
       }
     };
     const seenForgotten = new Set();

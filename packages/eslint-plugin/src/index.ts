@@ -57,10 +57,14 @@ const oxlint = { jsPlugins: [packageName], rules: enabledRules };
  *
  * @example
  * ```ts
- * // eslint.config.js
+ * // eslint.config.js: ESLint reads TypeScript only through a parser such as typescript-eslint's.
  * import loom from '@loomcli/eslint-plugin';
+ * import tseslint from 'typescript-eslint';
  *
- * export default [loom.configs.recommended];
+ * export default [
+ *   { files: ['src/**'], languageOptions: { parser: tseslint.parser } },
+ *   { files: ['src/**'], ...loom.configs.recommended },
+ * ];
  * ```
  *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/eslint-plugin.md

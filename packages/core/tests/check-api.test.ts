@@ -232,6 +232,15 @@ test('an @example without a fenced ts block fails, and one with it passes', () =
   expect(checkApi(typescript.root, [typescript.config], { update: true })).toEqual([]);
 });
 
+test('a value declared after a type of the same name still needs an @example', () => {
+  const { config, root } = fixture(
+    '/** A thing Loom reads. @public */\nexport type Thing = string;\n/** A thing Loom ships. @public */\nexport declare const Thing: string;\n',
+  );
+  expect(checkApi(root, [config], { update: true })).toEqual([
+    expect.stringMatching(/dist\/index.d.ts:4: api-missing-example: Thing:/u),
+  ]);
+});
+
 test('a type needs no @example', () => {
   const { config, root } = fixture(
     '/** A shape Loom reads. @public */\nexport interface Shape {\n  /** The value Loom reads. */\n  value: string;\n}\n/** A name Loom reads. @public */\nexport type Name = string;\n',
@@ -575,6 +584,12 @@ test('pendingDocumentation does not reach a file outside its paths', () => {
   expect(checkApi(root, [pending], { update: true })).toEqual([
     expect.stringMatching(/dist\/index.d.ts:2: ae-undocumented: Name:/u),
   ]);
+});
+
+test('overlapping pendingDocumentation paths that cover a missing comment are both in use', () => {
+  const { config, root } = partlyDocumentedFixture();
+  const pending = { ...config, pendingDocumentation: ['dist/', 'dist/later/'] };
+  expect(checkApi(root, [pending], { update: true })).toEqual([]);
 });
 
 test('a pendingDocumentation path with nothing left to write fails as stale', () => {
