@@ -24,7 +24,13 @@ type ProviderValues<Globals, Provided> = Pick<
  * Builds the context an opener, typed `Opener<typeof declaration>`, takes from the values the test
  * states. A run freezes `options` to every depth; the builder holds what the test stated.
  *
+ * @example
  * ```ts
+ * import { providerContext } from '@loomcli/testing';
+ *
+ * import { testPool } from './fixtures.js';
+ * import { open } from './session.js';
+ *
  * const context = providerContext(open, {
  *   options: { token: 't0k3n' },
  *   provided: { pool: testPool() },
@@ -32,6 +38,7 @@ type ProviderValues<Globals, Provided> = Pick<
  * const session = await open(context);
  * ```
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#providercontext
  * @public
  */
 function providerContext<Globals, Provided>(

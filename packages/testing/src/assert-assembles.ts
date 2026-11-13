@@ -14,6 +14,7 @@ import type { Application } from '@loomcli/core';
  * It takes an application in any authoring state, so a test passes the application module's export
  * as it is.
  *
+ * @example
  * ```ts
  * import { test } from 'bun:test'; // or: from 'vitest'
  * import { assertAssembles } from '@loomcli/testing';
@@ -25,6 +26,7 @@ import type { Application } from '@loomcli/core';
  * });
  * ```
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#assertassembles
  * @public
  */
 export function assertAssembles(application: Pick<Application, 'check'>): void {

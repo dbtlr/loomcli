@@ -114,13 +114,9 @@ export type MockFields = MockFacts & ({
 export interface MockProcess extends ProcessHandle {
     readonly endedBy: ProcessSignal | undefined;
     resize(columns: number, rows: number): void;
-    // (undocumented)
     readonly stderr: RecordingStream;
-    // (undocumented)
     readonly stdin: MockStdin;
-    // (undocumented)
     readonly stdout: RecordingStream;
-    // (undocumented)
     readonly transcript: readonly Write[];
 }
 
@@ -136,9 +132,7 @@ export interface MockStdin extends Readable {
 // @public
 export interface MockTerminal {
     readonly background?: Background;
-    // (undocumented)
     readonly columns: number;
-    // (undocumented)
     readonly rows: number;
     readonly streams?: readonly ('stdout' | 'stderr')[];
 }
@@ -155,14 +149,10 @@ export interface ProgramAnswer {
 
 // @public @sealed
 export interface ProgramCall {
-    // (undocumented)
     readonly args: readonly string[];
     readonly command: string;
-    // (undocumented)
     readonly cwd: string;
-    // (undocumented)
     readonly detached: boolean;
-    // (undocumented)
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly input: string;
     readonly signal: AbortSignal;
@@ -193,9 +183,7 @@ export type ViewValues = OptionalMembers<ViewContext>;
 
 // @public @sealed
 export interface Write {
-    // (undocumented)
     readonly stream: 'stdout' | 'stderr';
-    // (undocumented)
     readonly text: string;
 }
 

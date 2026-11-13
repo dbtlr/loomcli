@@ -34,7 +34,14 @@ type MiddlewareValues<Options extends PluginOptions> = Pick<
  * last view the middleware assigns, so a test reads `context.view` after the call; no check runs on
  * it, because no dispatch boundary follows.
  *
+ * @example
  * ```ts
+ * import { middlewareContext } from '@loomcli/testing';
+ * import { vi } from 'vitest';
+ *
+ * import { middleware } from './dry-run.js';
+ *
+ * const next = vi.fn();
  * const context = middlewareContext(middleware, {
  *   next,
  *   options: { dryRun: true },
@@ -46,6 +53,7 @@ type MiddlewareValues<Options extends PluginOptions> = Pick<
  * await middleware(context);
  * ```
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#middlewarecontext
  * @public
  */
 function middlewareContext<Options extends PluginOptions>(

@@ -69,10 +69,17 @@ function freezeDeep<Value>(value: Value): Value {
  * Builds the log event an `onLog` hook takes first: a frozen copy, with everything it holds, of
  * the members the test states over the fixed defaults.
  *
+ * @example
  * ```ts
- * writeEvent(logEvent({ level: 'error', message: 'Sync failed.' }), logDestination({ stderr }));
+ * import { logDestination, logEvent } from '@loomcli/testing';
+ *
+ * import { writeEvent } from './on-log.js';
+ *
+ * const event = logEvent({ level: 'error', message: 'Sync failed.' });
+ * writeEvent(event, logDestination({ stderr: process.stderr }));
  * ```
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#building-the-values-a-hook-reads
  * @public
  */
 function logEvent(values: LogEventValues = {}): LogEvent {
@@ -83,10 +90,17 @@ function logEvent(values: LogEventValues = {}): LogEvent {
  * Builds the log destination an `onLog` hook takes second: a copy, frozen at its top level, of
  * the members the test states over the fixed defaults. A stated `stderr` is the test's own stream.
  *
+ * @example
  * ```ts
- * writeEvent(logEvent({ level: 'error', message: 'Sync failed.' }), logDestination({ stderr }));
+ * import { logDestination, logEvent } from '@loomcli/testing';
+ *
+ * import { writeEvent } from './on-log.js';
+ *
+ * const destination = logDestination({ stderr: process.stderr });
+ * writeEvent(logEvent({ level: 'error', message: 'Sync failed.' }), destination);
  * ```
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#building-the-values-a-hook-reads
  * @public
  */
 function logDestination(values: LogDestinationValues = {}): LogDestination {
@@ -97,10 +111,17 @@ function logDestination(values: LogDestinationValues = {}): LogDestination {
  * Builds the progress event a progress observer takes: a copy, frozen at its top level, of the
  * members the test states over the fixed defaults.
  *
+ * @example
  * ```ts
+ * import { progressEvent } from '@loomcli/testing';
+ * import { expect } from 'vitest';
+ *
+ * import { percent } from './progress.js';
+ *
  * expect(percent(progressEvent({ completed: 3, state: 'ended', total: 4 }))).toBe('75%');
  * ```
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#building-the-values-a-hook-reads
  * @public
  */
 function progressEvent(values: ProgressEventValues = {}): ProgressEvent {

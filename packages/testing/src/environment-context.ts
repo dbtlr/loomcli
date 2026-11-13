@@ -25,11 +25,18 @@ interface EnvironmentValues {
  * Builds the context an `onEnvironment` hook takes from the values the test states. An unstated
  * `host.cwd` or `host.env` throws its sentence when the hook reads it.
  *
+ * @example
  * ```ts
+ * import { environmentContext } from '@loomcli/testing';
+ * import { expect } from 'vitest';
+ *
+ * import { regionDefault } from './environment.js';
+ *
  * const context = environmentContext(regionDefault, { host: { env: {} } });
  * expect(await regionDefault(context)).toEqual({ REGION: 'us-east-1' });
  * ```
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#environmentcontext
  * @public
  */
 function environmentContext(hook: EnvironmentHook, values: EnvironmentValues): EnvironmentContext {
