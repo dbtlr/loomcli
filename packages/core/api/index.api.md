@@ -11,7 +11,7 @@ import { StandardJSONSchemaV1 } from '@standard-schema/spec';
 import { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Writable } from 'node:stream';
 
-// @public (undocumented)
+// @public
 export type Action<Args, Options = {}, Result = unknown, Stdin extends StdinContext = StdinContext, Provided = {}> = (context: Omit<ActionContext<Args, Options, Result, Provided>, 'stdin'> & Stdin) => unknown;
 
 // @public @sealed
@@ -21,36 +21,24 @@ export type ActionArgs<Declaration> = ActionArgument<Declaration> extends {
 
 // @public @sealed
 export interface ActionContext<Args, Options = {}, Result = unknown, Provided = {}> {
-    // (undocumented)
     args: Args;
-    // (undocumented)
     readonly cancel: () => void;
-    // (undocumented)
     readonly command: CommandNode;
-    // (undocumented)
     readonly graph: CommandGraph;
-    // (undocumented)
     host: Host;
-    // (undocumented)
     readonly interactive: boolean;
     readonly invoke: <Mapped = LoomError>(path: readonly string[], values: InvocationValues, options?: InvokeOptions<Mapped>) => Promise<InvocationOutcome<Mapped>>;
     readonly log: Log;
     readonly onResume: OnResume;
     readonly onShutdown: OnShutdown;
     readonly onSuspend: OnSuspend;
-    // (undocumented)
     options: Options;
-    // (undocumented)
     out: Out<Result>;
-    // (undocumented)
     passthrough: string[];
     readonly provided: Provided;
     signal: AbortSignal;
-    // (undocumented)
     readonly stdin?: Content | undefined;
-    // (undocumented)
     readonly style: ContextualStyle;
-    // (undocumented)
     readonly supplied: SuppliedInputs;
 }
 
@@ -103,7 +91,7 @@ export type AnyProvider = Provider<string, unknown, never, Lifetime, readonly An
 // @public @sealed
 export type Application<Args = {}, Options = {}, Globals = {}, State extends ApplicationMethod = AfterAction, Plugins extends readonly Plugin_2[] = readonly Plugin_2[], Result = unknown, Stdin extends StdinContext = StdinContext, Provided = {}, Requires = {}> = Pick<ApplicationBuilder<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>, typeof applicationEnvironment | typeof declaredTypes | 'check' | 'extend' | 'inspect' | 'invoke' | 'name' | 'run' | State | ResultMethod<Result>>;
 
-// @public (undocumented)
+// @public
 export const Application: ApplicationConstructor;
 
 // @public
@@ -118,38 +106,29 @@ export function applicationDirectory(kind: ApplicationDirectory, application: st
 
 // @public @sealed
 export interface ApplicationEnvironment<Globals = {}, Plugins extends readonly Plugin_2[] = readonly []> {
-    // (undocumented)
     readonly globals: Globals;
-    // (undocumented)
     readonly plugins: Plugins;
 }
 
 // @public @sealed
 export type ApplicationMethod = Exclude<CommandMethod, 'alias'> | 'globalOption';
 
-// @public (undocumented)
+// @public
 export interface ApplicationOptions<Plugins extends readonly Plugin_2[] = readonly Plugin_2[], Uses extends readonly AnyProvider[] = []> {
-    // (undocumented)
     description?: string;
-    // (undocumented)
     extensions?: readonly ExtensionValue<'command'>[];
-    // (undocumented)
     plugins?: Plugins;
-    // (undocumented)
     rendering?: RenderingPolicy;
     shutdown?: {
         readonly timeout?: number;
     };
-    // (undocumented)
     translators?: readonly Translation[];
     uses?: OptIn<Uses>;
-    // (undocumented)
     version?: string;
-    // (undocumented)
     views?: readonly ViewOverride[];
 }
 
-// @public (undocumented)
+// @public
 export type ArgumentConfig = VariadicArgument | ScalarArgument | ContentArgument;
 
 // @public @sealed
@@ -243,9 +222,7 @@ export type BooleanOption = (OptionSpelling & BooleanFacts & EnvBinding & {
 
 // @public @sealed
 export interface CancellationReason {
-    // (undocumented)
     readonly cause?: unknown;
-    // (undocumented)
     readonly source: EndingSignal | 'caller' | 'action' | 'closed-pipe';
 }
 
@@ -271,7 +248,6 @@ export type ChildExit = {
 
 // @public
 export interface ChildOutput {
-    // (undocumented)
     readonly bytes: Uint8Array;
     readonly text: string;
 }
@@ -348,13 +324,9 @@ export interface CommandNode {
 
 // @public
 export interface CommandOptions<Uses extends readonly AnyProvider[] = []> {
-    // (undocumented)
     deprecated?: string;
-    // (undocumented)
     description?: string;
-    // (undocumented)
     extensions?: readonly ExtensionValue<'command'>[];
-    // (undocumented)
     hidden?: boolean;
     uses?: MetByRegistration<Uses, OptIn<Uses>>;
 }
@@ -377,7 +349,7 @@ export type Content = (ContentReader & {
     readonly path: undefined;
 });
 
-// @public (undocumented)
+// @public
 export type ContentArgument = ContentInput & Described & ArgumentExtensions & ({
     variadic: true;
     min?: number;
@@ -388,7 +360,7 @@ export type ContentArgument = ContentInput & Described & ArgumentExtensions & ({
     max?: never;
 });
 
-// @public (undocumented)
+// @public
 export type ContentOption = ContentInput & OptionSpelling & Described & Listed & Controlled & OptionExtensions & Unmarked & {
     polarity?: never;
     implied?: never;
@@ -517,7 +489,6 @@ export type EndingSignal = 'SIGHUP' | 'SIGINT' | 'SIGQUIT' | 'SIGTERM';
 
 // @public
 export interface EnvBinding {
-    // (undocumented)
     env?: string | readonly [string, ...string[]];
     envAllowEmpty?: never;
     envDelimiter?: never;
@@ -539,7 +510,7 @@ export interface EnvironmentContext {
 // @public (undocumented)
 export type EnvironmentHook = (context: EnvironmentContext) => Readonly<Record<string, string>> | void | Promise<Readonly<Record<string, string>> | void>;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type EnvironmentOf<Value extends {
     readonly [applicationEnvironment]: ApplicationEnvironment<unknown, readonly Plugin_2[]>;
 }> = Value[typeof applicationEnvironment];
@@ -959,31 +930,23 @@ export const glyph: Readonly<{
 // @public
 export type GraphBuiltHook = (graph: CommandGraph) => undefined;
 
-// @public (undocumented)
+// @public
 export interface Host {
     arch: string;
-    // (undocumented)
     argv: string[];
-    // (undocumented)
     cwd: string;
-    // (undocumented)
     env: Record<string, string | undefined>;
     home: string;
     readonly libc: 'glibc' | 'musl' | undefined;
-    // (undocumented)
     platform: string;
     program: readonly string[];
     raise: (signal: 'SIGINT' | 'SIGQUIT' | 'SIGTSTP') => boolean;
     readSource?: (path: string, cwd: string) => string | undefined;
     release: ReleaseFacts;
     spawn: (command: string, args: readonly string[], options?: SpawnOptions) => Child;
-    // (undocumented)
     stderr: Writable;
-    // (undocumented)
     stdin: Readable;
-    // (undocumented)
     stdout: Writable;
-    // (undocumented)
     terminal: HostTerminal;
     readonly timeZone: string;
     tmpdir: string;
@@ -992,13 +955,9 @@ export interface Host {
 
 // @public
 export interface HostTerminal {
-    // (undocumented)
     readonly background: Background | undefined;
-    // (undocumented)
     stderr: OutputTerminal;
-    // (undocumented)
     stdin: InputTerminal;
-    // (undocumented)
     stdout: OutputTerminal;
 }
 
@@ -1026,11 +985,8 @@ export class InputError extends UsageError {
 
 // @public
 export interface InputIdentity {
-    // (undocumented)
     global: boolean;
-    // (undocumented)
     kind: 'argument' | 'option' | 'stdin';
-    // (undocumented)
     name: string;
 }
 
@@ -1054,9 +1010,8 @@ export type InputProblem = {
 // @public @sealed
 export type InputSchema = Readonly<Record<string, unknown>> | null;
 
-// @public (undocumented)
+// @public
 export interface InputTerminal {
-    // (undocumented)
     isTTY: boolean;
 }
 
@@ -1103,11 +1058,8 @@ export type InvocationOutcome<Mapped = LoomError> = {
 
 // @public
 export interface InvocationValues {
-    // (undocumented)
     readonly args?: Readonly<Record<string, string | number | boolean | readonly (string | number)[] | undefined>>;
-    // (undocumented)
     readonly options?: Readonly<Record<string, string | number | boolean | readonly (string | number)[] | undefined>>;
-    // (undocumented)
     readonly passthrough?: readonly string[];
 }
 
@@ -1117,7 +1069,6 @@ export type InvokedBy = 'argv' | 'name';
 // @public
 export interface InvokeOptions<Mapped = LoomError> {
     readonly exclude?: readonly string[];
-    // (undocumented)
     readonly failure?: (failure: Readonly<LoomError>, context: {
         readonly application: string;
         readonly path: readonly string[];
@@ -1270,31 +1221,20 @@ export type Middleware<Contributor extends Plugin_2 | ((...args: never[]) => Plu
 
 // @public @sealed
 export interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
-    // (undocumented)
     readonly command: CommandNode;
-    // (undocumented)
     readonly graph: CommandGraph;
-    // (undocumented)
     readonly host: Host;
     readonly log: Log;
-    // (undocumented)
     readonly next: () => Promise<ChainOutcome>;
     readonly onResume: OnResume;
     readonly onShutdown: OnShutdown;
     readonly onSuspend: OnSuspend;
-    // (undocumented)
     readonly options: (PluginOptionValues<Options> & Readonly<Record<string, unknown>>) | null;
-    // (undocumented)
     readonly out: Out;
-    // (undocumented)
     readonly ownOptions: Partial<PluginOptionValues<Options>> & Readonly<Record<string, unknown>>;
-    // (undocumented)
     readonly request: Request_2 | null;
-    // (undocumented)
     readonly signal: AbortSignal;
-    // (undocumented)
     readonly spellings: PluginOptionSpellings<Options>;
-    // (undocumented)
     get view(): string | null;
     set view(name: string);
 }
@@ -1362,14 +1302,12 @@ export const onSuspend: OnSuspend;
 // @public
 export type Opener<Declared extends AnyProvider> = (context: ProviderContext<GlobalsOf<Declared>, ProvidedValues<Declared['uses']>>) => ValueOf<Declared> | Promise<ValueOf<Declared>>;
 
-// @public (undocumented)
+// @public
 export type OptionConfig = StringOption | BooleanOption | CountOption | ContentOption;
 
 // @public @sealed
 export interface OptionGroup {
-    // (undocumented)
     readonly kind: 'exclusive' | 'oneRequired' | 'requiredTogether';
-    // (undocumented)
     readonly options: readonly string[];
 }
 
@@ -1440,11 +1378,9 @@ export interface Out<Result = unknown> {
     warn(message: string): Promise<void>;
 }
 
-// @public (undocumented)
+// @public
 export interface OutputTerminal extends InputTerminal {
-    // (undocumented)
     columns: number | undefined;
-    // (undocumented)
     rows: number | undefined;
 }
 
@@ -1524,44 +1460,29 @@ export type ProcessFields = Partial<Omit<ProcessHandle, 'cwd' | 'exitCode' | 'pu
 
 // @public
 export interface ProcessHandle {
-    // (undocumented)
     readonly arch: string;
-    // (undocumented)
     readonly argv: readonly string[];
     cwd(): string;
-    // (undocumented)
     readonly env: Readonly<Record<string, string | undefined>>;
     exitCode: ExitCode | undefined;
     readonly home: string;
-    // (undocumented)
     readonly libc: 'glibc' | 'musl' | undefined;
-    // (undocumented)
     readonly platform: string;
-    // (undocumented)
     readonly program: readonly string[];
     readonly publishEnv?: (name: string, value: string) => void;
-    // (undocumented)
     readonly readSource?: (path: string, cwd: string) => string | undefined;
-    // (undocumented)
     readonly release: ReleaseFacts;
-    // (undocumented)
     readonly signals: SignalSource;
     spawn(command: string, args: readonly string[], options: SpawnOptions & {
         readonly cwd: string;
         readonly env: Readonly<Record<string, string | undefined>>;
     }): Child;
-    // (undocumented)
     readonly stderr: Writable;
-    // (undocumented)
     readonly stdin: Readable;
-    // (undocumented)
     readonly stdout: Writable;
-    // (undocumented)
     readonly terminal: ProcessTerminal;
-    // (undocumented)
     readonly timeZone: string;
     readonly tmpdir: string;
-    // (undocumented)
     readonly uid: number | undefined;
 }
 
@@ -1573,13 +1494,9 @@ export type ProcessSignal = 'SIGHUP' | 'SIGINT' | 'SIGQUIT' | 'SIGTERM' | 'SIGTS
 
 // @public
 export interface ProcessTerminal {
-    // (undocumented)
     readonly background?: Background | undefined;
-    // (undocumented)
     readonly stderr: OutputTerminal;
-    // (undocumented)
     readonly stdin: InputTerminal;
-    // (undocumented)
     readonly stdout: OutputTerminal;
 }
 
@@ -1706,7 +1623,7 @@ export interface RegionOptions {
 export interface Register extends RegistrationShape {
 }
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type RegisteredEnvironment = Register extends {
     environment: infer Environment;
 } ? Environment extends ApplicationEnvironment<unknown, readonly Plugin_2[]> ? Environment : never : ApplicationEnvironment;
@@ -1760,13 +1677,9 @@ export function reportedSpelling(option: OptionNode): string;
 
 // @public
 interface Request_2 {
-    // (undocumented)
     readonly args: Readonly<Record<string, unknown>>;
-    // (undocumented)
     readonly options: Readonly<Record<string, unknown>>;
-    // (undocumented)
     readonly passthrough: readonly string[];
-    // (undocumented)
     readonly stdin?: Content | undefined;
 }
 export { Request_2 as Request }
@@ -1830,15 +1743,14 @@ export type RowViewOver<Data> = [Data] extends [Iterable<infer Row> | AsyncItera
 // @public
 export type RowViews<Row> = Readonly<Record<string, View<readonly Row[]> | RowView<Row>>>;
 
-// @public (undocumented)
+// @public
 export interface RunOptions {
     process?: ProcessHandle;
-    // (undocumented)
     rendering?: RenderingPolicy;
     signal?: AbortSignal;
 }
 
-// @public (undocumented)
+// @public
 export type ScalarArgument = ((Presence & Omission) | ConditionalPresence) & Described & ArgumentExtensions & {
     type?: 'string';
     variadic?: false;
@@ -1856,9 +1768,7 @@ export type SignalListener<Event extends ProcessSignal | 'exit'> = Event extends
 
 // @public
 export interface SignalSource {
-    // (undocumented)
     off<Event extends ProcessSignal | 'exit'>(event: Event, listener: SignalListener<Event>): void;
-    // (undocumented)
     on<Event extends ProcessSignal | 'exit'>(event: Event, listener: SignalListener<Event>): void;
     raise(signal: ProcessSignal): void;
     readonly terminal: Readable | undefined;
@@ -1921,17 +1831,14 @@ export { StandardJSONSchemaV1 }
 
 export { StandardSchemaV1 }
 
-// @public (undocumented)
+// @public
 export interface StdinConfig {
-    // (undocumented)
     description?: string;
-    // (undocumented)
     required?: boolean;
 }
 
 // @public @sealed
 export interface StdinContext {
-    // (undocumented)
     readonly stdin?: Content | undefined;
 }
 
@@ -1942,7 +1849,7 @@ export type StringBinding = EnvBinding | {
     envAllowEmpty?: boolean;
 };
 
-// @public (undocumented)
+// @public
 export type StringOption = UnmarkedStringOption | BackgroundOption;
 
 // @public @sealed (undocumented)

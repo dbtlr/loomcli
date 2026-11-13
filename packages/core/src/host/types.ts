@@ -5,14 +5,27 @@ import type { ExitCode } from '../application/types.js';
 import type { ReleaseFacts } from '../shipping/types.js';
 import type { Background } from './background.js';
 
-/** @public */
+/**
+ * The facts of one input stream of the run, as the process handle reports them.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/host.md#host-facts
+ * @public
+ */
 export interface InputTerminal {
+  /** Whether the stream is attached to a terminal. A pipe or a file reads `false`. */
   isTTY: boolean;
 }
 
-/** @public */
+/**
+ * The facts of one output stream of the run: whether it is a terminal and its size.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/host.md#host-facts
+ * @public
+ */
 export interface OutputTerminal extends InputTerminal {
+  /** The width in terminal cells, or `undefined` when the stream is no terminal or reports none. */
   columns: number | undefined;
+  /** The height in terminal rows, or `undefined` when the stream is no terminal or reports none. */
   rows: number | undefined;
 }
 
@@ -24,9 +37,17 @@ export interface OutputTerminal extends InputTerminal {
  * @public
  */
 export interface HostTerminal {
+  /** The terminal facts of the run's stdin. */
   stdin: InputTerminal;
+  /** The terminal facts of the run's stdout, with its live width and height. */
   stdout: OutputTerminal;
+  /** The terminal facts of the run's stderr, with its live width and height. */
   stderr: OutputTerminal;
+  /**
+   * The run's settled terminal background, light or dark, or `undefined` when no source knew it.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/background.md
+   */
   readonly background: Background | undefined;
 }
 
@@ -55,7 +76,9 @@ export type SignalListener<Event extends ProcessSignal | 'exit'> = Event extends
 export interface SignalSource {
   /** The stdin of the terminal this source's process is attached to, or `undefined` for none. */
   readonly terminal: Readable | undefined;
+  /** Adds a listener for a signal or for the `exit` event of this source. */
   on<Event extends ProcessSignal | 'exit'>(event: Event, listener: SignalListener<Event>): void;
+  /** Removes a listener added with `on`. */
   off<Event extends ProcessSignal | 'exit'>(event: Event, listener: SignalListener<Event>): void;
   /** Delivers the signal to this source's process. */
   raise(signal: ProcessSignal): void;
@@ -68,9 +91,16 @@ export interface SignalSource {
  * @public
  */
 export interface ProcessTerminal {
+  /** The terminal facts of the handle's stdin. */
   readonly stdin: InputTerminal;
+  /** The terminal facts of the handle's stdout, which may read its width live. */
   readonly stdout: OutputTerminal;
+  /** The terminal facts of the handle's stderr, which may read its width live. */
   readonly stderr: OutputTerminal;
+  /**
+   * The terminal's background, when the handle states it; a stated one settles the run's background
+   * with no query.
+   */
   readonly background?: Background | undefined;
 }
 
@@ -118,6 +148,7 @@ export type SpawnOptions = {
  * @public
  */
 export interface ChildOutput {
+  /** The bytes the child wrote to the stream. */
   readonly bytes: Uint8Array;
   /** The bytes decoded as UTF-8. */
   readonly text: string;
@@ -161,8 +192,11 @@ export interface Child {
  * @public
  */
 export interface ProcessHandle {
+  /** The command-line words after the program, as the operator typed them. */
   readonly argv: readonly string[];
+  /** The words that start the application again: the runtime and script prefix `argv` omits. */
   readonly program: readonly string[];
+  /** The process's environment variables. */
   readonly env: Readonly<Record<string, string | undefined>>;
   /** The working directory, which throws when it cannot be read. */
   cwd(): string;
@@ -170,17 +204,31 @@ export interface ProcessHandle {
   readonly home: string;
   /** The folder for temporary files. */
   readonly tmpdir: string;
+  /**
+   * The process's operating system, as `process.platform` names it, such as `linux` or `darwin`.
+   */
   readonly platform: string;
+  /** The process's CPU architecture, such as `x64` or `arm64`. */
   readonly arch: string;
+  /** `glibc` or `musl` on Linux, and `undefined` elsewhere. */
   readonly libc: 'glibc' | 'musl' | undefined;
+  /** The process's user ID, or `undefined` on a runtime with none. */
   readonly uid: number | undefined;
+  /** The operator's IANA time zone, such as `America/New_York`. */
   readonly timeZone: string;
+  /** The release facts of the running build, which tell a source run from a shipped binary. */
   readonly release: ReleaseFacts;
+  /** Reads one source file for a defect report, or answers `undefined`. */
   readonly readSource?: (path: string, cwd: string) => string | undefined;
+  /** The stream the run reads its stdin from. */
   readonly stdin: Readable;
+  /** The stream the run writes its results to. */
   readonly stdout: Writable;
+  /** The stream the run writes diagnostics and progress to. */
   readonly stderr: Writable;
+  /** The terminal facts of the handle's three streams. */
   readonly terminal: ProcessTerminal;
+  /** Where the run's signals come from and where core raises them. */
   readonly signals: SignalSource;
   /**
    * Starts one child program. Core fills `cwd` and `env` from the run before it calls the handle,
@@ -213,8 +261,16 @@ export type ProcessFields = Partial<
   readonly cwd?: string | (() => string);
 };
 
-/** @public */
+/**
+ * The facts of the process a run reads, copied from its process handle at entry: the platform,
+ * `argv`, the working directory, the environment, the terminal, and the streams. An action reads
+ * them as `host`; core never reads the process behind its back.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/host.md#host-facts
+ * @public
+ */
 export interface Host {
+  /** The operating system, as `process.platform` names it, such as `linux` or `darwin`. */
   platform: string;
   /** The process's CPU architecture, such as `x64` or `arm64`. */
   arch: string;
@@ -225,6 +281,7 @@ export interface Host {
   readonly libc: 'glibc' | 'musl' | undefined;
   /** The process's user ID, or `undefined` on a runtime with none. */
   uid: number | undefined;
+  /** The command-line words after the program, as the operator typed them. */
   argv: string[];
   /**
    * The runtime and script prefix `argv` omits: the words that start this application again, so
@@ -233,6 +290,7 @@ export interface Host {
    * `program` replaces the whole list, and an action's `invoke` keeps its run's.
    */
   program: readonly string[];
+  /** The working directory, read when the run captured its host. */
   cwd: string;
   /**
    * The operator's home folder, copied from the handle at entry: its absolute `HOME` unless a
@@ -251,10 +309,15 @@ export interface Host {
    * the handle on the run's first read, because resolving the zone through `Intl` is costly.
    */
   readonly timeZone: string;
+  /** The run's environment variables, which environment preparation may add to. */
   env: Record<string, string | undefined>;
+  /** The run's terminal facts. */
   terminal: HostTerminal;
+  /** The stream the run reads its stdin from. */
   stdin: Readable;
+  /** The stream the run writes its results to. */
   stdout: Writable;
+  /** The stream the run writes diagnostics and progress to. */
   stderr: Writable;
   /**
    * Reads one source file for a defect's Developer Diagnostic, or answers `undefined`. Core calls

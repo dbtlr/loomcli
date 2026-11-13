@@ -10,8 +10,19 @@ import type { RenderingPolicy } from '../style/rendering.js';
  */
 export type ExitCode = 0 | FailureExitCode | 129 | 130 | 131 | 141 | 143;
 
-/** @public */
+/**
+ * What a caller states for one `run()`: a rendering policy, the process handle, and a cancellation
+ * signal.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/application.md
+ * @public
+ */
 export interface RunOptions {
+  /**
+   * The rendering settings for this run, each overriding the Application's same field.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md#rendering-policies
+   */
   rendering?: RenderingPolicy;
   /** The process the run reads its facts from and makes its effects on: `processHandle()` when omitted. */
   process?: ProcessHandle;

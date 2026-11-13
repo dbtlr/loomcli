@@ -14,7 +14,11 @@ import type { InputDeclaration } from './validation.js';
  * @sealed
  */
 interface OptionGroup {
+  /**
+   * Which rule the group states: at most one member, at least one member, or all members or none.
+   */
   readonly kind: 'exclusive' | 'oneRequired' | 'requiredTogether';
+  /** The names of the local options the group relates, in declaration order. */
   readonly options: readonly string[];
 }
 

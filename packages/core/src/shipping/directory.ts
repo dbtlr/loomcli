@@ -60,6 +60,24 @@ function xdgBase(kind: ApplicationDirectory): {
  * process's path rules judge an absolute path and join the segments. It reads no file and creates
  * nothing.
  *
+ * @example
+ * ```ts
+ * import { applicationDirectory } from '@loomcli/core';
+ *
+ * const logs = applicationDirectory('logs', 'paths', {
+ *   env: {},
+ *   home: '/home/ada',
+ *   platform: 'linux',
+ * });
+ *
+ * if ('path' in logs) {
+ *   console.log(logs.path); // /home/ada/.local/state/paths
+ * } else {
+ *   console.log(`Set ${logs.variable} to an absolute path.`);
+ * }
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/installation-record.md
  * @public
  */
 function applicationDirectory(

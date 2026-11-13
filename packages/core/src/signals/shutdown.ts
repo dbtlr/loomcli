@@ -48,6 +48,26 @@ function shutdownTimeout(application: string, shutdown: { readonly timeout?: num
  * Registers a synchronous handler scoped to the process, which runs once, at the end of a shutdown
  * or at the process's own end, and answers the call that removes it. A throw is dropped.
  *
+ * @example
+ * ```ts
+ * import { onShutdown } from '@loomcli/core';
+ * import type { Writable } from 'node:stream';
+ *
+ * // Restores the cursor when the process ends, whatever ends it, and returns a way to stop early.
+ * export function hideCursor(stream: Writable): () => void {
+ *   const show = () => {
+ *     stream.write('\u001B[?25h');
+ *   };
+ *   const remove = onShutdown(show);
+ *   stream.write('\u001B[?25l');
+ *   return () => {
+ *     remove();
+ *     show();
+ *   };
+ * }
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/signals.md#onshutdown
  * @public
  */
 const onShutdown: OnShutdown = (handler) => processLane().onShutdown({ handler });
@@ -55,6 +75,20 @@ const onShutdown: OnShutdown = (handler) => processLane().onShutdown({ handler }
 /**
  * Registers a synchronous handler scoped to the process that runs when Ctrl-Z suspends it, newest first.
  *
+ * @example
+ * ```ts
+ * import { onSuspend } from '@loomcli/core';
+ * import type { Writable } from 'node:stream';
+ *
+ * // Shows the cursor while the process sits in the background, until the caller stops watching.
+ * export function showCursorOnSuspend(stream: Writable): () => void {
+ *   return onSuspend(() => {
+ *     stream.write('\u001B[?25h');
+ *   });
+ * }
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/signals.md#suspend-and-resume
  * @public
  */
 const onSuspend: OnSuspend = (handler) => processLane().onSuspend({ handler });
@@ -62,6 +96,20 @@ const onSuspend: OnSuspend = (handler) => processLane().onSuspend({ handler });
 /**
  * Registers a synchronous handler scoped to the process that runs when it resumes, in registration order.
  *
+ * @example
+ * ```ts
+ * import { onResume } from '@loomcli/core';
+ * import type { Writable } from 'node:stream';
+ *
+ * // Hides the cursor again once `fg` resumes the process, until the caller stops watching.
+ * export function hideCursorOnResume(stream: Writable): () => void {
+ *   return onResume(() => {
+ *     stream.write('\u001B[?25l');
+ *   });
+ * }
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/signals.md#suspend-and-resume
  * @public
  */
 const onResume: OnResume = (handler) => processLane().onResume({ handler });

@@ -43,8 +43,16 @@ type OptionSpelling =
   | { short: ShortAlias; shortOnly: true; aliases?: never };
 
 interface ConditionalPresence {
+  /**
+   * `'non-interactive'` makes the input required only when the run may not ask the operator a
+   * question.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/interaction.md
+   */
   required: 'non-interactive';
+  /** Never declared: a conditionally required input has no default. */
   default?: never;
+  /** Never declared: a conditionally required input sends no omitted value to its validator. */
   validateOmitted?: never;
 }
 type Presence = { required: true; default?: never } | { required?: false; default?: unknown };
@@ -97,6 +105,12 @@ type StringBinding =
  * @public
  */
 interface EnvBinding {
+  /**
+   * The variable, or the non-empty list of variables, the input-source stage reads when argv
+   * supplies none.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/input-sources.md#environment-bindings
+   */
   env?: string | readonly [string, ...string[]];
   /** Only a multiple option declares a delimiter, under `ListBinding`. */
   envDelimiter?: never;
@@ -118,9 +132,11 @@ type PresenceRuleKey = 'required' | 'validateOmitted';
 
 /** The fault each presence rule names when a global option declares it. */
 interface PresenceRuleFaults {
+  /** The fault a global option names when it declares `required`. */
   required: {
     'A global option declares no required; the Commands that read it check for it': never;
   };
+  /** The fault a global option names when it declares `validateOmitted`. */
   validateOmitted: {
     'A global option declares no validateOmitted; its omission is plain absence': never;
   };
@@ -136,6 +152,7 @@ type DeclaredPresenceRule<Config> = {
  * a character other than whitespace and no line terminator.
  */
 interface Described {
+  /** The one-line summary every projection reads. */
   description?: string;
 }
 
@@ -146,7 +163,9 @@ interface Described {
  * Neither belongs to an argument, which cannot leave the grammar it sits in, or to the root.
  */
 interface Listed {
+  /** Keeps the member off every listing. An omitted one reads `false`. */
   hidden?: boolean;
+  /** The one-line migration message a listing shows beside the member. */
   deprecated?: string;
 }
 
@@ -159,11 +178,20 @@ type KeysOf<Type> = Type extends unknown ? keyof Type : never;
  * it at run time; a projection that lists what a Command needs does.
  */
 interface Controlled {
+  /**
+   * Marks the option as controlling the invocation, such as `--help` or `--format`, rather than
+   * feeding the Command's work. An omitted mark reads `false`.
+   */
   control?: boolean;
 }
 
 /** The extension values one option declaration carries, whatever scope declares the option. */
 interface OptionExtensions {
+  /**
+   * The extension values the option carries.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/extensions.md
+   */
   extensions?: readonly ExtensionValue<'option'>[];
 }
 
@@ -192,15 +220,25 @@ type BooleanFacts = Described &
  * carries none of them either.
  */
 interface Unmarked {
+  /** Never declared: the interaction mark belongs to one Boolean global option. */
   interaction?: never;
+  /** Never declared: the color mark belongs to one Boolean global option. */
   color?: never;
+  /** Never declared: the verbose mark belongs to one counted global option. */
   verbose?: never;
+  /** Never declared: the quiet mark belongs to one counted global option. */
   quiet?: never;
+  /** Never declared: the background mark belongs to the marked string global option. */
   background?: never;
 }
 
 /** The same slot on an argument declaration, typed by the target its values must name. */
 interface ArgumentExtensions {
+  /**
+   * The extension values the argument carries.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/extensions.md
+   */
   extensions?: readonly ExtensionValue<'argument'>[];
 }
 
@@ -264,11 +302,20 @@ type PairedDefault<Config> = Config extends unknown
   : never;
 
 interface ContentInput {
+  /**
+   * Declares a content input, whose value reaches the action as a `Content` handle that reads on
+   * demand.
+   */
   type: 'content';
+  /** Makes the input the Command's stdin target: it claims piped or redirected stdin, which the operand `-` also names. */
   stdin?: boolean;
+  /** Whether at least one source must be supplied. */
   required?: boolean;
+  /** Never declared: a content input has no default. */
   default?: never;
+  /** Never declared: a content input has no validator; the action validates what it reads. */
   validate?: never;
+  /** Never declared: an omitted content input reaches no validator. */
   validateOmitted?: never;
 }
 
@@ -278,8 +325,11 @@ interface ContentInput {
  * @public
  */
 export interface InputIdentity {
+  /** Whether the declaration is an argument, an option, or the Command's stdin. */
   kind: 'argument' | 'option' | 'stdin';
+  /** The name the declaration was declared under. */
   name: string;
+  /** Whether the declaration is a global option. */
   global: boolean;
 }
 
@@ -328,7 +378,13 @@ export type ValidationContext =
       supplied: SuppliedInputs;
     };
 
-/** @public */
+/**
+ * The configuration of a string option: a value-taking option with no run-wide mark, or the string
+ * global option that carries the background mark.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#string-values-and-token-consumption
+ * @public
+ */
 export type StringOption = UnmarkedStringOption | BackgroundOption;
 
 /** A string option that carries no run-wide mark. */
@@ -385,18 +441,33 @@ export type VariadicArgument = (Presence | ConditionalPresence) &
   Described &
   ArgumentExtensions & { type?: 'string'; variadic: true; validate?: StandardSchemaV1 };
 
-/** @public */
+/**
+ * The configuration of an argument that takes one value.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#declaring-a-command
+ * @public
+ */
 export type ScalarArgument = ((Presence & Omission) | ConditionalPresence) &
   Described &
   ArgumentExtensions & { type?: 'string'; variadic?: false; validate?: StandardSchemaV1 };
 
-/** @public */
+/**
+ * The configuration of an argument whose values reach the action as `Content` handles.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#content-inputs
+ * @public
+ */
 export type ContentArgument = ContentInput &
   Described &
   ArgumentExtensions &
   ({ variadic: true; min?: number; max?: number } | { variadic?: false; min?: never; max?: never });
 
-/** @public */
+/**
+ * The configuration of a local option whose values reach the action as `Content` handles.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#content-inputs
+ * @public
+ */
 export type ContentOption = ContentInput &
   OptionSpelling &
   Described &
@@ -411,13 +482,25 @@ export type ContentOption = ContentInput &
     | ({ multiple?: false; min?: never; max?: never } & EnvBinding)
   );
 
-/** @public */
+/**
+ * The declaration of a Command's stdin: its description and whether it is required.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#content-inputs
+ * @public
+ */
 export interface StdinConfig {
+  /** The one-line summary a projection reads for the Command's stdin. */
   description?: string;
+  /** Whether the Command fails when no stdin is supplied. */
   required?: boolean;
 }
 
-/** @public */
+/**
+ * The configuration `argument()` takes: a scalar, a variadic, or a content argument.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#declaring-a-command
+ * @public
+ */
 export type ArgumentConfig = VariadicArgument | ScalarArgument | ContentArgument;
 
 export type ValidatedValue<Config, Raw> = Config extends { type: 'content' }
@@ -598,7 +681,12 @@ export type CountOption = OptionSpelling &
     | { quiet: true; verbose?: never; env?: never; envAllowEmpty?: never }
   );
 
-/** @public */
+/**
+ * The configuration `option()` takes: a string, a Boolean, a counted, or a content option.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md
+ * @public
+ */
 export type OptionConfig = StringOption | BooleanOption | CountOption | ContentOption;
 
 /**

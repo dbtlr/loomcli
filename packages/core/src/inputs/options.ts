@@ -161,6 +161,16 @@ export function checkOptionName(name: string, siteOf: () => InputSite): void {
  * parser can read, nonempty, with no leading hyphen, whitespace, or `=`, which it reads apart.
  * Core exports it so the lint plugin judges a literal name by this same rule.
  *
+ * @example
+ * ```ts
+ * import { isDeclaredName } from '@loomcli/core';
+ *
+ * isDeclaredName('dry-run'); // true
+ * isDeclaredName('--dry-run'); // false: it starts with a hyphen
+ * isDeclaredName('key=value'); // false: it holds "="
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md
  * @public
  */
 export function isDeclaredName(name: string): boolean {

@@ -12,7 +12,12 @@ import type { EndingSignal, LaneHandlers, LanePlace, LaneRun, SharedLane } from 
  * @sealed
  */
 interface CancellationReason {
+  /**
+   * What aborted the run: an ending signal, the `caller` whose own signal aborted, the `action`
+   * that called `cancel()`, or the `closed-pipe` a reader of stdout closed.
+   */
   readonly source: EndingSignal | 'caller' | 'action' | 'closed-pipe';
+  /** The caller's own `signal.reason` for `caller`, and the failed write for `closed-pipe`. */
   readonly cause?: unknown;
 }
 
