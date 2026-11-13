@@ -51,7 +51,7 @@ type Column<Row> = (keyof Row & string) | ColumnEntry<Row>;
  * @public
  */
 interface TableConfig<Row> {
-  /** The columns to print, in order. Absent, every key of the first row prints. */
+  /** The columns to print, in order. Absent, every key that appears in the rows prints, in first-seen order. */
   readonly columns?: readonly Column<Row>[];
 }
 

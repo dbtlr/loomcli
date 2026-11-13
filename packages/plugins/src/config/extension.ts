@@ -41,9 +41,13 @@ const inputFacts = exactFacts<ConfigInputFacts>()(inputFactsSchema);
  * @example
  * ```ts
  * import { Application } from '@loomcli/core';
+ * import { configuration } from '@loomcli/plugins/config';
  * import { configInput } from '@loomcli/plugins/config/extension';
+ * import { z } from 'zod';
  *
- * export const app = new Application('notes').option('min-bytes', {
+ * const config = configuration({ schema: z.object({ minBytes: z.string().optional() }) });
+ *
+ * export const app = new Application('notes', { plugins: [config.plugin] }).option('min-bytes', {
  *   extensions: [configInput({ path: 'minBytes' })],
  *   type: 'string',
  * });

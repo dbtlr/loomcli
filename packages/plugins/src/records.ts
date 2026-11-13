@@ -31,12 +31,12 @@ type FieldEntry<Row> = {
 type Field<Row> = (keyof Row & string) | FieldEntry<Row>;
 
 /**
- * What an author tells `records()`: the key that names each record and the fields to print.
+ * What an author tells `records()`: the key whose value is highlighted and the fields to print.
  *
  * @public
  */
 interface RecordsConfig<Row> {
-  /** The row key whose value heads each record. */
+  /** The row key whose value the view highlights among the printed fields. */
   readonly identifier: keyof Row & string;
   /** The fields to print, in order. Absent, every key of the row prints. */
   readonly fields?: readonly Field<Row>[];
@@ -136,7 +136,7 @@ function renderRecord<Row>({
  * }
  *
  * export const show = new Command('show')
- *   .rows<Note>({ views: { records: records({ identifier: 'id', fields: ['title'] }) } })
+ *   .rows<Note>({ views: { records: records({ identifier: 'id', fields: ['id', 'title'] }) } })
  *   .action(async function* () {
  *     yield { id: 'n1', title: 'Buy milk' };
  *   });

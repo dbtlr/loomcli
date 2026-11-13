@@ -15,14 +15,14 @@ const options = {
   },
 } satisfies PluginOptions;
 /**
- * What an application tells the interaction plugin: the variables that lower interaction.
+ * What an application tells the interaction plugin: the variables that bind `--no-input`.
  *
  * @public
  */
 export interface InteractionSettings {
   /**
-   * A variable, or an ordered list of variables, that lowers the interaction decision when it is
-   * set and not empty. None by default.
+   * A variable, or an ordered list of variables, that supplies the `--no-input` option's value. A
+   * value that reads false, such as `NOTES_INPUT=false`, turns interaction off. None by default.
    */
   readonly env?: string | readonly [string, ...string[]];
 }

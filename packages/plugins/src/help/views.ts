@@ -13,17 +13,17 @@ import { renderPage } from './page.js';
 export type HelpVariant = 'compact' | 'extended';
 
 /**
- * The data the help page presents: the whole graph, the Command the invocation routed to, and the
- * variant the operator's spelling selected.
+ * The data the help page presents: the whole graph, the Command whose page it is, and the page
+ * variant.
  *
  * @public @sealed
  */
 export interface HelpPage {
   /** The whole Command graph, which the page reads for the application's name and every Command. */
   readonly graph: CommandGraph;
-  /** The Command the invocation routed to, whose page this is. */
+  /** The Command whose page this is: the routed Command, or the Command the help Command's words name. */
   readonly command: CommandNode;
-  /** The variant the operator's spelling selected. */
+  /** The page variant: `compact` for `-h`, and `extended` otherwise, the help Command included. */
   readonly variant: HelpVariant;
 }
 
