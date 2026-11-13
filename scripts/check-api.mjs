@@ -161,11 +161,18 @@ function declarationName(program, message) {
     if (position < node.getFullStart() || position >= node.end) {
       return;
     }
-    if (node.name) {
+    // A variable statement names the declaration the position falls in, or its first when the
+    // Position sits on the statement's comment, so its declarations add no name of their own.
+    if (node.name && !ts.isVariableDeclaration(node)) {
       names.push(node.name.getText(source));
     }
     if (ts.isVariableStatement(node)) {
-      names.push(node.declarationList.declarations[0]?.name.getText(source));
+      const variables = node.declarationList.declarations;
+      const owner =
+        variables.find(
+          (declaration) => position >= declaration.getFullStart() && position < declaration.end,
+        ) ?? variables[0];
+      names.push(owner?.name.getText(source));
     }
     ts.forEachChild(node, visit);
   };
@@ -299,7 +306,8 @@ function memberName(member) {
 /**
  * Finds the members of the listed classes and interfaces without a comment that counts. A public
  * type written over one, as `Command` is over `CommandBuilder`, shows these members' comments in a
- * hover. Like API Extractor, it skips a class's constructor and its private members.
+ * hover. Like API Extractor, it skips a class's constructor and its private members, and reads a
+ * getter and its setter as one property, whose comment `tsc` keeps on the getter.
  */
 function undocumentedListedMembers(found, parser) {
   return [...found].flatMap(([statement, name]) => {
@@ -307,10 +315,14 @@ function undocumentedListedMembers(found, parser) {
       return [];
     }
     const source = statement.getSourceFile();
+    const getters = new Set(
+      statement.members.filter(ts.isGetAccessorDeclaration).map((member) => member.name.getText()),
+    );
     return statement.members
       .filter(
         (member) =>
           !ts.isConstructorDeclaration(member) &&
+          !(ts.isSetAccessorDeclaration(member) && getters.has(member.name.getText())) &&
           !(member.name && ts.isPrivateIdentifier(member.name)) &&
           !member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword) &&
           !documented(docComment(parser, member)),
@@ -422,13 +434,14 @@ function listedText(packageName, entry, found) {
 }
 
 /**
- * The `pendingDocumentation` paths that cover a declaration file, none when no path does. A path
- * names a file, or with a trailing slash a directory, relative to the package directory.
+ * The `pendingDocumentation` paths that cover a declaration file, none when no path does. A path,
+ * relative to the package directory, covers the file it names and every file under it.
  */
 function pendingPaths(policy, directory, file) {
   const path = relative(directory, file).replaceAll('\\', '/');
-  return (policy.pendingDocumentation ?? []).filter((pending) =>
-    pending.endsWith('/') ? path.startsWith(pending) : path === pending,
+  return (policy.pendingDocumentation ?? []).filter(
+    (pending) =>
+      path === pending || path.startsWith(pending.endsWith('/') ? pending : `${pending}/`),
   );
 }
 
