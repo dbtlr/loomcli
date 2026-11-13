@@ -315,14 +315,15 @@ function undocumentedListedMembers(found, parser) {
       return [];
     }
     const source = statement.getSourceFile();
-    const getters = new Set(
-      statement.members.filter(ts.isGetAccessorDeclaration).map((member) => member.name.getText()),
-    );
+    // A static and an instance accessor of one name are two properties, so the key holds both.
+    const accessorKey = (member) =>
+      `${ts.getCombinedModifierFlags(member) & ts.ModifierFlags.Static ? 'static ' : ''}${member.name.getText()}`;
+    const getters = new Set(statement.members.filter(ts.isGetAccessorDeclaration).map(accessorKey));
     return statement.members
       .filter(
         (member) =>
           !ts.isConstructorDeclaration(member) &&
-          !(ts.isSetAccessorDeclaration(member) && getters.has(member.name.getText())) &&
+          !(ts.isSetAccessorDeclaration(member) && getters.has(accessorKey(member))) &&
           !(member.name && ts.isPrivateIdentifier(member.name)) &&
           !member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword) &&
           !documented(docComment(parser, member)),

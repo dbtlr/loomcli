@@ -624,6 +624,21 @@ test("a listed class's setter shares its getter's comment, as API Extractor's pr
   expect(checkApi(root, [listed], { update: true })).toEqual([]);
 });
 
+test('a static getter does not lend its comment to an instance setter of the same name', () => {
+  const { listed, root } = pickedFixture([
+    'export declare class Builder {',
+    '  /** Runs the builder once. */',
+    '  run(): void;',
+    '  /** Reads the defaults every builder shares. */',
+    '  static get defaults(): string;',
+    '  set defaults(value: string);',
+    '}',
+  ]);
+  expect(checkApi(root, [listed], { update: true })).toEqual([
+    expect.stringMatching(/dist\/hidden.d.ts:6: api-undocumented: Builder.defaults:/u),
+  ]);
+});
+
 test("a listed member's comment is the doc comment nearest it, past a line comment", () => {
   const nearest = pickedFixture([
     'export declare class Builder {',
