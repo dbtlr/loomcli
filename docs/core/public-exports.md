@@ -54,8 +54,9 @@ Your editor shows the tags on hover. Each covered entry point's API report, comm
 
 Your editor's hover shows each declaration's doc comment, because the packed `.d.ts` files keep it. [ADR-0147](../decisions/0147-every-published-export-and-member-carries-a-doc-comment-and-every-value-an-example.md) records the rules.
 
-- Every export, and every member of one, such as an interface's property, an enum's member, or an overload, carries a doc comment with a summary: prose before the first tag.
-- A declaration a public type is written over, such as `CommandBuilder` under `Command`, carries a comment on each of its public members, so a hover on `.option()` has text. Its constructor and its `private` and `protected` members do not need one.
+- Every export, and every member of a class, an interface, or an enum, carries a doc comment with a summary: at least ten characters of text before the first tag. Each overload carries its own.
+- A declaration a public type is written over, such as `CommandBuilder` under `Command`, carries a comment on each of its public members, so a hover on `.option()` has text. A class's constructor, an index signature, and a `private`, `protected`, or `#private` member do not need one. An interface's construct signatures do, because `new Application(...)` reads them.
+- A field of an object type literal, such as an inline options parameter's, needs no comment, and a type Loom re-exports from another package, such as `StandardSchemaV1`, keeps that package's comments.
 - Every function, class, constant, enum, and namespace carries an `@example` block that holds a fenced `ts` code block. An overloaded function carries it on its first overload. A type may carry one.
 - A comment says what the name is for in the [glossary](../glossary.md)'s terms. Where a page governs it, the comment links that page with `@see` and an absolute URL, such as `https://github.com/dbtlr/loomcli/blob/main/docs/core/public-exports.md`, and does not restate the page's rules.
 - An example imports what it uses from the published specifier, so it also shows where the name lives:
@@ -103,6 +104,6 @@ The [changelog guide](../../.changes/README.md#explain-a-breaking-change) holds 
 - an export, a member, or a listed declaration's public member without a doc comment, or a function, class, constant, enum, or namespace without an `@example` that holds a fenced `ts` block, outside the declaration paths its package's `pendingDocumentation` names;
 - any other API Extractor message, except a dependency's typings importing a source file, which Loom cannot change.
 
-The check reads examples and does not compile them, and review judges what a comment says. `pendingDocumentation` in `scripts/api-surface.mjs` names the declaration paths whose comments a later pass writes; a path with nothing left to write fails as an unneeded entry.
+The check reads examples and does not compile them, and review judges what a comment says. `pendingDocumentation` in `scripts/api-surface.mjs` names the emitted declaration paths under a package's `dist`, such as `dist/application/`, whose comments a later pass writes; a path with nothing left to write fails as an unneeded entry.
 
 After a surface change, `pnpm check:api --update` rewrites the reports and their companion files, and the pull request carries their diff.
