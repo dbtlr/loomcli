@@ -382,8 +382,9 @@ test('two processes that take turns appending and rotating one file lose no reco
   writeFileSync(baton, 'a');
   const env = { HOME: box.home, XDG_STATE_HOME: box.state };
   // Each process waits for the baton, writes a batch that crosses the size twice, and hands it on.
-  const first = start(turns, ['a', 'b', baton, '3', '5'], { cwd: box.work, env });
-  const second = start(turns, ['b', 'a', baton, '3', '5'], { cwd: box.work, env });
+  // Keeping 100 copies leaves every record on disk.
+  const first = start(turns, ['a', 'b', baton, '3', '5', '100'], { cwd: box.work, env });
+  const second = start(turns, ['b', 'a', baton, '3', '5', '100'], { cwd: box.work, env });
   const results = await Promise.all([first.exit, second.exit]);
   expect(results.map(({ status, stderr }) => ({ status, stderr }))).toEqual([
     { status: 0, stderr: '' },
@@ -405,9 +406,15 @@ test('two processes that take turns appending and rotating one file lose no reco
 test('two processes that append and rotate one file at once write every line whole, none twice', async () => {
   const box = sandbox();
   const env = { HOME: box.home, XDG_STATE_HOME: box.state };
-  // With no baton both processes rotate the small file over and over, so their rotations collide.
-  const first = start(turns, ['a', 'b', '-', '20', '10'], { cwd: box.work, env });
-  const second = start(turns, ['b', 'a', '-', '20', '10'], { cwd: box.work, env });
+  /**
+   * With no baton both processes wait for each other to start, then rotate the small file over and
+   * over, so their rotations collide. Each process rotates about 100 times, and each rotation
+   * renames every copy up to keep. Keeping 10 copies holds that to about 1,000 renames a process,
+   * where 100 copies took over 4 seconds on macOS under Bun and ran past the fixture timeout on a
+   * loaded runner.
+   */
+  const first = start(turns, ['a', 'b', '-', '20', '10', '10'], { cwd: box.work, env });
+  const second = start(turns, ['b', 'a', '-', '20', '10', '10'], { cwd: box.work, env });
   const results = await Promise.all([first.exit, second.exit]);
   expect(results.map(({ status, stderr }) => ({ status, stderr }))).toEqual([
     { status: 0, stderr: '' },
