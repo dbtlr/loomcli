@@ -73,3 +73,8 @@ The repository builds with TypeScript 7, whose compiler API differs from the Typ
 ## Status
 
 Proposed. It moves to accepted with the release that ships the tagged surface and `check:api`.
+
+## Changelog
+
+- 2026-11-04: Proposed.
+- 2026-11-13: [ADR-0147](0147-every-published-export-and-member-carries-a-doc-comment-and-every-value-an-example.md), proposed, supersedes the exception in "API Extractor checks the surface" for the rule that asks every export for a doc comment: `check:api` fails an export or member without a doc comment, and a value without an example. It binds when that record is accepted.
