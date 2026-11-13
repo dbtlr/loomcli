@@ -20,6 +20,15 @@ const grammar = new RegExp(emailPattern, 'u');
 /**
  * An email address under the WHATWG rule, output as written.
  *
+ * @example
+ * ```ts
+ * import { email } from '@loomcli/validators';
+ *
+ * const contact = email();
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#email
+ *
  * @public
  */
 function email(): Validator<string> {

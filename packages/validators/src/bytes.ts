@@ -20,6 +20,15 @@ const factory = 'bytes';
  * inclusive. A bare number counts bytes; `kB` through `PB` are powers of 1000 and `KiB` through
  * `PiB`, or `Ki` through `Pi`, are powers of 1024, under IEC 80000-13.
  *
+ * @example
+ * ```ts
+ * import { bytes } from '@loomcli/validators';
+ *
+ * const size = bytes({ min: '1KiB', max: '10MiB' });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#bytes
+ *
  * @public
  */
 function bytes(options?: BytesOptions): Validator<number> {

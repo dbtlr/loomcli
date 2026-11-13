@@ -132,6 +132,19 @@ function codePoints(raw: string): number {
 /**
  * A string whose code-point length is within bounds and which the pattern matches, if any.
  *
+ * @example
+ * ```ts
+ * import { text } from '@loomcli/validators';
+ *
+ * const slug = text({
+ *   maxLength: 32,
+ *   message: 'Expected lowercase letters, digits, and hyphens.',
+ *   pattern: /^[a-z0-9-]+$/u,
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#text
+ *
  * @public
  */
 function text(options?: TextOptions): Validator<string> {

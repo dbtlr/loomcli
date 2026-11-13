@@ -10,6 +10,15 @@ const range = { max: 65_535, min: 1 };
 /**
  * A TCP or UDP port the operator names, 1 through 65535; port 0 is left to `integer()`.
  *
+ * @example
+ * ```ts
+ * import { port } from '@loomcli/validators';
+ *
+ * const listen = port();
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#port
+ *
  * @public
  */
 function port(): Validator<number> {

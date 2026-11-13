@@ -14,7 +14,9 @@ import { instantOfLocal, isKnownZone } from './zone.js';
  * @public
  */
 interface DateTimeOptions {
+  /** The IANA time zone that reads a token with no offset or `Z`; without it the host's time zone reads it. */
   timeZone?: string;
+  /** Layouts the validator reads after its default grammar, tried in order; the first that reads the token wins. */
   layouts?: readonly [string, ...string[]];
 }
 
@@ -61,6 +63,15 @@ function readZone(options: DateTimeOptions | undefined): string | undefined {
  * A token with an offset or `Z` names that instant. A token with neither is read in `timeZone`
  * when given, else in the host's time zone; a time a clock change skips moves forward, and one it
  * repeats takes the earlier instant. Fractions beyond milliseconds are dropped.
+ *
+ * @example
+ * ```ts
+ * import { dateTime } from '@loomcli/validators';
+ *
+ * const moment = dateTime({ timeZone: 'Europe/Paris' });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#datetime
  *
  * @public
  */

@@ -16,7 +16,9 @@ import { reject } from './issues.js';
  * @public
  */
 interface NumberOptions {
+  /** The least accepted value, inclusive. */
   min?: number;
+  /** The greatest accepted value, inclusive. */
   max?: number;
 }
 
@@ -24,6 +26,15 @@ const decimal = /^-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/u;
 
 /**
  * A finite decimal number, with an optional fraction and exponent, within `min` and `max`.
+ *
+ * @example
+ * ```ts
+ * import { number } from '@loomcli/validators';
+ *
+ * const ratio = number({ min: 0, max: 1 });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#number
  *
  * @public
  */

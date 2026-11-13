@@ -29,6 +29,15 @@ function checkDistinct(values: readonly string[]): void {
 /**
  * A token exactly equal to one of the declared values, typed as their union.
  *
+ * @example
+ * ```ts
+ * import { oneOf } from '@loomcli/validators';
+ *
+ * const mode = oneOf(['dev', 'prod']);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#oneof
+ *
  * @public
  */
 function oneOf<const Values extends readonly [string, ...string[]]>(

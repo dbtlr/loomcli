@@ -29,6 +29,15 @@ type PathOptions =
  * A path resolved against the host's cwd under the running process's path rules, and normalized.
  * With `access`, the filesystem is probed; the probe is advisory, since the filesystem can change.
  *
+ * @example
+ * ```ts
+ * import { path } from '@loomcli/validators';
+ *
+ * const root = path({ access: 'read', kind: 'directory' });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#path
+ *
  * @public
  */
 function path(options?: PathOptions): Validator<string> {

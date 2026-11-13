@@ -12,6 +12,7 @@ import { schemePattern, uriPattern } from './uri-grammar.js';
  * @public
  */
 interface UrlOptions {
+  /** The schemes the URL may use, each a scheme name such as `https`; without it any scheme is accepted. */
   protocols?: readonly [string, ...string[]];
 }
 
@@ -52,6 +53,15 @@ function schemesPattern(protocols: readonly string[]): string {
 
 /**
  * An absolute RFC 3986 URI that the WHATWG parser also reads, optionally with a listed scheme.
+ *
+ * @example
+ * ```ts
+ * import { url } from '@loomcli/validators';
+ *
+ * const endpoint = url({ protocols: ['https'] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#url
  *
  * @public
  */

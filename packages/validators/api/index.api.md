@@ -38,9 +38,7 @@ export function cidr(options?: CidrOptions): Validator<CidrBlock>;
 
 // @public @sealed
 export interface CidrBlock {
-    // (undocumented)
     address: string;
-    // (undocumented)
     prefix: number;
 }
 
@@ -52,7 +50,6 @@ export const cidrIssue: IssueCode<Readonly<Record<string, never>>>;
 
 // @public
 export interface CidrOptions {
-    // (undocumented)
     version?: IpVersion;
 }
 
@@ -83,7 +80,6 @@ export const dateLayoutsIssue: IssueCode<{
 
 // @public
 export interface DateOptions {
-    // (undocumented)
     layouts?: readonly [string, ...string[]];
 }
 
@@ -100,9 +96,7 @@ export const dateTimeLayoutsIssue: IssueCode<{
 
 // @public
 export interface DateTimeOptions {
-    // (undocumented)
     layouts?: readonly [string, ...string[]];
-    // (undocumented)
     timeZone?: string;
 }
 
@@ -148,7 +142,6 @@ export const hostIssue: IssueCode<Readonly<Record<string, never>>>;
 
 // @public
 export interface HostOptions {
-    // (undocumented)
     ip?: boolean;
 }
 
@@ -173,9 +166,7 @@ export const integerMinIssue: IssueCode<{
 
 // @public
 export interface IntegerOptions {
-    // (undocumented)
     max?: number;
-    // (undocumented)
     min?: number;
 }
 
@@ -193,7 +184,6 @@ export const ipIssue: IssueCode<Readonly<Record<string, never>>>;
 
 // @public
 export interface IpOptions {
-    // (undocumented)
     version?: IpVersion;
 }
 
@@ -208,13 +198,9 @@ export type IpVersion = 4 | 6;
 
 // @public @sealed
 export interface IssueCode<Params> {
-    // (undocumented)
     readonly code: string;
-    // (undocumented)
     issue(this: void, params: Params): StandardSchemaV1.Issue;
-    // (undocumented)
     read(this: void, issue: StandardSchemaV1.Issue): Params | undefined;
-    // (undocumented)
     readonly schema: StandardSchemaV1<Params>;
 }
 
@@ -223,9 +209,7 @@ export function issueCode<Params>(code: string, config: IssueCodeConfig<Params>)
 
 // @public
 export interface IssueCodeConfig<Params> {
-    // (undocumented)
     message: (params: Params) => string;
-    // (undocumented)
     schema: StandardSchemaV1<Params>;
 }
 
@@ -239,15 +223,12 @@ export const keyValueIssue: IssueCode<{
 
 // @public
 export interface KeyValueOptions {
-    // (undocumented)
     separator?: string;
 }
 
 // @public @sealed
 export interface KeyValuePair {
-    // (undocumented)
     key: string;
-    // (undocumented)
     value: string;
 }
 
@@ -269,9 +250,7 @@ export const numberMinIssue: IssueCode<{
 
 // @public
 export interface NumberOptions {
-    // (undocumented)
     max?: number;
-    // (undocumented)
     min?: number;
 }
 
@@ -358,9 +337,7 @@ export const portIssue: IssueCode<Readonly<Record<string, never>>>;
 
 // @public
 export interface SpelledBoundOptions {
-    // (undocumented)
     max?: string;
-    // (undocumented)
     min?: string;
 }
 
@@ -434,7 +411,6 @@ export const timeMinIssue: IssueCode<{
 
 // @public
 export interface TimeOptions extends SpelledBoundOptions {
-    // (undocumented)
     layouts?: readonly [string, ...string[]];
 }
 
@@ -452,7 +428,6 @@ export const urlIssue: IssueCode<Readonly<Record<string, never>>>;
 
 // @public
 export interface UrlOptions {
-    // (undocumented)
     protocols?: readonly [string, ...string[]];
 }
 
@@ -472,9 +447,7 @@ export type Validator<Output> = StandardSchemaV1<string, Output> & StandardJSONS
 
 // @public
 export interface ValidatorDefinition<Output, Return extends ParseReturn<Output> = ParseReturn<Output>> {
-    // (undocumented)
     inputSchema?: Readonly<Record<string, unknown>>;
-    // (undocumented)
     parse: (raw: string, context: ValidationContext) => Return;
 }
 

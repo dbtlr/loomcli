@@ -10,6 +10,7 @@ import { reject } from './issues.js';
  * @public
  */
 interface HostOptions {
+  /** Whether the validator also accepts an IPv4 address and a bracketed IPv6 address; `false` when omitted. */
   ip?: boolean;
 }
 
@@ -58,6 +59,15 @@ function addressOf(raw: string): string | undefined {
 /**
  * An RFC 1123 host name with no trailing dot, output in lowercase. With `ip: true` it also accepts
  * an IPv4 address and an IPv6 address in brackets, output in the canonical form `ip()` writes.
+ *
+ * @example
+ * ```ts
+ * import { host } from '@loomcli/validators';
+ *
+ * const server = host({ ip: true });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#host
  *
  * @public
  */
