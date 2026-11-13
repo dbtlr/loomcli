@@ -35,7 +35,14 @@ type ActionValues<Args, Options, Result, Stdin extends StdinContext, Provided> =
  * Builds the context an extracted action handler takes, typed `ActionHandler<typeof declaration>`,
  * from the values the test states. The builder never calls the handler; the test does.
  *
+ * @example
  * ```ts
+ * import { actionContext } from '@loomcli/testing';
+ * import { vi } from 'vitest';
+ *
+ * import { getValue } from './get.js';
+ *
+ * const print = vi.fn();
  * const context = actionContext(getValue, {
  *   args: { path: 'name' },
  *   options: { verbose: 0 },
@@ -45,6 +52,7 @@ type ActionValues<Args, Options, Result, Stdin extends StdinContext, Provided> =
  * await getValue(context);
  * ```
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#actioncontext
  * @public
  */
 function actionContext<Args, Options, Result, Stdin extends StdinContext, Provided>(

@@ -33,12 +33,25 @@ function fixture(declaration: string, extra: Record<string, string> = {}) {
   return { config, root };
 }
 
-const tagged = '/** A value. @public */\nexport declare const value: string;\n';
+/** A doc comment whose `@example` holds the given fence, tagged with the given release tags. */
+const exampled = (summary: string, fence: string, tags = '@public') =>
+  `/**\n * ${summary}\n *\n * @example\n${fence
+    .split('\n')
+    .map((line) => ` * ${line}`)
+    .join('\n')}\n * ${tags}\n */\n`;
+
+/** An example fence for the fixtures' `value` and `get`. */
+const valueFence = '```ts\nvalue;\n```';
+const getFence = '```ts\nget();\n```';
+
+const tagged = `${exampled('A value.', valueFence)}export declare const value: string;\n`;
 
 test('an untagged export fails with its name, file, and line', () => {
-  const { config, root } = fixture('/** A value. */\nexport declare const value: string;');
+  const { config, root } = fixture(
+    `${exampled('A value.', valueFence, '')}export declare const value: string;`,
+  );
   expect(checkApi(root, [config], { update: true })).toEqual([
-    expect.stringMatching(/dist\/index.d.ts:2: ae-missing-release-tag: value:/u),
+    expect.stringMatching(/dist\/index.d.ts:10: ae-missing-release-tag: value:/u),
   ]);
 });
 
@@ -46,7 +59,7 @@ test.each(['@unknownTag', '@internal', '@beta', '@alpha'])(
   'rejects the undefined or disabled tag %s',
   (tag) => {
     const { config, root } = fixture(
-      `/** A value. @public ${tag} */\nexport declare const value: string;`,
+      `${exampled('A value.', valueFence, `@public ${tag}`)}export declare const value: string;`,
     );
     const id = tag === '@unknownTag' ? 'tsdoc-undefined-tag' : 'tsdoc-unsupported-tag';
     expect(
@@ -57,7 +70,7 @@ test.each(['@unknownTag', '@internal', '@beta', '@alpha'])(
 
 test('other Extractor messages fail instead of being silently ignored', () => {
   const { config, root } = fixture(
-    '/** A value. @public @beta */\nexport declare const value: string;',
+    `${exampled('A value.', valueFence, '@public @beta')}export declare const value: string;`,
   );
   expect(
     checkApi(root, [config], { update: true }).some((line) =>
@@ -106,7 +119,7 @@ test('--update writes a missing report and rewrites a changed report', () => {
 
 test('forgotten exports fail unless allowlisted, and unused allowlist entries fail', () => {
   const { config, root } = fixture(
-    "import type { Hidden } from './hidden.js';\n/** A function. @public */\nexport declare function get(): Hidden;",
+    `import type { Hidden } from './hidden.js';\n${exampled('A function.', getFence)}export declare function get(): Hidden;`,
     {
       'dist/hidden.d.ts':
         '/** A hidden shape. @public */\nexport interface Hidden {\n/** A value. */\nvalue: string;\n}',
@@ -144,7 +157,7 @@ test('external re-exports require a named reason even though Extractor reports n
 
 test("a dependency's typings that import a source file do not fail the check", () => {
   const { config, root } = fixture(
-    "import type { External } from 'external';\n/** A value. @public */\nexport declare const value: External;\n",
+    `import type { External } from 'external';\n${exampled('A value.', valueFence)}export declare const value: External;\n`,
     {
       'node_modules/external/index.d.cts': "export type { External } from './types.cts';",
       'node_modules/external/package.json': JSON.stringify({
@@ -160,7 +173,7 @@ test("a dependency's typings that import a source file do not fail the check", (
 
 test("a package's own declaration that imports a source file still fails", () => {
   const { config, root } = fixture(
-    "import type { Local } from './types.cts';\n/** A value. @public */\nexport declare const value: Local;\n",
+    `import type { Local } from './types.cts';\n${exampled('A value.', valueFence)}export declare const value: Local;\n`,
     { 'dist/types.cts': '/** A local. @public */\nexport interface Local { value: string }' },
   );
   expect(checkApi(root, [config], { update: true })).toContainEqual(
@@ -187,11 +200,75 @@ test('a declaration may import a Node built-in when the package lists node:*', (
   expect(checkApi(root, [{ ...config, modules: ['node:*'] }], { update: true })).toEqual([]);
 });
 
-test('an export with an undocumented member passes, since doc comments wait for a later check', () => {
+test('an export whose comment holds only tags fails as undocumented', () => {
+  const { config, root } = fixture('/** @public @sealed */\nexport interface Shape {}\n');
+  expect(checkApi(root, [config], { update: true })).toEqual([
+    expect.stringMatching(/dist\/index.d.ts:2: ae-undocumented: Shape:/u),
+  ]);
+});
+
+test.each([
+  ['a function', 'export declare function run(): void;\n', 'run'],
+  ['a constant', 'export declare const limit: number;\n', 'limit'],
+  ['a class', 'export declare class Store {\n}\n', 'Store'],
+])('%s without an @example fails as api-missing-example', (_label, declaration, name) => {
+  const { config, root } = fixture(`/** A value Loom ships. @public */\n${declaration}`);
+  expect(checkApi(root, [config], { update: true })).toEqual([
+    expect.stringMatching(new RegExp(`dist/index.d.ts:2: api-missing-example: ${name}:`, 'u')),
+  ]);
+});
+
+test('an @example without a fenced ts block fails, and one with it passes', () => {
+  const declaration = 'export declare function run(): void;\n';
+  const prose = fixture(`${exampled('Runs.', 'Call run().')}${declaration}`);
+  expect(checkApi(prose.root, [prose.config], { update: true })).toEqual([
+    expect.stringContaining('api-missing-example: run:'),
+  ]);
+  const javascript = fixture(`${exampled('Runs.', '```js\nrun();\n```')}${declaration}`);
+  expect(checkApi(javascript.root, [javascript.config], { update: true })).toEqual([
+    expect.stringContaining('api-missing-example: run:'),
+  ]);
+  const typescript = fixture(`${exampled('Runs.', '```ts\nrun();\n```')}${declaration}`);
+  expect(checkApi(typescript.root, [typescript.config], { update: true })).toEqual([]);
+});
+
+test('a value declared after a type of the same name still needs an @example', () => {
+  const { config, root } = fixture(
+    '/** A thing Loom reads. @public */\nexport type Thing = string;\n/** A thing Loom ships. @public */\nexport declare const Thing: string;\n',
+  );
+  expect(checkApi(root, [config], { update: true })).toEqual([
+    expect.stringMatching(/dist\/index.d.ts:4: api-missing-example: Thing:/u),
+  ]);
+});
+
+test('a type needs no @example', () => {
+  const { config, root } = fixture(
+    '/** A shape Loom reads. @public */\nexport interface Shape {\n  /** The value Loom reads. */\n  value: string;\n}\n/** A name Loom reads. @public */\nexport type Name = string;\n',
+  );
+  expect(checkApi(root, [config], { update: true })).toEqual([]);
+});
+
+test('an overloaded function carries its @example on the first overload', () => {
+  const second =
+    '/** Runs with a count. @public */\nexport declare function run(count: number): void;\n';
+  const first = 'export declare function run(): void;\n';
+  const onFirst = fixture(`${exampled('Runs.', '```ts\nrun();\n```')}${first}${second}`);
+  expect(checkApi(onFirst.root, [onFirst.config], { update: true })).toEqual([]);
+  const onSecond = fixture(
+    `/** Runs once. @public */\n${first}${exampled('Runs with a count.', '```ts\nrun(2);\n```')}export declare function run(count: number): void;\n`,
+  );
+  expect(checkApi(onSecond.root, [onSecond.config], { update: true })).toEqual([
+    expect.stringMatching(/dist\/index.d.ts:2: api-missing-example: run:/u),
+  ]);
+});
+
+test("an exported interface's member without a comment fails as undocumented", () => {
   const { config, root } = fixture(
     '/** A shape. @public */\nexport interface Shape {\n  value: string;\n}\n',
   );
-  expect(checkApi(root, [config], { update: true })).toEqual([]);
+  expect(checkApi(root, [config], { update: true })).toEqual([
+    expect.stringMatching(/dist\/index.d.ts:3: ae-undocumented: Shape.value:/u),
+  ]);
 });
 
 test.each([
@@ -294,7 +371,7 @@ test.each([
 /** A function whose public signature names an unexported type the policy lists. */
 function listedFixture() {
   const { config, root } = fixture(
-    "import type { Hidden } from './hidden.js';\n/** A function. @public */\nexport declare function get(): Hidden;",
+    `import type { Hidden } from './hidden.js';\n${exampled('A function.', getFence)}export declare function get(): Hidden;`,
     {
       'dist/hidden.d.ts':
         '/** A hidden shape. @public */\nexport interface Hidden {\n/** A value. */\nvalue: string;\n}',
@@ -336,10 +413,10 @@ test('a changed listed declaration fails as api-listed-changed while the report 
 
 test('a type that only a listed declaration uses is in the companion file, so changing it fails', () => {
   const { config, root } = fixture(
-    "import type { Hidden } from './hidden.js';\n/** A function. @public */\nexport declare function get(): Hidden;",
+    `import type { Hidden } from './hidden.js';\n${exampled('A function.', getFence)}export declare function get(): Hidden;`,
     {
       'dist/hidden.d.ts':
-        'interface Inner {\n  value: string;\n}\n/** A hidden shape. @public */\nexport interface Hidden {\n  inner: Inner;\n}',
+        'interface Inner {\n  /** The inner value. */\n  value: string;\n}\n/** A hidden shape. @public */\nexport interface Hidden {\n  /** The inner shape. */\n  inner: Inner;\n}',
     },
   );
   const listed = {
@@ -357,10 +434,10 @@ test('a type that only a listed declaration uses is in the companion file, so ch
 
 test('listed declarations are printed in name order, whatever order the source holds them in', () => {
   const { config, root } = fixture(
-    "import type { Zeta, Alpha } from './hidden.js';\n/** A function. @public */\nexport declare function get(zeta: Zeta): Alpha;",
+    `import type { Zeta, Alpha } from './hidden.js';\n${exampled('A function.', getFence)}export declare function get(zeta: Zeta): Alpha;`,
     {
       'dist/hidden.d.ts':
-        'export interface Zeta {\n  z: string;\n}\nexport interface Alpha {\n  a: string;\n}',
+        'export interface Zeta {\n  /** The zeta value. */\n  z: string;\n}\nexport interface Alpha {\n  /** The alpha value. */\n  a: string;\n}',
     },
   );
   const listed = {
@@ -376,15 +453,17 @@ test('listed declarations are printed in name order, whatever order the source h
 
 test("an unexported class's constructor leads to no further declaration, but its members do", () => {
   const { config, root } = fixture(
-    "import type { Builder } from './hidden.js';\n/** A function. @public */\nexport declare function get(): Pick<Builder, 'run' | 'store'>;",
+    `import type { Builder } from './hidden.js';\n${exampled('A function.', getFence)}export declare function get(): Pick<Builder, 'run' | 'store'>;`,
     {
       'dist/hidden.d.ts': [
         'interface State {\n  internal: string;\n}',
-        'interface Store {\n  cache: string;\n}',
-        'interface Outcome {\n  done: boolean;\n}',
+        'interface Store {\n  /** The cached text. */\n  cache: string;\n}',
+        'interface Outcome {\n  /** Whether the run finished. */\n  done: boolean;\n}',
         'export declare class Builder {',
         '  constructor(state: State);',
+        "  /** The builder's store. */",
         '  readonly store: Store;',
+        '  /** Runs the builder once. */',
         '  run(): Outcome;',
         '}',
       ].join('\n'),
@@ -410,4 +489,249 @@ test('an entry that lists nothing writes no companion file, and a stale one fail
   expect(checkApi(root, [config])).toEqual([expect.stringContaining('api-listed-changed: .:')]);
   expect(checkApi(root, [config], { update: true })).toEqual([]);
   expect(existsSync(listedFile(root))).toBe(false);
+});
+
+/** A function whose public type picks the members of an unexported class, as `Command` does. */
+function pickedFixture(builder: string[]) {
+  const { config, root } = fixture(
+    `import type { Builder } from './hidden.js';\n${exampled('A function.', getFence)}export declare function get(): Pick<Builder, 'run'>;`,
+    { 'dist/hidden.d.ts': builder.join('\n') },
+  );
+  const listed = {
+    ...config,
+    entries: { '.': { forgottenExports: { Builder: 'The author names the picked type.' } } },
+  };
+  return { listed, root };
+}
+
+test("a listed declaration's member without a comment fails as api-undocumented", () => {
+  const { listed, root } = pickedFixture([
+    'export declare class Builder {',
+    '  /** Runs the builder once. */',
+    '  run(): void;',
+    '  run(count: number): void;',
+    '  /** */',
+    '  readonly name: string;',
+    '}',
+  ]);
+  expect(checkApi(root, [listed], { update: true })).toEqual([
+    expect.stringMatching(/dist\/hidden.d.ts:4: api-undocumented: Builder.run:/u),
+    expect.stringMatching(/dist\/hidden.d.ts:6: api-undocumented: Builder.name:/u),
+  ]);
+});
+
+test("a listed class's constructor and private members need no comment", () => {
+  const { listed, root } = pickedFixture([
+    'export declare class Builder {',
+    '  #private;',
+    '  private state;',
+    '  constructor(state: string);',
+    '  /** Runs the builder once. */',
+    '  run(): void;',
+    '}',
+  ]);
+  expect(checkApi(root, [listed], { update: true })).toEqual([]);
+});
+
+test("a listed interface's construct signature needs a comment", () => {
+  const { config, root } = fixture(
+    `import type { BuilderConstructor } from './hidden.js';\n${exampled('A constructor.', '```ts\nnew Builder();\n```')}export declare const Builder: BuilderConstructor;`,
+    {
+      'dist/hidden.d.ts':
+        'export interface BuilderConstructor {\n  new (): object;\n  /** Builds one with a name. */\n  new (name: string): object;\n}',
+    },
+  );
+  const listed = {
+    ...config,
+    entries: { '.': { forgottenExports: { BuilderConstructor: 'The author writes typeof.' } } },
+  };
+  expect(checkApi(root, [listed], { update: true })).toEqual([
+    expect.stringMatching(/dist\/hidden.d.ts:2: api-undocumented: BuilderConstructor.new:/u),
+  ]);
+});
+
+/** A package whose root entry is documented and whose `./later` entry is not yet. */
+function partlyDocumentedFixture() {
+  return fixture(tagged, {
+    'dist/later/index.d.ts':
+      '/** @public */\nexport declare function later(): void;\n/** A later shape. @public */\nexport interface Later {\n  value: string;\n}\n',
+    'package.json': JSON.stringify({
+      exports: {
+        '.': { types: './dist/index.d.ts' },
+        './later': { types: './dist/later/index.d.ts' },
+      },
+      name: 'fixture',
+    }),
+  });
+}
+
+test('pendingDocumentation leaves the comments and examples under its paths unjudged', () => {
+  const { config, root } = partlyDocumentedFixture();
+  const failures = checkApi(root, [config], { update: true });
+  expect(failures).toContainEqual(expect.stringContaining('ae-undocumented: later:'));
+  expect(failures).toContainEqual(expect.stringContaining('api-missing-example: later:'));
+  expect(failures).toContainEqual(expect.stringContaining('ae-undocumented: Later.value:'));
+  const pending = { ...config, pendingDocumentation: ['dist/later/'] };
+  expect(checkApi(root, [pending], { update: true })).toEqual([]);
+  const file = { ...config, pendingDocumentation: ['dist/later/index.d.ts'] };
+  expect(checkApi(root, [file], { update: true })).toEqual([]);
+  const directory = { ...config, pendingDocumentation: ['dist/later'] };
+  expect(checkApi(root, [directory], { update: true })).toEqual([]);
+});
+
+test('pendingDocumentation does not reach a file outside its paths', () => {
+  const { config, root } = partlyDocumentedFixture();
+  writeFileSync(join(root, 'dist/index.d.ts'), '/** @public */\nexport type Name = string;\n');
+  const pending = { ...config, pendingDocumentation: ['dist/later/'] };
+  expect(checkApi(root, [pending], { update: true })).toEqual([
+    expect.stringMatching(/dist\/index.d.ts:2: ae-undocumented: Name:/u),
+  ]);
+});
+
+test('overlapping pendingDocumentation paths that cover a missing comment are both in use', () => {
+  const { config, root } = partlyDocumentedFixture();
+  const pending = { ...config, pendingDocumentation: ['dist/', 'dist/later/'] };
+  expect(checkApi(root, [pending], { update: true })).toEqual([]);
+});
+
+test('a pendingDocumentation path with nothing left to write fails as stale', () => {
+  const { config, root } = partlyDocumentedFixture();
+  const pending = { ...config, pendingDocumentation: ['dist/later/', 'dist/index.d.ts'] };
+  expect(checkApi(root, [pending], { update: true })).toEqual([
+    expect.stringContaining('stale-pending-documentation: dist/index.d.ts:'),
+  ]);
+});
+
+test("an undocumented constant's failure names the constant once", () => {
+  const { config, root } = fixture(
+    `/** @public */\nexport declare const value: string;\n${exampled('A pair.', '```ts\none;\n```')}export declare const one: string, two: string;\n`,
+  );
+  const failures = checkApi(root, [config], { update: true });
+  expect(failures).toContainEqual(expect.stringMatching(/:2: ae-undocumented: value: /u));
+  expect(failures.join('\n')).not.toMatch(/value\.value|one\.one/u);
+});
+
+test('each declaration of an undocumented multi-declaration statement is named by its own name', () => {
+  const { config, root } = fixture(
+    `${exampled('A value.', valueFence)}export declare const value: string;\nexport declare const one: string, two: string;\n`,
+  );
+  const failures = checkApi(root, [config], { update: true });
+  expect(failures).toContainEqual(expect.stringMatching(/ae-undocumented: one: .*"one"/u));
+  expect(failures).toContainEqual(expect.stringMatching(/ae-undocumented: two: .*"two"/u));
+});
+
+test("a listed class's setter shares its getter's comment, as API Extractor's property does", () => {
+  const { listed, root } = pickedFixture([
+    'export declare class Builder {',
+    '  /** Runs the builder once. */',
+    '  run(): void;',
+    '  /** The name the builder gives its output. */',
+    '  get name(): string;',
+    '  set name(value: string);',
+    '}',
+  ]);
+  expect(checkApi(root, [listed], { update: true })).toEqual([]);
+});
+
+test('a static getter does not lend its comment to an instance setter of the same name', () => {
+  const { listed, root } = pickedFixture([
+    'export declare class Builder {',
+    '  /** Runs the builder once. */',
+    '  run(): void;',
+    '  /** Reads the defaults every builder shares. */',
+    '  static get defaults(): string;',
+    '  set defaults(value: string);',
+    '}',
+  ]);
+  expect(checkApi(root, [listed], { update: true })).toEqual([
+    expect.stringMatching(/dist\/hidden.d.ts:6: api-undocumented: Builder.defaults:/u),
+  ]);
+});
+
+test("a listed member's comment is the doc comment nearest it, past a line comment", () => {
+  const nearest = pickedFixture([
+    'export declare class Builder {',
+    '  /** Runs the builder once. */',
+    '  // A line note between the comment and the member.',
+    '  run(): void;',
+    '}',
+  ]);
+  expect(checkApi(nearest.root, [nearest.listed], { update: true })).toEqual([]);
+  const emptiest = pickedFixture([
+    'export declare class Builder {',
+    '  /** Runs the builder once. */',
+    '  /** */',
+    '  run(): void;',
+    '}',
+  ]);
+  expect(checkApi(emptiest.root, [emptiest.listed], { update: true })).toEqual([
+    expect.stringContaining('api-undocumented: Builder.run:'),
+  ]);
+});
+
+test("a listed member's one-letter summary fails, as API Extractor's test fails it", () => {
+  const { listed, root } = pickedFixture([
+    'export declare class Builder {',
+    '  /** a */',
+    '  run(): void;',
+    '}',
+  ]);
+  expect(checkApi(root, [listed], { update: true })).toEqual([
+    expect.stringContaining('api-undocumented: Builder.run:'),
+  ]);
+});
+
+test.each([
+  ['an enum', 'export declare enum Level {\n  /** The lowest level. */\n  low = 0\n}\n', 'Level'],
+  [
+    'a namespace',
+    'export declare namespace Tools {\n  /** The tool count. */\n  const count: number;\n}\n',
+    'Tools',
+  ],
+])('%s without an @example fails as api-missing-example', (_label, declaration, name) => {
+  const { config, root } = fixture(`/** A value Loom ships. @public */\n${declaration}`);
+  expect(checkApi(root, [config], { update: true })).toContainEqual(
+    expect.stringContaining(`api-missing-example: ${name}:`),
+  );
+});
+
+test('a ts fence outside an @example block is not an example', () => {
+  const { config, root } = fixture(
+    '/**\n * Runs.\n *\n * @throws\n * ```ts\n * run();\n * ```\n * @public\n */\nexport declare function run(): void;\n',
+  );
+  expect(checkApi(root, [config], { update: true })).toEqual([
+    expect.stringContaining('api-missing-example: run:'),
+  ]);
+});
+
+test('the doc comment nearest a value is the one its example is read from', () => {
+  const { config, root } = fixture(
+    `${exampled('An older note.', '```ts\nrun();\n```', '')}/** Runs. @public */\nexport declare function run(): void;\n`,
+  );
+  expect(checkApi(root, [config], { update: true })).toContainEqual(
+    expect.stringContaining('api-missing-example: run:'),
+  );
+});
+
+test('an external re-exported value needs no @example', () => {
+  const { config, root } = fixture("export { helper } from 'external';", {
+    'node_modules/external/index.d.ts': 'export declare function helper(): void;',
+    'node_modules/external/package.json': JSON.stringify({ name: 'external', types: 'index.d.ts' }),
+  });
+  const allowed = {
+    ...config,
+    entries: { '.': { externalExports: { helper: 'Follows the upstream contract.' } } },
+    modules: ['external'],
+  };
+  expect(checkApi(root, [allowed], { update: true })).toEqual([]);
+});
+
+test('a pendingDocumentation file path covers that file alone, not every path it prefixes', () => {
+  const { config, root } = partlyDocumentedFixture();
+  const prefix = { ...config, pendingDocumentation: ['dist/later/index.d'] };
+  const failures = checkApi(root, [prefix], { update: true });
+  expect(failures).toContainEqual(expect.stringContaining('ae-undocumented: later:'));
+  expect(failures).toContainEqual(
+    expect.stringContaining('stale-pending-documentation: dist/later/index.d:'),
+  );
 });

@@ -21,11 +21,17 @@ type ViewValues = OptionalMembers<ViewContext>;
  * never reads the view's data, so a view over any data type is accepted. A stated
  * `columns: undefined` is a destination that is not a terminal.
  *
+ * @example
  * ```ts
+ * import { viewContext } from '@loomcli/testing';
+ *
+ * import { heading } from './views.js';
+ *
  * const context = viewContext(heading, { columns: 20, width: (text) => text.length });
  * heading.render('Notes', context);
  * ```
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#viewcontext
  * @public
  */
 function viewContext(view: View<never> | RowView<never>, values: ViewValues): ViewContext {

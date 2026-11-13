@@ -26,7 +26,9 @@ import { surfacePackages } from './api-surface.mjs';
 const extractorRequire = createRequire(import.meta.resolve('@microsoft/api-extractor'));
 const ts = extractorRequire('typescript');
 const { TSDocConfigFile } = extractorRequire('@microsoft/tsdoc-config');
+const tsdoc = extractorRequire('@microsoft/tsdoc');
 const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
+const tsdocConfigFile = TSDocConfigFile.loadFile(join(repositoryRoot, 'tsdoc.json'));
 
 /** Recursively finds the declaration output, including files no entry point reaches. */
 function declarations(directory) {
@@ -108,8 +110,6 @@ function entryConfigs(root, policy) {
               ]),
             ),
             'ae-internal-missing-underscore': { logLevel: 'none' },
-            // Doc comments on every export are a later check; this one judges tags and shape.
-            'ae-undocumented': { logLevel: 'none' },
             default: { addToApiReportFile: false, logLevel: 'error' },
           },
           tsdocMessageReporting: { default: { logLevel: 'error' } },
@@ -124,11 +124,12 @@ function entryConfigs(root, policy) {
           configObject,
           configObjectFullPath: join(directory, 'api-extractor.json'),
           packageJsonFullPath,
-          tsdocConfigFile: TSDocConfigFile.loadFile(join(repositoryRoot, 'tsdoc.json')),
+          tsdocConfigFile,
         }),
         entry,
         listedFile: join(directory, 'api', reportFileName.replace(/\.api\.md$/u, '.listed.md')),
         packageName: manifest.name,
+        packagePolicy: policy,
         policy: policy.entries[entry] ?? {},
       };
     }),
@@ -142,7 +143,10 @@ function allowedModule(policy, name) {
   );
 }
 
-/** Finds the declaration owning a TSDoc message, whose metadata has no export name. */
+/**
+ * Finds the declaration owning a message whose metadata has no export name, such as a TSDoc
+ * message or a member's missing comment, as a dotted path such as `Shape.value`.
+ */
 function declarationName(program, message) {
   const source = message.sourceFilePath && program.getSourceFile(message.sourceFilePath);
   if (!source) {
@@ -152,21 +156,28 @@ function declarationName(program, message) {
     (message.sourceFileLine ?? 1) - 1,
     (message.sourceFileColumn ?? 1) - 1,
   );
-  let name = undefined;
+  const names = [];
   const visit = (node) => {
     if (position < node.getFullStart() || position >= node.end) {
       return;
     }
-    if (node.name) {
-      name = node.name.getText(source);
+    // A variable statement names the declaration the position falls in, or its first when the
+    // Position sits on the statement's comment, so its declarations add no name of their own.
+    if (node.name && !ts.isVariableDeclaration(node)) {
+      names.push(node.name.getText(source));
     }
     if (ts.isVariableStatement(node)) {
-      name = node.declarationList.declarations[0]?.name.getText(source);
+      const variables = node.declarationList.declarations;
+      const owner =
+        variables.find(
+          (declaration) => position >= declaration.getFullStart() && position < declaration.end,
+        ) ?? variables[0];
+      names.push(owner?.name.getText(source));
     }
     ts.forEachChild(node, visit);
   };
   visit(source);
-  return name;
+  return names.length > 0 ? names.join('.') : undefined;
 }
 
 /** Whether a declaration file belongs to another package, a dependency's included. */
@@ -243,6 +254,124 @@ function listedDeclarations(program, entryFile, projectFolder, names) {
   return found;
 }
 
+/** A TSDoc parser configured as API Extractor's is, from the repository's `tsdoc.json`. */
+function docParser() {
+  const configuration = new tsdoc.TSDocConfiguration();
+  tsdocConfigFile.configureParser(configuration);
+  return new tsdoc.TSDocParser(configuration);
+}
+
+/** The parsed doc comment directly above a node, or undefined when it has none. */
+function docComment(parser, node) {
+  const text = node.getSourceFile().getFullText();
+  // The comment nearest the node is the one TSDoc and a hover read.
+  const comment = (ts.getLeadingCommentRanges(text, node.getFullStart()) ?? []).findLast((range) =>
+    text.startsWith('/**', range.pos),
+  );
+  return comment && parser.parseString(text.slice(comment.pos, comment.end)).docComment;
+}
+
+/** Whether a comment holds an `@example` block with a fenced code block tagged `ts`. */
+function hasTypeScriptExample(comment) {
+  return (comment?.customBlocks ?? []).some(
+    (block) =>
+      block.blockTag.tagNameWithUpperCase === tsdoc.StandardTags.example.tagNameWithUpperCase &&
+      block.content.nodes.some(
+        (node) => node.kind === tsdoc.DocNodeKind.FencedCode && node.language === 'ts',
+      ),
+  );
+}
+
+/**
+ * Whether a comment counts as documentation by API Extractor's own test: its summary holds text.
+ * The test is API Extractor's call, so `ae-undocumented` and this walk reach the same verdict.
+ */
+function documented(comment) {
+  return (
+    comment !== undefined && tsdoc.PlainTextEmitter.hasAnyTextContent(comment.summarySection, 10)
+  );
+}
+
+/** A member's name in a failure line, such as `run`, `new` for a construct signature, or `[index]`. */
+function memberName(member) {
+  if (member.name) {
+    return member.name.getText();
+  }
+  if (ts.isConstructSignatureDeclaration(member)) {
+    return 'new';
+  }
+  return ts.isIndexSignatureDeclaration(member) ? '[index]' : '(call)';
+}
+
+/**
+ * Finds the members of the listed classes and interfaces without a comment that counts. A public
+ * type written over one, as `Command` is over `CommandBuilder`, shows these members' comments in a
+ * hover. Like API Extractor, it skips a class's constructor and its private members, and reads a
+ * getter and its setter as one property, whose comment `tsc` keeps on the getter.
+ */
+function undocumentedListedMembers(found, parser) {
+  return [...found].flatMap(([statement, name]) => {
+    if (!ts.isClassDeclaration(statement) && !ts.isInterfaceDeclaration(statement)) {
+      return [];
+    }
+    const source = statement.getSourceFile();
+    // A static and an instance accessor of one name are two properties, so the key holds both.
+    const accessorKey = (member) =>
+      `${ts.getCombinedModifierFlags(member) & ts.ModifierFlags.Static ? 'static ' : ''}${member.name.getText()}`;
+    const getters = new Set(statement.members.filter(ts.isGetAccessorDeclaration).map(accessorKey));
+    return statement.members
+      .filter(
+        (member) =>
+          !ts.isConstructorDeclaration(member) &&
+          !(ts.isSetAccessorDeclaration(member) && getters.has(accessorKey(member))) &&
+          !(member.name && ts.isPrivateIdentifier(member.name)) &&
+          !member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword) &&
+          !documented(docComment(parser, member)),
+      )
+      .map((member) => ({
+        file: source.fileName,
+        line: source.getLineAndCharacterOfPosition(member.getStart(source)).line + 1,
+        name: `${name}.${memberName(member)}`,
+      }));
+  });
+}
+
+/** The declaration kinds that make an export a value, which an author calls, builds, or reads. */
+const valueKinds = new Set([
+  ts.SyntaxKind.ClassDeclaration,
+  ts.SyntaxKind.EnumDeclaration,
+  ts.SyntaxKind.FunctionDeclaration,
+  ts.SyntaxKind.ModuleDeclaration,
+  ts.SyntaxKind.VariableDeclaration,
+]);
+
+/**
+ * Finds the entry's exported values whose first value declaration carries no `@example` with a
+ * fenced `ts` block. A type of the same name may come first, as `type Command` does before
+ * `const Command`; an overloaded function carries it on its first overload; an external
+ * re-export carries its own package's comments, so it is skipped.
+ */
+function missingExamples(exported, projectFolder, parser) {
+  return exported.flatMap(({ name, target }) => {
+    const first = target.declarations?.find((declaration) => valueKinds.has(declaration.kind));
+    if (!first || outsidePackage(projectFolder, first.getSourceFile().fileName)) {
+      return [];
+    }
+    const statement = ts.isVariableDeclaration(first) ? first.parent.parent : first;
+    if (hasTypeScriptExample(docComment(parser, statement))) {
+      return [];
+    }
+    const source = statement.getSourceFile();
+    return [
+      {
+        file: source.fileName,
+        line: source.getLineAndCharacterOfPosition(statement.getStart(source)).line + 1,
+        name,
+      },
+    ];
+  });
+}
+
 /** Orders two strings by code unit, the same on every machine and locale. */
 function codeUnitOrder(left, right) {
   return Number(left > right) - Number(left < right);
@@ -305,6 +434,18 @@ function listedText(packageName, entry, found) {
   ].join('\n');
 }
 
+/**
+ * The `pendingDocumentation` paths that cover a declaration file, none when no path does. A path,
+ * relative to the package directory, covers the file it names and every file under it.
+ */
+function pendingPaths(policy, directory, file) {
+  const path = relative(directory, file).replaceAll('\\', '/');
+  return (policy.pendingDocumentation ?? []).filter(
+    (pending) =>
+      path === pending || path.startsWith(pending.endsWith('/') ? pending : `${pending}/`),
+  );
+}
+
 /** Checks emitted API surfaces; update writes reports but never suppresses declaration failures. */
 function checkApi(root, packages, { update = false } = {}) {
   const failures = [];
@@ -349,7 +490,20 @@ function checkApi(root, packages, { update = false } = {}) {
   const compilerState = CompilerState.create(entries[0].config, {
     additionalEntryPoints: entries.map(({ config }) => config.mainEntryPointFilePath),
   });
-  for (const { config, entry, listedFile, packageName, policy } of entries) {
+  const parser = docParser();
+  // The pendingDocumentation paths that still cover a missing comment or example, per package.
+  const pendingUsed = new Map(packages.map((policy) => [policy, new Set()]));
+  for (const { config, entry, listedFile, packageName, packagePolicy, policy } of entries) {
+    // A missing comment or example under a pendingDocumentation path waits for its pass.
+    const failDocumentation = (file, line, id, name, text) => {
+      const pending = pendingPaths(packagePolicy, config.projectFolder, file);
+      if (pending.length === 0) {
+        fail(file, line, id, name, text);
+      }
+      for (const path of pending) {
+        pendingUsed.get(packagePolicy).add(path);
+      }
+    };
     const seenForgotten = new Set();
     const seenExternal = new Set();
     // Extractor silently preserves external re-exports, so inspect its resolved export symbols.
@@ -357,9 +511,23 @@ function checkApi(root, packages, { update = false } = {}) {
     const checker = program.getTypeChecker();
     const source = program.getSourceFile(config.mainEntryPointFilePath);
     const moduleSymbol = source && checker.getSymbolAtLocation(source);
-    for (const symbol of moduleSymbol ? checker.getExportsOfModule(moduleSymbol) : []) {
-      const target =
-        symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+    const exported = (moduleSymbol ? checker.getExportsOfModule(moduleSymbol) : []).map(
+      (symbol) => ({
+        name: symbol.name,
+        symbol,
+        target: symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol,
+      }),
+    );
+    for (const { file, line, name } of missingExamples(exported, config.projectFolder, parser)) {
+      failDocumentation(
+        file,
+        line,
+        'api-missing-example',
+        name,
+        'Add an @example block that holds a fenced ts code block.',
+      );
+    }
+    for (const { symbol, target } of exported) {
       const external = target.declarations?.some((declaration) =>
         outsidePackage(config.projectFolder, declaration.getSourceFile().fileName),
       );
@@ -392,12 +560,22 @@ function checkApi(root, packages, { update = false } = {}) {
         const { messageId, properties, text } = message;
         const name =
           properties.exportName ??
-          (messageId.startsWith('tsdoc-')
+          (messageId.startsWith('tsdoc-') || messageId === 'ae-undocumented'
             ? declarationName(compilerState.program, message)
             : undefined) ??
           /"(?<name>[^"\n]+)"/u.exec(text)?.groups?.name ??
           entry;
-        if (messageId === 'ae-internal-missing-underscore' || messageId === 'ae-undocumented') {
+        if (messageId === 'ae-internal-missing-underscore') {
+          return;
+        }
+        if (messageId === 'ae-undocumented') {
+          failDocumentation(
+            message.sourceFilePath ?? config.mainEntryPointFilePath,
+            message.sourceFileLine ?? 1,
+            messageId,
+            name,
+            text,
+          );
           return;
         }
         // A dependency's own typings may import a source file, as ESLint's do; Loom cannot change them.
@@ -451,6 +629,15 @@ function checkApi(root, packages, { update = false } = {}) {
         `check:api found no declaration for ${unresolved.join(', ')} in entry ${entry} of ${packageName}.`,
       );
     }
+    for (const { file, line, name } of undocumentedListedMembers(found, parser)) {
+      failDocumentation(
+        file,
+        line,
+        'api-undocumented',
+        name,
+        'A public type is written over this declaration, so a hover shows this member; add a doc comment.',
+      );
+    }
     const expected = found.size > 0 ? listedText(packageName, entry, found) : undefined;
     const committed = existsSync(listedFile) ? readFileSync(listedFile, 'utf8') : undefined;
     if (expected !== committed) {
@@ -495,6 +682,17 @@ function checkApi(root, packages, { update = false } = {}) {
     }
   }
   for (const policy of packages) {
+    for (const path of policy.pendingDocumentation ?? []) {
+      if (!pendingUsed.get(policy).has(path)) {
+        fail(
+          resolve(root, policy.directory, 'package.json'),
+          1,
+          'stale-pending-documentation',
+          path,
+          'Nothing under this path lacks a comment or an example; remove the entry.',
+        );
+      }
+    }
     for (const file of declarations(resolve(root, policy.directory, 'dist'))) {
       const source = ts.createSourceFile(
         file,

@@ -50,6 +50,33 @@ TSDoc defines `@sealed` for classes and their members. Loom also puts it on inte
 
 Your editor shows the tags on hover. Each covered entry point's API report, committed beside its package as `api/<entry>.api.md`, lists every export with its tags. A public type written over an unexported declaration, such as `Command`, which is `Pick<CommandBuilder, ...>`, shows only that outer text there, so a companion file, `api/<entry>.listed.md`, records the shape of each such declaration and of the unexported types it uses, and a change to a method you call shows in the diff.
 
+## Doc comments and examples
+
+Your editor's hover shows each declaration's doc comment, because the packed `.d.ts` files keep it. [ADR-0147](../decisions/0147-every-published-export-and-member-carries-a-doc-comment-and-every-value-an-example.md) records the rules.
+
+- Every export, and every member of a class, an interface, or an enum, carries a doc comment with a summary: text before the first block tag, such as `@example`. Each overload carries its own.
+- A declaration a public type is written over, such as `CommandBuilder` under `Command`, carries a comment on each member and overload, so a hover on `.option()` has text. A class's constructor, a `private` or `#private` member, and a setter beside its getter, which shares the getter's comment, do not need one. An interface's call, construct, and index signatures do; `new Application(...)` reads a construct signature's.
+- A field of an object type literal, such as an inline options parameter's, needs no comment, and a type Loom re-exports from another package, such as `StandardSchemaV1`, keeps that package's comments.
+- Every function, class, constant, enum, and namespace carries an `@example` block that holds a fenced `ts` code block. An overloaded function carries it on its first overload. A type may carry one.
+- A comment says what the name is for in the [glossary](../glossary.md)'s terms. Where a page governs it, the comment links that page with `@see` and an absolute URL, such as `https://github.com/dbtlr/loomcli/blob/main/docs/core/public-exports.md`, and does not restate the page's rules.
+- An example imports what it uses from the published specifier, so it also shows where the name lives:
+
+````ts
+/**
+ * Pads text with spaces to a minimum display width, measured in terminal cells.
+ *
+ * @example
+ * ```ts
+ * import { pad } from '@loomcli/core';
+ *
+ * const cell = pad('status', 24, { align: 'right' });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
+ * @public
+ */
+````
+
 ## What a change to each kind breaks
 
 The tag and the position of the changed member decide.
@@ -74,6 +101,9 @@ The [changelog guide](../../.changes/README.md#explain-a-breaking-change) holds 
 - a type a public signature uses that the entry point does not export, unless the check lists it with its reason;
 - a declaration that imports a module outside its package's list, such as a library the package uses only in its implementation;
 - an entry in the check's lists that the surface no longer needs, lists for an entry the check does not run, or a covered entry that the package's exports map does not name;
-- any other API Extractor message, except a missing doc comment, which a later check covers, and a dependency's typings importing a source file, which Loom cannot change.
+- an export, a member, or a listed declaration's member without a doc comment, or a function, class, constant, enum, or namespace without an `@example` that holds a fenced `ts` block, outside the declaration paths its package's `pendingDocumentation` names;
+- any other API Extractor message, except a dependency's typings importing a source file, which Loom cannot change.
+
+The check reads examples and does not compile them, and review judges what a comment says. `pendingDocumentation` in `scripts/api-surface.mjs` names the emitted declaration paths under a package's `dist`, such as `dist/application/`, whose comments a later pass writes; a path with nothing left to write fails as an unneeded entry.
 
 After a surface change, `pnpm check:api --update` rewrites the reports and their companion files, and the pull request carries their diff.

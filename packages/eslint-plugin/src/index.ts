@@ -53,7 +53,25 @@ const oxlint = { jsPlugins: [packageName], rules: enabledRules };
 
 /**
  * The plugin: its name and version, its rules, and the configurations that turn them on.
+ * `configs.recommended` goes in `eslint.config.js`, and `configs.oxlint` in `.oxlintrc.json`.
  *
+ * @example
+ * ```ts
+ * // eslint.config.js: ESLint reads TypeScript only through a parser such as typescript-eslint's.
+ * import loom from '@loomcli/eslint-plugin';
+ * import tseslint from 'typescript-eslint';
+ *
+ * // ESLint selects a file only through a pattern that names its extension, such as `.ts`.
+ * // The glob is split in two because a doc comment cannot hold it whole.
+ * const typescript = ['src/**' + '/*.ts'];
+ *
+ * export default [
+ *   { files: typescript, languageOptions: { parser: tseslint.parser } },
+ *   { files: typescript, ...loom.configs.recommended },
+ * ];
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/eslint-plugin.md
  * @public
  */
 const loomPlugin = { configs: { oxlint, recommended }, meta, rules };

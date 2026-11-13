@@ -105,6 +105,8 @@ export const surfacePackages = [
     },
     // `node` is the reference to Node's own typings, which a declaration that names a stream needs.
     modules: ['node', 'node:*', '@standard-schema/spec'],
+    // Comments and examples a later pass writes (ADR-0147); the last pass removes the list.
+    pendingDocumentation: ['dist/'],
   },
   {
     directory: 'packages/plugins',
@@ -173,6 +175,8 @@ export const surfacePackages = [
       },
     },
     modules: ['node:*', '@loomcli/core', '@loomcli/validators', '@standard-schema/spec'],
+    // Comments and examples a later pass writes (ADR-0147); the last pass removes the list.
+    pendingDocumentation: ['dist/'],
   },
   {
     directory: 'packages/validators',
@@ -194,6 +198,8 @@ export const surfacePackages = [
       },
     },
     modules: ['@loomcli/core', '@standard-schema/spec', 'node:*'],
+    // Comments and examples a later pass writes (ADR-0147); the last pass removes the list.
+    pendingDocumentation: ['dist/'],
   },
   {
     directory: 'packages/prompts',
@@ -214,6 +220,8 @@ export const surfacePackages = [
       './views': {},
     },
     modules: ['@loomcli/core', '@standard-schema/spec', 'node:*'],
+    // Comments and examples a later pass writes (ADR-0147); the last pass removes the list.
+    pendingDocumentation: ['dist/'],
   },
   {
     directory: 'packages/testing',

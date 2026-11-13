@@ -30,7 +30,9 @@ import type {
  * @public
  */
 interface MockTerminal {
+  /** The terminal's width in columns, which a run reads as its terminal width. */
   readonly columns: number;
+  /** The terminal's height in rows. */
   readonly rows: number;
   /** Settles the run's background, so no query runs. */
   readonly background?: Background;
@@ -46,14 +48,18 @@ interface MockTerminal {
 interface ProgramCall {
   /** As the run's spawn named it. */
   readonly command: string;
+  /** The arguments the spawn passed, after the command. */
   readonly args: readonly string[];
+  /** The working directory the spawn started the child in. */
   readonly cwd: string;
+  /** The environment the spawn gave the child. */
   readonly env: Readonly<Record<string, string | undefined>>;
   /**
    * What the spawn wrote to the child's stdin, or the mock's stdin text under `stdin: 'inherit'`,
    * decoded as UTF-8.
    */
   readonly input: string;
+  /** Whether the spawn started the child detached from the run. */
   readonly detached: boolean;
   /** Aborts when the child is ended, by the spawn's signal or a kill of an ending signal. */
   readonly signal: AbortSignal;
@@ -145,7 +151,9 @@ interface MockStdin extends Readable {
  * @public @sealed
  */
 interface Write {
+  /** The stream the write went to. */
   readonly stream: 'stdout' | 'stderr';
+  /** What the write held, decoded as UTF-8. */
   readonly text: string;
 }
 
@@ -155,9 +163,13 @@ interface Write {
  * @public @sealed
  */
 interface MockProcess extends ProcessHandle {
+  /** The run's stdin: the piped text, or the terminal's keyboard. */
   readonly stdin: MockStdin;
+  /** The run's stdout, which keeps everything written to it. */
   readonly stdout: RecordingStream;
+  /** The run's stderr, which keeps everything written to it. */
   readonly stderr: RecordingStream;
+  /** Every write to stdout and stderr, in the order the run made them. */
   readonly transcript: readonly Write[];
   /** The signal that ended the mock's process, if one did. */
   readonly endedBy: ProcessSignal | undefined;
@@ -723,6 +735,19 @@ function defaultLibc(platform: string): 'glibc' | undefined {
  * with no program run. A terminal with `keys` puts stdin on it as its keyboard, which is also the
  * signal source's terminal. The handle has no `publishEnv`.
  *
+ * @example
+ * ```ts
+ * import { mockProcess } from '@loomcli/testing';
+ * import { expect } from 'vitest';
+ *
+ * import { application } from './application.js';
+ *
+ * const mock = mockProcess({ argv: ['keys', '--file', 'doc.json'], cwd: '/repo' });
+ * expect(await application.run({ process: mock })).toBe(0);
+ * expect(mock.stdout.text).toBe('name\nversion\n');
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#mockprocess
  * @public
  */
 function mockProcess(fields: MockFields = {}): MockProcess {

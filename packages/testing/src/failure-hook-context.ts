@@ -23,7 +23,13 @@ type FailureHookValues = Pick<
 /**
  * Builds the context an `onFailure` hook takes second from the values the test states.
  *
+ * @example
  * ```ts
+ * import { UnknownCommandError } from '@loomcli/core';
+ * import { failureHookContext } from '@loomcli/testing';
+ *
+ * import { hints } from './hints.js';
+ *
  * const context = failureHookContext(hints, {
  *   application: 'notes',
  *   invokedBy: 'argv',
@@ -34,6 +40,7 @@ type FailureHookValues = Pick<
  * hints(new UnknownCommandError('lsit', ['list']), context);
  * ```
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#failurehookcontext
  * @public
  */
 function failureHookContext(hook: FailureHook, values: FailureHookValues): FailureHookContext {

@@ -35,8 +35,20 @@ const controlMask = 31;
 const letterOffset = 0;
 
 /**
- * Terminal bytes for a scripted keyboard read.
+ * Terminal bytes for a scripted keyboard read. Each member is a string, and `ctrl` and `alt`
+ * return one, so keys join with `+` into one read of a mock terminal's `keys`.
  *
+ * @example
+ * ```ts
+ * import { key, mockProcess } from '@loomcli/testing';
+ *
+ * const mock = mockProcess({
+ *   argv: ['setup'],
+ *   terminal: { columns: 80, keys: [key.down + key.enter, 'db' + key.enter], rows: 24 },
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#the-key-table
  * @public
  */
 const key = Object.freeze({
