@@ -18,9 +18,9 @@ new Application('messages').action(async ({ out }) => {
   await out.debug('Detail', lanes.warn);
   await out.trace('Finer', framed);
   await out.info('Plain');
-  // @ts-expect-error TS2345: A message's view reads a string.
+  // @ts-expect-error TS2379: A message's view reads a string.
   await out.info('Building', counted);
-  // @ts-expect-error TS2345: A message's view is a whole view, never a row view.
+  // @ts-expect-error TS2379: A message's view is a whole view, never a row view.
   await out.warn('Stale', rows);
   // @ts-expect-error TS2345: The message itself is a string.
   await out.info(3, counted);
@@ -30,7 +30,7 @@ new Application('messages').action(async ({ out }) => {
 plugin('fixture/environment-view', {
   onEnvironment: async ({ out }) => {
     await out.warn('Using defaults', framed);
-    // @ts-expect-error TS2345: A message's view reads a string.
+    // @ts-expect-error TS2379: A message's view reads a string.
     await out.warn('Using defaults', counted);
     return {};
   },
