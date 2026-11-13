@@ -38,7 +38,7 @@ function underGutter(message: string, context: ViewContext, width: number): stri
 /**
  * The default function of a marked lane: the matching glyph and one space before the first line,
  * and continuation lines indented by the measured gutter without repeating the glyph. The semantic
- * method appends the newline, so the view returns none.
+ * method ends the message with one line break, so the view adds none.
  */
 function marked(mark: Mark): (message: string, context: ViewContext) => string {
   return (message, context) => {

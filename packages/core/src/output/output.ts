@@ -18,7 +18,7 @@ import { incompleteResult, lanes } from './lanes.js';
 import type { IncompleteResult, Lane } from './lanes.js';
 import type { LogDestination } from './log.js';
 import { ProgressLedger } from './progress-events.js';
-import { Regions, Screen } from './region.js';
+import { endsWithLineBreak, Regions, Screen } from './region.js';
 import type { Frame, LiveRegion } from './region.js';
 import { writeSequence } from './sequence.js';
 import type { SequenceView } from './sequence.js';
@@ -78,6 +78,12 @@ type Purpose = Lane;
 
 /** The two streams every write site names. */
 type Stream = 'stdout' | 'stderr';
+
+/** Where one semantic message goes and the view it draws through, its lane view when none is passed. */
+interface MessageLook {
+  readonly destination: Stream;
+  readonly view: View<string> | undefined;
+}
 
 /** The threshold of a lane that writes at every verbosity. */
 const always = Number.NEGATIVE_INFINITY;
@@ -522,15 +528,19 @@ export class Output {
     this.coordinate();
     signal.addEventListener('abort', this.onCancel, { once: true });
     this.out = {
-      debug: (message) => this.hand(this.emit('debug', message, 'stderr')),
+      debug: (message, view) =>
+        this.hand(this.emit('debug', message, { destination: 'stderr', view })),
       draw: (data: never, value: View<never>) => this.hand(this.draw(data, value)),
-      error: (message) => this.hand(this.emit('error', message, 'stderr')),
+      error: (message, view) =>
+        this.hand(this.emit('error', message, { destination: 'stderr', view })),
       fatal: (message) => {
         throw new FatalError(message);
       },
-      info: (message) => this.hand(this.emit('info', message, 'stderr')),
+      info: (message, view) =>
+        this.hand(this.emit('info', message, { destination: 'stderr', view })),
       lendTerminal: (work) => this.lendTerminal(work),
-      print: (message) => this.hand(this.emit('print', message, 'stdout')),
+      print: (message, view) =>
+        this.hand(this.emit('print', message, { destination: 'stdout', view })),
       // A region a middleware or a source opens closes once the chain has unwound.
       region: (options) => this.regions.open(options),
       // The data type is erased here, as it is in the registry.
@@ -539,10 +549,13 @@ export class Output {
       render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
         this.hand(this.renderValue(data, value, { destination: 'stdout' })),
       results: noResult,
-      success: (message) => this.hand(this.emit('success', message, 'stderr')),
+      success: (message, view) =>
+        this.hand(this.emit('success', message, { destination: 'stderr', view })),
       text: (data: never, value: View<never>) => this.text(data, value, 'stdout'),
-      trace: (message) => this.hand(this.emit('trace', message, 'stderr')),
-      warn: (message) => this.hand(this.emit('warn', message, 'stderr')),
+      trace: (message, view) =>
+        this.hand(this.emit('trace', message, { destination: 'stderr', view })),
+      warn: (message, view) =>
+        this.hand(this.emit('warn', message, { destination: 'stderr', view })),
     };
   }
 
@@ -597,7 +610,7 @@ export class Output {
       },
       out: {
         ...this.out,
-        print: (message) => this.hand(this.emit('print', message, destination)),
+        print: (message, view) => this.hand(this.emit('print', message, { destination, view })),
         region: (options) => this.regions.open(options, emission.regions),
         // The data type is erased here, as it is in the registry.
         // One call dispatches on the shape of the view it was handed.
@@ -942,19 +955,23 @@ export class Output {
   }
 
   /**
-   * A semantic message is one line on its destination; only `print` writes to stdout. This call
-   * appends the one newline after the lane view's text, so a lane view returns none and an override
-   * that returns the empty string still writes one. A call the run's verbosity hides calls no lane
-   * view and writes nothing.
+   * A semantic message on its destination; only `print` writes to stdout. The message draws
+   * through the call's own view when it passed one, and through its lane view otherwise. Either
+   * way it ends with exactly one line break: this call appends one after the resolved text unless
+   * that text already ends with one, so a lane view returns none, a pack view that ends its own
+   * lines gains none, and a view that returns the empty string still writes one. A call the run's
+   * verbosity hides calls no view and writes nothing.
    */
-  emit(kind: Purpose, message: string, destination: Stream): Promise<void> {
+  emit(kind: Purpose, message: string, look: MessageLook): Promise<void> {
+    const { destination, view = lanes[kind] } = look;
     if (this.verbosity < shownFrom[kind]) {
       return Promise.resolve();
     }
-    return this.rendered(() => {
-      const render = resolveView<string>(this.registry, lanes[kind]);
-      return `${String(render(message, this.context(destination)))}\n`;
-    }, destination);
+    return this.rendered(
+      () => resolveView<string>(this.registry, view)(message, this.context(destination)),
+      destination,
+      (text) => this.write(this.host[destination], endsWithLineBreak(text) ? text : `${text}\n`),
+    );
   }
 
   /**

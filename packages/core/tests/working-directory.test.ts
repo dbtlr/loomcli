@@ -106,6 +106,6 @@ test("an action's invoke reads its run's working directory and captures nothing"
     reads: 0,
     status: 0,
     stderr: '',
-    stdout: 'completed:/srv/override\n\n',
+    stdout: 'completed:/srv/override\n',
   });
 });

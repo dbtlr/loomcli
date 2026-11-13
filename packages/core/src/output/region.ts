@@ -29,9 +29,18 @@ interface Frame {
   readonly text: string;
 }
 
+/**
+ * Whether resolved text ends with a line break of its own, its control sequences set aside, so a
+ * break inside a style frame or before a closing escape counts. A region reads its last frame by
+ * it, and a semantic method reads a message by it before deciding whether to append one.
+ */
+function endsWithLineBreak(text: string): boolean {
+  return visible(text).endsWith('\n');
+}
+
 /** Whether a frame's text ends with a line break of its own. */
 function endsLine(frame: Frame): boolean {
-  return visible(frame.text).endsWith('\n');
+  return endsWithLineBreak(frame.text);
 }
 
 /** What one region shows on the screen and the frame it last drew. */
@@ -566,5 +575,5 @@ class Regions {
   }
 }
 
-export { Regions, Screen };
+export { endsWithLineBreak, Regions, Screen };
 export type { Frame, LiveRegion, RegionHost };
