@@ -94,8 +94,9 @@ interface Out<Result = unknown> {
 import { Application, lanes } from '@loomcli/core';
 import { box } from '@loomcli/plugins/box';
 import { step } from '@loomcli/plugins/step';
+import { verbose } from '@loomcli/plugins/verbose';
 
-const app = new Application('create')
+const app = new Application('create', { plugins: [verbose()] })
   .argument('name', { required: true })
   .action(async ({ args, out, style }) => {
     await out.info(`Creating ${style.escape(args.name)}`, step()); // hidden under -q
