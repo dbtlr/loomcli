@@ -1,10 +1,10 @@
 ---
-description: "The pack views: table, records, list, heading, rule, prose, and box, each a configured factory that returns a bare view."
+description: "The pack views: table, records, list, heading, rule, prose, step, and box, each a configured factory that returns a bare view."
 ---
 
 # Pack views
 
-This page documents the pack views: table, records, list, heading, rule, prose, and box. Each is a configured factory that returns a bare view, which an author registers under `views` or passes to `out.render`.
+This page documents the pack views: table, records, list, heading, rule, prose, step, and box. Each is a configured factory that returns a bare view, which an author registers under `views` or passes to `out.render`, and a view over a string can also be passed to a semantic method as the message's look, under [A message's own view](../core/output.md#a-messages-own-view).
 
 ## Table
 
@@ -206,7 +206,7 @@ export const services = new Command('services')
 
 ## Views over a string
 
-The heading, the rule, prose, and the box are views over a string: each factory returns `View<string>`, so an action writes `out.render(text, prose())`, and a `result<string>()` names one in its `views` record. A box that frames another view takes that view's data type instead, under [Box](#box). Like the table each installs nothing and returns a bare pack view, and each takes one reading of the context's [`columns`](../core/styles.md#width-padding-and-multiline-lanes) per render. [ADR-0088](../decisions/0088-pack-views-lay-out-lists-headings-rules-prose-and-boxes.md) records the four.
+The heading, the rule, prose, the step, and the box are views over a string: each factory returns `View<string>`, so an action writes `out.render(text, prose())` or `out.info(text, step())`, and a `result<string>()` names one in its `views` record. Each ends with a line break, so a semantic method that writes through one adds none, under [A message's own view](../core/output.md#a-messages-own-view). A box that frames another view takes that view's data type instead, under [Box](#box). Like the table each installs nothing and returns a bare pack view, and each takes one reading of the context's [`columns`](../core/styles.md#width-padding-and-multiline-lanes) per render. [ADR-0088](../decisions/0088-pack-views-lay-out-lists-headings-rules-prose-and-boxes.md) records the heading, the rule, prose, and the box, and [ADR-0148](../decisions/0148-a-semantic-method-takes-a-view-for-its-message-and-ends-it-with-one-line-break.md) the step.
 
 - **Marked text.** The string is marked text its author owns, as a [lane view](../core/output.md)'s message is, so a styled word inside it keeps its style and the view does not escape it. Raw data goes through `style.escape` first, the rule of [Rendered output](../core/output.md#rendered-output).
 - **Lines.** Each view writes whole lines: every line it writes ends with `\n`, a text that ends in a line break gains no empty line, and the view owns every newline it writes. No view writes a blank line above or below itself, so the spacing between two renders is the action's.
@@ -299,6 +299,38 @@ is still warming up.
 - **Form.** The text as its author wrote it, with no styling added. Authored line breaks and blank lines stay, so a blank line separates two paragraphs.
 - **Wrapping.** On a terminal the text expands its tabs, wraps at `columns` with [`wrap`'s rules](../core/styles.md#width-padding-and-multiline-lanes), and is split with `splitLines`: an input line's leading spaces stay on its first line, and its continuation lines start at column 0. Off a terminal a non-empty text prints as written, with `\n` added when it does not end in a line break.
 
+## Step
+
+The step is `@loomcli/plugins/step`. Its factory `step()` returns `View<string>`, a line that marks a stage of the work, such as building or testing, so the lines under it read as that stage's outcome. An action writes it at a level, usually `info`'s, so `-q` hides it.
+
+```ts
+// @loomcli/plugins/step
+function step(): View<string>;
+```
+
+```ts
+import { step } from '@loomcli/plugins/step';
+
+await out.info('Building 3 packages', step());
+await out.success('Built @acme/core, @acme/cli, and @acme/web');
+await out.info('Running the test suite against the built packages, with coverage', step());
+await out.success('128 tests passed');
+```
+
+At 44 columns on a terminal they print:
+
+```text
+❯ Building 3 packages
+✔ Built @acme/core, @acme/cli, and @acme/web
+❯ Running the test suite against the built
+  packages, with coverage
+✔ 128 tests passed
+```
+
+- **Form.** `glyph.pointer` styled `primary`, one space, then the text styled `bold`. The text keeps its author's styling inside the `bold` frame. Lines after the first, authored or wrapped, are indented by the measured gutter, the glyph's width and one, without repeating the glyph, and a line that resolves to no character carries no indent and stays empty.
+- **Wrapping.** On a terminal the text expands its tabs, wraps at `columns` minus the gutter, and at 1 when that leaves less, and is split with `splitLines`. Off a terminal the text is not wrapped, and an authored line break in it takes the same layout.
+- **Glyph forms.** Where the destination takes compatibility glyph forms, the pointer is `>`, and the gutter is measured in that form.
+
 ## Box
 
 The box is `@loomcli/plugins/box`. Its factory `box(config?)` frames text, or the output of another view, in a border with an optional title. With no `content` it returns `View<string>` and frames its text. With `content` it returns a view over the content's data, renders the content inside the frame, and narrows the content's `columns` by the frame, so a table framed in a box shrinks to fit inside it, or falls back to the records layout, under [Table](#table).
@@ -351,6 +383,7 @@ export const pools = new Command('pools')
 - **View content.** With `content` the box calls the content's view function with its data and a context that matches its own except for `columns`, which is `columns` minus 4, and 1 when that leaves less, on a terminal and stays `undefined` off one. The content's text is split with `splitLines`, so its trailing newline adds no line, and on a terminal its tabs expand before the box measures it. A content line wider than the space the box offers, which a content view that ignores `columns` writes, widens the box past `columns`, and nothing is cut.
 - **Tabs.** Off a terminal a tab in a content line expands inside the line's `pad` frame, counted from the line's start, so the right border stays in its column.
 - **Empty.** A text box over a text that resolves to no character, and a box whose content renders such a text, print nothing.
+- **A note.** A box with a title written at a level is the note look: `out.info(text, box({ title: 'Next steps' }))` frames the text under its title, and `-q` hides it, under [A message's own view](../core/output.md#a-messages-own-view).
 - **Typing.** `Data` is inferred from `content`, or from the context the box is written in, and is `string` when neither supplies it. Only a box whose `Data` is a string may leave out its configuration or its `content`. Inside a `views` record the record's data type flows through the box into the content's factory, so `box({ content: table({ columns: ['nope'] }) })` under `rows<Pool>` is a compile error on `'nope'`, and a box with no `content` under a result whose value is not a string is a compile error: `box()` misses its required configuration, and `box({ title })` names the missing `content`. Hoisted, the content's factory states its type, `box({ content: table<Pool>() })`.
 
 ## When author code fails

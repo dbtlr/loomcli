@@ -8,13 +8,13 @@ This page states the `out` methods an action writes through: the semantic lanes,
 
 | Method                       | Default destination | Return          |
 | ---------------------------- | ------------------- | --------------- |
-| `out.print(message)`         | stdout              | `Promise<void>` |
-| `out.info(message)`          | stderr              | `Promise<void>` |
-| `out.success(message)`       | stderr              | `Promise<void>` |
-| `out.warn(message)`          | stderr              | `Promise<void>` |
-| `out.error(message)`         | stderr              | `Promise<void>` |
-| `out.debug(message)`         | stderr              | `Promise<void>` |
-| `out.trace(message)`         | stderr              | `Promise<void>` |
+| `out.print(message, view?)`         | stdout              | `Promise<void>` |
+| `out.info(message, view?)`          | stderr              | `Promise<void>` |
+| `out.success(message, view?)`       | stderr              | `Promise<void>` |
+| `out.warn(message, view?)`          | stderr              | `Promise<void>` |
+| `out.error(message, view?)`         | stderr              | `Promise<void>` |
+| `out.debug(message, view?)`         | stderr              | `Promise<void>` |
+| `out.trace(message, view?)`         | stderr              | `Promise<void>` |
 | `out.render(data, view)`     | stdout              | `Promise<void>` |
 | `out.draw(data, view)`       | stderr              | `Promise<number>` |
 | `out.region(options?)`       | stderr              | `Region`        |
@@ -23,7 +23,7 @@ This page states the `out` methods an action writes through: the semantic lanes,
 | `out.results(value)`         | stdout              | `Promise<void>` |
 | `out.fatal(message)`         | Failure path        | `never`         |
 
-The `results` row holds on a Command that declares a result, where the action's `print` and `render` move to stderr as [Results](results.md) describes; on every other Command `results` takes a `never` argument and the other rows hold as written. Messages are marked strings. The seven semantic methods render through core's lane views, described under [Views](views.md), and append one newline. `print` has no prefix. By default the other methods add their matching glyph and one space, `debug` and `trace` their gutters under [Verbosity](verbosity.md), and indent continuation lines by the measured gutter, without repeating the glyph; that gutter belongs to the lane view, which an application can override. Those six lanes also wrap the message at the destination's `columns`, as [Width, padding, and multiline lanes](styles.md#width-padding-and-multiline-lanes) states. The run's [verbosity](verbosity.md) decides whether `info`, `success`, `debug`, and `trace` write, and `print`, `warn`, and `error` write at every verbosity. Semantic method identity remains distinct inside core. `out.render` is the neutral render call, and [Rendered output](#rendered-output) describes it. `out.text` returns the text `out.render` would write and writes nothing, under [A view's text without a write](#a-views-text-without-a-write).
+The `results` row holds on a Command that declares a result, where the action's `print` and `render` move to stderr as [Results](results.md) describes; on every other Command `results` takes a `never` argument and the other rows hold as written. Messages are marked strings. The seven semantic methods render through core's lane views, described under [Views](views.md), or through a view the call passes, under [A message's own view](#a-messages-own-view), and end the message with one line break. `print` has no prefix. By default the other methods add their matching glyph and one space, `debug` and `trace` their gutters under [Verbosity](verbosity.md), and indent continuation lines by the measured gutter, without repeating the glyph; that gutter belongs to the lane view, which an application can override. Those six lanes also wrap the message at the destination's `columns`, as [Width, padding, and multiline lanes](styles.md#width-padding-and-multiline-lanes) states. The run's [verbosity](verbosity.md) decides whether `info`, `success`, `debug`, and `trace` write, and `print`, `warn`, and `error` write at every verbosity. Semantic method identity remains distinct inside core. `out.render` is the neutral render call, and [Rendered output](#rendered-output) describes it. `out.text` returns the text `out.render` would write and writes nothing, under [A view's text without a write](#a-views-text-without-a-write).
 
 Nonfatal labels do not change success. Calls can omit `await`; core still accounts for their output and failures before completion. Awaiting a call observes its write completion or rejection. What a caught rejection means for the run is under [the ordinary failure path](failures.md#the-ordinary-failure-path): a caught view rejection leaves the outcome to the code that caught it, and a failed destination write still fails the run.
 
@@ -45,7 +45,7 @@ interface View<Data> {
 
 A view is a pure synchronous value that turns one typed value into marked text. Its `render` function, the view function, receives the data and an immutable context with `style`, `width(text)`, `plain(text)`, `columns`, `wrap(text, columns)`, `expandTabs(text)`, and the run's [`background`](background.md), which a failure view's context extends with where the run was and the plugins' hints, under [Failure view context](failure-views.md#failure-view-context). It holds no output handle. Core reads the destination's width just before it calls the view function, so `columns` is the width at that render. Existing one-argument view functions remain valid. Escape raw data with `style.escape()` before interpolating it into authored text. `out.render` is the neutral render call: a rendered value has no purpose and no destination parameter.
 
-Newline ownership belongs to the write site, not to the view type. `out.render`, [`out.results`](results.md#emitting-a-result), and a failure diagnostic append nothing, so a view rendered through any of them owns its trailing newline. A semantic method appends one newline after its lane view, so a lane view returns none. Each write site below states which rule it follows.
+Newline ownership belongs to the write site, not to the view type. `out.render`, [`out.results`](results.md#emitting-a-result), and a failure diagnostic append nothing, so a view rendered through any of them owns its trailing newline. A semantic method ends its message with exactly one line break, appending one after the view's text unless that text already ends with one, so a lane view returns none and a pack view, which ends each line it writes, gains nothing. Each write site below states which rule it follows.
 
 `out.render(data, view)` resolves the view's marked text for its destination, stdout, or stderr from the action of a Command that declares a [result](results.md), then writes it without adding a newline. The second argument is either a bare view, as below, or a [declared view](views.md) that a plugin or core exported. A bare view is a view the action chose at the call site, and nothing can replace it. A declared view carries an identity, so an application can replace its function through `views` without touching the call site. `out.render` also accepts an iterable with a row view, the shape [Row views](results.md#row-views) defines, and writes the sequence as the iterable yields it.
 
@@ -70,11 +70,60 @@ const app = new Application('counts')
   });
 ```
 
-A rendered value has no semantic identity: no purpose parameter and no destination parameter. The seven semantic methods keep their string-only signatures and their own destinations.
+A rendered value has no semantic identity: no purpose parameter and no destination parameter. The seven semantic methods take a string message, with an optional view over it under [A message's own view](#a-messages-own-view), and keep their own destinations.
 
 Core calls a whole view's function synchronously inside the `out.render` call, then queues its text on the destination; a row view's functions run as the iterable yields, under [Row views](results.md#row-views). Call order within a destination holds across both forms, so a rendered table and a plain `print` write in the order the action issued them. The optional-await contract is unchanged: the returned promise resolves on write completion and rejects on a view or write failure, and what a caught rejection means for the run is under [the ordinary failure path](failures.md#the-ordinary-failure-path).
 
 The type parameter is inferred from the value, so `out.render(rows, table)` checks the view against the rows it receives. A view for another value type, and one that returns anything but a string, are compile errors.
+
+### A message's own view
+
+```ts
+interface Out<Result = unknown> {
+  print(message: string, view?: View<string>): Promise<void>;
+  info(message: string, view?: View<string>): Promise<void>;
+  success(message: string, view?: View<string>): Promise<void>;
+  warn(message: string, view?: View<string>): Promise<void>;
+  error(message: string, view?: View<string>): Promise<void>;
+  debug(message: string, view?: View<string>): Promise<void>;
+  trace(message: string, view?: View<string>): Promise<void>;
+}
+```
+
+```ts
+import { Application, lanes } from '@loomcli/core';
+import { box } from '@loomcli/plugins/box';
+import { step } from '@loomcli/plugins/step';
+
+const app = new Application('create')
+  .argument('name', { required: true })
+  .action(async ({ args, out, style }) => {
+    await out.info(`Creating ${style.escape(args.name)}`, step()); // hidden under -q
+    await out.debug('The template cache is stale.', lanes.warn); // a warning's look, written from -v
+    await out.success(`Created ${style.escape(args.name)}`);
+    await out.info(`cd ${style.escape(args.name)}\npnpm dev`, box({ title: 'Next steps' }));
+  });
+```
+
+At `-v` on a terminal, `create my-app` prints this on stderr:
+
+```text
+❯ Creating my-app
+⚠ The template cache is stale.
+✔ Created my-app
+╭─ Next steps ─╮
+│ cd my-app    │
+│ pnpm dev     │
+╰──────────────╯
+```
+
+A semantic method is a message's level: its destination and the [verbosity](verbosity.md) it writes at. Its view is the message's look. A call that passes a view keeps the level and changes the look, so a line can carry an error's look and still be hidden by `-q`, or a step can be written at `info`'s level without `info`'s glyph. [ADR-0148](../decisions/0148-a-semantic-method-takes-a-view-for-its-message-and-ends-it-with-one-line-break.md) records the decision.
+
+- **The level stays.** The method writes to its own destination, and `print` moves to stderr from the action of a Command that declares a [result](results.md) as it does without a view. The run's verbosity decides whether the call writes, as it does without a view, and a call it hides calls no view, the passed one included.
+- **The view owns the layout.** The passed view replaces the method's lane view for that call alone. The method adds no glyph, gutter, wrapping, or indent of its own, so the view's text is the message's whole look. Without a view, the method renders through its lane view, and the bytes are the ones this page states for it.
+- **Any view over a string.** The view is a bare view, a declared view, or a pack view, such as the pack's [step](../plugins/pack-views.md#step) or a [box](../plugins/pack-views.md#box) with a title, which is the note look. A declared view, a lane view included, resolves through the application's and the plugins' overrides as it does under `out.render`, so `out.debug(text, lanes.warn)` draws an application's warning look. A bare view renders as it is, and nothing can replace it. The types reject a row view and a view over data that is not a string, and core adds no rule for one, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md): from JavaScript, it fails the call as a view that breaks does.
+- **One line break.** The method ends the message with exactly one line break. It appends `\n` after the view's text unless that text already ends with a line break, judged on its characters with its style frames set aside, so `style.dim('done\n')` ends with one. A view that returns the empty string writes one line break.
+- **Context.** The view receives the message and the view context of the method's destination, as a lane view does, with that destination's `columns`, capabilities, and glyph forms.
 
 ### Drawing on stderr
 
@@ -257,4 +306,4 @@ A progress event is the typed value a region's report builds, so a program that 
 
 ## When author code fails
 
-A view that throws, a lane view or a region's frame view included, makes the `out.render`, `out.draw`, `region.draw`, or semantic-method call reject with the view's error, and the `out.text` call throw it, under [A view's text without a write](#a-views-text-without-a-write). A rejection the action or a middleware lets propagate takes the [ordinary failure path](failures.md#the-ordinary-failure-path), and a rejection the code caught is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). A call no code awaited has no catcher, so core reports its rejection through the ordinary failure path after the chain has settled, as the output-view row of the [ordinary failure path](failures.md#the-ordinary-failure-path) states. A row view's pieces written before the fault stand, under [Results](results.md#row-views).
+A view that throws, a lane view, a view a semantic call passed, or a region's frame view included, makes the `out.render`, `out.draw`, `region.draw`, or semantic-method call reject with the view's error, and the `out.text` call throw it, under [A view's text without a write](#a-views-text-without-a-write). A rejection the action or a middleware lets propagate takes the [ordinary failure path](failures.md#the-ordinary-failure-path), and a rejection the code caught is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). A call no code awaited has no catcher, so core reports its rejection through the ordinary failure path after the chain has settled, as the output-view row of the [ordinary failure path](failures.md#the-ordinary-failure-path) states. A row view's pieces written before the fault stand, under [Results](results.md#row-views).

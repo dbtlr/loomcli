@@ -426,7 +426,7 @@ The output channel object an action or a middleware receives, carrying the seman
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
-A message written through one of the seven purpose-named methods: `print`, `info`, `success`, `warn`, `error`, `debug`, and `trace`. Each has a fixed default destination and appends one newline. The run's verbosity decides whether `info`, `success`, `debug`, and `trace` write.
+A message written through one of the seven purpose-named methods: `print`, `info`, `success`, `warn`, `error`, `debug`, and `trace`. The method is the message's level: its fixed default destination and the verbosity it writes at. Its look is the method's lane view, or a view over the message the call passes, and the method ends the message with one line break. The run's verbosity decides whether `info`, `success`, `debug`, and `trace` write.
 _Avoid_: Log level (a log level belongs to a log event), styled output
 
 **Rendered output**:
@@ -490,7 +490,7 @@ The pairing of a key, a declared view or a failure class, with a replacement vie
 _Avoid_: Failure renderer, registration, hook
 
 **Lane view**:
-The declared view behind one of the seven semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the newline the method appends is outside the view. The bare word lane also names an output area of core, as in the results lane.
+The declared view behind one of the seven semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the line break the method appends when the view's text does not end with one is outside the view. A call that passes its own view replaces the lane view for that call alone. The bare word lane also names an output area of core, as in the results lane.
 _Avoid_: Channel, log level (a log level belongs to a log event), stream (for the lane view)
 
 **Columns**:

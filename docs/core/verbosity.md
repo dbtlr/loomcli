@@ -11,8 +11,8 @@ An operator asks a run for more detail with `-v` or `-vv`, and for less with `-q
 ```ts
 interface Out<Result = unknown> {
   // ...the members under Output and failures...
-  debug(message: string): Promise<void>; // written from verbosity 1
-  trace(message: string): Promise<void>; // written from verbosity 2
+  debug(message: string, view?: View<string>): Promise<void>; // written from verbosity 1
+  trace(message: string, view?: View<string>): Promise<void>; // written from verbosity 2
 }
 interface Unmarked {
   interaction?: never;
@@ -76,7 +76,7 @@ const app = new Application('fetchit')
   });
 ```
 
-- **Two lanes.** `out.debug(message)` and `out.trace(message)` are semantic methods, as `info` is: they take a marked string, write to stderr in every case, a Command that declares a [result](results.md) included, append one newline, and render through their lane views, `lanes.debug` and `lanes.trace`. Their names are the log level names, and they are not logging: a call creates no [log event](logging.md) and reaches no `onLog` hook. `log.debug` records for a reader later, and `out.debug` writes for the operator now.
+- **Two lanes.** `out.debug(message)` and `out.trace(message)` are semantic methods, as `info` is: they take a marked string, write to stderr in every case, a Command that declares a [result](results.md) included, end it with one line break, and render through their lane views, `lanes.debug` and `lanes.trace`, or through a view the call passes, under [A message's own view](output.md#a-messages-own-view). Their names are the log level names, and they are not logging: a call creates no [log event](logging.md) and reaches no `onLog` hook. `log.debug` records for a reader later, and `out.debug` writes for the operator now.
 - **The verbosity.** The run's verbosity is its verbose count less its quiet count, where a verbose count above 2 reads 2 and a quiet count above 1 reads 1, so higher counts change nothing and one quiet step is the only one. The count of each is the occurrences of the option that carries its mark, and 0 when no option carries it.
 
   | Verbosity | Spellings | Lanes that write |
@@ -87,7 +87,7 @@ const app = new Application('fetchit')
   | 2 | `-vv`, `-vvv` | `trace`, `debug`, `info`, `success`, `warn`, `error` |
 
   `print`, `render`, `draw`, `results`, the failure report, and the [incomplete-result](results.md#a-sequence-that-stops-early) line write at every verbosity, so `-q` hides `info` and `success` alone, and help, a result, a warning, and a failure always print. Of the writes to stderr, only a [live region](output.md#live-region) opened without `input: true` also follows the verbosity: at -1 core draws none.
-- **A hidden call.** A call the verbosity hides checks its message, as every semantic method does, so a message that is not a string is still rejected. Then it calls no lane view, writes nothing, and its promise resolves.
+- **A hidden call.** A call the verbosity hides checks its message, as every semantic method does, so a message that is not a string is still rejected. Then it calls no view, neither its lane view nor one the call passed, writes nothing, and its promise resolves.
 - **Settled after graph build.** Right after graph build, its `onGraphBuilt` hooks included, and before [environment preparation](plugin-contract.md#environment-preparation), core settles the run's verbosity from `host.argv`, read against the built graph with the parser's own word reader, in the partial mode [`locate`](graph-inspection.md#locating-a-word) reads an unfinished invocation with. Every form reads as the ordinary parse reads it: `-v -v`, `-vv`, `--verbose -v`, `-vq`, a short group that holds a Command's own letters, such as `-vF name`, an [alias](options.md#option-aliases), and occurrences on both sides of the Command name, up to the first bare `--`. An occurrence the parse faults, such as `--verbose=2`, counts nothing. A word list that names an unknown command settles verbosity 0. That run fails in routing, and everything it writes, an `onEnvironment` warning and its failure, prints at every verbosity.
 - **Why after graph build.** An `onCommandAttach` hook can declare a local option with a short spelling on any Command, so only the built graph says what each letter of a short group is. Core builds `out` at the head of the run, and nothing can write a lane before the verbosity settles: graph build's hooks receive no `out`, and the only output before it is a host-capture failure or a declaration error from graph build, which is a failure report and prints at every verbosity.
 - **No mark.** An Application whose options carry neither mark settles verbosity 0, so `out.debug` and `out.trace` write nothing, and every other byte is unchanged.
