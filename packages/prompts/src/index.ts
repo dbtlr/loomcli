@@ -46,7 +46,27 @@ function typedPrefill<Options, Args>(
   return settings.default ?? (typeof declared === 'string' ? declared : undefined);
 }
 
-/** @public */
+/**
+ * Asks the operator for one line of text and resolves to the answer. A linked option or argument
+ * the operator supplied prefills the question, and answers it without asking only when
+ * `skipIfSupplied` is set or the run is not interactive. A validator checks the typed line.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { text } from '@loomcli/prompts';
+ *
+ * export const greet = new Command('greet')
+ *   .option('name', { type: 'string' })
+ *   .action(async (context) => {
+ *     const name = await text(context, { message: 'Your name', option: 'name' });
+ *     await context.out.info(`Hello, ${name}.`);
+ *   });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#calling-a-question
+ * @public
+ */
 function text<
   Options,
   const Key extends LinkKey<Options> = never,
@@ -82,7 +102,24 @@ async function text<
   });
 }
 
-/** @public */
+/**
+ * Asks the operator for longer text by opening their editor on a file, and resolves to the saved
+ * text, or to the validator's output when it has a `validate`.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { editor } from '@loomcli/prompts';
+ *
+ * export const note = new Command('note').action(async (context) => {
+ *   const body = await editor(context, { message: 'Note', extension: '.md' });
+ *   await context.out.info(body);
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#the-editor-question
+ * @public
+ */
 function editor<
   Options,
   const Key extends LinkKey<Options> = never,
@@ -118,7 +155,24 @@ async function editor<
   });
 }
 
-/** @public */
+/**
+ * Asks the operator for one line that is never shown as it is typed, such as a token, and resolves to
+ * the answer.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { secret } from '@loomcli/prompts';
+ *
+ * export const login = new Command('login').action(async (context) => {
+ *   const token = await secret(context, { message: 'API token' });
+ *   await context.out.info(`Read ${token.length} characters.`);
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#calling-a-question
+ * @public
+ */
 function secret<
   Options,
   const Key extends LinkKey<Options> = never,
@@ -153,7 +207,27 @@ async function secret<
   });
 }
 
-/** @public */
+/**
+ * Asks the operator a yes or no question and resolves to a Boolean. A linked Boolean option the
+ * operator supplied sets the default, and answers the question without asking only when
+ * `skipIfSupplied` is set or the run is not interactive.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { confirm } from '@loomcli/prompts';
+ *
+ * export const wipe = new Command('wipe')
+ *   .option('yes', { type: 'boolean' })
+ *   .action(async (context) => {
+ *     const sure = await confirm(context, { message: 'Wipe the cache?', option: 'yes', default: false });
+ *     await context.out.info(sure ? 'Wiped.' : 'Kept.');
+ *   });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#calling-a-question
+ * @public
+ */
 function confirm<Options, const Key extends LinkKey<Options> = never>(
   context: PromptContext<Options>,
   settings: ConfirmSettings<Key>,
@@ -193,7 +267,26 @@ async function confirm<Options, Key extends LinkKey<Options>>(
   });
 }
 
-/** @public */
+/**
+ * Asks the operator to pick one choice from a list, optionally searched, and resolves to its value.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { select } from '@loomcli/prompts';
+ *
+ * export const setup = new Command('setup').action(async (context) => {
+ *   const backend = await select(context, {
+ *     message: 'Storage backend',
+ *     choices: ['sqlite', 'postgres'],
+ *   });
+ *   await context.out.info(backend);
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#choices
+ * @public
+ */
 function select<
   Options,
   const Entry extends ChoiceEntry = ChoiceEntry,
@@ -217,7 +310,28 @@ async function select<
   context.signal.throwIfAborted();
   return askList(context, settings, false);
 }
-/** @public */
+/**
+ * Asks the operator to pick any number of choices from a list, optionally searched, and resolves to
+ * their values.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { multiselect } from '@loomcli/prompts';
+ *
+ * export const features = new Command('features').action(async (context) => {
+ *   const chosen = await multiselect(context, {
+ *     message: 'Features',
+ *     choices: ['backups', 'telemetry'],
+ *     min: 1,
+ *   });
+ *   await context.out.info(chosen.join(', '));
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#choices
+ * @public
+ */
 function multiselect<
   Options,
   const Entry extends ChoiceEntry = ChoiceEntry,

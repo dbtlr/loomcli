@@ -9,11 +9,39 @@ import { asking, validateAnswer } from './question.js';
 import { openReader } from './reader.js';
 import type { PromptContext } from './types.js';
 
-/** @public @sealed */
+/**
+ * The failure of an editor question that cannot get an answer from the operator's editor: the
+ * question cannot write its file, the editor cannot start, or the editor exits with an error.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { editor, EditorError } from '@loomcli/prompts';
+ *
+ * export const note = new Command('note').action(async (context) => {
+ *   try {
+ *     const body = await editor(context, { message: 'Note', extension: '.md' });
+ *     await context.out.info(body);
+ *   } catch (error) {
+ *     if (error instanceof EditorError) {
+ *       await context.out.error(`${error.editor} failed.`);
+ *     }
+ *     throw error;
+ *   }
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#when-the-editor-fails
+ * @public
+ * @sealed
+ */
 class EditorError extends FatalError {
+  /** The stable code that names this failure. */
   static override readonly code = 'editor-failed';
 
+  /** The command line the question ran as the editor. */
   readonly editor: string;
+  /** The editor's exit status, or `undefined` when it did not exit with one. */
   readonly status: number | undefined;
 
   constructor(message: string, editor: string, status: number | undefined) {

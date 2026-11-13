@@ -17,13 +17,21 @@ import type { ProgressLine } from './views.js';
  * @public
  */
 interface Spinner {
+  /** The frames drawn in turn, one each interval. */
   readonly frames: readonly string[];
   /** Milliseconds between frames. */
   readonly interval: number;
 }
 
-/** @public */
+/**
+ * The settings of one progress line: its label, an optional total that makes it a bar, and an
+ * optional spinner of its own.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#progress
+ * @public
+ */
 interface ProgressSettings {
+  /** The text the line shows while it runs. */
   readonly label: string;
   /** A bar with counts; without it, a spinner. */
   readonly total?: number;
@@ -31,16 +39,31 @@ interface ProgressSettings {
   readonly spinner?: Spinner;
 }
 
-/** @public */
+/**
+ * A change to a running line: each field it states replaces the line's current one.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#progress
+ * @public
+ */
 interface ProgressUpdate {
+  /** The count of units done so far. */
   readonly completed?: number;
+  /** The count of units the work has, which turns a spinner into a bar. */
   readonly total?: number;
+  /** The text the line shows from now on. */
   readonly label?: string;
 }
 
-/** @public */
+/**
+ * The messages `track` ends a line with: one for the work's value and one for its failure.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#progress
+ * @public
+ */
 interface TrackMessages<Value> {
+  /** The end message, or a function of the work's value that returns it. */
   readonly done?: string | ((value: Value) => string);
+  /** The failure message, or a function of the work's rejection that returns it. */
   readonly failed?: string | ((error: unknown) => string);
 }
 
@@ -51,9 +74,13 @@ interface TrackMessages<Value> {
  * @sealed
  */
 interface Progress {
+  /** Changes the line's counts or label while it runs. */
   update(update: ProgressUpdate): void;
+  /** Ends the line as a success, with an optional message in place of the label. */
   end(message?: string): Promise<void>;
+  /** Ends the line as a failure, with an optional message in place of the label. */
   fail(message?: string): Promise<void>;
+  /** Ends the line by how the work settles and returns the work's value, or rethrows its rejection. */
   track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value>;
 }
 
@@ -66,9 +93,16 @@ type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
   readonly out: Pick<Out, 'region' | 'info' | 'success' | 'error'>;
 };
 
-/** @public */
+/**
+ * The look `progressStyle()` sets for every progress line: a spinner and the cells of the bar.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#progress-style
+ * @public
+ */
 interface ProgressStyleSettings {
+  /** The spinner every line draws unless its own settings name one. */
   readonly spinner?: Spinner;
+  /** The cells a bar draws for the done and the remaining share of the work. */
   readonly bar?: { readonly complete: string; readonly incomplete: string };
 }
 
@@ -140,6 +174,17 @@ const progressStyleExtension = extension('@loomcli/prompts/progress-style', {
  * The optional plugin that sets how every progress line of an application looks: a spinner in the
  * cli-spinners shape and the bar's cells. Each setting it omits keeps the library's default.
  *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { progressStyle } from '@loomcli/prompts';
+ *
+ * export const app = new Application('fetchit', {
+ *   plugins: [progressStyle({ bar: { complete: '#', incomplete: '-' } })],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#progress-style
  * @public
  */
 function progressStyle(settings?: ProgressStyleSettings): Plugin {
@@ -198,6 +243,21 @@ interface LineState {
  * nothing, and runs no timer. Off a terminal it writes one start line through `info` and one
  * end line through `success` or `error`. It reports at its start, at each update, and at its close.
  *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { progress } from '@loomcli/prompts';
+ *
+ * export const fetchAll = new Command('fetch').action(async (context) => {
+ *   const line = progress(context, { label: 'Fetching records', total: 10 });
+ *   for (let completed = 1; completed <= 10; completed += 1) {
+ *     line.update({ completed });
+ *   }
+ *   await line.end('Fetched 10 records');
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#progress
  * @public
  */
 function progress(context: ProgressContext, settings: ProgressSettings): Progress {
