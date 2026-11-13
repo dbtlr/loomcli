@@ -61,9 +61,13 @@ const oxlint = { jsPlugins: [packageName], rules: enabledRules };
  * import loom from '@loomcli/eslint-plugin';
  * import tseslint from 'typescript-eslint';
  *
+ * // ESLint selects a file only through a pattern that names its extension, such as `.ts`.
+ * // The glob is split in two because a doc comment cannot hold it whole.
+ * const typescript = ['src/**' + '/*.ts'];
+ *
  * export default [
- *   { files: ['src/**'], languageOptions: { parser: tseslint.parser } },
- *   { files: ['src/**'], ...loom.configs.recommended },
+ *   { files: typescript, languageOptions: { parser: tseslint.parser } },
+ *   { files: typescript, ...loom.configs.recommended },
  * ];
  * ```
  *
