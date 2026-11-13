@@ -6,104 +6,75 @@
 
 import { DeclaredView } from '@loomcli/core';
 
-// @public (undocumented)
+// @public
 export interface AnsweredLine {
-    // (undocumented)
     answer: string | undefined;
-    // (undocumented)
     readonly kind?: QuestionFrame['kind'] | undefined;
-    // (undocumented)
     readonly lines?: number;
-    // (undocumented)
     message: string;
 }
 
-// @public (undocumented)
+// @public
 export const answeredLine: DeclaredView<AnsweredLine>;
 
-// @public (undocumented)
+// @public
 export interface CancelledLine {
-    // (undocumented)
     message: string;
 }
 
-// @public (undocumented)
+// @public
 export const cancelledLine: DeclaredView<CancelledLine>;
 
-// @public (undocumented)
+// @public
 export interface ChoiceRow {
-    // (undocumented)
     readonly description: string | undefined;
-    // (undocumented)
     readonly disabled: boolean;
-    // (undocumented)
     readonly kind: 'choice';
-    // (undocumented)
     readonly label: string;
-    // (undocumented)
     readonly reason: string | undefined;
-    // (undocumented)
     readonly selected: boolean;
 }
 
-// @public (undocumented)
+// @public
 export interface EditorFrame {
-    // (undocumented)
     readonly editing: boolean;
-    // (undocumented)
     readonly issue: string | undefined;
-    // (undocumented)
     readonly kind: 'editor';
-    // (undocumented)
     readonly message: string;
 }
 
-// @public (undocumented)
+// @public
 export interface ListFrame {
-    // (undocumented)
     readonly above: number;
-    // (undocumented)
     readonly below: number;
-    // (undocumented)
     readonly choices: readonly (ChoiceRow | SeparatorRow)[];
-    // (undocumented)
     readonly cursor?: number | undefined;
-    // (undocumented)
     readonly highlighted: number | undefined;
-    // (undocumented)
     readonly issue: string | undefined;
-    // (undocumented)
     readonly loading?: boolean | undefined;
-    // (undocumented)
     readonly message: string;
-    // (undocumented)
     readonly rows: number | undefined;
-    // (undocumented)
     readonly term?: string | undefined;
 }
 
 // @public
 export interface ProgressLine {
-    // (undocumented)
     readonly bar: {
         readonly complete: string;
         readonly incomplete: string;
     };
-    // (undocumented)
     readonly completed: number | undefined;
     readonly elapsed: number;
     readonly frame: string;
     readonly label: string;
-    // (undocumented)
     readonly state: 'running' | 'ended' | 'failed' | 'cancelled';
-    // (undocumented)
     readonly total: number | undefined;
 }
 
-// @public (undocumented)
+// @public
 export const progressLine: DeclaredView<ProgressLine>;
 
-// @public (undocumented)
+// @public
 export type QuestionFrame = EditorFrame | TypedFrame | (ListFrame & {
     readonly kind: 'select';
 }) | (ListFrame & {
@@ -113,30 +84,22 @@ export type QuestionFrame = EditorFrame | TypedFrame | (ListFrame & {
     readonly max: number | undefined;
 });
 
-// @public (undocumented)
+// @public
 export const questionFrame: DeclaredView<QuestionFrame>;
 
-// @public (undocumented)
+// @public
 export interface SeparatorRow {
-    // (undocumented)
     readonly kind: 'separator';
-    // (undocumented)
     readonly label: string;
 }
 
-// @public (undocumented)
+// @public
 export interface TypedFrame {
-    // (undocumented)
     readonly cursor?: number | undefined;
-    // (undocumented)
     readonly hint: string | undefined;
-    // (undocumented)
     readonly issue: string | undefined;
-    // (undocumented)
     readonly kind: 'text' | 'secret' | 'confirm';
-    // (undocumented)
     readonly message: string;
-    // (undocumented)
     readonly typed: string;
 }
 

@@ -20,8 +20,33 @@ function invalid(message: string, correction: string): never {
   throw new DeclarationError(linkRule, { correction, sentence: message });
 }
 
-/** @public @sealed */
+/**
+ * The failure of a question asked in a run that is not interactive and has no linked value to
+ * answer it. Its message names the question and the Command to run at a terminal.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { confirm, InteractionUnavailableError } from '@loomcli/prompts';
+ *
+ * export const wipe = new Command('wipe').action(async (context) => {
+ *   try {
+ *     await confirm(context, { message: 'Wipe the cache?' });
+ *   } catch (error) {
+ *     if (error instanceof InteractionUnavailableError) {
+ *       await context.out.error('Run this at a terminal.');
+ *     }
+ *     throw error;
+ *   }
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#resolving-a-question
+ * @public
+ * @sealed
+ */
 class InteractionUnavailableError extends FatalError {
+  /** The stable code that names this failure. */
   static override readonly code = 'interaction-unavailable';
 
   constructor(message: string, command: string) {

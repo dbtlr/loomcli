@@ -10,19 +10,19 @@ import type { Out } from '@loomcli/core';
 import type { Plugin as Plugin_2 } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type Answer<Options, Key, Output> = [Key] extends [never] ? Output : Output | Options[Key & keyof Options];
 
-// @public (undocumented)
+// @public
 export type Choice<Value = unknown> = StringValue<Value> | ChoiceObject<Value>;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type ChoiceAnswer<Options, Key, Args, Argument, Output> = [Argument] extends [never] ? [Key] extends [never] ? Output : Options[Key & keyof Options] : Args[Argument & keyof Args];
 
-// @public (undocumented)
+// @public
 export type ChoiceEntry<Value = unknown> = Choice<Value> | Separator;
 
-// @public (undocumented)
+// @public
 export type ChoiceObject<Value = unknown> = (ChoiceDetails & {
     readonly value: StringValue<Value>;
     readonly label?: string;
@@ -31,59 +31,55 @@ export type ChoiceObject<Value = unknown> = (ChoiceDetails & {
     readonly label: string;
 });
 
-// @public (undocumented)
+// @public
 export type ChoiceSource<Value = unknown> = (term: string, options: {
     readonly signal: AbortSignal;
 }) => readonly ChoiceEntry<Value>[] | PromiseLike<readonly ChoiceEntry<Value>[]>;
 
-// @public (undocumented)
+// @public
 export type ChoiceValue<Entry> = Entry extends Separator ? never : Entry extends string ? Entry : Entry extends {
     readonly value: infer Value;
 } ? Value : never;
 
-// @public (undocumented)
+// @public
 function confirm_2<Options, const Key extends LinkKey<Options> = never>(context: PromptContext<Options>, settings: ConfirmSettings<Key>): Promise<Answer<Options, Key, boolean>>;
 export { confirm_2 as confirm }
 
-// @public (undocumented)
+// @public
 export type ConfirmSettings<Key = never> = Link<Key> & {
     message: string;
     default?: boolean;
 };
 
-// @public (undocumented)
+// @public
 export function editor<Options, const Key extends LinkKey<Options> = never, Output = string, Args = unknown, const Argument extends LinkKey<Args> = never>(context: PromptContext<Options, Args>, settings: EditorSettings<Key, Output, Argument>): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export class EditorError extends FatalError {
     constructor(message: string, editor: string, status: number | undefined);
-    // (undocumented)
     static readonly code = "editor-failed";
-    // (undocumented)
     readonly editor: string;
-    // (undocumented)
     readonly status: number | undefined;
 }
 
-// @public (undocumented)
+// @public
 export type EditorSettings<Key = never, Output = string, Argument = never> = Readonly<TextSettings<Key, Output, Argument>> & {
     readonly extension?: string;
 };
 
-// @public @sealed (undocumented)
+// @public @sealed
 export class InteractionUnavailableError extends FatalError {
     constructor(message: string, command: string);
-    // (undocumented)
     static readonly code = "interaction-unavailable";
 }
 
-// @public (undocumented)
+// @public
 export type LinkKey<Options> = keyof Options & string;
 
-// @public (undocumented)
+// @public
 export function multiselect<Options, const Entry extends ChoiceEntry = ChoiceEntry, const Key extends LinkKey<Options> = never, Args = unknown, const Argument extends LinkKey<Args> = never>(context: PromptContext<Options, Args>, settings: MultiselectSettings<Key, Entry, Argument>): Promise<ChoiceAnswer<Options, Key, Args, Argument, ChoiceValue<Entry>[]>>;
 
-// @public (undocumented)
+// @public
 export type MultiselectSettings<Key = never, Entry extends ChoiceEntry = ChoiceEntry, Argument = never> = Link<Key, Argument> & ChoiceList<Entry> & LinkedChoices<Key, Argument> & {
     readonly message: string;
     readonly default?: readonly NoInfer<ChoiceValue<Entry>>[];
@@ -93,13 +89,9 @@ export type MultiselectSettings<Key = never, Entry extends ChoiceEntry = ChoiceE
 
 // @public @sealed
 export interface Progress {
-    // (undocumented)
     end(message?: string): Promise<void>;
-    // (undocumented)
     fail(message?: string): Promise<void>;
-    // (undocumented)
     track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value>;
-    // (undocumented)
     update(update: ProgressUpdate): void;
 }
 
@@ -111,9 +103,8 @@ export type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
     readonly out: Pick<Out, 'region' | 'info' | 'success' | 'error'>;
 };
 
-// @public (undocumented)
+// @public
 export interface ProgressSettings {
-    // (undocumented)
     readonly label: string;
     readonly spinner?: Spinner;
     readonly total?: number;
@@ -122,79 +113,70 @@ export interface ProgressSettings {
 // @public
 export function progressStyle(settings?: ProgressStyleSettings): Plugin_2;
 
-// @public (undocumented)
+// @public
 export interface ProgressStyleSettings {
-    // (undocumented)
     readonly bar?: {
         readonly complete: string;
         readonly incomplete: string;
     };
-    // (undocumented)
     readonly spinner?: Spinner;
 }
 
-// @public (undocumented)
+// @public
 export interface ProgressUpdate {
-    // (undocumented)
     readonly completed?: number;
-    // (undocumented)
     readonly label?: string;
-    // (undocumented)
     readonly total?: number;
 }
 
-// @public (undocumented)
+// @public
 export type PromptContext<Options, Args = unknown> = Pick<ActionContext<Args, Options>, 'args' | 'passthrough' | 'options' | 'interactive' | 'supplied' | 'command' | 'graph' | 'host' | 'signal' | 'cancel' | 'onShutdown' | 'onSuspend' | 'onResume'> & {
     readonly out: Pick<Out, 'draw' | 'region' | 'lendTerminal'>;
 };
 
-// @public (undocumented)
+// @public
 export function secret<Options, const Key extends LinkKey<Options> = never, Output = string, Args = unknown, const Argument extends LinkKey<Args> = never>(context: PromptContext<Options, Args>, settings: SecretSettings<Key, Output, Argument>): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
 
-// @public (undocumented)
+// @public
 export type SecretSettings<Key = never, Output = string, Argument = never> = Link<Key, Argument> & {
     message: string;
     default?: never;
     validate?: StandardSchemaV1<string, Output>;
 };
 
-// @public (undocumented)
+// @public
 export function select<Options, const Entry extends ChoiceEntry = ChoiceEntry, const Key extends LinkKey<Options> = never, Args = unknown, const Argument extends LinkKey<Args> = never>(context: PromptContext<Options, Args>, settings: SelectSettings<Key, Entry, Argument>): Promise<ChoiceAnswer<Options, Key, Args, Argument, ChoiceValue<Entry>>>;
 
-// @public (undocumented)
+// @public
 export type SelectSettings<Key = never, Entry extends ChoiceEntry = ChoiceEntry, Argument = never> = Link<Key, Argument> & ChoiceList<Entry> & LinkedChoices<Key, Argument> & {
     readonly message: string;
     readonly default?: NoInfer<ChoiceValue<Entry>>;
 };
 
-// @public (undocumented)
+// @public
 export interface Separator {
-    // (undocumented)
     readonly separator: string;
 }
 
 // @public
 export interface Spinner {
-    // (undocumented)
     readonly frames: readonly string[];
     readonly interval: number;
 }
 
-// @public (undocumented)
+// @public
 export function text<Options, const Key extends LinkKey<Options> = never, Output = string, Args = unknown, const Argument extends LinkKey<Args> = never>(context: PromptContext<Options, Args>, settings: TextSettings<Key, Output, Argument>): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
 
-// @public (undocumented)
+// @public
 export type TextSettings<Key = never, Output = string, Argument = never> = Link<Key, Argument> & {
     message: string;
     default?: string;
     validate?: StandardSchemaV1<string, Output>;
 };
 
-// @public (undocumented)
+// @public
 export interface TrackMessages<Value> {
-    // (undocumented)
     readonly done?: string | ((value: Value) => string);
-    // (undocumented)
     readonly failed?: string | ((error: unknown) => string);
 }
 

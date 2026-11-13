@@ -8,69 +8,146 @@ function literal(text: string): string {
   return textStyle.escape(escapeControlCharacters(text));
 }
 
-/** @public */
+/**
+ * The data of a text, secret, or confirm question's frame: the typed line, its cursor, and the hint.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#frames-and-views
+ * @public
+ */
 interface TypedFrame {
+  /** Which typed question the frame draws. */
   readonly kind: 'text' | 'secret' | 'confirm';
+  /** The question's message. */
   readonly message: string;
+  /** The reason the last answer was refused, or `undefined` when there is none. */
   readonly issue: string | undefined;
+  /** What the operator has typed, which is always empty for a secret. */
   readonly typed: string;
-  readonly cursor?: number | undefined; // Absent, the end of typed
+  /** A grapheme index into `typed`; absent, the end of `typed`. */
+  readonly cursor?: number | undefined;
+  /** The question's hint for text, the legend for confirm, or `undefined` when there is none. */
   readonly hint: string | undefined;
 }
-/** @public */
+/**
+ * One choice in a list frame's visible window.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#list-frames
+ * @public
+ */
 interface ChoiceRow {
+  /** Marks the row as a choice. */
   readonly kind: 'choice';
+  /** The text the row shows. */
   readonly label: string;
+  /** The choice's description, shown below the list while it is highlighted. */
   readonly description: string | undefined;
-  readonly disabled: boolean; // The choice's own disabled state; false for a choice max keeps out
-  readonly reason: string | undefined; // A disabled choice's reason, when it has one
-  readonly selected: boolean; // In a multiselect's selection; false at a select
+  /** The choice's own disabled state, which is false for a choice `max` keeps out. */
+  readonly disabled: boolean;
+  /** A disabled choice's reason, when it has one. */
+  readonly reason: string | undefined;
+  /** Whether the choice is in a multiselect's selection, which is false at a select. */
+  readonly selected: boolean;
 }
-/** @public */
+/**
+ * One separator in a list frame's visible window.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#list-frames
+ * @public
+ */
 interface SeparatorRow {
+  /** Marks the row as a separator. */
   readonly kind: 'separator';
+  /** The text the row shows, or the empty string for a blank row. */
   readonly label: string;
 }
-/** @public */
+/**
+ * The data of a select or multiselect question's frame: the visible rows, the highlight, and what
+ * the window hides.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#list-frames
+ * @public
+ */
 interface ListFrame {
+  /** The question's message. */
   readonly message: string;
+  /** The reason the last answer was refused, or `undefined` when there is none. */
   readonly issue: string | undefined;
-  readonly choices: readonly (ChoiceRow | SeparatorRow)[]; // The visible rows
-  readonly highlighted: number | undefined; // An index into choices; undefined when no row is highlighted
-  readonly above: number; // Rows hidden above the window
-  readonly below: number; // Rows hidden below the window
-  readonly rows: number | undefined; // Stderr's rows
-  readonly term?: string | undefined; // The search term; absent when the question does not search
-  readonly cursor?: number | undefined; // The term's cursor; absent, the end of term
-  readonly loading?: boolean | undefined; // A source call has not settled; absent, false
+  /** The visible rows. */
+  readonly choices: readonly (ChoiceRow | SeparatorRow)[];
+  /** An index into `choices`, or `undefined` when no row is highlighted. */
+  readonly highlighted: number | undefined;
+  /** The count of rows hidden above the window. */
+  readonly above: number;
+  /** The count of rows hidden below the window. */
+  readonly below: number;
+  /** The rows of stderr, or `undefined` when it has none. */
+  readonly rows: number | undefined;
+  /** The search term; absent when the question does not search. */
+  readonly term?: string | undefined;
+  /** The term's cursor; absent, the end of `term`. */
+  readonly cursor?: number | undefined;
+  /** Whether a source call has not settled; absent, false. */
+  readonly loading?: boolean | undefined;
 }
-/** @public */
+/**
+ * The data of an editor question's frame: whether the operator's editor is open.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#frames-and-views
+ * @public
+ */
 interface EditorFrame {
+  /** Marks the frame as an editor question's. */
   readonly kind: 'editor';
+  /** The question's message. */
   readonly message: string;
+  /** The reason the last answer was refused, or `undefined` when there is none. */
   readonly issue: string | undefined;
+  /** Whether the editor is open and the question waits for it to close. */
   readonly editing: boolean;
 }
-/** @public */
+/**
+ * The data of any question's active frame, told apart by `kind`.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#frames-and-views
+ * @public
+ */
 type QuestionFrame =
   | EditorFrame
   | TypedFrame
   | (ListFrame & { readonly kind: 'select' })
   | (ListFrame & {
       readonly kind: 'multiselect';
-      readonly count: number; // Choices in the selection, shown or not
+      /** The count of choices in the selection, shown or not. */
+      readonly count: number;
+      /** The fewest choices the operator must pick. */
       readonly min: number;
+      /** The most choices the operator may pick, or `undefined` when there is no limit. */
       readonly max: number | undefined;
     });
-/** @public */
+/**
+ * The data of the line that stays once a question is answered.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#frames-and-views
+ * @public
+ */
 interface AnsweredLine {
+  /** An editor answer's line count, which an editor question always supplies. */
   readonly lines?: number;
+  /** The question's message. */
   message: string;
+  /** The answer as a display string, or `undefined` for a secret. */
   answer: string | undefined;
-  readonly kind?: QuestionFrame['kind'] | undefined; // The question's kind; absent, a typed answer
+  /** The question's kind; absent, a typed answer. */
+  readonly kind?: QuestionFrame['kind'] | undefined;
 }
-/** @public */
+/**
+ * The data of the line that stays once a question is cancelled.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#leaving-a-question
+ * @public
+ */
 interface CancelledLine {
+  /** The question's message. */
   message: string;
 }
 
@@ -532,7 +609,26 @@ function typedFrame(
   );
 }
 
-/** @public */
+/**
+ * The declared view that draws a question's active frame, for a `QuestionFrame` of any kind. An
+ * application restyles it with `override`.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { questionFrame } from '@loomcli/prompts/views';
+ *
+ * export const preview = new Command('preview').action(async (context) => {
+ *   await context.out.draw(
+ *     { kind: 'text', message: 'Service port', issue: undefined, typed: '80', hint: undefined },
+ *     questionFrame,
+ *   );
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#frames-and-views
+ * @public
+ */
 const questionFrame = view<QuestionFrame>('@loomcli/prompts/question-frame', {
   render: (data, context) => {
     const { style } = context;
@@ -632,7 +728,23 @@ function editorAnswer(
   return `${fitted}\n`;
 }
 
-/** @public */
+/**
+ * The declared view that draws the line a question leaves once it is answered. An application
+ * restyles it with `override`.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { answeredLine } from '@loomcli/prompts/views';
+ *
+ * export const preview = new Command('preview').action(async (context) => {
+ *   await context.out.draw({ message: 'Service port', answer: '8080', kind: 'text' }, answeredLine);
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#frames-and-views
+ * @public
+ */
 const answeredLine = view<AnsweredLine>('@loomcli/prompts/answered-line', {
   render: ({ message, answer, kind, lines }, context) => {
     const { style } = context;
@@ -650,7 +762,23 @@ const answeredLine = view<AnsweredLine>('@loomcli/prompts/answered-line', {
     return `${style.dim('?')} ${message} ${style.dim('·')} ${drawn}\n`;
   },
 });
-/** @public */
+/**
+ * The declared view that draws the line a question leaves once it is cancelled. An application
+ * restyles it with `override`.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { cancelledLine } from '@loomcli/prompts/views';
+ *
+ * export const preview = new Command('preview').action(async (context) => {
+ *   await context.out.draw({ message: 'Service port' }, cancelledLine);
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#frames-and-views
+ * @public
+ */
 const cancelledLine = view<CancelledLine>('@loomcli/prompts/cancelled-line', {
   render: ({ message }, { style }) => `${style.dim(`? ${message} · cancelled`)}\n`,
 });
@@ -661,13 +789,17 @@ const cancelledLine = view<CancelledLine>('@loomcli/prompts/cancelled-line', {
  * @public
  */
 interface ProgressLine {
+  /** How the line stands: running, ended, failed, or cancelled. */
   readonly state: 'running' | 'ended' | 'failed' | 'cancelled';
   /** The label while the line runs, and the end message once it has ended or failed. */
   readonly label: string;
+  /** The count of units done, or `undefined` when the work has not counted any. */
   readonly completed: number | undefined;
+  /** The count of units the work has, or `undefined` for a spinner. */
   readonly total: number | undefined;
   /** The spinner's current frame. */
   readonly frame: string;
+  /** The cells the bar draws for the done and the remaining share. */
   readonly bar: { readonly complete: string; readonly incomplete: string };
   /** Milliseconds since `progress()` opened the line. */
   readonly elapsed: number;
@@ -709,7 +841,34 @@ function elapsedTime(elapsed: number): string {
   return `${String(Math.floor(whole / HOUR))}h ${String(minutes).padStart(2, '0')}m`;
 }
 
-/** @public */
+/**
+ * The declared view that draws one progress line, for a `ProgressLine`. An application restyles it
+ * with `override`.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { progressLine } from '@loomcli/prompts/views';
+ *
+ * export const preview = new Command('preview').action(async (context) => {
+ *   await context.out.draw(
+ *     {
+ *       state: 'running',
+ *       label: 'Fetching records',
+ *       completed: 6,
+ *       total: 10,
+ *       frame: '◐',
+ *       bar: { complete: '▰', incomplete: '▱' },
+ *       elapsed: 2400,
+ *     },
+ *     progressLine,
+ *   );
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#progress-view
+ * @public
+ */
 const progressLine = view<ProgressLine>('@loomcli/prompts/progress', {
   render: (data, { style }) => {
     const time = `${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`;
