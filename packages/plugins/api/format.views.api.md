@@ -8,7 +8,6 @@ import type { View } from '@loomcli/core';
 
 // @public
 export interface EncodingConfig<Data> {
-    // (undocumented)
     readonly map?: (data: Readonly<Data>) => unknown;
 }
 

@@ -14,15 +14,37 @@ const options = {
     type: 'boolean',
   },
 } satisfies PluginOptions;
-/** @public */
+/**
+ * What an application tells the interaction plugin: the variables that lower interaction.
+ *
+ * @public
+ */
 export interface InteractionSettings {
+  /**
+   * A variable, or an ordered list of variables, that lowers the interaction decision when it is
+   * set and not empty. None by default.
+   */
   readonly env?: string | readonly [string, ...string[]];
 }
-/** @public @sealed */
+/**
+ * The options record `interaction()` declares: the global `--no-input` option.
+ *
+ * @public @sealed
+ */
 export type InteractionOptions = typeof options;
 
 /**
  * Lets the operator lower the run interaction decision with --no-input or a named variable.
+ *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { interaction } from '@loomcli/plugins/interaction';
+ *
+ * export const app = new Application('notes', { plugins: [interaction({ env: 'NOTES_INPUT' })] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/interaction.md
  *
  * @public
  */

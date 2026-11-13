@@ -183,8 +183,6 @@ export const surfacePackages = [
       },
     },
     modules: ['node:*', '@loomcli/core', '@loomcli/validators', '@standard-schema/spec'],
-    // Comments and examples a later pass writes (ADR-0147); the last pass removes the list.
-    pendingDocumentation: ['dist/'],
   },
   {
     directory: 'packages/validators',

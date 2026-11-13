@@ -12,7 +12,11 @@ const options = {
   help: { control: true, description: 'Show this help.', short: 'h', type: 'boolean' },
 } satisfies PluginOptions;
 
-/** @public @sealed */
+/**
+ * The options record `help()` declares: the global `--help` option, spelled `-h` too.
+ *
+ * @public @sealed
+ */
 export type HelpOptions = typeof options;
 
 /**
@@ -34,6 +38,16 @@ export interface HelpSettings {
  * pager. With `command`, the plugin attaches the help Command, which prints the same page for the
  * Command its words name. The annotated return type is the boundary that breaks the cycle between
  * this module and the middleware module `load` names.
+ *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { help } from '@loomcli/plugins/help';
+ *
+ * export const app = new Application('notes', { plugins: [help({ command: true, paging: true })] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/help.md
  *
  * @public
  */

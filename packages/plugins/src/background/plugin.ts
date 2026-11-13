@@ -28,13 +28,27 @@ const options = {
     validate: backgroundInput,
   },
 } satisfies PluginOptions;
-/** @public @sealed */
+/**
+ * The options record `background()` declares: the global `--background` option.
+ *
+ * @public @sealed
+ */
 export type BackgroundOptions = typeof options;
 
 /**
  * Gives the operator --background=dark|light, which core reads as the run's background choice
  * right after host capture. Its mark also makes core detect the background when no theme entry
  * adapts, so an application whose own code reads the background installs it. It takes no settings.
+ *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { background } from '@loomcli/plugins/background';
+ *
+ * export const app = new Application('notes', { plugins: [background()] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/background.md
  *
  * @public
  */

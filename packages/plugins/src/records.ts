@@ -2,23 +2,43 @@ import type { RowView, ViewContext } from '@loomcli/core';
 
 import { recordBlock } from './record-block.js';
 
-/** @public */
+/**
+ * One field of a record: the row key it reads and, optionally, how its value prints.
+ *
+ * @public
+ */
 interface FieldDefinition<Row, Key extends keyof Row & string> {
+  /** The row key the field reads. */
   readonly key: Key;
+  /** The text of the field's value, in place of the value's own text. */
   readonly format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
 }
 
-/** @public */
+/**
+ * A field definition for any key of the row.
+ *
+ * @public
+ */
 type FieldEntry<Row> = {
   [Key in keyof Row & string]: FieldDefinition<Row, Key>;
 }[keyof Row & string];
 
-/** @public */
+/**
+ * A field: a row key alone, or a definition that tunes how the field prints.
+ *
+ * @public
+ */
 type Field<Row> = (keyof Row & string) | FieldEntry<Row>;
 
-/** @public */
+/**
+ * What an author tells `records()`: the key that names each record and the fields to print.
+ *
+ * @public
+ */
 interface RecordsConfig<Row> {
+  /** The row key whose value heads each record. */
   readonly identifier: keyof Row & string;
+  /** The fields to print, in order. Absent, every key of the row prints. */
   readonly fields?: readonly Field<Row>[];
 }
 
@@ -104,6 +124,25 @@ function renderRecord<Row>({
 /**
  * A row view over records, with one key-value lane per field and a counted closing summary. The
  * returned value is a bare pack view and installs no plugin behavior.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { records } from '@loomcli/plugins/records';
+ *
+ * interface Note {
+ *   id: string;
+ *   title: string;
+ * }
+ *
+ * export const show = new Command('show')
+ *   .rows<Note>({ views: { records: records({ identifier: 'id', fields: ['title'] }) } })
+ *   .action(async function* () {
+ *     yield { id: 'n1', title: 'Buy milk' };
+ *   });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/pack-views.md
  *
  * @public
  */

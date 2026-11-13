@@ -9,7 +9,7 @@ import type { Plugin as Plugin_2 } from '@loomcli/core';
 // @public
 export function version(settings?: VersionSettings): Plugin_2<VersionOptions>;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type VersionOptions = typeof options;
 
 // @public

@@ -153,6 +153,21 @@ interface Configuration<Schema extends StandardSchemaV1, Directory extends strin
  * and the opener load only when core calls them, and they share one read per run, keyed by the
  * run's host.
  *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { configuration } from '@loomcli/plugins/config';
+ * import { z } from 'zod';
+ *
+ * const config = configuration({
+ *   schema: z.object({ minBytes: z.number().optional() }),
+ * });
+ *
+ * export const app = new Application('notes', { plugins: [config.plugin] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/config.md
+ *
  * @public
  */
 function configuration<

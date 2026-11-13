@@ -10,11 +10,8 @@ import { DeclaredView } from '@loomcli/core';
 
 // @public @sealed
 export interface HelpPage {
-    // (undocumented)
     readonly command: CommandNode;
-    // (undocumented)
     readonly graph: CommandGraph;
-    // (undocumented)
     readonly variant: HelpVariant;
 }
 

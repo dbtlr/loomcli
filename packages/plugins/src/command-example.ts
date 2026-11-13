@@ -6,7 +6,9 @@
  * @public
  */
 interface CommandExample {
+  /** The tokens after the application name, as one line. */
   readonly command: string;
+  /** One line printed under the invocation. None by default. */
   readonly note?: string | undefined;
 }
 

@@ -549,6 +549,16 @@ function noticeOptOut(notices: boolean | NoticeSettings): string | undefined {
  * middleware, whose module loads only when a run reaches it. The annotated return type is the
  * boundary that breaks the cycle between this module and the middleware module `load` names.
  *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { selfUpdate } from '@loomcli/plugins/self-update';
+ *
+ * export const app = new Application('notes', { plugins: [selfUpdate({ notices: { env: 'NOTES_NO_UPDATE_NOTICE' } })] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/self-update.md
+ *
  * @public
  */
 function selfUpdate(settings?: SelfUpdateSettings): Plugin {

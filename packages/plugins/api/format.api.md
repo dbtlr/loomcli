@@ -10,7 +10,6 @@ import type { View } from '@loomcli/core';
 
 // @public
 export interface EncodingConfig<Data> {
-    // (undocumented)
     readonly map?: (data: Readonly<Data>) => unknown;
 }
 
@@ -19,7 +18,6 @@ export function format(settings?: FormatSettings): Plugin_2<{}>;
 
 // @public
 export interface FormatSettings {
-    // (undocumented)
     readonly short?: NonNullable<StringOption['short']>;
 }
 

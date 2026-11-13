@@ -10,6 +10,18 @@ import type {
 /**
  * The bare palette introduces its literal token names and supplies no defaults or middleware.
  *
+ * @example
+ * ```ts
+ * import { Application, style } from '@loomcli/core';
+ * import { theme } from '@loomcli/plugins/theme';
+ *
+ * export const app = new Application('notes', {
+ *   plugins: [theme({ accent: style.cyan, primary: style.bold })],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/theme.md
+ *
  * @public
  */
 function theme<const Mapping extends ThemeMapping>(
@@ -67,6 +79,18 @@ type LoomThemeOverrides = {
 
 /**
  * The Loom palette, which adapts to the run's background and preserves authored modifiers.
+ *
+ * @example
+ * ```ts
+ * import { Application, style } from '@loomcli/core';
+ * import { loomTheme } from '@loomcli/plugins/theme';
+ *
+ * export const app = new Application('notes', {
+ *   plugins: [loomTheme({ highlight: style.cyan.bold })],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/theme.md
  *
  * @public
  */

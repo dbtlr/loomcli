@@ -27,7 +27,11 @@ function postfixOf(settings: VersionSettings | undefined): string | undefined {
   });
 }
 
-/** @public @sealed */
+/**
+ * The options record `version()` declares: the global `--version` option, spelled `-V` too.
+ *
+ * @public @sealed
+ */
 export type VersionOptions = typeof options;
 
 /**
@@ -44,6 +48,16 @@ export interface VersionSettings {
  * A plugin that prints the Application's version, then the settings' postfix when there is one, and
  * ends the invocation. It judges the postfix at the call. The annotated return type is the boundary
  * that breaks the cycle between this module and the middleware module `load` names.
+ *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { version } from '@loomcli/plugins/version';
+ *
+ * export const app = new Application('notes', { plugins: [version({ postfix: '(Report schema v1)' })] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/version.md
  *
  * @public
  */

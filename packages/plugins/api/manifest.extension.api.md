@@ -9,27 +9,20 @@ import type { StandardSchemaV1 } from '@loomcli/core';
 
 // @public
 export interface CommandExample {
-    // (undocumented)
     readonly command: string;
-    // (undocumented)
     readonly note?: string | undefined;
 }
 
 // @public @sealed
 export interface DeclaredFailure {
-    // (undocumented)
     readonly code: string;
-    // (undocumented)
     readonly exitCode: number;
-    // (undocumented)
     readonly meaning: string;
 }
 
 // @public
 export interface DeclaredFailureInput {
-    // (undocumented)
     readonly failure?: unknown;
-    // (undocumented)
     readonly meaning: string;
 }
 
@@ -38,21 +31,15 @@ export const manifestCommand: Extension<'command', StandardSchemaV1<ManifestComm
 
 // @public @sealed
 export interface ManifestCommandFacts {
-    // (undocumented)
     readonly details?: string | undefined;
-    // (undocumented)
     readonly examples?: readonly CommandExample[] | undefined;
-    // (undocumented)
     readonly failures?: readonly DeclaredFailure[] | undefined;
 }
 
 // @public
 export interface ManifestCommandInput {
-    // (undocumented)
     readonly details?: string | undefined;
-    // (undocumented)
     readonly examples?: readonly CommandExample[] | undefined;
-    // (undocumented)
     readonly failures?: readonly DeclaredFailureInput[] | undefined;
 }
 

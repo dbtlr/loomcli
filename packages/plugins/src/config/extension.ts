@@ -13,6 +13,7 @@ import { exactFacts } from '../exact-facts.js';
  * @public
  */
 interface ConfigInputFacts {
+  /** The dotted path of object keys the option reads in the configuration file. */
   readonly path: string;
 }
 
@@ -36,6 +37,19 @@ const inputFacts = exactFacts<ConfigInputFacts>()(inputFactsSchema);
  * carries it is configuration-bound, so core asks the plugin about it when argv and the
  * environment leave it unfilled. Its published schema is a Standard Schema over
  * `ConfigInputFacts`, so an author's type check loads no validation library's declarations.
+ *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { configInput } from '@loomcli/plugins/config/extension';
+ *
+ * export const app = new Application('notes').option('min-bytes', {
+ *   extensions: [configInput({ path: 'minBytes' })],
+ *   type: 'string',
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/config.md
  *
  * @public
  */

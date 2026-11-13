@@ -7,8 +7,11 @@ type LoggingErrorKind = 'unresolved-directory' | 'create-directory' | 'append' |
 
 /** What a failure of one step knows beside its kind. */
 interface LoggingErrorDetail {
+  /** The file or directory the step failed on, or `null` when no directory could be resolved. */
   readonly path: string | null;
+  /** The unset variable, for an unresolved directory. */
   readonly variable?: string;
+  /** The runtime's error, for a step that failed in the file system. */
   readonly cause?: unknown;
 }
 
@@ -36,6 +39,22 @@ function messageOf(kind: LoggingErrorKind, { path, variable }: LoggingErrorDetai
 /**
  * One failure to resolve, create, append to, or rotate the log file, which the plugin hands to the
  * author's `onError`. `variable` and `cause` are absent unless the step has one to report.
+ *
+ * @example
+ * ```ts
+ * import { logging } from '@loomcli/plugins/logging';
+ * import type { LoggingError } from '@loomcli/plugins/logging';
+ *
+ * const reported: string[] = [];
+ *
+ * export const plugin = logging({
+ *   onError: (error: LoggingError) => {
+ *     reported.push(`${error.kind}: ${error.message}`);
+ *   },
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/logging.md
  *
  * @public
  * @sealed

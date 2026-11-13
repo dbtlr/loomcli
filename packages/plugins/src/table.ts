@@ -13,24 +13,45 @@ const LAST_OFFSET = 1;
 const NEXT = 1;
 const NOT_FOUND = -1;
 
-/** @public */
+/**
+ * One column of a table: the row key it reads and, optionally, its header, alignment, and text.
+ *
+ * @public
+ */
 interface ColumnDefinition<Row, Key extends keyof Row & string> {
+  /** The row key the column reads. */
   readonly key: Key;
+  /** The column's header, in place of its key. */
   readonly header?: string;
+  /** The alignment of the column's cells. Left by default. */
   readonly align?: Alignment;
+  /** The text of one cell, in place of the value's own text. */
   readonly format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
 }
 
-/** @public */
+/**
+ * A column definition for any key of the row.
+ *
+ * @public
+ */
 type ColumnEntry<Row> = {
   [Key in keyof Row & string]: ColumnDefinition<Row, Key>;
 }[keyof Row & string];
 
-/** @public */
+/**
+ * A column: a row key alone, or a definition that tunes how the column prints.
+ *
+ * @public
+ */
 type Column<Row> = (keyof Row & string) | ColumnEntry<Row>;
 
-/** @public */
+/**
+ * What an author tells `table()`: the columns to print.
+ *
+ * @public
+ */
 interface TableConfig<Row> {
+  /** The columns to print, in order. Absent, every key of the first row prints. */
   readonly columns?: readonly Column<Row>[];
 }
 
@@ -254,6 +275,31 @@ function fallbackBlocks<Row>({ cells, columns, context, headers }: Grid<Row>): s
 /**
  * A whole view over rows, with columns measured before the first line is returned. The returned
  * value is a bare pack view and installs no plugin behavior.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { table } from '@loomcli/plugins/table';
+ *
+ * interface Row {
+ *   count: number;
+ *   source: string;
+ * }
+ *
+ * export const count = new Command('count')
+ *   .rows<Row>({
+ *     views: {
+ *       table: table({
+ *         columns: [{ key: 'count', header: 'COUNT', align: 'right' }, 'source'],
+ *       }),
+ *     },
+ *   })
+ *   .action(async function* () {
+ *     yield { count: 6, source: 'one.txt' };
+ *   });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/pack-views.md
  *
  * @public
  */

@@ -6,10 +6,18 @@ const EMPTY = 0;
 const FIRST_POSITION = 1;
 const TOP_LEVEL = 0;
 
-/** @public */
+/**
+ * What an author tells `list()`: whether items are numbered, how each prints, and where nested
+ * items come from.
+ *
+ * @public
+ */
 interface ListConfig<Item> {
+  /** Numbers the items instead of bulleting them. Off by default. */
   readonly ordered?: boolean;
+  /** The text of one item, in place of the item's own text. */
   readonly format?: (item: Item, index: number, context: ViewContext) => string;
+  /** The items nested under an item, or none. */
   readonly children?: (item: Item) => readonly Item[] | undefined;
 }
 
@@ -54,6 +62,18 @@ function levelLines<Item>(
  * A whole view over items, bulleted or numbered, with nested items under their parent's text and
  * every item's text wrapped under itself on a terminal. The returned value is a bare pack view and
  * installs no plugin behavior.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { list } from '@loomcli/plugins/list';
+ *
+ * export const tags = new Command('tags')
+ *   .result<readonly string[]>({ views: { list: list({ ordered: true }) } })
+ *   .action(async () => ['draft', 'review', 'published']);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/pack-views.md
  *
  * @public
  */

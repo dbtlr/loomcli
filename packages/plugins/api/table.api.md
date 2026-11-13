@@ -8,22 +8,18 @@ import type { Alignment } from '@loomcli/core';
 import type { View } from '@loomcli/core';
 import type { ViewContext } from '@loomcli/core';
 
-// @public (undocumented)
+// @public
 export type Column<Row> = (keyof Row & string) | ColumnEntry<Row>;
 
-// @public (undocumented)
+// @public
 export interface ColumnDefinition<Row, Key extends keyof Row & string> {
-    // (undocumented)
     readonly align?: Alignment;
-    // (undocumented)
     readonly format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
-    // (undocumented)
     readonly header?: string;
-    // (undocumented)
     readonly key: Key;
 }
 
-// @public (undocumented)
+// @public
 export type ColumnEntry<Row> = {
     [Key in keyof Row & string]: ColumnDefinition<Row, Key>;
 }[keyof Row & string];
@@ -31,9 +27,8 @@ export type ColumnEntry<Row> = {
 // @public
 export function table<Row>(config?: TableConfig<Row>): View<readonly Row[]>;
 
-// @public (undocumented)
+// @public
 export interface TableConfig<Row> {
-    // (undocumented)
     readonly columns?: readonly Column<Row>[];
 }
 

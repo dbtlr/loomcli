@@ -9,12 +9,11 @@ import type { Plugin as Plugin_2 } from '@loomcli/core';
 // @public
 export function interaction(settings?: InteractionSettings): Plugin_2<InteractionOptions>;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type InteractionOptions = typeof options;
 
-// @public (undocumented)
+// @public
 export interface InteractionSettings {
-    // (undocumented)
     readonly env?: string | readonly [string, ...string[]];
 }
 

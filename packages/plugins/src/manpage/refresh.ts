@@ -7,6 +7,19 @@ import type { RefreshContext } from '../refresh.js';
  * the child's output through. A child that fails or cannot start adds a `warn` log event and
  * resolves, because the binary update succeeded.
  *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { manpage, refreshManpages } from '@loomcli/plugins/manpage';
+ * import { selfUpdate } from '@loomcli/plugins/self-update';
+ *
+ * export const app = new Application('notes', {
+ *   plugins: [manpage(), selfUpdate({ afterReplace: refreshManpages })],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/manpage.md
+ *
  * @public
  */
 async function refreshManpages(context: RefreshContext): Promise<void> {

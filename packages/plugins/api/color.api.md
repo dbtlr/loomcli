@@ -9,7 +9,7 @@ import type { Plugin as Plugin_2 } from '@loomcli/core';
 // @public
 export function color(): Plugin_2<ColorOptions>;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type ColorOptions = typeof options;
 
 // (No @packageDocumentation comment for this package)

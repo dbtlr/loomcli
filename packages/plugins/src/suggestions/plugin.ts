@@ -144,6 +144,16 @@ const unknownOption: FailureView<UnknownOptionError> = { render };
  * the failure's sentence. Its hook reads the graph and adds no hint; its two views write the
  * sentence, and write core's text when no name is near.
  *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { suggestions } from '@loomcli/plugins/suggestions';
+ *
+ * export const app = new Application('notes', { plugins: [suggestions()] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/suggestions.md
+ *
  * @public
  */
 export function suggestions(): Plugin {

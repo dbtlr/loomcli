@@ -49,6 +49,16 @@ function hookOf(plan: LoggingPlan): LogHook {
  * A plugin that writes each log event as one JSON record, appended to a size-rotated file in the
  * platform's state or log directory, or written to stderr. It is an `onLog` hook and nothing else.
  *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { logging } from '@loomcli/plugins/logging';
+ *
+ * export const app = new Application('notes', { plugins: [logging({ level: 'warn', maxBytes: 1_000_000 })] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/logging.md
+ *
  * @public
  */
 export function logging(settings?: LoggingSettings): Plugin {

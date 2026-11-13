@@ -111,6 +111,16 @@ const completionCommand = new Command('completion', {
  * operator's shell on Linux and macOS, and answers them. Its whole contribution is the `completion`
  * Command; it declares no option, middleware, or extension. Each child loads its work when it runs.
  *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { completion } from '@loomcli/plugins/completion';
+ *
+ * export const app = new Application('notes', { plugins: [completion()] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/completion.md
+ *
  * @public
  */
 export function completion(): Plugin {

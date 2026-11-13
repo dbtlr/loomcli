@@ -10,7 +10,7 @@ import { Validator } from '@loomcli/validators';
 // @public
 export function background(): Plugin_2<BackgroundOptions>;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type BackgroundOptions = typeof options;
 
 // (No @packageDocumentation comment for this package)

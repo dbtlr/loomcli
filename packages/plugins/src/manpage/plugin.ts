@@ -70,6 +70,16 @@ const manpageCommand = new Command('manpage', { description: 'Write or install t
  * and a graph hook that rejects two page names one file would hold on a file system that ignores
  * case. Each child loads its work when it runs.
  *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { manpage } from '@loomcli/plugins/manpage';
+ *
+ * export const app = new Application('notes', { plugins: [manpage()] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/manpage.md
+ *
  * @public
  */
 function manpage(): Plugin {

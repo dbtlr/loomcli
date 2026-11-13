@@ -9,7 +9,7 @@ import type { Plugin as Plugin_2 } from '@loomcli/core';
 // @public
 export function help(settings?: HelpSettings): Plugin_2<HelpOptions>;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type HelpOptions = typeof options;
 
 // @public

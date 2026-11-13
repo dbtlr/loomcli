@@ -105,6 +105,16 @@ function skillsCommand(declared: Declared) {
  * current with the binary, and removes them. Its whole contribution is the `skills` group. Each
  * call is recorded in the registry `loom build` reads to carry the skills folder.
  *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { skills } from '@loomcli/plugins/skills';
+ *
+ * export const app = new Application('notes', { plugins: [skills({ folder: new URL('../skills/', import.meta.url) })] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/skills.md
+ *
  * @public
  */
 function skills(settings: SkillsSettings): Plugin {

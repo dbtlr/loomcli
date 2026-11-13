@@ -23,6 +23,7 @@ export type { EncodingConfig } from './views.js';
  * @public
  */
 export interface FormatSettings {
+  /** The short spelling of `--format`, such as `f` for `-f`. None by default. */
   readonly short?: NonNullable<StringOption['short']>;
 }
 
@@ -31,6 +32,16 @@ export interface FormatSettings {
  * into `view`, and writes a failed run's form as one JSON line when the run selected a `json()` or
  * `jsonl()` view. It reads the settings once, at the call. The annotated return type is the
  * boundary that breaks the cycle between this module and the middleware module `load` names.
+ *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { format } from '@loomcli/plugins/format';
+ *
+ * export const app = new Application('notes', { plugins: [format({ short: 'f' })] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/format.md
  *
  * @public
  */

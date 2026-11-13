@@ -42,11 +42,17 @@ type HelpSectionPath = readonly [string] | readonly [string, string];
  * @public
  */
 interface HelpCommandFacts {
+  /** The sections of this Command's child Commands on its own page, in order. */
   readonly commandSections?: readonly HelpSectionPath[] | undefined;
+  /** Markdown the extended page renders after the masthead. */
   readonly details?: string | undefined;
+  /** Markdown that both page variants print after the hints. */
   readonly epilog?: string | undefined;
+  /** Invocations the page prints under EXAMPLES. */
   readonly examples?: readonly CommandExample[] | undefined;
+  /** The sections of this Command's options on its own page, in order. */
   readonly optionSections?: readonly HelpSectionPath[] | undefined;
+  /** The section this Command sits in on its parent's page. */
   readonly section?: HelpSectionPath | undefined;
 }
 
@@ -57,9 +63,15 @@ interface HelpCommandFacts {
  * @public
  */
 interface HelpInputFacts {
+  /**
+   * One line the page prints as the accepted values, in place of a list derived from the schema.
+   */
   readonly accepts?: string | undefined;
+  /** Keeps the option's bindings off both page variants when it is `true`. */
   readonly hideBindings?: true | undefined;
+  /** The word the page shows for a string option's value, in place of the option's name. */
   readonly placeholder?: string | undefined;
+  /** The section this option sits in on the page. */
   readonly section?: HelpSectionPath | undefined;
 }
 
@@ -69,6 +81,9 @@ interface HelpInputFacts {
  * @public
  */
 interface HelpArgumentFacts {
+  /**
+   * One line the page prints as the accepted values, in place of a list derived from the schema.
+   */
   readonly accepts?: string | undefined;
 }
 
@@ -106,6 +121,24 @@ const argumentFacts = exactFacts<HelpArgumentFacts>()(argumentFactsSchema);
  * Help's facts on a Command or the Application: details, an epilog, examples, its section, and the
  * order of the sections on its own page.
  *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { helpCommand } from '@loomcli/plugins/help/extension';
+ *
+ * export const get = new Command('get', {
+ *   description: 'Read one value at a path.',
+ *   extensions: [
+ *     helpCommand({
+ *       details: 'A path is a dot-separated walk from the root of the document.',
+ *       examples: [{ command: 'get user.name', note: 'A nested key.' }],
+ *     }),
+ *   ],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/help.md
+ *
  * @public
  */
 export const helpCommand: Extension<
@@ -120,6 +153,19 @@ export const helpCommand: Extension<
  * Help's facts on an option: its accepted values, its placeholder, its section, and whether its
  * bindings are hidden.
  *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { helpInput } from '@loomcli/plugins/help/extension';
+ *
+ * export const get = new Command('get').option('file', {
+ *   extensions: [helpInput({ placeholder: 'path' })],
+ *   type: 'string',
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/help.md
+ *
  * @public
  */
 export const helpInput: Extension<
@@ -133,6 +179,18 @@ export const helpInput: Extension<
 /**
  * Help's one fact on an argument: the sentence its row prints as the values it accepts, in place of
  * any list help would derive from the schema. An argument's placeholder is its declared name.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { helpArgument } from '@loomcli/plugins/help/extension';
+ *
+ * export const pick = new Command('pick').argument('index', {
+ *   extensions: [helpArgument({ accepts: 'A whole number from 0 up to the last index.' })],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/help.md
  *
  * @public
  */
