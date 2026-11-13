@@ -6,6 +6,18 @@ description: Build and run the textstat and jsonkit examples with typed schema v
 
 Loom CLI is a TypeScript framework for command applications. The current increment runs named Commands under application-global options, with required scalar and variadic arguments, local options, Standard Schema validation, and passthrough.
 
+## What Loom ships
+
+- [`@loomcli/core`](packages/core/README.md): declaring an application and running it. Core installs no plugin by itself.
+- [`@loomcli/plugins`](packages/plugins/README.md): every first-party plugin, each its own subpath export, such as help, version, shell completion, configuration, the manifest, and MCP.
+- [`@loomcli/validators`](packages/validators/README.md): Standard Schema validators for common input shapes.
+- [`@loomcli/prompts`](packages/prompts/README.md): questions and progress lines an action shows the operator.
+- [`@loomcli/testing`](packages/testing/README.md): the assembly check and test helpers.
+- [`@loomcli/eslint-plugin`](packages/eslint-plugin/README.md): lint rules for a Loom application.
+- [`@loomcli/loom`](packages/loom/README.md): the `loom` bin, which scaffolds, builds, and releases an application.
+
+The [documentation map](docs/README.md) routes to each reference.
+
 ## Run textstat
 
 Install dependencies, build the packages, and bundle the examples. The build needs [Bun](https://bun.sh), because the `loom` bin and each example are bundled with [`loom build --target node`](docs/toolchain/build.md#loom-build), which runs `bun build` and bakes the [release facts](docs/core/release-facts.md) of a distributed build into the bundle through the `__LOOM_RELEASE__` define:
