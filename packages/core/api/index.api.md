@@ -1356,26 +1356,21 @@ export type OptionsOf<Contributor> = Contributor extends Plugin_2<infer Options>
 
 // @public @sealed (undocumented)
 export interface Out<Result = unknown> {
-    debug(message: string): Promise<void>;
+    debug(message: string, view?: View<string>): Promise<void>;
     draw<Data>(data: Data, view: View<Data>): Promise<number>;
-    // (undocumented)
-    error(message: string): Promise<void>;
+    error(message: string, view?: View<string>): Promise<void>;
     // (undocumented)
     fatal(message: string): never;
-    // (undocumented)
-    info(message: string): Promise<void>;
+    info(message: string, view?: View<string>): Promise<void>;
     lendTerminal<Value>(work: () => Value | PromiseLike<Value>): Promise<Value>;
-    // (undocumented)
-    print(message: string): Promise<void>;
+    print(message: string, view?: View<string>): Promise<void>;
     region(options?: RegionOptions): Region;
     render<Data, Row = never>(data: RenderedData<Data, Row>, view: View<Data> | ([Row] extends [never] ? RowViewOver<Data> : RowView<Row>)): Promise<void>;
     results: (value: ResultInput<Result>) => Promise<void>;
-    // (undocumented)
-    success(message: string): Promise<void>;
+    success(message: string, view?: View<string>): Promise<void>;
     text<Data>(data: Data, view: View<Data>): string;
-    trace(message: string): Promise<void>;
-    // (undocumented)
-    warn(message: string): Promise<void>;
+    trace(message: string, view?: View<string>): Promise<void>;
+    warn(message: string, view?: View<string>): Promise<void>;
 }
 
 // @public

@@ -180,14 +180,14 @@ test('argv content paths can still name process stdin', () => {
     'argv-pipe',
     '/dev/stdin',
   ]);
-  expect(result).toEqual({ status: 0, stderr: '', stdout: 'transport sentinel\n\n' });
+  expect(result).toEqual({ status: 0, stderr: '', stdout: 'transport sentinel\n' });
 });
 
 test('argv content paths accept process substitution', () => {
   const result = invoke(new URL('fixtures/content-process.mjs', import.meta.url), [
     'argv-substitution',
   ]);
-  expect(result).toEqual({ status: 0, stderr: '', stdout: 'source sentinel\n\n' });
+  expect(result).toEqual({ status: 0, stderr: '', stdout: 'source sentinel\n' });
 });
 
 test('a second stdin declaration on one Command is a declaration fault', async () => {
@@ -209,7 +209,7 @@ test('a stdin-only declaration hands the action a lazy stdin handle', async () =
   ).resolves.toEqual({
     status: 0,
     stderr: '',
-    stdout: 'events\n\n',
+    stdout: 'events\n',
   });
 });
 

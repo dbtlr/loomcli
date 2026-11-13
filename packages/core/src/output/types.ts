@@ -153,15 +153,25 @@ export type RowViewOver<Data> = [Data] extends [Iterable<infer Row> | AsyncItera
 
 /** @public @sealed */
 export interface Out<Result = unknown> {
-  print(message: string): Promise<void>;
-  info(message: string): Promise<void>;
-  success(message: string): Promise<void>;
-  warn(message: string): Promise<void>;
-  error(message: string): Promise<void>;
+  /**
+   * A message on stdout at every verbosity, or on stderr from the action of a Command that declares
+   * a result. Each semantic method draws its message through its lane view, or through `view` when
+   * the call passes one, which replaces the lane view for that call, and ends it with exactly one
+   * line break.
+   */
+  print(message: string, view?: View<string>): Promise<void>;
+  /** An informational message on stderr, hidden under `-q`. */
+  info(message: string, view?: View<string>): Promise<void>;
+  /** A success message on stderr, hidden under `-q`. */
+  success(message: string, view?: View<string>): Promise<void>;
+  /** A warning on stderr at every verbosity. */
+  warn(message: string, view?: View<string>): Promise<void>;
+  /** An error message on stderr at every verbosity, which changes no outcome. */
+  error(message: string, view?: View<string>): Promise<void>;
   /** A debug line on stderr, written from verbosity 1, as an operator's `-v` asks. */
-  debug(message: string): Promise<void>;
+  debug(message: string, view?: View<string>): Promise<void>;
   /** A trace line on stderr, finer than a debug line, written from verbosity 2, as an operator's `-vv` asks. */
-  trace(message: string): Promise<void>;
+  trace(message: string, view?: View<string>): Promise<void>;
   /**
    * The neutral view call: a rendered value has no purpose and no destination. A row view takes an
    * iterable, and core writes each row's text as the source yields it. One signature rather than an

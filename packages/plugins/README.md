@@ -69,7 +69,7 @@ An action renders these views through its output. [Pack views](https://github.co
 - `@loomcli/plugins/table`: rows under a header, fitted to the terminal width.
 - `@loomcli/plugins/records`: one record at a time, as its source yields it, each set apart by the field that identifies it.
 - `@loomcli/plugins/list`: a bulleted or numbered list.
-- `@loomcli/plugins/heading`, `@loomcli/plugins/rule`, `@loomcli/plugins/prose`, and `@loomcli/plugins/box`: views over a string.
+- `@loomcli/plugins/heading`, `@loomcli/plugins/rule`, `@loomcli/plugins/prose`, `@loomcli/plugins/step`, and `@loomcli/plugins/box`: views over a string.
 
 ## Documentation
 

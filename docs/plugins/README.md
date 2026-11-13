@@ -33,7 +33,7 @@ The help factory takes an optional `paging` setting under [Help paging](help.md#
 ### Output
 
 - [Formatter](format.md): open it when an operator chooses a result's format with `--format`.
-- [Pack views](pack-views.md): open it when an action renders a table, records, a list, a heading, a rule, prose, or a box.
+- [Pack views](pack-views.md): open it when an action renders a table, records, a list, a heading, a rule, prose, a step, or a box.
 - [Loom theme](theme.md): open it when an application installs the named Loom theme.
 - [Color](color.md): open it when an operator turns color on or off with `--color`.
 - [Verbose](verbose.md): open it when an operator raises or lowers the run's verbosity with `-v` and `-q`.

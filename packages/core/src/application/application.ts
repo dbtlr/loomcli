@@ -1158,7 +1158,7 @@ class ApplicationBuilder<
           await prepareEnvironment({
             host,
             log: (identity) => logs().bind(identity),
-            out: { warn: (message) => invocationOutput.out.warn(message) },
+            out: { warn: (message, view) => invocationOutput.out.warn(message, view) },
             plugins: built.plugins,
             publish: entered.publishEnvironment,
             signal: controller.signal,

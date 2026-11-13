@@ -426,8 +426,12 @@ The output channel object an action or a middleware receives, carrying the seman
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
-A message written through one of the seven purpose-named methods: `print`, `info`, `success`, `warn`, `error`, `debug`, and `trace`. Each has a fixed default destination and appends one newline. The run's verbosity decides whether `info`, `success`, `debug`, and `trace` write.
+A message written through one of the seven purpose-named methods: `print`, `info`, `success`, `warn`, `error`, `debug`, and `trace`. The method is the message's level: its fixed default destination and the verbosity it writes at. Its look is the method's lane view, or a view over the message the call passes, and the method ends the message with one line break. The run's verbosity decides whether `info`, `success`, `debug`, and `trace` write.
 _Avoid_: Log level (a log level belongs to a log event), styled output
+
+**Message level**:
+What a semantic method decides about its message apart from its look: the destination it writes to and the verbosity it writes at. The method names it, so `out.info(text, step())` writes a step at `info`'s message level, hidden under `-q`, and a view the call passes changes the look alone.
+_Avoid_: Log level (a log level belongs to a log event), lane (for the level), severity
 
 **Rendered output**:
 Text a view produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and from an action it goes to stderr on a Command that declares a result.
@@ -462,7 +466,7 @@ The `render` function of a whole view, or the `row`, `head`, and `tail` function
 _Avoid_: Renderer, render callback
 
 **Pack view**:
-A view the plugin pack ships as a configured factory, such as `table({ columns })`, `records({ identifier })`, `list({ ordered })`, or `heading({ level })`. The factory's return is a bare view typed from the data it is written against: the row type for the table, the records list, and the list, a string for the heading, the rule, prose, and a text box, and the framed view's data for a box with content. Its configuration is plain data the returned view holds and never publishes, and a pack view is replaced by name alone, through a result's `views()` and never through an override.
+A view the plugin pack ships as a configured factory, such as `table({ columns })`, `records({ identifier })`, `list({ ordered })`, or `heading({ level })`. The factory's return is a bare view typed from the data it is written against: the row type for the table, the records list, and the list, a string for the heading, the rule, prose, the step, and a text box, and the framed view's data for a box with content. Its configuration is plain data the returned view holds and never publishes, and a pack view is replaced by name alone, through a result's `views()` and never through an override.
 _Avoid_: Built-in view, formatter (for a pack view), widget
 
 **Column**:
@@ -490,7 +494,7 @@ The pairing of a key, a declared view or a failure class, with a replacement vie
 _Avoid_: Failure renderer, registration, hook
 
 **Lane view**:
-The declared view behind one of the seven semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the newline the method appends is outside the view. The bare word lane also names an output area of core, as in the results lane.
+The declared view behind one of the seven semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the line break the method appends when the view's text does not end with one is outside the view. A call that passes its own view replaces the lane view for that call alone. The bare word lane also names an output area of core, as in the results lane.
 _Avoid_: Channel, log level (a log level belongs to a log event), stream (for the lane view)
 
 **Columns**:
@@ -632,7 +636,7 @@ _Avoid_: Log entry, log message, log line (for the event)
 
 **Log level**:
 The severity of a log event: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`, the OpenTelemetry severity names. `fatal` is core's alone, for a defect; `log` has no `fatal`.
-_Avoid_: Severity class, verbosity (for the level)
+_Avoid_: Severity class, verbosity (for the level), message level (a semantic method's destination and verbosity)
 
 **Log destination**:
 The outermost run's `env`, `home`, `platform`, and `stderr` that core passes an `onLog` hook beside each event: the parent run's under an action's `invoke`, and a `null` stderr under `app.invoke`. A log record never enters an invocation's captured output.

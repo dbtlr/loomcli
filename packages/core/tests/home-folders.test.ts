@@ -148,7 +148,7 @@ test("app.invoke and an action's invoke read the handle's folders", async () => 
   const direct = await app.invoke(['where'], {}, { process: handle });
   expect(direct).toMatchObject({ output: '/home/me /var/tmp\n', status: 'completed' });
   const outer = await app.invoke(['outer'], {}, { process: handle });
-  expect(outer).toMatchObject({ output: '/home/me /var/tmp\n\n', status: 'completed' });
+  expect(outer).toMatchObject({ output: '/home/me /var/tmp\n', status: 'completed' });
 });
 
 test("an onLog hook's destination carries the run's home", async () => {
