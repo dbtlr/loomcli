@@ -31,7 +31,8 @@ export interface VersionLine {
  *   plugins: [version()],
  *   views: [
  *     override(versionLine, {
- *       render: ({ graph }, { style }) => `${style.escape(graph.name)} ${style.escape(graph.version ?? '')}\n`,
+ *       render: ({ graph }, { style }) =>
+ *         `${style.escape(graph.name)} ${style.escape(graph.version)}\n`,
  *     }),
  *   ],
  * });
