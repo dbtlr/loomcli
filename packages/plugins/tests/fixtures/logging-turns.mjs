@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { Application, processHandle } from '@loomcli/core';
 import { logging } from '@loomcli/plugins/logging';
 
-const [turn, other, baton, rounds, batch, keep] = process.argv.slice(2);
+const [turn, other, baton, rounds, batch, keep, maxBytes] = process.argv.slice(2);
 
 /** Sleeps in place for a few milliseconds, so a wait for the other process burns no CPU. */
 function pause() {
@@ -38,11 +38,11 @@ function awaitTurn() {
  * Two of these run at once against one file. With a baton file they hand it to each other, so the
  * processes append and rotate in a fixed order that real concurrency would not give; without one
  * they append and rotate at once. Each rotation renames every copy up to `keep`, so `keep` sets
- * what one rotation costs as well as how many records stay on disk.
+ * what one rotation costs, and `keep` with `maxBytes` sets how many records stay on disk.
  */
 const app = new Application('heimdall', {
   description: 'A fixture application.',
-  plugins: [logging({ keep: Number(keep), maxBytes: 400 })],
+  plugins: [logging({ keep: Number(keep), maxBytes: Number(maxBytes) })],
 }).action(({ log }) => {
   if (freeRunning) {
     meetOther();
