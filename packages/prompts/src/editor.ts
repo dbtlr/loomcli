@@ -10,7 +10,8 @@ import { openReader } from './reader.js';
 import type { PromptContext } from './types.js';
 
 /**
- * The failure of an editor question: the operator's editor could not start or exited with an error.
+ * The failure of an editor question that cannot get an answer from the operator's editor: the
+ * question cannot write its file, the editor cannot start, or the editor exits with an error.
  *
  * @example
  * ```ts
@@ -38,7 +39,7 @@ class EditorError extends FatalError {
   /** The stable code that names this failure. */
   static override readonly code = 'editor-failed';
 
-  /** The editor command that failed. */
+  /** The command line the question ran as the editor. */
   readonly editor: string;
   /** The editor's exit status, or `undefined` when it did not exit with one. */
   readonly status: number | undefined;

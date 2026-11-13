@@ -2,8 +2,9 @@ import type { ActionContext, Out, StandardSchemaV1 } from '@loomcli/core';
 
 /**
  * What a question reads from an action's context: the routed Command's inputs, what the operator
- * supplied, the run's signal and lifecycle hooks, and the output lanes a question draws through.
- * An action's, a middleware's, or a hook's context that carries these is accepted as it is.
+ * supplied, the run's signal and lifecycle hooks, and the output calls a question draws its input
+ * region and lends the terminal through. It is the slice of an action's context a question reads,
+ * so a helper can name what it passes on.
  *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#calling-a-question
  * @public
@@ -34,8 +35,9 @@ type PromptContext<Options, Args = unknown> = Pick<
  */
 type LinkKey<Options> = keyof Options & string;
 /**
- * What a question resolves to: its own output, or the linked option's value when the operator
- * supplied that option instead. With no linked key the answer is the output alone.
+ * What a question resolves to: its own output, or the linked input's validated value when the
+ * operator supplied that option or argument and the question is skipped. With no linked key the
+ * answer is the output alone.
  *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#resolving-a-question
  * @public
@@ -49,8 +51,8 @@ type Link<Key, Argument = never> =
   | { argument: Argument; option?: never; skipIfSupplied?: boolean }
   | { option?: never; argument?: never; skipIfSupplied?: never };
 /**
- * The settings of a text question: its message, an optional default the input starts with, an
- * optional validator for the typed line, and an optional link to an option or argument.
+ * The settings of a text question: its message, an optional default, the question hint
+ * that Enter on an empty line accepts, an optional validator for the typed line, and an optional link to an option or argument.
  *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#calling-a-question
  * @public
@@ -121,7 +123,8 @@ type ChoiceObject<Value = unknown> =
   | (ChoiceDetails & { readonly value: StringValue<Value>; readonly label?: string })
   | (ChoiceDetails & { readonly value: Value; readonly label: string });
 /**
- * A row in a list of choices that groups the rows below it and cannot be picked.
+ * An entry in a list of choices that draws a dimmed row between choices and is never highlighted,
+ * selected, or returned.
  *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#choices
  * @public

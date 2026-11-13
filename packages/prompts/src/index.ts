@@ -47,8 +47,9 @@ function typedPrefill<Options, Args>(
 }
 
 /**
- * Asks the operator for one line of text and resolves to the answer. A linked option or argument the
- * operator already supplied answers it without asking, and a validator checks the typed line.
+ * Asks the operator for one line of text and resolves to the answer. A linked option or argument
+ * the operator supplied prefills the question, and answers it without asking only when
+ * `skipIfSupplied` is set or the run is not interactive. A validator checks the typed line.
  *
  * @example
  * ```ts
@@ -103,7 +104,7 @@ async function text<
 
 /**
  * Asks the operator for longer text by opening their editor on a file, and resolves to the saved
- * text once validation accepts it.
+ * text, or to the validator's output when it has a `validate`.
  *
  * @example
  * ```ts
@@ -208,7 +209,8 @@ async function secret<
 
 /**
  * Asks the operator a yes or no question and resolves to a Boolean. A linked Boolean option the
- * operator already supplied answers it without asking.
+ * operator supplied sets the default, and answers the question without asking only when
+ * `skipIfSupplied` is set or the run is not interactive.
  *
  * @example
  * ```ts

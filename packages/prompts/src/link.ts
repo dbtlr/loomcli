@@ -21,8 +21,8 @@ function invalid(message: string, correction: string): never {
 }
 
 /**
- * The failure of a question asked in a run that is not interactive and has no linked value to
- * answer it. Its message names the question and the Command to run at a terminal.
+ * The failure of a question that links no option or argument, asked in a run that is not interactive.
+ * Its message names the question and the Command to run at a terminal.
  *
  * @example
  * ```ts

@@ -70,7 +70,7 @@ interface SeparatorRow {
 interface ListFrame {
   /** The question's message. */
   readonly message: string;
-  /** The reason the last answer was refused, or `undefined` when there is none. */
+  /** The message drawn below the list, such as why the last answer was refused, or `undefined` when none. */
   readonly issue: string | undefined;
   /** The visible rows. */
   readonly choices: readonly (ChoiceRow | SeparatorRow)[];
