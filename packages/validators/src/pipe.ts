@@ -97,10 +97,14 @@ function converterOf(
  *
  * @example
  * ```ts
+ * import { integer, pipe } from '@loomcli/validators';
+ *
  * const pairs = pipe(integer({ min: 2 }), (count) =>
  *   count % 2 === 0 ? { value: count } : { issues: [{ message: 'Expected an even number.' }] },
  * );
  * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#pipe
  * @public
  */
 function pipe<First extends StandardSchemaV1, S1 extends Step<FirstOutput<First>>>(

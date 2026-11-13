@@ -465,7 +465,7 @@ const dateLayoutsIssue = issueCode(catalogCode('date-layouts'), {
  * ```ts
  * import { dateTimeLayoutsIssue } from '@loomcli/validators';
  *
- * const issue = dateTimeLayoutsIssue.issue({ forms: ['YYYY-MM-DD'] });
+ * const issue = dateTimeLayoutsIssue.issue({ forms: ['YYYY-MM-DDThh:mm', 'DD/MM/YYYY hh:mm'] });
  * const params = dateTimeLayoutsIssue.read(issue);
  * ```
  *
@@ -504,7 +504,7 @@ const timeIssue = issueCode(catalogCode('time'), {
  * ```ts
  * import { timeLayoutsIssue } from '@loomcli/validators';
  *
- * const issue = timeLayoutsIssue.issue({ forms: ['YYYY-MM-DD'] });
+ * const issue = timeLayoutsIssue.issue({ forms: ['hh:mm', 'hh:mmAM'] });
  * const params = timeLayoutsIssue.read(issue);
  * ```
  *
@@ -619,7 +619,7 @@ const durationCapitalMIssue = issueCode(catalogCode('duration-capital-m'), {
  * ```ts
  * import { durationRangeIssue } from '@loomcli/validators';
  *
- * const issue = durationRangeIssue.issue({ max: 64, min: 1 });
+ * const issue = durationRangeIssue.issue({ max: 3_600_000, min: 30_000 });
  * const params = durationRangeIssue.read(issue);
  * ```
  *
@@ -639,7 +639,7 @@ const durationRangeIssue = issueCode(catalogCode('duration-range'), {
  * ```ts
  * import { durationMinIssue } from '@loomcli/validators';
  *
- * const issue = durationMinIssue.issue({ min: 1 });
+ * const issue = durationMinIssue.issue({ min: 30_000 });
  * const params = durationMinIssue.read(issue);
  * ```
  *
@@ -658,7 +658,7 @@ const durationMinIssue = issueCode(catalogCode('duration-min'), {
  * ```ts
  * import { durationMaxIssue } from '@loomcli/validators';
  *
- * const issue = durationMaxIssue.issue({ max: 64 });
+ * const issue = durationMaxIssue.issue({ max: 3_600_000 });
  * const params = durationMaxIssue.read(issue);
  * ```
  *
