@@ -9,13 +9,9 @@ import type { StandardSchemaV1 } from '@loomcli/core';
 
 // @public
 export interface McpAnnotations {
-    // (undocumented)
     readonly destructive?: boolean | undefined;
-    // (undocumented)
     readonly idempotent?: boolean | undefined;
-    // (undocumented)
     readonly openWorld?: boolean | undefined;
-    // (undocumented)
     readonly readOnly?: boolean | undefined;
 }
 
@@ -24,7 +20,6 @@ export const mcpArgument: Extension<'argument', StandardSchemaV1<McpArgumentFact
 
 // @public
 export interface McpArgumentFacts {
-    // (undocumented)
     readonly description: string;
 }
 
@@ -33,9 +28,7 @@ export const mcpCommand: Extension<'command', StandardSchemaV1<McpCommandFacts, 
 
 // @public
 export interface McpCommandFacts {
-    // (undocumented)
     readonly annotations?: McpAnnotations | undefined;
-    // (undocumented)
     readonly description?: string | undefined;
 }
 

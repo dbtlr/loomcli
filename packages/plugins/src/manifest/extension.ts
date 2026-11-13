@@ -16,7 +16,9 @@ import { readFailure } from './failures.js';
  * @public
  */
 interface DeclaredFailureInput {
+  /** The failure class, which extends `LoomError`. */
   readonly failure?: unknown;
+  /** One line that says when the Command raises the failure. */
   readonly meaning: string;
 }
 
@@ -28,8 +30,11 @@ interface DeclaredFailureInput {
  * @sealed
  */
 interface DeclaredFailure {
+  /** The class's failure code. */
   readonly code: string;
+  /** The class's declared exit code. */
   readonly exitCode: number;
+  /** One line that says when the Command raises the failure. */
   readonly meaning: string;
 }
 
@@ -40,8 +45,11 @@ interface DeclaredFailure {
  * @public
  */
 interface ManifestCommandInput {
+  /** Markdown that describes the Command for an agent. */
   readonly details?: string | undefined;
+  /** Example invocations of the Command. */
   readonly examples?: readonly CommandExample[] | undefined;
+  /** The failures the Command can raise, each as its author declares it. */
   readonly failures?: readonly DeclaredFailureInput[] | undefined;
 }
 
@@ -52,8 +60,11 @@ interface ManifestCommandInput {
  * @sealed
  */
 interface ManifestCommandFacts {
+  /** Markdown that describes the Command for an agent. */
   readonly details?: string | undefined;
+  /** Example invocations of the Command. */
   readonly examples?: readonly CommandExample[] | undefined;
+  /** The failures the Command can raise, each read from its class. */
   readonly failures?: readonly DeclaredFailure[] | undefined;
 }
 
@@ -98,6 +109,28 @@ const commandFacts = exactFacts<ManifestCommandInput, ManifestCommandFacts>()(co
  * applies the pack's shared line and Markdown rules, which help's schema also uses, so every value
  * help supplies validates. Its published schema is a Standard Schema over `ManifestCommandInput`
  * and `ManifestCommandFacts`, so an author's type check loads no validation library's declarations.
+ *
+ * @example
+ * ```ts
+ * import { Command, EX_DATAERR, FatalError } from '@loomcli/core';
+ * import { manifestCommand } from '@loomcli/plugins/manifest/extension';
+ *
+ * class PathNotFoundError extends FatalError {
+ *   static override readonly code = 'path-not-found';
+ *   static override readonly exitCode = EX_DATAERR;
+ * }
+ *
+ * export const get = new Command('get', {
+ *   description: 'Read one value at a path.',
+ *   extensions: [
+ *     manifestCommand({
+ *       failures: [{ failure: PathNotFoundError, meaning: 'The path names no value in the document.' }],
+ *     }),
+ *   ],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/manifest.md
  *
  * @public
  */

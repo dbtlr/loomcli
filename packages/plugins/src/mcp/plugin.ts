@@ -89,6 +89,16 @@ const mcpCommandTree = new Command('mcp', {
  * Codex and record each registration, and `config`, the three extensions, and a hook that rejects a
  * graph whose tools cannot be served. Each Command loads its work when it runs.
  *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { mcp } from '@loomcli/plugins/mcp';
+ *
+ * export const app = new Application('notes', { plugins: [mcp()] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/mcp.md
+ *
  * @public
  */
 export function mcp(): Plugin {

@@ -91,6 +91,20 @@ function serviceCommand(settings: ServiceSettings) {
  * restarts, reports, and removes it. Its whole contribution is the `service` group and the graph
  * check that the run words route to a Command with an action.
  *
+ * @example
+ * ```ts
+ * import { Application, Command } from '@loomcli/core';
+ * import { service } from '@loomcli/plugins/service';
+ *
+ * const serve = new Command('serve').action(async () => {});
+ *
+ * export const app = new Application('notes', {
+ *   plugins: [service({ label: 'com.acme.notes', run: ['serve'] })],
+ * }).command(serve);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/service.md
+ *
  * @public
  */
 function service(settings: ServiceSettings): Plugin {

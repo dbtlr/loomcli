@@ -14,12 +14,26 @@ const options = {
     type: 'boolean',
   },
 } satisfies PluginOptions;
-/** @public @sealed */
+/**
+ * The options record `color()` declares: the global `--color` and `--no-color` pair.
+ *
+ * @public @sealed
+ */
 export type ColorOptions = typeof options;
 
 /**
  * Gives the operator the standard --color and --no-color pair, which core reads as the run's color
  * choice right after host capture. The pair's spelling is the standard's, so it takes no settings.
+ *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { color } from '@loomcli/plugins/color';
+ *
+ * export const app = new Application('notes', { plugins: [color()] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/color.md
  *
  * @public
  */

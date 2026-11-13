@@ -10,13 +10,10 @@ import type { ViewContext } from '@loomcli/core';
 // @public
 export function list<Item>(config?: ListConfig<Item>): View<readonly Item[]>;
 
-// @public (undocumented)
+// @public
 export interface ListConfig<Item> {
-    // (undocumented)
     readonly children?: (item: Item) => readonly Item[] | undefined;
-    // (undocumented)
     readonly format?: (item: Item, index: number, context: ViewContext) => string;
-    // (undocumented)
     readonly ordered?: boolean;
 }
 

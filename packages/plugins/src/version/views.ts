@@ -9,7 +9,9 @@ import { packageName } from '../constants.js';
  * @public @sealed
  */
 export interface VersionLine {
+  /** The Command graph, which holds the application's name and declared version. */
   readonly graph: CommandGraph;
+  /** The text printed after the version, or `undefined` when there is none. */
   readonly postfix: string | undefined;
 }
 
@@ -18,6 +20,25 @@ export interface VersionLine {
  * `v` carries that `v` once; every other first character is printed after the added one. The rule
  * is rendering alone, and `graph.version` keeps the declared string. A postfix follows after one
  * unstyled space, escaped and dim.
+ *
+ * @example
+ * ```ts
+ * import { Application, override } from '@loomcli/core';
+ * import { version } from '@loomcli/plugins/version';
+ * import { versionLine } from '@loomcli/plugins/version/views';
+ *
+ * export const app = new Application('notes', {
+ *   plugins: [version()],
+ *   views: [
+ *     override(versionLine, {
+ *       render: ({ graph }, { style }) =>
+ *         `${style.escape(graph.name)} ${style.escape(graph.version)}\n`,
+ *     }),
+ *   ],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/version.md
  *
  * @public
  */

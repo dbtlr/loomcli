@@ -22,9 +22,19 @@ import { proseRule } from '../lines.js';
  * @public
  */
 interface McpAnnotations {
+  /** Whether the tool may destroy data. Unset, the protocol default applies. */
   readonly destructive?: boolean | undefined;
+  /**
+   * Whether calling the tool again with the same input has no further effect. Unset, the protocol
+   * default applies.
+   */
   readonly idempotent?: boolean | undefined;
+  /**
+   * Whether the tool reaches beyond the application, such as the network. Unset, the protocol
+   * default applies.
+   */
   readonly openWorld?: boolean | undefined;
+  /** Whether the tool changes nothing. Unset, the protocol default applies. */
   readonly readOnly?: boolean | undefined;
 }
 
@@ -35,7 +45,9 @@ interface McpAnnotations {
  * @public
  */
 interface McpCommandFacts {
+  /** The tool's effect hints. */
   readonly annotations?: McpAnnotations | undefined;
+  /** The tool's description for an agent. */
   readonly description?: string | undefined;
 }
 
@@ -55,6 +67,7 @@ type McpInputFacts =
  * @public
  */
 interface McpArgumentFacts {
+  /** The argument's description for an agent, in place of its core description. */
   readonly description: string;
 }
 
@@ -90,6 +103,19 @@ const argumentFacts = exactFacts<McpArgumentFacts>()(argumentFactsSchema);
 /**
  * Opts a Command in as a tool, with its description for an agent and its effect hints.
  *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { mcpCommand } from '@loomcli/plugins/mcp/extension';
+ *
+ * export const get = new Command('get', {
+ *   description: 'Read one value at a path.',
+ *   extensions: [mcpCommand({ annotations: { openWorld: false, readOnly: true } })],
+ * }).action(async () => {});
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/mcp.md
+ *
  * @public
  */
 export const mcpCommand: Extension<
@@ -104,6 +130,21 @@ export const mcpCommand: Extension<
  * An option's description for an agent, in place of its core description, or its exclusion from
  * every tool. A value holds one of the two, because an excluded option has no property to describe.
  *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { mcpInput } from '@loomcli/plugins/mcp/extension';
+ *
+ * export const get = new Command('get')
+ *   .option('file', {
+ *     extensions: [mcpInput({ description: 'The JSON document to read.' })],
+ *     type: 'string',
+ *   })
+ *   .option('verbose', { extensions: [mcpInput({ exclude: true })], type: 'count' });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/mcp.md
+ *
  * @public
  */
 export const mcpInput: Extension<
@@ -116,6 +157,19 @@ export const mcpInput: Extension<
 
 /**
  * An argument's description for an agent, in place of its core description.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { mcpArgument } from '@loomcli/plugins/mcp/extension';
+ *
+ * export const get = new Command('get').argument('path', {
+ *   extensions: [mcpArgument({ description: 'A dot-separated path from the document root.' })],
+ *   required: true,
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/mcp.md
  *
  * @public
  */

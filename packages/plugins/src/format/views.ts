@@ -40,6 +40,10 @@ function stringify(value: unknown, indent?: number): string {
  * @public
  */
 export interface EncodingConfig<Data> {
+  /**
+   * Reshapes the received data into the value the view encodes. Absent, the data is encoded as it
+   * is.
+   */
   readonly map?: (data: Readonly<Data>) => unknown;
 }
 
@@ -47,6 +51,18 @@ export interface EncodingConfig<Data> {
  * A whole view over one JSON document: the mapped data, indented two spaces, with one trailing
  * newline, declared `application/json` under every `map`. A bare pack view, so two calls with one
  * configuration are two distinct views.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { json } from '@loomcli/plugins/format/views';
+ *
+ * export const get = new Command('get')
+ *   .result<{ name: string }>({ views: { json: json() } })
+ *   .action(async () => ({ name: 'notes' }));
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/format.md
  *
  * @public
  */
@@ -63,6 +79,18 @@ export function json<Data>(config: EncodingConfig<Data> = {}): View<Data> {
  * is an array, and one such line otherwise. An empty array prints nothing. It is declared
  * `application/jsonl` under every `map`. A bare pack view, so two calls with one configuration are
  * two distinct views.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { jsonl } from '@loomcli/plugins/format/views';
+ *
+ * export const list = new Command('list')
+ *   .result<{ name: string }[]>({ views: { jsonl: jsonl() } })
+ *   .action(async () => [{ name: 'notes' }, { name: 'todo' }]);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/format.md
  *
  * @public
  */

@@ -45,6 +45,10 @@ type EveryKeyOptional<Schema extends StandardSchemaV1> =
  * @public @sealed
  */
 interface ConfigurationSchemaMustAcceptAnEmptyFile {
+  /**
+   * The one key of the type error, whose name is the correction: a schema that rejects an empty
+   * file needs every key optional.
+   */
   readonly 'Make every key optional outside an array item or a record value': never;
 }
 

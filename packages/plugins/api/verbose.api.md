@@ -9,7 +9,7 @@ import type { Plugin as Plugin_2 } from '@loomcli/core';
 // @public
 export function verbose(): Plugin_2<VerboseOptions>;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type VerboseOptions = typeof options;
 
 // (No @packageDocumentation comment for this package)

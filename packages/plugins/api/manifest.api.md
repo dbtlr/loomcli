@@ -10,12 +10,11 @@ import type { Plugin as Plugin_2 } from '@loomcli/core';
 // @public
 export function manifest(settings?: ManifestSettings): Plugin_2<ManifestOptions>;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type ManifestOptions = typeof options;
 
 // @public
 export interface ManifestSettings {
-    // (undocumented)
     readonly short?: NonNullable<BooleanOption['short']>;
 }
 

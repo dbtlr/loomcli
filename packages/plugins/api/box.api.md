@@ -9,7 +9,7 @@ import type { View } from '@loomcli/core';
 // @public
 export function box<Data = string>(...config: [Data] extends [string] ? [config?: BoxConfig<Data>] : [config: BoxConfig<Data>]): View<Data>;
 
-// @public (undocumented)
+// @public
 export type BoxConfig<Data> = {
     readonly title?: string;
 } & ([Data] extends [string] ? {

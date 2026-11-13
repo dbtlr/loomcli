@@ -12,7 +12,6 @@ export const configInput: Extension<'option', StandardSchemaV1<ConfigInputFacts,
 
 // @public
 export interface ConfigInputFacts {
-    // (undocumented)
     readonly path: string;
 }
 

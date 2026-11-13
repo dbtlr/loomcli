@@ -7,6 +7,19 @@ import type { RefreshContext } from '../refresh.js';
  * the child's output through. A child that fails or cannot start adds a `warn` log event and
  * resolves, because the binary update succeeded.
  *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { completion, refreshCompletion } from '@loomcli/plugins/completion';
+ * import { selfUpdate } from '@loomcli/plugins/self-update';
+ *
+ * export const app = new Application('notes', {
+ *   plugins: [completion(), selfUpdate({ afterReplace: refreshCompletion })],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/completion.md
+ *
  * @public
  */
 async function refreshCompletion(context: RefreshContext): Promise<void> {

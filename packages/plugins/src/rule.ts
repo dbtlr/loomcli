@@ -18,6 +18,18 @@ const TAIL_GAP = ' ';
  * them stays empty, and only its last line carries the line after it. The returned value is a bare
  * pack view and installs no plugin behavior.
  *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { rule } from '@loomcli/plugins/rule';
+ *
+ * export const divider = new Command('divider')
+ *   .result<string>({ views: { rule: rule() } })
+ *   .action(async () => 'Archive');
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/pack-views.md
+ *
  * @public
  */
 function rule(): View<string> {

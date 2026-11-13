@@ -50,6 +50,16 @@ function importedNames(settings: DotenvSettings | undefined): (name: string) => 
  * Imports the variables the process has not set from the dotenv files in the working directory:
  * `.env`, `.env.<mode>`, `.env.local`, and `.env.<mode>.local`, the more specific file winning.
  *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { dotenv } from '@loomcli/plugins/dotenv';
+ *
+ * export const app = new Application('notes', { plugins: [dotenv({ only: ['API_TOKEN'] })] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/dotenv.md
+ *
  * @public
  */
 export function dotenv(settings?: DotenvSettings): Plugin {

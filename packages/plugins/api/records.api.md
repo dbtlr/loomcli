@@ -7,18 +7,16 @@
 import type { RowView } from '@loomcli/core';
 import type { ViewContext } from '@loomcli/core';
 
-// @public (undocumented)
+// @public
 export type Field<Row> = (keyof Row & string) | FieldEntry<Row>;
 
-// @public (undocumented)
+// @public
 export interface FieldDefinition<Row, Key extends keyof Row & string> {
-    // (undocumented)
     readonly format?: (value: Row[Key], row: Readonly<Row>, context: ViewContext) => string;
-    // (undocumented)
     readonly key: Key;
 }
 
-// @public (undocumented)
+// @public
 export type FieldEntry<Row> = {
     [Key in keyof Row & string]: FieldDefinition<Row, Key>;
 }[keyof Row & string];
@@ -26,11 +24,9 @@ export type FieldEntry<Row> = {
 // @public
 export function records<Row>(config: RecordsConfig<Row>): RowView<Row>;
 
-// @public (undocumented)
+// @public
 export interface RecordsConfig<Row> {
-    // (undocumented)
     readonly fields?: readonly Field<Row>[];
-    // (undocumented)
     readonly identifier: keyof Row & string;
 }
 

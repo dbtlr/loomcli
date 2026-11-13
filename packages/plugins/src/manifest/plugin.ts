@@ -14,7 +14,11 @@ const options = {
   },
 } satisfies PluginOptions;
 
-/** @public @sealed */
+/**
+ * The options record `manifest()` declares: the global `--manifest` option.
+ *
+ * @public @sealed
+ */
 export type ManifestOptions = typeof options;
 
 /**
@@ -23,6 +27,7 @@ export type ManifestOptions = typeof options;
  * @public
  */
 export interface ManifestSettings {
+  /** The short spelling of `--manifest`. None by default. */
   readonly short?: NonNullable<BooleanOption['short']>;
 }
 
@@ -32,6 +37,16 @@ export interface ManifestSettings {
  * gives prose, examples, and failures through, and it declares no view and claims no slot. The
  * annotated return type is the boundary that breaks the cycle between this module and the
  * middleware module `load` names.
+ *
+ * @example
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { manifest } from '@loomcli/plugins/manifest';
+ *
+ * export const app = new Application('notes', { plugins: [manifest()] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/manifest.md
  *
  * @public
  */

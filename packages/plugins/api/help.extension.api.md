@@ -9,9 +9,7 @@ import type { StandardSchemaV1 } from '@loomcli/core';
 
 // @public
 export interface CommandExample {
-    // (undocumented)
     readonly command: string;
-    // (undocumented)
     readonly note?: string | undefined;
 }
 
@@ -20,7 +18,6 @@ export const helpArgument: Extension<'argument', StandardSchemaV1<HelpArgumentFa
 
 // @public
 export interface HelpArgumentFacts {
-    // (undocumented)
     readonly accepts?: string | undefined;
 }
 
@@ -29,17 +26,11 @@ export const helpCommand: Extension<'command', StandardSchemaV1<HelpCommandFacts
 
 // @public
 export interface HelpCommandFacts {
-    // (undocumented)
     readonly commandSections?: readonly HelpSectionPath[] | undefined;
-    // (undocumented)
     readonly details?: string | undefined;
-    // (undocumented)
     readonly epilog?: string | undefined;
-    // (undocumented)
     readonly examples?: readonly CommandExample[] | undefined;
-    // (undocumented)
     readonly optionSections?: readonly HelpSectionPath[] | undefined;
-    // (undocumented)
     readonly section?: HelpSectionPath | undefined;
 }
 
@@ -48,13 +39,9 @@ export const helpInput: Extension<'option', StandardSchemaV1<HelpInputFacts, Hel
 
 // @public
 export interface HelpInputFacts {
-    // (undocumented)
     readonly accepts?: string | undefined;
-    // (undocumented)
     readonly hideBindings?: true | undefined;
-    // (undocumented)
     readonly placeholder?: string | undefined;
-    // (undocumented)
     readonly section?: HelpSectionPath | undefined;
 }
 

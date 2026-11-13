@@ -9,9 +9,7 @@ import { DeclaredView } from '@loomcli/core';
 
 // @public @sealed
 export interface VersionLine {
-    // (undocumented)
     readonly graph: CommandGraph;
-    // (undocumented)
     readonly postfix: string | undefined;
 }
 

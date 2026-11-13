@@ -13,14 +13,17 @@ import { renderPage } from './page.js';
 export type HelpVariant = 'compact' | 'extended';
 
 /**
- * The data the help page presents: the whole graph, the Command the invocation routed to, and the
- * variant the operator's spelling selected.
+ * The data the help page presents: the whole graph, the Command whose page it is, and the page
+ * variant.
  *
  * @public @sealed
  */
 export interface HelpPage {
+  /** The whole Command graph, which the page reads for the application's name and every Command. */
   readonly graph: CommandGraph;
+  /** The Command whose page this is: the routed Command, or the Command the help Command's words name. */
   readonly command: CommandNode;
+  /** The page variant: `compact` for `-h`, and `extended` otherwise, the help Command included. */
   readonly variant: HelpVariant;
 }
 
@@ -28,6 +31,25 @@ export interface HelpPage {
  * The declared view of the help page. Its default derives the page from the graph, the routed
  * node, and the variant alone. It escapes each raw fragment before styling and measuring it, and
  * ends the page with exactly one newline. A replacement owns both obligations.
+ *
+ * @example
+ * ```ts
+ * import { Application, override } from '@loomcli/core';
+ * import { help } from '@loomcli/plugins/help';
+ * import { helpPage } from '@loomcli/plugins/help/views';
+ *
+ * export const app = new Application('notes', {
+ *   plugins: [help()],
+ *   views: [
+ *     override(helpPage, {
+ *       render: ({ graph, command }, { style }) =>
+ *         `${style.primary(style.escape([graph.name, ...command.path].join(' ')))}\n`,
+ *     }),
+ *   ],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/help.md
  *
  * @public
  */

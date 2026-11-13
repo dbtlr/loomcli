@@ -9,9 +9,8 @@ import type { View } from '@loomcli/core';
 // @public
 export function heading(config?: HeadingConfig): View<string>;
 
-// @public (undocumented)
+// @public
 export interface HeadingConfig {
-    // (undocumented)
     readonly level?: 1 | 2;
 }
 

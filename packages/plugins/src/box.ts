@@ -13,7 +13,11 @@ const TITLE_ROOM = 2;
 /** The columns a title takes from the top border besides its own: a line, a space, and a space. */
 const TITLE_FRAME = 3;
 
-/** @public */
+/**
+ * What an author tells `box()`: an optional title for the top border and the view to frame.
+ *
+ * @public
+ */
 type BoxConfig<Data> = { readonly title?: string } & ([Data] extends [string]
   ? { readonly content?: View<Data> }
   : { readonly content: View<Data> });
@@ -92,6 +96,18 @@ function framed(
  * frame, so a framed table shrinks to fit inside it. Text, or content, that resolves to no
  * character prints nothing. The returned value is a bare pack view and installs no plugin
  * behavior.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { box } from '@loomcli/plugins/box';
+ *
+ * export const notice = new Command('notice')
+ *   .result<string>({ views: { box: box({ title: 'Notice' }) } })
+ *   .action(async () => 'The cache was rebuilt.');
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/pack-views.md
  *
  * @public
  */

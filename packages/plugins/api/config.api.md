@@ -30,7 +30,6 @@ export function configuration<const Schema extends StandardSchemaV1, const Direc
 
 // @public @sealed
 export interface ConfigurationSchemaMustAcceptAnEmptyFile {
-    // (undocumented)
     readonly 'Make every key optional outside an array item or a record value': never;
 }
 
